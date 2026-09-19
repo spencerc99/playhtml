@@ -22,6 +22,35 @@ function groupKey(e: CollectionEvent): string {
 }
 
 /**
+ * Track events from finished trails only while they remain in the live window.
+ * New event ids for the same participant+url are not included, so they can
+ * start a fresh trail after the prior one has left the screen.
+ */
+export function collectFinishedEventIds(
+  prev: ReadonlySet<string>,
+  groups: AccumulatedGroups,
+  incoming: CollectionEvent[],
+  finishedGroupIds?: Iterable<string>,
+): Set<string> {
+  const incomingIds = new Set(incoming.map((event) => event.id));
+  const next = new Set(
+    Array.from(prev).filter((eventId) => incomingIds.has(eventId)),
+  );
+
+  if (finishedGroupIds) {
+    for (const groupId of finishedGroupIds) {
+      const group = groups.get(groupId);
+      if (!group) continue;
+      for (const event of group.events) {
+        if (incomingIds.has(event.id)) next.add(event.id);
+      }
+    }
+  }
+
+  return next;
+}
+
+/**
  * Fold a batch of events into the accumulated per-group map (pure).
  *
  * - New events are appended to their group, deduped by event id.
@@ -40,6 +69,7 @@ export function accumulateEvents(
   incoming: CollectionEvent[],
   evictIds?: Iterable<string>,
   maxGroups?: number,
+  finishedEventIds?: ReadonlySet<string>,
 ): AccumulatedGroups {
   // Clone the prior map shallowly (group objects are replaced when they change).
   const next: AccumulatedGroups = new Map(prev);
@@ -62,6 +92,7 @@ export function accumulateEvents(
     }
   >();
   for (const e of incoming) {
+    if (finishedEventIds?.has(e.id)) continue;
     const key = groupKey(e);
     let group = touched.get(key);
     if (!group) {
@@ -162,9 +193,10 @@ export function useAccumulatedEvents(
   const evictIdsRef = options.evictIdsRef;
   const enabled = options.enabled ?? true;
   const groupsRef = useRef<AccumulatedGroups>(new Map());
+  const finishedEventIdsRef = useRef<Set<string>>(new Set());
 
   const flat = useMemo(() => {
-    if (!enabled) return events;
+    if (!enabled) return { events, evictions: new Set<string>() };
 
     // Apply any pending evictions reported by the animator. We READ the set here
     // (and clear it in the effect below) rather than clearing it inside the memo:
@@ -173,15 +205,30 @@ export function useAccumulatedEvents(
     // (deleting an already-deleted group is a no-op).
     const evict =
       evictIdsRef && evictIdsRef.current.size > 0
-        ? evictIdsRef.current
+        ? new Set(evictIdsRef.current)
         : undefined;
+
+    finishedEventIdsRef.current = collectFinishedEventIds(
+      finishedEventIdsRef.current,
+      groupsRef.current,
+      events,
+      evict,
+    );
 
     groupsRef.current = accumulateEvents(
       groupsRef.current,
       events,
       evict,
       maxGroups,
+      finishedEventIdsRef.current,
     );
+
+    // Density-evicted history remains retired while it is in the live window.
+    for (const event of events) {
+      if (!groupsRef.current.has(groupKey(event))) {
+        finishedEventIdsRef.current.add(event.id);
+      }
+    }
 
     // Flatten groups into a single ts-ordered array. The total-event budget is
     // enforced inside accumulateEvents by evicting whole oldest groups, so no
@@ -191,16 +238,16 @@ export function useAccumulatedEvents(
       result.push(...group.events);
     }
     result.sort((a, b) => a.ts - b.ts);
-    return result;
+    return { events: result, evictions: evict };
   }, [events, maxGroups, enabled, evictIdsRef]);
 
   // Clear the applied evictions after commit (not inside the memo, so a
   // double-invoked memo can't drop them).
   useEffect(() => {
-    if (evictIdsRef && evictIdsRef.current.size > 0) {
-      evictIdsRef.current = new Set();
+    if (evictIdsRef && flat.evictions) {
+      for (const id of flat.evictions) evictIdsRef.current.delete(id);
     }
-  });
+  }, [flat, evictIdsRef]);
 
-  return flat;
+  return flat.events;
 }

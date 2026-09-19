@@ -15,15 +15,15 @@ export interface ExportPermissionsRequest {
 
 export interface ApplySubtreesImmediateRequest {
   action: "apply-subtrees-immediate";
-  subtrees: Record<string, Record<string, any>>;
+  subtrees: Record<string, Record<string, unknown>>;
   sender: string;
   originKind: "consumer" | "source";
   resetEpoch?: number | null;
 }
 
-export type PartyKitRequest = 
-  | SubscribeRequest 
-  | ExportPermissionsRequest 
+export type PartyKitRequest =
+  | SubscribeRequest
+  | ExportPermissionsRequest
   | ApplySubtreesImmediateRequest;
 
 export interface SubscribeResponse {
@@ -31,7 +31,7 @@ export interface SubscribeResponse {
   subscribed: true;
   elementIds: string[];
   sourceResetEpoch?: number | null;
-  subtrees?: Record<string, Record<string, any>>;
+  subtrees?: Record<string, Record<string, unknown>>;
 }
 
 export interface ExportPermissionsResponse {
@@ -52,19 +52,52 @@ export interface GenericErrorResponse {
   error: string;
 }
 
-export function isSubscribeRequest(body: any): body is SubscribeRequest {
-  return body?.action === "subscribe" && typeof body?.consumerRoomId === "string";
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-export function isExportPermissionsRequest(body: any): body is ExportPermissionsRequest {
-  return body?.action === "export-permissions" && Array.isArray(body?.elementIds);
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
-export function isApplySubtreesImmediateRequest(body: any): body is ApplySubtreesImmediateRequest {
+function isOptionalResetEpoch(value: unknown): boolean {
   return (
-    body?.action === "apply-subtrees-immediate" &&
-    typeof body?.subtrees === "object" &&
-    typeof body?.sender === "string" &&
-    (body?.originKind === "consumer" || body?.originKind === "source")
+    value === undefined ||
+    value === null ||
+    (typeof value === "number" && Number.isFinite(value))
+  );
+}
+
+export function isSubscribeRequest(body: unknown): body is SubscribeRequest {
+  return (
+    isRecord(body) &&
+    body.action === "subscribe" &&
+    typeof body.consumerRoomId === "string" &&
+    (body.elementIds === undefined || isStringArray(body.elementIds)) &&
+    isOptionalResetEpoch(body.consumerResetEpoch)
+  );
+}
+
+export function isExportPermissionsRequest(
+  body: unknown
+): body is ExportPermissionsRequest {
+  return (
+    isRecord(body) &&
+    body.action === "export-permissions" &&
+    isStringArray(body.elementIds)
+  );
+}
+
+export function isApplySubtreesImmediateRequest(
+  body: unknown
+): body is ApplySubtreesImmediateRequest {
+  return (
+    isRecord(body) &&
+    body.action === "apply-subtrees-immediate" &&
+    isRecord(body.subtrees) &&
+    Object.values(body.subtrees).every(isRecord) &&
+    typeof body.sender === "string" &&
+    (body.originKind === "consumer" || body.originKind === "source") &&
+    isOptionalResetEpoch(body.resetEpoch)
   );
 }

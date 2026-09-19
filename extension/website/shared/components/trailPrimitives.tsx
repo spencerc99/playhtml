@@ -102,6 +102,44 @@ export function computeTrailFrame(
   };
 }
 
+export function computeTrailSegmentPath(
+  trailState: TrailState,
+  startProgress: number,
+  endProgress: number,
+  strokeSize: number,
+): string {
+  const points = trailState.variedPoints;
+  if (points.length < 2 || endProgress <= startProgress) return "";
+
+  const lastIndex = points.length - 1;
+  const clampedStart = Math.min(1, Math.max(0, startProgress));
+  const clampedEnd = Math.min(1, Math.max(0, endProgress));
+  const exactEnd = lastIndex * clampedEnd;
+  const endIndex = Math.floor(exactEnd);
+  const endFraction = exactEnd - endIndex;
+  const startIndex = Math.max(0, Math.floor(lastIndex * clampedStart) - 1);
+  const interpolatedHead =
+    endIndex < lastIndex && endFraction > 0
+      ? {
+          x:
+            points[endIndex].x +
+            (points[endIndex + 1].x - points[endIndex].x) * endFraction,
+          y:
+            points[endIndex].y +
+            (points[endIndex + 1].y - points[endIndex].y) * endFraction,
+        }
+      : undefined;
+
+  return buildFreehandPathSegment(
+    points,
+    startIndex,
+    Math.min(endIndex, lastIndex),
+    strokeSize,
+    clampedEnd >= 1,
+    interpolatedHead,
+  );
+}
+
 // Imperatively-updated trail. Renders SVG structure once on mount, then the
 // parent rAF loop updates DOM attributes directly via the ref handle.
 // Path and cursor are rendered as siblings (not nested) so they can live in
@@ -115,6 +153,11 @@ export interface ImperativeTrailHandle {
     // Live animator passes 0..1 directly so the frame doesn't depend on this
     // handle's `trailState.startOffsetMs` matching the caller's.
     progressOverride?: number,
+    activeSegment?: {
+      startProgress: number;
+      baseProgress: number;
+      opacity: number;
+    },
   ): { trailProgress: number; cursorPosition: { x: number; y: number } } | null;
   getGroup(): SVGGElement | null;
   hide(): void;
@@ -133,6 +176,8 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
     const groupRef = useRef<SVGGElement>(null);
     const pathRef = useRef<SVGPathElement>(null);
     const haloRef = useRef<SVGPathElement>(null);
+    const activePathRef = useRef<SVGPathElement>(null);
+    const activeHaloRef = useRef<SVGPathElement>(null);
     const lastGroupOpacityRef = useRef("");
     const lastPathDataRef = useRef("");
     const lastRendererIdRef = useRef("");
@@ -140,6 +185,9 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
     const lastStrokeWidthRef = useRef<number | null>(null);
     const lastCursorTypeRef = useRef<string | undefined>(undefined);
     const lastTrailColorRef = useRef("");
+    const lastActivePathDataRef = useRef("");
+    const lastActiveRendererIdRef = useRef("");
+    const lastActiveOpacityRef = useRef<number | null>(null);
     const finishedFrameRef = useRef<ReturnType<typeof computeTrailFrame>>(null);
     const finishedFrameSizeRef = useRef<number | null>(null);
 
@@ -152,6 +200,9 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
       lastStrokeWidthRef.current = null;
       lastCursorTypeRef.current = undefined;
       lastTrailColorRef.current = "";
+      lastActivePathDataRef.current = "";
+      lastActiveRendererIdRef.current = "";
+      lastActiveOpacityRef.current = null;
     }, [trailState]);
 
     const hideTrail = useCallback(() => {
@@ -169,7 +220,14 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
         getGroup() {
           return groupRef.current;
         },
-        update(elapsedTimeMs, trailOpacity, strokeWidth, evictionFade, progressOverride) {
+        update(
+          elapsedTimeMs,
+          trailOpacity,
+          strokeWidth,
+          evictionFade,
+          progressOverride,
+          activeSegment,
+        ) {
           const group = groupRef.current;
           if (!group) return null;
 
@@ -188,7 +246,9 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
               ? progressOverride >= 1
               : elapsedTimeMs - trailState.startOffsetMs >= trailState.durationMs;
           let frame =
-            isPastEnd && finishedFrameSizeRef.current === strokeSize
+            isPastEnd &&
+            !activeSegment &&
+            finishedFrameSizeRef.current === strokeSize
               ? finishedFrameRef.current
               : null;
           if (!frame) {
@@ -215,7 +275,16 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
             lastGroupOpacityRef.current = groupOpacity;
           }
 
-          const { pathData, trailProgress, cursorPosition } = frame;
+          const { trailProgress, cursorPosition } = frame;
+          const baseFrame = activeSegment
+            ? computeTrailFrame(
+                trailState,
+                elapsedTimeMs,
+                strokeSize,
+                activeSegment.baseProgress,
+              )
+            : frame;
+          const pathData = baseFrame?.pathData ?? "";
 
           const pathEl = pathRef.current;
           if (pathEl) {
@@ -253,6 +322,54 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
             }
           }
 
+          const activePathEl = activePathRef.current;
+          if (activePathEl && activeSegment) {
+            const activePathData = computeTrailSegmentPath(
+              trailState,
+              activeSegment.startProgress,
+              trailProgress,
+              strokeSize,
+            );
+            if (activePathData) {
+              if (
+                lastActivePathDataRef.current !== activePathData ||
+                lastActiveRendererIdRef.current !== renderer.id ||
+                lastActiveOpacityRef.current !== activeSegment.opacity ||
+                lastStrokeWidthRef.current !== strokeWidth ||
+                lastCursorTypeRef.current !== frame.cursorType ||
+                lastTrailColorRef.current !== trailState.trail.color
+              ) {
+                renderer.updatePath({
+                  pathEl: activePathEl,
+                  haloEl: activeHaloRef.current,
+                  pathData: activePathData,
+                  trailOpacity: activeSegment.opacity,
+                  strokeWidth,
+                  cursorType: frame.cursorType,
+                  trailProgress,
+                  trailColor: trailState.trail.color,
+                  fixedMonoStrokeWidth,
+                });
+                lastActivePathDataRef.current = activePathData;
+                lastActiveRendererIdRef.current = renderer.id;
+                lastActiveOpacityRef.current = activeSegment.opacity;
+              }
+            } else {
+              activePathEl.style.display = "none";
+              if (activeHaloRef.current) {
+                activeHaloRef.current.style.display = "none";
+              }
+              lastActivePathDataRef.current = "";
+            }
+          } else if (activePathEl) {
+            activePathEl.style.display = "none";
+            if (activeHaloRef.current) {
+              activeHaloRef.current.style.display = "none";
+            }
+            lastActivePathDataRef.current = "";
+            lastActiveOpacityRef.current = null;
+          }
+
           return { trailProgress, cursorPosition };
         },
       }),
@@ -270,6 +387,13 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
           style={{ display: "none" }}
         />
         <path ref={pathRef} fill={color} style={{ display: "none" }} />
+        <path
+          ref={activeHaloRef}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ display: "none" }}
+        />
+        <path ref={activePathRef} fill={color} style={{ display: "none" }} />
       </g>
     );
   },

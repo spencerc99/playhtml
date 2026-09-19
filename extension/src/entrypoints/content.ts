@@ -19,27 +19,32 @@ import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
 import { ScrapCollector } from "../collectors/ScrapCollector";
+import {
+  collectionModeStorageKey,
+  normalizeCollectionMode,
+} from "../collectors/modes";
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
-import { FLAGS } from "../flags";
-import { shouldStartExtensionPresence } from "./content/presencePolicy";
+import { isFeatureEnabled } from "../features/featureAccess";
+import {
+  shouldInitializeCopresence,
+  shouldStartExtensionPresence,
+} from "./content/presencePolicy";
 import { markExtensionInstalled } from "../utils/extensionInstallMarker";
 import { isExtensionPageUrl } from "../utils/extensionPage";
+import { initHostedSlowModeContentBridge } from "../features/slowMode/slowModeHostedContentBridge";
+import { initInstallationCursor } from "./content/installationCursor";
+import { initInstallationFrame } from "./content/installationFrame";
 
-async function internalDevFeaturesEnabled(): Promise<boolean> {
-  try {
-    const result = await browser.storage.local.get("internalDevFeaturesEnabled");
-    return Boolean(result.internalDevFeaturesEnabled);
-  } catch {
-    return false;
-  }
-}
-
+// Scraps are local-only, so normalize any unsupported stored mode before the
+// collector starts.
 async function ensureScrapCollectionMode(): Promise<void> {
-  const key = "collection_mode_element";
+  const key = collectionModeStorageKey("element");
   const result = await browser.storage.local.get(key);
-  if (result[key] === undefined) {
-    await browser.storage.local.set({ [key]: "local" });
+  const stored = result[key];
+  const normalized = normalizeCollectionMode("element", stored);
+  if (stored !== normalized) {
+    await browser.storage.local.set({ [key]: normalized });
   }
 }
 
@@ -56,6 +61,12 @@ export default defineContentScript({
     }
 
     markExtensionInstalled(document.documentElement);
+    const removeSlowModeBridge = initHostedSlowModeContentBridge();
+    ctx?.onInvalidated(removeSlowModeBridge);
+    const removeInstallationCursor = initInstallationCursor();
+    ctx?.onInvalidated(removeInstallationCursor);
+    const removeInstallationFrame = initInstallationFrame();
+    ctx?.onInvalidated(removeInstallationFrame);
 
     let currentPresenceCount = 0;
 
@@ -97,7 +108,7 @@ export default defineContentScript({
           this.setupElementPicker();
           this.setupPresenceDetection();
 
-          if (await this.areInternalDevFeaturesEnabled()) {
+          if (await isFeatureEnabled("PAGE_COLLECTION")) {
             // Check if this is a new site discovery
             await this.checkSiteDiscovery();
 
@@ -108,17 +119,6 @@ export default defineContentScript({
           this.isInitialized = true;
         } catch (error) {
           console.error("Failed to initialize PlayHTML Extension:", error);
-        }
-      }
-
-      private async areInternalDevFeaturesEnabled(): Promise<boolean> {
-        try {
-          const result = await browser.storage.local.get([
-            "internalDevFeaturesEnabled",
-          ]);
-          return result.internalDevFeaturesEnabled === true;
-        } catch {
-          return false;
         }
       }
 
@@ -1082,6 +1082,20 @@ export default defineContentScript({
       }
 
       private async setupPresence() {
+        const { getCustomSiteSettings, initCustomSite } = await import(
+          "../custom-sites"
+        );
+        const customSiteSettings = getCustomSiteSettings();
+        if (
+          !shouldInitializeCopresence({
+            featureEnabled: await isFeatureEnabled("COPRESENCE"),
+            customSiteCursorsEnabled:
+              customSiteSettings?.cursorsEnabled ?? false,
+          })
+        ) {
+          return;
+        }
+
         // On pages that already run playhtml, defer presence/cursors to the
         // page's instance (we only inject our identity). We don't stand up our
         // own cursor instance here — but bottles still get one later via
@@ -1104,10 +1118,6 @@ export default defineContentScript({
         }
 
         // Initialize PlayHTML only for sites with explicit extension cursor support.
-        const { getCustomSiteSettings, initCustomSite } = await import(
-          "../custom-sites"
-        );
-        const customSiteSettings = getCustomSiteSettings();
         const enableCursors = customSiteSettings?.cursorsEnabled ?? false;
         if (
           !shouldStartExtensionPresence({
@@ -1150,10 +1160,9 @@ export default defineContentScript({
           }
           // Emote wheel rides the same cursor layer; peers are only present
           // where cursors are enabled, so it lives inside this block. Gated
-          // behind internal-dev mode (Cmd+Shift+. in the popup) while it's still
-          // in progress — not shipped to all users yet.
+          // behind its feature gate while it is still in progress.
           const cursorClient = playhtml.cursorClient;
-          if (cursorClient && (await this.areInternalDevFeaturesEnabled())) {
+          if (cursorClient && (await isFeatureEnabled("EMOTES"))) {
             try {
               const { initEmotes } = await import("../features/emotes");
               this.emoteCleanup = initEmotes({
@@ -1298,7 +1307,7 @@ export default defineContentScript({
         const keyboardCollector = new KeyboardCollector();
         collectorManager.registerCollector(keyboardCollector);
 
-        if (FLAGS.SCRAPS || (await internalDevFeaturesEnabled())) {
+        if (await isFeatureEnabled("SCRAPS")) {
           await ensureScrapCollectionMode();
           const scrapCollector = new ScrapCollector();
           collectorManager.registerCollector(scrapCollector);
@@ -1351,18 +1360,14 @@ export default defineContentScript({
 
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", () => {
-        if (FLAGS.COPRESENCE) {
-          extensionInstance = new PlayHTMLExtension();
-          extensionInstance.init();
-        }
+        extensionInstance = new PlayHTMLExtension();
+        extensionInstance.init();
         initializeCollectors().catch(console.error);
         setupModeChangeListener();
       });
     } else {
-      if (FLAGS.COPRESENCE) {
-        extensionInstance = new PlayHTMLExtension();
-        extensionInstance.init();
-      }
+      extensionInstance = new PlayHTMLExtension();
+      extensionInstance.init();
       initializeCollectors().catch(console.error);
       setupModeChangeListener();
     }

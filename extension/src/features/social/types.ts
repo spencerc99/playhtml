@@ -3,6 +3,7 @@
 
 import type { PageDataChannel, PresenceAPI } from "@playhtml/common";
 import type { InventoryAPI } from "../inventory/types";
+import type { FeatureId } from "../../flags";
 
 export interface GlobalFeatureDeps {
   createPageData: <T>(name: string, defaultValue: T) => PageDataChannel<T>;
@@ -15,8 +16,8 @@ export interface GlobalFeatureDeps {
 export interface SocialExperiment {
   /** Stable id, e.g. "bottles", "quarantine-tape". */
   id: string;
-  /** Key in FLAGS that gates this experiment. */
-  flag: keyof typeof import("../../flags").FLAGS;
+  /** Catalog feature that gates this experiment. */
+  flag: FeatureId;
   /** Initialize on the current page. Returns a cleanup function. */
   init(deps: GlobalFeatureDeps): Promise<() => void> | (() => void);
 }

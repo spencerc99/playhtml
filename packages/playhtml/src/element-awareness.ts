@@ -58,6 +58,10 @@ type ElementAwarenessClientOptions = {
   getIdentity: () => PlayerIdentity;
   getPage: () => string | undefined;
   onAwareness: (awareness: ElementAwarenessMap) => void;
+  onAwarenessChange?: (
+    key: string,
+    awareness: ElementAwarenessEntry | undefined,
+  ) => void;
 };
 
 export class ElementAwarenessClient {
@@ -65,7 +69,10 @@ export class ElementAwarenessClient {
   private getIdentity: () => PlayerIdentity;
   private getPage: () => string | undefined;
   private onAwareness: (awareness: ElementAwarenessMap) => void;
+  private onAwarenessChange:
+    ElementAwarenessClientOptions["onAwarenessChange"];
   private localTags = new Map<string, Record<string, unknown>>();
+  private currentAwareness: ElementAwarenessMap = new Map();
   private publishedChannels = new Set<string>();
   // Shard channels whose clear may not have reached the server yet. A dropped
   // clear is otherwise permanent: publishedChannels is updated immediately, so a
@@ -77,12 +84,15 @@ export class ElementAwarenessClient {
   private republishTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
   private lastAwarenessFingerprint = "";
+  private localStableId: string;
 
   constructor(options: ElementAwarenessClientOptions) {
     this.transport = options.transport;
     this.getIdentity = options.getIdentity;
     this.getPage = options.getPage;
     this.onAwareness = options.onAwareness;
+    this.onAwarenessChange = options.onAwarenessChange;
+    this.localStableId = this.getIdentity().publicKey;
     // The shared per-socket PeerStore folds messages; we subscribe to just the
     // element + identity namespaces, so frame-rate cursor traffic on the same
     // socket never triggers an element awareness recompute. One shared listener
@@ -108,25 +118,29 @@ export class ElementAwarenessClient {
   setLocalAwareness(tag: string, elementId: string, value: unknown): void {
     if (this.stageLocalAwareness(tag, elementId, value)) {
       this.schedulePublish();
-      this.emit();
+      this.emitLocalAwareness(tag, elementId);
     }
   }
 
   /**
-   * Sets many elements' awareness at once, coalescing into a single publish and
-   * a single local emit. Used to reseed retained handlers after a room change
-   * without triggering one full-shard publish per element.
+   * Sets many elements' awareness at once, coalescing into a single publish
+   * while delivering each changed element once. Used to reseed retained
+   * handlers after a room change without a full-shard publish per element.
    */
   setLocalAwarenessBatch(
     entries: Iterable<[tag: string, elementId: string, value: unknown]>,
   ): void {
-    let changed = false;
+    const changedEntries: Array<[string, string]> = [];
     for (const [tag, elementId, value] of entries) {
-      if (this.stageLocalAwareness(tag, elementId, value)) changed = true;
+      if (this.stageLocalAwareness(tag, elementId, value)) {
+        changedEntries.push([tag, elementId]);
+      }
     }
-    if (!changed) return;
+    if (changedEntries.length === 0) return;
     this.schedulePublish();
-    this.emit();
+    for (const [tag, elementId] of changedEntries) {
+      this.emitLocalAwareness(tag, elementId);
+    }
   }
 
   /** Stages a local write into localTags; returns true if it changed. */
@@ -135,28 +149,36 @@ export class ElementAwarenessClient {
     elementId: string,
     value: unknown,
   ): boolean {
-    const tagMap = this.localTags.get(tag) ?? {};
+    const tagMap = this.localTags.get(tag);
+    if (!tagMap) {
+      this.localTags.set(tag, { [elementId]: value });
+      return true;
+    }
     if (tagMap[elementId] === value) return false;
-    this.localTags.set(tag, { ...tagMap, [elementId]: value });
+    tagMap[elementId] = value;
     return true;
   }
 
   removeLocalAwareness(tag: string, elementId: string): void {
     const tagMap = this.localTags.get(tag);
     if (!tagMap || !(elementId in tagMap)) return;
-    const next = { ...tagMap };
-    delete next[elementId];
-    if (Object.keys(next).length === 0) {
+    delete tagMap[elementId];
+    if (Object.keys(tagMap).length === 0) {
       this.localTags.delete(tag);
-    } else {
-      this.localTags.set(tag, next);
     }
     this.schedulePublish();
-    this.emit();
+    this.emitLocalAwareness(tag, elementId);
   }
 
   getLocalAwareness(tag: string, elementId: string): unknown {
     return this.localTags.get(tag)?.[elementId];
+  }
+
+  getAwareness(
+    tag: string,
+    elementId: string,
+  ): ElementAwarenessEntry | undefined {
+    return this.currentAwareness.get(`${tag}:${elementId}`);
   }
 
   refresh(): void {
@@ -184,6 +206,11 @@ export class ElementAwarenessClient {
     queueMicrotask(() => {
       this.publishScheduled = false;
       if (this.destroyed) return;
+      if (this.onAwarenessChange) {
+        this.lastAwarenessFingerprint = fingerprintAwareness(
+          this.currentAwareness,
+        );
+      }
       this.publishLocalAwareness();
       this.scheduleRepublish();
     });
@@ -282,7 +309,47 @@ export class ElementAwarenessClient {
     const fingerprint = fingerprintAwareness(awareness);
     if (fingerprint === this.lastAwarenessFingerprint) return;
     this.lastAwarenessFingerprint = fingerprint;
+    this.currentAwareness = awareness;
     this.onAwareness(awareness);
+  }
+
+  private emitLocalAwareness(tag: string, elementId: string): void {
+    if (!this.onAwarenessChange) {
+      this.emit();
+      return;
+    }
+
+    const key = `${tag}:${elementId}`;
+    const previous = this.currentAwareness.get(key);
+    const nextStableId = this.getIdentity().publicKey;
+    if (nextStableId !== this.localStableId) {
+      this.localStableId = nextStableId;
+      this.emit();
+      return;
+    }
+    const byStableId = new Map<string, any>();
+    const tagMap = this.localTags.get(tag);
+    if (tagMap && elementId in tagMap) {
+      byStableId.set(nextStableId, tagMap[elementId]);
+    }
+    for (const [stableId, value] of previous?.byStableId ?? []) {
+      if (stableId === this.localStableId || stableId === nextStableId) {
+        continue;
+      }
+      byStableId.set(stableId, value);
+    }
+    if (byStableId.size === 0) {
+      this.currentAwareness.delete(key);
+      this.onAwarenessChange(key, undefined);
+      return;
+    }
+
+    const awareness = {
+      array: Array.from(byStableId.values()),
+      byStableId,
+    };
+    this.currentAwareness.set(key, awareness);
+    this.onAwarenessChange(key, awareness);
   }
 
   private buildElementAwareness(): ElementAwarenessMap {

@@ -11,6 +11,15 @@ export type PersistenceMode =
 export type PersistenceFailureDetails = {
   roomName: string;
   timeoutMs: number;
+  attempts: number;
+  error: unknown;
+};
+
+export type PersistenceRetryDetails = {
+  attempt: number;
+  attempts: number;
+  elapsedMs: number;
+  retryAfterMs: number;
   error: unknown;
 };
 
@@ -19,7 +28,7 @@ export function getErrorMessage(error: unknown): string {
 }
 
 export async function withTimeout<T>(
-  operation: PromiseLike<T>,
+  operation: (signal: AbortSignal) => PromiseLike<T>,
   {
     timeoutMs,
     errorMessage,
@@ -29,12 +38,17 @@ export async function withTimeout<T>(
   }
 ): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  const controller = new AbortController();
 
   try {
     return await Promise.race([
-      operation,
+      Promise.resolve().then(() => operation(controller.signal)),
       new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+        timeout = setTimeout(() => {
+          const error = new Error(errorMessage);
+          reject(error);
+          controller.abort(error);
+        }, timeoutMs);
       }),
     ]);
   } finally {
@@ -44,16 +58,73 @@ export async function withTimeout<T>(
   }
 }
 
+export async function retryWithinTimeout<T>(
+  operation: (signal: AbortSignal, attempt: number) => PromiseLike<T>,
+  {
+    attempts,
+    timeoutMs,
+    retryDelayMs,
+    errorMessage,
+    onRetry,
+  }: {
+    attempts: number;
+    timeoutMs: number;
+    retryDelayMs: number;
+    errorMessage: string;
+    onRetry?: (details: PersistenceRetryDetails) => void;
+  }
+): Promise<T> {
+  if (!Number.isInteger(attempts) || attempts < 1) {
+    throw new Error("Persistence load attempts must be a positive integer");
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw new Error(errorMessage);
+    }
+
+    const attemptStartedAt = Date.now();
+    try {
+      return await withTimeout((signal) => operation(signal, attempt), {
+        timeoutMs: remainingMs,
+        errorMessage,
+      });
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) break;
+
+      const retryAfterMs = retryDelayMs * 2 ** (attempt - 1);
+      if (retryAfterMs >= deadline - Date.now()) break;
+      onRetry?.({
+        attempt,
+        attempts,
+        elapsedMs: Date.now() - attemptStartedAt,
+        retryAfterMs,
+        error,
+      });
+      await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+    }
+  }
+
+  throw lastError;
+}
+
 export function formatPersistenceFailureLog({
   roomName,
   timeoutMs,
+  attempts,
   error,
 }: PersistenceFailureDetails): string {
   return [
     `[PartyServer] SUPABASE PERSISTENCE UNAVAILABLE: room=${roomName}`,
     `timeoutMs=${timeoutMs}`,
+    `attempts=${attempts}`,
     `reason=${getErrorMessage(error)}`,
-    "Entering TRANSIENT MODE: realtime sync and awareness may continue, autosave disabled, admin writes disabled.",
+    "Entering RECOVERY MODE: connections closed with 1013, shared-data writes disabled, autosave disabled, admin writes disabled.",
   ].join(" ");
 }
 
@@ -64,7 +135,7 @@ export function createPersistenceUnavailableResponse(
     JSON.stringify({
       error: "persistence_unavailable",
       message:
-        "Supabase persistence is unavailable for this room; admin writes are disabled while realtime runs in transient mode.",
+        "Supabase persistence is unavailable for this room; clients reconnect after document recovery completes.",
       roomId: mode.roomName,
       failedAt: new Date(mode.failedAt).toISOString(),
       reason: mode.reason,

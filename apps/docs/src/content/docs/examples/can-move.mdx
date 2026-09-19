@@ -21,14 +21,14 @@ import { canMoveRecipe } from "@/components/playground/recipes/built-in-capabili
 Set `can-move-bounds` to the container's `id`:
 
 ```html
-<div id="move-arena">
+<div id="ph-cap-move-arena">
   <div
-    id="move-hat"
+    id="ph-cap-hat"
     can-move
-    can-move-bounds="move-arena"
-    role="img"
-    aria-label="A draggable baseball cap"
-  >🧢</div>
+    can-move-bounds="ph-cap-move-arena"
+  >
+    <img src="/docs/yankees-hat.png" alt="" />
+  </div>
 </div>
 ```
 

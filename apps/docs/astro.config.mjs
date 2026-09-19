@@ -9,6 +9,7 @@ const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 
 // https://astro.build/config
 export default defineConfig({
+  site: "https://playhtml.fun",
   base: "/docs",
   outDir: path.resolve(repoRoot, "site-dist/docs"),
   // Shiki's dual-theme mode. Starlight's Expressive Code integration is
@@ -35,8 +36,14 @@ export default defineConfig({
     resolve: {
       alias: {
         playhtml: path.resolve(repoRoot, "packages/playhtml/src/index.ts"),
-        "@playhtml/react": path.resolve(repoRoot, "packages/react/src/index.tsx"),
-        "@playhtml/common": path.resolve(repoRoot, "packages/common/src/index.ts"),
+        "@playhtml/react": path.resolve(
+          repoRoot,
+          "packages/react/src/index.tsx",
+        ),
+        "@playhtml/common": path.resolve(
+          repoRoot,
+          "packages/common/src/index.ts",
+        ),
       },
       // The docs app itself doesn't depend on yjs — it's a transitive dep of
       // playhtml. We still ask Vite to dedupe it here because the monorepo can

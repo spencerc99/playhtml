@@ -3,6 +3,7 @@
 
 import browser from "webextension-polyfill";
 import { ANNOUNCEMENTS, type Announcement } from "./announcements";
+import { scrapsAvailable } from "../scraps-availability";
 
 export type AnnouncementState = "toast-shown" | "dismissed";
 
@@ -60,6 +61,13 @@ function isReleaseNoteForThisInstall(
   );
 }
 
+// An announcement tied to a dark feature stays hidden until that feature is
+// reachable, so the card never advertises a page the user cannot open.
+async function featureIsReachable(a: Announcement): Promise<boolean> {
+  if (a.requiresFeature === undefined) return true;
+  return scrapsAvailable();
+}
+
 async function getAnnouncementInstallTime(): Promise<unknown> {
   const stored = (await browser.storage.local.get(INSTALL_TS_KEY)) as Record<
     string,
@@ -75,6 +83,7 @@ export async function getToastCandidates(url: string): Promise<Announcement[]> {
     if (a.popupOnly) continue;
     if (!urlMatches(a, url)) continue;
     if (!isReleaseNoteForThisInstall(a, installedAt)) continue;
+    if (!(await featureIsReachable(a))) continue;
     const s = await getState(a.id);
     if (s === undefined) out.push(a);
   }
@@ -86,6 +95,7 @@ export async function getPostcardCandidates(): Promise<Announcement[]> {
   const installedAt = await getAnnouncementInstallTime();
   for (const a of ANNOUNCEMENTS) {
     if (!isReleaseNoteForThisInstall(a, installedAt)) continue;
+    if (!(await featureIsReachable(a))) continue;
     const s = await getState(a.id);
     if (s !== "dismissed") out.push(a);
   }

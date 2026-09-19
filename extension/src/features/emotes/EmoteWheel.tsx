@@ -1,25 +1,39 @@
-// ABOUTME: Radial emote wheel — N items evenly spaced on a circle, opened at the cursor.
-// ABOUTME: Generalized from spencers-website EmoteMenu; click or number key to fire.
+// ABOUTME: Places emote choices around the cursor and handles dismissal.
+// ABOUTME: Uses a compact two-sided picker for pairs and a radial wheel for larger sets.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ACTIVE_EMOTES } from "./emotes";
+import { ACTIVE_EMOTES, type EmoteDef } from "./emotes";
 import { emoteIconSvg } from "./icons";
 
 const MENU_RADIUS = 74;
 const ICON_PX = 26;
+const PAIR_OFFSET = 48;
 
 function keyForIndex(i: number): string {
   return i === 9 ? "0" : String(i + 1);
 }
 
+export function emoteItemPosition(index: number, count: number) {
+  if (count === 2) {
+    return { x: index === 0 ? -PAIR_OFFSET : PAIR_OFFSET, y: 0 };
+  }
+  const angle = ((-90 + index * (360 / count)) * Math.PI) / 180;
+  return {
+    x: Math.cos(angle) * MENU_RADIUS,
+    y: Math.sin(angle) * MENU_RADIUS,
+  };
+}
+
 export function EmoteWheel({
   x,
   y,
+  emotes = ACTIVE_EMOTES,
   onSelect,
   onClose,
 }: {
   x: number;
   y: number;
+  emotes?: EmoteDef[];
   onSelect: (emoteId: string) => void;
   onClose: () => void;
 }) {
@@ -31,7 +45,10 @@ export function EmoteWheel({
       const target = e.target as HTMLElement;
       if (!target.closest(".emote-wheel")) onClose();
     }
-    const t = setTimeout(() => window.addEventListener("click", handleClick), 50);
+    const t = setTimeout(
+      () => window.addEventListener("click", handleClick),
+      50,
+    );
     return () => {
       clearTimeout(t);
       window.removeEventListener("click", handleClick);
@@ -52,10 +69,10 @@ export function EmoteWheel({
     }
   }, []);
 
-  const n = ACTIVE_EMOTES.length;
+  const n = emotes.length;
   return (
     <div
-      className="emote-wheel"
+      className={`emote-wheel ${n === 2 ? "emote-wheel--pair" : ""}`}
       onMouseLeave={handleMouseLeave}
       onMouseEnter={handleMouseEnter}
       style={{
@@ -66,19 +83,19 @@ export function EmoteWheel({
         transition: "opacity 0.3s ease-out",
       }}
     >
-      <div
-        className="emote-ring"
-        style={{
-          width: `${MENU_RADIUS * 2 + 40}px`,
-          height: `${MENU_RADIUS * 2 + 40}px`,
-          left: `${-(MENU_RADIUS + 20)}px`,
-          top: `${-(MENU_RADIUS + 20)}px`,
-        }}
-      />
-      {ACTIVE_EMOTES.map((emote, i) => {
-        const angle = ((-90 + i * (360 / n)) * Math.PI) / 180;
-        const ix = Math.cos(angle) * MENU_RADIUS;
-        const iy = Math.sin(angle) * MENU_RADIUS;
+      {n !== 2 && (
+        <div
+          className="emote-ring"
+          style={{
+            width: `${MENU_RADIUS * 2 + 40}px`,
+            height: `${MENU_RADIUS * 2 + 40}px`,
+            left: `${-(MENU_RADIUS + 20)}px`,
+            top: `${-(MENU_RADIUS + 20)}px`,
+          }}
+        />
+      )}
+      {emotes.map((emote, i) => {
+        const { x: ix, y: iy } = emoteItemPosition(i, n);
         return (
           <button
             key={emote.id}

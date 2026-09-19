@@ -47,7 +47,7 @@ test("throws when a Chrome API response has a failing HTTP status", async () => 
   );
 });
 
-test("throws when Chrome publish returns a non-OK status", async () => {
+test("accepts a Chrome item that is already pending review", async () => {
   const response = new Response(
     JSON.stringify({
       status: ["ITEM_PENDING_REVIEW"],
@@ -61,8 +61,155 @@ test("throws when Chrome publish returns a non-OK status", async () => {
     },
   );
 
-  await expect(ensureChromeResponseSucceeded("publish", response)).rejects.toThrow(
-    /Chrome publish did not return OK: ITEM_PENDING_REVIEW/,
+  await expect(ensureChromeResponseSucceeded("publish", response)).resolves.toEqual({
+    status: ["ITEM_PENDING_REVIEW"],
+  });
+});
+
+test("accepts Chrome's HTTP error when the item is already in review", async () => {
+  const response = new Response(
+    JSON.stringify({
+      error: {
+        code: 400,
+        message: "Publish condition not met: You may not edit or publish an item that is in review.",
+        errors: [
+          {
+            message:
+              "Publish condition not met: You may not edit or publish an item that is in review.",
+            domain: "chromewebstore.access",
+            reason: "badRequest",
+          },
+        ],
+      },
+    }),
+    {
+      status: 400,
+      statusText: "Bad Request",
+      headers: {
+        "content-type": "application/json",
+      },
+    },
+  );
+
+  await expect(ensureChromeResponseSucceeded("publish", response)).resolves.toEqual({
+    status: ["ITEM_PENDING_REVIEW"],
+  });
+});
+
+test("accepts an upload when the Chrome item is already submitted", async () => {
+  const response = new Response(
+    JSON.stringify({
+      itemError: [
+        {
+          error_code: "ITEM_NOT_UPDATABLE",
+          error_detail: "The item cannot be updated while it is pending review.",
+        },
+      ],
+    }),
+    {
+      status: 200,
+      statusText: "OK",
+      headers: {
+        "content-type": "application/json",
+      },
+    },
+  );
+
+  await expect(ensureChromeResponseSucceeded("upload", response)).resolves.toEqual({
+    itemError: [
+      {
+        error_code: "ITEM_NOT_UPDATABLE",
+        error_detail: "The item cannot be updated while it is pending review.",
+      },
+    ],
+  });
+});
+
+test("accepts the expected Chrome version when it is already published", async () => {
+  const requests = [];
+  const logs = [];
+  vi.spyOn(console, "log").mockImplementation((message) => logs.push(String(message)));
+
+  await submitChrome({
+    env: {
+      VERSION: "0.1.24",
+      CHROME_ZIP: await writeTempZip(),
+      CHROME_EXTENSION_ID: "chrome-extension-id",
+      CHROME_CLIENT_ID: "client-id",
+      CHROME_CLIENT_SECRET: "client-secret",
+      CHROME_REFRESH_TOKEN: "refresh-token",
+    },
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options });
+      if (requests.length === 1) {
+        return new Response(
+          JSON.stringify({
+            access_token: "access-token",
+            token_type: "Bearer",
+          }),
+          { status: 200, statusText: "OK" },
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          itemError: [
+            {
+              error_code: "PKG_INVALID_VERSION_NUMBER",
+              error_detail:
+                "Invalid version number in manifest: 0.1.24. Please make sure the newly uploaded package has a larger version in file manifest.json than the published package: 0.1.24.",
+            },
+          ],
+        }),
+        { status: 200, statusText: "OK" },
+      );
+    },
+  });
+
+  expect(requests).toHaveLength(2);
+  expect(logs).toContain("Chrome version 0.1.24 is already published; skipped upload.");
+});
+
+test("rejects a published Chrome version that does not match the release", async () => {
+  const response = new Response(
+    JSON.stringify({
+      itemError: [
+        {
+          error_code: "PKG_INVALID_VERSION_NUMBER",
+          error_detail:
+            "Invalid version number in manifest: 0.1.24. Please make sure the newly uploaded package has a larger version in file manifest.json than the published package: 0.1.25.",
+        },
+      ],
+    }),
+    { status: 200, statusText: "OK" },
+  );
+
+  await expect(
+    ensureChromeResponseSucceeded("upload", response, { publishedVersion: "0.1.24" }),
+  ).rejects.toThrow(/Chrome upload returned item errors:.*PKG_INVALID_VERSION_NUMBER/);
+});
+
+test("throws for other Chrome upload item errors", async () => {
+  const response = new Response(
+    JSON.stringify({
+      itemError: [
+        {
+          error_code: "ITEM_NOT_PUBLISHABLE",
+          error_detail: "Privacy practices are incomplete.",
+        },
+      ],
+    }),
+    {
+      status: 200,
+      statusText: "OK",
+      headers: {
+        "content-type": "application/json",
+      },
+    },
+  );
+
+  await expect(ensureChromeResponseSucceeded("upload", response)).rejects.toThrow(
+    /Chrome upload returned item errors:.*ITEM_NOT_PUBLISHABLE/,
   );
 });
 

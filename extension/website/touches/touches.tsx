@@ -8,6 +8,10 @@ import {
 } from "../shared/hooks/useCursorTrails";
 import { useCursorEventPool } from "../shared/hooks/useCursorEventPool";
 import { useChromeToggle } from "../shared/hooks/useChromeToggle";
+import { useDailyPageReload } from "../shared/hooks/useDailyPageReload";
+import { useInstallationReload } from "../shared/hooks/useInstallationReload";
+import { parseCleanFromUrl } from "../shared/config";
+import { resolveLiveInstallationProfile } from "../shared/utils/liveInstallationProfiles";
 import { detectTouches, buildCoPresenceTimeline } from "./detect";
 import { createTouchesSketch, MarkStyle, SketchSettings } from "./sketch";
 import { createTouchesSketchGlsl } from "./sketchGlsl";
@@ -83,19 +87,40 @@ const styles = {
 };
 
 const CursorTouches = () => {
+  const profile = useMemo(() => resolveLiveInstallationProfile(), []);
+  const scale = useMemo(() => {
+    const value = Number(new URLSearchParams(window.location.search).get("scale"));
+    return Number.isFinite(value) && value > 0
+      ? Math.min(value, 4)
+      : (profile?.touchesSettings?.scale ?? 1);
+  }, [profile]);
+  useDailyPageReload();
+  useInstallationReload({ enabled: profile !== null });
   const chromeHidden = useChromeToggle(true);
+  const cleanMode = useMemo(() => parseCleanFromUrl() >= 1, []);
+  const profileSettings = profile?.touchesSettings;
   const { events, loading, deepening, error } = useCursorEventPool(
     "",
     MAX_POOL_EVENTS,
   );
 
-  const [touchRadius, setTouchRadius] = useState(20);
-  const [speed, setSpeed] = useState(1);
-  const [showCursors, setShowCursors] = useState(true);
-  const [samePersonOk, setSamePersonOk] = useState(false);
-  const [night, setNight] = useState(false);
-  const [renderer, setRenderer] = useState<Renderer>("nebula");
-  const [markStyle, setMarkStyle] = useState<MarkStyle>("hands");
+  const [touchRadius, setTouchRadius] = useState(
+    profileSettings?.touchRadius ?? 20,
+  );
+  const [speed, setSpeed] = useState(profileSettings?.speed ?? 1);
+  const [showCursors, setShowCursors] = useState(
+    profileSettings?.showCursors ?? true,
+  );
+  const [samePersonOk, setSamePersonOk] = useState(
+    profileSettings?.samePersonOk ?? false,
+  );
+  const [night, setNight] = useState(profileSettings?.night ?? false);
+  const [renderer, setRenderer] = useState<Renderer>(
+    profileSettings?.renderer ?? "nebula",
+  );
+  const [markStyle, setMarkStyle] = useState<MarkStyle>(
+    profileSettings?.markStyle ?? "hands",
+  );
 
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
@@ -219,28 +244,31 @@ const CursorTouches = () => {
 
   return (
     <div style={{ ...styles.page, background: night ? "#100d13" : "#faf7f2" }}>
-      <div ref={hostRef} style={styles.canvasHost} />
+      <div
+        ref={hostRef}
+        style={{ ...styles.canvasHost, transform: `scale(${scale})` }}
+      />
       {!chromeHidden && (
-        <div
-          style={{ ...styles.title, color: night ? "#e8e2d8" : "#3d3833" }}
-        >
+        <div style={{ ...styles.title, color: night ? "#e8e2d8" : "#3d3833" }}>
           cursor touches
         </div>
       )}
       {!chromeHidden && <div style={styles.status}>{statusText}</div>}
-      <div
-        ref={timeReadoutRef}
-        style={{
-          position: "fixed",
-          bottom: 16,
-          left: 20,
-          fontFamily: "'Martian Mono', monospace",
-          fontSize: "10px",
-          color: "#8a8279",
-          zIndex: 10,
-          pointerEvents: "none",
-        }}
-      />
+      {!cleanMode && (
+        <div
+          ref={timeReadoutRef}
+          style={{
+            position: "fixed",
+            bottom: 16,
+            left: 20,
+            fontFamily: "'Martian Mono', monospace",
+            fontSize: "10px",
+            color: "#8a8279",
+            zIndex: 10,
+            pointerEvents: "none",
+          }}
+        />
+      )}
 
       {!chromeHidden && (
         <div style={styles.panel}>

@@ -21,6 +21,7 @@ export default defineConfig({
       playhtml: path.resolve(__dirname, "../../packages/playhtml/src/index.ts"),
       "@playhtml/react": path.resolve(__dirname, "../../packages/react/src"),
       "@playhtml/common": path.resolve(__dirname, "../../packages/common/src"),
+      "@playhtml/extension-types": path.resolve(__dirname, "../../packages/extension-types/src"),
       // Bun's hoisting puts react@19 in extension/node_modules and react@18 at
       // the workspace root. Node's upward resolution from extension/website/
       // hits the @19 copy first, even though the website declares @18.3.1.

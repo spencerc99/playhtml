@@ -1,7 +1,7 @@
 // ABOUTME: Shared types, interfaces, and capability initializers for the playhtml library.
 // ABOUTME: Exports element capabilities, event handler types, and built-in tag definitions.
 import { canMirrorInitializer, type ElementState } from "./canMirror";
-export type { ElementState } from "./canMirror";
+export { observeElementChanges, type ElementState } from "./canMirror";
 
 export type ModifierKey = "ctrlKey" | "altKey" | "shiftKey" | "metaKey";
 export * from "./presence-protocol";
@@ -389,9 +389,13 @@ export * from "./sharedElements";
 export * from "./cursor-types";
 import type { Cursor, PlayerIdentity } from "./cursor-types";
 
+export type PageDataSetter<T> = [T] extends [object]
+  ? T | ((draft: T) => void)
+  : T | ((value: T) => T);
+
 export interface PageDataChannel<T> {
   getData(): T;
-  setData(data: T | ((draft: T) => void)): void;
+  setData(data: PageDataSetter<T>): void;
   onUpdate(callback: (data: T) => void): () => void;
   destroy(): void;
 }
@@ -688,6 +692,17 @@ export const TagTypeToElement: DefaultTagInitializers = {
 
       element.addEventListener("mouseenter", onMouseEnter);
       element.addEventListener("mouseleave", onMouseLeave);
+
+      // The mouseenter/mouseleave listeners die with the element, but the
+      // document-level keydown/keyup listeners don't — if the element is
+      // removed while hovered (SPA navigation, React unmount), mouseleave
+      // never fires and they'd otherwise leak for the life of the page.
+      return () => {
+        element.removeEventListener("mouseenter", onMouseEnter);
+        element.removeEventListener("mouseleave", onMouseLeave);
+        document.removeEventListener("keydown", onKeyDownUp);
+        document.removeEventListener("keyup", onKeyDownUp);
+      };
     },
     resetShortcut: "shiftKey",
   },

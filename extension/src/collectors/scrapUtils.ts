@@ -1,8 +1,10 @@
 // ABOUTME: Builds stable identities for locally captured internet scraps.
 // ABOUTME: Sanitizes inline SVG markup before it reaches extension rendering surfaces.
 
+import { scrapEncounterDay } from "@movement/utils/scrapEncounterDay";
 import type { ScrapEventData } from "./types";
 import {
+  canonicalScrapPageUrl,
   canonicalButtonKey,
   canonicalCursorKey,
   canonicalImageKey,
@@ -98,17 +100,81 @@ export function getScrapKey(data: ScrapEventData): string {
  * if their per-capture `getScrapKey` differs (different computed style
  * values, different rendered size, different CDN query params).
  */
-export function getCanonicalScrapKey(domain: string, data: ScrapEventData): string {
+export function getCanonicalScrapKey(
+  domain: string,
+  data: ScrapEventData,
+): string;
+export function getCanonicalScrapKey(
+  domain: string,
+  data: unknown,
+): string | undefined;
+export function getCanonicalScrapKey(
+  domain: string,
+  data: unknown,
+): string | undefined {
+  if (typeof data !== "object" || data === null || !("kind" in data)) {
+    return undefined;
+  }
+
   switch (data.kind) {
     case "image":
-      return canonicalImageKey(data.src);
+      return "src" in data && typeof data.src === "string"
+        ? canonicalImageKey(data.src)
+        : undefined;
     case "button":
-      return canonicalButtonKey(domain, data.text, data.styles.backgroundColor);
+      if (!("text" in data) || typeof data.text !== "string") {
+        return undefined;
+      }
+      if (
+        !("styles" in data) ||
+        typeof data.styles !== "object" ||
+        data.styles === null
+      ) {
+        return undefined;
+      }
+      return canonicalButtonKey(
+        domain,
+        data.text,
+        "backgroundColor" in data.styles &&
+          typeof data.styles.backgroundColor === "string"
+          ? data.styles.backgroundColor
+          : undefined,
+      );
     case "svg-icon":
-      return canonicalSvgIconKey(domain, data.markup);
+      return "markup" in data && typeof data.markup === "string"
+        ? canonicalSvgIconKey(domain, data.markup)
+        : undefined;
     case "cursor":
-      return canonicalCursorKey(data.url);
+      return "url" in data && typeof data.url === "string"
+        ? canonicalCursorKey(data.url)
+        : undefined;
+    default:
+      return undefined;
   }
+}
+
+/** Identifies an image encounter on a source page and capture-local day. */
+export function getScrapEncounterKey(
+  domain: string,
+  data: unknown,
+  pageUrl: string,
+  timestamp: number,
+  timeZone: string,
+): string | undefined {
+  const key = getCanonicalScrapKey(domain, data);
+  if (
+    key === undefined ||
+    typeof data !== "object" ||
+    data === null ||
+    !("kind" in data) ||
+    data.kind !== "image"
+  )
+    return key;
+  return JSON.stringify([
+    key,
+    canonicalScrapPageUrl(pageUrl),
+    scrapEncounterDay(timestamp, timeZone),
+  ]);
 }
 
 function getUseReference(use: SVGUseElement): string | null {

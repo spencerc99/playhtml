@@ -22,13 +22,14 @@ bounded.
 The textarea is normal local form state. Nothing is shared until the form
 passes validation and submits.
 
-Each accepted entry gets a unique `id`, prompt, and text:
+Each accepted entry gets a unique `id`, prompt, text, and timestamp:
 
 ```js
 {
   id: crypto.randomUUID(),
   prompt: "building",
   text: "a shared drawing tool",
+  at: Date.now(),
 }
 ```
 

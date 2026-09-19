@@ -27,6 +27,25 @@ export interface CommuteServicePresence extends Record<string, unknown> {
   service: CommuteService | null;
 }
 
+export function estimateServerTimeOffset(
+  serverTimestamp: number,
+  requestStartedAt: number,
+  responseReceivedAt: number,
+): number {
+  if (
+    !Number.isFinite(serverTimestamp) ||
+    !Number.isFinite(requestStartedAt) ||
+    !Number.isFinite(responseReceivedAt) ||
+    responseReceivedAt < requestStartedAt
+  ) {
+    throw new Error("Internet Commute requires a valid server timing sample");
+  }
+
+  const requestMidpoint =
+    requestStartedAt + (responseReceivedAt - requestStartedAt) / 2;
+  return serverTimestamp - requestMidpoint;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }

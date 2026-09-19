@@ -73,6 +73,7 @@ const InternetMovement = () => {
     refresh,
     advanceBatch,
     batchKey,
+    batchContextKey,
   } = useArchiveEvents({
     selectedDay,
     timeOfDay,
@@ -115,6 +116,7 @@ const InternetMovement = () => {
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={setActiveVisualizations}
         playbackKey={batchKey}
+        playbackContextKey={batchContextKey}
         onPlaybackCycleComplete={advanceBatch}
       />
     </>

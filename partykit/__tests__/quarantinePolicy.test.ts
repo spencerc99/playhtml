@@ -236,6 +236,8 @@ describe("formatQuarantineLog", () => {
     expect(message).toContain("exhausted the retry backoff");
     expect(message).toContain("will NOT be overwritten");
     expect(message).toContain("TRANSIENT MODE");
+    expect(message).toContain("awareness continues");
+    expect(message).toContain("shared-data writes are blocked");
   });
 });
 

@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { elementHandlers, playhtml, resetPlayHTML } from "../index";
 import {
-  flushMicrotasks,
+  flushPresencePublishes,
   getPresenceSocketForRoom,
   getPresenceSockets,
   sentChannelUpdates,
@@ -54,7 +54,7 @@ describe("element awareness across navigation", () => {
     await playhtml.setupPlayElementForTag(el, "can-play");
     elementHandlers.get("can-play")!.get("nav-card")!
       .setMyAwareness({ here: true } as any);
-    await flushMicrotasks();
+    await flushPresencePublishes();
     expect(sentChannelUpdates(socketB, "element:shard:0").at(-1)).toMatchObject({
       v: 1,
       entries: [["can-play", "nav-card", { here: true }]],

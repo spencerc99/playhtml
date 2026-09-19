@@ -11,6 +11,7 @@ import {
   CanGrowElement,
   CanHoverElement,
   CanDuplicateElement,
+  usePageData,
   withSharedState,
   useUsers,
 } from "@playhtml/react";
@@ -85,7 +86,8 @@ function PeopleHere() {
   );
 }
 
-// Reaction button - tracks who has reacted using localStorage
+// withSharedState is the React API for custom collaborative elements.
+// Vanilla HTML uses playhtml.register(elementOrId, initializer) for the same role.
 const ReactionButton = withSharedState(
   { defaultData: { count: 0 } },
   ({ data, setData, ref }) => {
@@ -127,6 +129,16 @@ const ReactionButton = withSharedState(
     );
   }
 );
+
+function VisitCounter() {
+  const [count, setCount] = usePageData("visit-count", 0);
+
+  return (
+    <button onClick={() => setCount((value) => value + 1)}>
+      {count} visits
+    </button>
+  );
+}
 
 function App() {
   const [highlightedCapability, setHighlightedCapability] = useState<string | null>(null);
@@ -285,6 +297,11 @@ function App() {
           <div style={{ marginTop: "2rem" }}>
             <p>Here's a reaction button! Everyone can see how many people have reacted</p>
             <ReactionButton />
+          </div>
+
+          <div style={{ marginTop: "2rem" }}>
+            <p>Here's a page-level visit counter!</p>
+            <VisitCounter />
           </div>
 
           <hr style={{ margin: "3rem 0", border: "none", borderTop: "4px solid #fff" }} />

@@ -3,13 +3,14 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  COMMUTE_AVATAR_START,
   COMMUTE_JOIN_ENTRY_POSITION,
   findNearbyCommuteSeat,
-  getCommuteAvatarStart,
+  getCommuteArrivalRiderId,
   getCommutePointFromClient,
   getCommutePointFromZone,
+  getMyCommuteRiderStart,
   getCommuteRiderStart,
+  getSharedCommutePosition,
   getStandingPosition,
   isNearCommuteDoor,
   moveCommuteAvatar,
@@ -24,9 +25,35 @@ const SEATS: CommuteSeatGeometry[] = [
 ];
 
 describe("mobile commute geometry", () => {
-  it("places a joining rider where the side-door animation ends", () => {
-    expect(getCommuteAvatarStart(true)).toBe(COMMUTE_JOIN_ENTRY_POSITION);
-    expect(getCommuteAvatarStart(false)).toBe(COMMUTE_AVATAR_START);
+  it("accepts rider arrival events and rejects malformed payloads", () => {
+    expect(getCommuteArrivalRiderId({ riderId: "rider-a" })).toBe("rider-a");
+    expect(getCommuteArrivalRiderId({ riderId: "" })).toBeNull();
+    expect(getCommuteArrivalRiderId({ riderId: 42 })).toBeNull();
+    expect(getCommuteArrivalRiderId(null)).toBeNull();
+  });
+
+  it("waits for the local rider identity before choosing an entry point", () => {
+    expect(
+      getMyCommuteRiderStart([{ pid: "rider-a", isMe: false }]),
+    ).toBeNull();
+    expect(
+      getMyCommuteRiderStart([
+        { pid: "rider-a", isMe: false },
+        { pid: "me", isMe: true },
+      ]),
+    ).toEqual(getCommuteRiderStart("me"));
+  });
+
+  it("accepts bounded shared positions and rejects malformed presence", () => {
+    expect(getSharedCommutePosition({ x: 500, y: 200 })).toEqual({
+      x: 500,
+      y: 200,
+    });
+    expect(getSharedCommutePosition({ x: 9_999, y: -20 })).toEqual({
+      x: 1062,
+      y: 32,
+    });
+    expect(getSharedCommutePosition({ x: "500", y: 200 })).toBeNull();
   });
 
   it("normalizes diagonal movement and clamps it inside the carriage", () => {

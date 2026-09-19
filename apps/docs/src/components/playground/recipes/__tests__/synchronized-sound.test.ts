@@ -10,21 +10,23 @@ describe("synchronizedSoundRecipe", () => {
       "/docs/examples/synchronized-sound/",
     );
     expect(synchronizedSoundRecipe.html).toContain("<!doctype html>");
-    expect(synchronizedSoundRecipe.html).toContain(
-      'id="sound-transport" can-play',
-    );
+    expect(synchronizedSoundRecipe.html).toContain('id="sound-transport"');
   });
 
-  it("configures the stable element before playhtml initializes", () => {
+  it("registers the stable element before playhtml initializes", () => {
     const source = synchronizedSoundRecipe.html;
+    const registerIndex = source.indexOf(
+      'playhtml.register("sound-transport", {',
+    );
     const initIndex = source.indexOf("await playhtml.init");
 
-    expect(source.indexOf("soundTransport.defaultData")).toBeLessThan(initIndex);
-    expect(source.indexOf("soundTransport.updateElement")).toBeLessThan(
+    expect(registerIndex).toBeGreaterThan(-1);
+    expect(registerIndex).toBeLessThan(initIndex);
+    expect(source.indexOf("updateElement:", registerIndex)).toBeLessThan(
       initIndex,
     );
-    expect(source.indexOf("soundTransport.onClick")).toBeLessThan(initIndex);
-    expect(source.indexOf("soundTransport.onMount")).toBeLessThan(initIndex);
+    expect(source.indexOf("onClick:", registerIndex)).toBeLessThan(initIndex);
+    expect(source.indexOf("onMount:", registerIndex)).toBeLessThan(initIndex);
   });
 
   it("uses an event for cues and shared wall-clock data for the transport", () => {
@@ -40,9 +42,12 @@ describe("synchronizedSoundRecipe", () => {
 
   it("never writes shared data from render or scheduling callbacks", () => {
     const source = synchronizedSoundRecipe.html;
-    const updateStart = source.indexOf("soundTransport.updateElement");
-    const clickStart = source.indexOf("soundTransport.onClick");
-    const mountStart = source.indexOf("soundTransport.onMount");
+    const registerStart = source.indexOf(
+      'playhtml.register("sound-transport", {',
+    );
+    const updateStart = source.indexOf("updateElement:", registerStart);
+    const clickStart = source.indexOf("onClick:", registerStart);
+    const mountStart = source.indexOf("onMount:", registerStart);
     const initStart = source.indexOf("await playhtml.init");
 
     expect(source.slice(updateStart, clickStart)).not.toContain("setData(");

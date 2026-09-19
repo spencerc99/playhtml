@@ -18,14 +18,21 @@ current count so concurrent clicks merge without replacing newer values.
 
 ## Increment from the click handler
 
-Write from the user event:
+Pass the click handler and renderer in one registered initializer. Write shared
+data only from the user event:
 
 ```js
-counter.onClick = (_event, { setData }) => {
-  setData((draft) => {
-    draft.count += 1;
-  });
-};
+playhtml.register("ph-docs-counter", {
+  defaultData: { count: 0 },
+  onClick: (_event, { setData }) => {
+    setData((draft) => {
+      draft.count += 1;
+    });
+  },
+  updateElement: ({ element, data }) => {
+    element.querySelector("[data-count]").textContent = String(data.count);
+  },
+});
 ```
 
 Don't rebuild the value from rendered text. The rendered value may be behind a
@@ -33,13 +40,8 @@ remote update.
 
 ## Render the current count
 
-`updateElement` reads shared data without writing it:
-
-```js
-counter.updateElement = ({ element, data }) => {
-  element.querySelector("[data-count]").textContent = String(data.count);
-};
-```
+`updateElement` in the registered initializer reads shared data without writing
+it. playhtml calls it after initialization and whenever the shared count changes.
 
 See [Data essentials](/docs/data/data-essentials/) for mutator and replacement
 writes.

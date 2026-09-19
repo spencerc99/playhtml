@@ -375,7 +375,7 @@ No reset shortcut.
 Define your own shared data and how the element renders (`updateElement` or experimental `view`). Use it for counters, guestbooks, games, and anything the built-ins do not cover.
 
 **Guide:** [Custom elements](/docs/custom-elements/)  
-**Reference:** [Element API](/docs/reference/element-api/) · [View API](/docs/reference/view-api/)
+**Reference:** [Element API](/docs/reference/element-api/) · [Registration API](/docs/reference/view-api/)
 
 ---
 

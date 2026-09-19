@@ -84,7 +84,7 @@ export const sharedAudioFileRecipe: ExampleRecipe = {
     <h1>Shared audio file</h1>
     <p class="intro">Every window plays the same file from the shared position.</p>
 
-    <section id="shared-audio-player" class="player" can-play>
+    <section id="shared-audio-player" class="player">
       <audio
         data-audio
         src="https://interactive-examples.mdn.mozilla.net/media/cc0-audio/t-rex-roar.mp3"
@@ -189,58 +189,57 @@ export const sharedAudioFileRecipe: ExampleRecipe = {
       }
     }
 
-    player.defaultData = {
-      isPlaying: false,
-      startedAtMs: 0,
-      positionMs: 0,
-    };
+    playhtml.register("shared-audio-player", {
+      defaultData: {
+        isPlaying: false,
+        startedAtMs: 0,
+        positionMs: 0,
+      },
+      updateElement: ({ element, data }) => {
+        render(element, data, Date.now());
+      },
+      onClick: (event, { data, setData }) => {
+        const action = event.target.closest("[data-action]")?.dataset.action;
+        if (!action) return;
 
-    player.updateElement = ({ element, data }) => {
-      render(element, data, Date.now());
-    };
+        if (action === "enable-audio") {
+          void enableAudio(data);
+          return;
+        }
 
-    player.onClick = (event, { data, setData }) => {
-      const action = event.target.closest("[data-action]")?.dataset.action;
-      if (!action) return;
-
-      if (action === "enable-audio") {
-        void enableAudio(data);
-        return;
-      }
-
-      const nowMs = Date.now();
-      if (action === "toggle") {
-        const positionMs = playbackPositionMs(data, nowMs);
-        setData((draft) => {
-          draft.isPlaying = !data.isPlaying;
-          draft.positionMs = positionMs;
-          draft.startedAtMs = nowMs - positionMs;
-        });
-      }
-
-      if (action === "restart") {
-        setData((draft) => {
-          draft.positionMs = 0;
-          draft.startedAtMs = nowMs;
-        });
-      }
-    };
-
-    player.onMount = ({ getData, getElement }) => {
-      let animationFrame = 0;
-      const tick = () => {
-        const data = getData();
         const nowMs = Date.now();
-        render(getElement(), data, nowMs);
-        syncLocalAudio(data, nowMs);
+        if (action === "toggle") {
+          const positionMs = playbackPositionMs(data, nowMs);
+          setData((draft) => {
+            draft.isPlaying = !data.isPlaying;
+            draft.positionMs = positionMs;
+            draft.startedAtMs = nowMs - positionMs;
+          });
+        }
+
+        if (action === "restart") {
+          setData((draft) => {
+            draft.positionMs = 0;
+            draft.startedAtMs = nowMs;
+          });
+        }
+      },
+      onMount: ({ getData, getElement }) => {
+        let animationFrame = 0;
+        const tick = () => {
+          const data = getData();
+          const nowMs = Date.now();
+          render(getElement(), data, nowMs);
+          syncLocalAudio(data, nowMs);
+          animationFrame = requestAnimationFrame(tick);
+        };
         animationFrame = requestAnimationFrame(tick);
-      };
-      animationFrame = requestAnimationFrame(tick);
-      return () => {
-        cancelAnimationFrame(animationFrame);
-        audio.pause();
-      };
-    };
+        return () => {
+          cancelAnimationFrame(animationFrame);
+          audio.pause();
+        };
+      },
+    });
 
     await playhtml.init({ developmentMode: true });
   </script>

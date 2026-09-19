@@ -2,12 +2,8 @@
 // ABOUTME: channels — decode, per-player collapse, and stale-cursor expiry.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  PlayerIdentity,
-  PresenceServerMessage,
-  PresenceSnapshot,
-} from "@playhtml/common";
-import { PeerStore } from "../../peer-store";
+import type { PlayerIdentity, PresenceSnapshot } from "@playhtml/common";
+import { createFakePresenceTransport } from "../../__tests__/presence-test-utils";
 import { CursorPresenceStore } from "../cursor-presence-store";
 
 // Pin the clock near the small `at` values used below so PeerStore's staleness
@@ -41,35 +37,20 @@ function makeIdentity(publicKey: string): PlayerIdentity {
   };
 }
 
-/** A message source (transport stand-in) driven directly in tests. */
-function makeSource() {
-  const listeners = new Set<(message: PresenceServerMessage) => void>();
-  return {
-    subscribe(listener: (message: PresenceServerMessage) => void) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    emit(message: PresenceServerMessage) {
-      for (const listener of listeners) listener(message);
-    },
-  };
-}
-
 /** Build a cursor view over a PeerStore, plus helpers to feed sync/changes. */
 function makeStore() {
-  const source = makeSource();
-  const peerStore = new PeerStore(source);
-  const store = new CursorPresenceStore(peerStore);
+  const transport = createFakePresenceTransport();
+  const store = new CursorPresenceStore(transport.peers);
   return {
     store,
     applySync(peers: PresenceSnapshot) {
-      source.emit({ type: "presence-sync", peers });
+      transport.emit({ type: "presence-sync", peers });
     },
     applyChanges(
       updates: PresenceSnapshot,
       removes: Record<string, string[]> = {},
     ) {
-      source.emit({ type: "presence-changes", updates, removes });
+      transport.emit({ type: "presence-changes", updates, removes });
     },
   };
 }

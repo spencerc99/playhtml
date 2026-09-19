@@ -1,13 +1,14 @@
 // ABOUTME: Custom React hooks for playhtml functionality
 // ABOUTME: Cursor, presence, page-data, and presence-room hooks that safely no-op pre-sync
 
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import type * as React from "react";
 import { PlayContext } from "./PlayProvider";
 import playhtml from "./playhtml-singleton";
 import {
   CursorPresenceView,
   PageDataChannel,
+  PageDataSetter,
   PlayerIdentity,
   PresenceRoom,
   PresenceView,
@@ -43,6 +44,24 @@ function usePlayhtmlSubscription<T>(
   }, [isLoading, ...dependencies]);
 
   return value;
+}
+
+function identityEquals(
+  a: PlayerIdentity | null,
+  b: PlayerIdentity | null,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.publicKey === b.publicKey &&
+    a.name === b.name &&
+    a.createdAt === b.createdAt &&
+    a.playerStyle.cursorStyle === b.playerStyle.cursorStyle &&
+    a.playerStyle.colorPalette.length === b.playerStyle.colorPalette.length &&
+    a.playerStyle.colorPalette.every(
+      (color, i) => color === b.playerStyle.colorPalette[i],
+    )
+  );
 }
 
 function isPresenceRoomNotReadyError(error: unknown): boolean {
@@ -139,10 +158,24 @@ export function usePresence<
     [isLoading, channel],
   );
 
-  const myIdentity = useMemo(
-    () => (isLoading ? null : playhtml.presence.getMyIdentity()),
-    [isLoading],
-  );
+  // Re-derived on every identity change (not just once at sync completion) —
+  // e.g. the "we were online" extension can inject identity post-sync via the
+  // `playhtml:configure-identity` event. `users.onChange` fires on every
+  // presence tick, so dedupe by value to avoid re-rendering consumers when the
+  // identity itself hasn't changed.
+  const [myIdentity, setMyIdentity] = useState<PlayerIdentity | null>(null);
+  useEffect(() => {
+    if (isLoading) {
+      setMyIdentity(null);
+      return;
+    }
+    const readIdentity = () => {
+      const next = playhtml.presence.getMyIdentity();
+      setMyIdentity((prev) => (identityEquals(prev, next) ? prev : next));
+    };
+    readIdentity();
+    return playhtml.users.onChange(readIdentity);
+  }, [isLoading]);
 
   return { presences, setMyPresence, myIdentity };
 }
@@ -159,7 +192,7 @@ export function usePresence<
 export function usePageData<T>(
   name: string,
   defaultValue: T,
-): [T, (data: T | ((draft: T) => void)) => void] {
+): [T, (data: PageDataSetter<T>) => void] {
   const { isLoading } = useContext(PlayContext);
   const channelRef = useRef<PageDataChannel<T> | null>(null);
   const data = usePlayhtmlSubscription(
@@ -180,7 +213,7 @@ export function usePageData<T>(
   );
 
   const setData = useCallback(
-    (next: T | ((draft: T) => void)) => {
+    (next: PageDataSetter<T>) => {
       const channel = channelRef.current;
       if (isLoading || !channel) {
         warnPreInit(`usePageData("${name}").setData`);
@@ -283,7 +316,13 @@ export function usePlayerIdentity(): {
     }
     const readIdentity = () => {
       const me = playhtml.users.me;
-      setIdentity({ color: me.color, pid: me.pid, name: me.name });
+      // users.onChange fires on every presence tick; only re-render consumers
+      // when the identity itself changed.
+      setIdentity((prev) =>
+        prev.color === me.color && prev.pid === me.pid && prev.name === me.name
+          ? prev
+          : { color: me.color, pid: me.pid, name: me.name },
+      );
     };
     readIdentity();
     return playhtml.users.onChange(readIdentity);

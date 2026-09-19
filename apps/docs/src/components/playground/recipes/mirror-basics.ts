@@ -9,7 +9,7 @@ const sharedStyles = `    :root {
       font-family: ui-sans-serif, system-ui, sans-serif;
     }
     * { box-sizing: border-box; }
-    body { display: grid; min-height: 100vh; margin: 0; padding: 1.5rem; place-items: center; }
+    body { display: grid; min-height: 100vh; margin: 0; padding: 1rem; place-items: center; }
     main { width: min(34rem, 100%); }
     h1 { margin: 0 0 0.35rem; font-size: clamp(2rem, 8vw, 3.5rem); line-height: 1; }
     .intro { margin: 0 0 1.25rem; line-height: 1.5; }`;
@@ -28,20 +28,24 @@ export const emojiMirrorRecipe: ExampleRecipe = {
     styles: `${sharedStyles}
     textarea {
       width: 100%;
-      min-height: 11rem;
+      min-height: 8rem;
       resize: vertical;
-      padding: 1rem;
-      border: 2px solid #1c1c1c;
-      background: #fffdf8;
-      box-shadow: 5px 5px 0 #1c1c1c;
+      padding: 0.85rem 0.95rem;
+      border: 1.5px solid #1c1c1c;
+      border-radius: 6px;
+      background: #f4efe5;
+      box-shadow: 2px 2px 0 #1c1c1c;
       color: #1c1c1c;
-      font: 2rem/1.4 system-ui, sans-serif;
+      font: 1.75rem/1.35 ui-sans-serif, system-ui, sans-serif;
     }
     textarea:focus { outline: 3px solid #274b9e; outline-offset: 3px; }
-    .hint { margin: 0.85rem 0 0; color: #5a5650; font-size: 0.9rem; }`,
+    .hint {
+      margin: 0.75rem 0 0;
+      color: #6a6761;
+      font: 0.74rem/1.5 ui-monospace, monospace;
+      text-align: center;
+    }`,
     body: `  <main>
-    <h1>Emoji pad</h1>
-    <p class="intro">Type anything. Only emoji remain, and the value updates for everyone.</p>
     <textarea
       id="emoji-pad"
       rows="4"
@@ -49,7 +53,7 @@ export const emojiMirrorRecipe: ExampleRecipe = {
       aria-label="Emoji-only shared textarea"
       can-mirror
     ></textarea>
-    <p class="hint">Try the same room in another browser window.</p>
+    <p class="hint">Type anything. Only emojis stick, and the filtered value mirrors to everyone.</p>
   </main>`,
     script: `    const emojiOnly = /\\p{Extended_Pictographic}/gu;
     const emojiPad = document.getElementById("emoji-pad");
@@ -100,14 +104,14 @@ export const growingListMirrorRecipe: ExampleRecipe = {
     <h1>Shared list</h1>
     <p class="intro">Add an item. The direct child appears for everyone.</p>
     <section class="panel">
-      <ul id="growing-list" can-mirror>
+      <ul id="guestbook" can-mirror>
         <li>first</li>
       </ul>
-      <button id="add-list-item" type="button">add entry</button>
+      <button id="guestbook-add" type="button">add entry</button>
     </section>
   </main>`,
-    script: `    const list = document.getElementById("growing-list");
-    const addButton = document.getElementById("add-list-item");
+    script: `    const list = document.getElementById("guestbook");
+    const addButton = document.getElementById("guestbook-add");
 
     addButton.addEventListener("click", () => {
       const item = document.createElement("li");

@@ -34,10 +34,38 @@ function formatBody(body) {
   return JSON.stringify(body);
 }
 
-export async function ensureChromeResponseSucceeded(action, response) {
+function chromeItemIsInReview(body) {
+  const errors = Array.isArray(body?.error?.errors) ? body.error.errors : [];
+  return errors.some(
+    (error) =>
+      error?.domain === "chromewebstore.access" &&
+      error?.reason === "badRequest" &&
+      error?.message?.includes("item that is in review"),
+  );
+}
+
+function chromeItemIsPublishedVersion(body, version) {
+  if (!version) return false;
+
+  const errors = Array.isArray(body?.itemError) ? body.itemError : [];
+  return (
+    errors.length > 0 &&
+    errors.every(
+      (error) =>
+        error?.error_code === "PKG_INVALID_VERSION_NUMBER" &&
+        error?.error_detail?.includes(`published package: ${version}.`),
+    )
+  );
+}
+
+export async function ensureChromeResponseSucceeded(action, response, { publishedVersion } = {}) {
   const body = await readResponseBody(response);
 
   if (!response.ok) {
+    if (action === "publish" && response.status === 400 && chromeItemIsInReview(body)) {
+      return { status: ["ITEM_PENDING_REVIEW"] };
+    }
+
     const detail = formatBody(body);
     throw new Error(
       `Chrome ${action} failed: ${response.status} ${response.statusText}${detail ? `\n${detail}` : ""}`,
@@ -45,18 +73,33 @@ export async function ensureChromeResponseSucceeded(action, response) {
   }
 
   if (action === "upload") {
-    if (Array.isArray(body?.itemError) && body.itemError.length > 0) {
-      throw new Error(`Chrome upload returned item errors: ${formatBody(body.itemError)}`);
+    const itemErrors = Array.isArray(body?.itemError) ? body.itemError : [];
+    const itemIsAlreadySubmitted =
+      itemErrors.length > 0 &&
+      itemErrors.every((error) => error?.error_code === "ITEM_NOT_UPDATABLE");
+    const itemIsAlreadyPublished = chromeItemIsPublishedVersion(body, publishedVersion);
+
+    if (
+      itemErrors.length > 0 &&
+      !itemIsAlreadySubmitted &&
+      !itemIsAlreadyPublished
+    ) {
+      throw new Error(`Chrome upload returned item errors: ${formatBody(itemErrors)}`);
     }
 
-    if (body?.uploadState && body.uploadState !== "SUCCESS") {
+    if (
+      !itemIsAlreadySubmitted &&
+      !itemIsAlreadyPublished &&
+      body?.uploadState &&
+      body.uploadState !== "SUCCESS"
+    ) {
       throw new Error(`Chrome upload did not complete: ${body.uploadState}`);
     }
   }
 
   if (action === "publish") {
     const statuses = Array.isArray(body?.status) ? body.status : [];
-    if (!statuses.includes("OK")) {
+    if (!statuses.includes("OK") && !statuses.includes("ITEM_PENDING_REVIEW")) {
       throw new Error(
         `Chrome publish did not return OK: ${statuses.length > 0 ? statuses.join(", ") : "missing status"}`,
       );
@@ -131,8 +174,25 @@ export async function submitChrome({ env = process.env, fetchImpl = fetch } = {}
     },
     body: zip,
   });
-  const uploadBody = await ensureChromeResponseSucceeded("upload", uploadResponse);
-  console.log(`Chrome upload accepted${uploadBody?.uploadState ? `: ${uploadBody.uploadState}` : ""}.`);
+  const uploadBody = await ensureChromeResponseSucceeded("upload", uploadResponse, {
+    publishedVersion: env.VERSION,
+  });
+  const itemIsAlreadySubmitted = uploadBody?.itemError?.some(
+    (error) => error?.error_code === "ITEM_NOT_UPDATABLE",
+  );
+  const itemIsAlreadyPublished = chromeItemIsPublishedVersion(uploadBody, env.VERSION);
+  if (itemIsAlreadyPublished) {
+    console.log(`Chrome version ${env.VERSION} is already published; skipped upload.`);
+    return;
+  }
+
+  if (itemIsAlreadySubmitted) {
+    console.log("Chrome item is already submitted; skipped upload.");
+  } else {
+    console.log(
+      `Chrome upload accepted${uploadBody?.uploadState ? `: ${uploadBody.uploadState}` : ""}.`,
+    );
+  }
 
   const publishResponse = await fetchImpl(
     chromePublishUrl({
@@ -151,8 +211,12 @@ export async function submitChrome({ env = process.env, fetchImpl = fetch } = {}
     },
   );
   const publishBody = await ensureChromeResponseSucceeded("publish", publishResponse);
-  console.log(`Chrome publish accepted: ${publishBody.status.join(", ")}.`);
-  console.log("Chrome will update the live store package after Web Store review approval.");
+  if (publishBody.status.includes("ITEM_PENDING_REVIEW")) {
+    console.log("Chrome item is already pending Web Store review.");
+  } else {
+    console.log(`Chrome publish accepted: ${publishBody.status.join(", ")}.`);
+    console.log("Chrome will update the live store package after Web Store review approval.");
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

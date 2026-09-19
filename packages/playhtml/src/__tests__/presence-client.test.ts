@@ -567,6 +567,7 @@ describe("PresenceClient", () => {
   it("drops a ghost peer's presence after the staleness window", () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const { socket, client } = createClient();
       socket.receive({
@@ -585,7 +586,11 @@ describe("PresenceClient", () => {
       vi.advanceTimersByTime(31_000);
       const status = (client.getPresences().get("pk_ghost") as any)?.status;
       expect(status).toBeUndefined();
+      expect(error).toHaveBeenCalledWith(
+        expect.stringContaining("presence transport unreachable"),
+      );
     } finally {
+      error.mockRestore();
       vi.useRealTimers();
     }
   });

@@ -6,11 +6,75 @@ import type { CollectionEvent, EventMeta } from '@playhtml/extension-types';
 
 const EXPORT_PAGE_SIZE = 1000;
 
+interface ExportEventCursor {
+  ts: string;
+  id: string;
+}
+
+interface ExportEventRow {
+  id: string;
+  type: CollectionEvent['type'];
+  ts: string;
+  data: unknown;
+  participant_id: string;
+  session_id: string;
+  url: string;
+  viewport_width: number;
+  viewport_height: number;
+  timezone: string;
+}
+
+interface ExportEventPage {
+  data: ExportEventRow[] | null;
+  error: { message: string } | null;
+}
+
+type ExportEventRows =
+  | { rows: ExportEventRow[]; error: null }
+  | { rows: null; error: { message: string } };
+
+function quoteEventCursorValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+export function getLaterEventFilter(ts: string, id: string): string {
+  const quotedTs = quoteEventCursorValue(ts);
+  const quotedId = quoteEventCursorValue(id);
+  return `ts.gt.${quotedTs},and(ts.eq.${quotedTs},id.gt.${quotedId})`;
+}
+
 interface ExportRequestBody {
   type?: string;
   startDate?: string;
   endDate?: string;
   name?: string;
+}
+
+export async function loadExportEventRows(
+  loadPage: (
+    cursor: ExportEventCursor | null,
+    pageSize: number,
+  ) => Promise<ExportEventPage>,
+): Promise<ExportEventRows> {
+  const rows: ExportEventRow[] = [];
+  let cursor: ExportEventCursor | null = null;
+
+  while (true) {
+    const result = await loadPage(cursor, EXPORT_PAGE_SIZE);
+    if (result.error) return { rows: null, error: result.error };
+
+    const page = result.data ?? [];
+    rows.push(...page);
+    if (page.length < EXPORT_PAGE_SIZE) break;
+
+    const lastRow = page.at(-1);
+    if (typeof lastRow?.ts !== 'string' || typeof lastRow.id !== 'string') {
+      throw new Error('Export event row is missing pagination fields');
+    }
+    cursor = { ts: lastRow.ts, id: lastRow.id };
+  }
+
+  return { rows, error: null };
 }
 
 /**
@@ -49,41 +113,36 @@ export async function handleExport(
     }
     
     const supabase = createSupabaseClient(env);
-    
-    const data = [];
-    let count = 0;
-    let offset = 0;
-    
-    while (true) {
-      const { data: pageData, error, count: pageCount } = await supabase
+
+    const { rows: data, error } = await loadExportEventRows(async (cursor, pageSize) => {
+      let query = supabase
         .from('collection_events')
-        .select('*', { count: 'exact' })
+        .select('*')
         .eq('type', type)
         .gte('ts', startDate)
-        .lt('ts', endDate)
+        .lt('ts', endDate);
+
+      if (cursor) {
+        query = query.or(getLaterEventFilter(cursor.ts, cursor.id));
+      }
+
+      const { data: pageData, error } = await query
         .order('ts', { ascending: true })
-        .range(offset, offset + EXPORT_PAGE_SIZE - 1);
-      
-      if (error) {
-        console.error('Supabase export error:', error);
-        return new Response(
-          JSON.stringify({ error: 'Failed to export events', details: error.message }),
-          { status: 500, headers: { 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      const rows = pageData || [];
-      data.push(...rows);
-      
-      if (typeof pageCount === 'number') {
-        count = pageCount;
-      }
-      
-      if (rows.length < EXPORT_PAGE_SIZE || (count > 0 && data.length >= count)) {
-        break;
-      }
-      
-      offset += EXPORT_PAGE_SIZE;
+        .order('id', { ascending: true })
+        .limit(pageSize);
+
+      return {
+        data: pageData as ExportEventRow[] | null,
+        error,
+      };
+    });
+
+    if (error) {
+      console.error('Supabase export error:', error);
+      return new Response(
+        JSON.stringify({ error: 'Failed to export events', details: error.message }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
     }
     
     // Get unique participants
@@ -113,7 +172,7 @@ export async function handleExport(
       startDate,
       endDate,
       participantCount: participants.size,
-      eventCount: count || 0,
+      eventCount: data.length,
       exportedAt: new Date().toISOString(),
     };
     

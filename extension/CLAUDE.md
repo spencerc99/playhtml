@@ -22,14 +22,41 @@ Worker backend (in `worker/`):
 The extension ships independently of the core packages, mirroring the
 changesets release-PR flow but on a separate cadence.
 
-**Day-to-day:** when a PR changes what regular users see or get in the
-released extension — `extension/src/**`, `extension/wxt.config.ts`,
-`extension/public/**`, or anything else that ships in the extension zip — add
-a bullet to `extension/PENDING.md` for each meaningful user-facing change.
-Changes that ship dark — behind a `FLAGS.*` feature flag or the
-`internalDevFeaturesEnabled` dev toggle — do NOT get a bullet; the public
-changelog should never describe a feature users can't reach. Add the bullet in
-the PR that enables the feature for everyone.
+**Day-to-day:** `extension/PENDING.md` is a curated public changelog, not a
+complete record of changes that ship in the extension. Add a bullet only when
+a regular user can understand the outcome and is likely to notice or care
+about it.
+
+A change is usually changelog-worthy when it:
+
+- Adds or removes a feature or capability.
+- Meaningfully changes a common workflow or visible behavior.
+- Fixes a problem that affects a substantial group of users.
+- Requires users to take action or changes what they should expect.
+
+Usually skip a bullet for:
+
+- Copy, label, badge, or wording polish.
+- Narrow bug or compatibility fixes that few users encounter.
+- Small performance or reliability improvements without a noticeable outcome.
+- Refactors, dependencies, tests, build changes, telemetry, and other internal
+  maintenance.
+
+A narrow fix can still deserve a bullet when its impact is significant and can
+be explained plainly. If the release note needs implementation jargon or makes
+the impact sound larger than it is, omit it.
+
+Changes that ship dark, behind an unreleased feature in `FEATURE_CATALOG`, do
+not get a bullet. The public changelog should never describe a feature users
+cannot reach. Add the bullet in the PR that enables the feature for everyone.
+
+When a change adds, removes, or changes a manifest permission in
+`wxt.config.ts`, update the matching Chrome Web Store reviewer justification in
+`STORE_LISTING.md`. Flag the required Privacy practices dashboard update in the
+PR and release handoff. Do not describe Chrome as ready to publish or published
+until the dashboard disclosure is saved and the publish API succeeds. Remove
+stale justification copy and dashboard disclosures when a permission is
+removed.
 
 Write each bullet as final release-note copy for people who use the extension:
 
@@ -40,8 +67,7 @@ Write each bullet as final release-note copy for people who use the extension:
 - Do not mention filenames, functions, storage engines, schemas, migrations,
   message passing, retries, build systems, deployment, tests, PRs, or other
   implementation and maintainer details.
-- Do not describe internal-only maintenance. If a change has no meaningful
-  user-facing effect, it does not need a bullet.
+- Do not describe internal-only maintenance.
 
 Changes under `extension/website/**` (wewere.online pages and visualizations)
 and `extension/worker/**` deploy on their own and do NOT get PENDING bullets or
@@ -142,6 +168,12 @@ when Xcode or Apple credentials are not available.
 The `extension/website/` Vite app serves both the marketing/landing pages
 (`index.html`, `privacy.html`) and the visualization experiments:
 
+- `extension/website/install/` — `wewere.online/install`, the short URL for
+  loading the extension unpacked on an installation machine before a store
+  release. It serves `public/wwo-extension.zip`; rebuild that zip
+  (`bun run build-extension && (cd extension/dist && zip -r ../website/public/wwo-extension.zip chrome-mv3)`)
+  whenever the machines need a newer build, and drop both once the store
+  version covers it.
 - `extension/website/changelog/` — public extension release notes rendered
   from `extension/CHANGELOG.md`; supports Markdown images and
   `![video: Title](...)` media references.
@@ -284,6 +316,76 @@ Cloudflare Worker + Supabase PostgreSQL + Resend:
 
 ## Configuration
 
+### Installation mode
+
+In extension Settings, press Cmd/Ctrl+Shift+8 to reveal **Installation mode**
+under Identity. It is the single switch for everything a browsing machine in the
+installation needs, and it persists across browser restarts. It starts off;
+while enabled, its checkbox stays visible in Settings.
+
+It turns on five things together:
+
+1. **The cursor.** The participant's own colored cursor replaces the native one
+   (`src/entrypoints/content/installationCursor.ts`). Color changes apply to
+   open pages. Browser pages and embedded frame contents keep their native
+   cursor. Open shadow roots receive cursor suppression when the pointer enters,
+   including roots attached later. Closed roots retain their native cursor while
+   the installation overlay hides — except the frame's own root, which is
+   skipped by id.
+2. **The frame** (`src/entrypoints/content/installationFrame.ts`). A hairline
+   border in the participant's color, a pill reading "participating in we were
+   online — browse to contribute to the portrait" (the wordmark links to the
+   site), and an info icon opening a panel that explains the piece. Everything
+   lives in a closed shadow root and is inert to pointer input except the panel,
+   the icon, and the pill's link. The canvas draws the live
+   trace over the participant's earlier traces on that domain, fetched once per
+   page through `GET_RECENT_EVENTS`. The host carries `data-wwo-trace`,
+   `data-wwo-previous`, and `data-wwo-sound` so its state is readable without
+   opening the shadow root.
+3. **The ink** (`src/entrypoints/content/installationTrace.ts`). The trace is
+   drawn the way the screens draw it: `perfect-freehand` outlines filled at the
+   screens' stroke width and opacities, and clicks ringing out with the screens'
+   ripple geometry at the full `CLICK_DEFAULTS` radius (the live portrait's
+   smaller one exists because thousands of clicks land in one frame). Strokes
+   and click marks share one lifecycle — settle to a resting weight, hold, then
+   depart — so a visit accumulates as a portrait rather than a comet tail, and
+   shows where it stopped as well as where it went. Points live in **document
+   space** — the same absolute placement the visualizations use
+   (`x * vw + scrollX`) — so marks stay on the content they were made over when
+   the page scrolls, and a scroll under a still cursor splits the stroke instead
+   of drawing a slash.
+4. **Live sound** (`src/entrypoints/content/installationSound.ts`). The same
+   `@movement` `SoundEngine` the screens use, driven by the local cursor: one
+   voice follows movement, clicks ring the bell. Browsers require a gesture
+   before audio starts, so the engine is created on the first click or keypress.
+   There is no switch in the frame — a visitor should not have to turn the piece
+   on — but an operator can silence one machine by setting
+   `INSTALLATION_SOUND_KEY` to false; unset means on, and an open page follows
+   the change without a reload.
+5. **Installation pace** (`INSTALLATION_PACE` in `src/features/installationMode.ts`).
+   Cursor sampling drops from 250ms/15px to 80ms/4px and both EventBuffer hops
+   shorten (store 1s → 200ms, upload 3s → 500ms), so marks reach the screens
+   close to live. `CollectorManager` applies and reverts this through
+   `watchInstallationMode`; ordinary browsing keeps the cheaper defaults.
+
+This is a local machine setting, independent of feature entitlements and
+collection modes. It does not start cursor presence connections. The frame's
+earlier traces and the faster pace only produce marks when cursor collection is
+itself on.
+
+Nothing hosted is needed to explain the piece: the frame's "about this" panel is
+the only introduction a visitor gets, and the installation office at
+`/admin/installation/` carries the operator's setup note.
+
+Build with `bun run build-extension`, then run
+`node smoke-tests/installation-cursor.mjs` (cursor) and
+`node smoke-tests/installation-frame.mjs` (frame, trace pixels, earlier traces,
+sound, and pace) in isolated Chromium. Set `INSTALLATION_EVIDENCE_DIR` to save
+screenshots, and `PLAYWRIGHT_CHROMIUM_PATH` when the Chromium build is not the
+Playwright `chromium` channel.
+
+### Files
+
 - `src/config.ts`: `VERBOSE` debug logging flag
 - `src/flags.ts`: Feature flags (`COPRESENCE: true`)
 - `wxt.config.ts`: Manifest v3, permissions (storage, tabs, http/https host access), React module, ASCII charset output for Chrome compliance
@@ -294,6 +396,22 @@ Cloudflare Worker + Supabase PostgreSQL + Resend:
 - **Setup (`vitest.setup.ts`):** Mocks for window dimensions, devicePixelRatio, visualViewport, getComputedStyle, webextension-polyfill, IndexedDB, browser.storage
 - **Test files:** CursorCollector, NavigationCollector, ViewportCollector, collectors integration
 - **Test utils:** `src/__tests__/test-utils.ts`
+
+### Real-browser feature verification requirement
+
+Before merging any new extension feature, Codex must automate the complete feature flow in a real browser. Start from the real user entrypoint and assert the final user-visible or externally observable outcome. The automation may be a temporary verification harness or a committed test. The PR does not need to include the harness.
+
+Use the real runtime boundaries the feature depends on:
+
+- Load the built extension in a real browser when the feature uses the service worker, content scripts, extension pages, browser storage, permissions, or navigation.
+- Run the built `extension/website` page when a hosted page participates in the feature.
+- Run the real local Worker or a deployable preview when the feature depends on an API. Assert the request and response contract at that boundary.
+- Exercise relevant lifecycle ordering, such as a cold start, cached page, reload, delayed content-script or service-worker readiness, reconnect, or upgrade from the currently released extension.
+- Assert privacy and failure behavior when the feature crosses a trust boundary.
+
+Unit and component tests still cover isolated logic. The generic extension smoke only proves that the extension shell starts, a content script responds, and the popup renders. Neither that smoke, mocked browser APIs, screenshots, nor an unstructured manual pass replaces automated verification of the complete feature flow.
+
+The PR description and handoff must name the automation or harness, browser and build tested, runtime boundaries, lifecycle case, and result. If the feature cannot be tested reliably through real-browser automation, stop and tell Spencer before opening or merging the PR.
 
 ## Key Design Patterns
 

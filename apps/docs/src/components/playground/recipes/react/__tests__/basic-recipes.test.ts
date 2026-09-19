@@ -52,5 +52,23 @@ describe("basic React recipe sources", () => {
     expect(sharedGuestbookReactSource).not.toMatch(
       /useEffect\([\s\S]*?setData\(/,
     );
+    expect(sharedGuestbookReactSource).toContain("at: Date.now()");
+  });
+
+  it("keeps the established element ids and example assets", () => {
+    expect(canMoveReactSource).toContain('id="ph-cap-hat"');
+    expect(canMoveReactSource).toContain('id="ph-cap-cat"');
+    expect(canMoveReactSource).toContain(
+      'https://playhtml.fun/docs/yankees-hat.png',
+    );
+    expect(canMoveReactSource).toContain(
+      'https://playhtml.fun/docs/long-cat.png',
+    );
+    expect(canToggleReactSource).toContain('id="ph-docs-toggle-demo"');
+    expect(canHoverReactSource).toContain('id="ph-cap-hover-pad"');
+    expect(sharedCounterReactSource).toContain('id="ph-docs-counter"');
+    expect(sharedGuestbookReactSource).toContain(
+      'id="ph-cap-docs-guestbook"',
+    );
   });
 });

@@ -13,15 +13,12 @@ export default defineConfig({
       "storage",
       "tabs",
       "alarms",
-      ...(browser === "safari" ? [] : ["idle"]),
+      ...(browser === "safari" ? [] : ["idle", "webNavigation"]),
       "unlimitedStorage",
     ],
     host_permissions: ["http://*/*", "https://*/*"],
     action: {
       default_title: "we were online",
-    },
-    chrome_url_overrides: {
-      newtab: "newtab.html",
     },
     commands: {
       "open-inventory": {

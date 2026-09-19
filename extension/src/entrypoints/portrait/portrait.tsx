@@ -29,6 +29,7 @@ import {
 import type { PortraitCardProps } from "../../components/PortraitCard";
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
 import { portraitDayFromSearch } from "../../utils/portraitDay";
+import { calculateCursorDistance } from "../../utils/cursorDistance";
 
 /** Convert sessions to hour buckets (total ms per hour-of-day) for PortraitCard */
 function sessionsToHourBuckets(sessions: ScreenTimeSession[]): number[] {
@@ -190,18 +191,7 @@ const PortraitPage = () => {
 
   // Build portrait card props from whichever data source is available.
   const portraitStats = useMemo((): PortraitCardProps | null => {
-    // Cursor distance is always derived from the (capped) event set
-    const cursorMoves = events
-      .filter((e) => e.type === "cursor" && (e.data as any).event === "move")
-      .sort((a, b) => a.ts - b.ts);
-    let cursorDistancePx = 0;
-    for (let i = 1; i < cursorMoves.length; i++) {
-      const prev = cursorMoves[i - 1].data as any;
-      const curr = cursorMoves[i].data as any;
-      const dx = (curr.x - prev.x) * 1920;
-      const dy = (curr.y - prev.y) * 1080;
-      cursorDistancePx += Math.sqrt(dx * dx + dy * dy);
-    }
+    const cursorDistancePx = calculateCursorDistance(events);
 
     // Unfiltered: use pre-computed global aggregate
     if (globalStats && !selectedDay) {
@@ -213,8 +203,8 @@ const PortraitPage = () => {
         dateRange:
           globalStats.firstVisit && globalStats.lastVisit
             ? {
-                oldest: new Date(globalStats.firstVisit).toLocaleDateString(),
-                newest: new Date(globalStats.lastVisit).toLocaleDateString(),
+                oldest: new Date(globalStats.firstVisit).toISOString(),
+                newest: new Date(globalStats.lastVisit).toISOString(),
               }
             : null,
         uniquePageCount: globalStats.uniqueUrlCount,
@@ -348,7 +338,7 @@ const PortraitPage = () => {
         <ExtensionPageNav currentPage="portrait" />
       </div>
 
-      {/* Portrait card — bottom-right, with footer link and minimize toggle */}
+      {/* Portrait card — bottom-right, with minimize toggle */}
       {portraitStats && (
         <div
           style={{
@@ -387,32 +377,12 @@ const PortraitPage = () => {
             style={{
               display: "flex",
               alignItems: "center",
-              justifyContent: "space-between",
+              justifyContent: "flex-end",
               gap: 12,
               padding: "0 4px",
               pointerEvents: "auto",
             }}
           >
-            <a
-              href={browser.runtime.getURL("stats.html")}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                fontFamily: "'Martian Mono', monospace",
-                fontSize: "10px",
-                color: "var(--text-muted)",
-                textDecoration: "none",
-                letterSpacing: "0.04em",
-              }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.color = "var(--accent-teal)")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.color = "var(--text-muted)")
-              }
-            >
-              see your time →
-            </a>
             <button
               type="button"
               onClick={() => setCardMinimized((v) => !v)}

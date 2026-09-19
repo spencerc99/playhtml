@@ -7,6 +7,8 @@ const FIREFOX_URL =
   'https://addons.mozilla.org/en-US/firefox/addon/we-were-online/';
 const EDGE_URL =
   'https://microsoftedge.microsoft.com/addons/detail/we-were-online/kiamoecdnaglmhigmbmdkiodbbphpodl';
+const SAFARI_URL =
+  'https://apps.apple.com/us/app/we-were-online/id6798847358?mt=12';
 const HOMEPAGE_URL = 'https://wewere.online/';
 const PLAYHTML_URL = 'https://playhtml.fun/';
 const DISCORD_INVITE_URL = 'https://discord.gg/SKbsSf4ptU';
@@ -22,6 +24,7 @@ const DOWNLOAD_LINKS = [
   { browser: 'Chrome', textBrowser: 'Chrome (or chromium equivalents)', url: CHROME_URL },
   { browser: 'Firefox', textBrowser: 'Firefox', url: FIREFOX_URL },
   { browser: 'Edge', textBrowser: 'Edge', url: EDGE_URL },
+  { browser: 'Safari', textBrowser: 'Safari', url: SAFARI_URL },
 ];
 
 const DOWNLOAD_BUTTON_STYLE =

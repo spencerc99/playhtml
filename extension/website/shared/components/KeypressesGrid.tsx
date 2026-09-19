@@ -8,6 +8,8 @@ import { useCombobox } from "downshift";
 import { CollectionEvent, KeyboardEventData, TypingAction } from "../types";
 import { extractDomain } from "../utils/eventUtils";
 
+const { stateChangeTypes: comboboxStateChangeTypes } = useCombobox;
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CELL_SIZE = 32;
 /** Base scroll rate in px per real second at speed=1. */
@@ -385,7 +387,7 @@ const DomainFilterInput: React.FC<{
     //    commits the obvious top choice instead of silently dropping the
     //    typed value when nothing is explicitly highlighted.
     stateReducer: (state, { type, changes }) => {
-      const t = useCombobox.stateChangeTypes;
+      const t = comboboxStateChangeTypes;
       if (type === t.InputClick || type === t.InputFocus) {
         return { ...changes, isOpen: true };
       }

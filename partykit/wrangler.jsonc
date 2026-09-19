@@ -19,7 +19,12 @@
     }
   },
   "secrets": {
-    "required": ["SUPABASE_URL", "SUPABASE_KEY", "ADMIN_TOKEN"]
+    "required": [
+      "SUPABASE_URL",
+      "SUPABASE_KEY",
+      "ADMIN_TOKEN",
+      "PARTYKIT_BRIDGE_SECRET"
+    ]
   },
   // Operator control plane for room quarantine. Read before hydration, so a room
   // that crashes on start can still be taken out of service.
@@ -70,7 +75,12 @@
         }
       },
       "secrets": {
-        "required": ["SUPABASE_URL", "SUPABASE_KEY", "ADMIN_TOKEN"]
+        "required": [
+          "SUPABASE_URL",
+          "SUPABASE_KEY",
+          "ADMIN_TOKEN",
+          "PARTYKIT_BRIDGE_SECRET"
+        ]
       },
       "kv_namespaces": [
         {

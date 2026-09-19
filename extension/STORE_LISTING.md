@@ -11,6 +11,26 @@ The short manifest description (≤132 chars, shown in search results) lives in
 
 ---
 
+## Chrome Web Store privacy practices
+
+The Chrome Web Store does not copy permission justifications from the
+extension manifest. Paste this copy into the matching fields on the Privacy
+practices tab.
+
+### `webNavigation`
+
+```
+Slow Mode uses webNavigation to detect completed top-level navigations. When the user has enabled Slow Mode and a navigation meets their distance, cooldown, and chance settings, the extension redirects the tab through Internet Commute. The extension ignores subframe navigations.
+```
+
+### `idle`
+
+```
+The extension uses idle to check whether the user is actively using their computer before showing milestone notifications. It does not show these notifications while the user is away.
+```
+
+---
+
 ## Chrome Web Store — full description
 
 Chrome renders this field as **plain text** (no markdown, URLs are not

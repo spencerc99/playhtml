@@ -1,0 +1,161 @@
+// ABOUTME: Styles the new-tab internet-scraps launch card and its specimen strip.
+// ABOUTME: Uses the shared warm tokens so the card sits inside the walking record.
+
+@use "../styles/variables" as *;
+
+.scraps-launch {
+  margin: 0 0 48px;
+  border: 1px solid $border-strong;
+  border-radius: 6px;
+  background: $surface;
+  overflow: hidden;
+}
+
+.scraps-launch__strip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  height: 120px;
+  padding: 0 22px;
+  background: #fdfbf6;
+  border-bottom: 1px dashed $border-strong;
+  overflow: hidden;
+}
+
+.scraps-launch__piece {
+  flex: 0 0 auto;
+  transform-origin: center;
+}
+
+.scraps-launch__piece--image {
+  max-height: 76px;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
+.scraps-launch__piece--button {
+  padding: 5px 11px;
+  border-radius: 5px;
+  color: #fff;
+  font-family: $font-body;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(90, 78, 65, 0.18);
+}
+
+.scraps-launch__strip-chip {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  padding: 2px 6px;
+  border: 1px dashed $border-strong;
+  border-radius: 3px;
+  color: $text-faint;
+  font-family: $font-mono;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.scraps-launch__body {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 20px 18px;
+}
+
+.scraps-launch__copy {
+  min-width: 0;
+}
+
+.scraps-launch__tag {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 2px 6px;
+  border: 1px solid rgba(196, 114, 78, 0.45);
+  border-radius: 3px;
+  color: $accent-rust;
+  font-family: $font-mono;
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.scraps-launch__title {
+  margin: 0 0 6px;
+  font-family: $font-heading;
+  font-size: 19px;
+  font-weight: 600;
+  color: $text;
+}
+
+.scraps-launch__text {
+  margin: 0 0 8px;
+  max-width: 52ch;
+  color: $text-muted;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.scraps-launch__fine-print {
+  margin: 0;
+  color: $text-faint;
+  font-family: $font-mono;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.scraps-launch__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.scraps-launch__cta {
+  color: $accent-rust;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: rgba(196, 114, 78, 0.4);
+  text-underline-offset: 3px;
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration-color: $accent-rust;
+  }
+}
+
+.scraps-launch__dismiss {
+  padding: 0;
+  border: none;
+  background: none;
+  color: $text-faint;
+  font-family: $font-mono;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+
+  &:hover {
+    color: $text-muted;
+  }
+}
+
+@media (max-width: 640px) {
+  .scraps-launch__body {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .scraps-launch__actions {
+    align-items: flex-start;
+    flex-direction: row;
+    gap: 16px;
+  }
+}

@@ -86,6 +86,7 @@ const browser = {
     local,
     // session is referenced in a couple of places; mirror local for the playground.
     session: local,
+    onChanged: { ...noopListener },
   },
   // commands is optional in the extension code (optional-chained); leave undefined.
   commands: undefined,

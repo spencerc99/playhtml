@@ -9,6 +9,7 @@ import {
   ElementSetupData,
   ModifierKey,
   ViewTemplate,
+  observeElementChanges,
 } from "@playhtml/common";
 
 // @ts-ignore
@@ -449,13 +450,16 @@ export class ElementHandler<T = any, U = any, V = any> {
     if (!this.onAfterRender || this.descendantObserver) return;
     this.onAfterRender(this.element); // bind children from the first render
     if (typeof MutationObserver !== "undefined") {
-      this.descendantObserver = new MutationObserver(() => {
-        this.onAfterRender?.(this.element);
-      });
-      this.descendantObserver.observe(this.element, {
-        childList: true,
-        subtree: true,
-      });
+      this.descendantObserver = observeElementChanges(
+        this.element,
+        () => {
+          this.onAfterRender?.(this.element);
+        },
+        {
+          childList: true,
+          subtree: true,
+        },
+      );
     }
   }
 

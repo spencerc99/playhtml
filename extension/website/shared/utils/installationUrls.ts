@@ -1,6 +1,11 @@
 // ABOUTME: Turns a saved archive/share URL into a matched set of installation
 // ABOUTME: screen URLs — one master + N coordinated followers — for multi-screen.
 
+import {
+  LIVE_INSTALLATION_PROFILES,
+  LIVE_INSTALLATION_PROFILE_NAMES,
+} from "./liveInstallationProfiles";
+
 /** One screen in a generated installation set. */
 export interface InstallationScreen {
   /** "master" (full field, drives the clock) or "follower N" (zoomed). */
@@ -82,4 +87,22 @@ export function buildInstallationScreens(
   }
 
   return screens;
+}
+
+/** Build stable named URLs for the nine-screen live installation. */
+export function buildLiveInstallationScreens(
+  origin: string,
+): InstallationScreen[] {
+  return LIVE_INSTALLATION_PROFILE_NAMES.map((name) => {
+    const profile = LIVE_INSTALLATION_PROFILES[name];
+    const url = new URL(profile.pathname, origin);
+    url.searchParams.set("clean", "2");
+    url.searchParams.set("screen", name);
+    return {
+      label: profile.label,
+      role: profile.role,
+      followerId: profile.role === "follower" ? name : undefined,
+      url: url.toString(),
+    };
+  });
 }

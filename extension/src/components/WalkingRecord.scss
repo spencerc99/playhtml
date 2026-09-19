@@ -646,6 +646,76 @@ button:focus-visible {
   }
 }
 
+@keyframes walking-record-skeleton-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.walking-record__day-plate-skeleton,
+.walking-record__movement-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(90, 78, 65, 0.055);
+
+  &::after {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    animation: walking-record-skeleton-sweep 1.8s ease-in-out infinite;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba($surface, 0.8),
+      transparent
+    );
+    content: "";
+  }
+
+  > span {
+    position: absolute;
+    z-index: 1;
+    display: block;
+    border-radius: 999px;
+    background: rgba(90, 78, 65, 0.1);
+  }
+}
+
+.walking-record__day-plate-skeleton {
+  width: 100%;
+  height: 58px;
+  border-radius: 6px;
+
+  > span {
+    width: 58%;
+    height: 4px;
+    transform: rotate(-16deg);
+
+    &:nth-child(1) {
+      top: 14px;
+      left: 8%;
+    }
+
+    &:nth-child(2) {
+      top: 29px;
+      left: 26%;
+      width: 64%;
+      transform: rotate(12deg);
+    }
+
+    &:nth-child(3) {
+      top: 43px;
+      left: 12%;
+      width: 45%;
+      transform: rotate(-8deg);
+    }
+  }
+}
+
 .walking-record__day-plate--future {
   border-color: rgba(90, 78, 65, 0.18);
   border-style: dashed;
@@ -779,6 +849,33 @@ button:focus-visible {
   }
 }
 
+.walking-record__movement-skeleton {
+  > span {
+    width: 46%;
+    height: 9px;
+
+    &:nth-child(1) {
+      top: 24%;
+      left: 8%;
+      transform: rotate(7deg);
+    }
+
+    &:nth-child(2) {
+      top: 49%;
+      left: 38%;
+      width: 52%;
+      transform: rotate(-9deg);
+    }
+
+    &:nth-child(3) {
+      top: 72%;
+      left: 16%;
+      width: 38%;
+      transform: rotate(4deg);
+    }
+  }
+}
+
 .walking-record__movement-paper {
   position: absolute;
   z-index: 1;
@@ -871,6 +968,8 @@ button:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .walking-record__day-plate-skeleton::after,
+  .walking-record__movement-skeleton::after,
   .walking-record__loading-route,
   .walking-record__loading-cursor {
     animation: none;
