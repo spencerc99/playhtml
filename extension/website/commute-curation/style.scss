@@ -27,7 +27,6 @@ html {
 }
 
 body {
-  min-width: 720px;
   margin: 0;
 }
 
@@ -1295,5 +1294,74 @@ footer {
   .artifact {
     grid-column: 1 / -1;
     border-top: 1px solid $ink;
+  }
+}
+
+@media (max-width: 720px) {
+  main {
+    width: calc(100% - 24px);
+    margin-top: 12px;
+  }
+
+  .masthead {
+    flex-direction: column;
+  }
+
+  .masthead__identity {
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .masthead__identity img {
+    width: 44px;
+    height: 44px;
+  }
+
+  .masthead__notice {
+    width: auto;
+    padding: 12px 16px;
+    border-top: 1px solid $ink;
+    border-left: 0;
+  }
+
+  .verdict-key {
+    grid-template-columns: 1fr;
+  }
+
+  .verdict-key__item {
+    border-right: 0;
+    border-bottom: 1px solid $line;
+  }
+
+  .scope-options,
+  .verdict-options,
+  .export-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .panel__heading--queue,
+  .review-heading,
+  .place-card__topline,
+  .queue-footer,
+  .form-actions,
+  footer {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .queue-controls {
+    flex-wrap: wrap;
+  }
+
+  .queue-controls select,
+  .artifact {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .export-panel .panel__heading,
+  .export-panel__intro {
+    border-right: 0;
+    border-bottom: 1px solid $ink;
   }
 }
