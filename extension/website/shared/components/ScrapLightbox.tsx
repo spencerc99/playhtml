@@ -301,7 +301,7 @@ const LIGHTBOX_STYLES = `
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
-    border-block: 1px solid rgba(61, 56, 51, 0.14);
+    border-top: 1px solid rgba(61, 56, 51, 0.14);
   }
   .scrap-lightbox__timeline ol { list-style: none; padding: 0; margin: 0; }
   .scrap-lightbox__timeline li {
@@ -309,8 +309,8 @@ const LIGHTBOX_STYLES = `
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px;
     padding: 8px 0;
-    border-bottom: 1px solid rgba(61, 56, 51, 0.08);
   }
+  .scrap-lightbox__timeline li + li { border-top: 1px solid rgba(61, 56, 51, 0.08); }
   .scrap-lightbox__timeline h4 { margin: 0; padding: 10px 0 4px; font: inherit; color: #827a72; }
   .scrap-lightbox__timeline time { color: #827a72; font-size: 9px; white-space: nowrap; padding-top: 1px; }
   .scrap-lightbox__timeline a { color: #3d3833; min-width: 0; text-decoration: none; }

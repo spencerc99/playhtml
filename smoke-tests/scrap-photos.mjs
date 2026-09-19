@@ -242,6 +242,37 @@ try {
   await expect(scraps.locator(".scrap-collage__tile")).toHaveCount(2);
   await scraps
     .locator(".scrap-collage__tile")
+    .filter({ has: scraps.locator('img[src*="different"]') })
+    .click();
+  await expect(scraps.locator(".scrap-lightbox__timeline li")).toHaveCount(1);
+  await expect(scraps.locator(".scrap-lightbox")).toHaveCSS("opacity", "1");
+  await expect
+    .poll(() =>
+      scraps
+        .locator(".scrap-lightbox__scrap img")
+        .evaluate((image) => image.complete && image.naturalWidth > 0),
+    )
+    .toBe(true);
+  await expect(scraps.locator(".scrap-lightbox__timeline")).toHaveCSS(
+    "border-bottom-width",
+    "0px",
+  );
+  await expect(scraps.locator(".scrap-lightbox__timeline li")).toHaveCSS(
+    "border-bottom-width",
+    "0px",
+  );
+  await expect(scraps.locator(".scrap-lightbox__actions")).toHaveCSS(
+    "border-top-width",
+    "1px",
+  );
+  await scraps.screenshot({
+    path: resolve(evidence, "single-encounter-divider.png"),
+  });
+  await scraps
+    .getByRole("button", { name: "Close examine view", exact: true })
+    .click();
+  await scraps
+    .locator(".scrap-collage__tile")
     .filter({ has: scraps.locator('img[src$="/photo/a.svg"]') })
     .click();
   await expect(
