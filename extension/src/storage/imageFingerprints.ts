@@ -13,7 +13,12 @@ export async function fetchImageFingerprint(
   src: string,
 ): Promise<string | undefined> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  const timer = setTimeout(() => {
+    controller.abort();
+    // Aborting the fetch may not settle a pending body read after collection.
+    void reader?.cancel().catch(() => {});
+  }, DOWNLOAD_TIMEOUT_MS);
   try {
     const url = new URL(src);
     if (
@@ -40,7 +45,7 @@ export async function fetchImageFingerprint(
       return;
     const declaredSize = Number(response.headers.get("content-length"));
     if (declaredSize > MAX_FINGERPRINT_BYTES) return;
-    const reader = response.body.getReader();
+    reader = response.body.getReader();
     const chunks: Uint8Array[] = [];
     let size = 0;
     while (true) {
@@ -50,7 +55,7 @@ export async function fetchImageFingerprint(
       if (size > MAX_FINGERPRINT_BYTES) return;
       chunks.push(value);
     }
-    if (size === 0) return;
+    if (controller.signal.aborted || size === 0) return;
     const bytes = new Uint8Array(size);
     let offset = 0;
     for (const chunk of chunks) {
@@ -66,6 +71,7 @@ export async function fetchImageFingerprint(
     return undefined;
   } finally {
     clearTimeout(timer);
+    void reader?.cancel().catch(() => {});
     controller.abort();
   }
 }

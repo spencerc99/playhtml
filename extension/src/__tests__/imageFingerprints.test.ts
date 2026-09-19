@@ -5,6 +5,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createServer } from "node:http";
 import { webcrypto } from "node:crypto";
 import { transferableAbortController } from "node:util";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import {
   ImageFingerprints,
   fetchImageFingerprint,
@@ -56,8 +58,9 @@ const server = createServer((request, response) => {
     response.end();
     return;
   }
-  if (request.url === "/timeout") {
+  if (request.url === "/timeout" || request.url === "/timeout-partial") {
     response.flushHeaders();
+    if (request.url === "/timeout-partial") response.write(svg);
     return;
   }
   setTimeout(
@@ -228,6 +231,17 @@ describe("image fingerprints", () => {
   });
 
   it("aborts a response that never finishes", async () => {
-    expect(await fetchImageFingerprint(`${origin}/timeout`)).toBeUndefined();
+    setFlagsFromString("--expose-gc");
+    const collectGarbage = runInNewContext("gc") as () => void;
+    setFlagsFromString("--no-expose-gc");
+    const collect = setInterval(collectGarbage, 100);
+    try {
+      expect(await Promise.all([
+        fetchImageFingerprint(`${origin}/timeout`),
+        fetchImageFingerprint(`${origin}/timeout-partial`),
+      ])).toEqual([undefined, undefined]);
+    } finally {
+      clearInterval(collect);
+    }
   }, 15000);
 });
