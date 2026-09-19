@@ -6,6 +6,39 @@ import { getRippleLifecycle } from "../ClickRipple";
 import { CLICK_DEFAULTS } from "../clickDefaults";
 
 describe("getRippleLifecycle", () => {
+  it("waits for the final ring to settle before completing", () => {
+    const effect = {
+      id: "six-ring-click",
+      x: 0,
+      y: 0,
+      color: "#000",
+      radiusFactor: 0.5,
+      durationFactor: 0,
+      startTime: 1000,
+      trailIndex: 0,
+    };
+    const settings = {
+      ...CLICK_DEFAULTS,
+      clickNumRings: 6,
+    };
+    const settledAt =
+      effect.startTime +
+      (settings.clickNumRings - 1) * settings.clickRingDelayMs +
+      settings.clickExpansionDuration;
+
+    expect(
+      getRippleLifecycle(
+        effect,
+        settings,
+        effect.startTime + settings.clickMinDuration,
+      ).complete,
+    ).toBe(false);
+    expect(getRippleLifecycle(effect, settings, settledAt - 1).complete).toBe(
+      false,
+    );
+    expect(getRippleLifecycle(effect, settings, settledAt).complete).toBe(true);
+  });
+
   it("caps very long holds at three times the normal size and duration", () => {
     const lifecycle = getRippleLifecycle(
       {

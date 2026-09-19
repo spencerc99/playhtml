@@ -47,6 +47,7 @@ interface ControlsProps {
   timeRange: { min: number; max: number; duration: number };
   activeVisualizations: string[];
   onSetActiveVisualizations: (vizIds: string[]) => void;
+  availableVisualizations?: readonly string[];
   /** When non-null, the canvas is scoped to this absolute-time window. */
   selectedTimeRange?: { startMs: number; endMs: number } | null;
   /** Set/clear the canvas time-range filter from the Hotspots panel. */
@@ -724,6 +725,7 @@ export const Controls: React.FC<ControlsProps> = memo(
     timeRange,
     activeVisualizations,
     onSetActiveVisualizations,
+    availableVisualizations,
     selectedTimeRange,
     onSelectTimeRange,
   }) => {
@@ -848,6 +850,26 @@ export const Controls: React.FC<ControlsProps> = memo(
           selectedTimeRange={selectedTimeRange ?? null}
         />
 
+        <div className="control-group">
+          <label htmlFor="animation-speed">Animation Speed</label>
+          <input
+            id="animation-speed"
+            type="range"
+            min="0.1"
+            max="10"
+            step="0.1"
+            value={settings.animationSpeed}
+            onChange={(e) =>
+              setSettings((s: any) => ({
+                ...s,
+                animationSpeed: parseFloat(e.target.value),
+              }))
+            }
+          />
+          <span>{settings.animationSpeed.toFixed(1)}x</span>
+        </div>
+
+
         {/* Visual Style (color vs monochrome) — top-level since it drives the
             cursors AND the window/typing visualizations, not just trails. */}
         <div className="control-group" style={{ marginBottom: "12px" }}>
@@ -934,7 +956,11 @@ export const Controls: React.FC<ControlsProps> = memo(
                 marginTop: "4px",
               }}
             >
-              {VISUALIZATIONS.map((viz) => {
+              {VISUALIZATIONS.filter(
+                (viz) =>
+                  availableVisualizations === undefined ||
+                  availableVisualizations.includes(viz.id),
+              ).map((viz) => {
                 const isActive = activeVisualizations.includes(viz.id);
                 return (
                   <React.Fragment key={viz.id}>
@@ -1166,26 +1192,6 @@ export const Controls: React.FC<ControlsProps> = memo(
               <span>{(settings.chaosIntensity || 1.0).toFixed(1)}x</span>
             </div>
           )}
-
-          {/* Animation settings */}
-          <div className="control-group">
-            <label htmlFor="animation-speed">Animation Speed</label>
-            <input
-              id="animation-speed"
-              type="range"
-              min="0.1"
-              max="10"
-              step="0.1"
-              value={settings.animationSpeed}
-              onChange={(e) =>
-                setSettings((s: any) => ({
-                  ...s,
-                  animationSpeed: parseFloat(e.target.value),
-                }))
-              }
-            />
-            <span>{settings.animationSpeed.toFixed(1)}x</span>
-          </div>
 
           <div className="control-group">
             <label htmlFor="max-concurrent">Max Concurrent Trails</label>

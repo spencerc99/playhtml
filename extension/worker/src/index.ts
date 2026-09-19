@@ -17,6 +17,7 @@ import {
   handleQuarantineRip,
 } from './routes/quarantine';
 import { handleCommute, handleCommuteReview } from './routes/commute';
+import { handleCommuteTrainBoard } from './routes/commuteTrains';
 import {
   handleAccessRequest,
   handleAdminAccessOverview,
@@ -34,10 +35,15 @@ import {
   handleInternetPlacePolicyPut,
 } from './routes/internetPlaceCatalog';
 import { handleInternetPlaceSuggestion } from './routes/internetPlaceSuggestion';
+import {
+  handleAdminInstallationReload,
+  handleInstallationControl,
+} from './routes/installationControl';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
 export { LiveEventsHub } from './live/LiveEventsHub';
+export { CommuteTrainDispatcherObject } from './commuteTrainDispatcherObject';
 
 /**
  * Cloudflare Worker entry point
@@ -114,6 +120,11 @@ export default {
       return handleInternetPlaceSuggestion(request, env);
     }
 
+    if (path === '/commute/trains/board' && request.method === 'POST') {
+      if (!isAllowedOrigin(request)) return forbiddenResponse();
+      return handleCommuteTrainBoard(request, env);
+    }
+
     if (path === '/events/daily-counts' && request.method === 'GET') {
       if (!isAllowedOrigin(request)) return forbiddenResponse();
       return handleDailyCounts(request, env);
@@ -166,6 +177,14 @@ export default {
 
     if (path === '/admin/access-control/people' && request.method === 'POST') {
       return handleAdminPeopleAdd(request, env);
+    }
+
+    if (path === '/installation/control' && request.method === 'GET') {
+      return handleInstallationControl(env);
+    }
+
+    if (path === '/admin/installation/reload' && request.method === 'POST') {
+      return handleAdminInstallationReload(request, env);
     }
 
     const adminFeatureMatch = path.match(/^\/admin\/access-control\/features\/([^/]+)$/);

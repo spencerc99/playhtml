@@ -1,5 +1,5 @@
 // ABOUTME: Renders extension UI only when its catalog feature is effectively enabled.
-// ABOUTME: Reacts to beta eligibility and local override changes without reopening the surface.
+// ABOUTME: Reacts to experiment eligibility and local override changes without reopening the surface.
 
 import type { ReactNode } from "react";
 import type { FeatureId } from "../flags";

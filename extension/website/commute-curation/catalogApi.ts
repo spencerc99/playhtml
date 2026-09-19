@@ -128,6 +128,7 @@ export async function getCatalog(token: string): Promise<CatalogSnapshot> {
 export async function saveCatalogPolicy(
   token: string,
   policy: CuratedPlace,
+  previous?: CuratedPlace,
 ): Promise<CuratedPlace> {
   const payload = await readCatalogResponse<{
     policy: {
@@ -147,6 +148,7 @@ export async function saveCatalogPolicy(
       placement: policy.placement,
       reason: policy.reason,
       note: policy.comment,
+      ...(previous ? { previous: { scope: previous.scope, placeKey: previous.place } } : {}),
     }),
   }));
   const saved = payload.policy;

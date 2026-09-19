@@ -14,4 +14,8 @@ export const DOWNLOAD_LINKS = [
     browser: "Edge",
     url: "https://microsoftedge.microsoft.com/addons/detail/we-were-online/kiamoecdnaglmhigmbmdkiodbbphpodl",
   },
+  {
+    browser: "Safari",
+    url: "https://apps.apple.com/us/app/we-were-online/id6798847358?mt=12",
+  },
 ] as const;

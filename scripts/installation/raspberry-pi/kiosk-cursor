@@ -1,0 +1,4 @@
+#!/bin/sh
+# ABOUTME: Hides the physical kiosk pointer after one second of inactivity.
+# ABOUTME: Invokes the labwc HideCursor action through its keyboard shortcut.
+exec swayidle -w timeout 1 'wtype -M alt -M logo -P h -p h -m logo -m alt'

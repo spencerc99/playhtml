@@ -546,8 +546,10 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
     try {
       await rewriter.transform(cappedResp).text();
     } catch {
-      // Body cap fired or stream errored mid-parse. Whatever we've captured
-      // so far (in titleBuf / title / favicon vars) is still usable.
+      return {
+        source: 'none',
+        inspection: unknownInspection('network_error', finalUrl),
+      };
     }
     const rawTitle = title || titleBuf || undefined;
     const inspectionHead = [

@@ -113,7 +113,7 @@ describe("walking record entrypoint", () => {
     mocks.writeWalkingRecordCache.mockReset();
   });
 
-  it("retries a stale refresh after navigating away and back", async () => {
+  it("retries refreshes after navigation and returning to the page", async () => {
     await act(async () => {
       await import("../entrypoints/walking-record/walking-record");
       await flushEffects();
@@ -136,6 +136,18 @@ describe("walking record entrypoint", () => {
     expect(mocks.loadWalkingRecord.mock.calls.map((call) => call[0])).toEqual([
       "week",
       "month",
+      "week",
+    ]);
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await flushEffects();
+    });
+
+    expect(mocks.loadWalkingRecord.mock.calls.map((call) => call[0])).toEqual([
+      "week",
+      "month",
+      "week",
       "week",
     ]);
   });

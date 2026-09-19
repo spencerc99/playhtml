@@ -1,17 +1,20 @@
 // ABOUTME: Tests scroll viewport animation timeline and frame calculations.
 // ABOUTME: Verifies interpolation behavior used by the animated viewport renderer.
 import { describe, expect, it } from "vitest";
-import type { ScrollAnimation } from "../../types";
+import type { ActiveViewport, ScrollAnimation } from "../../types";
 import { getViewportTitleText } from "../../utils/titleText";
 import {
   buildViewportAnimationTimeline,
   getScrollQueueIndex,
+  getViewportFrame,
   getResizeDimensionsAtTime,
   getScrollPositionAtTime,
   getZoomLevelAtTime,
 } from "../AnimatedScrollViewports";
 
-function makeAnimation(overrides: Partial<ScrollAnimation> = {}): ScrollAnimation {
+function makeAnimation(
+  overrides: Partial<ScrollAnimation> = {},
+): ScrollAnimation {
   return {
     participantId: "participant",
     sessionId: "session",
@@ -75,7 +78,12 @@ describe("AnimatedScrollViewports timeline helpers", () => {
 
   it("interpolates resize dimensions at a specific time", () => {
     expect(
-      getResizeDimensionsAtTime(makeAnimation().resizeEvents ?? [], 400, 1280, 720),
+      getResizeDimensionsAtTime(
+        makeAnimation().resizeEvents ?? [],
+        400,
+        1280,
+        720,
+      ),
     ).toEqual({
       width: 1120,
       height: 630,
@@ -83,7 +91,9 @@ describe("AnimatedScrollViewports timeline helpers", () => {
   });
 
   it("interpolates zoom levels at a specific time", () => {
-    expect(getZoomLevelAtTime(makeAnimation().zoomEvents ?? [], 500)).toBe(1.25);
+    expect(getZoomLevelAtTime(makeAnimation().zoomEvents ?? [], 500)).toBe(
+      1.25,
+    );
   });
 });
 
@@ -104,7 +114,7 @@ describe("AnimatedScrollViewports title text", () => {
         "https://example.com/post",
         "Spencer&#39;s &amp; Codex &quot;notes&quot;",
       ),
-    ).toBe("Spencer's & Codex \"notes\"");
+    ).toBe('Spencer\'s & Codex "notes"');
 
     expect(
       getViewportTitleText(
@@ -140,5 +150,71 @@ describe("AnimatedScrollViewports title text", () => {
         "https://en.wikipedia.org/wiki/Spencer%27s_Online_Notes",
       ),
     ).toBe("Spencer's Online Notes");
+  });
+});
+
+describe("viewport frames", () => {
+  function viewport(
+    phase: ActiveViewport["phase"] = "animating",
+  ): ActiveViewport {
+    return {
+      id: "viewport",
+      animation: makeAnimation(),
+      rect: { x: 100, y: 200, width: 640, height: 360 },
+      phase,
+      phaseStartTime: 1000,
+      animationStartTime: 1000,
+      durationMs: 650,
+      backgroundSeed: 7,
+    };
+  }
+
+  it("calculates fades independently of playback speed", () => {
+    const v = viewport("fade-in");
+    const timeline = buildViewportAnimationTimeline(v.animation);
+    expect(getViewportFrame(v, timeline, 1200, 4).opacity).toBe(0.5);
+    expect(
+      getViewportFrame({ ...v, phase: "fade-out" }, timeline, 1300, 4).opacity,
+    ).toBe(0.5);
+  });
+
+  it("keeps scrolling and the thumb on the same timeline", () => {
+    const v = viewport();
+    v.animation = makeAnimation({ resizeEvents: [], zoomEvents: [] });
+    const timeline = buildViewportAnimationTimeline(v.animation);
+    const frame = getViewportFrame(v, timeline, 1325, 1);
+    expect(frame.scrollY).toBeCloseTo(0.675);
+    expect(frame.bgHeight).toBeCloseTo(1872);
+    expect(frame.scrolledContentTransform).toBe(
+      `translate(0 ${-frame.scrollY * (frame.bgHeight - frame.visualHeight)})`,
+    );
+    expect(frame.thumbY).toBeCloseTo(204 + frame.scrollY * (352 - 13));
+    expect(frame.zoomTransform).toBeUndefined();
+  });
+
+  it("centers resized windows and applies zoom around the viewport center", () => {
+    const v = viewport();
+    const frame = getViewportFrame(
+      v,
+      buildViewportAnimationTimeline(v.animation),
+      1300,
+      1,
+    );
+    expect(frame.visualWidth).toBe(560);
+    expect(frame.visualHeight).toBe(315);
+    expect(frame.visualX).toBe(140);
+    expect(frame.visualY).toBe(222.5);
+    expect(frame.isActivelyResizing).toBe(true);
+    expect(frame.zoomTransform).toBe(
+      "translate(420, 380) scale(1.15) translate(-420, -380)",
+    );
+  });
+
+  it("holds the terminal frame after playback completes", () => {
+    const v = viewport();
+    const timeline = buildViewportAnimationTimeline(v.animation);
+    expect(getViewportFrame(v, timeline, 2000, 4)).toEqual(
+      getViewportFrame(v, timeline, 3000, 4),
+    );
   });
 });

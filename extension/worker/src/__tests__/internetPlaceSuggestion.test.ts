@@ -8,6 +8,7 @@ import { Miniflare } from 'miniflare';
 import type { Env } from '../lib/supabase';
 import {
   handleInternetPlaceSuggestion,
+  hashSuggestionCandidate,
   INTERNET_PLACE_SUGGESTION_MODEL,
   INTERNET_PLACE_SUGGESTION_PROMPT_VERSION,
   parseInternetPlaceSuggestionModelOutput,
@@ -16,6 +17,7 @@ import {
 const schema = [
   '../../migrations/0003_internet_place_catalog.sql',
   '../../migrations/0005_internet_place_suggestions.sql',
+  '../../migrations/0006_internet_place_suggestion_evidence.sql',
 ].map((path) => readFileSync(
   fileURLToPath(new URL(path, import.meta.url)),
   'utf8',
@@ -79,6 +81,18 @@ afterEach(async () => {
 });
 
 describe('Internet place suggestions', () => {
+  it('hashes only sanitized public URLs and allowlisted audit evidence', async () => {
+    const candidate = { url: 'https://www.youtube.com/watch?v=abcdefghijk' };
+    expect(await hashSuggestionCandidate({ url: `${candidate.url}&private_extra=personal-value` }))
+      .toBe(await hashSuggestionCandidate(candidate));
+    expect(await hashSuggestionCandidate({
+      ...candidate, audit: { observation: { visits: 12 }, reasons: ['private browsing detail'] },
+    })).toBe(await hashSuggestionCandidate({ ...candidate, audit: {} }));
+    expect(await hashSuggestionCandidate({
+      ...candidate, inspection: { finalUrl: `${candidate.url}&private_extra=personal-value` },
+    })).toBe(await hashSuggestionCandidate({ ...candidate, inspection: { finalUrl: candidate.url } }));
+  });
+
   it('parses structured and chat-completion model output', () => {
     expect(parseInternetPlaceSuggestionModelOutput(suggestion)).toEqual(suggestion);
     expect(parseInternetPlaceSuggestionModelOutput({
@@ -108,25 +122,27 @@ describe('Internet place suggestions', () => {
   });
 
   it('returns a canonical-page cache hit without an AI binding', async () => {
+    const candidate = {
+      url: 'https://www.example.com/essay/?utm_source=private-tracker',
+      title: 'An essay',
+      audit: { scores: { humanWeb: 82 }, observation: { visits: 3 } },
+    };
     await env.WWO_ADMIN_DB.prepare(
       `INSERT INTO place_suggestions (
-         page_key, model, prompt_version, suggestion_json, created_at
-       ) VALUES (?, ?, ?, ?, ?)`,
+         page_key, model, prompt_version, suggestion_json, created_at, evidence_hash
+       ) VALUES (?, ?, ?, ?, ?, ?)`,
     ).bind(
       'https://example.com/essay',
       INTERNET_PLACE_SUGGESTION_MODEL,
       INTERNET_PLACE_SUGGESTION_PROMPT_VERSION,
       JSON.stringify(suggestion),
       '2026-08-22 10:00:00',
+      await hashSuggestionCandidate(candidate),
     ).run();
 
     const response = await handleInternetPlaceSuggestion(
       suggestionRequest({
-        candidate: {
-          url: 'https://www.example.com/essay/?utm_source=private-tracker',
-          title: 'An essay',
-          audit: { scores: { humanWeb: 82 }, observation: { visits: 3 } },
-        },
+        candidate,
       }),
       env,
     );
@@ -141,6 +157,12 @@ describe('Internet place suggestions', () => {
     });
     expect(await countRows('place_suggestions')).toBe(1);
     expect(await countRows('place_policies')).toBe(0);
+    const changed = await handleInternetPlaceSuggestion(suggestionRequest({
+      candidate: { ...candidate, title: 'Updated public evidence' },
+    }), env);
+    expect(changed.status).toBe(503);
+    expect(await hashSuggestionCandidate({ title: candidate.title, audit: candidate.audit, url: candidate.url }))
+      .toBe(await hashSuggestionCandidate(candidate));
   });
 
   it('bypasses cache on refresh and fails clearly when AI is unavailable', async () => {
@@ -172,6 +194,13 @@ describe('Internet place suggestions', () => {
   it('rejects private targets and oversized metadata without writing', async () => {
     for (const candidate of [
       { url: 'http://127.0.0.1/private' },
+      { url: 'https://example.com/account/orders' },
+      { url: 'https://login.example.com/' },
+      { url: 'https://example.com/?q=private-search' },
+      { url: 'https://example.com', audit: { pid: 'private-person' } },
+      { url: 'https://example.com', audit: { nested: { sid: 'private-session' } } },
+      { url: 'https://example.com', audit: { participant_id: 'private-person' } },
+      { url: 'https://example.com', inspection: { finalUrl: 'https://example.com/account/orders' } },
       { url: 'https://example.com', audit: { note: 'x'.repeat(501) } },
       {
         url: 'https://example.com',

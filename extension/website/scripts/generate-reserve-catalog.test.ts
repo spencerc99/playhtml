@@ -1,7 +1,7 @@
 // ABOUTME: Tests deterministic URL normalization and source-specific reserve catalog parsing.
 // ABOUTME: Verifies duplicate handling without exercising public websites during the test suite.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import {
   canonicalizeCatalogUrl,
   dedupeCatalogEntries,

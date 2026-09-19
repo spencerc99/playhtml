@@ -59,6 +59,37 @@ describe("buildExtensionReleasePayload", () => {
 });
 
 describe("extension release workflow", () => {
+  it("attempts each store independently before failing the release", () => {
+    const workflowPath = fileURLToPath(
+      new URL("../workflows/extension-release.yml", import.meta.url),
+    );
+    const workflow = readFileSync(workflowPath, "utf8");
+    const storeSteps = [
+      "Submit to Chrome",
+      "Submit to Edge",
+      "Submit to Firefox",
+      "Package and submit Safari app",
+    ];
+
+    for (const storeStep of storeSteps) {
+      const stepIndex = workflow.indexOf(`- name: ${storeStep}`);
+      const nextStepIndex = workflow.indexOf("\n      - name:", stepIndex + 1);
+      const step = workflow.slice(stepIndex, nextStepIndex);
+
+      assert.notEqual(stepIndex, -1);
+      assert.match(step, /continue-on-error: true/);
+    }
+
+    const safariStepIndex = workflow.indexOf(
+      "- name: Package and submit Safari app",
+    );
+    const checkStepIndex = workflow.indexOf("- name: Check store submissions");
+    const tagStepIndex = workflow.indexOf("- name: Tag release");
+
+    assert.ok(safariStepIndex < checkStepIndex);
+    assert.ok(checkStepIndex < tagStepIndex);
+  });
+
   it("creates the GitHub release before announcing it", () => {
     const workflowPath = fileURLToPath(
       new URL("../workflows/extension-release.yml", import.meta.url),

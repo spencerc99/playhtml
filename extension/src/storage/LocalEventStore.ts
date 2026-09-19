@@ -4,6 +4,7 @@
 import type {
   CollectionEvent,
   CollectionEventType,
+  ImageScrapData,
   CursorEventData,
   NavigationEventData,
 } from "../collectors/types";
@@ -12,9 +13,12 @@ import {
   normalizeUrl,
   extractDomain as extractDomainUtil,
 } from "../utils/urlNormalization";
+import { getScrapEncounterKey } from "../collectors/scrapUtils";
+
+import { isImageContentHash } from "@movement/utils/scrapIdentity";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 11;
+const DB_VERSION = 14;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
 const AGGREGATE_URLS_STORE_NAME = "aggregate_urls";
@@ -44,6 +48,7 @@ type UploadState = typeof UPLOAD_STATE_PENDING | typeof UPLOAD_STATE_UPLOADED;
 type StatsBackfillState = "running" | "complete";
 
 interface StoredCollectionEvent extends CollectionEvent {
+  canonicalScrapKey?: string;
   uploaded?: boolean;
   uploadState?: UploadState;
 }
@@ -83,6 +88,8 @@ export interface StorageStats {
   totalEvents: number;
   /** Approximate byte size (sum of JSON string lengths; ~1:1 for ASCII event data). Single stringify per event for perf. */
   estimatedSizeBytes: number;
+  /** Approximate serialized byte size grouped by collection event type. */
+  estimatedSizeBytesByType: Record<string, number>;
   oldestEvent: number;
   newestEvent: number;
   countsByType: Record<string, number>;
@@ -174,13 +181,15 @@ function getUploadState(event: StoredCollectionEvent): UploadState {
 
 function prepareStoredEvent(event: CollectionEvent): StoredCollectionEvent {
   const storedEvent: StoredCollectionEvent = { ...event };
+  delete storedEvent.canonicalScrapKey;
   storedEvent.uploadState = getUploadState(storedEvent);
   storedEvent.uploaded = storedEvent.uploadState === UPLOAD_STATE_UPLOADED;
   return storedEvent;
 }
 
 function toCollectionEvent(event: StoredCollectionEvent): CollectionEvent {
-  const { uploaded, uploadState, ...collectionEvent } = event;
+  const { canonicalScrapKey, uploaded, uploadState, ...collectionEvent } =
+    event;
   return collectionEvent;
 }
 
@@ -489,30 +498,6 @@ export class LocalEventStore {
           }
         }
 
-        // Backfill domain and normalizedUrl fields on existing events
-        if (oldVersion < 5) {
-          const tx = (event.target as IDBOpenDBRequest).transaction!;
-          const objStore = tx.objectStore(STORE_NAME);
-          const backfillReq = objStore.openCursor();
-          backfillReq.onsuccess = () => {
-            const cursor = backfillReq.result;
-            if (cursor) {
-              const evt = cursor.value;
-              let updated = false;
-              if (!evt.domain && evt.meta?.url) {
-                evt.domain = extractDomain(evt.meta.url);
-                updated = true;
-              }
-              if (!evt.normalizedUrl && evt.meta?.url) {
-                evt.normalizedUrl = normalizeUrl(evt.meta.url);
-                updated = true;
-              }
-              if (updated) cursor.update(evt);
-              cursor.continue();
-            }
-          };
-        }
-
         // v6: create domain_stats store (keyPath: "domain")
         // v7: recreate with keyPath: "key" to support both domain and page-level aggregates
         // v8: force rebuild to populate page-level + global aggregates added after v7
@@ -595,6 +580,14 @@ export class LocalEventStore {
           });
         }
 
+        if (oldVersion < 12) {
+          if (!store.indexNames.contains("canonicalScrapKey")) {
+            store.createIndex("canonicalScrapKey", "canonicalScrapKey", {
+              unique: false,
+            });
+          }
+        }
+
         if (oldVersion < 9) {
           if (store.indexNames.contains("uploaded")) {
             store.deleteIndex("uploaded");
@@ -602,25 +595,66 @@ export class LocalEventStore {
           if (!store.indexNames.contains("uploadState")) {
             store.createIndex("uploadState", "uploadState", { unique: false });
           }
+        }
 
-          const tx = (event.target as IDBOpenDBRequest).transaction!;
-          const objStore = tx.objectStore(STORE_NAME);
-          const backfillReq = objStore.openCursor();
-          backfillReq.onsuccess = () => {
-            const cursor = backfillReq.result;
-            if (cursor) {
-              const evt = cursor.value as StoredCollectionEvent;
-              const nextState = getUploadState(evt);
-              if (
-                evt.uploadState !== nextState ||
-                evt.uploaded !== (nextState === UPLOAD_STATE_UPLOADED)
-              ) {
-                evt.uploadState = nextState;
-                evt.uploaded = nextState === UPLOAD_STATE_UPLOADED;
-                cursor.update(evt);
+        if (oldVersion < 14) {
+          // Backfill event fields in one cursor so every migrated row is written once.
+          const backfillRequest =
+            oldVersion >= 12
+              ? store.index("type").openCursor(IDBKeyRange.only("element"))
+              : store.openCursor();
+          backfillRequest.onsuccess = () => {
+            const cursor = backfillRequest.result;
+            if (!cursor) return;
+
+            const storedEvent = cursor.value as StoredCollectionEvent;
+            let updated = false;
+
+            if (oldVersion < 5 && storedEvent.meta?.url) {
+              if (!storedEvent.domain) {
+                storedEvent.domain = extractDomain(storedEvent.meta.url);
+                updated = true;
               }
-              cursor.continue();
+              if (!storedEvent.normalizedUrl) {
+                storedEvent.normalizedUrl = normalizeUrl(storedEvent.meta.url);
+                updated = true;
+              }
             }
+
+            if (oldVersion < 9) {
+              const uploadState = getUploadState(storedEvent);
+              const uploaded = uploadState === UPLOAD_STATE_UPLOADED;
+              if (
+                storedEvent.uploadState !== uploadState ||
+                storedEvent.uploaded !== uploaded
+              ) {
+                storedEvent.uploadState = uploadState;
+                storedEvent.uploaded = uploaded;
+                updated = true;
+              }
+            }
+
+            if (storedEvent.type === "element") {
+              const domain =
+                storedEvent.domain || extractDomain(storedEvent.meta.url);
+              const canonicalScrapKey = getScrapEncounterKey(
+                domain,
+                storedEvent.data,
+                storedEvent.meta.url,
+                storedEvent.ts,
+                storedEvent.meta.tz,
+              );
+              if (
+                canonicalScrapKey !== undefined &&
+                storedEvent.canonicalScrapKey !== canonicalScrapKey
+              ) {
+                storedEvent.canonicalScrapKey = canonicalScrapKey;
+                updated = true;
+              }
+            }
+
+            if (updated) cursor.update(storedEvent);
+            cursor.continue();
           };
         }
       };
@@ -1234,6 +1268,98 @@ export class LocalEventStore {
     });
   }
 
+  /** Reads a bounded page of unchecked images in primary-key order. */
+  async queryUncheckedImages(
+    afterId?: string,
+  ): Promise<{ events: CollectionEvent[]; afterId?: string; done: boolean }> {
+    await this.ensureInitialized();
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+      const transaction = this.db.transaction(STORE_NAME, "readonly");
+      const request = transaction
+        .objectStore(STORE_NAME)
+        .index("type")
+        .openCursor(IDBKeyRange.only("element"));
+      const events: CollectionEvent[] = [];
+      let scanned = 0;
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve({ events, done: true });
+          return;
+        }
+        if (
+          afterId !== undefined &&
+          indexedDB.cmp(cursor.primaryKey, afterId) < 0
+        ) {
+          cursor.continuePrimaryKey("element", afterId);
+          return;
+        }
+        if (cursor.primaryKey === afterId) {
+          cursor.continue();
+          return;
+        }
+        const event = cursor.value as StoredCollectionEvent;
+        const data = event.data as Partial<ImageScrapData> | null;
+        if (
+          data?.kind === "image" &&
+          typeof data.src === "string" &&
+          !isImageContentHash(data.contentHash)
+        ) {
+          events.push(toCollectionEvent(event));
+        }
+        scanned++;
+        if (events.length === 2 || scanned === 200) {
+          resolve({ events, afterId: event.id, done: false });
+          return;
+        }
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+  }
+
+  /** Updates only a retained image's fingerprint; a deleted event stays deleted. */
+  async setImageContentHash(
+    id: string,
+    src: string,
+    contentHash: string,
+  ): Promise<boolean> {
+    if (!isImageContentHash(contentHash))
+      throw new Error("Invalid image fingerprint");
+    await this.ensureInitialized();
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+      const transaction = this.db.transaction(STORE_NAME, "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get(id);
+      let updated = false;
+      request.onsuccess = () => {
+        const event = request.result as StoredCollectionEvent | undefined;
+        const data = event?.data as Partial<ImageScrapData> | undefined;
+        if (
+          event?.type !== "element" ||
+          data?.kind !== "image" ||
+          data.src !== src
+        )
+          return;
+        event.data = { ...data, contentHash };
+        store.put(event);
+        updated = true;
+      };
+      transaction.oncomplete = () => resolve(updated);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+  }
+
   async queryByType(
     type: CollectionEventType,
     options: Pick<QueryOptions, "limit" | "startTs" | "endTs"> = {},
@@ -1576,12 +1702,12 @@ export class LocalEventStore {
       const tsIndex = store.index("ts");
       const typeIndex = store.index("type");
       const countsByType: Record<string, number> = {};
+      const sampleCountsByType: Record<string, number> = {};
+      const sampleSizesByType: Record<string, number> = {};
       let totalEvents = 0;
       let oldestEvent = 0;
       let newestEvent = 0;
-      let sampleCount = 0;
-      let sampleSizeBytes = 0;
-      let pendingRequests = 4 + COLLECTION_EVENT_TYPES.length;
+      let pendingRequests = 3 + COLLECTION_EVENT_TYPES.length * 2;
       let settled = false;
 
       const fail = (error: unknown) => {
@@ -1595,12 +1721,23 @@ export class LocalEventStore {
         if (pendingRequests > 0 || settled) return;
 
         settled = true;
+        const estimatedSizeBytesByType: Record<string, number> = {};
+        let estimatedSizeBytes = 0;
+        for (const eventType of COLLECTION_EVENT_TYPES) {
+          const typeSampleCount = sampleCountsByType[eventType] ?? 0;
+          const typeCount = countsByType[eventType] ?? 0;
+          if (typeSampleCount === 0 || typeCount === 0) continue;
+
+          const typeSizeBytes = Math.round(
+            ((sampleSizesByType[eventType] ?? 0) / typeSampleCount) * typeCount,
+          );
+          estimatedSizeBytesByType[eventType] = typeSizeBytes;
+          estimatedSizeBytes += typeSizeBytes;
+        }
         resolve({
           totalEvents,
-          estimatedSizeBytes:
-            sampleCount > 0
-              ? Math.round((sampleSizeBytes / sampleCount) * totalEvents)
-              : 0,
+          estimatedSizeBytes,
+          estimatedSizeBytesByType,
           oldestEvent,
           newestEvent,
           countsByType,
@@ -1632,20 +1769,6 @@ export class LocalEventStore {
       };
       newestRequest.onerror = () => fail(newestRequest.error);
 
-      const sampleRequest = store.openCursor();
-      sampleRequest.onsuccess = () => {
-        const cursor = sampleRequest.result;
-        if (cursor && sampleCount < STORAGE_SIZE_SAMPLE_LIMIT) {
-          sampleCount++;
-          sampleSizeBytes += JSON.stringify(cursor.value).length;
-          cursor.continue();
-          return;
-        }
-
-        complete();
-      };
-      sampleRequest.onerror = () => fail(sampleRequest.error);
-
       for (const eventType of COLLECTION_EVENT_TYPES) {
         const typeCountRequest = typeIndex.count(IDBKeyRange.only(eventType));
         typeCountRequest.onsuccess = () => {
@@ -1655,6 +1778,25 @@ export class LocalEventStore {
           complete();
         };
         typeCountRequest.onerror = () => fail(typeCountRequest.error);
+
+        const typeSampleRequest = typeIndex.openCursor(
+          IDBKeyRange.only(eventType),
+        );
+        typeSampleRequest.onsuccess = () => {
+          const cursor = typeSampleRequest.result;
+          const typeSampleCount = sampleCountsByType[eventType] ?? 0;
+          if (cursor && typeSampleCount < STORAGE_SIZE_SAMPLE_LIMIT) {
+            sampleCountsByType[eventType] = typeSampleCount + 1;
+            sampleSizesByType[eventType] =
+              (sampleSizesByType[eventType] ?? 0) +
+              JSON.stringify(cursor.value).length;
+            cursor.continue();
+            return;
+          }
+
+          complete();
+        };
+        typeSampleRequest.onerror = () => fail(typeSampleRequest.error);
       }
 
       transaction.onerror = () => fail(transaction.error);
@@ -2222,13 +2364,13 @@ export class LocalEventStore {
   }
 
   /**
-   * Add a batch of events using upsert (put), so duplicate IDs don't error.
-   * Incrementally updates domain_stats aggregates.
+   * Add a batch of events using ID upserts and canonical scrap deduplication.
+   * Incrementally updates aggregates for accepted events.
    */
-  async addEvents(events: CollectionEvent[]): Promise<void> {
+  async addEvents(events: CollectionEvent[]): Promise<CollectionEvent[]> {
     await this.ensureInitialized();
 
-    if (events.length === 0) return;
+    if (events.length === 0) return [];
 
     const canUpdateStats = await this.canUpdateStatsIncrementally();
 
@@ -2243,9 +2385,27 @@ export class LocalEventStore {
           storedEvent.normalizedUrl = normalizeUrl(storedEvent.meta.url);
         }
       }
+      if (storedEvent.type === "element") {
+        const canonicalScrapKey = getScrapEncounterKey(
+          storedEvent.domain ?? "",
+          storedEvent.data,
+          storedEvent.meta.url,
+          storedEvent.ts,
+          storedEvent.meta.tz,
+        );
+        if (canonicalScrapKey !== undefined) {
+          storedEvent.canonicalScrapKey = canonicalScrapKey;
+        }
+      }
       storedEventsById.set(storedEvent.id, storedEvent);
     }
-    const storedEvents = [...storedEventsById.values()];
+    const canonicalScrapKeys = new Set<string>();
+    const storedEvents = [...storedEventsById.values()].filter((event) => {
+      if (event.canonicalScrapKey === undefined) return true;
+      if (canonicalScrapKeys.has(event.canonicalScrapKey)) return false;
+      canonicalScrapKeys.add(event.canonicalScrapKey);
+      return true;
+    });
     let eventsForStats = storedEvents.map(toCollectionEvent);
 
     if (!canUpdateStats) {
@@ -2263,16 +2423,17 @@ export class LocalEventStore {
 
           const transaction = this.db.transaction([STORE_NAME], "readwrite");
           const evtStore = transaction.objectStore(STORE_NAME);
+          const canonicalScrapIndex = evtStore.index("canonicalScrapKey");
           const insertedEvents: StoredCollectionEvent[] = [];
 
           transaction.oncomplete = () => resolve(insertedEvents);
           transaction.onerror = () => reject(transaction.error);
 
-          for (const event of storedEvents) {
+          const writeEvent = (event: StoredCollectionEvent) => {
             if (!canUpdateStats) {
               evtStore.put(event);
               insertedEvents.push(event);
-              continue;
+              return;
             }
 
             const getKeyRequest = evtStore.getKey(event.id);
@@ -2282,13 +2443,35 @@ export class LocalEventStore {
               }
               evtStore.put(event);
             };
+          };
+
+          for (const event of storedEvents) {
+            if (event.canonicalScrapKey === undefined) {
+              writeEvent(event);
+              continue;
+            }
+
+            const canonicalKeyRequest = canonicalScrapIndex.getKey(
+              event.canonicalScrapKey,
+            );
+            canonicalKeyRequest.onsuccess = () => {
+              if (canonicalKeyRequest.result === undefined) {
+                writeEvent(event);
+              }
+            };
           }
         },
       );
 
-      if (canUpdateStats) {
-        eventsForStats = insertedEvents.map(toCollectionEvent);
+      if (!canUpdateStats) {
+        const insertedEventIds = new Set(
+          insertedEvents.map((event) => event.id),
+        );
+        this.removeEventsQueuedForStatsAfterBackfill(
+          eventsForStats.filter((event) => !insertedEventIds.has(event.id)),
+        );
       }
+      eventsForStats = insertedEvents.map(toCollectionEvent);
     } catch (e) {
       if (!canUpdateStats) {
         this.removeEventsQueuedForStatsAfterBackfill(eventsForStats);
@@ -2300,7 +2483,7 @@ export class LocalEventStore {
       this.ensureSessionStatsBackfilled().catch((e) =>
         console.error("[LocalEventStore] Session stats backfill failed:", e),
       );
-      return;
+      return eventsForStats;
     }
 
     // Update domain aggregates in a separate transaction so a stats
@@ -2320,6 +2503,7 @@ export class LocalEventStore {
         console.error("[LocalEventStore] Failed to update active days:", e);
       }
     }
+    return eventsForStats;
   }
 
   /** Rebuild aggregates after importing event history from a file. */
@@ -2616,7 +2800,7 @@ export class LocalEventStore {
    * Add a single event — delegates to addEvents
    */
   async addEvent(event: CollectionEvent): Promise<void> {
-    return this.addEvents([event]);
+    await this.addEvents([event]);
   }
 
   /**

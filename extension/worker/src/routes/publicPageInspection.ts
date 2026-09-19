@@ -114,7 +114,7 @@ function isLoginDocument(
   finalUrl: URL,
 ): boolean {
   if (
-    !/<input\b[^>]*\btype\s*=\s*(?:["']password["']|password)\b[^>]*>/i.test(
+    !/<input\b[^>]*\s+type\s*=\s*(?:"password"|'password'|password)(?=\s|\/?>)[^>]*>/i.test(
       htmlHead,
     )
   ) {

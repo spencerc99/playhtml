@@ -4,3 +4,4 @@
 export * from "./types";
 export * from "./pageMetadata";
 export * from "./commute";
+export * from "./commuteTrain";

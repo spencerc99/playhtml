@@ -1,5 +1,5 @@
-// ABOUTME: Covers the new tab step of setup on browsers that support the override.
-// ABOUTME: The opt-in checkbox is offered here, unlike Safari's bookmark advice.
+// ABOUTME: Covers the new tab choice on the combined setup completion step.
+// ABOUTME: Verifies the opt-out value is persisted only when setup finishes.
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -15,18 +15,12 @@ vi.mock("../storage/playerIdentity", () => ({
 vi.mock("../storage/playerColor", () => ({
   savePlayerColor: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("../components/TrailsHero", () => ({
-  TrailsHero: () => <div />,
-}));
+vi.mock("../components/TrailsHero", () => ({ TrailsHero: () => <div /> }));
 vi.mock("../components/MilestoneToastPreview", () => ({
   MilestoneToastPreview: () => <div />,
 }));
-vi.mock("../components/PortraitCard", () => ({
-  PortraitCard: () => <div />,
-}));
-vi.mock("@movement/config", () => ({
-  WORKER_URL: "https://example.com",
-}));
+vi.mock("../components/PortraitCard", () => ({ PortraitCard: () => <div /> }));
+vi.mock("@movement/config", () => ({ WORKER_URL: "https://example.com" }));
 
 class ResizeObserverStub {
   observe() {}
@@ -37,8 +31,11 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", ResizeObserverStub);
   vi.mocked(browser.storage.local.set).mockReset();
   vi.mocked(browser.storage.local.set).mockResolvedValue(undefined);
-  vi.mocked(browser.storage.local.get).mockReset();
   vi.mocked(browser.storage.local.get).mockResolvedValue({});
+  vi.mocked(browser.tabs.getCurrent).mockResolvedValue({
+    id: 1,
+  } as browser.Tabs.Tab);
+  vi.mocked(browser.tabs.remove).mockResolvedValue(undefined);
   (
     globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -50,7 +47,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function renderToNewTabStep() {
+async function renderCompletionStep() {
   const { default: SetupPage } = await import("../components/SetupPage");
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -61,72 +58,62 @@ async function renderToNewTabStep() {
     await Promise.resolve();
   });
   await act(async () => {
-    [...container.querySelectorAll("button")]
-      .find((element) => element.textContent === "Get started")
+    Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent === "Get started")
       ?.click();
   });
   await act(async () => {
-    [...container.querySelectorAll("button")]
-      .find((element) => element.textContent === "Continue")
+    Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent === "Continue")
       ?.click();
     await Promise.resolve();
   });
-
   return { container, root };
 }
 
-it("offers the new tab opt-in checkbox off Safari", async () => {
-  const { container, root } = await renderToNewTabStep();
-
-  expect(container.textContent).toContain("See your browsing evolve");
-  expect(container.textContent).toContain("make this my new tab");
-  expect(container.textContent).not.toContain(
-    "Safari doesn't let extensions change the new tab",
-  );
-
-  const checkbox = container.querySelector<HTMLInputElement>(
-    'input[type="checkbox"]',
-  );
-  expect(checkbox).toBeTruthy();
-  // Presented as an opt-out: checked by default.
-  expect(checkbox?.checked).toBe(true);
-
+async function finish(container: HTMLElement) {
   await act(async () => {
-    [...container.querySelectorAll("button")]
-      .find((element) => element.textContent === "Continue")
+    Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent === "Finish setup")
       ?.click();
     await Promise.resolve();
   });
+}
 
-  expect(browser.storage.local.set).toHaveBeenCalledWith({
-    newtab_takeover_enabled: true,
-  });
+it("offers the new tab opt-in checkbox on the done step off Safari", async () => {
+  const { container, root } = await renderCompletionStep();
+  const checkbox = container.querySelector<HTMLInputElement>(
+    'input[type="checkbox"]',
+  );
+
+  expect(container.textContent).toContain("All set!");
+  expect(container.textContent).toContain("Review your browsing");
+  expect(container.textContent).toContain("make this my new tab");
+  expect(checkbox?.checked).toBe(true);
+  expect(browser.storage.local.set).not.toHaveBeenCalledWith(
+    expect.objectContaining({ newtab_takeover_enabled: true }),
+  );
+
+  await finish(container);
+  expect(browser.storage.local.set).toHaveBeenCalledWith(
+    expect.objectContaining({ newtab_takeover_enabled: true }),
+  );
 
   act(() => root.unmount());
   container.remove();
 });
 
-it("records declining the new tab takeover", async () => {
-  const { container, root } = await renderToNewTabStep();
-
+it("records declining the new tab takeover on Finish", async () => {
+  const { container, root } = await renderCompletionStep();
   const checkbox = container.querySelector<HTMLInputElement>(
     'input[type="checkbox"]',
   );
-  await act(async () => {
-    checkbox!.click();
-    await Promise.resolve();
-  });
+  await act(async () => checkbox?.click());
 
-  await act(async () => {
-    [...container.querySelectorAll("button")]
-      .find((element) => element.textContent === "Continue")
-      ?.click();
-    await Promise.resolve();
-  });
-
-  expect(browser.storage.local.set).toHaveBeenCalledWith({
-    newtab_takeover_enabled: false,
-  });
+  await finish(container);
+  expect(browser.storage.local.set).toHaveBeenCalledWith(
+    expect.objectContaining({ newtab_takeover_enabled: false }),
+  );
 
   act(() => root.unmount());
   container.remove();

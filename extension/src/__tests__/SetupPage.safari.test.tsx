@@ -120,13 +120,6 @@ it("closes the setup tab after onboarding", async () => {
       ?.click();
     await Promise.resolve();
   });
-  await act(async () => {
-    [...container.querySelectorAll("button")]
-      .find((element) => element.textContent === "Continue")
-      ?.click();
-    await Promise.resolve();
-  });
-
   const finishButton = [...container.querySelectorAll("button")].find(
     (element) => element.textContent === "Finish setup",
   );
@@ -147,9 +140,7 @@ it("closes the setup tab after onboarding", async () => {
 it("offers recovery when Safari cannot save setup choices", async () => {
   vi.mocked(browser.storage.local.set)
     .mockRejectedValueOnce(
-      new Error(
-        "Invalid call to browser.storage.local.set(). Disk I/O error.",
-      ),
+      new Error("Invalid call to browser.storage.local.set(). Disk I/O error."),
     )
     .mockResolvedValueOnce(undefined);
   const { default: SetupPage } = await import("../components/SetupPage");
@@ -188,13 +179,13 @@ it("offers recovery when Safari cannot save setup choices", async () => {
     await Promise.resolve();
   });
 
-  expect(container.textContent).toContain("See your browsing evolve");
+  expect(container.textContent).toContain("All set!");
 
   act(() => root.unmount());
   container.remove();
 });
 
-async function advanceToNewTabStep(container: HTMLElement) {
+async function advanceToDoneStep(container: HTMLElement) {
   await act(async () => {
     [...container.querySelectorAll("button")]
       .find((element) => element.textContent === "Get started")
@@ -210,13 +201,10 @@ async function advanceToNewTabStep(container: HTMLElement) {
 
 it("offers recovery when Safari cannot finish setup", async () => {
   vi.mocked(browser.storage.local.set)
-    // consent choices, then the new tab choice, then the failing finish
-    .mockResolvedValueOnce(undefined)
+    // Consent choices, then the failing finish.
     .mockResolvedValueOnce(undefined)
     .mockRejectedValueOnce(
-      new Error(
-        "Invalid call to browser.storage.local.set(). Disk I/O error.",
-      ),
+      new Error("Invalid call to browser.storage.local.set(). Disk I/O error."),
     )
     .mockResolvedValueOnce(undefined);
   const { default: SetupPage } = await import("../components/SetupPage");
@@ -233,12 +221,6 @@ it("offers recovery when Safari cannot finish setup", async () => {
     [...container.querySelectorAll("button")]
       .find((element) => element.textContent === "Get started")
       ?.click();
-  });
-  await act(async () => {
-    [...container.querySelectorAll("button")]
-      .find((element) => element.textContent === "Continue")
-      ?.click();
-    await Promise.resolve();
   });
   await act(async () => {
     [...container.querySelectorAll("button")]
@@ -284,28 +266,34 @@ it("offers bookmarking instead of the new tab checkbox on Safari", async () => {
     await Promise.resolve();
   });
 
-  await advanceToNewTabStep(container);
+  await advanceToDoneStep(container);
 
   // The step and its preview still show, but the opt-in is replaced by advice.
-  expect(container.textContent).toContain("See your browsing evolve");
+  expect(container.textContent).toContain("Review your browsing");
   expect(container.querySelector("img")).toBeTruthy();
   expect(container.textContent).toContain(
     "Safari doesn't let extensions change the new tab",
+  );
+  const historyLink = [...container.querySelectorAll("a")].find(
+    (element) => element.textContent === "Open History ↗",
+  );
+  expect(historyLink?.getAttribute("href")).toBe(
+    "chrome-extension://test/walking-record.html",
   );
   expect(container.textContent).not.toContain("make this my new tab");
   expect(container.querySelector('input[type="checkbox"]')).toBeNull();
 
   await act(async () => {
     [...container.querySelectorAll("button")]
-      .find((element) => element.textContent === "Continue")
+      .find((element) => element.textContent === "Finish setup")
       ?.click();
     await Promise.resolve();
   });
 
   // Safari never opts in to a takeover the browser cannot honor.
-  expect(browser.storage.local.set).toHaveBeenCalledWith({
-    newtab_takeover_enabled: false,
-  });
+  expect(browser.storage.local.set).toHaveBeenCalledWith(
+    expect.objectContaining({ newtab_takeover_enabled: false }),
+  );
 
   act(() => root.unmount());
   container.remove();

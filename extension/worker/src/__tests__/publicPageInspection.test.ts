@@ -93,6 +93,21 @@ describe('classifyPublicPage', () => {
     ).toMatchObject({ verdict: 'gated', reason: 'authentication_required' });
   });
 
+  it.each(['"password"', "'password'", 'password'])(
+    'recognizes a login form with type=%s',
+    (attribute) => {
+      expect(classifyPublicPage(pageEvidence({
+        htmlHead: `<title>Sign in</title><input type=${attribute}>`,
+      }))).toMatchObject({ verdict: 'gated', reason: 'authentication_required' });
+    },
+  );
+
+  it('does not mistake a password-like attribute value for a password input', () => {
+    expect(classifyPublicPage(pageEvidence({
+      htmlHead: '<title>Sign in</title><input type=password-help>',
+    }))).toMatchObject({ verdict: 'public', reason: 'public_html' });
+  });
+
   it('marks a meta refresh to an authentication route as gated', () => {
     expect(
       classifyPublicPage(

@@ -180,6 +180,55 @@ afterEach(async () => {
 });
 
 describe('Internet place catalog', () => {
+  it('replaces policy scope atomically and preserves the prior policy on invalid input', async () => {
+    const put = (body: unknown) => handleInternetPlacePolicyPut(adminRequest(
+      '/admin/internet-places/policy', { method: 'PUT', body: JSON.stringify(body) },
+    ), env);
+    const prior = { scope: 'hostname', placeKey: 'example.com', placement: 'hidden' };
+    expect((await put(prior)).status).toBe(200);
+    const replacement = {
+      scope: 'page', placeKey: 'https://example.com/article', placement: 'featured',
+      previous: { scope: 'hostname', placeKey: 'example.com' },
+    };
+    expect((await put({ ...replacement, placement: 'invalid' })).status).toBe(400);
+    expect(await env.WWO_ADMIN_DB.prepare('SELECT scope, placement FROM place_policies').all())
+      .toMatchObject({ results: [{ scope: 'hostname', placement: 'hidden' }] });
+    await env.WWO_ADMIN_DB.prepare("CREATE TRIGGER prevent_policy_delete BEFORE DELETE ON place_policies BEGIN SELECT RAISE(ABORT, 'test failure'); END").run();
+    await expect(put(replacement)).rejects.toThrow('test failure');
+    expect(await env.WWO_ADMIN_DB.prepare('SELECT scope, placement FROM place_policies').all())
+      .toMatchObject({ results: [{ scope: 'hostname', placement: 'hidden' }] });
+    await env.WWO_ADMIN_DB.prepare('DROP TRIGGER prevent_policy_delete').run();
+    expect((await put(replacement)).status).toBe(200);
+    expect(await env.WWO_ADMIN_DB.prepare('SELECT scope, placement FROM place_policies').all())
+      .toMatchObject({ results: [{ scope: 'page', placement: 'featured' }] });
+  });
+
+  it('imports a full eight-lane audit artifact above 500 candidates', async () => {
+    const artifact = evaluationArtifact();
+    artifact.candidates = Array.from({ length: 676 }, (_, index) => ({
+      ...artifact.candidates[0],
+      url: `https://docs.example.com/essay-${index}`,
+    }));
+    const response = await handleInternetPlaceEvidenceImport(adminRequest(
+      '/admin/internet-places/evidence',
+      { method: 'POST', body: JSON.stringify(artifact) },
+    ), env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ imported: 676 });
+    expect(await env.WWO_ADMIN_DB.prepare('SELECT COUNT(*) AS count FROM place_evidence')
+      .first()).toEqual({ count: 676 });
+  });
+
+  it('rejects an oversized artifact before writing rows', async () => {
+    const response = await handleInternetPlaceEvidenceImport(adminRequest(
+      '/admin/internet-places/evidence',
+      { method: 'POST', body: ' '.repeat(8_000_001) },
+    ), env);
+    expect(response.status).toBe(413);
+    expect(await env.WWO_ADMIN_DB.prepare('SELECT COUNT(*) AS count FROM place_evidence')
+      .first()).toEqual({ count: 0 });
+  });
+
   it('migrates existing verdicts into the five placement levels', async () => {
     const migrationRuntime = new Miniflare({
       modules: true,

@@ -20,7 +20,8 @@ const JSON_HEADERS = {
   'Content-Type': 'application/json',
   'Access-Control-Allow-Origin': '*',
 };
-const MAX_IMPORT_CANDIDATES = 500;
+const MAX_IMPORT_CANDIDATES = 1_000;
+const MAX_IMPORT_BYTES = 8_000_000;
 const IMPORT_ROWS_PER_BATCH = 50;
 
 type PolicyRow = {
@@ -250,7 +251,11 @@ export async function handleInternetPlaceEvidenceImport(
 
   let body: unknown;
   try {
-    body = await request.json();
+    const text = await request.text();
+    if (new TextEncoder().encode(text).byteLength > MAX_IMPORT_BYTES) {
+      return jsonResponse(413, { error: 'Evaluation artifact is too large' });
+    }
+    body = JSON.parse(text);
   } catch {
     return jsonResponse(400, { error: 'Invalid JSON body' });
   }
@@ -347,7 +352,21 @@ export async function handleInternetPlacePolicyPut(
   } catch {
     return jsonResponse(400, { error: 'Invalid place policy target' });
   }
-  await env.WWO_ADMIN_DB.prepare(
+  let previous: { scope: InternetPlaceScope; placeKey: string } | undefined;
+  if (body.previous !== undefined) {
+    if (!isRecord(body.previous) ||
+      !INTERNET_PLACE_SCOPES.includes(body.previous.scope as InternetPlaceScope) ||
+      typeof body.previous.placeKey !== 'string') {
+      return jsonResponse(400, { error: 'Invalid previous policy target' });
+    }
+    try {
+      const previousScope = body.previous.scope as InternetPlaceScope;
+      previous = { scope: previousScope, placeKey: normalizeInternetPlace(body.previous.placeKey, previousScope) };
+    } catch {
+      return jsonResponse(400, { error: 'Invalid previous policy target' });
+    }
+  }
+  const writes = [env.WWO_ADMIN_DB.prepare(
     `INSERT INTO place_policies (scope, place_key, placement, reason, note, updated_at)
      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
      ON CONFLICT(scope, place_key) DO UPDATE SET
@@ -355,7 +374,13 @@ export async function handleInternetPlacePolicyPut(
        reason = excluded.reason,
        note = excluded.note,
        updated_at = CURRENT_TIMESTAMP`,
-  ).bind(scope, placeKey, placement ?? null, reason || null, note).run();
+  ).bind(scope, placeKey, placement ?? null, reason || null, note)];
+  if (previous && (previous.scope !== scope || previous.placeKey !== placeKey)) {
+    writes.push(env.WWO_ADMIN_DB.prepare(
+      'DELETE FROM place_policies WHERE scope = ? AND place_key = ?',
+    ).bind(previous.scope, previous.placeKey));
+  }
+  await env.WWO_ADMIN_DB.batch(writes);
 
   const row = await env.WWO_ADMIN_DB.prepare(
     `SELECT scope, place_key, placement, reason, note, updated_at

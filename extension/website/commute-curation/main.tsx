@@ -361,7 +361,7 @@ export function App({
     setQueueStatus("loading");
     try {
       const response = await fetch(COMMUTE_REVIEW_URL ?? COMMUTE_RECENT_URL, {
-        headers: { Accept: "application/json" },
+        headers: { Accept: "application/json", ...(COMMUTE_REVIEW_URL ? { Authorization: `Bearer ${token}` } : {}) },
       });
       if (!response.ok)
         throw new Error(`Commute route returned ${response.status}`);
@@ -379,7 +379,7 @@ export function App({
     } catch {
       setQueueStatus("error");
     }
-  }, []);
+  }, [token]);
 
   const loadReserveCatalog = useCallback(async () => {
     setReserveStatus("loading");
@@ -560,14 +560,7 @@ export function App({
     setSaving(true);
     setCatalogError("");
     try {
-      if (
-        priorDecision &&
-        (priorDecision.scope !== decision.scope ||
-          priorDecision.place !== decision.place)
-      ) {
-        await deleteCatalogPolicy(token, priorDecision);
-      }
-      const saved = await saveCatalogPolicy(token, decision);
+      const saved = await saveCatalogPolicy(token, decision, priorDecision);
       const otherPlaces = priorDecision
         ? places.filter((place) => place.id !== priorDecision.id)
         : places;

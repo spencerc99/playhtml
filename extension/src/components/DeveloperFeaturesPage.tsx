@@ -19,16 +19,17 @@ import {
 import "./DeveloperFeaturesPage.scss";
 
 type Props = {
-  onBack: () => void;
+  onBack?: () => void;
+  embedded?: boolean;
 };
 
-const STAGE_LABELS: Record<FeatureStage, string> = {
-  internal: "Internal",
-  beta: "Early access",
-  released: "Released",
-};
+function stageLabel(stage: FeatureStage): string {
+  if (stage === "internal") return "Internal";
+  if (stage === "released") return "Released";
+  return "Early access";
+}
 
-export function DeveloperFeaturesPage({ onBack }: Props) {
+export function DeveloperFeaturesPage({ onBack, embedded = false }: Props) {
   const [states, setStates] = useState<Record<FeatureId, FeatureState> | null>(
     null,
   );
@@ -55,44 +56,52 @@ export function DeveloperFeaturesPage({ onBack }: Props) {
 
   return (
     <div className="developer-features">
-      <header className="developer-features__header">
-        <button className="developer-features__back" onClick={onBack}>
-          ← back
-        </button>
-        <span className="developer-features__eyebrow">WWO EXPERIMENTS</span>
-        <h1>Experiments</h1>
-        <p>
-          Turn on the experiments available to you. Your choices only affect
-          this browser.
-        </p>
-      </header>
+      {!embedded && (
+        <header className="developer-features__header">
+          {onBack && (
+            <button className="developer-features__back" onClick={onBack}>
+              ← back
+            </button>
+          )}
+          <span className="developer-features__eyebrow">WWO EXPERIMENTS</span>
+          <h1>Experiments</h1>
+          <p>
+            Turn on the experiments available to you. Your choices only affect
+            this browser.
+          </p>
+        </header>
+      )}
 
       <main className="developer-features__list">
-        {states && FEATURE_IDS.filter((feature) =>
-          states[feature].available && states[feature].stage !== "released",
-        ).map((feature) => {
-          const definition = FEATURE_CATALOG[feature];
-          const state = states[feature];
-          return (
-            <label className="developer-features__row" key={feature}>
-              <span className="developer-features__copy">
-                <strong>{definition.name}</strong>
-                <span>{definition.description}</span>
-                <small>
-                  {STAGE_LABELS[state.stage]}
-                  {state.source === "choice" ? " · your choice" : ""}
-                  {definition.requiresReload ? " · reload pages after changing" : ""}
-                </small>
-              </span>
-              <input
-                type="checkbox"
-                checked={state.enabled}
-                onChange={() => toggleFeature(feature)}
-                aria-label={`Enable ${definition.name}`}
-              />
-            </label>
-          );
-        })}
+        {states &&
+          FEATURE_IDS.filter(
+            (feature) =>
+              states[feature].available && states[feature].stage !== "released",
+          ).map((feature) => {
+            const definition = FEATURE_CATALOG[feature];
+            const state = states[feature];
+            return (
+              <label className="developer-features__row" key={feature}>
+                <span className="developer-features__copy">
+                  <strong>{definition.name}</strong>
+                  <span>{definition.description}</span>
+                  <small>
+                    {stageLabel(state.stage)}
+                    {state.source === "choice" ? " · your choice" : ""}
+                    {definition.requiresReload
+                      ? " · reload pages after changing"
+                      : ""}
+                  </small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={state.enabled}
+                  onChange={() => toggleFeature(feature)}
+                  aria-label={`Enable ${definition.name}`}
+                />
+              </label>
+            );
+          })}
       </main>
 
       <footer className="developer-features__footer">
@@ -109,4 +118,8 @@ export function DeveloperFeaturesPage({ onBack }: Props) {
       </footer>
     </div>
   );
+}
+
+export function DeveloperFeaturesSection() {
+  return <DeveloperFeaturesPage embedded />;
 }

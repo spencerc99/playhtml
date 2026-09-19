@@ -54,6 +54,9 @@ jobs:
       run: bunx playwright install --with-deps chromium
       working-directory: smoke-tests
 
+    - name: Run extension smoke tests
+      run: bun run smoke:extension
+
     - name: Run smoke tests
       run: bun smoke
 

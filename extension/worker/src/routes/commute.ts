@@ -1,5 +1,5 @@
 // ABOUTME: Serves the privacy-limited recent route used by Internet Commute.
-// ABOUTME: Reduces navigation and cursor events before returning them to the extension.
+// ABOUTME: Reduces navigation and recent activity events before returning them to the extension.
 
 import type {
   CollectionEvent,
@@ -12,9 +12,10 @@ import {
   loadInternetPlacePolicies,
 } from './internetPlaceCatalog';
 import { handleRecent } from './recent';
+import { getAdminAuthError } from '../lib/adminAuth';
 
 const NAVIGATION_LIMIT = 2000;
-const CURSOR_LIMIT = 1000;
+const ACTIVITY_LIMIT = 1000;
 const REVIEW_NAVIGATION_LIMIT = 10_000;
 const REVIEW_DESTINATION_LIMIT = 200;
 const REVIEW_SCENERY_LIMIT = 200;
@@ -24,7 +25,7 @@ const COMMUTE_DESTINATION_LIMIT = 50;
 async function fetchRecentEvents(
   request: Request,
   env: Env,
-  type: 'navigation' | 'cursor',
+  type: 'navigation' | 'all',
   limit: number,
 ): Promise<CollectionEvent[]> {
   const url = new URL('/events/recent', request.url);
@@ -51,40 +52,7 @@ export async function handleCommute(
   env: Env,
 ): Promise<Response> {
   try {
-    const [navigationEvents, cursorEvents] = await Promise.all([
-      fetchRecentEvents(request, env, 'navigation', NAVIGATION_LIMIT),
-      fetchRecentEvents(request, env, 'cursor', CURSOR_LIMIT),
-    ]);
-    const candidateResponse = buildCommuteResponse(
-      navigationEvents,
-      cursorEvents,
-      Date.now(),
-      { destinations: CATALOG_CANDIDATE_LIMIT },
-    );
-    let response: CommuteResponse;
-    try {
-      if (!env.WWO_ADMIN_DB) {
-        throw new Error('WWO_ADMIN_DB binding is unavailable');
-      }
-      const policies = await loadInternetPlacePolicies(
-        env.WWO_ADMIN_DB,
-        candidateResponse,
-      );
-      response = applyInternetPlacePolicies(
-        candidateResponse,
-        policies,
-        COMMUTE_DESTINATION_LIMIT,
-      );
-    } catch (error) {
-      if (env.WWO_ADMIN_DB) {
-        console.error('[commute] place catalog unavailable:', error);
-      }
-      response = applyInternetPlacePolicies(
-        candidateResponse,
-        [],
-        COMMUTE_DESTINATION_LIMIT,
-      );
-    }
+    const response = await getCommuteResponse(request, env, Date.now());
 
     return new Response(JSON.stringify(response), {
       headers: {
@@ -111,6 +79,8 @@ export async function handleCommuteReview(
   request: Request,
   env: Env,
 ): Promise<Response> {
+  const authError = getAdminAuthError(request, env.ADMIN_KEY);
+  if (authError) return authError;
   try {
     const navigationEvents = await fetchRecentEvents(
       request,
@@ -147,4 +117,20 @@ export async function handleCommuteReview(
       },
     );
   }
+}
+
+export async function getCommuteResponse(
+  request: Request,
+  env: Env,
+  now: number,
+): Promise<CommuteResponse> {
+  const [navigationEvents, activityEvents] = await Promise.all([
+    fetchRecentEvents(request, env, 'navigation', NAVIGATION_LIMIT),
+    fetchRecentEvents(request, env, 'all', ACTIVITY_LIMIT),
+  ]);
+  const candidates = buildCommuteResponse(navigationEvents, activityEvents, now, {
+    destinations: CATALOG_CANDIDATE_LIMIT,
+  });
+  const policies = await loadInternetPlacePolicies(env.WWO_ADMIN_DB, candidates);
+  return applyInternetPlacePolicies(candidates, policies, COMMUTE_DESTINATION_LIMIT);
 }

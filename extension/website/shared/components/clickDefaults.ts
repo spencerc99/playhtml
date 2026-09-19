@@ -19,3 +19,8 @@ export const CLICK_DEFAULTS = {
    * cluster timing intact but don't want long pauses. */
   clickMaxGapMs: null as number | null,
 };
+
+export const LIVE_CURSOR_CLICK_SETTINGS = {
+  ...CLICK_DEFAULTS,
+  clickMaxRadius: 30,
+};

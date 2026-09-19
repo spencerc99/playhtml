@@ -8,10 +8,11 @@ import {
 import { getAdminAuthError } from '../lib/adminAuth';
 import type { Env } from '../lib/supabase';
 import { isPublicHttpUrl } from './pageMeta';
+import { sanitizePublicDestinationUrl } from './commutePolicy';
 
 export const INTERNET_PLACE_SUGGESTION_MODEL =
   '@cf/meta/llama-3.3-70b-instruct-fp8-fast' as const;
-export const INTERNET_PLACE_SUGGESTION_PROMPT_VERSION = 'v1';
+export const INTERNET_PLACE_SUGGESTION_PROMPT_VERSION = 'v2';
 
 const PLACEMENTS = [
   'hidden',
@@ -89,11 +90,12 @@ function sanitizeMetadata(value: unknown, depth = 0): unknown {
   const sanitized: Record<string, unknown> = {};
   for (const [key, item] of entries) {
     if (!/^[A-Za-z][A-Za-z0-9_-]{0,49}$/.test(key)) return undefined;
-    if (/^(?:participant|session)(?:id|ids)$/i.test(key)) return undefined;
+    if (/^(?:(?:participant|session)[_-]?(?:id|ids)|pids?|sids?)$/i.test(key)) return undefined;
     if (/url$/i.test(key) && typeof item === 'string') {
       const publicUrl = isPublicHttpUrl(item);
-      if (!publicUrl) return undefined;
-      sanitized[key] = normalizeInternetPlace(publicUrl.toString(), 'page');
+      const safeUrl = sanitizePublicDestinationUrl(item);
+      if (!publicUrl || !safeUrl) return undefined;
+      sanitized[key] = normalizeInternetPlace(safeUrl, 'page');
       continue;
     }
     const sanitizedItem = sanitizeMetadata(item, depth + 1);
@@ -108,10 +110,11 @@ function parseCandidate(value: unknown): SanitizedCandidate | null {
   const rawUrl = boundedString(value.url, 2_000);
   if (!rawUrl) return null;
   const publicUrl = isPublicHttpUrl(rawUrl);
-  if (!publicUrl) return null;
+  const safeUrl = sanitizePublicDestinationUrl(rawUrl);
+  if (!publicUrl || !safeUrl) return null;
   let url: string;
   try {
-    url = normalizeInternetPlace(publicUrl.toString(), 'page');
+    url = normalizeInternetPlace(safeUrl, 'page');
   } catch {
     return null;
   }
@@ -123,9 +126,40 @@ function parseCandidate(value: unknown): SanitizedCandidate | null {
   }
   for (const key of ['audit', 'reserve', 'inspection'] as const) {
     if (value[key] === undefined) continue;
-    const metadata = sanitizeMetadata(value[key]);
+    const input = value[key];
+    if (!isRecord(input)) return null;
+    const allowed = key === 'audit'
+      ? ['category', 'pageType', 'exposure', 'character', 'observation', 'lanes', 'components', 'scores', 'initialJudgment', 'reasons']
+      : key === 'reserve'
+        ? ['sourceCollection', 'sourceMode', 'tags', 'interactionLevel', 'issue', 'section']
+        : ['verdict', 'reason', 'finalUrl'];
+    if (Object.keys(input).some((field) => !allowed.includes(field))) return null;
+    const metadata = sanitizeMetadata(input);
     if (metadata === undefined) return null;
-    candidate[key] = metadata;
+    if (key === 'audit') {
+      const audit: Record<string, unknown> = {};
+      for (const label of ['category', 'pageType', 'exposure', 'character', 'initialJudgment']) {
+        if (input[label] === undefined) continue;
+        const entry = input[label];
+        if (!isRecord(entry) || typeof entry.value !== 'string' || typeof entry.confidence !== 'number') return null;
+        audit[label] = { value: entry.value, confidence: entry.confidence };
+      }
+      for (const label of ['components', 'scores']) {
+        if (input[label] === undefined) continue;
+        const entry = input[label];
+        const fields = label === 'scores'
+          ? ['balanced', 'longTail', 'hiddenPlatform', 'humanWeb']
+          : ['pageRarity', 'domainRarity', 'externalRarity', 'attentionQuality', 'convergence', 'specificity', 'humanConfidence', 'evidenceConfidence', 'freshness', 'manipulationPenalty'];
+        if (!isRecord(entry) || Object.entries(entry).some(([field, score]) =>
+          !fields.includes(field) || (score !== null && (typeof score !== 'number' || !Number.isFinite(score))))) return null;
+        audit[label] = entry;
+      }
+      candidate.audit = audit;
+    } else {
+      if (Object.values(input).some((entry) => typeof entry !== 'string' &&
+        !(Array.isArray(entry) && entry.every((item) => typeof item === 'string')))) return null;
+      candidate[key] = metadata;
+    }
   }
   return candidate;
 }
@@ -240,15 +274,17 @@ const SUGGESTION_SCHEMA = {
 async function getCachedSuggestion(
   db: D1Database,
   pageKey: string,
+  evidenceHash: string,
 ): Promise<{ suggestion: InternetPlaceSuggestion; createdAt: string } | null> {
   const row = await db.prepare(
     `SELECT suggestion_json, created_at
      FROM place_suggestions
-     WHERE page_key = ? AND model = ? AND prompt_version = ?`,
+     WHERE page_key = ? AND model = ? AND prompt_version = ? AND evidence_hash = ?`,
   ).bind(
     pageKey,
     INTERNET_PLACE_SUGGESTION_MODEL,
     INTERNET_PLACE_SUGGESTION_PROMPT_VERSION,
+    evidenceHash,
   ).first<SuggestionRow>();
   if (!row) return null;
   let value: unknown;
@@ -265,21 +301,24 @@ async function saveSuggestion(
   db: D1Database,
   pageKey: string,
   suggestion: InternetPlaceSuggestion,
+  evidenceHash: string,
 ): Promise<string> {
   await db.prepare(
     `INSERT INTO place_suggestions (
-       page_key, model, prompt_version, suggestion_json, created_at
-     ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+       page_key, model, prompt_version, suggestion_json, evidence_hash, created_at
+     ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
      ON CONFLICT(page_key, model, prompt_version) DO UPDATE SET
        suggestion_json = excluded.suggestion_json,
+       evidence_hash = excluded.evidence_hash,
        created_at = CURRENT_TIMESTAMP`,
   ).bind(
     pageKey,
     INTERNET_PLACE_SUGGESTION_MODEL,
     INTERNET_PLACE_SUGGESTION_PROMPT_VERSION,
     JSON.stringify(suggestion),
+    evidenceHash,
   ).run();
-  const saved = await getCachedSuggestion(db, pageKey);
+  const saved = await getCachedSuggestion(db, pageKey, evidenceHash);
   if (!saved) throw new Error('Suggestion cache write failed');
   return saved.createdAt;
 }
@@ -315,10 +354,11 @@ export async function handleInternetPlaceSuggestion(
   }
   const candidate = parseCandidate(body.candidate);
   if (!candidate) return jsonResponse(400, { error: 'Invalid suggestion candidate' });
+  const evidenceHash = await hashSuggestionCandidate(candidate);
 
   const refresh = body.refresh === true;
   if (!refresh) {
-    const cached = await getCachedSuggestion(env.WWO_ADMIN_DB, candidate.url);
+    const cached = await getCachedSuggestion(env.WWO_ADMIN_DB, candidate.url, evidenceHash);
     if (cached) {
       return jsonResponse(200, {
         available: true,
@@ -377,6 +417,7 @@ export async function handleInternetPlaceSuggestion(
     env.WWO_ADMIN_DB,
     candidate.url,
     suggestion,
+    evidenceHash,
   );
   return jsonResponse(200, {
     available: true,
@@ -386,4 +427,17 @@ export async function handleInternetPlaceSuggestion(
     createdAt,
     suggestion,
   });
+}
+
+export async function hashSuggestionCandidate(candidate: unknown): Promise<string> {
+  const parsed = parseCandidate(candidate);
+  if (!parsed) throw new Error('Invalid suggestion candidate');
+  const sort = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(sort);
+    if (!isRecord(value)) return value;
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sort(value[key])]));
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(sort(parsed)));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }

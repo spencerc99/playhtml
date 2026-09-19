@@ -3,7 +3,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CollectionEvent } from "@playhtml/extension-types";
-import { hashScrapString, serializeScrapStyles } from "../collectors/scrapUtils";
+import {
+  hashScrapString,
+  serializeScrapStyles,
+} from "../collectors/scrapUtils";
 
 const originalDefineBackground = (globalThis as any).defineBackground;
 
@@ -81,17 +84,18 @@ describe("background scrap queries", () => {
       hotspotY: 3,
       pageTitle: "Cursor page",
     });
-    const unknown = createEvent("future", 500, {
-      kind: "future-kind",
-      pageTitle: "Future page",
-    }, undefined);
-    const queryByType = vi.fn().mockResolvedValue([
-      button,
-      unknown,
-      image,
-      cursor,
-      svg,
-    ]);
+    const unknown = createEvent(
+      "future",
+      500,
+      {
+        kind: "future-kind",
+        pageTitle: "Future page",
+      },
+      undefined,
+    );
+    const queryByType = vi
+      .fn()
+      .mockResolvedValue([button, unknown, image, cursor, svg]);
     const onMessageAddListener = vi.fn();
 
     vi.doMock("../storage/LocalEventStore", () => ({
@@ -136,7 +140,7 @@ describe("background scrap queries", () => {
       expect(handled).toBe(true);
     });
 
-    expect(queryByType).toHaveBeenCalledWith("element", { limit: 5000 });
+    expect(queryByType).toHaveBeenCalledWith("element");
     expect(response).toEqual({
       scraps: [
         {
@@ -187,6 +191,27 @@ describe("background scrap queries", () => {
           pageTitle: "Image page",
           faviconUrl: "https://example.com/favicon.png",
           src: "https://cdn.example.com/image.jpg",
+          encounterDay: "1969-12-31",
+          encounterCount: 1,
+          sources: [
+            {
+              pageUrl: "https://example.com/image",
+              pageTitle: "Image page",
+              domain: "example.com",
+              ts: 100,
+              encounters: [
+                {
+                  pageUrl: "https://example.com/image",
+                  pageTitle: "Image page",
+                  domain: "example.com",
+                  ts: 100,
+                  day: "1969-12-31",
+                },
+              ],
+              encounterDays: ["1969-12-31"],
+              encounterCount: 1,
+            },
+          ],
           alt: "A found image",
           naturalWidth: 1200,
           naturalHeight: 800,
@@ -195,8 +220,27 @@ describe("background scrap queries", () => {
     });
   });
 
-  it("passes an explicit query limit through unchanged", async () => {
-    const queryByType = vi.fn().mockResolvedValue([]);
+  it("limits photos after collecting all matching source pages", async () => {
+    const photo = {
+      kind: "image",
+      src: "https://cdn.example.com/first.jpg",
+      contentHash: "a".repeat(64),
+      naturalWidth: 600,
+      naturalHeight: 400,
+      pageTitle: "Photo",
+    };
+    const queryByType = vi.fn().mockResolvedValue([
+      createEvent("first-place", 100, photo),
+      createEvent("other-photo", 50, {
+        ...photo,
+        src: "https://cdn.example.com/other.jpg",
+        contentHash: "b".repeat(64),
+      }),
+      createEvent("second-place", 1, {
+        ...photo,
+        src: "https://cdn.example.com/copy.jpg",
+      }),
+    ]);
     const onMessageAddListener = vi.fn();
 
     vi.doMock("../storage/LocalEventStore", () => ({
@@ -235,10 +279,16 @@ describe("background scrap queries", () => {
 
     await import("../entrypoints/background");
     const listener = onMessageAddListener.mock.calls[0][0];
-    await new Promise((resolve) => {
-      listener({ type: "GET_SCRAPS", options: { limit: 25 } }, {}, resolve);
+    const response = await new Promise<{
+      scraps: Array<{ sources: Array<{ pageUrl: string }> }>;
+    }>((resolve) => {
+      listener({ type: "GET_SCRAPS", options: { limit: 1 } }, {}, resolve);
     });
 
-    expect(queryByType).toHaveBeenCalledWith("element", { limit: 25 });
+    expect(response.scraps).toHaveLength(1);
+    expect(response.scraps[0].sources.map((source) => source.pageUrl)).toEqual([
+      "https://example.com/first-place",
+      "https://example.com/second-place",
+    ]);
   });
 });

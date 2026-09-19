@@ -1,7 +1,13 @@
 // ABOUTME: Background service worker — holds the extension-origin event store and
 // ABOUTME: coordinates event writes, uploads, and data reads for all extension surfaces
 import browser from 'webextension-polyfill'
+import { scrapEncounterDay } from '@movement/utils/scrapEncounterDay'
+import {
+  groupPhotoEncounters,
+  type ScrapSource,
+} from '@movement/utils/scrapPhotoGroups'
 import { LocalEventStore } from '../storage/LocalEventStore'
+import { ImageFingerprints } from '../storage/imageFingerprints'
 import type {
   QueryOptions,
   WalkingRecordTraceTarget,
@@ -10,7 +16,7 @@ import { uploadEvents } from '../storage/sync'
 import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
 import type { ScrapEventData } from '../collectors/types'
-import { getCanonicalScrapKey, getScrapKey } from '../collectors/scrapUtils'
+import { getScrapKey } from '../collectors/scrapUtils'
 import {
   collectionModeStorageKey,
   normalizeCollectionMode,
@@ -24,7 +30,7 @@ import {
 } from '../storage/playerIdentity'
 import { syncStoredPlayerColor } from '../storage/playerColor'
 import { VERBOSE } from '../config'
-import { gzipString, gunzipToString } from '../utils/dataTransfer'
+import { gzipEventExport, gunzipToString } from '../utils/dataTransfer'
 import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
 import {
   loadState,
@@ -60,6 +66,16 @@ import {
   refreshFeatureAccess,
 } from '../features/featureAccess'
 import { FEATURE_IDS } from '../flags'
+import {
+  SLOW_MODE_SETTINGS_KEY,
+  SLOW_MODE_STATE_KEY,
+  isSlowModeRideOutcome,
+  normalizeSlowModeSettings,
+  normalizeSlowModeState,
+  updateSlowModeRide,
+} from '../features/slowMode/slowMode'
+import { initSlowModeInterception } from '../features/slowMode/slowModeBackground'
+import { isHostedCommuteUrl } from '../features/slowMode/slowModeHostedBridge'
 
 function replyWithWikipediaHandle(
   request: Promise<string>,
@@ -73,6 +89,9 @@ function replyWithWikipediaHandle(
 }
 
 interface ScrapRecordBase {
+  sources?: ScrapSource[]
+  encounterCount?: number
+  encounterDay?: string
   id: string
   key: string
   domain: string
@@ -87,6 +106,7 @@ export type ScrapRecord = ScrapRecordBase &
     | {
         kind: 'image'
         src: string
+        contentHash?: string
         alt?: string
         naturalWidth: number
         naturalHeight: number
@@ -144,6 +164,8 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
         ...base,
         kind: data.kind,
         src: data.src,
+        encounterDay: scrapEncounterDay(event.ts, event.meta.tz),
+        ...(data.contentHash ? { contentHash: data.contentHash } : {}),
         ...(data.alt ? { alt: data.alt } : {}),
         naturalWidth: data.naturalWidth,
         naturalHeight: data.naturalHeight,
@@ -176,112 +198,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
 }
 
 const store = new LocalEventStore()
-
-/**
- * Storage-time dedup for scrap ("element") events: drops incoming events
- * whose canonical identity (see getCanonicalScrapKey) already exists in the
- * store, so near-duplicates captured across pages/sessions are never
- * persisted. `knownCanonicalScrapKeys` is lazily populated by scanning
- * existing stored element events on first use, then kept current as new
- * events are accepted. This matches the render-time dedup in ScrapCollage's
- * canonicalScrapKey, but skips persistence entirely instead of collapsing
- * duplicates at render.
- *
- * The set is rebuilt via the same lazy scan on every service-worker restart
- * (MV3 workers are short-lived) — `knownCanonicalScrapKeysInitPromise` makes
- * sure two STORE_EVENTS batches arriving before the scan completes don't
- * both trigger a scan or race past each other.
- */
-const knownCanonicalScrapKeys = new Set<string>()
-let knownCanonicalScrapKeysInitialized = false
-let knownCanonicalScrapKeysInitPromise: Promise<void> | null = null
-
-function resolveScrapEventDomain(event: CollectionEvent): string {
-  return event.domain || extractDomain(event.meta.url)
-}
-
-async function ensureKnownCanonicalScrapKeys(): Promise<void> {
-  if (knownCanonicalScrapKeysInitialized) return
-  if (knownCanonicalScrapKeysInitPromise)
-    return knownCanonicalScrapKeysInitPromise
-
-  knownCanonicalScrapKeysInitPromise = (async () => {
-    const existing = await store.queryByType('element')
-    for (const event of existing) {
-      const kind = (event.data as { kind?: unknown } | null)?.kind
-      if (
-        kind !== 'image' &&
-        kind !== 'button' &&
-        kind !== 'svg-icon' &&
-        kind !== 'cursor'
-      ) {
-        continue
-      }
-      const domain = resolveScrapEventDomain(event)
-      const canonicalKey = getCanonicalScrapKey(
-        domain,
-        event.data as ScrapEventData,
-      )
-      knownCanonicalScrapKeys.add(canonicalKey)
-    }
-  })()
-
-  try {
-    await knownCanonicalScrapKeysInitPromise
-    knownCanonicalScrapKeysInitialized = true
-  } finally {
-    // Cleared so a failed scan retries on the next batch; a successful scan
-    // is latched by knownCanonicalScrapKeysInitialized instead.
-    knownCanonicalScrapKeysInitPromise = null
-  }
-}
-
-/**
- * Filters incoming events, dropping "element" (scrap) events whose canonical
- * identity is already known — either already persisted, or a duplicate of
- * another event earlier in this same batch. Non-element events pass through
- * unchanged. Accepted scrap events are added to the known-keys set so later
- * batches (and later events within this batch) see them as duplicates too.
- */
-async function dedupeScrapEvents(
-  events: CollectionEvent[],
-): Promise<CollectionEvent[]> {
-  const hasElementEvent = events.some((event) => event.type === 'element')
-  if (!hasElementEvent) return events
-
-  await ensureKnownCanonicalScrapKeys()
-
-  const accepted: CollectionEvent[] = []
-  for (const event of events) {
-    if (event.type !== 'element') {
-      accepted.push(event)
-      continue
-    }
-
-    const kind = (event.data as { kind?: unknown } | null)?.kind
-    if (
-      kind !== 'image' &&
-      kind !== 'button' &&
-      kind !== 'svg-icon' &&
-      kind !== 'cursor'
-    ) {
-      accepted.push(event)
-      continue
-    }
-
-    const domain = resolveScrapEventDomain(event)
-    const canonicalKey = getCanonicalScrapKey(
-      domain,
-      event.data as ScrapEventData,
-    )
-    if (knownCanonicalScrapKeys.has(canonicalKey)) continue
-
-    knownCanonicalScrapKeys.add(canonicalKey)
-    accepted.push(event)
-  }
-
-  return accepted
-}
+const imageFingerprints = new ImageFingerprints(store)
 
 const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
 const LOCAL_RAW_EVENT_RETENTION_DAYS = 30
@@ -415,6 +332,7 @@ export default defineBackground(() => {
   // Opt-in: send new browser tabs to the walking record instead of the
   // default new tab page. Off unless the user turns it on.
   initNewTabTakeover()
+  initSlowModeInterception()
 
   // Forward the manifest "open-inventory" command to the active tab's content script.
   // Manifest commands are browser-routed, so this works reliably on every page.
@@ -443,7 +361,7 @@ export default defineBackground(() => {
       // First time installation - setup default identity
       initializePlayerIdentity().then(() => initializeIdentityServices())
       // Open setup page in a new tab
-      const url = browser.runtime.getURL('options.html')
+      const url = browser.runtime.getURL('setup.html')
       browser.tabs.create({ url }).catch((e) => {
         console.warn('Failed to open setup page on install', e)
       })
@@ -599,6 +517,75 @@ export default defineBackground(() => {
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = sendResponse as (response?: any) => void
+    if (message.type === 'GET_SLOW_MODE_HOSTED_RIDE') {
+      if (
+        typeof message.rideId !== 'string' ||
+        !sender.tab?.url ||
+        !isHostedCommuteUrl(sender.tab.url)
+      ) {
+        reply(null)
+        return
+      }
+      browser.storage.local
+        .get([SLOW_MODE_SETTINGS_KEY, SLOW_MODE_STATE_KEY])
+        .then((stored) => {
+          const ride = normalizeSlowModeState(
+            stored[SLOW_MODE_STATE_KEY],
+          ).rides.find((candidate) => candidate.id === message.rideId)
+          if (!ride) return null
+          return {
+            rideId: ride.id,
+            destinationDomain: ride.destinationDomain,
+            stopVisibility: normalizeSlowModeSettings(
+              stored[SLOW_MODE_SETTINGS_KEY],
+            ).stopVisibility,
+          }
+        })
+        .then(reply)
+        .catch(() => reply(null))
+      return true
+    }
+
+    if (message.type === 'SLOW_MODE_RIDE_OUTCOME') {
+      if (
+        typeof message.rideId !== 'string' ||
+        !isSlowModeRideOutcome(message.outcome) ||
+        (message.navigate === true &&
+          (!sender.tab?.url || !isHostedCommuteUrl(sender.tab.url)))
+      ) {
+        reply({ success: false })
+        return
+      }
+      browser.storage.local
+        .get(SLOW_MODE_STATE_KEY)
+        .then(async (stored) => {
+          const state = normalizeSlowModeState(stored[SLOW_MODE_STATE_KEY])
+          const ride = state.rides.find(
+            (candidate) => candidate.id === message.rideId,
+          )
+          if (!ride) return false
+          await browser.storage.local.set({
+            [SLOW_MODE_STATE_KEY]: updateSlowModeRide(
+              state,
+              message.rideId,
+              message.outcome,
+            ),
+          })
+          if (message.navigate === true && sender.tab?.id != null) {
+            await browser.tabs.update(sender.tab.id, {
+              url: ride.destinationUrl,
+            })
+          }
+          return true
+        })
+        .then((success) => reply({ success }))
+        .catch((error) => {
+          console.warn('[Slow Mode] failed to update ride log:', error)
+          reply({ success: false })
+        })
+      return true
+    }
+
     if (message.type === 'GET_SESSION_ID') {
       getSessionId().then(reply)
       return true
@@ -665,9 +652,23 @@ export default defineBackground(() => {
 
     if (message.type === 'STORE_EVENTS') {
       const events = (message.events || []) as CollectionEvent[]
-      dedupeScrapEvents(events)
-        .then((dedupedEvents) => store.addEvents(dedupedEvents))
-        .then(() => {
+      store
+        .addEvents(events)
+        .then((inserted) => {
+          void imageFingerprints
+            .process(inserted)
+            .then(({ checked }) => {
+              if (checked > 0)
+                return browser.runtime
+                  .sendMessage({ type: 'SCRAP_PHOTOS_UPDATED' })
+                  .catch(() => {})
+            })
+            .catch((error) =>
+              console.warn(
+                '[Background] Photo fingerprint update failed:',
+                error,
+              ),
+            )
           // A navigation focus is the canonical "user is now looking at this
           // domain" signal — the moment a domain-visit milestone could fire
           // with the right tab in front. Trigger an immediate check (cooldown
@@ -720,10 +721,38 @@ export default defineBackground(() => {
       return true
     }
 
+    if (message.type === 'CHECK_SCRAP_IMAGES') {
+      if (
+        sender.url?.split(/[?#]/)[0] !== browser.runtime.getURL('scraps.html')
+      ) {
+        reply({ error: 'Photo checks must start from the scraps page' })
+        return
+      }
+      if (
+        message.afterId !== undefined &&
+        (typeof message.afterId !== 'string' || message.afterId.length > 200)
+      ) {
+        reply({ error: 'Invalid photo check position' })
+        return
+      }
+      store
+        .queryUncheckedImages(message.afterId)
+        .then(async (batch) => ({
+          ...(await imageFingerprints.process(batch.events)),
+          afterId: batch.afterId,
+          done: batch.done,
+        }))
+        .then(reply)
+        .catch(() =>
+          reply({ error: 'Photos could not be checked. Please try again.' }),
+        )
+      return true
+    }
+
     if (message.type === 'GET_SCRAPS') {
       const limit = (message.options?.limit ?? 5000) as number
       store
-        .queryByType('element', { limit })
+        .queryByType('element')
         .then((events) =>
           events
             .sort((first, second) => second.ts - first.ts)
@@ -732,7 +761,13 @@ export default defineBackground(() => {
               return scrap ? [scrap] : []
             }),
         )
-        .then((scraps) => reply({ scraps }))
+        .then((scraps) =>
+          reply({
+            scraps: groupPhotoEncounters(scraps)
+              .sort((a, b) => b.ts - a.ts)
+              .slice(0, limit),
+          }),
+        )
         .catch((e) => {
           console.error('[Background] GET_SCRAPS error:', e)
           reply({ scraps: [] })
@@ -806,8 +841,8 @@ export default defineBackground(() => {
           const dateRange =
             agg?.firstVisit && agg?.lastVisit
               ? {
-                  oldest: new Date(agg.firstVisit).toLocaleDateString(),
-                  newest: new Date(agg.lastVisit).toLocaleDateString(),
+                  oldest: new Date(agg.firstVisit).toISOString(),
+                  newest: new Date(agg.lastVisit).toISOString(),
                 }
               : null
 
@@ -1035,13 +1070,11 @@ export default defineBackground(() => {
         try {
           const events = await store.getAllEvents()
           const identity = await getPublicPlayerIdentity()
-          const payload = JSON.stringify({
-            version: 1,
-            exportedAt: Date.now(),
+          const compressed = await gzipEventExport(
             events,
             identity,
-          })
-          const compressed = await gzipString(payload)
+            Date.now(),
+          )
           reply({ success: true, data: Array.from(compressed) })
         } catch (e) {
           console.error('[Background] EXPORT_EVENTS error:', e)
