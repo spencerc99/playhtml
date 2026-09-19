@@ -1,7 +1,13 @@
 // ABOUTME: Curates collected image scraps and arranges them in a deterministic scatter collage.
 // ABOUTME: Shows source provenance on hover and links each surviving image to its page.
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { hashString, seededRandom } from "../utils/styleUtils";
 import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
@@ -76,7 +82,22 @@ interface ScrapCollageProps {
 }
 
 type ScrapView = "drift" | "archive";
-type VisibleScrapCount = "auto" | 100 | 200 | 300 | 500;
+type ScrapDisplay = "pile" | "grid";
+const DISPLAY_STORAGE_KEY = "scraps-display";
+function readScrapDisplay(): ScrapDisplay {
+  try {
+    return localStorage.getItem(DISPLAY_STORAGE_KEY) === "grid"
+      ? "grid"
+      : "pile";
+  } catch {
+    return "pile";
+  }
+}
+function archiveCell(display: ScrapDisplay) {
+  return display === "pile"
+    ? { width: 76, height: 74 }
+    : { width: ARCHIVE_CELL_WIDTH, height: ARCHIVE_ROW_HEIGHT };
+}
 
 interface ScrapLayout {
   item: ScrapItem;
@@ -171,7 +192,11 @@ export function canonicalScrapKey(item: ScrapItem): string {
         ? `image:sha256:${item.contentHash}`
         : canonicalImageKey(item.src);
     case "button":
-      return canonicalButtonKey(item.domain, item.text, item.styles.backgroundColor);
+      return canonicalButtonKey(
+        item.domain,
+        item.text,
+        item.styles.backgroundColor,
+      );
     case "svg-icon":
       return canonicalSvgIconKey(item.domain, item.markup);
     case "cursor":
@@ -294,10 +319,17 @@ export interface TideEvent {
 }
 
 function tideAshoreCount(state: TideState): number {
-  return state.ashore.reduce((count, key) => (key === null ? count : count + 1), 0);
+  return state.ashore.reduce(
+    (count, key) => (key === null ? count : count + 1),
+    0,
+  );
 }
 
-function randomBetween(rand: () => number, minimum: number, maximum: number): number {
+function randomBetween(
+  rand: () => number,
+  minimum: number,
+  maximum: number,
+): number {
   return minimum + rand() * (maximum - minimum);
 }
 
@@ -320,11 +352,12 @@ export function nextTideEvent(
   const canWashIn = state.offshore.length > 0 && ashoreCount < ceiling;
   const canWashOut = ashoreCount > 0;
 
-  const wantsWashIn = ashoreCount < floor
-    ? true
-    : ashoreCount >= targetCount
-      ? false
-      : rand() < 0.5;
+  const wantsWashIn =
+    ashoreCount < floor
+      ? true
+      : ashoreCount >= targetCount
+        ? false
+        : rand() < 0.5;
   const kind: TideEventKind =
     wantsWashIn && canWashIn ? "in" : canWashOut ? "out" : "in";
 
@@ -332,7 +365,11 @@ export function nextTideEvent(
     randomBetween(rand, TIDE_GAP_MIN_MS, TIDE_GAP_MAX_MS),
   );
 
-  if (kind === "out" && ashoreCount > TIDE_WAVE_MIN_COUNT && rand() < TIDE_WAVE_CHANCE) {
+  if (
+    kind === "out" &&
+    ashoreCount > TIDE_WAVE_MIN_COUNT &&
+    rand() < TIDE_WAVE_CHANCE
+  ) {
     const count = Math.min(
       ashoreCount,
       Math.floor(
@@ -514,7 +551,10 @@ function itemSize(
   }
 }
 
-function tierBounds(items: ScrapItem[]): { lowerArea: number; upperArea: number } {
+function tierBounds(items: ScrapItem[]): {
+  lowerArea: number;
+  upperArea: number;
+} {
   const sortedAreas = items
     .filter(
       (item): item is Extract<ScrapItem, { kind: "image" }> =>
@@ -548,23 +588,25 @@ export function buildArchiveWindow(
   viewportHeight: number,
   seed: number,
   sizeBounds = tierBounds(items),
+  display: ScrapDisplay = "grid",
 ): { fieldHeight: number; layout: ScrapLayout[] } {
   if (items.length === 0 || width <= 0 || viewportHeight <= 0) {
     return { fieldHeight: 0, layout: [] };
   }
 
-  const columnCount = Math.max(1, Math.floor(width / ARCHIVE_CELL_WIDTH));
+  const cell = archiveCell(display);
+  const columnCount = Math.max(1, Math.floor(width / cell.width));
   const rowCount = Math.ceil(items.length / columnCount);
-  const fieldHeight = Math.max(viewportHeight, rowCount * ARCHIVE_ROW_HEIGHT);
+  const fieldHeight = Math.max(viewportHeight, rowCount * cell.height);
   const cellWidth = width / columnCount;
   const overscan = viewportHeight * ARCHIVE_OVERSCAN_VIEWPORTS;
   const firstRow = Math.max(
     0,
-    Math.floor((scrollTop - overscan) / ARCHIVE_ROW_HEIGHT),
+    Math.floor((scrollTop - overscan) / cell.height),
   );
   const lastRow = Math.min(
     rowCount - 1,
-    Math.ceil((scrollTop + viewportHeight + overscan) / ARCHIVE_ROW_HEIGHT),
+    Math.ceil((scrollTop + viewportHeight + overscan) / cell.height),
   );
   const firstIndex = firstRow * columnCount;
   const lastIndex = Math.min(items.length, (lastRow + 1) * columnCount);
@@ -573,23 +615,22 @@ export function buildArchiveWindow(
   for (let index = firstIndex; index < lastIndex; index += 1) {
     const item = items[index];
     const itemSeed = seed + hashString(item.key);
-    const tier = tierForItem(
-      item,
-      sizeBounds.lowerArea,
-      sizeBounds.upperArea,
-    );
+    const tier = tierForItem(item, sizeBounds.lowerArea, sizeBounds.upperArea);
     const dimensions = itemSize(item, tier, itemSeed);
-    const rotation = seededRandom(itemSeed, 4) * 12 - 6;
-    if (item.kind === "image") {
+    const rotation =
+      display === "pile" ? seededRandom(itemSeed, 4) * 12 - 6 : 0;
+    {
       const angle = (Math.abs(rotation) * Math.PI) / 180;
       const rotatedWidth =
-        dimensions.width * Math.cos(angle) + dimensions.height * Math.sin(angle);
+        dimensions.width * Math.cos(angle) +
+        dimensions.height * Math.sin(angle);
       const rotatedHeight =
-        dimensions.height * Math.cos(angle) + dimensions.width * Math.sin(angle);
+        dimensions.height * Math.cos(angle) +
+        dimensions.width * Math.sin(angle);
       const scale = Math.min(
         1,
-        (cellWidth * 0.8) / rotatedWidth,
-        (ARCHIVE_ROW_HEIGHT * 0.8) / rotatedHeight,
+        (cellWidth * (display === "pile" ? 1.05 : 0.8)) / rotatedWidth,
+        (cell.height * (display === "pile" ? 1.05 : 0.8)) / rotatedHeight,
       );
       dimensions.width *= scale;
       dimensions.height *= scale;
@@ -597,15 +638,17 @@ export function buildArchiveWindow(
     const column = index % columnCount;
     const row = Math.floor(index / columnCount);
     const jitterX =
-      (seededRandom(itemSeed, 2) - 0.5) * cellWidth *
+      (display === "pile" ? seededRandom(itemSeed, 2) - 0.5 : 0) *
+      cellWidth *
       (item.kind === "image" ? 0.2 : 0.45);
     const jitterY =
-      (seededRandom(itemSeed, 3) - 0.5) * ARCHIVE_ROW_HEIGHT *
+      (display === "pile" ? seededRandom(itemSeed, 3) - 0.5 : 0) *
+      cell.height *
       (item.kind === "image" ? 0.2 : 0.35);
     const unclampedX =
       (column + 0.5) * cellWidth + jitterX - dimensions.width / 2;
     const unclampedY =
-      (row + 0.5) * ARCHIVE_ROW_HEIGHT + jitterY - dimensions.height / 2;
+      (row + 0.5) * cell.height + jitterY - dimensions.height / 2;
     const x = Math.max(4, Math.min(width - dimensions.width - 4, unclampedX));
     const y = Math.max(
       4,
@@ -641,6 +684,7 @@ function buildLayout(
   width: number,
   height: number,
   seed: number,
+  display: ScrapDisplay,
 ): ScrapLayout[] {
   if (slots.length === 0 || width === 0 || height === 0) return [];
 
@@ -662,10 +706,25 @@ function buildLayout(
     const tier = tierForItem(item, lowerArea, upperArea);
     const itemSeed = seed + hashString(item.key);
     const itemDimensions = itemSize(item, tier, itemSeed);
+    if (display === "grid") {
+      const scale = Math.min(
+        1,
+        (cellWidth * 0.8) / itemDimensions.width,
+        (cellHeight * 0.8) / itemDimensions.height,
+      );
+      itemDimensions.width *= scale;
+      itemDimensions.height *= scale;
+    }
     const column = index % columnCount;
     const row = Math.floor(index / columnCount);
-    const jitterX = (seededRandom(itemSeed, 2) - 0.5) * cellWidth * 0.6;
-    const jitterY = (seededRandom(itemSeed, 3) - 0.5) * cellHeight * 0.6;
+    const jitterX =
+      (display === "pile" ? seededRandom(itemSeed, 2) - 0.5 : 0) *
+      cellWidth *
+      0.6;
+    const jitterY =
+      (display === "pile" ? seededRandom(itemSeed, 3) - 0.5 : 0) *
+      cellHeight *
+      0.6;
     const unclampedX =
       (column + 0.5) * cellWidth + jitterX - itemDimensions.width / 2;
     const unclampedY =
@@ -687,7 +746,7 @@ function buildLayout(
         y,
         width: itemDimensions.width,
         height: itemDimensions.height,
-        rotation: seededRandom(itemSeed, 4) * 12 - 6,
+        rotation: display === "pile" ? seededRandom(itemSeed, 4) * 12 - 6 : 0,
         zIndex: Math.floor(seededRandom(itemSeed, 5) * 80) + 1,
         cardAbove: y > height * 0.58,
         cardRightAligned: x > width * 0.68,
@@ -867,39 +926,6 @@ const COLLAGE_STYLES = `
   .scrap-collage__filter:focus-visible {
     outline: 2px solid rgba(74, 154, 138, 0.45);
     outline-offset: 2px;
-  }
-
-  .scrap-collage__filter--cycle {
-    gap: 6px;
-  }
-
-  .scrap-collage__cycle-status {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #aaa59d;
-    box-shadow: inset 0 0 0 1px rgba(61, 56, 51, 0.12);
-    transition: background 140ms ease, box-shadow 140ms ease;
-  }
-
-  .scrap-collage__filter--cycle[aria-pressed="true"] {
-    border-color: #4a9a70;
-    background: rgba(74, 154, 112, 0.1);
-    color: #3f855f;
-  }
-
-  .scrap-collage__filter--cycle[aria-pressed="true"] .scrap-collage__cycle-status {
-    background: #4a9a70;
-    box-shadow: 0 0 0 2px rgba(74, 154, 112, 0.16);
-  }
-
-  .scrap-collage__filter--cycle:hover,
-  .scrap-collage__filter--cycle:focus-visible {
-    border-color: #4a9a70;
-  }
-
-  .scrap-collage__filter--cycle:focus-visible {
-    outline-color: rgba(74, 154, 112, 0.45);
   }
 
   .scrap-collage__scroll {
@@ -1325,11 +1351,13 @@ export function ScrapCollage({
   const containerRef = useRef<HTMLDivElement>(null);
   const archiveScrollRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const [selectedKind, setSelectedKind] =
-    useState<ScrapKindFilter>("all");
+  const [selectedKind, setSelectedKind] = useState<ScrapKindFilter>("all");
   const [view, setView] = useState<ScrapView>("drift");
-  const [visibleScrapCount, setVisibleScrapCount] =
-    useState<VisibleScrapCount>("auto");
+  const [display, setDisplay] = useState<ScrapDisplay>(readScrapDisplay);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const pendingScrollRef = useRef<number | null>(null);
+  const shufflePreviousKeysRef = useRef(new Set<string>());
   const [archiveScrollTop, setArchiveScrollTop] = useState(0);
   const [controlsExpanded, setControlsExpanded] = useState(true);
   const [shuffleIndex, setShuffleIndex] = useState(0);
@@ -1343,7 +1371,7 @@ export function ScrapCollage({
     () => new Set(),
   );
   const prefersReducedMotion = usePrefersReducedMotion();
-  const [tidePaused, setTidePaused] = useState(prefersReducedMotion);
+
   const [tide, setTide] = useState<TideState | null>(null);
   const tideShuffleIndexRef = useRef(shuffleIndex);
   const tideRef = useRef(tide);
@@ -1358,20 +1386,45 @@ export function ScrapCollage({
     key: string;
     origin: ScrapOrigin;
   } | null>(null);
-  // Tide state to restore when the examine view closes; the tide holds still
-  // while a scrap is being looked at.
-  const tidePausedBeforeExamineRef = useRef<boolean | null>(null);
+  const tidePaused =
+    prefersReducedMotion || hovered || focused || examining !== null;
   const examineTriggerRef = useRef<HTMLElement | null>(null);
   // Rendered tile elements by scrap key, so arrow-key navigation can re-anchor
   // the examine view on the next scrap's actual slot.
   const tileElementsRef = useRef(new Map<string, HTMLElement>());
   const archiveMode = view === "archive";
-  const layoutSeed = seed + shuffleIndex * 10_007;
+  const layoutSeed = seed + (archiveMode ? 0 : shuffleIndex * 10_007);
   const selectedTargetCount =
     targetCount ??
-    (visibleScrapCount === "auto"
-      ? responsiveTargetCount(containerSize.width, containerSize.height)
-      : visibleScrapCount);
+    responsiveTargetCount(containerSize.width, containerSize.height);
+  const changeDisplay = (next: ScrapDisplay) => {
+    if (next === display) return;
+    setWashingOut([]);
+    if (archiveMode) {
+      const oldCell = archiveCell(display),
+        nextCell = archiveCell(next);
+      const index =
+        Math.floor(archiveScrollTop / oldCell.height) *
+        Math.max(1, Math.floor(containerSize.width / oldCell.width));
+      pendingScrollRef.current =
+        Math.floor(
+          index / Math.max(1, Math.floor(containerSize.width / nextCell.width)),
+        ) * nextCell.height;
+    }
+    setDisplay(next);
+    try {
+      localStorage.setItem(DISPLAY_STORAGE_KEY, next);
+    } catch {
+      /* Layout still changes when storage is unavailable. */
+    }
+  };
+  useLayoutEffect(() => {
+    if (pendingScrollRef.current === null) return;
+    const top = pendingScrollRef.current;
+    pendingScrollRef.current = null;
+    if (archiveScrollRef.current) archiveScrollRef.current.scrollTop = top;
+    setArchiveScrollTop(top);
+  }, [display]);
 
   const kindCounts = useMemo(() => {
     const counts: Record<ScrapKind, number> = {
@@ -1413,7 +1466,7 @@ export function ScrapCollage({
       curateScraps(filteredItems, {
         seed: layoutSeed,
         targetCount: selectedTargetCount,
-        perDomainCap,
+        perDomainCap: perDomainCap ?? Infinity,
       }),
     [filteredItems, layoutSeed, perDomainCap, selectedTargetCount],
   );
@@ -1428,8 +1481,16 @@ export function ScrapCollage({
     for (const item of curatedScraps) {
       if (byKey.delete(item.key)) ordered.push(item);
     }
-    return [...ordered, ...byKey.values()];
-  }, [archiveScraps, curatedScraps]);
+    const pool = [...ordered, ...byKey.values()];
+    if (shuffleIndex > 0)
+      pool.sort(
+        (a, b) =>
+          Number(shufflePreviousKeysRef.current.has(a.key)) -
+            Number(shufflePreviousKeysRef.current.has(b.key)) ||
+          itemOrder(a, layoutSeed) - itemOrder(b, layoutSeed),
+      );
+    return pool;
+  }, [archiveScraps, curatedScraps, shuffleIndex, layoutSeed]);
   const tideCapacity = Math.min(curatedScraps.length, tidePool.length);
   const tideAvailable = !archiveMode && tidePool.length > tideCapacity;
   const poolByKey = useMemo(
@@ -1444,7 +1505,7 @@ export function ScrapCollage({
       return deriveTideState(
         tidePool.map((item) => item.key),
         tideCapacity,
-        shuffled ? undefined : current ?? undefined,
+        shuffled ? undefined : (current ?? undefined),
       );
     });
   }, [shuffleIndex, tideCapacity, tidePool]);
@@ -1456,7 +1517,7 @@ export function ScrapCollage({
   const slots = useMemo<(ScrapItem | null)[]>(() => {
     if (!tide) return curatedScraps;
     return tide.ashore.map((key) =>
-      key === null ? null : poolByKey.get(key) ?? null,
+      key === null ? null : (poolByKey.get(key) ?? null),
     );
   }, [curatedScraps, poolByKey, tide]);
   const archiveWindow = useMemo(
@@ -1469,6 +1530,7 @@ export function ScrapCollage({
             containerSize.height,
             layoutSeed,
             archiveSizeBounds,
+            display,
           )
         : { fieldHeight: 0, layout: [] },
     [
@@ -1476,6 +1538,7 @@ export function ScrapCollage({
       archiveScraps,
       archiveScrollTop,
       archiveSizeBounds,
+      display,
       containerSize,
       layoutSeed,
     ],
@@ -1492,8 +1555,16 @@ export function ScrapCollage({
             containerSize.width,
             containerSize.height,
             layoutSeed,
+            display,
           ),
-    [archiveMode, archiveWindow.layout, containerSize, layoutSeed, slots],
+    [
+      archiveMode,
+      archiveWindow.layout,
+      containerSize,
+      layoutSeed,
+      slots,
+      display,
+    ],
   );
 
   const layoutRef = useRef(layout);
@@ -1511,6 +1582,8 @@ export function ScrapCollage({
   useLayoutEffect(() => {
     if (archiveScrollRef.current) archiveScrollRef.current.scrollTop = 0;
     setArchiveScrollTop(0);
+    setHovered(false);
+    setFocused(false);
   }, [archiveMode, selectedKind]);
 
   /**
@@ -1605,39 +1678,19 @@ export function ScrapCollage({
     const soonest = Math.min(
       ...washingOut.map((scrap) => scrap.startedAt + TIDE_WASH_OUT_MS - now),
     );
-    const timeout = window.setTimeout(() => {
-      const cutoff = Date.now();
-      setWashingOut((current) =>
-        current.filter(
-          (scrap) => cutoff - scrap.startedAt < TIDE_WASH_OUT_MS,
-        ),
-      );
-    }, Math.max(soonest, 0));
+    const timeout = window.setTimeout(
+      () => {
+        const cutoff = Date.now();
+        setWashingOut((current) =>
+          current.filter(
+            (scrap) => cutoff - scrap.startedAt < TIDE_WASH_OUT_MS,
+          ),
+        );
+      },
+      Math.max(soonest, 0),
+    );
     return () => window.clearTimeout(timeout);
   }, [washingOut]);
-
-  useEffect(() => {
-    if (!tideAvailable) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== "Space" || event.metaKey || event.ctrlKey || event.altKey) {
-        return;
-      }
-      const active = document.activeElement;
-      if (
-        active instanceof HTMLElement &&
-        (active.isContentEditable ||
-          ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(active.tagName))
-      ) {
-        return;
-      }
-      event.preventDefault();
-      setTidePaused((current) => !current);
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [tideAvailable]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1687,22 +1740,17 @@ export function ScrapCollage({
    */
   const examinableScraps = layout
     .map((scrap) => scrap.item)
-    .filter(
-      (item) => !failedScraps.has(item.key) && isRenderableScrap(item),
-    );
+    .filter((item) => !failedScraps.has(item.key) && isRenderableScrap(item));
   const examineIndex = examining
     ? examinableScraps.findIndex((item) => item.key === examining.key)
     : -1;
-  const examinedItem = examineIndex >= 0 ? examinableScraps[examineIndex] : null;
+  const examinedItem =
+    examineIndex >= 0 ? examinableScraps[examineIndex] : null;
 
   const openExamine = (item: ScrapItem, element: HTMLElement) => {
     const bounds = element.getBoundingClientRect();
     const layoutEntry = layout.find((scrap) => scrap.item.key === item.key);
     examineTriggerRef.current = element;
-    if (tidePausedBeforeExamineRef.current === null) {
-      tidePausedBeforeExamineRef.current = tidePaused;
-      setTidePaused(true);
-    }
     setExamining({
       key: item.key,
       origin: {
@@ -1717,10 +1765,6 @@ export function ScrapCollage({
 
   const closeExamine = () => {
     setExamining(null);
-    if (tidePausedBeforeExamineRef.current !== null) {
-      setTidePaused(tidePausedBeforeExamineRef.current);
-      tidePausedBeforeExamineRef.current = null;
-    }
     // The origin tile can be gone (a filter change, a wash-out); fall back to
     // the collage itself so focus never escapes to the top of the document.
     const trigger = examineTriggerRef.current;
@@ -1753,7 +1797,9 @@ export function ScrapCollage({
     const next = examinableScraps[examineIndex + delta];
     if (!next) return;
     const layoutEntry = layout.find((scrap) => scrap.item.key === next.key);
-    const bounds = tileElementsRef.current.get(next.key)?.getBoundingClientRect();
+    const bounds = tileElementsRef.current
+      .get(next.key)
+      ?.getBoundingClientRect();
     setExamining({
       key: next.key,
       origin: bounds
@@ -1805,6 +1851,10 @@ export function ScrapCollage({
         }}
         aria-label={`Examine ${title}`}
         aria-haspopup="dialog"
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         style={tileStyle}
         onClick={(event) => {
           // Plain clicks open the examine view; modifier clicks keep the
@@ -1877,9 +1927,7 @@ export function ScrapCollage({
   const tiles = layout.map((scrap) =>
     renderTile(
       scrap,
-      washInKeys.has(scrap.item.key)
-        ? " scrap-collage__tile--washing-in"
-        : "",
+      washInKeys.has(scrap.item.key) ? " scrap-collage__tile--washing-in" : "",
     ),
   );
 
@@ -1954,61 +2002,42 @@ export function ScrapCollage({
                     )}
                   </select>
                 </label>
+                <div
+                  className="scrap-collage__view-switch"
+                  role="group"
+                  aria-label="Scrap layout"
+                >
+                  {(["pile", "grid"] as const).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      className="scrap-collage__view-option"
+                      aria-pressed={display === option}
+                      onClick={() => changeDisplay(option)}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
                 {archiveMode ? (
                   <span className="scrap-collage__archive-summary">
                     newest first · {archiveScraps.length}
                   </span>
                 ) : (
-                  <>
-                    <label className="scrap-collage__control-group">
-                      <span className="scrap-collage__control-label">
-                        amount
-                      </span>
-                      <select
-                        className="scrap-collage__select"
-                        aria-label="Number of scraps shown"
-                        value={visibleScrapCount}
-                        onChange={(event) => {
-                          const value = event.currentTarget.value;
-                          setVisibleScrapCount(
-                            value === "auto"
-                              ? value
-                              : (Number(value) as VisibleScrapCount),
-                          );
-                        }}
-                      >
-                        <option value="auto">
-                          fill screen · {selectedTargetCount}
-                        </option>
-                        <option value="100">100</option>
-                        <option value="200">200</option>
-                        <option value="300">300</option>
-                        <option value="500">500</option>
-                      </select>
-                    </label>
-                    <button
-                      type="button"
-                      className="scrap-collage__filter"
-                      onClick={() => setShuffleIndex((current) => current + 1)}
-                    >
-                      shuffle
-                    </button>
-                    {tideAvailable && (
-                      <button
-                        type="button"
-                        className="scrap-collage__filter scrap-collage__filter--cycle"
-                        aria-pressed={!tidePaused}
-                        title="Turn automatic cycling on or off (spacebar)"
-                        onClick={() => setTidePaused((current) => !current)}
-                      >
-                        <span
-                          className="scrap-collage__cycle-status"
-                          aria-hidden="true"
-                        />
-                        cycle
-                      </button>
-                    )}
-                  </>
+                  <button
+                    type="button"
+                    className="scrap-collage__filter"
+                    onClick={() => {
+                      shufflePreviousKeysRef.current = new Set(
+                        tideRef.current?.ashore.filter(
+                          (key): key is string => key !== null,
+                        ) ?? [],
+                      );
+                      setShuffleIndex((current) => current + 1);
+                    }}
+                  >
+                    shuffle
+                  </button>
                 )}
               </div>
             </>
@@ -2037,10 +2066,7 @@ export function ScrapCollage({
             setArchiveScrollTop(event.currentTarget.scrollTop)
           }
         >
-          <div
-            className="scrap-collage__field"
-            style={{ height: fieldHeight }}
-          >
+          <div className="scrap-collage__field" style={{ height: fieldHeight }}>
             {tiles}
           </div>
         </div>
