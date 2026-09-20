@@ -170,6 +170,82 @@ describe("playhtml.users.me", () => {
     );
   });
 
+  it("notifies onChange when the full self identity changes", () => {
+    const awareness = makeAwareness();
+    const users = createUsersAPI(makeIdentity("local-key"), {
+      getAwareness: () => awareness,
+    });
+    const listener = vi.fn();
+    users.onChange(listener);
+    listener.mockClear();
+
+    users.adoptIdentity({
+      ...makeIdentity("local-key"),
+      playerStyle: {
+        colorPalette: ["#111111"],
+        cursorStyle: "crosshair",
+      },
+    });
+
+    expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it("does not notify onChange when only cursor position changes", () => {
+    const awareness = makeAwareness();
+    const remoteIdentity = makeIdentity("remote-key", "#abcdef");
+    let cursorPresences = new Map([
+      [
+        "remote-key",
+        {
+          cursor: { x: 0, y: 0, pointer: "mouse" },
+          playerIdentity: remoteIdentity,
+        },
+      ],
+    ]);
+    let notifyCursorPresences = () => {};
+    const users = createUsersAPI(makeIdentity("local-key"), {
+      getAwareness: () => awareness,
+      getCursorPresences: () => cursorPresences,
+      onCursorPresencesChange(callback) {
+        notifyCursorPresences = () => callback(cursorPresences);
+        return () => {};
+      },
+    });
+    const listener = vi.fn();
+    users.onChange(listener);
+    listener.mockClear();
+
+    cursorPresences = new Map([
+      [
+        "remote-key",
+        {
+          cursor: { x: 10, y: 20, pointer: "mouse" },
+          playerIdentity: remoteIdentity,
+        },
+      ],
+    ]);
+    notifyCursorPresences();
+
+    expect(listener).not.toHaveBeenCalled();
+
+    cursorPresences = new Map([
+      [
+        "remote-key",
+        {
+          cursor: { x: 10, y: 20, pointer: "mouse" },
+          playerIdentity: makeIdentity("remote-key", "#fedcba"),
+        },
+      ],
+    ]);
+    notifyCursorPresences();
+
+    expect(listener).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ pid: "remote-key", color: "#fedcba" }),
+      ]),
+    );
+  });
+
   it("isolates throwing onChange subscribers during self mutation", () => {
     const awareness = makeAwareness();
     const users = createUsersAPI(makeIdentity("local-key"), {

@@ -1,0 +1,173 @@
+@font-face {
+  font-family: "MEKText";
+  src: url("/internet-map/fonts/MEKMode-Text.woff2") format("woff2");
+  font-display: block;
+}
+@font-face {
+  font-family: "MEKDings";
+  src: url("/internet-map/fonts/MEKMode-Dings.woff2") format("woff2");
+  font-display: block;
+}
+
+:root {
+  /* The theme owns these; theme.ts writes the --im-* values onto :root at
+     boot and again on every edit, and everything below reads them through
+     these aliases so a preset change needs no stylesheet edit. */
+  --bg: var(--im-bg, #17160f);
+  --panel: var(--im-panel, #1e1d18);
+  --panel-ink: var(--im-panel-ink, #ded8bd);
+  --panel-dim: var(--im-panel-dim, #8e8873);
+  --line: var(--im-line, #ded8bd);
+  --shadow: var(--im-shadow, rgba(0, 0, 0, 0.5));
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; background: var(--bg); }
+body {
+  font-family: MEKText, ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--panel-ink);
+  -webkit-font-smoothing: none;
+  image-rendering: pixelated;
+}
+canvas { position: absolute; inset: 0; display: block; }
+
+/* ---- cream terminal windows, as in the MEK reference ---- */
+.win {
+  position: absolute;
+  z-index: 5;
+  background: var(--panel);
+  color: var(--panel-ink);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 10px var(--shadow);
+}
+.win .bar {
+  border-bottom: 1px solid var(--line);
+  padding: 2px 6px;
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-align: center;
+  text-transform: uppercase;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.win .body { padding: 7px 9px; }
+
+button {
+  font: inherit; cursor: pointer; background: var(--panel); color: var(--panel-ink);
+  border: 2px solid var(--line); padding: 2px 8px;
+}
+button:hover { background: var(--panel-ink); color: var(--panel); }
+
+/* ---------------------------------------------------------------- search */
+#search-win { top: 12px; left: 12px; width: 300px; }
+#search-win .body { padding: 5px 6px; }
+#search {
+  display: block; width: 100%;
+  border: 1px solid var(--line); background: transparent; color: var(--panel-ink);
+  font: inherit; padding: 3px 6px; outline: none;
+}
+#search::placeholder { color: var(--panel-dim); }
+#search:focus { border-color: var(--panel-ink); }
+#results {
+  display: none; margin-top: 5px; padding-top: 4px;
+  border-top: 1px solid var(--line);
+  max-height: 44vh; overflow-y: auto; overscroll-behavior: contain;
+}
+#results.on { display: block; }
+.res {
+  display: flex; gap: 8px; align-items: baseline;
+  padding: 2px 5px; cursor: pointer;
+}
+.res b {
+  font-weight: 700; font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.res small { margin-left: auto; color: var(--panel-dim); font-size: 10px; white-space: nowrap; }
+.res:hover { background: rgba(128,128,128,.16); }
+.res.on { background: var(--panel-ink); color: var(--panel); }
+.res.on small { color: var(--panel); }
+#results::-webkit-scrollbar { width: 6px; }
+#results::-webkit-scrollbar-thumb { background: rgba(128,128,128,.35); }
+
+#dials { left: 12px; bottom: 12px; width: 252px; }
+.dial { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 8px; margin: 4px 0; }
+.dial label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--panel-dim); }
+.dial input[type=range] { width: 100%; accent-color: var(--panel-ink); }
+.dial input[type=checkbox] { justify-self: start; accent-color: var(--panel-ink); }
+.legend { margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--line); font-size: 11px; }
+.legend .row { display: flex; gap: 8px; align-items: baseline; }
+.legend .k { font-family: MEKDings, monospace; font-size: 15px; }
+.legend .kt { font-family: MEKText, monospace; font-size: 14px; }
+
+#panel { right: 12px; top: 74px; width: 320px; max-height: calc(100vh - 100px); overflow-y: auto; display: none; }
+#panel.on { display: block; }
+#panel h3 { margin: 0 0 2px; font-size: 14px; word-break: break-word; }
+#panel .url { color: var(--panel-dim); font-size: 11px; word-break: break-all; margin-bottom: 8px; }
+#panel table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+#panel td { padding: 1px 0; font-size: 12px; }
+#panel td:last-child { text-align: right; font-weight: 700; }
+#panel td:first-child { color: var(--panel-dim); }
+#panel h5 { margin: 9px 0 3px; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--panel-dim); }
+.jump { display: flex; gap: 6px; align-items: baseline; padding: 1px 0; cursor: pointer; border-bottom: 1px solid var(--line); }
+.jump:hover { background: var(--panel-ink); color: var(--panel); }
+.jump .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.jump .w { margin-left: auto; color: var(--panel-dim); font-size: 11px; white-space: nowrap; }
+.jump:hover .w { color: #bdb79a; }
+
+#tip {
+  position: absolute; z-index: 12; pointer-events: none; display: none;
+  background: var(--panel); color: var(--panel-ink);
+  border: 1px solid var(--line);
+  padding: 3px 6px; max-width: 330px; font-size: 10.5px; line-height: 1.35;
+  box-shadow: 0 2px 10px var(--shadow);
+}
+#tip .row { display: flex; gap: 8px; align-items: baseline; }
+#tip i {
+  font-style: normal; color: var(--panel-dim); text-transform: uppercase;
+  letter-spacing: .06em; font-size: 8.5px; width: 62px; flex: none;
+}
+#tip b { font-weight: 700; word-break: break-all; }
+
+#zoom { right: 12px; bottom: 12px; }
+#zoom .body { display: flex; gap: 8px; align-items: center; }
+#level { color: var(--panel-dim); font-size: 11px; min-width: 82px; text-transform: uppercase; letter-spacing: .06em; }
+
+#boot { position: absolute; inset: 0; display: grid; place-items: center; background: var(--bg); z-index: 30; color: var(--panel-ink); }
+#boot .inner { text-align: center; }
+#boot b { display: block; letter-spacing: .18em; margin-bottom: 8px; }
+#boot .bar { width: 260px; height: 8px; border: 2px solid var(--line); margin: 10px auto 0; }
+#boot .bar i { display: block; height: 100%; width: 0; background: var(--panel-ink); transition: width .2s; }
+
+/* ---------------------------------------------------------------- routes */
+#routes { left: 12px; bottom: 12px; width: 268px; }
+#routes .body { padding: 6px 8px; font-size: 11px; }
+#r-hint { color: var(--panel-dim); font-size: 10px; letter-spacing: .04em; }
+#r-list { display: none; }
+#r-list.on { display: block; }
+.rmode {
+  display: block; width: 100%;
+  background: none; border: 0; padding: 3px 5px; margin: 1px 0;
+  color: var(--panel-ink); font: inherit; text-align: left; cursor: pointer;
+}
+.rmode:hover { background: rgba(222,216,189,.10); }
+.rmode.on { background: rgba(222,216,189,.16); }
+.rmode .hd { display: flex; justify-content: space-between; align-items: baseline; }
+.rmode b { font-weight: 700; }
+.rmode i {
+  font-style: normal; font-variant-numeric: tabular-nums;
+  color: var(--panel-dim); font-size: 10px;
+}
+.rmode.on i { color: var(--panel-ink); }
+.rmode span {
+  display: block; color: var(--panel-dim); font-size: 9.5px; line-height: 1.25;
+}
+#r-legs {
+  margin-top: 5px; padding-top: 4px; border-top: 1px solid rgba(222,216,189,.35);
+  color: var(--panel-dim); font-size: 10px;
+  max-height: 34vh; overflow-y: auto; overscroll-behavior: contain;
+}
+#r-legs .lhead { color: var(--panel-ink); margin-bottom: 2px; }
+#r-legs .leg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#r-legs .leg.end { color: var(--panel-ink); }
+#r-legs::-webkit-scrollbar { width: 6px; }
+#r-legs::-webkit-scrollbar-thumb { background: rgba(222,216,189,.25); }
