@@ -5,6 +5,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  buildArchiveWindow,
   canonicalScrapKey,
   headingDisplayFontSize,
   ScrapCollage,
@@ -81,6 +82,51 @@ describe("headingDisplayFontSize", () => {
 
   it("never shrinks below the readable floor for the longest wording", () => {
     expect(headingDisplayFontSize({ fontSize: "96px" }, "y".repeat(400))).toBe(11);
+  });
+});
+
+describe("heading tiles in the archive", () => {
+  const long = heading("h-long", "Heirloom pears, ranked by sweetness", 1, {
+    fontSize: "96px",
+  });
+
+  it("keeps room for the lines the wording wraps onto in the pile", () => {
+    const { layout } = buildArchiveWindow(
+      [long],
+      1200,
+      0,
+      850,
+      1,
+      undefined,
+      "pile",
+    );
+    const tile = layout[0];
+    const fontSize = headingDisplayFontSize(
+      long.styles,
+      long.text,
+      tile.width,
+    );
+    const lines = Math.ceil(
+      (long.text.length * fontSize * 0.68) / Math.max(1, tile.width - 16),
+    );
+    expect(tile.height).toBeGreaterThanOrEqual(lines * fontSize * 1.15);
+  });
+
+  it("never gives a heading a tile taller than its archive cell", () => {
+    for (const display of ["pile", "grid"] as const) {
+      const { layout } = buildArchiveWindow(
+        [long],
+        1200,
+        0,
+        850,
+        1,
+        undefined,
+        display,
+      );
+      expect(layout[0].height).toBeLessThanOrEqual(
+        display === "pile" ? 74 : 112,
+      );
+    }
   });
 });
 

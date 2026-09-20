@@ -168,6 +168,8 @@ const CURSOR_TILE_SIZE = 48;
 const MIN_HEADING_DISPLAY_FONT_SIZE = 11;
 const MAX_HEADING_DISPLAY_FONT_SIZE = 34;
 const HEADING_TILE_HEIGHT = 44;
+/** Line spacing headings are drawn at, replacing the page's captured value. */
+const HEADING_LINE_HEIGHT = 1.15;
 
 type ScrapKind = ScrapItem["kind"];
 type ScrapKindFilter = "all" | ScrapKind;
@@ -584,14 +586,29 @@ function headingTileSize(item: Extract<ScrapItem, { kind: "heading" }>): {
     MAX_HEADING_TILE_WIDTH,
     HEADING_TILE_PADDING + textWidth,
   );
+  return { width, height: headingHeightAtWidth(item, width) };
+}
+
+/**
+ * How tall a heading needs to be once its words wrap to `width`. Used both to
+ * size a heading in the tide and to re-derive its height after the archive has
+ * scaled its width down to a cell.
+ */
+function headingHeightAtWidth(
+  item: Extract<ScrapItem, { kind: "heading" }>,
+  width: number,
+): number {
+  const fontSize = headingDisplayFontSize(item.styles, item.text, width);
+  const textWidth =
+    item.text.trim().length * fontSize * HEADING_CHARACTER_ADVANCE;
   const lineCount = Math.max(
     1,
     Math.ceil(textWidth / Math.max(1, width - HEADING_TILE_PADDING)),
   );
-  return {
-    width,
-    height: Math.max(HEADING_TILE_HEIGHT, lineCount * fontSize * 1.15 + 12),
-  };
+  return Math.max(
+    HEADING_TILE_HEIGHT,
+    lineCount * fontSize * HEADING_LINE_HEIGHT + 12,
+  );
 }
 
 function imageSize(
@@ -733,6 +750,14 @@ export function buildArchiveWindow(
       );
       dimensions.width *= scale;
       dimensions.height *= scale;
+      if (item.kind === "heading") {
+        // A heading's words wrap to whatever width survives the scale, so its
+        // height follows from that width rather than scaling with it.
+        dimensions.height = Math.min(
+          cell.height,
+          headingHeightAtWidth(item, dimensions.width),
+        );
+      }
     }
     const column = index % columnCount;
     const row = Math.floor(index / columnCount);
@@ -1421,7 +1446,7 @@ function ScrapContent({
             fontSize: headingDisplayFontSize(item.styles, item.text, tileWidth),
             // The captured line height belongs to the captured font size; at
             // display size it would space wrapped lines far too far apart.
-            lineHeight: 1.15,
+            lineHeight: HEADING_LINE_HEIGHT,
           }}
         >
           {item.text}
