@@ -107,6 +107,19 @@ export interface ViewportEventData {
   quantity?: number;      // number of events that occurred during debounce window
 }
 
+/**
+ * Where a scrap sat on the page it was taken from. Document coordinates in
+ * pixels, alongside the document's scroll size, so a scrap can be placed back
+ * on a map of the page it came from. Absent on scraps captured before the
+ * extension recorded it.
+ */
+export interface ScrapPosition {
+  pageX: number;
+  pageY: number;
+  pageWidth: number;
+  pageHeight: number;
+}
+
 export interface ImageScrapData {
   contentHash?: string;
   kind: "image";
@@ -118,6 +131,7 @@ export interface ImageScrapData {
   displayHeight: number;
   pageTitle: string;
   faviconUrl?: string;
+  position?: ScrapPosition;
 }
 
 export interface ButtonScrapData {
@@ -127,6 +141,7 @@ export interface ButtonScrapData {
   innerSvg?: string;
   pageTitle: string;
   faviconUrl?: string;
+  position?: ScrapPosition;
 }
 
 export interface SvgIconScrapData {
@@ -136,6 +151,17 @@ export interface SvgIconScrapData {
   height: number;
   pageTitle: string;
   faviconUrl?: string;
+  position?: ScrapPosition;
+}
+
+export interface HeadingScrapData {
+  kind: "heading";
+  text: string;
+  level: 1 | 2 | 3;
+  styles: Record<string, string>;
+  pageTitle: string;
+  faviconUrl?: string;
+  position?: ScrapPosition;
 }
 
 export interface CursorScrapData {
@@ -145,12 +171,14 @@ export interface CursorScrapData {
   hotspotY?: number;
   pageTitle: string;
   faviconUrl?: string;
+  position?: ScrapPosition;
 }
 
 export type ScrapEventData =
   | ImageScrapData
   | ButtonScrapData
   | SvgIconScrapData
+  | HeadingScrapData
   | CursorScrapData;
 
 /**

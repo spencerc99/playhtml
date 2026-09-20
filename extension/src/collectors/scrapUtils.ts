@@ -7,6 +7,7 @@ import {
   canonicalScrapPageUrl,
   canonicalButtonKey,
   canonicalCursorKey,
+  canonicalHeadingKey,
   canonicalImageKey,
   canonicalSvgIconKey,
 } from "@movement/utils/scrapIdentity";
@@ -88,6 +89,10 @@ export function getScrapKey(data: ScrapEventData): string {
       return hashScrapString(`${data.text}\n${serializeScrapStyles(data.styles)}`);
     case "svg-icon":
       return hashScrapString(data.markup);
+    case "heading":
+      return hashScrapString(
+        `${data.level}\n${data.text}\n${serializeScrapStyles(data.styles)}`,
+      );
     case "cursor":
       return data.url;
   }
@@ -143,6 +148,10 @@ export function getCanonicalScrapKey(
     case "svg-icon":
       return "markup" in data && typeof data.markup === "string"
         ? canonicalSvgIconKey(domain, data.markup)
+        : undefined;
+    case "heading":
+      return "text" in data && typeof data.text === "string"
+        ? canonicalHeadingKey(domain, data.text)
         : undefined;
     case "cursor":
       return "url" in data && typeof data.url === "string"
