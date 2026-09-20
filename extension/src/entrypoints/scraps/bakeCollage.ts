@@ -4,6 +4,12 @@
 import type { ScrapSnapshot } from "./collageRecord";
 import type { CollageFrame, CollagePiece } from "./collageRecord";
 import { sourceBoxForCrop } from "./collageGeometry";
+import {
+  buttonBodyMarkup,
+  foreignObjectDataUrl,
+  requireXmlFragment,
+  svgDataUrl,
+} from "./svgDocument";
 
 /** Names the pieces that could not be drawn, so a save can refuse to go ahead. */
 export class CollageBakeError extends Error {
@@ -55,64 +61,42 @@ async function loadRemoteImage(src: string): Promise<HTMLImageElement> {
 }
 
 /**
- * Renders a scrap's markup through an SVG foreignObject so a button or icon
- * bakes as the same thing the studio shows. The markup is the scrap's own
- * stored reconstruction, the same data `ScrapContent` renders.
+ * Draws a button scrap through an SVG foreignObject so it bakes as the thing
+ * the studio shows, built from the same stored reconstruction `ScrapContent`
+ * renders.
  */
-async function loadMarkupImage(
+async function loadButtonImage(
+  scrap: Extract<ScrapSnapshot, { kind: "button" }>,
+  width: number,
+  height: number,
+): Promise<HTMLImageElement> {
+  return loadImage(
+    foreignObjectDataUrl({ body: buttonBodyMarkup(scrap), width, height }),
+  );
+}
+
+async function loadSvgIconImage(
   markup: string,
   width: number,
   height: number,
 ): Promise<HTMLImageElement> {
-  const svg = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
-    `<foreignObject width="100%" height="100%">`,
-    `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;">`,
-    markup,
-    `</div></foreignObject></svg>`,
-  ].join("");
-  const objectUrl = URL.createObjectURL(
-    new Blob([svg], { type: "image/svg+xml" }),
+  const checked = requireXmlFragment(markup, "The icon");
+  // An svg-icon is already an SVG document, so it needs no HTML wrapper; that
+  // also keeps it clear of the foreignObject path entirely.
+  return loadImage(svgDataUrl(sizedSvg(checked, width, height)));
+}
+
+/** Gives a serialized `<svg>` the box the piece was placed at. */
+function sizedSvg(markup: string, width: number, height: number): string {
+  return markup.replace(
+    /^(\s*<svg\b)([^>]*)>/i,
+    (_match, open: string, attributes: string) => {
+      const withoutSize = attributes
+        .replace(/\swidth\s*=\s*"[^"]*"/gi, "")
+        .replace(/\sheight\s*=\s*"[^"]*"/gi, "");
+      return `${open}${withoutSize} width="${width}" height="${height}">`;
+    },
   );
-  try {
-    return await loadImage(objectUrl);
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function styleDeclarations(styles: Record<string, string>): string {
-  return Object.entries(styles)
-    .map(([property, value]) => {
-      const kebab = property.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
-      return `${kebab}:${String(value).replace(/[;"]/g, "")}`;
-    })
-    .join(";");
-}
-
-function buttonMarkup(
-  scrap: Extract<ScrapSnapshot, { kind: "button" }>,
-): string {
-  const declarations = [
-    styleDeclarations(scrap.styles),
-    "display:inline-flex",
-    "align-items:center",
-    "justify-content:center",
-    "white-space:nowrap",
-    "box-sizing:border-box",
-  ]
-    .filter(Boolean)
-    .join(";");
-  const icon = scrap.innerSvg ? scrap.innerSvg : "";
-  return `<span style="${declarations}">${icon}${escapeHtml(scrap.text)}</span>`;
 }
 
 function pieceLabel(scrap: ScrapSnapshot): string {
@@ -140,9 +124,9 @@ async function pieceImage(
     case "cursor":
       return loadRemoteImage(scrap.url);
     case "svg-icon":
-      return loadMarkupImage(scrap.markup, sourceWidth, sourceHeight);
+      return loadSvgIconImage(scrap.markup, sourceWidth, sourceHeight);
     case "button":
-      return loadMarkupImage(buttonMarkup(scrap), sourceWidth, sourceHeight);
+      return loadButtonImage(scrap, sourceWidth, sourceHeight);
   }
 }
 
@@ -214,18 +198,17 @@ export async function bakeCollage(options: BakeOptions): Promise<Blob> {
     context.beginPath();
     context.rect(piece.x, piece.y, piece.width, piece.height);
     context.clip();
-    context.drawImage(
-      image,
-      source.x,
-      source.y,
-      source.width,
-      source.height,
-    );
+    context.drawImage(image, source.x, source.y, source.width, source.height);
     context.restore();
   }
 
-  const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, "image/png");
+  const blob = await new Promise<Blob | null>((resolve, reject) => {
+    try {
+      // A tainted canvas rejects here rather than handing back a silent hole.
+      canvas.toBlob(resolve, "image/png");
+    } catch (error) {
+      reject(error);
+    }
   });
   if (!blob) {
     throw new Error("The collage canvas produced no image");
