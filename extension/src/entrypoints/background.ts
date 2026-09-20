@@ -721,34 +721,6 @@ export default defineBackground(() => {
       return true
     }
 
-    if (message.type === 'CHECK_SCRAP_IMAGES') {
-      if (
-        sender.url?.split(/[?#]/)[0] !== browser.runtime.getURL('scraps.html')
-      ) {
-        reply({ error: 'Photo checks must start from the scraps page' })
-        return
-      }
-      if (
-        message.afterId !== undefined &&
-        (typeof message.afterId !== 'string' || message.afterId.length > 200)
-      ) {
-        reply({ error: 'Invalid photo check position' })
-        return
-      }
-      store
-        .queryUncheckedImages(message.afterId)
-        .then(async (batch) => ({
-          ...(await imageFingerprints.process(batch.events)),
-          afterId: batch.afterId,
-          done: batch.done,
-        }))
-        .then(reply)
-        .catch(() =>
-          reply({ error: 'Photos could not be checked. Please try again.' }),
-        )
-      return true
-    }
-
     if (message.type === 'GET_SCRAPS') {
       const limit = (message.options?.limit ?? 5000) as number
       store

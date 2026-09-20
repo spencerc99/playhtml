@@ -242,6 +242,37 @@ try {
   await expect(scraps.locator(".scrap-collage__tile")).toHaveCount(2);
   await scraps
     .locator(".scrap-collage__tile")
+    .filter({ has: scraps.locator('img[src*="different"]') })
+    .click();
+  await expect(scraps.locator(".scrap-lightbox__timeline li")).toHaveCount(1);
+  await expect(scraps.locator(".scrap-lightbox")).toHaveCSS("opacity", "1");
+  await expect
+    .poll(() =>
+      scraps
+        .locator(".scrap-lightbox__scrap img")
+        .evaluate((image) => image.complete && image.naturalWidth > 0),
+    )
+    .toBe(true);
+  await expect(scraps.locator(".scrap-lightbox__timeline")).toHaveCSS(
+    "border-bottom-width",
+    "0px",
+  );
+  await expect(scraps.locator(".scrap-lightbox__timeline li")).toHaveCSS(
+    "border-bottom-width",
+    "0px",
+  );
+  await expect(scraps.locator(".scrap-lightbox__actions")).toHaveCSS(
+    "border-top-width",
+    "1px",
+  );
+  await scraps.screenshot({
+    path: resolve(evidence, "single-encounter-divider.png"),
+  });
+  await scraps
+    .getByRole("button", { name: "Close examine view", exact: true })
+    .click();
+  await scraps
+    .locator(".scrap-collage__tile")
     .filter({ has: scraps.locator('img[src$="/photo/a.svg"]') })
     .click();
   await expect(
@@ -303,108 +334,49 @@ try {
     .getByRole("button", { name: "Close examine view", exact: true })
     .click();
   await seedUnchecked(6, "archived");
+  const beforeArchive = downloads.length;
   await scraps.reload();
-  await scraps.getByText("check for matching photos", { exact: true }).click();
-  await scraps.screenshot({ path: resolve(evidence, "check-photos.png") });
-  const beforeScan = downloads.length;
-  await scraps
-    .getByRole("button", { name: "Check saved photos", exact: true })
-    .click();
-  await expect.poll(() => downloads.length).toBeGreaterThan(beforeScan);
-  await scraps.getByRole("button", { name: "Stop", exact: true }).click();
-  await expect(scraps.getByRole("status")).toContainText("Stopped:");
-  assert.equal(
-    downloads.length - beforeScan,
-    2,
-    "stop finishes only the current pair",
-  );
-  await scraps.screenshot({ path: resolve(evidence, "check-stopped.png") });
-  await scraps
-    .getByRole("button", { name: "Check saved photos", exact: true })
-    .click();
-  await expect(scraps.getByRole("status")).toContainText("Finished:", {
-    timeout: 20000,
-  });
-  assert.equal((await records()).length, 11, "checking retains source records");
+  await expect(
+    scraps.getByText("check for matching photos", { exact: true }),
+  ).toHaveCount(0);
   await scraps.getByRole("button", { name: "archive", exact: true }).click();
-  await expect(scraps.locator(".scrap-collage__tile")).toHaveCount(2);
+  await expect(scraps.locator(".scrap-collage__tile")).toHaveCount(8);
   await expect
     .poll(() =>
       scraps
         .locator(".scrap-collage__tile img")
-        .evaluateAll((images) =>
-          images.every((img) => img.complete && img.naturalWidth > 0),
+        .evaluateAll(
+          (images) =>
+            images.length === 8 &&
+            images.every((image) => image.complete && image.naturalWidth > 0),
         ),
     )
     .toBe(true);
-  await scraps.screenshot({ path: resolve(evidence, "check-finished.png") });
-  assert.ok(
-    downloads.every((request) => !request.cookie && !request.referer),
-    "fingerprints omit cookies and referrer",
-  );
-  assert.ok(
-    peak <= 2,
-    `at most two concurrent fingerprint requests (saw ${peak})`,
-  );
-  await seedUnchecked(4, "leaving");
-  await scraps.reload();
-  await scraps.getByText("check for matching photos", { exact: true }).click();
-  const beforeLeaving = downloads.length;
-  await scraps
-    .getByRole("button", { name: "Check saved photos", exact: true })
-    .click();
-  await expect.poll(() => downloads.length).toBeGreaterThan(beforeLeaving);
-  await scraps.reload();
-  await expect
-    .poll(
-      async () =>
-        (await records()).filter((event) => event.data.contentHash).length,
-    )
-    .toBe(13);
-  await scraps.waitForTimeout(1600);
-  assert.equal(
-    downloads.length - beforeLeaving,
-    2,
-    "leaving stops after the current pair",
-  );
-  await scraps.getByText("check for matching photos", { exact: true }).click();
-  await scraps
-    .getByRole("button", { name: "Check saved photos", exact: true })
-    .click();
-  await expect(scraps.getByRole("status")).toContainText("Finished:", {
-    timeout: 20000,
+  await scraps.screenshot({
+    path: resolve(evidence, "archive-no-photo-check.png"),
   });
   await context.close();
   await launch();
   const reopened = await context.newPage();
   await reopened.goto(`${extensionOrigin}/scraps.html`);
   await reopened.getByRole("button", { name: "archive", exact: true }).click();
-  await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(2);
+  await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(8);
+  await reopened.waitForTimeout(1200);
+  assert.equal(
+    downloads.length,
+    beforeArchive,
+    "opening or restarting the archive does not fingerprint saved photos",
+  );
   assert.equal(
     (await records()).filter((event) => event.data.contentHash).length,
-    15,
+    5,
   );
-  await reopened
-    .locator(".scrap-collage__tile")
-    .filter({ has: reopened.locator('img:not([src*="different"])') })
-    .click();
-  const history = reopened.getByRole("region", {
-    name: "Scrollable encounter history",
-  });
-  await expect(reopened.locator(".scrap-lightbox__timeline li")).toHaveCount(
-    14,
+  assert.equal(
+    (await records()).filter(
+      (event) => event.id.startsWith("archived-") && !event.data.contentHash,
+    ).length,
+    6,
   );
-  await expect
-    .poll(() => history.evaluate((el) => el.scrollHeight > el.clientHeight))
-    .toBe(true);
-  await history.focus();
-  await reopened.keyboard.press("End");
-  await expect
-    .poll(() => history.evaluate((el) => el.scrollTop))
-    .toBeGreaterThan(0);
-  await reopened.screenshot({
-    path: resolve(evidence, "history-scrolled.png"),
-  });
   const changingEvent = (id) => ({
     ...original,
     id,
@@ -465,13 +437,15 @@ try {
   );
   await reopened.reload();
   await reopened.getByRole("button", { name: "archive", exact: true }).click();
-  await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(4);
+  await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(10);
+  assert.ok(downloads.every((request) => !request.cookie && !request.referer));
+  assert.ok(peak <= 2);
   assert.deepEqual(pageErrors, []);
   console.log(
     JSON.stringify({
       result: "passed",
-      records: 18,
-      visiblePhotos: 4,
+      records: 14,
+      visiblePhotos: 10,
       peakDownloads: peak,
       evidence,
     }),
