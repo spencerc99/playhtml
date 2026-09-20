@@ -518,6 +518,7 @@ try {
     .getByRole("button", { name: "Close examine view", exact: true })
     .click();
   await reopened.emulateMedia({ reducedMotion: "reduce" });
+  await expect(reopened.getByRole("dialog")).toHaveCount(0);
   await expect
     .poll(
       () =>
