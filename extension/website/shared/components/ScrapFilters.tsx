@@ -17,6 +17,7 @@ const kinds: { kind: Kind; label: string }[] = [
   { kind: "image", label: "images" },
   { kind: "button", label: "buttons" },
   { kind: "svg-icon", label: "icons" },
+  { kind: "heading", label: "headings" },
   { kind: "cursor", label: "cursors" },
 ];
 

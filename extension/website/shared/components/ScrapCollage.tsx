@@ -18,6 +18,7 @@ import {
   isImageContentHash,
   canonicalButtonKey,
   canonicalCursorKey,
+  canonicalHeadingKey,
   canonicalImageKey,
   canonicalSvgIconKey,
 } from "../utils/scrapIdentity";
@@ -26,6 +27,18 @@ import {
   groupPhotoEncounters,
   type ScrapSource,
 } from "../utils/scrapPhotoGroups";
+
+/**
+ * Where a scrap sat on the page it was taken from: its centre in document
+ * coordinates, plus that document's scroll size. Absent on scraps collected
+ * before the extension recorded it.
+ */
+export interface ScrapPosition {
+  pageX: number;
+  pageY: number;
+  pageWidth: number;
+  pageHeight: number;
+}
 
 interface ScrapItemBase {
   sources?: ScrapSource[];
@@ -38,6 +51,7 @@ interface ScrapItemBase {
   domain: string;
   pageUrl: string;
   ts: number;
+  position?: ScrapPosition;
 }
 
 export type ScrapItem = ScrapItemBase &
@@ -61,6 +75,12 @@ export type ScrapItem = ScrapItemBase &
         markup: string;
         width: number;
         height: number;
+      }
+    | {
+        kind: "heading";
+        text: string;
+        level: 1 | 2 | 3;
+        styles: Record<string, string>;
       }
     | {
         kind: "cursor";
@@ -144,6 +164,11 @@ const TIDE_BAND_BELOW = 0.15;
 const TIDE_BAND_ABOVE = 0.05;
 const LONG_EDGE_BY_TIER = [96, 152, 208] as const;
 const CURSOR_TILE_SIZE = 48;
+/** Captured font sizes range from hairline to billboard; display needs a narrower band. */
+const MIN_HEADING_DISPLAY_FONT_SIZE = 11;
+const MAX_HEADING_DISPLAY_FONT_SIZE = 34;
+const HEADING_TILE_HEIGHT = 44;
+
 type ScrapKind = ScrapItem["kind"];
 type ScrapKindFilter = "all" | ScrapKind;
 
@@ -164,6 +189,10 @@ function naturalArea(item: ScrapItem): number {
       return estimateButtonWidth(item.text) * 40;
     case "svg-icon":
       return item.width * item.height;
+    case "heading": {
+      const size = headingTileSize(item);
+      return size.width * size.height;
+    }
     case "cursor":
       return CURSOR_TILE_SIZE * CURSOR_TILE_SIZE;
   }
@@ -195,6 +224,8 @@ export function canonicalScrapKey(item: ScrapItem): string {
       );
     case "svg-icon":
       return canonicalSvgIconKey(item.domain, item.markup);
+    case "heading":
+      return canonicalHeadingKey(item.domain, item.text);
     case "cursor":
       return canonicalCursorKey(item.url);
   }
@@ -493,6 +524,76 @@ function estimateButtonWidth(text: string): number {
   return clamp(100, 240, 48 + text.trim().length * 8);
 }
 
+/**
+ * Advance per character as a share of font size, wide enough that a broad
+ * typeface still fits the tile measured for it.
+ */
+const HEADING_CHARACTER_ADVANCE = 0.68;
+const HEADING_TILE_PADDING = 16;
+const MAX_HEADING_TILE_WIDTH = 340;
+
+/**
+ * The size a heading is drawn at: its captured size brought into a band the
+ * collage can hold, then reduced so the wording fits the width available to
+ * it. A billboard headline and a hairline subhead both end up legible scraps
+ * rather than clipped ones. `availableWidth` is the laid-out tile width when
+ * the caller knows it, and otherwise the widest tile a heading is given.
+ */
+export function headingDisplayFontSize(
+  styles: Record<string, string>,
+  text = "",
+  availableWidth = MAX_HEADING_TILE_WIDTH,
+): number {
+  const capturedSize = Number.parseFloat(styles.fontSize ?? "");
+  const bandedSize = Number.isFinite(capturedSize) && capturedSize > 0
+    ? clamp(
+        MIN_HEADING_DISPLAY_FONT_SIZE,
+        MAX_HEADING_DISPLAY_FONT_SIZE,
+        capturedSize,
+      )
+    : MIN_HEADING_DISPLAY_FONT_SIZE;
+
+  const characterCount = text.trim().length;
+  if (characterCount === 0) return bandedSize;
+
+  const widthBudget = Math.max(
+    HEADING_TILE_PADDING,
+    availableWidth - HEADING_TILE_PADDING,
+  );
+  const sizeThatFits =
+    widthBudget / (characterCount * HEADING_CHARACTER_ADVANCE);
+  return Math.round(
+    Math.max(MIN_HEADING_DISPLAY_FONT_SIZE, Math.min(bandedSize, sizeThatFits)),
+  );
+}
+
+/**
+ * The box a heading needs at display size: wide enough for its wording on one
+ * line where that fits inside the widest tile a heading gets, and otherwise as
+ * wide as that tile and tall enough for the lines the wording wraps onto.
+ */
+function headingTileSize(item: Extract<ScrapItem, { kind: "heading" }>): {
+  width: number;
+  height: number;
+} {
+  const fontSize = headingDisplayFontSize(item.styles, item.text);
+  const textWidth =
+    item.text.trim().length * fontSize * HEADING_CHARACTER_ADVANCE;
+  const width = clamp(
+    90,
+    MAX_HEADING_TILE_WIDTH,
+    HEADING_TILE_PADDING + textWidth,
+  );
+  const lineCount = Math.max(
+    1,
+    Math.ceil(textWidth / Math.max(1, width - HEADING_TILE_PADDING)),
+  );
+  return {
+    width,
+    height: Math.max(HEADING_TILE_HEIGHT, lineCount * fontSize * 1.15 + 12),
+  };
+}
+
 function imageSize(
   item: Extract<ScrapItem, { kind: "image" }>,
   tier: number,
@@ -542,6 +643,8 @@ function itemSize(
       return { width: estimateButtonWidth(item.text), height: 40 };
     case "svg-icon":
       return svgIconSize(item, itemSeed);
+    case "heading":
+      return headingTileSize(item);
     case "cursor":
       return { width: CURSOR_TILE_SIZE, height: CURSOR_TILE_SIZE };
   }
@@ -1099,6 +1202,22 @@ const COLLAGE_STYLES = `
     display: block;
   }
 
+  .scrap-collage__heading {
+    box-sizing: border-box;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    padding: 0 4px;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    text-align: center;
+    /* Wording too long for its tile at the smallest legible size wraps and
+       breaks rather than running off the edge. */
+    overflow-wrap: anywhere;
+    pointer-events: none;
+  }
+
   .scrap-collage__cursor {
     position: absolute;
     left: 50%;
@@ -1180,6 +1299,8 @@ function scrapTitle(item: ScrapItem): string {
       return item.text.trim() || "button";
     case "svg-icon":
       return "icon";
+    case "heading":
+      return item.text.trim() || "heading";
     case "cursor":
       return "cursor";
   }
@@ -1197,6 +1318,8 @@ function isRenderableScrap(item: ScrapItem): boolean {
       return Boolean(item.text.trim() || item.innerSvg?.trim());
     case "svg-icon":
       return Boolean(item.markup.trim() && item.width > 0 && item.height > 0);
+    case "heading":
+      return item.text.trim().length > 0;
     case "cursor":
       return item.url.trim().length > 0;
   }
@@ -1207,6 +1330,8 @@ interface ScrapContentProps {
   loaded: boolean;
   onError: () => void;
   onLoad: () => void;
+  /** Laid-out tile width, so text-bearing scraps can size themselves to it. */
+  tileWidth?: number;
 }
 
 /**
@@ -1232,7 +1357,13 @@ function ScrapSwatch({
   );
 }
 
-function ScrapContent({ item, loaded, onError, onLoad }: ScrapContentProps) {
+function ScrapContent({
+  item,
+  loaded,
+  onError,
+  onLoad,
+  tileWidth,
+}: ScrapContentProps) {
   switch (item.kind) {
     case "image":
       return (
@@ -1280,6 +1411,21 @@ function ScrapContent({ item, loaded, onError, onLoad }: ScrapContentProps) {
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: item.markup }}
         />
+      );
+    case "heading":
+      return (
+        <span
+          className="scrap-collage__heading"
+          style={{
+            ...(item.styles as React.CSSProperties),
+            fontSize: headingDisplayFontSize(item.styles, item.text, tileWidth),
+            // The captured line height belongs to the captured font size; at
+            // display size it would space wrapped lines far too far apart.
+            lineHeight: 1.15,
+          }}
+        >
+          {item.text}
+        </span>
       );
     case "cursor":
       return (
@@ -1870,6 +2016,7 @@ export function ScrapCollage({
           loaded={loadedScraps.has(scrap.item.key)}
           onLoad={() => markScrapLoaded(scrap.item.key)}
           onError={() => removeScrap(scrap.item.key)}
+          tileWidth={scrap.width}
         />
         <div
           className="scrap-collage__provenance"
