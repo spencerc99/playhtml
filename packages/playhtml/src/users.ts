@@ -97,6 +97,7 @@ export function createUsersAPI(
   let currentAwareness: UsersAwarenessLike | null = null;
   let cursorPresencesUnsubscribe: (() => void) | null = null;
   let lastIdentityFingerprint = "";
+  let notifiedUsers: User[] | null = null;
 
   function publishIdentity(): void {
     deps.getAwareness().setLocalStateField(IDENTITY_FIELD, identity);
@@ -130,9 +131,24 @@ export function createUsersAPI(
     notifySubscribers(selfChangeListeners, identity, "users self-change");
   }
 
-  function notifyUsersChange(): void {
+  function usersEqual(a: User[], b: User[]): boolean {
+    return (
+      a.length === b.length &&
+      a.every(
+        (user, index) =>
+          user.pid === b[index].pid &&
+          user.name === b[index].name &&
+          user.color === b[index].color &&
+          user.isMe === b[index].isMe,
+      )
+    );
+  }
+
+  function notifyUsersChange(force = false): void {
     if (usersChangeListeners.size === 0) return;
     const users = getAll();
+    if (!force && notifiedUsers && usersEqual(notifiedUsers, users)) return;
+    notifiedUsers = users;
     notifySubscribers(usersChangeListeners, users, "users change");
   }
 
@@ -277,7 +293,7 @@ export function createUsersAPI(
     savePlayerIdentityToStorage(identity);
     publishIdentity();
     notifySelfChange();
-    notifyUsersChange();
+    notifyUsersChange(true);
   }
 
   const me: UsersSelfIdentity = {
@@ -320,7 +336,9 @@ export function createUsersAPI(
     onChange(callback: (users: User[]) => void): () => void {
       ensureSubscribed();
       usersChangeListeners.add(callback);
-      callback(getAll());
+      const users = getAll();
+      notifiedUsers = users;
+      callback(users);
       return () => {
         usersChangeListeners.delete(callback);
       };
