@@ -9,7 +9,10 @@ import React, {
   useState,
 } from "react";
 import { createRoot } from "react-dom/client";
-import type { ScrapItem } from "@movement/components/ScrapCollage";
+import {
+  headingDisplayFontSize,
+  type ScrapItem,
+} from "@movement/components/ScrapCollage";
 import { buildItems } from "../scraps-preview/demoScraps";
 
 const GRID_COLUMNS = 16;
@@ -302,6 +305,17 @@ const PAGE_STYLES = `
     max-height: 100%;
   }
 
+  .scrap-content--heading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 6px;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .scrap-content--cursor {
     display: block;
     width: 32px;
@@ -473,6 +487,22 @@ function getFootprints(items: ScrapItem[]): Record<string, Footprint> {
               cols: Math.max(
                 2,
                 Math.ceil((10 * item.text.length + 30) / CELL_SIZE),
+              ),
+              rows: 1,
+            },
+          ];
+        case "heading":
+          return [
+            item.id,
+            {
+              cols: Math.max(
+                2,
+                Math.ceil(
+                  (headingDisplayFontSize(item.styles, item.text) * 0.55 *
+                    item.text.length +
+                    20) /
+                    CELL_SIZE,
+                ),
               ),
               rows: 1,
             },
@@ -692,6 +722,18 @@ function ScrapContent({ item }: ScrapContentProps) {
           dangerouslySetInnerHTML={{ __html: item.markup }}
         />
       );
+    case "heading":
+      return (
+        <span
+          className="scrap-content scrap-content--heading"
+          style={{
+            ...(item.styles as React.CSSProperties),
+            fontSize: headingDisplayFontSize(item.styles, item.text),
+          }}
+        >
+          {item.text}
+        </span>
+      );
     case "cursor":
       return (
         <img
@@ -890,7 +932,7 @@ function ScrapCabinet() {
       counts[item.kind] += 1;
       return counts;
     },
-    { image: 0, button: 0, "svg-icon": 0, cursor: 0 },
+    { image: 0, button: 0, "svg-icon": 0, heading: 0, cursor: 0 },
   );
 
   return (
@@ -1002,7 +1044,8 @@ function ScrapCabinet() {
         <div className="hud">
           <span className="hud-chip">
             images {kindCounts.image} · buttons {kindCounts.button} · icons{" "}
-            {kindCounts["svg-icon"]} · cursors {kindCounts.cursor}
+            {kindCounts["svg-icon"]} · headings {kindCounts.heading} · cursors{" "}
+            {kindCounts.cursor}
           </span>
           <span className="hud-chip">
             cells used {usedCells}/{GRID_COLUMNS * GRID_ROWS}

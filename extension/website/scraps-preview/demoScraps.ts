@@ -1,4 +1,4 @@
-// ABOUTME: Synthetic scrap demo data (images, buttons, svg icons, cursors) for preview pages.
+// ABOUTME: Synthetic scrap demo data (images, buttons, svg icons, headings, cursors) for preview pages.
 // ABOUTME: Network-free ScrapItem fixtures shared by the collage and inventory prototypes.
 
 import type { ScrapItem } from "@movement/components/ScrapCollage";
@@ -356,6 +356,65 @@ const CURSORS: Array<{
   },
 ];
 
+const HEADINGS: Array<{
+  name: string;
+  domain: string;
+  pageTitle: string;
+  text: string;
+  level: 1 | 2 | 3;
+  styles: Record<string, string>;
+}> = [
+  {
+    name: "orchard",
+    domain: "orchard.example",
+    pageTitle: "Heirloom pears, ranked",
+    text: "Heirloom pears, ranked",
+    level: 1,
+    styles: {
+      fontFamily: "Georgia, serif",
+      fontSize: "42px",
+      fontWeight: "700",
+      fontStyle: "normal",
+      color: "#3d3833",
+      letterSpacing: "-0.01em",
+      lineHeight: "48px",
+    },
+  },
+  {
+    name: "tidepool",
+    domain: "tidepool.example",
+    pageTitle: "Low tide inventory",
+    text: "What the tide left behind",
+    level: 2,
+    styles: {
+      fontFamily: '"Courier New", monospace',
+      fontSize: "24px",
+      fontWeight: "400",
+      fontStyle: "italic",
+      color: "#4a9a8a",
+      textTransform: "lowercase",
+      lineHeight: "30px",
+    },
+  },
+  {
+    name: "guildhall",
+    domain: "guildhall.example",
+    pageTitle: "browser MMO of your dreams",
+    text: "Enter the Guildhall",
+    level: 3,
+    styles: {
+      fontFamily: "Impact, sans-serif",
+      fontSize: "18px",
+      fontWeight: "700",
+      color: "#f5f0e8",
+      backgroundColor: "#22333b",
+      textTransform: "uppercase",
+      letterSpacing: "0.08em",
+      lineHeight: "24px",
+    },
+  },
+];
+
 export function buildItems(): ScrapItem[] {
   const items: ScrapItem[] = [];
 
@@ -402,6 +461,21 @@ export function buildItems(): ScrapItem[] {
       domain: icon.domain,
       pageUrl: `https://${icon.domain}/`,
       ts: NOW - (index + 1) * 7 * 60 * 60 * 1000,
+    });
+  });
+
+  HEADINGS.forEach((heading, index) => {
+    items.push({
+      id: `head-${heading.name}`,
+      key: `head-${heading.name}`,
+      kind: "heading",
+      text: heading.text,
+      level: heading.level,
+      styles: heading.styles,
+      pageTitle: heading.pageTitle,
+      domain: heading.domain,
+      pageUrl: `https://${heading.domain}/`,
+      ts: NOW - (index + 4) * 6 * 60 * 60 * 1000,
     });
   });
 
@@ -455,6 +529,28 @@ export function buildItems(): ScrapItem[] {
     domain: heartIcon.domain,
     pageUrl: `https://${heartIcon.domain}/`,
     ts: NOW - 100 * 60 * 1000,
+  });
+
+  // (b2) The same heading wording on orchard.example, marked up as an h2 in a
+  // different typeface -- the canonical key is level-insensitive and ignores
+  // styles, so this collapses into the original.
+  const orchardHeading = HEADINGS.find((heading) => heading.name === "orchard");
+  if (!orchardHeading) throw new Error("expected orchard heading in HEADINGS");
+  items.push({
+    id: "head-orchard-dup",
+    key: "head-orchard-dup",
+    kind: "heading",
+    text: orchardHeading.text.toUpperCase(),
+    level: 2,
+    styles: {
+      ...orchardHeading.styles,
+      fontFamily: "Helvetica, sans-serif",
+      fontSize: "28px",
+    },
+    pageTitle: "Heirloom pears, ranked (mirror)",
+    domain: orchardHeading.domain,
+    pageUrl: `https://${orchardHeading.domain}/mirror`,
+    ts: NOW - 105 * 60 * 1000,
   });
 
   // (c) Pear image src with a fake CDN query string appended -- canonical
