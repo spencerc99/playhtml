@@ -8,6 +8,7 @@ import {
   type CollageSummary,
 } from "./collageRecord";
 import { deleteCollage, listCollages, loadCollage } from "./collageStore";
+import { webPageHref } from "./scrapLinks";
 
 interface CollageHistoryProps {
   /** Bumped by the studio after a save so the list reloads. */
@@ -218,26 +219,34 @@ export function CollageHistory({
 
               {open && record && (
                 <ul className="collage-provenance">
-                  {sources.map((source) => (
-                    <li
-                      key={source.pageUrl}
-                      className="collage-provenance__entry"
-                    >
-                      <a
-                        className="collage-provenance__link"
-                        href={source.pageUrl}
-                        target="_blank"
-                        rel="noreferrer"
+                  {sources.map((source) => {
+                    const href = webPageHref(source.pageUrl);
+                    const label = source.pageTitle || source.pageUrl;
+                    return (
+                      <li
+                        key={source.pageUrl}
+                        className="collage-provenance__entry"
                       >
-                        {source.pageTitle || source.pageUrl}
-                      </a>
-                      <span className="collage-provenance__where">
-                        {source.domain} · {source.pieceCount} piece
-                        {source.pieceCount === 1 ? "" : "s"} · first seen{" "}
-                        {formatDate(source.firstSeenAt)}
-                      </span>
-                    </li>
-                  ))}
+                        {href ? (
+                          <a
+                            className="collage-provenance__link"
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                          >
+                            {label}
+                          </a>
+                        ) : (
+                          <span>{label}</span>
+                        )}
+                        <span className="collage-provenance__where">
+                          {source.domain} · {source.pieceCount} piece
+                          {source.pieceCount === 1 ? "" : "s"} · first seen{" "}
+                          {formatDate(source.firstSeenAt)}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
               {open && !record && (
