@@ -27,8 +27,9 @@ function photo(
 }
 
 // contentHash is carried only by the image variant of ScrapItem.
-function imageContentHash(item: ScrapItem | undefined): string | undefined {
-  return item?.kind === "image" ? item.contentHash : undefined;
+function imageWithId(items: ScrapItem[], id: string) {
+  const match = items.find((item) => item.id === id);
+  return match?.kind === "image" ? match : undefined;
 }
 
 const options = { seed: 1, targetCount: 100, perDomainCap: 100 };
@@ -95,7 +96,7 @@ describe("photo encounters", () => {
     );
     expect(grouped).toHaveLength(3);
     expect(
-      imageContentHash(grouped.find((item) => item.id === "unchecked")),
+      imageWithId(grouped, "unchecked")?.contentHash,
     ).toBeUndefined();
     expect(
       grouped.find((item) => item.id === "unchecked")?.sources,
