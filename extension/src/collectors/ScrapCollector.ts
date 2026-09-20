@@ -725,10 +725,11 @@ function headingLevel(heading: Element): 1 | 2 | 3 | undefined {
   }
 }
 
+/**
+ * The heading's own words, from `textContent` rather than `innerText`, because
+ * `innerText` returns text with `text-transform` already applied and the
+ * captured `textTransform` applies it again at render.
+ */
 function normalizeHeadingText(heading: Element): string {
-  const rawText =
-    "innerText" in heading && typeof heading.innerText === "string"
-      ? heading.innerText
-      : heading.textContent ?? "";
-  return rawText.replace(/\s+/g, " ").trim();
+  return (heading.textContent ?? "").replace(/\s+/g, " ").trim();
 }

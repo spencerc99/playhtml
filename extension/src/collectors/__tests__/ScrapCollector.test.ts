@@ -646,6 +646,25 @@ describe("ScrapCollector", () => {
     ]);
   });
 
+  it("stores the heading's own wording, leaving text-transform to the renderer", () => {
+    const shouting = createHeading({
+      text: "Enter the guildhall",
+      styles: { textTransform: "uppercase" },
+    });
+
+    collector.enable();
+    showForCapture([shouting]);
+
+    const scraps = emitted("heading");
+    expect(scraps).toHaveLength(1);
+    expect(scraps[0].kind === "heading" && scraps[0].text).toBe(
+      "Enter the guildhall",
+    );
+    expect(scraps[0].kind === "heading" && scraps[0].styles.textTransform).toBe(
+      "uppercase",
+    );
+  });
+
   it("skips empty, too-short, too-long, and invisible headings", () => {
     const empty = createHeading({ text: "   " });
     const tooShort = createHeading({ text: "a" });
