@@ -9,6 +9,7 @@ import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import {
   ScrapCollage,
   type ScrapItem,
+  type ScrapPosition,
 } from "@movement/components/ScrapCollage";
 
 interface ScrapRecordBase {
@@ -22,6 +23,7 @@ interface ScrapRecordBase {
   domain: string;
   pageUrl: string;
   ts: number;
+  position?: ScrapPosition;
 }
 
 type ScrapRecord = ScrapRecordBase &
@@ -45,6 +47,12 @@ type ScrapRecord = ScrapRecordBase &
         markup: string;
         width: number;
         height: number;
+      }
+    | {
+        kind: "heading";
+        text: string;
+        level: 1 | 2 | 3;
+        styles: Record<string, string>;
       }
     | {
         kind: "cursor";
@@ -72,6 +80,7 @@ function toScrapItem(record: ScrapRecord): ScrapItem {
     domain: record.domain,
     pageUrl: record.pageUrl,
     ts: record.ts,
+    ...(record.position ? { position: record.position } : {}),
   };
 
   switch (record.kind) {
@@ -100,6 +109,14 @@ function toScrapItem(record: ScrapRecord): ScrapItem {
         markup: record.markup,
         width: record.width,
         height: record.height,
+      };
+    case "heading":
+      return {
+        ...base,
+        kind: record.kind,
+        text: record.text,
+        level: record.level,
+        styles: record.styles,
       };
     case "cursor":
       return {
