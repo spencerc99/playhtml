@@ -139,7 +139,13 @@ export class PeerStore {
     const touched = new Set<PeerNamespace>();
 
     for (const [connectionId, channels] of Object.entries(message.updates)) {
-      if (connectionId === this.localConnectionId) continue;
+      if (connectionId === this.localConnectionId) {
+        // Views source self values locally but refresh identity on join echoes.
+        for (const channel of Object.keys(channels)) {
+          touched.add(namespaceOf(channel));
+        }
+        continue;
+      }
       const peer = this.peers.get(connectionId) ?? {};
       this.peers.set(connectionId, peer);
       for (const [channel, value] of Object.entries(channels)) {
@@ -149,6 +155,10 @@ export class PeerStore {
     }
 
     for (const [connectionId, channels] of Object.entries(message.removes)) {
+      if (connectionId === this.localConnectionId) {
+        for (const channel of channels) touched.add(namespaceOf(channel));
+        continue;
+      }
       const peer = this.peers.get(connectionId);
       if (!peer) continue;
       for (const channel of channels) {

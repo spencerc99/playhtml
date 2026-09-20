@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PresenceServerMessage } from "@playhtml/common";
 import { PeerStore } from "../peer-store";
 import { RealtimePresenceTransport } from "../presence-transport";
+import { ElementAwarenessClient, type ElementAwarenessMap } from "../element-awareness";
 
 // Pin the clock so the tiny `at` timestamps used as fold fixtures below stay
 // within PeerStore's staleness window (the staleness sweep is exercised by its
@@ -49,6 +50,15 @@ describe("PeerStore", () => {
       room: "identity-room",
       socketFactory: () => socket,
     });
+    let selfIdentity = identity("shared-key");
+    let awareness: ElementAwarenessMap = new Map();
+    const elementClient = new ElementAwarenessClient({
+      transport,
+      getIdentity: () => selfIdentity,
+      getPage: () => "/identity",
+      onAwareness: (value) => { awareness = value; },
+    });
+    elementClient.setLocalAwareness("can-play", "card", { editing: true });
     socket.dispatchEvent(new MessageEvent("message", {
       data: JSON.stringify({
         type: "presence-sync",
@@ -59,6 +69,19 @@ describe("PeerStore", () => {
       }),
     }));
     expect([...transport.peers.getPeers().keys()]).toEqual(["remote-socket"]);
+    expect([...awareness.get("can-play:card")!.byStableId.keys()]).toEqual(["shared-key"]);
+    selfIdentity = identity("adopted-key");
+    transport.join({ identity: selfIdentity });
+    socket.dispatchEvent(new MessageEvent("message", {
+      data: JSON.stringify({
+        type: "presence-changes",
+        updates: { "local-socket": { identity: selfIdentity } },
+        removes: {},
+      }),
+    }));
+    expect([...transport.peers.getPeers().keys()]).toEqual(["remote-socket"]);
+    expect([...awareness.get("can-play:card")!.byStableId.keys()]).toEqual(["adopted-key"]);
+    elementClient.destroy();
     transport.destroy();
   });
 
@@ -84,7 +107,7 @@ describe("PeerStore", () => {
     });
     expect([...store.getPeers().keys()]).toEqual(["other-tab"]);
     expect(store.getPeers().get("other-tab")?.identity).toEqual(identity("first-key"));
-    expect(onIdentity).not.toHaveBeenCalled();
+    expect(onIdentity).toHaveBeenCalledOnce();
     store.destroy();
   });
 

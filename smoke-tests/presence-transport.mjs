@@ -224,6 +224,8 @@ try {
     });
     await expectIds(alice, ["alice", "bob"]);
     await expect(alice.locator("#counter")).toHaveText("Shared count: 1");
+    await alice.locator("#counter").click();
+    await expect(bob.locator("#counter")).toHaveText("Shared count: 2");
     disconnecting.add(alice);
     await alice.evaluate(() => {
       window.droppedSockets = socketLog
@@ -263,8 +265,29 @@ try {
         { timeout: 15000 },
       )
       .toBe("Clicked the counter");
+    await expect
+      .poll(() =>
+        bob.evaluate(
+          () => app.presence.getPresences().get("alicia")?.status?.text,
+        ),
+      )
+      .toBe("Clicked the counter");
+    await expect
+      .poll(() =>
+        bob.evaluate(() =>
+          elementPeers.some(([id, value]) => id === "alicia" && value.active),
+        ),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        alice.evaluate(() =>
+          elementPeers.some(([id, value]) => id === "alicia" && value.active),
+        ),
+      )
+      .toBe(true);
     await bob.locator("#counter").click();
-    await expect(alice.locator("#counter")).toHaveText("Shared count: 2");
+    await expect(alice.locator("#counter")).toHaveText("Shared count: 3");
     await shot(alice, `${mode}-reconnected`);
     await alice.evaluate(async () => {
       named.destroy();
@@ -292,7 +315,7 @@ try {
         "named room isolation",
         "navigation round trip",
         "offline identity adoption",
-        "reconnect",
+        "reconnect and local presence replay",
         "one broadcaster per socket",
         "teardown",
       ],
