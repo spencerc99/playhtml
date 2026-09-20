@@ -4,6 +4,7 @@
 // ABOUTME: this handler re-joins them by page_ref before returning.
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
+import { loadParticipantColors } from '../lib/participantColors';
 import type { CollectionEvent, EventMeta } from '@playhtml/extension-types';
 import { canonicalizeUrl, buildPageRef } from '../../../src/utils/pageMetadata';
 
@@ -216,20 +217,12 @@ export async function handleRecent(
 
     // ── Look up cursor colors ─────────────────────────────────────────────────
     const participantIds = [...new Set(rows.map((row) => row.participant_id as string))];
-    const participantColors = new Map<string, string>();
-
-    if (participantIds.length > 0) {
-      const { data: participants } = await supabase
+    const participantColors = await loadParticipantColors(participantIds, ids =>
+      supabase
         .from('participants')
         .select('pid, cursor_color')
-        .in('pid', participantIds);
-
-      if (participants) {
-        for (const p of participants) {
-          participantColors.set(p.pid, p.cursor_color);
-        }
-      }
-    }
+        .in('pid', ids),
+    );
 
     // ── Build response events ─────────────────────────────────────────────────
     const allEvents: CollectionEvent[] = rows.map((row: Record<string, unknown>) => {

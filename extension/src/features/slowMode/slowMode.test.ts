@@ -27,7 +27,7 @@ function emptyState(): SlowModeState {
 
 describe("isFarJump", () => {
   it.each(["typed", "auto_bookmark", "generated"] as const)(
-    "accepts deliberate %s navigation",
+    "accepts deliberate %s navigation from an existing tab",
     (transitionType) => {
       expect(
         isFarJump({
@@ -40,10 +40,34 @@ describe("isFarJump", () => {
     },
   );
 
-  it("accepts a new-tab navigation", () => {
+  it.each([null, "https://museum.example/exhibit", "about:blank", "invalid"])(
+    "rejects restored or unknown previous page %s",
+    (previousUrl) => {
+      for (const transitionType of ["typed", "auto_bookmark", "generated", "other"]) {
+        expect(isFarJump({
+          previousUrl,
+          destinationUrl: "https://museum.example/exhibit",
+          transitionType,
+          transitionQualifiers: [],
+        })).toBe(false);
+      }
+    },
+  );
+
+  it.each([
+    "chrome://newtab/",
+    "chrome://new-tab-page/",
+    "chrome://new-tab-page-third-party/",
+    "edge://newtab/",
+    "brave://newtab/",
+    "about:newtab",
+    "about:home",
+    "chrome-extension://extension-id/walking-record.html",
+    "moz-extension://extension-id/walking-record.html",
+  ])("accepts navigation from the new-tab page %s", (previousUrl) => {
     expect(
       isFarJump({
-        previousUrl: "chrome://newtab/",
+        previousUrl,
         destinationUrl: "https://museum.example/exhibit",
         transitionType: "other",
         transitionQualifiers: [],
@@ -56,7 +80,7 @@ describe("isFarJump", () => {
     (transitionType) => {
       expect(
         isFarJump({
-          previousUrl: "https://garden.example/notes",
+          previousUrl: "chrome://newtab/",
           destinationUrl: "https://museum.example/exhibit",
           transitionType,
           transitionQualifiers: [],
@@ -65,10 +89,22 @@ describe("isFarJump", () => {
     },
   );
 
+  it.each(["link", "form_submit", "reload", "other"])(
+    "rejects automatic %s navigation from an existing tab",
+    (transitionType) => {
+      expect(isFarJump({
+        previousUrl: "https://garden.example/notes",
+        destinationUrl: "https://museum.example/exhibit",
+        transitionType,
+        transitionQualifiers: [],
+      })).toBe(false);
+    },
+  );
+
   it("rejects back and forward navigation", () => {
     expect(
       isFarJump({
-        previousUrl: "https://garden.example/notes",
+        previousUrl: "chrome://newtab/",
         destinationUrl: "https://museum.example/exhibit",
         transitionType: "typed",
         transitionQualifiers: ["forward_back"],
@@ -102,7 +138,7 @@ describe("isFarJump", () => {
   ])("rejects protected destination %s", (destinationUrl) => {
     expect(
       isFarJump({
-        previousUrl: "https://garden.example/notes",
+        previousUrl: "chrome://newtab/",
         destinationUrl,
         transitionType: "typed",
         transitionQualifiers: [],
@@ -114,7 +150,7 @@ describe("isFarJump", () => {
 
 describe("Slow Mode consent gates", () => {
   const navigation = {
-    previousUrl: "https://garden.example/notes",
+    previousUrl: "chrome://newtab/",
     destinationUrl: "https://museum.example/exhibit",
     transitionType: "typed" as const,
     transitionQualifiers: [],

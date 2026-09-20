@@ -367,7 +367,7 @@ views.onUpdate((n) => {
 |---|---|
 | `getData(): T` | Returns the current value. |
 | `setData(data: T \| updater): void` | Updates the value. Mutate object/array drafts in place; an updater for a primitive returns its next value. |
-| `onUpdate(callback: (data: T) => void): () => void` | Subscribes to changes. Returns an unsubscribe function. |
+| `onUpdate(callback: (data: T) => void): () => void` | Subscribes to changes. Synchronous writes produce one callback with the final value. Returns an unsubscribe function. |
 | `destroy(): void` | Tears down the channel and removes all subscriptions. |
 
 Throws if called before `init()` completes sync.

@@ -29,6 +29,6 @@
   // The experiment directories are added as each one is brought up to strict.
   // "sounds" is clean; the others still carry unused-import and JSX-typing
   // errors that predate this config covering them.
-  "include": ["src", "shared", "sounds"],
+  "include": ["src", "shared", "sounds", "internet-map"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -42,6 +42,13 @@ describe("installation office", () => {
     expect(screen.getByRole("link", { name: "Installation" }).getAttribute("aria-current")).toBe("page");
   });
 
+  it("tells the operator how to set up the browsing machine", () => {
+    expect(
+      screen.getByRole("heading", { name: "Installation mode" }).textContent,
+    ).toBe("Installation mode");
+    expect(document.body.textContent).toContain("Cmd/Ctrl+Shift+8");
+  });
+
   it("does nothing when the production reload is not confirmed", async () => {
     vi.mocked(window.confirm).mockReturnValue(false);
     await act(async () => {

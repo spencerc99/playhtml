@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
+import type { ScrapSource } from "@movement/utils/scrapPhotoGroups";
 import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import {
   ScrapCollage,
@@ -11,6 +12,9 @@ import {
 } from "@movement/components/ScrapCollage";
 
 interface ScrapRecordBase {
+  sources?: ScrapSource[];
+  encounterCount?: number;
+  encounterDay?: string;
   id: string;
   key: string;
   pageTitle: string;
@@ -25,6 +29,7 @@ type ScrapRecord = ScrapRecordBase &
     | {
         kind: "image";
         src: string;
+        contentHash?: string;
         alt?: string;
         naturalWidth: number;
         naturalHeight: number;
@@ -56,6 +61,9 @@ interface ScrapsResponse {
 function toScrapItem(record: ScrapRecord): ScrapItem {
   const base = {
     id: record.id,
+    encounterCount: record.encounterCount,
+    encounterDay: record.encounterDay,
+    ...(record.sources ? { sources: record.sources } : {}),
     key: record.key,
     pageTitle: record.pageTitle,
     ...(record.faviconUrl !== undefined
@@ -72,6 +80,7 @@ function toScrapItem(record: ScrapRecord): ScrapItem {
         ...base,
         kind: record.kind,
         src: record.src,
+        ...(record.contentHash ? { contentHash: record.contentHash } : {}),
         ...(record.alt !== undefined ? { alt: record.alt } : {}),
         naturalWidth: record.naturalWidth,
         naturalHeight: record.naturalHeight,
@@ -122,9 +131,26 @@ export function ScrapsPage() {
   const [items, setItems] = useState<ScrapItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
   const seed = useMemo(() => Math.floor(Date.now() / 86_400_000), []);
 
   useEffect(() => {
+    const onMessage = (message: unknown) => {
+      if (
+        typeof message === "object" &&
+        message !== null &&
+        "type" in message &&
+        message.type === "SCRAP_PHOTOS_UPDATED"
+      ) {
+        setRevision((value) => value + 1);
+      }
+    };
+    browser.runtime.onMessage.addListener(onMessage);
+    return () => browser.runtime.onMessage.removeListener(onMessage);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     const loadScraps = async () => {
       try {
         const response = (await browser.runtime.sendMessage({
@@ -134,19 +160,25 @@ export function ScrapsPage() {
         if (!response || !Array.isArray(response.scraps)) {
           throw new Error("GET_SCRAPS returned an invalid response");
         }
-        setItems(response.scraps.map(toScrapItem));
+        if (!cancelled) {
+          setItems(response.scraps.map(toScrapItem));
+          setError(null);
+        }
       } catch (loadError) {
         const message =
           loadError instanceof Error ? loadError.message : String(loadError);
-        setError(message);
+        if (!cancelled) setError(message);
         console.error("Failed to load internet scraps:", loadError);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     void loadScraps();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [revision]);
 
   return (
     <main

@@ -6,6 +6,7 @@ import { CursorSvg } from "../../components/icons";
 import { INSTALLATION_MODE_KEY } from "../../features/installationMode";
 import { PLAYER_IDENTITY_STORAGE_KEY } from "../../storage/playerIdentity";
 import { injectShadowReact, type InjectedReactUI } from "./inject-ui";
+import { INSTALLATION_FRAME_HOST_ID } from "./installationFrame";
 
 export function initInstallationCursor(): () => void {
   let disposed = false;
@@ -31,6 +32,9 @@ export function initInstallationCursor(): () => void {
     const path = event.composedPath();
     for (const node of path) {
       if (!(node instanceof HTMLElement)) continue;
+      // The installation frame is our own closed root; it keeps `cursor: none`
+      // inherited from the page, so it never needs the native cursor back.
+      if (node.id === INSTALLATION_FRAME_HOST_ID) continue;
       // Extension APIs can identify closed roots without modifying their contents.
       const root =
         node.shadowRoot ??
