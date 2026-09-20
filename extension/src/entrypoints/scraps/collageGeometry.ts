@@ -272,9 +272,17 @@ export function boxForInnerRect(
 }
 
 /**
- * Scales a source of `naturalWidth` x `naturalHeight` so its longest side is
- * `maxSide`, keeping its aspect ratio. This is the size a freshly placed piece
- * takes: small icons come up big enough to handle, large photos come down.
+ * How far a scrap smaller than the placement size may be enlarged. A 32px
+ * cursor blown up to the full size would dominate the frame and look nothing
+ * like the thing that was collected, but at its own size it is too small to
+ * grab, so it comes in a little bigger and no more.
+ */
+export const MAX_PLACEMENT_UPSCALE = 2;
+
+/**
+ * The size a freshly placed piece takes: a large photo scales down so its
+ * longest side is `maxSide`, and a small icon comes up only as far as
+ * `MAX_PLACEMENT_UPSCALE` allows. The aspect ratio is kept either way.
  */
 export function fitWithin(
   naturalWidth: number,
@@ -284,7 +292,8 @@ export function fitWithin(
   if (naturalWidth <= 0 || naturalHeight <= 0) {
     throw new Error("fitWithin requires positive natural dimensions");
   }
-  const scale = maxSide / Math.max(naturalWidth, naturalHeight);
+  const longest = Math.max(naturalWidth, naturalHeight);
+  const scale = Math.min(maxSide / longest, MAX_PLACEMENT_UPSCALE);
   return {
     width: Math.max(MIN_PIECE_SIDE, naturalWidth * scale),
     height: Math.max(MIN_PIECE_SIDE, naturalHeight * scale),

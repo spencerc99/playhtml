@@ -235,8 +235,13 @@ describe("fitWithin", () => {
     expect(fitWithin(800, 400, 200)).toEqual({ width: 200, height: 100 });
   });
 
-  it("scales a small icon up to the limit", () => {
-    expect(fitWithin(16, 16, 200)).toEqual({ width: 200, height: 200 });
+  it("enlarges a small scrap only as far as the upscale cap allows", () => {
+    // A 32px cursor should come in grabbable, not blown up to fill the frame.
+    expect(fitWithin(32, 32, 220)).toEqual({ width: 64, height: 64 });
+  });
+
+  it("keeps the aspect ratio of a small wide scrap it enlarges", () => {
+    expect(fitWithin(40, 10, 220)).toEqual({ width: 80, height: 20 });
   });
 
   it("refuses a source with no size", () => {
