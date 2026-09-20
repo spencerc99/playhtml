@@ -40,7 +40,9 @@ const server = createServer((request, response) => {
         : image;
     setTimeout(
       () => response.end(body),
-      request.url.includes("slow") ? 700 : 20,
+      request.url.includes("slow") && !request.url.includes("layout")
+        ? 700
+        : 20,
     );
     return;
   }
@@ -343,13 +345,18 @@ try {
   await expect(scraps.locator(".scrap-collage__tile")).toHaveCount(8);
   await expect
     .poll(() =>
-      scraps
-        .locator(".scrap-collage__tile img")
-        .evaluateAll(
-          (images) =>
-            images.length === 8 &&
-            images.every((image) => image.complete && image.naturalWidth > 0),
-        ),
+      scraps.locator(".scrap-collage__tile img").evaluateAll(
+        (images) =>
+          images.length === 8 &&
+          images.every((image) => {
+            const bounds = image.getBoundingClientRect();
+            return (
+              bounds.bottom <= 0 ||
+              bounds.top >= innerHeight ||
+              (image.complete && image.naturalWidth > 0)
+            );
+          }),
+      ),
     )
     .toBe(true);
   await scraps.screenshot({
@@ -440,16 +447,228 @@ try {
   await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(10);
   assert.ok(downloads.every((request) => !request.cookie && !request.referer));
   assert.ok(peak <= 2);
+  await seedUnchecked(420, "layout");
+  await reopened.reload();
+  await expect(reopened.getByLabel("Number of scraps shown")).toHaveCount(0);
+  await expect(
+    reopened.getByRole("button", { name: "cycle", exact: true }),
+  ).toHaveCount(0);
+  const layoutControl = reopened.getByRole("group", {
+    name: "Scrap layout",
+    exact: true,
+  });
+  const keys = () =>
+    reopened
+      .locator(".scrap-collage__tile:not(.scrap-collage__tile--washing-out)")
+      .evaluateAll((tiles) => tiles.map((tile) => tile.dataset.scrapKey));
+  const beforeShuffle = new Set(await keys());
+  await reopened.getByRole("button", { name: "shuffle", exact: true }).click();
+  await expect
+    .poll(async () => (await keys()).some((key) => !beforeShuffle.has(key)))
+    .toBe(true);
+  await layoutControl
+    .getByRole("button", { name: "grid", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      reopened
+        .locator(".scrap-collage__tile")
+        .evaluateAll((tiles) =>
+          tiles.every(
+            (tile) =>
+              tile.style.getPropertyValue("--scrap-rotation") === "0deg",
+          ),
+        ),
+    )
+    .toBe(true);
+  const reducedKeys = await keys();
+  await reopened.waitForTimeout(7500);
+  assert.deepEqual(
+    await keys(),
+    reducedKeys,
+    "reduced motion holds Drift still",
+  );
+  await reopened.emulateMedia({ reducedMotion: "no-preference" });
+  await reopened.mouse.move(0, 0);
+  await expect
+    .poll(async () => JSON.stringify(await keys()), { timeout: 15000 })
+    .not.toBe(JSON.stringify(reducedKeys));
+  const firstTile = reopened
+    .locator(".scrap-collage__tile:not(.scrap-collage__tile--washing-out)")
+    .first();
+  await firstTile.hover();
+  const hoveredKeys = await keys();
+  await reopened.waitForTimeout(7500);
+  assert.deepEqual(await keys(), hoveredKeys, "hover holds Drift still");
+  await firstTile.focus();
+  await reopened.mouse.move(0, 0);
+  const focusedKeys = await keys();
+  await reopened.waitForTimeout(7500);
+  assert.deepEqual(
+    await keys(),
+    focusedKeys,
+    "keyboard focus holds Drift still",
+  );
+  await firstTile.press("Enter");
+  await expect(reopened.getByRole("dialog")).toBeVisible();
+  const examinedKeys = await keys();
+  await reopened.waitForTimeout(7500);
+  assert.deepEqual(await keys(), examinedKeys, "examining holds Drift still");
+  await reopened
+    .getByRole("button", { name: "Close examine view", exact: true })
+    .click();
+  await reopened.emulateMedia({ reducedMotion: "reduce" });
+  await expect(reopened.getByRole("dialog")).toHaveCount(0);
+  await expect
+    .poll(
+      () =>
+        reopened
+          .locator(".scrap-collage__tile img:not(.scrap-collage__favicon)")
+          .evaluateAll((images) =>
+            images.every((image) => {
+              const bounds = image.getBoundingClientRect();
+              return (
+                bounds.bottom <= 0 ||
+                bounds.top >= innerHeight ||
+                (image.complete && image.naturalWidth > 0)
+              );
+            }),
+          ),
+      { timeout: 20000 },
+    )
+    .toBe(true);
+  await reopened.screenshot({ path: resolve(evidence, "drift-grid.png") });
+  await layoutControl
+    .getByRole("button", { name: "pile", exact: true })
+    .click();
+  await reopened.screenshot({ path: resolve(evidence, "drift-pile.png") });
+  await reopened.getByRole("button", { name: "archive", exact: true }).click();
+  await expect(
+    reopened.getByRole("button", { name: "shuffle", exact: true }),
+  ).toHaveCount(0);
+  await expect
+    .poll(
+      () =>
+        reopened
+          .locator(".scrap-collage__tile img:not(.scrap-collage__favicon)")
+          .evaluateAll((images) =>
+            images.every((image) => {
+              const bounds = image.getBoundingClientRect();
+              return (
+                bounds.bottom <= 0 ||
+                bounds.top >= innerHeight ||
+                (image.complete && image.naturalWidth > 0)
+              );
+            }),
+          ),
+      { timeout: 20000 },
+    )
+    .toBe(true);
+  await reopened.screenshot({ path: resolve(evidence, "archive-pile.png") });
+  const scroll = reopened.locator(".scrap-collage__scroll");
+  await scroll.evaluate((el) => {
+    el.scrollTop = 900;
+  });
+  await expect.poll(() => scroll.evaluate((el) => el.scrollTop)).toBe(900);
+  const nearby = new Set(await keys());
+  await layoutControl
+    .getByRole("button", { name: "grid", exact: true })
+    .click();
+  await expect
+    .poll(() => scroll.evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(0);
+  await expect
+    .poll(async () => (await keys()).some((key) => nearby.has(key)))
+    .toBe(true);
+  await expect
+    .poll(
+      () =>
+        reopened
+          .locator(".scrap-collage__tile img:not(.scrap-collage__favicon)")
+          .evaluateAll((images) =>
+            images.every((image) => {
+              const bounds = image.getBoundingClientRect();
+              return (
+                bounds.bottom <= 0 ||
+                bounds.top >= innerHeight ||
+                (image.complete && image.naturalWidth > 0)
+              );
+            }),
+          ),
+      { timeout: 20000 },
+    )
+    .toBe(true);
+  await reopened.screenshot({ path: resolve(evidence, "archive-grid.png") });
+  await scroll.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  await expect
+    .poll(() =>
+      scroll.evaluate(
+        (el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1,
+      ),
+    )
+    .toBe(true);
+  await reopened.reload();
+  await expect(
+    layoutControl.getByRole("button", { name: "grid", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await reopened.setViewportSize({ width: 390, height: 844 });
+  await reopened.getByRole("button", { name: "archive", exact: true }).click();
+  await expect
+    .poll(() => reopened.locator(".scrap-collage__tile").count())
+    .toBeGreaterThan(0);
+  await expect
+    .poll(
+      () =>
+        reopened
+          .locator(".scrap-collage__tile img:not(.scrap-collage__favicon)")
+          .evaluateAll(
+            (images) =>
+              images.length > 0 &&
+              images.every((image) => {
+                const bounds = image.getBoundingClientRect();
+                return (
+                  bounds.bottom <= 0 ||
+                  bounds.top >= innerHeight ||
+                  (image.complete && image.naturalWidth > 0)
+                );
+              }),
+          ),
+      { timeout: 20000 },
+    )
+    .toBe(true);
+  await reopened.screenshot({
+    path: resolve(evidence, "archive-grid-mobile.png"),
+  });
   assert.deepEqual(pageErrors, []);
   console.log(
     JSON.stringify({
       result: "passed",
-      records: 14,
-      visiblePhotos: 10,
+      records: 434,
+      layouts: ["drift-pile", "drift-grid", "archive-pile", "archive-grid"],
       peakDownloads: peak,
       evidence,
     }),
   );
+} catch (error) {
+  const activePage = context?.pages().at(-1);
+  if (activePage)
+    console.error(
+      await activePage
+        .locator(".scrap-collage__tile img:not(.scrap-collage__favicon)")
+        .evaluateAll((images) =>
+          images
+            .filter((image) => !image.complete || image.naturalWidth === 0)
+            .slice(0, 8)
+            .map((image) => ({
+              src: image.src,
+              complete: image.complete,
+              top: image.getBoundingClientRect().top,
+            })),
+        ),
+    );
+  throw error;
 } finally {
   await context?.close();
   server.closeAllConnections();

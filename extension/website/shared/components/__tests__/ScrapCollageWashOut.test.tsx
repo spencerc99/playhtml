@@ -79,11 +79,6 @@ describe("wash-out ghost cleanup", () => {
   const ghosts = () =>
     container.querySelectorAll(".scrap-collage__tile--washing-out");
 
-  const pauseButton = () =>
-    container.querySelector<HTMLButtonElement>(
-      ".scrap-collage__filter--cycle",
-    );
-
   it("retires a ghost created before the tide is paused", () => {
     // A shore of 4 out of a pool of 12 leaves plenty offshore, so the tide runs.
     // A high draw keeps the scheduler shedding rather than washing in.
@@ -111,13 +106,11 @@ describe("wash-out ghost cleanup", () => {
     act(() => {
       vi.advanceTimersByTime(TIDE_WASH_OUT_MS / 2);
     });
-    const button = pauseButton();
-    expect(button).not.toBeNull();
-    act(() => {
-      button?.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-    });
+    const tile = container.querySelector<HTMLAnchorElement>(
+      ".scrap-collage__tile:not(.scrap-collage__tile--washing-out)",
+    );
+    expect(tile).not.toBeNull();
+    act(() => tile?.focus());
 
     // Well past the animation's end, the ghost must be gone even though the
     // tide is still paused.

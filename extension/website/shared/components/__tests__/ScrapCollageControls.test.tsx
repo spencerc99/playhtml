@@ -1,5 +1,5 @@
 // ABOUTME: Verifies responsive density and the compact internet-scraps control pane.
-// ABOUTME: Covers view, amount, kind, shuffle, cycle, and collapse controls.
+// ABOUTME: Covers browsing modes, layouts, kind filters, selection shuffle, and collapse controls.
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -47,6 +47,7 @@ describe("ScrapCollage controls", () => {
   let restoreRect: () => void;
 
   beforeEach(() => {
+    localStorage.clear();
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -90,27 +91,31 @@ describe("ScrapCollage controls", () => {
 
   const render = () => {
     act(() => {
-      root.render(<ScrapCollage items={buildItems(500)} seed={1} showKindFilter />);
+      root.render(
+        <ScrapCollage items={buildItems(500)} seed={1} showKindFilter />,
+      );
     });
   };
 
   const tiles = () =>
     container.querySelectorAll<HTMLElement>("[data-scrap-key]");
 
-  it("fills the viewport by default and allows a fixed visible amount", () => {
+  it("fills the viewport and shuffles in another selection", () => {
     render();
     expect(tiles()).toHaveLength(286);
-
-    const amount = container.querySelector<HTMLSelectElement>(
-      '[aria-label="Number of scraps shown"]',
+    expect(
+      container.querySelector('[aria-label="Number of scraps shown"]'),
+    ).toBeNull();
+    const before = new Set(
+      Array.from(tiles(), (tile) => tile.dataset.scrapKey),
     );
-    expect(amount).not.toBeNull();
-    act(() => {
-      if (!amount) return;
-      amount.value = "100";
-      amount.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    expect(tiles()).toHaveLength(100);
+    const shuffle = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "shuffle",
+    );
+    act(() => shuffle?.click());
+    expect(
+      Array.from(tiles()).some((tile) => !before.has(tile.dataset.scrapKey)),
+    ).toBe(true);
   });
 
   it("filters by kind, shuffles positions, and collapses the pane", () => {
@@ -124,10 +129,13 @@ describe("ScrapCollage controls", () => {
       kinds.dispatchEvent(new Event("change", { bubbles: true }));
     });
     expect(
-      Array.from(tiles()).every((tile) => Number(tile.dataset.scrapKey?.slice(1)) % 2 === 0),
+      Array.from(tiles()).every(
+        (tile) => Number(tile.dataset.scrapKey?.slice(1)) % 2 === 0,
+      ),
     ).toBe(true);
 
-    const orderedKeys = () => Array.from(tiles(), (tile) => tile.dataset.scrapKey);
+    const orderedKeys = () =>
+      Array.from(tiles(), (tile) => tile.dataset.scrapKey);
     const beforeShuffle = orderedKeys();
     const shuffle = Array.from(container.querySelectorAll("button")).find(
       (button) => button.textContent === "shuffle",
@@ -145,18 +153,44 @@ describe("ScrapCollage controls", () => {
     ).toBeNull();
   });
 
-  it("shows whether automatic cycling is on", () => {
+  it("switches pile and grid independently of browsing mode and remembers the layout", () => {
     render();
-    const cycle = container.querySelector<HTMLButtonElement>(
-      ".scrap-collage__filter--cycle",
+    const layout = container.querySelector('[aria-label="Scrap layout"]');
+    const grid = layout?.querySelector<HTMLButtonElement>("button:last-child");
+    act(() => grid?.click());
+    expect(grid?.getAttribute("aria-pressed")).toBe("true");
+    expect(
+      Array.from(tiles()).every(
+        (tile) => tile.style.getPropertyValue("--scrap-rotation") === "0deg",
+      ),
+    ).toBe(true);
+    expect(localStorage.getItem("scraps-display")).toBe("grid");
+    expect(container.querySelector(".scrap-collage__filter--cycle")).toBeNull();
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="Scrap view"] button:last-child',
+        )
+        ?.click(),
     );
-
-    expect(cycle?.textContent).toContain("cycle");
-    expect(cycle?.getAttribute("aria-pressed")).toBe("true");
-    expect(cycle?.querySelector(".scrap-collage__cycle-status")).not.toBeNull();
-
-    act(() => cycle?.click());
-    expect(cycle?.getAttribute("aria-pressed")).toBe("false");
+    expect(grid?.getAttribute("aria-pressed")).toBe("true");
+    const scroller = container.querySelector<HTMLDivElement>(
+      ".scrap-collage__scroll",
+    )!;
+    act(() => {
+      scroller.scrollTop = 1120;
+      scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    const beforeKeys = new Set(
+      Array.from(tiles(), (tile) => tile.dataset.scrapKey),
+    );
+    act(() =>
+      layout?.querySelector<HTMLButtonElement>("button:first-child")?.click(),
+    );
+    expect(scroller.scrollTop).toBeGreaterThan(0);
+    expect(
+      Array.from(tiles()).some((tile) => beforeKeys.has(tile.dataset.scrapKey)),
+    ).toBe(true);
   });
 
   it("separates drift controls from the chronological archive", () => {
