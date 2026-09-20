@@ -1,4 +1,4 @@
-// ABOUTME: Captures visible images, controls, icons, and cursor artwork as internet scraps.
+// ABOUTME: Captures visible images, controls, icons, headings, and cursor artwork as internet scraps.
 // ABOUTME: Applies per-kind filtering, visibility timing, sanitization, and page-session limits.
 
 import { BaseCollector } from "./BaseCollector";
@@ -10,7 +10,9 @@ import {
 import type {
   ButtonScrapData,
   CursorScrapData,
+  HeadingScrapData,
   ScrapEventData,
+  ScrapPosition,
   SvgIconScrapData,
 } from "./types";
 import { getFaviconUrl } from "../utils/pageMetadata";
@@ -26,15 +28,23 @@ const MIN_BUTTON_TEXT_LENGTH = 1;
 const MAX_BUTTON_TEXT_LENGTH = 60;
 const MIN_SVG_SIZE = 12;
 const MAX_SVG_SIZE = 400;
+const MIN_HEADING_TEXT_LENGTH = 2;
+const MAX_HEADING_TEXT_LENGTH = 120;
 const VISIBILITY_DELAY_MS = 1000;
 const CURSOR_CHECK_INTERVAL_MS = 500;
 const MAX_IMAGES_PER_PAGE = 50;
 const MAX_BUTTONS_PER_PAGE = 20;
 const MAX_SVG_ICONS_PER_PAGE = 20;
+const MAX_HEADINGS_PER_PAGE = 20;
 const MAX_SVG_MARKUP_BYTES = 20 * 1024;
 const MAX_BUTTON_SVG_BYTES = 8 * 1024;
 const BUTTON_SELECTOR =
   'button, input[type="submit"], input[type="button"], [role="button"]';
+const HEADING_SELECTOR = "h1, h2, h3";
+/** Light-DOM hosts for the extension's own injected UI, whose text is not a scrap. */
+const EXTENSION_UI_SELECTOR =
+  '[id^="wwo-"], [id^="wewere-"], [id^="we-were-online-"], [id^="playhtml-"]';
+const TRANSPARENT_COLOR_PATTERN = /^(?:transparent|rgba\([^)]*,\s*0(?:\.0+)?\s*\))$/i;
 const GRADIENT_PATTERN =
   /^(?:repeating-)?(?:linear|radial|conic)-gradient\(/i;
 const CURSOR_URL_PATTERN =
@@ -72,6 +82,17 @@ const BUTTON_BORDER_PROPERTIES = [
   "borderLeftColor",
 ] as const;
 
+const HEADING_STYLE_PROPERTIES = [
+  "fontFamily",
+  "fontSize",
+  "fontWeight",
+  "fontStyle",
+  "color",
+  "letterSpacing",
+  "textTransform",
+  "lineHeight",
+] as const;
+
 interface CursorImage {
   url: string;
   hotspotX?: number;
@@ -88,14 +109,17 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   private observedImages = new Set<HTMLImageElement>();
   private observedButtons = new Set<Element>();
   private observedSvgIcons = new Set<SVGSVGElement>();
+  private observedHeadings = new Set<Element>();
   private loadHandlers = new Map<HTMLImageElement, () => void>();
   private seenCanonicalImageKeys = new Set<string>();
   private seenCanonicalButtonKeys = new Set<string>();
   private seenCanonicalSvgKeys = new Set<string>();
+  private seenCanonicalHeadingKeys = new Set<string>();
   private seenCanonicalCursorKeys = new Set<string>();
   private imageCaptureCount = 0;
   private buttonCaptureCount = 0;
   private svgCaptureCount = 0;
+  private headingCaptureCount = 0;
   private lastCursorCheckAt = Number.NEGATIVE_INFINITY;
 
   start(): void {
@@ -112,6 +136,9 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     });
     document.querySelectorAll("svg").forEach((svg) => {
       this.observeSvgCandidate(svg as SVGSVGElement);
+    });
+    document.querySelectorAll(HEADING_SELECTOR).forEach((heading) => {
+      this.observeHeadingCandidate(heading);
     });
 
     this.mutationObserver = new MutationObserver((mutations) => {
@@ -154,13 +181,16 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     this.observedImages.clear();
     this.observedButtons.clear();
     this.observedSvgIcons.clear();
+    this.observedHeadings.clear();
     this.seenCanonicalImageKeys.clear();
     this.seenCanonicalButtonKeys.clear();
     this.seenCanonicalSvgKeys.clear();
+    this.seenCanonicalHeadingKeys.clear();
     this.seenCanonicalCursorKeys.clear();
     this.imageCaptureCount = 0;
     this.buttonCaptureCount = 0;
     this.svgCaptureCount = 0;
+    this.headingCaptureCount = 0;
     this.lastCursorCheckAt = Number.NEGATIVE_INFINITY;
   }
 
@@ -174,6 +204,9 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     if (node instanceof SVGSVGElement) {
       this.observeSvgCandidate(node);
     }
+    if (node.matches(HEADING_SELECTOR)) {
+      this.observeHeadingCandidate(node);
+    }
 
     node.querySelectorAll("img").forEach((image) => {
       this.observeImageCandidate(image);
@@ -183,6 +216,9 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     });
     node.querySelectorAll("svg").forEach((svg) => {
       this.observeSvgCandidate(svg as SVGSVGElement);
+    });
+    node.querySelectorAll(HEADING_SELECTOR).forEach((heading) => {
+      this.observeHeadingCandidate(heading);
     });
   }
 
@@ -234,6 +270,18 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     this.intersectionObserver?.observe(svg);
   }
 
+  private observeHeadingCandidate(heading: Element): void {
+    if (
+      this.headingCaptureCount >= MAX_HEADINGS_PER_PAGE ||
+      this.observedHeadings.has(heading) ||
+      heading.closest(EXTENSION_UI_SELECTOR)
+    ) {
+      return;
+    }
+    this.observedHeadings.add(heading);
+    this.intersectionObserver?.observe(heading);
+  }
+
   private handleIntersections(entries: IntersectionObserverEntry[]): void {
     for (const entry of entries) {
       const candidate = entry.target;
@@ -252,6 +300,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
         this.observedImages.delete(candidate as HTMLImageElement);
         this.observedButtons.delete(candidate);
         this.observedSvgIcons.delete(candidate as SVGSVGElement);
+        this.observedHeadings.delete(candidate);
       }, VISIBILITY_DELAY_MS);
       this.visibilityTimers.set(candidate, timer);
     }
@@ -275,11 +324,29 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     }
     if (this.observedSvgIcons.has(candidate as SVGSVGElement)) {
       this.captureSvgIcon(candidate as SVGSVGElement);
+      return;
+    }
+    if (this.observedHeadings.has(candidate)) {
+      this.captureHeading(candidate);
     }
   }
 
   private pageDomain(): string {
     return extractDomain(window.location.href);
+  }
+
+  /**
+   * The element's centre in document coordinates, alongside the document's
+   * scroll size, so the scrap can be placed back on a map of its page.
+   */
+  private elementPosition(bounds: DOMRect): ScrapPosition {
+    const scrollingElement = document.scrollingElement ?? document.documentElement;
+    return {
+      pageX: Math.round(bounds.left + bounds.width / 2 + window.scrollX),
+      pageY: Math.round(bounds.top + bounds.height / 2 + window.scrollY),
+      pageWidth: Math.round(scrollingElement.scrollWidth),
+      pageHeight: Math.round(scrollingElement.scrollHeight),
+    };
   }
 
   private captureImage(image: HTMLImageElement): void {
@@ -311,6 +378,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       displayWidth: bounds.width,
       displayHeight: bounds.height,
       pageTitle: document.title,
+      position: this.elementPosition(bounds),
     };
     const canonicalKey = getScrapEncounterKey(
       this.pageDomain(),
@@ -369,6 +437,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       styles,
       ...(innerSvg ? { innerSvg } : {}),
       pageTitle: document.title,
+      position: this.elementPosition(bounds),
     };
     const canonicalKey = getCanonicalScrapKey(this.pageDomain(), data);
     if (this.seenCanonicalButtonKeys.has(canonicalKey)) return;
@@ -462,6 +531,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       width: bounds.width,
       height: bounds.height,
       pageTitle: document.title,
+      position: this.elementPosition(bounds),
     };
     const canonicalKey = getCanonicalScrapKey(this.pageDomain(), data);
     if (this.seenCanonicalSvgKeys.has(canonicalKey)) return;
@@ -477,6 +547,74 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     if (this.svgCaptureCount >= MAX_SVG_ICONS_PER_PAGE) {
       this.stopObservingSvgIcons();
     }
+  }
+
+  private captureHeading(heading: Element): void {
+    if (
+      !this.enabled ||
+      this.headingCaptureCount >= MAX_HEADINGS_PER_PAGE ||
+      heading.closest(EXTENSION_UI_SELECTOR)
+    ) {
+      return;
+    }
+
+    const level = headingLevel(heading);
+    if (level === undefined) return;
+
+    const text = normalizeHeadingText(heading);
+    if (
+      text.length < MIN_HEADING_TEXT_LENGTH ||
+      text.length > MAX_HEADING_TEXT_LENGTH
+    ) {
+      return;
+    }
+
+    const bounds = heading.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+
+    const computedStyle = getComputedStyle(heading);
+    if (computedStyle.visibility === "hidden" || computedStyle.opacity === "0") {
+      return;
+    }
+
+    const data: HeadingScrapData = {
+      kind: "heading",
+      text,
+      level,
+      styles: this.pickHeadingStyles(computedStyle),
+      pageTitle: document.title,
+      position: this.elementPosition(bounds),
+    };
+    const canonicalKey = getCanonicalScrapKey(this.pageDomain(), data);
+    if (this.seenCanonicalHeadingKeys.has(canonicalKey)) return;
+
+    const faviconUrl = getFaviconUrl();
+    this.seenCanonicalHeadingKeys.add(canonicalKey);
+    this.headingCaptureCount++;
+    this.emit({
+      ...data,
+      ...(faviconUrl ? { faviconUrl } : {}),
+    });
+
+    if (this.headingCaptureCount >= MAX_HEADINGS_PER_PAGE) {
+      this.stopObservingHeadings();
+    }
+  }
+
+  private pickHeadingStyles(
+    computedStyle: CSSStyleDeclaration,
+  ): Record<string, string> {
+    const styles: Record<string, string> = {};
+    for (const property of HEADING_STYLE_PROPERTIES) {
+      const value = computedStyle[property];
+      if (value) styles[property] = value;
+    }
+
+    const backgroundColor = computedStyle.backgroundColor;
+    if (backgroundColor && !TRANSPARENT_COLOR_PATTERN.test(backgroundColor.trim())) {
+      styles.backgroundColor = backgroundColor;
+    }
+    return styles;
   }
 
   private handleMouseover = (event: MouseEvent): void => {
@@ -498,6 +636,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
         ? { hotspotY: cursorImage.hotspotY }
         : {}),
       pageTitle: document.title,
+      position: this.pointerPosition(event),
     };
     const canonicalKey = getCanonicalScrapKey(this.pageDomain(), data);
     if (this.seenCanonicalCursorKeys.has(canonicalKey)) return;
@@ -509,6 +648,17 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       ...(faviconUrl ? { faviconUrl } : {}),
     });
   };
+
+  /** Where the pointer was, in the same document coordinates as element scraps. */
+  private pointerPosition(event: MouseEvent): ScrapPosition {
+    const scrollingElement = document.scrollingElement ?? document.documentElement;
+    return {
+      pageX: Math.round(event.pageX),
+      pageY: Math.round(event.pageY),
+      pageWidth: Math.round(scrollingElement.scrollWidth),
+      pageHeight: Math.round(scrollingElement.scrollHeight),
+    };
+  }
 
   private parseCursorImage(cursor: string): CursorImage | undefined {
     const match = CURSOR_URL_PATTERN.exec(cursor);
@@ -552,4 +702,33 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     }
     this.observedSvgIcons.clear();
   }
+
+  private stopObservingHeadings(): void {
+    for (const heading of this.observedHeadings) {
+      this.clearVisibilityTimer(heading);
+      this.intersectionObserver?.unobserve(heading);
+    }
+    this.observedHeadings.clear();
+  }
+}
+
+function headingLevel(heading: Element): 1 | 2 | 3 | undefined {
+  switch (heading.tagName.toLowerCase()) {
+    case "h1":
+      return 1;
+    case "h2":
+      return 2;
+    case "h3":
+      return 3;
+    default:
+      return undefined;
+  }
+}
+
+function normalizeHeadingText(heading: Element): string {
+  const rawText =
+    "innerText" in heading && typeof heading.innerText === "string"
+      ? heading.innerText
+      : heading.textContent ?? "";
+  return rawText.replace(/\s+/g, " ").trim();
 }

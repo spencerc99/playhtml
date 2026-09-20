@@ -1,5 +1,5 @@
 // ABOUTME: Tests internet scrap capture rules, visibility timing, sanitization, and limits.
-// ABOUTME: Exercises image, button, SVG icon, and cursor pipelines against real DOM nodes.
+// ABOUTME: Exercises image, button, SVG icon, heading, and cursor pipelines against real DOM nodes.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ScrapCollector } from "../ScrapCollector";
@@ -40,6 +40,8 @@ class IntersectionObserverMock {
 interface ElementSize {
   width?: number;
   height?: number;
+  left?: number;
+  top?: number;
 }
 
 interface ImageOptions extends ElementSize {
@@ -52,12 +54,37 @@ interface ImageOptions extends ElementSize {
 
 function setRenderedSize(
   element: Element,
-  { width = 160, height = 120 }: ElementSize = {},
+  { width = 160, height = 120, left = 0, top = 0 }: ElementSize = {},
 ): void {
   vi.spyOn(element, "getBoundingClientRect").mockReturnValue({
     width,
     height,
+    left,
+    top,
   } as DOMRect);
+}
+
+interface HeadingOptions extends ElementSize {
+  text?: string;
+  level?: 1 | 2 | 3;
+  styles?: Record<string, string>;
+}
+
+function createHeading({
+  text = "What the tide left behind",
+  level = 2,
+  styles,
+  width = 320,
+  height = 44,
+  left = 0,
+  top = 0,
+}: HeadingOptions = {}): HTMLElement {
+  const heading = document.createElement(`h${level}`);
+  heading.textContent = text;
+  if (styles) heading.setAttribute("data-styles", JSON.stringify(styles));
+  setRenderedSize(heading, { width, height, left, top });
+  document.body.appendChild(heading);
+  return heading;
 }
 
 function createImage({
@@ -67,6 +94,8 @@ function createImage({
   naturalHeight = 150,
   width = 160,
   height = 120,
+  left = 0,
+  top = 0,
   complete = true,
 }: ImageOptions): HTMLImageElement {
   const image = document.createElement("img");
@@ -77,7 +106,7 @@ function createImage({
     naturalWidth: { value: naturalWidth, configurable: true },
     naturalHeight: { value: naturalHeight, configurable: true },
   });
-  setRenderedSize(image, { width, height });
+  setRenderedSize(image, { width, height, left, top });
   document.body.appendChild(image);
   return image;
 }
@@ -94,6 +123,8 @@ function createButton({
   role = false,
   width = 160,
   height = 40,
+  left = 0,
+  top = 0,
 }: ButtonOptions = {}): HTMLElement {
   const element = value === undefined
     ? document.createElement(role ? "div" : "button")
@@ -105,16 +136,16 @@ function createButton({
     element.textContent = text;
   }
   if (role) element.setAttribute("role", "button");
-  setRenderedSize(element, { width, height });
+  setRenderedSize(element, { width, height, left, top });
   document.body.appendChild(element);
   return element;
 }
 
 function createSvg(
-  { width = 24, height = 24 }: ElementSize = {},
+  { width = 24, height = 24, left = 0, top = 0 }: ElementSize = {},
 ): SVGSVGElement {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  setRenderedSize(svg, { width, height });
+  setRenderedSize(svg, { width, height, left, top });
   document.body.appendChild(svg);
   return svg;
 }
@@ -130,25 +161,35 @@ describe("ScrapCollector", () => {
     document.head.innerHTML = "";
     document.body.innerHTML = "";
     document.title = "A page worth keeping";
-    vi.stubGlobal("getComputedStyle", (element: Element) => ({
-      backgroundColor: element.getAttribute("data-background") ?? "rgb(20, 30, 40)",
-      backgroundImage: element.getAttribute("data-background-image") ?? "none",
-      color: element.getAttribute("data-color") ?? "rgb(10, 20, 30)",
-      border: "1px solid rgb(1, 2, 3)",
-      borderRadius: "4px",
-      paddingTop: "4px",
-      paddingRight: "8px",
-      paddingBottom: "4px",
-      paddingLeft: "8px",
-      fontFamily: "sans-serif",
-      fontSize: "14px",
-      fontWeight: "400",
-      fontStyle: "normal",
-      letterSpacing: "normal",
-      textTransform: "none",
-      boxShadow: "none",
-      cursor: element.getAttribute("data-cursor") ?? "auto",
-    } as CSSStyleDeclaration));
+    vi.stubGlobal("getComputedStyle", (element: Element) => {
+      const overrides = JSON.parse(
+        element.getAttribute("data-styles") ?? "{}",
+      ) as Record<string, string>;
+      return {
+        backgroundColor:
+          element.getAttribute("data-background") ?? "rgb(20, 30, 40)",
+        backgroundImage: element.getAttribute("data-background-image") ?? "none",
+        color: element.getAttribute("data-color") ?? "rgb(10, 20, 30)",
+        border: "1px solid rgb(1, 2, 3)",
+        borderRadius: "4px",
+        paddingTop: "4px",
+        paddingRight: "8px",
+        paddingBottom: "4px",
+        paddingLeft: "8px",
+        fontFamily: "sans-serif",
+        fontSize: "14px",
+        fontWeight: "400",
+        fontStyle: "normal",
+        letterSpacing: "normal",
+        textTransform: "none",
+        lineHeight: "20px",
+        visibility: "visible",
+        opacity: "1",
+        boxShadow: "none",
+        cursor: element.getAttribute("data-cursor") ?? "auto",
+        ...overrides,
+      } as CSSStyleDeclaration;
+    });
     emitCallback = vi.fn();
     collector = new ScrapCollector();
     collector.setEmitCallback(emitCallback);
@@ -266,6 +307,12 @@ describe("ScrapCollector", () => {
       displayHeight: 200,
       pageTitle: "A page worth keeping",
       faviconUrl: "https://example.com/favicon.png",
+      position: {
+        pageX: 150,
+        pageY: 100,
+        pageWidth: 1024,
+        pageHeight: 2000,
+      },
     });
   });
 
@@ -575,6 +622,179 @@ describe("ScrapCollector", () => {
     });
   });
 
+  it("captures h1 through h3 with their level and normalized text", () => {
+    const headings = ([1, 2, 3] as const).map((level) =>
+      createHeading({ level, text: `  Level\n\n ${level}  heading ` }),
+    );
+    const notAHeading = document.createElement("h4");
+    notAHeading.textContent = "Fourth level";
+    setRenderedSize(notAHeading);
+    document.body.appendChild(notAHeading);
+
+    collector.enable();
+    expect(observer().observed.has(notAHeading)).toBe(false);
+    showForCapture([...headings, notAHeading]);
+
+    expect(
+      emitted("heading").map((data) =>
+        data.kind === "heading" ? [data.level, data.text] : undefined,
+      ),
+    ).toEqual([
+      [1, "Level 1 heading"],
+      [2, "Level 2 heading"],
+      [3, "Level 3 heading"],
+    ]);
+  });
+
+  it("skips empty, too-short, too-long, and invisible headings", () => {
+    const empty = createHeading({ text: "   " });
+    const tooShort = createHeading({ text: "a" });
+    const tooLong = createHeading({ text: "x".repeat(121) });
+    const zeroSized = createHeading({ text: "No box at all", width: 0 });
+    const invisible = createHeading({
+      text: "Visibility hidden",
+      styles: { visibility: "hidden" },
+    });
+    const transparent = createHeading({
+      text: "Fully transparent",
+      styles: { opacity: "0" },
+    });
+    const shortestKept = createHeading({ text: "Hi" });
+    const longestKept = createHeading({ text: "y".repeat(120) });
+
+    collector.enable();
+    showForCapture([
+      empty,
+      tooShort,
+      tooLong,
+      zeroSized,
+      invisible,
+      transparent,
+      shortestKept,
+      longestKept,
+    ]);
+
+    expect(
+      emitted("heading").map((data) => (data.kind === "heading" ? data.text : "")),
+    ).toEqual(["Hi", "y".repeat(120)]);
+  });
+
+  it("ignores headings inside the extension's own injected UI", () => {
+    const extensionHost = document.createElement("div");
+    extensionHost.id = "wewere-announcement-toast-host";
+    document.body.appendChild(extensionHost);
+    const ourHeading = document.createElement("h2");
+    ourHeading.textContent = "Internet scraps are here";
+    setRenderedSize(ourHeading);
+    extensionHost.appendChild(ourHeading);
+    const pageHeading = createHeading({ text: "The page's own heading" });
+
+    collector.enable();
+    expect(observer().observed.has(ourHeading)).toBe(false);
+    showForCapture([ourHeading, pageHeading]);
+
+    expect(
+      emitted("heading").map((data) => (data.kind === "heading" ? data.text : "")),
+    ).toEqual(["The page's own heading"]);
+  });
+
+  it("reconstructs only allowlisted typographic styles for a heading", () => {
+    const heading = createHeading({
+      text: "Typeset heading",
+      styles: {
+        fontFamily: "Georgia, serif",
+        fontSize: "42px",
+        fontWeight: "700",
+        fontStyle: "italic",
+        color: "rgb(61, 56, 51)",
+        letterSpacing: "-0.01em",
+        textTransform: "uppercase",
+        lineHeight: "48px",
+        backgroundColor: "rgba(0, 0, 0, 0)",
+        boxShadow: "0 2px 4px rgb(0, 0, 0)",
+        borderRadius: "12px",
+      },
+    });
+
+    collector.enable();
+    showForCapture([heading]);
+
+    const scraps = emitted("heading");
+    expect(scraps).toHaveLength(1);
+    expect(scraps[0].kind === "heading" && scraps[0].styles).toEqual({
+      fontFamily: "Georgia, serif",
+      fontSize: "42px",
+      fontWeight: "700",
+      fontStyle: "italic",
+      color: "rgb(61, 56, 51)",
+      letterSpacing: "-0.01em",
+      textTransform: "uppercase",
+      lineHeight: "48px",
+    });
+  });
+
+  it("keeps an opaque heading background and drops a transparent one", () => {
+    const opaque = createHeading({
+      text: "Banner heading",
+      styles: { backgroundColor: "rgb(34, 51, 59)" },
+    });
+    const keyword = createHeading({
+      text: "Keyword transparent",
+      styles: { backgroundColor: "transparent" },
+    });
+    const zeroAlpha = createHeading({
+      text: "Zero alpha background",
+      styles: { backgroundColor: "rgba(12, 34, 56, 0)" },
+    });
+
+    collector.enable();
+    showForCapture([opaque, keyword, zeroAlpha]);
+
+    const backgrounds = emitted("heading").map((data) =>
+      data.kind === "heading" ? data.styles.backgroundColor : undefined,
+    );
+    expect(backgrounds).toEqual(["rgb(34, 51, 59)", undefined, undefined]);
+  });
+
+  it("deduplicates headings by wording regardless of level and caps them at twenty", () => {
+    const asH1 = createHeading({ level: 1, text: "Same Wording" });
+    const asH3 = createHeading({ level: 3, text: "same wording" });
+    const uniqueHeadings = Array.from({ length: 20 }, (_, index) =>
+      createHeading({ text: `Heading number ${index}` }),
+    );
+
+    collector.enable();
+    showForCapture([asH1, asH3, ...uniqueHeadings]);
+
+    expect(emitted("heading")).toHaveLength(20);
+    expect(
+      emitted("heading").filter(
+        (data) =>
+          data.kind === "heading" &&
+          data.text.toLowerCase() === "same wording",
+      ),
+    ).toHaveLength(1);
+    expect(observer().observed.has(uniqueHeadings[19])).toBe(false);
+  });
+
+  it("discovers headings added to the page after collection starts", async () => {
+    collector.enable();
+    const container = document.createElement("section");
+    const heading = document.createElement("h2");
+    heading.textContent = "Loaded in later";
+    setRenderedSize(heading, { width: 240, height: 40 });
+    container.appendChild(heading);
+    document.body.appendChild(container);
+
+    await Promise.resolve();
+    expect(observer().observed.has(heading)).toBe(true);
+
+    showForCapture([heading]);
+    expect(
+      emitted("heading").map((data) => (data.kind === "heading" ? data.text : "")),
+    ).toEqual(["Loaded in later"]);
+  });
+
   it("captures cursor URLs and hotspots while ignoring fallback-only cursors", () => {
     const fallback = document.createElement("div");
     fallback.setAttribute("data-cursor", "pointer");
@@ -629,6 +849,123 @@ describe("ScrapCollector", () => {
       hotspotX: 3,
       hotspotY: 5,
     })]);
+  });
+
+  describe("page position", () => {
+    afterEach(() => {
+      (window as { scrollX: number }).scrollX = 0;
+      (window as { scrollY: number }).scrollY = 0;
+    });
+
+    it("records each element scrap's centre in document coordinates", () => {
+      (window as { scrollX: number }).scrollX = 40;
+      (window as { scrollY: number }).scrollY = 600;
+      const image = createImage({
+        src: "https://example.com/placed.jpg",
+        width: 300,
+        height: 200,
+        left: 100,
+        top: 50,
+      });
+      const button = createButton({
+        text: "Placed button",
+        width: 120,
+        height: 40,
+        left: 20,
+        top: 10,
+      });
+      const heading = createHeading({
+        text: "Placed heading",
+        width: 400,
+        height: 60,
+        left: 12,
+        top: 30,
+      });
+      const svg = createSvg({ width: 24, height: 24, left: 8, top: 4 });
+      const path = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path",
+      );
+      path.setAttribute("d", "M0 0h4v4z");
+      svg.appendChild(path);
+
+      collector.enable();
+      showForCapture([image, button, heading, svg]);
+
+      expect(emitted("image")[0].position).toEqual({
+        pageX: 290,
+        pageY: 750,
+        pageWidth: 1024,
+        pageHeight: 2000,
+      });
+      expect(emitted("button")[0].position).toEqual({
+        pageX: 120,
+        pageY: 630,
+        pageWidth: 1024,
+        pageHeight: 2000,
+      });
+      expect(emitted("heading")[0].position).toEqual({
+        pageX: 252,
+        pageY: 660,
+        pageWidth: 1024,
+        pageHeight: 2000,
+      });
+      expect(emitted("svg-icon")[0].position).toEqual({
+        pageX: 60,
+        pageY: 616,
+        pageWidth: 1024,
+        pageHeight: 2000,
+      });
+    });
+
+    it("records a cursor scrap's position from the pointer event", () => {
+      const target = document.createElement("div");
+      target.setAttribute(
+        "data-cursor",
+        'url("https://example.com/placed.cur") 1 1, auto',
+      );
+      document.body.appendChild(target);
+
+      collector.enable();
+      const event = new MouseEvent("mouseover", { bubbles: true });
+      Object.defineProperties(event, {
+        pageX: { value: 317, configurable: true },
+        pageY: { value: 1284, configurable: true },
+      });
+      target.dispatchEvent(event);
+
+      expect(emitted("cursor")[0].position).toEqual({
+        pageX: 317,
+        pageY: 1284,
+        pageWidth: 1024,
+        pageHeight: 2000,
+      });
+    });
+
+    it("does not let position distinguish two captures of the same scrap", () => {
+      const first = createHeading({
+        text: "Repeated wording",
+        left: 0,
+        top: 0,
+      });
+      const second = createHeading({
+        text: "Repeated wording",
+        left: 500,
+        top: 900,
+      });
+
+      collector.enable();
+      showForCapture([first, second]);
+
+      const scraps = emitted("heading");
+      expect(scraps).toHaveLength(1);
+      expect(scraps[0].position).toEqual({
+        pageX: 160,
+        pageY: 22,
+        pageWidth: 1024,
+        pageHeight: 2000,
+      });
+    });
   });
 
   it("throttles cursor style checks to one every five hundred milliseconds", () => {
