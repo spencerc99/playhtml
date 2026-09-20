@@ -146,9 +146,13 @@ async function seedUnchecked(count, prefix) {
               id: `${prefix}-${i}`,
               type: "element",
               ts: Date.now() + i,
-              domain: "127.0.0.1",
+              domain:
+                prefix === "layout" && i % 2 ? "notebook.example" : "127.0.0.1",
               meta: {
-                url: `${origin}/${prefix}-${i}`,
+                url:
+                  prefix === "layout" && i % 2
+                    ? `https://notebook.example/studies/${i}`
+                    : `${origin}/${prefix}-${i}`,
                 pid: "fixture",
                 sid: "fixture",
                 vw: 1200,
@@ -447,6 +451,28 @@ try {
   await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(10);
   assert.ok(downloads.every((request) => !request.cookie && !request.referer));
   assert.ok(peak <= 2);
+  await reopened.getByRole("button", { name: /^Found on/ }).click();
+  await reopened
+    .getByRole("textbox", { name: "Find a domain or page" })
+    .fill(`${origin}/first`);
+  await reopened
+    .getByRole("textbox", { name: "Find a domain or page" })
+    .press("Enter");
+  await reopened
+    .getByRole("textbox", { name: "Find a domain or page" })
+    .press("Escape");
+  await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(1);
+  await reopened.locator(".scrap-collage__tile").click();
+  await expect(reopened.locator(".scrap-lightbox__timeline li")).toHaveCount(4);
+  await reopened
+    .getByRole("button", { name: "Close examine view", exact: true })
+    .click();
+  await expect(reopened.getByRole("dialog")).toHaveCount(0);
+  await reopened.getByRole("button", { name: /^Found on/ }).click();
+  await reopened.getByRole("button", { name: "Clear", exact: true }).click();
+  await reopened
+    .getByRole("textbox", { name: "Find a domain or page" })
+    .press("Escape");
   await seedUnchecked(420, "layout");
   await reopened.reload();
   await expect(reopened.getByLabel("Number of scraps shown")).toHaveCount(0);
@@ -489,6 +515,13 @@ try {
     "reduced motion holds Drift still",
   );
   await reopened.emulateMedia({ reducedMotion: "no-preference" });
+  await reopened.waitForTimeout(7500);
+  assert.deepEqual(
+    await keys(),
+    reducedKeys,
+    "focused controls hold Drift still",
+  );
+  await reopened.locator("body").click({ position: { x: 1, y: 1 } });
   await reopened.mouse.move(0, 0);
   await expect
     .poll(async () => JSON.stringify(await keys()), { timeout: 15000 })
@@ -641,6 +674,107 @@ try {
   await reopened.screenshot({
     path: resolve(evidence, "archive-grid-mobile.png"),
   });
+  await reopened.setViewportSize({ width: 1200, height: 850 });
+  const waitForFilterImages = () =>
+    expect
+      .poll(
+        () =>
+          reopened
+            .locator(".scrap-collage__tile img:not(.scrap-collage__favicon)")
+            .evaluateAll(
+              (images) =>
+                images.length > 0 &&
+                images.every((image) => {
+                  const bounds = image.getBoundingClientRect();
+                  return (
+                    bounds.bottom <= 0 ||
+                    bounds.top >= innerHeight ||
+                    (image.complete && image.naturalWidth > 0)
+                  );
+                }),
+            ),
+        { timeout: 20000 },
+      )
+      .toBe(true);
+  const foundOn = reopened.getByRole("button", { name: /^Found on/ });
+  await foundOn.click();
+  await reopened
+    .locator(".scrap-filters__domain")
+    .filter({ hasText: "notebook.example" })
+    .click();
+  await reopened
+    .getByRole("textbox", { name: "Find a domain or page" })
+    .press("Escape");
+  await expect(foundOn).toContainText("notebook.example");
+  await expect(
+    reopened.locator(".scrap-collage__archive-summary"),
+  ).toContainText("210 of 430");
+  await foundOn.click();
+  await reopened
+    .locator(".scrap-filters__domain")
+    .filter({ hasText: "127.0.0.1" })
+    .click();
+  await expect(foundOn).toContainText("127.0.0.1");
+  await expect(foundOn).toContainText("notebook.example");
+  await waitForFilterImages();
+  await reopened.screenshot({ path: resolve(evidence, "filter-places.png") });
+  await reopened
+    .getByRole("textbox", { name: "Find a domain or page" })
+    .press("Escape");
+  await reopened.getByRole("button", { name: /^Type/ }).click();
+  await reopened.locator('[data-scrap-kind="button"]').click();
+  await expect(reopened.getByRole("status")).toHaveText(
+    "No scraps match these filters.",
+  );
+  await reopened.locator('[data-scrap-kind="image"]').click();
+  await waitForFilterImages();
+  await reopened.screenshot({ path: resolve(evidence, "filter-types.png") });
+  await reopened.locator('[data-scrap-kind="image"]').press("Escape");
+  await reopened
+    .getByRole("button", { name: "Search scraps", exact: true })
+    .click();
+  await reopened
+    .getByRole("textbox", { name: "Search scraps", exact: true })
+    .fill("notebook.example page 112");
+  await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(1);
+  await expect
+    .poll(() =>
+      reopened
+        .locator(".scrap-collage__tile img:not(.scrap-collage__favicon)")
+        .evaluateAll(
+          (images) =>
+            images.length > 0 &&
+            images.every((image) => image.complete && image.naturalWidth > 0),
+        ),
+    )
+    .toBe(true);
+  await reopened.screenshot({ path: resolve(evidence, "filter-search.png") });
+  for (const layout of ["pile", "grid"]) {
+    await layoutControl
+      .getByRole("button", { name: layout, exact: true })
+      .click();
+    for (const mode of ["drift", "archive"]) {
+      await reopened.getByRole("button", { name: mode, exact: true }).click();
+      await expect(
+        reopened.locator(
+          ".scrap-collage__tile:not(.scrap-collage__tile--washing-out)",
+        ),
+      ).toHaveCount(1);
+    }
+  }
+  await reopened.setViewportSize({ width: 390, height: 844 });
+  await foundOn.click();
+  await reopened.screenshot({ path: resolve(evidence, "filter-mobile.png") });
+  const overflow = await reopened
+    .locator('[aria-label="Scrap controls"]')
+    .evaluate((el) => el.scrollWidth > el.clientWidth);
+  assert.equal(overflow, false, "mobile controls fit their panel");
+  await reopened
+    .getByRole("textbox", { name: "Find a domain or page" })
+    .press("Escape");
+  await reopened
+    .getByRole("button", { name: "Clear and close search" })
+    .click();
   assert.deepEqual(pageErrors, []);
   console.log(
     JSON.stringify({

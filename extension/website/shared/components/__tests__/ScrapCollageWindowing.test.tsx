@@ -259,14 +259,17 @@ describe("ScrapCollage archive-mode windowing", () => {
       scroll.scrollTop = 20_000;
       scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
     });
-    const kinds = container.querySelector<HTMLSelectElement>(
-      '[aria-label="Kinds of scraps shown"]',
-    )!;
+    act(() =>
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.startsWith("Type"))
+        ?.click(),
+    );
     for (const kind of ["image", "button", "all"]) {
-      act(() => {
-        kinds.value = kind;
-        kinds.dispatchEvent(new Event("change", { bubbles: true }));
-      });
+      act(() =>
+        container
+          .querySelector<HTMLButtonElement>(`[data-scrap-kind="${kind}"]`)
+          ?.click(),
+      );
       expect(scroll.scrollTop).toBe(0);
       const tiles = container.querySelectorAll<HTMLElement>("[data-scrap-key]");
       expect(tiles.length).toBeGreaterThan(0);

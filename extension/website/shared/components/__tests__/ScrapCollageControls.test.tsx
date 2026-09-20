@@ -117,14 +117,16 @@ describe("ScrapCollage controls", () => {
 
   it("filters by kind, shuffles positions, and collapses the pane", () => {
     render();
-    const kinds = container.querySelector<HTMLSelectElement>(
-      '[aria-label="Kinds of scraps shown"]',
+    act(() =>
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.startsWith("Type"))
+        ?.click(),
     );
-    act(() => {
-      if (!kinds) return;
-      kinds.value = "image";
-      kinds.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[data-scrap-kind="image"]')
+        ?.click(),
+    );
     expect(
       Array.from(tiles()).every(
         (tile) => Number(tile.dataset.scrapKey?.slice(1)) % 2 === 0,
