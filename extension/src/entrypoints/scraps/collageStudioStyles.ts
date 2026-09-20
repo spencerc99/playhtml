@@ -88,9 +88,33 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-tray__thumb {
     position: relative;
+    display: block;
     width: 100%;
     height: 100%;
     overflow: hidden;
+  }
+
+  .collage-tray__slot {
+    box-sizing: border-box;
+  }
+
+  /* The tray shows every kind at thumbnail scale inside its own slot. */
+  .collage-tray__thumb .scrap-collage__button,
+  .collage-tray__thumb .scrap-collage__svg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    max-width: 100%;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  .collage-tray__thumb .scrap-collage__svg svg,
+  .collage-tray__thumb .scrap-collage__button svg {
+    max-width: 100%;
+    max-height: 100%;
   }
 
   .collage-frame-area {
@@ -141,6 +165,29 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-piece__source {
     position: absolute;
+  }
+
+  /* A placed piece fills its box whatever kind of scrap it came from. */
+  .collage-piece__source .scrap-collage__svg,
+  .collage-piece__source .scrap-collage__button {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .collage-piece__source .scrap-collage__svg svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .collage-piece__source .scrap-collage__cursor {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
 
   .collage-piece--selected {

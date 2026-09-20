@@ -169,6 +169,8 @@ export function ScrapsPage() {
   const [mode, setMode] = useState<ScrapsMode>("browse");
   const [editing, setEditing] = useState<CollageRecord | null>(null);
   const [studioOpen, setStudioOpen] = useState(false);
+  /** Bumped when a studio is opened, so each editing session starts fresh. */
+  const [studioSession, setStudioSession] = useState(0);
   const [savedRevision, setSavedRevision] = useState(0);
   const seed = useMemo(() => Math.floor(Date.now() / 86_400_000), []);
   const collagesFeature = useFeatureState("SCRAP_COLLAGES");
@@ -383,16 +385,18 @@ export function ScrapsPage() {
               revision={savedRevision}
               onEdit={(record) => {
                 setEditing(record);
+                setStudioSession((value) => value + 1);
                 setStudioOpen(true);
               }}
               onStartNew={() => {
                 setEditing(null);
+                setStudioSession((value) => value + 1);
                 setStudioOpen(true);
               }}
             />
           ) : (
             <CollageStudio
-              key={editing?.id ?? `fresh-${savedRevision}`}
+              key={studioSession}
               scraps={items}
               editing={editing}
               onSaved={() => setSavedRevision((value) => value + 1)}
