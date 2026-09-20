@@ -129,6 +129,19 @@ export function CollageStudio({
   );
   const [title, setTitle] = useState(editing?.title ?? "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Pieces are replaced, never mutated, so identity against the last saved
+  // arrangement tells whether there is work that leaving would discard.
+  const savedRef = useRef({ pieces, title });
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
+  const unsaved =
+    pieces !== savedRef.current.pieces || title !== savedRef.current.title;
+
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
   const [cropping, setCropping] = useState(false);
   const [gesture, setGesture] = useState<Gesture>({ kind: "idle" });
   const [scale, setScale] = useState(1);
@@ -339,6 +352,8 @@ export function CollageStudio({
         preview,
       };
       await saveCollage(record);
+      savedRef.current = { pieces, title };
+      setConfirmingLeave(false);
       setNotice({ tone: "quiet", text: "saved" });
       onSaved(record);
     } catch (error) {
@@ -594,9 +609,32 @@ export function CollageStudio({
           >
             {saving ? "saving..." : editing ? "update" : "save"}
           </button>
-          <button type="button" className="collage-action" onClick={onLeave}>
-            done
-          </button>
+          {confirmingLeave ? (
+            <>
+              <button
+                type="button"
+                className="collage-action collage-action--danger"
+                onClick={onLeave}
+              >
+                leave without saving
+              </button>
+              <button
+                type="button"
+                className="collage-action"
+                onClick={() => setConfirmingLeave(false)}
+              >
+                stay
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="collage-action"
+              onClick={() => (unsaved ? setConfirmingLeave(true) : onLeave())}
+            >
+              done
+            </button>
+          )}
         </div>
 
         {notice && (
