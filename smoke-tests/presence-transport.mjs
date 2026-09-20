@@ -288,6 +288,13 @@ try {
       .toBe(true);
     await bob.locator("#counter").click();
     await expect(alice.locator("#counter")).toHaveText("Shared count: 3");
+    await expect(alice.locator("#presence")).toContainText(
+      "alicia: Clicked the counter",
+    );
+    await expect(alice.locator("#presence")).not.toContainText("alice:");
+    await expect(bob.locator("#presence")).toContainText(
+      "alicia: Clicked the counter",
+    );
     await shot(alice, `${mode}-reconnected`);
     await alice.evaluate(async () => {
       named.destroy();
