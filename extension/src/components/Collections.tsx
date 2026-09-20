@@ -35,7 +35,7 @@ const DEV_MODE_KEY = "dev_mode";
 interface StorageStats {
   totalEvents: number;
   estimatedSizeBytes: number;
-  estimatedSizeBytesByType: Record<string, number>;
+  estimatedSizeBytesByType?: Record<string, number>;
   localUsageBytes: number | null;
   oldestEvent: number;
   newestEvent?: number;
@@ -725,7 +725,7 @@ export function Collections({
   const eventTypeCounts = storageStats
     ? getEventTypeCounts(storageStats.countsByType)
     : [];
-  const scrapSizeBytes = storageStats?.estimatedSizeBytesByType.element;
+  const scrapSizeBytes = storageStats?.estimatedSizeBytesByType?.element;
   const hasActiveCollection = Object.values(modes).some(
     (mode) => mode !== "off",
   );

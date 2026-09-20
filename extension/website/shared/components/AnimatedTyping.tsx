@@ -15,6 +15,7 @@ import {
   isMonochromeStyle,
   colorWash,
   colorShade,
+  typingBackgroundColor,
   readableTextLightness,
 } from "../utils/colorStyle";
 
@@ -417,7 +418,7 @@ const TypingBox = memo(
       // Wash of the hue, lightened so dark cursor colors still read as a light
       // input rather than a saturated panel. Letters + border take a readable
       // shade of the same hue.
-      backgroundColor = colorWash(vizColor, fillAlpha, 30);
+      backgroundColor = typingBackgroundColor(vizColor, fillAlpha);
       textColor = colorShade(vizColor, readableTextLightness(vizColor));
       borderColor = colorWash(vizColor, 0.55, 0);
     }

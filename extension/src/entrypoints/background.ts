@@ -1,7 +1,13 @@
 // ABOUTME: Background service worker — holds the extension-origin event store and
 // ABOUTME: coordinates event writes, uploads, and data reads for all extension surfaces
 import browser from 'webextension-polyfill'
+import { scrapEncounterDay } from '@movement/utils/scrapEncounterDay'
+import {
+  groupPhotoEncounters,
+  type ScrapSource,
+} from '@movement/utils/scrapPhotoGroups'
 import { LocalEventStore } from '../storage/LocalEventStore'
+import { ImageFingerprints } from '../storage/imageFingerprints'
 import type {
   QueryOptions,
   WalkingRecordTraceTarget,
@@ -83,6 +89,9 @@ function replyWithWikipediaHandle(
 }
 
 interface ScrapRecordBase {
+  sources?: ScrapSource[]
+  encounterCount?: number
+  encounterDay?: string
   id: string
   key: string
   domain: string
@@ -97,6 +106,7 @@ export type ScrapRecord = ScrapRecordBase &
     | {
         kind: 'image'
         src: string
+        contentHash?: string
         alt?: string
         naturalWidth: number
         naturalHeight: number
@@ -154,6 +164,8 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
         ...base,
         kind: data.kind,
         src: data.src,
+        encounterDay: scrapEncounterDay(event.ts, event.meta.tz),
+        ...(data.contentHash ? { contentHash: data.contentHash } : {}),
         ...(data.alt ? { alt: data.alt } : {}),
         naturalWidth: data.naturalWidth,
         naturalHeight: data.naturalHeight,
@@ -186,6 +198,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
 }
 
 const store = new LocalEventStore()
+const imageFingerprints = new ImageFingerprints(store)
 
 const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
 const LOCAL_RAW_EVENT_RETENTION_DAYS = 30
@@ -641,7 +654,21 @@ export default defineBackground(() => {
       const events = (message.events || []) as CollectionEvent[]
       store
         .addEvents(events)
-        .then(() => {
+        .then((inserted) => {
+          void imageFingerprints
+            .process(inserted)
+            .then(({ checked }) => {
+              if (checked > 0)
+                return browser.runtime
+                  .sendMessage({ type: 'SCRAP_PHOTOS_UPDATED' })
+                  .catch(() => {})
+            })
+            .catch((error) =>
+              console.warn(
+                '[Background] Photo fingerprint update failed:',
+                error,
+              ),
+            )
           // A navigation focus is the canonical "user is now looking at this
           // domain" signal — the moment a domain-visit milestone could fire
           // with the right tab in front. Trigger an immediate check (cooldown
@@ -697,7 +724,7 @@ export default defineBackground(() => {
     if (message.type === 'GET_SCRAPS') {
       const limit = (message.options?.limit ?? 5000) as number
       store
-        .queryByType('element', { limit })
+        .queryByType('element')
         .then((events) =>
           events
             .sort((first, second) => second.ts - first.ts)
@@ -706,7 +733,13 @@ export default defineBackground(() => {
               return scrap ? [scrap] : []
             }),
         )
-        .then((scraps) => reply({ scraps }))
+        .then((scraps) =>
+          reply({
+            scraps: groupPhotoEncounters(scraps)
+              .sort((a, b) => b.ts - a.ts)
+              .slice(0, limit),
+          }),
+        )
         .catch((e) => {
           console.error('[Background] GET_SCRAPS error:', e)
           reply({ scraps: [] })
@@ -780,8 +813,8 @@ export default defineBackground(() => {
           const dateRange =
             agg?.firstVisit && agg?.lastVisit
               ? {
-                  oldest: new Date(agg.firstVisit).toLocaleDateString(),
-                  newest: new Date(agg.lastVisit).toLocaleDateString(),
+                  oldest: new Date(agg.firstVisit).toISOString(),
+                  newest: new Date(agg.lastVisit).toISOString(),
                 }
               : null
 

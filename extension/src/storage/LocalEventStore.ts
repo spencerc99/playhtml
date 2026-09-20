@@ -4,6 +4,7 @@
 import type {
   CollectionEvent,
   CollectionEventType,
+  ImageScrapData,
   CursorEventData,
   NavigationEventData,
 } from "../collectors/types";
@@ -12,10 +13,12 @@ import {
   normalizeUrl,
   extractDomain as extractDomainUtil,
 } from "../utils/urlNormalization";
-import { getCanonicalScrapKey } from "../collectors/scrapUtils";
+import { getScrapEncounterKey } from "../collectors/scrapUtils";
+
+import { isImageContentHash } from "@movement/utils/scrapIdentity";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 12;
+const DB_VERSION = 14;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
 const AGGREGATE_URLS_STORE_NAME = "aggregate_urls";
@@ -592,12 +595,14 @@ export class LocalEventStore {
           if (!store.indexNames.contains("uploadState")) {
             store.createIndex("uploadState", "uploadState", { unique: false });
           }
-
         }
 
-        if (oldVersion < 12) {
+        if (oldVersion < 14) {
           // Backfill event fields in one cursor so every migrated row is written once.
-          const backfillRequest = store.openCursor();
+          const backfillRequest =
+            oldVersion >= 12
+              ? store.index("type").openCursor(IDBKeyRange.only("element"))
+              : store.openCursor();
           backfillRequest.onsuccess = () => {
             const cursor = backfillRequest.result;
             if (!cursor) return;
@@ -632,9 +637,12 @@ export class LocalEventStore {
             if (storedEvent.type === "element") {
               const domain =
                 storedEvent.domain || extractDomain(storedEvent.meta.url);
-              const canonicalScrapKey = getCanonicalScrapKey(
+              const canonicalScrapKey = getScrapEncounterKey(
                 domain,
                 storedEvent.data,
+                storedEvent.meta.url,
+                storedEvent.ts,
+                storedEvent.meta.tz,
               );
               if (
                 canonicalScrapKey !== undefined &&
@@ -1257,6 +1265,43 @@ export class LocalEventStore {
         console.error("[LocalEventStore] Query error:", request.error);
         reject(request.error);
       };
+    });
+  }
+
+  /** Updates only a retained image's fingerprint; a deleted event stays deleted. */
+  async setImageContentHash(
+    id: string,
+    src: string,
+    contentHash: string,
+  ): Promise<boolean> {
+    if (!isImageContentHash(contentHash))
+      throw new Error("Invalid image fingerprint");
+    await this.ensureInitialized();
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+      const transaction = this.db.transaction(STORE_NAME, "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get(id);
+      let updated = false;
+      request.onsuccess = () => {
+        const event = request.result as StoredCollectionEvent | undefined;
+        const data = event?.data as Partial<ImageScrapData> | undefined;
+        if (
+          event?.type !== "element" ||
+          data?.kind !== "image" ||
+          data.src !== src
+        )
+          return;
+        event.data = { ...data, contentHash };
+        store.put(event);
+        updated = true;
+      };
+      transaction.oncomplete = () => resolve(updated);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
     });
   }
 
@@ -2267,10 +2312,10 @@ export class LocalEventStore {
    * Add a batch of events using ID upserts and canonical scrap deduplication.
    * Incrementally updates aggregates for accepted events.
    */
-  async addEvents(events: CollectionEvent[]): Promise<void> {
+  async addEvents(events: CollectionEvent[]): Promise<CollectionEvent[]> {
     await this.ensureInitialized();
 
-    if (events.length === 0) return;
+    if (events.length === 0) return [];
 
     const canUpdateStats = await this.canUpdateStatsIncrementally();
 
@@ -2286,9 +2331,12 @@ export class LocalEventStore {
         }
       }
       if (storedEvent.type === "element") {
-        const canonicalScrapKey = getCanonicalScrapKey(
+        const canonicalScrapKey = getScrapEncounterKey(
           storedEvent.domain ?? "",
           storedEvent.data,
+          storedEvent.meta.url,
+          storedEvent.ts,
+          storedEvent.meta.tz,
         );
         if (canonicalScrapKey !== undefined) {
           storedEvent.canonicalScrapKey = canonicalScrapKey;
@@ -2380,7 +2428,7 @@ export class LocalEventStore {
       this.ensureSessionStatsBackfilled().catch((e) =>
         console.error("[LocalEventStore] Session stats backfill failed:", e),
       );
-      return;
+      return eventsForStats;
     }
 
     // Update domain aggregates in a separate transaction so a stats
@@ -2400,6 +2448,7 @@ export class LocalEventStore {
         console.error("[LocalEventStore] Failed to update active days:", e);
       }
     }
+    return eventsForStats;
   }
 
   /** Rebuild aggregates after importing event history from a file. */
@@ -2696,7 +2745,7 @@ export class LocalEventStore {
    * Add a single event — delegates to addEvents
    */
   async addEvent(event: CollectionEvent): Promise<void> {
-    return this.addEvents([event]);
+    await this.addEvents([event]);
   }
 
   /**
