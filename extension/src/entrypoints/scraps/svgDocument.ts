@@ -97,9 +97,12 @@ export function buttonBodyMarkup(scrap: ButtonScrapShape): string {
     "align-items:center",
     "justify-content:center",
     "white-space:nowrap",
+    // The span fills the piece's box so its own border and shadow are drawn
+    // inside the baked area rather than spilling outside and being clipped.
     "box-sizing:border-box",
-    "max-width:100%",
-    "max-height:100%",
+    "width:100%",
+    "height:100%",
+    "overflow:hidden",
   ]
     .filter((part) => part.length > 0)
     .join(";");

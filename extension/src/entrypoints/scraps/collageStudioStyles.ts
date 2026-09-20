@@ -177,17 +177,43 @@ export const COLLAGE_STUDIO_STYLES = `
     justify-content: center;
   }
 
+  /* Matches how the bake draws a button, so the studio is what you get. */
+  .collage-piece__source .scrap-collage__button {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
   .collage-piece__source .scrap-collage__svg svg {
     width: 100%;
     height: 100%;
   }
 
-  .collage-piece__source .scrap-collage__cursor {
+  /*
+   * A cursor is pinned to 32px on the browse surface. A placed piece is sized
+   * by its own box instead, so the pin and its centering offset are undone —
+   * the studio must show exactly what the bake draws.
+   */
+  .collage-piece__source .scrap-collage__cursor,
+  .collage-tray__thumb .scrap-collage__cursor {
     position: absolute;
-    inset: 0;
+    left: 0;
+    top: 0;
     width: 100%;
     height: 100%;
     object-fit: contain;
+    transform: none;
+  }
+
+  /* The swatch stand-in follows the same box as the cursor it sits under. */
+  .collage-piece__source .scrap-collage__swatch,
+  .collage-tray__thumb .scrap-collage__swatch {
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    transform: none;
   }
 
   .collage-piece--selected {
