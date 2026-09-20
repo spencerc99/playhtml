@@ -53,10 +53,10 @@ function computeSectionTicks(): SectionTick[] {
 }
 
 export const DocsScrollRail = withSharedState<{}, RailAwareness>(
-  {
+  () => ({
     defaultData: {},
-    myDefaultAwareness: () => ({ color: readCursorColor(), scroll: 0 }),
-  },
+    myDefaultAwareness: { color: readCursorColor(), scroll: 0 },
+  }),
   ({ awareness, myAwareness, setMyAwareness }) => {
     const myAwarenessRef = useRef<RailAwareness | undefined>(myAwareness);
     useEffect(() => {
