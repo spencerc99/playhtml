@@ -450,13 +450,9 @@ describe("playhtml.handleNavigation", () => {
     }
   });
 
-  it("cleans up awareness listener on destroy and allows re-init", async () => {
-    // Adjacent regression for the reviewer's #1/#3: the awareness "change"
-    // listener was previously attached once at init against the init-time
-    // provider. After destroy, nothing unsubscribed — so a subsequent init
-    // would either double-subscribe or subscribe against the (now destroyed)
-    // old object. This test pins the happy path: destroy + re-init doesn't
-    // throw and lands in a working state where a second destroy also works.
+  it("cleans up presence transports on destroy and allows re-init", async () => {
+    // A second init must create fresh transport subscriptions rather than
+    // retaining listeners or sockets owned by the destroyed instance.
     await playhtml.init({
       host: "http://localhost:1999",
       room: "/room-a",

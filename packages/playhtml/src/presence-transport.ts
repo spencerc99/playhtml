@@ -305,10 +305,6 @@ export class RealtimePresenceTransport {
 
 }
 
-export function canUseRealtimePresenceTransport(): boolean {
-  return typeof WebSocket !== "undefined";
-}
-
 function supportsHandlerProperties(
   socket: PresenceSocket,
 ): socket is HandlerPropertySocket {
