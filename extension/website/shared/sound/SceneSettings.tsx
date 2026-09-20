@@ -50,6 +50,12 @@ export interface GlobalSettings {
   choralTimbre: boolean;
   cursorInstruments: boolean;
   /**
+   * Phrase each voice rather than re-reading it every frame — pitch changes on
+   * turns, every note swells and settles, speed blooms an octave instead of
+   * jumping one, and a trail pooling in one spot develops the note it holds.
+   */
+  phrasing: boolean;
+  /**
    * What the spotlit trail speaks in. Lives with the scene because it is a
    * setting on the spotlight, though its control sits on the soloist's row in
    * the Sound Layers panel, where the rest of the voice selectors are.
@@ -147,6 +153,7 @@ export const SceneSettings = ({
           ["swells", "swells"],
           ["choralTimbre", "choral timbre"],
           ["cursorInstruments", "cursor instruments"],
+          ["phrasing", "phrasing"],
         ] as Array<[keyof GlobalSettings, string]>
       ).map(([key, label]) => (
         <button
@@ -162,7 +169,9 @@ export const SceneSettings = ({
       trail voices gives each trail a home chord tone and sets its register from
       its colour (cool low, warm high). cursor instruments gives each cursor
       type its own timbre — with both on, the timbre comes from the cursor and
-      the detune and vibrato from the trail.
+      the detune and vibrato from the trail. phrasing holds a note until the
+      trail turns, so a line is played rather than swept, and lets a trail that
+      pools in one spot develop what it is holding.
     </div>
 
     <div style={rowStyle}>
