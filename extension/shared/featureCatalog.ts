@@ -43,6 +43,12 @@ const FEATURE_DEFINITIONS = {
     defaultStage: "beta",
     requiresReload: true,
   },
+  SCRAP_COLLAGES: {
+    name: "Scrap collages",
+    description: "Arrange your collected scraps into saved collages.",
+    defaultStage: "internal",
+    requiresReload: false,
+  },
   BAG_SETTINGS: {
     name: "Bag settings",
     description: "Show controls for unfinished PlayHTML Bag features.",
