@@ -2,4 +2,4 @@
 "playhtml": patch
 ---
 
-Remove obsolete Yjs-awareness presence and cursor paths so ephemeral collaboration consistently uses the realtime presence transport while shared document synchronization remains unchanged.
+Use the realtime presence transport for user discovery across cursor settings, tabs, and reconnects. Prevent a previous self identity appearing as another visitor after an identity change, and keep multi-tab identity selection consistent.

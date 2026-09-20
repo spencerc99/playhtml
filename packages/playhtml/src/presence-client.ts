@@ -51,9 +51,8 @@ const PRESENCE_REPUBLISH_DELAY_MS = 1_100;
 /**
  * Page-presence client over the generic presence transport. Mirrors the public
  * PresenceAPI (setMyPresence/getPresences/onPresenceChange/getMyIdentity) but
- * publishes to presence channels instead of Yjs awareness. The cursor channel
- * is served from the shared cursor snapshot (getCursorPresences) exactly like
- * the Yjs-awareness fallback, so cursor rendering keeps one source of truth.
+ * publishes to presence channels. The cursor channel is served from the shared
+ * cursor snapshot (getCursorPresences), so cursor rendering has one source of truth.
  */
 export class PresenceClient implements PresenceAPI {
   private transport: RealtimePresenceTransport;

@@ -1120,10 +1120,10 @@ function seedElementAwarenessFromHandlers(): void {
 }
 
 /**
- * Builds the inner page presence client for the current room. Prefers the
+ * Builds the inner page presence client for the current room over the
  * generic presence transport on the normalized page room (sharing the
  * cursor/element-awareness socket via the refcounted registry). The cursor channel
- * is served from the cursor client's snapshot in both modes so cursor rendering
+ * is served from the cursor client's snapshot so cursor rendering
  * has one source of truth. Wrapped by the stable PresenceFacade — never handed
  * to consumers directly, since it is torn down and replaced on room change.
  */
@@ -1725,28 +1725,26 @@ function markElementAsReady(element: HTMLElement): void {
   element.removeAttribute("aria-live");
 }
 
-function markAllElementsAsLoading(): void {
+function getPlayElements(): Set<HTMLElement> {
+  const elements = new Set<HTMLElement>();
   for (const tag of getTagTypes()) {
-    const tagElements: HTMLElement[] = Array.from(
-      document.querySelectorAll(`[${tag}]`),
-    ).filter(isHTMLElement);
-
-    tagElements.forEach((element) => {
-      markElementAsLoading(element);
-    });
+    for (const element of document.querySelectorAll(`[${tag}]`)) {
+      if (isHTMLElement(element)) elements.add(element);
+    }
   }
+  for (const id of elementInitializersById.keys()) {
+    const element = document.getElementById(id);
+    if (element && isHTMLElement(element)) elements.add(element);
+  }
+  return elements;
+}
+
+function markAllElementsAsLoading(): void {
+  getPlayElements().forEach(markElementAsLoading);
 }
 
 function markAllElementsAsReady(): void {
-  for (const tag of getTagTypes()) {
-    const tagElements: HTMLElement[] = Array.from(
-      document.querySelectorAll(`[${tag}]`),
-    ).filter(isHTMLElement);
-
-    tagElements.forEach((element) => {
-      markElementAsReady(element);
-    });
-  }
+  getPlayElements().forEach(markElementAsReady);
 }
 
 function applyElementDataChange<TData>(

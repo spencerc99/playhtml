@@ -2,11 +2,18 @@
 // ABOUTME: Covers cursor-disabled peers, identity updates, and multi-tab deduplication.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PlayerIdentity } from "@playhtml/common";
+import {
+  PLAYER_IDENTITY_STORAGE_KEY,
+  type PlayerIdentity,
+} from "@playhtml/common";
 import { createUsersAPI, selectAllColors } from "../users";
 import { createFakePresenceTransport } from "./presence-test-utils";
 
-function makeIdentity(publicKey: string, color = "#123456", name?: string): PlayerIdentity {
+function makeIdentity(
+  publicKey: string,
+  color = "#123456",
+  name?: string,
+): PlayerIdentity {
   return { publicKey, name, playerStyle: { colorPalette: [color] } };
 }
 
@@ -14,7 +21,8 @@ function makeUsers(identity = makeIdentity("self")) {
   const transport = createFakePresenceTransport();
   const users = createUsersAPI(identity, {
     getIdentityPeers: () => transport.peers.getPeers(),
-    onIdentityPeersChange: (callback) => transport.peers.subscribe("identity", callback),
+    onIdentityPeersChange: (callback) =>
+      transport.peers.subscribe("identity", callback),
   });
   return { users, transport };
 }
@@ -35,7 +43,9 @@ describe("users", () => {
   it("discovers identity-only peers and notifies on remote identity changes", () => {
     const { users, transport } = makeUsers();
     const snapshots: string[][] = [];
-    users.onChange((next) => snapshots.push(next.map((user) => `${user.pid}:${user.name}`)));
+    users.onChange((next) =>
+      snapshots.push(next.map((user) => `${user.pid}:${user.name}`)),
+    );
 
     transport.emit({
       type: "presence-sync",
@@ -43,7 +53,9 @@ describe("users", () => {
     });
     transport.emit({
       type: "presence-changes",
-      updates: { tab1: { identity: makeIdentity("remote", "#00ff00", "Alicia") } },
+      updates: {
+        tab1: { identity: makeIdentity("remote", "#00ff00", "Alicia") },
+      },
       removes: {},
     });
 
@@ -59,7 +71,9 @@ describe("users", () => {
         tab2: { identity: makeIdentity("remote", "#00ff00", "Alice") },
       },
     });
-    expect(users.getAll().filter((user) => user.pid === "remote")).toHaveLength(1);
+    expect(users.getAll().filter((user) => user.pid === "remote")).toHaveLength(
+      1,
+    );
   });
 
   it("selects the same multi-tab identity regardless of snapshot order", () => {
@@ -83,6 +97,9 @@ describe("users", () => {
       name: "Spencer",
       playerStyle: { colorPalette: ["#fedcba"] },
     });
+    expect(
+      JSON.parse(localStorage.getItem(PLAYER_IDENTITY_STORAGE_KEY)!),
+    ).toEqual(users.getIdentity());
   });
 
   it("onChange fires on self mutation", () => {
@@ -132,7 +149,8 @@ describe("users", () => {
     let notifyCursorPresences = () => {};
     const users = createUsersAPI(makeIdentity("local-key"), {
       getIdentityPeers: () => transport.peers.getPeers(),
-      onIdentityPeersChange: (callback) => transport.peers.subscribe("identity", callback),
+      onIdentityPeersChange: (callback) =>
+        transport.peers.subscribe("identity", callback),
       getCursorPresences: () => cursorPresences,
       onCursorPresencesChange(callback) {
         notifyCursorPresences = () => callback(cursorPresences);
@@ -177,7 +195,9 @@ describe("users", () => {
   it("isolates throwing onChange subscribers during self mutation", () => {
     const { users } = makeUsers(makeIdentity("local-key"));
     const callbackError = new Error("onChange failed");
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     let throwOnNotification = false;
     users.onChange(() => {
       if (throwOnNotification) throw callbackError;
@@ -206,7 +226,9 @@ describe("users", () => {
   it("isolates throwing onSelfChange subscribers during self mutation", () => {
     const { users } = makeUsers(makeIdentity("local-key"));
     const callbackError = new Error("onSelfChange failed");
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     users.onSelfChange(() => {
       throw callbackError;
     });

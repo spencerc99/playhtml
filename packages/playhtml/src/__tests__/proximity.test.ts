@@ -18,7 +18,9 @@ function cursorPeer(publicKey: string, x: number, y: number) {
 }
 
 function move(x: number, y: number) {
-  document.dispatchEvent(new MouseEvent("mousemove", { clientX: x, clientY: y }));
+  document.dispatchEvent(
+    new MouseEvent("mousemove", { clientX: x, clientY: y }),
+  );
 }
 
 describe("proximity detection", () => {
@@ -37,10 +39,12 @@ describe("proximity detection", () => {
   });
 
   it("calculates Euclidean distance", () => {
-    expect(calculateDistance(
-      { x: 0, y: 0, pointer: "mouse" },
-      { x: 3, y: 4, pointer: "mouse" },
-    )).toBe(5);
+    expect(
+      calculateDistance(
+        { x: 0, y: 0, pointer: "mouse" },
+        { x: 3, y: 4, pointer: "mouse" },
+      ),
+    ).toBe(5);
   });
 
   it("emits enter once and leave when a transport peer moves away", () => {
@@ -53,14 +57,22 @@ describe("proximity detection", () => {
       onProximityLeft: left,
     });
     move(100, 100);
-    transport.emit({ type: "presence-sync", peers: { tab: cursorPeer("remote", 120, 120) } });
+    vi.advanceTimersByTime(20);
+    transport.emit({
+      type: "presence-sync",
+      peers: { tab: cursorPeer("remote", 120, 120) },
+    });
     transport.emit({
       type: "presence-changes",
       updates: { tab: { cursor: cursorPeer("remote", 300, 300).cursor } },
       removes: {},
     });
     expect(entered).toHaveBeenCalledTimes(1);
-    expect(entered).toHaveBeenCalledWith(expect.objectContaining({ publicKey: "remote" }));
+    expect(entered).toHaveBeenCalledWith(
+      expect.objectContaining({ publicKey: "remote" }),
+      { ours: { x: 100, y: 100 }, theirs: { x: 120, y: 120 } },
+      Math.PI / 4,
+    );
     expect(left).toHaveBeenCalledWith("remote");
     client.destroy();
   });
@@ -74,6 +86,7 @@ describe("proximity detection", () => {
       onProximityEntered: entered,
     });
     move(100, 100);
+    vi.advanceTimersByTime(20);
     transport.emit({
       type: "presence-sync",
       peers: {
@@ -83,7 +96,11 @@ describe("proximity detection", () => {
       },
     });
     expect(entered).toHaveBeenCalledTimes(1);
-    expect(entered).toHaveBeenCalledWith(expect.objectContaining({ publicKey: "near" }));
+    expect(entered).toHaveBeenCalledWith(
+      expect.objectContaining({ publicKey: "near" }),
+      { ours: { x: 100, y: 100 }, theirs: { x: 110, y: 110 } },
+      Math.PI / 4,
+    );
     client.destroy();
   });
 });

@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PresenceServerMessage } from "@playhtml/common";
 import { PeerStore } from "../peer-store";
+import { RealtimePresenceTransport } from "../presence-transport";
 
 // Pin the clock so the tiny `at` timestamps used as fold fixtures below stay
 // within PeerStore's staleness window (the staleness sweep is exercised by its
@@ -36,6 +37,57 @@ const identity = (publicKey: string) => ({
 });
 
 describe("PeerStore", () => {
+  it("uses the transport socket id to exclude server echoes", () => {
+    const socket = Object.assign(new EventTarget(), {
+      id: "local-socket",
+      readyState: 1,
+      send: vi.fn(),
+      close: vi.fn(),
+    });
+    const transport = new RealtimePresenceTransport({
+      host: "example.com",
+      room: "identity-room",
+      socketFactory: () => socket,
+    });
+    socket.dispatchEvent(new MessageEvent("message", {
+      data: JSON.stringify({
+        type: "presence-sync",
+        peers: {
+          "local-socket": { identity: identity("shared-key") },
+          "remote-socket": { identity: identity("shared-key") },
+        },
+      }),
+    }));
+    expect([...transport.peers.getPeers().keys()]).toEqual(["remote-socket"]);
+    transport.destroy();
+  });
+
+  it("excludes its own connection across identity changes while preserving other tabs", () => {
+    const source = makeSource();
+    const store = new PeerStore(source, "self-connection");
+    source.emit({
+      type: "presence-sync",
+      peers: {
+        "self-connection": { identity: identity("first-key") },
+        "other-tab": { identity: identity("first-key") },
+      },
+    });
+    expect([...store.getPeers().keys()]).toEqual(["other-tab"]);
+
+    const onIdentity = vi.fn();
+    store.subscribe("identity", onIdentity);
+    onIdentity.mockClear();
+    source.emit({
+      type: "presence-changes",
+      updates: { "self-connection": { identity: identity("second-key") } },
+      removes: {},
+    });
+    expect([...store.getPeers().keys()]).toEqual(["other-tab"]);
+    expect(store.getPeers().get("other-tab")?.identity).toEqual(identity("first-key"));
+    expect(onIdentity).not.toHaveBeenCalled();
+    store.destroy();
+  });
+
   it("folds a presence-sync snapshot into the peer map", () => {
     const source = makeSource();
     const store = new PeerStore(source);
