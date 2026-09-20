@@ -252,13 +252,20 @@ export function ScrapsPage() {
         <ExtensionPageNav currentPage="scraps" />
       </div>
 
+      <style>{`
+        .scraps-heading { top: 14px; width: min(520px, calc(100vw - 320px)); }
+        .scraps-stage { inset: 64px 0 0; }
+        @media (max-width: 620px) {
+          .scraps-heading { top: 48px; width: calc(100vw - 32px); }
+          .scraps-stage { inset: 104px 0 0; }
+        }
+      `}</style>
       <header
+        className="scraps-heading"
         style={{
           position: "absolute",
-          top: 14,
           left: "50%",
           zIndex: 4,
-          width: "min(520px, calc(100vw - 320px))",
           textAlign: "center",
           transform: "translateX(-50%)",
           pointerEvents: "none",
@@ -291,9 +298,9 @@ export function ScrapsPage() {
 
       {!loading && !error && items.length > 0 && (
         <div
+          className="scraps-stage"
           style={{
             position: "absolute",
-            inset: "64px 0 0",
             zIndex: 2,
           }}
         >
