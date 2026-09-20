@@ -46,8 +46,18 @@ viewCount.setData((value) => value + 1);
 ```
 
 For object and array channels, function updates are mutators: edit the draft in
-place and ignore its return value. For primitive channels, the function's return
-value becomes the next stored value.
+place. For primitive channels, the function's return value becomes the next
+stored value. Nullable channels can be cleared with `setData(null)` or an updater
+that returns `null`:
+
+```ts
+const selection = playhtml.createPageData<{ name: string } | null>("selection", null);
+selection.setData({ name: "Alice" });
+selection.setData(null);
+```
+
+Other return values from object and array mutators are ignored. Pass an object
+or array directly to replace it.
 
 The vanilla channel handle exposes four methods (`usePageData` wraps these for you):
 
