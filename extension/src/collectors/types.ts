@@ -108,6 +108,7 @@ export interface ViewportEventData {
 }
 
 export interface ImageScrapData {
+  contentHash?: string;
   kind: "image";
   src: string;
   alt?: string;

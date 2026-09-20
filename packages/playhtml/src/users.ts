@@ -82,6 +82,7 @@ export function createUsersAPI(
   const usersChangeListeners = new Set<(users: User[]) => void>();
   let identityPeersUnsubscribe: (() => void) | null = null;
   let cursorPresencesUnsubscribe: (() => void) | null = null;
+  let notifiedUsers: User[] | null = null;
 
   function notifySubscribers<T>(
     listeners: Set<(value: T) => void>,
@@ -101,9 +102,24 @@ export function createUsersAPI(
     notifySubscribers(selfChangeListeners, identity, "users self-change");
   }
 
-  function notifyUsersChange(): void {
+  function usersEqual(a: User[], b: User[]): boolean {
+    return (
+      a.length === b.length &&
+      a.every(
+        (user, index) =>
+          user.pid === b[index].pid &&
+          user.name === b[index].name &&
+          user.color === b[index].color &&
+          user.isMe === b[index].isMe,
+      )
+    );
+  }
+
+  function notifyUsersChange(force = false): void {
     if (usersChangeListeners.size === 0) return;
     const users = getAll();
+    if (!force && notifiedUsers && usersEqual(notifiedUsers, users)) return;
+    notifiedUsers = users;
     notifySubscribers(usersChangeListeners, users, "users change");
   }
 
@@ -123,7 +139,9 @@ export function createUsersAPI(
     const usersByStableId = new Map<string, User>();
     const mySelfStableId = identity.publicKey;
 
-    for (const channels of deps.getIdentityPeers().values()) {
+    const peers = deps.getIdentityPeers();
+    for (const connectionId of Array.from(peers.keys()).sort()) {
+      const channels = peers.get(connectionId)!;
       const remoteIdentity = channels.identity as PlayerIdentity | undefined;
       if (!remoteIdentity || remoteIdentity.publicKey === mySelfStableId) {
         continue;
@@ -164,7 +182,7 @@ export function createUsersAPI(
     mutate();
     savePlayerIdentityToStorage(identity);
     notifySelfChange();
-    notifyUsersChange();
+    notifyUsersChange(true);
   }
 
   const me: UsersSelfIdentity = {
@@ -205,7 +223,9 @@ export function createUsersAPI(
     onChange(callback: (users: User[]) => void): () => void {
       ensureSubscribed();
       usersChangeListeners.add(callback);
-      callback(getAll());
+      const users = getAll();
+      notifiedUsers = users;
+      callback(users);
       return () => {
         usersChangeListeners.delete(callback);
       };

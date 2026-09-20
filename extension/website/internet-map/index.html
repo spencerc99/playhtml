@@ -1,0 +1,33 @@
+<!-- ABOUTME: HTML shell for the internet map at wewere.online/internet-map. -->
+<!-- ABOUTME: Loads the MEK grid faces and the WWO typefaces, then mounts the viewer. -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A map of where people went online: pages are buildings, domains are cities, and the roads are the routes people actually took."
+    />
+    <link rel="canonical" href="https://wewere.online/internet-map/" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Lora:wght@600&family=Martian+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <script
+      defer
+      data-domain="wewere.online"
+      data-api="https://sharingan.spencerc99.workers.dev/genjutsu/event"
+      src="https://sharingan.spencerc99.workers.dev/genjutsu/script.js"
+    ></script>
+    <title>internet map — we were online</title>
+  </head>
+  <body>
+    <canvas id="map"></canvas>
+    <div id="ui"></div>
+    <script type="module" src="./internet-map.ts"></script>
+  </body>
+</html>
