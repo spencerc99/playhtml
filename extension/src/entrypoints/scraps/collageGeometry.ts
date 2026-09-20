@@ -238,6 +238,40 @@ export function sourceBoxForCrop(
 }
 
 /**
+ * Shrinks a box to an inner rectangle of itself while keeping the part the user
+ * kept sitting exactly where it sat on screen. A piece turns about its own
+ * center, so trimming it moves that center and the box must be re-anchored.
+ */
+export function boxForInnerRect(
+  box: PieceBox,
+  inner: CropFraction,
+  rotationDegrees: number,
+): PieceBox {
+  const radians = (rotationDegrees * Math.PI) / 180;
+  const kept: PieceBox = {
+    x: box.x + inner.x * box.width,
+    y: box.y + inner.y * box.height,
+    width: box.width * inner.width,
+    height: box.height * inner.height,
+  };
+  const before = rotatePoint(
+    { x: kept.x, y: kept.y },
+    boxCenter(box),
+    radians,
+  );
+  const after = rotatePoint(
+    { x: kept.x, y: kept.y },
+    boxCenter(kept),
+    radians,
+  );
+  return {
+    ...kept,
+    x: kept.x + (before.x - after.x),
+    y: kept.y + (before.y - after.y),
+  };
+}
+
+/**
  * Scales a source of `naturalWidth` x `naturalHeight` so its longest side is
  * `maxSide`, keeping its aspect ratio. This is the size a freshly placed piece
  * takes: small icons come up big enough to handle, large photos come down.

@@ -3,7 +3,7 @@
 
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import type { CropFraction } from "./collageGeometry";
-import { FULL_CROP } from "./collageGeometry";
+import { FULL_CROP, boxForInnerRect, composeCrop } from "./collageGeometry";
 
 /** Logical coordinate space every saved collage is laid out in. */
 export const COLLAGE_FRAME = { width: 1200, height: 800 } as const;
@@ -206,6 +206,39 @@ export function summarizeCollage(record: CollageRecord): CollageSummary {
     updatedAt: record.updatedAt,
     pieceCount: record.pieces.length,
     preview: record.preview,
+  };
+}
+
+/**
+ * Trims a piece to a rectangle drawn inside it. The visible box shrinks to what
+ * was kept and the crop composes onto the source, so the piece still refers to
+ * the original material and a later crop can be drawn inside this one.
+ */
+export function applyCrop(
+  piece: CollagePiece,
+  inner: CropFraction,
+): CollagePiece {
+  return {
+    ...piece,
+    ...boxForInnerRect(piece, inner, piece.rotation),
+    crop: composeCrop(piece.crop, inner),
+  };
+}
+
+/** Restores a cropped piece to its whole source, around the same center. */
+export function clearCrop(piece: CollagePiece): CollagePiece {
+  if (piece.crop.width <= 0 || piece.crop.height <= 0) {
+    throw new Error("Cannot restore a piece whose crop has no area");
+  }
+  const width = piece.width / piece.crop.width;
+  const height = piece.height / piece.crop.height;
+  return {
+    ...piece,
+    x: piece.x + piece.width / 2 - width / 2,
+    y: piece.y + piece.height / 2 - height / 2,
+    width,
+    height,
+    crop: { ...FULL_CROP },
   };
 }
 

@@ -3,7 +3,10 @@
 
 import { describe, expect, it } from "vitest";
 import type { ScrapItem } from "@movement/components/ScrapCollage";
+import { rotatePoint } from "../entrypoints/scraps/collageGeometry";
 import {
+  applyCrop,
+  clearCrop,
   collageProvenance,
   movePieceBackward,
   movePieceForward,
@@ -161,6 +164,66 @@ describe("collageProvenance", () => {
       piece({ id: "b", scrap: scrap({ pageUrl: "https://example.test/two" }) }),
     ]);
     expect(sources).toHaveLength(2);
+  });
+});
+
+describe("cropping a piece", () => {
+  const half = { x: 0.25, y: 0.25, width: 0.5, height: 0.5 };
+
+  it("shrinks the visible box to the kept rectangle", () => {
+    const cropped = applyCrop(piece({ x: 0, y: 0, width: 200, height: 100 }), half);
+    expect(cropped).toMatchObject({ x: 50, y: 25, width: 100, height: 50 });
+  });
+
+  it("composes onto the source so a second crop still refers to the original", () => {
+    const once = applyCrop(piece(), half);
+    const twice = applyCrop(once, half);
+    expect(twice.crop).toEqual({
+      x: 0.375,
+      y: 0.375,
+      width: 0.25,
+      height: 0.25,
+    });
+  });
+
+  it("leaves the kept material where it sat on a rotated piece", () => {
+    const original = piece({
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 100,
+      rotation: 40,
+    });
+    const radians = (original.rotation * Math.PI) / 180;
+    const keptCornerBefore = rotatePoint(
+      { x: 50, y: 25 },
+      { x: 100, y: 50 },
+      radians,
+    );
+    const cropped = applyCrop(original, half);
+    const keptCornerAfter = rotatePoint(
+      { x: cropped.x, y: cropped.y },
+      { x: cropped.x + cropped.width / 2, y: cropped.y + cropped.height / 2 },
+      radians,
+    );
+    expect(keptCornerAfter.x).toBeCloseTo(keptCornerBefore.x);
+    expect(keptCornerAfter.y).toBeCloseTo(keptCornerBefore.y);
+  });
+
+  it("restores the whole source around the same center", () => {
+    const original = piece({ x: 0, y: 0, width: 200, height: 100 });
+    const restored = clearCrop(applyCrop(original, half));
+    expect(restored.crop).toEqual({ x: 0, y: 0, width: 1, height: 1 });
+    expect(restored.width).toBeCloseTo(200);
+    expect(restored.height).toBeCloseTo(100);
+    expect(restored.x + restored.width / 2).toBeCloseTo(100);
+    expect(restored.y + restored.height / 2).toBeCloseTo(50);
+  });
+
+  it("refuses to restore a piece whose crop has no area", () => {
+    expect(() =>
+      clearCrop(piece({ crop: { x: 0, y: 0, width: 0, height: 1 } })),
+    ).toThrow(/no area/);
   });
 });
 

@@ -15,12 +15,10 @@ import {
 } from "@movement/components/ScrapCollage";
 import {
   FULL_CROP,
-  MIN_PIECE_SIDE,
-  clamp,
-  composeCrop,
   cropFromLocalDrag,
   fitWithin,
   frameScale,
+  isFullCrop,
   isUsableCrop,
   resizeFromCorner,
   rotationToPointer,
@@ -33,6 +31,8 @@ import {
 } from "./collageGeometry";
 import {
   COLLAGE_FRAME,
+  applyCrop,
+  clearCrop,
   createCollageId,
   createPieceId,
   movePieceBackward,
@@ -235,35 +235,28 @@ export function CollageStudio({
   }, [cropping, removeSelected, selectedId]);
 
   const endGesture = useCallback(() => {
-    setGesture((current) => {
-      if (current.kind === "crop") {
-        const piece = pieces.find((item) => item.id === current.pieceId);
-        if (piece) {
-          const box: PieceBox = {
-            x: piece.x,
-            y: piece.y,
-            width: piece.width,
-            height: piece.height,
-          };
-          const localStart = toLocalPoint(current.start, box, piece.rotation);
-          const localEnd = toLocalPoint(current.current, box, piece.rotation);
-          const inner = cropFromLocalDrag(localStart, localEnd, box);
-          if (isUsableCrop(inner)) {
-            updatePiece(piece.id, (target) => ({
-              ...target,
-              x: target.x + inner.x * target.width,
-              y: target.y + inner.y * target.height,
-              width: target.width * inner.width,
-              height: target.height * inner.height,
-              crop: composeCrop(target.crop, inner),
-            }));
-            setCropping(false);
-          }
+    if (gesture.kind === "crop") {
+      const piece = pieces.find((item) => item.id === gesture.pieceId);
+      if (piece) {
+        const box: PieceBox = {
+          x: piece.x,
+          y: piece.y,
+          width: piece.width,
+          height: piece.height,
+        };
+        const inner = cropFromLocalDrag(
+          toLocalPoint(gesture.start, box, piece.rotation),
+          toLocalPoint(gesture.current, box, piece.rotation),
+          box,
+        );
+        if (isUsableCrop(inner)) {
+          updatePiece(piece.id, (target) => applyCrop(target, inner));
+          setCropping(false);
         }
       }
-      return { kind: "idle" };
-    });
-  }, [pieces, updatePiece]);
+    }
+    setGesture({ kind: "idle" });
+  }, [gesture, pieces, updatePiece]);
 
   const onFramePointerMove = useCallback(
     (event: React.PointerEvent) => {
@@ -572,16 +565,8 @@ export function CollageStudio({
           <button
             type="button"
             className="collage-action"
-            disabled={!selected}
-            onClick={() =>
-              selected &&
-              updatePiece(selected.id, (piece) => ({
-                ...piece,
-                crop: { ...FULL_CROP },
-                width: piece.width / piece.crop.width,
-                height: piece.height / piece.crop.height,
-              }))
-            }
+            disabled={!selected || isFullCrop(selected.crop)}
+            onClick={() => selected && updatePiece(selected.id, clearCrop)}
           >
             uncrop
           </button>
