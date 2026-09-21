@@ -162,7 +162,10 @@ const centeredMessageStyle: React.CSSProperties = {
 type ScrapsMode = "browse" | "create";
 
 export function ScrapsPage() {
-  const [items, setItems] = useState<ScrapItem[]>([]);
+  const [collectedItems, setItems] = useState<ScrapItem[]>([]);
+  /** Development builds can stand in a saved scraps export for the local collection. */
+  const [exportedItems, setExportedItems] = useState<ScrapItem[] | null>(null);
+  const items = exportedItems ?? collectedItems;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
@@ -225,6 +228,14 @@ export function ScrapsPage() {
       cancelled = true;
     };
   }, [revision]);
+
+  const openExport = async (file: File) => {
+    const parsed = JSON.parse(await file.text()) as Partial<ScrapsResponse>;
+    if (!Array.isArray(parsed.scraps)) {
+      throw new Error("scraps export is missing its scraps list");
+    }
+    setExportedItems(parsed.scraps.map(toScrapItem));
+  };
 
   return (
     <main
@@ -362,6 +373,27 @@ export function ScrapsPage() {
             >
               create
             </button>
+            {import.meta.env.MODE === "development" && (
+              <label className="collage-chip" style={{ cursor: "pointer" }}>
+                {exportedItems ? `export · ${exportedItems.length}` : "open export"}
+                <input
+                  type="file"
+                  accept="application/json"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    openExport(file).catch((openError) => {
+                      setError(
+                        openError instanceof Error
+                          ? openError.message
+                          : String(openError),
+                      );
+                    });
+                  }}
+                />
+              </label>
+            )}
           </div>
         )}
       </header>
