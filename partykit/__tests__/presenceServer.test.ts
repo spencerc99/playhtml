@@ -94,7 +94,9 @@ describe("presence connection state persistence", () => {
         stored = state;
         if (state === next) throw new Error("attachment too large");
       }),
-    ).toThrow("Presence state exceeds server storage limit");
+    ).toThrow(
+      "the full connection attachment must fit within 16,384 serialized bytes",
+    );
 
     expect(stored).toBe(previous);
   });
