@@ -95,22 +95,6 @@ export function studioCommandFor(
   }
 
   if (accel) {
-    // Shift turns `[` into `{`, so the brackets are matched by physical key
-    // and only fall back to the character when no code is available.
-    const bracket =
-      event.code === "BracketRight" || (!event.code && event.key === "]")
-        ? "right"
-        : event.code === "BracketLeft" || (!event.code && event.key === "[")
-          ? "left"
-          : null;
-    if (bracket) {
-      if (!hasSelection) return null;
-      if (bracket === "right") {
-        return { kind: "order", to: event.shiftKey ? "front" : "forward" };
-      }
-      return { kind: "order", to: event.shiftKey ? "back" : "backward" };
-    }
-
     switch (event.key.toLowerCase()) {
       case "z":
         return event.shiftKey ? { kind: "redo" } : { kind: "undo" };
@@ -128,6 +112,18 @@ export function studioCommandFor(
   }
 
   if (event.altKey) return null;
+
+  // Ordering uses bare brackets. The browser reserves the accelerator forms:
+  // Cmd/Ctrl+Shift+[ and +] switch tabs and cannot be intercepted, and
+  // Cmd+[ / Cmd+] are history back and forward.
+  const bracket = bracketSide(event);
+  if (bracket) {
+    if (!hasSelection) return null;
+    if (bracket === "right") {
+      return { kind: "order", to: event.shiftKey ? "front" : "forward" };
+    }
+    return { kind: "order", to: event.shiftKey ? "back" : "backward" };
+  }
 
   const delta = ARROW_DELTAS[event.key];
   if (delta) {
@@ -174,6 +170,64 @@ export function studioCommandFor(
   }
 }
 
+/**
+ * Which bracket was pressed. Shift rewrites `[` to `{`, so the physical key
+ * decides and the character is only a fallback.
+ */
+function bracketSide(event: KeyEventShape): "left" | "right" | null {
+  if (event.code === "BracketRight") return "right";
+  if (event.code === "BracketLeft") return "left";
+  if (event.code) return null;
+  if (event.key === "]" || event.key === "}") return "right";
+  if (event.key === "[" || event.key === "{") return "left";
+  return null;
+}
+
+/**
+ * Accelerators a browser or the operating system keeps for itself. Some of
+ * these cannot be intercepted by a page at all, and the rest would take the
+ * person somewhere else if a binding ever missed, so the studio binds none.
+ */
+export const RESERVED_ACCELERATORS: string[] = [
+  // Cannot be intercepted: tab and window management.
+  "accel+w",
+  "accel+shift+w",
+  "accel+t",
+  "accel+shift+t",
+  "accel+n",
+  "accel+shift+n",
+  "accel+q",
+  "accel+shift+[",
+  "accel+shift+]",
+  "ctrl+tab",
+  "ctrl+shift+tab",
+  "ctrl+pageup",
+  "ctrl+pagedown",
+  // Navigates away from the studio, so not worth binding even where a page
+  // may intercept it.
+  "accel+[",
+  "accel+]",
+  "accel+l",
+  "accel+r",
+  "accel+shift+r",
+  // Digits switch tabs on every desktop browser.
+  ...Array.from({ length: 9 }, (_, index) => `accel+${index + 1}`),
+];
+
+/**
+ * The accelerator an event names, in the form the reserved list uses, or null
+ * when the event is a bare key the browser does not claim.
+ */
+export function acceleratorName(event: KeyEventShape): string | null {
+  const held: string[] = [];
+  if (event.metaKey || event.ctrlKey) held.push("accel");
+  else if (event.ctrlKey) held.push("ctrl");
+  if (held.length === 0) return null;
+  if (event.shiftKey) held.push("shift");
+  if (event.altKey) held.push("alt");
+  return [...held, event.key.toLowerCase()].join("+");
+}
+
 export interface ShortcutEntry {
   keys: string;
   what: string;
@@ -200,8 +254,8 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
     entries: [
       { keys: "arrows", what: "nudge by one" },
       { keys: "shift + arrows", what: "nudge by ten" },
-      { keys: "cmd + ] / [", what: "bring forward / send back" },
-      { keys: "cmd + shift + ] / [", what: "bring to front / send to back" },
+      { keys: "] / [", what: "bring forward / send back" },
+      { keys: "shift + ] / [", what: "bring to front / send to back" },
       { keys: "tab / shift + tab", what: "step through pieces" },
       { keys: "\\", what: "tuck the drawer away" },
     ],

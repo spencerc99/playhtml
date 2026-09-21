@@ -3,6 +3,8 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  RESERVED_ACCELERATORS,
+  acceleratorName,
   isTypingTarget,
   studioCommandFor,
   STUDIO_SHORTCUTS,
@@ -124,57 +126,112 @@ describe("crop", () => {
 });
 
 describe("ordering", () => {
-  it("maps the bracket accelerators to stacking moves", () => {
+  it("maps the bare brackets to stacking moves", () => {
     expect(
-      studioCommandFor(
-        press("]", { metaKey: true, code: "BracketRight" }),
-        IDLE,
-      ),
+      studioCommandFor(press("]", { code: "BracketRight" }), IDLE),
     ).toEqual({ kind: "order", to: "forward" });
-    expect(
-      studioCommandFor(press("[", { metaKey: true, code: "BracketLeft" }), IDLE),
-    ).toEqual({ kind: "order", to: "backward" });
+    expect(studioCommandFor(press("[", { code: "BracketLeft" }), IDLE)).toEqual(
+      { kind: "order", to: "backward" },
+    );
   });
 
   it("still reads the bracket when shift rewrites it to a brace", () => {
     // Shift+[ prints "{", so matching on the character alone would miss.
     expect(
       studioCommandFor(
-        press("}", { metaKey: true, shiftKey: true, code: "BracketRight" }),
+        press("}", { shiftKey: true, code: "BracketRight" }),
         IDLE,
       ),
     ).toEqual({ kind: "order", to: "front" });
     expect(
       studioCommandFor(
-        press("{", { metaKey: true, shiftKey: true, code: "BracketLeft" }),
+        press("{", { shiftKey: true, code: "BracketLeft" }),
         IDLE,
       ),
     ).toEqual({ kind: "order", to: "back" });
   });
 
   it("falls back to the character when no physical key is reported", () => {
-    expect(studioCommandFor(press("]", { metaKey: true }), IDLE)).toEqual({
+    expect(studioCommandFor(press("]"), IDLE)).toEqual({
       kind: "order",
       to: "forward",
     });
   });
 
-  it("works from the control key for people not on a Mac", () => {
-    expect(
-      studioCommandFor(
-        press("]", { ctrlKey: true, code: "BracketRight" }),
-        IDLE,
-      ),
-    ).toEqual({ kind: "order", to: "forward" });
+  it("never claims the accelerator brackets, which the browser keeps", () => {
+    // Cmd+Shift+[ switches tabs and cannot be intercepted; Cmd+[ goes back.
+    for (const held of [
+      { metaKey: true },
+      { ctrlKey: true },
+      { metaKey: true, shiftKey: true },
+      { ctrlKey: true, shiftKey: true },
+    ]) {
+      expect(
+        studioCommandFor(press("]", { ...held, code: "BracketRight" }), IDLE),
+      ).toBeNull();
+      expect(
+        studioCommandFor(press("[", { ...held, code: "BracketLeft" }), IDLE),
+      ).toBeNull();
+    }
   });
 
   it("does nothing without a selection", () => {
     expect(
-      studioCommandFor(
-        press("]", { metaKey: true, code: "BracketRight" }),
-        { ...IDLE, hasSelection: false },
-      ),
+      studioCommandFor(press("]", { code: "BracketRight" }), {
+        ...IDLE,
+        hasSelection: false,
+      }),
     ).toBeNull();
+  });
+});
+
+describe("reserved accelerators", () => {
+  /** Every accelerator the studio could plausibly be asked about. */
+  const letters = "abcdefghijklmnopqrstuvwxyz".split("");
+  const digits = "123456789".split("");
+
+  it("claims none of the combinations the browser keeps for itself", () => {
+    const contexts = [
+      IDLE,
+      { ...IDLE, hasClipboard: true },
+      { ...IDLE, hasSelection: false },
+    ];
+    for (const key of [...letters, ...digits, "[", "]", "Tab"]) {
+      for (const shiftKey of [false, true]) {
+        for (const held of [{ metaKey: true }, { ctrlKey: true }]) {
+          const event = press(key, { ...held, shiftKey });
+          const name = acceleratorName(event);
+          if (!name || !RESERVED_ACCELERATORS.includes(name)) continue;
+          for (const context of contexts) {
+            expect(
+              studioCommandFor(event, context),
+              `${name} is reserved by the browser and must not be bound`,
+            ).toBeNull();
+          }
+        }
+      }
+    }
+  });
+
+  it("names an accelerator the way the reserved list spells it", () => {
+    expect(acceleratorName(press("w", { metaKey: true }))).toBe("accel+w");
+    expect(
+      acceleratorName(press("t", { ctrlKey: true, shiftKey: true })),
+    ).toBe("accel+shift+t");
+    expect(acceleratorName(press("r"))).toBeNull();
+  });
+
+  it("lists the combinations that cannot be intercepted at all", () => {
+    for (const reserved of [
+      "accel+w",
+      "accel+t",
+      "accel+n",
+      "accel+q",
+      "accel+shift+[",
+      "accel+shift+]",
+    ]) {
+      expect(RESERVED_ACCELERATORS).toContain(reserved);
+    }
   });
 });
 

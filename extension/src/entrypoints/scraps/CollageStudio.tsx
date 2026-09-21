@@ -66,9 +66,10 @@ import {
   type CollagePaper,
 } from "./collageFormats";
 import {
-  clampDrawerWidth,
+  defaultDrawerWidth,
   readDrawerPreference,
   writeDrawerPreference,
+  type DrawerPreference,
 } from "./drawerPreference";
 import { PieceActions } from "./PieceActions";
 import { FormatControl } from "./FormatControl";
@@ -216,7 +217,7 @@ export function CollageStudio({
     format !== savedRef.current.format;
 
   const updateDrawer = useCallback(
-    (change: Partial<{ width: number; collapsed: boolean }>) => {
+    (change: Partial<DrawerPreference>) => {
       setDrawer((current) => {
         const next = { ...current, ...change };
         writeDrawerPreference(next);
@@ -236,6 +237,8 @@ export function CollageStudio({
   const [crop, setCrop] = useState<CropState | null>(null);
   const [transform, setTransform] = useState<ModalTransform | null>(null);
   const [gesture, setGesture] = useState<Gesture>({ kind: "idle" });
+  /** What the slip above the selected piece says while a gesture runs. */
+  const [gestureReadout, setGestureReadout] = useState<string | null>(null);
   const [clipboard, setClipboard] = useState<CollagePiece | null>(null);
   const [scale, setScale] = useState(1);
   const [saving, setSaving] = useState(false);
@@ -308,7 +311,9 @@ export function CollageStudio({
     const observer = new ResizeObserver(update);
     observer.observe(stage);
     return () => observer.disconnect();
-  }, []);
+    // The fit is recomputed when the format changes, so a new size is shown
+    // at its own zoom rather than the one the previous format was fitted at.
+  }, [frame]);
 
   /** Converts a pointer event into frame coordinates. */
   const framePoint = useCallback(
@@ -577,6 +582,7 @@ export function CollageStudio({
   /** Ends a run so the next edit becomes its own undo step. */
   const endGesture = useCallback(() => {
     setGesture({ kind: "idle" });
+    setGestureReadout(null);
     setHistory((current) => endRun(current));
   }, []);
 
@@ -669,22 +675,24 @@ export function CollageStudio({
           (piece) => ({ ...piece, ...box }),
           `resize:${gesture.pieceId}`,
         );
+        setGestureReadout(
+          `scale ${Math.round((box.width / gesture.origin.width) * 100)}%`,
+        );
         return;
       }
       if (gesture.kind === "rotate") {
+        const turning = pieces.find((piece) => piece.id === gesture.pieceId);
+        if (!turning) return;
+        const raw = rotationToPointer(turning, point);
+        const degrees = event.shiftKey
+          ? snapDegrees(raw, ROTATION_SNAP_DEGREES)
+          : raw;
         editPiece(
           gesture.pieceId,
-          (piece) => {
-            const degrees = rotationToPointer(piece, point);
-            return {
-              ...piece,
-              rotation: event.shiftKey
-                ? snapDegrees(degrees, ROTATION_SNAP_DEGREES)
-                : degrees,
-            };
-          },
+          (piece) => ({ ...piece, rotation: degrees }),
           `rotate:${gesture.pieceId}`,
         );
+        setGestureReadout(`rotate ${Math.round(degrees)} deg`);
       }
     },
     [duplicatePiece, editPiece, framePoint, gesture, pieces, transform],
@@ -797,6 +805,11 @@ export function CollageStudio({
     void pieceId;
   }, []);
 
+  // Modal transforms and handle drags speak through the same slip.
+  const readout = transform
+    ? `${transform.kind} ${transform.readout}`
+    : gestureReadout;
+
   const cropping = crop
     ? pieces.find((piece) => piece.id === crop.pieceId) ?? null
     : null;
@@ -807,8 +820,13 @@ export function CollageStudio({
         items={scraps}
         width={drawer.width}
         collapsed={drawer.collapsed}
+        slotSize={drawer.slotSize}
         onWidth={(width) => updateDrawer({ width })}
         onCollapsed={(collapsed) => updateDrawer({ collapsed })}
+        onSlotSize={(slotSize) =>
+          // The drawer follows the new slot size so three still fit across.
+          updateDrawer({ slotSize, width: defaultDrawerWidth(slotSize) })
+        }
         onPlace={(item) =>
           // Clicked scraps fan out from the middle so each one stays grabbable.
           addPiece(item, fanOutPlacement(pieces.length, frame))
@@ -956,15 +974,18 @@ export function CollageStudio({
               />
             )}
 
-            {transform && selected && (
+            {readout && selected && (
               <p
                 className="collage-readout"
                 style={{
                   left: selected.x + selected.width / 2,
-                  top: selected.y - 34,
+                  top: selected.y,
+                  // The slip stays upright and the same size on screen however
+                  // the frame is zoomed or the piece is turned.
+                  transform: `translate(-50%, calc(-100% - 12px)) scale(${1 / scale})`,
                 }}
               >
-                {transform.kind} {transform.readout}
+                {readout}
               </p>
             )}
 

@@ -7,10 +7,12 @@ import {
   type ScrapItem,
 } from "@movement/components/ScrapCollage";
 import {
-  DRAWER_COLUMN_WIDTH,
   DRAWER_RAIL_WIDTH,
+  SLOT_SIZE_NAMES,
   clampDrawerWidth,
+  defaultDrawerWidth,
   drawerColumns,
+  type DrawerSlotSize,
 } from "./drawerPreference";
 
 export type ScrapKindFilter = "all" | ScrapItem["kind"];
@@ -38,8 +40,10 @@ interface ScrapTrayProps {
   items: readonly ScrapItem[];
   width: number;
   collapsed: boolean;
+  slotSize: DrawerSlotSize;
   onWidth: (width: number) => void;
   onCollapsed: (collapsed: boolean) => void;
+  onSlotSize: (slotSize: DrawerSlotSize) => void;
   onPlace: (item: ScrapItem) => void;
   onDragStart: (item: ScrapItem, event: React.DragEvent) => void;
 }
@@ -48,8 +52,10 @@ export function ScrapTray({
   items,
   width,
   collapsed,
+  slotSize,
   onWidth,
   onCollapsed,
+  onSlotSize,
   onPlace,
   onDragStart,
 }: ScrapTrayProps) {
@@ -63,7 +69,7 @@ export function ScrapTray({
     return kind === "all" ? sorted : sorted.filter((item) => item.kind === kind);
   }, [items, kind]);
 
-  const columns = drawerColumns(width);
+  const columns = drawerColumns(width, slotSize);
   // A cell is square, so the row height follows from how many fit across.
   const cellHeight = Math.round(width / columns);
   const rowCount = Math.ceil(filtered.length / columns);
@@ -114,6 +120,23 @@ export function ScrapTray({
               onClick={() => setKind(option)}
             >
               {FILTER_LABELS[option]}
+            </button>
+          ))}
+        </div>
+        <div className="collage-tray__sizes">
+          {SLOT_SIZE_NAMES.map((name) => (
+            <button
+              key={name}
+              type="button"
+              className={`collage-tray__size${
+                name === slotSize ? " collage-tray__size--on" : ""
+              }`}
+              title={`Show scraps ${name}`}
+              aria-label={`Show scraps ${name}`}
+              aria-pressed={name === slotSize}
+              onClick={() => onSlotSize(name)}
+            >
+              {name[0]}
             </button>
           ))}
         </div>
@@ -182,7 +205,7 @@ export function ScrapTray({
         }}
         onPointerMove={(event) => {
           if (!resizingRef.current) return;
-          onWidth(clampDrawerWidth(event.clientX, window.innerWidth));
+          onWidth(clampDrawerWidth(event.clientX, window.innerWidth, slotSize));
         }}
         onPointerUp={() => {
           resizingRef.current = false;
@@ -190,7 +213,7 @@ export function ScrapTray({
         onPointerCancel={() => {
           resizingRef.current = false;
         }}
-        onDoubleClick={() => onWidth(3 * DRAWER_COLUMN_WIDTH)}
+        onDoubleClick={() => onWidth(defaultDrawerWidth(slotSize))}
       />
     </aside>
   );

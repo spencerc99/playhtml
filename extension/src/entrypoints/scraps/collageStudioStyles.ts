@@ -58,6 +58,32 @@ export const COLLAGE_STUDIO_STYLES = `
     margin: 0;
   }
 
+  .collage-tray__sizes {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 2px;
+  }
+
+  .collage-tray__size {
+    width: 17px;
+    height: 17px;
+    padding: 0;
+    border: 1px solid rgba(61, 56, 51, 0.18);
+    border-radius: 3px;
+    background: transparent;
+    color: #827a72;
+    font-family: "Martian Mono", monospace;
+    font-size: 8px;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .collage-tray__size--on {
+    border-color: rgba(74, 154, 138, 0.7);
+    background: rgba(74, 154, 138, 0.12);
+    color: #2f6b60;
+  }
+
   .collage-tray__tuck,
   .collage-tray__rail {
     flex: 0 0 auto;
@@ -152,19 +178,51 @@ export const COLLAGE_STUDIO_STYLES = `
     outline: none;
   }
 
+  /*
+   * Much of the collected material is pale or transparent, so each slot sits
+   * on a faint chequer. It reads as a cut-out's backing rather than a colour,
+   * and makes a white button on a white page visible.
+   */
   .collage-tray__thumb {
     position: relative;
     display: block;
     width: 100%;
     height: 100%;
     overflow: hidden;
+    border-radius: 2px;
+    background-color: #f3efe8;
+    background-image:
+      linear-gradient(45deg, rgba(61, 56, 51, 0.07) 25%, transparent 25%),
+      linear-gradient(-45deg, rgba(61, 56, 51, 0.07) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, rgba(61, 56, 51, 0.07) 75%),
+      linear-gradient(-45deg, transparent 75%, rgba(61, 56, 51, 0.07) 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 0 6px, 6px -6px, -6px 0;
   }
 
   .collage-tray__slot {
     box-sizing: border-box;
   }
 
-  /* The tray shows every kind at thumbnail scale inside its own slot. */
+  /* Nothing in the tray is cropped; a picture fits whole inside its slot. */
+  .collage-tray__thumb .scrap-collage__image {
+    object-fit: contain;
+  }
+
+  /*
+   * A small thing is shown at a legible size rather than lost in a big empty
+   * slot, but never blown up far past what it really is.
+   */
+  .collage-tray__thumb .scrap-collage__cursor {
+    width: auto;
+    height: auto;
+    max-width: 64px;
+    max-height: 64px;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+  }
+
   .collage-tray__thumb .scrap-collage__button,
   .collage-tray__thumb .scrap-collage__svg {
     position: absolute;
@@ -305,6 +363,9 @@ export const COLLAGE_STUDIO_STYLES = `
   /* The frame's paper comes from the record, so the studio shows what bakes. */
   .collage-frame {
     position: relative;
+    /* It keeps its true size and is only ever zoomed, never squeezed by the
+       flex stage around it. */
+    flex: none;
     transform-origin: center;
     box-shadow: 0 10px 34px rgba(61, 56, 51, 0.16);
     overflow: hidden;
@@ -465,7 +526,7 @@ export const COLLAGE_STUDIO_STYLES = `
     margin: 0;
     padding: 2px 6px;
     z-index: 10002;
-    transform: translateX(-50%);
+    transform-origin: center bottom;
     border: 1px solid rgba(61, 56, 51, 0.2);
     border-radius: 3px;
     background: #f5f0e8;
