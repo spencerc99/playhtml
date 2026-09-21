@@ -37,8 +37,8 @@ type PageDataObserver = ((...args: unknown[]) => void) & {
 function applyPageDataUpdate<T>(data: PageDataSetter<T>, value: T): T {
   if (typeof data !== "function") return data as T;
   if (value !== null && typeof value === "object") {
-    (data as (draft: T) => void)(value);
-    return value;
+    const result = (data as (draft: T) => T | void)(value);
+    return result === null ? result : value;
   }
   return (data as (value: T) => T)(value);
 }
@@ -200,16 +200,20 @@ export function createPageDataChannel<T>(
       const currentValue = isObjectRoot
         ? proxy
         : storePlay()[PAGE_TAG]?.[name] as T;
+      let nextValue = currentValue;
       if (typeof data === "function" && isObjectRoot) {
         doc().transact(() => {
-          applyPageDataUpdate(data as PageDataSetter<T>, proxy);
+          nextValue = applyPageDataUpdate<T>(data, proxy);
         });
-        return;
+        if (nextValue === proxy) return;
+      } else {
+        nextValue = applyPageDataUpdate(data, currentValue);
       }
 
-      const nextValue = applyPageDataUpdate(data, currentValue);
-
-      if (isObjectRoot) {
+      if (
+        isObjectRoot && nextValue !== null && typeof nextValue === "object" &&
+        Array.isArray(proxy) === Array.isArray(nextValue)
+      ) {
         doc().transact(() => {
           deepReplaceIntoProxy(proxy, nextValue);
         });

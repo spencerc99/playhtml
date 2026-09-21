@@ -11,7 +11,8 @@ function canonicalize(value: unknown): string {
   }
   const keys = Object.keys(value as Record<string, unknown>).sort();
   const entries = keys.map(
-    (k) => `${JSON.stringify(k)}:${canonicalize((value as Record<string, unknown>)[k])}`
+    (k) =>
+      `${JSON.stringify(k)}:${canonicalize((value as Record<string, unknown>)[k])}`,
   );
   return `{${entries.join(",")}}`;
 }
@@ -28,7 +29,7 @@ export function hashRecord(record: unknown): string {
 }
 
 export interface RawRecord {
-  /** Stable key for one extraction snapshot: `${path}#${index}`. */
+  /** Stable key for one extraction snapshot: escaped path segments plus `#${index}`. */
   key: string;
   /** Dotted path to the containing array, e.g. "can-play.newWords". */
   path: string;
@@ -60,11 +61,21 @@ function isArrayOfObjects(value: unknown): value is Record<string, unknown>[] {
 export function recordsFromPlay(play: Record<string, unknown>): RawRecord[] {
   const records: RawRecord[] = [];
 
-  const visit = (value: unknown, path: string): void => {
+  const visit = (value: unknown, segments: string[]): void => {
     if (isArrayOfObjects(value)) {
+      const path = segments.join(".");
+      const keyPath = segments
+        .map((segment) =>
+          segment.replace(
+            /[%#.]/g,
+            (character) =>
+              `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+          ),
+        )
+        .join(".");
       value.forEach((obj, index) => {
         records.push({
-          key: `${path}#${index}`,
+          key: `${keyPath}#${index}`,
           path,
           index,
           fields: obj,
@@ -75,13 +86,13 @@ export function recordsFromPlay(play: Record<string, unknown>): RawRecord[] {
     }
     if (isPlainObject(value)) {
       for (const childKey of Object.keys(value)) {
-        visit(value[childKey], path ? `${path}.${childKey}` : childKey);
+        visit(value[childKey], [...segments, childKey]);
       }
     }
   };
 
   for (const tag of Object.keys(play)) {
-    visit(play[tag], tag);
+    visit(play[tag], [tag]);
   }
   return records;
 }
@@ -111,10 +122,14 @@ const REPORT_FIELD_NAMES = ["reportCount", "reports", "votes"];
 const HEX_COLOR = /^#[0-9a-f]{3,8}$/i;
 
 function isContentString(value: unknown): value is string {
-  return typeof value === "string" && !HEX_COLOR.test(value) && value.trim() !== "";
+  return (
+    typeof value === "string" && !HEX_COLOR.test(value) && value.trim() !== ""
+  );
 }
 
-export function extractRecords(play: Record<string, unknown>): ModerationRecord[] {
+export function extractRecords(
+  play: Record<string, unknown>,
+): ModerationRecord[] {
   return recordsFromPlay(play).map((raw) => {
     const fields = raw.fields;
 
@@ -177,12 +192,12 @@ export interface RemoveResult {
   skipped: SkippedTarget[];
 }
 
-/** Resolve a dotted path (e.g. "can-play.chat1.messages") to its array, or null. */
+/** Resolve escaped path segments to their array, or null. */
 function resolveArray(
   play: Record<string, unknown>,
-  path: string
+  path: string,
 ): unknown[] | null {
-  const parts = path.split(".");
+  const parts = path.split(".").map(decodeURIComponent);
   let node: unknown = play;
   for (const part of parts) {
     if (!isPlainObject(node)) return null;
@@ -200,7 +215,7 @@ function resolveArray(
  */
 export function removeRecordsByTargets(
   play: Record<string, unknown>,
-  targets: RemoveTarget[]
+  targets: RemoveTarget[],
 ): RemoveResult {
   const next = JSON.parse(JSON.stringify(play)) as Record<string, unknown>;
   const current = recordsFromPlay(next);
@@ -220,11 +235,12 @@ export function removeRecordsByTargets(
       skipped.push({ key: target.key, reason: "hash-mismatch" });
       continue;
     }
-    const indices = deletionsByPath.get(record.path) ?? [];
+    const path = record.key.slice(0, record.key.lastIndexOf("#"));
+    const indices = deletionsByPath.get(path) ?? [];
     if (!indices.includes(record.index)) {
       indices.push(record.index);
     }
-    deletionsByPath.set(record.path, indices);
+    deletionsByPath.set(path, indices);
   }
 
   let removed = 0;
