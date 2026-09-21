@@ -4,7 +4,6 @@
 import {
   FEATURE_CATALOG,
   FEATURE_IDS,
-  isFeatureId,
   type FeatureAccessSnapshot,
   type FeatureId,
 } from "../shared/featureCatalog";

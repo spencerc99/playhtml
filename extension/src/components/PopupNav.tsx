@@ -1,7 +1,6 @@
 // ABOUTME: Page navigation for the extension popup header.
 // ABOUTME: Bare mono links that open the standalone extension pages in a new tab.
 
-import React from "react";
 import { FeatureGate } from "./FeatureGate";
 import "./PopupNav.scss";
 

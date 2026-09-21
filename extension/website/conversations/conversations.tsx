@@ -1,7 +1,7 @@
 // ABOUTME: Entry point for the Internet Conversations visualization
 // ABOUTME: Fetches keyboard events with pagination and renders them as a chat conversation between websites
 import "./conversations.scss";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { CollectionEvent } from "../shared/types";
 import { ConversationView } from "../shared/components/ConversationView";

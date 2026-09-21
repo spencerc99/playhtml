@@ -2,7 +2,7 @@
 // ABOUTME: Feeds live events into MovementCanvas; no history/calendar surface.
 
 import "../shared/portrait-styles.scss";
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { MovementCanvas } from "../shared/components/MovementCanvas";
 import { LIVE_CURSOR_CLICK_SETTINGS } from "../shared/components/clickDefaults";
