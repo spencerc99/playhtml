@@ -883,10 +883,14 @@ export function CollageStudio({
     });
   };
 
-  /** Leaving flushes first, and only asks when a write is in trouble. */
+  /**
+   * Leaving writes what is pending first. A write that is simply in flight is
+   * not a reason to stop him: it will land. Only a write that has actually
+   * failed asks, because that work really would be lost.
+   */
   const leave = () => {
     flush();
-    if (autosave.unwritten) {
+    if (autosave.standing.kind === "failed") {
       setConfirmingLeave(true);
       return;
     }
@@ -1213,7 +1217,9 @@ export function CollageStudio({
             {pieces.length} piece{pieces.length === 1 ? "" : "s"}
           </span>
           {pieces.length > 0 && (
-            <span className="collage-studio__label">hold I for sources</span>
+            <span className="collage-studio__label">
+              &#183; hold I for sources
+            </span>
           )}
           <span className="collage-bar__spacer" />
           <button
