@@ -1,7 +1,7 @@
 // ABOUTME: Regression test for wash-out ghost cleanup in the internet-scraps collage.
 // ABOUTME: A ghost created before the tide pauses must still be retired once its animation ends.
 
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ScrapCollage, type ScrapItem } from "../ScrapCollage";

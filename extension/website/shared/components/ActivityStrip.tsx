@@ -7,7 +7,6 @@ import type { TimeOfDayFilter } from "../config";
 import {
   computeHotspots,
   computeSustainScores,
-  type HotspotBucket,
 } from "../utils/hotspots";
 
 interface ActivityStripProps {
@@ -238,12 +237,6 @@ export const ActivityStrip: React.FC<ActivityStripProps> = ({
       const entries = Array.from(dayCounts.entries())
         .map(([day, count]) => ({ day, count }))
         .sort((a, b) => a.day.localeCompare(b.day));
-      const filled: Array<{
-        day: string;
-        ms: number;
-        events: number;
-        pids: number;
-      }> = [];
       // Per-day rows: total events from dayCounts, sampled events + pids
       // from the loaded slice. We compute a "density" score that gives a
       // multi-day view where days with proportionally more unique people
@@ -369,10 +362,8 @@ export const ActivityStrip: React.FC<ActivityStripProps> = ({
         allowedTypes,
       });
       if (buckets.length === 0) return [];
-      const max = buckets.reduce((m, b) => Math.max(m, b.uniquePids), 0);
       const sustain = computeSustainScores(buckets, 4);
       const maxSustain = sustain.reduce((m, s) => Math.max(m, s), 0);
-      void max; // satisfies linter when only sustain drives saturation
       return buckets.map((b, i) => ({
         startMs: b.startMs,
         endMs: b.endMs,
@@ -386,7 +377,6 @@ export const ActivityStrip: React.FC<ActivityStripProps> = ({
     const bucketMs = ZOOM_BUCKET_MS[zoom as "hours" | "15m"];
     const buckets = computeHotspots(events, { bucketMs, allowedTypes });
     if (buckets.length === 0) return [];
-    const max = buckets.reduce((m, b) => Math.max(m, b.uniquePids), 0);
     const sustain = computeSustainScores(buckets, 5);
     const maxSustain = sustain.reduce((m, s) => Math.max(m, s), 0);
     return buckets.map((b, i) => ({
