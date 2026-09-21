@@ -4,10 +4,12 @@
 import { describe, expect, it } from "vitest";
 import {
   FULL_CROP,
+  MIN_CROP_FRACTION,
   MIN_PIECE_SIDE,
   clamp,
   composeCrop,
   cropFromLocalDrag,
+  dragCropGrip,
   fitWithin,
   frameScale,
   isFullCrop,
@@ -16,6 +18,8 @@ import {
   resizeFromCorner,
   rotatePoint,
   rotationToPointer,
+  scaleAboutCenter,
+  scaleFromPointer,
   snapDegrees,
   sourceBoxForCrop,
   toLocalPoint,
@@ -227,6 +231,86 @@ describe("crops", () => {
     expect(() =>
       sourceBoxForCrop(BOX, { x: 0, y: 0, width: 0, height: 1 }),
     ).toThrow(/no area/);
+  });
+});
+
+describe("dragCropGrip", () => {
+  const source = { width: 200, height: 100 };
+  const half = { x: 0.25, y: 0.25, width: 0.5, height: 0.5 };
+
+  it("moves one edge and leaves the opposite one alone", () => {
+    const next = dragCropGrip(half, "left", { x: 10, y: 0 }, source);
+    expect(next.x).toBeCloseTo(0.3);
+    expect(next.width).toBeCloseTo(0.45);
+    expect(next.x + next.width).toBeCloseTo(0.75);
+  });
+
+  it("moves both edges of a corner", () => {
+    const next = dragCropGrip(half, "bottom-right", { x: 20, y: 10 }, source);
+    expect(next.x).toBeCloseTo(0.25);
+    expect(next.width).toBeCloseTo(0.6);
+    expect(next.height).toBeCloseTo(0.6);
+  });
+
+  it("slides the whole box when dragged from inside", () => {
+    const next = dragCropGrip(half, "inside", { x: 20, y: 0 }, source);
+    expect(next.x).toBeCloseTo(0.35);
+    expect(next.width).toBeCloseTo(0.5);
+  });
+
+  it("keeps a slid box inside the source", () => {
+    const next = dragCropGrip(half, "inside", { x: 9999, y: 9999 }, source);
+    expect(next.x).toBeCloseTo(0.5);
+    expect(next.y).toBeCloseTo(0.5);
+    expect(next.x + next.width).toBeCloseTo(1);
+  });
+
+  it("never lets an edge pass its opposite", () => {
+    const next = dragCropGrip(half, "left", { x: 9999, y: 0 }, source);
+    expect(next.width).toBeGreaterThanOrEqual(MIN_CROP_FRACTION - 1e-9);
+    expect(next.x).toBeLessThan(next.x + next.width);
+  });
+
+  it("clamps an edge dragged past the source", () => {
+    const next = dragCropGrip(half, "right", { x: 9999, y: 0 }, source);
+    expect(next.x + next.width).toBeCloseTo(1);
+  });
+});
+
+describe("modal scaling", () => {
+  const center = { x: 100, y: 100 };
+
+  it("reports no change when the pointer has not moved", () => {
+    expect(scaleFromPointer(center, { x: 150, y: 100 }, { x: 150, y: 100 })).toBeCloseTo(1);
+  });
+
+  it("grows as the pointer leaves the center", () => {
+    expect(scaleFromPointer(center, { x: 150, y: 100 }, { x: 200, y: 100 })).toBeCloseTo(2);
+  });
+
+  it("shrinks as the pointer approaches the center", () => {
+    expect(scaleFromPointer(center, { x: 200, y: 100 }, { x: 150, y: 100 })).toBeCloseTo(0.5);
+  });
+
+  it("holds steady when the drag started on the center", () => {
+    expect(scaleFromPointer(center, center, { x: 180, y: 100 })).toBe(1);
+  });
+
+  it("resizes a box about its own center", () => {
+    const scaled = scaleAboutCenter(
+      { x: 0, y: 0, width: 100, height: 50 },
+      2,
+    );
+    expect(scaled).toEqual({ x: -50, y: -25, width: 200, height: 100 });
+  });
+
+  it("never shrinks a side below the minimum", () => {
+    const scaled = scaleAboutCenter(
+      { x: 0, y: 0, width: 100, height: 50 },
+      0.001,
+    );
+    expect(scaled.width).toBeGreaterThanOrEqual(MIN_PIECE_SIDE);
+    expect(scaled.height).toBeGreaterThanOrEqual(MIN_PIECE_SIDE);
   });
 });
 

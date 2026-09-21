@@ -271,6 +271,91 @@ export function boxForInnerRect(
   };
 }
 
+/** The eight grips on a crop box, plus sliding the source under it. */
+export type CropGrip =
+  | "top"
+  | "bottom"
+  | "left"
+  | "right"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right"
+  | "inside";
+
+/** Smallest fraction of the source a crop may keep on either axis. */
+export const MIN_CROP_FRACTION = 0.03;
+
+/**
+ * Moves one edge or corner of a crop box. `delta` is in source-box units, so
+ * the caller converts pointer movement into the piece's own unrotated space
+ * first. The box stays inside the source and never inverts.
+ */
+export function dragCropGrip(
+  crop: CropFraction,
+  grip: CropGrip,
+  delta: { x: number; y: number },
+  source: { width: number; height: number },
+): CropFraction {
+  const dx = delta.x / source.width;
+  const dy = delta.y / source.height;
+
+  if (grip === "inside") {
+    return {
+      ...crop,
+      x: clamp(crop.x + dx, 0, 1 - crop.width),
+      y: clamp(crop.y + dy, 0, 1 - crop.height),
+    };
+  }
+
+  let { x, y, width, height } = crop;
+  const right = x + width;
+  const bottom = y + height;
+
+  if (grip.includes("left")) {
+    const next = clamp(x + dx, 0, right - MIN_CROP_FRACTION);
+    width = right - next;
+    x = next;
+  }
+  if (grip.includes("right")) {
+    width = clamp(right + dx, x + MIN_CROP_FRACTION, 1) - x;
+  }
+  if (grip.includes("top")) {
+    const next = clamp(y + dy, 0, bottom - MIN_CROP_FRACTION);
+    height = bottom - next;
+    y = next;
+  }
+  if (grip.includes("bottom")) {
+    height = clamp(bottom + dy, y + MIN_CROP_FRACTION, 1) - y;
+  }
+
+  return { x, y, width, height };
+}
+
+/** Scale factor for a modal scale, from how far the pointer left the center. */
+export function scaleFromPointer(
+  center: Point,
+  anchor: Point,
+  pointer: Point,
+): number {
+  const startDistance = Math.hypot(anchor.x - center.x, anchor.y - center.y);
+  if (startDistance < 1) return 1;
+  return Math.hypot(pointer.x - center.x, pointer.y - center.y) / startDistance;
+}
+
+/** Resizes a box about its own center, for a modal scale. */
+export function scaleAboutCenter(box: PieceBox, factor: number): PieceBox {
+  const center = boxCenter(box);
+  const width = Math.max(MIN_PIECE_SIDE, box.width * factor);
+  const height = Math.max(MIN_PIECE_SIDE, box.height * factor);
+  return {
+    x: center.x - width / 2,
+    y: center.y - height / 2,
+    width,
+    height,
+  };
+}
+
 /**
  * How far a scrap smaller than the placement size may be enlarged. A 32px
  * cursor blown up to the full size would dominate the frame and look nothing
