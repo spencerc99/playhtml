@@ -291,6 +291,48 @@ describe("keys the studio does not own", () => {
   });
 });
 
+describe("flipping", () => {
+  it("flips across on H and down on V", () => {
+    expect(studioCommandFor(press("h"), IDLE)).toEqual({
+      kind: "flip",
+      axis: "x",
+    });
+    expect(studioCommandFor(press("v"), IDLE)).toEqual({
+      kind: "flip",
+      axis: "y",
+    });
+  });
+
+  it("does not collide with paste, which needs the accelerator", () => {
+    expect(
+      studioCommandFor(press("v", { metaKey: true }), {
+        ...IDLE,
+        hasClipboard: true,
+      }),
+    ).toEqual({ kind: "paste" });
+  });
+
+  it("needs a piece to flip", () => {
+    const empty = { ...IDLE, hasSelection: false };
+    expect(studioCommandFor(press("h"), empty)).toBeNull();
+    expect(studioCommandFor(press("v"), empty)).toBeNull();
+  });
+});
+
+describe("the drawer", () => {
+  it("tucks away on the backslash", () => {
+    expect(studioCommandFor(press("\\"), IDLE)).toEqual({
+      kind: "toggleDrawer",
+    });
+  });
+
+  it("works with nothing selected", () => {
+    expect(
+      studioCommandFor(press("\\"), { ...IDLE, hasSelection: false }),
+    ).toEqual({ kind: "toggleDrawer" });
+  });
+});
+
 describe("cutout", () => {
   it("starts a cutout on its own key", () => {
     expect(studioCommandFor(press("b"), IDLE)).toEqual({ kind: "cutout" });

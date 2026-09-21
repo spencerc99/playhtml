@@ -140,7 +140,8 @@ export interface BakeOptions {
   pieces: readonly CollagePiece[];
   /** Pixel density of the baked PNG relative to the frame's logical size. */
   scale?: number;
-  background?: string;
+  /** The paper the collage is made on, filled behind every piece. */
+  paper: string;
 }
 
 /**
@@ -150,7 +151,6 @@ export interface BakeOptions {
 export async function bakeCollage(options: BakeOptions): Promise<Blob> {
   const { frame, pieces } = options;
   const scale = options.scale ?? 2;
-  const background = options.background ?? "#faf9f6";
 
   const ordered = [...pieces].sort((a, b) => a.z - b.z);
   const failures: BakeFailure[] = [];
@@ -185,7 +185,7 @@ export async function bakeCollage(options: BakeOptions): Promise<Blob> {
     throw new Error("Could not get a 2d drawing context for the collage");
   }
   context.scale(scale, scale);
-  context.fillStyle = background;
+  context.fillStyle = options.paper;
   context.fillRect(0, 0, frame.width, frame.height);
   context.imageSmoothingQuality = "high";
 
@@ -197,6 +197,11 @@ export async function bakeCollage(options: BakeOptions): Promise<Blob> {
     context.save();
     context.translate(centerX, centerY);
     context.rotate((piece.rotation * Math.PI) / 180);
+    // The mirror happens about the piece's own center, inside its box, so a
+    // flipped piece keeps its place, its angle and its crop window.
+    if (piece.flipX || piece.flipY) {
+      context.scale(piece.flipX ? -1 : 1, piece.flipY ? -1 : 1);
+    }
     context.translate(-centerX, -centerY);
     // The crop is a clip of the rendered piece, so the whole source is drawn
     // and the visible box masks it — identical to how the studio shows it.

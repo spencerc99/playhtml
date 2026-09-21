@@ -11,9 +11,12 @@ import {
   sourceBoxForCrop,
 } from "./collageGeometry";
 import { parseCutout, type PieceCutout } from "./backgroundCutout";
-
-/** Logical coordinate space every saved collage is laid out in. */
-export const COLLAGE_FRAME = { width: 1200, height: 800 } as const;
+import {
+  isCollageFormatName,
+  parsePaper,
+  type CollageFormatName,
+  type CollagePaper,
+} from "./collageFormats";
 
 export interface CollageFrame {
   width: number;
@@ -38,6 +41,9 @@ export interface CollagePiece {
   rotation: number;
   z: number;
   crop: CropFraction;
+  /** Mirrors what is shown inside the piece's box, leaving the box alone. */
+  flipX: boolean;
+  flipY: boolean;
   /** How this piece's backdrop was removed, absent when it was left alone. */
   cutout?: PieceCutout;
 }
@@ -48,8 +54,26 @@ export interface CollageRecord {
   createdAt: number;
   updatedAt: number;
   frame: CollageFrame;
+  /** Which named size the frame is, so the studio can name it back. */
+  format: CollageFormatName;
+  paper: CollagePaper;
   pieces: CollagePiece[];
   preview: Blob;
+}
+
+/** A stored row that could not be read, listed so it can still be deleted. */
+export interface UnreadableCollage {
+  unreadable: true;
+  id: string;
+  title: string;
+  updatedAt: number;
+  reason: string;
+}
+
+export type CollageEntry = CollageSummary | UnreadableCollage;
+
+export function isUnreadable(entry: CollageEntry): entry is UnreadableCollage {
+  return "unreadable" in entry;
 }
 
 /** One source page a collage drew material from. */
@@ -67,6 +91,7 @@ export interface CollageSummary {
   createdAt: number;
   updatedAt: number;
   pieceCount: number;
+  paper: CollagePaper;
   preview: Blob;
 }
 
@@ -146,6 +171,14 @@ function readNumber(source: Record<string, unknown>, key: string): number {
   return value;
 }
 
+function readBoolean(source: Record<string, unknown>, key: string): boolean {
+  const value = source[key];
+  if (typeof value !== "boolean") {
+    throw new Error(`Collage piece is missing a boolean ${key}`);
+  }
+  return value;
+}
+
 function readString(source: Record<string, unknown>, key: string): string {
   const value = source[key];
   if (typeof value !== "string" || value.length === 0) {
@@ -174,6 +207,8 @@ export function parseCollagePiece(value: unknown): CollagePiece {
     rotation: readNumber(piece, "rotation"),
     z: readNumber(piece, "z"),
     crop: readCrop(piece.crop),
+    flipX: readBoolean(piece, "flipX"),
+    flipY: readBoolean(piece, "flipY"),
     // Collages saved before cutouts existed simply have no field to read.
     ...(piece.cutout === undefined ? {} : { cutout: parseCutout(piece.cutout) }),
   };
@@ -204,9 +239,18 @@ export function parseCollageRecord(value: unknown): CollageRecord {
       width: readNumber(frame as Record<string, unknown>, "width"),
       height: readNumber(frame as Record<string, unknown>, "height"),
     },
+    format: readFormatName(record.format),
+    paper: parsePaper(record.paper),
     pieces: record.pieces.map(parseCollagePiece),
     preview,
   };
+}
+
+function readFormatName(value: unknown): CollageFormatName {
+  if (!isCollageFormatName(value)) {
+    throw new Error(`Collage record has an unknown format: ${String(value)}`);
+  }
+  return value;
 }
 
 export function summarizeCollage(record: CollageRecord): CollageSummary {
@@ -216,6 +260,7 @@ export function summarizeCollage(record: CollageRecord): CollageSummary {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     pieceCount: record.pieces.length,
+    paper: record.paper,
     preview: record.preview,
   };
 }
@@ -270,6 +315,29 @@ export function composeCropOnto(
     height: box.height,
     crop: fromSource,
   };
+}
+
+/** Mirrors what a piece shows, leaving its box and its crop alone. */
+export function flipPiece(
+  piece: CollagePiece,
+  axis: "x" | "y",
+): CollagePiece {
+  return axis === "x"
+    ? { ...piece, flipX: !piece.flipX }
+    : { ...piece, flipY: !piece.flipY };
+}
+
+/**
+ * The CSS transform that draws a piece's material: the mirror happens inside
+ * the box, so a flipped piece keeps its position, its rotation and the crop
+ * window it was given.
+ */
+export function pieceMaterialTransform(piece: CollagePiece): string {
+  const scaleX = piece.flipX ? -1 : 1;
+  const scaleY = piece.flipY ? -1 : 1;
+  return scaleX === 1 && scaleY === 1
+    ? "none"
+    : `scale(${scaleX}, ${scaleY})`;
 }
 
 /** Restores a cropped piece to its whole source, around the same center. */

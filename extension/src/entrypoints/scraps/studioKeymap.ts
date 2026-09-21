@@ -15,6 +15,8 @@ export type StudioCommand =
   | { kind: "beginRotate" }
   | { kind: "beginScale" }
   | { kind: "cutout" }
+  | { kind: "flip"; axis: "x" | "y" }
+  | { kind: "toggleDrawer" }
   | { kind: "confirm" }
   | { kind: "cancel" }
   | { kind: "deselect" }
@@ -161,6 +163,12 @@ export function studioCommandFor(
       return hasSelection ? { kind: "beginScale" } : null;
     case "b":
       return hasSelection ? { kind: "cutout" } : null;
+    case "h":
+      return hasSelection ? { kind: "flip", axis: "x" } : null;
+    case "v":
+      return hasSelection ? { kind: "flip", axis: "y" } : null;
+    case "\\":
+      return { kind: "toggleDrawer" };
     default:
       return null;
   }
@@ -180,6 +188,7 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
       { keys: "R", what: "rotate, then click to confirm" },
       { keys: "S", what: "scale, then click to confirm" },
       { keys: "B", what: "cut out the background" },
+      { keys: "H / V", what: "flip across / flip down" },
       { keys: "shift while rotating", what: "snap to 15 degrees" },
       { keys: "shift on a corner", what: "free the aspect ratio" },
       { keys: "alt on a corner", what: "resize from the center" },
@@ -194,6 +203,7 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
       { keys: "cmd + ] / [", what: "bring forward / send back" },
       { keys: "cmd + shift + ] / [", what: "bring to front / send to back" },
       { keys: "tab / shift + tab", what: "step through pieces" },
+      { keys: "\\", what: "tuck the drawer away" },
     ],
   },
   {
