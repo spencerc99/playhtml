@@ -69,6 +69,7 @@ export type ScrapItem = ScrapItemBase &
         text: string;
         styles: Record<string, string>;
         innerSvg?: string;
+        backdropColor?: string;
       }
     | {
         kind: "svg-icon";
@@ -81,6 +82,7 @@ export type ScrapItem = ScrapItemBase &
         text: string;
         level: 1 | 2 | 3;
         styles: Record<string, string>;
+        backdropColor?: string;
       }
     | {
         kind: "cursor";
@@ -1227,6 +1229,18 @@ const COLLAGE_STYLES = `
     display: block;
   }
 
+  /* The torn-out patch: the element's box plus an even margin, square edges. */
+  .scrap-collage__backdrop {
+    box-sizing: border-box;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    padding: 3px;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
   .scrap-collage__heading {
     box-sizing: border-box;
     display: flex;
@@ -1382,6 +1396,27 @@ function ScrapSwatch({
   );
 }
 
+/**
+ * Paints the color a see-through element was read against as a snug patch
+ * behind it, so the scrap carries the contrast its page supplied and reads as
+ * a piece torn out rather than text floating on the collage's paper. Scraps
+ * collected before the backdrop was recorded simply render without one.
+ */
+export function ScrapBackdrop({
+  color,
+  children,
+}: {
+  color?: string;
+  children: React.ReactNode;
+}) {
+  if (!color) return <>{children}</>;
+  return (
+    <span className="scrap-collage__backdrop" style={{ background: color }}>
+      {children}
+    </span>
+  );
+}
+
 function ScrapContent({
   item,
   loaded,
@@ -1409,25 +1444,27 @@ function ScrapContent({
       );
     case "button":
       return (
-        <span
-          className="scrap-collage__button"
-          style={{
-            ...(item.styles as React.CSSProperties),
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {item.innerSvg && (
-            <span
-              className="scrap-collage__button-icon"
-              aria-hidden="true"
-              dangerouslySetInnerHTML={{ __html: item.innerSvg }}
-            />
-          )}
-          {item.text}
-        </span>
+        <ScrapBackdrop color={item.backdropColor}>
+          <span
+            className="scrap-collage__button"
+            style={{
+              ...(item.styles as React.CSSProperties),
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {item.innerSvg && (
+              <span
+                className="scrap-collage__button-icon"
+                aria-hidden="true"
+                dangerouslySetInnerHTML={{ __html: item.innerSvg }}
+              />
+            )}
+            {item.text}
+          </span>
+        </ScrapBackdrop>
       );
     case "svg-icon":
       return (
@@ -1439,18 +1476,24 @@ function ScrapContent({
       );
     case "heading":
       return (
-        <span
-          className="scrap-collage__heading"
-          style={{
-            ...(item.styles as React.CSSProperties),
-            fontSize: headingDisplayFontSize(item.styles, item.text, tileWidth),
-            // The captured line height belongs to the captured font size; at
-            // display size it would space wrapped lines far too far apart.
-            lineHeight: HEADING_LINE_HEIGHT,
-          }}
-        >
-          {item.text}
-        </span>
+        <ScrapBackdrop color={item.backdropColor}>
+          <span
+            className="scrap-collage__heading"
+            style={{
+              ...(item.styles as React.CSSProperties),
+              fontSize: headingDisplayFontSize(
+                item.styles,
+                item.text,
+                tileWidth,
+              ),
+              // The captured line height belongs to the captured font size; at
+              // display size it would space wrapped lines far too far apart.
+              lineHeight: HEADING_LINE_HEIGHT,
+            }}
+          >
+            {item.text}
+          </span>
+        </ScrapBackdrop>
       );
     case "cursor":
       return (

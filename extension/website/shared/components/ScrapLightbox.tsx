@@ -524,6 +524,7 @@ function ScrapMedia({ item }: { item: ScrapItem }) {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            ...(item.backdropColor ? { background: item.backdropColor } : {}),
           }}
         >
           <span
@@ -572,6 +573,7 @@ function ScrapMedia({ item }: { item: ScrapItem }) {
             alignItems: "center",
             justifyContent: "center",
             padding: "0 16px",
+            ...(item.backdropColor ? { background: item.backdropColor } : {}),
           }}
         >
           <span
