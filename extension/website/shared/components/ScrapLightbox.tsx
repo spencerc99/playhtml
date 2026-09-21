@@ -573,7 +573,6 @@ function ScrapMedia({ item }: { item: ScrapItem }) {
             alignItems: "center",
             justifyContent: "center",
             padding: "0 16px",
-            ...(item.backdropColor ? { background: item.backdropColor } : {}),
           }}
         >
           <span

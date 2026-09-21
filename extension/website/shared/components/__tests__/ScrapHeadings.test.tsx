@@ -48,18 +48,6 @@ describe("heading scrap identity", () => {
     );
   });
 
-  it("ignores the backdrop when identifying a heading", () => {
-    const onDark: ScrapItem = {
-      ...heading("a", "Same wording either way"),
-      backdropColor: "rgb(28, 32, 38)",
-    };
-    const onLight: ScrapItem = {
-      ...heading("b", "Same wording either way"),
-      backdropColor: "rgb(250, 249, 246)",
-    };
-    expect(canonicalScrapKey(onDark)).toBe(canonicalScrapKey(onLight));
-  });
-
   it("ignores position when identifying a heading", () => {
     const placed: ScrapItem = {
       ...heading("a", "Low tide inventory"),
@@ -243,44 +231,26 @@ describe("heading scraps in the collage", () => {
     expect(container.querySelector("img[src='x']")).toBeNull();
   });
 
-  it("paints the recorded backdrop behind a see-through heading", () => {
+  it("renders a heading as bare text, with its own color and no patch", () => {
     act(() => {
       root.render(
         <ScrapCollage
           items={[
-            {
-              ...heading("h-dark", "Pale type on a dark bar", 2, {
-                color: "rgb(245, 240, 232)",
-              }),
-              backdropColor: "rgb(28, 32, 38)",
-            },
+            heading("h-pale", "Pale type from a dark page", 2, {
+              color: "rgb(245, 240, 232)",
+            }),
           ]}
           seed={1}
         />,
       );
     });
-    const patch = container.querySelector<HTMLElement>(
-      ".scrap-collage__backdrop",
+    expect(container.querySelector(".scrap-collage__backdrop")).toBeNull();
+    const rendered = container.querySelector<HTMLElement>(
+      ".scrap-collage__heading",
     );
-    expect(patch).not.toBeNull();
-    expect(patch?.style.background).toBe("rgb(28, 32, 38)");
-    expect(
-      patch?.querySelector(".scrap-collage__heading")?.textContent,
-    ).toBe("Pale type on a dark bar");
-  });
-
-  it("renders no patch for a scrap collected without a backdrop", () => {
-    act(() => {
-      root.render(
-        <ScrapCollage items={[heading("h-plain", "No backdrop here")]} seed={1} />,
-      );
-    });
-    expect(
-      container.querySelector(".scrap-collage__backdrop"),
-    ).toBeNull();
-    expect(
-      container.querySelector(".scrap-collage__heading")?.textContent,
-    ).toBe("No backdrop here");
+    expect(rendered?.textContent).toBe("Pale type from a dark page");
+    expect(rendered?.style.color).toBe("rgb(245, 240, 232)");
+    expect(rendered?.style.background).toBe("");
   });
 
   it("offers a headings filter chip counting the headings on hand", () => {

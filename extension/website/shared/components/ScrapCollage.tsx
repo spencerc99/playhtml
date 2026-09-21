@@ -82,7 +82,8 @@ export type ScrapItem = ScrapItemBase &
         text: string;
         level: 1 | 2 | 3;
         styles: Record<string, string>;
-        backdropColor?: string;
+        /** A heading is words-material: it never carries a backdrop. */
+        backdropColor?: never;
       }
     | {
         kind: "cursor";
@@ -1476,24 +1477,18 @@ function ScrapContent({
       );
     case "heading":
       return (
-        <ScrapBackdrop color={item.backdropColor}>
-          <span
-            className="scrap-collage__heading"
-            style={{
-              ...(item.styles as React.CSSProperties),
-              fontSize: headingDisplayFontSize(
-                item.styles,
-                item.text,
-                tileWidth,
-              ),
-              // The captured line height belongs to the captured font size; at
-              // display size it would space wrapped lines far too far apart.
-              lineHeight: HEADING_LINE_HEIGHT,
-            }}
-          >
-            {item.text}
-          </span>
-        </ScrapBackdrop>
+        <span
+          className="scrap-collage__heading"
+          style={{
+            ...(item.styles as React.CSSProperties),
+            fontSize: headingDisplayFontSize(item.styles, item.text, tileWidth),
+            // The captured line height belongs to the captured font size; at
+            // display size it would space wrapped lines far too far apart.
+            lineHeight: HEADING_LINE_HEIGHT,
+          }}
+        >
+          {item.text}
+        </span>
       );
     case "cursor":
       return (
