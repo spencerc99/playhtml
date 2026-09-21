@@ -59,14 +59,38 @@ export async function loadCollage(id: string): Promise<CollageRecord | null> {
   return parseCollageRecord(stored);
 }
 
-/** Every saved collage, most recently edited first. */
-export async function listCollages(): Promise<CollageSummary[]> {
+/**
+ * Every saved collage, most recently edited first.
+ *
+ * A record that cannot be read comes back as an unreadable entry rather than
+ * failing the listing, so one damaged collage never hides the rest or leaves
+ * itself impossible to delete.
+ */
+export async function listCollages(): Promise<CollageEntry[]> {
   const stored = await withStore<unknown[]>("readonly", (store) =>
     store.getAll(),
   );
   return stored
-    .map((value) => summarizeCollage(parseCollageRecord(value)))
+    .map((value) => {
+      try {
+        return summarizeCollage(parseCollageRecord(value));
+      } catch (error) {
+        return unreadableEntry(value, error);
+      }
+    })
     .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** Salvages just enough of a broken row to list and delete it. */
+function unreadableEntry(value: unknown, error: unknown): UnreadableCollage {
+  const row = (value ?? {}) as Record<string, unknown>;
+  return {
+    unreadable: true,
+    id: typeof row.id === "string" ? row.id : "",
+    title: typeof row.title === "string" ? row.title : "",
+    updatedAt: typeof row.updatedAt === "number" ? row.updatedAt : 0,
+    reason: error instanceof Error ? error.message : String(error),
+  };
 }
 
 export async function deleteCollage(id: string): Promise<void> {
