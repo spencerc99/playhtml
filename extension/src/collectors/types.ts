@@ -139,6 +139,8 @@ export interface ButtonScrapData {
   text: string;
   styles: Record<string, string>;
   innerSvg?: string;
+  /** Flat color the element was seen against, when its own does not cover it. */
+  backdropColor?: string;
   pageTitle: string;
   faviconUrl?: string;
   position?: ScrapPosition;
@@ -159,6 +161,8 @@ export interface HeadingScrapData {
   text: string;
   level: 1 | 2 | 3;
   styles: Record<string, string>;
+  /** Flat color the element was seen against, when its own does not cover it. */
+  backdropColor?: string;
   pageTitle: string;
   faviconUrl?: string;
   position?: ScrapPosition;

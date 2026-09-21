@@ -44,7 +44,10 @@ const HEADING_SELECTOR = "h1, h2, h3";
 /** Light-DOM hosts for the extension's own injected UI, whose text is not a scrap. */
 const EXTENSION_UI_SELECTOR =
   '[id^="wwo-"], [id^="wewere-"], [id^="we-were-online-"], [id^="playhtml-"]';
-const TRANSPARENT_COLOR_PATTERN = /^(?:transparent|rgba\([^)]*,\s*0(?:\.0+)?\s*\))$/i;
+/** How far up the tree to look for the color a see-through element sits on. */
+const MAX_BACKDROP_DEPTH = 12;
+/** What a page paints over when nothing in the tree supplies a color. */
+const CANVAS_BACKDROP_COLOR = "rgb(255, 255, 255)";
 const GRADIENT_PATTERN =
   /^(?:repeating-)?(?:linear|radial|conic)-gradient\(/i;
 const CURSOR_URL_PATTERN =
@@ -336,6 +339,23 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   }
 
   /**
+   * The color to paint behind a reconstructed element, for elements whose own
+   * background does not cover their box. A solid background needs nothing; a
+   * see-through one gets the color it was read against, so light text stays
+   * legible away from the page that supplied the contrast.
+   */
+  private backdropFor(
+    element: Element,
+    ownBackgroundColor: string,
+    hasGradient: boolean,
+  ): string | undefined {
+    if (hasGradient) return undefined;
+    return colorAlpha(ownBackgroundColor) < 1
+      ? resolveBackdropColor(element)
+      : undefined;
+  }
+
+  /**
    * The element's centre in document coordinates, alongside the document's
    * scroll size, so the scrap can be placed back on a map of its page.
    */
@@ -431,11 +451,17 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       : undefined;
     if (!text && !innerSvg) return;
 
+    const backdropColor = this.backdropFor(
+      button,
+      computedStyle.backgroundColor,
+      styles.backgroundImage !== undefined,
+    );
     const data: ButtonScrapData = {
       kind: "button",
       text,
       styles,
       ...(innerSvg ? { innerSvg } : {}),
+      ...(backdropColor ? { backdropColor } : {}),
       pageTitle: document.title,
       position: this.elementPosition(bounds),
     };
@@ -577,11 +603,17 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       return;
     }
 
+    const backdropColor = this.backdropFor(
+      heading,
+      computedStyle.backgroundColor,
+      false,
+    );
     const data: HeadingScrapData = {
       kind: "heading",
       text,
       level,
       styles: this.pickHeadingStyles(computedStyle),
+      ...(backdropColor ? { backdropColor } : {}),
       pageTitle: document.title,
       position: this.elementPosition(bounds),
     };
@@ -611,7 +643,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     }
 
     const backgroundColor = computedStyle.backgroundColor;
-    if (backgroundColor && !TRANSPARENT_COLOR_PATTERN.test(backgroundColor.trim())) {
+    if (backgroundColor && colorAlpha(backgroundColor) > 0) {
       styles.backgroundColor = backgroundColor;
     }
     return styles;
@@ -732,4 +764,37 @@ function headingLevel(heading: Element): 1 | 2 | 3 | undefined {
  */
 function normalizeHeadingText(heading: Element): string {
   return (heading.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Alpha of a computed color, 0 when it paints nothing and 1 when it is solid.
+ * Only the four-component `rgba()` form carries alpha; `rgb()` is always solid,
+ * and its third channel must not be mistaken for one.
+ */
+function colorAlpha(color: string): number {
+  const value = color.trim();
+  if (!value || /^transparent$/i.test(value)) return 0;
+  const components = /^rgba?\(([^)]*)\)$/i.exec(value)?.[1];
+  if (components === undefined) return 1;
+  const parts = components.split(/[,/]/).map((part) => part.trim());
+  if (parts.length < 4) return 1;
+  const alpha = Number(parts[3]);
+  return Number.isFinite(alpha) ? alpha : 1;
+}
+
+/**
+ * The flat color a see-through element is seen against: the nearest ancestor
+ * that actually paints one. An ancestor carrying only an image or gradient is
+ * skipped rather than guessed at, and a tree that paints nothing leaves the
+ * page canvas, which is white.
+ */
+function resolveBackdropColor(element: Element): string | undefined {
+  let ancestor = element.parentElement;
+  for (let depth = 0; ancestor && depth < MAX_BACKDROP_DEPTH; depth++) {
+    const background = getComputedStyle(ancestor).backgroundColor;
+    if (colorAlpha(background) === 1) return background;
+    if (ancestor === document.documentElement) return CANVAS_BACKDROP_COLOR;
+    ancestor = ancestor.parentElement;
+  }
+  return ancestor ? undefined : CANVAS_BACKDROP_COLOR;
 }

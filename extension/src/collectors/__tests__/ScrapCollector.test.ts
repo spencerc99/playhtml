@@ -814,6 +814,183 @@ describe("ScrapCollector", () => {
     ).toEqual(["Loaded in later"]);
   });
 
+  describe("backdrop color", () => {
+    /** Wraps the element in ancestors painting the given backgrounds, innermost first. */
+    function nest(element: Element, ancestorBackgrounds: string[]): void {
+      const anchor = element.parentElement;
+      let child: Element = element;
+      element.remove();
+      for (const backgroundColor of ancestorBackgrounds) {
+        const parent = document.createElement("div");
+        parent.setAttribute(
+          "data-styles",
+          JSON.stringify({ backgroundColor }),
+        );
+        parent.appendChild(child);
+        child = parent;
+      }
+      (anchor ?? document.body).appendChild(child);
+    }
+
+    it("records the nearest painted ancestor for a see-through element", () => {
+      const heading = createHeading({
+        text: "Pale type on a dark bar",
+        styles: { backgroundColor: "rgba(0, 0, 0, 0)" },
+      });
+      nest(heading, ["rgba(0, 0, 0, 0)", "rgb(28, 32, 38)"]);
+
+      collector.enable();
+      showForCapture([heading]);
+
+      const scraps = emitted("heading");
+      expect(scraps).toHaveLength(1);
+      expect(scraps[0].kind === "heading" && scraps[0].backdropColor).toBe(
+        "rgb(28, 32, 38)",
+      );
+    });
+
+    it("records a backdrop for a semi-transparent background too", () => {
+      const heading = createHeading({
+        text: "Tinted over a dark bar",
+        styles: { backgroundColor: "rgba(255, 255, 255, 0.2)" },
+      });
+      nest(heading, ["rgb(28, 32, 38)"]);
+
+      collector.enable();
+      showForCapture([heading]);
+
+      const scrap = emitted("heading")[0];
+      expect(scrap.kind === "heading" && scrap.backdropColor).toBe(
+        "rgb(28, 32, 38)",
+      );
+      expect(scrap.kind === "heading" && scrap.styles.backgroundColor).toBe(
+        "rgba(255, 255, 255, 0.2)",
+      );
+    });
+
+    it("records no backdrop when the element paints its own background", () => {
+      const heading = createHeading({
+        text: "Opaque of its own",
+        styles: { backgroundColor: "rgb(34, 51, 59)" },
+      });
+      nest(heading, ["rgb(200, 0, 0)"]);
+
+      collector.enable();
+      showForCapture([heading]);
+
+      const scrap = emitted("heading")[0];
+      expect(scrap.kind === "heading" && scrap.backdropColor).toBeUndefined();
+      expect(scrap.kind === "heading" && scrap.styles.backgroundColor).toBe(
+        "rgb(34, 51, 59)",
+      );
+    });
+
+    it("falls back to the page canvas when nothing up the tree paints", () => {
+      const clear = JSON.stringify({ backgroundColor: "rgba(0, 0, 0, 0)" });
+      document.body.setAttribute("data-styles", clear);
+      document.documentElement.setAttribute("data-styles", clear);
+      const heading = createHeading({
+        text: "Nothing painted behind",
+        styles: { backgroundColor: "rgba(0, 0, 0, 0)" },
+      });
+      nest(heading, ["rgba(0, 0, 0, 0)"]);
+
+      collector.enable();
+      showForCapture([heading]);
+
+      const canvasScrap = emitted("heading")[0];
+      expect(
+        canvasScrap.kind === "heading" && canvasScrap.backdropColor,
+      ).toBe("rgb(255, 255, 255)");
+      document.body.removeAttribute("data-styles");
+      document.documentElement.removeAttribute("data-styles");
+    });
+
+    it("stops climbing after a bounded number of ancestors", () => {
+      const clear = JSON.stringify({ backgroundColor: "rgba(0, 0, 0, 0)" });
+      document.body.setAttribute("data-styles", clear);
+      document.documentElement.setAttribute("data-styles", clear);
+      const nearby = createHeading({
+        text: "Painted just within reach",
+        styles: { backgroundColor: "rgba(0, 0, 0, 0)" },
+      });
+      // 11 clear ancestors, then the painted one: the 12th step still sees it.
+      nest(nearby, [
+        ...Array.from({ length: 11 }, () => "rgba(0, 0, 0, 0)"),
+        "rgb(10, 20, 30)",
+      ]);
+      const tooFar = createHeading({
+        text: "Painted beyond the cap",
+        styles: { backgroundColor: "rgba(0, 0, 0, 0)" },
+      });
+      nest(tooFar, [
+        ...Array.from({ length: 12 }, () => "rgba(0, 0, 0, 0)"),
+        "rgb(10, 20, 30)",
+      ]);
+
+      collector.enable();
+      showForCapture([nearby, tooFar]);
+
+      const backdrops = emitted("heading").map((data) =>
+        data.kind === "heading" ? data.backdropColor : undefined,
+      );
+      // Past the cap the walk gives up rather than reporting a guess.
+      expect(backdrops).toEqual(["rgb(10, 20, 30)", undefined]);
+      document.body.removeAttribute("data-styles");
+      document.documentElement.removeAttribute("data-styles");
+    });
+
+    it("records a backdrop for a see-through button as well", () => {
+      const button = createButton({ text: "Sign in" });
+      button.setAttribute("data-background", "rgba(0, 0, 0, 0)");
+      nest(button, ["rgb(28, 32, 38)"]);
+
+      collector.enable();
+      showForCapture([button]);
+
+      const seeThroughButton = emitted("button")[0];
+      expect(
+        seeThroughButton.kind === "button" && seeThroughButton.backdropColor,
+      ).toBe("rgb(28, 32, 38)");
+    });
+
+    it("leaves a gradient button to its own background", () => {
+      const button = createButton({ text: "Gradient" });
+      button.setAttribute("data-background", "rgba(0, 0, 0, 0)");
+      button.setAttribute(
+        "data-background-image",
+        "linear-gradient(rgb(1, 2, 3), rgb(4, 5, 6))",
+      );
+      nest(button, ["rgb(28, 32, 38)"]);
+
+      collector.enable();
+      showForCapture([button]);
+
+      const gradientButton = emitted("button")[0];
+      expect(
+        gradientButton.kind === "button" && gradientButton.backdropColor,
+      ).toBeUndefined();
+    });
+
+    it("does not let the backdrop change a scrap's identity", () => {
+      const onDark = createHeading({
+        text: "Same wording either way",
+        styles: { backgroundColor: "rgba(0, 0, 0, 0)" },
+      });
+      nest(onDark, ["rgb(28, 32, 38)"]);
+      const onLight = createHeading({
+        text: "Same wording either way",
+        styles: { backgroundColor: "rgba(0, 0, 0, 0)" },
+      });
+      nest(onLight, ["rgb(250, 249, 246)"]);
+
+      collector.enable();
+      showForCapture([onDark, onLight]);
+
+      expect(emitted("heading")).toHaveLength(1);
+    });
+  });
+
   it("captures cursor URLs and hotspots while ignoring fallback-only cursors", () => {
     const fallback = document.createElement("div");
     fallback.setAttribute("data-cursor", "pointer");
