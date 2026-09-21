@@ -21,6 +21,7 @@
     "dev": "vite --config vite.config.site.mts",
     "dev-docs": "cd apps/docs && bun run dev",
     "dev-server": "bunx wrangler dev --config partykit/wrangler.jsonc --port ${PLAYHTML_PARTYKIT_PORT:-1999}",
+    "dev-server:presence": "bunx wrangler dev --config partykit/wrangler.presence.jsonc --port ${PLAYHTML_PARTYKIT_PORT:-1999}",
     "dev-server:local-db": "bun run db:local-env && bunx wrangler dev --config partykit/wrangler.jsonc --port ${PLAYHTML_PARTYKIT_PORT:-1999} --env-file partykit/.dev.vars --env-file .dev.vars.supabase",
     "dev-extension": "cd extension && bun run dev",
     "dev-extension-worker:local-db": "bun run db:local-env && bunx wrangler dev --config extension/worker/wrangler.toml --env-file \"$PWD/extension/worker/.dev.vars\" --env-file \"$PWD/.dev.vars.supabase\"",
@@ -80,6 +81,7 @@
     "smoke:partykit:emergency": "cd smoke-tests && bun run test:partykit:emergency",
     "smoke:partykit:transient": "cd smoke-tests && bun run test:partykit:transient",
     "smoke:partykit:soak": "cd smoke-tests && bun run test:partykit:soak",
+    "smoke:partykit:presence-local": "node smoke-tests/partykit/local-presence-smoke.mjs",
     "smoke:partykit:presence-cursor": "cd smoke-tests && bun run test:partykit:presence-cursor",
     "generate-types": "bunx wrangler types --config partykit/wrangler.jsonc --include-runtime=false"
   },
