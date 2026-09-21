@@ -26,6 +26,22 @@ import {
   startTrailVisibilityTransition,
   type TrailVisibilityTransition,
 } from "./trailVisibility";
+import type { TrailBlend, TrailOutline } from "../styles/trailRenderers";
+import {
+  approachDepth,
+  assignSedimentDepths,
+  DEFAULT_SEDIMENT_SETTINGS,
+  estimateInkArea,
+  lightInkEdgeStrength,
+  PAPER_COLOR,
+  sedimentOpacity,
+  sedimentUsesMultiply,
+  sedimentWashColor,
+  shadeOfColor,
+  type ActiveEmphasis,
+  type SedimentCandidate,
+  type SedimentSettings,
+} from "../utils/liveTrailSediment";
 
 // A trail that hasn't gained a point in this long (and has drawn up to its tip)
 // has finished tracing and settles from the live full opacity to the completed
@@ -46,11 +62,25 @@ const MAX_DRAW_MS = 30000;
 const MAX_DRAW_SPEED_PX_PER_SECOND = 600;
 const MIN_DRAW_MS_PER_SEGMENT = 32;
 
-// Once a trail has settled (dimmed, done tracing), keep it on screen this long
-// before removing it, so finished trails persist as a dim backdrop rather than
-// vanishing. After this it depart-fades out. (The maxGroups cap upstream also
-// bounds how many accumulate regardless.)
-const REMOVE_AFTER_DIM_MS = 60_000;
+// Settled trails are not removed on a timer. They stay as sediment until
+// enough newer trails have settled on top of them to push them out of the
+// window (by count or by ink coverage, see liveTrailSediment). A settled
+// trail's depth in that window glides toward its target with this time
+// constant so the field re-layers smoothly as new ink arrives.
+const DEPTH_TAU_MS = 1200;
+
+// Emphasis for actively tracing ink. "paper" cuts a paper-colored gutter under
+// the ink: its total stroke width as a multiple of the trail width (half shows
+// on each side) and how opaque the paper is. "shade" strokes a narrower edge
+// in a darker shade of the trail's own hue. "weight" draws the stroke this
+// much heavier while tracing and relaxes it as the trail settles.
+const HALO_WIDTH_FACTOR = 1.3;
+const HALO_MIN_WIDTH = 4;
+const HALO_OPACITY = 0.85;
+const SHADE_WIDTH_FACTOR = 0.9;
+const SHADE_MIN_WIDTH = 3;
+const SHADE_OPACITY = 0.55;
+const WEIGHT_FACTOR = 0.3;
 
 export interface LiveTrailDrawState {
   seenAt: number;
@@ -64,29 +94,161 @@ export interface LiveTrailDrawState {
   dimmedAt: number | null;
   activeFromVariedPoint: number | null;
   activeDimmedAt: number | null;
+  /** Event time of the trail's last point when it settled. The window ranks
+   * by this, so trails leave in the order people finished drawing them, not
+   * in the order their playback happened to catch up. */
+  finishedAt: number;
+  /** Smoothed position in the sediment window, 0 fresh .. 1 about to leave. */
+  depth: number;
+  /** Set by the window assignment once newer ink has pushed this trail out. */
+  departs: boolean;
+  /** Ink footprint measured when the trail settled, for coverage windows. */
+  inkArea: number;
 }
 
+export function createLiveTrailDrawState(
+  clockMs: number,
+  pointCount: number,
+  variedPointCount: number,
+): LiveTrailDrawState {
+  return {
+    seenAt: clockMs,
+    total: pointCount,
+    variedTotal: variedPointCount,
+    drawProgress: 0,
+    grewAt: clockMs,
+    caughtUpAt: null,
+    settled: false,
+    settledAt: null,
+    dimmedAt: null,
+    activeFromVariedPoint: null,
+    activeDimmedAt: null,
+    finishedAt: 0,
+    depth: 0,
+    departs: false,
+    inkArea: 0,
+  };
+}
+
+/** A settled trail departs only once the sediment window has pushed it out;
+ * a trail that resumed drawing is never departed. */
 export function shouldDepartTrail(
   draw: LiveTrailDrawState | undefined,
-  clockMs: number,
   resumed = false,
 ): boolean {
-  return Boolean(
-    !resumed &&
-      draw?.settled &&
-      draw.settledAt !== null &&
-      clockMs - draw.settledAt >= REMOVE_AFTER_DIM_MS,
-  );
+  return Boolean(!resumed && draw?.settled && draw.departs);
 }
 
+/** Opacity factor of a trail's settled base ink. While it is dimming it eases
+ * from the live opacity toward `settledOpacity`; once dimmed it follows that
+ * value, which the caller derives from the trail's sediment depth. */
 export function getLiveTrailOpacity(
   draw: LiveTrailDrawState,
   clockMs: number,
+  settledOpacity = COMPLETED_OPACITY,
 ): number {
   if (draw.dimmedAt === null) return 1;
 
   const dimProgress = Math.min(1, (clockMs - draw.dimmedAt) / DIM_FADE_MS);
-  return 1 - (1 - COMPLETED_OPACITY) * dimProgress;
+  return 1 - (1 - settledOpacity) * dimProgress;
+}
+
+/** Opacity of the paper halo under a trail's base ink: full while it traces,
+ * gone once it has dimmed into sediment. */
+export function getBaseHaloOpacity(
+  draw: LiveTrailDrawState,
+  clockMs: number,
+): number {
+  if (draw.dimmedAt === null) return 1;
+  return Math.max(0, 1 - (clockMs - draw.dimmedAt) / DIM_FADE_MS);
+}
+
+/** Compositing mode for a trail's base ink. Only ink that has finished dimming
+ *  into sediment multiplies, so overlapping settled trails still build density
+ *  while live ink keeps its own color instead of muddying into the pile. The
+ *  switch lands at the END of the dim, when the ink is already faint, so the
+ *  change reads as part of settling rather than a pop. */
+export function getSettledInkBlend(
+  draw: LiveTrailDrawState,
+  clockMs: number,
+  useMultiply: boolean,
+): TrailBlend {
+  if (!useMultiply || draw.dimmedAt === null) return "normal";
+  return clockMs - draw.dimmedAt >= DIM_FADE_MS ? "multiply" : "normal";
+}
+
+/** The single outline a live stroke gets. There is one outline element per
+ *  path, so the emphasis gutter and the contrast edge cannot both draw:
+ *  - paper: the paper gutter wins outright.
+ *  - shade: the same-hue edge, taking whichever opacity is larger.
+ *  - none/weight: a darker same-hue edge, scaled by how light the color is, so
+ *    a yellow or pastel stroke keeps its shape over pale sediment while a pink
+ *    or blue one (which already pops) gets nothing.
+ *  Settled ink passes `activeness` 0 and gets no edge — it is meant to recede. */
+export function getLiveInkOutline(
+  emphasis: ActiveEmphasis,
+  activeness: number,
+  color: string,
+  strokeWidth: number,
+): TrailOutline | null {
+  if (activeness <= 0) return null;
+
+  if (emphasis === "paper") {
+    return {
+      color: PAPER_COLOR,
+      width: Math.max(HALO_MIN_WIDTH, strokeWidth * HALO_WIDTH_FACTOR),
+      opacity: activeness * HALO_OPACITY,
+    };
+  }
+
+  const strength = lightInkEdgeStrength(color);
+  const contrastOpacity = SHADE_OPACITY * strength * activeness;
+  const opacity =
+    emphasis === "shade"
+      ? Math.max(activeness * SHADE_OPACITY, contrastOpacity)
+      : contrastOpacity;
+  if (opacity <= 0) return null;
+
+  return {
+    color: shadeOfColor(color, 0.35 + 0.25 * strength),
+    width: Math.max(SHADE_MIN_WIDTH, strokeWidth * SHADE_WIDTH_FACTOR),
+    opacity,
+  };
+}
+
+/** Assign every settled, present trail its window depth and departure flag.
+ * Ranking uses each trail's finish time (last event), so the trail whose
+ * person stopped first is the first to leave. */
+export function applySedimentWindow(
+  draws: ReadonlyMap<string, LiveTrailDrawState>,
+  presentIds: ReadonlySet<string>,
+  settings: SedimentSettings,
+  screenArea: number,
+): Map<string, number> {
+  const candidates: SedimentCandidate[] = [];
+  for (const [id, draw] of draws) {
+    if (!presentIds.has(id) || !draw.settled || draw.settledAt === null) {
+      continue;
+    }
+    candidates.push({
+      id,
+      settledAt: draw.finishedAt || draw.settledAt,
+      inkArea: draw.inkArea,
+    });
+  }
+  const assignments = assignSedimentDepths(candidates, settings, screenArea);
+  const targets = new Map<string, number>();
+  for (const [id, draw] of draws) {
+    const assignment = assignments.get(id);
+    if (assignment) {
+      draw.departs = assignment.departs;
+      targets.set(id, assignment.depth);
+    } else {
+      draw.departs = false;
+      targets.set(id, 0);
+    }
+  }
+  return targets;
 }
 
 export function getActiveTrailOpacity(
@@ -120,6 +282,7 @@ export function advanceDrawState(
     draw.activeDimmedAt = null;
     draw.settled = false;
     draw.settledAt = null;
+    draw.departs = false;
   }
 
   draw.total = pointCount;
@@ -228,6 +391,8 @@ interface LiveTrailsProps {
     trailOpacity: number;
     animationSpeed: number;
     trailVisualStyle?: string;
+    /** How settled trails accumulate and recede; defaults to a count window. */
+    sediment?: SedimentSettings;
   };
 }
 
@@ -279,10 +444,13 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     // Settings via refs so the loop reads latest without restarting.
     const strokeWidthRef = useRef(settings.strokeWidth);
     const trailOpacityRef = useRef(settings.trailOpacity);
+    const sedimentRef = useRef(settings.sediment ?? DEFAULT_SEDIMENT_SETTINGS);
     useEffect(() => {
       strokeWidthRef.current = settings.strokeWidth;
       trailOpacityRef.current = settings.trailOpacity;
-    }, [settings.strokeWidth, settings.trailOpacity]);
+      sedimentRef.current = settings.sediment ?? DEFAULT_SEDIMENT_SETTINGS;
+    }, [settings.strokeWidth, settings.trailOpacity, settings.sediment]);
+    const lastFrameClockRef = useRef<number | null>(null);
 
     const frozenRef = useRef(frozen);
     useEffect(() => {
@@ -377,14 +545,14 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           const id = entry.trail.trail.id;
           handled.add(id);
           const live = liveById.get(id);
-          // A trail that has been dimmed (settled) for REMOVE_AFTER_DIM_MS starts
+          // A settled trail the sediment window has pushed out starts
           // departing even though it is still in the live data.
           const d = draws.get(id);
           const resumed =
             live !== undefined &&
             d !== undefined &&
             live.trail.points.length > d.total;
-          const dimExpired = shouldDepartTrail(d, now, resumed);
+          const dimExpired = shouldDepartTrail(d, resumed);
           if (live && !dimExpired) {
             // Still live — refresh geometry and ease back if it was departing.
             const visibility =
@@ -422,7 +590,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       });
     }, [trailStates]);
 
-    // Drive depart-on-dim-expiry and depart-fade expiry on a timer, since the
+    // Drive window departures and depart-fade expiry on a timer, since the
     // reconcile above only runs when `trailStates` changes — a fully-settled
     // canvas with no new events would otherwise never remove anything.
     useEffect(() => {
@@ -439,7 +607,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           for (const entry of prev) {
             const tid = entry.trail.trail.id;
             const d = draws.get(tid);
-            const dimExpired = shouldDepartTrail(d, now);
+            const dimExpired = shouldDepartTrail(d);
             const departing = entry.visibility?.toOpacity === 0;
             if (dimExpired && !departing) {
               next.push({
@@ -573,7 +741,27 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         const clockMs = perfNow - pausedAccumMsRef.current;
         const trailOpacity = trailOpacityRef.current;
         const strokeWidth = strokeWidthRef.current;
+        const sediment = sedimentRef.current;
         const drawMap = drawRef.current;
+        const frameDtMs =
+          lastFrameClockRef.current === null
+            ? 0
+            : Math.max(0, clockMs - lastFrameClockRef.current);
+        lastFrameClockRef.current = clockMs;
+        const useMultiply = sedimentUsesMultiply(sediment.style);
+        const emphasis = sediment.activeEmphasis;
+
+        // Re-rank the settled field before drawing: every settled trail gets
+        // its depth target for this frame, and any pushed out of the window
+        // is flagged so the reconcile/timer above starts its departure.
+        const presentIds = new Set<string>();
+        for (const entry of entries) presentIds.add(entry.trail.trail.id);
+        const depthTargets = applySedimentWindow(
+          drawMap,
+          presentIds,
+          sediment,
+          window.innerWidth * window.innerHeight,
+        );
         const soundEngine = soundEngineRef.current;
         const soundFrames = soundFramesRef.current;
         soundFrames.length = 0;
@@ -594,19 +782,11 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           const drawDuration = getLiveDrawDuration(ts);
           if (draw === undefined) {
             // New trail: anchor its draw clock to now.
-            draw = {
-              seenAt: clockMs,
-              total: pts,
-              variedTotal: ts.variedPoints.length,
-              drawProgress: 0,
-              grewAt: clockMs,
-              caughtUpAt: null,
-              settled: false,
-              settledAt: null,
-              dimmedAt: null,
-              activeFromVariedPoint: null,
-              activeDimmedAt: null,
-            };
+            draw = createLiveTrailDrawState(
+              clockMs,
+              pts,
+              ts.variedPoints.length,
+            );
             drawMap.set(key, draw);
           } else {
             advanceDrawState(
@@ -628,27 +808,76 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           );
           const caughtUp = drawProgress >= 1;
 
+          const wasSettled = draw.settled;
           advanceSettlingState(draw, caughtUp, clockMs);
+          if (draw.settled && !wasSettled) {
+            draw.inkArea = estimateInkArea(ts.variedPoints, strokeWidth);
+            draw.finishedAt = ts.trail.endTime;
+          }
           // A settled trail always shows its full current geometry (dimmed); a
           // live one draws progressively toward its tip.
           const progress = draw.settled ? 1 : drawProgress;
           draw.drawProgress = progress;
 
-          // Completed ink remains dim while a resumed portion draws at the live
-          // opacity. When that portion settles, it fades into the dim base.
-          const settleOpacity = getLiveTrailOpacity(draw, clockMs);
+          // Glide toward this frame's window depth. A trail that is tracing
+          // (new or resumed) heads back to the surface.
+          draw.depth = approachDepth(
+            draw.depth,
+            draw.settled ? (depthTargets.get(key) ?? 0) : 0,
+            frameDtMs,
+            DEPTH_TAU_MS,
+          );
+
+          // Completed ink recedes with its depth while a resumed portion draws
+          // at the live opacity. When that portion settles, it fades into the
+          // sediment base.
+          const settleOpacity = getLiveTrailOpacity(
+            draw,
+            clockMs,
+            sedimentOpacity(draw.depth, sediment),
+          );
           const activeOpacity = getActiveTrailOpacity(draw, clockMs);
           const visibility = getTrailVisibility(entry.visibility, clockMs);
-          visibilityByTrail.set(key, visibility);
+          // Click marks recede with their trail's ink so a dark person's
+          // rings don't stay heavy over pale sediment.
+          visibilityByTrail.set(key, visibility * settleOpacity);
           const activeStartProgress =
             draw.activeFromVariedPoint === null || ts.variedPoints.length < 2
               ? null
               : draw.activeFromVariedPoint / (ts.variedPoints.length - 1);
 
+          // How "live" the base ink still is: 1 while a fresh trail traces,
+          // easing to 0 as it dims. A resumed trail's base is settled ink, so
+          // only its new portion counts as live.
+          const baseActiveness =
+            draw.activeFromVariedPoint === null
+              ? getBaseHaloOpacity(draw, clockMs)
+              : 0;
+          const baseOutline: TrailOutline | null = getLiveInkOutline(
+            emphasis,
+            baseActiveness,
+            ts.trail.color,
+            strokeWidth,
+          );
+          const activeOutline: TrailOutline | null = getLiveInkOutline(
+            emphasis,
+            activeOpacity,
+            ts.trail.color,
+            strokeWidth,
+          );
+          const baseStrokeWidth =
+            emphasis === "weight"
+              ? strokeWidth * (1 + WEIGHT_FACTOR * baseActiveness)
+              : strokeWidth;
+          const activeStrokeWidth =
+            emphasis === "weight"
+              ? strokeWidth * (1 + WEIGHT_FACTOR * activeOpacity)
+              : undefined;
+
           const result = handle.update(
             0,
             trailOpacity * settleOpacity,
-            strokeWidth,
+            baseStrokeWidth,
             visibility,
             progress,
             activeStartProgress === null || activeOpacity <= 0
@@ -660,7 +889,19 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
                       ? activeStartProgress
                       : progress,
                   opacity: trailOpacity * activeOpacity,
+                  outline: activeOutline,
+                  strokeWidth: activeStrokeWidth,
                 },
+            {
+              color: sedimentWashColor(
+                ts.trail.color,
+                draw.depth,
+                sediment.style,
+                sediment.maxWash,
+              ),
+              blend: getSettledInkBlend(draw, clockMs, useMultiply),
+              outline: baseOutline,
+            },
           );
 
           const activelyTracing =

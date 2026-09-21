@@ -2,6 +2,7 @@
 // ABOUTME: Headline params stay readable; everything else lives in a ?s= blob.
 
 import { DEFAULT_SETTINGS } from "../components/settingsDefaults";
+import { ACTIVE_EMPHASIS_MODES } from "./liveTrailSediment";
 import {
   parseFilterChip,
   formatFilterChip,
@@ -98,6 +99,13 @@ const TRAIL_STYLES = ["straight", "smooth", "organic", "chaotic"] as const;
 const TRAIL_ANIMATION_MODES = ["natural", "stagger"] as const;
 const NAVIGATION_VIEW_MODES = ["timeline", "radial"] as const;
 const TRAIL_VISUAL_STYLES = ["color", "monochrome"] as const;
+const LIVE_TRAIL_WINDOW_MODES = ["count", "coverage"] as const;
+const LIVE_SEDIMENT_STYLES = [
+  "opacity",
+  "wash",
+  "multiply",
+  "wash-multiply",
+] as const;
 
 /** The small set of settings whose URL representation should stay
  * readable / hand-editable. Everything else rides in the `?s=` blob.
@@ -152,6 +160,32 @@ export const HEADLINE_SPECS: SettingSpec[] = [
   num("strokeWidth", "strokeWidth", "trails"),
   num("trailOpacity", "trailOpacity", "trails"),
   bool("randomizeColors", "randomizeColors"),
+
+  // Live cursor field — how settled trails accumulate and recede.
+  enumSpec(
+    "liveTrailWindowMode",
+    "liveTrailWindowMode",
+    LIVE_TRAIL_WINDOW_MODES,
+    "trails",
+  ),
+  num("liveTrailWindow", "liveTrailWindow", "trails"),
+  num("liveTrailCoverage", "liveTrailCoverage", "trails"),
+  enumSpec(
+    "liveSedimentStyle",
+    "liveSedimentStyle",
+    LIVE_SEDIMENT_STYLES,
+    "trails",
+  ),
+  num("liveSedimentFloor", "liveSedimentFloor", "trails"),
+  num("liveSedimentWash", "liveSedimentWash", "trails"),
+  num("liveTypingWindow", "liveTypingWindow", "typing"),
+  num("liveScrollWindow", "liveScrollWindow", "scrolling"),
+  enumSpec(
+    "liveActiveEmphasis",
+    "liveActiveEmphasis",
+    ACTIVE_EMPHASIS_MODES,
+    "trails",
+  ),
 
   // Navigation — view mode is structurally different (timeline vs radial),
   // so it makes sense to call it out in the URL.

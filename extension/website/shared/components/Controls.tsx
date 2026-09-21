@@ -1212,6 +1212,144 @@ export const Controls: React.FC<ControlsProps> = memo(
             <span>{settings.maxConcurrentTrails}</span>
           </div>
 
+          {/* Live cursor field: how settled trails accumulate and recede. These
+              only apply to the live/installation canvas (LiveTrails). */}
+          <div className="control-group">
+            <label htmlFor="live-window-mode">Live Field Window</label>
+            <select
+              id="live-window-mode"
+              value={settings.liveTrailWindowMode ?? "count"}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  liveTrailWindowMode: e.target.value as "count" | "coverage",
+                }))
+              }
+            >
+              <option value="count">By trail count</option>
+              <option value="coverage">By ink coverage</option>
+            </select>
+          </div>
+
+          {(settings.liveTrailWindowMode ?? "count") === "count" ? (
+            <div className="control-group">
+              <label htmlFor="live-window">Settled Trails Kept</label>
+              <input
+                id="live-window"
+                type="range"
+                min="5"
+                max="200"
+                step="5"
+                value={settings.liveTrailWindow ?? 80}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    liveTrailWindow: parseInt(e.target.value, 10),
+                  }))
+                }
+              />
+              <span>{settings.liveTrailWindow ?? 80}</span>
+            </div>
+          ) : (
+            <div className="control-group">
+              <label htmlFor="live-coverage">Ink Coverage Budget</label>
+              <input
+                id="live-coverage"
+                type="range"
+                min="0.25"
+                max="4"
+                step="0.25"
+                value={settings.liveTrailCoverage ?? 1.5}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    liveTrailCoverage: parseFloat(e.target.value),
+                  }))
+                }
+              />
+              <span>{(settings.liveTrailCoverage ?? 1.5).toFixed(2)}x screen</span>
+            </div>
+          )}
+
+          <div className="control-group">
+            <label htmlFor="live-sediment-style">Settled Ink Style</label>
+            <select
+              id="live-sediment-style"
+              value={settings.liveSedimentStyle ?? "opacity"}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  liveSedimentStyle: e.target.value,
+                }))
+              }
+            >
+              <option value="opacity">Fade only</option>
+              <option value="wash">Fade and wash toward paper</option>
+              <option value="multiply">Fade, multiply overlaps</option>
+              <option value="wash-multiply">Wash and multiply</option>
+            </select>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="live-sediment-floor">Deepest Ink Opacity</label>
+            <input
+              id="live-sediment-floor"
+              type="range"
+              min="0.05"
+              max="0.6"
+              step="0.05"
+              value={settings.liveSedimentFloor ?? 0.2}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  liveSedimentFloor: parseFloat(e.target.value),
+                }))
+              }
+            />
+            <span>{(settings.liveSedimentFloor ?? 0.2).toFixed(2)}</span>
+          </div>
+
+          {(settings.liveSedimentStyle === "wash" ||
+            settings.liveSedimentStyle === "wash-multiply") && (
+            <div className="control-group">
+              <label htmlFor="live-sediment-wash">Deepest Ink Wash</label>
+              <input
+                id="live-sediment-wash"
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={settings.liveSedimentWash ?? 0.7}
+                onChange={(e) =>
+                  setSettings((s: any) => ({
+                    ...s,
+                    liveSedimentWash: parseFloat(e.target.value),
+                  }))
+                }
+              />
+              <span>{(settings.liveSedimentWash ?? 0.7).toFixed(2)}</span>
+            </div>
+          )}
+
+          <div className="control-group">
+            <label htmlFor="live-active-emphasis">Tracing Ink Emphasis</label>
+            <select
+              id="live-active-emphasis"
+              value={settings.liveActiveEmphasis ?? "none"}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  liveActiveEmphasis: e.target.value,
+                }))
+              }
+            >
+              <option value="none">None (wash only)</option>
+              <option value="paper">Paper gutter</option>
+              <option value="shade">Darker edge, same hue</option>
+              <option value="weight">Heavier stroke while tracing</option>
+            </select>
+          </div>
+
           <div className="control-group">
             <label htmlFor="animation-mode">Animation Mode</label>
             <select
@@ -1617,6 +1755,25 @@ export const Controls: React.FC<ControlsProps> = memo(
           </div>
 
           <div className="control-group">
+            <label htmlFor="live-typing-window">Live: Finished Boxes Kept</label>
+            <input
+              id="live-typing-window"
+              type="range"
+              min="0"
+              max="120"
+              step="5"
+              value={settings.liveTypingWindow ?? 40}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  liveTypingWindow: parseInt(e.target.value, 10),
+                }))
+              }
+            />
+            <span>{settings.liveTypingWindow ?? 40}</span>
+          </div>
+
+          <div className="control-group">
             <label htmlFor="keyboard-overlap">Overlap Factor</label>
             <input
               id="keyboard-overlap"
@@ -1850,6 +2007,25 @@ export const Controls: React.FC<ControlsProps> = memo(
               }
             />
             <span>{settings.maxConcurrentScrolls}</span>
+          </div>
+
+          <div className="control-group">
+            <label htmlFor="live-scroll-window">Live: Finished Windows Kept</label>
+            <input
+              id="live-scroll-window"
+              type="range"
+              min="0"
+              max="60"
+              step="2"
+              value={settings.liveScrollWindow ?? 20}
+              onChange={(e) =>
+                setSettings((s: any) => ({
+                  ...s,
+                  liveScrollWindow: parseInt(e.target.value, 10),
+                }))
+              }
+            />
+            <span>{settings.liveScrollWindow ?? 20}</span>
           </div>
 
           <div className="control-group">
