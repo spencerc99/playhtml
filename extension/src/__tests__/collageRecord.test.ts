@@ -62,7 +62,7 @@ function record(pieces: CollagePiece[]): CollageRecord {
     format: "postcard",
     paper: { color: "#fffdf9" },
     pieces,
-    preview: new Blob(["png"], { type: "image/png" }),
+    preview: { drawn: true as const, image: new Blob(["png"], { type: "image/png" }) },
   };
 }
 
@@ -111,9 +111,30 @@ describe("parseCollageRecord", () => {
     expect(parsed).toEqual(original);
   });
 
-  it("refuses a record with no baked preview", () => {
+  it("refuses a record with no preview at all", () => {
     const { preview: _dropped, ...withoutPreview } = record([piece()]);
-    expect(() => parseCollageRecord(withoutPreview)).toThrow(/baked preview/);
+    expect(() => parseCollageRecord(withoutPreview)).toThrow(/missing its preview/);
+  });
+
+  it("reads a collage stored before its first bake", () => {
+    const undrawn = {
+      ...record([piece()]),
+      preview: { drawn: false, reason: "not drawn yet" },
+    };
+    expect(parseCollageRecord(undrawn).preview).toEqual({
+      drawn: false,
+      reason: "not drawn yet",
+    });
+  });
+
+  it("refuses a preview that claims to be drawn but carries no image", () => {
+    const lying = { ...record([piece()]), preview: { drawn: true } };
+    expect(() => parseCollageRecord(lying)).toThrow(/carries no image/);
+  });
+
+  it("refuses an undrawn preview that does not say why", () => {
+    const silent = { ...record([piece()]), preview: { drawn: false } };
+    expect(() => parseCollageRecord(silent)).toThrow(/must say why/);
   });
 
   it("refuses a record with no pieces array", () => {

@@ -735,7 +735,7 @@ export function CollageStudio({
         format,
         paper,
         pieces: stacked,
-        preview,
+        preview: { drawn: true, image: preview },
       };
       await saveCollage(record);
       savedRef.current = {

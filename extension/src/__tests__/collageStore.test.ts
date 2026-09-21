@@ -71,9 +71,12 @@ function record(overrides: Partial<CollageRecord> = {}): CollageRecord {
     pieces: [piece()],
     // jsdom's Blob is invisible to Node's structuredClone, which is what
     // fake-indexeddb round-trips a stored record through.
-    preview: new StructuredCloneableBlob(["fake png bytes"], {
-      type: "image/png",
-    }) as unknown as Blob,
+    preview: {
+      drawn: true as const,
+      image: new StructuredCloneableBlob(["fake png bytes"], {
+        type: "image/png",
+      }) as unknown as Blob,
+    },
     ...overrides,
   };
 }
@@ -152,7 +155,7 @@ describe("collageStore", () => {
       height: 0.8,
     });
     expect(loaded?.pieces[0].scrap.pageUrl).toBe("https://example.test/a");
-    expect(await loaded?.preview.text()).toBe("fake png bytes");
+    expect(await (loaded?.preview.drawn ? loaded.preview.image.text() : undefined)).toBe("fake png bytes");
   });
 
   it("reports a collage that was never saved as absent", async () => {
@@ -244,7 +247,7 @@ describe("collageStore", () => {
     expect(loaded?.paper).toEqual({ color: "#faf9f6" });
     expect(loaded?.title).toBe("the one he cares about");
     expect(loaded?.createdAt).toBe(1_700_000_000_000);
-    expect(await loaded?.preview.text()).toBe("the original thumbnail");
+    expect(await (loaded?.preview.drawn ? loaded.preview.image.text() : undefined)).toBe("the original thumbnail");
     expect(loaded?.pieces[0]).toMatchObject({
       x: 125,
       y: 100,

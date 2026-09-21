@@ -58,8 +58,18 @@ export interface CollageRecord {
   format: CollageFormatName;
   paper: CollagePaper;
   pieces: CollagePiece[];
-  preview: Blob;
+  /**
+   * The baked picture of this collage, or an explicit note that it has not
+   * been drawn yet. A collage is stored the moment its arrangement changes,
+   * which can be before a bake has ever succeeded, and the absence is said
+   * out loud rather than left as a missing field.
+   */
+  preview: CollagePreview;
 }
+
+export type CollagePreview =
+  | { drawn: true; image: Blob }
+  | { drawn: false; reason: string };
 
 /** A stored row that could not be read, listed so it can still be deleted. */
 export interface UnreadableCollage {
@@ -92,7 +102,7 @@ export interface CollageSummary {
   updatedAt: number;
   pieceCount: number;
   paper: CollagePaper;
-  preview: Blob;
+  preview: CollagePreview;
 }
 
 export function createPieceId(): string {
@@ -226,10 +236,7 @@ export function parseCollageRecord(value: unknown): CollageRecord {
   if (!frame || typeof frame !== "object") {
     throw new Error("Collage record is missing its frame");
   }
-  const preview = record.preview;
-  if (!isBlobLike(preview)) {
-    throw new Error("Collage record is missing its baked preview");
-  }
+  const preview = readPreview(record.preview);
   return {
     id: readString(record, "id"),
     title: typeof record.title === "string" ? record.title : "",
@@ -251,6 +258,30 @@ function readFormatName(value: unknown): CollageFormatName {
     throw new Error(`Collage record has an unknown format: ${String(value)}`);
   }
   return value;
+}
+
+function readPreview(value: unknown): CollagePreview {
+  if (isBlobLike(value)) {
+    // A collage stored before previews could be absent carries the bare blob.
+    return { drawn: true, image: value };
+  }
+  if (!value || typeof value !== "object") {
+    throw new Error("Collage record is missing its preview");
+  }
+  const preview = value as Record<string, unknown>;
+  if (preview.drawn === true) {
+    if (!isBlobLike(preview.image)) {
+      throw new Error("Collage preview says it is drawn but carries no image");
+    }
+    return { drawn: true, image: preview.image };
+  }
+  if (preview.drawn === false) {
+    if (typeof preview.reason !== "string") {
+      throw new Error("An undrawn collage preview must say why");
+    }
+    return { drawn: false, reason: preview.reason };
+  }
+  throw new Error("Collage record is missing its preview");
 }
 
 export function summarizeCollage(record: CollageRecord): CollageSummary {

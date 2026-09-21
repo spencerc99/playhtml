@@ -700,6 +700,15 @@ export const COLLAGE_STUDIO_STYLES = `
     box-shadow: 0 4px 14px rgba(61, 56, 51, 0.08);
   }
 
+  /* A collage stored before its first bake shows a quiet face, not a break. */
+  .collage-card__thumb--undrawn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed rgba(61, 56, 51, 0.2);
+    cursor: pointer;
+  }
+
   /* The thumbnail sits on the collage's own paper, set from the record. */
   .collage-card__thumb {
     display: block;

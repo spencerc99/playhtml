@@ -83,8 +83,8 @@ export function CollageHistory({
   const previewUrls = useMemo(() => {
     const urls = new Map<string, string>();
     for (const entry of entries ?? []) {
-      if (!isUnreadable(entry)) {
-        urls.set(entry.id, URL.createObjectURL(entry.preview));
+      if (!isUnreadable(entry) && entry.preview.drawn) {
+        urls.set(entry.id, URL.createObjectURL(entry.preview.image));
       }
     }
     return urls;
@@ -194,13 +194,24 @@ export function CollageHistory({
           const sources = record ? collageProvenance(record.pieces) : [];
           return (
             <article key={summary.id} className="collage-card">
-              <img
-                className="collage-card__thumb"
-                style={{ background: summary.paper.color }}
-                src={previewUrls.get(summary.id)}
-                alt={summary.title || "untitled collage"}
-                onClick={() => setExpandedId(open ? null : summary.id)}
-              />
+              {summary.preview.drawn ? (
+                <img
+                  className="collage-card__thumb"
+                  style={{ background: summary.paper.color }}
+                  src={previewUrls.get(summary.id)}
+                  alt={summary.title || "untitled collage"}
+                  onClick={() => setExpandedId(open ? null : summary.id)}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="collage-card__thumb collage-card__thumb--undrawn"
+                  style={{ background: summary.paper.color }}
+                  onClick={() => setExpandedId(open ? null : summary.id)}
+                >
+                  <span className="collage-studio__label">no preview yet</span>
+                </button>
+              )}
               <h3 className="collage-card__title">
                 {summary.title || "untitled"}
               </h3>
