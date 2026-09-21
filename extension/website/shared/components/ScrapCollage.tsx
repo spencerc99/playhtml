@@ -9,6 +9,9 @@ import React, {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { ScrapFilters } from "./ScrapFilters";
+import { matchesScrapFilters } from "../utils/scrapFilters";
+import type { FilterChip } from "../utils/eventUtils";
 import { hashString, seededRandom } from "../utils/styleUtils";
 import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
 import {
@@ -141,13 +144,6 @@ const TIDE_BAND_BELOW = 0.15;
 const TIDE_BAND_ABOVE = 0.05;
 const LONG_EDGE_BY_TIER = [96, 152, 208] as const;
 const CURSOR_TILE_SIZE = 48;
-const SCRAP_KIND_OPTIONS = [
-  { kind: "image", label: "images" },
-  { kind: "button", label: "buttons" },
-  { kind: "svg-icon", label: "icons" },
-  { kind: "cursor", label: "cursors" },
-] as const;
-
 type ScrapKind = ScrapItem["kind"];
 type ScrapKindFilter = "all" | ScrapKind;
 
@@ -766,7 +762,8 @@ const COLLAGE_STYLES = `
     align-items: stretch;
     gap: 7px;
     box-sizing: border-box;
-    max-width: calc(100% - 24px);
+    width: max-content;
+    max-width: min(720px, calc(100% - 24px));
     padding: 7px;
     border: 1px solid rgba(61, 56, 51, 0.2);
     border-radius: 5px;
@@ -777,6 +774,7 @@ const COLLAGE_STYLES = `
   }
 
   .scrap-collage__controls--collapsed {
+    width: auto;
     padding: 0;
     border: 0;
     background: transparent;
@@ -798,10 +796,13 @@ const COLLAGE_STYLES = `
   }
 
   .scrap-collage__controls-header {
-    justify-content: space-between;
+    justify-content: flex-start;
+    flex-wrap: wrap;
     padding-bottom: 6px;
     border-bottom: 1px solid rgba(61, 56, 51, 0.12);
   }
+
+  .scrap-collage__controls-header > .scrap-collage__filter--collapse { margin-left: auto; }
 
   .scrap-collage__view-switch {
     display: inline-flex;
@@ -1352,6 +1353,9 @@ export function ScrapCollage({
   const archiveScrollRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [selectedKind, setSelectedKind] = useState<ScrapKindFilter>("all");
+  const [places, setPlaces] = useState<FilterChip[]>([]);
+  const [search, setSearch] = useState("");
+  const [controlsFocused, setControlsFocused] = useState(false);
   const [view, setView] = useState<ScrapView>("drift");
   const [display, setDisplay] = useState<ScrapDisplay>(readScrapDisplay);
   const [hovered, setHovered] = useState(false);
@@ -1387,7 +1391,11 @@ export function ScrapCollage({
     origin: ScrapOrigin;
   } | null>(null);
   const tidePaused =
-    prefersReducedMotion || hovered || focused || examining !== null;
+    prefersReducedMotion ||
+    hovered ||
+    focused ||
+    controlsFocused ||
+    examining !== null;
   const examineTriggerRef = useRef<HTMLElement | null>(null);
   // Rendered tile elements by scrap key, so arrow-key navigation can re-anchor
   // the examine view on the next scrap's actual slot.
@@ -1426,28 +1434,19 @@ export function ScrapCollage({
     setArchiveScrollTop(top);
   }, [display]);
 
-  const kindCounts = useMemo(() => {
-    const counts: Record<ScrapKind, number> = {
-      image: 0,
-      button: 0,
-      "svg-icon": 0,
-      cursor: 0,
-    };
-    for (const item of newestUniqueScraps(items)) {
-      counts[item.kind] += 1;
-    }
-    return counts;
-  }, [items]);
-  const totalScrapCount = Object.values(kindCounts).reduce(
-    (total, count) => total + count,
-    0,
+  const groupedItems = useMemo(() => groupPhotoEncounters(items), [items]);
+  const uniqueItems = useMemo(
+    () => newestUniqueScraps(groupedItems),
+    [groupedItems],
   );
   const filteredItems = useMemo(
     () =>
-      selectedKind === "all"
-        ? items
-        : items.filter((item) => item.kind === selectedKind),
-    [items, selectedKind],
+      groupedItems.filter(
+        (item) =>
+          (selectedKind === "all" || item.kind === selectedKind) &&
+          matchesScrapFilters(item, places, search),
+      ),
+    [groupedItems, selectedKind, places, search],
   );
   const archiveScraps = useMemo(
     () =>
@@ -1573,18 +1572,13 @@ export function ScrapCollage({
   // that just washed in from one that was already ashore.
   const renderedKeysRef = useRef<Set<string> | null>(null);
 
-  useEffect(() => {
-    if (selectedKind !== "all" && kindCounts[selectedKind] === 0) {
-      setSelectedKind("all");
-    }
-  }, [kindCounts, selectedKind]);
-
   useLayoutEffect(() => {
     if (archiveScrollRef.current) archiveScrollRef.current.scrollTop = 0;
     setArchiveScrollTop(0);
     setHovered(false);
     setFocused(false);
-  }, [archiveMode, selectedKind]);
+    setWashingOut([]);
+  }, [archiveMode, selectedKind, places, search]);
 
   /**
    * Drives the tide as a chain of self-scheduling events rather than a metronome:
@@ -1942,6 +1936,13 @@ export function ScrapCollage({
           className={`scrap-collage__controls${
             controlsExpanded ? "" : " scrap-collage__controls--collapsed"
           }`}
+          onFocus={() => setControlsFocused(true)}
+          onBlur={(event) => {
+            if (
+              !event.currentTarget.contains(event.relatedTarget as Node | null)
+            )
+              setControlsFocused(false);
+          }}
           aria-label="Scrap controls"
         >
           {controlsExpanded ? (
@@ -1969,39 +1970,6 @@ export function ScrapCollage({
                     archive
                   </button>
                 </div>
-                <button
-                  type="button"
-                  className="scrap-collage__filter scrap-collage__filter--collapse"
-                  aria-label="Collapse scrap controls"
-                  title="Collapse controls"
-                  onClick={() => setControlsExpanded(false)}
-                >
-                  ↓
-                </button>
-              </div>
-              <div className="scrap-collage__controls-body">
-                <label className="scrap-collage__control-group">
-                  <span className="scrap-collage__control-label">show</span>
-                  <select
-                    className="scrap-collage__select"
-                    aria-label="Kinds of scraps shown"
-                    value={selectedKind}
-                    onChange={(event) =>
-                      setSelectedKind(
-                        event.currentTarget.value as ScrapKindFilter,
-                      )
-                    }
-                  >
-                    <option value="all">all · {totalScrapCount}</option>
-                    {SCRAP_KIND_OPTIONS.map(({ kind, label }) =>
-                      kindCounts[kind] > 0 ? (
-                        <option key={kind} value={kind}>
-                          {label} · {kindCounts[kind]}
-                        </option>
-                      ) : null,
-                    )}
-                  </select>
-                </label>
                 <div
                   className="scrap-collage__view-switch"
                   role="group"
@@ -2019,9 +1987,30 @@ export function ScrapCollage({
                     </button>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  className="scrap-collage__filter scrap-collage__filter--collapse"
+                  aria-label="Collapse scrap controls"
+                  title="Collapse controls"
+                  onClick={() => setControlsExpanded(false)}
+                >
+                  ↓
+                </button>
+              </div>
+              <ScrapFilters
+                items={groupedItems}
+                places={places}
+                onPlaces={setPlaces}
+                kind={selectedKind}
+                onKind={setSelectedKind}
+                search={search}
+                onSearch={setSearch}
+              />
+              <div className="scrap-collage__controls-body">
                 {archiveMode ? (
                   <span className="scrap-collage__archive-summary">
-                    newest first · {archiveScraps.length}
+                    newest first · {archiveScraps.length} of{" "}
+                    {uniqueItems.length}
                   </span>
                 ) : (
                   <button
@@ -2051,6 +2040,21 @@ export function ScrapCollage({
               controls ↑
             </button>
           )}
+        </div>
+      )}
+      {filteredItems.length === 0 && (
+        <div
+          role="status"
+          style={{
+            position: "absolute",
+            top: "40%",
+            width: "100%",
+            textAlign: "center",
+            color: "#827a72",
+            fontFamily: "monospace",
+          }}
+        >
+          No scraps match these filters.
         </div>
       )}
       {washingOut.map((scrap) => (

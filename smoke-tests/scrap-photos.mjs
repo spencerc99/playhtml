@@ -146,9 +146,13 @@ async function seedUnchecked(count, prefix) {
               id: `${prefix}-${i}`,
               type: "element",
               ts: Date.now() + i,
-              domain: "127.0.0.1",
+              domain:
+                prefix === "layout" && i % 2 ? "notebook.example" : "127.0.0.1",
               meta: {
-                url: `${origin}/${prefix}-${i}`,
+                url:
+                  prefix === "layout" && i % 2
+                    ? `https://notebook.example/studies/${i}`
+                    : `${origin}/${prefix}-${i}`,
                 pid: "fixture",
                 sid: "fixture",
                 vw: 1200,
@@ -447,6 +451,33 @@ try {
   await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(10);
   assert.ok(downloads.every((request) => !request.cookie && !request.referer));
   assert.ok(peak <= 2);
+  await reopened.getByRole("button", { name: /^Found on/ }).click();
+  await reopened
+    .getByRole("textbox", { name: "Find a domain or page" })
+    .fill(`${origin}/first`);
+  await reopened
+    .getByRole("textbox", { name: "Find a domain or page" })
+    .press("Enter");
+  await reopened
+    .getByRole("textbox", { name: "Find a domain or page" })
+    .press("Escape");
+  await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(1);
+  await reopened.locator(".scrap-collage__tile").click();
+  await expect(reopened.locator(".scrap-lightbox__timeline li")).toHaveCount(4);
+  await reopened
+    .getByRole("button", { name: "Close examine view", exact: true })
+    .click();
+  await expect(reopened.getByRole("dialog")).toHaveCount(0);
+  await reopened.getByRole("button", { name: /^Found on/ }).click();
+  await reopened.getByRole("button", { name: "Clear", exact: true }).click();
+  await reopened
+    .getByRole("textbox", { name: "Find a domain or page" })
+    .press("Escape");
+  const dock = reopened.locator('[aria-label="Scrap controls"]');
+  assert.ok(
+    (await dock.boundingBox()).width < 450,
+    "unfiltered dock stays compact",
+  );
   await seedUnchecked(420, "layout");
   await reopened.reload();
   await expect(reopened.getByLabel("Number of scraps shown")).toHaveCount(0);
@@ -489,6 +520,13 @@ try {
     "reduced motion holds Drift still",
   );
   await reopened.emulateMedia({ reducedMotion: "no-preference" });
+  await reopened.waitForTimeout(7500);
+  assert.deepEqual(
+    await keys(),
+    reducedKeys,
+    "focused controls hold Drift still",
+  );
+  await reopened.locator("body").click({ position: { x: 1, y: 1 } });
   await reopened.mouse.move(0, 0);
   await expect
     .poll(async () => JSON.stringify(await keys()), { timeout: 15000 })
@@ -641,11 +679,244 @@ try {
   await reopened.screenshot({
     path: resolve(evidence, "archive-grid-mobile.png"),
   });
+  await reopened.setViewportSize({ width: 1200, height: 850 });
+  const waitForFilterImages = () =>
+    expect
+      .poll(
+        () =>
+          reopened
+            .locator(".scrap-collage__tile img:not(.scrap-collage__favicon)")
+            .evaluateAll(
+              (images) =>
+                images.length > 0 &&
+                images.every((image) => {
+                  const bounds = image.getBoundingClientRect();
+                  return (
+                    bounds.bottom <= 0 ||
+                    bounds.top >= innerHeight ||
+                    (image.complete && image.naturalWidth > 0)
+                  );
+                }),
+            ),
+        { timeout: 20000 },
+      )
+      .toBe(true);
+  const foundOn = reopened.getByRole("button", { name: /^Found on/ });
+  await foundOn.click();
+  await reopened
+    .locator(".scrap-filters__domain")
+    .filter({ hasText: "notebook.example" })
+    .click();
+  await reopened
+    .getByRole("textbox", { name: "Find a domain or page" })
+    .press("Escape");
+  await expect(
+    reopened.getByRole("button", {
+      name: "Edit source filter notebook.example",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    reopened.locator(".scrap-collage__archive-summary"),
+  ).toContainText("210 of 430");
+  await reopened
+    .getByRole("button", {
+      name: "Edit source filter notebook.example",
+      exact: true,
+    })
+    .click();
+  await reopened
+    .locator(".scrap-filters__domain")
+    .filter({ hasText: "127.0.0.1" })
+    .click();
+  await expect(
+    reopened.getByRole("button", {
+      name: "Edit source filter 127.0.0.1",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    reopened.getByRole("button", {
+      name: "Edit source filter notebook.example",
+      exact: true,
+    }),
+  ).toBeVisible();
+  const viewBounds = await reopened
+    .getByRole("group", { name: "Scrap view", exact: true })
+    .boundingBox();
+  const layoutBounds = await layoutControl.boundingBox();
+  assert.ok(
+    layoutBounds.x - viewBounds.x - viewBounds.width < 12,
+    "view and layout switches stay together",
+  );
+  await waitForFilterImages();
+  await reopened.screenshot({ path: resolve(evidence, "filter-places.png") });
+  await reopened
+    .getByRole("textbox", { name: "Find a domain or page" })
+    .press("Escape");
+  await reopened.getByRole("button", { name: /^Type/ }).click();
+  await reopened.locator('[data-scrap-kind="button"]').click();
+  await expect(reopened.getByRole("status")).toHaveText(
+    "No scraps match these filters.",
+  );
+  await reopened.locator('[data-scrap-kind="image"]').click();
+  await waitForFilterImages();
+  await reopened.screenshot({ path: resolve(evidence, "filter-types.png") });
+  await reopened.locator('[data-scrap-kind="image"]').press("Escape");
+  await reopened
+    .getByRole("button", { name: "Search scraps", exact: true })
+    .click();
+  await reopened
+    .getByRole("textbox", { name: "Search scraps", exact: true })
+    .fill("notebook.example page 112");
+  await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(1);
+  await expect
+    .poll(() =>
+      reopened
+        .locator(".scrap-collage__tile img:not(.scrap-collage__favicon)")
+        .evaluateAll(
+          (images) =>
+            images.length > 0 &&
+            images.every((image) => image.complete && image.naturalWidth > 0),
+        ),
+    )
+    .toBe(true);
+  await reopened.screenshot({ path: resolve(evidence, "filter-search.png") });
+  for (const layout of ["pile", "grid"]) {
+    await layoutControl
+      .getByRole("button", { name: layout, exact: true })
+      .click();
+    for (const mode of ["drift", "archive"]) {
+      await reopened.getByRole("button", { name: mode, exact: true }).click();
+      await expect(
+        reopened.locator(
+          ".scrap-collage__tile:not(.scrap-collage__tile--washing-out)",
+        ),
+      ).toHaveCount(1);
+    }
+  }
+  await reopened.setViewportSize({ width: 390, height: 844 });
+  await foundOn.click();
+  await reopened.screenshot({ path: resolve(evidence, "filter-mobile.png") });
+  const overflow = await reopened
+    .locator('[aria-label="Scrap controls"]')
+    .evaluate((el) => el.scrollWidth > el.clientWidth);
+  assert.equal(overflow, false, "mobile controls fit their panel");
+  await reopened
+    .getByRole("textbox", { name: "Find a domain or page" })
+    .press("Escape");
+  await reopened
+    .getByRole("button", { name: "Clear and close search" })
+    .click();
+  await worker.evaluate(
+    async ({ origin }) => {
+      const db = await new Promise((resolve, reject) => {
+        const request = indexedDB.open("collection_events_db");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      try {
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction("events", "readwrite");
+          const contents = [
+            {
+              kind: "button",
+              text: "Visit shop",
+              styles: { backgroundColor: "#ededdd", color: "#333333" },
+            },
+            {
+              kind: "svg-icon",
+              markup:
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#4a9a8a"/></svg>',
+              width: 20,
+              height: 20,
+            },
+            { kind: "cursor", url: `${origin}/photo/different.svg` },
+          ];
+          for (const data of contents)
+            for (const [index, path] of ["shop", "home"].entries()) {
+              tx.objectStore("events").put({
+                id: `repeated-${data.kind}-${path}`,
+                type: "element",
+                ts: Date.now() + index,
+                domain: "127.0.0.1",
+                meta: {
+                  url: `${origin}/${path}`,
+                  pid: "fixture",
+                  sid: "fixture",
+                  vw: 1200,
+                  vh: 850,
+                  tz: "UTC",
+                },
+                data: {
+                  ...data,
+                  pageTitle:
+                    path === "shop" ? "Catalog collection" : "Welcome home",
+                },
+              });
+            }
+          tx.oncomplete = resolve;
+          tx.onerror = () => reject(tx.error);
+        });
+      } finally {
+        db.close();
+      }
+    },
+    { origin },
+  );
+  await reopened.setViewportSize({ width: 1200, height: 850 });
+  await reopened.reload();
+  await reopened.getByRole("button", { name: "archive", exact: true }).click();
+  await reopened.getByRole("button", { name: /^Found on/ }).click();
+  const sourceInput = reopened.getByRole("textbox", {
+    name: "Find a domain or page",
+  });
+  await sourceInput.fill(`${origin}/shop`);
+  await sourceInput.press("Enter");
+  await sourceInput.press("Escape");
+  for (const kind of ["button", "svg-icon", "cursor"]) {
+    await reopened.getByRole("button", { name: /^Type/ }).click();
+    await reopened.locator(`[data-scrap-kind="${kind}"]`).click();
+    await reopened.locator(`[data-scrap-kind="${kind}"]`).press("Escape");
+    await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(1);
+    await reopened.locator(".scrap-collage__tile").click();
+    await expect(reopened.getByRole("dialog")).toContainText(
+      "Catalog collection",
+    );
+    await expect(
+      reopened.getByRole("dialog").getByRole("link", { name: /visit page/ }),
+    ).toHaveAttribute("href", `${origin}/shop`);
+    if (kind === "button")
+      await reopened.screenshot({
+        path: resolve(evidence, "earlier-button-source.png"),
+      });
+    await reopened
+      .getByRole("button", { name: "Close examine view", exact: true })
+      .click();
+    await expect(reopened.getByRole("dialog")).toHaveCount(0);
+  }
+  await reopened.getByRole("button", { name: /^Found on/ }).click();
+  await reopened.getByRole("button", { name: "Clear", exact: true }).click();
+  await sourceInput.press("Escape");
+  await reopened.getByRole("button", { name: /^Type/ }).click();
+  await reopened.locator('[data-scrap-kind="all"]').click();
+  await reopened.locator('[data-scrap-kind="all"]').press("Escape");
+  await reopened
+    .getByRole("button", { name: "Search scraps", exact: true })
+    .click();
+  await reopened
+    .getByRole("textbox", { name: "Search scraps", exact: true })
+    .fill("Catalog collection");
+  await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(3);
+  await reopened.screenshot({
+    path: resolve(evidence, "earlier-scraps-search.png"),
+  });
   assert.deepEqual(pageErrors, []);
   console.log(
     JSON.stringify({
       result: "passed",
-      records: 434,
+      records: 440,
+      repeatedKinds: ["button", "svg-icon", "cursor"],
       layouts: ["drift-pile", "drift-grid", "archive-pile", "archive-grid"],
       peakDownloads: peak,
       evidence,
