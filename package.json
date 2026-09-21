@@ -14,7 +14,7 @@
     "smoke-tests"
   ],
   "scripts": {
-    "setup": "bun install --frozen-lockfile && bun run build-packages && bun run doctor",
+    "setup": "bun install --frozen-lockfile && bun run prepare:extension && bun run build-packages && bun run doctor",
     "setup:agent": "bun run setup && bunx playwright install --with-deps chromium",
     "doctor": "node scripts/check-workspace-readiness.mjs",
     "test:doctor": "node --test scripts/check-workspace-readiness.test.mjs",
@@ -39,6 +39,7 @@
     "build-packages": "for dir in packages/*; do (cd \"$dir\" && bun run build) || exit $?; done",
     "build-extension": "cd extension && bun run build",
     "build-extension:website": "cd extension/website && bun run build",
+    "prepare:extension": "bun run --cwd extension prepare:types",
     "test:common": "bun run --cwd packages/common test",
     "test:playhtml": "bun run --cwd packages/playhtml test",
     "test:react": "bun run --cwd packages/react test",
@@ -53,7 +54,7 @@
     "check:playhtml": "bunx tsc -p packages/playhtml",
     "check:react": "bunx tsc -p packages/react",
     "check:packages": "bun run check:common && bun run check:extension-types && bun run check:playhtml && bun run check:react",
-    "check:extension": "bunx tsc -p extension",
+    "check:extension": "bun run prepare:extension && bunx tsc --noEmit -p extension",
     "check:extension-worker": "bunx tsc -p extension/worker",
     "check:extension-website": "bunx tsc -p extension/website",
     "check:docs": "bun run --cwd apps/docs build",

@@ -3,7 +3,13 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
@@ -14,6 +20,10 @@ import {
 } from "./check-workspace-readiness.mjs";
 
 const fixtureRoots = [];
+
+function readJson(url) {
+  return JSON.parse(readFileSync(url, "utf8"));
+}
 
 afterEach(() => {
   for (const fixtureRoot of fixtureRoots.splice(0)) {
@@ -55,6 +65,10 @@ test("reports every missing workspace artifact with its repair command", () => {
   assert.match(
     formatWorkspaceReadinessFailure(missingArtifacts),
     /Missing node_modules\. Run `bun install --frozen-lockfile`\./,
+  );
+  assert.match(
+    formatWorkspaceReadinessFailure(missingArtifacts),
+    /Missing extension\/\.wxt\/tsconfig\.json\. Run `bun run prepare:extension`\./,
   );
   assert.match(
     formatWorkspaceReadinessFailure(missingArtifacts),
@@ -105,4 +119,28 @@ test("reports ignored JavaScript that shadows tracked TypeScript sources", () =>
     formatWorkspaceReadinessFailure([], shadowingJavaScript),
     /packages\/playhtml\/src\/index\.js shadows a tracked TypeScript source\. Remove the emitted JavaScript file\./,
   );
+});
+
+test("keeps extension checks prepared and non-emitting", () => {
+  const rootPackage = readJson(new URL("../package.json", import.meta.url));
+  const extensionTsconfig = readJson(
+    new URL("../extension/tsconfig.json", import.meta.url),
+  );
+  const checkExtension = rootPackage.scripts["check:extension"];
+
+  assert.match(rootPackage.scripts.setup, /bun run prepare:extension/);
+  assert.match(checkExtension, /bun run prepare:extension/);
+  assert.match(checkExtension, /tsc --noEmit -p extension/);
+  assert.equal(extensionTsconfig.compilerOptions.noEmit, true);
+});
+
+test("typechecks every shipped Internet Scraps route", () => {
+  const websiteTsconfig = readFileSync(
+    new URL("../extension/website/tsconfig.json", import.meta.url),
+    "utf8",
+  );
+
+  for (const route of ["scraps-grid", "scraps-pile", "scraps-preview"]) {
+    assert.match(websiteTsconfig, new RegExp(`"${route}"`));
+  }
 });
