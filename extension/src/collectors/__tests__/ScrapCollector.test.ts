@@ -423,6 +423,93 @@ describe("ScrapCollector", () => {
     expect(observer().observed.has(uniqueButtons[19])).toBe(false);
   });
 
+  describe("bare text buttons", () => {
+    /** The computed style a plain text control tagged `role="button"` reports. */
+    const BARE = JSON.stringify({
+      backgroundColor: "rgba(0, 0, 0, 0)",
+      backgroundImage: "none",
+      border: "0px none rgb(6, 6, 6)",
+      boxShadow: "none",
+    });
+
+    it("skips prose a site merely tagged as a button", () => {
+      const bare = createButton({
+        text: "willhess17 4 years ago (edited)",
+        role: true,
+      });
+      bare.setAttribute("data-styles", BARE);
+
+      collector.enable();
+      showForCapture([bare]);
+
+      expect(emitted("button")).toHaveLength(0);
+    });
+
+    it("keeps a bordered control that paints nothing else", () => {
+      const bordered = createButton({ text: "Learn more", role: true });
+      bordered.setAttribute(
+        "data-styles",
+        JSON.stringify({
+          backgroundColor: "rgba(0, 0, 0, 0)",
+          backgroundImage: "none",
+          border: "1.5px solid rgb(91, 141, 184)",
+          boxShadow: "none",
+        }),
+      );
+
+      collector.enable();
+      showForCapture([bordered]);
+
+      expect(
+        emitted("button").map((data) => data.kind === "button" && data.text),
+      ).toEqual(["Learn more"]);
+    });
+
+    it("keeps an icon-only control that paints nothing else", () => {
+      const iconOnly = createButton({ text: "" });
+      iconOnly.setAttribute("data-styles", BARE);
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      const path = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path",
+      );
+      path.setAttribute("d", "M0 0h10v10z");
+      svg.appendChild(path);
+      setRenderedSize(svg, { width: 20, height: 20 });
+      iconOnly.appendChild(svg);
+
+      collector.enable();
+      showForCapture([iconOnly]);
+
+      const scraps = emitted("button");
+      expect(scraps).toHaveLength(1);
+      expect(scraps[0].kind === "button" && scraps[0].innerSvg).toContain(
+        "<svg",
+      );
+    });
+
+    it("does not let skipped prose consume the per-page button cap", () => {
+      const prose = Array.from({ length: 30 }, (_, index) => {
+        const bare = createButton({ text: `Commenter ${index}`, role: true });
+        bare.setAttribute("data-styles", BARE);
+        return bare;
+      });
+      const real = Array.from({ length: 20 }, (_, index) =>
+        createButton({ text: `Real button ${index}` }),
+      );
+
+      collector.enable();
+      showForCapture([...prose, ...real]);
+
+      expect(emitted("button")).toHaveLength(20);
+      expect(
+        emitted("button").every(
+          (data) => data.kind === "button" && data.text.startsWith("Real"),
+        ),
+      ).toBe(true);
+    });
+  });
+
   it("discovers added submit and role buttons through DOM mutations", async () => {
     collector.enable();
     const submit = document.createElement("input");

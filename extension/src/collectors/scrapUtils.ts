@@ -66,6 +66,75 @@ const ALLOWED_SVG_ELEMENTS = new Set([
   "use",
 ]);
 
+/**
+ * Alpha of a computed color, 0 when it paints nothing and 1 when it is solid.
+ * Only the four-component `rgba()` form carries alpha; `rgb()` is always solid,
+ * and its third channel must not be mistaken for one.
+ */
+export function colorAlpha(color: string): number {
+  const value = color.trim();
+  if (!value || /^transparent$/i.test(value)) return 0;
+  const components = /^rgba?\(([^)]*)\)$/i.exec(value)?.[1];
+  if (components === undefined) return 1;
+  const parts = components.split(/[,/]/).map((part) => part.trim());
+  if (parts.length < 4) return 1;
+  const alpha = Number(parts[3]);
+  return Number.isFinite(alpha) ? alpha : 1;
+}
+
+const BORDER_SIDES = ["Top", "Right", "Bottom", "Left"] as const;
+const NO_BORDER_STYLE_PATTERN = /^(?:none|hidden)$/i;
+
+/** Whether a width, style and color together draw something a reader could see. */
+function borderSideShows(
+  width: string | undefined,
+  style: string | undefined,
+  color: string | undefined,
+): boolean {
+  const pixels = Number.parseFloat(width ?? "0");
+  if (!Number.isFinite(pixels) || pixels <= 0) return false;
+  if (NO_BORDER_STYLE_PATTERN.test((style ?? "none").trim())) return false;
+  return color === undefined || colorAlpha(color) > 0;
+}
+
+/** Whether any side of the element draws a border a reader could see. */
+function hasVisibleBorder(styles: Record<string, string>): boolean {
+  const shorthand = styles.border?.trim();
+  if (shorthand) {
+    // The shorthand reads "<width> <style> [<color>]", and only appears when
+    // every side agrees, so one read settles the whole box.
+    const [width, style, ...rest] = shorthand.split(/\s+(?![^(]*\))/);
+    const color = rest.length > 0 ? rest.join(" ") : undefined;
+    return borderSideShows(width, style, color);
+  }
+
+  return BORDER_SIDES.some((side) =>
+    borderSideShows(
+      styles[`border${side}Width`],
+      styles[`border${side}Style`],
+      styles[`border${side}Color`],
+    ),
+  );
+}
+
+/**
+ * Whether a control is plain text a site merely tagged as a button. Such an
+ * element has none of the chrome that makes a button read as an object once it
+ * is torn out of its page, so collecting it would gather a site's prose rather
+ * than its buttons. Anything with a background, gradient, border, shadow, or an
+ * icon of its own still counts as a button.
+ */
+export function isBareTextButton(
+  styles: Record<string, string>,
+  hasIcon: boolean,
+): boolean {
+  if (hasIcon) return false;
+  if (styles.backgroundImage !== undefined) return false;
+  if (colorAlpha(styles.backgroundColor ?? "transparent") > 0) return false;
+  if ((styles.boxShadow ?? "none").trim().toLowerCase() !== "none") return false;
+  return !hasVisibleBorder(styles);
+}
+
 export function hashScrapString(value: string): string {
   let hash = 5381;
   for (let index = 0; index < value.length; index++) {

@@ -3,8 +3,10 @@
 
 import { BaseCollector } from "./BaseCollector";
 import {
+  colorAlpha,
   getCanonicalScrapKey,
   getScrapEncounterKey,
+  isBareTextButton,
   serializeSvg,
 } from "./scrapUtils";
 import type {
@@ -450,6 +452,9 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       ? this.serializeButtonSvg(inlineSvg as SVGSVGElement)
       : undefined;
     if (!text && !innerSvg) return;
+    // Plain text a site merely tagged as a button is prose, not an object.
+    // Checked before the cap so a page of them still leaves room for real ones.
+    if (isBareTextButton(styles, innerSvg !== undefined)) return;
 
     const backdropColor = this.backdropFor(
       button,
@@ -764,22 +769,6 @@ function headingLevel(heading: Element): 1 | 2 | 3 | undefined {
  */
 function normalizeHeadingText(heading: Element): string {
   return (heading.textContent ?? "").replace(/\s+/g, " ").trim();
-}
-
-/**
- * Alpha of a computed color, 0 when it paints nothing and 1 when it is solid.
- * Only the four-component `rgba()` form carries alpha; `rgb()` is always solid,
- * and its third channel must not be mistaken for one.
- */
-function colorAlpha(color: string): number {
-  const value = color.trim();
-  if (!value || /^transparent$/i.test(value)) return 0;
-  const components = /^rgba?\(([^)]*)\)$/i.exec(value)?.[1];
-  if (components === undefined) return 1;
-  const parts = components.split(/[,/]/).map((part) => part.trim());
-  if (parts.length < 4) return 1;
-  const alpha = Number(parts[3]);
-  return Number.isFinite(alpha) ? alpha : 1;
 }
 
 /**
