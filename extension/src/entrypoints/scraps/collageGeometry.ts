@@ -385,6 +385,35 @@ export function fitWithin(
   };
 }
 
+/**
+ * Where the nth scrap placed by clicking the tray lands.
+ *
+ * Successive pieces walk outward along a loose spiral rather than a short
+ * repeating diagonal, so a run of clicks spreads across the frame and every
+ * piece stays reachable instead of burying the ones beneath it.
+ */
+export function fanOutPlacement(
+  index: number,
+  frame: { width: number; height: number },
+): Point {
+  // An irrational turn keeps successive pieces from lining up into spokes.
+  const turn = index * 2.399963229728653;
+  const reach = 34 * Math.sqrt(index);
+  const inset = 120;
+  return {
+    x: clamp(
+      frame.width / 2 + Math.cos(turn) * reach,
+      inset,
+      frame.width - inset,
+    ),
+    y: clamp(
+      frame.height / 2 + Math.sin(turn) * reach,
+      inset,
+      frame.height - inset,
+    ),
+  };
+}
+
 /** Scale that fits a frame into an available viewport area, never above 1. */
 export function frameScale(
   frame: { width: number; height: number },

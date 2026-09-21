@@ -10,6 +10,7 @@ import {
   composeCrop,
   cropFromLocalDrag,
   dragCropGrip,
+  fanOutPlacement,
   fitWithin,
   frameScale,
   isFullCrop,
@@ -330,6 +331,52 @@ describe("fitWithin", () => {
 
   it("refuses a source with no size", () => {
     expect(() => fitWithin(0, 10, 100)).toThrow(/positive natural/);
+  });
+});
+
+describe("fanOutPlacement", () => {
+  const frame = { width: 1200, height: 800 };
+
+  it("puts the first piece in the middle", () => {
+    const first = fanOutPlacement(0, frame);
+    expect(first.x).toBeCloseTo(600);
+    expect(first.y).toBeCloseTo(400);
+  });
+
+  it("keeps every piece well clear of its neighbours", () => {
+    const spots = Array.from({ length: 30 }, (_, index) =>
+      fanOutPlacement(index, frame),
+    );
+    let closest = Infinity;
+    for (let a = 0; a < spots.length; a += 1) {
+      for (let b = a + 1; b < spots.length; b += 1) {
+        closest = Math.min(
+          closest,
+          Math.hypot(spots[a].x - spots[b].x, spots[a].y - spots[b].y),
+        );
+      }
+    }
+    expect(closest).toBeGreaterThan(24);
+  });
+
+  it("spreads a long run across the frame rather than repeating", () => {
+    const spots = Array.from({ length: 30 }, (_, index) =>
+      fanOutPlacement(index, frame),
+    );
+    const xs = spots.map((spot) => spot.x);
+    const ys = spots.map((spot) => spot.y);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(300);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(300);
+  });
+
+  it("never places a piece outside the frame", () => {
+    for (let index = 0; index < 200; index += 1) {
+      const spot = fanOutPlacement(index, frame);
+      expect(spot.x).toBeGreaterThanOrEqual(0);
+      expect(spot.x).toBeLessThanOrEqual(frame.width);
+      expect(spot.y).toBeGreaterThanOrEqual(0);
+      expect(spot.y).toBeLessThanOrEqual(frame.height);
+    }
   });
 });
 
