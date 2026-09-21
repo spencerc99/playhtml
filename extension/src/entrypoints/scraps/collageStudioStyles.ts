@@ -538,6 +538,76 @@ export const COLLAGE_STUDIO_STYLES = `
     pointer-events: none;
   }
 
+  /* An archive label pinned to a piece while the peek key is held. It is a
+     slip of paper over the work, never a control: it takes no pointer. */
+  .collage-peek {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    max-width: 230px;
+    padding: 2px 5px;
+    transform-origin: left bottom;
+    border: 1px solid rgba(61, 56, 51, 0.28);
+    border-radius: 2px;
+    background: #f5f0e8;
+    color: #3d3833;
+    font-family: "Martian Mono", monospace;
+    font-size: 8px;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .collage-peek--full {
+    box-shadow: 0 2px 8px rgba(61, 56, 51, 0.18);
+  }
+
+  .collage-peek__where {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+  }
+
+  .collage-peek__mark {
+    display: block;
+    width: 10px;
+    height: 10px;
+    object-fit: contain;
+  }
+
+  .collage-peek__more {
+    display: flex;
+    flex-direction: column;
+    padding-top: 1px;
+    border-top: 1px solid rgba(61, 56, 51, 0.14);
+    color: #827a72;
+  }
+
+  .collage-peek__line {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Where the save button used to be: a quiet word on how the work stands. */
+  .collage-standing {
+    margin: 0;
+    padding: 0 4px;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.03em;
+    color: #827a72;
+    white-space: nowrap;
+  }
+
+  .collage-standing--problem {
+    color: #c4724e;
+  }
+
   .collage-tolerance {
     position: absolute;
     z-index: 10002;
@@ -759,6 +829,78 @@ export const COLLAGE_STUDIO_STYLES = `
     border-radius: 3px;
     background: #fffdf9;
     box-shadow: 0 4px 14px rgba(61, 56, 51, 0.08);
+  }
+
+  /* A card turns over the way a printed photo does: the two faces occupy the
+     same place and the whole card swings about its vertical axis. */
+  .collage-card__leaf {
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+
+  .collage-card__leaf--over {
+    transform: rotateY(180deg);
+  }
+
+  .collage-card__face {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    backface-visibility: hidden;
+  }
+
+  .collage-card__face--back {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    transform: rotateY(180deg);
+  }
+
+  /* The back of a printed photo: pencil on a paler stock. */
+  .collage-card__back-head {
+    margin: 0;
+    font-family: "Lora", Georgia, serif;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .collage-card__back-dates {
+    margin: 0;
+    font-family: "Martian Mono", monospace;
+    font-size: 8px;
+    line-height: 1.7;
+    letter-spacing: 0.03em;
+    color: #827a72;
+  }
+
+  /* The hidden face is out of the way for the pointer and the reader alike,
+     whichever way the card turned over. */
+  .collage-card__face[inert] {
+    pointer-events: none;
+  }
+
+  /* A card that cannot swing still turns over, just as a crossfade. */
+  @media (prefers-reduced-motion: reduce) {
+    .collage-card__leaf,
+    .collage-card__leaf--over {
+      transform: none;
+      transition: none;
+    }
+
+    .collage-card__face {
+      backface-visibility: visible;
+      transition: opacity 160ms linear;
+    }
+
+    .collage-card__face--back {
+      transform: none;
+    }
+
+    .collage-card__face[inert] {
+      opacity: 0;
+    }
   }
 
   /* A collage stored before its first bake shows a quiet face, not a break. */

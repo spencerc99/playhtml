@@ -57,7 +57,11 @@ import {
   undo,
   type ArrangementHistory,
 } from "./arrangementHistory";
-import { studioCommandFor, type StudioMode } from "./studioKeymap";
+import {
+  isTypingTarget,
+  studioCommandFor,
+  type StudioMode,
+} from "./studioKeymap";
 import {
   DEFAULT_FORMAT,
   DEFAULT_PAPER,
@@ -79,6 +83,14 @@ import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
 import { CropSession } from "./CropSession";
 import { KeysPopover } from "./KeysPopover";
+import { ProvenancePeek } from "./ProvenancePeek";
+import { createPeekState, stepPeek, type PeekEvent } from "./peekHold";
+import {
+  useCollageAutosave,
+  type AutosaveTimers,
+  type CollageDraft,
+} from "./useCollageAutosave";
+import type { SaveStanding } from "./autosaveSchedule";
 
 /** Longest side a freshly placed piece takes, in frame units. */
 const PLACED_MAX_SIDE = 220;
@@ -136,6 +148,27 @@ interface CollageStudioProps {
   editing: CollageRecord | null;
   onSaved: (record: CollageRecord) => void;
   onLeave: () => void;
+  /** Timers the autosave runs on, so a test can drive the schedule directly. */
+  autosaveTimers?: AutosaveTimers;
+}
+
+/** What the toolbar says about where the work stands. */
+function standingWords(standing: SaveStanding): {
+  text: string;
+  problem: boolean;
+} {
+  switch (standing.kind) {
+    case "untouched":
+      return { text: "", problem: false };
+    case "saving":
+      return { text: "saving...", problem: false };
+    case "saved":
+      return { text: "saved", problem: false };
+    case "previewBehind":
+      return { text: "saved · preview out of date", problem: false };
+    case "failed":
+      return { text: `not saved — ${standing.reason}`, problem: true };
+  }
 }
 
 /** Natural aspect of a scrap, so a placed piece keeps its own proportions. */
@@ -176,6 +209,7 @@ export function CollageStudio({
   editing,
   onSaved,
   onLeave,
+  autosaveTimers,
 }: CollageStudioProps) {
   const initial = useMemo<readonly CollagePiece[]>(
     () => editing?.pieces.map((piece) => ({ ...piece })) ?? [],
@@ -187,19 +221,6 @@ export function CollageStudio({
   const pieces = history.present;
   const [title, setTitle] = useState(editing?.title ?? "");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // Pieces are replaced, never mutated, so identity against the last saved
-  // arrangement tells whether there is work that leaving would discard.
-  const savedRef = useRef<{
-    pieces: readonly CollagePiece[];
-    title: string;
-    paper: string;
-    format: CollageFormatName;
-  }>({
-    pieces: initial,
-    title: editing?.title ?? "",
-    paper: (editing?.paper ?? DEFAULT_PAPER).color,
-    format: editing?.format ?? DEFAULT_FORMAT,
-  });
   const [confirmingLeave, setConfirmingLeave] = useState(false);
 
   const [format, setFormat] = useState<CollageFormatName>(
@@ -210,11 +231,6 @@ export function CollageStudio({
   );
   const frame = formatOf(format);
   const [drawer, setDrawer] = useState(() => readDrawerPreference());
-  const unsaved =
-    pieces !== savedRef.current.pieces ||
-    title !== savedRef.current.title ||
-    paper.color !== savedRef.current.paper ||
-    format !== savedRef.current.format;
 
   const updateDrawer = useCallback(
     (change: Partial<DrawerPreference>) => {
@@ -227,13 +243,6 @@ export function CollageStudio({
     [],
   );
 
-  useEffect(() => {
-    if (!unsaved) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [unsaved]);
-
   const [crop, setCrop] = useState<CropState | null>(null);
   const [transform, setTransform] = useState<ModalTransform | null>(null);
   const [gesture, setGesture] = useState<Gesture>({ kind: "idle" });
@@ -241,12 +250,14 @@ export function CollageStudio({
   const [gestureReadout, setGestureReadout] = useState<string | null>(null);
   const [clipboard, setClipboard] = useState<CollagePiece | null>(null);
   const [scale, setScale] = useState(1);
-  const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
   const [notice, setNotice] = useState<
     { tone: "problem" | "quiet"; text: string } | null
   >(null);
   const [dropActive, setDropActive] = useState(false);
+  const [peek, setPeek] = useState(createPeekState);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -254,11 +265,99 @@ export function CollageStudio({
   const collageIdRef = useRef(editing?.id ?? createCollageId());
   const createdAtRef = useRef(editing?.createdAt ?? Date.now());
 
+  // The collage as it stands, read at the moment of a write rather than
+  // captured into the schedule, so a late write stores what is on screen.
+  const draftRef = useRef<CollageDraft>({
+    record: {
+      id: collageIdRef.current,
+      title: "",
+      createdAt: createdAtRef.current,
+      updatedAt: createdAtRef.current,
+      frame: { width: frame.width, height: frame.height },
+      format,
+      paper,
+      pieces: [],
+    },
+    hasContent: false,
+  });
+  draftRef.current = {
+    record: {
+      id: collageIdRef.current,
+      title: title.trim(),
+      createdAt: createdAtRef.current,
+      // A write stamps the moment it lands; a re-bake keeps the stamp the
+      // arrangement already had.
+      updatedAt: Date.now(),
+      frame: { width: frame.width, height: frame.height },
+      format,
+      paper,
+      pieces: normalizeStack(pieces),
+    },
+    hasContent: pieces.length > 0 || title.trim().length > 0,
+  };
+
+  const autosave = useCollageAutosave({
+    draft: () => ({
+      ...draftRef.current,
+      record: { ...draftRef.current.record, updatedAt: Date.now() },
+    }),
+    bake: () =>
+      bakeCollage({
+        frame: formatOf(draftRef.current.record.format),
+        pieces: draftRef.current.record.pieces,
+        paper: draftRef.current.record.paper.color,
+      }),
+    store: saveCollage,
+    onStored: onSaved,
+    startsStored: editing !== null,
+    ...(autosaveTimers ? { timers: autosaveTimers } : {}),
+  });
+  const { noteChange, flush } = autosave;
+
+  // Everything the person can change about the collage feeds one schedule, so
+  // a move, a retitle, a paper or a format all settle the same way.
+  const changeKey = useMemo(
+    () => ({ pieces, title: title.trim(), paper: paper.color, format }),
+    [pieces, title, paper.color, format],
+  );
+  const firstChangeRef = useRef(true);
+  useEffect(() => {
+    // The opening render is the collage as it already stands, not a change.
+    if (firstChangeRef.current) {
+      firstChangeRef.current = false;
+      return;
+    }
+    noteChange();
+  }, [changeKey, noteChange]);
+
   const mode: StudioMode = crop
     ? "crop"
     : transform
       ? transform.kind
       : "idle";
+
+  // Leaving the tab, or the page itself, writes what is pending right away.
+  useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    const onPageHide = () => flush();
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [flush]);
+
+  // With the autosave healthy there is nothing to warn about; the warning is
+  // kept for a write that failed or one still in flight.
+  useEffect(() => {
+    if (!autosave.unwritten) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [autosave.unwritten]);
 
   const selected = useMemo(
     () => pieces.find((piece) => piece.id === selectedId) ?? null,
@@ -448,6 +547,67 @@ export function CollageStudio({
     },
     [ordered, selectedId],
   );
+
+  // The peek is a held key, so it lives outside the command map: it has no
+  // command to run, only a state that lasts as long as the key is down.
+  useEffect(() => {
+    const advance = (event: PeekEvent) =>
+      setPeek((current) => stepPeek(current, event));
+    const onKeyDown = (event: KeyboardEvent) =>
+      advance({
+        kind: "keyDown",
+        key: event.key,
+        repeat: event.repeat,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        typing: isTypingTarget({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          shiftKey: event.shiftKey,
+          altKey: event.altKey,
+          target: event.target as HTMLElement | null,
+        }),
+        modeActive: mode !== "idle",
+      });
+    const onKeyUp = (event: KeyboardEvent) =>
+      advance({ kind: "keyUp", key: event.key });
+    const onBlur = () => advance({ kind: "windowBlur" });
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        advance({ kind: "pageHidden" });
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [mode]);
+
+  // A crop or a modal transform starting while the key is down puts the tags
+  // away, so they never hang over a session that owns the frame.
+  useEffect(() => {
+    if (mode !== "idle") setPeek(createPeekState);
+  }, [mode]);
+
+  useEffect(() => {
+    const onSaveNow = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "s") return;
+      if (!(event.metaKey || event.ctrlKey)) return;
+      // Only the studio suppresses the browser's own save dialog.
+      event.preventDefault();
+      flush();
+    };
+    window.addEventListener("keydown", onSaveNow);
+    return () => window.removeEventListener("keydown", onSaveNow);
+  }, [flush]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -723,59 +883,19 @@ export function CollageStudio({
     });
   };
 
-  const save = async () => {
-    if (pieces.length === 0) {
-      setNotice({ tone: "problem", text: "place a scrap before saving" });
+  /** Leaving flushes first, and only asks when a write is in trouble. */
+  const leave = () => {
+    flush();
+    if (autosave.unwritten) {
+      setConfirmingLeave(true);
       return;
     }
-    setSaving(true);
-    setNotice(null);
-    try {
-      const preview = await bakeCollage({ frame, pieces, paper: paper.color });
-      const now = Date.now();
-      const stacked = normalizeStack(pieces);
-      const record: CollageRecord = {
-        id: collageIdRef.current,
-        title: title.trim(),
-        createdAt: createdAtRef.current,
-        updatedAt: now,
-        frame: { width: frame.width, height: frame.height },
-        format,
-        paper,
-        pieces: stacked,
-        preview: { drawn: true, image: preview },
-      };
-      await saveCollage(record);
-      savedRef.current = {
-        pieces,
-        title,
-        paper: paper.color,
-        format,
-      };
-      setConfirmingLeave(false);
-      setNotice({ tone: "quiet", text: "saved" });
-      onSaved(record);
-    } catch (error) {
-      if (error instanceof CollageBakeError) {
-        const names = error.failures.map((failure) => failure.label);
-        setNotice({
-          tone: "problem",
-          text: `not saved — these could not be drawn: ${names.join(", ")}. remove them or try again when you are online.`,
-        });
-      } else {
-        setNotice({
-          tone: "problem",
-          text: `not saved — ${error instanceof Error ? error.message : String(error)}`,
-        });
-      }
-    } finally {
-      setSaving(false);
-    }
+    onLeave();
   };
 
   const download = async () => {
     if (pieces.length === 0) return;
-    setSaving(true);
+    setExporting(true);
     setNotice(null);
     try {
       const png = await bakeCollage({ frame, pieces, paper: paper.color });
@@ -786,12 +906,17 @@ export function CollageStudio({
       link.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      setNotice({
-        tone: "problem",
-        text: `could not export — ${error instanceof Error ? error.message : String(error)}`,
-      });
+      // An export is asked for out loud, so it fails out loud, naming the
+      // pieces that would have left holes in the picture.
+      const text =
+        error instanceof CollageBakeError
+          ? `could not export — these could not be drawn: ${error.failures
+              .map((failure) => failure.label)
+              .join(", ")}`
+          : `could not export — ${error instanceof Error ? error.message : String(error)}`;
+      setNotice({ tone: "problem", text });
     } finally {
-      setSaving(false);
+      setExporting(false);
     }
   };
 
@@ -809,6 +934,7 @@ export function CollageStudio({
   const readout = transform
     ? `${transform.kind} ${transform.readout}`
     : gestureReadout;
+  const standing = standingWords(autosave.standing);
 
   const cropping = crop
     ? pieces.find((piece) => piece.id === crop.pieceId) ?? null
@@ -902,6 +1028,12 @@ export function CollageStudio({
                     visibility: hidden ? "hidden" : "visible",
                   }}
                   onPointerDown={(event) => beginMove(piece, event)}
+                  onPointerEnter={() => setHoveredId(piece.id)}
+                  onPointerLeave={() =>
+                    setHoveredId((current) =>
+                      current === piece.id ? null : current,
+                    )
+                  }
                   onDoubleClick={(event) => {
                     event.stopPropagation();
                     setSelectedId(piece.id);
@@ -971,6 +1103,14 @@ export function CollageStudio({
                 onChange={(next) => setCrop({ ...crop, crop: next })}
                 onCommit={commitCrop}
                 framePoint={framePoint}
+              />
+            )}
+
+            {peek.held && (
+              <ProvenancePeek
+                pieces={ordered}
+                hoveredId={hoveredId}
+                scale={scale}
               />
             )}
 
@@ -1072,6 +1212,9 @@ export function CollageStudio({
           <span className="collage-studio__label">
             {pieces.length} piece{pieces.length === 1 ? "" : "s"}
           </span>
+          {pieces.length > 0 && (
+            <span className="collage-studio__label">hold I for sources</span>
+          )}
           <span className="collage-bar__spacer" />
           <button
             type="button"
@@ -1100,19 +1243,21 @@ export function CollageStudio({
           <button
             type="button"
             className="collage-action"
-            disabled={saving || pieces.length === 0}
+            disabled={exporting || pieces.length === 0}
             onClick={() => void download()}
           >
             export png
           </button>
-          <button
-            type="button"
-            className="collage-action collage-action--primary"
-            disabled={saving}
-            onClick={() => void save()}
-          >
-            {saving ? "saving..." : editing ? "update" : "save"}
-          </button>
+          {standing.text && (
+            <p
+              className={`collage-standing${
+                standing.problem ? " collage-standing--problem" : ""
+              }`}
+              role="status"
+            >
+              {standing.text}
+            </p>
+          )}
           {confirmingLeave ? (
             <>
               <button
@@ -1131,11 +1276,7 @@ export function CollageStudio({
               </button>
             </>
           ) : (
-            <button
-              type="button"
-              className="collage-action"
-              onClick={() => (unsaved ? setConfirmingLeave(true) : onLeave())}
-            >
+            <button type="button" className="collage-action" onClick={leave}>
               done
             </button>
           )}

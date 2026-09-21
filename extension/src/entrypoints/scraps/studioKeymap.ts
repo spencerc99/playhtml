@@ -269,6 +269,13 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
       { keys: "cmd + Z", what: "undo" },
       { keys: "cmd + shift + Z", what: "redo" },
       { keys: "delete", what: "remove" },
+      { keys: "cmd + S", what: "save now" },
+    ],
+  },
+  {
+    group: "look",
+    entries: [
+      { keys: "hold I", what: "where each piece came from" },
     ],
   },
 ];
