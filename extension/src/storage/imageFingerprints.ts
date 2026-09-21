@@ -9,63 +9,79 @@ export const MAX_FINGERPRINT_BYTES = 5 * 1024 * 1024;
 const MAX_PENDING_IMAGES = 32;
 const DOWNLOAD_TIMEOUT_MS = 10_000;
 
+async function downloadImageFingerprint(
+  src: string,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  const url = new URL(src);
+  if (
+    !["http:", "https:"].includes(url.protocol) ||
+    url.username ||
+    url.password
+  )
+    return;
+  const response = await fetch(url, {
+    credentials: "omit",
+    cache: "no-store",
+    referrerPolicy: "no-referrer",
+    redirect: "error",
+    signal,
+  });
+  if (
+    !response.ok ||
+    !response.headers
+      .get("content-type")
+      ?.toLowerCase()
+      .startsWith("image/") ||
+    !response.body
+  )
+    return;
+  const declaredSize = Number(response.headers.get("content-length"));
+  if (declaredSize > MAX_FINGERPRINT_BYTES) return;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_FINGERPRINT_BYTES) return;
+    chunks.push(value);
+  }
+  if (size === 0) return;
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 export async function fetchImageFingerprint(
   src: string,
 ): Promise<string | undefined> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve(undefined);
+    }, DOWNLOAD_TIMEOUT_MS);
+  });
   try {
-    const url = new URL(src);
-    if (
-      !["http:", "https:"].includes(url.protocol) ||
-      url.username ||
-      url.password
-    )
-      return;
-    const response = await fetch(url, {
-      credentials: "omit",
-      cache: "no-store",
-      referrerPolicy: "no-referrer",
-      redirect: "error",
-      signal: controller.signal,
-    });
-    if (
-      !response.ok ||
-      !response.headers
-        .get("content-type")
-        ?.toLowerCase()
-        .startsWith("image/") ||
-      !response.body
-    )
-      return;
-    const declaredSize = Number(response.headers.get("content-length"));
-    if (declaredSize > MAX_FINGERPRINT_BYTES) return;
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > MAX_FINGERPRINT_BYTES) return;
-      chunks.push(value);
-    }
-    if (size === 0) return;
-    const bytes = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    const digest = await crypto.subtle.digest("SHA-256", bytes);
-    return Array.from(new Uint8Array(digest), (byte) =>
-      byte.toString(16).padStart(2, "0"),
-    ).join("");
+    return await Promise.race([
+      downloadImageFingerprint(src, controller.signal),
+      timeout,
+    ]);
   } catch {
     // Unavailable, redirected, or oversized images keep their URL-based identity.
     return undefined;
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
     controller.abort();
   }
 }
