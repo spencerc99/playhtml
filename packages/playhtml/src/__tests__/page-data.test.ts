@@ -1,3 +1,5 @@
+// ABOUTME: Verifies persistent page-data values and subscriptions with real shared documents.
+// ABOUTME: Covers value replacement, draft updates, and channel lifecycle behavior.
 import { describe, it, expect, beforeAll } from "vitest";
 import { getYjsDoc, syncedStore } from "@syncedstore/core";
 import * as Y from "yjs";
@@ -66,6 +68,53 @@ describe("playhtml.createPageData", () => {
     await new Promise((r) => queueMicrotask(r));
 
     expect(channel.getData()).toEqual({ count: 1 });
+  });
+
+  it.each(["value", "updater"])("clears nullable object data with a %s", async (form) => {
+    const store = syncedStore<{ play: Record<string, Record<string, unknown>> }>({ play: {} });
+    const channel = createPageDataChannel<{ name: string } | null>(
+      "selection", null, createPageDataTestDeps(store),
+    );
+    const updates: Array<{ name: string } | null> = [];
+    const peer = new Y.Doc();
+    channel.onUpdate((value) => updates.push(value));
+
+    channel.setData({ name: "Alice" });
+    await new Promise((resolve) => queueMicrotask(resolve));
+    channel.setData(form === "value" ? null : () => null);
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(channel.getData()).toBeNull();
+    expect(updates).toEqual([{ name: "Alice" }, null]);
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(getYjsDoc(store)));
+    expect(peer.getMap("play").toJSON()[PAGE_TAG].selection).toBeNull();
+
+    channel.setData({ name: "Bob" });
+    await new Promise((resolve) => queueMicrotask(resolve));
+    expect(channel.getData()).toEqual({ name: "Bob" });
+    expect(updates.at(-1)).toEqual({ name: "Bob" });
+
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(getYjsDoc(store)));
+    expect(peer.getMap("play").toJSON()[PAGE_TAG].selection).toEqual({ name: "Bob" });
+    channel.destroy();
+    peer.destroy();
+    getYjsDoc(store).destroy();
+  });
+
+  it("clears and restores nullable array data", () => {
+    const store = syncedStore<{ play: Record<string, Record<string, unknown>> }>({ play: {} });
+    const channel = createPageDataChannel<string[] | null>(
+      "selection", null, createPageDataTestDeps(store),
+    );
+    channel.setData(["Alice"]);
+    channel.setData(() => null);
+    expect(channel.getData()).toBeNull();
+    channel.setData(["Bob"]);
+    expect(channel.getData()).toEqual(["Bob"]);
+    channel.setData(null);
+    expect(channel.getData()).toBeNull();
+    channel.destroy();
+    getYjsDoc(store).destroy();
   });
 
   it("replaces primitive roots with values and functional updates", async () => {
