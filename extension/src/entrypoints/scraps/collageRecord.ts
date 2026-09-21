@@ -4,6 +4,7 @@
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import type { CropFraction } from "./collageGeometry";
 import { FULL_CROP, boxForInnerRect, composeCrop } from "./collageGeometry";
+import { parseCutout, type PieceCutout } from "./backgroundCutout";
 
 /** Logical coordinate space every saved collage is laid out in. */
 export const COLLAGE_FRAME = { width: 1200, height: 800 } as const;
@@ -31,6 +32,8 @@ export interface CollagePiece {
   rotation: number;
   z: number;
   crop: CropFraction;
+  /** How this piece's backdrop was removed, absent when it was left alone. */
+  cutout?: PieceCutout;
 }
 
 export interface CollageRecord {
@@ -165,6 +168,8 @@ export function parseCollagePiece(value: unknown): CollagePiece {
     rotation: readNumber(piece, "rotation"),
     z: readNumber(piece, "z"),
     crop: readCrop(piece.crop),
+    // Collages saved before cutouts existed simply have no field to read.
+    ...(piece.cutout === undefined ? {} : { cutout: parseCutout(piece.cutout) }),
   };
 }
 
