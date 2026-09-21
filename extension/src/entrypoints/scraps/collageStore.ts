@@ -8,6 +8,10 @@ import {
   type CollageRecord,
   type UnreadableCollage,
 } from "./collageRecord";
+import {
+  isEarlierCollageShape,
+  upgradeEarlierCollage,
+} from "./upgradeCollageRecord";
 
 const DB_NAME = "scrap_collages_db";
 const DB_VERSION = 1;
@@ -57,7 +61,25 @@ export async function saveCollage(record: CollageRecord): Promise<void> {
 export async function loadCollage(id: string): Promise<CollageRecord | null> {
   const stored = await withStore<unknown>("readonly", (store) => store.get(id));
   if (stored === undefined) return null;
-  return parseCollageRecord(stored);
+  const record = parseCollageRecord(await settleShape(stored));
+  return record;
+}
+
+/**
+ * Brings a collage saved before formats, paper and flips into the current
+ * shape and stores it back, so the rewrite happens once. A row that is not
+ * that shape is handed back untouched, including one that cannot be read at
+ * all, which stays stored so it can still be listed and deleted.
+ */
+async function settleShape(stored: unknown): Promise<unknown> {
+  if (!isEarlierCollageShape(stored)) return stored;
+  const upgraded = upgradeEarlierCollage(stored);
+  try {
+    await withStore("readwrite", (store) => store.put(upgraded as never));
+  } catch {
+    // The collage is usable this session even if the rewrite did not land.
+  }
+  return upgraded;
 }
 
 /**
@@ -74,7 +96,11 @@ export async function listCollages(): Promise<CollageEntry[]> {
   return stored
     .map((value) => {
       try {
-        return summarizeCollage(parseCollageRecord(value));
+        return summarizeCollage(
+          parseCollageRecord(
+            isEarlierCollageShape(value) ? upgradeEarlierCollage(value) : value,
+          ),
+        );
       } catch (error) {
         return unreadableEntry(value, error);
       }

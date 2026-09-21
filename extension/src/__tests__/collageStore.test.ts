@@ -212,6 +212,75 @@ describe("collageStore", () => {
     expect(good.title).toBe("a good one");
   });
 
+  it("recovers a collage saved before formats, and stores the upgrade once", async () => {
+    await putRaw({
+      id: "earlier",
+      title: "the one he cares about",
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_900_000,
+      frame: { width: 1200, height: 800 },
+      pieces: [
+        {
+          id: "piece_1",
+          scrapId: "scrap_1",
+          scrap: scrap(),
+          x: 100,
+          y: 80,
+          width: 240,
+          height: 160,
+          rotation: 37,
+          z: 0,
+          crop: { x: 0.25, y: 0.1, width: 0.5, height: 0.4 },
+        },
+      ],
+      preview: new StructuredCloneableBlob(["the original thumbnail"], {
+        type: "image/png",
+      }) as unknown as Blob,
+    });
+
+    const loaded = await loadCollage("earlier");
+    expect(loaded?.format).toBe("postcard");
+    expect(loaded?.frame).toEqual({ width: 1500, height: 1000 });
+    expect(loaded?.paper).toEqual({ color: "#faf9f6" });
+    expect(loaded?.title).toBe("the one he cares about");
+    expect(loaded?.createdAt).toBe(1_700_000_000_000);
+    expect(await loaded?.preview.text()).toBe("the original thumbnail");
+    expect(loaded?.pieces[0]).toMatchObject({
+      x: 125,
+      y: 100,
+      width: 300,
+      height: 200,
+      rotation: 37,
+      flipX: false,
+      flipY: false,
+      crop: { x: 0.25, y: 0.1, width: 0.5, height: 0.4 },
+    });
+
+    // The upgrade was written back, so a later read needs no upgrading.
+    const [listed] = await listCollages();
+    assert(!isUnreadable(listed));
+    expect(listed.paper).toEqual({ color: "#faf9f6" });
+
+    const again = await loadCollage("earlier");
+    expect(again?.updatedAt).toBe(1_700_000_900_000);
+    expect(again?.pieces[0].x).toBe(125);
+  });
+
+  it("leaves a record it cannot confidently upgrade stored and reported", async () => {
+    await putRaw({
+      id: "odd-frame",
+      title: "not a shape we know",
+      updatedAt: 7,
+      frame: { width: 999, height: 111 },
+      pieces: [],
+    });
+    const [entry] = await listCollages();
+    assert(isUnreadable(entry));
+    expect(entry.title).toBe("not a shape we know");
+    // Still there to be deleted rather than quietly rewritten.
+    expect(await listCollages()).toHaveLength(1);
+  });
+
   it("deletes a damaged record like any other", async () => {
     await putRaw({ id: "broken", title: "gone soon", updatedAt: 1 });
     await deleteCollage("broken");
