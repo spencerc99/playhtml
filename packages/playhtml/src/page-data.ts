@@ -32,6 +32,8 @@ function pageDataObserverKey(name: string): string {
 type PageDataObserver = ((...args: unknown[]) => void) & {
   target?: any;
   mode?: "deep" | "shallow";
+  parentTarget?: any;
+  parentObserver?: (...args: unknown[]) => void;
 };
 
 function applyPageDataUpdate<T>(data: PageDataSetter<T>, value: T): T {
@@ -62,6 +64,7 @@ function detachPageDataObserver(name: string, deps: PageDataDeps): void {
   if (!observer) return;
   if (observer.mode === "deep") observer.target?.unobserveDeep(observer);
   if (observer.mode === "shallow") observer.target?.unobserve(observer);
+  observer.parentTarget?.unobserve(observer.parentObserver);
   deps.yObserverByKey.delete(observerKey);
 }
 
@@ -93,9 +96,19 @@ function attachPageDataObserver<T>(
   };
   if (yVal && typeof (yVal as any).observeDeep === "function") {
     const observer = notify as PageDataObserver;
+    const pageData = getYjsValue(getStorePlay()[PAGE_TAG]);
+    const parentObserver = ((event: { keysChanged?: Set<string> }) => {
+      if (!event.keysChanged?.has(name)) return;
+      notify();
+      detachPageDataObserver(name, deps);
+      attachPageDataObserver(name, deps, listeners);
+    }) as PageDataObserver;
     observer.target = yVal;
     observer.mode = "deep";
+    observer.parentTarget = pageData;
+    observer.parentObserver = parentObserver;
     (yVal as any).observeDeep(observer);
+    (pageData as any).observe(parentObserver);
     yObserverByKey.set(observerKey, observer);
     return;
   }

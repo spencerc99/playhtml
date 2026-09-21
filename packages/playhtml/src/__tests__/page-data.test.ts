@@ -101,18 +101,26 @@ describe("playhtml.createPageData", () => {
     getYjsDoc(store).destroy();
   });
 
-  it("clears and restores nullable array data", () => {
+  it("clears and restores nullable array data", async () => {
     const store = syncedStore<{ play: Record<string, Record<string, unknown>> }>({ play: {} });
     const channel = createPageDataChannel<string[] | null>(
       "selection", null, createPageDataTestDeps(store),
     );
+    const updates: Array<string[] | null> = [];
+    channel.onUpdate((value) => updates.push(value));
+
     channel.setData(["Alice"]);
+    await new Promise((resolve) => queueMicrotask(resolve));
     channel.setData(() => null);
+    await new Promise((resolve) => queueMicrotask(resolve));
     expect(channel.getData()).toBeNull();
     channel.setData(["Bob"]);
+    await new Promise((resolve) => queueMicrotask(resolve));
     expect(channel.getData()).toEqual(["Bob"]);
     channel.setData(null);
+    await new Promise((resolve) => queueMicrotask(resolve));
     expect(channel.getData()).toBeNull();
+    expect(updates).toEqual([["Alice"], null, ["Bob"], null]);
     channel.destroy();
     getYjsDoc(store).destroy();
   });
@@ -170,7 +178,7 @@ describe("playhtml.createPageData", () => {
     ]);
   });
 
-  it("keeps notifying after a remote nullable root becomes an object", async () => {
+  it("keeps notifying across remote nullable root replacements", async () => {
     type Value = { nested: { count: number } } | null;
     const firstStore = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
       play: {},
@@ -202,10 +210,22 @@ describe("playhtml.createPageData", () => {
     Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
     await new Promise((resolve) => queueMicrotask(resolve));
 
-    expect(secondChannel.getData()).toEqual({ nested: { count: 2 } });
+    firstStore.play[PAGE_TAG]!["remote-nullable-object"] = null;
+    Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    firstStore.play[PAGE_TAG]!["remote-nullable-object"] = {
+      nested: { count: 3 },
+    };
+    Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(secondChannel.getData()).toEqual({ nested: { count: 3 } });
     expect(updates).toEqual([
       { nested: { count: 1 } },
       { nested: { count: 2 } },
+      null,
+      { nested: { count: 3 } },
     ]);
   });
 
