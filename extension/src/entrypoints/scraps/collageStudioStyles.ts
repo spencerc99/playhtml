@@ -245,18 +245,182 @@ export const COLLAGE_STUDIO_STYLES = `
     pointer-events: none;
   }
 
-  .collage-crop-overlay {
+  /*
+   * While cropping, the piece's whole source is laid out dimmed and the kept
+   * region is punched back through at full strength, so the material waiting
+   * outside the crop is visible to drag back in.
+   */
+  .collage-crop {
     position: absolute;
-    overflow: hidden;
-    background: rgba(61, 56, 51, 0.28);
-    cursor: crosshair;
+    transform-origin: center;
+    z-index: 10001;
+    touch-action: none;
   }
 
-  .collage-crop-selection {
+  .collage-crop__source {
     position: absolute;
-    border: 1px dashed #fffdf9;
-    background: rgba(255, 253, 249, 0.16);
+    inset: 0;
     pointer-events: none;
+  }
+
+  .collage-crop__shade {
+    position: absolute;
+    inset: 0;
+    background: rgba(61, 56, 51, 0.62);
+    pointer-events: none;
+  }
+
+  .collage-crop__kept {
+    position: absolute;
+    box-shadow: 0 0 0 1px #fffdf9;
+    cursor: move;
+  }
+
+  .collage-crop__window {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .collage-crop__reveal {
+    position: absolute;
+  }
+
+  .collage-handle--crop {
+    position: absolute;
+    z-index: 2;
+    pointer-events: auto;
+  }
+
+  /* Small readout that rides above a piece during a modal rotate or scale. */
+  .collage-readout {
+    position: absolute;
+    margin: 0;
+    padding: 2px 6px;
+    z-index: 10002;
+    transform: translateX(-50%);
+    border: 1px solid rgba(61, 56, 51, 0.2);
+    border-radius: 3px;
+    background: #f5f0e8;
+    color: #3d3833;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .collage-tolerance {
+    position: absolute;
+    z-index: 10002;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    transform: translateX(-50%);
+    border: 1px solid rgba(61, 56, 51, 0.18);
+    border-radius: 3px;
+    background: #f5f0e8;
+  }
+
+  .collage-tolerance input {
+    width: 96px;
+    accent-color: #4a9a8a;
+  }
+
+  .collage-piece__cut {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    display: block;
+  }
+
+  /* A cut that is still being computed, and one that could not be read. */
+  .collage-piece__pending {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      45deg,
+      rgba(61, 56, 51, 0.06),
+      rgba(61, 56, 51, 0.06) 4px,
+      transparent 4px,
+      transparent 8px
+    );
+  }
+
+  .collage-piece__missing {
+    position: absolute;
+    inset: 0;
+    border: 1px dashed rgba(196, 114, 78, 0.7);
+    background: rgba(196, 114, 78, 0.08);
+  }
+
+  .collage-keys {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    z-index: 10003;
+    width: 268px;
+    max-height: calc(100% - 32px);
+    overflow-y: auto;
+    padding: 10px 12px;
+    border: 1px solid rgba(61, 56, 51, 0.2);
+    border-radius: 4px;
+    background: #f5f0e8;
+    box-shadow: 0 10px 28px rgba(61, 56, 51, 0.2);
+  }
+
+  .collage-keys__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+
+  .collage-keys__close {
+    border: none;
+    background: transparent;
+    color: #827a72;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+  }
+
+  .collage-keys__group {
+    margin-top: 8px;
+  }
+
+  .collage-keys__group-name {
+    margin: 0 0 3px;
+    font-family: "Martian Mono", monospace;
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    color: #827a72;
+  }
+
+  .collage-keys__row {
+    display: flex;
+    gap: 8px;
+    margin: 0;
+    padding: 2px 0;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .collage-keys__combo {
+    flex: 0 0 116px;
+    font-family: "Martian Mono", monospace;
+    font-size: 8px;
+    letter-spacing: 0.02em;
+    color: #3d3833;
+  }
+
+  .collage-keys__what {
+    color: #827a72;
   }
 
   .collage-bar {

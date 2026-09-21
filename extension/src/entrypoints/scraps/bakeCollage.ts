@@ -4,6 +4,7 @@
 import type { ScrapSnapshot } from "./collageRecord";
 import type { CollageFrame, CollagePiece } from "./collageRecord";
 import { sourceBoxForCrop } from "./collageGeometry";
+import { cutoutCanvas } from "./cutoutImages";
 import {
   buttonBodyMarkup,
   foreignObjectDataUrl,
@@ -116,11 +117,15 @@ async function pieceImage(
   piece: CollagePiece,
   sourceWidth: number,
   sourceHeight: number,
-): Promise<HTMLImageElement> {
+): Promise<CanvasImageSource> {
   const { scrap } = piece;
   switch (scrap.kind) {
     case "image":
-      return loadRemoteImage(scrap.src);
+      // A cut-out piece bakes from the same mask the studio shows, recomputed
+      // from the parameters the collage stored.
+      return piece.cutout
+        ? cutoutCanvas(scrap.src, piece.cutout)
+        : loadRemoteImage(scrap.src);
     case "cursor":
       return loadRemoteImage(scrap.url);
     case "svg-icon":

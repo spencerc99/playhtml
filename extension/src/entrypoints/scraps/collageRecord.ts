@@ -3,7 +3,13 @@
 
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import type { CropFraction } from "./collageGeometry";
-import { FULL_CROP, boxForInnerRect, composeCrop } from "./collageGeometry";
+import {
+  FULL_CROP,
+  boxForInnerRect,
+  composeCrop,
+  rotatePoint,
+  sourceBoxForCrop,
+} from "./collageGeometry";
 import { parseCutout, type PieceCutout } from "./backgroundCutout";
 
 /** Logical coordinate space every saved collage is laid out in. */
@@ -230,6 +236,42 @@ export function applyCrop(
   };
 }
 
+/**
+ * Applies a crop drawn against the piece's whole source box, which is what a
+ * crop session edits. `applyCrop` takes a rectangle inside the piece's visible
+ * box; this takes one inside the source, so the two are not interchangeable.
+ */
+export function composeCropOnto(
+  piece: CollagePiece,
+  fromSource: CropFraction,
+): CollagePiece {
+  const source = sourceBoxForCrop(piece, piece.crop);
+  const box = {
+    x: source.x + fromSource.x * source.width,
+    y: source.y + fromSource.y * source.height,
+    width: source.width * fromSource.width,
+    height: source.height * fromSource.height,
+  };
+  const before = rotatePoint(
+    { x: box.x, y: box.y },
+    { x: source.x + source.width / 2, y: source.y + source.height / 2 },
+    (piece.rotation * Math.PI) / 180,
+  );
+  const after = rotatePoint(
+    { x: box.x, y: box.y },
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    (piece.rotation * Math.PI) / 180,
+  );
+  return {
+    ...piece,
+    x: box.x + (before.x - after.x),
+    y: box.y + (before.y - after.y),
+    width: box.width,
+    height: box.height,
+    crop: fromSource,
+  };
+}
+
 /** Restores a cropped piece to its whole source, around the same center. */
 export function clearCrop(piece: CollagePiece): CollagePiece {
   if (piece.crop.width <= 0 || piece.crop.height <= 0) {
@@ -266,6 +308,33 @@ export function movePieceBackward(
   pieceId: string,
 ): CollagePiece[] {
   return swapWithNeighbor(pieces, pieceId, -1);
+}
+
+export function movePieceToFront(
+  pieces: readonly CollagePiece[],
+  pieceId: string,
+): CollagePiece[] {
+  return liftToEnd(pieces, pieceId, "front");
+}
+
+export function movePieceToBack(
+  pieces: readonly CollagePiece[],
+  pieceId: string,
+): CollagePiece[] {
+  return liftToEnd(pieces, pieceId, "back");
+}
+
+function liftToEnd(
+  pieces: readonly CollagePiece[],
+  pieceId: string,
+  end: "front" | "back",
+): CollagePiece[] {
+  const ordered = normalizeStack(pieces);
+  const moving = ordered.find((piece) => piece.id === pieceId);
+  if (!moving) throw new Error(`Collage has no piece ${pieceId}`);
+  const rest = ordered.filter((piece) => piece.id !== pieceId);
+  const stacked = end === "front" ? [...rest, moving] : [moving, ...rest];
+  return stacked.map((piece, index) => ({ ...piece, z: index }));
 }
 
 function swapWithNeighbor(
