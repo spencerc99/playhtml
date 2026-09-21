@@ -839,7 +839,7 @@ describe("ScrapCollector", () => {
     });
   });
 
-  it("keeps an opaque heading background and drops a transparent one", () => {
+  it("saves no background for a heading, however its page painted one", () => {
     const opaque = createHeading({
       text: "Banner heading",
       styles: { backgroundColor: "rgb(34, 51, 59)" },
@@ -848,18 +848,37 @@ describe("ScrapCollector", () => {
       text: "Keyword transparent",
       styles: { backgroundColor: "transparent" },
     });
-    const zeroAlpha = createHeading({
-      text: "Zero alpha background",
-      styles: { backgroundColor: "rgba(12, 34, 56, 0)" },
+    const tinted = createHeading({
+      text: "Tinted background",
+      styles: { backgroundColor: "rgba(12, 34, 56, 0.4)" },
     });
 
     collector.enable();
-    showForCapture([opaque, keyword, zeroAlpha]);
+    showForCapture([opaque, keyword, tinted]);
 
-    const backgrounds = emitted("heading").map((data) =>
-      data.kind === "heading" ? data.styles.backgroundColor : undefined,
+    const scraps = emitted("heading");
+    expect(scraps).toHaveLength(3);
+    for (const scrap of scraps) {
+      expect(Object.keys(scrap.kind === "heading" ? scrap.styles : {})).not.toContain(
+        "backgroundColor",
+      );
+      expect(scrap.kind === "heading" && scrap.backdropColor).toBeUndefined();
+    }
+  });
+
+  it("keeps a heading's own text color", () => {
+    const heading = createHeading({
+      text: "Pale type on a dark bar",
+      styles: { color: "rgb(245, 240, 232)" },
+    });
+
+    collector.enable();
+    showForCapture([heading]);
+
+    const colored = emitted("heading")[0];
+    expect(colored.kind === "heading" && colored.styles.color).toBe(
+      "rgb(245, 240, 232)",
     );
-    expect(backgrounds).toEqual(["rgb(34, 51, 59)", undefined, undefined]);
   });
 
   it("deduplicates headings by wording regardless of level and caps them at twenty", () => {
@@ -902,6 +921,14 @@ describe("ScrapCollector", () => {
   });
 
   describe("backdrop color", () => {
+    /** An outlined control: see-through, but chromed enough to still be a button. */
+    const OUTLINED = JSON.stringify({
+      backgroundColor: "rgba(0, 0, 0, 0)",
+      backgroundImage: "none",
+      border: "1px solid rgb(245, 240, 232)",
+      boxShadow: "none",
+    });
+
     /** Wraps the element in ancestors painting the given backgrounds, innermost first. */
     function nest(element: Element, ancestorBackgrounds: string[]): void {
       const anchor = element.parentElement;
@@ -919,55 +946,65 @@ describe("ScrapCollector", () => {
       (anchor ?? document.body).appendChild(child);
     }
 
-    it("records the nearest painted ancestor for a see-through element", () => {
-      const heading = createHeading({
-        text: "Pale type on a dark bar",
-        styles: { backgroundColor: "rgba(0, 0, 0, 0)" },
-      });
-      nest(heading, ["rgba(0, 0, 0, 0)", "rgb(28, 32, 38)"]);
+    function outlinedButton(text: string, ancestors: string[]): HTMLElement {
+      const button = createButton({ text });
+      button.setAttribute("data-styles", OUTLINED);
+      nest(button, ancestors);
+      return button;
+    }
+
+    it("records the nearest painted ancestor for a see-through control", () => {
+      const button = outlinedButton("Sign in", [
+        "rgba(0, 0, 0, 0)",
+        "rgb(28, 32, 38)",
+      ]);
 
       collector.enable();
-      showForCapture([heading]);
+      showForCapture([button]);
 
-      const scraps = emitted("heading");
+      const scraps = emitted("button");
       expect(scraps).toHaveLength(1);
-      expect(scraps[0].kind === "heading" && scraps[0].backdropColor).toBe(
+      expect(scraps[0].kind === "button" && scraps[0].backdropColor).toBe(
         "rgb(28, 32, 38)",
       );
     });
 
     it("records a backdrop for a semi-transparent background too", () => {
-      const heading = createHeading({
-        text: "Tinted over a dark bar",
-        styles: { backgroundColor: "rgba(255, 255, 255, 0.2)" },
-      });
-      nest(heading, ["rgb(28, 32, 38)"]);
+      const button = createButton({ text: "Tinted over a dark bar" });
+      button.setAttribute(
+        "data-styles",
+        JSON.stringify({
+          backgroundColor: "rgba(255, 255, 255, 0.2)",
+          backgroundImage: "none",
+          border: "0px none",
+          boxShadow: "none",
+        }),
+      );
+      nest(button, ["rgb(28, 32, 38)"]);
 
       collector.enable();
-      showForCapture([heading]);
+      showForCapture([button]);
 
-      const scrap = emitted("heading")[0];
-      expect(scrap.kind === "heading" && scrap.backdropColor).toBe(
+      const scrap = emitted("button")[0];
+      expect(scrap.kind === "button" && scrap.backdropColor).toBe(
         "rgb(28, 32, 38)",
       );
-      expect(scrap.kind === "heading" && scrap.styles.backgroundColor).toBe(
+      expect(scrap.kind === "button" && scrap.styles.backgroundColor).toBe(
         "rgba(255, 255, 255, 0.2)",
       );
     });
 
-    it("records no backdrop when the element paints its own background", () => {
-      const heading = createHeading({
-        text: "Opaque of its own",
-        styles: { backgroundColor: "rgb(34, 51, 59)" },
-      });
-      nest(heading, ["rgb(200, 0, 0)"]);
+    it("records no backdrop when the control paints its own background", () => {
+      const button = createButton({ text: "Opaque of its own" });
+      button.setAttribute("data-background", "rgb(34, 51, 59)");
+      nest(button, ["rgb(200, 0, 0)"]);
 
       collector.enable();
-      showForCapture([heading]);
+      showForCapture([button]);
 
-      const scrap = emitted("heading")[0];
-      expect(scrap.kind === "heading" && scrap.backdropColor).toBeUndefined();
-      expect(scrap.kind === "heading" && scrap.styles.backgroundColor).toBe(
+      const scrap = emitted("button")[0];
+      expect(scrap.kind === "button" && scrap.backdropColor).toBeUndefined();
+      expect(scrap.kind === "button" && scrap.styles.backgroundColor).toBe(
         "rgb(34, 51, 59)",
       );
     });
@@ -976,19 +1013,17 @@ describe("ScrapCollector", () => {
       const clear = JSON.stringify({ backgroundColor: "rgba(0, 0, 0, 0)" });
       document.body.setAttribute("data-styles", clear);
       document.documentElement.setAttribute("data-styles", clear);
-      const heading = createHeading({
-        text: "Nothing painted behind",
-        styles: { backgroundColor: "rgba(0, 0, 0, 0)" },
-      });
-      nest(heading, ["rgba(0, 0, 0, 0)"]);
+      const button = outlinedButton("Nothing painted behind", [
+        "rgba(0, 0, 0, 0)",
+      ]);
 
       collector.enable();
-      showForCapture([heading]);
+      showForCapture([button]);
 
-      const canvasScrap = emitted("heading")[0];
-      expect(
-        canvasScrap.kind === "heading" && canvasScrap.backdropColor,
-      ).toBe("rgb(255, 255, 255)");
+      const canvasScrap = emitted("button")[0];
+      expect(canvasScrap.kind === "button" && canvasScrap.backdropColor).toBe(
+        "rgb(255, 255, 255)",
+      );
       document.body.removeAttribute("data-styles");
       document.documentElement.removeAttribute("data-styles");
     });
@@ -997,20 +1032,12 @@ describe("ScrapCollector", () => {
       const clear = JSON.stringify({ backgroundColor: "rgba(0, 0, 0, 0)" });
       document.body.setAttribute("data-styles", clear);
       document.documentElement.setAttribute("data-styles", clear);
-      const nearby = createHeading({
-        text: "Painted just within reach",
-        styles: { backgroundColor: "rgba(0, 0, 0, 0)" },
-      });
       // 11 clear ancestors, then the painted one: the 12th step still sees it.
-      nest(nearby, [
+      const nearby = outlinedButton("Painted just within reach", [
         ...Array.from({ length: 11 }, () => "rgba(0, 0, 0, 0)"),
         "rgb(10, 20, 30)",
       ]);
-      const tooFar = createHeading({
-        text: "Painted beyond the cap",
-        styles: { backgroundColor: "rgba(0, 0, 0, 0)" },
-      });
-      nest(tooFar, [
+      const tooFar = outlinedButton("Painted beyond the cap", [
         ...Array.from({ length: 12 }, () => "rgba(0, 0, 0, 0)"),
         "rgb(10, 20, 30)",
       ]);
@@ -1018,8 +1045,8 @@ describe("ScrapCollector", () => {
       collector.enable();
       showForCapture([nearby, tooFar]);
 
-      const backdrops = emitted("heading").map((data) =>
-        data.kind === "heading" ? data.backdropColor : undefined,
+      const backdrops = emitted("button").map((data) =>
+        data.kind === "button" ? data.backdropColor : undefined,
       );
       // Past the cap the walk gives up rather than reporting a guess.
       expect(backdrops).toEqual(["rgb(10, 20, 30)", undefined]);
@@ -1027,18 +1054,21 @@ describe("ScrapCollector", () => {
       document.documentElement.removeAttribute("data-styles");
     });
 
-    it("records a backdrop for a see-through button as well", () => {
-      const button = createButton({ text: "Sign in" });
-      button.setAttribute("data-background", "rgba(0, 0, 0, 0)");
-      nest(button, ["rgb(28, 32, 38)"]);
+    it("never records a backdrop for a heading, whatever it sits on", () => {
+      const heading = createHeading({
+        text: "Pale type on a dark bar",
+        styles: { color: "rgb(245, 240, 232)" },
+      });
+      nest(heading, ["rgb(28, 32, 38)"]);
 
       collector.enable();
-      showForCapture([button]);
+      showForCapture([heading]);
 
-      const seeThroughButton = emitted("button")[0];
+      const scrap = emitted("heading")[0];
+      expect(scrap.kind === "heading" && scrap.backdropColor).toBeUndefined();
       expect(
-        seeThroughButton.kind === "button" && seeThroughButton.backdropColor,
-      ).toBe("rgb(28, 32, 38)");
+        Object.keys(scrap.kind === "heading" ? scrap.styles : {}),
+      ).not.toContain("backgroundColor");
     });
 
     it("leaves a gradient button to its own background", () => {
@@ -1060,21 +1090,17 @@ describe("ScrapCollector", () => {
     });
 
     it("does not let the backdrop change a scrap's identity", () => {
-      const onDark = createHeading({
-        text: "Same wording either way",
-        styles: { backgroundColor: "rgba(0, 0, 0, 0)" },
-      });
-      nest(onDark, ["rgb(28, 32, 38)"]);
-      const onLight = createHeading({
-        text: "Same wording either way",
-        styles: { backgroundColor: "rgba(0, 0, 0, 0)" },
-      });
-      nest(onLight, ["rgb(250, 249, 246)"]);
+      const onDark = outlinedButton("Same label either way", [
+        "rgb(28, 32, 38)",
+      ]);
+      const onLight = outlinedButton("Same label either way", [
+        "rgb(250, 249, 246)",
+      ]);
 
       collector.enable();
       showForCapture([onDark, onLight]);
 
-      expect(emitted("heading")).toHaveLength(1);
+      expect(emitted("button")).toHaveLength(1);
     });
   });
 

@@ -156,13 +156,27 @@ export interface SvgIconScrapData {
   position?: ScrapPosition;
 }
 
+/** The typographic properties a heading keeps; it carries no background. */
+export type HeadingStyleProperty =
+  | "fontFamily"
+  | "fontSize"
+  | "fontWeight"
+  | "fontStyle"
+  | "color"
+  | "letterSpacing"
+  | "textTransform"
+  | "lineHeight";
+
+/**
+ * A heading is words-material: it keeps its type and its own text color, and
+ * saves no background of any kind, so it has no backdrop to record either.
+ */
 export interface HeadingScrapData {
   kind: "heading";
   text: string;
   level: 1 | 2 | 3;
-  styles: Record<string, string>;
-  /** Flat color the element was seen against, when its own does not cover it. */
-  backdropColor?: string;
+  styles: Partial<Record<HeadingStyleProperty, string>>;
+  backdropColor?: never;
   pageTitle: string;
   faviconUrl?: string;
   position?: ScrapPosition;

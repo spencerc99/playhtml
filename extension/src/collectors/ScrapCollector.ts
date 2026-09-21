@@ -13,6 +13,7 @@ import type {
   ButtonScrapData,
   CursorScrapData,
   HeadingScrapData,
+  HeadingStyleProperty,
   ScrapEventData,
   ScrapPosition,
   SvgIconScrapData,
@@ -87,7 +88,7 @@ const BUTTON_BORDER_PROPERTIES = [
   "borderLeftColor",
 ] as const;
 
-const HEADING_STYLE_PROPERTIES = [
+const HEADING_STYLE_PROPERTIES: readonly HeadingStyleProperty[] = [
   "fontFamily",
   "fontSize",
   "fontWeight",
@@ -96,7 +97,7 @@ const HEADING_STYLE_PROPERTIES = [
   "letterSpacing",
   "textTransform",
   "lineHeight",
-] as const;
+];
 
 interface CursorImage {
   url: string;
@@ -608,17 +609,11 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       return;
     }
 
-    const backdropColor = this.backdropFor(
-      heading,
-      computedStyle.backgroundColor,
-      false,
-    );
     const data: HeadingScrapData = {
       kind: "heading",
       text,
       level,
-      styles: this.pickHeadingStyles(computedStyle),
-      ...(backdropColor ? { backdropColor } : {}),
+      styles: pickHeadingStyles(computedStyle),
       pageTitle: document.title,
       position: this.elementPosition(bounds),
     };
@@ -636,22 +631,6 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     if (this.headingCaptureCount >= MAX_HEADINGS_PER_PAGE) {
       this.stopObservingHeadings();
     }
-  }
-
-  private pickHeadingStyles(
-    computedStyle: CSSStyleDeclaration,
-  ): Record<string, string> {
-    const styles: Record<string, string> = {};
-    for (const property of HEADING_STYLE_PROPERTIES) {
-      const value = computedStyle[property];
-      if (value) styles[property] = value;
-    }
-
-    const backgroundColor = computedStyle.backgroundColor;
-    if (backgroundColor && colorAlpha(backgroundColor) > 0) {
-      styles.backgroundColor = backgroundColor;
-    }
-    return styles;
   }
 
   private handleMouseover = (event: MouseEvent): void => {
@@ -747,6 +726,18 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     }
     this.observedHeadings.clear();
   }
+}
+
+/** A heading keeps its type and text color only; it saves no background. */
+function pickHeadingStyles(
+  computedStyle: CSSStyleDeclaration,
+): Partial<Record<HeadingStyleProperty, string>> {
+  const styles: Partial<Record<HeadingStyleProperty, string>> = {};
+  for (const property of HEADING_STYLE_PROPERTIES) {
+    const value = computedStyle[property];
+    if (value) styles[property] = value;
+  }
+  return styles;
 }
 
 function headingLevel(heading: Element): 1 | 2 | 3 | undefined {
