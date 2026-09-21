@@ -1434,15 +1434,19 @@ export function ScrapCollage({
     setArchiveScrollTop(top);
   }, [display]);
 
-  const uniqueItems = useMemo(() => newestUniqueScraps(items), [items]);
+  const groupedItems = useMemo(() => groupPhotoEncounters(items), [items]);
+  const uniqueItems = useMemo(
+    () => newestUniqueScraps(groupedItems),
+    [groupedItems],
+  );
   const filteredItems = useMemo(
     () =>
-      uniqueItems.filter(
+      groupedItems.filter(
         (item) =>
           (selectedKind === "all" || item.kind === selectedKind) &&
           matchesScrapFilters(item, places, search),
       ),
-    [uniqueItems, selectedKind, places, search],
+    [groupedItems, selectedKind, places, search],
   );
   const archiveScraps = useMemo(
     () =>
@@ -1994,7 +1998,7 @@ export function ScrapCollage({
                 </button>
               </div>
               <ScrapFilters
-                items={uniqueItems}
+                items={groupedItems}
                 places={places}
                 onPlaces={setPlaces}
                 kind={selectedKind}

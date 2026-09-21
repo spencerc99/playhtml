@@ -97,6 +97,102 @@ describe("ScrapCollage controls", () => {
   const tiles = () =>
     container.querySelectorAll<HTMLElement>("[data-scrap-key]");
 
+  it.each(["button", "svg-icon", "cursor"] as const)(
+    "finds earlier %s occurrences before deduplication",
+    (kind) => {
+      const content =
+        kind === "button"
+          ? { kind, text: "Visit", styles: {} }
+          : kind === "svg-icon"
+            ? {
+                kind,
+                markup: '<svg><circle r="4" /></svg>',
+                width: 20,
+                height: 20,
+              }
+            : { kind, url: "https://cdn.example/cursor.png" };
+      const base = { domain: "shop.example", ...content };
+      const earlier = {
+        ...base,
+        id: "earlier",
+        key: "earlier",
+        ts: 1,
+        pageTitle: "Catalog",
+        pageUrl: "https://shop.example/shop",
+      } as ScrapItem;
+      const later = {
+        ...earlier,
+        id: "later",
+        key: "later",
+        ts: 2,
+        pageTitle: "Welcome",
+        pageUrl: "https://shop.example/home",
+      };
+      act(() =>
+        root.render(
+          <ScrapCollage items={[earlier, later]} seed={1} showKindFilter />,
+        ),
+      );
+      act(() =>
+        container
+          .querySelector<HTMLButtonElement>(
+            '[aria-label="Scrap view"] button:last-child',
+          )!
+          .click(),
+      );
+      expect(tiles()).toHaveLength(1);
+      expect(tiles()[0].dataset.scrapKey).toBe("later");
+      act(() =>
+        container
+          .querySelector<HTMLButtonElement>('[aria-label="Search scraps"]')!
+          .click(),
+      );
+      const search = container.querySelector<HTMLInputElement>(
+        'input[aria-label="Search scraps"]',
+      )!;
+      act(() => {
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )!.set!.call(search, "Catalog");
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      expect(tiles()).toHaveLength(1);
+      expect(tiles()[0].dataset.scrapKey).toBe("earlier");
+      act(() =>
+        container
+          .querySelector<HTMLButtonElement>(
+            '[aria-label="Clear and close search"]',
+          )!
+          .click(),
+      );
+      act(() =>
+        Array.from(container.querySelectorAll("button"))
+          .find((button) => button.textContent?.startsWith("Found on"))!
+          .click(),
+      );
+      const source = container.querySelector<HTMLInputElement>(
+        '[aria-label="Find a domain or page"]',
+      )!;
+      act(() => {
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )!.set!.call(source, "shop.example/shop");
+        source.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      act(() =>
+        source
+          .closest("form")!
+          .dispatchEvent(
+            new Event("submit", { bubbles: true, cancelable: true }),
+          ),
+      );
+      expect(tiles()).toHaveLength(1);
+      expect(tiles()[0].dataset.scrapKey).toBe("earlier");
+    },
+  );
+
   it("fills the viewport and shuffles in another selection", () => {
     render();
     expect(tiles()).toHaveLength(286);

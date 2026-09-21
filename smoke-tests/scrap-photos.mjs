@@ -808,11 +808,115 @@ try {
   await reopened
     .getByRole("button", { name: "Clear and close search" })
     .click();
+  await worker.evaluate(
+    async ({ origin }) => {
+      const db = await new Promise((resolve, reject) => {
+        const request = indexedDB.open("collection_events_db");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      try {
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction("events", "readwrite");
+          const contents = [
+            {
+              kind: "button",
+              text: "Visit shop",
+              styles: { backgroundColor: "#ededdd", color: "#333333" },
+            },
+            {
+              kind: "svg-icon",
+              markup:
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#4a9a8a"/></svg>',
+              width: 20,
+              height: 20,
+            },
+            { kind: "cursor", url: `${origin}/photo/different.svg` },
+          ];
+          for (const data of contents)
+            for (const [index, path] of ["shop", "home"].entries()) {
+              tx.objectStore("events").put({
+                id: `repeated-${data.kind}-${path}`,
+                type: "element",
+                ts: Date.now() + index,
+                domain: "127.0.0.1",
+                meta: {
+                  url: `${origin}/${path}`,
+                  pid: "fixture",
+                  sid: "fixture",
+                  vw: 1200,
+                  vh: 850,
+                  tz: "UTC",
+                },
+                data: {
+                  ...data,
+                  pageTitle:
+                    path === "shop" ? "Catalog collection" : "Welcome home",
+                },
+              });
+            }
+          tx.oncomplete = resolve;
+          tx.onerror = () => reject(tx.error);
+        });
+      } finally {
+        db.close();
+      }
+    },
+    { origin },
+  );
+  await reopened.setViewportSize({ width: 1200, height: 850 });
+  await reopened.reload();
+  await reopened.getByRole("button", { name: "archive", exact: true }).click();
+  await reopened.getByRole("button", { name: /^Found on/ }).click();
+  const sourceInput = reopened.getByRole("textbox", {
+    name: "Find a domain or page",
+  });
+  await sourceInput.fill(`${origin}/shop`);
+  await sourceInput.press("Enter");
+  await sourceInput.press("Escape");
+  for (const kind of ["button", "svg-icon", "cursor"]) {
+    await reopened.getByRole("button", { name: /^Type/ }).click();
+    await reopened.locator(`[data-scrap-kind="${kind}"]`).click();
+    await reopened.locator(`[data-scrap-kind="${kind}"]`).press("Escape");
+    await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(1);
+    await reopened.locator(".scrap-collage__tile").click();
+    await expect(reopened.getByRole("dialog")).toContainText(
+      "Catalog collection",
+    );
+    await expect(
+      reopened.getByRole("dialog").getByRole("link", { name: /visit page/ }),
+    ).toHaveAttribute("href", `${origin}/shop`);
+    if (kind === "button")
+      await reopened.screenshot({
+        path: resolve(evidence, "earlier-button-source.png"),
+      });
+    await reopened
+      .getByRole("button", { name: "Close examine view", exact: true })
+      .click();
+    await expect(reopened.getByRole("dialog")).toHaveCount(0);
+  }
+  await reopened.getByRole("button", { name: /^Found on/ }).click();
+  await reopened.getByRole("button", { name: "Clear", exact: true }).click();
+  await sourceInput.press("Escape");
+  await reopened.getByRole("button", { name: /^Type/ }).click();
+  await reopened.locator('[data-scrap-kind="all"]').click();
+  await reopened.locator('[data-scrap-kind="all"]').press("Escape");
+  await reopened
+    .getByRole("button", { name: "Search scraps", exact: true })
+    .click();
+  await reopened
+    .getByRole("textbox", { name: "Search scraps", exact: true })
+    .fill("Catalog collection");
+  await expect(reopened.locator(".scrap-collage__tile")).toHaveCount(3);
+  await reopened.screenshot({
+    path: resolve(evidence, "earlier-scraps-search.png"),
+  });
   assert.deepEqual(pageErrors, []);
   console.log(
     JSON.stringify({
       result: "passed",
-      records: 434,
+      records: 440,
+      repeatedKinds: ["button", "svg-icon", "cursor"],
       layouts: ["drift-pile", "drift-grid", "archive-pile", "archive-grid"],
       peakDownloads: peak,
       evidence,
