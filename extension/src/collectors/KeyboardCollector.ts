@@ -10,7 +10,7 @@ import {
   LEGIBILITY_KEY,
   REDACTION_CHAR,
   parseLegibility,
-  redactWithLegibility,
+  redactTypingSequence,
 } from '../utils/keyboardRedaction';
 
 const PRIVACY_LEVEL_KEY = LEGIBILITY_KEY;
@@ -21,7 +21,7 @@ const DEBOUNCE_DELAY = 5000; // 5 seconds - longer to handle gaps between typing
  * KeyboardCollector captures typing behavior with a legibility percent (0–100):
  *   0   → cadence only (all non-whitespace redacted)
  *   100 → full text (PII always redacted)
- * Intermediate values redact a proportional share of random characters.
+ * Intermediate values redact a proportional share of whole words.
  */
 export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
   readonly type = 'keyboard' as const;
@@ -548,17 +548,7 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
         return redacted;
       });
     } else {
-      sequence = this.sequence.map((action, idx) => {
-        const redacted: TypingAction = { ...action };
-        if (action.text) {
-          redacted.text = redactWithLegibility(
-            action.text,
-            this.legibilityPct,
-            this.redactionSeed + idx,
-          );
-        }
-        return redacted;
-      });
+      sequence = redactTypingSequence(this.sequence, this.legibilityPct, this.redactionSeed);
     }
 
     const typeData: KeyboardEventData = {

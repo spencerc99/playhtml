@@ -124,7 +124,7 @@ function legibilityLabel(pct: number): string {
 function legibilityDescription(pct: number): string {
   if (pct <= 0) return "Typing frequency and location only (no text)";
   if (pct >= 100) return "Typed text recorded (emails, phones, SSNs redacted)";
-  return `About ${pct}% of characters kept; the rest redacted (PII always redacted)`;
+  return `About ${pct}% of words kept; the rest redacted (email, phone and SSN patterns filtered)`;
 }
 
 function KeyboardLegibilityPreview({ pct }: { pct: number }) {
@@ -853,14 +853,15 @@ export function Collections({
               (modes["keyboard"] ?? "local") !== "off" ? (
                 <>
                   Keyboard legibility is above 0, so some typed text is
-                  recorded. Use filters above to redact sensitive content. All
-                  other data is anonymous.{" "}
+                  recorded. Visible words can include sensitive information. Use
+                  filters above to hide specific text, or choose Cadence only
+                  to hide all typed text.{" "}
                   <a href="mailto:hi@spencer.place">hi@spencer.place</a>
                 </>
               ) : (
                 <>
-                  All data is anonymous & no personal info is collected. Pause
-                  collection anytime. Questions?{" "}
+                  Typed text is hidden or keyboard collection is off. You can
+                  pause collection anytime. Questions?{" "}
                   <a href="mailto:hi@spencer.place">hi@spencer.place</a>
                 </>
               )}

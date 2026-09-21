@@ -1560,25 +1560,6 @@ export const Controls: React.FC<ControlsProps> = memo(
           onToggle={() => toggleSection("keyboard")}
         >
           <div className="control-group">
-            <label htmlFor="keyboard-legibility">Legibility</label>
-            <input
-              id="keyboard-legibility"
-              type="range"
-              min="0"
-              max="100"
-              step="5"
-              value={settings.keyboardLegibilityPct}
-              onChange={(e) =>
-                setSettings((s: any) => ({
-                  ...s,
-                  keyboardLegibilityPct: parseInt(e.target.value, 10),
-                }))
-              }
-            />
-            <span>{settings.keyboardLegibilityPct}%</span>
-          </div>
-
-          <div className="control-group">
             <label htmlFor="keyboard-animation-speed">Typing Speed</label>
             <input
               id="keyboard-animation-speed"
