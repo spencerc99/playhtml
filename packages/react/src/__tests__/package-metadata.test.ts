@@ -5,10 +5,12 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+const packageRoot = path.resolve(__dirname, "../..");
+
 describe("@playhtml/react package contract", () => {
   it("requires the app to provide the playhtml runtime boundary", () => {
     const packageJson = JSON.parse(
-      readFileSync(path.resolve(process.cwd(), "package.json"), "utf8"),
+      readFileSync(path.resolve(packageRoot, "package.json"), "utf8"),
     );
 
     expect(packageJson.dependencies).not.toHaveProperty("playhtml");
@@ -27,7 +29,7 @@ describe("@playhtml/react package contract", () => {
 
   it("leaves playhtml as a runtime import in the library bundle", () => {
     const viteConfigSource = readFileSync(
-      path.resolve(process.cwd(), "vite.config.ts"),
+      path.resolve(packageRoot, "vite.config.ts"),
       "utf8",
     );
 
@@ -51,7 +53,7 @@ describe("@playhtml/react package contract", () => {
     ];
 
     for (const file of sourceFiles) {
-      const source = readFileSync(path.resolve(process.cwd(), file), "utf8");
+      const source = readFileSync(path.resolve(packageRoot, file), "utf8");
       expect(source, file).not.toContain('"@playhtml/common"');
     }
   });
