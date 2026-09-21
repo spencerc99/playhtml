@@ -5,8 +5,7 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-studio {
     position: absolute;
     inset: 0;
-    display: grid;
-    grid-template-columns: 236px minmax(0, 1fr);
+    display: flex;
     color: #3d3833;
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
   }
@@ -20,18 +19,85 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-tray {
+    position: relative;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     min-height: 0;
-    padding: 12px 10px 10px;
-    gap: 8px;
+    padding: 10px 8px 8px;
+    gap: 6px;
     border-right: 1px solid rgba(61, 56, 51, 0.12);
   }
 
+  .collage-tray__head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* Every kind filter sits on one line; a narrowed drawer scrolls sideways. */
   .collage-tray__filters {
     display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+    gap: 3px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .collage-tray__filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .collage-tray__filters .collage-chip {
+    flex: 0 0 auto;
+    padding: 3px 5px;
+  }
+
+  .collage-tray__count {
+    margin: 0;
+  }
+
+  .collage-tray__tuck,
+  .collage-tray__rail {
+    flex: 0 0 auto;
+    border: 1px solid rgba(61, 56, 51, 0.18);
+    border-radius: 3px;
+    background: transparent;
+    color: #827a72;
+    font-family: "Martian Mono", monospace;
+    font-size: 10px;
+    line-height: 1;
+    padding: 4px 5px;
+    cursor: pointer;
+  }
+
+  .collage-tray--tucked {
+    padding: 10px 4px;
+    align-items: center;
+  }
+
+  .collage-tray__rail {
+    height: 100%;
+    font-size: 8px;
+    letter-spacing: 0.1em;
+    writing-mode: vertical-rl;
+    padding: 8px 3px;
+  }
+
+  /* The drawer's inner edge, dragged to resize it. */
+  .collage-tray__grip {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 7px;
+    height: 100%;
+    cursor: ew-resize;
+    touch-action: none;
+  }
+
+  .collage-tray__grip:hover {
+    background: rgba(74, 154, 138, 0.25);
   }
 
   .collage-chip {
@@ -115,6 +181,106 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-tray__thumb .scrap-collage__button svg {
     max-width: 100%;
     max-height: 100%;
+  }
+
+  /* Pieces dragged past the frame stay visible, quietly, so none are lost. */
+  .collage-piece--off-frame {
+    opacity: 0.45;
+    outline: 1px dashed rgba(196, 114, 78, 0.6);
+  }
+
+  .collage-piece-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 5px 14px;
+    border-top: 1px solid rgba(61, 56, 51, 0.1);
+  }
+
+  .collage-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: #3d3833;
+    cursor: pointer;
+  }
+
+  .collage-glyph:hover:not(:disabled) {
+    border-color: rgba(61, 56, 51, 0.24);
+    background: rgba(61, 56, 51, 0.07);
+  }
+
+  .collage-glyph:disabled {
+    color: rgba(130, 122, 114, 0.45);
+    cursor: default;
+  }
+
+  .collage-glyph--on {
+    border-color: rgba(74, 154, 138, 0.7);
+    background: rgba(74, 154, 138, 0.12);
+    color: #2f6b60;
+  }
+
+  .collage-glyph--danger:hover:not(:disabled) {
+    border-color: rgba(196, 114, 78, 0.6);
+    background: rgba(196, 114, 78, 0.12);
+    color: #a2542f;
+  }
+
+  .collage-format {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 14px;
+    border-top: 1px solid rgba(61, 56, 51, 0.1);
+  }
+
+  .collage-format__row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .collage-swatch {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid rgba(61, 56, 51, 0.28);
+    border-radius: 3px;
+    cursor: pointer;
+  }
+
+  .collage-swatch--on {
+    outline: 1px solid #2f6b60;
+    outline-offset: 1px;
+  }
+
+  .collage-swatch--custom {
+    background: transparent;
+  }
+
+  .collage-format__confirm {
+    display: flex;
+    flex-basis: 100%;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    color: #8f4a29;
+  }
+
+  .collage-card--unreadable {
+    border-style: dashed;
+    border-color: rgba(196, 114, 78, 0.5);
+    background: rgba(196, 114, 78, 0.06);
   }
 
   .collage-frame-area {

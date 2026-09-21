@@ -4,8 +4,9 @@
 import {
   parseCollageRecord,
   summarizeCollage,
+  type CollageEntry,
   type CollageRecord,
-  type CollageSummary,
+  type UnreadableCollage,
 } from "./collageRecord";
 
 const DB_NAME = "scrap_collages_db";

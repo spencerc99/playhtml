@@ -29,7 +29,6 @@ import {
   type ResizeCorner,
 } from "./collageGeometry";
 import {
-  COLLAGE_FRAME,
   clearCrop,
   composeCropOnto,
   createCollageId,
@@ -39,6 +38,8 @@ import {
   movePieceToBack,
   movePieceToFront,
   normalizeStack,
+  flipPiece,
+  pieceMaterialTransform,
   type CollagePiece,
   type CollageRecord,
 } from "./collageRecord";
@@ -57,6 +58,20 @@ import {
   type ArrangementHistory,
 } from "./arrangementHistory";
 import { studioCommandFor, type StudioMode } from "./studioKeymap";
+import {
+  DEFAULT_FORMAT,
+  DEFAULT_PAPER,
+  formatOf,
+  type CollageFormatName,
+  type CollagePaper,
+} from "./collageFormats";
+import {
+  clampDrawerWidth,
+  readDrawerPreference,
+  writeDrawerPreference,
+} from "./drawerPreference";
+import { PieceActions } from "./PieceActions";
+import { FormatControl } from "./FormatControl";
 import { CollageBakeError, bakeCollage } from "./bakeCollage";
 import { saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
@@ -70,6 +85,8 @@ const ROTATION_SNAP_DEGREES = 15;
 const ROTATE_HANDLE_OFFSET = 26;
 /** How far a pasted or duplicated piece lands from its original. */
 const COPY_OFFSET = 24;
+/** Frame units the pointer must travel before an alt-drag pulls out a copy. */
+const ALT_DRAG_THRESHOLD = 4;
 
 const RESIZE_CORNERS: { corner: ResizeCorner; left: string; top: string }[] = [
   { corner: "top-left", left: "0%", top: "0%" },
@@ -80,7 +97,13 @@ const RESIZE_CORNERS: { corner: ResizeCorner; left: string; top: string }[] = [
 
 type Gesture =
   | { kind: "idle" }
-  | { kind: "move"; pieceId: string; origin: PieceBox; grabbedAt: Point }
+  | {
+      kind: "move";
+      pieceId: string;
+      origin: PieceBox;
+      grabbedAt: Point;
+      copyOnDrag?: boolean;
+    }
   | {
       kind: "resize";
       pieceId: string;
@@ -142,6 +165,8 @@ function placedPiece(item: ScrapItem, at: Point, z: number): CollagePiece {
     rotation: 0,
     z,
     crop: { ...FULL_CROP },
+    flipX: false,
+    flipY: false,
   };
 }
 
@@ -163,13 +188,43 @@ export function CollageStudio({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Pieces are replaced, never mutated, so identity against the last saved
   // arrangement tells whether there is work that leaving would discard.
-  const savedRef = useRef<{ pieces: readonly CollagePiece[]; title: string }>({
+  const savedRef = useRef<{
+    pieces: readonly CollagePiece[];
+    title: string;
+    paper: string;
+    format: CollageFormatName;
+  }>({
     pieces: initial,
     title: editing?.title ?? "",
+    paper: (editing?.paper ?? DEFAULT_PAPER).color,
+    format: editing?.format ?? DEFAULT_FORMAT,
   });
   const [confirmingLeave, setConfirmingLeave] = useState(false);
+
+  const [format, setFormat] = useState<CollageFormatName>(
+    editing?.format ?? DEFAULT_FORMAT,
+  );
+  const [paper, setPaper] = useState<CollagePaper>(
+    editing?.paper ?? DEFAULT_PAPER,
+  );
+  const frame = formatOf(format);
+  const [drawer, setDrawer] = useState(() => readDrawerPreference());
   const unsaved =
-    pieces !== savedRef.current.pieces || title !== savedRef.current.title;
+    pieces !== savedRef.current.pieces ||
+    title !== savedRef.current.title ||
+    paper.color !== savedRef.current.paper ||
+    format !== savedRef.current.format;
+
+  const updateDrawer = useCallback(
+    (change: Partial<{ width: number; collapsed: boolean }>) => {
+      setDrawer((current) => {
+        const next = { ...current, ...change };
+        writeDrawerPreference(next);
+        return next;
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!unsaved) return;
@@ -243,7 +298,7 @@ export function CollageStudio({
     if (!stage) return;
     const update = () => {
       setScale(
-        frameScale(COLLAGE_FRAME, {
+        frameScale(frame, {
           width: stage.clientWidth - 24,
           height: stage.clientHeight - 24,
         }),
@@ -441,6 +496,14 @@ export function CollageStudio({
         case "cutout":
           cutOutSelected();
           break;
+        case "flip":
+          if (selected) {
+            editPiece(selected.id, (piece) => flipPiece(piece, command.axis));
+          }
+          break;
+        case "toggleDrawer":
+          updateDrawer({ collapsed: !drawer.collapsed });
+          break;
         case "confirm":
           if (crop) commitCrop();
           else confirmTransform();
@@ -492,6 +555,8 @@ export function CollageStudio({
   }, [
     beginTransform,
     cancelCrop,
+    drawer.collapsed,
+    updateDrawer,
     cancelTransform,
     clipboard,
     commit,
@@ -553,6 +618,24 @@ export function CollageStudio({
       if (gesture.kind === "idle") return;
       if (gesture.kind === "move") {
         const { origin, grabbedAt } = gesture;
+        // A copy is pulled out only after the pointer has clearly moved.
+        if (
+          gesture.copyOnDrag &&
+          Math.hypot(point.x - grabbedAt.x, point.y - grabbedAt.y) >
+            ALT_DRAG_THRESHOLD
+        ) {
+          const source = pieces.find((item) => item.id === gesture.pieceId);
+          if (source) {
+            const copy = duplicatePiece(source);
+            setGesture({
+              kind: "move",
+              pieceId: copy.id,
+              origin: { ...origin, x: copy.x, y: copy.y },
+              grabbedAt,
+            });
+          }
+          return;
+        }
         editPiece(
           gesture.pieceId,
           (piece) => ({
@@ -604,7 +687,7 @@ export function CollageStudio({
         );
       }
     },
-    [editPiece, framePoint, gesture, pieces, transform],
+    [duplicatePiece, editPiece, framePoint, gesture, pieces, transform],
   );
 
   const beginMove = (piece: CollagePiece, event: React.PointerEvent) => {
@@ -616,18 +699,19 @@ export function CollageStudio({
     (event.target as Element).setPointerCapture?.(event.pointerId);
     setSelectedId(piece.id);
     setCrop(null);
-    // Alt-dragging pulls a copy out and leaves the original where it was.
-    const dragged = event.altKey ? duplicatePiece(piece) : piece;
     setGesture({
       kind: "move",
-      pieceId: dragged.id,
+      pieceId: piece.id,
       origin: {
-        x: dragged.x,
-        y: dragged.y,
-        width: dragged.width,
-        height: dragged.height,
+        x: piece.x,
+        y: piece.y,
+        width: piece.width,
+        height: piece.height,
       },
       grabbedAt: framePoint(event),
+      // Alt-dragging pulls out a copy, but only once the pointer travels, so
+      // a plain alt-click just selects.
+      copyOnDrag: event.altKey,
     });
   };
 
@@ -639,7 +723,7 @@ export function CollageStudio({
     setSaving(true);
     setNotice(null);
     try {
-      const preview = await bakeCollage({ frame: COLLAGE_FRAME, pieces });
+      const preview = await bakeCollage({ frame, pieces, paper: paper.color });
       const now = Date.now();
       const stacked = normalizeStack(pieces);
       const record: CollageRecord = {
@@ -647,12 +731,19 @@ export function CollageStudio({
         title: title.trim(),
         createdAt: createdAtRef.current,
         updatedAt: now,
-        frame: { ...COLLAGE_FRAME },
+        frame: { width: frame.width, height: frame.height },
+        format,
+        paper,
         pieces: stacked,
         preview,
       };
       await saveCollage(record);
-      savedRef.current = { pieces, title };
+      savedRef.current = {
+        pieces,
+        title,
+        paper: paper.color,
+        format,
+      };
       setConfirmingLeave(false);
       setNotice({ tone: "quiet", text: "saved" });
       onSaved(record);
@@ -679,7 +770,7 @@ export function CollageStudio({
     setSaving(true);
     setNotice(null);
     try {
-      const png = await bakeCollage({ frame: COLLAGE_FRAME, pieces });
+      const png = await bakeCollage({ frame, pieces, paper: paper.color });
       const url = URL.createObjectURL(png);
       const link = document.createElement("a");
       link.href = url;
@@ -714,9 +805,13 @@ export function CollageStudio({
     <div className="collage-studio">
       <ScrapTray
         items={scraps}
+        width={drawer.width}
+        collapsed={drawer.collapsed}
+        onWidth={(width) => updateDrawer({ width })}
+        onCollapsed={(collapsed) => updateDrawer({ collapsed })}
         onPlace={(item) =>
           // Clicked scraps fan out from the middle so each one stays grabbable.
-          addPiece(item, fanOutPlacement(pieces.length, COLLAGE_FRAME))
+          addPiece(item, fanOutPlacement(pieces.length, frame))
         }
         onDragStart={(item, event) => {
           draggingScrapRef.current = item;
@@ -731,8 +826,9 @@ export function CollageStudio({
             ref={frameRef}
             className={`collage-frame${dropActive ? " collage-frame--drop-target" : ""}`}
             style={{
-              width: COLLAGE_FRAME.width,
-              height: COLLAGE_FRAME.height,
+              width: frame.width,
+              height: frame.height,
+              background: paper.color,
               transform: `scale(${scale})`,
             }}
             onPointerDown={() => {
@@ -767,10 +863,17 @@ export function CollageStudio({
               const source = sourceBoxForCrop(piece, piece.crop);
               const isSelected = piece.id === selectedId;
               const hidden = crop?.pieceId === piece.id;
+              const offFrame =
+                piece.x + piece.width < 0 ||
+                piece.y + piece.height < 0 ||
+                piece.x > frame.width ||
+                piece.y > frame.height;
               return (
                 <div
                   key={piece.id}
-                  className={`collage-piece${isSelected ? " collage-piece--selected" : ""}`}
+                  className={`collage-piece${isSelected ? " collage-piece--selected" : ""}${
+                    offFrame ? " collage-piece--off-frame" : ""
+                  }`}
                   style={{
                     left: piece.x,
                     top: piece.y,
@@ -799,6 +902,8 @@ export function CollageStudio({
                       top: source.y - piece.y,
                       width: source.width,
                       height: source.height,
+                      transform: pieceMaterialTransform(piece),
+                      transformOrigin: "center",
                       pointerEvents: "none",
                     }}
                   >
@@ -896,6 +1001,45 @@ export function CollageStudio({
           {showKeys && <KeysPopover onClose={() => setShowKeys(false)} />}
         </div>
 
+        <FormatControl
+          format={format}
+          paper={paper}
+          zoom={scale}
+          pieceCount={pieces.length}
+          onFormat={setFormat}
+          onPaper={setPaper}
+        />
+
+        {selected && !crop && (
+          <PieceActions
+            piece={selected}
+            canUncrop={!isFullCrop(selected.crop)}
+            canCutOut={selected.scrap.kind === "image"}
+            onOrder={(to) =>
+              commit(
+                {
+                  forward: movePieceForward,
+                  backward: movePieceBackward,
+                  front: movePieceToFront,
+                  back: movePieceToBack,
+                }[to](pieces, selected.id),
+              )
+            }
+            onFlip={(axis) =>
+              editPiece(selected.id, (piece) => flipPiece(piece, axis))
+            }
+            onCrop={enterCrop}
+            onUncrop={() => editPiece(selected.id, clearCrop)}
+            onCutOut={() =>
+              selected.cutout
+                ? editPiece(selected.id, ({ cutout: _cut, ...rest }) => rest)
+                : cutOutSelected()
+            }
+            onDuplicate={() => duplicatePiece(selected)}
+            onRemove={removeSelected}
+          />
+        )}
+
         <div className="collage-bar">
           <input
             className="collage-title-input"
@@ -923,63 +1067,6 @@ export function CollageStudio({
             onClick={() => setHistory((current) => redo(current))}
           >
             redo
-          </button>
-          <button
-            type="button"
-            className="collage-action"
-            disabled={!selected}
-            onClick={() =>
-              selected && commit(movePieceBackward(pieces, selected.id))
-            }
-          >
-            send back
-          </button>
-          <button
-            type="button"
-            className="collage-action"
-            disabled={!selected}
-            onClick={() =>
-              selected && commit(movePieceForward(pieces, selected.id))
-            }
-          >
-            bring forward
-          </button>
-          <button
-            type="button"
-            className={`collage-action${crop ? " collage-action--primary" : ""}`}
-            disabled={!selected}
-            onClick={() => (crop ? commitCrop() : enterCrop())}
-          >
-            crop
-          </button>
-          <button
-            type="button"
-            className="collage-action"
-            disabled={!selected || isFullCrop(selected.crop)}
-            onClick={() => selected && editPiece(selected.id, clearCrop)}
-          >
-            uncrop
-          </button>
-          <button
-            type="button"
-            className="collage-action"
-            disabled={!selected || selected.scrap.kind !== "image"}
-            onClick={() =>
-              selected &&
-              (selected.cutout
-                ? editPiece(selected.id, ({ cutout: _cut, ...rest }) => rest)
-                : cutOutSelected())
-            }
-          >
-            {selected?.cutout ? "keep background" : "cut out"}
-          </button>
-          <button
-            type="button"
-            className="collage-action collage-action--danger"
-            disabled={!selected}
-            onClick={removeSelected}
-          >
-            remove
           </button>
           <button
             type="button"

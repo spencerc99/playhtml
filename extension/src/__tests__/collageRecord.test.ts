@@ -46,6 +46,8 @@ function piece(overrides: Partial<CollagePiece> = {}): CollagePiece {
     rotation: 0,
     z: 0,
     crop: { x: 0, y: 0, width: 1, height: 1 },
+    flipX: false,
+    flipY: false,
     ...overrides,
   };
 }
@@ -56,7 +58,9 @@ function record(pieces: CollagePiece[]): CollageRecord {
     title: "A collage",
     createdAt: 5_000,
     updatedAt: 6_000,
-    frame: { width: 1200, height: 800 },
+    frame: { width: 1500, height: 1000 },
+    format: "postcard",
+    paper: { color: "#fffdf9" },
     pieces,
     preview: new Blob(["png"], { type: "image/png" }),
   };

@@ -8,12 +8,14 @@ import {
   indexedDB as fakeIndexedDB,
 } from "fake-indexeddb";
 import type { ScrapItem } from "@movement/components/ScrapCollage";
+import assert from "node:assert/strict";
 import {
   deleteCollage,
   listCollages,
   loadCollage,
   saveCollage,
 } from "../entrypoints/scraps/collageStore";
+import { isUnreadable } from "../entrypoints/scraps/collageRecord";
 import type {
   CollagePiece,
   CollageRecord,
@@ -51,6 +53,8 @@ function piece(overrides: Partial<CollagePiece> = {}): CollagePiece {
     rotation: 12,
     z: 0,
     crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
+    flipX: false,
+    flipY: false,
     ...overrides,
   };
 }
@@ -61,7 +65,9 @@ function record(overrides: Partial<CollageRecord> = {}): CollageRecord {
     title: "A collage",
     createdAt: 5_000,
     updatedAt: 6_000,
-    frame: { width: 1200, height: 800 },
+    frame: { width: 1500, height: 1000 },
+    format: "postcard",
+    paper: { color: "#fffdf9" },
     pieces: [piece()],
     // jsdom's Blob is invisible to Node's structuredClone, which is what
     // fake-indexeddb round-trips a stored record through.
@@ -70,6 +76,33 @@ function record(overrides: Partial<CollageRecord> = {}): CollageRecord {
     }) as unknown as Blob,
     ...overrides,
   };
+}
+
+/** Writes a row straight to the store, bypassing the record's own shape. */
+async function putRaw(row: Record<string, unknown>): Promise<void> {
+  const db = await new Promise<IDBDatabase>((ok, bad) => {
+    const request = fakeIndexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const opened = request.result;
+      if (!opened.objectStoreNames.contains("collages")) {
+        opened
+          .createObjectStore("collages", { keyPath: "id" })
+          .createIndex("updatedAt", "updatedAt");
+      }
+    };
+    request.onsuccess = () => ok(request.result);
+    request.onerror = () => bad(request.error);
+  });
+  try {
+    await new Promise<void>((ok, bad) => {
+      const transaction = db.transaction("collages", "readwrite");
+      transaction.objectStore("collages").put(row);
+      transaction.oncomplete = () => ok();
+      transaction.onerror = () => bad(transaction.error);
+    });
+  } finally {
+    db.close();
+  }
 }
 
 async function deleteCollageDatabase(): Promise<void> {
@@ -107,7 +140,9 @@ describe("collageStore", () => {
     const loaded = await loadCollage("collage_1");
     expect(loaded).not.toBeNull();
     expect(loaded?.title).toBe("A collage");
-    expect(loaded?.frame).toEqual({ width: 1200, height: 800 });
+    expect(loaded?.frame).toEqual({ width: 1500, height: 1000 });
+    expect(loaded?.format).toBe("postcard");
+    expect(loaded?.paper).toEqual({ color: "#fffdf9" });
     expect(loaded?.pieces).toHaveLength(1);
     expect(loaded?.pieces[0].rotation).toBe(12);
     expect(loaded?.pieces[0].crop).toEqual({
@@ -150,9 +185,37 @@ describe("collageStore", () => {
     await saveCollage(
       record({ pieces: [piece(), piece({ id: "piece_2", z: 1 })] }),
     );
-    const [summary] = await listCollages();
-    expect(summary.pieceCount).toBe(2);
-    expect(summary).not.toHaveProperty("pieces");
+    const [entry] = await listCollages();
+    assert(!isUnreadable(entry));
+    expect(entry.pieceCount).toBe(2);
+    expect(entry).not.toHaveProperty("pieces");
+  });
+
+  it("lists a damaged record instead of failing the whole listing", async () => {
+    // One bad row must never hide the good ones or leave itself undeletable.
+    await saveCollage(record({ id: "good", title: "a good one" }));
+    await putRaw({
+      id: "broken",
+      title: "a broken one",
+      updatedAt: 42,
+      pieces: "not an array",
+    });
+
+    const listed = await listCollages();
+    expect(listed).toHaveLength(2);
+    const broken = listed.find((entry) => entry.id === "broken");
+    assert(broken && isUnreadable(broken));
+    expect(broken.title).toBe("a broken one");
+    expect(broken.reason).toMatch(/pieces/);
+    const good = listed.find((entry) => entry.id === "good");
+    assert(good && !isUnreadable(good));
+    expect(good.title).toBe("a good one");
+  });
+
+  it("deletes a damaged record like any other", async () => {
+    await putRaw({ id: "broken", title: "gone soon", updatedAt: 1 });
+    await deleteCollage("broken");
+    expect(await listCollages()).toEqual([]);
   });
 
   it("deletes one collage and leaves the rest", async () => {

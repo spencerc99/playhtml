@@ -4,8 +4,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   collageProvenance,
+  isUnreadable,
+  type CollageEntry,
   type CollageRecord,
-  type CollageSummary,
 } from "./collageRecord";
 import { deleteCollage, listCollages, loadCollage } from "./collageStore";
 import { webPageHref } from "./scrapLinks";
@@ -30,7 +31,7 @@ export function CollageHistory({
   onEdit,
   onStartNew,
 }: CollageHistoryProps) {
-  const [summaries, setSummaries] = useState<CollageSummary[] | null>(null);
+  const [entries, setSummaries] = useState<CollageEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<CollageRecord | null>(null);
@@ -81,11 +82,13 @@ export function CollageHistory({
 
   const previewUrls = useMemo(() => {
     const urls = new Map<string, string>();
-    for (const summary of summaries ?? []) {
-      urls.set(summary.id, URL.createObjectURL(summary.preview));
+    for (const entry of entries ?? []) {
+      if (!isUnreadable(entry)) {
+        urls.set(entry.id, URL.createObjectURL(entry.preview));
+      }
     }
     return urls;
-  }, [summaries]);
+  }, [entries]);
 
   useEffect(
     () => () => {
@@ -99,7 +102,7 @@ export function CollageHistory({
     setConfirmingId(null);
     setExpandedId((current) => (current === id ? null : current));
     setSummaries((current) =>
-      current ? current.filter((summary) => summary.id !== id) : current,
+      current ? current.filter((entry) => entry.id !== id) : current,
     );
   };
 
@@ -133,17 +136,59 @@ export function CollageHistory({
           {error}
         </p>
       )}
-      {!summaries && !error && (
+      {!entries && !error && (
         <p className="collage-studio__label">opening the drawer...</p>
       )}
-      {summaries?.length === 0 && (
+      {entries?.length === 0 && (
         <p className="collage-studio__label">
           nothing made yet - start a new one
         </p>
       )}
 
       <div className="collage-history__grid">
-        {summaries?.map((summary) => {
+        {entries?.map((entry) => {
+          if (isUnreadable(entry)) {
+            return (
+              <article
+                key={entry.id || entry.reason}
+                className="collage-card collage-card--unreadable"
+              >
+                <h3 className="collage-card__title">
+                  {entry.title || "a collage that could not be read"}
+                </h3>
+                <p className="collage-card__meta">{entry.reason}</p>
+                <div className="collage-card__actions">
+                  {confirmingId === entry.id ? (
+                    <>
+                      <button
+                        type="button"
+                        className="collage-action collage-action--danger"
+                        onClick={() => void remove(entry.id)}
+                      >
+                        delete for good
+                      </button>
+                      <button
+                        type="button"
+                        className="collage-action"
+                        onClick={() => setConfirmingId(null)}
+                      >
+                        keep
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="collage-action collage-action--danger"
+                      onClick={() => setConfirmingId(entry.id)}
+                    >
+                      delete
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          }
+          const summary = entry;
           const open = expandedId === summary.id;
           const record = open ? expanded : null;
           const sources = record ? collageProvenance(record.pieces) : [];
