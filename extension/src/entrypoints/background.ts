@@ -130,7 +130,7 @@ export type ScrapRecord = ScrapRecordBase &
         text: string
         level: 1 | 2 | 3
         styles: Record<string, string>
-        backdropColor?: string
+        backdropColor?: never
       }
     | {
         kind: 'cursor'
@@ -205,7 +205,6 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
         text: data.text,
         level: data.level,
         styles: data.styles,
-        ...(data.backdropColor ? { backdropColor: data.backdropColor } : {}),
       }
     case 'cursor':
       return {

@@ -54,7 +54,7 @@ type ScrapRecord = ScrapRecordBase &
         text: string;
         level: 1 | 2 | 3;
         styles: Record<string, string>;
-        backdropColor?: string;
+        backdropColor?: never;
       }
     | {
         kind: "cursor";
@@ -122,9 +122,6 @@ function toScrapItem(record: ScrapRecord): ScrapItem {
         text: record.text,
         level: record.level,
         styles: record.styles,
-        ...(record.backdropColor !== undefined
-          ? { backdropColor: record.backdropColor }
-          : {}),
       };
     case "cursor":
       return {
