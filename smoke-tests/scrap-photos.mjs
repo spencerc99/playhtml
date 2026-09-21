@@ -473,6 +473,11 @@ try {
   await reopened
     .getByRole("textbox", { name: "Find a domain or page" })
     .press("Escape");
+  const dock = reopened.locator('[aria-label="Scrap controls"]');
+  assert.ok(
+    (await dock.boundingBox()).width < 450,
+    "unfiltered dock stays compact",
+  );
   await seedUnchecked(420, "layout");
   await reopened.reload();
   await expect(reopened.getByLabel("Number of scraps shown")).toHaveCount(0);
@@ -705,17 +710,45 @@ try {
   await reopened
     .getByRole("textbox", { name: "Find a domain or page" })
     .press("Escape");
-  await expect(foundOn).toContainText("notebook.example");
+  await expect(
+    reopened.getByRole("button", {
+      name: "Edit source filter notebook.example",
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect(
     reopened.locator(".scrap-collage__archive-summary"),
   ).toContainText("210 of 430");
-  await foundOn.click();
+  await reopened
+    .getByRole("button", {
+      name: "Edit source filter notebook.example",
+      exact: true,
+    })
+    .click();
   await reopened
     .locator(".scrap-filters__domain")
     .filter({ hasText: "127.0.0.1" })
     .click();
-  await expect(foundOn).toContainText("127.0.0.1");
-  await expect(foundOn).toContainText("notebook.example");
+  await expect(
+    reopened.getByRole("button", {
+      name: "Edit source filter 127.0.0.1",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    reopened.getByRole("button", {
+      name: "Edit source filter notebook.example",
+      exact: true,
+    }),
+  ).toBeVisible();
+  const viewBounds = await reopened
+    .getByRole("group", { name: "Scrap view", exact: true })
+    .boundingBox();
+  const layoutBounds = await layoutControl.boundingBox();
+  assert.ok(
+    layoutBounds.x - viewBounds.x - viewBounds.width < 12,
+    "view and layout switches stay together",
+  );
   await waitForFilterImages();
   await reopened.screenshot({ path: resolve(evidence, "filter-places.png") });
   await reopened

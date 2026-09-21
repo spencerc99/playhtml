@@ -126,9 +126,22 @@ export function ScrapFilters({
         onClick={() => setPanel(panel === "places" ? null : "places")}
       >
         <span className="scrap-filters__label">Found on</span>{" "}
-        <span>{selected.join(" · ") || "anywhere"}</span>{" "}
+        {selected.length === 0 && <span>anywhere</span>}{" "}
         <span aria-hidden="true">▾</span>
       </button>
+      {selected.map((site) => (
+        <button
+          type="button"
+          key={site}
+          className="scrap-filters__site"
+          aria-label={`Edit source filter ${site}`}
+          aria-expanded={panel === "places"}
+          aria-controls={`${id}-places`}
+          onClick={() => setPanel("places")}
+        >
+          {site}
+        </button>
+      ))}
       <button
         type="button"
         ref={typeButton}
@@ -273,8 +286,8 @@ const styles = `
 .scrap-filters__chip { display:flex; align-items:center; flex-wrap:wrap; gap:6px; max-width:100%; text-align:left; overflow-wrap:anywhere; }
 .scrap-filters__chip[aria-expanded=true] { border-color:#4a9a8a; }
 .scrap-filters__label { color:#827a72; }
-.scrap-filters__search-toggle { margin-left:auto; }
-.scrap-filters__search { display:flex; flex:1 1 180px; min-width:0; border:1px solid #cec8bf; border-radius:4px; background:#faf9f6; }
+.scrap-filters .scrap-filters__site { color:#33796d; max-width:100%; overflow-wrap:anywhere; text-align:left; }
+.scrap-filters__search { display:flex; flex:1 1 170px; width:170px; min-width:120px; border:1px solid #cec8bf; border-radius:4px; background:#faf9f6; }
 .scrap-filters__search input { flex:1; width:0; min-width:0; padding:6px 8px; border:0; background:transparent; }
 .scrap-filters__search button { border:0; }
 .scrap-filters__popover { position:absolute; bottom:calc(100% + 12px); left:0; z-index:2; width:300px; max-width:100%; box-sizing:border-box; padding:14px; border:1px solid #cec8bf; border-radius:6px; background:#f5f0e8; box-shadow:0 8px 24px #3d383333; font:11px/1.5 "Martian Mono",monospace; }

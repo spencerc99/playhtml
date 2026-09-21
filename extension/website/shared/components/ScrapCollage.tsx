@@ -762,8 +762,8 @@ const COLLAGE_STYLES = `
     align-items: stretch;
     gap: 7px;
     box-sizing: border-box;
-    width: 640px;
-    max-width: calc(100% - 24px);
+    width: max-content;
+    max-width: min(720px, calc(100% - 24px));
     padding: 7px;
     border: 1px solid rgba(61, 56, 51, 0.2);
     border-radius: 5px;
@@ -796,11 +796,13 @@ const COLLAGE_STYLES = `
   }
 
   .scrap-collage__controls-header {
-    justify-content: space-between;
+    justify-content: flex-start;
     flex-wrap: wrap;
     padding-bottom: 6px;
     border-bottom: 1px solid rgba(61, 56, 51, 0.12);
   }
+
+  .scrap-collage__controls-header > .scrap-collage__filter--collapse { margin-left: auto; }
 
   .scrap-collage__view-switch {
     display: inline-flex;
