@@ -393,6 +393,7 @@ export function CollageStudio({
       const command = studioCommandFor(
         {
           key: event.key,
+          code: event.code,
           metaKey: event.metaKey,
           ctrlKey: event.ctrlKey,
           shiftKey: event.shiftKey,
@@ -973,7 +974,7 @@ export function CollageStudio({
                 : cutOutSelected())
             }
           >
-            {selected?.cutout ? "restore background" : "cut out"}
+            {selected?.cutout ? "keep background" : "cut out"}
           </button>
           <button
             type="button"

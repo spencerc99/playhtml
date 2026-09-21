@@ -363,7 +363,7 @@ export const COLLAGE_STUDIO_STYLES = `
     right: 16px;
     bottom: 16px;
     z-index: 10003;
-    width: 268px;
+    width: 310px;
     max-height: calc(100% - 32px);
     overflow-y: auto;
     padding: 10px 12px;
@@ -404,15 +404,16 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-keys__row {
     display: flex;
-    gap: 8px;
+    align-items: baseline;
+    gap: 10px;
     margin: 0;
-    padding: 2px 0;
+    padding: 3px 0;
     font-size: 11px;
     line-height: 1.4;
   }
 
   .collage-keys__combo {
-    flex: 0 0 116px;
+    flex: 0 0 132px;
     font-family: "Martian Mono", monospace;
     font-size: 8px;
     letter-spacing: 0.02em;
