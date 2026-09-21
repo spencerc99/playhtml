@@ -26,6 +26,11 @@ export type StudioCommand =
 
 export interface KeyEventShape {
   key: string;
+  /**
+   * The physical key, which the bracket shortcuts match on: holding shift
+   * turns `[` into `{`, so the printed character cannot identify them.
+   */
+  code?: string;
   metaKey: boolean;
   ctrlKey: boolean;
   shiftKey: boolean;
@@ -88,6 +93,22 @@ export function studioCommandFor(
   }
 
   if (accel) {
+    // Shift turns `[` into `{`, so the brackets are matched by physical key
+    // and only fall back to the character when no code is available.
+    const bracket =
+      event.code === "BracketRight" || (!event.code && event.key === "]")
+        ? "right"
+        : event.code === "BracketLeft" || (!event.code && event.key === "[")
+          ? "left"
+          : null;
+    if (bracket) {
+      if (!hasSelection) return null;
+      if (bracket === "right") {
+        return { kind: "order", to: event.shiftKey ? "front" : "forward" };
+      }
+      return { kind: "order", to: event.shiftKey ? "back" : "backward" };
+    }
+
     switch (event.key.toLowerCase()) {
       case "z":
         return event.shiftKey ? { kind: "redo" } : { kind: "undo" };
@@ -99,14 +120,6 @@ export function studioCommandFor(
         return hasSelection ? { kind: "copy" } : null;
       case "v":
         return context.hasClipboard ? { kind: "paste" } : null;
-      case "]":
-        return hasSelection
-          ? { kind: "order", to: event.shiftKey ? "front" : "forward" }
-          : null;
-      case "[":
-        return hasSelection
-          ? { kind: "order", to: event.shiftKey ? "back" : "backward" }
-          : null;
       default:
         return null;
     }
@@ -163,7 +176,7 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
   {
     group: "shape a piece",
     entries: [
-      { keys: "double-click / enter / C", what: "crop" },
+      { keys: "double-click, enter, C", what: "crop" },
       { keys: "R", what: "rotate, then click to confirm" },
       { keys: "S", what: "scale, then click to confirm" },
       { keys: "B", what: "cut out the background" },

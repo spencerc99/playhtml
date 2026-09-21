@@ -125,35 +125,55 @@ describe("crop", () => {
 
 describe("ordering", () => {
   it("maps the bracket accelerators to stacking moves", () => {
+    expect(
+      studioCommandFor(
+        press("]", { metaKey: true, code: "BracketRight" }),
+        IDLE,
+      ),
+    ).toEqual({ kind: "order", to: "forward" });
+    expect(
+      studioCommandFor(press("[", { metaKey: true, code: "BracketLeft" }), IDLE),
+    ).toEqual({ kind: "order", to: "backward" });
+  });
+
+  it("still reads the bracket when shift rewrites it to a brace", () => {
+    // Shift+[ prints "{", so matching on the character alone would miss.
+    expect(
+      studioCommandFor(
+        press("}", { metaKey: true, shiftKey: true, code: "BracketRight" }),
+        IDLE,
+      ),
+    ).toEqual({ kind: "order", to: "front" });
+    expect(
+      studioCommandFor(
+        press("{", { metaKey: true, shiftKey: true, code: "BracketLeft" }),
+        IDLE,
+      ),
+    ).toEqual({ kind: "order", to: "back" });
+  });
+
+  it("falls back to the character when no physical key is reported", () => {
     expect(studioCommandFor(press("]", { metaKey: true }), IDLE)).toEqual({
       kind: "order",
       to: "forward",
     });
-    expect(studioCommandFor(press("[", { metaKey: true }), IDLE)).toEqual({
-      kind: "order",
-      to: "backward",
-    });
-    expect(
-      studioCommandFor(press("]", { metaKey: true, shiftKey: true }), IDLE),
-    ).toEqual({ kind: "order", to: "front" });
-    expect(
-      studioCommandFor(press("[", { metaKey: true, shiftKey: true }), IDLE),
-    ).toEqual({ kind: "order", to: "back" });
   });
 
   it("works from the control key for people not on a Mac", () => {
-    expect(studioCommandFor(press("]", { ctrlKey: true }), IDLE)).toEqual({
-      kind: "order",
-      to: "forward",
-    });
+    expect(
+      studioCommandFor(
+        press("]", { ctrlKey: true, code: "BracketRight" }),
+        IDLE,
+      ),
+    ).toEqual({ kind: "order", to: "forward" });
   });
 
   it("does nothing without a selection", () => {
     expect(
-      studioCommandFor(press("]", { metaKey: true }), {
-        ...IDLE,
-        hasSelection: false,
-      }),
+      studioCommandFor(
+        press("]", { metaKey: true, code: "BracketRight" }),
+        { ...IDLE, hasSelection: false },
+      ),
     ).toBeNull();
   });
 });
