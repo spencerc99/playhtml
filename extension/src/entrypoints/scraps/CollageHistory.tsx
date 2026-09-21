@@ -196,6 +196,7 @@ export function CollageHistory({
             <article key={summary.id} className="collage-card">
               <img
                 className="collage-card__thumb"
+                style={{ background: summary.paper.color }}
                 src={previewUrls.get(summary.id)}
                 alt={summary.title || "untitled collage"}
                 onClick={() => setExpandedId(open ? null : summary.id)}

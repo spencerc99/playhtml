@@ -302,10 +302,10 @@ export const COLLAGE_STUDIO_STYLES = `
     overflow: hidden;
   }
 
+  /* The frame's paper comes from the record, so the studio shows what bakes. */
   .collage-frame {
     position: relative;
     transform-origin: center;
-    background: #fffdf9;
     box-shadow: 0 10px 34px rgba(61, 56, 51, 0.16);
     overflow: hidden;
     touch-action: none;
@@ -700,12 +700,12 @@ export const COLLAGE_STUDIO_STYLES = `
     box-shadow: 0 4px 14px rgba(61, 56, 51, 0.08);
   }
 
+  /* The thumbnail sits on the collage's own paper, set from the record. */
   .collage-card__thumb {
     display: block;
     width: 100%;
     aspect-ratio: 3 / 2;
     object-fit: contain;
-    background: #faf9f6;
     cursor: zoom-in;
   }
 
