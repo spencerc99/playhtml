@@ -135,6 +135,7 @@ const BUTTONS: Array<{
   domain: string;
   pageTitle: string;
   styles: Record<string, string>;
+  backdropColor?: string;
 }> = [
   {
     text: "Subscribe",
@@ -227,6 +228,24 @@ const BUTTONS: Array<{
       fontSize: "14px",
       fontWeight: "400",
       fontStyle: "italic",
+    },
+  },
+  {
+    // Pale type on a dark bar it did not paint itself: the backdrop its page
+    // supplied is the only thing keeping this legible once it is torn out.
+    text: "Sign in",
+    domain: "nightgarden.example",
+    pageTitle: "Moths of the porch light",
+    backdropColor: "rgb(28, 32, 38)",
+    styles: {
+      backgroundColor: "rgba(0, 0, 0, 0)",
+      color: "rgb(245, 240, 232)",
+      border: "0px none",
+      borderRadius: "4px",
+      padding: "8px 18px",
+      fontFamily: "system-ui, sans-serif",
+      fontSize: "14px",
+      fontWeight: "500",
     },
   },
   {
@@ -363,6 +382,7 @@ const HEADINGS: Array<{
   text: string;
   level: 1 | 2 | 3;
   styles: Record<string, string>;
+  backdropColor?: string;
 }> = [
   {
     name: "orchard",
@@ -413,6 +433,24 @@ const HEADINGS: Array<{
       lineHeight: "24px",
     },
   },
+  {
+    // Light type that painted nothing of its own: without the backdrop its
+    // page supplied, this heading would redraw invisible on pale paper.
+    name: "nightgarden",
+    domain: "nightgarden.example",
+    pageTitle: "Moths of the porch light",
+    text: "After the rain",
+    level: 2,
+    backdropColor: "rgb(28, 32, 38)",
+    styles: {
+      fontFamily: "Helvetica, sans-serif",
+      fontSize: "30px",
+      fontWeight: "300",
+      color: "rgb(245, 240, 232)",
+      letterSpacing: "0.04em",
+      lineHeight: "36px",
+    },
+  },
 ];
 
 export function buildItems(): ScrapItem[] {
@@ -442,6 +480,9 @@ export function buildItems(): ScrapItem[] {
       kind: "button",
       text: button.text,
       styles: button.styles,
+      ...(button.backdropColor
+        ? { backdropColor: button.backdropColor }
+        : {}),
       pageTitle: button.pageTitle,
       domain: button.domain,
       pageUrl: `https://${button.domain}/`,
@@ -472,6 +513,9 @@ export function buildItems(): ScrapItem[] {
       text: heading.text,
       level: heading.level,
       styles: heading.styles,
+      ...(heading.backdropColor
+        ? { backdropColor: heading.backdropColor }
+        : {}),
       pageTitle: heading.pageTitle,
       domain: heading.domain,
       pageUrl: `https://${heading.domain}/`,

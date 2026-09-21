@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
   headingDisplayFontSize,
+  ScrapBackdrop,
   type ScrapItem,
 } from "@movement/components/ScrapCollage";
 import { buildItems } from "../scraps-preview/demoScraps";
@@ -455,19 +456,21 @@ function ScrapContent({ item }: { item: ScrapItem }) {
       );
     case "button":
       return (
-        <span
-          className="scrap-crate__button"
-          style={item.styles as React.CSSProperties}
-        >
-          {item.innerSvg && (
-            <span
-              className="scrap-crate__button-icon"
-              aria-hidden="true"
-              dangerouslySetInnerHTML={{ __html: item.innerSvg }}
-            />
-          )}
-          {item.text}
-        </span>
+        <ScrapBackdrop color={item.backdropColor}>
+          <span
+            className="scrap-crate__button"
+            style={item.styles as React.CSSProperties}
+          >
+            {item.innerSvg && (
+              <span
+                className="scrap-crate__button-icon"
+                aria-hidden="true"
+                dangerouslySetInnerHTML={{ __html: item.innerSvg }}
+              />
+            )}
+            {item.text}
+          </span>
+        </ScrapBackdrop>
       );
     case "svg-icon":
       return (
@@ -479,15 +482,17 @@ function ScrapContent({ item }: { item: ScrapItem }) {
       );
     case "heading":
       return (
-        <span
-          className="scrap-crate__heading"
-          style={{
-            ...(item.styles as React.CSSProperties),
-            fontSize: headingDisplayFontSize(item.styles, item.text),
-          }}
-        >
-          {item.text}
-        </span>
+        <ScrapBackdrop color={item.backdropColor}>
+          <span
+            className="scrap-crate__heading"
+            style={{
+              ...(item.styles as React.CSSProperties),
+              fontSize: headingDisplayFontSize(item.styles, item.text),
+            }}
+          >
+            {item.text}
+          </span>
+        </ScrapBackdrop>
       );
     case "cursor":
       return (

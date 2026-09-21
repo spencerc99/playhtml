@@ -11,6 +11,7 @@ import React, {
 import { createRoot } from "react-dom/client";
 import {
   headingDisplayFontSize,
+  ScrapBackdrop,
   type ScrapItem,
 } from "@movement/components/ScrapCollage";
 import { buildItems } from "../scraps-preview/demoScraps";
@@ -675,7 +676,13 @@ function FittedButton({ item }: FittedButtonProps) {
   }, [item]);
 
   return (
-    <div ref={containerRef} className="scrap-content scrap-content--button">
+    <div
+      ref={containerRef}
+      className="scrap-content scrap-content--button"
+      style={
+        item.backdropColor ? { background: item.backdropColor } : undefined
+      }
+    >
       <span
         ref={buttonRef}
         className="scrap-button"
@@ -724,15 +731,17 @@ function ScrapContent({ item }: ScrapContentProps) {
       );
     case "heading":
       return (
-        <span
-          className="scrap-content scrap-content--heading"
-          style={{
-            ...(item.styles as React.CSSProperties),
-            fontSize: headingDisplayFontSize(item.styles, item.text),
-          }}
-        >
-          {item.text}
-        </span>
+        <ScrapBackdrop color={item.backdropColor}>
+          <span
+            className="scrap-content scrap-content--heading"
+            style={{
+              ...(item.styles as React.CSSProperties),
+              fontSize: headingDisplayFontSize(item.styles, item.text),
+            }}
+          >
+            {item.text}
+          </span>
+        </ScrapBackdrop>
       );
     case "cursor":
       return (
