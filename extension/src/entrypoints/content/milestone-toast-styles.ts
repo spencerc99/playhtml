@@ -5,12 +5,12 @@ export const MILESTONE_DURATION_MS = 15000;
 
 export const MILESTONE_TOAST_CSS = `
 .wwo-milestone-toast {
-  background: #f5f0e8;
-  border: 1px solid rgba(61, 56, 51, 0.12);
+  background: var(--surface, #f5f0e8);
+  border: 1px solid var(--border, rgba(61, 56, 51, 0.12));
   border-radius: 10px;
   padding: 10px 13px 11px;
   width: 310px;
-  box-shadow: 0 2px 12px rgba(61, 56, 51, 0.08);
+  box-shadow: 0 2px 12px var(--shadow, rgba(61, 56, 51, 0.08));
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -44,7 +44,7 @@ export const MILESTONE_TOAST_CSS = `
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: rgba(61, 56, 51, 0.55);
+  color: var(--text-muted, rgba(61, 56, 51, 0.55));
   font-family: 'Atkinson Hyperlegible', -apple-system, sans-serif;
   font-size: 16px;
   line-height: 1;
@@ -62,13 +62,13 @@ export const MILESTONE_TOAST_CSS = `
 }
 
 .wwo-toast-close:hover {
-  background: rgba(61, 56, 51, 0.08);
-  color: rgba(61, 56, 51, 0.85);
+  background: var(--border, rgba(61, 56, 51, 0.08));
+  color: var(--text, rgba(61, 56, 51, 0.85));
 }
 
 .wwo-toast-close:focus-visible {
   opacity: 1;
-  outline: 2px solid rgba(74, 154, 138, 0.55);
+  outline: 2px solid var(--accent-teal, rgba(74, 154, 138, 0.55));
   outline-offset: 1px;
 }
 
@@ -80,7 +80,7 @@ export const MILESTONE_TOAST_CSS = `
   font-style: italic;
   font-weight: 300;
   font-size: 12px;
-  color: rgba(61, 56, 51, 0.55);
+  color: var(--text-muted, rgba(61, 56, 51, 0.55));
   letter-spacing: -0.01em;
   line-height: 1;
   user-select: none;
@@ -106,7 +106,7 @@ export const MILESTONE_TOAST_CSS = `
   gap: 4px;
   flex-shrink: 0;
   width: 50px;
-  border-right: 1px solid rgba(61, 56, 51, 0.08);
+  border-right: 1px solid var(--border, rgba(61, 56, 51, 0.08));
   padding-right: 12px;
   overflow: visible;
 }
@@ -115,7 +115,7 @@ export const MILESTONE_TOAST_CSS = `
   font-family: 'Martian Mono', monospace;
   font-size: 18px;
   font-weight: 400;
-  color: #4a9a8a;
+  color: var(--accent-teal, #4a9a8a);
   line-height: 1;
   text-align: center;
 }
@@ -129,7 +129,7 @@ export const MILESTONE_TOAST_CSS = `
   font-family: 'Martian Mono', monospace;
   font-size: 7.5px;
   font-weight: 300;
-  color: #4a9a8a;
+  color: var(--accent-teal, #4a9a8a);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   text-align: center;
@@ -150,22 +150,22 @@ export const MILESTONE_TOAST_CSS = `
   font-weight: 300;
   text-transform: uppercase;
   letter-spacing: 0.09em;
-  color: #faf7f2;
+  color: var(--btn-fg, #faf7f2);
   border-radius: 3px;
   padding: 1.5px 4px;
   line-height: 1.3;
   width: fit-content;
 }
 
-.wwo-toast-badge.wwo-today   { background: #4a9a8a; }
-.wwo-toast-badge.wwo-alltime { background: #c4724e; }
+.wwo-toast-badge.wwo-today   { background: var(--accent-teal, #4a9a8a); }
+.wwo-toast-badge.wwo-alltime { background: var(--accent-rust, #c4724e); }
 
 .wwo-toast-headline {
   font-family: 'Lora', Georgia, serif;
   font-size: 12.5px;
   font-style: italic;
   font-weight: 600;
-  color: #3d3833;
+  color: var(--text, #3d3833);
   line-height: 1.45;
   margin: 0;
 }
@@ -174,7 +174,7 @@ export const MILESTONE_TOAST_CSS = `
   font-family: 'Martian Mono', monospace;
   font-size: 8px;
   font-weight: 300;
-  color: rgba(61, 56, 51, 0.5);
+  color: var(--text-muted, rgba(61, 56, 51, 0.5));
   letter-spacing: 0.02em;
   line-height: 1.3;
   margin: 0;
@@ -183,7 +183,7 @@ export const MILESTONE_TOAST_CSS = `
 .wwo-toast-cta {
   font-family: 'Atkinson Hyperlegible', -apple-system, sans-serif;
   font-size: 10px;
-  color: #4a9a8a;
+  color: var(--accent-teal, #4a9a8a);
   background: none;
   border: none;
   padding: 0;
@@ -217,7 +217,7 @@ export const MILESTONE_TOAST_CSS = `
 
 .wwo-cursor-svg.wwo-c0 {
   animation: wwo-drift 4.5s ease-in-out infinite;
-  filter: drop-shadow(0 0 2px rgba(74, 154, 138, 0.45));
+  filter: drop-shadow(0 0 2px var(--active-border, rgba(74, 154, 138, 0.45)));
 }
 .wwo-cursor-svg.wwo-c1 { animation: wwo-drift 4.5s ease-in-out infinite; animation-delay: -0.25s; opacity: 0.42; }
 .wwo-cursor-svg.wwo-c2 { animation: wwo-drift 4.5s ease-in-out infinite; animation-delay: -0.5s;  opacity: 0.20; }
@@ -244,11 +244,11 @@ export const MILESTONE_TOAST_CSS = `
 .wwo-spark-bar {
   flex: 1;
   border-radius: 1.5px 1.5px 0 0;
-  background: rgba(74, 154, 138, 0.2);
+  background: var(--active-border, rgba(74, 154, 138, 0.2));
   min-height: 2px;
 }
 
-.wwo-spark-bar.wwo-current { background: #4a9a8a; }
+.wwo-spark-bar.wwo-current { background: var(--accent-teal, #4a9a8a); }
 
 /* Scatter dots (sites explored) */
 .wwo-scatter {
@@ -264,8 +264,8 @@ export const MILESTONE_TOAST_CSS = `
   height: 26px;
   border-radius: 5px;
   overflow: hidden;
-  background: rgba(74, 154, 138, 0.1);
-  border: 1px solid rgba(74, 154, 138, 0.2);
+  background: var(--active-bg, rgba(74, 154, 138, 0.1));
+  border: 1px solid var(--active-border, rgba(74, 154, 138, 0.2));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -281,7 +281,7 @@ export const MILESTONE_TOAST_CSS = `
 .wwo-favicon-fallback {
   font-family: 'Martian Mono', monospace;
   font-size: 13px;
-  color: #4a9a8a;
+  color: var(--accent-teal, #4a9a8a);
   line-height: 1;
 }
 `;

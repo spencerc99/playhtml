@@ -8,12 +8,12 @@
   padding: 16px;
   display: flex;
   flex-direction: column;
-  background: $bg;
-  color: $text;
+  background: var(--bg);
+  color: var(--text);
 
   &__header {
     padding-bottom: 12px;
-    border-bottom: 1px solid $border;
+    border-bottom: 1px solid var(--border);
 
     h1 {
       margin: 3px 0 4px;
@@ -23,7 +23,7 @@
 
     p {
       margin: 0;
-      color: $text-muted;
+      color: var(--text-muted);
       font-size: 11px;
       line-height: 1.45;
     }
@@ -35,13 +35,13 @@
     margin-bottom: 10px;
     border: 0;
     background: none;
-    color: $text-muted;
+    color: var(--text-muted);
     font: 10px $font-mono;
     cursor: pointer;
   }
 
   &__eyebrow {
-    color: $accent-rust;
+    color: var(--accent-rust);
     font: 700 9px $font-mono;
     letter-spacing: 0.09em;
   }
@@ -57,14 +57,14 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    border-bottom: 1px solid $border;
+    border-bottom: 1px solid var(--border);
     cursor: pointer;
 
     input {
       width: 17px;
       height: 17px;
       flex: 0 0 auto;
-      accent-color: $accent-teal;
+      accent-color: var(--accent-teal);
     }
   }
 
@@ -81,13 +81,13 @@
     }
 
     > span {
-      color: $text-muted;
+      color: var(--text-muted);
       font-size: 10px;
       line-height: 1.35;
     }
 
     small {
-      color: $text-faint;
+      color: var(--text-faint);
       font: 8px $font-mono;
       text-transform: uppercase;
     }
@@ -99,15 +99,15 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    color: $text-faint;
+    color: var(--text-faint);
     font: 9px $font-mono;
 
     button {
       padding: 6px 8px;
-      border: 1px solid $border;
+      border: 1px solid var(--border);
       border-radius: 5px;
-      background: $surface;
-      color: $text-muted;
+      background: var(--surface);
+      color: var(--text-muted);
       font: 9px $font-mono;
       cursor: pointer;
 

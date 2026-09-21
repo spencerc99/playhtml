@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
 import type { ScrapSource } from "@movement/utils/scrapPhotoGroups";
 import { ExtensionPageNav } from "../../components/ExtensionPageNav";
+import "./scraps.scss";
 import {
   ScrapCollage,
   type ScrapItem,
@@ -120,7 +121,7 @@ const centeredMessageStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   padding: 24,
-  color: "#827a72",
+  color: "var(--text-muted)",
   fontFamily: '"Martian Mono", monospace',
   fontSize: 11,
   letterSpacing: "0.02em",
@@ -187,11 +188,12 @@ export function ScrapsPage() {
         width: "100vw",
         height: "100vh",
         overflow: "hidden",
-        background: "#faf9f6",
-        color: "#3d3833",
+        background: "var(--bg)",
+        color: "var(--text)",
       }}
     >
       <svg
+        className="scraps-paper-texture"
         width="100%"
         height="100%"
         aria-hidden="true"
@@ -274,7 +276,7 @@ export function ScrapsPage() {
         <h1
           style={{
             margin: 0,
-            color: "#3d3833",
+            color: "var(--text)",
             fontFamily: '"Martian Mono", monospace',
             fontSize: 15,
             fontWeight: 500,
@@ -286,7 +288,7 @@ export function ScrapsPage() {
         <p
           style={{
             margin: "5px 0 0",
-            color: "#827a72",
+            color: "var(--text-muted)",
             fontFamily: '"Martian Mono", monospace',
             fontSize: 9,
             letterSpacing: "0.02em",
