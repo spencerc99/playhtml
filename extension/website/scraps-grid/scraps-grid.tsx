@@ -11,7 +11,6 @@ import React, {
 import { createRoot } from "react-dom/client";
 import {
   headingDisplayFontSize,
-  ScrapBackdrop,
   type ScrapItem,
 } from "@movement/components/ScrapCollage";
 import { buildItems } from "../scraps-preview/demoScraps";
@@ -731,17 +730,15 @@ function ScrapContent({ item }: ScrapContentProps) {
       );
     case "heading":
       return (
-        <ScrapBackdrop color={item.backdropColor}>
-          <span
-            className="scrap-content scrap-content--heading"
-            style={{
-              ...(item.styles as React.CSSProperties),
-              fontSize: headingDisplayFontSize(item.styles, item.text),
-            }}
-          >
-            {item.text}
-          </span>
-        </ScrapBackdrop>
+        <span
+          className="scrap-content scrap-content--heading"
+          style={{
+            ...(item.styles as React.CSSProperties),
+            fontSize: headingDisplayFontSize(item.styles, item.text),
+          }}
+        >
+          {item.text}
+        </span>
       );
     case "cursor":
       return (

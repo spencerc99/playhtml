@@ -382,7 +382,6 @@ const HEADINGS: Array<{
   text: string;
   level: 1 | 2 | 3;
   styles: Record<string, string>;
-  backdropColor?: string;
 }> = [
   {
     name: "orchard",
@@ -427,21 +426,19 @@ const HEADINGS: Array<{
       fontSize: "18px",
       fontWeight: "700",
       color: "#f5f0e8",
-      backgroundColor: "#22333b",
       textTransform: "uppercase",
       letterSpacing: "0.08em",
       lineHeight: "24px",
     },
   },
   {
-    // Light type that painted nothing of its own: without the backdrop its
-    // page supplied, this heading would redraw invisible on pale paper.
+    // Pale type from a dark page: a heading keeps its color but no background,
+    // so it reads faintly on the collage's paper, which is accepted.
     name: "nightgarden",
     domain: "nightgarden.example",
     pageTitle: "Moths of the porch light",
     text: "After the rain",
     level: 2,
-    backdropColor: "rgb(28, 32, 38)",
     styles: {
       fontFamily: "Helvetica, sans-serif",
       fontSize: "30px",
@@ -513,9 +510,6 @@ export function buildItems(): ScrapItem[] {
       text: heading.text,
       level: heading.level,
       styles: heading.styles,
-      ...(heading.backdropColor
-        ? { backdropColor: heading.backdropColor }
-        : {}),
       pageTitle: heading.pageTitle,
       domain: heading.domain,
       pageUrl: `https://${heading.domain}/`,

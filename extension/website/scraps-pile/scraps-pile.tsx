@@ -482,17 +482,15 @@ function ScrapContent({ item }: { item: ScrapItem }) {
       );
     case "heading":
       return (
-        <ScrapBackdrop color={item.backdropColor}>
-          <span
-            className="scrap-crate__heading"
-            style={{
-              ...(item.styles as React.CSSProperties),
-              fontSize: headingDisplayFontSize(item.styles, item.text),
-            }}
-          >
-            {item.text}
-          </span>
-        </ScrapBackdrop>
+        <span
+          className="scrap-crate__heading"
+          style={{
+            ...(item.styles as React.CSSProperties),
+            fontSize: headingDisplayFontSize(item.styles, item.text),
+          }}
+        >
+          {item.text}
+        </span>
       );
     case "cursor":
       return (
