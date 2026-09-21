@@ -405,12 +405,14 @@ export function CollageStudio({
     <div className="collage-studio">
       <ScrapTray
         items={scraps}
-        onPlace={(item) =>
+        onPlace={(item) => {
+          // Clicked scraps fan out from the middle so each one stays grabbable.
+          const step = (pieces.length % 8) * 28;
           addPiece(item, {
-            x: COLLAGE_FRAME.width / 2,
-            y: COLLAGE_FRAME.height / 2,
-          })
-        }
+            x: COLLAGE_FRAME.width / 2 - 98 + step,
+            y: COLLAGE_FRAME.height / 2 - 98 + step,
+          });
+        }}
         onDragStart={(item, event) => {
           draggingScrapRef.current = item;
           event.dataTransfer.effectAllowed = "copy";
