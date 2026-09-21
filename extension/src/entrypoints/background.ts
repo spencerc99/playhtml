@@ -117,6 +117,7 @@ export type ScrapRecord = ScrapRecordBase &
         text: string
         styles: Record<string, string>
         innerSvg?: string
+        backdropColor?: string
       }
     | {
         kind: 'svg-icon'
@@ -129,6 +130,7 @@ export type ScrapRecord = ScrapRecordBase &
         text: string
         level: 1 | 2 | 3
         styles: Record<string, string>
+        backdropColor?: string
       }
     | {
         kind: 'cursor'
@@ -186,6 +188,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
         text: data.text,
         styles: data.styles,
         ...(data.innerSvg ? { innerSvg: data.innerSvg } : {}),
+        ...(data.backdropColor ? { backdropColor: data.backdropColor } : {}),
       }
     case 'svg-icon':
       return {
@@ -202,6 +205,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
         text: data.text,
         level: data.level,
         styles: data.styles,
+        ...(data.backdropColor ? { backdropColor: data.backdropColor } : {}),
       }
     case 'cursor':
       return {

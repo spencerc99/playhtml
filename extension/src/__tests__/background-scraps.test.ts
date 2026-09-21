@@ -68,6 +68,7 @@ describe("background scrap queries", () => {
       text: "Keep this",
       styles: buttonStyles,
       innerSvg: "<svg/>",
+      backdropColor: "rgb(28, 32, 38)",
       pageTitle: "Button page",
     });
     const svg = createEvent("svg", 300, {
@@ -213,6 +214,7 @@ describe("background scrap queries", () => {
           text: "Keep this",
           styles: buttonStyles,
           innerSvg: "<svg/>",
+          backdropColor: "rgb(28, 32, 38)",
         },
         {
           id: "image",
