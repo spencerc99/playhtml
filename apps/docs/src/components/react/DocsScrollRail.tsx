@@ -1,10 +1,11 @@
 // ABOUTME: Renders collaborative reader positions on a document scroll rail.
 // ABOUTME: Marks article section headings without indexing interactive component content.
 
-import React, { useEffect, useRef, useState } from 'react';
-import { withSharedState } from '@playhtml/react';
+import React, { useEffect, useState } from 'react';
+import { playhtml, withSharedState } from '@playhtml/react';
+import type { User } from 'playhtml';
 
-type RailAwareness = { color: string; scroll: number };
+type RailAwareness = { scroll: number };
 
 type SectionTick = {
   key: string;
@@ -13,14 +14,6 @@ type SectionTick = {
 };
 
 const FALLBACK_COLOR = '#8e897a';
-
-function readCursorColor(): string {
-  try {
-    const c = (window as any).cursors?.color;
-    if (typeof c === 'string' && c.length > 0) return c;
-  } catch {}
-  return FALLBACK_COLOR;
-}
 
 // Compute section heading positions as fractions of the document height.
 // The rail uses these to draw ruler-style ticks: h2 = louder/longer,
@@ -55,55 +48,23 @@ function computeSectionTicks(): SectionTick[] {
 export const DocsScrollRail = withSharedState<{}, RailAwareness>(
   {
     defaultData: {},
-    myDefaultAwareness: { color: FALLBACK_COLOR, scroll: 0 },
+    myDefaultAwareness: { scroll: 0 },
   },
-  ({ awareness, myAwareness, setMyAwareness }) => {
-    const myAwarenessRef = useRef<RailAwareness | undefined>(myAwareness);
-    useEffect(() => {
-      myAwarenessRef.current = myAwareness;
-    }, [myAwareness]);
-
+  ({ awarenessByStableId, myAwareness, setMyAwareness }) => {
+    const [users, setUsers] = useState<User[]>([]);
     const [sections, setSections] = useState<SectionTick[]>([]);
 
     useEffect(() => {
-      if (typeof window === 'undefined') return;
       let disposed = false;
-      const syncColor = () => {
-        if (disposed) return;
-        const color = readCursorColor();
-        const prev = myAwarenessRef.current;
-        if (prev?.color === color) return;
-        setMyAwareness({
-          color,
-          scroll: prev?.scroll ?? 0,
-        });
-      };
-
-      const onColor = (_c: string) => syncColor();
-      const tryAttach = () => {
-        const cursors = (window as any).cursors;
-        if (!cursors) return false;
-        syncColor();
-        cursors.on?.('color', onColor);
-        return true;
-      };
-      let interval: number | null = null;
-      if (!tryAttach()) {
-        interval = window.setInterval(() => {
-          if (tryAttach()) {
-            if (interval !== null) window.clearInterval(interval);
-            interval = null;
-          }
-        }, 250);
-      }
+      let unsubscribe: (() => void) | undefined;
+      playhtml.ready.then(() => {
+        if (!disposed) unsubscribe = playhtml.users.onChange(setUsers);
+      });
       return () => {
         disposed = true;
-        if (interval !== null) window.clearInterval(interval);
-        try {
-          (window as any).cursors?.off?.('color', onColor);
-        } catch {}
+        unsubscribe?.();
       };
-    }, [setMyAwareness]);
+    }, []);
 
     useEffect(() => {
       if (typeof window === 'undefined') return;
@@ -116,11 +77,7 @@ export const DocsScrollRail = withSharedState<{}, RailAwareness>(
             document.documentElement.scrollHeight - window.innerHeight;
           const raw = max > 0 ? window.scrollY / max : 0;
           const scroll = Math.min(1, Math.max(0, raw));
-          const prev = myAwarenessRef.current;
-          setMyAwareness({
-            color: prev?.color ?? readCursorColor(),
-            scroll,
-          });
+          setMyAwareness({ scroll });
           ticking = false;
         });
       };
@@ -172,12 +129,11 @@ export const DocsScrollRail = withSharedState<{}, RailAwareness>(
       };
     }, []);
 
-    const others = ((awareness ?? []) as RailAwareness[]).filter(
-      (a) => a && a !== myAwareness
+    const others = users.filter(
+      (user) => !user.isMe && awarenessByStableId.has(user.pid)
     );
-
     const myScroll = myAwareness?.scroll ?? 0;
-    const myColor = myAwareness?.color ?? readCursorColor();
+    const myColor = users.find((user) => user.isMe)?.color ?? FALLBACK_COLOR;
 
     return (
       <div id="ph-docs-scroll-rail" className="ph-rail" role="presentation">
@@ -194,14 +150,14 @@ export const DocsScrollRail = withSharedState<{}, RailAwareness>(
           />
         ))}
         {/* Other readers' positions. */}
-        {others.map((a, i) => (
+        {others.map((user, i) => (
           <span
-            key={`other-${i}`}
+            key={user.pid}
             className="ph-rail__dot"
             style={
               {
-                top: `${Math.round((a?.scroll ?? 0) * 100)}%`,
-                ['--ph-dot-color' as any]: a?.color ?? FALLBACK_COLOR,
+                top: `${Math.round((awarenessByStableId.get(user.pid)!.scroll) * 100)}%`,
+                ['--ph-dot-color' as any]: user.color,
                 ['--ph-dot-delay' as any]: `${(i * 0.37) % 3}s`,
               } as React.CSSProperties
             }
