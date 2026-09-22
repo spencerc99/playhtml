@@ -254,7 +254,9 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
     entries: [
       { keys: "arrows", what: "nudge by one" },
       { keys: "shift + arrows", what: "nudge by ten" },
-      { keys: "] / [", what: "bring forward / send back" },
+      { keys: "] / [", what: "bring forward / send back one" },
+      // These have no button in the piece strip, so the list is where they
+      // are found.
       { keys: "shift + ] / [", what: "bring to front / send to back" },
       { keys: "tab / shift + tab", what: "step through pieces" },
       { keys: "\\", what: "tuck the drawer away" },
@@ -275,7 +277,7 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
   {
     group: "look",
     entries: [
-      { keys: "hold I", what: "where each piece came from" },
+      { keys: "hold i", what: "where each piece came from" },
     ],
   },
 ];

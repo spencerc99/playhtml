@@ -76,6 +76,7 @@ import {
   type DrawerPreference,
 } from "./drawerPreference";
 import { PieceActions } from "./PieceActions";
+import { StudioTools } from "./StudioTools";
 import { FormatControl } from "./FormatControl";
 import { CollageBakeError, bakeCollage } from "./bakeCollage";
 import { saveCollage } from "./collageStore";
@@ -1160,50 +1161,63 @@ export function CollageStudio({
                 </div>
               )}
 
+            {/* The tools for whatever is in hand ride with the piece, and
+                stand aside while a gesture or a mode is running. */}
+            {selected && !crop && !transform && gesture.kind === "idle" && (
+              <PieceActions
+                piece={selected}
+                canUncrop={!isFullCrop(selected.crop)}
+                canCutOut={selected.scrap.kind === "image"}
+                scale={scale}
+                frame={frame}
+                onOrder={(to) =>
+                  commit(
+                    {
+                      forward: movePieceForward,
+                      backward: movePieceBackward,
+                      front: movePieceToFront,
+                      back: movePieceToBack,
+                    }[to](pieces, selected.id),
+                  )
+                }
+                onFlip={(axis) =>
+                  editPiece(selected.id, (piece) => flipPiece(piece, axis))
+                }
+                onCrop={enterCrop}
+                onUncrop={() => editPiece(selected.id, clearCrop)}
+                onCutOut={() =>
+                  selected.cutout
+                    ? editPiece(selected.id, ({ cutout: _cut, ...rest }) => rest)
+                    : cutOutSelected()
+                }
+                onDuplicate={() => duplicatePiece(selected)}
+                onRemove={removeSelected}
+              />
+            )}
+
             <div className="collage-frame__edge" />
           </div>
 
+          <StudioTools
+            canUndo={canUndo(history)}
+            canRedo={canRedo(history)}
+            keysOpen={showKeys}
+            onUndo={() => setHistory((current) => undo(current))}
+            onRedo={() => setHistory((current) => redo(current))}
+            onKeys={() => setShowKeys((value) => !value)}
+          />
+
+          <FormatControl
+            format={format}
+            paper={paper}
+            zoom={scale}
+            pieceCount={pieces.length}
+            onFormat={setFormat}
+            onPaper={setPaper}
+          />
+
           {showKeys && <KeysPopover onClose={() => setShowKeys(false)} />}
         </div>
-
-        <FormatControl
-          format={format}
-          paper={paper}
-          zoom={scale}
-          pieceCount={pieces.length}
-          onFormat={setFormat}
-          onPaper={setPaper}
-        />
-
-        {selected && !crop && (
-          <PieceActions
-            piece={selected}
-            canUncrop={!isFullCrop(selected.crop)}
-            canCutOut={selected.scrap.kind === "image"}
-            onOrder={(to) =>
-              commit(
-                {
-                  forward: movePieceForward,
-                  backward: movePieceBackward,
-                  front: movePieceToFront,
-                  back: movePieceToBack,
-                }[to](pieces, selected.id),
-              )
-            }
-            onFlip={(axis) =>
-              editPiece(selected.id, (piece) => flipPiece(piece, axis))
-            }
-            onCrop={enterCrop}
-            onUncrop={() => editPiece(selected.id, clearCrop)}
-            onCutOut={() =>
-              selected.cutout
-                ? editPiece(selected.id, ({ cutout: _cut, ...rest }) => rest)
-                : cutOutSelected()
-            }
-            onDuplicate={() => duplicatePiece(selected)}
-            onRemove={removeSelected}
-          />
-        )}
 
         <div className="collage-bar">
           <input
@@ -1213,47 +1227,12 @@ export function CollageStudio({
             onChange={(event) => setTitle(event.target.value)}
             aria-label="Collage title"
           />
+          <span className="collage-bar__spacer" />
           <span className="collage-studio__label">
             {pieces.length} piece{pieces.length === 1 ? "" : "s"}
+            {pieces.length > 0 && " · hold i for sources"}
           </span>
-          {pieces.length > 0 && (
-            <span className="collage-studio__label">
-              &#183; hold I for sources
-            </span>
-          )}
           <span className="collage-bar__spacer" />
-          <button
-            type="button"
-            className="collage-action"
-            disabled={!canUndo(history)}
-            onClick={() => setHistory((current) => undo(current))}
-          >
-            undo
-          </button>
-          <button
-            type="button"
-            className="collage-action"
-            disabled={!canRedo(history)}
-            onClick={() => setHistory((current) => redo(current))}
-          >
-            redo
-          </button>
-          <button
-            type="button"
-            className={`collage-action${showKeys ? " collage-action--primary" : ""}`}
-            aria-label="Keyboard shortcuts"
-            onClick={() => setShowKeys((value) => !value)}
-          >
-            keys
-          </button>
-          <button
-            type="button"
-            className="collage-action"
-            disabled={exporting || pieces.length === 0}
-            onClick={() => void download()}
-          >
-            export png
-          </button>
           {standing.text && (
             <p
               className={`collage-standing${
@@ -1264,6 +1243,14 @@ export function CollageStudio({
               {standing.text}
             </p>
           )}
+          <button
+            type="button"
+            className="collage-action"
+            disabled={exporting || pieces.length === 0}
+            onClick={() => void download()}
+          >
+            export png
+          </button>
           {confirmingLeave ? (
             <>
               <button

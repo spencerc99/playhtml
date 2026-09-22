@@ -564,6 +564,261 @@ try {
     );
   }
 
+  // ======================================================== the studio chrome
+  // The piece's tools float beside the piece; the bottom bar carries none.
+  await page.locator(".collage-frame").click({ position: { x: 6, y: 6 } });
+  await page.waitForTimeout(300);
+  assert.equal(
+    await page.locator(".collage-piece-actions").count(),
+    0,
+    "the piece strip should only exist while something is selected",
+  );
+  await selectByTab();
+  await page.waitForSelector(".collage-piece-actions");
+  const stripPlacement = await page.evaluate(() => {
+    const strip = document
+      .querySelector(".collage-piece-actions")
+      .getBoundingClientRect();
+    const piece = document
+      .querySelector(".collage-piece--selected")
+      .getBoundingClientRect();
+    const stage = document
+      .querySelector(".collage-frame-area__stage")
+      .getBoundingClientRect();
+    return {
+      stripTop: strip.top,
+      stripBottom: strip.bottom,
+      stripLeft: strip.left,
+      stripRight: strip.right,
+      stripHeight: strip.height,
+      pieceTop: piece.top,
+      stageTop: stage.top,
+      stageLeft: stage.left,
+      stageRight: stage.right,
+    };
+  });
+  console.log("piece strip placement:", stripPlacement);
+  assert.ok(
+    stripPlacement.stripBottom <= stripPlacement.pieceTop + 1,
+    "the strip should sit above the piece's box",
+  );
+  // Counter-scaled: it is drawn at its own size, not the frame's zoom.
+  assert.ok(
+    stripPlacement.stripHeight > 20 && stripPlacement.stripHeight < 44,
+    `the strip should be a constant on-screen size, got ${stripPlacement.stripHeight}px`,
+  );
+  assert.equal(
+    await page
+      .locator(".collage-piece-actions")
+      .evaluate((node) => getComputedStyle(node).pointerEvents),
+    "none",
+    "the strip's own gaps must not intercept the frame's pointer",
+  );
+  const stripButtons = await page
+    .locator(".collage-piece-actions button")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        label: node.getAttribute("aria-label"),
+        title: node.getAttribute("title"),
+        takesPointer: getComputedStyle(node).pointerEvents !== "none",
+      })),
+    );
+  console.log("piece strip buttons:", stripButtons);
+  for (const wanted of [
+    "Send back one",
+    "Bring forward one",
+    "Flip across",
+    "Flip down",
+    "Crop",
+    "Duplicate",
+    "Remove",
+  ]) {
+    const hit = stripButtons.find((button) => button.label === wanted);
+    assert.ok(hit, `the strip should offer "${wanted}"`);
+    assert.ok(
+      hit.title && /\(.+\)/.test(hit.title),
+      `"${wanted}" should name its shortcut in the title, got "${hit.title}"`,
+    );
+    assert.ok(hit.takesPointer, `"${wanted}" should be clickable`);
+  }
+  for (const gone of ["Bring to front", "Send to back"]) {
+    assert.ok(
+      !stripButtons.some((button) => button.label === gone),
+      `"${gone}" should stay on the keyboard, not take a button`,
+    );
+  }
+  await page.screenshot({ path: `${evidence}/05-piece-strip.png` });
+
+  // The strip stands aside while a piece is being dragged.
+  const dragFrom = await page.locator(".collage-piece--selected").boundingBox();
+  await page.mouse.move(
+    dragFrom.x + dragFrom.width / 2,
+    dragFrom.y + dragFrom.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    dragFrom.x + dragFrom.width / 2 + 60,
+    dragFrom.y + dragFrom.height / 2 + 40,
+    { steps: 8 },
+  );
+  await page.waitForTimeout(250);
+  assert.equal(
+    await page.locator(".collage-piece-actions").count(),
+    0,
+    "the strip should hide while a piece is being dragged",
+  );
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  assert.equal(
+    await page.locator(".collage-piece-actions").count(),
+    1,
+    "the strip should come back once the drag ends",
+  );
+
+  // A piece at the very top of the frame keeps its strip on screen, below it.
+  // It is nudged until it actually reaches the top rather than a fixed number
+  // of times, so the case being tested is the one that runs.
+  for (let step = 0; step < 120; step += 1) {
+    const room = await page.evaluate(() => {
+      const node = document.querySelector(".collage-piece--selected");
+      return parseFloat((node.getAttribute("style").match(/top:\s*([-\d.]+)/) ?? [])[1]);
+    });
+    if (room <= 0) break;
+    await page.keyboard.press("Shift+ArrowUp");
+  }
+  await page.waitForTimeout(600);
+  const pieceTopInFrame = await page.evaluate(() => {
+    const node = document.querySelector(".collage-piece--selected");
+    return parseFloat((node.getAttribute("style").match(/top:\s*([-\d.]+)/) ?? [])[1]);
+  });
+  console.log("the piece's own top in frame units:", pieceTopInFrame);
+  assert.ok(
+    pieceTopInFrame <= 0,
+    `the piece should have reached the frame's top, got ${pieceTopInFrame}`,
+  );
+  const atTop = await page.evaluate(() => {
+    const strip = document
+      .querySelector(".collage-piece-actions")
+      .getBoundingClientRect();
+    const piece = document
+      .querySelector(".collage-piece--selected")
+      .getBoundingClientRect();
+    const stage = document
+      .querySelector(".collage-frame-area__stage")
+      .getBoundingClientRect();
+    return {
+      stripTop: strip.top,
+      stripBottom: strip.bottom,
+      pieceTop: piece.top,
+      pieceBottom: piece.bottom,
+      stageTop: stage.top,
+      stageBottom: stage.bottom,
+    };
+  });
+  console.log("strip for a piece at the top edge:", atTop);
+  assert.ok(
+    atTop.stripTop >= atTop.stageTop - 1,
+    `the strip must stay inside the stage, got ${atTop.stripTop} against ${atTop.stageTop}`,
+  );
+  assert.ok(
+    atTop.stripBottom <= atTop.stageBottom + 1,
+    "the strip must stay inside the stage's bottom too",
+  );
+  assert.ok(
+    atTop.stripTop >= atTop.pieceTop,
+    "with no room above, the strip should drop below the piece",
+  );
+  await page.screenshot({ path: `${evidence}/06-strip-at-top-edge.png` });
+  // Nudge it back into the frame so the later bake has all four pieces on it.
+  for (let step = 0; step < 12; step += 1) {
+    await page.keyboard.press("Shift+ArrowDown");
+  }
+  await page.waitForTimeout(400);
+
+  // The studio tools sit in the stage's top-left, beside the canvas.
+  const toolLabels = await page
+    .locator(".collage-tools button")
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")));
+  console.log("studio tools:", toolLabels);
+  assert.deepEqual(toolLabels, ["Undo", "Redo", "Keyboard shortcuts"]);
+
+  // The paper popover holds the document settings.
+  const paperReadout = (
+    await page.locator(".collage-format .collage-studio__label").first().textContent()
+  ).trim();
+  console.log("paper readout:", paperReadout);
+  assert.ok(
+    /^postcard · 1500 × 1000 · \d+%$/.test(paperReadout),
+    `the readout should name size and zoom, got "${paperReadout}"`,
+  );
+  assert.equal(
+    await page.locator(".collage-paper-popover").count(),
+    0,
+    "the popover should start closed",
+  );
+  await page.getByRole("button", { name: "paper" }).click();
+  await page.waitForTimeout(400);
+  await page.waitForSelector(".collage-paper-popover");
+  for (const size of ["postcard", "postcard tall", "square", "wide"]) {
+    assert.equal(
+      await page
+        .locator(".collage-paper-popover")
+        .getByRole("button", { name: size, exact: true })
+        .count(),
+      1,
+      `the popover should offer the ${size} format`,
+    );
+  }
+  await page.screenshot({ path: `${evidence}/07-paper-popover.png` });
+  const paperBefore = await page
+    .locator(".collage-frame")
+    .evaluate((node) => getComputedStyle(node).backgroundColor);
+  await page
+    .locator(".collage-paper-popover")
+    .getByRole("button", { name: "Paper: kraft" })
+    .click();
+  await page.waitForTimeout(500);
+  const paperAfter = await page
+    .locator(".collage-frame")
+    .evaluate((node) => getComputedStyle(node).backgroundColor);
+  console.log("paper changed:", paperBefore, "->", paperAfter);
+  assert.notEqual(paperAfter, paperBefore, "picking a tone should repaper");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(400);
+  assert.equal(
+    await page.locator(".collage-paper-popover").count(),
+    0,
+    "escape should close the popover",
+  );
+
+  // The bottom bar is status only.
+  const barButtons = await page
+    .locator(".collage-bar button")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => (node.textContent || "").trim()),
+    );
+  console.log("bottom bar buttons:", barButtons);
+  assert.deepEqual(
+    barButtons,
+    ["export png", "done"],
+    "the bottom bar should carry nothing but export and done",
+  );
+  assert.equal(
+    await page.locator(".collage-bar .collage-glyph").count(),
+    0,
+    "no piece tools may remain in the bottom bar",
+  );
+  assert.equal(
+    await page.locator(".collage-bar .collage-swatch").count(),
+    0,
+    "no paper swatches may remain in the bottom bar",
+  );
+  await page.setViewportSize({ width: 1280, height: 820 });
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: `${evidence}/08-studio-1280.png` });
+  await page.setViewportSize({ width: 1500, height: 980 });
+  await page.waitForTimeout(600);
+
   // ================================================== the source peek (hold I)
   const pieceCount = await page.locator(".collage-piece").count();
   assert.equal(

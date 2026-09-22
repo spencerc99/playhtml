@@ -247,12 +247,48 @@ export const COLLAGE_STUDIO_STYLES = `
     outline: 1px dashed rgba(196, 114, 78, 0.6);
   }
 
+  /* The piece's own tools, floating beside it in frame space. They are drawn
+     at a constant on-screen size whatever the frame is zoomed to. */
   .collage-piece-actions {
+    position: absolute;
+    z-index: 10004;
     display: flex;
     align-items: center;
     gap: 2px;
-    padding: 5px 14px;
-    border-top: 1px solid rgba(61, 56, 51, 0.1);
+    padding: 3px 4px;
+    transform-origin: left top;
+    border: 1px solid rgba(61, 56, 51, 0.2);
+    border-radius: 4px;
+    background: #f5f0e8;
+    box-shadow: 0 4px 14px rgba(61, 56, 51, 0.18);
+    /* Only the buttons take the pointer; the gaps belong to the frame. */
+    pointer-events: none;
+  }
+
+  .collage-piece-actions > button {
+    pointer-events: auto;
+  }
+
+  .collage-piece-actions__rule {
+    width: 1px;
+    height: 15px;
+    margin: 0 3px;
+    background: rgba(61, 56, 51, 0.2);
+  }
+
+  /* Undo, redo and the shortcut list, in the stage's top-left corner. */
+  .collage-tools {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px 4px;
+    border: 1px solid rgba(61, 56, 51, 0.16);
+    border-radius: 4px;
+    background: rgba(245, 240, 232, 0.94);
   }
 
   .collage-glyph {
@@ -291,17 +327,57 @@ export const COLLAGE_STUDIO_STYLES = `
     color: #a2542f;
   }
 
+  /* The document's own settings, opposite the studio tools. */
   .collage-format {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 10001;
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
-    padding: 6px 14px;
-    border-top: 1px solid rgba(61, 56, 51, 0.1);
+    gap: 8px;
+    padding: 4px 6px;
+    border: 1px solid rgba(61, 56, 51, 0.16);
+    border-radius: 4px;
+    background: rgba(245, 240, 232, 0.94);
+  }
+
+  .collage-paper-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .collage-paper-button__swatch {
+    width: 10px;
+    height: 10px;
+    border: 1px solid rgba(61, 56, 51, 0.35);
+    border-radius: 2px;
+  }
+
+  .collage-paper-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 10002;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    width: 232px;
+    padding: 9px 10px;
+    border: 1px solid rgba(61, 56, 51, 0.2);
+    border-radius: 4px;
+    background: #f5f0e8;
+    box-shadow: 0 10px 28px rgba(61, 56, 51, 0.2);
+  }
+
+  .collage-paper-popover p.collage-studio__label {
+    margin: 2px 0 0;
   }
 
   .collage-format__row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 4px;
   }
@@ -326,12 +402,13 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-format__confirm {
     display: flex;
-    flex-basis: 100%;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 5px;
     margin: 0;
     font-family: "Martian Mono", monospace;
     font-size: 9px;
+    line-height: 1.5;
     color: #8f4a29;
   }
 
