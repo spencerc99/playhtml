@@ -15,7 +15,7 @@ import {
 } from "@playhtml/common";
 import {
   clearPresenceMessageBudget,
-  commitPresenceClientMessage,
+  commitPresenceClientMessages,
   consumePresenceMessageBudget,
   createPresenceMessageBudgetState,
   createPresenceRoomState,
@@ -53,6 +53,13 @@ export class PresenceServer extends Server<Env> {
   private presenceState = createPresenceRoomState();
   private messageBudgets = createPresenceMessageBudgetState();
   private invalidMessageWindows = new Map<string, InvalidMessageWindow>();
+  private pendingMessages = new Map<
+    string,
+    {
+      connection: Connection<PresenceConnectionState>;
+      messages: Map<string, PresenceClientMessage>;
+    }
+  >();
   private lastBroadcastAt = 0;
   private broadcastTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -66,6 +73,7 @@ export class PresenceServer extends Server<Env> {
       ...(previous ?? {}),
       [PRESENCE_OPENED_AT_STATE_KEY]: Date.now(),
     }));
+    this.flushBroadcast();
     presenceConnection.send(JSON.stringify(this.createSyncMessage()));
   }
 
@@ -98,20 +106,28 @@ export class PresenceServer extends Server<Env> {
       return;
     }
 
-    try {
-      const storedChannels =
-        presenceConnection.state?.[PRESENCE_CHANNELS_STATE_KEY] ?? {};
-      commitPresenceClientMessage(
-        this.presenceState,
-        presenceConnection.id,
-        storedChannels,
-        parsed,
-        (channels) =>
-          this.storeConnectionChannels(presenceConnection, channels),
-      );
-    } catch (error) {
-      this.sendError(connection, getErrorMessage(error));
-      return;
+    let pending = this.pendingMessages.get(presenceConnection.id);
+    if (!pending) {
+      pending = { connection: presenceConnection, messages: new Map() };
+      this.pendingMessages.set(presenceConnection.id, pending);
+    }
+    if (parsed.type === "presence-join") {
+      if (parsed.identity !== undefined) {
+        pending.messages.set("identity", {
+          type: "presence-update",
+          channel: "identity",
+          value: parsed.identity,
+        });
+      }
+      if (parsed.page !== undefined) {
+        pending.messages.set("page", {
+          type: "presence-update",
+          channel: "page",
+          value: parsed.page,
+        });
+      }
+    } else {
+      pending.messages.set(parsed.channel, parsed);
     }
 
     this.scheduleBroadcast();
@@ -125,6 +141,7 @@ export class PresenceServer extends Server<Env> {
   ): void | Promise<void> {
     const presenceConnection =
       connection as Connection<PresenceConnectionState>;
+    this.pendingMessages.delete(presenceConnection.id);
     this.restorePeerFromConnection(presenceConnection);
     recordPresenceRemoval(this.presenceState, presenceConnection.id);
     clearPresenceMessageBudget(this.messageBudgets, presenceConnection.id);
@@ -140,7 +157,10 @@ export class PresenceServer extends Server<Env> {
     if (diagnostic) console.warn(diagnostic);
   }
 
-  override onError(connection: Connection, error: unknown): void | Promise<void> {
+  override onError(
+    connection: Connection,
+    error: unknown,
+  ): void | Promise<void> {
     console.error(
       `[PresenceServer] WebSocket error: room=${this.name} connection=${connection.id}`,
       error,
@@ -158,6 +178,7 @@ export class PresenceServer extends Server<Env> {
       return;
     }
 
+    // A pending timer prevents hibernation until attachments and broadcasts flush.
     this.broadcastTimer = setTimeout(() => {
       this.broadcastTimer = null;
       this.flushBroadcast();
@@ -165,6 +186,25 @@ export class PresenceServer extends Server<Env> {
   }
 
   private flushBroadcast(): void {
+    if (this.broadcastTimer) {
+      clearTimeout(this.broadcastTimer);
+      this.broadcastTimer = null;
+    }
+    for (const { connection, messages } of this.pendingMessages.values()) {
+      this.pendingMessages.delete(connection.id);
+      if (connection.readyState !== WebSocket.OPEN) continue;
+      try {
+        commitPresenceClientMessages(
+          this.presenceState,
+          connection.id,
+          connection.state?.[PRESENCE_CHANNELS_STATE_KEY] ?? {},
+          Array.from(messages.values()),
+          (channels) => this.storeConnectionChannels(connection, channels),
+        );
+      } catch (error) {
+        this.sendError(connection, getErrorMessage(error));
+      }
+    }
     const changes = takePresenceChanges(this.presenceState);
     if (!changes) return;
 
@@ -226,11 +266,7 @@ export class PresenceServer extends Server<Env> {
     );
   }
 
-  private sendRate(
-    connection: Connection,
-    channel: string,
-    hz: number,
-  ): void {
+  private sendRate(connection: Connection, channel: string, hz: number): void {
     connection.send(
       JSON.stringify({
         type: "presence-rate",

@@ -4,6 +4,7 @@ import { describe, expect, it } from "bun:test";
 import {
   applyPresenceClientMessage,
   commitPresenceClientMessage,
+  commitPresenceClientMessages,
   consumePresenceMessageBudget,
   createPresenceMessageBudgetState,
   createPresenceSyncMessage,
@@ -29,6 +30,76 @@ const latestCursor = {
 };
 
 describe("presence room policy", () => {
+  it("persists one attachment for a burst across presence channels", () => {
+    const state = createPresenceRoomState();
+    const writes: Record<string, unknown>[] = [];
+    const messages = Array.from({ length: 90 }, (_, x) => ({
+      type: "presence-update" as const,
+      channel: "cursor",
+      value: { cursor: { x, y: x, pointer: "mouse" } },
+    }));
+    commitPresenceClientMessages(state, "conn-1", {}, messages, (channels) => {
+      expect(takePresenceChanges(state)).toBe(null);
+      writes.push(channels);
+    });
+    expect(writes).toEqual([{ cursor: messages[89].value }]);
+    expect(takePresenceChanges(state)?.updates).toEqual({
+      "conn-1": { cursor: messages[89].value },
+    });
+  });
+
+  it("rebroadcasts unchanged keepalives without persisting an attachment", () => {
+    const state = createPresenceRoomState();
+    const stored = { cursor: firstCursor };
+    const writes: Record<string, unknown>[] = [];
+    commitPresenceClientMessages(
+      state,
+      "conn-1",
+      stored,
+      [
+        {
+          type: "presence-update",
+          channel: "cursor",
+          value: structuredClone(firstCursor),
+        },
+      ],
+      (channels) => writes.push(channels),
+    );
+    expect(writes).toEqual([]);
+    expect(takePresenceChanges(state)?.updates).toEqual({ "conn-1": stored });
+  });
+
+  it("persists the final channels before publishing a mixed update and clear batch", () => {
+    const state = createPresenceRoomState();
+    const stored = { cursor: firstCursor, status: "away" };
+    let attachment = stored as Record<string, unknown>;
+    commitPresenceClientMessages(
+      state,
+      "conn-1",
+      stored,
+      [
+        { type: "presence-update", channel: "cursor", value: latestCursor },
+        { type: "presence-clear", channel: "cursor" },
+        { type: "presence-update", channel: "status", value: "here" },
+      ],
+      (channels) => {
+        attachment = channels;
+      },
+    );
+    expect(attachment).toEqual({ status: "here" });
+    expect(takePresenceChanges(state)).toEqual({
+      type: "presence-changes",
+      updates: { "conn-1": { status: "here" } },
+      removes: { "conn-1": ["cursor"] },
+    });
+    const recovered = createPresenceRoomState();
+    restorePresenceConnectionChannels(recovered, "conn-1", attachment);
+    expect(getPresenceSyncSnapshot(recovered)).toEqual(
+      getPresenceSyncSnapshot(state),
+    );
+    expect(takePresenceChanges(recovered)).toBe(null);
+  });
+
   it("coalesces repeated cursor updates from a connection to the latest value", () => {
     const state = createPresenceRoomState();
 
