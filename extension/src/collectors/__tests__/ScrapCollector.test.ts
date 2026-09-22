@@ -183,8 +183,11 @@ describe("ScrapCollector", () => {
         letterSpacing: "normal",
         textTransform: "none",
         lineHeight: "20px",
+        display: "block",
         visibility: "visible",
         opacity: "1",
+        clip: "auto",
+        clipPath: "none",
         boxShadow: "none",
         cursor: element.getAttribute("data-cursor") ?? "auto",
         ...overrides,
@@ -783,6 +786,91 @@ describe("ScrapCollector", () => {
     expect(
       emitted("heading").map((data) => (data.kind === "heading" ? data.text : "")),
     ).toEqual(["Hi", "y".repeat(120)]);
+  });
+
+  /** Puts the element inside a wrapper carrying the given computed styles. */
+  function wrapIn(
+    element: Element,
+    styles: Record<string, string>,
+  ): HTMLElement {
+    const wrapper = document.createElement("div");
+    wrapper.setAttribute("data-styles", JSON.stringify(styles));
+    element.replaceWith(wrapper);
+    wrapper.appendChild(element);
+    document.body.appendChild(wrapper);
+    return wrapper;
+  }
+
+  it("skips a heading hidden by an ancestor rather than by its own style", () => {
+    const behindTransparent = createHeading({ text: "Behind a faded wrapper" });
+    wrapIn(behindTransparent, { opacity: "0" });
+    const behindUndisplayed = createHeading({ text: "Behind display none" });
+    wrapIn(behindUndisplayed, { display: "none" });
+    const behindClipped = createHeading({ text: "Behind a collapsed clip" });
+    wrapIn(behindClipped, { clip: "rect(0px, 0px, 0px, 0px)" });
+    const behindClipPath = createHeading({ text: "Behind an inset clip path" });
+    wrapIn(behindClipPath, { clipPath: "inset(100%)" });
+    const kept = createHeading({ text: "Out in the open" });
+
+    collector.enable();
+    showForCapture([
+      behindTransparent,
+      behindUndisplayed,
+      behindClipped,
+      behindClipPath,
+      kept,
+    ]);
+
+    expect(
+      emitted("heading").map((data) => (data.kind === "heading" ? data.text : "")),
+    ).toEqual(["Out in the open"]);
+  });
+
+  it("skips a heading faded by an ancestor several levels up", () => {
+    const heading = createHeading({ text: "Deep inside a faded section" });
+    let node: Element = heading;
+    for (let depth = 0; depth < 4; depth++) {
+      node = wrapIn(node, {});
+    }
+    wrapIn(node, { opacity: "0" });
+
+    collector.enable();
+    showForCapture([heading]);
+
+    expect(emitted("heading")).toHaveLength(0);
+  });
+
+  it("keeps a heading under a merely faded ancestor", () => {
+    const heading = createHeading({ text: "Under a light veil" });
+    wrapIn(heading, { opacity: "0.4" });
+
+    collector.enable();
+    showForCapture([heading]);
+
+    expect(
+      emitted("heading").map((data) => (data.kind === "heading" ? data.text : "")),
+    ).toEqual(["Under a light veil"]);
+  });
+
+  it("skips a button, image and icon hidden by an ancestor", () => {
+    const button = createButton({ text: "Buy the thing" });
+    wrapIn(button, { opacity: "0" });
+    const image = createImage({ src: "https://cdn.example/hidden.jpg" });
+    wrapIn(image, { display: "none" });
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M0 0h10v10z");
+    icon.appendChild(path);
+    setRenderedSize(icon, { width: 24, height: 24 });
+    document.body.appendChild(icon);
+    wrapIn(icon, { clipPath: "inset(100%)" });
+
+    collector.enable();
+    showForCapture([button, image, icon]);
+
+    expect(emitted("button")).toHaveLength(0);
+    expect(emitted("image")).toHaveLength(0);
+    expect(emitted("svg-icon")).toHaveLength(0);
   });
 
   it("ignores headings inside the extension's own injected UI", () => {

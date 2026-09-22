@@ -49,6 +49,10 @@ const EXTENSION_UI_SELECTOR =
   '[id^="wwo-"], [id^="wewere-"], [id^="we-were-online-"], [id^="playhtml-"]';
 /** How far up the tree to look for the color a see-through element sits on. */
 const MAX_BACKDROP_DEPTH = 12;
+/** How far up the tree to look for an ancestor that hides its whole subtree. */
+const MAX_VISIBILITY_DEPTH = 12;
+/** A clip rectangle collapsed to nothing, the old way of hiding a label. */
+const COLLAPSED_CLIP_PATTERN = /^rect\(\s*0(?:px)?[\s,]+0(?:px)?[\s,]+0(?:px)?[\s,]+0(?:px)?\s*\)$/i;
 /** What a page paints over when nothing in the tree supplies a color. */
 const CANVAS_BACKDROP_COLOR = "rgb(255, 255, 255)";
 const GRADIENT_PATTERN =
@@ -394,6 +398,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     ) {
       return;
     }
+    if (!isEffectivelyVisible(image, getComputedStyle(image))) return;
 
     const data: ScrapEventData = {
       kind: "image",
@@ -451,6 +456,8 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     }
 
     const computedStyle = getComputedStyle(button);
+    if (!isEffectivelyVisible(button, computedStyle)) return;
+
     const styles = this.pickButtonStyles(computedStyle);
     const innerSvg = inlineSvg
       ? this.serializeButtonSvg(inlineSvg as SVGSVGElement)
@@ -552,10 +559,13 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       return;
     }
 
+    const computedStyle = getComputedStyle(svg);
+    if (!isEffectivelyVisible(svg, computedStyle)) return;
+
     const markup = serializeSvg(svg, {
       width: bounds.width,
       height: bounds.height,
-      color: getComputedStyle(svg).color,
+      color: computedStyle.color,
       maxBytes: MAX_SVG_MARKUP_BYTES,
     });
     if (!markup) return;
@@ -608,9 +618,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     if (bounds.width <= 0 || bounds.height <= 0) return;
 
     const computedStyle = getComputedStyle(heading);
-    if (computedStyle.visibility === "hidden" || computedStyle.opacity === "0") {
-      return;
-    }
+    if (!isEffectivelyVisible(heading, computedStyle)) return;
 
     const data: HeadingScrapData = {
       kind: "heading",
@@ -763,6 +771,46 @@ function headingLevel(heading: Element): 1 | 2 | 3 | undefined {
  */
 function normalizeHeadingText(heading: Element): string {
   return (heading.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+/** Whether a computed style hides the element it belongs to and its subtree. */
+function styleHides(style: CSSStyleDeclaration): boolean {
+  if (style.display === "none") return true;
+  if (style.visibility === "hidden" || style.visibility === "collapse") {
+    return true;
+  }
+  if (Number.parseFloat(style.opacity) === 0) return true;
+  if (COLLAPSED_CLIP_PATTERN.test(style.clip.trim())) return true;
+  return style.clipPath.trim().toLowerCase() === "inset(100%)";
+}
+
+/**
+ * Whether a reader could actually see the element. Its own computed style is
+ * not enough: `display`, `opacity`, `clip` and `clip-path` do not inherit, so
+ * a heading inside an `opacity: 0` wrapper still reports `opacity: 1` of its
+ * own. Walking the ancestors catches the wrapper, capped in depth like the
+ * backdrop walk so a deep tree costs a bounded number of style reads.
+ *
+ * `visibility` needs no walk: it inherits, and a descendant that sets
+ * `visibility: visible` genuinely shows through a hidden parent, so the
+ * element's own computed value is already the answer.
+ */
+function isEffectivelyVisible(
+  element: Element,
+  ownStyle: CSSStyleDeclaration,
+): boolean {
+  if (styleHides(ownStyle)) return false;
+
+  let ancestor = element.parentElement;
+  for (let depth = 0; ancestor && depth < MAX_VISIBILITY_DEPTH; depth++) {
+    const style = getComputedStyle(ancestor);
+    if (style.display === "none") return false;
+    if (Number.parseFloat(style.opacity) === 0) return false;
+    if (COLLAPSED_CLIP_PATTERN.test(style.clip.trim())) return false;
+    if (style.clipPath.trim().toLowerCase() === "inset(100%)") return false;
+    ancestor = ancestor.parentElement;
+  }
+  return true;
 }
 
 /**
