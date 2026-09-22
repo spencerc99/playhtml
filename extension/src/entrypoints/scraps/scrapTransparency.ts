@@ -6,8 +6,12 @@ import type { ScrapItem } from "@movement/components/ScrapCollage";
 /** Formats that can carry an alpha channel at all; the rest never do. */
 const MAYBE_TRANSPARENT = /\.(png|gif|webp|svg)(\?|#|$)/i;
 
-/** What the drawer puts behind a thumbnail. */
-export type ThumbBacking = "checker" | "paper";
+/**
+ * What the drawer puts behind a thumbnail: a chequer for material with holes
+ * in it, the paper for everything else, or nothing at all when the scrap
+ * already carries its page's own backdrop.
+ */
+export type ThumbBacking = "checker" | "paper" | "own";
 
 /**
  * Answers already worked out, so a picture is sampled once however many times
@@ -31,11 +35,28 @@ export function couldBeTransparent(src: string): boolean {
 }
 
 /**
+ * The color a see-through scrap was read against on its own page, when one
+ * was recorded. `ScrapContent` paints it as a snug patch behind the scrap, so
+ * a scrap that carries one needs no backing from the drawer.
+ *
+ * It is read structurally rather than off the type, because it is recorded
+ * only for some kinds and only for scraps collected since it was added.
+ */
+export function scrapBackdropColor(item: ScrapItem): string | null {
+  const color = (item as { backdropColor?: unknown }).backdropColor;
+  return typeof color === "string" && color.length > 0 ? color : null;
+}
+
+/**
  * The kinds that are always backed, whatever their pixels: an icon and a
  * cursor are cut-outs by nature, and a button is drawn from a reconstruction
  * rather than from an image at all.
+ *
+ * A scrap that brought its page's own backdrop with it is already sitting on
+ * something, so the drawer adds nothing behind it.
  */
 export function backingForKind(item: ScrapItem): ThumbBacking | null {
+  if (scrapBackdropColor(item)) return "own";
   switch (item.kind) {
     case "svg-icon":
     case "cursor":

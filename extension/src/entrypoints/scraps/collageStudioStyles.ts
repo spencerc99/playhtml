@@ -219,10 +219,24 @@ export const COLLAGE_STUDIO_STYLES = `
     border: 1px solid rgba(61, 56, 51, 0.1);
   }
 
+  /*
+   * A scrap that brought its page's own backdrop paints it itself, so the
+   * drawer adds nothing behind it and only keeps it inside the cell.
+   */
+  .collage-tray__thumb--own {
+    background: transparent;
+  }
+
   /* Nothing may spill out of its own cell into the one beside it. */
   .collage-tray__thumb > * {
     max-width: 100%;
     max-height: 100%;
+  }
+
+  /* The page's own backdrop patch fills the cell it was given. */
+  .collage-tray__thumb .scrap-collage__backdrop {
+    width: 100%;
+    height: 100%;
   }
 
   .collage-tray__slot {

@@ -13,6 +13,7 @@ import {
 import {
   backingForKind,
   couldBeTransparent,
+  scrapBackdropColor,
 } from "../entrypoints/scraps/scrapTransparency";
 
 const base = {
@@ -219,5 +220,35 @@ describe("what goes behind a thumbnail", () => {
   it("reads a data URL's own type", () => {
     expect(couldBeTransparent("data:image/png;base64,AAAA")).toBe(true);
     expect(couldBeTransparent("data:image/jpeg;base64,AAAA")).toBe(false);
+  });
+});
+
+describe("a scrap that brought its page's own backdrop", () => {
+  // `backdropColor` is recorded on buttons by the headings-and-position pass.
+  // Until that lands nothing carries one, so this is read structurally and
+  // the drawer simply steps aside whenever a scrap does.
+  // Cast through `unknown`: the field does not exist on the type yet, which
+  // is exactly why the reader checks for it structurally.
+  const withBackdrop = (color: unknown) =>
+    ({ ...button("b"), backdropColor: color }) as unknown as ScrapItem;
+
+  it("names the color when one was recorded", () => {
+    expect(scrapBackdropColor(withBackdrop("#c4724e"))).toBe("#c4724e");
+  });
+
+  it("names nothing when there is none", () => {
+    expect(scrapBackdropColor(button("c"))).toBeNull();
+    expect(scrapBackdropColor(withBackdrop(""))).toBeNull();
+    expect(scrapBackdropColor(withBackdrop(null))).toBeNull();
+    expect(scrapBackdropColor(withBackdrop(123))).toBeNull();
+  });
+
+  it("adds no backing of its own, because the scrap paints one", () => {
+    expect(backingForKind(withBackdrop("#c4724e"))).toBe("own");
+  });
+
+  it("still backs a scrap that has no backdrop of its own", () => {
+    expect(backingForKind(button("d"))).toBe("paper");
+    expect(backingForKind(icon("e"))).toBe("checker");
   });
 });

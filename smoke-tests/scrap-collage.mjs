@@ -3,8 +3,7 @@
 
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { execFileSync } from "node:child_process";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { resolve, dirname } from "node:path";
@@ -93,37 +92,28 @@ function crc32(buffer) {
 }
 
 /**
- * A solid JPEG. It is encoded once from an opaque PNG by the platform's own
- * converter, so the bytes the browser decodes are a real JPEG with no alpha
- * channel rather than something merely named `.jpg`.
+ * A solid JPEG: a 64x64 opaque block, encoded once and inlined so the smoke
+ * needs no image tooling and runs the same on any machine. A JPEG has no
+ * alpha channel at all, which is the point — the drawer must not put a
+ * chequer behind it.
  */
-async function solidJpeg() {
-  const side = 64;
-  const raw = Buffer.alloc(side * (side * 4 + 1));
-  let at = 0;
-  for (let y = 0; y < side; y += 1) {
-    raw[at] = 0;
-    at += 1;
-    for (let x = 0; x < side; x += 1) {
-      raw[at] = 0xf0;
-      raw[at + 1] = 0xc7;
-      raw[at + 2] = 0x7c;
-      raw[at + 3] = 255;
-      at += 4;
-    }
-  }
-  const opaque = pngFrom(raw, side);
-  const dir = await mkdtemp(resolve(tmpdir(), "wwo-jpeg-"));
-  const pngPath = resolve(dir, "solid.png");
-  const jpegPath = resolve(dir, "solid.jpg");
-  await writeFile(pngPath, opaque);
-  execFileSync("sips", ["-s", "format", "jpeg", pngPath, "--out", jpegPath], {
-    stdio: "ignore",
-  });
-  const bytes = await readFile(jpegPath);
-  await rm(dir, { recursive: true, force: true });
-  return bytes;
-}
+const SOLID_JPEG_BASE64 =
+  "/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAA" +
+  "A6ABAAMAAAABAAEAAKACAAQAAAABAAAAQKADAAQAAAABAAAAQAAAAAD/7QA4UGhvdG9zaG9wIDMu" +
+  "MAA4QklNBAQAAAAAAAA4QklNBCUAAAAAABDUHYzZjwCyBOmACZjs+EJ+/8AAEQgAQABAAwEiAAIR" +
+  "AQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAAB" +
+  "fQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5" +
+  "OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeo" +
+  "qaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMB" +
+  "AQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYS" +
+  "QVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNU" +
+  "VVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5" +
+  "usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/bAEMAAgICAgICAwICAwUDAwMF" +
+  "BgUFBQUGCAYGBgYGCAoICAgICAgKCgoKCgoKCgwMDAwMDA4ODg4ODw8PDw8PDw8PD//bAEMBAgIC" +
+  "BAQEBwQEBxALCQsQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ" +
+  "EBAQEP/dAAQABP/aAAwDAQACEQMRAD8A/Syiiiv5PP2wKKKKACiiigAooooA/9D9LKKKK/k8/bAo" +
+  "oooAKKKKACiiigD/0f0sooor+Tz9sCiiigAooooAKKKKAP/S/Syiiiv5PP2wKKKKACiiigAooooA" +
+  "/9k=";
 
 /**
  * Each page carries one of every scrap kind: a photo, a styled button with an
@@ -170,7 +160,7 @@ const PAGE_TITLES = {
 };
 
 const HOLES_PNG = transparentPng();
-const SOLID_JPEG = await solidJpeg();
+const SOLID_JPEG = Buffer.from(SOLID_JPEG_BASE64, "base64");
 
 /** Flipped on to make a photo that browsed fine vanish at bake time. */
 let missingPhotoGone = false;
