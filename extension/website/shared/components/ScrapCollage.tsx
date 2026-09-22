@@ -882,7 +882,7 @@ function buildLayout(
   });
 }
 
-const COLLAGE_STYLES = `
+export const COLLAGE_STYLES = `
   .scrap-collage__controls {
     position: absolute;
     bottom: 12px;
@@ -1365,7 +1365,7 @@ function isRenderableScrap(item: ScrapItem): boolean {
   }
 }
 
-interface ScrapContentProps {
+export interface ScrapContentProps {
   item: ScrapItem;
   loaded: boolean;
   onError: () => void;
@@ -1418,7 +1418,7 @@ export function ScrapBackdrop({
   );
 }
 
-function ScrapContent({
+export function ScrapContent({
   item,
   loaded,
   onError,

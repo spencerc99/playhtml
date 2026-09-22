@@ -74,6 +74,7 @@
     "smoke:clicks": "node smoke-tests/clicks-rendering.mjs",
     "smoke:navigation": "node smoke-tests/navigation.mjs",
     "smoke:extension": "VITE_WORKER_URL=http://127.0.0.1:18787 bun run --cwd extension build -- --mode development && node smoke-tests/extension-smoke.mjs",
+    "smoke:scrap-collage": "VITE_WORKER_URL=http://127.0.0.1:18787 bun run build-extension && node smoke-tests/scrap-collage.mjs",
     "smoke:partykit": "cd smoke-tests && bun run test:partykit",
     "smoke:partykit:bridge": "cd smoke-tests && bun run test:partykit:bridge",
     "smoke:partykit:limits": "cd smoke-tests && bun run test:partykit:limits",

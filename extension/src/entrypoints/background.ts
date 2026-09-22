@@ -1086,8 +1086,18 @@ export default defineBackground(() => {
           if (parsed.version !== 1)
             throw new Error('Unsupported export version')
           const events = parsed.events as CollectionEvent[]
-          await store.addImportedEvents(events)
-          reply({ success: true, imported: events.length })
+          const stored = await store.addImportedEvents(events)
+          const imported = stored.length
+          const alreadyHeld = events.length - imported
+          if (
+            stored.some((event) => event.type === 'element') &&
+            imported > 0
+          ) {
+            await browser.runtime
+              .sendMessage({ type: 'SCRAP_PHOTOS_UPDATED' })
+              .catch(() => {})
+          }
+          reply({ success: true, imported, alreadyHeld })
         } catch (e) {
           console.error('[Background] IMPORT_EVENTS error:', e)
           reply({ success: false, error: String(e) })

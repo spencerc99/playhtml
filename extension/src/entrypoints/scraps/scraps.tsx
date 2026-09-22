@@ -1,16 +1,26 @@
 // ABOUTME: Full-tab extension page for browsing locally collected internet scraps.
-// ABOUTME: Loads scraps from the background and renders a daily seeded paper collage.
+// ABOUTME: Hosts the drifting browse collage and the create mode for making your own.
 
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
+import "@fontsource/atkinson-hyperlegible/latin-400.css";
+import "@fontsource/atkinson-hyperlegible/latin-700.css";
+import "@fontsource/lora/latin-600.css";
+import "@fontsource/lora/latin-700.css";
 import type { ScrapSource } from "@movement/utils/scrapPhotoGroups";
 import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import {
+  COLLAGE_STYLES,
   ScrapCollage,
   type ScrapItem,
   type ScrapPosition,
 } from "@movement/components/ScrapCollage";
+import { useFeatureState } from "../../features/useFeatureAccess";
+import { CollageStudio } from "./CollageStudio";
+import { CollageHistory } from "./CollageHistory";
+import { COLLAGE_STUDIO_STYLES } from "./collageStudioStyles";
+import type { CollageRecord } from "./collageRecord";
 
 interface ScrapRecordBase {
   sources?: ScrapSource[];
@@ -149,12 +159,26 @@ const centeredMessageStyle: React.CSSProperties = {
   textAlign: "center",
 };
 
+type ScrapsMode = "browse" | "create";
+
 export function ScrapsPage() {
   const [items, setItems] = useState<ScrapItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
+  const [mode, setMode] = useState<ScrapsMode>("browse");
+  const [editing, setEditing] = useState<CollageRecord | null>(null);
+  const [studioOpen, setStudioOpen] = useState(false);
+  /** Bumped when a studio is opened, so each editing session starts fresh. */
+  const [studioSession, setStudioSession] = useState(0);
+  const [savedRevision, setSavedRevision] = useState(0);
   const seed = useMemo(() => Math.floor(Date.now() / 86_400_000), []);
+  const collagesFeature = useFeatureState("SCRAP_COLLAGES");
+  const canCreate = collagesFeature.enabled;
+
+  useEffect(() => {
+    if (!canCreate && mode === "create") setMode("browse");
+  }, [canCreate, mode]);
 
   useEffect(() => {
     const onMessage = (message: unknown) => {
@@ -213,6 +237,9 @@ export function ScrapsPage() {
         color: "#3d3833",
       }}
     >
+      {canCreate && (
+        <style>{`${COLLAGE_STYLES}${COLLAGE_STUDIO_STYLES}`}</style>
+      )}
       <svg
         width="100%"
         height="100%"
@@ -316,9 +343,30 @@ export function ScrapsPage() {
         >
           images that washed up while you browsed
         </p>
+        {canCreate && (
+          <div
+            className="collage-mode-switch"
+            style={{ marginTop: 8, pointerEvents: "auto" }}
+          >
+            <button
+              type="button"
+              className={`collage-chip${mode === "browse" ? " collage-chip--active" : ""}`}
+              onClick={() => setMode("browse")}
+            >
+              browse
+            </button>
+            <button
+              type="button"
+              className={`collage-chip${mode === "create" ? " collage-chip--active" : ""}`}
+              onClick={() => setMode("create")}
+            >
+              create
+            </button>
+          </div>
+        )}
       </header>
 
-      {!loading && !error && items.length > 0 && (
+      {mode === "browse" && !loading && !error && items.length > 0 && (
         <div
           className="scraps-stage"
           style={{
@@ -330,11 +378,42 @@ export function ScrapsPage() {
         </div>
       )}
 
+      {mode === "create" && !loading && !error && (
+        <div style={{ position: "absolute", inset: "96px 0 0", zIndex: 2 }}>
+          {!studioOpen ? (
+            <CollageHistory
+              revision={savedRevision}
+              onEdit={(record) => {
+                setEditing(record);
+                setStudioSession((value) => value + 1);
+                setStudioOpen(true);
+              }}
+              onStartNew={() => {
+                setEditing(null);
+                setStudioSession((value) => value + 1);
+                setStudioOpen(true);
+              }}
+            />
+          ) : (
+            <CollageStudio
+              key={studioSession}
+              scraps={items}
+              editing={editing}
+              onSaved={() => setSavedRevision((value) => value + 1)}
+              onLeave={() => {
+                setEditing(null);
+                setStudioOpen(false);
+              }}
+            />
+          )}
+        </div>
+      )}
+
       {loading && <div style={centeredMessageStyle}>gathering scraps...</div>}
       {!loading && error && (
         <div style={centeredMessageStyle}>scraps could not be gathered</div>
       )}
-      {!loading && !error && items.length === 0 && (
+      {mode === "browse" && !loading && !error && items.length === 0 && (
         <div style={centeredMessageStyle}>
           nothing has washed up yet - browse a while
         </div>
