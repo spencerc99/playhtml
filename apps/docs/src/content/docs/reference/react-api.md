@@ -63,9 +63,9 @@ interface WithSharedStateConfig<T, V> {
 - **`id`**: optional. Stable id for the element. If omitted, playhtml derives one from the rendered DOM; see [Dynamic elements](/docs/advanced/dynamic-elements/) for why stable ids matter.
 - **`tagInfo`**: optional. Marks the element as one of the built-in capabilities (e.g. `[TagType.CanToggle]`). See [Capabilities](/docs/capabilities/).
 
-`defaultData` and `myDefaultAwareness` accept values, not functions that receive
-DOM elements. They are available on the first render. Derive them from React
-props with a [props-dependent config](#props-dependent-config).
+`defaultData`, `live`, and `myDefaultAwareness` accept values, not functions that
+receive DOM elements. They are available on the first render. Derive them from
+React props with a [props-dependent config](#props-dependent-config).
 
 ### Render-function props
 
@@ -109,8 +109,9 @@ Defaults seed shared state; changing props does not overwrite saved state.
 Component form of `withSharedState`. Useful when you want JSX children (render-prop style) instead of wrapping a component, or when you need ref access to a specific element.
 
 Pass computed values directly, such as `defaultData={{ count: initialCount }}`.
-The same value-only rule applies to `myDefaultAwareness`. DOM-dependent default
-functions belong to the [vanilla element API](/docs/reference/element-api/#defaultdata).
+The same value-only rule applies to `live` and `myDefaultAwareness`.
+DOM-dependent default functions belong to the
+[vanilla element API](/docs/reference/element-api/#defaultdata).
 
 ```tsx
 interface CanPlayElementProps<T, V> {
