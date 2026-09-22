@@ -592,6 +592,48 @@ try {
   photosBlocked = false;
   await backToHistory();
 
+  // ======================= a reopened collage keeps the picture it was loaded with
+  // Reopening starts a fresh studio, so the picture the collage already has is
+  // the only one it holds. Editing with the image host away must write the new
+  // arrangement without blanking that picture on the way past.
+  const beforeReopen = (await storedCollages()).find(
+    (row) => row.id === collageId,
+  );
+  await page
+    .getByRole("button", { name: "keep editing" })
+    .first()
+    .click();
+  await page.waitForTimeout(1200);
+  photosBlocked = true;
+  await selectByTab();
+  for (let step = 0; step < 3; step += 1) {
+    await page.keyboard.press("Shift+ArrowRight");
+  }
+  await page.waitForTimeout(SETTLE_MS + 6000);
+  const afterReopenEdit = (await storedCollages()).find(
+    (row) => row.id === collageId,
+  );
+  console.log("after editing a reopened collage with the host away:", {
+    before: beforeReopen,
+    after: afterReopenEdit,
+  });
+  assert.ok(
+    afterReopenEdit.firstPiece.x > beforeReopen.firstPiece.x + 20,
+    "the new arrangement must have been written",
+  );
+  assert.equal(
+    afterReopenEdit.drawn,
+    true,
+    "reopening must not blank the picture the collage was loaded with",
+  );
+  assert.equal(
+    afterReopenEdit.previewBytes,
+    beforeReopen.previewBytes,
+    "the loaded preview must survive an edit whose re-bake cannot run",
+  );
+  photosBlocked = false;
+  await backToHistory();
+
   // =============================================== every kind through the bake
   await openStudio();
   for (const kind of ["pics", "btns", "icons", "heads", "curs"]) {

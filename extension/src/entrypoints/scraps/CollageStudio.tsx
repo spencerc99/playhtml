@@ -349,6 +349,7 @@ export function CollageStudio({
     store: saveCollage,
     onStored: onSaved,
     startsStored: editing !== null,
+    reopening: editing,
     ...(autosaveTimers ? { timers: autosaveTimers } : {}),
   });
   const { noteChange, flush } = autosave;

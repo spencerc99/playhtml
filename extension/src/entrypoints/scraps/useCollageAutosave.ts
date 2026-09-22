@@ -45,6 +45,12 @@ export interface CollageAutosaveOptions {
   onStored: (record: CollageRecord) => void;
   /** Whether this studio opened on a collage that is already in the drawer. */
   startsStored: boolean;
+  /**
+   * The collage this studio opened on, when it opened on a stored one. Its
+   * picture is the last one known to have drawn, so arrangement writes carry
+   * it until a new bake succeeds rather than blanking the card in between.
+   */
+  reopening?: CollageRecord | null;
   timers?: AutosaveTimers;
 }
 
@@ -85,15 +91,22 @@ export function useCollageAutosave(
 
   const stateRef = useRef<AutosaveState>(createAutosaveState(options.startsStored));
   const settleRef = useRef<number | null>(null);
-  /** The last preview that actually drew, carried across arrangement writes. */
-  const previewRef = useRef<Blob | null>(null);
+  /**
+   * The last preview that actually drew, carried across arrangement writes. A
+   * reopened collage starts from the picture it was loaded with, so the first
+   * edit writes the arrangement without discarding a picture that still draws.
+   */
+  const reopened = options.reopening ?? null;
+  const loadedPreview =
+    reopened?.preview.drawn === true ? reopened.preview.image : null;
+  const previewRef = useRef<Blob | null>(loadedPreview);
   const previewProblemRef = useRef<string | null>(null);
   /**
    * Exactly what is in the drawer. A preview is written back onto this rather
    * than onto the live draft, so a bake landing late never drags a newer
    * arrangement into the drawer behind the schedule's back.
    */
-  const storedRef = useRef<CollageRecord | null>(null);
+  const storedRef = useRef<CollageRecord | null>(reopened);
   // The callbacks are read through refs so the dispatch loop never has to be
   // rebuilt when the studio re-renders, which would restart the timers.
   const optionsRef = useRef(options);
