@@ -253,11 +253,21 @@ describe("heading scraps in the collage", () => {
     expect(rendered?.style.background).toBe("");
   });
 
-  it("offers a headings filter chip counting the headings on hand", () => {
+  it("offers a headings type filter that narrows the collage to headings", () => {
     render();
-    const option = Array.from(
-      container.querySelectorAll<HTMLOptionElement>("option"),
-    ).find((entry) => entry.value === "heading");
-    expect(option?.textContent).toBe("headings · 1");
+    act(() =>
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.startsWith("Type"))
+        ?.click(),
+    );
+    const headings = container.querySelector<HTMLButtonElement>(
+      '[data-scrap-kind="heading"]',
+    );
+    expect(headings?.textContent).toBe("headings");
+    act(() => headings?.click());
+    expect(container.querySelectorAll(".scrap-collage__heading").length).toBe(1);
+    expect(
+      container.querySelector("img[src='https://cdn.example/a.jpg']"),
+    ).toBeNull();
   });
 });
