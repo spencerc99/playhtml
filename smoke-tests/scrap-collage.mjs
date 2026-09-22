@@ -3,8 +3,8 @@
 
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { deflateSync } from "node:zlib";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { deflateSync, gzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -117,9 +117,13 @@ const SOLID_JPEG_BASE64 =
 
 /**
  * Each page carries one of every scrap kind: a photo, a styled button with an
- * inner icon, a standalone inline svg icon, and an element with a custom
- * cursor. The button's background is a gradient and its font-family is quoted,
- * so the bake's XML escaping is exercised with real captured styles.
+ * inner icon, a standalone inline svg icon, a heading, and an element with a
+ * custom cursor. The button's background is a gradient and its font-family is
+ * quoted, so the bake's XML escaping is exercised with real captured styles.
+ *
+ * A second button is light text outlined on a dark section, carrying no
+ * background of its own. That is the case the recorded backdrop exists for:
+ * without the dark patch behind it, its text bakes invisible on pale paper.
  */
 function pageMarkup(slug, photoSrc, title) {
   return `<!doctype html><html><head><title>${title}</title>
@@ -136,6 +140,11 @@ button.fancy{
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
 }
 svg.badge{width:96px;height:96px;display:block;color:#4a9a8a}
+.darksection{background:#1c2026;padding:28px;margin:24px 0}
+button.outlined{
+  width:200px;height:52px;background:transparent;color:#f4efe7;
+  border:2px solid #f4efe7;border-radius:8px;font-size:17px;font-weight:600;
+}
 .cursorzone{width:300px;height:120px;background:#eee;margin-top:24px;
   cursor:url("/cursor.svg") 4 2, pointer;display:flex;align-items:center;justify-content:center}
 </style></head><body>
@@ -150,6 +159,9 @@ svg.badge{width:96px;height:96px;display:block;color:#4a9a8a}
 <img class="photo" alt="See-through png ${slug}" src="/photo/holes-${slug}.png">
 <svg class="badge" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="4"/><path d="M14 24l7 7 13-14" fill="none" stroke="currentColor" stroke-width="4"/></svg>
 <div class="cursorzone">hover me</div>
+<div class="darksection">
+  <button class="outlined" type="button">Read the notes</button>
+</div>
 </body></html>`;
 }
 
@@ -230,7 +242,10 @@ await new Promise((ok, bad) => {
   server.listen(0, "127.0.0.1", ok);
 });
 const origin = `http://127.0.0.1:${server.address().port}`;
-const extension = resolve(workspace, "extension/dist/chrome-mv3-dev");
+// The production build, which `bun run build-extension` writes. The dev build
+// fetches its modules from the WXT dev server, which this run blocks along with
+// the rest of the network, so nothing would mount.
+const extension = resolve(workspace, "extension/dist/chrome-mv3");
 const pageErrors = [];
 let context;
 
@@ -299,6 +314,13 @@ try {
     await visit.waitForTimeout(700);
     await visit.hover("button.fancy");
     await visit.waitForTimeout(2000);
+    // The page is taller than the viewport and a scrap is only captured after
+    // it has been properly on screen for a moment, so the lower part is
+    // brought into view in stages rather than scrolled straight past.
+    await visit.locator("svg.badge").scrollIntoViewIfNeeded();
+    await visit.waitForTimeout(2000);
+    await visit.locator(".darksection").scrollIntoViewIfNeeded();
+    await visit.waitForTimeout(2000);
     await visit.close();
   }
   await new Promise((r) => setTimeout(r, 3000));
@@ -330,7 +352,7 @@ try {
     }
   });
   console.log("scraps collected by kind:", byKind);
-  for (const kind of ["image", "button", "svg-icon", "cursor"]) {
+  for (const kind of ["image", "button", "svg-icon", "heading", "cursor"]) {
     assert.ok(byKind[kind] > 0, `expected at least one ${kind} scrap`);
   }
 
@@ -572,12 +594,12 @@ try {
 
   // =============================================== every kind through the bake
   await openStudio();
-  for (const kind of ["pics", "btns", "icons", "curs"]) {
+  for (const kind of ["pics", "btns", "icons", "heads", "curs"]) {
     await placeFromTray(kind, 0);
   }
-  assert.equal(await page.locator(".collage-piece").count(), 4);
+  assert.equal(await page.locator(".collage-piece").count(), 5);
 
-  // Spread the four pieces out so each occupies its own part of the frame.
+  // Spread the five pieces out so each occupies its own part of the frame.
   const spots = await page.evaluate(() =>
     [...document.querySelectorAll(".collage-piece")].map((node) =>
       node.getBoundingClientRect().toJSON(),
@@ -585,10 +607,11 @@ try {
   );
   const frameBox = await page.locator(".collage-frame").boundingBox();
   const targets = [
-    { x: 0.25, y: 0.28 },
-    { x: 0.72, y: 0.28 },
-    { x: 0.25, y: 0.72 },
-    { x: 0.72, y: 0.72 },
+    { x: 0.25, y: 0.24 },
+    { x: 0.72, y: 0.24 },
+    { x: 0.25, y: 0.7 },
+    { x: 0.5, y: 0.47 },
+    { x: 0.78, y: 0.72 },
   ];
   for (let index = 0; index < spots.length; index += 1) {
     const from = spots[index];
@@ -674,7 +697,11 @@ try {
   await writeFile(`${evidence}/11-baked-preview.png`, Buffer.from(baked.bytes));
   delete baked.bytes;
   console.log("baked:", JSON.stringify(baked, null, 2));
-  assert.equal(baked.pieceCount, 4);
+  assert.equal(baked.pieceCount, 5);
+  assert.ok(
+    baked.samples.some((sample) => sample.kind === "heading"),
+    "a heading should be among the baked pieces",
+  );
   assert.equal(baked.previewType, "image/png");
   assert.equal(baked.width, 3000);
   assert.equal(baked.height, 2000);
@@ -707,6 +734,88 @@ try {
       : "ungrained paper should bake flat",
   );
 
+  await backToHistory();
+
+  // ==================================== a button that brought its own backdrop
+  // The outlined button is light text with no background of its own, read
+  // against a dark section. Its recorded backdrop has to bake as a dark patch,
+  // or the words disappear into the pale paper.
+  await openStudio();
+  await page.getByRole("button", { name: "btns", exact: true }).click();
+  await page.waitForTimeout(400);
+  const outlinedIndex = await page.evaluate(() =>
+    [...document.querySelectorAll(".collage-tray__slot")].findIndex((slot) =>
+      slot.textContent.includes("Read the notes"),
+    ),
+  );
+  assert.ok(
+    outlinedIndex >= 0,
+    "the outlined button should be in the drawer under btns",
+  );
+  await page.locator(".collage-tray__slot").nth(outlinedIndex).click();
+  await page.waitForTimeout(600);
+  await page.locator(".collage-title-input").fill("outlined on dark");
+  await page.keyboard.press("Meta+s");
+  await page.waitForTimeout(8000);
+
+  const backdropBake = await page.evaluate(async () => {
+    const db = await new Promise((ok) => {
+      const r = indexedDB.open("scrap_collages_db");
+      r.onsuccess = () => ok(r.result);
+    });
+    let record;
+    try {
+      const rows = await new Promise((ok) => {
+        const r = db.transaction("collages").objectStore("collages").getAll();
+        r.onsuccess = () => ok(r.result);
+      });
+      record = rows.find((row) => row.title === "outlined on dark");
+    } finally {
+      db.close();
+    }
+    const piece = record.pieces[0];
+    const bitmap = await createImageBitmap(record.preview.image);
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext("2d");
+    context.drawImage(bitmap, 0, 0);
+    const scaleX = bitmap.width / record.frame.width;
+    const scaleY = bitmap.height / record.frame.height;
+    // Sample across the piece and keep the darkest pixel found: the patch is
+    // dark even where the light glyphs and border are not.
+    let darkest = 255;
+    for (let sx = 0.1; sx <= 0.9; sx += 0.05) {
+      for (let sy = 0.2; sy <= 0.8; sy += 0.05) {
+        const x = Math.round((piece.x + piece.width * sx) * scaleX);
+        const y = Math.round((piece.y + piece.height * sy) * scaleY);
+        if (x < 0 || y < 0 || x >= bitmap.width || y >= bitmap.height) continue;
+        const [r, g, b] = context.getImageData(x, y, 1, 1).data;
+        darkest = Math.min(darkest, (r + g + b) / 3);
+      }
+    }
+    const [pr, pg, pb] = context.getImageData(4, 4, 1, 1).data;
+    return {
+      kind: piece.scrap.kind,
+      backdropColor: piece.scrap.backdropColor ?? null,
+      darkest,
+      paperLuma: (pr + pg + pb) / 3,
+    };
+  });
+  console.log("backdrop bake:", backdropBake);
+  assert.equal(backdropBake.kind, "button");
+  assert.ok(
+    backdropBake.backdropColor,
+    "the outlined button should have carried a recorded backdrop",
+  );
+  assert.ok(
+    backdropBake.darkest < 90,
+    `the backdrop should bake as dark pixels behind the text, darkest was ${backdropBake.darkest}`,
+  );
+  assert.ok(
+    backdropBake.paperLuma > 200,
+    "the surrounding paper should still be pale, so the patch is the piece's own",
+  );
   // ============================================================== the drawer
   // A chequer means "this has holes in it", so only material that really does
   // gets one. The two pictures below are genuine encoded bytes: a JPEG, which
@@ -1619,24 +1728,82 @@ try {
     );
   } else {
     console.log(`running the real-export section against ${exportPath}`);
+    // The export is folded in through the extension's own IMPORT_EVENTS path,
+    // so the records get the canonical keys, encounter grouping and identity a
+    // collected scrap would have. An export carries what a scrap is and where
+    // it came from, not who held it, so this browser's identity is supplied.
+    const exported = JSON.parse(await readFile(exportPath, "utf8"));
+    assert.ok(
+      Array.isArray(exported.scraps),
+      "the scraps export should carry a scraps list",
+    );
+    // Identity lives with the service worker, which is where the extension
+    // generates it. The scraps above were collected under it, so the imported
+    // records are held by the same participant rather than a stranger.
+    const identity = await worker.evaluate(async () => {
+      const stored = await chrome.storage.local.get("playerIdentity");
+      return {
+        pid: stored.playerIdentity?.public ?? null,
+        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      };
+    });
+    assert.ok(identity.pid, "the browser should already hold a player identity");
+    const events = exported.scraps.map((record, index) => {
+      assert.ok(
+        record && typeof record.id === "string" && record.kind,
+        `scraps export record ${index} is not a scrap`,
+      );
+      const { id, ts, domain, pageUrl, ...data } = record;
+      return {
+        id,
+        type: "element",
+        ts,
+        data,
+        meta: {
+          pid: identity.pid,
+          sid: `sid_${"0".repeat(8)}-import`,
+          url: pageUrl,
+          vw: 1280,
+          vh: 900,
+          tz: identity.tz,
+        },
+        domain,
+      };
+    });
+    const payload = gzipSync(
+      Buffer.from(
+        JSON.stringify({
+          version: 1,
+          exportedAt: Date.now(),
+          events,
+          identity: null,
+        }),
+      ),
+    );
     const openedAt = Date.now();
-    await page.locator('input[type="file"]').setInputFiles(exportPath);
-    // The import says how many scraps it took in, so the wait is on a real
-    // count rather than on a word the page may already carry.
-    const notice = page.locator("text=/imported \\d+ · already had \\d+/");
-    await notice.waitFor({ timeout: 180_000 });
+    const result = await page.evaluate(
+      async (bytes) =>
+        await chrome.runtime.sendMessage({
+          type: "IMPORT_EVENTS",
+          data: bytes,
+        }),
+      Array.from(payload),
+    );
     const exportLoadedMs = Date.now() - openedAt;
-    const counts = (await notice.textContent()).match(/\d+/g).map(Number);
-    const exportedCount = counts[0] + counts[1];
+    assert.ok(result?.success, `the import failed: ${result?.error}`);
+    const exportedCount = (result.imported ?? 0) + (result.alreadyHeld ?? 0);
     console.log(
-      `the export carries ${exportedCount} scraps (${counts[0]} new, ${counts[1]} already held)`,
+      `the export carries ${exportedCount} scraps (${result.imported} new, ${result.alreadyHeld} already held)`,
     );
     assert.ok(
       exportedCount > 100,
       `expected a substantial export, got ${exportedCount} scraps`,
     );
-    // The page reloads its collection through the usual path after an import.
+    // The page picks the new collection up through its usual refresh path.
+    await page.reload({ waitUntil: "load" });
     await page.waitForTimeout(3000);
+    await page.getByRole("button", { name: "create", exact: true }).click();
+    await page.waitForTimeout(600);
     await openStudio();
     const trayStart = Date.now();
     await page.waitForSelector(".collage-tray__slot", { timeout: 60_000 });

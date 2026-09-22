@@ -17,10 +17,6 @@ import {
   type ScrapPosition,
 } from "@movement/components/ScrapCollage";
 import { useFeatureState } from "../../features/useFeatureAccess";
-import { gzipEventExport } from "../../utils/dataTransfer";
-import { readScrapExport } from "../../storage/scrapImport";
-import { getPublicPlayerIdentity } from "../../storage/playerIdentity";
-import { getSessionId, getTimezone } from "../../storage/participant";
 import { CollageStudio } from "./CollageStudio";
 import { CollageHistory } from "./CollageHistory";
 import { COLLAGE_STUDIO_STYLES } from "./collageStudioStyles";
@@ -167,8 +163,6 @@ type ScrapsMode = "browse" | "create";
 
 export function ScrapsPage() {
   const [items, setItems] = useState<ScrapItem[]>([]);
-  /** Development builds can fold a saved scraps export into the local collection. */
-  const [importNotice, setImportNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
@@ -231,46 +225,6 @@ export function ScrapsPage() {
       cancelled = true;
     };
   }, [revision]);
-
-  /**
-   * Folds a saved export into the local scrap store through the same import
-   * path Settings uses, so the records get the canonical keys, encounter
-   * grouping, and identity a collected scrap would have. The export cannot
-   * carry who held it or the viewport it was captured in, so the events take
-   * this browser's identity, session, timezone, and viewport.
-   */
-  const importExport = async (file: File) => {
-    const [identity, sid] = await Promise.all([
-      getPublicPlayerIdentity(),
-      getSessionId(),
-    ]);
-    if (!identity) {
-      throw new Error("no player identity to import these scraps under");
-    }
-    const events = readScrapExport(JSON.parse(await file.text()), {
-      pid: identity.publicKey,
-      sid,
-      timeZone: getTimezone(),
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-    });
-    const compressed = await gzipEventExport(events, null, Date.now());
-    const response = (await browser.runtime.sendMessage({
-      type: "IMPORT_EVENTS",
-      data: Array.from(compressed),
-    })) as {
-      success?: boolean;
-      imported?: number;
-      alreadyHeld?: number;
-      error?: string;
-    };
-    if (!response?.success) {
-      throw new Error(response?.error ?? "import failed");
-    }
-    setImportNotice(
-      `imported ${response.imported ?? 0} · already had ${response.alreadyHeld ?? 0}`,
-    );
-  };
 
   return (
     <main
@@ -408,44 +362,7 @@ export function ScrapsPage() {
             >
               create
             </button>
-            {import.meta.env.MODE === "development" && (
-              <label className="collage-chip" style={{ cursor: "pointer" }}>
-                import export
-                <input
-                  type="file"
-                  accept="application/json"
-                  hidden
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    event.target.value = "";
-                    if (!file) return;
-                    setImportNotice("importing...");
-                    importExport(file).catch((importError) => {
-                      setImportNotice(
-                        importError instanceof Error
-                          ? importError.message
-                          : String(importError),
-                      );
-                    });
-                  }}
-                />
-              </label>
-            )}
           </div>
-        )}
-        {import.meta.env.MODE === "development" && importNotice && (
-          <p
-            role="status"
-            style={{
-              margin: "6px 0 0",
-              color: "#827a72",
-              fontFamily: '"Martian Mono", monospace',
-              fontSize: 9,
-              letterSpacing: "0.02em",
-            }}
-          >
-            {importNotice}
-          </p>
         )}
       </header>
 
