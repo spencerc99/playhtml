@@ -60,7 +60,7 @@ function record(pieces: CollagePiece[]): CollageRecord {
     updatedAt: 6_000,
     frame: { width: 1500, height: 1000 },
     format: "postcard",
-    paper: { color: "#fffdf9" },
+    paper: { color: "#fffdf9", grain: false },
     pieces,
     preview: { drawn: true as const, image: new Blob(["png"], { type: "image/png" }) },
   };

@@ -157,7 +157,7 @@ export function FormatControl({
                 title={tone.label}
                 aria-label={`Paper: ${tone.label}`}
                 aria-pressed={tone.color === paper.color}
-                onClick={() => onPaper({ color: tone.color })}
+                onClick={() => onPaper({ ...paper, color: tone.color })}
               />
             ))}
             <input
@@ -167,10 +167,23 @@ export function FormatControl({
               aria-label="Custom paper color"
               onChange={(event) => {
                 const next = event.target.value;
-                if (isPaperColor(next)) onPaper({ color: next.toLowerCase() });
+                if (isPaperColor(next)) {
+                  onPaper({ ...paper, color: next.toLowerCase() });
+                }
               }}
             />
           </div>
+
+          <label className="collage-grain">
+            <input
+              type="checkbox"
+              checked={paper.grain}
+              onChange={(event) =>
+                onPaper({ ...paper, grain: event.target.checked })
+              }
+            />
+            <span className="collage-studio__label">grain</span>
+          </label>
         </div>
       )}
     </div>

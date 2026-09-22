@@ -51,12 +51,14 @@ export function formatOf(name: CollageFormatName): CollageFormat {
 }
 
 /**
- * The paper a collage is made on. Only a flat color today; a later paper could
- * carry a texture or a color lifted from a collected page, which is why this
- * is a named thing on the record rather than a bare background string.
+ * The paper a collage is made on: a tone, and whether the page's own grain is
+ * laid over it. A later paper could carry a color lifted from a collected
+ * page, which is why this is a named thing rather than a background string.
  */
 export interface CollagePaper {
   color: string;
+  /** The speckled grain the rest of the scraps page is printed on. */
+  grain: boolean;
 }
 
 export const PAPER_TONES: { label: string; color: string }[] = [
@@ -68,7 +70,11 @@ export const PAPER_TONES: { label: string; color: string }[] = [
   { label: "white", color: "#ffffff" },
 ];
 
-export const DEFAULT_PAPER: CollagePaper = { color: PAPER_TONES[0].color };
+/** A new collage starts on grained paper, like the page around it. */
+export const DEFAULT_PAPER: CollagePaper = {
+  color: PAPER_TONES[0].color,
+  grain: true,
+};
 
 const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
@@ -86,5 +92,8 @@ export function parsePaper(value: unknown): CollagePaper {
       `Collage paper color is not a hex color: ${String(paper.color)}`,
     );
   }
-  return { color: paper.color.trim().toLowerCase() };
+  if (typeof paper.grain !== "boolean") {
+    throw new Error("Collage paper does not say whether it is grained");
+  }
+  return { color: paper.color.trim().toLowerCase(), grain: paper.grain };
 }

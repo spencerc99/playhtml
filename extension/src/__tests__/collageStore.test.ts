@@ -67,7 +67,7 @@ function record(overrides: Partial<CollageRecord> = {}): CollageRecord {
     updatedAt: 6_000,
     frame: { width: 1500, height: 1000 },
     format: "postcard",
-    paper: { color: "#fffdf9" },
+    paper: { color: "#fffdf9", grain: false },
     pieces: [piece()],
     // jsdom's Blob is invisible to Node's structuredClone, which is what
     // fake-indexeddb round-trips a stored record through.
@@ -145,7 +145,7 @@ describe("collageStore", () => {
     expect(loaded?.title).toBe("A collage");
     expect(loaded?.frame).toEqual({ width: 1500, height: 1000 });
     expect(loaded?.format).toBe("postcard");
-    expect(loaded?.paper).toEqual({ color: "#fffdf9" });
+    expect(loaded?.paper).toEqual({ color: "#fffdf9", grain: false });
     expect(loaded?.pieces).toHaveLength(1);
     expect(loaded?.pieces[0].rotation).toBe(12);
     expect(loaded?.pieces[0].crop).toEqual({
@@ -244,7 +244,7 @@ describe("collageStore", () => {
     const loaded = await loadCollage("earlier");
     expect(loaded?.format).toBe("postcard");
     expect(loaded?.frame).toEqual({ width: 1500, height: 1000 });
-    expect(loaded?.paper).toEqual({ color: "#faf9f6" });
+    expect(loaded?.paper).toEqual({ color: "#faf9f6", grain: false });
     expect(loaded?.title).toBe("the one he cares about");
     expect(loaded?.createdAt).toBe(1_700_000_000_000);
     expect(await (loaded?.preview.drawn ? loaded.preview.image.text() : undefined)).toBe("the original thumbnail");
@@ -262,7 +262,7 @@ describe("collageStore", () => {
     // The upgrade was written back, so a later read needs no upgrading.
     const [listed] = await listCollages();
     assert(!isUnreadable(listed));
-    expect(listed.paper).toEqual({ color: "#faf9f6" });
+    expect(listed.paper).toEqual({ color: "#faf9f6", grain: false });
 
     const again = await loadCollage("earlier");
     expect(again?.updatedAt).toBe(1_700_000_900_000);

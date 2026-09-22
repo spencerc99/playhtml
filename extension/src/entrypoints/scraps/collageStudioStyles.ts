@@ -400,6 +400,20 @@ export const COLLAGE_STUDIO_STYLES = `
     background: transparent;
   }
 
+  /* The paper's grain, beside the tones it lies over. */
+  .collage-grain {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 2px;
+    cursor: pointer;
+  }
+
+  .collage-grain input {
+    accent-color: #4a9a8a;
+    margin: 0;
+  }
+
   .collage-format__confirm {
     display: flex;
     flex-wrap: wrap;

@@ -1,10 +1,12 @@
-// ABOUTME: Tests recovering a collage saved before formats, paper and flips.
-// ABOUTME: The fixture is the exact shape the first version of the studio stored.
+// ABOUTME: Tests recovering collages saved before formats, paper, flips and grain.
+// ABOUTME: Each fixture is the exact shape a past version of the studio stored.
 
 import { describe, expect, it } from "vitest";
 import {
   isEarlierCollageShape,
+  isUngrainedCollageShape,
   upgradeEarlierCollage,
+  upgradeUngrainedCollage,
 } from "../entrypoints/scraps/upgradeCollageRecord";
 
 /**
@@ -265,5 +267,68 @@ describe("upgradeEarlierCollage", () => {
   it("hands back anything it does not recognize, unchanged", () => {
     const broken = { id: "x", pieces: "not an array" };
     expect(upgradeEarlierCollage(broken)).toBe(broken);
+  });
+});
+
+/**
+ * A collage exactly as the studio saved it before paper could carry the page's
+ * grain: the current shape in every other way, with a paper that names only a
+ * tone.
+ */
+function ungrainedCollage(): Record<string, unknown> {
+  return {
+    id: "collage_ungrained",
+    title: "made before grain",
+    createdAt: 1_700_000_000_000,
+    updatedAt: 1_700_000_500_000,
+    frame: { width: 1500, height: 1000 },
+    format: "postcard",
+    paper: { color: "#c9a678" },
+    pieces: [{ id: "piece_1", x: 10, y: 20, width: 30, height: 40 }],
+    preview: { drawn: false, reason: "not drawn yet" },
+  };
+}
+
+describe("a collage saved before paper could be grained", () => {
+  it("is recognized by its paper having no word on grain", () => {
+    expect(isUngrainedCollageShape(ungrainedCollage())).toBe(true);
+  });
+
+  it("says out loud that it has none, so it keeps the look it was made with", () => {
+    const upgraded = upgradeUngrainedCollage(ungrainedCollage()) as Record<
+      string,
+      unknown
+    >;
+    expect(upgraded.paper).toEqual({ color: "#c9a678", grain: false });
+  });
+
+  it("changes nothing else about the collage", () => {
+    const before = ungrainedCollage();
+    const upgraded = upgradeUngrainedCollage(before) as Record<string, unknown>;
+    expect(upgraded.id).toBe(before.id);
+    expect(upgraded.title).toBe(before.title);
+    expect(upgraded.createdAt).toBe(before.createdAt);
+    expect(upgraded.updatedAt).toBe(before.updatedAt);
+    expect(upgraded.pieces).toEqual(before.pieces);
+    expect(upgraded.format).toBe("postcard");
+  });
+
+  it("leaves a collage that already says so alone", () => {
+    const grained = {
+      ...ungrainedCollage(),
+      paper: { color: "#c9a678", grain: true },
+    };
+    expect(isUngrainedCollageShape(grained)).toBe(false);
+    expect(upgradeUngrainedCollage(grained)).toBe(grained);
+  });
+
+  it("is idempotent", () => {
+    const once = upgradeUngrainedCollage(ungrainedCollage());
+    expect(upgradeUngrainedCollage(once)).toBe(once);
+  });
+
+  it("hands back anything it does not recognize, unchanged", () => {
+    const broken = { id: "x", pieces: "not an array" };
+    expect(upgradeUngrainedCollage(broken)).toBe(broken);
   });
 });

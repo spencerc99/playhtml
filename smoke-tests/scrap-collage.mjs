@@ -551,6 +551,12 @@ try {
       }
       return { kind: piece.scrap.kind, painted, total };
     });
+    // A run of corner pixels, so grain can be told from a flat fill: grain
+    // makes neighbouring paper pixels differ, a flat tone makes them equal.
+    const corner = [];
+    for (let step = 0; step < 24; step += 1) {
+      corner.push([...context.getImageData(4 + step, 4, 1, 1).data].slice(0, 3));
+    }
     return {
       pieceCount: record.pieces.length,
       previewType: record.preview.image.type,
@@ -558,6 +564,8 @@ try {
       width: bitmap.width,
       height: bitmap.height,
       samples,
+      paper: record.paper,
+      corner,
       bytes: [...new Uint8Array(await record.preview.image.arrayBuffer())],
     };
   });
@@ -574,6 +582,28 @@ try {
       `the baked ${sample.kind} drew nothing but frame background`,
     );
   }
+  // The bake must show the same paper the studio did: grained paper varies
+  // pixel to pixel where a flat tone is uniform.
+  const cornerVaries = baked.corner.some(
+    (pixel) =>
+      pixel[0] !== baked.corner[0][0] ||
+      pixel[1] !== baked.corner[0][1] ||
+      pixel[2] !== baked.corner[0][2],
+  );
+  console.log(
+    "baked paper:",
+    baked.paper,
+    "corner varies:",
+    cornerVaries,
+    baked.corner.slice(0, 4),
+  );
+  assert.equal(
+    cornerVaries,
+    baked.paper.grain,
+    baked.paper.grain
+      ? "grained paper should bake as grain, not a flat tone"
+      : "ungrained paper should bake flat",
+  );
 
   // ======================================================== the studio chrome
   // The piece's tools float beside the piece; the bottom bar carries none.
@@ -794,6 +824,31 @@ try {
     .evaluate((node) => getComputedStyle(node).backgroundColor);
   console.log("paper changed:", paperBefore, "->", paperAfter);
   assert.notEqual(paperAfter, paperBefore, "picking a tone should repaper");
+  // A new collage is made on grained paper, and the grain can be taken off.
+  const grainBox = page.locator(".collage-grain input");
+  assert.equal(
+    await grainBox.isChecked(),
+    true,
+    "a new collage should start on grained paper",
+  );
+  const framePaint = () =>
+    page
+      .locator(".collage-frame")
+      .evaluate((node) => getComputedStyle(node).backgroundImage);
+  assert.notEqual(
+    await framePaint(),
+    "none",
+    "grained paper should carry the grain image",
+  );
+  await grainBox.uncheck();
+  await page.waitForTimeout(400);
+  assert.equal(
+    await framePaint(),
+    "none",
+    "taking the grain off should leave the bare tone",
+  );
+  await grainBox.check();
+  await page.waitForTimeout(400);
   await page.keyboard.press("Escape");
   await page.waitForTimeout(400);
   assert.equal(

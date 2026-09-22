@@ -85,6 +85,7 @@ import { PieceMaterial } from "./PieceMaterial";
 import { CropSession } from "./CropSession";
 import { KeysPopover } from "./KeysPopover";
 import { ProvenancePeek } from "./ProvenancePeek";
+import { paperBackground } from "./paperGrain";
 import { PiecesHereMenu } from "./PiecesHereMenu";
 import {
   neighborInStack,
@@ -328,6 +329,7 @@ export function CollageStudio({
         frame: formatOf(draftRef.current.record.format),
         pieces: draftRef.current.record.pieces,
         paper: draftRef.current.record.paper.color,
+        grain: draftRef.current.record.paper.grain,
       }),
     store: saveCollage,
     onStored: onSaved,
@@ -339,8 +341,14 @@ export function CollageStudio({
   // Everything the person can change about the collage feeds one schedule, so
   // a move, a retitle, a paper or a format all settle the same way.
   const changeKey = useMemo(
-    () => ({ pieces, title: title.trim(), paper: paper.color, format }),
-    [pieces, title, paper.color, format],
+    () => ({
+      pieces,
+      title: title.trim(),
+      paper: paper.color,
+      grain: paper.grain,
+      format,
+    }),
+    [pieces, title, paper.color, paper.grain, format],
   );
   const firstChangeRef = useRef(true);
   useEffect(() => {
@@ -992,7 +1000,12 @@ export function CollageStudio({
     setExporting(true);
     setNotice(null);
     try {
-      const png = await bakeCollage({ frame, pieces, paper: paper.color });
+      const png = await bakeCollage({
+        frame,
+        pieces,
+        paper: paper.color,
+        grain: paper.grain,
+      });
       const url = URL.createObjectURL(png);
       const link = document.createElement("a");
       link.href = url;
@@ -1066,7 +1079,12 @@ export function CollageStudio({
             style={{
               width: frame.width,
               height: frame.height,
-              background: paper.color,
+              ...paperBackground(
+                paper.color,
+                paper.grain,
+                frame.width,
+                frame.height,
+              ),
               transform: `scale(${scale})`,
             }}
             onPointerDown={(event) => {

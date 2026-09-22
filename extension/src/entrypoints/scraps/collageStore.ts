@@ -10,8 +10,23 @@ import {
 } from "./collageRecord";
 import {
   isEarlierCollageShape,
+  isUngrainedCollageShape,
   upgradeEarlierCollage,
+  upgradeUngrainedCollage,
 } from "./upgradeCollageRecord";
+
+/**
+ * Brings a stored row up to the current shape. The upgrades chain, because a
+ * collage old enough to predate formats also predates grain.
+ */
+function currentShape(stored: unknown): unknown {
+  const withFormats = isEarlierCollageShape(stored)
+    ? upgradeEarlierCollage(stored)
+    : stored;
+  return isUngrainedCollageShape(withFormats)
+    ? upgradeUngrainedCollage(withFormats)
+    : withFormats;
+}
 
 const DB_NAME = "scrap_collages_db";
 const DB_VERSION = 1;
@@ -66,14 +81,14 @@ export async function loadCollage(id: string): Promise<CollageRecord | null> {
 }
 
 /**
- * Brings a collage saved before formats, paper and flips into the current
- * shape and stores it back, so the rewrite happens once. A row that is not
- * that shape is handed back untouched, including one that cannot be read at
- * all, which stays stored so it can still be listed and deleted.
+ * Brings a collage saved before a later pass into the current shape and stores
+ * it back, so the rewrite happens once. A row already in the current shape is
+ * handed back untouched, including one that cannot be read at all, which stays
+ * stored so it can still be listed and deleted.
  */
 async function settleShape(stored: unknown): Promise<unknown> {
-  if (!isEarlierCollageShape(stored)) return stored;
-  const upgraded = upgradeEarlierCollage(stored);
+  const upgraded = currentShape(stored);
+  if (upgraded === stored) return stored;
   try {
     await withStore("readwrite", (store) => store.put(upgraded as never));
   } catch {
@@ -96,11 +111,7 @@ export async function listCollages(): Promise<CollageEntry[]> {
   return stored
     .map((value) => {
       try {
-        return summarizeCollage(
-          parseCollageRecord(
-            isEarlierCollageShape(value) ? upgradeEarlierCollage(value) : value,
-          ),
-        );
+        return summarizeCollage(parseCollageRecord(currentShape(value)));
       } catch (error) {
         return unreadableEntry(value, error);
       }

@@ -5,6 +5,7 @@ import type { ScrapSnapshot } from "./collageRecord";
 import type { CollageFrame, CollagePiece } from "./collageRecord";
 import { sourceBoxForCrop } from "./collageGeometry";
 import { cutoutCanvas } from "./cutoutImages";
+import { drawGrain } from "./paperGrain";
 import {
   buttonBodyMarkup,
   foreignObjectDataUrl,
@@ -142,6 +143,8 @@ export interface BakeOptions {
   scale?: number;
   /** The paper the collage is made on, filled behind every piece. */
   paper: string;
+  /** Whether the page's grain is laid over that paper, as the studio shows. */
+  grain?: boolean;
 }
 
 /**
@@ -187,6 +190,9 @@ export async function bakeCollage(options: BakeOptions): Promise<Blob> {
   context.scale(scale, scale);
   context.fillStyle = options.paper;
   context.fillRect(0, 0, frame.width, frame.height);
+  // The grain goes on before the pieces, so it is the paper they sit on rather
+  // than a wash over the finished collage.
+  if (options.grain) await drawGrain(context, frame.width, frame.height);
   context.imageSmoothingQuality = "high";
 
   for (const drawable of drawables) {

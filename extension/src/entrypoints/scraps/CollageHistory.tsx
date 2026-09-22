@@ -9,6 +9,7 @@ import {
   type CollageRecord,
 } from "./collageRecord";
 import { deleteCollage, listCollages, loadCollage } from "./collageStore";
+import { paperBackground } from "./paperGrain";
 import { webPageHref } from "./scrapLinks";
 
 interface CollageHistoryProps {
@@ -207,14 +208,24 @@ export function CollageHistory({
                   {summary.preview.drawn ? (
                     <img
                       className="collage-card__thumb"
-                      style={{ background: summary.paper.color }}
+                      style={paperBackground(
+                        summary.paper.color,
+                        summary.paper.grain,
+                        240,
+                        160,
+                      )}
                       src={previewUrls.get(summary.id)}
                       alt={name}
                     />
                   ) : (
                     <div
                       className="collage-card__thumb collage-card__thumb--undrawn"
-                      style={{ background: summary.paper.color }}
+                      style={paperBackground(
+                        summary.paper.color,
+                        summary.paper.grain,
+                        240,
+                        160,
+                      )}
                     >
                       <span className="collage-studio__label">
                         no preview yet

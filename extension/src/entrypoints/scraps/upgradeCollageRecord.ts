@@ -1,5 +1,5 @@
-// ABOUTME: Brings a collage saved before formats, paper and flips into the current shape.
-// ABOUTME: One named upgrade of one known earlier shape, never a general filling-in of gaps.
+// ABOUTME: Brings collages saved before later passes into the current shape.
+// ABOUTME: Named upgrades of known earlier shapes, never a general filling-in of gaps.
 
 import { DEFAULT_FORMAT, formatOf } from "./collageFormats";
 
@@ -89,4 +89,30 @@ export function upgradeEarlierCollage(value: unknown): unknown {
       flipY: false,
     })),
   };
+}
+
+/**
+ * Whether a stored row is a collage from before paper could carry the page's
+ * grain. It is a current-shape record whose paper has a color but does not say
+ * one way or the other about grain.
+ */
+export function isUngrainedCollageShape(value: unknown): boolean {
+  if (!isPlainObject(value)) return false;
+  if (typeof value.id !== "string" || value.id.length === 0) return false;
+  if (!Array.isArray(value.pieces)) return false;
+  if (!isPlainObject(value.paper)) return false;
+  if (typeof value.paper.color !== "string") return false;
+  return value.paper.grain === undefined;
+}
+
+/**
+ * Says out loud that a collage saved before grain existed has none. Grain is
+ * on for new collages, so without this an existing one would silently gain a
+ * texture it was never made with.
+ */
+export function upgradeUngrainedCollage(value: unknown): unknown {
+  if (!isUngrainedCollageShape(value)) return value;
+  const record = value as Record<string, unknown>;
+  const paper = record.paper as Record<string, unknown>;
+  return { ...record, paper: { ...paper, grain: false } };
 }
