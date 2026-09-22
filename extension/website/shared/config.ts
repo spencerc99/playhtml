@@ -14,9 +14,15 @@ export const WORKER_URL: string =
 
 export const RECENT_EVENTS_URL = `${WORKER_URL}/events/recent`;
 export const COMMUTE_RECENT_URL = `${WORKER_URL}/commute/recent`;
+export const COMMUTE_REVIEW_URL = import.meta.env.VITE_COMMUTE_REVIEW_URL as
+  | string
+  | undefined;
 export const COMMUTE_TRAIN_BOARD_URL = `${WORKER_URL}/commute/trains/board`;
 export const DAILY_COUNTS_URL = `${WORKER_URL}/events/daily-counts`;
 export const PAGE_META_URL = `${WORKER_URL}/page-meta`;
+export const PAGE_INSPECTION_URL =
+  (import.meta.env.VITE_PAGE_INSPECTION_URL as string | undefined) ??
+  PAGE_META_URL;
 
 /** WebSocket endpoint for the live movement-event stream. Derived from
  * WORKER_URL by swapping the http(s) scheme for ws(s). */

@@ -16,7 +16,7 @@ import {
   handleQuarantineStrip,
   handleQuarantineRip,
 } from './routes/quarantine';
-import { handleCommute } from './routes/commute';
+import { handleCommute, handleCommuteReview } from './routes/commute';
 import { handleCommuteTrainBoard } from './routes/commuteTrains';
 import {
   handleAccessRequest,
@@ -28,6 +28,13 @@ import {
   handleAdminPersonCohortsUpdate,
   handleFeatureAccessCheck,
 } from './routes/accessControl';
+import {
+  handleInternetPlaceCatalog,
+  handleInternetPlaceEvidenceImport,
+  handleInternetPlacePolicyDelete,
+  handleInternetPlacePolicyPut,
+} from './routes/internetPlaceCatalog';
+import { handleInternetPlaceSuggestion } from './routes/internetPlaceSuggestion';
 import {
   handleAdminInstallationReload,
   handleInstallationControl,
@@ -77,6 +84,40 @@ export default {
       // This response is reduced to public destinations, domain-only scenery,
       // and aggregate counts. Extension-page GETs can omit Origin and Referer.
       return handleCommute(request, env);
+    }
+
+    if (path === '/commute/review' && request.method === 'GET') {
+      if (!isAllowedOrigin(request)) return forbiddenResponse();
+      return handleCommuteReview(request, env);
+    }
+
+    if (path === '/admin/internet-places' && request.method === 'GET') {
+      return handleInternetPlaceCatalog(request, env);
+    }
+
+    if (
+      path === '/admin/internet-places/evidence' &&
+      request.method === 'POST'
+    ) {
+      return handleInternetPlaceEvidenceImport(request, env);
+    }
+
+    if (path === '/admin/internet-places/policy' && request.method === 'PUT') {
+      return handleInternetPlacePolicyPut(request, env);
+    }
+
+    if (
+      path === '/admin/internet-places/policy' &&
+      request.method === 'DELETE'
+    ) {
+      return handleInternetPlacePolicyDelete(request, env);
+    }
+
+    if (
+      path === '/admin/internet-places/suggestion' &&
+      request.method === 'POST'
+    ) {
+      return handleInternetPlaceSuggestion(request, env);
     }
 
     if (path === '/commute/trains/board' && request.method === 'POST') {

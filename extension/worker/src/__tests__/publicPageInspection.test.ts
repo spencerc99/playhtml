@@ -1,0 +1,171 @@
+// ABOUTME: Verifies deterministic public-page verdicts from bounded response evidence.
+// ABOUTME: Covers redirects, account gates, noindex directives, and unavailable pages.
+
+import { describe, expect, it } from 'vitest';
+import {
+  classifyPublicPage,
+  type PublicPageEvidence,
+} from '../routes/publicPageInspection';
+
+function pageEvidence(
+  overrides: Partial<PublicPageEvidence> = {},
+): PublicPageEvidence {
+  return {
+    requestedUrl: 'https://example.com/article',
+    finalUrl: 'https://example.com/article',
+    status: 200,
+    contentType: 'text/html; charset=utf-8',
+    xRobotsTag: null,
+    htmlHead: '<title>An interesting article</title>',
+    ...overrides,
+  };
+}
+
+describe('classifyPublicPage', () => {
+  it('accepts a successful indexable HTML page', () => {
+    expect(classifyPublicPage(pageEvidence())).toEqual({
+      verdict: 'public',
+      reason: 'public_html',
+      finalUrl: 'https://example.com/article',
+    });
+  });
+
+  it('marks a 401 response as gated', () => {
+    expect(classifyPublicPage(pageEvidence({ status: 401 }))).toMatchObject({
+      verdict: 'gated',
+      reason: 'authentication_required',
+    });
+  });
+
+  it('keeps a 403 response unknown because it may be bot protection', () => {
+    expect(
+      classifyPublicPage(
+        pageEvidence({
+          status: 403,
+          htmlHead: '<title>Just a moment...</title>',
+        }),
+      ),
+    ).toMatchObject({
+      verdict: 'unknown',
+      reason: 'access_restricted',
+    });
+  });
+
+  it('marks a redirect to an authentication route as gated', () => {
+    expect(
+      classifyPublicPage(
+        pageEvidence({ finalUrl: 'https://example.com/auth/signin' }),
+      ),
+    ).toMatchObject({ verdict: 'gated', reason: 'login_redirect' });
+  });
+
+  it('does not treat an article mentioning login as an account gate', () => {
+    expect(
+      classifyPublicPage(
+        pageEvidence({
+          htmlHead:
+            '<title>How login systems work</title><input type="password">',
+        }),
+      ),
+    ).toMatchObject({ verdict: 'public', reason: 'public_html' });
+  });
+
+  it('marks a titled password form as gated', () => {
+    expect(
+      classifyPublicPage(
+        pageEvidence({
+          htmlHead:
+            '<title>Sign in</title><input name="password" type=password>',
+        }),
+      ),
+    ).toMatchObject({ verdict: 'gated', reason: 'authentication_required' });
+  });
+
+  it('marks a password form posting to an authentication route as gated', () => {
+    expect(
+      classifyPublicPage(
+        pageEvidence({
+          htmlHead:
+            '<title>Ormond Spirit</title><input name="password" type=password>',
+          formActions: ['/auth/login'],
+        }),
+      ),
+    ).toMatchObject({ verdict: 'gated', reason: 'authentication_required' });
+  });
+
+  it.each(['"password"', "'password'", 'password'])(
+    'recognizes a login form with type=%s',
+    (attribute) => {
+      expect(classifyPublicPage(pageEvidence({
+        htmlHead: `<title>Sign in</title><input type=${attribute}>`,
+      }))).toMatchObject({ verdict: 'gated', reason: 'authentication_required' });
+    },
+  );
+
+  it('does not mistake a password-like attribute value for a password input', () => {
+    expect(classifyPublicPage(pageEvidence({
+      htmlHead: '<title>Sign in</title><input type=password-help>',
+    }))).toMatchObject({ verdict: 'public', reason: 'public_html' });
+  });
+
+  it('marks a meta refresh to an authentication route as gated', () => {
+    expect(
+      classifyPublicPage(
+        pageEvidence({ metaRefreshes: ['0; URL=/account/signin'] }),
+      ),
+    ).toMatchObject({ verdict: 'gated', reason: 'login_redirect' });
+  });
+
+  it('honors noindex in an X-Robots-Tag header', () => {
+    expect(
+      classifyPublicPage(
+        pageEvidence({ xRobotsTag: 'max-snippet:20, noindex' }),
+      ),
+    ).toMatchObject({ verdict: 'not_public', reason: 'noindex' });
+  });
+
+  it('honors the robots none shorthand', () => {
+    expect(
+      classifyPublicPage(
+        pageEvidence({ htmlHead: '<meta name="robots" content="none">' }),
+      ),
+    ).toMatchObject({ verdict: 'not_public', reason: 'noindex' });
+  });
+
+  it.each([
+    '<meta name="robots" content="nofollow, noindex">',
+    "<meta content='NOINDEX' name='robots'>",
+    '<meta name=robots content=noindex>',
+    '<meta name="wewere-online" content="noindex">',
+  ])('honors a supported HTML noindex directive', (htmlHead) => {
+    expect(classifyPublicPage(pageEvidence({ htmlHead }))).toMatchObject({
+      verdict: 'not_public',
+      reason: 'noindex',
+    });
+  });
+
+  it.each([
+    [404, 'not_found'],
+    [410, 'not_found'],
+    [429, 'rate_limited'],
+    [503, 'server_error'],
+  ] as const)('marks status %i unavailable', (status, reason) => {
+    expect(classifyPublicPage(pageEvidence({ status }))).toMatchObject({
+      verdict: 'unavailable',
+      reason,
+    });
+  });
+
+  it('keeps unresolved redirects unknown', () => {
+    expect(classifyPublicPage(pageEvidence({ status: 302 }))).toMatchObject({
+      verdict: 'unknown',
+      reason: 'unresolved_redirect',
+    });
+  });
+
+  it('does not promote a non-HTML response', () => {
+    expect(
+      classifyPublicPage(pageEvidence({ contentType: 'application/pdf' })),
+    ).toMatchObject({ verdict: 'not_public', reason: 'not_html' });
+  });
+});
