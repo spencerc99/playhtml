@@ -89,7 +89,9 @@ function PeopleHere() {
 // withSharedState is the React API for custom collaborative elements.
 // Vanilla HTML uses playhtml.register(elementOrId, initializer) for the same role.
 const ReactionButton = withSharedState(
-  { defaultData: { count: 0 } },
+  ({ initialCount }: { initialCount: number }) => ({
+    defaultData: { count: initialCount },
+  }),
   ({ data, setData, ref }) => {
     const [hasReacted, setHasReacted] = useState(false);
 
@@ -296,7 +298,7 @@ function App() {
 
           <div style={{ marginTop: "2rem" }}>
             <p>Here's a reaction button! Everyone can see how many people have reacted</p>
-            <ReactionButton />
+            <ReactionButton initialCount={0} />
           </div>
 
           <div style={{ marginTop: "2rem" }}>
