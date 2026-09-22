@@ -353,7 +353,10 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     hasGradient: boolean,
   ): string | undefined {
     if (hasGradient) return undefined;
-    return colorAlpha(ownBackgroundColor) < 1
+    const ownAlpha = colorAlpha(ownBackgroundColor);
+    // A background this reader cannot parse might let the page through, so the
+    // backdrop is recorded rather than assumed away.
+    return ownAlpha === undefined || ownAlpha < 1
       ? resolveBackdropColor(element)
       : undefined;
   }
@@ -765,13 +768,15 @@ function normalizeHeadingText(heading: Element): string {
 /**
  * The flat color a see-through element is seen against: the nearest ancestor
  * that actually paints one. An ancestor carrying only an image or gradient is
- * skipped rather than guessed at, and a tree that paints nothing leaves the
- * page canvas, which is white.
+ * skipped rather than guessed at, as is one whose background this reader
+ * cannot parse, and a tree that paints nothing leaves the page canvas, which
+ * is white.
  */
 function resolveBackdropColor(element: Element): string | undefined {
   let ancestor = element.parentElement;
   for (let depth = 0; ancestor && depth < MAX_BACKDROP_DEPTH; depth++) {
     const background = getComputedStyle(ancestor).backgroundColor;
+    // Only a color read as fully solid can stand in as the backdrop.
     if (colorAlpha(background) === 1) return background;
     if (ancestor === document.documentElement) return CANVAS_BACKDROP_COLOR;
     ancestor = ancestor.parentElement;

@@ -994,6 +994,58 @@ describe("ScrapCollector", () => {
       );
     });
 
+    it("records a backdrop for a modern-syntax see-through background", () => {
+      const button = createButton({ text: "Tinted in modern syntax" });
+      button.setAttribute(
+        "data-styles",
+        JSON.stringify({
+          backgroundColor: "oklch(0.7 0.1 250 / 0.2)",
+          backgroundImage: "none",
+          border: "0px none",
+          boxShadow: "none",
+        }),
+      );
+      nest(button, ["rgb(28, 32, 38)"]);
+
+      collector.enable();
+      showForCapture([button]);
+
+      const scrap = emitted("button")[0];
+      expect(scrap.kind === "button" && scrap.backdropColor).toBe(
+        "rgb(28, 32, 38)",
+      );
+    });
+
+    it("walks past an ancestor whose modern-syntax background is see-through", () => {
+      const button = outlinedButton("Sign in", [
+        "color(display-p3 0.1 0.2 0.3 / 0)",
+        "rgb(28, 32, 38)",
+      ]);
+
+      collector.enable();
+      showForCapture([button]);
+
+      const scrap = emitted("button")[0];
+      expect(scrap.kind === "button" && scrap.backdropColor).toBe(
+        "rgb(28, 32, 38)",
+      );
+    });
+
+    it("keeps walking past an ancestor whose background cannot be read", () => {
+      const button = outlinedButton("Sign in", [
+        "var(--panel-surface)",
+        "rgb(28, 32, 38)",
+      ]);
+
+      collector.enable();
+      showForCapture([button]);
+
+      const scrap = emitted("button")[0];
+      expect(scrap.kind === "button" && scrap.backdropColor).toBe(
+        "rgb(28, 32, 38)",
+      );
+    });
+
     it("records no backdrop when the control paints its own background", () => {
       const button = createButton({ text: "Opaque of its own" });
       button.setAttribute("data-background", "rgb(34, 51, 59)");
