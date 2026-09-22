@@ -1469,6 +1469,94 @@ try {
   await page.waitForTimeout(300);
   await backToHistory();
 
+  // =========================================================== duplicating
+  await backToHistory();
+  const before = await storedCollages();
+  const original = before.find((row) => row.title === "one of each");
+  assert.ok(original, "the mixed collage should be in the drawer to copy");
+  const toCopy = page
+    .locator(".collage-card")
+    .filter({ hasText: "one of each" })
+    .first();
+  await toCopy.getByRole("button", { name: "duplicate" }).click();
+  await page.waitForTimeout(1500);
+
+  const afterCopy = await storedCollages();
+  const copy = afterCopy.find((row) => row.title === "one of each copy");
+  console.log("the copy:", copy);
+  assert.ok(copy, "duplicating should store a collage named as a copy");
+  assert.equal(
+    afterCopy.length,
+    before.length + 1,
+    "duplicating should add exactly one collage",
+  );
+  assert.notEqual(copy.id, original.id, "the copy is a separate collage");
+  assert.equal(
+    copy.pieces,
+    original.pieces,
+    "the copy should hold the same number of pieces",
+  );
+  assert.deepEqual(
+    copy.firstPiece,
+    original.firstPiece,
+    "the copy should hold the same arrangement",
+  );
+  assert.equal(
+    copy.drawn,
+    original.drawn,
+    "the copy should carry the original's picture",
+  );
+  // The copy is at the top of the list, so it is there to open straight away.
+  const firstCardTitle = await page
+    .locator(".collage-card__title")
+    .first()
+    .textContent();
+  console.log("first card after duplicating:", firstCardTitle.trim());
+  assert.equal(firstCardTitle.trim(), "one of each copy");
+  await page.screenshot({ path: `${evidence}/18-duplicated.png` });
+
+  // Editing the copy must not reach back into the collage it came from.
+  await page
+    .locator(".collage-card")
+    .filter({ hasText: "one of each copy" })
+    .first()
+    .getByRole("button", { name: "keep editing" })
+    .click();
+  await page.waitForTimeout(2500);
+  await selectByTab();
+  for (let step = 0; step < 5; step += 1) {
+    await page.keyboard.press("Shift+ArrowRight");
+  }
+  await page.locator(".collage-title-input").fill("the copy, moved");
+  await page.keyboard.press("Meta+s");
+  await page.waitForTimeout(4000);
+
+  const afterEdit = await storedCollages();
+  const editedCopy = afterEdit.find((row) => row.id === copy.id);
+  const untouched = afterEdit.find((row) => row.id === original.id);
+  console.log("after editing the copy:", { editedCopy, untouched });
+  assert.equal(editedCopy.title, "the copy, moved");
+  assert.ok(
+    editedCopy.firstPiece.x > original.firstPiece.x,
+    "the copy should have moved",
+  );
+  assert.equal(
+    untouched.title,
+    "one of each",
+    "the original's title must be untouched",
+  );
+  assert.deepEqual(
+    untouched.firstPiece,
+    original.firstPiece,
+    "the original's arrangement must be untouched",
+  );
+  assert.equal(
+    untouched.updatedAt,
+    original.updatedAt,
+    "the original must not even have been rewritten",
+  );
+  await backToHistory();
+
   // ====================================== a collage whose picture never drew
   // A first-ever bake that fails stores the arrangement with no preview, and
   // the history draws a quiet face rather than breaking.

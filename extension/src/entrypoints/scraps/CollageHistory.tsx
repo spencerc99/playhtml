@@ -4,11 +4,18 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   collageProvenance,
+  duplicateCollage,
   isUnreadable,
+  summarizeCollage,
   type CollageEntry,
   type CollageRecord,
 } from "./collageRecord";
-import { deleteCollage, listCollages, loadCollage } from "./collageStore";
+import {
+  deleteCollage,
+  listCollages,
+  loadCollage,
+  saveCollage,
+} from "./collageStore";
 import { paperBackground } from "./paperGrain";
 import { webPageHref } from "./scrapLinks";
 
@@ -97,6 +104,25 @@ export function CollageHistory({
     },
     [previewUrls],
   );
+
+  /**
+   * Makes a separate collage holding the same arrangement. The copy is put at
+   * the top of the list straight away rather than waiting for a reload, so it
+   * is there to open the moment the button is pressed.
+   */
+  const duplicate = async (id: string) => {
+    const source = await loadCollage(id);
+    if (!source) {
+      setError("that collage could not be opened to copy");
+      return;
+    }
+    const copy = duplicateCollage(source);
+    await saveCollage(copy);
+    setError(null);
+    setSummaries((current) =>
+      current ? [summarizeCollage(copy), ...current] : current,
+    );
+  };
 
   const remove = async (id: string) => {
     await deleteCollage(id);
@@ -263,6 +289,13 @@ export function CollageHistory({
                       }}
                     >
                       keep editing
+                    </button>
+                    <button
+                      type="button"
+                      className="collage-action"
+                      onClick={() => void duplicate(summary.id)}
+                    >
+                      duplicate
                     </button>
                     {confirmingId === summary.id ? (
                       <>

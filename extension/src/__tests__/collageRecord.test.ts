@@ -8,6 +8,7 @@ import {
   applyCrop,
   clearCrop,
   collageProvenance,
+  duplicateCollage,
   movePieceBackward,
   movePieceForward,
   normalizeStack,
@@ -285,5 +286,120 @@ describe("stacking", () => {
     expect(() => movePieceForward([piece({ id: "a" })], "ghost")).toThrow(
       /no piece ghost/,
     );
+  });
+});
+
+describe("copying a collage", () => {
+  const source: CollageRecord = {
+    id: "collage_source",
+    title: "  a good one  ",
+    createdAt: 1_000,
+    updatedAt: 2_000,
+    frame: { width: 1500, height: 1000 },
+    format: "postcard",
+    paper: { color: "#c9a678", grain: true },
+    pieces: [
+      piece({ id: "piece_a", z: 0, x: 10, y: 20, rotation: 12 }),
+      piece({
+        id: "piece_b",
+        z: 1,
+        x: 30,
+        y: 40,
+        cutout: { method: "edge-color", tolerance: 0.2 },
+      }),
+    ],
+    preview: {
+      drawn: true as const,
+      image: new Blob(["png"], { type: "image/png" }),
+    },
+  };
+  const copy = duplicateCollage(source, 9_000);
+
+  it("is a separate collage", () => {
+    expect(copy.id).not.toBe(source.id);
+    expect(copy.id.startsWith("collage_")).toBe(true);
+  });
+
+  it("says it is a copy", () => {
+    expect(copy.title).toBe("a good one copy");
+  });
+
+  it("names an unnamed collage's copy", () => {
+    expect(duplicateCollage({ ...source, title: "" }).title).toBe(
+      "untitled collage copy",
+    );
+    expect(duplicateCollage({ ...source, title: "   " }).title).toBe(
+      "untitled collage copy",
+    );
+  });
+
+  it("is made now, not when the original was", () => {
+    expect(copy.createdAt).toBe(9_000);
+    expect(copy.updatedAt).toBe(9_000);
+  });
+
+  it("keeps the same size, paper and grain", () => {
+    expect(copy.format).toBe(source.format);
+    expect(copy.frame).toEqual(source.frame);
+    expect(copy.paper).toEqual(source.paper);
+  });
+
+  it("holds the same arrangement, piece for piece", () => {
+    expect(copy.pieces).toHaveLength(source.pieces.length);
+    copy.pieces.forEach((piece, index) => {
+      const original = source.pieces[index];
+      expect(piece.x).toBe(original.x);
+      expect(piece.y).toBe(original.y);
+      expect(piece.width).toBe(original.width);
+      expect(piece.height).toBe(original.height);
+      expect(piece.rotation).toBe(original.rotation);
+      expect(piece.z).toBe(original.z);
+      expect(piece.crop).toEqual(original.crop);
+      expect(piece.scrapId).toBe(original.scrapId);
+    });
+  });
+
+  it("gives every piece an id of its own", () => {
+    const ids = copy.pieces.map((piece) => piece.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const original of source.pieces) {
+      expect(ids).not.toContain(original.id);
+    }
+  });
+
+  it("shares no mutable object with the original", () => {
+    expect(copy.frame).not.toBe(source.frame);
+    expect(copy.paper).not.toBe(source.paper);
+    copy.pieces.forEach((piece, index) => {
+      expect(piece).not.toBe(source.pieces[index]);
+      expect(piece.crop).not.toBe(source.pieces[index].crop);
+    });
+    expect(copy.pieces[1].cutout).not.toBe(source.pieces[1].cutout);
+    expect(copy.pieces[1].cutout).toEqual(source.pieces[1].cutout);
+  });
+
+  it("carries the picture across, because the arrangement is the same", () => {
+    expect(copy.preview.drawn).toBe(true);
+    if (copy.preview.drawn && source.preview.drawn) {
+      expect(copy.preview.image).toBe(source.preview.image);
+    }
+  });
+
+  it("carries an absent picture across as absent", () => {
+    const undrawn = duplicateCollage({
+      ...source,
+      preview: { drawn: false as const, reason: "not drawn yet" },
+    });
+    expect(undrawn.preview).toEqual({
+      drawn: false,
+      reason: "not drawn yet",
+    });
+  });
+
+  it("leaves the original untouched", () => {
+    expect(source.id).toBe("collage_source");
+    expect(source.title).toBe("  a good one  ");
+    expect(source.pieces[0].id).toBe("piece_a");
+    expect(source.updatedAt).toBe(2_000);
   });
 });

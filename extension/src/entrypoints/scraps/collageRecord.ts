@@ -113,6 +113,43 @@ export function createCollageId(): string {
   return `collage_${crypto.randomUUID()}`;
 }
 
+/** What a copy is called when the collage it came from had no name. */
+const UNTITLED_COPY = "untitled collage copy";
+
+/**
+ * A separate collage holding the same arrangement. Every piece is copied with
+ * an id of its own, so editing the copy cannot reach back into the original,
+ * and the two records share nothing.
+ *
+ * The preview comes across as it is: the arrangement is identical, so the
+ * picture already drawn for it is the right one and nothing is re-baked.
+ */
+export function duplicateCollage(
+  record: CollageRecord,
+  now: number = Date.now(),
+): CollageRecord {
+  return {
+    id: createCollageId(),
+    title: record.title.trim() ? `${record.title.trim()} copy` : UNTITLED_COPY,
+    createdAt: now,
+    updatedAt: now,
+    frame: { ...record.frame },
+    format: record.format,
+    paper: { ...record.paper },
+    pieces: record.pieces.map((piece) => ({
+      ...piece,
+      id: createPieceId(),
+      crop: { ...piece.crop },
+      // The scrap snapshot is the material itself, never edited in place, so
+      // both collages may point at the one copy of it.
+      ...(piece.cutout ? { cutout: { ...piece.cutout } } : {}),
+    })),
+    preview: record.preview.drawn
+      ? { drawn: true, image: record.preview.image }
+      : { drawn: false, reason: record.preview.reason },
+  };
+}
+
 /**
  * Source pages behind a collage, one entry per page, oldest first. A page that
  * contributed several pieces is listed once with its piece count.
