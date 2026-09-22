@@ -6,6 +6,7 @@ import {
   buttonBodyMarkup,
   escapeXml,
   foreignObjectDataUrl,
+  headingBodyMarkup,
   requireXmlFragment,
   styleDeclarations,
   svgDataUrl,
@@ -126,6 +127,82 @@ describe("buttonBodyMarkup", () => {
         innerSvg: "<svg><rect></svg>",
       }),
     ).toThrow(/icon is not well-formed XML/);
+  });
+
+  it("paints a recorded backdrop behind the button", () => {
+    const markup = buttonBodyMarkup({
+      text: "Sign up",
+      styles: { color: "rgb(255, 255, 255)" },
+      backdropColor: "rgb(28, 32, 38)",
+    });
+    expect(isWellFormed(markup)).toBe(true);
+    expect(markup).toContain("background:rgb(28, 32, 38)");
+  });
+
+  it("leaves a button with no recorded backdrop unwrapped", () => {
+    const markup = buttonBodyMarkup({ text: "Sign up", styles: {} });
+    expect(markup).not.toContain("background:");
+  });
+
+  it("cannot have a backdrop value start a declaration of its own", () => {
+    const markup = buttonBodyMarkup({
+      text: "Sign up",
+      styles: {},
+      backdropColor: "red;position:fixed",
+    });
+    expect(isWellFormed(markup)).toBe(true);
+    // The terminator is gone, so what followed it is stranded inside the
+    // background value rather than becoming a declaration in its own right.
+    expect(markup).toContain("background:red position:fixed;display:");
+  });
+});
+
+describe("headingBodyMarkup", () => {
+  it("produces well-formed XML carrying the heading's own typography", () => {
+    const markup = headingBodyMarkup(
+      {
+        text: "Objects worth keeping",
+        styles: {
+          color: "rgb(61, 56, 51)",
+          fontFamily: "Lora, serif",
+          fontWeight: "700",
+          letterSpacing: "0.02em",
+        },
+      },
+      28,
+      1.15,
+    );
+    expect(isWellFormed(markup)).toBe(true);
+    expect(markup).toContain("Objects worth keeping");
+    expect(markup).toContain("color:rgb(61, 56, 51)");
+    expect(markup).toContain("font-weight:700");
+    expect(markup).toContain("letter-spacing:0.02em");
+  });
+
+  it("draws at the display size rather than the captured one", () => {
+    const markup = headingBodyMarkup(
+      { text: "Big", styles: { fontSize: "96px", lineHeight: "140px" } },
+      28,
+      1.15,
+    );
+    // The captured values are still present, but the display ones follow them
+    // in the declaration list and so are the ones that apply.
+    expect(markup.lastIndexOf("font-size:28px")).toBeGreaterThan(
+      markup.indexOf("font-size:96px"),
+    );
+    expect(markup.lastIndexOf("line-height:1.15")).toBeGreaterThan(
+      markup.indexOf("line-height:140px"),
+    );
+  });
+
+  it("stays well-formed when the heading text contains markup characters", () => {
+    const markup = headingBodyMarkup(
+      { text: `Tom & Jerry <b>"now"</b>`, styles: {} },
+      20,
+      1.15,
+    );
+    expect(isWellFormed(markup)).toBe(true);
+    expect(markup).not.toContain("<b>");
   });
 });
 

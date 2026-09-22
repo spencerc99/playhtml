@@ -87,6 +87,28 @@ export interface ButtonScrapShape {
   text: string;
   styles: Record<string, string>;
   innerSvg?: string;
+  /** The color the scrap was read against, painted behind it as a patch. */
+  backdropColor?: string;
+}
+
+/**
+ * Wraps baked body markup in the snug patch of the color the scrap was read
+ * against, so a see-through scrap bakes with the contrast its page supplied
+ * exactly as `ScrapBackdrop` paints it on screen. A scrap without a recorded
+ * backdrop bakes unwrapped.
+ */
+function withBackdrop(body: string, backdropColor?: string): string {
+  if (!backdropColor) return body;
+  const patch = [
+    `background:${backdropColor.replace(/[;{}]/g, " ").trim()}`,
+    "display:inline-flex",
+    "align-items:center",
+    "justify-content:center",
+    "box-sizing:border-box",
+    "width:100%",
+    "height:100%",
+  ].join(";");
+  return `<span style="${escapeXml(patch)}">${body}</span>`;
 }
 
 /** The HTML a button scrap bakes as, with every value escaped for XML. */
@@ -109,5 +131,43 @@ export function buttonBodyMarkup(scrap: ButtonScrapShape): string {
   const icon = scrap.innerSvg
     ? requireXmlFragment(scrap.innerSvg, "The button's icon")
     : "";
-  return `<span style="${escapeXml(declarations)}">${icon}${escapeXml(scrap.text)}</span>`;
+  return withBackdrop(
+    `<span style="${escapeXml(declarations)}">${icon}${escapeXml(scrap.text)}</span>`,
+    scrap.backdropColor,
+  );
+}
+
+export interface HeadingScrapShape {
+  text: string;
+  styles: Record<string, string>;
+}
+
+/**
+ * The HTML a heading scrap bakes as. It carries the page's own typography —
+ * family, weight, color, spacing — from the captured styles, at the display
+ * font size the studio showed it at, so the baked words match the piece.
+ */
+export function headingBodyMarkup(
+  scrap: HeadingScrapShape,
+  fontSize: number,
+  lineHeight: number,
+): string {
+  const declarations = [
+    styleDeclarations(scrap.styles),
+    // These follow the captured styles so they win over the captured font
+    // size and line height, which belong to the size the heading was read at.
+    `font-size:${fontSize}px`,
+    `line-height:${lineHeight}`,
+    "display:flex",
+    "align-items:center",
+    "justify-content:center",
+    "text-align:center",
+    "box-sizing:border-box",
+    "width:100%",
+    "height:100%",
+    "overflow:hidden",
+  ]
+    .filter((part) => part.length > 0)
+    .join(";");
+  return `<span style="${escapeXml(declarations)}">${escapeXml(scrap.text)}</span>`;
 }

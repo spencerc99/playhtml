@@ -9,7 +9,10 @@ import React, {
   useRef,
   useState,
 } from "react";
-import type { ScrapItem } from "@movement/components/ScrapCollage";
+import {
+  headingDisplayFontSize,
+  type ScrapItem,
+} from "@movement/components/ScrapCollage";
 import {
   FULL_CROP,
   boxCenter,
@@ -103,6 +106,8 @@ import type { SaveStanding } from "./autosaveSchedule";
 
 /** Longest side a freshly placed piece takes, in frame units. */
 const PLACED_MAX_SIDE = 220;
+/** Average character width as a fraction of font size, for sizing a heading. */
+const HEADING_CHARACTER_ADVANCE = 0.68;
 const ROTATION_SNAP_DEGREES = 15;
 const ROTATE_HANDLE_OFFSET = 26;
 /** How far a pasted or duplicated piece lands from its original. */
@@ -189,6 +194,16 @@ function naturalSize(item: ScrapItem): { width: number; height: number } {
       return { width: item.width, height: item.height };
     case "button":
       return { width: Math.max(80, item.text.length * 11 + 40), height: 40 };
+    case "heading": {
+      // Sized from the same font size the shared renderer draws the heading
+      // at, so a placed heading arrives at the proportions it will keep.
+      const fontSize = headingDisplayFontSize(item.styles, item.text);
+      const width = Math.max(
+        90,
+        item.text.trim().length * fontSize * HEADING_CHARACTER_ADVANCE + 16,
+      );
+      return { width, height: Math.max(28, fontSize * 1.15 + 12) };
+    }
     case "cursor":
       return { width: 32, height: 32 };
   }

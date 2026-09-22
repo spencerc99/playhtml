@@ -1,7 +1,10 @@
 // ABOUTME: Lays the scrap drawer out as columns of natural-aspect thumbnails.
 // ABOUTME: Offsets are precomputed so the visible range stays a lookup at any size.
 
-import type { ScrapItem } from "@movement/components/ScrapCollage";
+import {
+  headingDisplayFontSize,
+  type ScrapItem,
+} from "@movement/components/ScrapCollage";
 
 /** A placed thumbnail: which column it went in and where it sits. */
 export interface DrawerCell {
@@ -28,6 +31,16 @@ const CELL_GAP = 6;
  * to a column's width, which would make a 16px icon absurd.
  */
 const SMALL_BOX = 72;
+
+/**
+ * How a run of words turns into a box. The advance is an average character
+ * width as a fraction of the font size, matching the estimate the browse view
+ * lays headings out with, so a heading occupies comparable room in both.
+ */
+const HEADING_CHARACTER_ADVANCE = 0.68;
+const HEADING_LINE_HEIGHT = 1.15;
+const HEADING_PADDING = 16;
+const HEADING_MIN_BOX = 44;
 
 /**
  * How tall a scrap wants to be in a column of this width. Images and icons
@@ -62,6 +75,22 @@ export function thumbnailHeight(item: ScrapItem, columnWidth: number): number {
       // A button is a wide, short thing; its reconstruction is measured on
       // screen but this is the room it is given.
       return Math.min(columnWidth * 0.42, 64);
+    case "heading": {
+      // A heading is words, so its room is however many lines those words take
+      // at the size the shared renderer will actually draw them in this column.
+      const fontSize = headingDisplayFontSize(item.styles, item.text, columnWidth);
+      const lines = Math.max(
+        1,
+        Math.ceil(
+          (item.text.trim().length * fontSize * HEADING_CHARACTER_ADVANCE) /
+            Math.max(1, columnWidth - HEADING_PADDING),
+        ),
+      );
+      return Math.max(
+        HEADING_MIN_BOX,
+        lines * fontSize * HEADING_LINE_HEIGHT + HEADING_PADDING,
+      );
+    }
     case "cursor":
       return Math.min(SMALL_BOX, columnWidth);
   }

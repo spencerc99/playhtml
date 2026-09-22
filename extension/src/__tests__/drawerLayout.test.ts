@@ -45,6 +45,8 @@ const button = (id: string): ScrapItem =>
   ({ ...base, id, kind: "button", text: "Go", styles: {} }) as ScrapItem;
 const cursor = (id: string): ScrapItem =>
   ({ ...base, id, kind: "cursor", url: "https://example.test/c.svg" }) as ScrapItem;
+const heading = (id: string, text: string, fontSize = "28px"): ScrapItem =>
+  ({ ...base, id, kind: "heading", text, level: 1, styles: { fontSize } }) as ScrapItem;
 
 describe("how tall a thumbnail wants to be", () => {
   it("keeps a picture's own proportions", () => {
@@ -76,6 +78,23 @@ describe("how tall a thumbnail wants to be", () => {
   it("gives a button a short wide box and a cursor a small one", () => {
     expect(thumbnailHeight(button("h"), 200)).toBeLessThan(100);
     expect(thumbnailHeight(cursor("i"), 400)).toBeLessThanOrEqual(72);
+  });
+
+  it("gives a heading room for however many lines its words take", () => {
+    const short = thumbnailHeight(heading("j", "Notes"), 200);
+    const long = thumbnailHeight(
+      heading("k", "Objects worth keeping, and the reasons they were kept"),
+      200,
+    );
+    expect(long).toBeGreaterThan(short);
+    expect(short).toBeGreaterThanOrEqual(44);
+  });
+
+  it("wraps a heading into more lines in a narrower column", () => {
+    const words = "Objects worth keeping, and the reasons they were kept";
+    expect(thumbnailHeight(heading("l", words), 120)).toBeGreaterThan(
+      thumbnailHeight(heading("m", words), 320),
+    );
   });
 });
 
@@ -224,11 +243,10 @@ describe("what goes behind a thumbnail", () => {
 });
 
 describe("a scrap that brought its page's own backdrop", () => {
-  // `backdropColor` is recorded on buttons by the headings-and-position pass.
-  // Until that lands nothing carries one, so this is read structurally and
-  // the drawer simply steps aside whenever a scrap does.
-  // Cast through `unknown`: the field does not exist on the type yet, which
-  // is exactly why the reader checks for it structurally.
+  // Only a button records the color it was read against, and only since the
+  // backdrop began being recorded, so the reader answers the absent case.
+  // The cast through `unknown` is for the values a stored scrap could hold
+  // that the type does not admit, which the reader still has to turn away.
   const withBackdrop = (color: unknown) =>
     ({ ...button("b"), backdropColor: color }) as unknown as ScrapItem;
 
@@ -250,5 +268,6 @@ describe("a scrap that brought its page's own backdrop", () => {
   it("still backs a scrap that has no backdrop of its own", () => {
     expect(backingForKind(button("d"))).toBe("paper");
     expect(backingForKind(icon("e"))).toBe("checker");
+    expect(backingForKind(heading("f", "Objects worth keeping"))).toBe("paper");
   });
 });

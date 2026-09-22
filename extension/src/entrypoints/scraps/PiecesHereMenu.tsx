@@ -25,6 +25,8 @@ function scrapKindName(piece: CollagePiece): string {
       return "button";
     case "svg-icon":
       return "icon";
+    case "heading":
+      return "heading";
     case "cursor":
       return "cursor";
   }

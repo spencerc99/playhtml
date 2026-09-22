@@ -39,18 +39,18 @@ export function couldBeTransparent(src: string): boolean {
  * was recorded. `ScrapContent` paints it as a snug patch behind the scrap, so
  * a scrap that carries one needs no backing from the drawer.
  *
- * It is read structurally rather than off the type, because it is recorded
- * only for some kinds and only for scraps collected since it was added.
+ * Only a button carries one, and only when it was collected since the backdrop
+ * began being recorded, so the absent case is answered rather than assumed.
  */
 export function scrapBackdropColor(item: ScrapItem): string | null {
-  const color = (item as { backdropColor?: unknown }).backdropColor;
+  const color = item.kind === "button" ? item.backdropColor : undefined;
   return typeof color === "string" && color.length > 0 ? color : null;
 }
 
 /**
  * The kinds that are always backed, whatever their pixels: an icon and a
- * cursor are cut-outs by nature, and a button is drawn from a reconstruction
- * rather than from an image at all.
+ * cursor are cut-outs by nature, and a button or heading is drawn from a
+ * reconstruction rather than from an image at all.
  *
  * A scrap that brought its page's own backdrop with it is already sitting on
  * something, so the drawer adds nothing behind it.
@@ -62,6 +62,7 @@ export function backingForKind(item: ScrapItem): ThumbBacking | null {
     case "cursor":
       return "checker";
     case "button":
+    case "heading":
       return "paper";
     case "image":
       return null;

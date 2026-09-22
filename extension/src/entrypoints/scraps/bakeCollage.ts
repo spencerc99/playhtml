@@ -6,12 +6,21 @@ import type { CollageFrame, CollagePiece } from "./collageRecord";
 import { sourceBoxForCrop } from "./collageGeometry";
 import { cutoutCanvas } from "./cutoutImages";
 import { drawGrain } from "./paperGrain";
+import { headingDisplayFontSize } from "@movement/components/ScrapCollage";
 import {
   buttonBodyMarkup,
   foreignObjectDataUrl,
+  headingBodyMarkup,
   requireXmlFragment,
   svgDataUrl,
 } from "./svgDocument";
+
+/**
+ * The line height a heading is drawn at, rather than the one captured with its
+ * font size, which would space wrapped lines far too far apart at display size.
+ * Matches the shared renderer.
+ */
+const HEADING_LINE_HEIGHT = 1.15;
 
 /** Names the pieces that could not be drawn, so a save can refuse to go ahead. */
 export class CollageBakeError extends Error {
@@ -77,6 +86,30 @@ async function loadButtonImage(
   );
 }
 
+/**
+ * Draws a heading scrap through the same foreignObject path a button takes, so
+ * the page's own typography bakes into the picture. The display font size is
+ * derived from the box the piece actually occupies, matching what
+ * `ScrapContent` sizes the heading to on screen.
+ */
+async function loadHeadingImage(
+  scrap: Extract<ScrapSnapshot, { kind: "heading" }>,
+  width: number,
+  height: number,
+): Promise<HTMLImageElement> {
+  return loadImage(
+    foreignObjectDataUrl({
+      body: headingBodyMarkup(
+        scrap,
+        headingDisplayFontSize(scrap.styles, scrap.text, width),
+        HEADING_LINE_HEIGHT,
+      ),
+      width,
+      height,
+    }),
+  );
+}
+
 async function loadSvgIconImage(
   markup: string,
   width: number,
@@ -109,6 +142,8 @@ function pieceLabel(scrap: ScrapSnapshot): string {
       return scrap.text.trim() || `button from ${scrap.domain}`;
     case "svg-icon":
       return `icon from ${scrap.domain}`;
+    case "heading":
+      return scrap.text.trim() || `heading from ${scrap.domain}`;
     case "cursor":
       return `cursor from ${scrap.domain}`;
   }
@@ -133,6 +168,8 @@ async function pieceImage(
       return loadSvgIconImage(scrap.markup, sourceWidth, sourceHeight);
     case "button":
       return loadButtonImage(scrap, sourceWidth, sourceHeight);
+    case "heading":
+      return loadHeadingImage(scrap, sourceWidth, sourceHeight);
   }
 }
 

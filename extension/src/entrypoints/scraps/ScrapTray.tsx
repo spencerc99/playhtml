@@ -29,15 +29,20 @@ const KIND_FILTERS: ScrapKindFilter[] = [
   "image",
   "button",
   "svg-icon",
+  "heading",
   "cursor",
 ];
 
-/** Short enough that every filter fits one line at the default width. */
+/**
+ * Short enough that every filter fits one line at the default width, in the
+ * order the browse view's type popover lists the same kinds.
+ */
 const FILTER_LABELS: Record<ScrapKindFilter, string> = {
   all: "all",
   image: "pics",
   button: "btns",
   "svg-icon": "icons",
+  heading: "heads",
   cursor: "curs",
 };
 
