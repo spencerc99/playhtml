@@ -17,6 +17,10 @@ import {
   type ScrapPosition,
 } from "@movement/components/ScrapCollage";
 import { useFeatureState } from "../../features/useFeatureAccess";
+import { gzipEventExport } from "../../utils/dataTransfer";
+import { readScrapExport } from "../../storage/scrapImport";
+import { getPublicPlayerIdentity } from "../../storage/playerIdentity";
+import { getSessionId, getTimezone } from "../../storage/participant";
 import { CollageStudio } from "./CollageStudio";
 import { CollageHistory } from "./CollageHistory";
 import { COLLAGE_STUDIO_STYLES } from "./collageStudioStyles";
@@ -162,10 +166,9 @@ const centeredMessageStyle: React.CSSProperties = {
 type ScrapsMode = "browse" | "create";
 
 export function ScrapsPage() {
-  const [collectedItems, setItems] = useState<ScrapItem[]>([]);
-  /** Development builds can stand in a saved scraps export for the local collection. */
-  const [exportedItems, setExportedItems] = useState<ScrapItem[] | null>(null);
-  const items = exportedItems ?? collectedItems;
+  const [items, setItems] = useState<ScrapItem[]>([]);
+  /** Development builds can fold a saved scraps export into the local collection. */
+  const [importNotice, setImportNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
@@ -229,12 +232,44 @@ export function ScrapsPage() {
     };
   }, [revision]);
 
-  const openExport = async (file: File) => {
-    const parsed = JSON.parse(await file.text()) as Partial<ScrapsResponse>;
-    if (!Array.isArray(parsed.scraps)) {
-      throw new Error("scraps export is missing its scraps list");
+  /**
+   * Folds a saved export into the local scrap store through the same import
+   * path Settings uses, so the records get the canonical keys, encounter
+   * grouping, and identity a collected scrap would have. The export cannot
+   * carry who held it or the viewport it was captured in, so the events take
+   * this browser's identity, session, timezone, and viewport.
+   */
+  const importExport = async (file: File) => {
+    const [identity, sid] = await Promise.all([
+      getPublicPlayerIdentity(),
+      getSessionId(),
+    ]);
+    if (!identity) {
+      throw new Error("no player identity to import these scraps under");
     }
-    setExportedItems(parsed.scraps.map(toScrapItem));
+    const events = readScrapExport(JSON.parse(await file.text()), {
+      pid: identity.publicKey,
+      sid,
+      timeZone: getTimezone(),
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    });
+    const compressed = await gzipEventExport(events, null, Date.now());
+    const response = (await browser.runtime.sendMessage({
+      type: "IMPORT_EVENTS",
+      data: Array.from(compressed),
+    })) as {
+      success?: boolean;
+      imported?: number;
+      alreadyHeld?: number;
+      error?: string;
+    };
+    if (!response?.success) {
+      throw new Error(response?.error ?? "import failed");
+    }
+    setImportNotice(
+      `imported ${response.imported ?? 0} · already had ${response.alreadyHeld ?? 0}`,
+    );
   };
 
   return (
@@ -375,19 +410,21 @@ export function ScrapsPage() {
             </button>
             {import.meta.env.MODE === "development" && (
               <label className="collage-chip" style={{ cursor: "pointer" }}>
-                {exportedItems ? `export · ${exportedItems.length}` : "open export"}
+                import export
                 <input
                   type="file"
                   accept="application/json"
                   hidden
                   onChange={(event) => {
                     const file = event.target.files?.[0];
+                    event.target.value = "";
                     if (!file) return;
-                    openExport(file).catch((openError) => {
-                      setError(
-                        openError instanceof Error
-                          ? openError.message
-                          : String(openError),
+                    setImportNotice("importing...");
+                    importExport(file).catch((importError) => {
+                      setImportNotice(
+                        importError instanceof Error
+                          ? importError.message
+                          : String(importError),
                       );
                     });
                   }}
@@ -395,6 +432,20 @@ export function ScrapsPage() {
               </label>
             )}
           </div>
+        )}
+        {import.meta.env.MODE === "development" && importNotice && (
+          <p
+            role="status"
+            style={{
+              margin: "6px 0 0",
+              color: "#827a72",
+              fontFamily: '"Martian Mono", monospace',
+              fontSize: 9,
+              letterSpacing: "0.02em",
+            }}
+          >
+            {importNotice}
+          </p>
         )}
       </header>
 
