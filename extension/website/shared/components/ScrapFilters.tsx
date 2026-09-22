@@ -1,7 +1,7 @@
 // ABOUTME: Provides source and type popovers with an inline scrap search field.
 // ABOUTME: Keeps selected locations visible and supports keyboard dismissal and focus return.
 
-import React, { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ScrapItem } from "./ScrapCollage";
 import {
   extractDomain,
@@ -17,6 +17,7 @@ const kinds: { kind: Kind; label: string }[] = [
   { kind: "image", label: "images" },
   { kind: "button", label: "buttons" },
   { kind: "svg-icon", label: "icons" },
+  { kind: "heading", label: "headings" },
   { kind: "cursor", label: "cursors" },
 ];
 

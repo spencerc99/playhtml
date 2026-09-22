@@ -9,6 +9,7 @@ import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import {
   ScrapCollage,
   type ScrapItem,
+  type ScrapPosition,
 } from "@movement/components/ScrapCollage";
 
 interface ScrapRecordBase {
@@ -22,6 +23,7 @@ interface ScrapRecordBase {
   domain: string;
   pageUrl: string;
   ts: number;
+  position?: ScrapPosition;
 }
 
 type ScrapRecord = ScrapRecordBase &
@@ -39,12 +41,20 @@ type ScrapRecord = ScrapRecordBase &
         text: string;
         styles: Record<string, string>;
         innerSvg?: string;
+        backdropColor?: string;
       }
     | {
         kind: "svg-icon";
         markup: string;
         width: number;
         height: number;
+      }
+    | {
+        kind: "heading";
+        text: string;
+        level: 1 | 2 | 3;
+        styles: Record<string, string>;
+        backdropColor?: never;
       }
     | {
         kind: "cursor";
@@ -72,6 +82,7 @@ function toScrapItem(record: ScrapRecord): ScrapItem {
     domain: record.domain,
     pageUrl: record.pageUrl,
     ts: record.ts,
+    ...(record.position ? { position: record.position } : {}),
   };
 
   switch (record.kind) {
@@ -92,6 +103,9 @@ function toScrapItem(record: ScrapRecord): ScrapItem {
         text: record.text,
         styles: record.styles,
         ...(record.innerSvg !== undefined ? { innerSvg: record.innerSvg } : {}),
+        ...(record.backdropColor !== undefined
+          ? { backdropColor: record.backdropColor }
+          : {}),
       };
     case "svg-icon":
       return {
@@ -100,6 +114,14 @@ function toScrapItem(record: ScrapRecord): ScrapItem {
         markup: record.markup,
         width: record.width,
         height: record.height,
+      };
+    case "heading":
+      return {
+        ...base,
+        kind: record.kind,
+        text: record.text,
+        level: record.level,
+        styles: record.styles,
       };
     case "cursor":
       return {

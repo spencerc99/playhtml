@@ -15,7 +15,7 @@ import type {
 import { uploadEvents } from '../storage/sync'
 import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
-import type { ScrapEventData } from '../collectors/types'
+import type { ScrapEventData, ScrapPosition } from '../collectors/types'
 import { getScrapKey } from '../collectors/scrapUtils'
 import {
   collectionModeStorageKey,
@@ -99,6 +99,7 @@ interface ScrapRecordBase {
   ts: number
   pageTitle: string
   faviconUrl?: string
+  position?: ScrapPosition
 }
 
 export type ScrapRecord = ScrapRecordBase &
@@ -116,12 +117,20 @@ export type ScrapRecord = ScrapRecordBase &
         text: string
         styles: Record<string, string>
         innerSvg?: string
+        backdropColor?: string
       }
     | {
         kind: 'svg-icon'
         markup: string
         width: number
         height: number
+      }
+    | {
+        kind: 'heading'
+        text: string
+        level: 1 | 2 | 3
+        styles: Record<string, string>
+        backdropColor?: never
       }
     | {
         kind: 'cursor'
@@ -139,6 +148,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
     kind !== 'image' &&
     kind !== 'button' &&
     kind !== 'svg-icon' &&
+    kind !== 'heading' &&
     kind !== 'cursor'
   ) {
     return undefined
@@ -156,6 +166,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
     ts: event.ts,
     pageTitle: data.pageTitle,
     ...(data.faviconUrl ? { faviconUrl: data.faviconUrl } : {}),
+    ...(data.position ? { position: data.position } : {}),
   }
 
   switch (data.kind) {
@@ -177,6 +188,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
         text: data.text,
         styles: data.styles,
         ...(data.innerSvg ? { innerSvg: data.innerSvg } : {}),
+        ...(data.backdropColor ? { backdropColor: data.backdropColor } : {}),
       }
     case 'svg-icon':
       return {
@@ -185,6 +197,14 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
         markup: data.markup,
         width: data.width,
         height: data.height,
+      }
+    case 'heading':
+      return {
+        ...base,
+        kind: data.kind,
+        text: data.text,
+        level: data.level,
+        styles: data.styles,
       }
     case 'cursor':
       return {
