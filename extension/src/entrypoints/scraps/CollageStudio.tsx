@@ -1300,8 +1300,12 @@ export function CollageStudio({
               )}
 
             {/* The tools for whatever is in hand ride with the piece, and
-                stand aside while a gesture or a mode is running. */}
-            {selected && !crop && !transform && gesture.kind === "idle" && (
+                stand aside while a gesture, a mode, or a peek is running. */}
+            {selected &&
+              !crop &&
+              !transform &&
+              !peek.held &&
+              gesture.kind === "idle" && (
               <PieceActions
                 piece={selected}
                 canUncrop={!isFullCrop(selected.crop)}

@@ -1,7 +1,7 @@
 // ABOUTME: Resizable drawer of collected scraps to pick material from, newest first.
 // ABOUTME: Renders only the rows in view so thousands of scraps stay responsive.
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ScrapContent,
   type ScrapItem,
@@ -14,6 +14,13 @@ import {
   drawerColumns,
   type DrawerSlotSize,
 } from "./drawerPreference";
+import { cellLeft, layOutDrawer } from "./drawerLayout";
+import {
+  backingForKind,
+  couldBeTransparent,
+  readTransparency,
+  rememberedTransparency,
+} from "./scrapTransparency";
 
 export type ScrapKindFilter = "all" | ScrapItem["kind"];
 
@@ -34,7 +41,8 @@ const FILTER_LABELS: Record<ScrapKindFilter, string> = {
   cursor: "curs",
 };
 
-const OVERSCAN_ROWS = 3;
+/** How far above and below the view thumbnails are kept mounted, in pixels. */
+const OVERSCAN = 400;
 
 interface ScrapTrayProps {
   items: readonly ScrapItem[];
@@ -70,18 +78,51 @@ export function ScrapTray({
   }, [items, kind]);
 
   const columns = drawerColumns(width, slotSize);
-  // A cell is square, so the row height follows from how many fit across.
-  const cellHeight = Math.round(width / columns);
-  const rowCount = Math.ceil(filtered.length / columns);
-  const firstRow = Math.max(
-    0,
-    Math.floor(scrollTop / cellHeight) - OVERSCAN_ROWS,
+  // Every thumbnail keeps its own proportions, so the placement is worked out
+  // once and the visible range is then a lookup rather than a measurement.
+  const layout = useMemo(
+    () => layOutDrawer(filtered, width, columns),
+    [filtered, width, columns],
   );
-  const lastRow = Math.min(
-    rowCount,
-    Math.ceil((scrollTop + viewportHeight) / cellHeight) + OVERSCAN_ROWS,
+  const visible = useMemo(
+    () =>
+      layout.cells.filter(
+        (cell) =>
+          cell.top + cell.height >= scrollTop - OVERSCAN &&
+          cell.top <= scrollTop + viewportHeight + OVERSCAN,
+      ),
+    [layout, scrollTop, viewportHeight],
   );
-  const visible = filtered.slice(firstRow * columns, lastRow * columns);
+
+  /**
+   * Pictures found to have see-through pixels, so only those get a chequer
+   * behind them. The sampling happens once per picture, on load.
+   */
+  const [transparent, setTransparent] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  /** Pictures already asked about, so one is only ever fetched once. */
+  const askedRef = useRef<Set<string>>(new Set());
+  const noteTransparency = useCallback((src: string) => {
+    if (askedRef.current.has(src)) return;
+    askedRef.current.add(src);
+    const remembered = rememberedTransparency(src);
+    if (remembered !== undefined) {
+      if (remembered) {
+        setTransparent((current) => new Set(current).add(src));
+      }
+      return;
+    }
+    readTransparency(src)
+      .then((seeThrough) => {
+        if (!seeThrough) return;
+        setTransparent((current) => new Set(current).add(src));
+      })
+      .catch(() => {
+        // A picture whose pixels cannot be read sits on the paper rather than
+        // getting a chequer that may be wrong.
+      });
+  }, []);
 
   const measure = (node: HTMLDivElement | null) => {
     if (node) setViewportHeight(node.clientHeight);
@@ -159,12 +200,17 @@ export function ScrapTray({
         ref={measure}
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       >
-        <div
-          className="collage-tray__runway"
-          style={{ height: rowCount * cellHeight }}
-        >
-          {visible.map((item, offset) => {
-            const index = firstRow * columns + offset;
+        <div className="collage-tray__runway" style={{ height: layout.height }}>
+          {visible.map((cell) => {
+            const { item } = cell;
+            // A chequer means "this has holes in it", so it only goes behind
+            // material that really does: an icon, a cursor, or a picture whose
+            // own pixels turned out to be see-through.
+            const src = item.kind === "image" ? item.src : "";
+            const backing =
+              backingForKind(item) ??
+              (transparent.has(src) ? "checker" : "paper");
+            const small = item.kind === "svg-icon" || item.kind === "cursor";
             return (
               <button
                 key={item.id}
@@ -173,15 +219,27 @@ export function ScrapTray({
                 draggable
                 title={`${item.domain} — ${item.pageTitle}`}
                 style={{
-                  top: Math.floor(index / columns) * cellHeight,
-                  left: `${(index % columns) * (100 / columns)}%`,
-                  width: `${100 / columns}%`,
-                  height: cellHeight,
+                  top: cell.top,
+                  left: cellLeft(cell, layout.columnWidth),
+                  width: layout.columnWidth,
+                  height: cell.height,
                 }}
                 onDragStart={(event) => onDragStart(item, event)}
                 onClick={() => onPlace(item)}
               >
-                <span className="collage-tray__thumb">
+                <span
+                  className={`collage-tray__thumb collage-tray__thumb--${backing}${
+                    small ? " collage-tray__thumb--small" : ""
+                  }`}
+                  // A picture whose format could carry alpha is read once, the
+                  // first time it comes into view; one that could not — a JPEG
+                  // — is never read at all.
+                  ref={
+                    item.kind === "image" && couldBeTransparent(src)
+                      ? () => noteTransparency(src)
+                      : undefined
+                  }
+                >
                   <ScrapContent
                     item={item}
                     loaded={true}

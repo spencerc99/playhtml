@@ -164,7 +164,7 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-tray__slot {
     position: absolute;
     display: block;
-    padding: 4px;
+    padding: 0;
     border: 1px solid transparent;
     border-radius: 3px;
     background: transparent;
@@ -178,18 +178,23 @@ export const COLLAGE_STUDIO_STYLES = `
     outline: none;
   }
 
-  /*
-   * Much of the collected material is pale or transparent, so each slot sits
-   * on a faint chequer. It reads as a cut-out's backing rather than a colour,
-   * and makes a white button on a white page visible.
-   */
   .collage-tray__thumb {
     position: relative;
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
     height: 100%;
     overflow: hidden;
     border-radius: 2px;
+  }
+
+  /*
+   * A chequer says "this has holes in it", so it only goes behind material
+   * that really does: an icon, a cursor, or a picture whose own pixels turned
+   * out to be see-through. Everything else sits on the paper.
+   */
+  .collage-tray__thumb--checker {
     background-color: #f3efe8;
     background-image:
       linear-gradient(45deg, rgba(61, 56, 51, 0.07) 25%, transparent 25%),
@@ -198,6 +203,26 @@ export const COLLAGE_STUDIO_STYLES = `
       linear-gradient(-45deg, transparent 75%, rgba(61, 56, 51, 0.07) 75%);
     background-size: 12px 12px;
     background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  }
+
+  /* A small thing gets a plain box so it is legible without being blown up. */
+  .collage-tray__thumb--small {
+    border: 1px solid rgba(61, 56, 51, 0.16);
+  }
+
+  /*
+   * A button sits on the paper, but plenty of them are white on white, so the
+   * patch keeps a hairline edge — otherwise the scrap is invisible in the
+   * drawer even though it is really there.
+   */
+  .collage-tray__thumb--paper {
+    border: 1px solid rgba(61, 56, 51, 0.1);
+  }
+
+  /* Nothing may spill out of its own cell into the one beside it. */
+  .collage-tray__thumb > * {
+    max-width: 100%;
+    max-height: 100%;
   }
 
   .collage-tray__slot {
@@ -233,6 +258,26 @@ export const COLLAGE_STUDIO_STYLES = `
     max-width: 100%;
     max-height: 100%;
     overflow: hidden;
+  }
+
+  /*
+   * A button's reconstruction carries the page's own width, padding and font
+   * size, which is usually wider than a drawer cell. In the drawer those give
+   * way to the cell, so the whole button is seen rather than a slice of it.
+   */
+  .collage-tray__thumb .scrap-collage__button {
+    box-sizing: border-box;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    padding: 2px 4px !important;
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   .collage-tray__thumb .scrap-collage__svg svg,

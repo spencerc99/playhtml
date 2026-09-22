@@ -3,7 +3,9 @@
 
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { deflateSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,6 +29,101 @@ const cursorImage =
   '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><polygon points="2,2 2,26 9,19 14,30 20,27 15,17 26,17" fill="#7a3fa0" stroke="#fff" stroke-width="2"/></svg>';
 const favicon =
   '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#4a9a8a"/></svg>';
+
+/**
+ * A real PNG whose pixels are half see-through, and a real JPEG, which cannot
+ * carry alpha at all. The drawer decides its backing from the actual decoded
+ * pixels, so these have to be genuine encoded bytes rather than SVG.
+ */
+function pngFrom(raw, side) {
+  const chunk = (type, body) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(body.length);
+    const typed = Buffer.concat([Buffer.from(type, "ascii"), body]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(typed) >>> 0);
+    return Buffer.concat([length, typed, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(side, 0);
+  header.writeUInt32BE(side, 4);
+  header[8] = 8; // bit depth
+  header[9] = 6; // truecolor with alpha
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+function transparentPng(side = 64) {
+  const raw = Buffer.alloc(side * (side * 4 + 1));
+  let at = 0;
+  for (let y = 0; y < side; y += 1) {
+    raw[at] = 0;
+    at += 1;
+    for (let x = 0; x < side; x += 1) {
+      raw[at] = 0xb7;
+      raw[at + 1] = 0x68;
+      raw[at + 2] = 0x41;
+      // The left half is fully transparent, so an alpha read cannot miss it.
+      raw[at + 3] = x >= side / 2 ? 255 : 0;
+      at += 4;
+    }
+  }
+  return pngFrom(raw, side);
+}
+
+let crcTable = null;
+function crc32(buffer) {
+  if (!crcTable) {
+    crcTable = new Int32Array(256);
+    for (let n = 0; n < 256; n += 1) {
+      let c = n;
+      for (let k = 0; k < 8; k += 1) {
+        c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      }
+      crcTable[n] = c;
+    }
+  }
+  let crc = -1;
+  for (const byte of buffer) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  return crc ^ -1;
+}
+
+/**
+ * A solid JPEG. It is encoded once from an opaque PNG by the platform's own
+ * converter, so the bytes the browser decodes are a real JPEG with no alpha
+ * channel rather than something merely named `.jpg`.
+ */
+async function solidJpeg() {
+  const side = 64;
+  const raw = Buffer.alloc(side * (side * 4 + 1));
+  let at = 0;
+  for (let y = 0; y < side; y += 1) {
+    raw[at] = 0;
+    at += 1;
+    for (let x = 0; x < side; x += 1) {
+      raw[at] = 0xf0;
+      raw[at + 1] = 0xc7;
+      raw[at + 2] = 0x7c;
+      raw[at + 3] = 255;
+      at += 4;
+    }
+  }
+  const opaque = pngFrom(raw, side);
+  const dir = await mkdtemp(resolve(tmpdir(), "wwo-jpeg-"));
+  const pngPath = resolve(dir, "solid.png");
+  const jpegPath = resolve(dir, "solid.jpg");
+  await writeFile(pngPath, opaque);
+  execFileSync("sips", ["-s", "format", "jpeg", pngPath, "--out", jpegPath], {
+    stdio: "ignore",
+  });
+  const bytes = await readFile(jpegPath);
+  await rm(dir, { recursive: true, force: true });
+  return bytes;
+}
 
 /**
  * Each page carries one of every scrap kind: a photo, a styled button with an
@@ -59,6 +156,8 @@ svg.badge{width:96px;height:96px;display:block;color:#4a9a8a}
   Tom &amp; Jerry's "Pick"
 </button>
 <img class="photo" alt="Corner mark ${slug}" src="/photo/corner-${slug}.svg">
+<img class="photo" alt="Solid jpeg ${slug}" src="/photo/solid-${slug}.jpg">
+<img class="photo" alt="See-through png ${slug}" src="/photo/holes-${slug}.png">
 <svg class="badge" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="4"/><path d="M14 24l7 7 13-14" fill="none" stroke="currentColor" stroke-width="4"/></svg>
 <div class="cursorzone">hover me</div>
 </body></html>`;
@@ -69,6 +168,9 @@ const PAGE_TITLES = {
   second: "Objects worth keeping",
   third: "Studio references",
 };
+
+const HOLES_PNG = transparentPng();
+const SOLID_JPEG = await solidJpeg();
 
 /** Flipped on to make a photo that browsed fine vanish at bake time. */
 let missingPhotoGone = false;
@@ -91,6 +193,16 @@ const server = createServer((request, response) => {
     if (photosBlocked || (path.includes("missing") && missingPhotoGone)) {
       response.writeHead(404);
       response.end("gone");
+      return;
+    }
+    if (path.startsWith("/photo/holes")) {
+      response.setHeader("content-type", "image/png");
+      response.end(HOLES_PNG);
+      return;
+    }
+    if (path.startsWith("/photo/solid")) {
+      response.setHeader("content-type", "image/jpeg");
+      response.end(SOLID_JPEG);
       return;
     }
     if (path.startsWith("/photo/corner")) {
@@ -605,6 +717,64 @@ try {
       : "ungrained paper should bake flat",
   );
 
+  // ============================================================== the drawer
+  // A chequer means "this has holes in it", so only material that really does
+  // gets one. The two pictures below are genuine encoded bytes: a JPEG, which
+  // cannot carry alpha, and a PNG that is half transparent.
+  await page.getByRole("button", { name: "pics", exact: true }).click();
+  await page.waitForTimeout(600);
+  const backings = await page.evaluate(async () => {
+    const slots = [...document.querySelectorAll(".collage-tray__slot")];
+    // The backing is decided once a picture has loaded and been sampled.
+    await Promise.all(
+      slots
+        .map((slot) => slot.querySelector("img"))
+        .filter((image) => image && !image.complete)
+        .map(
+          (image) =>
+            new Promise((done) => {
+              image.addEventListener("load", done, { once: true });
+              image.addEventListener("error", done, { once: true });
+            }),
+        ),
+    );
+    await new Promise((done) => setTimeout(done, 600));
+    return [...document.querySelectorAll(".collage-tray__slot")].map((slot) => {
+      const thumb = slot.querySelector(".collage-tray__thumb");
+      const image = slot.querySelector("img");
+      return {
+        alt: image?.getAttribute("alt") ?? "",
+        src: image?.getAttribute("src") ?? "",
+        checker: thumb?.classList.contains("collage-tray__thumb--checker"),
+      };
+    });
+  });
+  console.log("thumbnail backings:", backings);
+  const jpeg = backings.find((row) => row.src.includes("/photo/solid"));
+  const holes = backings.find((row) => row.src.includes("/photo/holes"));
+  assert.ok(jpeg, "the solid jpeg should be in the drawer");
+  assert.ok(holes, "the see-through png should be in the drawer");
+  assert.equal(
+    jpeg.checker,
+    false,
+    "a jpeg cannot be transparent, so it should sit straight on the paper",
+  );
+  assert.equal(
+    holes.checker,
+    true,
+    "a png with see-through pixels should get a chequer behind it",
+  );
+  // An svg picture drawn from the page's own markup is a cut-out by nature.
+  await page.getByRole("button", { name: "icons", exact: true }).click();
+  await page.waitForTimeout(500);
+  assert.ok(
+    (await page.locator(".collage-tray__thumb--checker").count()) > 0,
+    "icons should always be backed",
+  );
+  await page.getByRole("button", { name: "all", exact: true }).click();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${evidence}/00-drawer-backings.png` });
+
   // ======================================================== the studio chrome
   // The piece's tools float beside the piece; the bottom bar carries none.
   await page.locator(".collage-frame").click({ position: { x: 6, y: 6 } });
@@ -919,6 +1089,17 @@ try {
   console.log(`peek tags: ${tags} for ${pieceCount} pieces, ${fuller} fuller`);
   assert.equal(tags, pieceCount, "every piece should get a tag");
   assert.equal(fuller, 1, "only the hovered piece gets the fuller tag");
+  // The piece's own tools would sit on top of a tag, so a peek puts them away.
+  assert.equal(
+    await page.locator(".collage-piece-actions").count(),
+    0,
+    "the piece strip should stand aside while the sources are being read",
+  );
+  assert.equal(
+    await page.locator(".collage-piece-hover").count(),
+    0,
+    "the hover hint should stand aside during a peek too",
+  );
   const peekText = (
     await page.locator(".collage-peek--full").textContent()
   ).trim();
@@ -951,6 +1132,13 @@ try {
     0,
     "releasing the key should put the tags away",
   );
+  if (selectedDuringPeek > 0) {
+    assert.equal(
+      await page.locator(".collage-piece-actions").count(),
+      1,
+      "the piece strip should come back once the peek ends",
+    );
+  }
   assert.equal(
     await page.locator(".collage-piece--selected").count(),
     selectedDuringPeek,
@@ -1355,19 +1543,22 @@ try {
     console.log(`running the real-export section against ${exportPath}`);
     const openedAt = Date.now();
     await page.locator('input[type="file"]').setInputFiles(exportPath);
-    // The chip names how many scraps came out of the file, so the wait is on
-    // a real count rather than on the word, which the page may already carry.
-    const exportChip = page.locator(".collage-chip", { hasText: /export · \d+/ });
-    await exportChip.waitFor({ timeout: 120_000 });
+    // The import says how many scraps it took in, so the wait is on a real
+    // count rather than on a word the page may already carry.
+    const notice = page.locator("text=/imported \\d+ · already had \\d+/");
+    await notice.waitFor({ timeout: 180_000 });
     const exportLoadedMs = Date.now() - openedAt;
-    const exportedCount = Number(
-      (await exportChip.textContent()).match(/\d+/)[0],
+    const counts = (await notice.textContent()).match(/\d+/g).map(Number);
+    const exportedCount = counts[0] + counts[1];
+    console.log(
+      `the export carries ${exportedCount} scraps (${counts[0]} new, ${counts[1]} already held)`,
     );
-    console.log(`the export carries ${exportedCount} scraps`);
     assert.ok(
       exportedCount > 100,
       `expected a substantial export, got ${exportedCount} scraps`,
     );
+    // The page reloads its collection through the usual path after an import.
+    await page.waitForTimeout(3000);
     await openStudio();
     const trayStart = Date.now();
     await page.waitForSelector(".collage-tray__slot", { timeout: 60_000 });
@@ -1380,11 +1571,74 @@ try {
       `the tray should paint quickly, took ${firstTrayPaintMs}ms`,
     );
 
-    // The drawer must stay windowed even against five thousand scraps, so it
-    // is measured with the whole export in it and nothing placed yet.
-    const mounted = await page.locator(".collage-tray__slot").count();
-    console.log("tray slots mounted against the real export:", mounted);
-    assert.ok(mounted < 200, `the drawer is not windowed: ${mounted} slots`);
+    // The drawer must stay windowed even against five thousand scraps, at
+    // every size, and it is measured with nothing placed yet.
+    for (const size of ["small", "medium", "large"]) {
+      await page.getByRole("button", { name: `Show scraps ${size}` }).click();
+      await page.waitForTimeout(700);
+      const mounted = await page.locator(".collage-tray__slot").count();
+      console.log(`tray slots mounted at ${size}:`, mounted);
+      assert.ok(
+        mounted < 200,
+        `the drawer is not windowed at ${size}: ${mounted} slots`,
+      );
+      assert.ok(mounted > 0, `the drawer should show something at ${size}`);
+    }
+    await page.getByRole("button", { name: "Show scraps medium" }).click();
+    await page.waitForTimeout(700);
+
+    // Thumbnails keep their own proportions rather than being letterboxed
+    // into squares, and they are laid out as columns rather than a grid.
+    const masonry = await page.evaluate(() => {
+      const slots = [...document.querySelectorAll(".collage-tray__slot")];
+      const rows = slots.map((slot) => {
+        const box = slot.getBoundingClientRect();
+        const image = slot.querySelector("img.scrap-collage__image");
+        return {
+          width: box.width,
+          height: box.height,
+          left: Math.round(box.left),
+          // Only a picture takes its height from its own pixels; a small
+          // thing sits in a fixed box instead, so it is not measured here.
+          naturalWidth: image?.naturalWidth ?? 0,
+          naturalHeight: image?.naturalHeight ?? 0,
+        };
+      });
+      return {
+        columns: new Set(rows.map((row) => row.left)).size,
+        widths: new Set(rows.map((row) => Math.round(row.width))).size,
+        heights: new Set(rows.map((row) => Math.round(row.height))).size,
+        aspects: rows
+          .filter((row) => row.naturalWidth > 0 && row.naturalHeight > 0)
+          .map((row) => ({
+            shown: row.height,
+            wanted: (row.width * row.naturalHeight) / row.naturalWidth,
+          })),
+      };
+    });
+    console.log("drawer masonry:", {
+      columns: masonry.columns,
+      distinctWidths: masonry.widths,
+      distinctHeights: masonry.heights,
+      measured: masonry.aspects.length,
+    });
+    assert.equal(masonry.columns, 3, "the drawer should run three columns");
+    assert.equal(
+      masonry.widths,
+      1,
+      "every column should be the same width",
+    );
+    assert.ok(
+      masonry.heights > 1,
+      "thumbnails should vary in height rather than being squares",
+    );
+    assert.ok(masonry.aspects.length > 0, "some pictures should have loaded");
+    for (const aspect of masonry.aspects) {
+      assert.ok(
+        Math.abs(aspect.shown - aspect.wanted) <= 1,
+        `a thumbnail's height should match its aspect within 1px, got ${aspect.shown} against ${aspect.wanted}`,
+      );
+    }
     await page.screenshot({ path: `${evidence}/16-real-export-tray.png` });
 
     for (let index = 0; index < 30; index += 1) {
