@@ -85,6 +85,13 @@ import { PieceMaterial } from "./PieceMaterial";
 import { CropSession } from "./CropSession";
 import { KeysPopover } from "./KeysPopover";
 import { ProvenancePeek } from "./ProvenancePeek";
+import { PiecesHereMenu } from "./PiecesHereMenu";
+import {
+  neighborInStack,
+  nextSelectionAt,
+  piecesUnder,
+  topPieceUnder,
+} from "./pieceStack";
 import { createPeekState, stepPeek, type PeekEvent } from "./peekHold";
 import {
   useCollageAutosave,
@@ -259,9 +266,23 @@ export function CollageStudio({
   const [dropActive, setDropActive] = useState(false);
   const [peek, setPeek] = useState(createPeekState);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  /** The pile the "pieces here" menu is listing, and where it opened. */
+  const [hereMenu, setHereMenu] = useState<{
+    at: Point;
+    pieceIds: string[];
+  } | null>(null);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
+  /**
+   * The press in progress, so release can tell a click from a drag. A click
+   * that did not travel selects the next piece down; a drag does not.
+   */
+  const pressRef = useRef<{
+    at: Point;
+    selectedWas: string | null;
+    moved: boolean;
+  } | null>(null);
   const draggingScrapRef = useRef<ScrapItem | null>(null);
   const collageIdRef = useRef(editing?.id ?? createCollageId());
   const createdAtRef = useRef(editing?.createdAt ?? Date.now());
@@ -368,6 +389,17 @@ export function CollageStudio({
     () => [...pieces].sort((a, b) => a.z - b.z),
     [pieces],
   );
+  const hovered = useMemo(
+    () => pieces.find((piece) => piece.id === hoveredId) ?? null,
+    [pieces, hoveredId],
+  );
+  /** The pile the menu is listing, resolved fresh so edits keep it honest. */
+  const hereStack = useMemo(() => {
+    if (!hereMenu) return [];
+    return hereMenu.pieceIds
+      .map((id) => pieces.find((piece) => piece.id === id))
+      .filter((piece): piece is CollagePiece => piece !== undefined);
+  }, [hereMenu, pieces]);
 
   /** Commits an arrangement, coalescing a continuous run into one undo step. */
   const commit = useCallback(
@@ -687,6 +719,13 @@ export function CollageStudio({
         case "selectPrevious":
           stepSelection(-1);
           break;
+        case "selectInStack": {
+          // Stepping into a pile only changes what is in hand, never the
+          // order the pieces are stacked in.
+          const next = neighborInStack(pieces, selectedId, command.direction);
+          if (next) setSelectedId(next);
+          break;
+        }
         case "nudge":
           if (selected) {
             editPiece(
@@ -740,16 +779,48 @@ export function CollageStudio({
     stepSelection,
   ]);
 
-  /** Ends a run so the next edit becomes its own undo step. */
-  const endGesture = useCallback(() => {
-    setGesture({ kind: "idle" });
-    setGestureReadout(null);
-    setHistory((current) => endRun(current));
-  }, []);
+  /**
+   * Ends a run so the next edit becomes its own undo step. A press that never
+   * travelled was a click, and a click on a spot that already holds the
+   * selected piece reaches the next piece down in the pile.
+   */
+  const endGesture = useCallback(
+    (event?: React.PointerEvent) => {
+      const press = pressRef.current;
+      pressRef.current = null;
+      if (event && press && !press.moved) {
+        const deeper = nextSelectionAt(pieces, press.at, press.selectedWas);
+        if (deeper) setSelectedId(deeper);
+      }
+      setGesture({ kind: "idle" });
+      setGestureReadout(null);
+      setHistory((current) => endRun(current));
+    },
+    [pieces],
+  );
 
   const onFramePointerMove = useCallback(
     (event: React.PointerEvent) => {
       const point = framePoint(event);
+
+      // What a click would take, shown faintly so a buried piece can be seen
+      // before it is reached for. A rotated-rect test per piece, no pixels.
+      if (gesture.kind === "idle" && !transform && !crop) {
+        const under = topPieceUnder(pieces, point);
+        setHoveredId(under?.id ?? null);
+      }
+
+      const press = pressRef.current;
+      if (press && !press.moved) {
+        // Past the threshold this press is a drag, not a click, so release
+        // must not treat it as a request to select deeper.
+        if (
+          Math.hypot(point.x - press.at.x, point.y - press.at.y) >
+          ALT_DRAG_THRESHOLD
+        ) {
+          press.moved = true;
+        }
+      }
 
       if (transform) {
         const target = pieces.find((piece) => piece.id === transform.pieceId);
@@ -856,28 +927,46 @@ export function CollageStudio({
         setGestureReadout(`rotate ${Math.round(degrees)} deg`);
       }
     },
-    [duplicatePiece, editPiece, framePoint, gesture, pieces, transform],
+    [crop, duplicatePiece, editPiece, framePoint, gesture, pieces, transform],
   );
 
+  /**
+   * Presses go to whatever is already selected when the press lands on it, so
+   * a drag always moves the piece in hand. Which piece a click *selects* is
+   * settled on release instead, because only then is it known that the press
+   * was a click and not the start of a drag.
+   */
   const beginMove = (piece: CollagePiece, event: React.PointerEvent) => {
     event.stopPropagation();
+    if (event.button !== 0) return;
     if (transform) {
       confirmTransform();
       return;
     }
+    setHereMenu(null);
+    const at = framePoint(event);
+    const stack = piecesUnder(pieces, at);
+    // The press drags whichever piece is in hand if the press is on it; a
+    // press elsewhere takes the frontmost piece there straight away.
+    const holding =
+      selectedId && stack.some((item) => item.id === selectedId)
+        ? pieces.find((item) => item.id === selectedId)
+        : undefined;
+    const dragging = holding ?? stack[0] ?? piece;
     (event.target as Element).setPointerCapture?.(event.pointerId);
-    setSelectedId(piece.id);
+    setSelectedId(dragging.id);
     setCrop(null);
+    pressRef.current = { at, selectedWas: selectedId, moved: false };
     setGesture({
       kind: "move",
-      pieceId: piece.id,
+      pieceId: dragging.id,
       origin: {
-        x: piece.x,
-        y: piece.y,
-        width: piece.width,
-        height: piece.height,
+        x: dragging.x,
+        y: dragging.y,
+        width: dragging.width,
+        height: dragging.height,
       },
-      grabbedAt: framePoint(event),
+      grabbedAt: at,
       // Alt-dragging pulls out a copy, but only once the pointer travels, so
       // a plain alt-click just selects.
       copyOnDrag: event.altKey,
@@ -980,7 +1069,9 @@ export function CollageStudio({
               background: paper.color,
               transform: `scale(${scale})`,
             }}
-            onPointerDown={() => {
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              setHereMenu(null);
               // Clicking away confirms a running mode rather than losing it.
               if (transform) confirmTransform();
               else if (crop) commitCrop();
@@ -988,11 +1079,24 @@ export function CollageStudio({
             }}
             onPointerMove={onFramePointerMove}
             onPointerUp={endGesture}
-            onPointerCancel={endGesture}
+            onPointerCancel={() => endGesture()}
+            onPointerLeave={() => setHoveredId(null)}
             onContextMenu={(event) => {
-              if (!transform) return;
+              // The browser's own menu never belongs over the collage.
               event.preventDefault();
-              cancelTransform();
+              if (transform) {
+                cancelTransform();
+                return;
+              }
+              if (crop) return;
+              const at = framePoint(event);
+              const stack = piecesUnder(pieces, at);
+              // Bare frame has nothing to list, so nothing opens.
+              if (stack.length === 0) {
+                setHereMenu(null);
+                return;
+              }
+              setHereMenu({ at, pieceIds: stack.map((piece) => piece.id) });
             }}
             onDragOver={(event) => {
               event.preventDefault();
@@ -1033,22 +1137,7 @@ export function CollageStudio({
                     visibility: hidden ? "hidden" : "visible",
                   }}
                   onPointerDown={(event) => beginMove(piece, event)}
-                  onPointerEnter={() => setHoveredId(piece.id)}
-                  onPointerLeave={() =>
-                    setHoveredId((current) =>
-                      current === piece.id ? null : current,
-                    )
-                  }
-                  onDoubleClick={(event) => {
-                    event.stopPropagation();
-                    setSelectedId(piece.id);
-                    setTransform(null);
-                    setCrop({
-                      pieceId: piece.id,
-                      crop: { ...FULL_CROP },
-                      before: piece.crop,
-                    });
-                  }}
+                  onPointerUp={endGesture}
                 >
                   <div
                     className="collage-piece__source"
@@ -1111,11 +1200,42 @@ export function CollageStudio({
               />
             )}
 
+            {/* What a click would take, shown faintly so a piece under a pile
+                can be seen before it is reached for. */}
+            {hovered && hovered.id !== selectedId && !peek.held && (
+              <div
+                className="collage-piece-hover"
+                aria-hidden="true"
+                style={{
+                  left: hovered.x,
+                  top: hovered.y,
+                  width: hovered.width,
+                  height: hovered.height,
+                  transform: `rotate(${hovered.rotation}deg)`,
+                  borderWidth: 1 / scale,
+                }}
+              />
+            )}
+
             {peek.held && (
               <ProvenancePeek
                 pieces={ordered}
                 hoveredId={hoveredId}
                 scale={scale}
+              />
+            )}
+
+            {hereMenu && hereStack.length > 0 && (
+              <PiecesHereMenu
+                pieces={hereStack}
+                at={hereMenu.at}
+                scale={scale}
+                selectedId={selectedId}
+                onPick={(pieceId) => {
+                  setSelectedId(pieceId);
+                  setHereMenu(null);
+                }}
+                onClose={() => setHereMenu(null)}
               />
             )}
 

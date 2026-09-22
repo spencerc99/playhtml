@@ -179,7 +179,18 @@ try {
   // Browse three pages so the collectors gather every scrap kind.
   for (const slug of ["first", "second", "third"]) {
     const visit = await context.newPage();
-    await visit.goto(`${origin}/${slug}`, { waitUntil: "load" });
+    // A brand-new tab can still be settling when the goto lands, which aborts
+    // it, so the first navigation of each visit is retried rather than
+    // failing the run on a startup race.
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await visit.goto(`${origin}/${slug}`, { waitUntil: "load" });
+        break;
+      } catch (error) {
+        if (attempt >= 4) throw error;
+        await visit.waitForTimeout(500);
+      }
+    }
     await visit.waitForTimeout(1500);
     await visit.hover(".cursorzone");
     await visit.mouse.move(300, 300);
@@ -985,6 +996,245 @@ try {
     0,
     "the button on the back should turn the card face up",
   );
+
+  // ========================================= reaching a piece under a pile
+  // Three pieces stacked on one spot, so a click has somewhere to dig.
+  await backToHistory();
+  await openStudio();
+  for (let index = 0; index < 3; index += 1) {
+    await placeFromTray("pics", index);
+  }
+  assert.equal(await page.locator(".collage-piece").count(), 3);
+  const pileFrame = await page.locator(".collage-frame").boundingBox();
+  const pileAt = {
+    x: pileFrame.x + pileFrame.width * 0.5,
+    y: pileFrame.y + pileFrame.height * 0.5,
+  };
+  // Drag each onto the same spot so all three overlap there.
+  for (let index = 0; index < 3; index += 1) {
+    const boxes = await page
+      .locator(".collage-piece")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getBoundingClientRect().toJSON()),
+      );
+    const from = boxes[index];
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(pileAt.x, pileAt.y, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+  }
+  /** The z of whatever is selected, and how many pieces sit under the pile. */
+  const selectedZ = () =>
+    page.evaluate(() => {
+      const node = document.querySelector(".collage-piece--selected");
+      return node ? parseInt(getComputedStyle(node).zIndex, 10) : null;
+    });
+  await page.locator(".collage-frame").click({ position: { x: 6, y: 6 } });
+  await page.waitForTimeout(300);
+
+  // Clicking the same spot walks down the pile and wraps back to the top.
+  const walked = [];
+  for (let click = 0; click < 4; click += 1) {
+    await page.mouse.click(pileAt.x, pileAt.y);
+    await page.waitForTimeout(350);
+    walked.push(await selectedZ());
+  }
+  console.log("z of the selection on four clicks at one spot:", walked);
+  assert.equal(walked[0], 3, "the first click should take the top piece");
+  assert.equal(walked[1], 2, "clicking again should reach the middle piece");
+  assert.equal(walked[2], 1, "a third click should reach the bottom piece");
+  assert.equal(walked[3], 3, "a fourth click should wrap back to the top");
+
+  // Digging never restacks anything.
+  const zAfterDigging = await page
+    .locator(".collage-piece")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => parseInt(getComputedStyle(node).zIndex, 10)).sort(),
+    );
+  assert.deepEqual(
+    zAfterDigging,
+    [1, 2, 3],
+    "selecting through a pile must not reorder it",
+  );
+
+  // A drag still moves the piece in hand rather than digging under it.
+  const beforeDrag = await selectedZ();
+  await page.mouse.move(pileAt.x, pileAt.y);
+  await page.mouse.down();
+  await page.mouse.move(pileAt.x + 70, pileAt.y + 50, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  assert.equal(
+    await selectedZ(),
+    beforeDrag,
+    "a drag must move the selected piece, not select a deeper one",
+  );
+  await page.keyboard.press("Meta+z");
+  await page.waitForTimeout(400);
+
+  // The hover outline marks what a click would take. It is only a hint about
+  // a piece not already in hand, so nothing is selected for this check.
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator(".collage-piece--selected").count(), 0);
+  await page.mouse.move(pileAt.x - 200, pileAt.y - 200);
+  await page.waitForTimeout(300);
+  await page.mouse.move(pileAt.x, pileAt.y, { steps: 6 });
+  await page.waitForTimeout(400);
+  const hover = await page.evaluate(() => {
+    const outline = document.querySelector(".collage-piece-hover");
+    if (!outline) return null;
+    const style = outline.getAttribute("style") || "";
+    const read = (name) =>
+      parseFloat(
+        (style.match(new RegExp(`(?:^|;)\\s*${name}:\\s*([-\\d.]+)`)) || [])[1],
+      );
+    const top = [...document.querySelectorAll(".collage-piece")]
+      .map((node) => ({
+        z: parseInt(getComputedStyle(node).zIndex, 10),
+        left: parseFloat((node.getAttribute("style").match(/left:\s*([-\d.]+)/) ?? [])[1]),
+      }))
+      .sort((a, b) => b.z - a.z)[0];
+    return { left: read("left"), top: read("top"), frontmostLeft: top.left };
+  });
+  console.log("hover outline:", hover);
+  assert.ok(hover, "a hovered piece should show the faint outline");
+  assert.ok(
+    Math.abs(hover.left - hover.frontmostLeft) < 0.5,
+    "the outline should mark the piece a click would actually take",
+  );
+  // It steps aside once that piece is the one in hand.
+  await page.mouse.click(pileAt.x, pileAt.y);
+  await page.waitForTimeout(400);
+  assert.equal(
+    await page.locator(".collage-piece-hover").count(),
+    0,
+    "the hint should go once that piece is selected",
+  );
+
+  // Right-click lists the whole pile, front to back, and picking selects.
+  await page.mouse.click(pileAt.x, pileAt.y, { button: "right" });
+  await page.waitForTimeout(500);
+  await page.waitForSelector(".collage-here");
+  const listed = await page
+    .locator(".collage-here__row")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => (node.textContent || "").trim()),
+    );
+  console.log("pieces here:", listed);
+  assert.equal(listed.length, 3, "the menu should list all three pieces");
+  for (const row of listed) {
+    assert.ok(
+      row.includes("127.0.0.1"),
+      `each row should name where it came from, got "${row}"`,
+    );
+  }
+  assert.equal(
+    await page.locator(".collage-here__thumb").count(),
+    3,
+    "each row should carry a thumbnail",
+  );
+  await page.screenshot({ path: `${evidence}/09-pieces-here.png` });
+  // The last row is the bottom of the pile; picking it selects that piece.
+  await page.locator(".collage-here__row").last().click();
+  await page.waitForTimeout(450);
+  assert.equal(
+    await page.locator(".collage-here").count(),
+    0,
+    "picking should close the menu",
+  );
+  assert.equal(
+    await selectedZ(),
+    1,
+    "picking the last row should select the bottom piece",
+  );
+
+  // Escape closes the menu, and bare frame opens nothing.
+  await page.mouse.click(pileAt.x, pileAt.y, { button: "right" });
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator(".collage-here").count(), 1);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(400);
+  assert.equal(
+    await page.locator(".collage-here").count(),
+    0,
+    "escape should close the pieces-here menu",
+  );
+  await page.mouse.click(pileFrame.x + 8, pileFrame.y + 8, { button: "right" });
+  await page.waitForTimeout(400);
+  assert.equal(
+    await page.locator(".collage-here").count(),
+    0,
+    "right-clicking bare frame should open nothing",
+  );
+
+  // The comma and period keys step down and up the stack without restacking.
+  await page.mouse.click(pileAt.x, pileAt.y);
+  await page.waitForTimeout(350);
+  const steppedFrom = await selectedZ();
+  await page.keyboard.press(",");
+  await page.waitForTimeout(300);
+  const steppedDown = await selectedZ();
+  await page.keyboard.press(".");
+  await page.waitForTimeout(300);
+  const steppedBack = await selectedZ();
+  console.log("stack stepping:", steppedFrom, steppedDown, steppedBack);
+  assert.notEqual(steppedDown, steppedFrom, ", should step to another piece");
+  assert.equal(steppedBack, steppedFrom, ". should step back again");
+
+  // The peek ties each tag to its piece with an outline.
+  await page.keyboard.down("i");
+  await page.waitForTimeout(600);
+  const peekPairs = await page.evaluate(() => {
+    const edges = [...document.querySelectorAll(".collage-peek-edge")];
+    const tags = [...document.querySelectorAll(".collage-peek")];
+    const boxes = tags.map((node) => node.getBoundingClientRect());
+    let overlapping = 0;
+    for (let i = 0; i < boxes.length; i += 1) {
+      for (let j = i + 1; j < boxes.length; j += 1) {
+        const a = boxes[i];
+        const b = boxes[j];
+        if (
+          a.left < b.right &&
+          b.left < a.right &&
+          a.top < b.bottom &&
+          b.top < a.bottom
+        ) {
+          overlapping += 1;
+        }
+      }
+    }
+    return {
+      edges: edges.length,
+      tags: tags.length,
+      solid: edges.filter(
+        (node) => getComputedStyle(node).borderTopStyle === "solid",
+      ).length,
+      dotted: edges.filter(
+        (node) => getComputedStyle(node).borderTopStyle === "dotted",
+      ).length,
+      overlapping,
+    };
+  });
+  console.log("peek over a pile:", peekPairs);
+  assert.equal(peekPairs.edges, 3, "every piece should get an outline");
+  assert.equal(peekPairs.tags, 3, "every piece should get a tag");
+  assert.equal(
+    peekPairs.solid,
+    1,
+    "only the hovered piece's outline should be solid",
+  );
+  assert.equal(peekPairs.dotted, 2, "the rest should stay dotted");
+  assert.equal(
+    peekPairs.overlapping,
+    0,
+    "no two tags may sit on top of each other",
+  );
+  await page.screenshot({ path: `${evidence}/09b-peek-over-a-pile.png` });
+  await page.keyboard.up("i");
+  await page.waitForTimeout(300);
+  await backToHistory();
 
   // ====================================== a collage whose picture never drew
   // A first-ever bake that fails stores the arrangement with no preview, and

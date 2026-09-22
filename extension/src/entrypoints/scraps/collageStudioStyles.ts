@@ -615,6 +615,125 @@ export const COLLAGE_STUDIO_STYLES = `
     pointer-events: none;
   }
 
+  /* What a click would take. Faint, because it is only a hint. */
+  .collage-piece-hover {
+    position: absolute;
+    z-index: 9998;
+    border-style: solid;
+    border-color: rgba(61, 56, 51, 0.32);
+    transform-origin: center;
+    pointer-events: none;
+  }
+
+  /* Every piece stacked under the pointer, so a buried one can be picked by
+     eye rather than by clicking down through the pile. */
+  .collage-here {
+    position: absolute;
+    z-index: 10007;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    width: 196px;
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 5px;
+    transform-origin: left top;
+    border: 1px solid rgba(61, 56, 51, 0.2);
+    border-radius: 4px;
+    background: #f5f0e8;
+    box-shadow: 0 10px 28px rgba(61, 56, 51, 0.22);
+  }
+
+  .collage-here__head {
+    margin: 0 0 3px 2px;
+  }
+
+  .collage-here__row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 3px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .collage-here__row:hover {
+    border-color: rgba(61, 56, 51, 0.2);
+    background: rgba(61, 56, 51, 0.06);
+  }
+
+  .collage-here__row--on {
+    border-color: rgba(74, 154, 138, 0.7);
+    background: rgba(74, 154, 138, 0.1);
+  }
+
+  .collage-here__thumb {
+    position: relative;
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    overflow: hidden;
+    border: 1px solid rgba(61, 56, 51, 0.16);
+    border-radius: 2px;
+    background: #fffdf9;
+  }
+
+  .collage-here__thumb > * {
+    max-width: 100%;
+    max-height: 100%;
+  }
+
+  .collage-here__thumb img,
+  .collage-here__thumb svg {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  .collage-here__what {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    font-family: "Martian Mono", monospace;
+    font-size: 8px;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+  }
+
+  .collage-here__kind {
+    color: #3d3833;
+  }
+
+  .collage-here__where {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #827a72;
+  }
+
+  /* The peeked piece's own edge, so its label has something to belong to. */
+  .collage-peek-edge {
+    position: absolute;
+    z-index: 10004;
+    border-style: dotted;
+    border-color: #827a72;
+    transform-origin: center;
+    pointer-events: none;
+  }
+
+  .collage-peek-edge--on {
+    border-style: solid;
+    border-color: #3d3833;
+  }
+
   /* An archive label pinned to a piece while the peek key is held. It is a
      slip of paper over the work, never a control: it takes no pointer. */
   .collage-peek {
@@ -624,11 +743,12 @@ export const COLLAGE_STUDIO_STYLES = `
     gap: 1px;
     max-width: 230px;
     padding: 2px 5px;
-    transform-origin: left bottom;
+    transform-origin: left top;
     border: 1px solid rgba(61, 56, 51, 0.28);
     border-radius: 2px;
     background: #f5f0e8;
-    color: #3d3833;
+    /* A tag at rest is as quiet as its dotted edge; the hovered one is ink. */
+    color: #827a72;
     font-family: "Martian Mono", monospace;
     font-size: 8px;
     line-height: 1.5;
@@ -638,6 +758,8 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-peek--full {
+    border-color: rgba(61, 56, 51, 0.5);
+    color: #3d3833;
     box-shadow: 0 2px 8px rgba(61, 56, 51, 0.18);
   }
 

@@ -22,6 +22,8 @@ export type StudioCommand =
   | { kind: "deselect" }
   | { kind: "selectNext" }
   | { kind: "selectPrevious" }
+  /** Steps into a pile: the piece one below or above in the stacking order. */
+  | { kind: "selectInStack"; direction: "below" | "above" }
   | { kind: "nudge"; dx: number; dy: number }
   | { kind: "order"; to: "forward" | "backward" | "front" | "back" }
   | { kind: "showKeys" };
@@ -148,6 +150,11 @@ export function studioCommandFor(
 
   if (event.key === "?") return { kind: "showKeys" };
 
+  // Stepping down into a pile and back up, next to the bracket keys that
+  // restack it, so reaching a buried piece never moves anything.
+  if (event.key === ",") return { kind: "selectInStack", direction: "below" };
+  if (event.key === ".") return { kind: "selectInStack", direction: "above" };
+
   if (event.shiftKey) return null;
 
   switch (event.key.toLowerCase()) {
@@ -238,7 +245,7 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
   {
     group: "shape a piece",
     entries: [
-      { keys: "double-click, enter, C", what: "crop" },
+      { keys: "enter, C", what: "crop" },
       { keys: "R", what: "rotate, then click to confirm" },
       { keys: "S", what: "scale, then click to confirm" },
       { keys: "B", what: "cut out the background" },
@@ -260,6 +267,14 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
       { keys: "shift + ] / [", what: "bring to front / send to back" },
       { keys: "tab / shift + tab", what: "step through pieces" },
       { keys: "\\", what: "tuck the drawer away" },
+    ],
+  },
+  {
+    group: "reach a buried piece",
+    entries: [
+      { keys: "click again", what: "take the next piece down" },
+      { keys: ", / .", what: "step down / up the stack" },
+      { keys: "right-click", what: "list every piece here" },
     ],
   },
   {
