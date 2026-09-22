@@ -1,7 +1,7 @@
 // ABOUTME: Tests how heading scraps identify, size, and render inside the collage.
 // ABOUTME: Covers the level-insensitive canonical key, font-size clamping, and the kind filter.
 
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -20,12 +20,14 @@ const BASE = {
   ts: 1_784_000_000_000,
 };
 
+type HeadingScrap = Extract<ScrapItem, { kind: "heading" }>;
+
 function heading(
   id: string,
   text: string,
   level: 1 | 2 | 3 = 2,
   styles: Record<string, string> = {},
-): ScrapItem {
+): HeadingScrap {
   return { ...BASE, id, key: id, kind: "heading", text, level, styles };
 }
 
