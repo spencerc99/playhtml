@@ -5,6 +5,39 @@ on:
     branches: [ main ]
 
 jobs:
+  sound-changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      should-run: ${{ steps.paths.outputs.should-run }}
+    steps:
+      - name: Check for sound regression inputs
+        id: paths
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100,
+            });
+            const soundPaths = [
+              /^extension\/website\/shared\/sound\//,
+              /^scripts\/sound-samples\//,
+              /^extension\/website\/sounds\/(SamplePlayback\.tsx|sampleEvents\.json)$/,
+              /^extension\/website\/shared\/utils\/eventUtils\.ts$/,
+              /^package\.json$/,
+              /^\.github\/workflows\/pr-validation\.yml$/,
+            ];
+            const shouldRun = files.some(({ filename, previous_filename }) =>
+              [filename, previous_filename].filter(Boolean).some((path) =>
+                soundPaths.some((pattern) => pattern.test(path)),
+              ),
+            );
+            core.setOutput("should-run", shouldRun);
+
   build-site:
     runs-on: ubuntu-latest
     
@@ -74,6 +107,8 @@ jobs:
         retention-days: 7
 
   sound-regression:
+    needs: sound-changes
+    if: needs.sound-changes.outputs.should-run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
