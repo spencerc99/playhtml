@@ -1,0 +1,25 @@
+// ABOUTME: Configures a local-only Worker for volatile PlayHTML presence rooms.
+// ABOUTME: Excludes PartyServer persistence bindings and Supabase secrets by design.
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "playhtml-presence-local",
+  "main": "presenceWorker.ts",
+  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_date": "2024-09-23",
+  "workers_dev": false,
+  "preview_urls": false,
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "Presence",
+        "class_name": "PresenceServer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["PresenceServer"]
+    }
+  ]
+}
