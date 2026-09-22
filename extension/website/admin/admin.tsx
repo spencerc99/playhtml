@@ -106,7 +106,7 @@ function InternalOffice() {
       return;
     }
     await mutate(async () => {
-      const cohort = overview.cohorts.find((candidate) => candidate.id === cohortId);
+      const cohort = overview?.cohorts.find((candidate) => candidate.id === cohortId);
       if (!cohort) throw new Error("Selected cohort is unavailable");
       await addPeople(token, cohortId, [person]);
       setPublicId("");

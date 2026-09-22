@@ -26,14 +26,14 @@
       "@extension/*": ["../src/*"]
     }
   },
-  "include": [
-    "src",
-    "shared",
-    "sounds",
-    "internet-map",
-    "scraps-grid",
-    "scraps-pile",
-    "scraps-preview"
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/__tests__/**",
+    "recording-tools",
+    "scripts",
+    "vite.config.ts"
   ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

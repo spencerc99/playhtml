@@ -2,7 +2,7 @@
 // ABOUTME: Layers archived cursor footage under the live field only while current activity is quiet.
 
 import "../../shared/portrait-styles.scss";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { MovementCanvas } from "../../shared/components/MovementCanvas";
 import { LiveIndicator } from "../../shared/components/LiveIndicator";
