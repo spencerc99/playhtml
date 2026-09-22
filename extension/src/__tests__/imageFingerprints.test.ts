@@ -56,7 +56,7 @@ const server = createServer((request, response) => {
     response.end();
     return;
   }
-  if (request.url === "/timeout") {
+  if (request.url?.startsWith("/timeout")) {
     response.flushHeaders();
     return;
   }
@@ -228,6 +228,45 @@ describe("image fingerprints", () => {
   });
 
   it("aborts a response that never finishes", async () => {
+    const openRequests = active;
     expect(await fetchImageFingerprint(`${origin}/timeout`)).toBeUndefined();
+    await vi.waitFor(() => expect(active).toBe(openRequests));
   }, 15000);
+
+  it("retains concurrency slots until timed-out response bodies close", async () => {
+    const store = new LocalEventStore();
+    const events: CollectionEvent[] = Array.from({ length: 4 }, (_, index) => ({
+      id: `timeout-${index}`,
+      type: "element",
+      ts: 1,
+      domain: "example.com",
+      meta: {
+        pid: "test",
+        sid: "test",
+        url: `https://example.com/${index}`,
+        vw: 100,
+        vh: 100,
+        tz: "UTC",
+      },
+      data: {
+        kind: "image",
+        src: `${origin}/timeout?request=${index}`,
+        naturalWidth: 100,
+        naturalHeight: 100,
+        pageTitle: "Test",
+      },
+    }));
+    try {
+      const accepted = await store.addEvents(events);
+      peak = 0;
+      expect(await new ImageFingerprints(store).process(accepted)).toEqual({
+        checked: 0,
+        skipped: 4,
+      });
+      expect(peak).toBeLessThanOrEqual(2);
+      await vi.waitFor(() => expect(active).toBe(0));
+    } finally {
+      (store as unknown as { db: IDBDatabase }).db?.close();
+    }
+  }, 25000);
 });

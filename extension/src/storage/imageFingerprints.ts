@@ -39,14 +39,31 @@ async function downloadImageFingerprint(
   const declaredSize = Number(response.headers.get("content-length"));
   if (declaredSize > MAX_FINGERPRINT_BYTES) return;
   const reader = response.body.getReader();
+  let bodyFinished = false;
+  let cancelBody: Promise<void> | undefined;
+  const cancelReader = () => {
+    cancelBody ??= reader.cancel().catch(() => undefined);
+    return cancelBody;
+  };
+  signal.addEventListener("abort", cancelReader, { once: true });
   const chunks: Uint8Array[] = [];
   let size = 0;
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > MAX_FINGERPRINT_BYTES) return;
-    chunks.push(value);
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        bodyFinished = true;
+        break;
+      }
+      size += value.byteLength;
+      if (size > MAX_FINGERPRINT_BYTES) return;
+      chunks.push(value);
+    }
+  } finally {
+    signal.removeEventListener("abort", cancelReader);
+    if (!bodyFinished) await cancelReader();
+    else if (cancelBody) await cancelBody;
+    reader.releaseLock();
   }
   if (size === 0) return;
   const bytes = new Uint8Array(size);
@@ -65,23 +82,14 @@ export async function fetchImageFingerprint(
   src: string,
 ): Promise<string | undefined> {
   const controller = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<undefined>((resolve) => {
-    timer = setTimeout(() => {
-      controller.abort();
-      resolve(undefined);
-    }, DOWNLOAD_TIMEOUT_MS);
-  });
+  const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
   try {
-    return await Promise.race([
-      downloadImageFingerprint(src, controller.signal),
-      timeout,
-    ]);
+    return await downloadImageFingerprint(src, controller.signal);
   } catch {
     // Unavailable, redirected, or oversized images keep their URL-based identity.
     return undefined;
   } finally {
-    if (timer) clearTimeout(timer);
+    clearTimeout(timer);
     controller.abort();
   }
 }
