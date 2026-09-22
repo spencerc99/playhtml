@@ -177,6 +177,11 @@ export function useCollageAutosave(
         void (async () => {
           try {
             const baked = await optionsRef.current.bake();
+            // A slow bake can finish after a newer one has already drawn and
+            // stored its picture. Its image is of an arrangement that has been
+            // superseded, so it is dropped here rather than written over the
+            // newer preview.
+            if (stateRef.current.bakingToken !== token) return;
             previewRef.current = baked;
             previewProblemRef.current = null;
             const written = storedRef.current;
@@ -197,6 +202,9 @@ export function useCollageAutosave(
             optionsRef.current.onStored(stored);
             dispatchRef.current({ kind: "bakeSucceeded", token });
           } catch (error) {
+            // A superseded bake's failure says nothing about the arrangement
+            // that replaced it, so it must not mark a newer picture as behind.
+            if (stateRef.current.bakingToken !== token) return;
             previewProblemRef.current = describe(error);
             dispatchRef.current({
               kind: "bakeFailed",

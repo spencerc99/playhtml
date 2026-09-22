@@ -166,3 +166,81 @@ describe("reopening a collage that already has a picture", () => {
     }
   });
 });
+
+describe("two bakes overlapping", () => {
+  it("never lets a superseded bake overwrite a newer picture", async () => {
+    // Each picture carries a distinct media type, because that is the field a
+    // deep comparison actually tells two Blobs apart by.
+    const loaded = new Blob(["the original picture"], { type: "image/gif" });
+    const first = deferredBlob();
+    const second = deferredBlob();
+    const firstImage = new Blob(["revision one"], { type: "image/png" });
+    const secondImage = new Blob(["revision two"], { type: "image/webp" });
+    const timers = manualTimers();
+    const stored: CollageRecord[] = [];
+    let bakeCount = 0;
+    const bake = vi.fn(() => {
+      bakeCount += 1;
+      return bakeCount === 1 ? first.promise : second.promise;
+    });
+
+    const autosave = await mountAutosave({
+      draft: () => ({
+        record: baseRecord({ drawn: true, image: loaded }),
+        hasContent: true,
+      }),
+      bake,
+      store: async (record) => {
+        stored.push(record);
+      },
+      onStored: () => {},
+      startsStored: true,
+      reopening: baseRecord({ drawn: true, image: loaded }),
+      timers,
+    });
+
+    // Revision one settles and starts its bake, which stays in flight.
+    await act(async () => {
+      autosave.current().noteChange();
+      timers.runAll();
+    });
+    await act(async () => {});
+    await act(async () => {
+      timers.runAll();
+    });
+    await act(async () => {});
+
+    // Revision two arrives, writes, and supersedes revision one's bake.
+    await act(async () => {
+      autosave.current().noteChange();
+      timers.runAll();
+    });
+    await act(async () => {});
+    await act(async () => {
+      timers.runAll();
+    });
+    await act(async () => {});
+
+    // Revision two's picture lands first, then the stale one finally resolves.
+    await act(async () => {
+      second.settle(secondImage);
+    });
+    await act(async () => {});
+    await act(async () => {
+      first.settle(firstImage);
+    });
+    await act(async () => {});
+
+    const drawn = stored.filter((record) => record.preview.drawn);
+    expect(drawn.length).toBeGreaterThan(0);
+    const last = drawn[drawn.length - 1];
+    expect(last.preview).toEqual({ drawn: true, image: secondImage });
+    // The stale bake's picture must never have reached the store at all; the
+    // loaded picture may, because arrangement writes legitimately carry it.
+    const images = drawn.map((record) =>
+      record.preview.drawn ? record.preview.image.type : null,
+    );
+    expect(images).not.toContain(firstImage.type);
+    expect(images[images.length - 1]).toBe(secondImage.type);
+  });
+});
