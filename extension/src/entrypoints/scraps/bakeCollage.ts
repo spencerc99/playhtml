@@ -7,6 +7,7 @@ import { sourceBoxForCrop } from "./collageGeometry";
 import { cutoutCanvas } from "./cutoutImages";
 import { drawGrain } from "./paperGrain";
 import { headingDisplayFontSize } from "@movement/components/ScrapCollage";
+import { letteringLayout } from "./pieceLettering";
 import {
   buttonBodyMarkup,
   foreignObjectDataUrl,
@@ -74,38 +75,40 @@ async function loadRemoteImage(src: string): Promise<HTMLImageElement> {
 /**
  * Draws a button scrap through an SVG foreignObject so it bakes as the thing
  * the studio shows, built from the same stored reconstruction `ScrapContent`
- * renders.
+ * renders. Its lettering is set and scaled to the box exactly as the studio
+ * sets it.
  */
 async function loadButtonImage(
   scrap: Extract<ScrapSnapshot, { kind: "button" }>,
   width: number,
   height: number,
 ): Promise<HTMLImageElement> {
+  const layout = letteringLayout(scrap, { width, height });
   return loadImage(
-    foreignObjectDataUrl({ body: buttonBodyMarkup(scrap), width, height }),
+    foreignObjectDataUrl({ body: buttonBodyMarkup(scrap), ...layout }),
   );
 }
 
 /**
  * Draws a heading scrap through the same foreignObject path a button takes, so
- * the page's own typography bakes into the picture. The display font size is
- * derived from the box the piece actually occupies, matching what
- * `ScrapContent` sizes the heading to on screen.
+ * the page's own typography bakes into the picture. It is set at the display
+ * font size `ScrapContent` gives it in the studio and scaled to the box with
+ * the same layout, so the baked words match the piece at any size.
  */
 async function loadHeadingImage(
   scrap: Extract<ScrapSnapshot, { kind: "heading" }>,
   width: number,
   height: number,
 ): Promise<HTMLImageElement> {
+  const layout = letteringLayout(scrap, { width, height });
   return loadImage(
     foreignObjectDataUrl({
       body: headingBodyMarkup(
         scrap,
-        headingDisplayFontSize(scrap.styles, scrap.text, width),
+        headingDisplayFontSize(scrap.styles, scrap.text),
         HEADING_LINE_HEIGHT,
       ),
-      width,
-      height,
+      ...layout,
     }),
   );
 }

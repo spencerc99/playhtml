@@ -297,7 +297,7 @@ export function ScrapTray({
         // The same archive label a piece carries in the collage, so a scrap
         // can be traced back to its page before it is placed.
         <div
-          className="collage-peek collage-peek--full collage-peek--tray"
+          className="collage-peek collage-peek--tray"
           aria-hidden="true"
           style={{
             left: Math.max(
@@ -309,7 +309,7 @@ export function ScrapTray({
               : { top: pointed.box.bottom + 3 }),
           }}
         >
-          <ProvenanceLines scrap={pointed.item} full={true} />
+          <ProvenanceLines scrap={pointed.item} />
         </div>
       )}
       <div

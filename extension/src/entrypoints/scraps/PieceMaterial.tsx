@@ -5,6 +5,8 @@ import React, { useEffect, useState } from "react";
 import { ScrapContent } from "@movement/components/ScrapCollage";
 import { cutoutObjectUrl } from "./cutoutImages";
 import type { CollagePiece } from "./collageRecord";
+import { sourceBoxForCrop } from "./collageGeometry";
+import { isLettered, letteringLayout } from "./pieceLettering";
 
 interface PieceMaterialProps {
   piece: CollagePiece;
@@ -74,12 +76,29 @@ export function PieceMaterial({ piece, onCutoutFailed }: PieceMaterialProps) {
     );
   }
 
-  return (
+  const content = (
     <ScrapContent
       item={scrap}
       loaded={true}
       onLoad={() => {}}
       onError={() => {}}
     />
+  );
+  if (!isLettered(scrap)) return content;
+
+  // Words are set at the scrap's own type size and scaled to the piece's box,
+  // so a resized heading or button grows and shrinks its lettering with it.
+  const layout = letteringLayout(scrap, sourceBoxForCrop(piece, piece.crop));
+  return (
+    <div
+      className="collage-piece__lettering"
+      style={{
+        width: layout.width,
+        height: layout.height,
+        transform: `scale(${layout.scale})`,
+      }}
+    >
+      {content}
+    </div>
   );
 }

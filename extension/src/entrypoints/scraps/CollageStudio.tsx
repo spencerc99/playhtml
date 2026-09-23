@@ -9,10 +9,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import {
-  headingDisplayFontSize,
-  type ScrapItem,
-} from "@movement/components/ScrapCollage";
+import type { ScrapItem } from "@movement/components/ScrapCollage";
 import {
   FULL_CROP,
   boxCenter,
@@ -89,6 +86,7 @@ import { CollageBackFace } from "./CollageBackFace";
 import { saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
+import { naturalScrapSize } from "./pieceLettering";
 import { CropSession } from "./CropSession";
 import { KeysPopover } from "./KeysPopover";
 import { ProvenancePeek } from "./ProvenancePeek";
@@ -110,8 +108,6 @@ import type { SaveStanding } from "./autosaveSchedule";
 
 /** Longest side a freshly placed piece takes, in frame units. */
 const PLACED_MAX_SIDE = 220;
-/** Average character width as a fraction of font size, for sizing a heading. */
-const HEADING_CHARACTER_ADVANCE = 0.68;
 const ROTATION_SNAP_DEGREES = 15;
 const ROTATE_HANDLE_OFFSET = 26;
 /** How far a pasted or duplicated piece lands from its original. */
@@ -189,32 +185,8 @@ function standingWords(standing: SaveStanding): {
   }
 }
 
-/** Natural aspect of a scrap, so a placed piece keeps its own proportions. */
-function naturalSize(item: ScrapItem): { width: number; height: number } {
-  switch (item.kind) {
-    case "image":
-      return { width: item.naturalWidth, height: item.naturalHeight };
-    case "svg-icon":
-      return { width: item.width, height: item.height };
-    case "button":
-      return { width: Math.max(80, item.text.length * 11 + 40), height: 40 };
-    case "heading": {
-      // Sized from the same font size the shared renderer draws the heading
-      // at, so a placed heading arrives at the proportions it will keep.
-      const fontSize = headingDisplayFontSize(item.styles, item.text);
-      const width = Math.max(
-        90,
-        item.text.trim().length * fontSize * HEADING_CHARACTER_ADVANCE + 16,
-      );
-      return { width, height: Math.max(28, fontSize * 1.15 + 12) };
-    }
-    case "cursor":
-      return { width: 32, height: 32 };
-  }
-}
-
 function placedPiece(item: ScrapItem, at: Point, z: number): CollagePiece {
-  const natural = naturalSize(item);
+  const natural = naturalScrapSize(item);
   const size = fitWithin(natural.width, natural.height, PLACED_MAX_SIDE);
   return {
     id: createPieceId(),
@@ -1380,6 +1352,7 @@ export function CollageStudio({
                     pieces={ordered}
                     hoveredId={hoveredId}
                     scale={scale}
+                    bounds={{ x: 0, y: 0, width: frame.width, height: frame.height }}
                   />
                 )}
 
@@ -1487,6 +1460,7 @@ export function CollageStudio({
                 front={bleed}
                 showing={over}
                 onProblem={onBackProblem}
+                onTitle={setTitle}
               />
             </div>
           </div>
