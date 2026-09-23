@@ -76,6 +76,24 @@ describe("DeveloperFeaturesPage", () => {
     }
   });
 
+  it("counts only choices for experiments that are currently available", async () => {
+    vi.mocked(getAllFeatureStates).mockResolvedValue({
+      ...enabledStates,
+      COMMUTE: { enabled: false, available: false, stage: "beta", source: "unavailable" },
+    });
+    vi.mocked(getFeatureOverrides).mockResolvedValue({ COMMUTE: false });
+    const { container, root } = await renderPage();
+    try {
+      expect(container.textContent).toContain("0 choices");
+      const reset = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "Reset choices",
+      );
+      expect(reset?.disabled).toBe(true);
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
   it("clears local choices through the reset control", async () => {
     const { container, root } = await renderPage();
     try {
