@@ -17,9 +17,6 @@ import {
   type ScrapPosition,
 } from "@movement/components/ScrapCollage";
 import { useFeatureState } from "../../features/useFeatureAccess";
-import { CollageStudio } from "./CollageStudio";
-import { CollageHistory } from "./CollageHistory";
-import { COLLAGE_STUDIO_STYLES } from "./collageStudioStyles";
 import type { CollageRecord } from "./collageRecord";
 
 interface ScrapRecordBase {
@@ -172,6 +169,10 @@ export function ScrapsPage() {
   /** Bumped when a studio is opened, so each editing session starts fresh. */
   const [studioSession, setStudioSession] = useState(0);
   const [savedRevision, setSavedRevision] = useState(0);
+  const [createMode, setCreateMode] = useState<
+    typeof import("./CreateMode") | null
+  >(null);
+  const [createError, setCreateError] = useState(false);
   const seed = useMemo(() => Math.floor(Date.now() / 86_400_000), []);
   const collagesFeature = useFeatureState("SCRAP_COLLAGES");
   const canCreate = collagesFeature.enabled;
@@ -179,6 +180,27 @@ export function ScrapsPage() {
   useEffect(() => {
     if (!canCreate && mode === "create") setMode("browse");
   }, [canCreate, mode]);
+
+  useEffect(() => {
+    if (!canCreate || mode !== "create" || createMode) return;
+    let cancelled = false;
+    import("./CreateMode")
+      .then((module) => {
+        if (!cancelled) {
+          setCreateMode(module);
+          setCreateError(false);
+        }
+      })
+      .catch((loadError: unknown) => {
+        if (!cancelled) {
+          setCreateError(true);
+          console.error("Failed to load collage create mode:", loadError);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canCreate, mode, createMode]);
 
   useEffect(() => {
     const onMessage = (message: unknown) => {
@@ -236,9 +258,7 @@ export function ScrapsPage() {
         color: "#3d3833",
       }}
     >
-      {canCreate && (
-        <style>{`${COLLAGE_STYLES}${COLLAGE_STUDIO_STYLES}`}</style>
-      )}
+      {canCreate && <style>{COLLAGE_STYLES}</style>}
       <svg
         width="100%"
         height="100%"
@@ -301,6 +321,34 @@ export function ScrapsPage() {
       </div>
 
       <style>{`
+        .collage-chip {
+          padding: 3px 7px;
+          border: 1px solid rgba(61, 56, 51, 0.18);
+          border-radius: 3px;
+          background: transparent;
+          color: #827a72;
+          font-family: "Martian Mono", monospace;
+          font-size: 9px;
+          letter-spacing: 0.03em;
+          cursor: pointer;
+        }
+        .collage-chip:hover {
+          border-color: rgba(61, 56, 51, 0.35);
+          color: #3d3833;
+        }
+        .collage-chip--active {
+          background: rgba(61, 56, 51, 0.08);
+          border-color: rgba(61, 56, 51, 0.4);
+          color: #3d3833;
+        }
+        .collage-mode-switch {
+          display: inline-flex;
+          gap: 3px;
+          padding: 3px;
+          border: 1px solid rgba(61, 56, 51, 0.16);
+          border-radius: 4px;
+          background: rgba(245, 240, 232, 0.9);
+        }
         .scraps-heading { top: 14px; width: min(520px, calc(100vw - 320px)); }
         .scraps-stage { inset: 64px 0 0; }
         @media (max-width: 620px) {
@@ -377,34 +425,33 @@ export function ScrapsPage() {
         </div>
       )}
 
-      {mode === "create" && !loading && !error && (
-        <div style={{ position: "absolute", inset: "96px 0 0", zIndex: 2 }}>
-          {!studioOpen ? (
-            <CollageHistory
-              revision={savedRevision}
-              onEdit={(record) => {
-                setEditing(record);
-                setStudioSession((value) => value + 1);
-                setStudioOpen(true);
-              }}
-              onStartNew={() => {
-                setEditing(null);
-                setStudioSession((value) => value + 1);
-                setStudioOpen(true);
-              }}
-            />
-          ) : (
-            <CollageStudio
-              key={studioSession}
-              scraps={items}
-              editing={editing}
-              onSaved={() => setSavedRevision((value) => value + 1)}
-              onLeave={() => {
-                setEditing(null);
-                setStudioOpen(false);
-              }}
-            />
-          )}
+      {mode === "create" && !loading && !error && createMode && (
+        <createMode.CreateMode
+          items={items}
+          editing={editing}
+          studioOpen={studioOpen}
+          studioSession={studioSession}
+          savedRevision={savedRevision}
+          onEdit={(record) => {
+            setEditing(record);
+            setStudioSession((value) => value + 1);
+            setStudioOpen(true);
+          }}
+          onStartNew={() => {
+            setEditing(null);
+            setStudioSession((value) => value + 1);
+            setStudioOpen(true);
+          }}
+          onSaved={() => setSavedRevision((value) => value + 1)}
+          onLeave={() => {
+            setEditing(null);
+            setStudioOpen(false);
+          }}
+        />
+      )}
+      {mode === "create" && !loading && !error && !createMode && (
+        <div style={centeredMessageStyle}>
+          {createError ? "collage tools could not be opened" : "opening collage tools..."}
         </div>
       )}
 

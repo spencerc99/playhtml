@@ -148,29 +148,6 @@ export const COLLAGE_STUDIO_STYLES = `
     background: rgba(74, 154, 138, 0.25);
   }
 
-  .collage-chip {
-    padding: 3px 7px;
-    border: 1px solid rgba(61, 56, 51, 0.18);
-    border-radius: 3px;
-    background: transparent;
-    color: #827a72;
-    font-family: "Martian Mono", monospace;
-    font-size: 9px;
-    letter-spacing: 0.03em;
-    cursor: pointer;
-  }
-
-  .collage-chip:hover {
-    border-color: rgba(61, 56, 51, 0.35);
-    color: #3d3833;
-  }
-
-  .collage-chip--active {
-    background: rgba(61, 56, 51, 0.08);
-    border-color: rgba(61, 56, 51, 0.4);
-    color: #3d3833;
-  }
-
   .collage-tray__scroll {
     flex: 1 1 auto;
     min-height: 0;
@@ -1283,14 +1260,5 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-card__actions-gap {
     flex: 1 1 auto;
-  }
-
-  .collage-mode-switch {
-    display: inline-flex;
-    gap: 3px;
-    padding: 3px;
-    border: 1px solid rgba(61, 56, 51, 0.16);
-    border-radius: 4px;
-    background: rgba(245, 240, 232, 0.9);
   }
 `;
