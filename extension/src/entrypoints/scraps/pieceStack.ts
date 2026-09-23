@@ -1,4 +1,4 @@
-// ABOUTME: Works out which pieces lie under a point and which one a click takes.
+// ABOUTME: Works out which pieces lie under a point and which one a press takes.
 // ABOUTME: Pure geometry, so reaching a buried piece behaves the same everywhere.
 
 import { toLocalPoint, type Point } from "./collageGeometry";
@@ -20,16 +20,29 @@ export function pieceHoldsPoint(piece: CollagePiece, point: Point): boolean {
 }
 
 /**
+ * The whole collage back to front, the order it is drawn in. Pieces that share
+ * a z keep their order in the list, the later one in front, which is what the
+ * page does with two elements of equal z-index. Drawing and hit-testing both
+ * read this, so a click always lands on the piece that is visibly on top.
+ */
+export function stackOrder(pieces: readonly CollagePiece[]): CollagePiece[] {
+  return pieces
+    .map((piece, index) => ({ piece, index }))
+    .sort((a, b) => a.piece.z - b.piece.z || a.index - b.index)
+    .map(({ piece }) => piece);
+}
+
+/**
  * Every piece under a point, frontmost first. That is the order a person reads
- * a stack in, and the order a click walks down through.
+ * a stack in, and the order a deep click walks down through.
  */
 export function piecesUnder(
   pieces: readonly CollagePiece[],
   point: Point,
 ): CollagePiece[] {
-  return pieces
-    .filter((piece) => pieceHoldsPoint(piece, point))
-    .sort((a, b) => b.z - a.z);
+  return stackOrder(pieces)
+    .reverse()
+    .filter((piece) => pieceHoldsPoint(piece, point));
 }
 
 /** The piece a plain click lands on: whatever is in front at that point. */
@@ -41,12 +54,11 @@ export function topPieceUnder(
 }
 
 /**
- * What a click at this point selects, given what is already in hand. Clicking
- * the same spot again reaches the next piece down and wraps back to the top,
- * so a buried piece can be got at without moving anything. Selection never
- * changes the stacking order.
+ * The piece one below the selection at this point, wrapping back to the front
+ * after the bottom one. When the selection is not under the point the walk
+ * starts at the front. Selection never changes the stacking order.
  */
-export function nextSelectionAt(
+export function deeperPieceAt(
   pieces: readonly CollagePiece[],
   point: Point,
   selectedId: string | null,
@@ -54,9 +66,47 @@ export function nextSelectionAt(
   const stack = piecesUnder(pieces, point);
   if (stack.length === 0) return null;
   const index = stack.findIndex((piece) => piece.id === selectedId);
-  // Clicking somewhere the selection is not starts again at the front.
   if (index === -1) return stack[0].id;
   return stack[(index + 1) % stack.length].id;
+}
+
+/** What one press on the collage does, settled the moment it lands. */
+export interface PressPlan {
+  /** Selected as soon as the pointer goes down. */
+  selectOnDown: string;
+  /** The piece a drag from this press moves. */
+  dragId: string;
+  /** Selected when the press ends without travelling, which makes it a click. */
+  selectOnClick: string;
+}
+
+/**
+ * Decides a press the way Figma and tldraw do. A plain click takes the
+ * frontmost piece under the pointer, however many times it lands in the same
+ * place. A press that starts a drag moves the piece already in hand whenever
+ * the press is inside it, even where another piece lies on top, so grabbing
+ * the selection never hands the drag to something else. Reaching a buried
+ * piece is its own gesture: with deep set (cmd or ctrl held) the press takes
+ * the next piece down and a drag moves that one.
+ */
+export function planPress(
+  pieces: readonly CollagePiece[],
+  point: Point,
+  selectedId: string | null,
+  deep: boolean,
+): PressPlan | null {
+  const stack = piecesUnder(pieces, point);
+  if (stack.length === 0) return null;
+  if (deep) {
+    const deeper = deeperPieceAt(pieces, point, selectedId);
+    if (!deeper) return null;
+    return { selectOnDown: deeper, dragId: deeper, selectOnClick: deeper };
+  }
+  const front = stack[0].id;
+  if (selectedId && stack.some((piece) => piece.id === selectedId)) {
+    return { selectOnDown: selectedId, dragId: selectedId, selectOnClick: front };
+  }
+  return { selectOnDown: front, dragId: front, selectOnClick: front };
 }
 
 /**
@@ -68,7 +118,7 @@ export function neighborInStack(
   selectedId: string | null,
   direction: "below" | "above",
 ): string | null {
-  const ordered = [...pieces].sort((a, b) => b.z - a.z);
+  const ordered = stackOrder(pieces).reverse();
   if (ordered.length === 0) return null;
   const index = ordered.findIndex((piece) => piece.id === selectedId);
   if (index === -1) return ordered[0].id;
