@@ -1,4 +1,4 @@
-// ABOUTME: Resolves extension features from server policy and local opt-in choices.
+// ABOUTME: Resolves extension features from server policy and local opt-out choices.
 // ABOUTME: Persists the last valid entitlement snapshot so access survives transient Worker failures.
 
 import browser from "webextension-polyfill";
@@ -161,17 +161,11 @@ export async function refreshFeatureAccess(publicId: string): Promise<FeatureAcc
     throw new Error("Feature access check returned an invalid response");
   }
 
+  // Local choices are kept even when access is revoked: an override for an
+  // unavailable feature is inert because resolveFeatureState checks
+  // availability first, and keeping it means an opt-out still holds if access
+  // is granted again.
   const snapshot = { ...result, checkedAt: Date.now() };
-  const overrides = await getFeatureOverrides();
-  const availableOverrides = Object.fromEntries(
-    Object.entries(overrides).filter(([feature]) => {
-      const policy = snapshot.features[feature as FeatureId];
-      return policy.available && policy.stage !== "released";
-    }),
-  ) as FeatureOverrides;
-  await browser.storage.local.set({
-    [FEATURE_ACCESS_STORAGE_KEY]: snapshot,
-    [FEATURE_OVERRIDES_STORAGE_KEY]: availableOverrides,
-  });
+  await browser.storage.local.set({ [FEATURE_ACCESS_STORAGE_KEY]: snapshot });
   return snapshot;
 }
