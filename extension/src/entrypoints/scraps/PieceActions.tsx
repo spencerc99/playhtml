@@ -3,6 +3,7 @@
 
 import React, { useLayoutEffect, useRef, useState } from "react";
 import type { CollagePiece } from "./collageRecord";
+import { placeBesidePiece } from "./studioPanels";
 
 const STROKE = {
   fill: "none",
@@ -115,8 +116,39 @@ function isSeparator(action: Action): action is { separator: true; key: string }
   return "separator" in action;
 }
 
-/** How far above the piece the strip sits, in on-screen pixels. */
-const STRIP_GAP = 10;
+/**
+ * Measures a panel and places it beside a piece, kept inside the frame. Every
+ * panel that floats with the selection shares this, so they all land in the
+ * same spot and only one of them is ever shown there.
+ */
+export function useBesidePiece(
+  piece: CollagePiece,
+  scale: number,
+  frame: { width: number; height: number },
+) {
+  const ref = useRef<HTMLDivElement>(null);
+  /** The panel's own on-screen size, measured so it can be kept in frame. */
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useLayoutEffect(() => {
+    const panel = ref.current;
+    if (!panel) return;
+    const measure = () => {
+      const box = panel.getBoundingClientRect();
+      setSize({ width: box.width, height: box.height });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, []);
+
+  const { left, top } = placeBesidePiece(piece, size, scale, frame);
+  return {
+    ref,
+    style: { left, top, transform: `scale(${1 / scale})` },
+  };
+}
 
 /**
  * The tools for whatever is in hand, floating beside the piece itself rather
@@ -137,22 +169,7 @@ export function PieceActions({
   onDuplicate,
   onRemove,
 }: PieceActionsProps) {
-  const stripRef = useRef<HTMLDivElement>(null);
-  /** The strip's own on-screen size, measured so it can be kept in frame. */
-  const [size, setSize] = useState({ width: 0, height: 0 });
-
-  useLayoutEffect(() => {
-    const strip = stripRef.current;
-    if (!strip) return;
-    const measure = () => {
-      const box = strip.getBoundingClientRect();
-      setSize({ width: box.width, height: box.height });
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(strip);
-    return () => observer.disconnect();
-  }, []);
+  const placement = useBesidePiece(piece, scale, frame);
 
   const actions: Action[] = [
     {
@@ -212,7 +229,7 @@ export function PieceActions({
           {
             key: "cut-out",
             label: piece.cutout
-              ? "Keep the background"
+              ? "Adjust the cut-out edge"
               : "Cut out the background",
             hint: "B",
             glyph: GLYPHS.cutOut,
@@ -239,31 +256,13 @@ export function PieceActions({
     },
   ];
 
-  // The strip is placed in frame coordinates but drawn at its own on-screen
-  // size, so every measurement below is converted through the zoom.
-  const gap = STRIP_GAP / scale;
-  const width = size.width / scale;
-  const height = size.height / scale;
-  const above = piece.y - gap - height;
-  // Near the top of the frame there is no room above, so it goes below.
-  const top = above >= 0 ? above : piece.y + piece.height + gap;
-  const centered = piece.x + piece.width / 2 - width / 2;
-  const left =
-    width >= frame.width
-      ? 0
-      : Math.min(Math.max(centered, 0), frame.width - width);
-
   return (
     <div
-      ref={stripRef}
+      ref={placement.ref}
       className="collage-piece-actions"
       role="toolbar"
       aria-label="Piece"
-      style={{
-        left,
-        top: Math.min(Math.max(top, 0), Math.max(frame.height - height, 0)),
-        transform: `scale(${1 / scale})`,
-      }}
+      style={placement.style}
       // Clicking a tool must not reach the frame beneath and drop the
       // selection the tool is about to act on.
       onPointerDown={(event) => event.stopPropagation()}

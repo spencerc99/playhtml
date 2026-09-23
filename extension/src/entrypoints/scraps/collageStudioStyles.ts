@@ -973,22 +973,46 @@ export const COLLAGE_STUDIO_STYLES = `
     color: #c4724e;
   }
 
+  /* The cutout's edge control takes the piece strip's place beside the piece,
+     drawn at the same constant on-screen size. */
   .collage-tolerance {
     position: absolute;
-    z-index: 10002;
+    z-index: 10004;
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 8px;
-    transform: translateX(-50%);
-    border: 1px solid rgba(61, 56, 51, 0.18);
-    border-radius: 3px;
+    padding: 4px 6px 4px 8px;
+    transform-origin: left top;
+    border: 1px solid rgba(61, 56, 51, 0.2);
+    border-radius: 4px;
     background: #f5f0e8;
+    box-shadow: 0 4px 14px rgba(61, 56, 51, 0.18);
+    white-space: nowrap;
   }
 
   .collage-tolerance input {
     width: 96px;
     accent-color: #4a9a8a;
+  }
+
+  .collage-tolerance__button {
+    padding: 3px 6px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    color: #3d3833;
+    cursor: pointer;
+  }
+
+  .collage-tolerance__button:hover {
+    border-color: rgba(61, 56, 51, 0.2);
+  }
+
+  .collage-tolerance__button--done {
+    border-color: rgba(74, 154, 138, 0.5);
+    color: #2f6f62;
   }
 
   .collage-piece__cut {

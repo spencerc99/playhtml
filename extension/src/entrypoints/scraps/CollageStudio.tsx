@@ -96,10 +96,18 @@ import { paperBackground } from "./paperGrain";
 import { PiecesHereMenu } from "./PiecesHereMenu";
 import {
   neighborInStack,
-  nextSelectionAt,
   piecesUnder,
+  planPress,
+  stackOrder,
   topPieceUnder,
 } from "./pieceStack";
+import {
+  ROTATE_HANDLE_OFFSET,
+  toolSessionActive,
+  visiblePanel,
+  type PanelState,
+} from "./studioPanels";
+import { CutoutControl } from "./CutoutControl";
 import { createPeekState, stepPeek, type PeekEvent } from "./peekHold";
 import {
   useCollageAutosave,
@@ -113,7 +121,6 @@ const PLACED_MAX_SIDE = 220;
 /** Average character width as a fraction of font size, for sizing a heading. */
 const HEADING_CHARACTER_ADVANCE = 0.68;
 const ROTATION_SNAP_DEGREES = 15;
-const ROTATE_HANDLE_OFFSET = 26;
 /** How far a pasted or duplicated piece lands from its original. */
 const COPY_OFFSET = 24;
 /** Frame units the pointer must travel before an alt-drag pulls out a copy. */
@@ -281,6 +288,14 @@ export function CollageStudio({
 
   const [crop, setCrop] = useState<CropState | null>(null);
   const [transform, setTransform] = useState<ModalTransform | null>(null);
+  /**
+   * The picture whose cutout edge is being tuned, and the cutout it had when
+   * the control opened, restored if the session is cancelled.
+   */
+  const [cutoutSession, setCutoutSession] = useState<{
+    pieceId: string;
+    before: PieceCutout | undefined;
+  } | null>(null);
   const [gesture, setGesture] = useState<Gesture>({ kind: "idle" });
   /** What the slip above the selected piece says while a gesture runs. */
   const [gestureReadout, setGestureReadout] = useState<string | null>(null);
@@ -303,12 +318,13 @@ export function CollageStudio({
   const stageRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   /**
-   * The press in progress, so release can tell a click from a drag. A click
-   * that did not travel selects the next piece down; a drag does not.
+   * The press in progress, so release can tell a click from a drag. A press
+   * that never travelled was a click and settles on the piece it planned to
+   * select; a drag leaves the selection with the piece it moved.
    */
   const pressRef = useRef<{
     at: Point;
-    selectedWas: string | null;
+    selectOnClick: string;
     moved: boolean;
   } | null>(null);
   const draggingScrapRef = useRef<ScrapItem | null>(null);
@@ -397,7 +413,9 @@ export function CollageStudio({
     ? "crop"
     : transform
       ? transform.kind
-      : "idle";
+      : cutoutSession
+        ? "cutout"
+        : "idle";
 
   // Leaving the tab, or the page itself, writes what is pending right away.
   useEffect(() => {
@@ -426,10 +444,7 @@ export function CollageStudio({
     () => pieces.find((piece) => piece.id === selectedId) ?? null,
     [pieces, selectedId],
   );
-  const ordered = useMemo(
-    () => [...pieces].sort((a, b) => a.z - b.z),
-    [pieces],
-  );
+  const ordered = useMemo(() => stackOrder(pieces), [pieces]);
   const hovered = useMemo(
     () => pieces.find((piece) => piece.id === hoveredId) ?? null,
     [pieces, hoveredId],
@@ -441,6 +456,30 @@ export function CollageStudio({
       .map((id) => pieces.find((piece) => piece.id === id))
       .filter((piece): piece is CollagePiece => piece !== undefined);
   }, [hereMenu, pieces]);
+
+  // One decision picks the floating panel on screen, so a tool's own controls
+  // can never be covered by the piece strip or the stack menu.
+  const panelState: PanelState = {
+    turnedOver: over,
+    cropping: crop !== null,
+    transforming: transform !== null,
+    cuttingOut: cutoutSession !== null,
+    piecesHereOpen: hereStack.length > 0,
+    gestureRunning: gesture.kind !== "idle",
+    peekHeld: peek.held,
+    hasSelection: selected !== null,
+  };
+  const panel = visiblePanel(panelState);
+  const toolActive = toolSessionActive(panelState);
+
+  // The cutout session belongs to one piece; once that piece is no longer in
+  // hand, however that happened, the session is over and keeps what it made.
+  useEffect(() => {
+    if (cutoutSession && cutoutSession.pieceId !== selectedId) {
+      setCutoutSession(null);
+      setHistory((current) => endRun(current));
+    }
+  }, [cutoutSession, selectedId]);
 
   /** Commits an arrangement, coalescing a continuous run into one undo step. */
   const commit = useCallback(
@@ -598,14 +637,66 @@ export function CollageStudio({
     setTransform(null);
   }, [transform]);
 
-  const cutOutSelected = useCallback(
-    (tolerance = DEFAULT_CUTOUT_TOLERANCE) => {
-      if (!selected || selected.scrap.kind !== "image") return;
+  /**
+   * Opens the cutout's edge control on the selected picture, cutting its
+   * background away first if it still has one. The whole session, from the
+   * first cut through every change of edge, is one undo step.
+   */
+  const beginCutout = useCallback(() => {
+    if (!selected || selected.scrap.kind !== "image") return;
+    setCutoutSession({ pieceId: selected.id, before: selected.cutout });
+    if (!selected.cutout) {
+      const cutout: PieceCutout = {
+        method: "edge-color",
+        tolerance: DEFAULT_CUTOUT_TOLERANCE,
+      };
+      editPiece(
+        selected.id,
+        (piece) => ({ ...piece, cutout }),
+        `cutout:${selected.id}`,
+      );
+    }
+  }, [editPiece, selected]);
+
+  const tuneCutout = useCallback(
+    (tolerance: number) => {
+      if (!cutoutSession) return;
       const cutout: PieceCutout = { method: "edge-color", tolerance };
-      editPiece(selected.id, (piece) => ({ ...piece, cutout }));
+      editPiece(
+        cutoutSession.pieceId,
+        (piece) => ({ ...piece, cutout }),
+        `cutout:${cutoutSession.pieceId}`,
+      );
     },
-    [editPiece, selected],
+    [cutoutSession, editPiece],
   );
+
+  const confirmCutout = useCallback(() => {
+    setCutoutSession(null);
+    setHistory((current) => endRun(current));
+  }, []);
+
+  /** Puts the piece back the way it was when the edge control opened. */
+  const cancelCutout = useCallback(() => {
+    if (!cutoutSession) return;
+    const { pieceId, before } = cutoutSession;
+    editPiece(
+      pieceId,
+      ({ cutout: _cut, ...rest }) => (before ? { ...rest, cutout: before } : rest),
+      `cutout:${pieceId}`,
+    );
+    confirmCutout();
+  }, [confirmCutout, cutoutSession, editPiece]);
+
+  const keepBackground = useCallback(() => {
+    if (!cutoutSession) return;
+    editPiece(
+      cutoutSession.pieceId,
+      ({ cutout: _cut, ...rest }) => rest,
+      `cutout:${cutoutSession.pieceId}`,
+    );
+    confirmCutout();
+  }, [confirmCutout, cutoutSession, editPiece]);
 
   /**
    * Turns the collage over or face up again. Whatever was in hand is put
@@ -801,7 +892,7 @@ export function CollageStudio({
           beginTransform("scale");
           break;
         case "cutout":
-          cutOutSelected();
+          beginCutout();
           break;
         case "flip":
           if (selected) {
@@ -813,10 +904,12 @@ export function CollageStudio({
           break;
         case "confirm":
           if (crop) commitCrop();
+          else if (cutoutSession) confirmCutout();
           else confirmTransform();
           break;
         case "cancel":
           if (crop) cancelCrop();
+          else if (cutoutSession) cancelCutout();
           else cancelTransform();
           break;
         case "deselect":
@@ -880,7 +973,10 @@ export function CollageStudio({
     commitCrop,
     confirmTransform,
     crop,
-    cutOutSelected,
+    beginCutout,
+    cancelCutout,
+    confirmCutout,
+    cutoutSession,
     duplicatePiece,
     editPiece,
     enterCrop,
@@ -894,23 +990,17 @@ export function CollageStudio({
 
   /**
    * Ends a run so the next edit becomes its own undo step. A press that never
-   * travelled was a click, and a click on a spot that already holds the
-   * selected piece reaches the next piece down in the pile.
+   * travelled was a click, which settles on the piece its plan chose: the
+   * frontmost one under the pointer, or the deeper one a cmd-click reached.
    */
-  const endGesture = useCallback(
-    (event?: React.PointerEvent) => {
-      const press = pressRef.current;
-      pressRef.current = null;
-      if (event && press && !press.moved) {
-        const deeper = nextSelectionAt(pieces, press.at, press.selectedWas);
-        if (deeper) setSelectedId(deeper);
-      }
-      setGesture({ kind: "idle" });
-      setGestureReadout(null);
-      setHistory((current) => endRun(current));
-    },
-    [pieces],
-  );
+  const endGesture = useCallback((event?: React.PointerEvent) => {
+    const press = pressRef.current;
+    pressRef.current = null;
+    if (event && press && !press.moved) setSelectedId(press.selectOnClick);
+    setGesture({ kind: "idle" });
+    setGestureReadout(null);
+    setHistory((current) => endRun(current));
+  }, []);
 
   const onFramePointerMove = useCallback(
     (event: React.PointerEvent) => {
@@ -918,7 +1008,7 @@ export function CollageStudio({
 
       // What a click would take, shown faintly so a buried piece can be seen
       // before it is reached for. A rotated-rect test per piece, no pixels.
-      if (gesture.kind === "idle" && !transform && !crop) {
+      if (gesture.kind === "idle" && !toolActive) {
         const under = topPieceUnder(pieces, point);
         setHoveredId(under?.id ?? null);
       }
@@ -926,7 +1016,7 @@ export function CollageStudio({
       const press = pressRef.current;
       if (press && !press.moved) {
         // Past the threshold this press is a drag, not a click, so release
-        // must not treat it as a request to select deeper.
+        // leaves the selection with the piece that moved.
         if (
           Math.hypot(point.x - press.at.x, point.y - press.at.y) >
           ALT_DRAG_THRESHOLD
@@ -1040,14 +1130,15 @@ export function CollageStudio({
         setGestureReadout(`rotate ${Math.round(degrees)} deg`);
       }
     },
-    [crop, duplicatePiece, editPiece, framePoint, gesture, pieces, transform],
+    [duplicatePiece, editPiece, framePoint, gesture, pieces, toolActive, transform],
   );
 
   /**
-   * Presses go to whatever is already selected when the press lands on it, so
-   * a drag always moves the piece in hand. Which piece a click *selects* is
-   * settled on release instead, because only then is it known that the press
-   * was a click and not the start of a drag.
+   * A press is planned the moment it lands (see planPress): a drag moves the
+   * piece in hand when the press is inside it, and a click settles on release
+   * on the frontmost piece, because only then is it known that the press was
+   * a click and not the start of a drag. Cmd or ctrl reaches the next piece
+   * down instead.
    */
   const beginMove = (piece: CollagePiece, event: React.PointerEvent) => {
     event.stopPropagation();
@@ -1056,20 +1147,24 @@ export function CollageStudio({
       confirmTransform();
       return;
     }
+    // Pressing a piece puts a running cutout down, keeping the edge it has.
+    if (cutoutSession) confirmCutout();
     setHereMenu(null);
     const at = framePoint(event);
-    const stack = piecesUnder(pieces, at);
-    // The press drags whichever piece is in hand if the press is on it; a
-    // press elsewhere takes the frontmost piece there straight away.
-    const holding =
-      selectedId && stack.some((item) => item.id === selectedId)
-        ? pieces.find((item) => item.id === selectedId)
-        : undefined;
-    const dragging = holding ?? stack[0] ?? piece;
+    // The element took the press, so when the rotated-box test misses by a
+    // rounding hair at an edge, the piece the page hit is the answer.
+    const plan = planPress(
+      pieces,
+      at,
+      selectedId,
+      event.metaKey || event.ctrlKey,
+    ) ?? { selectOnDown: piece.id, dragId: piece.id, selectOnClick: piece.id };
+    const dragging = pieces.find((item) => item.id === plan.dragId);
+    if (!dragging) throw new Error(`Collage has no piece ${plan.dragId}`);
     (event.target as Element).setPointerCapture?.(event.pointerId);
-    setSelectedId(dragging.id);
+    setSelectedId(plan.selectOnDown);
     setCrop(null);
-    pressRef.current = { at, selectedWas: selectedId, moved: false };
+    pressRef.current = { at, selectOnClick: plan.selectOnClick, moved: false };
     setGesture({
       kind: "move",
       pieceId: dragging.id,
@@ -1233,6 +1328,7 @@ export function CollageStudio({
                   // Clicking away confirms a running mode rather than losing it.
                   if (transform) confirmTransform();
                   else if (crop) commitCrop();
+                  else if (cutoutSession) confirmCutout();
                   else setSelectedId(null);
                 }}
                 onPointerMove={onFramePointerMove}
@@ -1246,7 +1342,8 @@ export function CollageStudio({
                     cancelTransform();
                     return;
                   }
-                  if (crop) return;
+                  // A running tool owns the space, so the stack menu waits.
+                  if (toolActive) return;
                   const at = framePoint(event);
                   const stack = piecesUnder(pieces, at);
                   // Bare frame has nothing to list, so nothing opens.
@@ -1348,7 +1445,7 @@ export function CollageStudio({
                   />
                 )}
 
-                {crop && cropping && (
+                {panel === "crop" && crop && cropping && (
                   <CropSession
                     piece={cropping}
                     crop={crop.crop}
@@ -1360,7 +1457,10 @@ export function CollageStudio({
 
                 {/* What a click would take, shown faintly so a piece under a pile
                     can be seen before it is reached for. */}
-                {hovered && hovered.id !== selectedId && !peek.held && (
+                {hovered &&
+                  hovered.id !== selectedId &&
+                  !peek.held &&
+                  !toolActive && (
                   <div
                     className="collage-piece-hover"
                     aria-hidden="true"
@@ -1383,7 +1483,7 @@ export function CollageStudio({
                   />
                 )}
 
-                {hereMenu && hereStack.length > 0 && (
+                {panel === "piecesHere" && hereMenu && (
                   <PiecesHereMenu
                     pieces={hereStack}
                     at={hereMenu.at}
@@ -1412,40 +1512,21 @@ export function CollageStudio({
                   </p>
                 )}
 
-                {selected &&
-                  selected.scrap.kind === "image" &&
-                  selected.cutout &&
-                  !crop &&
-                  !transform && (
-                    <div
-                      className="collage-tolerance"
-                      style={{
-                        left: selected.x + selected.width / 2,
-                        top: selected.y + selected.height + 12,
-                      }}
-                      onPointerDown={(event) => event.stopPropagation()}
-                    >
-                      <span className="collage-studio__label">edge</span>
-                      <input
-                        type="range"
-                        min={0}
-                        max={60}
-                        value={Math.round(selected.cutout.tolerance * 100)}
-                        aria-label="Background cutout tolerance"
-                        onChange={(event) =>
-                          cutOutSelected(Number(event.target.value) / 100)
-                        }
-                      />
-                    </div>
-                  )}
+                {panel === "cutout" && selected?.cutout && (
+                  <CutoutControl
+                    piece={selected}
+                    tolerance={selected.cutout.tolerance}
+                    scale={scale}
+                    frame={frame}
+                    onTolerance={tuneCutout}
+                    onKeepBackground={keepBackground}
+                    onDone={confirmCutout}
+                  />
+                )}
 
                 {/* The tools for whatever is in hand ride with the piece, and
-                    stand aside while a gesture, a mode, or a peek is running. */}
-                {selected &&
-                  !crop &&
-                  !transform &&
-                  !peek.held &&
-                  gesture.kind === "idle" && (
+                    stand aside while a gesture, a tool, or a peek is running. */}
+                {panel === "pieceActions" && selected && (
                   <PieceActions
                     piece={selected}
                     canUncrop={!isFullCrop(selected.crop)}
@@ -1467,11 +1548,7 @@ export function CollageStudio({
                     }
                     onCrop={enterCrop}
                     onUncrop={() => editPiece(selected.id, clearCrop)}
-                    onCutOut={() =>
-                      selected.cutout
-                        ? editPiece(selected.id, ({ cutout: _cut, ...rest }) => rest)
-                        : cutOutSelected()
-                    }
+                    onCutOut={beginCutout}
                     onDuplicate={() => duplicatePiece(selected)}
                     onRemove={removeSelected}
                   />
