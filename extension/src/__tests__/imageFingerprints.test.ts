@@ -233,7 +233,30 @@ describe("image fingerprints", () => {
     await vi.waitFor(() => expect(active).toBe(openRequests));
   }, 15000);
 
-  it("retains concurrency slots until timed-out response bodies close", async () => {
+  it("bounds active response readers and closes timed-out requests", async () => {
+    const nativeFetch = globalThis.fetch;
+    let activeReaders = 0;
+    let peakReaders = 0;
+    let totalReaders = 0;
+    // Observe native readers: server close events can arrive after the next
+    // request even though the cancelled client reader has already settled.
+    vi.stubGlobal("fetch", async (...args: Parameters<typeof fetch>) => {
+      const response = await nativeFetch(...args);
+      const body = response.body;
+      if (body) {
+        const getReader = body.getReader.bind(body);
+        body.getReader = ((...readerArgs: Parameters<typeof body.getReader>) => {
+          const reader = getReader(...readerArgs);
+          totalReaders++;
+          activeReaders++;
+          peakReaders = Math.max(peakReaders, activeReaders);
+          const closed = () => { activeReaders--; };
+          void reader.closed.then(closed, closed);
+          return reader;
+        }) as typeof body.getReader;
+      }
+      return response;
+    });
     const store = new LocalEventStore();
     const events: CollectionEvent[] = Array.from({ length: 4 }, (_, index) => ({
       id: `timeout-${index}`,
@@ -258,14 +281,16 @@ describe("image fingerprints", () => {
     }));
     try {
       const accepted = await store.addEvents(events);
-      peak = 0;
       expect(await new ImageFingerprints(store).process(accepted)).toEqual({
         checked: 0,
         skipped: 4,
       });
-      expect(peak).toBeLessThanOrEqual(2);
+      expect(totalReaders).toBe(4);
+      expect(peakReaders).toBeLessThanOrEqual(2);
+      expect(activeReaders).toBe(0);
       await vi.waitFor(() => expect(active).toBe(0));
     } finally {
+      vi.stubGlobal("fetch", nativeFetch);
       (store as unknown as { db: IDBDatabase }).db?.close();
     }
   }, 25000);
