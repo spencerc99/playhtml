@@ -3,6 +3,7 @@
 
 import React, { useEffect, useState } from "react";
 import { ScrapContent } from "@movement/components/ScrapCollage";
+import { useScrapImageSrc } from "@movement/utils/scrapImageSource";
 import { maskPositionPercent } from "./backgroundCutout";
 import { cutoutMaskImage, type CutoutMaskImage } from "./cutoutImages";
 import type { CollagePiece } from "./collageRecord";
@@ -46,6 +47,8 @@ export function PieceMaterial({ piece, onCutoutFailed }: PieceMaterialProps) {
   const { scrap, cutout, crop } = piece;
   const wantsCutout = scrap.kind === "image" && cutout !== undefined;
   const src = scrap.kind === "image" ? scrap.src : "";
+  // The kept local copy when there is one, so a cut piece outlives its link.
+  const displaySrc = useScrapImageSrc(wantsCutout ? src : undefined);
   const [mask, setMask] = useState<CutoutMaskImage | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -91,13 +94,13 @@ export function PieceMaterial({ piece, onCutoutFailed }: PieceMaterialProps) {
     if (failed) {
       return <span className="collage-piece__missing" aria-hidden="true" />;
     }
-    if (!mask) {
+    if (!mask || !displaySrc) {
       return <span className="collage-piece__pending" aria-hidden="true" />;
     }
     return (
       <img
         className="collage-piece__cut"
-        src={src}
+        src={displaySrc}
         alt={scrap.kind === "image" ? (scrap.alt ?? "") : ""}
         draggable={false}
         style={maskStyle(mask)}

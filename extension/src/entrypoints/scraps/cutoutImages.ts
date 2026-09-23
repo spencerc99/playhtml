@@ -13,6 +13,7 @@ import {
   type PieceCutout,
   type PixelRegion,
 } from "./backgroundCutout";
+import { resolveScrapImageSrc } from "@movement/utils/scrapImageSource";
 
 /** Names the image whose backdrop could not be read, so a notice can say so. */
 export class CutoutError extends Error {
@@ -86,7 +87,7 @@ async function loadPixels(src: string): Promise<HTMLImageElement> {
   if (src.startsWith("data:")) {
     image.src = src;
   } else {
-    const response = await fetch(src);
+    const response = await fetch(await resolveScrapImageSrc(src));
     if (!response.ok) throw new Error(`fetch returned ${response.status}`);
     image.src = URL.createObjectURL(await response.blob());
   }

@@ -6,6 +6,7 @@ import type { CollageFrame, CollagePiece } from "./collageRecord";
 import { sourceBoxForCrop, type CropFraction } from "./collageGeometry";
 import { cutoutCanvas } from "./cutoutImages";
 import { drawGrain } from "./paperGrain";
+import { resolveScrapImageSrc } from "@movement/utils/scrapImageSource";
 import { headingDisplayFontSize } from "@movement/components/ScrapCollage";
 import { letteringLayout } from "./pieceLettering";
 import {
@@ -169,7 +170,11 @@ async function pieceImage(
   const { scrap } = piece;
   switch (scrap.kind) {
     case "image": {
-      if (!piece.cutout) return { image: await loadRemoteImage(scrap.src) };
+      if (!piece.cutout) {
+        return {
+          image: await loadRemoteImage(await resolveScrapImageSrc(scrap.src)),
+        };
+      }
       // A cut-out piece bakes from the same mask the studio shows, recomputed
       // over the piece's crop from the parameters the collage stored.
       const cut = await cutoutCanvas(scrap.src, piece.cutout, piece.crop);
