@@ -6,6 +6,7 @@ import type { CollageFrame, CollagePiece } from "./collageRecord";
 import { sourceBoxForCrop } from "./collageGeometry";
 import { cutoutCanvas } from "./cutoutImages";
 import { drawGrain } from "./paperGrain";
+import { resolveScrapImageSrc } from "@movement/utils/scrapImageSource";
 import { headingDisplayFontSize } from "@movement/components/ScrapCollage";
 import {
   buttonBodyMarkup,
@@ -161,7 +162,7 @@ async function pieceImage(
       // from the parameters the collage stored.
       return piece.cutout
         ? cutoutCanvas(scrap.src, piece.cutout)
-        : loadRemoteImage(scrap.src);
+        : loadRemoteImage(await resolveScrapImageSrc(scrap.src));
     case "cursor":
       return loadRemoteImage(scrap.url);
     case "svg-icon":

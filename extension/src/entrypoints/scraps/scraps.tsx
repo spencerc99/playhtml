@@ -21,6 +21,13 @@ import { CollageStudio } from "./CollageStudio";
 import { CollageHistory } from "./CollageHistory";
 import { COLLAGE_STUDIO_STYLES } from "./collageStudioStyles";
 import type { CollageRecord } from "./collageRecord";
+import {
+  inBackground,
+  keepCollageImages,
+  serveLocalScrapImages,
+} from "./localScrapImages";
+
+serveLocalScrapImages();
 
 interface ScrapRecordBase {
   sources?: ScrapSource[];
@@ -383,6 +390,7 @@ export function ScrapsPage() {
             <CollageHistory
               revision={savedRevision}
               onEdit={(record) => {
+                inBackground(keepCollageImages(record));
                 setEditing(record);
                 setStudioSession((value) => value + 1);
                 setStudioOpen(true);
@@ -398,7 +406,10 @@ export function ScrapsPage() {
               key={studioSession}
               scraps={items}
               editing={editing}
-              onSaved={() => setSavedRevision((value) => value + 1)}
+              onSaved={(record) => {
+                inBackground(keepCollageImages(record));
+                setSavedRevision((value) => value + 1);
+              }}
               onLeave={() => {
                 setEditing(null);
                 setStudioOpen(false);
