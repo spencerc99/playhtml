@@ -612,6 +612,9 @@ try {
         ),
         more: root.querySelector(".collage-back__more")?.textContent ?? null,
         title: root.querySelector(".collage-back__title").textContent,
+        fontSize: parseFloat(
+          getComputedStyle(root.querySelector(".collage-back__list")).fontSize,
+        ),
         overflows: [...root.querySelectorAll(".collage-back__source, .collage-back__more")]
           .filter((node) => {
             const line = node.getBoundingClientRect();
@@ -639,22 +642,57 @@ try {
     assert.equal(back.overflows, 0, "no line may run off the back");
     assert.equal(back.spills, 0, "no line may run into the next column");
     assert.equal(back.title, title);
+    const pieces = (count) => `${count} piece${count === 1 ? "" : "s"}`;
+    // A long list is written one line per site, most pieces first.
+    const bySite = expected.length > 14;
+    let wanted;
+    if (bySite) {
+      const sites = new Map();
+      for (const pageEntry of expected) {
+        const site = sites.get(pageEntry.domain) ?? { pages: [], count: 0 };
+        site.pages.push(pageEntry);
+        site.count += pageEntry.count;
+        sites.set(pageEntry.domain, site);
+      }
+      wanted = [...sites.entries()]
+        .sort(([a, x], [b, y]) => y.count - x.count || a.localeCompare(b))
+        .map(([domain, site]) => ({
+          domain,
+          title: site.pages.length === 1 ? site.pages[0].title.trim() : "",
+          seen:
+            site.pages.length === 1
+              ? pieces(site.count)
+              : `${pieces(site.count)} · ${site.pages.length} pages`,
+        }));
+    } else {
+      wanted = expected.map((pageEntry) => ({
+        domain: pageEntry.domain,
+        title: pageEntry.title.trim(),
+        seenEnd: pieces(pageEntry.count),
+      }));
+    }
     const listed = back.more
       ? back.lines.length + Number(back.more.match(/\d+/)[0])
       : back.lines.length;
-    assert.equal(listed, expected.length, "every source page is accounted for");
+    assert.equal(listed, wanted.length, "every source is accounted for");
+    if (back.more) {
+      assert.ok(back.more.includes(bySite ? "more site" : "more page"));
+    }
     back.lines.forEach((line, index) => {
-      assert.equal(line.domain, expected[index].domain);
-      assert.equal(line.title, expected[index].title.trim());
-      assert.ok(
-        line.seen.startsWith("first seen ") &&
-          line.seen.endsWith(
-            `${expected[index].count} piece${expected[index].count === 1 ? "" : "s"}`,
-          ),
-        `line ${index} should say when it was seen and how much, got "${line.seen}"`,
-      );
+      assert.equal(line.domain, wanted[index].domain);
+      assert.equal(line.title, wanted[index].title);
+      if (bySite) {
+        assert.equal(line.seen, wanted[index].seen);
+      } else {
+        assert.ok(
+          line.seen.startsWith("first seen ") &&
+            line.seen.endsWith(wanted[index].seenEnd),
+          `line ${index} should say when it was seen and how much, got "${line.seen}"`,
+        );
+      }
     });
-    return back;
+    assert.equal(back.fontSize >= 12, true, "the list is never under 12px");
+    return { ...back, bySite, pages: expected.length };
   }
 
   /** Width and height from a PNG's header. */
@@ -668,6 +706,19 @@ try {
    * the back carrying dark writing and a faint mirror of the front.
    */
   async function exportBothSides(title, prefix = "22") {
+    // Where the maker's mark sits on the back, in frame units, measured by
+    // layout offsets so the turned sheet's mirroring does not matter.
+    const markBox = await page.evaluate(() => {
+      const icon = document.querySelector(".collage-back__maker img");
+      const sheet = document.querySelector(".collage-back__sheet");
+      let x = 0;
+      let y = 0;
+      for (let node = icon; node && node !== sheet; node = node.offsetParent) {
+        x += node.offsetLeft;
+        y += node.offsetTop;
+      }
+      return { x, y, width: icon.offsetWidth, height: icon.offsetHeight };
+    });
     const downloads = [];
     const collect = (download) => downloads.push(download);
     page.on("download", collect);
@@ -695,7 +746,7 @@ try {
     assert.deepEqual(backSize, frontSize, "both sides are the same size");
 
     const pixels = await page.evaluate(
-      async ({ front, back }) => {
+      async ({ front, back, markBox }) => {
         const decode = async (base64) => {
           const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
           const bitmap = await createImageBitmap(new Blob([bytes]));
@@ -755,18 +806,59 @@ try {
           return sxy / Math.sqrt(sxx * syy);
         };
         const spread = Math.max(...backBlocks) - Math.min(...backBlocks);
+        // The mark's corners should read as the paper beside it, not as a
+        // square of the engraving's own cream.
+        const scale = b.width / 1500;
+        const patch = (fx, fy) => {
+          let sum = 0;
+          let count = 0;
+          for (let y = fy; y < fy + 4; y += 0.5) {
+            for (let x = fx; x < fx + 4; x += 0.5) {
+              const px = Math.round(x * scale);
+              const py = Math.round(y * scale);
+              sum += lum(b.data, (py * b.width + px) * 4);
+              count += 1;
+            }
+          }
+          return sum / count;
+        };
+        const { x, y, width, height } = markBox;
+        // The engraving's arrow reaches its top-left corner and the wrist its
+        // bottom-right, so the two corners of bare paper are the ones read.
+        const corners = [
+          patch(x + width - 5, y + 1),
+          patch(x + 1, y + height - 5),
+        ];
+        const paperBeside = [
+          patch(x - 16, y + 1),
+          patch(x - 16, y + height - 5),
+          patch(x - 24, y + height / 2 - 2),
+        ];
+        const paperLum =
+          paperBeside.reduce((a, v) => a + v, 0) / paperBeside.length;
         return {
           darkPixels: dark,
           blockSpread: Math.round(spread * 10) / 10,
           mirroredCorrelation: correlation(backBlocks, mirrored),
           straightCorrelation: correlation(backBlocks, straight),
+          markCornerShift: Math.max(
+            ...corners.map((value) => Math.abs(value - paperLum)),
+          ),
         };
       },
-      { front: front.toString("base64"), back: back.toString("base64") },
+      {
+        front: front.toString("base64"),
+        back: back.toString("base64"),
+        markBox,
+      },
     );
     const summary = { names, size: frontSize, exportMs, ...pixels };
     assert.ok(pixels.darkPixels > 2000, "the back should carry dark writing");
     assert.ok(pixels.blockSpread > 2, "the back should not be flat paper");
+    assert.ok(
+      pixels.markCornerShift < 3,
+      `the mark's corners should match the paper, not the icon's cream (off by ${pixels.markCornerShift})`,
+    );
     assert.ok(
       pixels.mirroredCorrelation > pixels.straightCorrelation &&
         pixels.mirroredCorrelation > 0.05,
@@ -1832,6 +1924,39 @@ try {
   await page.keyboard.press("t");
   await page.waitForTimeout(400);
   await page.emulateMedia({ reducedMotion: "no-preference" });
+
+  // On the soft black paper the back is written in a light ink, so it still
+  // reads; the page's dark ink would disappear into it.
+  const choosePaper = async (tone) => {
+    const paperButton = page.getByRole("button", { name: "paper", exact: true });
+    await paperButton.click();
+    await page.waitForSelector(".collage-paper-popover");
+    await page.getByRole("button", { name: `Paper: ${tone}` }).click();
+    await paperButton.click();
+    await page.waitForTimeout(300);
+  };
+  await choosePaper("soft black");
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press("t");
+  await page.waitForTimeout(900);
+  await assertTurnedOver("the soft black paper");
+  await page.waitForSelector(".collage-back__bleed", { timeout: 20_000 });
+  await page.waitForTimeout(2500);
+  const darkInk = await page.evaluate(() => ({
+    domain: getComputedStyle(document.querySelector(".collage-back__domain"))
+      .color,
+    title: getComputedStyle(document.querySelector(".collage-back__title"))
+      .color,
+    paper: getComputedStyle(document.querySelector(".collage-back__paper"))
+      .backgroundColor,
+  }));
+  console.log("the back on soft black paper:", darkInk);
+  assert.equal(darkInk.domain, "rgb(245, 240, 232)");
+  assert.equal(darkInk.title, "rgb(245, 240, 232)");
+  await page.screenshot({ path: `${evidence}/25-back-dark-paper.png` });
+  await page.keyboard.press("t");
+  await page.waitForTimeout(900);
+  await choosePaper("scrap paper");
 
   // Export hands over both sides, the same size, and the back really carries
   // the writing and the front showing through.
