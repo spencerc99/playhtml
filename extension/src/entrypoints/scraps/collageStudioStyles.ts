@@ -1249,6 +1249,11 @@ export const COLLAGE_STUDIO_STYLES = `
     gap: 6px;
   }
 
+  .collage-history__start-actions {
+    display: flex;
+    gap: 8px;
+  }
+
   .collage-history__tagline {
     margin: 0;
     font-family: "Lora", Georgia, serif;

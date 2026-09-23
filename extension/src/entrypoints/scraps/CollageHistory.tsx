@@ -1,7 +1,7 @@
 // ABOUTME: Browse saved collages: each card is its baked thumbnail, title, date and size.
-// ABOUTME: A card opens its collage; small glyph buttons duplicate it or delete it after a confirmation.
+// ABOUTME: A card opens its collage; glyph buttons duplicate it, save it to a file, or delete it; a file can be opened as a collage.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   duplicateCollage,
   isUnreadable,
@@ -17,6 +17,11 @@ import {
   loadCollage,
   saveCollage,
 } from "./collageStore";
+import {
+  collageFileName,
+  encodeCollageFile,
+  importCollageFile,
+} from "./collageFile";
 import { paperBackground } from "./paperGrain";
 import { GLYPHS } from "./PieceActions";
 
@@ -46,6 +51,7 @@ export function CollageHistory({
   const [entries, setSummaries] = useState<CollageEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const filePicker = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,6 +127,52 @@ export function CollageHistory({
   const newest = newestCollage(readable);
   const newestPreview = newest ? previewUrls.get(newest.id) : undefined;
 
+  /** Downloads one collage as a self-contained file to open elsewhere. */
+  const saveFile = async (id: string) => {
+    try {
+      const record = await loadCollage(id);
+      if (!record) {
+        setError("that collage could not be opened to save as a file");
+        return;
+      }
+      const text = await encodeCollageFile(record);
+      const url = URL.createObjectURL(
+        new Blob([text], { type: "application/json" }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = collageFileName(record.title);
+      link.click();
+      URL.revokeObjectURL(url);
+      setError(null);
+    } catch (saveError) {
+      setError(
+        `could not save that collage as a file — ${saveError instanceof Error ? saveError.message : String(saveError)}`,
+      );
+    }
+  };
+
+  /**
+   * Brings a collage file in as a collage of its own. It goes to the top of
+   * the list straight away, like a duplicate, so it is there to open the
+   * moment it lands; it keeps the dates it was made with, so a later reload
+   * files it among the rest by when it was last changed.
+   */
+  const openFile = async (file: File) => {
+    try {
+      const record = importCollageFile(await file.text());
+      await saveCollage(record);
+      setError(null);
+      setSummaries((current) =>
+        current ? [summarizeCollage(record), ...current] : current,
+      );
+    } catch (openError) {
+      setError(
+        `could not open ${file.name} — ${openError instanceof Error ? openError.message : String(openError)}`,
+      );
+    }
+  };
+
   const remove = async (id: string) => {
     await deleteCollage(id);
     setConfirmingId(null);
@@ -152,9 +204,31 @@ export function CollageHistory({
           <p className="collage-history__tagline">
             turn browsing artifacts into self-portrait collages
           </p>
-          <button type="button" className="collage-action" onClick={onStartNew}>
-            new collage
-          </button>
+          <div className="collage-history__start-actions">
+            <button
+              type="button"
+              className="collage-action"
+              onClick={() => filePicker.current?.click()}
+            >
+              open file
+            </button>
+            <button type="button" className="collage-action" onClick={onStartNew}>
+              new collage
+            </button>
+          </div>
+          <input
+            ref={filePicker}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            aria-label="collage file to open"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              // Cleared so picking the same file again still opens it again.
+              event.currentTarget.value = "";
+              if (file) void openFile(file);
+            }}
+          />
         </div>
       </header>
 
@@ -288,8 +362,16 @@ export function CollageHistory({
                     >
                       {GLYPHS.duplicate}
                     </button>
-                    {/* Room for one more glyph, e.g. saving the collage as a
-                        file, before the delete at the row's far end. */}
+                    <button
+                      type="button"
+                      className="collage-glyph"
+                      title="save file"
+                      aria-label={`Save ${name} as a file`}
+                      onClick={() => void saveFile(summary.id)}
+                    >
+                      {GLYPHS.saveFile}
+                    </button>
+                    {/* Keeps delete at the row's far end, away from the rest. */}
                     <span className="collage-card__actions-gap" />
                     <button
                       type="button"
