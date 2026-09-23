@@ -41,14 +41,22 @@ export interface BackLayout {
   columns: 1 | 2;
   /** How many lines each column holds. */
   rows: number;
-  /** How many source pages get a line of their own. */
+  /** How many entries get a line of their own. */
   shown: number;
-  /** How many pages are folded into the closing "and N more pages" line. */
+  /** How many entries are folded into the closing "and N more" line. */
   more: number;
 }
 
-/** Source line sizes, largest first; the list steps down until it fits. */
-export const SOURCE_TYPE_STEPS = [18, 16, 14, 12, 11, 10] as const;
+/**
+ * Source line sizes, largest first; the list steps down until it fits. The
+ * smallest is still easy to read at the frame's own size.
+ */
+export const SOURCE_TYPE_STEPS = [18, 16, 14, 13, 12] as const;
+/**
+ * Past this many pages the back lists sites rather than pages, so a long
+ * collage reads as a short ledger instead of a wall of cut-off titles.
+ */
+export const GROUP_BY_SITE_AFTER = 14;
 /** Line spacing of a source line, as a multiple of its type size. */
 export const SOURCE_LINE_HEIGHT = 1.9;
 /** Frame units the "sources" label takes above the list. */
@@ -58,17 +66,17 @@ export const SOURCE_HEADER = 44;
 const MARGIN = 0.07;
 
 /**
- * Where everything on the back goes. The source list takes the largest type
- * step that fits it in one column, then the smallest step across two columns,
- * and past that the last line becomes "and N more pages", so the writing
- * never runs off the frame.
+ * Where everything on the back goes. The list takes the largest type step
+ * that fits it in one column, then the smallest step across two columns, and
+ * past that the last line becomes "and N more", so the writing never runs off
+ * the frame.
  */
 export function backLayout(
   frame: CollageFrame,
   sourceCount: number,
 ): BackLayout {
   if (!Number.isInteger(sourceCount) || sourceCount < 0) {
-    throw new Error(`A collage back cannot list ${sourceCount} sources`);
+    throw new Error(`A collage back cannot list ${sourceCount} lines`);
   }
   const across = frame.width >= frame.height;
   const pad = Math.round(Math.min(frame.width, frame.height) * MARGIN);
@@ -220,23 +228,110 @@ function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-/** The words on one source line, in the order they are written. */
-export interface SourceLineWords {
+/** One line of the source list, in the order its words are written. */
+export interface BackLine {
+  /** The page whose favicon marks the line. */
+  faviconPage: string;
   domain: string;
+  /** The page title, or empty when the line stands for several pages. */
   title: string;
-  seen: string;
+  /** When and how much: the words at the line's end. */
+  meta: string;
 }
 
-export function sourceLineWords(source: CollageProvenance): SourceLineWords {
-  return {
-    domain: source.domain,
-    title: source.pageTitle.trim(),
-    seen: `first seen ${backDate(source.firstSeenAt)} · ${plural(
-      source.pieceCount,
-      "piece",
-      "pieces",
-    )}`,
-  };
+export interface BackList {
+  /** Whether the list names sites, each gathering its pages, or single pages. */
+  bySite: boolean;
+  lines: BackLine[];
+  /** Distinct sites across every source page. */
+  siteCount: number;
+}
+
+/**
+ * The source list as written on the back. A short collage lists each page
+ * with its title and when it was first seen; a long one lists each site once,
+ * most pieces first, with a title only where the site gave a single page.
+ */
+export function backList(sources: readonly CollageProvenance[]): BackList {
+  const sites = new Map<
+    string,
+    { pages: CollageProvenance[]; pieceCount: number }
+  >();
+  for (const source of sources) {
+    const site = sites.get(source.domain);
+    if (site) {
+      site.pages.push(source);
+      site.pieceCount += source.pieceCount;
+    } else {
+      sites.set(source.domain, {
+        pages: [source],
+        pieceCount: source.pieceCount,
+      });
+    }
+  }
+
+  if (sources.length <= GROUP_BY_SITE_AFTER) {
+    return {
+      bySite: false,
+      siteCount: sites.size,
+      lines: sources.map((source) => ({
+        faviconPage: source.pageUrl,
+        domain: source.domain,
+        title: source.pageTitle.trim(),
+        meta: `first seen ${backDate(source.firstSeenAt)} · ${plural(
+          source.pieceCount,
+          "piece",
+          "pieces",
+        )}`,
+      })),
+    };
+  }
+
+  const lines = [...sites.entries()]
+    .sort(
+      ([domainA, a], [domainB, b]) =>
+        b.pieceCount - a.pieceCount || domainA.localeCompare(domainB),
+    )
+    .map(([domain, site]) => {
+      const single = site.pages.length === 1;
+      // The favicon comes from whichever of the site's pages stored one.
+      const marked =
+        site.pages.find((page) => page.faviconUrl) ?? site.pages[0];
+      const pieces = plural(site.pieceCount, "piece", "pieces");
+      return {
+        faviconPage: marked.pageUrl,
+        domain,
+        title: single ? site.pages[0].pageTitle.trim() : "",
+        meta: single
+          ? pieces
+          : `${pieces} · ${plural(site.pages.length, "page", "pages")}`,
+      };
+    });
+  return { bySite: true, siteCount: sites.size, lines };
+}
+
+/**
+ * When the collage's material was first seen, as one span: "Aug 20 to Sep 22,
+ * 2026", or a single date when it all came from one day. Null with no sources.
+ */
+export function seenRange(
+  sources: readonly CollageProvenance[],
+): string | null {
+  if (sources.length === 0) return null;
+  const times = sources.map((source) => source.firstSeenAt);
+  const first = new Date(Math.min(...times));
+  const last = new Date(Math.max(...times));
+  const firstDay = backDate(first.getTime());
+  const lastDay = backDate(last.getTime());
+  if (firstDay === lastDay) return firstDay;
+  if (first.getFullYear() === last.getFullYear()) {
+    const opening = first.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
+    return `${opening} to ${lastDay}`;
+  }
+  return `${firstDay} to ${lastDay}`;
 }
 
 /** The lines written under the title, like the address on a postcard. */
@@ -248,13 +343,18 @@ export function backDetailLines(content: CollageBackContent): string[] {
   ) {
     lines.push(`changed ${backDate(content.changedAt)}`);
   }
+  const range = seenRange(content.sources);
+  if (range) lines.push(`pieces first seen ${range}`);
   lines.push(plural(content.pieceCount, "piece", "pieces"));
   lines.push(content.formatLabel);
   return lines;
 }
 
-export function morePagesLine(count: number): string {
-  return `and ${plural(count, "more page", "more pages")}`;
+/** The closing line for what did not fit, counted in what the list names. */
+export function moreLine(count: number, bySite: boolean): string {
+  return bySite
+    ? `and ${plural(count, "more site", "more sites")}`
+    : `and ${plural(count, "more page", "more pages")}`;
 }
 
 /**
@@ -368,7 +468,8 @@ export interface CollageBackMarkupOptions {
 export function collageBackMarkup(options: CollageBackMarkupOptions): string {
   const { frame, paper, content, favicons, bleed, markIcon } = options;
   const ink = backInk(paper.color);
-  const layout = backLayout(frame, content.sources.length);
+  const list = backList(content.sources);
+  const layout = backLayout(frame, list.lines.length);
   const across = layout.orientation === "across";
   const titleSize = Math.round(
     Math.min(frame.width, frame.height) * (across ? 0.034 : 0.04),
@@ -404,6 +505,11 @@ export function collageBackMarkup(options: CollageBackMarkupOptions): string {
     .map(
       (line) =>
         `<p class="collage-back__detail" style="${style([
+          // The span of dates is the longest line; on a tall back it takes
+          // the full width rather than one of the two short columns.
+          ...(line.startsWith("pieces first seen")
+            ? ["grid-column:1 / -1"]
+            : []),
           "margin:0",
           `padding-bottom:${Math.round(detailSize * 0.5)}px`,
           `border-bottom:1px solid ${ink.rule}`,
@@ -419,7 +525,9 @@ export function collageBackMarkup(options: CollageBackMarkupOptions): string {
 
   // Each half of the mark carries its own opacity: an opacity on a shared
   // wrapper would isolate the engraving from the paper it multiplies into.
+  // The mark sits at the foot of the title side, away from the words above.
   const mark = `<div class="collage-back__maker" style="${style([
+    "margin-top:auto",
     "display:flex",
     "align-items:center",
     "justify-content:flex-end",
@@ -452,7 +560,6 @@ export function collageBackMarkup(options: CollageBackMarkupOptions): string {
     `-webkit-line-clamp:${across ? 5 : 2}`,
     "overflow:hidden",
   ])}">${escapeXml(title || "untitled collage")}</p><div style="${style([
-    "margin-top:auto",
     "display:grid",
     // A tall back's title side is short, so its lines sit two abreast.
     `grid-template-columns:${across ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))"}`,
@@ -460,9 +567,8 @@ export function collageBackMarkup(options: CollageBackMarkupOptions): string {
     `row-gap:${Math.round(detailSize * 0.9)}px`,
   ])}">${detailLines}</div>${mark}</div>`;
 
-  const lines = content.sources.slice(0, layout.shown).map((source) => {
-    const words = sourceLineWords(source);
-    const favicon = favicons.get(source.pageUrl) ?? "pending";
+  const lines = list.lines.slice(0, layout.shown).map((line) => {
+    const favicon = favicons.get(line.faviconPage) ?? "pending";
     return `<div class="collage-back__source" style="${style([
       "display:flex",
       "align-items:center",
@@ -471,19 +577,19 @@ export function collageBackMarkup(options: CollageBackMarkupOptions): string {
       "white-space:nowrap",
     ])}">${faviconMarkup(favicon, ink)}<span class="collage-back__domain" style="${ellipsized([
       // The page title gives way first; a long domain only once it is gone,
-      // so the when-and-how-much never runs into the next column.
+      // so the words at the end never run into the next column.
       "flex:0 1 auto",
       "min-width:0",
-      "max-width:38%",
+      "max-width:45%",
       `color:${ink.ink}`,
-    ])}">${escapeXml(words.domain)}</span><span class="collage-back__page" style="${ellipsized([
+    ])}">${escapeXml(line.domain)}</span><span class="collage-back__page" style="${ellipsized([
       "flex:1 1000 0",
       "min-width:0",
       `color:${ink.muted}`,
-    ])}">${escapeXml(words.title)}</span><span class="collage-back__seen" style="${style([
+    ])}">${escapeXml(line.title)}</span><span class="collage-back__seen" style="${style([
       "flex:none",
       `color:${ink.muted}`,
-    ])}">${escapeXml(words.seen)}</span></div>`;
+    ])}">${escapeXml(line.meta)}</span></div>`;
   });
   if (layout.more > 0) {
     lines.push(
@@ -491,14 +597,17 @@ export function collageBackMarkup(options: CollageBackMarkupOptions): string {
         "display:flex",
         "align-items:center",
         `color:${ink.muted}`,
-      ])}">${escapeXml(morePagesLine(layout.more))}</div>`,
+      ])}">${escapeXml(moreLine(layout.more, list.bySite))}</div>`,
     );
   }
 
+  const pages = plural(content.sources.length, "page", "pages");
   const heading =
     content.sources.length === 0
       ? "sources · nothing placed yet"
-      : `sources · ${plural(content.sources.length, "page", "pages")}`;
+      : list.bySite
+        ? `sources · ${pages} from ${plural(list.siteCount, "site", "sites")}`
+        : `sources · ${pages}`;
   const sourcesBlock = `<div class="collage-back__sources" style="${style(
     box(layout.sources),
   )}"><p style="${style([

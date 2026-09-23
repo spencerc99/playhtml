@@ -12,8 +12,10 @@ import {
   backLayout,
   collageBackDocument,
   collageBackMarkup,
-  morePagesLine,
-  sourceLineWords,
+  GROUP_BY_SITE_AFTER,
+  backList,
+  moreLine,
+  seenRange,
   type BackFavicon,
   type CollageBackContent,
 } from "../entrypoints/scraps/collageBack";
@@ -71,6 +73,13 @@ describe("backLayout", () => {
     expect(down.rule.y1).toBe(down.rule.y2);
     expect(down.details.y + down.details.height).toBeLessThan(down.rule.y1);
     expect(down.sources.y).toBeGreaterThan(down.rule.y1);
+  });
+
+  it("never writes smaller than 12 frame units", () => {
+    expect(Math.min(...SOURCE_TYPE_STEPS)).toBe(12);
+    for (let count = 0; count <= 200; count += 1) {
+      expect(backLayout(POSTCARD, count).fontSize).toBeGreaterThanOrEqual(12);
+    }
   });
 
   it("writes a short list at the largest type step", () => {
@@ -148,16 +157,110 @@ describe("backLayout", () => {
 });
 
 describe("the words on the back", () => {
-  it("writes a source line as domain, page title, and when and how much", () => {
-    const words = sourceLineWords(
-      source(2, { pieceCount: 3, pageTitle: "  A long read  " }),
+  it("lists each page with its title and when it was first seen while the list is short", () => {
+    const sources = [
+      source(1, { pieceCount: 3, pageTitle: "  A long read  " }),
+      source(2, { domain: "site1.test" }),
+    ];
+    const list = backList(sources);
+    expect(list.bySite).toBe(false);
+    expect(list.siteCount).toBe(1);
+    expect(list.lines).toEqual([
+      {
+        faviconPage: sources[0].pageUrl,
+        domain: "site1.test",
+        title: "A long read",
+        meta: `first seen ${backDate(sources[0].firstSeenAt)} · 3 pieces`,
+      },
+      {
+        faviconPage: sources[1].pageUrl,
+        domain: "site1.test",
+        title: "Page number 2",
+        meta: `first seen ${backDate(sources[1].firstSeenAt)} · 1 piece`,
+      },
+    ]);
+    expect(backList(Array.from({ length: GROUP_BY_SITE_AFTER }, (_, i) => source(i))).bySite).toBe(false);
+  });
+
+  it("gathers a long list by site, most pieces first, then by name", () => {
+    const sources: CollageProvenance[] = [];
+    // Nine pages from one shop, twelve pieces between them.
+    for (let page = 0; page < 9; page += 1) {
+      sources.push(
+        source(100 + page, {
+          domain: "homedepot.com",
+          pageUrl: `https://homedepot.com/p/${page}`,
+          pieceCount: page < 3 ? 2 : 1,
+        }),
+      );
+    }
+    sources.push(
+      source(200, { domain: "zeta.test", pageTitle: "Only page", pieceCount: 2 }),
+      source(201, { domain: "alpha.test", pageTitle: "Alpha", pieceCount: 2 }),
+      source(202, { domain: "beta.test", pageTitle: "Beta" }),
+      source(203, {
+        domain: "gamma.test",
+        pageUrl: "https://gamma.test/a",
+        faviconUrl: undefined,
+      }),
+      source(204, {
+        domain: "gamma.test",
+        pageUrl: "https://gamma.test/b",
+        faviconUrl: "https://gamma.test/icon.png",
+      }),
+      source(205, { domain: "delta.test", pageTitle: "Delta" }),
     );
-    expect(words.domain).toBe("site2.test");
-    expect(words.title).toBe("A long read");
-    expect(words.seen).toBe(
-      `first seen ${backDate(source(2).firstSeenAt)} · 3 pieces`,
+    expect(sources.length).toBeGreaterThan(GROUP_BY_SITE_AFTER);
+
+    const list = backList(sources);
+    expect(list.bySite).toBe(true);
+    expect(list.siteCount).toBe(6);
+    expect(list.lines.map((line) => line.domain)).toEqual([
+      "homedepot.com",
+      "alpha.test",
+      "gamma.test",
+      "zeta.test",
+      "beta.test",
+      "delta.test",
+    ]);
+    const [shop, alpha, gamma] = list.lines;
+    expect(shop).toMatchObject({ title: "", meta: "12 pieces · 9 pages" });
+    expect(alpha).toMatchObject({ title: "Alpha", meta: "2 pieces" });
+    // A site of several pages names none of them, and borrows its mark from
+    // whichever page stored one.
+    expect(gamma).toMatchObject({
+      title: "",
+      meta: "2 pieces · 2 pages",
+      faviconPage: "https://gamma.test/b",
+    });
+    expect(list.lines.some((line) => line.meta.includes("first seen"))).toBe(
+      false,
     );
-    expect(sourceLineWords(source(1)).seen.endsWith("1 piece")).toBe(true);
+  });
+
+  it("gives the whole collage one span of first-seen dates", () => {
+    expect(seenRange([])).toBeNull();
+    const day = Date.UTC(2026, 7, 20, 12);
+    expect(seenRange([source(1, { firstSeenAt: day })])).toBe(backDate(day));
+    const later = Date.UTC(2026, 8, 22, 12);
+    const range = seenRange([
+      source(1, { firstSeenAt: later }),
+      source(2, { firstSeenAt: day }),
+    ]);
+    expect(range?.endsWith(` to ${backDate(later)}`)).toBe(true);
+    expect(range?.startsWith(backDate(day))).toBe(false);
+    const lastYear = Date.UTC(2025, 11, 30, 12);
+    expect(
+      seenRange([
+        source(1, { firstSeenAt: lastYear }),
+        source(2, { firstSeenAt: later }),
+      ]),
+    ).toBe(`${backDate(lastYear)} to ${backDate(later)}`);
+    expect(
+      backDetailLines(
+        content([source(1, { firstSeenAt: day }), source(2, { firstSeenAt: later })]),
+      ),
+    ).toContain(`pieces first seen ${range}`);
   });
 
   it("dates the collage, counts its pieces, and names its format", () => {
@@ -183,9 +286,11 @@ describe("the words on the back", () => {
     ).toBe(false);
   });
 
-  it("says how many more pages there are", () => {
-    expect(morePagesLine(1)).toBe("and 1 more page");
-    expect(morePagesLine(12)).toBe("and 12 more pages");
+  it("says how many more pages or sites there are", () => {
+    expect(moreLine(1, false)).toBe("and 1 more page");
+    expect(moreLine(12, false)).toBe("and 12 more pages");
+    expect(moreLine(1, true)).toBe("and 1 more site");
+    expect(moreLine(7, true)).toBe("and 7 more sites");
   });
 });
 
@@ -268,7 +373,7 @@ describe("collageBackMarkup", () => {
 
   it("ends a list too long for the frame with how many more pages there are", () => {
     const sources = Array.from({ length: 150 }, (_, index) => source(index));
-    const layout = backLayout(POSTCARD, sources.length);
+    const layout = backLayout(POSTCARD, backList(sources).lines.length);
     const document = parse(
       collageBackMarkup({
         frame: POSTCARD,
@@ -283,7 +388,7 @@ describe("collageBackMarkup", () => {
       layout.shown,
     );
     expect(document.querySelector(".collage-back__more")?.textContent).toBe(
-      morePagesLine(layout.more),
+      moreLine(layout.more, true),
     );
   });
 
