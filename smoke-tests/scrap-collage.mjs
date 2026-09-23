@@ -431,14 +431,14 @@ try {
   }
 
   async function openStudio() {
-    await page.getByRole("button", { name: "start a new one" }).click();
+    await page.getByRole("button", { name: "new collage", exact: true }).click();
     await page.waitForTimeout(900);
   }
 
   /** Gets back to the history whatever the studio is showing. */
   async function backToHistory() {
     if (await page.locator(".collage-bar").count()) {
-      await page.getByRole("button", { name: "done" }).click();
+      await page.getByRole("button", { name: "back to collages" }).click();
       await page.waitForTimeout(900);
       const leaving = page.getByRole("button", { name: "leave without saving" });
       if (await leaving.count()) {
@@ -446,7 +446,9 @@ try {
         await page.waitForTimeout(700);
       }
     }
-    await page.waitForSelector("text=start a new one", { timeout: 20_000 });
+    await page
+      .getByRole("button", { name: "new collage", exact: true })
+      .waitFor({ timeout: 20_000 });
   }
 
   // ====================================================== browse filters
@@ -978,25 +980,55 @@ try {
   );
   assert.equal(afterReload.length, 1, "autosaving must not multiply records");
 
-  // Reopen it and change something, then press done before the debounce fires.
+  // Reopen it and change something, then leave before the debounce fires.
   await page.getByRole("button", { name: "create", exact: true }).click();
   await page.waitForTimeout(600);
   await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(2500);
   await page.locator(".collage-title-input").fill("saved by leaving");
-  // Straight to done, well inside the settle window.
-  await page.getByRole("button", { name: "done" }).click();
+  // Straight back to the collages, well inside the settle window, by the one
+  // way out: the link at the stage's top-left.
+  assert.equal(
+    await page.getByRole("button", { name: "done" }).count(),
+    0,
+    "the studio has no done button any more",
+  );
+  const leaveBox = await page
+    .getByRole("button", { name: "back to collages" })
+    .boundingBox();
+  const toolsBox = await page.locator(".collage-tools").boundingBox();
+  const stageBox = await page.locator(".collage-frame-area__stage").boundingBox();
+  console.log("the way back:", { leaveBox, toolsBox, stageBox });
+  assert.ok(
+    leaveBox.x < toolsBox.x &&
+      leaveBox.x - stageBox.x < 40 &&
+      leaveBox.y - stageBox.y < 40,
+    "the way back sits leftmost in the stage's top row",
+  );
+  assert.ok(
+    Math.abs(
+      leaveBox.y + leaveBox.height / 2 - (toolsBox.y + toolsBox.height / 2),
+    ) < 4,
+    "the way back shares the tools' row",
+  );
+  assert.equal(
+    (
+      await page.getByRole("button", { name: "back to collages" }).textContent()
+    ).trim(),
+    "← collages",
+  );
+  await page.getByRole("button", { name: "back to collages" }).click();
   await page.waitForTimeout(3000);
   stored = await storedCollages();
   console.log("after done-before-debounce:", stored);
   assert.equal(
     stored.find((row) => row.id === collageId).title,
     "saved by leaving",
-    "pressing done must flush the pending change",
+    "leaving must flush the pending change",
   );
   assert.ok(
-    await page.getByRole("button", { name: "start a new one" }).isVisible(),
-    "a healthy autosave means done leaves with no prompt",
+    await page.getByRole("button", { name: "new collage", exact: true }).isVisible(),
+    "a healthy autosave means leaving asks nothing",
   );
   await page.screenshot({ path: `${evidence}/03-autosave-flushed-on-done.png` });
 
@@ -1653,8 +1685,8 @@ try {
   console.log("bottom bar buttons:", barButtons);
   assert.deepEqual(
     barButtons,
-    ["export png", "done"],
-    "the bottom bar should carry nothing but export and done",
+    ["export png"],
+    "the bottom bar should carry nothing but export",
   );
   assert.equal(
     await page.locator(".collage-bar .collage-glyph").count(),
@@ -1806,6 +1838,61 @@ try {
     .filter({ hasText: "one of each" })
     .first();
   await page.screenshot({ path: `${evidence}/13-history-cards.png` });
+  // The heading names the drawer and sums up exactly what is stored.
+  assert.equal(
+    (await page.locator(".collage-history__heading").textContent()).trim(),
+    "scrap collages",
+  );
+  const drawerTotals = await page.evaluate(async () => {
+    const db = await new Promise((ok, bad) => {
+      const r = indexedDB.open("scrap_collages_db");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => bad(r.error);
+    });
+    try {
+      const rows = await new Promise((ok, bad) => {
+        const r = db.transaction("collages").objectStore("collages").getAll();
+        r.onsuccess = () => ok(r.result);
+        r.onerror = () => bad(r.error);
+      });
+      const newest = rows.reduce((a, b) => (b.createdAt > a.createdAt ? b : a));
+      return {
+        collages: rows.length,
+        pieces: rows.reduce((total, row) => total + row.pieces.length, 0),
+        pages: new Set(
+          rows.flatMap((row) => row.pieces.map((piece) => piece.scrap.pageUrl)),
+        ).size,
+        day: new Date(newest.createdAt).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+        }),
+      };
+    } finally {
+      db.close();
+    }
+  });
+  const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+  const summaryLine = (
+    await page.locator(".collage-history__summary").textContent()
+  ).trim();
+  console.log("history summary:", summaryLine, drawerTotals);
+  assert.equal(
+    summaryLine,
+    `${plural(drawerTotals.collages, "collage", "collages")} · ${plural(
+      drawerTotals.pieces,
+      "piece",
+      "pieces",
+    )} from ${plural(drawerTotals.pages, "page", "pages")} · last one ${drawerTotals.day}`,
+  );
+  assert.equal(
+    (await page.locator(".collage-history__tagline").textContent()).trim(),
+    "turn browsing artifacts into self-portrait collages",
+  );
+  assert.equal(
+    await page.locator(".collage-history__scrap img").count(),
+    1,
+    "the scrap carries the newest collage's picture",
+  );
   assert.equal(
     await page.getByRole("button", { name: "sources" }).count(),
     0,

@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
 import "@fontsource/atkinson-hyperlegible/latin-400.css";
 import "@fontsource/atkinson-hyperlegible/latin-700.css";
+import "@fontsource/lora/latin-400-italic.css";
 import "@fontsource/lora/latin-600.css";
 import "@fontsource/lora/latin-700.css";
 import type { ScrapSource } from "@movement/utils/scrapPhotoGroups";
