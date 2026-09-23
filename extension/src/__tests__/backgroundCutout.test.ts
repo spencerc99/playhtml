@@ -5,12 +5,16 @@ import { describe, expect, it } from "vitest";
 import {
   applyMaskAlpha,
   borderSamples,
+  cropPixelRegion,
   edgeColorMask,
   featherMask,
+  maskPositionPercent,
   parseCutout,
+  regionPlacement,
   scaleMask,
   workingSize,
   type Bitmap,
+  type PixelRegion,
 } from "../entrypoints/scraps/backgroundCutout";
 
 type Rgb = [number, number, number];
@@ -168,6 +172,116 @@ describe("edgeColorMask", () => {
   it("removes everything when the tolerance covers the whole cube", () => {
     const bitmap = bitmapOf(["WK", "KW"], PALETTE);
     expect([...edgeColorMask(bitmap, 1)]).toEqual([0, 0, 0, 0]);
+  });
+});
+
+/** Copies out the pixels of a region, the way the cutout draws only its crop. */
+function regionBitmap(bitmap: Bitmap, region: PixelRegion): Bitmap {
+  const data = new Uint8ClampedArray(region.width * region.height * 4);
+  for (let y = 0; y < region.height; y += 1) {
+    const from = ((region.y + y) * bitmap.width + region.x) * 4;
+    data.set(
+      bitmap.data.subarray(from, from + region.width * 4),
+      y * region.width * 4,
+    );
+  }
+  return { width: region.width, height: region.height, data };
+}
+
+describe("cutting out a cropped piece", () => {
+  // A busy red surround, with a subject on a small white backdrop in the
+  // middle: the crop keeps only the white backdrop and the subject.
+  const picture = bitmapOf(
+    [
+      "RRRRRRRR",
+      "RWWWWWWR",
+      "RWWKKWWR",
+      "RWWKKWWR",
+      "RWWWWWWR",
+      "RRRRRRRR",
+    ],
+    PALETTE,
+  );
+  const crop = { x: 1 / 8, y: 1 / 6, width: 6 / 8, height: 4 / 6 };
+
+  it("keeps the small backdrop when the whole picture's border seeds the flood", () => {
+    expect(maskRows(edgeColorMask(picture, 0.1), 8)).toEqual([
+      "........",
+      ".######.",
+      ".######.",
+      ".######.",
+      ".######.",
+      "........",
+    ]);
+  });
+
+  it("removes the small backdrop when the crop's own border seeds the flood", () => {
+    const region = cropPixelRegion(crop, picture.width, picture.height);
+    expect(region).toEqual({ x: 1, y: 1, width: 6, height: 4 });
+    expect(maskRows(edgeColorMask(regionBitmap(picture, region), 0.1), 6)).toEqual([
+      "......",
+      "..##..",
+      "..##..",
+      "......",
+    ]);
+  });
+});
+
+describe("cropPixelRegion", () => {
+  it("covers the whole image for a full crop", () => {
+    expect(
+      cropPixelRegion({ x: 0, y: 0, width: 1, height: 1 }, 640, 480),
+    ).toEqual({ x: 0, y: 0, width: 640, height: 480 });
+  });
+
+  it("snaps edges that land a hair off a pixel boundary", () => {
+    expect(
+      cropPixelRegion({ x: 0.1, y: 0.2, width: 0.7, height: 0.6 }, 10, 10),
+    ).toEqual({ x: 1, y: 2, width: 7, height: 6 });
+  });
+
+  it("grows outward to whole pixels so nothing the crop shows is left out", () => {
+    expect(
+      cropPixelRegion({ x: 0.15, y: 0, width: 0.5, height: 1 }, 10, 4),
+    ).toEqual({ x: 1, y: 0, width: 6, height: 4 });
+  });
+
+  it("keeps at least one pixel for a sliver of a crop", () => {
+    expect(
+      cropPixelRegion({ x: 0.5, y: 0.5, width: 0.001, height: 0.001 }, 10, 10),
+    ).toEqual({ x: 5, y: 5, width: 1, height: 1 });
+  });
+
+  it("refuses a crop with no area", () => {
+    expect(() =>
+      cropPixelRegion({ x: 0, y: 0, width: 0, height: 1 }, 10, 10),
+    ).toThrow(/no area/);
+  });
+});
+
+describe("regionPlacement", () => {
+  it("reports the region as fractions of its source", () => {
+    expect(regionPlacement({ x: 1, y: 2, width: 7, height: 6 }, 10, 8)).toEqual({
+      x: 0.1,
+      y: 0.25,
+      width: 0.7,
+      height: 0.75,
+    });
+  });
+});
+
+describe("maskPositionPercent", () => {
+  it("is zero for a mask that fills the element", () => {
+    expect(maskPositionPercent(0, 1)).toBe(0);
+  });
+
+  it("puts a half-size mask flush right at 100%", () => {
+    expect(maskPositionPercent(0.5, 0.5)).toBeCloseTo(100);
+  });
+
+  it("resolves against the space left over once the mask is sized", () => {
+    // A quarter-size mask starting a quarter in: 0.25 / 0.75 of the slack.
+    expect(maskPositionPercent(0.25, 0.25)).toBeCloseTo(100 / 3);
   });
 });
 

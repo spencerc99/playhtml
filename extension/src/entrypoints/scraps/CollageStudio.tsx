@@ -22,6 +22,7 @@ import {
   isFullCrop,
   resizeFromCorner,
   rotationToPointer,
+  sameCrop,
   scaleAboutCenter,
   scaleFromPointer,
   snapDegrees,
@@ -34,8 +35,9 @@ import {
 import {
   clearCrop,
   collageProvenance,
-  composeCropOnto,
+  commitCropSession,
   createCollageId,
+  cropSessionStart,
   createPieceId,
   movePieceBackward,
   movePieceForward,
@@ -540,7 +542,7 @@ export function CollageStudio({
     setTransform(null);
     setCrop({
       pieceId: selected.id,
-      crop: { ...FULL_CROP },
+      crop: cropSessionStart(selected),
       before: selected.crop,
     });
   }, [selected]);
@@ -552,8 +554,8 @@ export function CollageStudio({
   const commitCrop = useCallback(() => {
     if (!crop) return;
     const target = pieces.find((piece) => piece.id === crop.pieceId);
-    if (target && !isFullCrop(crop.crop)) {
-      editPiece(crop.pieceId, (piece) => composeCropOnto(piece, crop.crop));
+    if (target && !sameCrop(target.crop, crop.crop)) {
+      editPiece(crop.pieceId, (piece) => commitCropSession(piece, crop.crop));
     }
     setCrop(null);
   }, [crop, editPiece, pieces]);

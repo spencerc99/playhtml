@@ -3,7 +3,7 @@
 
 import type { ScrapSnapshot } from "./collageRecord";
 import type { CollageFrame, CollagePiece } from "./collageRecord";
-import { sourceBoxForCrop } from "./collageGeometry";
+import { sourceBoxForCrop, type CropFraction } from "./collageGeometry";
 import { cutoutCanvas } from "./cutoutImages";
 import { drawGrain } from "./paperGrain";
 import { headingDisplayFontSize } from "@movement/components/ScrapCollage";
@@ -149,27 +149,41 @@ function pieceLabel(scrap: ScrapSnapshot): string {
   }
 }
 
+/**
+ * What a piece draws. Most pieces draw their whole source; a cut-out image
+ * draws only its cropped region, at `placement` within the source box.
+ */
+interface PieceImage {
+  image: CanvasImageSource;
+  placement?: CropFraction;
+}
+
 async function pieceImage(
   piece: CollagePiece,
   sourceWidth: number,
   sourceHeight: number,
-): Promise<CanvasImageSource> {
+): Promise<PieceImage> {
   const { scrap } = piece;
   switch (scrap.kind) {
-    case "image":
+    case "image": {
+      if (!piece.cutout) return { image: await loadRemoteImage(scrap.src) };
       // A cut-out piece bakes from the same mask the studio shows, recomputed
-      // from the parameters the collage stored.
-      return piece.cutout
-        ? cutoutCanvas(scrap.src, piece.cutout)
-        : loadRemoteImage(scrap.src);
+      // over the piece's crop from the parameters the collage stored.
+      const cut = await cutoutCanvas(scrap.src, piece.cutout, piece.crop);
+      return { image: cut.canvas, placement: cut.placement };
+    }
     case "cursor":
-      return loadRemoteImage(scrap.url);
+      return { image: await loadRemoteImage(scrap.url) };
     case "svg-icon":
-      return loadSvgIconImage(scrap.markup, sourceWidth, sourceHeight);
+      return {
+        image: await loadSvgIconImage(scrap.markup, sourceWidth, sourceHeight),
+      };
     case "button":
-      return loadButtonImage(scrap, sourceWidth, sourceHeight);
+      return { image: await loadButtonImage(scrap, sourceWidth, sourceHeight) };
     case "heading":
-      return loadHeadingImage(scrap, sourceWidth, sourceHeight);
+      return {
+        image: await loadHeadingImage(scrap, sourceWidth, sourceHeight),
+      };
   }
 }
 
@@ -198,12 +212,12 @@ export async function bakeCollage(options: BakeOptions): Promise<Blob> {
     ordered.map(async (piece) => {
       const source = sourceBoxForCrop(piece, piece.crop);
       try {
-        const image = await pieceImage(
+        const drawn = await pieceImage(
           piece,
           Math.max(1, Math.round(source.width)),
           Math.max(1, Math.round(source.height)),
         );
-        return { piece, source, image };
+        return { piece, source, ...drawn };
       } catch (error) {
         failures.push({
           pieceId: piece.id,
@@ -234,7 +248,7 @@ export async function bakeCollage(options: BakeOptions): Promise<Blob> {
 
   for (const drawable of drawables) {
     if (!drawable) continue;
-    const { piece, source, image } = drawable;
+    const { piece, source, image, placement } = drawable;
     const centerX = piece.x + piece.width / 2;
     const centerY = piece.y + piece.height / 2;
     context.save();
@@ -251,7 +265,17 @@ export async function bakeCollage(options: BakeOptions): Promise<Blob> {
     context.beginPath();
     context.rect(piece.x, piece.y, piece.width, piece.height);
     context.clip();
-    context.drawImage(image, source.x, source.y, source.width, source.height);
+    if (placement) {
+      context.drawImage(
+        image,
+        source.x + placement.x * source.width,
+        source.y + placement.y * source.height,
+        placement.width * source.width,
+        placement.height * source.height,
+      );
+    } else {
+      context.drawImage(image, source.x, source.y, source.width, source.height);
+    }
     context.restore();
   }
 
