@@ -2,8 +2,8 @@
 // ABOUTME: latest-author self-reply guard.
 
 import type { PageDataChannel } from "@playhtml/common";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BottleManager, type BottlePageData } from "../features/BottleManager";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { BottleManager, type BottlePageData, type BottleRenderRequest } from "../features/BottleManager";
 import type { BottleAnchor } from "../features/bottle-anchor";
 import { __resetPouchForTests, POUCH_MAX } from "../features/letter-pouch";
 import { normalizeUrl } from "../utils/urlNormalization";
@@ -59,11 +59,13 @@ function createPageDataWith(data: BottlePageData) {
 function makeManager(
   channel: MemoryPageDataChannel<BottlePageData>,
   pid = "me",
+  onRender: (request: BottleRenderRequest) => void = () => {},
 ) {
   const createPageData = <T,>(_name: string, _defaultValue: T) =>
     channel as unknown as PageDataChannel<T>;
   const mgr = new BottleManager("#4a9a8a", pid, createPageData);
-  mgr.init(() => {});
+  onTestFinished(() => mgr.destroy());
+  mgr.init(onRender);
   return mgr;
 }
 
@@ -197,10 +199,7 @@ describe("BottleManager.seal", () => {
         },
       });
       let rendered: string[] = [];
-      const createPageData = <T,>(_n: string, _d: T) =>
-        channel as unknown as PageDataChannel<T>;
-      const mgr = new BottleManager("#4a9a8a", "me", createPageData);
-      mgr.init((req) => {
+      const mgr = makeManager(channel, "me", (req) => {
         rendered = req.bottles.filter((b) => !b.isEmpty).map((b) => b.id);
       });
       if (rendered.length === 0) mgr.markSeen("__none__");
@@ -237,10 +236,7 @@ describe("BottleManager.placeAndOpen", () => {
   it("renders a just-placed bottle as the sole slot, flagged justPlaced", () => {
     const channel = new MemoryPageDataChannel<BottlePageData>({ bottles: {} });
     let rendered: { id: string; isEmpty: boolean; justPlaced?: boolean }[] = [];
-    const createPageData = <T,>(_n: string, _d: T) =>
-      channel as unknown as PageDataChannel<T>;
-    const mgr = new BottleManager("#4a9a8a", "me", createPageData);
-    mgr.init((req) => {
+    const mgr = makeManager(channel, "me", (req) => {
       rendered = req.bottles.map((b) => ({
         id: b.id, isEmpty: b.isEmpty, justPlaced: b.justPlaced,
       }));
@@ -256,10 +252,7 @@ describe("BottleManager.placeAndOpen", () => {
   it("dismissPlaced drops the placed bottle from the render list", () => {
     const channel = new MemoryPageDataChannel<BottlePageData>({ bottles: {} });
     let rendered: string[] = [];
-    const createPageData = <T,>(_n: string, _d: T) =>
-      channel as unknown as PageDataChannel<T>;
-    const mgr = new BottleManager("#4a9a8a", "me", createPageData);
-    mgr.init((req) => {
+    const mgr = makeManager(channel, "me", (req) => {
       rendered = req.bottles.map((b) => b.id);
     });
 
@@ -274,10 +267,7 @@ describe("BottleManager.placeAndOpen", () => {
   it("sealing into a placed bottle persists a real bottle and clears the placement", () => {
     const channel = new MemoryPageDataChannel<BottlePageData>({ bottles: {} });
     let rendered: { id: string; justPlaced?: boolean }[] = [];
-    const createPageData = <T,>(_n: string, _d: T) =>
-      channel as unknown as PageDataChannel<T>;
-    const mgr = new BottleManager("#4a9a8a", "me", createPageData);
-    mgr.init((req) => {
+    const mgr = makeManager(channel, "me", (req) => {
       rendered = req.bottles.map((b) => ({ id: b.id, justPlaced: b.justPlaced }));
     });
 
