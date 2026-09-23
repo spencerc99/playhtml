@@ -1423,7 +1423,7 @@ async function runHandleNavigation(): Promise<void> {
     teardownPresenceClient();
     disconnectUsersPresenceTransport();
     hasSynced = false;
-    trackedElementAwarenessKeys.clear();
+    applyElementAwareness(new Map());
     // Re-init the doc for the new room: page AND element data are room-scoped,
     // and the doc is reused across rooms, so a fresh doc resets both to the new
     // room (like a page reload) without syncing a delete tombstone back to the
@@ -1444,10 +1444,6 @@ async function runHandleNavigation(): Promise<void> {
     // reseed it so those elements stay visible in the new room without waiting
     // for the next user action. One batched publish, not one per element.
     seedElementAwarenessFromHandlers();
-    // Rebuild the inner presence client on the new room and swap it into the
-    // stable facade, which re-attaches active subscriptions (replaying the new
-    // room's snapshot). Consumers holding playhtml.presence keep working.
-    presenceFacade?.setInner(buildInnerPresenceAPI());
   }
 
   if (cursorEnabledChanged || (cursorRoomChanged && cursorOptions)) {
@@ -1460,6 +1456,12 @@ async function runHandleNavigation(): Promise<void> {
         mainRoom: newMainRoom,
       });
     }
+  }
+  if (mainRoomChanged) {
+    // Rebuild the inner presence client on the new room and swap it into the
+    // stable facade, which re-attaches active subscriptions (replaying the new
+    // room's snapshot). Consumers holding playhtml.presence keep working.
+    presenceFacade?.setInner(buildInnerPresenceAPI());
   }
   if (mainRoomChanged || cursorEnabledChanged || cursorRoomChanged) {
     usersAPI?.getAll();

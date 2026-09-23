@@ -209,6 +209,9 @@ try {
     });
     await expectIds(alice, ["alice"]);
     await expectIds(bob, ["bob"]);
+    await expect(alice.locator("#users li")).toHaveCount(1);
+    await expect(alice.locator("#element-presence")).not.toContainText("bob");
+    await expect(alice.locator("#presence")).not.toContainText("bob:");
     await expect(alice.locator("#counter")).toHaveText("Shared count: 0");
     await expect
       .poll(() =>

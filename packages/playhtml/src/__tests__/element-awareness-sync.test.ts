@@ -72,6 +72,45 @@ describe("element awareness sync", () => {
     expect(byStableIdSnapshots.at(-1)?.size).toBe(0);
   });
 
+  it("clears remote element awareness when navigating to an empty room", async () => {
+    const originalPath = window.location.pathname;
+    const snapshots: string[][] = [];
+    const el = document.createElement("div");
+    el.id = "navigation-presence";
+    document.body.appendChild(el);
+    const handle = playhtml.register(el, {
+      defaultData: {},
+      updateElement: ({ element }) => {
+        element.textContent = "Presence";
+      },
+      updateElementAwareness: ({ awarenessByStableId }) => {
+        snapshots.push([...awarenessByStableId.keys()]);
+      },
+    });
+    await flushPresencePublishes();
+    getPresenceSocketForRoom(playhtml.roomId).receive({
+      type: "presence-sync",
+      peers: {
+        remote: {
+          identity: {
+            publicKey: "remote",
+            playerStyle: { colorPalette: ["blue"] },
+          },
+          "element:can-play": { "navigation-presence": { active: true } },
+        },
+      },
+    });
+    expect(snapshots.at(-1)).toEqual(["remote"]);
+    try {
+      history.replaceState(null, "", "/empty-presence-room");
+      await playhtml.handleNavigation();
+      expect(snapshots.at(-1)).toEqual([]);
+    } finally {
+      history.replaceState(null, "", originalPath);
+      handle.unregister();
+    }
+  });
+
   it("publishes element awareness through the page room when cursors use another room", async () => {
     document.body.innerHTML = "";
     (globalThis as any).PLAYHTML_TEST_PROVIDERS = [];

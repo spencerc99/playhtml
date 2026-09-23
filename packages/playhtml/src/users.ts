@@ -222,6 +222,7 @@ export function createUsersAPI(
     },
     onChange(callback: (users: User[]) => void): () => void {
       ensureSubscribed();
+      notifyUsersChange();
       usersChangeListeners.add(callback);
       const users = getAll();
       notifiedUsers = users;

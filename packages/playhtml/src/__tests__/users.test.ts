@@ -76,6 +76,26 @@ describe("users", () => {
     );
   });
 
+  it("refreshes existing subscribers when another subscribes after a room change", () => {
+    let peers = new Map([["remote", { identity: makeIdentity("remote") }]]);
+    let changed = () => {};
+    const users = createUsersAPI(makeIdentity("self"), {
+      getIdentityPeers: () => peers,
+      onIdentityPeersChange: (callback) => {
+        changed = callback;
+        return () => {};
+      },
+    });
+    const first = vi.fn();
+    users.onChange(first);
+    peers = new Map();
+    users.onChange(vi.fn());
+    changed();
+    expect(
+      first.mock.lastCall?.[0].map((user: { pid: string }) => user.pid),
+    ).toEqual(["self"]);
+  });
+
   it("selects the same multi-tab identity regardless of snapshot order", () => {
     const { users, transport } = makeUsers();
     const first = { identity: makeIdentity("remote", "#00ff00", "First") };
