@@ -66,7 +66,7 @@ export function DeveloperFeaturesPage({ onBack, embedded = false }: Props) {
           <span className="developer-features__eyebrow">WWO EXPERIMENTS</span>
           <h1>Experiments</h1>
           <p>
-            Turn on the experiments available to you. Your choices only affect
+            Experiments available to you are on. Turn off any you do not want; your choices only affect
             this browser.
           </p>
         </header>
