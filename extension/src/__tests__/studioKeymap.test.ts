@@ -421,6 +421,68 @@ describe("cutout", () => {
   });
 });
 
+describe("turning the collage over", () => {
+  const BACK: KeymapContext = { ...IDLE, mode: "back" };
+
+  it("turns over on a bare T, with or without a piece in hand", () => {
+    expect(studioCommandFor(press("t"), IDLE)).toEqual({ kind: "turnOver" });
+    expect(
+      studioCommandFor(press("t"), { ...IDLE, hasSelection: false }),
+    ).toEqual({ kind: "turnOver" });
+    expect(studioCommandFor(press("T", { shiftKey: true }), IDLE)).toBeNull();
+  });
+
+  it("turns face up again on T or escape", () => {
+    expect(studioCommandFor(press("t"), BACK)).toEqual({ kind: "turnOver" });
+    expect(studioCommandFor(press("Escape"), BACK)).toEqual({
+      kind: "turnOver",
+    });
+  });
+
+  it("reaches no piece while turned over", () => {
+    for (const key of [
+      "Delete",
+      "Backspace",
+      "Enter",
+      "ArrowLeft",
+      "Tab",
+      "c",
+      "r",
+      "s",
+      "b",
+      "h",
+      "v",
+      ",",
+      ".",
+      "]",
+      "\\",
+    ]) {
+      expect(studioCommandFor(press(key), BACK), key).toBeNull();
+    }
+    for (const key of ["z", "d", "c", "v", "y"]) {
+      expect(
+        studioCommandFor(press(key, { metaKey: true }), {
+          ...BACK,
+          hasClipboard: true,
+        }),
+        `cmd+${key}`,
+      ).toBeNull();
+    }
+    expect(studioCommandFor(press("?"), BACK)).toEqual({ kind: "showKeys" });
+  });
+
+  it("leaves T alone while a crop or a transform owns the keys", () => {
+    for (const mode of ["crop", "rotate", "scale"] as const) {
+      expect(studioCommandFor(press("t"), { ...IDLE, mode })).toBeNull();
+    }
+  });
+
+  it("is listed in the shortcut list", () => {
+    const entries = STUDIO_SHORTCUTS.flatMap((group) => group.entries);
+    expect(entries.some((entry) => entry.keys === "T")).toBe(true);
+  });
+});
+
 describe("the shortcut list", () => {
   it("documents every group without repeating a key line", () => {
     const lines = STUDIO_SHORTCUTS.flatMap((group) =>

@@ -168,6 +168,8 @@ export function ScrapsPage() {
   const [revision, setRevision] = useState(0);
   const [mode, setMode] = useState<ScrapsMode>("browse");
   const [editing, setEditing] = useState<CollageRecord | null>(null);
+  /** Which side the studio opens the collage on. */
+  const [openSide, setOpenSide] = useState<"front" | "back">("front");
   const [studioOpen, setStudioOpen] = useState(false);
   /** Bumped when a studio is opened, so each editing session starts fresh. */
   const [studioSession, setStudioSession] = useState(0);
@@ -382,13 +384,15 @@ export function ScrapsPage() {
           {!studioOpen ? (
             <CollageHistory
               revision={savedRevision}
-              onEdit={(record) => {
+              onEdit={(record, side) => {
                 setEditing(record);
+                setOpenSide(side);
                 setStudioSession((value) => value + 1);
                 setStudioOpen(true);
               }}
               onStartNew={() => {
                 setEditing(null);
+                setOpenSide("front");
                 setStudioSession((value) => value + 1);
                 setStudioOpen(true);
               }}
@@ -398,6 +402,7 @@ export function ScrapsPage() {
               key={studioSession}
               scraps={items}
               editing={editing}
+              opensOn={openSide}
               onSaved={() => setSavedRevision((value) => value + 1)}
               onLeave={() => {
                 setEditing(null);

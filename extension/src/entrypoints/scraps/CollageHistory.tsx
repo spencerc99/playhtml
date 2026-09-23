@@ -1,9 +1,8 @@
-// ABOUTME: Browse saved collages: baked thumbnails, dates, and where each piece came from.
+// ABOUTME: Browse saved collages: baked thumbnails and dates, with a way to read each one's back.
 // ABOUTME: Reopens a collage for editing, or deletes one after a confirmation.
 
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  collageProvenance,
   duplicateCollage,
   isUnreadable,
   summarizeCollage,
@@ -17,12 +16,12 @@ import {
   saveCollage,
 } from "./collageStore";
 import { paperBackground } from "./paperGrain";
-import { webPageHref } from "./scrapLinks";
 
 interface CollageHistoryProps {
   /** Bumped by the studio after a save so the list reloads. */
   revision: number;
-  onEdit: (record: CollageRecord) => void;
+  /** Opens a collage in the studio, face up or turned over to its sources. */
+  onEdit: (record: CollageRecord, side: "front" | "back") => void;
   onStartNew: () => void;
 }
 
@@ -41,8 +40,6 @@ export function CollageHistory({
 }: CollageHistoryProps) {
   const [entries, setSummaries] = useState<CollageEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<CollageRecord | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,28 +62,6 @@ export function CollageHistory({
       cancelled = true;
     };
   }, [revision]);
-
-  useEffect(() => {
-    if (!expandedId) {
-      setExpanded(null);
-      return;
-    }
-    let cancelled = false;
-    loadCollage(expandedId)
-      .then((record) => {
-        if (!cancelled) setExpanded(record);
-      })
-      .catch((loadError: unknown) => {
-        if (!cancelled) {
-          setError(
-            loadError instanceof Error ? loadError.message : String(loadError),
-          );
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [expandedId]);
 
   const previewUrls = useMemo(() => {
     const urls = new Map<string, string>();
@@ -124,10 +99,15 @@ export function CollageHistory({
     );
   };
 
+  const open = (id: string, side: "front" | "back") => {
+    void loadCollage(id).then((loaded) => {
+      if (loaded) onEdit(loaded, side);
+    });
+  };
+
   const remove = async (id: string) => {
     await deleteCollage(id);
     setConfirmingId(null);
-    setExpandedId((current) => (current === id ? null : current));
     setSummaries((current) =>
       current ? current.filter((entry) => entry.id !== id) : current,
     );
@@ -216,178 +196,97 @@ export function CollageHistory({
             );
           }
           const summary = entry;
-          const over = expandedId === summary.id;
-          const record = over ? expanded : null;
-          const sources = record ? collageProvenance(record.pieces) : [];
           const name = summary.title || "untitled";
           return (
             <article key={summary.id} className="collage-card">
-              <div
-                className={`collage-card__leaf${over ? " collage-card__leaf--over" : ""}`}
-              >
-                {/* The face turned away takes no pointer and no tab stop, so
-                    the card is only ever one card deep. */}
-                <div
-                  className="collage-card__face collage-card__face--front"
-                  inert={over}
-                >
-                  {summary.preview.drawn ? (
-                    <img
-                      className="collage-card__thumb"
-                      style={paperBackground(
-                        summary.paper.color,
-                        summary.paper.grain,
-                        240,
-                        160,
-                      )}
-                      src={previewUrls.get(summary.id)}
-                      alt={name}
-                    />
-                  ) : (
-                    <div
-                      className="collage-card__thumb collage-card__thumb--undrawn"
-                      style={paperBackground(
-                        summary.paper.color,
-                        summary.paper.grain,
-                        240,
-                        160,
-                      )}
-                    >
-                      <span className="collage-studio__label">
-                        no preview yet
-                      </span>
-                    </div>
+              {summary.preview.drawn ? (
+                <img
+                  className="collage-card__thumb"
+                  style={paperBackground(
+                    summary.paper.color,
+                    summary.paper.grain,
+                    240,
+                    160,
                   )}
-                  <h3 className="collage-card__title">{name}</h3>
-                  <p className="collage-card__meta">
-                    {summary.pieceCount} piece
-                    {summary.pieceCount === 1 ? "" : "s"}
-                    <br />
-                    made {formatDate(summary.createdAt)}
-                    {summary.updatedAt !== summary.createdAt && (
-                      <>
-                        <br />
-                        changed {formatDate(summary.updatedAt)}
-                      </>
-                    )}
-                  </p>
-                  <div className="collage-card__actions">
-                    <button
-                      type="button"
-                      className="collage-action"
-                      onClick={() => setExpandedId(summary.id)}
-                    >
-                      sources
-                    </button>
-                    <button
-                      type="button"
-                      className="collage-action"
-                      onClick={() => {
-                        void loadCollage(summary.id).then((loaded) => {
-                          if (loaded) onEdit(loaded);
-                        });
-                      }}
-                    >
-                      keep editing
-                    </button>
-                    <button
-                      type="button"
-                      className="collage-action"
-                      onClick={() => void duplicate(summary.id)}
-                    >
-                      duplicate
-                    </button>
-                    {confirmingId === summary.id ? (
-                      <>
-                        <button
-                          type="button"
-                          className="collage-action collage-action--danger"
-                          onClick={() => void remove(summary.id)}
-                        >
-                          delete for good
-                        </button>
-                        <button
-                          type="button"
-                          className="collage-action"
-                          onClick={() => setConfirmingId(null)}
-                        >
-                          keep
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        className="collage-action collage-action--danger"
-                        onClick={() => setConfirmingId(summary.id)}
-                      >
-                        delete
-                      </button>
-                    )}
-                  </div>
-                </div>
-
+                  src={previewUrls.get(summary.id)}
+                  alt={name}
+                />
+              ) : (
                 <div
-                  className="collage-card__face collage-card__face--back"
-                  inert={!over}
-                  aria-label={`The back of ${name}`}
-                >
-                  <h3 className="collage-card__back-head">{name}</h3>
-                  <p className="collage-card__back-dates">
-                    made {formatDate(summary.createdAt)}
-                    {summary.updatedAt !== summary.createdAt && (
-                      <>
-                        <br />
-                        changed {formatDate(summary.updatedAt)}
-                      </>
-                    )}
-                    <br />
-                    {summary.pieceCount} piece
-                    {summary.pieceCount === 1 ? "" : "s"}
-                  </p>
-                  {record ? (
-                    <ul className="collage-provenance">
-                      {sources.map((source) => {
-                        const href = webPageHref(source.pageUrl);
-                        const label = source.pageTitle || source.pageUrl;
-                        return (
-                          <li
-                            key={source.pageUrl}
-                            className="collage-provenance__entry"
-                          >
-                            {href ? (
-                              <a
-                                className="collage-provenance__link"
-                                href={href}
-                                target="_blank"
-                                rel="noreferrer noopener"
-                              >
-                                {label}
-                              </a>
-                            ) : (
-                              <span>{label}</span>
-                            )}
-                            <span className="collage-provenance__where">
-                              {source.domain} &#183; {source.pieceCount} piece
-                              {source.pieceCount === 1 ? "" : "s"} &#183; first
-                              seen {formatDate(source.firstSeenAt)}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : (
-                    <p className="collage-studio__label">loading sources...</p>
+                  className="collage-card__thumb collage-card__thumb--undrawn"
+                  style={paperBackground(
+                    summary.paper.color,
+                    summary.paper.grain,
+                    240,
+                    160,
                   )}
-                  <div className="collage-card__actions">
+                >
+                  <span className="collage-studio__label">
+                    no preview yet
+                  </span>
+                </div>
+              )}
+              <h3 className="collage-card__title">{name}</h3>
+              <p className="collage-card__meta">
+                {summary.pieceCount} piece
+                {summary.pieceCount === 1 ? "" : "s"}
+                <br />
+                made {formatDate(summary.createdAt)}
+                {summary.updatedAt !== summary.createdAt && (
+                  <>
+                    <br />
+                    changed {formatDate(summary.updatedAt)}
+                  </>
+                )}
+              </p>
+              <div className="collage-card__actions">
+                <button
+                  type="button"
+                  className="collage-action"
+                  onClick={() => open(summary.id, "back")}
+                >
+                  sources
+                </button>
+                <button
+                  type="button"
+                  className="collage-action"
+                  onClick={() => open(summary.id, "front")}
+                >
+                  keep editing
+                </button>
+                <button
+                  type="button"
+                  className="collage-action"
+                  onClick={() => void duplicate(summary.id)}
+                >
+                  duplicate
+                </button>
+                {confirmingId === summary.id ? (
+                  <>
+                    <button
+                      type="button"
+                      className="collage-action collage-action--danger"
+                      onClick={() => void remove(summary.id)}
+                    >
+                      delete for good
+                    </button>
                     <button
                       type="button"
                       className="collage-action"
-                      onClick={() => setExpandedId(null)}
+                      onClick={() => setConfirmingId(null)}
                     >
-                      turn it back over
+                      keep
                     </button>
-                  </div>
-                </div>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="collage-action collage-action--danger"
+                    onClick={() => setConfirmingId(summary.id)}
+                  >
+                    delete
+                  </button>
+                )}
               </div>
             </article>
           );
