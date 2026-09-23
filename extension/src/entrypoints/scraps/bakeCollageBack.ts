@@ -15,6 +15,7 @@ import {
 } from "./collageBack";
 import { webPageHref } from "./scrapLinks";
 import { canvasPng, loadImage } from "./bakeCollage";
+import { cutoutCanvas } from "./cutoutImages";
 
 /** How long a favicon may take before the back is written without it. */
 const FAVICON_TIMEOUT_MS = 5000;
@@ -26,6 +27,23 @@ const FAVICON_TIMEOUT_MS = 5000;
 const BLEED_SCALE = 0.5;
 /** The engraved extension icon, bundled at the extension's root. */
 const MARK_ICON_PATH = "/icon/128.png";
+/**
+ * How far from the icon's cream paper a pixel may be and still be cut away.
+ * The engraving's paper is a near-flat cream, well apart from its ink.
+ */
+const MARK_PAPER_TOLERANCE = 0.12;
+
+/**
+ * The engraving with its own cream paper cut away, through the same edge-color
+ * flood a scrap's cutout uses, so only its lines press into the collage paper.
+ */
+async function markIconDataUrl(): Promise<string> {
+  const cut = await cutoutCanvas(MARK_ICON_PATH, {
+    method: "edge-color",
+    tolerance: MARK_PAPER_TOLERANCE,
+  });
+  return cut.toDataURL("image/png");
+}
 
 function asDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -49,7 +67,7 @@ async function fetchDataUrl(url: string, what: string): Promise<string> {
 export interface BackAssets {
   /** `@font-face` rules for the back's own faces, bytes inlined. */
   fontFaces: string;
-  /** The maker's mark engraving as a data URL. */
+  /** The maker's mark engraving, its paper cut away, as a data URL. */
   markIcon: string;
 }
 
@@ -72,7 +90,7 @@ export function backAssets(): Promise<BackAssets> {
       face(BACK_FONTS.serif, 600, "normal", loraSemibold),
       face(BACK_FONTS.mono, 400, "normal", martianRegular),
       face(BACK_FONTS.wordmark, 200, "italic", sourceSerifLightItalic),
-      fetchDataUrl(MARK_ICON_PATH, "the maker's mark"),
+      markIconDataUrl(),
     ]).then(([serif, mono, wordmark, markIcon]) => ({
       fontFaces: serif + mono + wordmark,
       markIcon,
