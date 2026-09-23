@@ -118,7 +118,7 @@ export function InstallationOffice() {
             <button type="button" onClick={openAll}>Open all in Ars layout</button>
           </div>
           <div className="installation-layout">
-            <p>Opens separate windows on this display, arranged roughly like the Ars Electronica wall. If the group is blocked, use each Open button below.</p>
+            <p>Open this page in desktop Chrome to position separate windows roughly like the Ars Electronica wall. Embedded browsers may stack them at 0,0. If the group is blocked, use each Open button below.</p>
             <div className="installation-layout__map" role="img" aria-label="Ars Electronica arrangement of the nine named screens">
               {ARS_LAYOUT.windows.map((slot) => <div key={slot.screen} title={`${slot.number}: ${LIVE_INSTALLATION_PROFILES[slot.screen].label}`} style={{
                 left: `${slot.x / ARS_LAYOUT.width * 100}%`,
