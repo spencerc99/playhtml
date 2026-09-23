@@ -259,13 +259,15 @@ describe("heading scraps in the collage", () => {
     render();
     act(() =>
       Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.startsWith("Type"))
+        .find((button) => button.textContent?.startsWith("type"))
         ?.click(),
     );
     const headings = container.querySelector<HTMLButtonElement>(
       '[data-scrap-kind="heading"]',
     );
-    expect(headings?.textContent).toBe("headings");
+    expect(
+      headings?.querySelector(".scrap-filters__name")?.textContent,
+    ).toBe("headings");
     act(() => headings?.click());
     expect(container.querySelectorAll(".scrap-collage__heading").length).toBe(1);
     expect(

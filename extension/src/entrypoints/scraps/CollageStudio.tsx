@@ -61,7 +61,7 @@ import {
   type ArrangementHistory,
 } from "./arrangementHistory";
 import {
-  isTypingTarget,
+  leavesKeysAlone,
   studioCommandFor,
   type StudioMode,
 } from "./studioKeymap";
@@ -618,7 +618,7 @@ export function CollageStudio({
         metaKey: event.metaKey,
         ctrlKey: event.ctrlKey,
         altKey: event.altKey,
-        typing: isTypingTarget({
+        typing: leavesKeysAlone({
           key: event.key,
           metaKey: event.metaKey,
           ctrlKey: event.ctrlKey,

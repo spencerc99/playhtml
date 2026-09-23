@@ -71,6 +71,31 @@ describe("shortcuts while typing", () => {
   });
 });
 
+describe("controls that own their keys", () => {
+  it("leaves every key to a control marked as owning them", () => {
+    const owned = {
+      target: {
+        tagName: "BUTTON",
+        closest: (selector: string) =>
+          selector === "[data-owns-keys]" ? {} : null,
+      },
+    };
+    for (const key of ["\\", "Enter", "Tab", "Escape", "r", "Backspace"]) {
+      expect(studioCommandFor(press(key, owned), IDLE)).toBeNull();
+    }
+    expect(
+      studioCommandFor(press("Escape", owned), { ...IDLE, mode: "crop" }),
+    ).toBeNull();
+  });
+
+  it("still answers a button that does not own its keys", () => {
+    const plain = { target: { tagName: "BUTTON", closest: () => null } };
+    expect(studioCommandFor(press("\\", plain), IDLE)).toEqual({
+      kind: "toggleDrawer",
+    });
+  });
+});
+
 describe("modal transforms", () => {
   it("starts rotate and scale on their own keys", () => {
     expect(studioCommandFor(press("r"), IDLE)).toEqual({ kind: "beginRotate" });
