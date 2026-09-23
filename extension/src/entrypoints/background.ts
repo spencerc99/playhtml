@@ -2,10 +2,7 @@
 // ABOUTME: coordinates event writes, uploads, and data reads for all extension surfaces
 import browser from 'webextension-polyfill'
 import { scrapEncounterDay } from '@movement/utils/scrapEncounterDay'
-import {
-  groupPhotoEncounters,
-  type ScrapSource,
-} from '@movement/utils/scrapPhotoGroups'
+import type { ScrapSource } from '@movement/utils/scrapPhotoGroups'
 import { LocalEventStore } from '../storage/LocalEventStore'
 import { ImageFingerprints } from '../storage/imageFingerprints'
 import type {
@@ -742,28 +739,22 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'GET_SCRAPS') {
-      // No limit returns every scrap; the scraps page filters the full set.
-      const limit = message.options?.limit as number | undefined
+      const limit = message.options?.limit ?? 200
+      const cursor = message.options?.cursor
       store
-        .queryByType('element')
-        .then((events) =>
-          events
-            .sort((first, second) => second.ts - first.ts)
-            .flatMap((event): ScrapRecord[] => {
+        .queryEventPage('element', limit, cursor)
+        .then(({ events, nextCursor }) =>
+          reply({
+            scraps: events.flatMap((event): ScrapRecord[] => {
               const scrap = toScrapRecord(event)
               return scrap ? [scrap] : []
             }),
-        )
-        .then((scraps) =>
-          reply({
-            scraps: groupPhotoEncounters(scraps)
-              .sort((a, b) => b.ts - a.ts)
-              .slice(0, limit ?? Infinity),
+            nextCursor,
           }),
         )
         .catch((e) => {
           console.error('[Background] GET_SCRAPS error:', e)
-          reply({ scraps: [] })
+          reply({ scraps: [], error: String(e) })
         })
       return true
     }

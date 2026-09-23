@@ -1,14 +1,17 @@
 // ABOUTME: Full-tab extension page for browsing locally collected internet scraps.
 // ABOUTME: Hosts the drifting browse collage and the create mode for making your own.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
 import "@fontsource/atkinson-hyperlegible/latin-400.css";
 import "@fontsource/atkinson-hyperlegible/latin-700.css";
 import "@fontsource/lora/latin-600.css";
 import "@fontsource/lora/latin-700.css";
-import type { ScrapSource } from "@movement/utils/scrapPhotoGroups";
+import {
+  groupPhotoEncounters,
+  type ScrapSource,
+} from "@movement/utils/scrapPhotoGroups";
 import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import {
   COLLAGE_STYLES,
@@ -76,6 +79,21 @@ type ScrapRecord = ScrapRecordBase &
 
 interface ScrapsResponse {
   scraps: ScrapRecord[];
+  nextCursor: { ts: number; id: string } | null;
+  error?: string;
+}
+
+function isScrapsResponse(
+  response: ScrapsResponse | undefined,
+): response is ScrapsResponse {
+  return (
+    !!response &&
+    Array.isArray(response.scraps) &&
+    !response.error &&
+    (response.nextCursor === null ||
+      (Number.isFinite(response.nextCursor?.ts) &&
+        typeof response.nextCursor.id === "string"))
+  );
 }
 
 function toScrapItem(record: ScrapRecord): ScrapItem {
@@ -162,7 +180,10 @@ const centeredMessageStyle: React.CSSProperties = {
 type ScrapsMode = "browse" | "create";
 
 export function ScrapsPage() {
-  const [items, setItems] = useState<ScrapItem[]>([]);
+  const [records, setRecords] = useState<ScrapRecord[]>([]);
+  const [nextCursor, setNextCursor] = useState<ScrapsResponse["nextCursor"]>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
@@ -172,6 +193,14 @@ export function ScrapsPage() {
   /** Bumped when a studio is opened, so each editing session starts fresh. */
   const [studioSession, setStudioSession] = useState(0);
   const [savedRevision, setSavedRevision] = useState(0);
+  const requestGeneration = useRef(0);
+  const items = useMemo(
+    () =>
+      groupPhotoEncounters(records)
+        .sort((a, b) => b.ts - a.ts)
+        .map(toScrapItem),
+    [records],
+  );
   const seed = useMemo(() => Math.floor(Date.now() / 86_400_000), []);
   const collagesFeature = useFeatureState("SCRAP_COLLAGES");
   const canCreate = collagesFeature.enabled;
@@ -197,16 +226,24 @@ export function ScrapsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    requestGeneration.current += 1;
+    setLoading(true);
+    setLoadingMore(false);
+    setLoadMoreError(null);
+    setRecords([]);
+    setNextCursor(null);
     const loadScraps = async () => {
       try {
         const response = (await browser.runtime.sendMessage({
           type: "GET_SCRAPS",
+          options: { limit: 200 },
         })) as ScrapsResponse;
-        if (!response || !Array.isArray(response.scraps)) {
+        if (!isScrapsResponse(response)) {
           throw new Error("GET_SCRAPS returned an invalid response");
         }
         if (!cancelled) {
-          setItems(response.scraps.map(toScrapItem));
+          setRecords(response.scraps);
+          setNextCursor(response.nextCursor);
           setError(null);
         }
       } catch (loadError) {
@@ -224,6 +261,32 @@ export function ScrapsPage() {
       cancelled = true;
     };
   }, [revision]);
+
+  const loadMore = async () => {
+    if (!nextCursor || loadingMore) return;
+    const generation = requestGeneration.current;
+    setLoadingMore(true);
+    try {
+      const response = (await browser.runtime.sendMessage({
+        type: "GET_SCRAPS",
+        options: { limit: 200, cursor: nextCursor },
+      })) as ScrapsResponse;
+      if (!isScrapsResponse(response)) {
+        throw new Error("GET_SCRAPS returned an invalid response");
+      }
+      if (generation === requestGeneration.current) {
+        setRecords((current) => [...current, ...response.scraps]);
+        setNextCursor(response.nextCursor);
+        setLoadMoreError(null);
+      }
+    } catch (loadError) {
+      if (generation === requestGeneration.current) {
+        setLoadMoreError(loadError instanceof Error ? loadError.message : String(loadError));
+      }
+    } finally {
+      if (generation === requestGeneration.current) setLoadingMore(false);
+    }
+  };
 
   return (
     <main
@@ -303,9 +366,11 @@ export function ScrapsPage() {
       <style>{`
         .scraps-heading { top: 14px; width: min(520px, calc(100vw - 320px)); }
         .scraps-stage { inset: 64px 0 0; }
+        .scraps-load-more { position: absolute; top: 80px; right: 16px; z-index: 5; text-align: center; }
         @media (max-width: 620px) {
           .scraps-heading { top: 48px; width: calc(100vw - 32px); }
           .scraps-stage { inset: 104px 0 0; }
+          .scraps-load-more { top: 120px; }
         }
       `}</style>
       <header
@@ -374,6 +439,36 @@ export function ScrapsPage() {
           }}
         >
           <ScrapCollage items={items} seed={seed} showKindFilter={true} />
+        </div>
+      )}
+
+      {!loading && !error && nextCursor && (
+        <div className="scraps-load-more">
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+            style={{
+              border: "1px solid #827a72",
+              borderRadius: 999,
+              background: "#faf9f6",
+              color: "#3d3833",
+              padding: "9px 16px",
+              fontFamily: '"Martian Mono", monospace',
+              fontSize: 11,
+              cursor: "pointer",
+            }}
+          >
+            {loadingMore ? "gathering more..." : "load more scraps"}
+          </button>
+          {loadMoreError && (
+            <div
+              role="alert"
+              style={{ marginTop: 6, color: "#827a72", fontSize: 11 }}
+            >
+              scraps could not be gathered
+            </div>
+          )}
         </div>
       )}
 
