@@ -41,7 +41,7 @@ export interface BakeFailure {
   reason: string;
 }
 
-async function loadImage(source: string): Promise<HTMLImageElement> {
+export async function loadImage(source: string): Promise<HTMLImageElement> {
   const image = new Image();
   image.decoding = "sync";
   image.src = source;
@@ -255,6 +255,14 @@ export async function bakeCollage(options: BakeOptions): Promise<Blob> {
     context.restore();
   }
 
+  return canvasPng(canvas, "The collage canvas produced no image");
+}
+
+/** Reads a finished canvas out as a PNG, or throws with the given words. */
+export async function canvasPng(
+  canvas: HTMLCanvasElement,
+  emptyMessage: string,
+): Promise<Blob> {
   const blob = await new Promise<Blob | null>((resolve, reject) => {
     try {
       // A tainted canvas rejects here rather than handing back a silent hole.
@@ -264,7 +272,7 @@ export async function bakeCollage(options: BakeOptions): Promise<Blob> {
     }
   });
   if (!blob) {
-    throw new Error("The collage canvas produced no image");
+    throw new Error(emptyMessage);
   }
   return blob;
 }

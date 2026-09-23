@@ -93,6 +93,8 @@ export interface CollageProvenance {
   pageTitle: string;
   firstSeenAt: number;
   pieceCount: number;
+  /** The page's favicon as it was stored with a scrap, when one was. */
+  faviconUrl?: string;
 }
 
 export interface CollageSummary {
@@ -159,12 +161,13 @@ export function collageProvenance(
 ): CollageProvenance[] {
   const byPage = new Map<string, CollageProvenance>();
   for (const piece of pieces) {
-    const { pageUrl, domain, pageTitle, ts } = piece.scrap;
+    const { pageUrl, domain, pageTitle, ts, faviconUrl } = piece.scrap;
     const existing = byPage.get(pageUrl);
     if (existing) {
       existing.pieceCount += 1;
       existing.firstSeenAt = Math.min(existing.firstSeenAt, ts);
       if (!existing.pageTitle && pageTitle) existing.pageTitle = pageTitle;
+      if (!existing.faviconUrl && faviconUrl) existing.faviconUrl = faviconUrl;
       continue;
     }
     byPage.set(pageUrl, {
@@ -173,6 +176,7 @@ export function collageProvenance(
       pageTitle,
       firstSeenAt: ts,
       pieceCount: 1,
+      ...(faviconUrl ? { faviconUrl } : {}),
     });
   }
   return [...byPage.values()].sort((a, b) => a.firstSeenAt - b.firstSeenAt);
