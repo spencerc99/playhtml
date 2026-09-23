@@ -9,8 +9,11 @@ import React, {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { ScrapFilters } from "./ScrapFilters";
-import { matchesScrapFilters } from "../utils/scrapFilters";
+import {
+  ScrapFilters,
+  scrapPassesFilters,
+  type ScrapKindFilter,
+} from "./ScrapFilters";
 import type { FilterChip } from "../utils/eventUtils";
 import { hashString, seededRandom } from "../utils/styleUtils";
 import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
@@ -174,9 +177,6 @@ const HEADING_TILE_HEIGHT = 44;
 /** Line spacing headings are drawn at, replacing the page's captured value. */
 const HEADING_LINE_HEIGHT = 1.15;
 
-type ScrapKind = ScrapItem["kind"];
-type ScrapKindFilter = "all" | ScrapKind;
-
 export function responsiveTargetCount(width: number, height: number): number {
   if (width <= 0 || height <= 0) return DEFAULT_TARGET_COUNT;
   return clamp(
@@ -267,6 +267,11 @@ function newestUniqueScraps(items: ScrapItem[]): ScrapItem[] {
     }
   }
   return Array.from(newestByKey.values());
+}
+
+/** Counts scraps the way the archive lists them, once per scrap however often it was met. */
+function countUniqueScraps(items: ScrapItem[]): number {
+  return newestUniqueScraps(items).length;
 }
 
 export function curateScraps(
@@ -891,13 +896,13 @@ export const COLLAGE_STYLES = `
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 7px;
+    gap: 8px;
     box-sizing: border-box;
-    width: max-content;
-    max-width: min(720px, calc(100% - 24px));
-    padding: 7px;
+    width: 560px;
+    max-width: calc(100% - 24px);
+    padding: 8px;
     border: 1px solid rgba(61, 56, 51, 0.2);
-    border-radius: 5px;
+    border-radius: 8px;
     background: #f5f0e8;
     box-shadow: 0 8px 24px rgba(61, 56, 51, 0.2);
     pointer-events: auto;
@@ -912,31 +917,35 @@ export const COLLAGE_STYLES = `
     box-shadow: none;
   }
 
-  .scrap-collage__control-group {
+  .scrap-collage__controls-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 5px;
-  }
-
-  .scrap-collage__controls-header,
-  .scrap-collage__controls-body {
-    display: flex;
-    align-items: center;
-    justify-content: center;
     gap: 6px;
   }
 
-  .scrap-collage__controls-header {
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    padding-bottom: 6px;
-    border-bottom: 1px solid rgba(61, 56, 51, 0.12);
+  .scrap-collage__controls-header > :not(.scrap-collage__controls-spacer) {
+    flex: 0 0 auto;
   }
 
-  .scrap-collage__controls-header > .scrap-collage__filter--collapse { margin-left: auto; }
+  .scrap-collage__shuffle-mark {
+    font-size: 12px;
+  }
+
+  .scrap-collage__controls-spacer {
+    flex: 1 1 auto;
+  }
+
+  .scrap-collage__controls-filters {
+    padding-top: 8px;
+    border-top: 1px solid rgba(61, 56, 51, 0.12);
+  }
 
   .scrap-collage__view-switch {
     display: inline-flex;
+    align-items: stretch;
+    box-sizing: border-box;
+    height: 28px;
     padding: 2px;
     border: 1px solid rgba(61, 56, 51, 0.18);
     border-radius: 999px;
@@ -945,7 +954,9 @@ export const COLLAGE_STYLES = `
 
   .scrap-collage__view-option {
     appearance: none;
-    padding: 3px 12px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
     border: 0;
     border-radius: 999px;
     background: transparent;
@@ -953,7 +964,7 @@ export const COLLAGE_STYLES = `
     cursor: pointer;
     font-family: "Martian Mono", monospace;
     font-size: 9px;
-    line-height: 1.4;
+    line-height: 1;
   }
 
   .scrap-collage__view-option[aria-pressed="true"] {
@@ -970,94 +981,58 @@ export const COLLAGE_STYLES = `
   .scrap-collage__archive-summary {
     color: #827a72;
     font-family: "Martian Mono", monospace;
-    font-size: 8px;
-    white-space: nowrap;
-  }
-
-  .scrap-collage__control-label {
-    color: #827a72;
-    font-family: "Martian Mono", monospace;
-    font-size: 8px;
-    letter-spacing: 0.03em;
-  }
-
-  .scrap-collage__select {
-    appearance: none;
-    min-width: 112px;
-    padding: 4px 24px 4px 9px;
-    border: 1px solid rgba(61, 56, 51, 0.18);
-    border-radius: 3px;
-    background-color: #faf9f6;
-    background-image:
-      linear-gradient(45deg, transparent 50%, #827a72 50%),
-      linear-gradient(135deg, #827a72 50%, transparent 50%);
-    background-position:
-      calc(100% - 11px) 50%,
-      calc(100% - 7px) 50%;
-    background-repeat: no-repeat;
-    background-size: 4px 4px, 4px 4px;
-    color: #3d3833;
-    cursor: pointer;
-    font-family: "Martian Mono", monospace;
     font-size: 9px;
-    line-height: 1.4;
+    white-space: nowrap;
   }
 
   .scrap-collage__filter {
     appearance: none;
-    padding: 4px 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    box-sizing: border-box;
+    height: 28px;
+    padding: 0 11px;
     border: 1px solid rgba(61, 56, 51, 0.18);
     border-radius: 999px;
-    background: #f5f0e8;
+    background: transparent;
     color: #3d3833;
     cursor: pointer;
     font-family: "Martian Mono", monospace;
     font-size: 9px;
-    line-height: 1.4;
+    line-height: 1;
     white-space: nowrap;
     transition:
-      transform 140ms ease,
-      box-shadow 140ms ease,
-      border-color 140ms ease,
-      background-color 140ms ease,
-      color 140ms ease;
+      border-color 120ms ease,
+      box-shadow 120ms ease,
+      background-color 120ms ease;
+  }
+
+  .scrap-collage__controls--collapsed .scrap-collage__filter {
+    background: #f5f0e8;
   }
 
   .scrap-collage__filter--collapse {
-    min-width: 30px;
-    padding-inline: 8px;
+    width: 28px;
+    padding: 0;
+    color: #827a72;
   }
 
-  .scrap-collage__filter-count {
-    color: #8a8279;
-  }
-
-  .scrap-collage__filter[aria-pressed="true"] {
-    border-color: #4a9a8a;
-    background: rgba(74, 154, 138, 0.1);
-    color: #4a9a8a;
-  }
-
-  .scrap-collage__filter[aria-pressed="true"] .scrap-collage__filter-count {
-    color: #4a9a8a;
-  }
-
-  .scrap-collage__filter:hover,
-  .scrap-collage__filter:focus-visible {
-    border-color: #4a9a8a;
-    box-shadow: 0 5px 10px rgba(61, 56, 51, 0.14);
-    transform: translateY(-2px);
-  }
-
-  .scrap-collage__select:focus-visible {
-    border-color: #4a9a8a;
-    outline: 2px solid rgba(74, 154, 138, 0.45);
-    outline-offset: 2px;
+  .scrap-collage__filter:hover {
+    border-color: rgba(61, 56, 51, 0.38);
   }
 
   .scrap-collage__filter:focus-visible {
-    outline: 2px solid rgba(74, 154, 138, 0.45);
-    outline-offset: 2px;
+    outline: none;
+    border-color: #4a9a8a;
+    box-shadow: 0 0 0 3px rgba(74, 154, 138, 0.16);
+  }
+
+  @media (max-width: 619px) {
+    .scrap-collage__view-option {
+      padding: 0 9px;
+    }
   }
 
   .scrap-collage__scroll {
@@ -1066,26 +1041,6 @@ export const COLLAGE_STYLES = `
     overflow-y: auto;
     overflow-x: hidden;
     height: 100%;
-  }
-
-  @media (max-width: 620px) {
-    .scrap-collage__controls:not(.scrap-collage__controls--collapsed) {
-      width: calc(100% - 24px);
-      align-items: stretch;
-    }
-
-    .scrap-collage__controls-body {
-      flex-wrap: wrap;
-    }
-
-    .scrap-collage__controls-body .scrap-collage__control-group {
-      flex: 1 1 auto;
-    }
-
-    .scrap-collage__select {
-      flex: 1 1 auto;
-      min-width: 0;
-    }
   }
 
   .scrap-collage__field {
@@ -1650,10 +1605,8 @@ export function ScrapCollage({
   );
   const filteredItems = useMemo(
     () =>
-      groupedItems.filter(
-        (item) =>
-          (selectedKind === "all" || item.kind === selectedKind) &&
-          matchesScrapFilters(item, places, search),
+      groupedItems.filter((item) =>
+        scrapPassesFilters(item, selectedKind, places, search),
       ),
     [groupedItems, selectedKind, places, search],
   );
@@ -2197,26 +2150,7 @@ export function ScrapCollage({
                     </button>
                   ))}
                 </div>
-                <button
-                  type="button"
-                  className="scrap-collage__filter scrap-collage__filter--collapse"
-                  aria-label="Collapse scrap controls"
-                  title="Collapse controls"
-                  onClick={() => setControlsExpanded(false)}
-                >
-                  ↓
-                </button>
-              </div>
-              <ScrapFilters
-                items={groupedItems}
-                places={places}
-                onPlaces={setPlaces}
-                kind={selectedKind}
-                onKind={setSelectedKind}
-                search={search}
-                onSearch={setSearch}
-              />
-              <div className="scrap-collage__controls-body">
+                <span className="scrap-collage__controls-spacer" />
                 {archiveMode ? (
                   <span className="scrap-collage__archive-summary">
                     newest first · {archiveScraps.length} of{" "}
@@ -2235,9 +2169,37 @@ export function ScrapCollage({
                       setShuffleIndex((current) => current + 1);
                     }}
                   >
+                    <span
+                      className="scrap-collage__shuffle-mark"
+                      aria-hidden="true"
+                    >
+                      ⟳
+                    </span>{" "}
                     shuffle
                   </button>
                 )}
+                <button
+                  type="button"
+                  className="scrap-collage__filter scrap-collage__filter--collapse"
+                  aria-label="Collapse scrap controls"
+                  title="Collapse controls"
+                  onClick={() => setControlsExpanded(false)}
+                >
+                  ↓
+                </button>
+              </div>
+              <div className="scrap-collage__controls-filters">
+                <ScrapFilters
+                  items={groupedItems}
+                  places={places}
+                  onPlaces={setPlaces}
+                  kind={selectedKind}
+                  onKind={setSelectedKind}
+                  search={search}
+                  onSearch={setSearch}
+                  matchCount={archiveScraps.length}
+                  countScraps={countUniqueScraps}
+                />
               </div>
             </>
           ) : (

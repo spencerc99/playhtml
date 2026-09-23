@@ -40,7 +40,11 @@ export interface KeyEventShape {
   shiftKey: boolean;
   altKey: boolean;
   /** The element the event was aimed at, used to leave typing alone. */
-  target?: { tagName?: string; isContentEditable?: boolean } | null;
+  target?: {
+    tagName?: string;
+    isContentEditable?: boolean;
+    closest?: (selector: string) => unknown;
+  } | null;
 }
 
 export interface KeymapContext {
@@ -74,6 +78,20 @@ export function isTypingTarget(event: KeyEventShape): boolean {
 }
 
 /**
+ * Marks a control, such as the drawer's filters, that handles its own keys:
+ * Tab, Enter and Escape there move focus or close a popover, never the studio.
+ */
+export const OWNS_KEYS_SELECTOR = "[data-owns-keys]";
+
+/** Whether the studio should leave this key press to the page entirely. */
+export function leavesKeysAlone(event: KeyEventShape): boolean {
+  return (
+    isTypingTarget(event) ||
+    Boolean(event.target?.closest?.(OWNS_KEYS_SELECTOR))
+  );
+}
+
+/**
  * The command a key press invokes, or null when the studio does not own that
  * key and the browser should keep it.
  */
@@ -81,7 +99,7 @@ export function studioCommandFor(
   event: KeyEventShape,
   context: KeymapContext,
 ): StudioCommand | null {
-  if (isTypingTarget(event)) return null;
+  if (leavesKeysAlone(event)) return null;
 
   const accel = event.metaKey || event.ctrlKey;
   const { mode, hasSelection } = context;

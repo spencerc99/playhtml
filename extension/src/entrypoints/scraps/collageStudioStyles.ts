@@ -29,33 +29,26 @@ export const COLLAGE_STUDIO_STYLES = `
     border-right: 1px solid rgba(61, 56, 51, 0.12);
   }
 
-  .collage-tray__head {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  /* Every kind filter sits on one line; a narrowed drawer scrolls sideways. */
-  .collage-tray__filters {
-    display: flex;
-    flex: 1 1 auto;
-    flex-wrap: nowrap;
-    gap: 3px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .collage-tray__filters::-webkit-scrollbar {
-    display: none;
-  }
-
-  .collage-tray__filters .collage-chip {
-    flex: 0 0 auto;
-    padding: 3px 5px;
-  }
-
   .collage-tray__count {
     margin: 0;
+  }
+
+  .collage-tray__reset {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #33796d;
+    font: inherit;
+    letter-spacing: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+
+  .collage-tray__reset:focus-visible {
+    outline: 2px solid rgba(74, 154, 138, 0.45);
+    outline-offset: 2px;
+    border-radius: 2px;
   }
 
   .collage-tray__sizes {
@@ -84,7 +77,36 @@ export const COLLAGE_STUDIO_STYLES = `
     color: #2f6b60;
   }
 
-  .collage-tray__tuck,
+  .collage-tray__tuck {
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid rgba(61, 56, 51, 0.18);
+    border-radius: 999px;
+    background: transparent;
+    color: #827a72;
+    font-family: "Martian Mono", monospace;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color 120ms ease, color 120ms ease;
+  }
+
+  .collage-tray__tuck:hover {
+    border-color: rgba(61, 56, 51, 0.38);
+    color: #3d3833;
+  }
+
+  .collage-tray__tuck:focus-visible {
+    outline: none;
+    border-color: #4a9a8a;
+    box-shadow: 0 0 0 3px rgba(74, 154, 138, 0.16);
+  }
+
   .collage-tray__rail {
     flex: 0 0 auto;
     border: 1px solid rgba(61, 56, 51, 0.18);

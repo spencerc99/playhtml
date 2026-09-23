@@ -1,5 +1,5 @@
 // ABOUTME: Verifies responsive density and the compact internet-scraps control pane.
-// ABOUTME: Covers browsing modes, layouts, kind filters, selection shuffle, and collapse controls.
+// ABOUTME: Covers browsing modes, layouts, filters, search, popover counts, shuffle, and collapse.
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -145,11 +145,6 @@ describe("ScrapCollage controls", () => {
       );
       expect(tiles()).toHaveLength(1);
       expect(tiles()[0].dataset.scrapKey).toBe("later");
-      act(() =>
-        container
-          .querySelector<HTMLButtonElement>('[aria-label="Search scraps"]')!
-          .click(),
-      );
       const search = container.querySelector<HTMLInputElement>(
         'input[aria-label="Search scraps"]',
       )!;
@@ -165,13 +160,13 @@ describe("ScrapCollage controls", () => {
       act(() =>
         container
           .querySelector<HTMLButtonElement>(
-            '[aria-label="Clear and close search"]',
+            '[aria-label="Clear search"]',
           )!
           .click(),
       );
       act(() =>
         Array.from(container.querySelectorAll("button"))
-          .find((button) => button.textContent?.startsWith("Found on"))!
+          .find((button) => button.textContent?.startsWith("from"))!
           .click(),
       );
       const source = container.querySelector<HTMLInputElement>(
@@ -206,7 +201,7 @@ describe("ScrapCollage controls", () => {
       Array.from(tiles(), (tile) => tile.dataset.scrapKey),
     );
     const shuffle = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "shuffle",
+      (button) => button.textContent?.endsWith("shuffle"),
     );
     act(() => shuffle?.click());
     expect(
@@ -218,7 +213,7 @@ describe("ScrapCollage controls", () => {
     render();
     act(() =>
       Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent?.startsWith("Type"))
+        .find((button) => button.textContent?.startsWith("type"))
         ?.click(),
     );
     act(() =>
@@ -236,7 +231,7 @@ describe("ScrapCollage controls", () => {
       Array.from(tiles(), (tile) => tile.dataset.scrapKey);
     const beforeShuffle = orderedKeys();
     const shuffle = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "shuffle",
+      (button) => button.textContent?.endsWith("shuffle"),
     );
     act(() => shuffle?.click());
     expect(orderedKeys()).not.toEqual(beforeShuffle);
@@ -311,8 +306,175 @@ describe("ScrapCollage controls", () => {
     expect(container.querySelector(".scrap-collage__filter--cycle")).toBeNull();
     expect(
       Array.from(container.querySelectorAll("button")).some(
-        (button) => button.textContent === "shuffle",
+        (button) => button.textContent?.endsWith("shuffle"),
       ),
     ).toBe(false);
+  });
+
+  const typeInto = (input: HTMLInputElement, value: string) =>
+    act(() => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+  const fewItems = (): ScrapItem[] => {
+    const base = (id: string, pageUrl: string, pageTitle: string, ts: number) => ({
+      id,
+      key: id,
+      pageUrl,
+      pageTitle,
+      domain: new URL(pageUrl).hostname,
+      ts,
+    });
+    return [
+      {
+        ...base("a", "https://are.na/garden", "Garden", 1),
+        kind: "image",
+        src: "https://cdn.example/a.jpg",
+        naturalWidth: 400,
+        naturalHeight: 300,
+      },
+      {
+        ...base("b", "https://are.na/shop", "Shop", 2),
+        kind: "button",
+        text: "Buy",
+        styles: {},
+      },
+      {
+        ...base("c", "https://spencer.place/notes", "Notes", 3),
+        kind: "image",
+        src: "https://cdn.example/c.jpg",
+        naturalWidth: 400,
+        naturalHeight: 300,
+      },
+      {
+        ...base("d", "https://example.com/", "Garden shop", 4),
+        kind: "button",
+        text: "Enter",
+        styles: {},
+      },
+    ];
+  };
+
+  const chip = (label: string) =>
+    Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.startsWith(label),
+    )!;
+
+  const optionRow = (name: string) =>
+    Array.from(
+      container.querySelectorAll<HTMLButtonElement>(".scrap-filters__option"),
+    ).find(
+      (row) => row.querySelector(".scrap-filters__name")?.textContent === name,
+    )!;
+
+  it("keeps search visible, shows the match count, and clears in place", () => {
+    act(() =>
+      root.render(<ScrapCollage items={fewItems()} seed={1} showKindFilter />),
+    );
+    const search = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Search scraps"]',
+    )!;
+    expect(search).not.toBeNull();
+    expect(container.querySelector('[aria-label="Clear search"]')).toBeNull();
+
+    act(() => search.focus());
+    typeInto(search, "garden");
+    expect(
+      container.querySelector(".scrap-filters__matches")?.textContent,
+    ).toBe("2");
+    expect(tiles()).toHaveLength(2);
+
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Clear search"]')!
+        .click(),
+    );
+    expect(search.value).toBe("");
+    expect(document.activeElement).toBe(search);
+    expect(container.querySelector('[aria-label="Clear search"]')).toBeNull();
+    expect(tiles()).toHaveLength(4);
+
+    typeInto(search, "notes");
+    act(() => {
+      search.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    expect(search.value).toBe("");
+    expect(
+      container.querySelector('input[aria-label="Search scraps"]'),
+    ).toBe(search);
+  });
+
+  it("summarises picked sites on the from chip and pins them in the popover", () => {
+    act(() =>
+      root.render(<ScrapCollage items={fewItems()} seed={1} showKindFilter />),
+    );
+    expect(chip("from").textContent).toContain("anywhere");
+    expect(chip("from").hasAttribute("data-on")).toBe(false);
+    act(() => chip("from").click());
+    expect(chip("from").getAttribute("aria-expanded")).toBe("true");
+
+    act(() => optionRow("are.na").focus());
+    act(() => optionRow("are.na").click());
+    expect(chip("from").textContent).toContain("are.na");
+    // The picked row moves to the top and keeps focus, so Escape still closes.
+    expect(document.activeElement).toBe(optionRow("are.na"));
+    act(() => optionRow("spencer.place").click());
+    expect(chip("from").textContent).toContain("2 sites");
+    expect(chip("from").hasAttribute("data-on")).toBe(true);
+    expect(
+      container.querySelectorAll(".scrap-filters__row > button"),
+    ).toHaveLength(0);
+
+    const names = Array.from(
+      container.querySelectorAll(".scrap-filters__option .scrap-filters__name"),
+    ).map((name) => name.textContent);
+    expect(names).toEqual(["are.na", "spencer.place", "example.com"]);
+    expect(
+      container.querySelector(".scrap-filters__options hr"),
+    ).not.toBeNull();
+    expect(tiles()).toHaveLength(3);
+  });
+
+  it("counts scraps per site and per type in the popovers", () => {
+    act(() =>
+      root.render(<ScrapCollage items={fewItems()} seed={1} showKindFilter />),
+    );
+    act(() => chip("from").click());
+    const count = (name: string) =>
+      optionRow(name).querySelector(".scrap-filters__count")?.textContent;
+    expect(count("are.na")).toBe("2");
+    expect(count("spencer.place")).toBe("1");
+    expect(count("example.com")).toBe("1");
+
+    act(() => chip("type").click());
+    expect(container.querySelector(".scrap-filters__popover--places")).toBeNull();
+    const kindCount = (kind: string) =>
+      container.querySelector(
+        `[data-scrap-kind="${kind}"] .scrap-filters__count`,
+      )?.textContent;
+    expect(kindCount("all")).toBe("4");
+    expect(kindCount("image")).toBe("2");
+    expect(kindCount("button")).toBe("2");
+    expect(kindCount("cursor")).toBe("0");
+
+    const typeChip = chip("type");
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[data-scrap-kind="image"]')!
+        .click(),
+    );
+    expect(container.querySelector(".scrap-filters__popover")).toBeNull();
+    expect(document.activeElement).toBe(typeChip);
+    expect(typeChip.hasAttribute("data-on")).toBe(true);
+
+    act(() => chip("from").click());
+    expect(count("are.na")).toBe("1");
+    expect(count("example.com")).toBe("0");
   });
 });

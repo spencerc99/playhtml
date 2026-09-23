@@ -7,6 +7,12 @@ import {
   type ScrapItem,
 } from "@movement/components/ScrapCollage";
 import {
+  ScrapFilters,
+  scrapPassesFilters,
+  type ScrapKindFilter,
+} from "@movement/components/ScrapFilters";
+import type { FilterChip } from "@movement/utils/eventUtils";
+import {
   DRAWER_RAIL_WIDTH,
   SLOT_SIZE_NAMES,
   clampDrawerWidth,
@@ -21,30 +27,6 @@ import {
   readTransparency,
   rememberedTransparency,
 } from "./scrapTransparency";
-
-export type ScrapKindFilter = "all" | ScrapItem["kind"];
-
-const KIND_FILTERS: ScrapKindFilter[] = [
-  "all",
-  "image",
-  "button",
-  "svg-icon",
-  "heading",
-  "cursor",
-];
-
-/**
- * Short enough that every filter fits one line at the default width, in the
- * order the browse view's type popover lists the same kinds.
- */
-const FILTER_LABELS: Record<ScrapKindFilter, string> = {
-  all: "all",
-  image: "pics",
-  button: "btns",
-  "svg-icon": "icons",
-  heading: "heads",
-  cursor: "curs",
-};
 
 /** How far above and below the view thumbnails are kept mounted, in pixels. */
 const OVERSCAN = 400;
@@ -73,14 +55,19 @@ export function ScrapTray({
   onDragStart,
 }: ScrapTrayProps) {
   const [kind, setKind] = useState<ScrapKindFilter>("all");
+  const [places, setPlaces] = useState<FilterChip[]>([]);
+  const [search, setSearch] = useState("");
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const resizingRef = useRef(false);
 
   const filtered = useMemo(() => {
     const sorted = [...items].sort((a, b) => b.ts - a.ts);
-    return kind === "all" ? sorted : sorted.filter((item) => item.kind === kind);
-  }, [items, kind]);
+    return sorted.filter((item) =>
+      scrapPassesFilters(item, kind, places, search),
+    );
+  }, [items, kind, places, search]);
+  const filtering = kind !== "all" || places.length > 0 || search.trim() !== "";
 
   const columns = drawerColumns(width, slotSize);
   // Every thumbnail keeps its own proportions, so the placement is worked out
@@ -155,50 +142,68 @@ export function ScrapTray({
 
   return (
     <aside className="collage-tray" style={{ width }}>
-      <div className="collage-tray__head">
-        <div className="collage-tray__filters">
-          {KIND_FILTERS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              className={`collage-chip${kind === option ? " collage-chip--active" : ""}`}
-              title={option === "all" ? "every kind" : option}
-              onClick={() => setKind(option)}
-            >
-              {FILTER_LABELS[option]}
-            </button>
-          ))}
-        </div>
-        <div className="collage-tray__sizes">
-          {SLOT_SIZE_NAMES.map((name) => (
-            <button
-              key={name}
-              type="button"
-              className={`collage-tray__size${
-                name === slotSize ? " collage-tray__size--on" : ""
-              }`}
-              title={`Show scraps ${name}`}
-              aria-label={`Show scraps ${name}`}
-              aria-pressed={name === slotSize}
-              onClick={() => onSlotSize(name)}
-            >
-              {name[0]}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          className="collage-tray__tuck"
-          title="Tuck the scrap drawer away (\\)"
-          aria-label="Tuck the scrap drawer away"
-          aria-expanded={true}
-          onClick={() => onCollapsed(true)}
-        >
-          &#8249;
-        </button>
-      </div>
+      <ScrapFilters
+        items={items}
+        places={places}
+        onPlaces={setPlaces}
+        kind={kind}
+        onKind={setKind}
+        search={search}
+        onSearch={setSearch}
+        matchCount={filtered.length}
+        layout="drawer"
+        placement="below"
+        searchAccessory={
+          <button
+            type="button"
+            className="collage-tray__tuck"
+            title="Tuck the scrap drawer away (\\)"
+            aria-label="Tuck the scrap drawer away"
+            aria-expanded={true}
+            onClick={() => onCollapsed(true)}
+          >
+            &#8249;
+          </button>
+        }
+        chipsAccessory={
+          <div className="collage-tray__sizes">
+            {SLOT_SIZE_NAMES.map((name) => (
+              <button
+                key={name}
+                type="button"
+                className={`collage-tray__size${
+                  name === slotSize ? " collage-tray__size--on" : ""
+                }`}
+                title={`Show scraps ${name}`}
+                aria-label={`Show scraps ${name}`}
+                aria-pressed={name === slotSize}
+                onClick={() => onSlotSize(name)}
+              >
+                {name[0]}
+              </button>
+            ))}
+          </div>
+        }
+      />
       <p className="collage-studio__label collage-tray__count">
-        {filtered.length} to draw from
+        {filtering ? (
+          <>
+            {filtered.length} of {items.length} ·{" "}
+            <button
+              type="button"
+              className="collage-tray__reset"
+              onClick={() => {
+                setSearch("");
+                setPlaces([]);
+                setKind("all");
+              }}
+            >
+              reset
+            </button>
+          </>
+        ) : (
+          <>{filtered.length} to draw from</>
+        )}
       </p>
       <div
         className="collage-tray__scroll"
