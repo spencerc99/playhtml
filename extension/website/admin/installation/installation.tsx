@@ -1,11 +1,13 @@
 // ABOUTME: Operates the production WWO installation screens from the authenticated office.
-// ABOUTME: Lists stable machine URLs and advances their shared reload generation.
+// ABOUTME: Opens positioned machine windows and advances their shared reload generation.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AdminHeader, AdminLogin, useAdminToken } from "../adminAuth";
 import "../style.scss";
 import { buildLiveInstallationScreens } from "../../shared/utils/installationUrls";
+import { LIVE_INSTALLATION_PROFILES } from "../../shared/utils/liveInstallationProfiles";
+import { ARS_LAYOUT, openInstallationLayout, openInstallationScreen } from "./installationLayouts";
 import {
   getCurrentInstallationControl,
   reloadInstallationScreens,
@@ -73,6 +75,11 @@ export function InstallationOffice() {
     }
   };
 
+  const openAll = () => {
+    openInstallationLayout(ARS_LAYOUT, screens, window);
+    setNotice("Requested nine windows in the Ars Electronica layout. Allow pop-ups for this site if any are missing.");
+  };
+
   return (
     <div className="office-shell">
       <AdminHeader currentPage="installation" onLogout={auth.logout} />
@@ -108,8 +115,21 @@ export function InstallationOffice() {
         <section className="office-panel installation-links">
           <div className="office-list-header">
             <div><span className="office-section-number">MACHINE LINKS</span><h3>Nine named screens</h3></div>
-            <button type="button" onClick={() => screens.forEach((screen) =>
-              window.open(screen.url, "_blank", "noopener"))}>Open all</button>
+            <button type="button" onClick={openAll}>Open all in Ars layout</button>
+          </div>
+          <div className="installation-layout">
+            <p>Opens separate windows on this display, arranged roughly like the Ars Electronica wall. If the group is blocked, use each Open button below.</p>
+            <div className="installation-layout__map" role="img" aria-label="Ars Electronica arrangement of the nine named screens">
+              {ARS_LAYOUT.windows.map((slot) => <div key={slot.screen} title={`${slot.number}: ${LIVE_INSTALLATION_PROFILES[slot.screen].label}`} style={{
+                left: `${slot.x / ARS_LAYOUT.width * 100}%`,
+                top: `${slot.y / ARS_LAYOUT.height * 100}%`,
+                width: `${slot.width / ARS_LAYOUT.width * 100}%`,
+                height: `${slot.height / ARS_LAYOUT.height * 100}%`,
+              }}>
+                <strong>{slot.number}</strong>
+                <span>{LIVE_INSTALLATION_PROFILES[slot.screen].label}</span>
+              </div>)}
+            </div>
           </div>
           <ol>
             {screens.map((screen) => <li key={screen.label}>
@@ -118,7 +138,7 @@ export function InstallationOffice() {
               <button type="button" onClick={() => void copy(screen.url)}>
                 {copiedUrl === screen.url ? "Copied" : "Copy"}
               </button>
-              <button type="button" onClick={() => window.open(screen.url, "_blank", "noopener")}>Open</button>
+              <button type="button" onClick={() => openInstallationScreen(ARS_LAYOUT, screen, window)}>Open</button>
             </li>)}
           </ol>
         </section>
