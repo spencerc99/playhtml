@@ -107,6 +107,29 @@ function buttonNamed(view: HTMLElement, name: string): HTMLButtonElement {
   return found;
 }
 
+describe("the history heading", () => {
+  it("names the drawer, sums it up and offers a new collage", async () => {
+    await saveCollage(record());
+    const { view } = await mount();
+    expect(view.querySelector(".collage-history__heading")?.textContent).toBe(
+      "scrap collages",
+    );
+    expect(view.querySelector(".collage-history__summary")?.textContent).toMatch(
+      /^1 collage · 0 pieces from 0 pages · last one /,
+    );
+    expect(buttonNamed(view, "new collage")).toBeTruthy();
+  });
+
+  it("says nothing has been made yet in an empty drawer", async () => {
+    const { view } = await mount();
+    expect(view.querySelector(".collage-history__summary")?.textContent).toBe(
+      "nothing made yet",
+    );
+    // Without a collage the scrap is bare kraft, with no picture in it.
+    expect(view.querySelector(".collage-history__scrap img")).toBeNull();
+  });
+});
+
 describe("a collage card", () => {
   it("opens its collage from anywhere on the card, as one button", async () => {
     await saveCollage(record());

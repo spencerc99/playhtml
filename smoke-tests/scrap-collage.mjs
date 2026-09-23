@@ -431,7 +431,7 @@ try {
   }
 
   async function openStudio() {
-    await page.getByRole("button", { name: "start a new one" }).click();
+    await page.getByRole("button", { name: "new collage", exact: true }).click();
     await page.waitForTimeout(900);
   }
 
@@ -446,7 +446,9 @@ try {
         await page.waitForTimeout(700);
       }
     }
-    await page.waitForSelector("text=start a new one", { timeout: 20_000 });
+    await page
+      .getByRole("button", { name: "new collage", exact: true })
+      .waitFor({ timeout: 20_000 });
   }
 
   // ====================================================== browse filters
@@ -995,7 +997,7 @@ try {
     "pressing done must flush the pending change",
   );
   assert.ok(
-    await page.getByRole("button", { name: "start a new one" }).isVisible(),
+    await page.getByRole("button", { name: "new collage", exact: true }).isVisible(),
     "a healthy autosave means done leaves with no prompt",
   );
   await page.screenshot({ path: `${evidence}/03-autosave-flushed-on-done.png` });
@@ -1806,6 +1808,61 @@ try {
     .filter({ hasText: "one of each" })
     .first();
   await page.screenshot({ path: `${evidence}/13-history-cards.png` });
+  // The heading names the drawer and sums up exactly what is stored.
+  assert.equal(
+    (await page.locator(".collage-history__heading").textContent()).trim(),
+    "scrap collages",
+  );
+  const drawerTotals = await page.evaluate(async () => {
+    const db = await new Promise((ok, bad) => {
+      const r = indexedDB.open("scrap_collages_db");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => bad(r.error);
+    });
+    try {
+      const rows = await new Promise((ok, bad) => {
+        const r = db.transaction("collages").objectStore("collages").getAll();
+        r.onsuccess = () => ok(r.result);
+        r.onerror = () => bad(r.error);
+      });
+      const newest = rows.reduce((a, b) => (b.createdAt > a.createdAt ? b : a));
+      return {
+        collages: rows.length,
+        pieces: rows.reduce((total, row) => total + row.pieces.length, 0),
+        pages: new Set(
+          rows.flatMap((row) => row.pieces.map((piece) => piece.scrap.pageUrl)),
+        ).size,
+        day: new Date(newest.createdAt).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+        }),
+      };
+    } finally {
+      db.close();
+    }
+  });
+  const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+  const summaryLine = (
+    await page.locator(".collage-history__summary").textContent()
+  ).trim();
+  console.log("history summary:", summaryLine, drawerTotals);
+  assert.equal(
+    summaryLine,
+    `${plural(drawerTotals.collages, "collage", "collages")} · ${plural(
+      drawerTotals.pieces,
+      "piece",
+      "pieces",
+    )} from ${plural(drawerTotals.pages, "page", "pages")} · last one ${drawerTotals.day}`,
+  );
+  assert.equal(
+    (await page.locator(".collage-history__tagline").textContent()).trim(),
+    "turn browsing artifacts into self-portrait collages",
+  );
+  assert.equal(
+    await page.locator(".collage-history__scrap img").count(),
+    1,
+    "the scrap carries the newest collage's picture",
+  );
   assert.equal(
     await page.getByRole("button", { name: "sources" }).count(),
     0,
