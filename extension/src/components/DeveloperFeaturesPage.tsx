@@ -59,6 +59,13 @@ export function DeveloperFeaturesPage({ onBack, embedded = false }: Props) {
       ).length
     : 0;
 
+  const intro = (
+    <p>
+      Experiments available to you are on. Turn off any you do not want; your
+      choices only affect this browser.
+    </p>
+  );
+
   const toggleFeature = async (feature: FeatureId) => {
     if (!states) return;
     await setFeatureOverride(feature, !states[feature].enabled);
@@ -76,12 +83,10 @@ export function DeveloperFeaturesPage({ onBack, embedded = false }: Props) {
           )}
           <span className="developer-features__eyebrow">WWO EXPERIMENTS</span>
           <h1>Experiments</h1>
-          <p>
-            Experiments available to you are on. Turn off any you do not want; your choices only affect
-            this browser.
-          </p>
+          {intro}
         </header>
       )}
+      {embedded && <div className="developer-features__intro">{intro}</div>}
 
       <main className="developer-features__list">
         {states &&
