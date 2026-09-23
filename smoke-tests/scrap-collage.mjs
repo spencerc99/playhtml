@@ -405,8 +405,26 @@ try {
     await page.waitForSelector(".collage-piece--selected");
   }
 
+  const TRAY_KINDS = {
+    all: "all",
+    pics: "image",
+    btns: "button",
+    icons: "svg-icon",
+    heads: "heading",
+    curs: "cursor",
+  };
+
+  /** Narrows the drawer to one kind through its type popover. */
+  async function pickTrayKind(filter) {
+    const tray = page.locator(".collage-tray");
+    await tray.locator(".scrap-filters__chip", { hasText: "type" }).click();
+    await tray
+      .locator(`[data-scrap-kind="${TRAY_KINDS[filter]}"]`)
+      .click();
+  }
+
   async function placeFromTray(filter, index = 0) {
-    await page.getByRole("button", { name: filter, exact: true }).click();
+    await pickTrayKind(filter);
     await page.waitForTimeout(350);
     await page.locator(".collage-tray__slot").nth(index).click();
     await page.waitForTimeout(450);
@@ -431,6 +449,65 @@ try {
     await page.waitForSelector("text=start a new one", { timeout: 20_000 });
   }
 
+  // ====================================================== browse filters
+  // Search is always on the bar; typing narrows the pile and × brings it back.
+  const controls = page.locator(".scrap-collage__controls");
+  const browseSearch = controls.getByRole("textbox", { name: "Search scraps" });
+  await browseSearch.waitFor({ timeout: 20_000 });
+  const barWidth = async () =>
+    Math.round((await controls.boundingBox()).width);
+  const restingWidth = await barWidth();
+  await browseSearch.fill("zzzz-no-such-scrap");
+  await page.waitForTimeout(400);
+  assert.equal(
+    await page.locator("[data-scrap-key]").count(),
+    0,
+    "a search that matches nothing should empty the pile",
+  );
+  assert.equal(
+    await barWidth(),
+    restingWidth,
+    "typing a search should not change the bar's width",
+  );
+  await controls.getByRole("button", { name: "Clear search" }).click();
+  await page.waitForTimeout(400);
+  assert.ok(
+    (await page.locator("[data-scrap-key]").count()) > 0,
+    "clearing the search should bring the pile back",
+  );
+  await controls.locator(".scrap-filters__chip", { hasText: "from" }).click();
+  const browseSite = controls
+    .locator('[aria-label="Found on filters"] .scrap-filters__option')
+    .first();
+  const siteName = (
+    await browseSite.locator(".scrap-filters__name").textContent()
+  ).trim();
+  await browseSite.click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${evidence}/00-browse-from.png` });
+  assert.ok(
+    (
+      await controls
+        .locator(".scrap-filters__chip", { hasText: "from" })
+        .textContent()
+    ).includes(siteName),
+    "the from chip should name the picked site",
+  );
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(200);
+  assert.equal(
+    await controls.locator('[aria-label="Found on filters"]').count(),
+    0,
+    "Escape should close the found-on popover",
+  );
+  await controls.locator(".scrap-filters__chip", { hasText: "from" }).click();
+  await controls
+    .locator('[aria-label="Found on filters"]')
+    .getByRole("button", { name: "clear" })
+    .click();
+  await page.keyboard.press("Escape");
+  await page.screenshot({ path: `${evidence}/00-browse-rest.png` });
+
   await page.getByRole("button", { name: "create", exact: true }).click();
   await page.waitForTimeout(600);
 
@@ -449,6 +526,44 @@ try {
     "an untouched collage should say nothing about saving",
   );
   await page.screenshot({ path: `${evidence}/01-autosave-untouched.png` });
+
+  // ===================================================== drawer filters
+  // The drawer shares browse's search and found-on filter. Keys typed into
+  // its search belong to the search, never to the studio's shortcuts.
+  const tray = page.locator(".collage-tray");
+  const traySlots = () => tray.locator(".collage-tray__slot").count();
+  const everySlot = await traySlots();
+  assert.ok(everySlot > 0, "the drawer should hold scraps");
+  const traySearch = tray.getByRole("textbox", { name: "Search scraps" });
+  await traySearch.click();
+  await page.keyboard.type("\\zzzz-no-such-scrap");
+  await page.waitForTimeout(400);
+  assert.equal(
+    await page.locator(".collage-tray--tucked").count(),
+    0,
+    "a backslash typed into the drawer search must not tuck the drawer",
+  );
+  assert.equal(await traySlots(), 0, "a search that matches nothing empties it");
+  await tray.getByRole("button", { name: "Clear search" }).click();
+  await page.waitForTimeout(300);
+  assert.equal(await traySlots(), everySlot, "clearing restores the drawer");
+  await tray.locator(".scrap-filters__chip", { hasText: "from" }).click();
+  await tray
+    .locator('[aria-label="Found on filters"] .scrap-filters__option')
+    .first()
+    .click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${evidence}/01-drawer-from.png` });
+  assert.ok((await traySlots()) > 0, "a collected site keeps its scraps");
+  await page.keyboard.press("Escape");
+  await tray.getByRole("button", { name: "reset" }).click();
+  await page.waitForTimeout(300);
+  assert.equal(await traySlots(), everySlot, "reset restores the drawer");
+  assert.deepEqual(
+    await storedCollages(),
+    [],
+    "filtering the drawer must not write a collage",
+  );
 
   // Placing a piece writes the collage with nothing pressed.
   await placeFromTray("pics", 0);
@@ -783,7 +898,7 @@ try {
   // against a dark section. Its recorded backdrop has to bake as a dark patch,
   // or the words disappear into the pale paper.
   await openStudio();
-  await page.getByRole("button", { name: "btns", exact: true }).click();
+  await pickTrayKind("btns");
   await page.waitForTimeout(400);
   const outlinedIndex = await page.evaluate(() =>
     [...document.querySelectorAll(".collage-tray__slot")].findIndex((slot) =>
@@ -862,7 +977,7 @@ try {
   // A chequer means "this has holes in it", so only material that really does
   // gets one. The two pictures below are genuine encoded bytes: a JPEG, which
   // cannot carry alpha, and a PNG that is half transparent.
-  await page.getByRole("button", { name: "pics", exact: true }).click();
+  await pickTrayKind("pics");
   await page.waitForTimeout(600);
   const backings = await page.evaluate(async () => {
     const slots = [...document.querySelectorAll(".collage-tray__slot")];
@@ -906,13 +1021,13 @@ try {
     "a png with see-through pixels should get a chequer behind it",
   );
   // An svg picture drawn from the page's own markup is a cut-out by nature.
-  await page.getByRole("button", { name: "icons", exact: true }).click();
+  await pickTrayKind("icons");
   await page.waitForTimeout(500);
   assert.ok(
     (await page.locator(".collage-tray__thumb--checker").count()) > 0,
     "icons should always be backed",
   );
-  await page.getByRole("button", { name: "all", exact: true }).click();
+  await pickTrayKind("all");
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${evidence}/00-drawer-backings.png` });
 
@@ -1713,7 +1828,7 @@ try {
   // the history draws a quiet face rather than breaking.
   missingPhotoGone = true;
   await openStudio();
-  await page.getByRole("button", { name: "pics", exact: true }).click();
+  await pickTrayKind("pics");
   await page.waitForTimeout(400);
   const imageSlots = page.locator(".collage-tray__slot");
   let placedMissing = false;
