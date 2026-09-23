@@ -2517,7 +2517,8 @@ try {
     .filter({ hasText: "one of each" })
     .first();
   await toCarry.scrollIntoViewIfNeeded();
-  await toCarry.hover();
+  await toCarry.locator('button[title="save file"]').hover();
+  await page.waitForTimeout(300);
   await page.screenshot({ path: `${evidence}/19-save-file-card.png` });
   const [download] = await Promise.all([
     page.waitForEvent("download"),
