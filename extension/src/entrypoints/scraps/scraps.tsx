@@ -178,11 +178,15 @@ const centeredMessageStyle: React.CSSProperties = {
 };
 
 type ScrapsMode = "browse" | "create";
+const SCRAPS_PAGE_SIZE = 500;
+const FILTER_PAGE_SIZE = 1_000;
 
 export function ScrapsPage() {
   const [records, setRecords] = useState<ScrapRecord[]>([]);
   const [nextCursor, setNextCursor] = useState<ScrapsResponse["nextCursor"]>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [searchHistory, setSearchHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -236,7 +240,7 @@ export function ScrapsPage() {
       try {
         const response = (await browser.runtime.sendMessage({
           type: "GET_SCRAPS",
-          options: { limit: 200 },
+          options: { limit: SCRAPS_PAGE_SIZE },
         })) as ScrapsResponse;
         if (!isScrapsResponse(response)) {
           throw new Error("GET_SCRAPS returned an invalid response");
@@ -262,14 +266,60 @@ export function ScrapsPage() {
     };
   }, [revision]);
 
+  useEffect(() => {
+    if (!searchHistory || !nextCursor || loading || loadingMore) return;
+    let cancelled = false;
+    const generation = requestGeneration.current;
+    setLoadingHistory(true);
+
+    const loadHistory = async () => {
+      const olderRecords: ScrapRecord[] = [];
+      let cursor: ScrapsResponse["nextCursor"] = nextCursor;
+      try {
+        while (cursor && !cancelled && generation === requestGeneration.current) {
+          const response = (await browser.runtime.sendMessage({
+            type: "GET_SCRAPS",
+            options: { limit: FILTER_PAGE_SIZE, cursor },
+          })) as ScrapsResponse;
+          if (!isScrapsResponse(response)) {
+            throw new Error("GET_SCRAPS returned an invalid response");
+          }
+          olderRecords.push(...response.scraps);
+          cursor = response.nextCursor;
+        }
+        if (!cancelled && generation === requestGeneration.current) {
+          setRecords((current) => [...current, ...olderRecords]);
+          setNextCursor(cursor);
+          setLoadMoreError(null);
+        }
+      } catch (loadError) {
+        if (!cancelled && generation === requestGeneration.current) {
+          setLoadMoreError(
+            loadError instanceof Error ? loadError.message : String(loadError),
+          );
+          setSearchHistory(false);
+        }
+      } finally {
+        if (!cancelled && generation === requestGeneration.current) {
+          setLoadingHistory(false);
+        }
+      }
+    };
+
+    void loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchHistory, nextCursor, loading, loadingMore]);
+
   const loadMore = async () => {
-    if (!nextCursor || loadingMore) return;
+    if (!nextCursor || loadingMore || loadingHistory) return;
     const generation = requestGeneration.current;
     setLoadingMore(true);
     try {
       const response = (await browser.runtime.sendMessage({
         type: "GET_SCRAPS",
-        options: { limit: 200, cursor: nextCursor },
+        options: { limit: SCRAPS_PAGE_SIZE, cursor: nextCursor },
       })) as ScrapsResponse;
       if (!isScrapsResponse(response)) {
         throw new Error("GET_SCRAPS returned an invalid response");
@@ -438,7 +488,12 @@ export function ScrapsPage() {
             zIndex: 2,
           }}
         >
-          <ScrapCollage items={items} seed={seed} showKindFilter={true} />
+          <ScrapCollage
+            items={items}
+            seed={seed}
+            showKindFilter={true}
+            onFilterIntent={() => setSearchHistory(true)}
+          />
         </div>
       )}
 
@@ -447,7 +502,7 @@ export function ScrapsPage() {
           <button
             type="button"
             onClick={() => void loadMore()}
-            disabled={loadingMore}
+            disabled={loadingMore || loadingHistory}
             style={{
               border: "1px solid #827a72",
               borderRadius: 999,
@@ -459,7 +514,11 @@ export function ScrapsPage() {
               cursor: "pointer",
             }}
           >
-            {loadingMore ? "gathering more..." : "load more scraps"}
+            {loadingHistory
+              ? "searching older scraps..."
+              : loadingMore
+                ? "gathering more..."
+                : "load more scraps"}
           </button>
           {loadMoreError && (
             <div

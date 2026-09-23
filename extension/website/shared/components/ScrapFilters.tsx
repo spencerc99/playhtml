@@ -51,6 +51,7 @@ interface Props {
   onKind: (kind: ScrapKindFilter) => void;
   search: string;
   onSearch: (search: string) => void;
+  onFilterIntent?: () => void;
   /** How many scraps match every filter, shown in the search field while a query is typed. */
   matchCount?: number;
   /** Counts a group of scraps, so a surface that folds repeats counts each scrap once. */
@@ -77,6 +78,7 @@ export function ScrapFilters({
   onKind,
   search,
   onSearch,
+  onFilterIntent,
   matchCount,
   countScraps = countEach,
   layout = "bar",
@@ -483,6 +485,8 @@ export function ScrapFilters({
     <div
       className={`scrap-filters scrap-filters--${layout}`}
       ref={root}
+      onClickCapture={onFilterIntent}
+      onFocusCapture={onFilterIntent}
       // The collage studio leaves every key pressed in here to the filters.
       data-owns-keys=""
       onKeyDown={(event) => {

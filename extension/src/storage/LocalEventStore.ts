@@ -1371,8 +1371,8 @@ export class LocalEventStore {
     limit: number,
     cursor?: EventPageCursor,
   ): Promise<EventPage> {
-    if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
-      throw new Error("Event page limit must be between 1 and 200");
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
+      throw new Error("Event page limit must be between 1 and 1000");
     }
     if (cursor && (!Number.isFinite(cursor.ts) || typeof cursor.id !== "string")) {
       throw new Error("Invalid event page cursor");
