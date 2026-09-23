@@ -2,6 +2,7 @@
 // ABOUTME: Each tag is tied to its piece by an outline so the pair reads as one thing.
 
 import React, { useLayoutEffect, useRef, useState } from "react";
+import type { ScrapItem } from "@movement/components/ScrapCollage";
 import type { CollagePiece } from "./collageRecord";
 import { spreadTags, type TagBox } from "./pieceStack";
 import { webPageHref } from "./scrapLinks";
@@ -17,8 +18,8 @@ interface ProvenancePeekProps {
 /** What a tag is assumed to take up before it has been measured. */
 const ASSUMED_TAG = { width: 120, height: 16 };
 
-function scrapKindName(piece: CollagePiece): string {
-  switch (piece.scrap.kind) {
+function scrapKindName(scrap: ScrapItem): string {
+  switch (scrap.kind) {
     case "image":
       return "picture";
     case "button":
@@ -45,6 +46,47 @@ function shortened(title: string, limit = 42): string {
   const trimmed = title.trim();
   if (trimmed.length <= limit) return trimmed;
   return `${trimmed.slice(0, limit - 1)}…`;
+}
+
+/**
+ * What a label says about a scrap: where it came from, and, when `full`, the
+ * page's title, what kind of thing it is and when it was first seen.
+ */
+export function ProvenanceLines({
+  scrap,
+  full,
+}: {
+  scrap: ScrapItem;
+  full: boolean;
+}) {
+  // Favicons are stored data like any other URL, so only a plain web address
+  // is ever loaded.
+  const favicon = scrap.faviconUrl ? webPageHref(scrap.faviconUrl) : null;
+  const title = shortened(scrap.pageTitle ?? "");
+  return (
+    <>
+      <span className="collage-peek__where">
+        {favicon && (
+          <img
+            className="collage-peek__mark"
+            src={favicon}
+            alt=""
+            width={10}
+            height={10}
+          />
+        )}
+        {scrap.domain}
+      </span>
+      {full && (
+        <span className="collage-peek__more">
+          {title && <span className="collage-peek__line">{title}</span>}
+          <span className="collage-peek__line">
+            {scrapKindName(scrap)} &#183; first seen {seenOn(scrap.ts)}
+          </span>
+        </span>
+      )}
+    </>
+  );
 }
 
 export function ProvenancePeek({
@@ -105,10 +147,6 @@ export function ProvenancePeek({
         const { scrap } = piece;
         const hovered = piece.id === hoveredId;
         const tag = placed.get(piece.id);
-        // Favicons are stored data like any other URL, so only a plain web
-        // address is ever loaded.
-        const favicon = scrap.faviconUrl ? webPageHref(scrap.faviconUrl) : null;
-        const title = shortened(scrap.pageTitle ?? "");
         return (
           <React.Fragment key={piece.id}>
             {/* The piece's own edge, drawn so the label has something to
@@ -136,26 +174,7 @@ export function ProvenancePeek({
                 zIndex: hovered ? 10_006 : 10_005,
               }}
             >
-              <span className="collage-peek__where">
-                {favicon && (
-                  <img
-                    className="collage-peek__mark"
-                    src={favicon}
-                    alt=""
-                    width={10}
-                    height={10}
-                  />
-                )}
-                {scrap.domain}
-              </span>
-              {hovered && (
-                <span className="collage-peek__more">
-                  {title && <span className="collage-peek__line">{title}</span>}
-                  <span className="collage-peek__line">
-                    {scrapKindName(piece)} &#183; first seen {seenOn(scrap.ts)}
-                  </span>
-                </span>
-              )}
+              <ProvenanceLines scrap={scrap} full={hovered} />
             </div>
           </React.Fragment>
         );

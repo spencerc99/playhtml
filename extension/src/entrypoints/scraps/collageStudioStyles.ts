@@ -922,6 +922,13 @@ export const COLLAGE_STUDIO_STYLES = `
     box-shadow: 0 2px 8px rgba(61, 56, 51, 0.18);
   }
 
+  /* The same label, floated over the drawer for the scrap under the pointer.
+     Fixed, so the drawer's scroll does not clip it. */
+  .collage-peek--tray {
+    position: fixed;
+    z-index: 10010;
+  }
+
   .collage-peek__where {
     display: flex;
     align-items: center;
