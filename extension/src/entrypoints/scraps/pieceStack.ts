@@ -81,13 +81,14 @@ export interface PressPlan {
 }
 
 /**
- * Decides a press the way Figma and tldraw do. A plain click takes the
- * frontmost piece under the pointer, however many times it lands in the same
- * place. A press that starts a drag moves the piece already in hand whenever
- * the press is inside it, even where another piece lies on top, so grabbing
- * the selection never hands the drag to something else. Reaching a buried
- * piece is its own gesture: with deep set (cmd or ctrl held) the press takes
- * the next piece down and a drag moves that one.
+ * Decides a press. A click on an unselected spot takes the frontmost piece
+ * under the pointer. A click on the piece already in hand steps one piece
+ * down the pile at that point, wrapping back to the front, so a buried piece
+ * can be reached without a modifier. A press that becomes a drag never
+ * changes the selection: it moves the piece already in hand whenever the
+ * press is inside it, even where another piece lies on top. With deep set
+ * (cmd or ctrl held) the press takes the next piece down straight away and a
+ * drag moves that one.
  */
 export function planPress(
   pieces: readonly CollagePiece[],
@@ -104,7 +105,8 @@ export function planPress(
   }
   const front = stack[0].id;
   if (selectedId && stack.some((piece) => piece.id === selectedId)) {
-    return { selectOnDown: selectedId, dragId: selectedId, selectOnClick: front };
+    const deeper = deeperPieceAt(pieces, point, selectedId) ?? front;
+    return { selectOnDown: selectedId, dragId: selectedId, selectOnClick: deeper };
   }
   return { selectOnDown: front, dragId: front, selectOnClick: front };
 }

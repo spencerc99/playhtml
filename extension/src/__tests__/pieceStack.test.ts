@@ -117,32 +117,30 @@ describe("a plain press", () => {
     });
   });
 
-  it("keeps the frontmost piece on a second click in the same spot", () => {
-    // Clicking the top piece and clicking again to drag it must never hand
-    // the selection to the piece underneath.
+  it("steps one piece down on each click of the piece in hand, wrapping", () => {
+    // A click on the selection reaches into the pile without a modifier.
+    expect(planPress(pile, inThePile, "top", false)?.selectOnClick).toBe(
+      "middle",
+    );
+    expect(planPress(pile, inThePile, "middle", false)?.selectOnClick).toBe(
+      "bottom",
+    );
+    expect(planPress(pile, inThePile, "bottom", false)?.selectOnClick).toBe(
+      "top",
+    );
+  });
+
+  it("never changes the selection when the press on the piece in hand drags", () => {
+    // Clicking the top piece and pressing again to drag it must keep it.
     const plan = planPress(pile, inThePile, "top", false);
-    expect(plan).toEqual({
-      selectOnDown: "top",
-      dragId: "top",
-      selectOnClick: "top",
-    });
-    for (let click = 0; click < 5; click += 1) {
-      expect(planPress(pile, inThePile, plan!.selectOnClick, false)).toEqual(
-        plan,
-      );
-    }
+    expect(plan?.selectOnDown).toBe("top");
+    expect(plan?.dragId).toBe("top");
   });
 
   it("drags the piece in hand even where another lies on top of it", () => {
     const plan = planPress(pile, inThePile, "bottom", false);
     expect(plan?.selectOnDown).toBe("bottom");
     expect(plan?.dragId).toBe("bottom");
-  });
-
-  it("takes the frontmost piece when the press on the one in hand is only a click", () => {
-    expect(planPress(pile, inThePile, "bottom", false)?.selectOnClick).toBe(
-      "top",
-    );
   });
 
   it("takes the frontmost piece when the selection is elsewhere", () => {

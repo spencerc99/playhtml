@@ -585,8 +585,9 @@ export const COLLAGE_STUDIO_STYLES = `
     visibility: hidden;
   }
 
-  /* The title on the back, editable where it is written. It looks like the
-     writing until it is pointed at or being edited. */
+  /* The title on the back, editable where it is written. It always reads as
+     the writing itself: no outline or text cursor, only a caret once it is
+     clicked into. */
   .collage-back__title-field {
     position: absolute;
     box-sizing: border-box;
@@ -598,19 +599,12 @@ export const COLLAGE_STUDIO_STYLES = `
     overflow: hidden;
     overflow-wrap: anywhere;
     resize: none;
-    cursor: text;
+    cursor: inherit;
   }
 
   .collage-back__title-field::placeholder {
     color: var(--collage-back-muted);
     opacity: 1;
-  }
-
-  .collage-back__title-field:hover,
-  .collage-back__title-field:focus-visible,
-  .collage-back__title-field:focus {
-    outline: 1px dashed var(--collage-back-muted);
-    outline-offset: 4px;
   }
 
   /* The side facing away takes no pointer, however the sheet turned over. */

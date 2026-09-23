@@ -123,6 +123,11 @@ const ROTATION_SNAP_DEGREES = 15;
 const COPY_OFFSET = 24;
 /** Frame units the pointer must travel before an alt-drag pulls out a copy. */
 const ALT_DRAG_THRESHOLD = 4;
+/**
+ * Longest a press may be held and still count as a click. A press held longer
+ * was the start of a drag that never got going, so it leaves the selection be.
+ */
+const CLICK_MAX_MS = 350;
 
 const RESIZE_CORNERS: { corner: ResizeCorner; left: string; top: string }[] = [
   { corner: "top-left", left: "0%", top: "0%" },
@@ -298,6 +303,7 @@ export function CollageStudio({
    */
   const pressRef = useRef<{
     at: Point;
+    downAt: number;
     selectOnClick: string;
     moved: boolean;
   } | null>(null);
@@ -970,7 +976,14 @@ export function CollageStudio({
   const endGesture = useCallback((event?: React.PointerEvent) => {
     const press = pressRef.current;
     pressRef.current = null;
-    if (event && press && !press.moved) setSelectedId(press.selectOnClick);
+    if (
+      event &&
+      press &&
+      !press.moved &&
+      performance.now() - press.downAt <= CLICK_MAX_MS
+    ) {
+      setSelectedId(press.selectOnClick);
+    }
     setGesture({ kind: "idle" });
     setGestureReadout(null);
     setHistory((current) => endRun(current));
@@ -1138,7 +1151,12 @@ export function CollageStudio({
     (event.target as Element).setPointerCapture?.(event.pointerId);
     setSelectedId(plan.selectOnDown);
     setCrop(null);
-    pressRef.current = { at, selectOnClick: plan.selectOnClick, moved: false };
+    pressRef.current = {
+      at,
+      downAt: performance.now(),
+      selectOnClick: plan.selectOnClick,
+      moved: false,
+    };
     setGesture({
       kind: "move",
       pieceId: dragging.id,
