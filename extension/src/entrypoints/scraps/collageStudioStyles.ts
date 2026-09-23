@@ -358,11 +358,34 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   /* Undo, redo and the shortcut list, in the stage's top-left corner. */
-  .collage-tools {
+  /* The stage's top-left row: the way back, then the studio tools. */
+  .collage-stage-top {
     position: absolute;
     top: 12px;
     left: 12px;
     z-index: 10001;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .collage-leave {
+    padding: 4px 2px;
+    border: none;
+    background: none;
+    color: #827a72;
+    font-family: "Martian Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+  }
+
+  .collage-leave:hover,
+  .collage-leave:focus-visible {
+    color: #3d3833;
+  }
+
+  .collage-tools {
     display: flex;
     align-items: center;
     gap: 2px;

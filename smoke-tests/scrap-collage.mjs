@@ -438,7 +438,7 @@ try {
   /** Gets back to the history whatever the studio is showing. */
   async function backToHistory() {
     if (await page.locator(".collage-bar").count()) {
-      await page.getByRole("button", { name: "done" }).click();
+      await page.getByRole("button", { name: "back to collages" }).click();
       await page.waitForTimeout(900);
       const leaving = page.getByRole("button", { name: "leave without saving" });
       if (await leaving.count()) {
@@ -980,25 +980,55 @@ try {
   );
   assert.equal(afterReload.length, 1, "autosaving must not multiply records");
 
-  // Reopen it and change something, then press done before the debounce fires.
+  // Reopen it and change something, then leave before the debounce fires.
   await page.getByRole("button", { name: "create", exact: true }).click();
   await page.waitForTimeout(600);
   await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(2500);
   await page.locator(".collage-title-input").fill("saved by leaving");
-  // Straight to done, well inside the settle window.
-  await page.getByRole("button", { name: "done" }).click();
+  // Straight back to the collages, well inside the settle window, by the one
+  // way out: the link at the stage's top-left.
+  assert.equal(
+    await page.getByRole("button", { name: "done" }).count(),
+    0,
+    "the studio has no done button any more",
+  );
+  const leaveBox = await page
+    .getByRole("button", { name: "back to collages" })
+    .boundingBox();
+  const toolsBox = await page.locator(".collage-tools").boundingBox();
+  const stageBox = await page.locator(".collage-frame-area__stage").boundingBox();
+  console.log("the way back:", { leaveBox, toolsBox, stageBox });
+  assert.ok(
+    leaveBox.x < toolsBox.x &&
+      leaveBox.x - stageBox.x < 40 &&
+      leaveBox.y - stageBox.y < 40,
+    "the way back sits leftmost in the stage's top row",
+  );
+  assert.ok(
+    Math.abs(
+      leaveBox.y + leaveBox.height / 2 - (toolsBox.y + toolsBox.height / 2),
+    ) < 4,
+    "the way back shares the tools' row",
+  );
+  assert.equal(
+    (
+      await page.getByRole("button", { name: "back to collages" }).textContent()
+    ).trim(),
+    "← collages",
+  );
+  await page.getByRole("button", { name: "back to collages" }).click();
   await page.waitForTimeout(3000);
   stored = await storedCollages();
   console.log("after done-before-debounce:", stored);
   assert.equal(
     stored.find((row) => row.id === collageId).title,
     "saved by leaving",
-    "pressing done must flush the pending change",
+    "leaving must flush the pending change",
   );
   assert.ok(
     await page.getByRole("button", { name: "new collage", exact: true }).isVisible(),
-    "a healthy autosave means done leaves with no prompt",
+    "a healthy autosave means leaving asks nothing",
   );
   await page.screenshot({ path: `${evidence}/03-autosave-flushed-on-done.png` });
 
@@ -1655,8 +1685,8 @@ try {
   console.log("bottom bar buttons:", barButtons);
   assert.deepEqual(
     barButtons,
-    ["export png", "done"],
-    "the bottom bar should carry nothing but export and done",
+    ["export png"],
+    "the bottom bar should carry nothing but export",
   );
   assert.equal(
     await page.locator(".collage-bar .collage-glyph").count(),
