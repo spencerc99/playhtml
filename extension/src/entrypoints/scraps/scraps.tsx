@@ -201,7 +201,6 @@ export function ScrapsPage() {
       try {
         const response = (await browser.runtime.sendMessage({
           type: "GET_SCRAPS",
-          options: { limit: 5000 },
         })) as ScrapsResponse;
         if (!response || !Array.isArray(response.scraps)) {
           throw new Error("GET_SCRAPS returned an invalid response");

@@ -326,4 +326,59 @@ describe("background scrap queries", () => {
       "https://example.com/second-place",
     ]);
   });
+  it("returns every scrap when no limit is requested", async () => {
+    const queryByType = vi.fn().mockResolvedValue(
+      Array.from({ length: 6000 }, (_, index) =>
+        createEvent(`cursor-${index}`, index, {
+          kind: "cursor",
+          url: `https://example.com/cursor-${index}.png`,
+          pageTitle: "Cursor page",
+        }),
+      ),
+    );
+    const onMessageAddListener = vi.fn();
+
+    vi.doMock("../storage/LocalEventStore", () => ({
+      LocalEventStore: vi.fn(() => ({ queryByType })),
+    }));
+    vi.doMock("../storage/sync", () => ({ uploadEvents: vi.fn() }));
+    vi.doMock("../storage/restore", () => ({ fetchEventsByPid: vi.fn() }));
+    vi.doMock("webextension-polyfill", () => ({
+      default: {
+        storage: {
+          local: {
+            get: vi.fn().mockResolvedValue({}),
+            set: vi.fn().mockResolvedValue(undefined),
+          },
+        },
+        runtime: {
+          onInstalled: { addListener: vi.fn() },
+          onMessage: { addListener: onMessageAddListener },
+          getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
+        },
+        tabs: {
+          create: vi.fn().mockResolvedValue(undefined),
+          query: vi.fn().mockResolvedValue([]),
+          sendMessage: vi.fn().mockResolvedValue(undefined),
+        },
+        alarms: {
+          create: vi.fn(),
+          onAlarm: { addListener: vi.fn() },
+        },
+      },
+    }));
+    (globalThis as any).defineBackground = (setup: () => void) => {
+      setup();
+      return setup;
+    };
+
+    await import("../entrypoints/background");
+    const listener = onMessageAddListener.mock.calls[0][0];
+    const response = await new Promise<{ scraps: unknown[] }>((resolve) => {
+      listener({ type: "GET_SCRAPS" }, {}, resolve);
+    });
+
+    expect(response.scraps).toHaveLength(6000);
+  });
+
 });

@@ -742,7 +742,8 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'GET_SCRAPS') {
-      const limit = (message.options?.limit ?? 5000) as number
+      // No limit returns every scrap; the scraps page filters the full set.
+      const limit = message.options?.limit as number | undefined
       store
         .queryByType('element')
         .then((events) =>
@@ -757,7 +758,7 @@ export default defineBackground(() => {
           reply({
             scraps: groupPhotoEncounters(scraps)
               .sort((a, b) => b.ts - a.ts)
-              .slice(0, limit),
+              .slice(0, limit ?? Infinity),
           }),
         )
         .catch((e) => {
