@@ -2451,16 +2451,23 @@ export class LocalEventStore {
     return eventsForStats;
   }
 
-  /** Rebuild aggregates after importing event history from a file. */
-  async addImportedEvents(events: CollectionEvent[]): Promise<void> {
+  /**
+   * Rebuild aggregates after importing event history from a file. Returns the
+   * events that were newly stored; events already held under the same id or
+   * canonical scrap key are left as they were and omitted.
+   */
+  async addImportedEvents(
+    events: CollectionEvent[],
+  ): Promise<CollectionEvent[]> {
     await this.ensureSessionStatsBackfilled();
-    await this.addEvents(events);
+    const stored = await this.addEvents(events);
     await this.rebuildSessionStats();
     await this.rebuildAggregateDays();
     await this.writeDaysBackfillState("complete");
     this.daysBackfillComplete = true;
     await this.writeStatsBackfillState("complete");
     this.statsBackfillComplete = true;
+    return stored;
   }
 
   /** Store server-restored history as uploaded before rebuilding aggregates. */

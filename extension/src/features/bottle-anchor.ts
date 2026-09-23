@@ -256,7 +256,6 @@ function anchorsBesideReadableContent(candidates: string[]): BottleAnchor[] {
     const el = document.querySelector(sel);
     if (!el) continue;
     const rect = el.getBoundingClientRect();
-    const y = rect.top + rect.height / 2;
     const leftX = rect.left - SAMPLE_HALF_W - CONTENT_GAP_PX;
     const rightX = rect.right + SAMPLE_HALF_W + CONTENT_GAP_PX;
     if (leftX - SAMPLE_HALF_W >= SAFE_EDGE_PX) {

@@ -8,7 +8,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import type { ScrapItem } from "./ScrapCollage";
+import { headingDisplayFontSize, type ScrapItem } from "./ScrapCollage";
 
 /** Fraction of the viewport's smaller dimension the lifted scrap fills. */
 const LIFTED_VIEWPORT_FRACTION = 0.55;
@@ -20,6 +20,12 @@ const SETTLE_ROTATION_RANGE_DEG = 2;
  * for examination while keeping its radius, padding, and shadow in proportion.
  */
 const BUTTON_LIFT_SCALE = 3;
+
+/**
+ * Headings are likewise captured at page size and enlarged for examination,
+ * by less than a button because their wording is already much wider.
+ */
+const HEADING_LIFT_SCALE = 1.5;
 
 /** Elements Tab may reach while the examine dialog holds focus. */
 const FOCUSABLE_SELECTOR =
@@ -72,6 +78,12 @@ export function kindDetailRows(item: ScrapItem): ProvenanceRow[] {
           value: formatDimensions(item.width, item.height),
         },
       ];
+    case "heading": {
+      const rows: ProvenanceRow[] = [{ label: "level", value: `h${item.level}` }];
+      const text = item.text.trim();
+      if (text) rows.push({ label: "text", value: text });
+      return rows;
+    }
     case "cursor": {
       const rows: ProvenanceRow[] = [];
       if (item.hotspotX !== undefined && item.hotspotY !== undefined) {
@@ -512,6 +524,7 @@ function ScrapMedia({ item }: { item: ScrapItem }) {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            ...(item.backdropColor ? { background: item.backdropColor } : {}),
           }}
         >
           <span
@@ -550,6 +563,33 @@ function ScrapMedia({ item }: { item: ScrapItem }) {
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: item.markup }}
         />
+      );
+    case "heading":
+      return (
+        <div
+          className="scrap-lightbox__scrap-media"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "0 16px",
+          }}
+        >
+          <span
+            style={{
+              ...(item.styles as React.CSSProperties),
+              fontSize:
+                headingDisplayFontSize(item.styles, item.text) *
+                HEADING_LIFT_SCALE,
+              lineHeight: 1.15,
+              maxWidth: "100%",
+              textAlign: "center",
+              overflowWrap: "anywhere",
+            }}
+          >
+            {item.text}
+          </span>
+        </div>
       );
     case "cursor":
       return (

@@ -32,13 +32,15 @@ function pageDataObserverKey(name: string): string {
 type PageDataObserver = ((...args: unknown[]) => void) & {
   target?: any;
   mode?: "deep" | "shallow";
+  parentTarget?: any;
+  parentObserver?: (...args: unknown[]) => void;
 };
 
 function applyPageDataUpdate<T>(data: PageDataSetter<T>, value: T): T {
   if (typeof data !== "function") return data as T;
   if (value !== null && typeof value === "object") {
-    (data as (draft: T) => void)(value);
-    return value;
+    const result = (data as (draft: T) => T | void)(value);
+    return result === null ? result : value;
   }
   return (data as (value: T) => T)(value);
 }
@@ -62,6 +64,7 @@ function detachPageDataObserver(name: string, deps: PageDataDeps): void {
   if (!observer) return;
   if (observer.mode === "deep") observer.target?.unobserveDeep(observer);
   if (observer.mode === "shallow") observer.target?.unobserve(observer);
+  observer.parentTarget?.unobserve(observer.parentObserver);
   deps.yObserverByKey.delete(observerKey);
 }
 
@@ -93,9 +96,19 @@ function attachPageDataObserver<T>(
   };
   if (yVal && typeof (yVal as any).observeDeep === "function") {
     const observer = notify as PageDataObserver;
+    const pageData = getYjsValue(getStorePlay()[PAGE_TAG]);
+    const parentObserver = ((event: { keysChanged?: Set<string> }) => {
+      if (!event.keysChanged?.has(name)) return;
+      notify();
+      detachPageDataObserver(name, deps);
+      attachPageDataObserver(name, deps, listeners);
+    }) as PageDataObserver;
     observer.target = yVal;
     observer.mode = "deep";
+    observer.parentTarget = pageData;
+    observer.parentObserver = parentObserver;
     (yVal as any).observeDeep(observer);
+    (pageData as any).observe(parentObserver);
     yObserverByKey.set(observerKey, observer);
     return;
   }
@@ -200,16 +213,20 @@ export function createPageDataChannel<T>(
       const currentValue = isObjectRoot
         ? proxy
         : storePlay()[PAGE_TAG]?.[name] as T;
+      let nextValue = currentValue;
       if (typeof data === "function" && isObjectRoot) {
         doc().transact(() => {
-          applyPageDataUpdate(data as PageDataSetter<T>, proxy);
+          nextValue = applyPageDataUpdate<T>(data, proxy);
         });
-        return;
+        if (nextValue === proxy) return;
+      } else {
+        nextValue = applyPageDataUpdate(data, currentValue);
       }
 
-      const nextValue = applyPageDataUpdate(data, currentValue);
-
-      if (isObjectRoot) {
+      if (
+        isObjectRoot && nextValue !== null && typeof nextValue === "object" &&
+        Array.isArray(proxy) === Array.isArray(nextValue)
+      ) {
         doc().transact(() => {
           deepReplaceIntoProxy(proxy, nextValue);
         });

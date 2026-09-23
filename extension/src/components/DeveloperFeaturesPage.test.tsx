@@ -76,6 +76,38 @@ describe("DeveloperFeaturesPage", () => {
     }
   });
 
+  it("explains that available experiments are on when embedded in Settings", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => root.render(<DeveloperFeaturesPage embedded />));
+    try {
+      expect(container.textContent).toContain(
+        "Experiments available to you are on. Turn off any you do not want",
+      );
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("counts only choices for experiments that are currently available", async () => {
+    vi.mocked(getAllFeatureStates).mockResolvedValue({
+      ...enabledStates,
+      COMMUTE: { enabled: false, available: false, stage: "beta", source: "unavailable" },
+    });
+    vi.mocked(getFeatureOverrides).mockResolvedValue({ COMMUTE: false });
+    const { container, root } = await renderPage();
+    try {
+      expect(container.textContent).toContain("0 choices");
+      const reset = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "Reset choices",
+      );
+      expect(reset?.disabled).toBe(true);
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
   it("clears local choices through the reset control", async () => {
     const { container, root } = await renderPage();
     try {

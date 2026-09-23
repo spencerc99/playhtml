@@ -64,6 +64,11 @@ export function canonicalButtonKey(
   return `${domain}|button|${normalizedText}|${backgroundColor ?? ""}`;
 }
 
+/** Level-insensitive, so the same wording is one heading however it is ranked. */
+export function canonicalHeadingKey(domain: string, text: string): string {
+  return `${domain}|heading|${normalizeWhitespace(text.toLowerCase())}`;
+}
+
 export function canonicalSvgIconKey(domain: string, markup: string): string {
   return `${domain}|svg|${svgGeometryHash(markup)}`;
 }

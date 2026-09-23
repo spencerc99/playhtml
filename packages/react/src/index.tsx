@@ -15,6 +15,7 @@ import {
   cloneThroughFragments,
   getCurrentElementHandler,
   isReactFragment,
+  requireDefaultValue,
 } from "./utils";
 import type {
   ReactElementInitializer,
@@ -260,64 +261,19 @@ export function CanPlayElement<T extends object, V = any>({
   const registeredBindingRef = useRef<ElementBinding | undefined>(undefined);
   const warningKeysRef = useRef<Set<string>>(new Set());
   const { defaultData, myDefaultAwareness } = elementProps;
-  const resolveDefaultData = (fnOrValue: T | ((el: HTMLElement) => T)) =>
-    typeof fnOrValue === "function"
-      ? // @ts-ignore
-        (fnOrValue as (el: HTMLElement) => T)(ref.current as HTMLElement)
-      : (fnOrValue as T);
-  const resolveDefaultAwareness = (
-    fnOrValue?: V | ((el: HTMLElement) => V),
-  ): V | undefined =>
-    typeof fnOrValue === "function"
-      ? // @ts-ignore
-        (fnOrValue as (el: HTMLElement) => V)(ref.current as HTMLElement)
-      : fnOrValue;
+  requireDefaultValue(defaultData, "defaultData");
+  requireDefaultValue(myDefaultAwareness, "myDefaultAwareness");
 
-  // Function-form defaultData/myDefaultAwareness receive the real element, but
-  // `ref.current` is still null during this first render (React hasn't attached
-  // the ref yet) — resolving them here would call the consumer's function with
-  // null and crash. Seed with a plain value only; resolve the function form in
-  // a layout effect below, once ref.current is populated.
-  const [data, setData] = useState<T | undefined>(
-    defaultData !== undefined && typeof defaultData !== "function"
-      ? (defaultData as T)
-      : undefined,
-  );
-  const initialAwareness =
-    typeof myDefaultAwareness === "function"
-      ? undefined
-      : (myDefaultAwareness as V | undefined);
+  const [data, setData] = useState<T | undefined>(() => defaultData);
   const [awareness, setAwareness] = useState<V[]>(
-    initialAwareness ? [initialAwareness] : [],
+    myDefaultAwareness !== undefined ? [myDefaultAwareness] : [],
   );
   const [awarenessByStableId, setAwarenessByStableId] = useState<
     Map<string, V>
   >(new Map());
   const [myAwareness, setMyAwareness] = useState<V | undefined>(
-    initialAwareness,
+    () => myDefaultAwareness,
   );
-
-  useElementRegistrationEffect(() => {
-    if (typeof defaultData === "function") {
-      setData((prev) =>
-        prev === undefined
-          ? resolveDefaultData(defaultData as T | ((el: HTMLElement) => T))
-          : prev,
-      );
-    }
-    if (typeof myDefaultAwareness === "function") {
-      const resolved = resolveDefaultAwareness(
-        myDefaultAwareness as (el: HTMLElement) => V,
-      );
-      if (resolved !== undefined) {
-        setMyAwareness((prev) => (prev === undefined ? resolved : prev));
-        setAwareness((prev) => (prev.length === 0 ? [resolved] : prev));
-      }
-    }
-    // Resolve function-form defaults exactly once, right after the element
-    // mounts — not on every re-render of this effect's inputs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Capture the capability's original updateElement/updateElementAwareness so we can
   // compose them with the React state updater below. These come from the built-in

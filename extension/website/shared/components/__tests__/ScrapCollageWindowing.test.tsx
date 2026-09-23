@@ -1,7 +1,7 @@
 // ABOUTME: Verifies that the full Internet Scraps archive is windowed to the scroll viewport.
 // ABOUTME: Keeps archive layout work bounded and limits the visible stacking depth.
 
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -38,6 +38,36 @@ describe("buildArchiveWindow", () => {
     expect(scrolled.layout[0]?.item.key).not.toBe(initial.layout[0]?.item.key);
   });
 
+  it("keeps pile dense and stable while grid aligns every item", () => {
+    const items = buildItems(5000);
+    const pile = buildArchiveWindow(items, 900, 0, 600, 1, undefined, "pile");
+    const grid = buildArchiveWindow(items, 900, 0, 600, 1, undefined, "grid");
+    expect(pile.layout.length).toBeGreaterThan(grid.layout.length);
+    expect(pile.layout.length).toBeLessThan(150);
+    expect(pile.fieldHeight).toBeLessThan(grid.fieldHeight);
+    expect(grid.layout.every((item) => item.rotation === 0)).toBe(true);
+    const scrolled = buildArchiveWindow(
+      items,
+      900,
+      300,
+      600,
+      1,
+      undefined,
+      "pile",
+    );
+    const shared = scrolled.layout.find((item) =>
+      pile.layout.some((other) => other.item.key === item.item.key),
+    )!;
+    const original = pile.layout.find(
+      (item) => item.item.key === shared.item.key,
+    )!;
+    expect([shared.x, shared.y, shared.rotation]).toEqual([
+      original.x,
+      original.y,
+      original.rotation,
+    ]);
+  });
+
   it("renders nothing before the viewport has measurable dimensions", () => {
     expect(buildArchiveWindow(buildItems(10), 0, 0, 600, 1)).toEqual({
       fieldHeight: 0,
@@ -62,20 +92,28 @@ describe("buildArchiveWindow", () => {
       const columns = Math.floor(width / 160);
       const cellWidth = width / columns;
       for (const scrap of buildArchiveWindow(items, width, 0, 600, 1).layout) {
-        const angle = Math.abs(scrap.rotation) * Math.PI / 180;
-        const rotatedWidth = scrap.width * Math.cos(angle) + scrap.height * Math.sin(angle);
-        const rotatedHeight = scrap.height * Math.cos(angle) + scrap.width * Math.sin(angle);
+        const angle = (Math.abs(scrap.rotation) * Math.PI) / 180;
+        const rotatedWidth =
+          scrap.width * Math.cos(angle) + scrap.height * Math.sin(angle);
+        const rotatedHeight =
+          scrap.height * Math.cos(angle) + scrap.width * Math.sin(angle);
         const centerX = scrap.x + scrap.width / 2;
         const centerY = scrap.y + scrap.height / 2;
         const column = scrap.slotIndex % columns;
         const row = Math.floor(scrap.slotIndex / columns);
-        expect(centerX - rotatedWidth / 2).toBeGreaterThanOrEqual(column * cellWidth);
-        expect(centerX + rotatedWidth / 2).toBeLessThanOrEqual((column + 1) * cellWidth);
+        expect(centerX - rotatedWidth / 2).toBeGreaterThanOrEqual(
+          column * cellWidth,
+        );
+        expect(centerX + rotatedWidth / 2).toBeLessThanOrEqual(
+          (column + 1) * cellWidth,
+        );
         expect(centerY - rotatedHeight / 2).toBeGreaterThanOrEqual(row * 112);
-        expect(centerY + rotatedHeight / 2).toBeLessThanOrEqual((row + 1) * 112);
+        expect(centerY + rotatedHeight / 2).toBeLessThanOrEqual(
+          (row + 1) * 112,
+        );
         expect(scrap.width / scrap.height).toBeCloseTo(
           (scrap.item as Extract<ScrapItem, { kind: "image" }>).naturalWidth /
-          (scrap.item as Extract<ScrapItem, { kind: "image" }>).naturalHeight,
+            (scrap.item as Extract<ScrapItem, { kind: "image" }>).naturalHeight,
         );
       }
     }
@@ -200,31 +238,45 @@ describe("ScrapCollage archive-mode windowing", () => {
     }));
     act(() => {
       root.render(
-        <ScrapCollage items={[...buildItems(5_000), ...images]} seed={1} showKindFilter />,
+        <ScrapCollage
+          items={[...buildItems(5_000), ...images]}
+          seed={1}
+          showKindFilter
+        />,
       );
     });
     act(() => {
-      container.querySelector<HTMLButtonElement>(
-        '[aria-label="Scrap view"] button:last-child',
-      )!.click();
+      container
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="Scrap view"] button:last-child',
+        )!
+        .click();
     });
-    const scroll = container.querySelector<HTMLDivElement>(".scrap-collage__scroll")!;
+    const scroll = container.querySelector<HTMLDivElement>(
+      ".scrap-collage__scroll",
+    )!;
     act(() => {
       scroll.scrollTop = 20_000;
       scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
     });
-    const kinds = container.querySelector<HTMLSelectElement>(
-      '[aria-label="Kinds of scraps shown"]',
-    )!;
     for (const kind of ["image", "button", "all"]) {
-      act(() => {
-        kinds.value = kind;
-        kinds.dispatchEvent(new Event("change", { bubbles: true }));
-      });
+      // Picking a type closes its popover, so each pick reopens it.
+      act(() =>
+        Array.from(container.querySelectorAll("button"))
+          .find((button) => button.textContent?.startsWith("type"))
+          ?.click(),
+      );
+      act(() =>
+        container
+          .querySelector<HTMLButtonElement>(`[data-scrap-kind="${kind}"]`)
+          ?.click(),
+      );
       expect(scroll.scrollTop).toBe(0);
       const tiles = container.querySelectorAll<HTMLElement>("[data-scrap-key]");
       expect(tiles.length).toBeGreaterThan(0);
-      expect(tiles[0].dataset.scrapKey).toBe(kind === "button" ? "s4999" : "image9");
+      expect(tiles[0].dataset.scrapKey).toBe(
+        kind === "button" ? "s4999" : "image9",
+      );
       if (kind === "image") expect(tiles).toHaveLength(10);
     }
   });

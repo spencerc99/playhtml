@@ -17,7 +17,7 @@ const requiredArtifacts = [
   {
     path: "extension/.wxt/tsconfig.json",
     type: "file",
-    repair: "Run `bun install --frozen-lockfile` to run the WXT prepare step.",
+    repair: "Run `bun run prepare:extension`.",
   },
   {
     path: "packages/common/dist/main.d.ts",

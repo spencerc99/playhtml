@@ -45,6 +45,7 @@ extension/src/**/*.js.map
 
 
 .wxt
+extension/web-ext.config.ts
 .output
 extension/dist
 extension/publish

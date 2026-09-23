@@ -68,6 +68,7 @@ describe("background scrap queries", () => {
       text: "Keep this",
       styles: buttonStyles,
       innerSvg: "<svg/>",
+      backdropColor: "rgb(28, 32, 38)",
       pageTitle: "Button page",
     });
     const svg = createEvent("svg", 300, {
@@ -76,6 +77,24 @@ describe("background scrap queries", () => {
       width: 24,
       height: 24,
       pageTitle: "SVG page",
+    });
+    const headingStyles = {
+      fontFamily: "Georgia, serif",
+      fontSize: "32px",
+    };
+    const headingPosition = {
+      pageX: 480,
+      pageY: 220,
+      pageWidth: 1024,
+      pageHeight: 4200,
+    };
+    const heading = createEvent("heading", 350, {
+      kind: "heading",
+      text: "What the tide left behind",
+      level: 2,
+      styles: headingStyles,
+      pageTitle: "Heading page",
+      position: headingPosition,
     });
     const cursor = createEvent("cursor", 400, {
       kind: "cursor",
@@ -95,7 +114,7 @@ describe("background scrap queries", () => {
     );
     const queryByType = vi
       .fn()
-      .mockResolvedValue([button, unknown, image, cursor, svg]);
+      .mockResolvedValue([button, unknown, image, cursor, svg, heading]);
     const onMessageAddListener = vi.fn();
 
     vi.doMock("../storage/LocalEventStore", () => ({
@@ -156,6 +175,21 @@ describe("background scrap queries", () => {
           hotspotY: 3,
         },
         {
+          id: "heading",
+          key: hashScrapString(
+            `2\nWhat the tide left behind\n${serializeScrapStyles(headingStyles)}`,
+          ),
+          kind: "heading",
+          domain: "example.com",
+          pageUrl: "https://example.com/heading",
+          ts: 350,
+          pageTitle: "Heading page",
+          position: headingPosition,
+          text: "What the tide left behind",
+          level: 2,
+          styles: headingStyles,
+        },
+        {
           id: "svg",
           key: hashScrapString('<svg viewBox="0 0 24 24"/>'),
           kind: "svg-icon",
@@ -180,6 +214,7 @@ describe("background scrap queries", () => {
           text: "Keep this",
           styles: buttonStyles,
           innerSvg: "<svg/>",
+          backdropColor: "rgb(28, 32, 38)",
         },
         {
           id: "image",
@@ -291,4 +326,59 @@ describe("background scrap queries", () => {
       "https://example.com/second-place",
     ]);
   });
+  it("returns every scrap when no limit is requested", async () => {
+    const queryByType = vi.fn().mockResolvedValue(
+      Array.from({ length: 6000 }, (_, index) =>
+        createEvent(`cursor-${index}`, index, {
+          kind: "cursor",
+          url: `https://example.com/cursor-${index}.png`,
+          pageTitle: "Cursor page",
+        }),
+      ),
+    );
+    const onMessageAddListener = vi.fn();
+
+    vi.doMock("../storage/LocalEventStore", () => ({
+      LocalEventStore: vi.fn(() => ({ queryByType })),
+    }));
+    vi.doMock("../storage/sync", () => ({ uploadEvents: vi.fn() }));
+    vi.doMock("../storage/restore", () => ({ fetchEventsByPid: vi.fn() }));
+    vi.doMock("webextension-polyfill", () => ({
+      default: {
+        storage: {
+          local: {
+            get: vi.fn().mockResolvedValue({}),
+            set: vi.fn().mockResolvedValue(undefined),
+          },
+        },
+        runtime: {
+          onInstalled: { addListener: vi.fn() },
+          onMessage: { addListener: onMessageAddListener },
+          getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
+        },
+        tabs: {
+          create: vi.fn().mockResolvedValue(undefined),
+          query: vi.fn().mockResolvedValue([]),
+          sendMessage: vi.fn().mockResolvedValue(undefined),
+        },
+        alarms: {
+          create: vi.fn(),
+          onAlarm: { addListener: vi.fn() },
+        },
+      },
+    }));
+    (globalThis as any).defineBackground = (setup: () => void) => {
+      setup();
+      return setup;
+    };
+
+    await import("../entrypoints/background");
+    const listener = onMessageAddListener.mock.calls[0][0];
+    const response = await new Promise<{ scraps: unknown[] }>((resolve) => {
+      listener({ type: "GET_SCRAPS" }, {}, resolve);
+    });
+
+    expect(response.scraps).toHaveLength(6000);
+  });
+
 });

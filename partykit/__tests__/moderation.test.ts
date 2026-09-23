@@ -17,7 +17,9 @@ describe("hashRecord", () => {
   });
 
   it("differs when content differs", () => {
-    expect(hashRecord({ word: "hello" })).not.toBe(hashRecord({ word: "world" }));
+    expect(hashRecord({ word: "hello" })).not.toBe(
+      hashRecord({ word: "world" }),
+    );
   });
 });
 
@@ -40,7 +42,9 @@ const GUESTBOOK = {
 
 const LIVECHAT = {
   "can-play": {
-    chat1: { messages: [{ id: "u1", name: "Bob", text: "hi all", color: "#111" }] },
+    chat1: {
+      messages: [{ id: "u1", name: "Bob", text: "hi all", color: "#111" }],
+    },
   },
 };
 
@@ -65,7 +69,11 @@ describe("recordsFromPlay", () => {
 
   it("captures each record's content and hash", () => {
     const recs = recordsFromPlay(GUESTBOOK);
-    expect(recs[0].fields).toEqual({ name: "Alice", message: "love it!", timestamp: 111 });
+    expect(recs[0].fields).toEqual({
+      name: "Alice",
+      message: "love it!",
+      timestamp: 111,
+    });
     expect(typeof recs[0].contentHash).toBe("string");
   });
 
@@ -142,13 +150,74 @@ function hashFor(play: any, key: string): string {
 }
 
 describe("removeRecordsByTargets", () => {
+  it("removes dotted keys without selecting a matching nested path", () => {
+    const message = { text: "same content" };
+    const play = {
+      "can-play": {
+        "chat.v1": { "message.list": [message, { text: "keep" }, message] },
+        chat: { v1: { message: { list: [message] } } },
+      },
+    };
+    const records = recordsFromPlay(play);
+    expect(new Set(records.map((record) => record.key)).size).toBe(4);
+    const targets = [records[0], records[2], records[0]].map(
+      ({ key, contentHash }) => ({ key, contentHash }),
+    );
+    const result = removeRecordsByTargets(play, targets);
+    expect(result.removed).toBe(2);
+    expect(result.skipped).toEqual([]);
+    expect(result.play).toEqual({
+      "can-play": {
+        "chat.v1": { "message.list": [{ text: "keep" }] },
+        chat: { v1: { message: { list: [message] } } },
+      },
+    });
+    expect(play["can-play"]["chat.v1"]["message.list"]).toHaveLength(3);
+  });
+
+  it("distinguishes literal escape sequences, hashes, and empty path segments", () => {
+    const message = { text: "same content" };
+    const play = {
+      "": {
+        "chat.v1": [message],
+        "chat%2Ev1": [message],
+        "chat#0": [message],
+        "chat%230": [message],
+        "": [message],
+      },
+    };
+    const records = recordsFromPlay(play);
+    expect(new Set(records.map((record) => record.key)).size).toBe(5);
+    for (const record of records) {
+      const result = removeRecordsByTargets(play, [record]);
+      expect(result.removed).toBe(1);
+      expect(recordsFromPlay(result.play)).toHaveLength(4);
+    }
+  });
+
+  it("rejects a stale hash beneath a dotted key", () => {
+    const play = { "can-play": { "chat.v1": [{ text: "first" }] } };
+    const [target] = recordsFromPlay(play);
+    play["can-play"]["chat.v1"][0].text = "edited";
+    const result = removeRecordsByTargets(play, [target]);
+    expect(result.removed).toBe(0);
+    expect(result.skipped).toEqual([
+      { key: target.key, reason: "hash-mismatch" },
+    ]);
+    expect(result.play).toEqual(play);
+  });
+
   it("removes a matching record and reports the count", () => {
     const play = makePlay();
     const key = "can-play.newWords#1";
-    const result = removeRecordsByTargets(play, [{ key, contentHash: hashFor(play, key) }]);
+    const result = removeRecordsByTargets(play, [
+      { key, contentHash: hashFor(play, key) },
+    ]);
     expect(result.removed).toBe(1);
     expect(result.skipped).toEqual([]);
-    const words = (result.play["can-play"] as any).newWords.map((r: any) => r.word);
+    const words = (result.play["can-play"] as any).newWords.map(
+      (r: any) => r.word,
+    );
     expect(words).toEqual(["keep", "also-keep"]);
   });
 
@@ -174,7 +243,9 @@ describe("removeRecordsByTargets", () => {
       { key: k2, contentHash: hashFor(play, k2) },
     ]);
     expect(result.removed).toBe(2);
-    const words = (result.play["can-play"] as any).newWords.map((r: any) => r.word);
+    const words = (result.play["can-play"] as any).newWords.map(
+      (r: any) => r.word,
+    );
     expect(words).toEqual(["remove-me"]);
   });
 
@@ -184,14 +255,18 @@ describe("removeRecordsByTargets", () => {
     const target = { key, contentHash: hashFor(play, key) };
     const result = removeRecordsByTargets(play, [target, target]);
     expect(result.removed).toBe(1);
-    const words = (result.play["can-play"] as any).newWords.map((r: any) => r.word);
+    const words = (result.play["can-play"] as any).newWords.map(
+      (r: any) => r.word,
+    );
     expect(words).toEqual(["keep", "also-keep"]);
   });
 
   it("skips a target whose hash no longer matches", () => {
     const play = makePlay();
     const key = "can-play.newWords#1";
-    const result = removeRecordsByTargets(play, [{ key, contentHash: "deadbeef" }]);
+    const result = removeRecordsByTargets(play, [
+      { key, contentHash: "deadbeef" },
+    ]);
     expect(result.removed).toBe(0);
     expect(result.skipped).toEqual([{ key, reason: "hash-mismatch" }]);
     expect((result.play["can-play"] as any).newWords.length).toBe(3);
@@ -203,7 +278,9 @@ describe("removeRecordsByTargets", () => {
       { key: "can-play.newWords#99", contentHash: "abc" },
     ]);
     expect(result.removed).toBe(0);
-    expect(result.skipped).toEqual([{ key: "can-play.newWords#99", reason: "not-found" }]);
+    expect(result.skipped).toEqual([
+      { key: "can-play.newWords#99", reason: "not-found" },
+    ]);
   });
 
   it("does not mutate the input play object", () => {

@@ -63,6 +63,10 @@ interface WithSharedStateConfig<T, V> {
 - **`id`**: optional. Stable id for the element. If omitted, playhtml derives one from the rendered DOM; see [Dynamic elements](/docs/advanced/dynamic-elements/) for why stable ids matter.
 - **`tagInfo`**: optional. Marks the element as one of the built-in capabilities (e.g. `[TagType.CanToggle]`). See [Capabilities](/docs/capabilities/).
 
+`defaultData` and `myDefaultAwareness` accept values, not functions that receive
+DOM elements. They are available on the first render. Derive them from React
+props with a [props-dependent config](#props-dependent-config).
+
 ### Render-function props
 
 ```tsx
@@ -86,14 +90,27 @@ Pass a callback instead of a config object when `defaultData` needs to derive fr
 
 ```tsx
 export const Reaction = withSharedState(
-  ({ reaction: { count } }) => ({ defaultData: { count } }),
-  ({ data, setData }, props) => /* … */,
+  ({ initialCount }: { initialCount: number }) => ({
+    defaultData: { count: initialCount },
+  }),
+  ({ data, setData }) => (
+    <button id="reaction" onClick={() => setData((draft) => { draft.count += 1; })}>
+      {data.count} reactions
+    </button>
+  ),
 );
 ```
+
+`<Reaction initialCount={0} />` starts at zero when there is no saved state.
+Defaults seed shared state; changing props does not overwrite saved state.
 
 ## `<CanPlayElement>`
 
 Component form of `withSharedState`. Useful when you want JSX children (render-prop style) instead of wrapping a component, or when you need ref access to a specific element.
+
+Pass computed values directly, such as `defaultData={{ count: initialCount }}`.
+The same value-only rule applies to `myDefaultAwareness`. DOM-dependent default
+functions belong to the [vanilla element API](/docs/reference/element-api/#defaultdata).
 
 ```tsx
 interface CanPlayElementProps<T, V> {

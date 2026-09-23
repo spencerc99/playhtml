@@ -11,7 +11,7 @@ playhtml works out of the box on full-page-reload sites. For single-page apps (S
 
 playhtml automatically listens for:
 
-- The browser's `navigation` API (`navigation.addEventListener("navigate")`): fires on pushState, replaceState, and back/forward in Chromium 102+.
+- The browser's `navigation` API (`currententrychange`): fires after pushState, replaceState, and back/forward commit the destination URL.
 - `popstate` events: fires on back/forward in all browsers.
 
 Whenever navigation is detected, playhtml recomputes the room. If it changed, playhtml reconnects to the new room, rescans the DOM for interactive elements, and refreshes cursors. **On a room change the document's data resets to the new room** (see [Room-scoped data](#room-scoped-data-on-navigation) below).
@@ -74,7 +74,7 @@ function Providers({ children }: { children: React.ReactNode }) {
 }
 ```
 
-When `pathname` changes, playhtml refreshes. On Chromium, the browser's navigation API fires first and the prop-based call collapses into a no-op. On Safari and Firefox the prop is load-bearing because neither browser has shipped the Navigation API yet.
+When `pathname` changes, playhtml refreshes. In browsers with the Navigation API, automatic detection and the prop-based call resolve to the same room. The prop also handles browsers without the Navigation API.
 
 ## Cursor container (surviving body-swaps)
 

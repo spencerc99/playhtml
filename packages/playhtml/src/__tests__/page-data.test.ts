@@ -1,3 +1,5 @@
+// ABOUTME: Verifies persistent page-data values and subscriptions with real shared documents.
+// ABOUTME: Covers value replacement, draft updates, and channel lifecycle behavior.
 import { describe, it, expect, beforeAll } from "vitest";
 import { getYjsDoc, syncedStore } from "@syncedstore/core";
 import * as Y from "yjs";
@@ -68,6 +70,61 @@ describe("playhtml.createPageData", () => {
     expect(channel.getData()).toEqual({ count: 1 });
   });
 
+  it.each(["value", "updater"])("clears nullable object data with a %s", async (form) => {
+    const store = syncedStore<{ play: Record<string, Record<string, unknown>> }>({ play: {} });
+    const channel = createPageDataChannel<{ name: string } | null>(
+      "selection", null, createPageDataTestDeps(store),
+    );
+    const updates: Array<{ name: string } | null> = [];
+    const peer = new Y.Doc();
+    channel.onUpdate((value) => updates.push(value));
+
+    channel.setData({ name: "Alice" });
+    await new Promise((resolve) => queueMicrotask(resolve));
+    channel.setData(form === "value" ? null : () => null);
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(channel.getData()).toBeNull();
+    expect(updates).toEqual([{ name: "Alice" }, null]);
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(getYjsDoc(store)));
+    expect(peer.getMap("play").toJSON()[PAGE_TAG].selection).toBeNull();
+
+    channel.setData({ name: "Bob" });
+    await new Promise((resolve) => queueMicrotask(resolve));
+    expect(channel.getData()).toEqual({ name: "Bob" });
+    expect(updates.at(-1)).toEqual({ name: "Bob" });
+
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(getYjsDoc(store)));
+    expect(peer.getMap("play").toJSON()[PAGE_TAG].selection).toEqual({ name: "Bob" });
+    channel.destroy();
+    peer.destroy();
+    getYjsDoc(store).destroy();
+  });
+
+  it("clears and restores nullable array data", async () => {
+    const store = syncedStore<{ play: Record<string, Record<string, unknown>> }>({ play: {} });
+    const channel = createPageDataChannel<string[] | null>(
+      "selection", null, createPageDataTestDeps(store),
+    );
+    const updates: Array<string[] | null> = [];
+    channel.onUpdate((value) => updates.push(value));
+
+    channel.setData(["Alice"]);
+    await new Promise((resolve) => queueMicrotask(resolve));
+    channel.setData(() => null);
+    await new Promise((resolve) => queueMicrotask(resolve));
+    expect(channel.getData()).toBeNull();
+    channel.setData(["Bob"]);
+    await new Promise((resolve) => queueMicrotask(resolve));
+    expect(channel.getData()).toEqual(["Bob"]);
+    channel.setData(null);
+    await new Promise((resolve) => queueMicrotask(resolve));
+    expect(channel.getData()).toBeNull();
+    expect(updates).toEqual([["Alice"], null, ["Bob"], null]);
+    channel.destroy();
+    getYjsDoc(store).destroy();
+  });
+
   it("replaces primitive roots with values and functional updates", async () => {
     const channel = playhtml.createPageData("test-primitive-root", 0);
     const updates: number[] = [];
@@ -121,7 +178,7 @@ describe("playhtml.createPageData", () => {
     ]);
   });
 
-  it("keeps notifying after a remote nullable root becomes an object", async () => {
+  it("keeps notifying across remote nullable root replacements", async () => {
     type Value = { nested: { count: number } } | null;
     const firstStore = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
       play: {},
@@ -153,10 +210,22 @@ describe("playhtml.createPageData", () => {
     Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
     await new Promise((resolve) => queueMicrotask(resolve));
 
-    expect(secondChannel.getData()).toEqual({ nested: { count: 2 } });
+    firstStore.play[PAGE_TAG]!["remote-nullable-object"] = null;
+    Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    firstStore.play[PAGE_TAG]!["remote-nullable-object"] = {
+      nested: { count: 3 },
+    };
+    Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(secondChannel.getData()).toEqual({ nested: { count: 3 } });
     expect(updates).toEqual([
       { nested: { count: 1 } },
       { nested: { count: 2 } },
+      null,
+      { nested: { count: 3 } },
     ]);
   });
 

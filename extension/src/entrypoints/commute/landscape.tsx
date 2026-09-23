@@ -1,7 +1,7 @@
 // ABOUTME: Generates deterministic ink-wash scenery for the commute windows.
 // ABOUTME: Renders layered mountains, clouds, water, and trees as animated SVG.
 
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 
 const STRIP_WIDTH = 2200;
 const STRIP_HEIGHT = 120;

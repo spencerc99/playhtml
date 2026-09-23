@@ -16,9 +16,10 @@
     "submit": "./release.sh",
     "submit:dry": "./release.sh --dry-run",
     "submit:refresh-chrome-token": "./scripts/refresh-chrome-token.sh",
+    "prepare:types": "wxt prepare",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "wxt prepare"
+    "postinstall": "bun run prepare:types"
   },
   "dependencies": {
     "@playhtml/common": "workspace:*",

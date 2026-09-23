@@ -1,7 +1,7 @@
 // ABOUTME: Multi-screen installation view — every window computes animation time from a
 // ABOUTME: shared wall-clock epoch; follower windows render zoomed (?cinematic=follow&follow=N) in sync.
 import "../shared/portrait-styles.scss";
-import React, { useState } from "react";
+import { useState } from "react";
 import ReactDOM from "react-dom/client";
 import { MovementCanvas } from "../shared/components/MovementCanvas";
 import {

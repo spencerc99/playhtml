@@ -4,7 +4,6 @@
 import {
   FEATURE_CATALOG,
   FEATURE_IDS,
-  isFeatureId,
   type FeatureAccessSnapshot,
   type FeatureId,
 } from "../shared/featureCatalog";
@@ -56,5 +55,5 @@ export function resolveFeatureState(
     return { enabled: override, available: true, stage: policy.stage, source: "choice" };
   }
 
-  return { enabled: false, available: true, stage: policy.stage, source: "available" };
+  return { enabled: true, available: true, stage: policy.stage, source: "available" };
 }
