@@ -981,7 +981,7 @@ try {
   // Reopen it and change something, then press done before the debounce fires.
   await page.getByRole("button", { name: "create", exact: true }).click();
   await page.waitForTimeout(600);
-  await page.getByRole("button", { name: "keep editing" }).first().click();
+  await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(2500);
   await page.locator(".collage-title-input").fill("saved by leaving");
   // Straight to done, well inside the settle window.
@@ -1001,7 +1001,7 @@ try {
   await page.screenshot({ path: `${evidence}/03-autosave-flushed-on-done.png` });
 
   // Cmd+S flushes too, and the history is up to date when he comes back.
-  await page.getByRole("button", { name: "keep editing" }).first().click();
+  await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(2500);
   await page.locator(".collage-title-input").fill("saved by the key");
   await page.locator(".collage-frame").click({ position: { x: 6, y: 6 } });
@@ -1073,10 +1073,7 @@ try {
   const beforeReopen = (await storedCollages()).find(
     (row) => row.id === collageId,
   );
-  await page
-    .getByRole("button", { name: "keep editing" })
-    .first()
-    .click();
+  await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(1200);
   photosBlocked = true;
   await selectByTab();
@@ -1801,23 +1798,45 @@ try {
   );
 
   // ============================================ the back of the collage
-  // The history's "sources" opens the studio already turned over, and the back
-  // is the one place the sources are read.
+  // The history card carries no sources: the whole card opens the collage,
+  // and the back in the studio is the one place the sources are read.
   await backToHistory();
   const card = page
     .locator(".collage-card")
     .filter({ hasText: "one of each" })
     .first();
-  await page.screenshot({ path: `${evidence}/13-card-front.png` });
+  await page.screenshot({ path: `${evidence}/13-history-cards.png` });
   assert.equal(
-    await page.locator(".collage-card__face--back, .collage-provenance").count(),
+    await page.getByRole("button", { name: "sources" }).count(),
     0,
-    "the history card no longer carries a back of its own",
+    "the history has no sources button",
   );
-  await card.getByRole("button", { name: "sources" }).click();
+  assert.equal(
+    await page.getByRole("button", { name: "keep editing" }).count(),
+    0,
+    "the card itself opens the collage",
+  );
+  assert.equal(await page.locator(".collage-provenance").count(), 0);
+  const cardMeta = (await card.locator(".collage-card__meta").innerText()).trim();
+  assert.ok(
+    /^made .+ 5 pieces$/.test(cardMeta.replace(/\s+/g, " ")),
+    `the card should say only when it was made and its size, got "${cardMeta}"`,
+  );
+  // The card is a real button, so the keyboard opens it too.
+  await card.locator(".collage-card__open").focus();
+  await page.keyboard.press("Enter");
+  await page.waitForSelector(".collage-bar", { timeout: 10_000 });
+  await page.waitForTimeout(900);
+  assert.equal(
+    await page.locator(".collage-sheet--over").count(),
+    0,
+    "a card opens its collage face up",
+  );
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press("t");
   await page.waitForSelector(".collage-sheet--over", { timeout: 10_000 });
   await page.waitForTimeout(900);
-  await assertTurnedOver("opening a card's sources");
+  await assertTurnedOver("T after opening a card");
   const oneOfEach = await readBackAgainstRecord("one of each");
   assert.ok(oneOfEach.lines.length > 0, "the back should list source pages");
   // Favicons are fetched once the back is read; the test pages all carry one.
@@ -2217,8 +2236,13 @@ try {
     .locator(".collage-card")
     .filter({ hasText: "one of each" })
     .first();
-  await toCopy.getByRole("button", { name: "duplicate" }).click();
+  await toCopy.locator('button[title="duplicate"]').click();
   await page.waitForTimeout(1500);
+  assert.equal(
+    await page.locator(".collage-bar").count(),
+    0,
+    "duplicating from the card's glyph must not open anything",
+  );
 
   const afterCopy = await storedCollages();
   const copy = afterCopy.find((row) => row.title === "one of each copy");
@@ -2259,7 +2283,7 @@ try {
     .locator(".collage-card")
     .filter({ hasText: "one of each copy" })
     .first()
-    .getByRole("button", { name: "keep editing" })
+    .locator(".collage-card__open")
     .click();
   await page.waitForTimeout(2500);
   await selectByTab();
@@ -2295,6 +2319,36 @@ try {
     "the original must not even have been rewritten",
   );
   await backToHistory();
+
+  // Deleting from the card asks first, and only the confirmed delete removes
+  // the collage; neither press opens it.
+  const moved = page
+    .locator(".collage-card")
+    .filter({ hasText: "the copy, moved" })
+    .first();
+  await moved.locator('button[title="delete"]').click();
+  await page.waitForTimeout(200);
+  assert.equal(await moved.getByRole("button", { name: "keep" }).count(), 1);
+  assert.equal(
+    await moved.locator('button[title="duplicate"]').count(),
+    0,
+    "the confirmation replaces the glyph row",
+  );
+  await moved.getByRole("button", { name: "keep" }).click();
+  await page.waitForTimeout(200);
+  assert.equal(await moved.locator('button[title="delete"]').count(), 1);
+  await moved.locator('button[title="delete"]').click();
+  await moved.getByRole("button", { name: "delete for good" }).click();
+  await page.waitForTimeout(800);
+  assert.equal(await page.locator(".collage-bar").count(), 0);
+  assert.ok(
+    !(await storedCollages()).some((row) => row.id === copy.id),
+    "the confirmed delete removes the collage",
+  );
+  assert.equal(
+    await page.locator(".collage-card").filter({ hasText: "the copy, moved" }).count(),
+    0,
+  );
 
   // ====================================== a collage whose picture never drew
   // A first-ever bake that fails stores the arrangement with no preview, and
@@ -2560,7 +2614,7 @@ try {
     const wantedPages = 60;
     const usedPages = new Set();
     for (const kind of ["heads", "btns", "icons"]) {
-      await page.getByRole("button", { name: kind, exact: true }).click();
+      await pickTrayKind(kind);
       await page.waitForTimeout(400);
       await page.evaluate(() => {
         document.querySelector(".collage-tray__scroll").scrollTop = 0;

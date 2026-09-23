@@ -166,8 +166,6 @@ interface CollageStudioProps {
   editing: CollageRecord | null;
   onSaved: (record: CollageRecord) => void;
   onLeave: () => void;
-  /** Which side of the collage the studio opens on. */
-  opensOn: "front" | "back";
   /** Timers the autosave runs on, so a test can drive the schedule directly. */
   autosaveTimers?: AutosaveTimers;
 }
@@ -239,7 +237,6 @@ export function CollageStudio({
   editing,
   onSaved,
   onLeave,
-  opensOn,
   autosaveTimers,
 }: CollageStudioProps) {
   const initial = useMemo<readonly CollagePiece[]>(
@@ -263,7 +260,7 @@ export function CollageStudio({
   const frame = formatOf(format);
   const [drawer, setDrawer] = useState(() => readDrawerPreference());
   /** Whether the collage is turned over to its back, where the sources are. */
-  const [over, setOver] = useState(opensOn === "back");
+  const [over, setOver] = useState(false);
   /** The front as the back shows it through the paper. */
   const [bleed, setBleed] = useState<Blob | null>(null);
   /** When the stored collage last changed, for the back's dates. */

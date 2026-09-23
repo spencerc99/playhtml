@@ -1,5 +1,5 @@
-// ABOUTME: Browse saved collages: baked thumbnails and dates, with a way to read each one's back.
-// ABOUTME: Reopens a collage for editing, or deletes one after a confirmation.
+// ABOUTME: Browse saved collages: each card is its baked thumbnail, title, date and size.
+// ABOUTME: A card opens its collage; small glyph buttons duplicate it or delete it after a confirmation.
 
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -16,14 +16,17 @@ import {
   saveCollage,
 } from "./collageStore";
 import { paperBackground } from "./paperGrain";
+import { GLYPHS } from "./PieceActions";
 
 interface CollageHistoryProps {
   /** Bumped by the studio after a save so the list reloads. */
   revision: number;
-  /** Opens a collage in the studio, face up or turned over to its sources. */
-  onEdit: (record: CollageRecord, side: "front" | "back") => void;
+  onEdit: (record: CollageRecord) => void;
   onStartNew: () => void;
 }
+
+/** A day, so a collage touched again the day it was made reads as unchanged. */
+const DAY_MS = 86_400_000;
 
 function formatDate(ts: number): string {
   return new Date(ts).toLocaleDateString(undefined, {
@@ -99,9 +102,10 @@ export function CollageHistory({
     );
   };
 
-  const open = (id: string, side: "front" | "back") => {
+  const open = (id: string) => {
     void loadCollage(id).then((loaded) => {
-      if (loaded) onEdit(loaded, side);
+      if (loaded) onEdit(loaded);
+      else setError("that collage could not be opened");
     });
   };
 
@@ -197,70 +201,54 @@ export function CollageHistory({
           }
           const summary = entry;
           const name = summary.title || "untitled";
+          const paper = paperBackground(
+            summary.paper.color,
+            summary.paper.grain,
+            240,
+            160,
+          );
           return (
             <article key={summary.id} className="collage-card">
-              {summary.preview.drawn ? (
-                <img
-                  className="collage-card__thumb"
-                  style={paperBackground(
-                    summary.paper.color,
-                    summary.paper.grain,
-                    240,
-                    160,
-                  )}
-                  src={previewUrls.get(summary.id)}
-                  alt={name}
-                />
-              ) : (
-                <div
-                  className="collage-card__thumb collage-card__thumb--undrawn"
-                  style={paperBackground(
-                    summary.paper.color,
-                    summary.paper.grain,
-                    240,
-                    160,
-                  )}
-                >
-                  <span className="collage-studio__label">
-                    no preview yet
+              {/* The whole card is the way in: thumbnail, title and all. */}
+              <button
+                type="button"
+                className="collage-card__open"
+                aria-label={`Open ${name}`}
+                onClick={() => open(summary.id)}
+              >
+                {summary.preview.drawn ? (
+                  <img
+                    className="collage-card__thumb"
+                    style={paper}
+                    src={previewUrls.get(summary.id)}
+                    alt=""
+                  />
+                ) : (
+                  <span
+                    className="collage-card__thumb collage-card__thumb--undrawn"
+                    style={paper}
+                  >
+                    <span className="collage-studio__label">no preview yet</span>
                   </span>
-                </div>
-              )}
-              <h3 className="collage-card__title">{name}</h3>
-              <p className="collage-card__meta">
-                {summary.pieceCount} piece
-                {summary.pieceCount === 1 ? "" : "s"}
-                <br />
-                made {formatDate(summary.createdAt)}
-                {summary.updatedAt !== summary.createdAt && (
-                  <>
-                    <br />
-                    changed {formatDate(summary.updatedAt)}
-                  </>
                 )}
-              </p>
-              <div className="collage-card__actions">
-                <button
-                  type="button"
-                  className="collage-action"
-                  onClick={() => open(summary.id, "back")}
-                >
-                  sources
-                </button>
-                <button
-                  type="button"
-                  className="collage-action"
-                  onClick={() => open(summary.id, "front")}
-                >
-                  keep editing
-                </button>
-                <button
-                  type="button"
-                  className="collage-action"
-                  onClick={() => void duplicate(summary.id)}
-                >
-                  duplicate
-                </button>
+                <span className="collage-card__title">{name}</span>
+                <span className="collage-card__meta">
+                  made {formatDate(summary.createdAt)}
+                  {summary.updatedAt - summary.createdAt > DAY_MS && (
+                    <>
+                      <br />
+                      changed {formatDate(summary.updatedAt)}
+                    </>
+                  )}
+                  <br />
+                  {summary.pieceCount} piece
+                  {summary.pieceCount === 1 ? "" : "s"}
+                </span>
+              </button>
+              <div
+                className="collage-card__actions"
+                onClick={(event) => event.stopPropagation()}
+              >
                 {confirmingId === summary.id ? (
                   <>
                     <button
@@ -279,13 +267,29 @@ export function CollageHistory({
                     </button>
                   </>
                 ) : (
-                  <button
-                    type="button"
-                    className="collage-action collage-action--danger"
-                    onClick={() => setConfirmingId(summary.id)}
-                  >
-                    delete
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="collage-glyph"
+                      title="duplicate"
+                      aria-label={`Duplicate ${name}`}
+                      onClick={() => void duplicate(summary.id)}
+                    >
+                      {GLYPHS.duplicate}
+                    </button>
+                    {/* Room for one more glyph, e.g. saving the collage as a
+                        file, before the delete at the row's far end. */}
+                    <span className="collage-card__actions-gap" />
+                    <button
+                      type="button"
+                      className="collage-glyph collage-glyph--danger"
+                      title="delete"
+                      aria-label={`Delete ${name}`}
+                      onClick={() => setConfirmingId(summary.id)}
+                    >
+                      {GLYPHS.remove}
+                    </button>
+                  </>
                 )}
               </div>
             </article>

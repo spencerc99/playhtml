@@ -1189,21 +1189,40 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-card {
     display: flex;
     flex-direction: column;
-    gap: 7px;
+    gap: 6px;
     padding: 9px;
     border: 1px solid rgba(61, 56, 51, 0.14);
     border-radius: 3px;
     background: #fffdf9;
     box-shadow: 0 4px 14px rgba(61, 56, 51, 0.08);
+    transition: box-shadow 140ms ease, border-color 140ms ease;
   }
 
-  /* A collage stored before its first bake shows a quiet face, not a break. */
-  .collage-card__thumb--undrawn {
+  .collage-card:hover,
+  .collage-card:focus-within {
+    border-color: rgba(61, 56, 51, 0.26);
+    box-shadow: 0 6px 18px rgba(61, 56, 51, 0.13);
+  }
+
+  /* The whole card face is one button that opens the collage. */
+  .collage-card__open {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px dashed rgba(61, 56, 51, 0.2);
+    flex-direction: column;
+    gap: 7px;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
+  }
+
+  .collage-card__open:focus-visible {
+    outline: 2px solid rgba(74, 154, 138, 0.8);
+    outline-offset: 3px;
   }
 
   /* The thumbnail sits on the collage's own paper, set from the record. */
@@ -1212,11 +1231,19 @@ export const COLLAGE_STUDIO_STYLES = `
     width: 100%;
     aspect-ratio: 3 / 2;
     object-fit: contain;
-    cursor: zoom-in;
+  }
+
+  /* A collage stored before its first bake shows a quiet face, not a break. */
+  .collage-card__thumb--undrawn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border: 1px dashed rgba(61, 56, 51, 0.2);
   }
 
   .collage-card__title {
-    margin: 0;
+    display: block;
     font-family: "Lora", Georgia, serif;
     font-size: 15px;
     font-weight: 600;
@@ -1224,7 +1251,7 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-card__meta {
-    margin: 0;
+    display: block;
     font-family: "Martian Mono", monospace;
     font-size: 9px;
     line-height: 1.7;
@@ -1232,10 +1259,30 @@ export const COLLAGE_STUDIO_STYLES = `
     color: #827a72;
   }
 
+  /* The card's tools: a quiet row of the studio's glyphs, clearer on hover
+     or focus but always there for the keyboard. */
   .collage-card__actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 5px;
+    align-items: center;
+    gap: 4px;
+    min-height: 26px;
+    color: #827a72;
+    opacity: 0.7;
+    transition: opacity 140ms ease;
+  }
+
+  .collage-card:hover .collage-card__actions,
+  .collage-card:focus-within .collage-card__actions {
+    opacity: 1;
+  }
+
+  .collage-card__actions .collage-glyph {
+    color: inherit;
+  }
+
+  .collage-card__actions-gap {
+    flex: 1 1 auto;
   }
 
   .collage-mode-switch {
