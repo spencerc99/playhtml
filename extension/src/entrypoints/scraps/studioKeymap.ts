@@ -1,8 +1,11 @@
 // ABOUTME: Maps keyboard events in the collage studio to the command they invoke.
 // ABOUTME: One place decides what a key does, so the studio itself stays declarative.
 
-/** What the studio is in the middle of, which changes what a key means. */
-export type StudioMode = "idle" | "crop" | "rotate" | "scale";
+/**
+ * What the studio is in the middle of, which changes what a key means. "back"
+ * is the collage turned over to read its sources.
+ */
+export type StudioMode = "idle" | "crop" | "rotate" | "scale" | "back";
 
 export type StudioCommand =
   | { kind: "delete" }
@@ -26,7 +29,9 @@ export type StudioCommand =
   | { kind: "selectInStack"; direction: "below" | "above" }
   | { kind: "nudge"; dx: number; dy: number }
   | { kind: "order"; to: "forward" | "backward" | "front" | "back" }
-  | { kind: "showKeys" };
+  | { kind: "showKeys" }
+  /** Turns the collage over to its back, or face up again. */
+  | { kind: "turnOver" };
 
 export interface KeyEventShape {
   key: string;
@@ -114,6 +119,18 @@ export function studioCommandFor(
     return null;
   }
 
+  // Turned over, the collage is only being read: the keys that turn it back
+  // and the shortcut list work, and nothing reaches the pieces.
+  if (mode === "back") {
+    if (accel || event.altKey) return null;
+    if (event.key === "Escape") return { kind: "turnOver" };
+    if (event.key === "?") return { kind: "showKeys" };
+    if (!event.shiftKey && event.key.toLowerCase() === "t") {
+      return { kind: "turnOver" };
+    }
+    return null;
+  }
+
   if (accel) {
     switch (event.key.toLowerCase()) {
       case "z":
@@ -188,6 +205,8 @@ export function studioCommandFor(
       return hasSelection ? { kind: "flip", axis: "x" } : null;
     case "v":
       return hasSelection ? { kind: "flip", axis: "y" } : null;
+    case "t":
+      return { kind: "turnOver" };
     case "\\":
       return { kind: "toggleDrawer" };
     default:
@@ -311,6 +330,7 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
     group: "look",
     entries: [
       { keys: "hold i", what: "where each piece came from" },
+      { keys: "T", what: "turn the collage over to read its sources" },
     ],
   },
 ];

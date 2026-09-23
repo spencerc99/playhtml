@@ -1,5 +1,5 @@
 // ABOUTME: The small cluster of studio-wide tools floating at the frame's top-left.
-// ABOUTME: Undo, redo and the shortcut list, beside the canvas rather than across the drawer.
+// ABOUTME: Undo, redo, turning the collage over, and the shortcut list, beside the canvas.
 
 import React from "react";
 
@@ -40,22 +40,36 @@ const KEYS = (
   </Glyph>
 );
 
+/** A card with an arrow swinging around it: turn the collage over. */
+const TURN_OVER = (
+  <Glyph>
+    <rect x="4.5" y="3.5" width="7" height="9" rx="0.8" {...STROKE} />
+    <path d="M2 9.5a6 3 0 0 0 12 0" {...STROKE} />
+    <path d="M12.2 11.4l1.8-1.9.5 2.4" {...STROKE} />
+  </Glyph>
+);
+
 interface StudioToolsProps {
   canUndo: boolean;
   canRedo: boolean;
   keysOpen: boolean;
+  /** Whether the collage is showing its back. */
+  turnedOver: boolean;
   onUndo: () => void;
   onRedo: () => void;
   onKeys: () => void;
+  onTurnOver: () => void;
 }
 
 export function StudioTools({
   canUndo,
   canRedo,
   keysOpen,
+  turnedOver,
   onUndo,
   onRedo,
   onKeys,
+  onTurnOver,
 }: StudioToolsProps) {
   return (
     <div className="collage-tools" role="toolbar" aria-label="Studio">
@@ -80,6 +94,16 @@ export function StudioTools({
         {REDO}
       </button>
       <span className="collage-piece-actions__rule" aria-hidden="true" />
+      <button
+        type="button"
+        className={`collage-glyph${turnedOver ? " collage-glyph--on" : ""}`}
+        title={turnedOver ? "Turn face up (T or esc)" : "Turn over to read the sources (T)"}
+        aria-label="Turn the collage over"
+        aria-pressed={turnedOver}
+        onClick={onTurnOver}
+      >
+        {TURN_OVER}
+      </button>
       <button
         type="button"
         className={`collage-glyph${keysOpen ? " collage-glyph--on" : ""}`}

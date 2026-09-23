@@ -20,7 +20,8 @@ function Glyph({ children }: { children: React.ReactNode }) {
   );
 }
 
-const GLYPHS = {
+/** The strip's glyphs, shared with the collage history's card actions. */
+export const GLYPHS = {
   forward: (
     <Glyph>
       <rect x="2.5" y="4.5" width="7" height="7" {...STROKE} />

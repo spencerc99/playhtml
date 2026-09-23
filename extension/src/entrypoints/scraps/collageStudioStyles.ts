@@ -532,16 +532,80 @@ export const COLLAGE_STUDIO_STYLES = `
     overflow: hidden;
   }
 
+  /* Both sides of the collage share one place on the stage. The sheet keeps
+     the frame's true size and is only ever zoomed, never squeezed by the flex
+     stage around it. */
+  .collage-sheet {
+    position: relative;
+    flex: none;
+    transform-origin: center;
+    perspective: 6000px;
+  }
+
+  /* The sheet turns over the way a printed card does, about its vertical axis. */
+  .collage-sheet__leaf {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 560ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+
+  .collage-sheet--over .collage-sheet__leaf {
+    transform: rotateY(180deg);
+  }
+
   /* The frame's paper comes from the record, so the studio shows what bakes. */
   .collage-frame {
     position: relative;
-    /* It keeps its true size and is only ever zoomed, never squeezed by the
-       flex stage around it. */
-    flex: none;
-    transform-origin: center;
     box-shadow: 0 10px 34px rgba(61, 56, 51, 0.16);
     overflow: hidden;
     touch-action: none;
+    backface-visibility: hidden;
+  }
+
+  /* The back: the same paper, the front faintly through it, and the sources. */
+  .collage-back {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    box-shadow: 0 10px 34px rgba(61, 56, 51, 0.16);
+    backface-visibility: hidden;
+    transform: rotateY(180deg);
+    user-select: text;
+  }
+
+  .collage-back__text {
+    position: absolute;
+    inset: 0;
+  }
+
+  /* The side facing away takes no pointer, however the sheet turned over. */
+  .collage-sheet__leaf > [inert] {
+    pointer-events: none;
+  }
+
+  /* A sheet that cannot swing still turns over, just as a crossfade. */
+  @media (prefers-reduced-motion: reduce) {
+    .collage-sheet__leaf,
+    .collage-sheet--over .collage-sheet__leaf {
+      transform: none;
+      transition: none;
+    }
+
+    .collage-frame,
+    .collage-back {
+      backface-visibility: visible;
+      transition: opacity 180ms linear;
+    }
+
+    .collage-back {
+      transform: none;
+    }
+
+    .collage-sheet__leaf > [inert] {
+      opacity: 0;
+    }
   }
 
   .collage-frame__edge {
@@ -1040,6 +1104,14 @@ export const COLLAGE_STUDIO_STYLES = `
     font-size: 15px;
   }
 
+  /* Stands where the title was, at the title field's height, so turning over
+     never changes the bar's height or the frame's zoom. */
+  .collage-bar__turned {
+    display: inline-flex;
+    align-items: center;
+    min-height: 29px;
+  }
+
   .collage-title-input:focus {
     outline: none;
     border-bottom-color: rgba(74, 154, 138, 0.8);
@@ -1117,93 +1189,40 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-card {
     display: flex;
     flex-direction: column;
-    gap: 7px;
+    gap: 6px;
     padding: 9px;
     border: 1px solid rgba(61, 56, 51, 0.14);
     border-radius: 3px;
     background: #fffdf9;
     box-shadow: 0 4px 14px rgba(61, 56, 51, 0.08);
+    transition: box-shadow 140ms ease, border-color 140ms ease;
   }
 
-  /* A card turns over the way a printed photo does: the two faces occupy the
-     same place and the whole card swings about its vertical axis. */
-  .collage-card__leaf {
-    position: relative;
-    transform-style: preserve-3d;
-    transition: transform 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  .collage-card:hover,
+  .collage-card:focus-within {
+    border-color: rgba(61, 56, 51, 0.26);
+    box-shadow: 0 6px 18px rgba(61, 56, 51, 0.13);
   }
 
-  .collage-card__leaf--over {
-    transform: rotateY(180deg);
-  }
-
-  .collage-card__face {
+  /* The whole card face is one button that opens the collage. */
+  .collage-card__open {
     display: flex;
     flex-direction: column;
     gap: 7px;
-    backface-visibility: hidden;
-  }
-
-  .collage-card__face--back {
-    position: absolute;
-    inset: 0;
-    overflow-y: auto;
-    transform: rotateY(180deg);
-  }
-
-  /* The back of a printed photo: pencil on a paler stock. */
-  .collage-card__back-head {
+    width: 100%;
     margin: 0;
-    font-family: "Lora", Georgia, serif;
-    font-size: 14px;
-    font-weight: 600;
-    line-height: 1.3;
-  }
-
-  .collage-card__back-dates {
-    margin: 0;
-    font-family: "Martian Mono", monospace;
-    font-size: 8px;
-    line-height: 1.7;
-    letter-spacing: 0.03em;
-    color: #827a72;
-  }
-
-  /* The hidden face is out of the way for the pointer and the reader alike,
-     whichever way the card turned over. */
-  .collage-card__face[inert] {
-    pointer-events: none;
-  }
-
-  /* A card that cannot swing still turns over, just as a crossfade. */
-  @media (prefers-reduced-motion: reduce) {
-    .collage-card__leaf,
-    .collage-card__leaf--over {
-      transform: none;
-      transition: none;
-    }
-
-    .collage-card__face {
-      backface-visibility: visible;
-      transition: opacity 160ms linear;
-    }
-
-    .collage-card__face--back {
-      transform: none;
-    }
-
-    .collage-card__face[inert] {
-      opacity: 0;
-    }
-  }
-
-  /* A collage stored before its first bake shows a quiet face, not a break. */
-  .collage-card__thumb--undrawn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px dashed rgba(61, 56, 51, 0.2);
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
+  }
+
+  .collage-card__open:focus-visible {
+    outline: 2px solid rgba(74, 154, 138, 0.8);
+    outline-offset: 3px;
   }
 
   /* The thumbnail sits on the collage's own paper, set from the record. */
@@ -1212,11 +1231,19 @@ export const COLLAGE_STUDIO_STYLES = `
     width: 100%;
     aspect-ratio: 3 / 2;
     object-fit: contain;
-    cursor: zoom-in;
+  }
+
+  /* A collage stored before its first bake shows a quiet face, not a break. */
+  .collage-card__thumb--undrawn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border: 1px dashed rgba(61, 56, 51, 0.2);
   }
 
   .collage-card__title {
-    margin: 0;
+    display: block;
     font-family: "Lora", Georgia, serif;
     font-size: 15px;
     font-weight: 600;
@@ -1224,7 +1251,7 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-card__meta {
-    margin: 0;
+    display: block;
     font-family: "Martian Mono", monospace;
     font-size: 9px;
     line-height: 1.7;
@@ -1232,44 +1259,30 @@ export const COLLAGE_STUDIO_STYLES = `
     color: #827a72;
   }
 
+  /* The card's tools: a quiet row of the studio's glyphs, clearer on hover
+     or focus but always there for the keyboard. */
   .collage-card__actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 5px;
-  }
-
-  .collage-provenance {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    max-height: 132px;
-    overflow-y: auto;
-    border-top: 1px solid rgba(61, 56, 51, 0.1);
-  }
-
-  .collage-provenance__entry {
-    padding: 4px 0;
-    border-bottom: 1px solid rgba(61, 56, 51, 0.07);
-    font-size: 12px;
-    line-height: 1.4;
-  }
-
-  .collage-provenance__link {
-    color: #3d3833;
-    text-decoration: none;
-    border-bottom: 1px solid rgba(61, 56, 51, 0.25);
-  }
-
-  .collage-provenance__link:hover {
-    border-bottom-color: rgba(61, 56, 51, 0.6);
-  }
-
-  .collage-provenance__where {
-    display: block;
-    font-family: "Martian Mono", monospace;
-    font-size: 8px;
-    letter-spacing: 0.03em;
+    align-items: center;
+    gap: 4px;
+    min-height: 26px;
     color: #827a72;
+    opacity: 0.7;
+    transition: opacity 140ms ease;
+  }
+
+  .collage-card:hover .collage-card__actions,
+  .collage-card:focus-within .collage-card__actions {
+    opacity: 1;
+  }
+
+  .collage-card__actions .collage-glyph {
+    color: inherit;
+  }
+
+  .collage-card__actions-gap {
+    flex: 1 1 auto;
   }
 
   .collage-mode-switch {

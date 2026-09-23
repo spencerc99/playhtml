@@ -173,6 +173,26 @@ describe("collageProvenance", () => {
     ]);
   });
 
+  it("carries the page's favicon from whichever piece stored one", () => {
+    const sources = collageProvenance([
+      piece({ id: "a", scrap: scrap({ ts: 1_000 }) }),
+      piece({
+        id: "b",
+        scrap: scrap({ ts: 2_000, faviconUrl: "https://example.test/icon.png" }),
+      }),
+      piece({
+        id: "c",
+        scrap: scrap({
+          pageUrl: "https://other.test/",
+          domain: "other.test",
+          ts: 3_000,
+        }),
+      }),
+    ]);
+    expect(sources[0].faviconUrl).toBe("https://example.test/icon.png");
+    expect("faviconUrl" in sources[1]).toBe(false);
+  });
+
   it("dedupes several pieces taken from one page and counts them", () => {
     const sources = collageProvenance([
       piece({ id: "a", scrap: scrap({ ts: 4_000 }) }),

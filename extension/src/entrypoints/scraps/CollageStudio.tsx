@@ -33,6 +33,7 @@ import {
 } from "./collageGeometry";
 import {
   clearCrop,
+  collageProvenance,
   composeCropOnto,
   createCollageId,
   createPieceId,
@@ -82,6 +83,9 @@ import { PieceActions } from "./PieceActions";
 import { StudioTools } from "./StudioTools";
 import { FormatControl } from "./FormatControl";
 import { CollageBakeError, bakeCollage } from "./bakeCollage";
+import { bakeCollageBack, resolveBackFavicons } from "./bakeCollageBack";
+import type { CollageBackContent } from "./collageBack";
+import { CollageBackFace } from "./CollageBackFace";
 import { saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
@@ -255,6 +259,14 @@ export function CollageStudio({
   );
   const frame = formatOf(format);
   const [drawer, setDrawer] = useState(() => readDrawerPreference());
+  /** Whether the collage is turned over to its back, where the sources are. */
+  const [over, setOver] = useState(false);
+  /** The front as the back shows it through the paper. */
+  const [bleed, setBleed] = useState<Blob | null>(null);
+  /** When the stored collage last changed, for the back's dates. */
+  const [changedAt, setChangedAt] = useState<number | null>(
+    editing?.updatedAt ?? null,
+  );
 
   const updateDrawer = useCallback(
     (change: Partial<DrawerPreference>) => {
@@ -347,7 +359,10 @@ export function CollageStudio({
         grain: draftRef.current.record.paper.grain,
       }),
     store: saveCollage,
-    onStored: onSaved,
+    onStored: (record) => {
+      setChangedAt(record.updatedAt);
+      onSaved(record);
+    },
     startsStored: editing !== null,
     reopening: editing,
     ...(autosaveTimers ? { timers: autosaveTimers } : {}),
@@ -376,7 +391,9 @@ export function CollageStudio({
     noteChange();
   }, [changeKey, noteChange]);
 
-  const mode: StudioMode = crop
+  const mode: StudioMode = over
+    ? "back"
+    : crop
     ? "crop"
     : transform
       ? transform.kind
@@ -590,6 +607,74 @@ export function CollageStudio({
     [editPiece, selected],
   );
 
+  /**
+   * Turns the collage over or face up again. Whatever was in hand is put
+   * down first, so the back is only ever read and nothing is edited behind it.
+   */
+  const turnOver = useCallback(() => {
+    if (transform) confirmTransform();
+    if (crop) commitCrop();
+    setSelectedId(null);
+    setHoveredId(null);
+    setHereMenu(null);
+    setGesture({ kind: "idle" });
+    setOver((value) => !value);
+  }, [commitCrop, confirmTransform, crop, transform]);
+
+  const backContent = useMemo<CollageBackContent>(
+    () => ({
+      title,
+      createdAt: createdAtRef.current,
+      changedAt,
+      pieceCount: pieces.length,
+      formatLabel: `${frame.label} \u00b7 ${frame.width} \u00d7 ${frame.height}`,
+      sources: collageProvenance(normalizeStack(pieces)),
+    }),
+    [changedAt, frame, pieces, title],
+  );
+
+  // The back shows the front through the paper. The last picture that drew is
+  // used straight away; when the arrangement has moved on since, a fresh one
+  // replaces it, either from the autosave already drawing or from a bake here.
+  const standingKind = autosave.standing.kind;
+  const lastPreview = autosave.preview;
+  useEffect(() => {
+    if (!over) return;
+    if (pieces.length === 0) {
+      setBleed(null);
+      return;
+    }
+    if (lastPreview) setBleed(lastPreview);
+    if (lastPreview && standingKind === "saved") return;
+    if (standingKind === "saving") return;
+    let cancelled = false;
+    bakeCollage({
+      frame,
+      pieces,
+      paper: paper.color,
+      grain: paper.grain,
+    })
+      .then((baked) => {
+        if (!cancelled) setBleed(baked);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setNotice({
+          tone: "problem",
+          text: `the front could not be drawn through the back — ${
+            error instanceof CollageBakeError
+              ? error.failures.map((failure) => failure.label).join(", ")
+              : error instanceof Error
+                ? error.message
+                : String(error)
+          }`,
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [frame, lastPreview, over, paper.color, paper.grain, pieces, standingKind]);
+
   const stepSelection = useCallback(
     (direction: 1 | -1) => {
       if (ordered.length === 0) return;
@@ -777,6 +862,9 @@ export function CollageStudio({
         case "showKeys":
           setShowKeys((value) => !value);
           break;
+        case "turnOver":
+          turnOver();
+          break;
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -801,6 +889,7 @@ export function CollageStudio({
     removeSelected,
     selected,
     stepSelection,
+    turnOver,
   ]);
 
   /**
@@ -1011,23 +1100,41 @@ export function CollageStudio({
     onLeave();
   };
 
+  /** Hands the browser a file to save under the given name. */
+  const saveFile = (png: Blob, name: string) => {
+    const url = URL.createObjectURL(png);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  /**
+   * Exports the front and the back as two pictures of the same size. The back
+   * shows this very front through its paper, so the pair always agree.
+   */
   const download = async () => {
     if (pieces.length === 0) return;
     setExporting(true);
     setNotice(null);
+    const name = title.trim() || "collage";
     try {
-      const png = await bakeCollage({
+      const front = await bakeCollage({
         frame,
         pieces,
         paper: paper.color,
         grain: paper.grain,
       });
-      const url = URL.createObjectURL(png);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${title.trim() || "collage"}.png`;
-      link.click();
-      URL.revokeObjectURL(url);
+      const back = await bakeCollageBack({
+        frame,
+        paper,
+        content: backContent,
+        front,
+        favicons: await resolveBackFavicons(backContent.sources),
+      });
+      saveFile(front, `${name} front.png`);
+      saveFile(back, `${name} back.png`);
     } catch (error) {
       // An export is asked for out loud, so it fails out loud, naming the
       // pieces that would have left holes in the picture.
@@ -1042,6 +1149,10 @@ export function CollageStudio({
       setExporting(false);
     }
   };
+
+  const onBackProblem = useCallback((text: string) => {
+    setNotice({ tone: "problem", text });
+  }, []);
 
   const onCutoutFailed = useCallback((pieceId: string, reason: string) => {
     setNotice({
@@ -1076,10 +1187,12 @@ export function CollageStudio({
           // The drawer follows the new slot size so three still fit across.
           updateDrawer({ slotSize, width: defaultDrawerWidth(slotSize) })
         }
-        onPlace={(item) =>
+        onPlace={(item) => {
+          // Placing a scrap is an edit, so the collage turns face up for it.
+          if (over) turnOver();
           // Clicked scraps fan out from the middle so each one stays grabbable.
-          addPiece(item, fanOutPlacement(pieces.length, frame))
-        }
+          addPiece(item, fanOutPlacement(pieces.length, frame));
+        }}
         onDragStart={(item, event) => {
           draggingScrapRef.current = item;
           event.dataTransfer.effectAllowed = "copy";
@@ -1089,280 +1202,304 @@ export function CollageStudio({
 
       <div className="collage-frame-area">
         <div className="collage-frame-area__stage" ref={stageRef}>
+          {/* The sheet holds both sides of the collage in one place and turns
+              over about its vertical axis; only the side facing up is live. */}
           <div
-            ref={frameRef}
-            className={`collage-frame${dropActive ? " collage-frame--drop-target" : ""}`}
+            className={`collage-sheet${over ? " collage-sheet--over" : ""}`}
             style={{
               width: frame.width,
               height: frame.height,
-              ...paperBackground(
-                paper.color,
-                paper.grain,
-                frame.width,
-                frame.height,
-              ),
               transform: `scale(${scale})`,
             }}
-            onPointerDown={(event) => {
-              if (event.button !== 0) return;
-              setHereMenu(null);
-              // Clicking away confirms a running mode rather than losing it.
-              if (transform) confirmTransform();
-              else if (crop) commitCrop();
-              else setSelectedId(null);
-            }}
-            onPointerMove={onFramePointerMove}
-            onPointerUp={endGesture}
-            onPointerCancel={() => endGesture()}
-            onPointerLeave={() => setHoveredId(null)}
-            onContextMenu={(event) => {
-              // The browser's own menu never belongs over the collage.
-              event.preventDefault();
-              if (transform) {
-                cancelTransform();
-                return;
-              }
-              if (crop) return;
-              const at = framePoint(event);
-              const stack = piecesUnder(pieces, at);
-              // Bare frame has nothing to list, so nothing opens.
-              if (stack.length === 0) {
-                setHereMenu(null);
-                return;
-              }
-              setHereMenu({ at, pieceIds: stack.map((piece) => piece.id) });
-            }}
-            onDragOver={(event) => {
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "copy";
-              setDropActive(true);
-            }}
-            onDragLeave={() => setDropActive(false)}
-            onDrop={(event) => {
-              event.preventDefault();
-              setDropActive(false);
-              const item = draggingScrapRef.current;
-              draggingScrapRef.current = null;
-              if (item) addPiece(item, framePoint(event));
-            }}
           >
-            {ordered.map((piece) => {
-              const source = sourceBoxForCrop(piece, piece.crop);
-              const isSelected = piece.id === selectedId;
-              const hidden = crop?.pieceId === piece.id;
-              const offFrame =
-                piece.x + piece.width < 0 ||
-                piece.y + piece.height < 0 ||
-                piece.x > frame.width ||
-                piece.y > frame.height;
-              return (
-                <div
-                  key={piece.id}
-                  className={`collage-piece${isSelected ? " collage-piece--selected" : ""}${
-                    offFrame ? " collage-piece--off-frame" : ""
-                  }`}
-                  style={{
-                    left: piece.x,
-                    top: piece.y,
-                    width: piece.width,
-                    height: piece.height,
-                    zIndex: piece.z + 1,
-                    transform: `rotate(${piece.rotation}deg)`,
-                    visibility: hidden ? "hidden" : "visible",
-                  }}
-                  onPointerDown={(event) => beginMove(piece, event)}
-                  onPointerUp={endGesture}
-                >
-                  <div
-                    className="collage-piece__source"
-                    style={{
-                      left: source.x - piece.x,
-                      top: source.y - piece.y,
-                      width: source.width,
-                      height: source.height,
-                      transform: pieceMaterialTransform(piece),
-                      transformOrigin: "center",
-                      pointerEvents: "none",
-                    }}
-                  >
-                    <PieceMaterial
-                      piece={piece}
-                      onCutoutFailed={onCutoutFailed}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-
-            {selected && !crop && !transform && (
-              <PieceHandles
-                piece={selected}
-                onResizeStart={(corner, event) => {
-                  event.stopPropagation();
-                  (event.target as Element).setPointerCapture?.(
-                    event.pointerId,
-                  );
-                  setGesture({
-                    kind: "resize",
-                    pieceId: selected.id,
-                    corner,
-                    origin: {
-                      x: selected.x,
-                      y: selected.y,
-                      width: selected.width,
-                      height: selected.height,
-                    },
-                  });
-                }}
-                onRotateStart={(event) => {
-                  event.stopPropagation();
-                  (event.target as Element).setPointerCapture?.(
-                    event.pointerId,
-                  );
-                  setGesture({ kind: "rotate", pieceId: selected.id });
-                }}
-              />
-            )}
-
-            {crop && cropping && (
-              <CropSession
-                piece={cropping}
-                crop={crop.crop}
-                onChange={(next) => setCrop({ ...crop, crop: next })}
-                onCommit={commitCrop}
-                framePoint={framePoint}
-              />
-            )}
-
-            {/* What a click would take, shown faintly so a piece under a pile
-                can be seen before it is reached for. */}
-            {hovered && hovered.id !== selectedId && !peek.held && (
+            <div className="collage-sheet__leaf">
               <div
-                className="collage-piece-hover"
-                aria-hidden="true"
+                ref={frameRef}
+                className={`collage-frame${dropActive ? " collage-frame--drop-target" : ""}`}
+                inert={over}
                 style={{
-                  left: hovered.x,
-                  top: hovered.y,
-                  width: hovered.width,
-                  height: hovered.height,
-                  transform: `rotate(${hovered.rotation}deg)`,
-                  borderWidth: 1 / scale,
+                  width: frame.width,
+                  height: frame.height,
+                  ...paperBackground(
+                    paper.color,
+                    paper.grain,
+                    frame.width,
+                    frame.height,
+                  ),
                 }}
-              />
-            )}
-
-            {peek.held && (
-              <ProvenancePeek
-                pieces={ordered}
-                hoveredId={hoveredId}
-                scale={scale}
-              />
-            )}
-
-            {hereMenu && hereStack.length > 0 && (
-              <PiecesHereMenu
-                pieces={hereStack}
-                at={hereMenu.at}
-                scale={scale}
-                selectedId={selectedId}
-                onPick={(pieceId) => {
-                  setSelectedId(pieceId);
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
                   setHereMenu(null);
+                  // Clicking away confirms a running mode rather than losing it.
+                  if (transform) confirmTransform();
+                  else if (crop) commitCrop();
+                  else setSelectedId(null);
                 }}
-                onClose={() => setHereMenu(null)}
-              />
-            )}
-
-            {readout && selected && (
-              <p
-                className="collage-readout"
-                style={{
-                  left: selected.x + selected.width / 2,
-                  top: selected.y,
-                  // The slip stays upright and the same size on screen however
-                  // the frame is zoomed or the piece is turned.
-                  transform: `translate(-50%, calc(-100% - 12px)) scale(${1 / scale})`,
+                onPointerMove={onFramePointerMove}
+                onPointerUp={endGesture}
+                onPointerCancel={() => endGesture()}
+                onPointerLeave={() => setHoveredId(null)}
+                onContextMenu={(event) => {
+                  // The browser's own menu never belongs over the collage.
+                  event.preventDefault();
+                  if (transform) {
+                    cancelTransform();
+                    return;
+                  }
+                  if (crop) return;
+                  const at = framePoint(event);
+                  const stack = piecesUnder(pieces, at);
+                  // Bare frame has nothing to list, so nothing opens.
+                  if (stack.length === 0) {
+                    setHereMenu(null);
+                    return;
+                  }
+                  setHereMenu({ at, pieceIds: stack.map((piece) => piece.id) });
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "copy";
+                  setDropActive(true);
+                }}
+                onDragLeave={() => setDropActive(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDropActive(false);
+                  const item = draggingScrapRef.current;
+                  draggingScrapRef.current = null;
+                  if (item) addPiece(item, framePoint(event));
                 }}
               >
-                {readout}
-              </p>
-            )}
+                {ordered.map((piece) => {
+                  const source = sourceBoxForCrop(piece, piece.crop);
+                  const isSelected = piece.id === selectedId;
+                  const hidden = crop?.pieceId === piece.id;
+                  const offFrame =
+                    piece.x + piece.width < 0 ||
+                    piece.y + piece.height < 0 ||
+                    piece.x > frame.width ||
+                    piece.y > frame.height;
+                  return (
+                    <div
+                      key={piece.id}
+                      className={`collage-piece${isSelected ? " collage-piece--selected" : ""}${
+                        offFrame ? " collage-piece--off-frame" : ""
+                      }`}
+                      style={{
+                        left: piece.x,
+                        top: piece.y,
+                        width: piece.width,
+                        height: piece.height,
+                        zIndex: piece.z + 1,
+                        transform: `rotate(${piece.rotation}deg)`,
+                        visibility: hidden ? "hidden" : "visible",
+                      }}
+                      onPointerDown={(event) => beginMove(piece, event)}
+                      onPointerUp={endGesture}
+                    >
+                      <div
+                        className="collage-piece__source"
+                        style={{
+                          left: source.x - piece.x,
+                          top: source.y - piece.y,
+                          width: source.width,
+                          height: source.height,
+                          transform: pieceMaterialTransform(piece),
+                          transformOrigin: "center",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        <PieceMaterial
+                          piece={piece}
+                          onCutoutFailed={onCutoutFailed}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
 
-            {selected &&
-              selected.scrap.kind === "image" &&
-              selected.cutout &&
-              !crop &&
-              !transform && (
-                <div
-                  className="collage-tolerance"
-                  style={{
-                    left: selected.x + selected.width / 2,
-                    top: selected.y + selected.height + 12,
-                  }}
-                  onPointerDown={(event) => event.stopPropagation()}
-                >
-                  <span className="collage-studio__label">edge</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={60}
-                    value={Math.round(selected.cutout.tolerance * 100)}
-                    aria-label="Background cutout tolerance"
-                    onChange={(event) =>
-                      cutOutSelected(Number(event.target.value) / 100)
-                    }
+                {selected && !crop && !transform && (
+                  <PieceHandles
+                    piece={selected}
+                    onResizeStart={(corner, event) => {
+                      event.stopPropagation();
+                      (event.target as Element).setPointerCapture?.(
+                        event.pointerId,
+                      );
+                      setGesture({
+                        kind: "resize",
+                        pieceId: selected.id,
+                        corner,
+                        origin: {
+                          x: selected.x,
+                          y: selected.y,
+                          width: selected.width,
+                          height: selected.height,
+                        },
+                      });
+                    }}
+                    onRotateStart={(event) => {
+                      event.stopPropagation();
+                      (event.target as Element).setPointerCapture?.(
+                        event.pointerId,
+                      );
+                      setGesture({ kind: "rotate", pieceId: selected.id });
+                    }}
                   />
-                </div>
-              )}
+                )}
 
-            {/* The tools for whatever is in hand ride with the piece, and
-                stand aside while a gesture, a mode, or a peek is running. */}
-            {selected &&
-              !crop &&
-              !transform &&
-              !peek.held &&
-              gesture.kind === "idle" && (
-              <PieceActions
-                piece={selected}
-                canUncrop={!isFullCrop(selected.crop)}
-                canCutOut={selected.scrap.kind === "image"}
-                scale={scale}
+                {crop && cropping && (
+                  <CropSession
+                    piece={cropping}
+                    crop={crop.crop}
+                    onChange={(next) => setCrop({ ...crop, crop: next })}
+                    onCommit={commitCrop}
+                    framePoint={framePoint}
+                  />
+                )}
+
+                {/* What a click would take, shown faintly so a piece under a pile
+                    can be seen before it is reached for. */}
+                {hovered && hovered.id !== selectedId && !peek.held && (
+                  <div
+                    className="collage-piece-hover"
+                    aria-hidden="true"
+                    style={{
+                      left: hovered.x,
+                      top: hovered.y,
+                      width: hovered.width,
+                      height: hovered.height,
+                      transform: `rotate(${hovered.rotation}deg)`,
+                      borderWidth: 1 / scale,
+                    }}
+                  />
+                )}
+
+                {peek.held && (
+                  <ProvenancePeek
+                    pieces={ordered}
+                    hoveredId={hoveredId}
+                    scale={scale}
+                  />
+                )}
+
+                {hereMenu && hereStack.length > 0 && (
+                  <PiecesHereMenu
+                    pieces={hereStack}
+                    at={hereMenu.at}
+                    scale={scale}
+                    selectedId={selectedId}
+                    onPick={(pieceId) => {
+                      setSelectedId(pieceId);
+                      setHereMenu(null);
+                    }}
+                    onClose={() => setHereMenu(null)}
+                  />
+                )}
+
+                {readout && selected && (
+                  <p
+                    className="collage-readout"
+                    style={{
+                      left: selected.x + selected.width / 2,
+                      top: selected.y,
+                      // The slip stays upright and the same size on screen however
+                      // the frame is zoomed or the piece is turned.
+                      transform: `translate(-50%, calc(-100% - 12px)) scale(${1 / scale})`,
+                    }}
+                  >
+                    {readout}
+                  </p>
+                )}
+
+                {selected &&
+                  selected.scrap.kind === "image" &&
+                  selected.cutout &&
+                  !crop &&
+                  !transform && (
+                    <div
+                      className="collage-tolerance"
+                      style={{
+                        left: selected.x + selected.width / 2,
+                        top: selected.y + selected.height + 12,
+                      }}
+                      onPointerDown={(event) => event.stopPropagation()}
+                    >
+                      <span className="collage-studio__label">edge</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={60}
+                        value={Math.round(selected.cutout.tolerance * 100)}
+                        aria-label="Background cutout tolerance"
+                        onChange={(event) =>
+                          cutOutSelected(Number(event.target.value) / 100)
+                        }
+                      />
+                    </div>
+                  )}
+
+                {/* The tools for whatever is in hand ride with the piece, and
+                    stand aside while a gesture, a mode, or a peek is running. */}
+                {selected &&
+                  !crop &&
+                  !transform &&
+                  !peek.held &&
+                  gesture.kind === "idle" && (
+                  <PieceActions
+                    piece={selected}
+                    canUncrop={!isFullCrop(selected.crop)}
+                    canCutOut={selected.scrap.kind === "image"}
+                    scale={scale}
+                    frame={frame}
+                    onOrder={(to) =>
+                      commit(
+                        {
+                          forward: movePieceForward,
+                          backward: movePieceBackward,
+                          front: movePieceToFront,
+                          back: movePieceToBack,
+                        }[to](pieces, selected.id),
+                      )
+                    }
+                    onFlip={(axis) =>
+                      editPiece(selected.id, (piece) => flipPiece(piece, axis))
+                    }
+                    onCrop={enterCrop}
+                    onUncrop={() => editPiece(selected.id, clearCrop)}
+                    onCutOut={() =>
+                      selected.cutout
+                        ? editPiece(selected.id, ({ cutout: _cut, ...rest }) => rest)
+                        : cutOutSelected()
+                    }
+                    onDuplicate={() => duplicatePiece(selected)}
+                    onRemove={removeSelected}
+                  />
+                )}
+
+                <div className="collage-frame__edge" />
+              </div>
+
+              <CollageBackFace
                 frame={frame}
-                onOrder={(to) =>
-                  commit(
-                    {
-                      forward: movePieceForward,
-                      backward: movePieceBackward,
-                      front: movePieceToFront,
-                      back: movePieceToBack,
-                    }[to](pieces, selected.id),
-                  )
-                }
-                onFlip={(axis) =>
-                  editPiece(selected.id, (piece) => flipPiece(piece, axis))
-                }
-                onCrop={enterCrop}
-                onUncrop={() => editPiece(selected.id, clearCrop)}
-                onCutOut={() =>
-                  selected.cutout
-                    ? editPiece(selected.id, ({ cutout: _cut, ...rest }) => rest)
-                    : cutOutSelected()
-                }
-                onDuplicate={() => duplicatePiece(selected)}
-                onRemove={removeSelected}
+                paper={paper}
+                content={backContent}
+                front={bleed}
+                showing={over}
+                onProblem={onBackProblem}
               />
-            )}
-
-            <div className="collage-frame__edge" />
+            </div>
           </div>
 
           <StudioTools
-            canUndo={canUndo(history)}
-            canRedo={canRedo(history)}
+            canUndo={!over && canUndo(history)}
+            canRedo={!over && canRedo(history)}
             keysOpen={showKeys}
+            turnedOver={over}
             onUndo={() => setHistory((current) => undo(current))}
             onRedo={() => setHistory((current) => redo(current))}
             onKeys={() => setShowKeys((value) => !value)}
+            onTurnOver={turnOver}
           />
 
           <FormatControl
@@ -1378,18 +1515,28 @@ export function CollageStudio({
         </div>
 
         <div className="collage-bar">
-          <input
-            className="collage-title-input"
-            value={title}
-            placeholder="untitled collage"
-            onChange={(event) => setTitle(event.target.value)}
-            aria-label="Collage title"
-          />
-          <span className="collage-bar__spacer" />
-          <span className="collage-studio__label">
-            {pieces.length} piece{pieces.length === 1 ? "" : "s"}
-            {pieces.length > 0 && " · hold i for sources"}
-          </span>
+          {/* The back already carries the title and the count, so while it
+              is being read the bar only says how to turn it face up. */}
+          {over ? (
+            <span className="collage-studio__label collage-bar__turned">
+              turned over · T or esc to turn back
+            </span>
+          ) : (
+            <>
+              <input
+                className="collage-title-input"
+                value={title}
+                placeholder="untitled collage"
+                onChange={(event) => setTitle(event.target.value)}
+                aria-label="Collage title"
+              />
+              <span className="collage-bar__spacer" />
+              <span className="collage-studio__label">
+                {pieces.length} piece{pieces.length === 1 ? "" : "s"}
+                {pieces.length > 0 && " · hold i for sources"}
+              </span>
+            </>
+          )}
           <span className="collage-bar__spacer" />
           {standing.text && (
             <p

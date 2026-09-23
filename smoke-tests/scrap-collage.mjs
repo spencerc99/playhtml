@@ -1,5 +1,5 @@
 // ABOUTME: Verifies the scrap collage create mode end to end in isolated Chromium.
-// ABOUTME: Covers every scrap kind through the bake, autosave, the source peek, and the card's back.
+// ABOUTME: Covers every scrap kind through the bake, autosave, the source peek, and the collage's back.
 
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -508,6 +508,365 @@ try {
   await page.keyboard.press("Escape");
   await page.screenshot({ path: `${evidence}/00-browse-rest.png` });
 
+  /** Asserts the studio shows the back, with the front out of reach. */
+  async function assertTurnedOver(how) {
+    assert.equal(
+      await page.locator(".collage-sheet--over").count(),
+      1,
+      `${how} should turn the collage over`,
+    );
+    assert.equal(
+      await page.locator(".collage-frame[inert]").count(),
+      1,
+      `${how}: the front should be inert while turned over`,
+    );
+    assert.equal(
+      await page.locator(".collage-back[inert]").count(),
+      0,
+      `${how}: the back should be live while turned over`,
+    );
+    // The back carries the title and the count, so the bar gives them up.
+    assert.equal(
+      await page.locator(".collage-title-input").count(),
+      0,
+      `${how}: the title field should be put away while turned over`,
+    );
+    const hint = (
+      await page.locator(".collage-bar__turned").textContent()
+    ).trim();
+    assert.equal(hint, "turned over · T or esc to turn back");
+    assert.equal(
+      await page.getByRole("button", { name: "export png" }).count(),
+      1,
+      `${how}: export stays in the bar`,
+    );
+  }
+
+  /** Asserts the studio is face up again, with its full bar back. */
+  async function assertFaceUp(how) {
+    assert.equal(
+      await page.locator(".collage-sheet--over").count(),
+      0,
+      `${how} should turn the collage face up`,
+    );
+    assert.equal(await page.locator(".collage-frame[inert]").count(), 0);
+    assert.equal(
+      await page.locator(".collage-title-input").count(),
+      1,
+      `${how}: the title field should be back`,
+    );
+    assert.equal(await page.locator(".collage-bar__turned").count(), 0);
+  }
+
+  /**
+   * Reads the back's source lines and checks them against the provenance the
+   * stored record implies: one line per page, oldest first, each naming its
+   * domain and title, and none of it a link.
+   */
+  async function readBackAgainstRecord(title) {
+    const expected = await page.evaluate(async (wanted) => {
+      const db = await new Promise((ok, bad) => {
+        const r = indexedDB.open("scrap_collages_db");
+        r.onsuccess = () => ok(r.result);
+        r.onerror = () => bad(r.error);
+      });
+      try {
+        const rows = await new Promise((ok, bad) => {
+          const r = db.transaction("collages").objectStore("collages").getAll();
+          r.onsuccess = () => ok(r.result);
+          r.onerror = () => bad(r.error);
+        });
+        const record = rows.find((row) => row.title === wanted);
+        const byPage = new Map();
+        for (const piece of record.pieces) {
+          const { pageUrl, domain, pageTitle, ts } = piece.scrap;
+          const entry = byPage.get(pageUrl);
+          if (entry) {
+            entry.count += 1;
+            entry.first = Math.min(entry.first, ts);
+            if (!entry.title && pageTitle) entry.title = pageTitle;
+          } else {
+            byPage.set(pageUrl, {
+              domain,
+              title: pageTitle ?? "",
+              first: ts,
+              count: 1,
+            });
+          }
+        }
+        return [...byPage.values()].sort((a, b) => a.first - b.first);
+      } finally {
+        db.close();
+      }
+    }, title);
+    const back = await page.evaluate(() => {
+      const root = document.querySelector(".collage-back");
+      return {
+        links: root.querySelectorAll("a, [href]").length,
+        lines: [...root.querySelectorAll(".collage-back__source")].map(
+          (line) => ({
+            domain: line.querySelector(".collage-back__domain").textContent,
+            title: line.querySelector(".collage-back__page").textContent,
+            seen: line.querySelector(".collage-back__seen").textContent,
+          }),
+        ),
+        more: root.querySelector(".collage-back__more")?.textContent ?? null,
+        title: root.querySelector(".collage-back__title").textContent,
+        fontSize: parseFloat(
+          getComputedStyle(root.querySelector(".collage-back__list")).fontSize,
+        ),
+        overflows: [...root.querySelectorAll(".collage-back__source, .collage-back__more")]
+          .filter((node) => {
+            const line = node.getBoundingClientRect();
+            const sheet = root.getBoundingClientRect();
+            return line.bottom > sheet.bottom + 0.5 || line.right > sheet.right + 0.5;
+          }).length,
+        // A line's last words must stay inside its own column.
+        spills: [...root.querySelectorAll(".collage-back__source")].filter(
+          (line) => {
+            const box = line.getBoundingClientRect();
+            const seen = line
+              .querySelector(".collage-back__seen")
+              .getBoundingClientRect();
+            return seen.left < box.left - 0.5 || seen.right > box.right + 0.5;
+          },
+        ).length,
+      };
+    });
+    console.log(
+      `the back of "${title}": ${back.lines.length} lines for ${expected.length} pages${
+        back.more ? `, then "${back.more}"` : ""
+      }`,
+    );
+    assert.equal(back.links, 0, "nothing on the back may be a link");
+    assert.equal(back.overflows, 0, "no line may run off the back");
+    assert.equal(back.spills, 0, "no line may run into the next column");
+    assert.equal(back.title, title);
+    const pieces = (count) => `${count} piece${count === 1 ? "" : "s"}`;
+    // A long list is written one line per site, most pieces first.
+    const bySite = expected.length > 14;
+    let wanted;
+    if (bySite) {
+      const sites = new Map();
+      for (const pageEntry of expected) {
+        const site = sites.get(pageEntry.domain) ?? { pages: [], count: 0 };
+        site.pages.push(pageEntry);
+        site.count += pageEntry.count;
+        sites.set(pageEntry.domain, site);
+      }
+      wanted = [...sites.entries()]
+        .sort(([a, x], [b, y]) => y.count - x.count || a.localeCompare(b))
+        .map(([domain, site]) => ({
+          domain,
+          title: site.pages.length === 1 ? site.pages[0].title.trim() : "",
+          seen:
+            site.pages.length === 1
+              ? pieces(site.count)
+              : `${pieces(site.count)} · ${site.pages.length} pages`,
+        }));
+    } else {
+      wanted = expected.map((pageEntry) => ({
+        domain: pageEntry.domain,
+        title: pageEntry.title.trim(),
+        seenEnd: pieces(pageEntry.count),
+      }));
+    }
+    const listed = back.more
+      ? back.lines.length + Number(back.more.match(/\d+/)[0])
+      : back.lines.length;
+    assert.equal(listed, wanted.length, "every source is accounted for");
+    if (back.more) {
+      assert.ok(back.more.includes(bySite ? "more site" : "more page"));
+    }
+    back.lines.forEach((line, index) => {
+      assert.equal(line.domain, wanted[index].domain);
+      assert.equal(line.title, wanted[index].title);
+      if (bySite) {
+        assert.equal(line.seen, wanted[index].seen);
+      } else {
+        assert.ok(
+          line.seen.startsWith("first seen ") &&
+            line.seen.endsWith(wanted[index].seenEnd),
+          `line ${index} should say when it was seen and how much, got "${line.seen}"`,
+        );
+      }
+    });
+    assert.equal(back.fontSize >= 12, true, "the list is never under 12px");
+    return { ...back, bySite, pages: expected.length };
+  }
+
+  /** Width and height from a PNG's header. */
+  function pngSize(bytes) {
+    assert.equal(bytes.readUInt32BE(12), 0x49484452, "not a PNG header");
+    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+  }
+
+  /**
+   * Exports and checks both files: named for each side, the same pixel size,
+   * the back carrying dark writing and a faint mirror of the front.
+   */
+  async function exportBothSides(title, prefix = "22") {
+    // Where the maker's mark sits on the back, in frame units, measured by
+    // layout offsets so the turned sheet's mirroring does not matter.
+    const markBox = await page.evaluate(() => {
+      const icon = document.querySelector(".collage-back__maker img");
+      const sheet = document.querySelector(".collage-back__sheet");
+      let x = 0;
+      let y = 0;
+      for (let node = icon; node && node !== sheet; node = node.offsetParent) {
+        x += node.offsetLeft;
+        y += node.offsetTop;
+      }
+      return { x, y, width: icon.offsetWidth, height: icon.offsetHeight };
+    });
+    const downloads = [];
+    const collect = (download) => downloads.push(download);
+    page.on("download", collect);
+    const started = Date.now();
+    await page.getByRole("button", { name: "export png" }).click();
+    const deadline = Date.now() + 120_000;
+    while (downloads.length < 2 && Date.now() < deadline) {
+      await page.waitForTimeout(200);
+    }
+    const exportMs = Date.now() - started;
+    page.off("download", collect);
+    assert.equal(downloads.length, 2, "export should hand over two files");
+    const names = downloads.map((download) => download.suggestedFilename());
+    assert.deepEqual(names, [`${title} front.png`, `${title} back.png`]);
+    const [frontPath, backPath] = [
+      `${evidence}/${prefix}-export-front.png`,
+      `${evidence}/${prefix}-export-back.png`,
+    ];
+    await downloads[0].saveAs(frontPath);
+    await downloads[1].saveAs(backPath);
+    const front = await readFile(frontPath);
+    const back = await readFile(backPath);
+    const frontSize = pngSize(front);
+    const backSize = pngSize(back);
+    assert.deepEqual(backSize, frontSize, "both sides are the same size");
+
+    const pixels = await page.evaluate(
+      async ({ front, back, markBox }) => {
+        const decode = async (base64) => {
+          const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+          const bitmap = await createImageBitmap(new Blob([bytes]));
+          const canvas = document.createElement("canvas");
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const context = canvas.getContext("2d");
+          context.drawImage(bitmap, 0, 0);
+          return context.getImageData(0, 0, bitmap.width, bitmap.height);
+        };
+        const f = await decode(front);
+        const b = await decode(back);
+        const lum = (data, i) =>
+          0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+        let dark = 0;
+        for (let i = 0; i < b.data.length; i += 4) {
+          if (lum(b.data, i) < 110) dark += 1;
+        }
+        // Block averages wash out grain and single glyphs, leaving the large
+        // shapes a show-through would carry.
+        const block = 40;
+        const cols = Math.floor(b.width / block);
+        const rows = Math.floor(b.height / block);
+        const mean = (image, bx, by) => {
+          let sum = 0;
+          let count = 0;
+          for (let y = by * block; y < (by + 1) * block; y += 4) {
+            for (let x = bx * block; x < (bx + 1) * block; x += 4) {
+              sum += lum(image.data, (y * image.width + x) * 4);
+              count += 1;
+            }
+          }
+          return sum / count;
+        };
+        const backBlocks = [];
+        const mirrored = [];
+        const straight = [];
+        for (let by = 0; by < rows; by += 1) {
+          for (let bx = 0; bx < cols; bx += 1) {
+            backBlocks.push(mean(b, bx, by));
+            mirrored.push(mean(f, cols - 1 - bx, by));
+            straight.push(mean(f, bx, by));
+          }
+        }
+        const correlation = (xs, ys) => {
+          const n = xs.length;
+          const mx = xs.reduce((a, v) => a + v, 0) / n;
+          const my = ys.reduce((a, v) => a + v, 0) / n;
+          let sxy = 0;
+          let sxx = 0;
+          let syy = 0;
+          for (let i = 0; i < n; i += 1) {
+            sxy += (xs[i] - mx) * (ys[i] - my);
+            sxx += (xs[i] - mx) ** 2;
+            syy += (ys[i] - my) ** 2;
+          }
+          return sxy / Math.sqrt(sxx * syy);
+        };
+        const spread = Math.max(...backBlocks) - Math.min(...backBlocks);
+        // The mark's corners should read as the paper beside it, not as a
+        // square of the engraving's own cream.
+        const scale = b.width / 1500;
+        const patch = (fx, fy) => {
+          let sum = 0;
+          let count = 0;
+          for (let y = fy; y < fy + 4; y += 0.5) {
+            for (let x = fx; x < fx + 4; x += 0.5) {
+              const px = Math.round(x * scale);
+              const py = Math.round(y * scale);
+              sum += lum(b.data, (py * b.width + px) * 4);
+              count += 1;
+            }
+          }
+          return sum / count;
+        };
+        const { x, y, width, height } = markBox;
+        // The engraving's arrow reaches its top-left corner and the wrist its
+        // bottom-right, so the two corners of bare paper are the ones read.
+        const corners = [
+          patch(x + width - 5, y + 1),
+          patch(x + 1, y + height - 5),
+        ];
+        const paperBeside = [
+          patch(x - 16, y + 1),
+          patch(x - 16, y + height - 5),
+          patch(x - 24, y + height / 2 - 2),
+        ];
+        const paperLum =
+          paperBeside.reduce((a, v) => a + v, 0) / paperBeside.length;
+        return {
+          darkPixels: dark,
+          blockSpread: Math.round(spread * 10) / 10,
+          mirroredCorrelation: correlation(backBlocks, mirrored),
+          straightCorrelation: correlation(backBlocks, straight),
+          markCornerShift: Math.max(
+            ...corners.map((value) => Math.abs(value - paperLum)),
+          ),
+        };
+      },
+      {
+        front: front.toString("base64"),
+        back: back.toString("base64"),
+        markBox,
+      },
+    );
+    const summary = { names, size: frontSize, exportMs, ...pixels };
+    assert.ok(pixels.darkPixels > 2000, "the back should carry dark writing");
+    assert.ok(pixels.blockSpread > 2, "the back should not be flat paper");
+    assert.ok(
+      pixels.markCornerShift < 3,
+      `the mark's corners should match the paper, not the icon's cream (off by ${pixels.markCornerShift})`,
+    );
+    assert.ok(
+      pixels.mirroredCorrelation > pixels.straightCorrelation &&
+        pixels.mirroredCorrelation > 0.05,
+      `the front should show through the back mirrored (mirrored ${pixels.mirroredCorrelation}, straight ${pixels.straightCorrelation})`,
+    );
+    return summary;
+  }
+
   await page.getByRole("button", { name: "create", exact: true }).click();
   await page.waitForTimeout(600);
 
@@ -622,7 +981,7 @@ try {
   // Reopen it and change something, then press done before the debounce fires.
   await page.getByRole("button", { name: "create", exact: true }).click();
   await page.waitForTimeout(600);
-  await page.getByRole("button", { name: "keep editing" }).first().click();
+  await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(2500);
   await page.locator(".collage-title-input").fill("saved by leaving");
   // Straight to done, well inside the settle window.
@@ -642,7 +1001,7 @@ try {
   await page.screenshot({ path: `${evidence}/03-autosave-flushed-on-done.png` });
 
   // Cmd+S flushes too, and the history is up to date when he comes back.
-  await page.getByRole("button", { name: "keep editing" }).first().click();
+  await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(2500);
   await page.locator(".collage-title-input").fill("saved by the key");
   await page.locator(".collage-frame").click({ position: { x: 6, y: 6 } });
@@ -714,10 +1073,7 @@ try {
   const beforeReopen = (await storedCollages()).find(
     (row) => row.id === collageId,
   );
-  await page
-    .getByRole("button", { name: "keep editing" })
-    .first()
-    .click();
+  await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(1200);
   photosBlocked = true;
   await selectByTab();
@@ -1207,7 +1563,12 @@ try {
     .locator(".collage-tools button")
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")));
   console.log("studio tools:", toolLabels);
-  assert.deepEqual(toolLabels, ["Undo", "Redo", "Keyboard shortcuts"]);
+  assert.deepEqual(toolLabels, [
+    "Undo",
+    "Redo",
+    "Turn the collage over",
+    "Keyboard shortcuts",
+  ]);
 
   // The paper popover holds the document settings.
   const paperReadout = (
@@ -1436,65 +1797,196 @@ try {
     "a peek must not change the baked picture",
   );
 
-  // ================================================== the back of the card
+  // ============================================ the back of the collage
+  // The history card carries no sources: the whole card opens the collage,
+  // and the back in the studio is the one place the sources are read.
   await backToHistory();
   const card = page
     .locator(".collage-card")
     .filter({ hasText: "one of each" })
     .first();
-  await page.screenshot({ path: `${evidence}/13-card-front.png` });
+  await page.screenshot({ path: `${evidence}/13-history-cards.png` });
   assert.equal(
-    await card.locator(".collage-card__face--back[inert]").count(),
-    1,
-    "the back should be inert while the card is face up",
-  );
-  await card.getByRole("button", { name: "sources" }).click();
-  await page.waitForTimeout(1500);
-  assert.equal(
-    await card.locator(".collage-card__leaf--over").count(),
-    1,
-    "clicking sources should turn the card over",
-  );
-  assert.equal(
-    await card.locator(".collage-card__face--front[inert]").count(),
-    1,
-    "the front should be inert once the card is turned over",
-  );
-  const backLines = await card
-    .locator(".collage-provenance__entry")
-    .allTextContents();
-  console.log("the back lists:", backLines);
-  assert.ok(backLines.length > 0, "the back should list the source pages");
-  for (const line of backLines) {
-    assert.ok(
-      /127\.0\.0\.1/.test(line) && /first seen/.test(line),
-      `each line should name the domain and when it was seen, got "${line}"`,
-    );
-  }
-  const backHrefs = await card
-    .locator(".collage-provenance__link")
-    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("href")));
-  console.log("the back's links:", backHrefs);
-  assert.ok(backHrefs.length > 0, "web pages should be linked from the back");
-  for (const href of backHrefs) {
-    assert.ok(
-      href.startsWith("http://") || href.startsWith("https://"),
-      `a back link must be a web URL, got ${href}`,
-    );
-  }
-  // The back's page titles come from the record's own provenance.
-  for (const title of Object.values(PAGE_TITLES)) {
-    if (backLines.some((line) => line.includes(title))) continue;
-    console.log(`(no piece came from "${title}", which is fine)`);
-  }
-  await page.screenshot({ path: `${evidence}/14-card-back.png` });
-  await card.getByRole("button", { name: "turn it back over" }).click();
-  await page.waitForTimeout(1200);
-  assert.equal(
-    await card.locator(".collage-card__leaf--over").count(),
+    await page.getByRole("button", { name: "sources" }).count(),
     0,
-    "the button on the back should turn the card face up",
+    "the history has no sources button",
   );
+  assert.equal(
+    await page.getByRole("button", { name: "keep editing" }).count(),
+    0,
+    "the card itself opens the collage",
+  );
+  assert.equal(await page.locator(".collage-provenance").count(), 0);
+  const cardMeta = (await card.locator(".collage-card__meta").innerText()).trim();
+  assert.ok(
+    /^made .+ 5 pieces$/.test(cardMeta.replace(/\s+/g, " ")),
+    `the card should say only when it was made and its size, got "${cardMeta}"`,
+  );
+  // The card is a real button, so the keyboard opens it too.
+  await card.locator(".collage-card__open").focus();
+  await page.keyboard.press("Enter");
+  await page.waitForSelector(".collage-bar", { timeout: 10_000 });
+  await page.waitForTimeout(900);
+  assert.equal(
+    await page.locator(".collage-sheet--over").count(),
+    0,
+    "a card opens its collage face up",
+  );
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press("t");
+  await page.waitForSelector(".collage-sheet--over", { timeout: 10_000 });
+  await page.waitForTimeout(900);
+  await assertTurnedOver("T after opening a card");
+  const oneOfEach = await readBackAgainstRecord("one of each");
+  assert.ok(oneOfEach.lines.length > 0, "the back should list source pages");
+  // Favicons are fetched once the back is read; the test pages all carry one.
+  await page.waitForSelector(".collage-back img.collage-back__mark", {
+    timeout: 10_000,
+  });
+  await page.waitForSelector(".collage-back__bleed", { timeout: 20_000 });
+  await page.screenshot({ path: `${evidence}/19-back-in-studio.png` });
+
+  // The face turned away is inert: a click where a piece sits selects nothing,
+  // and no key reaches the pieces.
+  const pieceSpot = await page.evaluate(() => {
+    const node = document.querySelector(".collage-piece");
+    const box = node.getBoundingClientRect();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  });
+  await page.mouse.click(pieceSpot.x, pieceSpot.y);
+  await page.keyboard.press("Tab");
+  await page.waitForTimeout(300);
+  assert.equal(
+    await page.locator(".collage-piece--selected").count(),
+    0,
+    "nothing on the front may be selected while the collage is turned over",
+  );
+  assert.equal(
+    await page.locator(".collage-piece-actions, .collage-handle").count(),
+    0,
+    "no strip or handles while turned over",
+  );
+  await page.keyboard.down("i");
+  await page.waitForTimeout(300);
+  assert.equal(
+    await page.locator(".collage-peek").count(),
+    0,
+    "the peek does not open over the back",
+  );
+  await page.keyboard.up("i");
+  assert.equal(
+    await page.getByRole("button", { name: "Undo" }).isDisabled(),
+    true,
+    "undo waits until the collage is face up again",
+  );
+
+  // Escape turns it face up; T turns it over again, mid-swing on the way.
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(900);
+  await assertFaceUp("escape");
+  await page.keyboard.press("t");
+  await page.waitForTimeout(230);
+  await page.screenshot({ path: `${evidence}/20-mid-flip.png` });
+  await page.waitForTimeout(900);
+  await assertTurnedOver("the T key");
+  await page.keyboard.press("t");
+  await page.waitForTimeout(900);
+  await assertFaceUp("T on the back");
+
+  // The button in the studio tools does the same, both ways.
+  const turnButton = page.getByRole("button", { name: "Turn the collage over" });
+  await turnButton.click();
+  await page.waitForTimeout(900);
+  await assertTurnedOver("the turn-over button");
+  assert.equal(await turnButton.getAttribute("aria-pressed"), "true");
+  await turnButton.click();
+  await page.waitForTimeout(900);
+  await assertFaceUp("the turn-over button");
+  // Face up, the pieces answer again. The spot is measured face up, since the
+  // turned sheet mirrors where each piece sits on screen.
+  const faceUpSpot = await page.evaluate(() => {
+    const node = document.querySelector(".collage-piece");
+    const box = node.getBoundingClientRect();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  });
+  await page.mouse.click(faceUpSpot.x, faceUpSpot.y);
+  await page.waitForTimeout(300);
+  assert.equal(
+    await page.locator(".collage-piece--selected").count(),
+    1,
+    "face up, a click selects a piece again",
+  );
+  await page.keyboard.press("Escape");
+
+  // Where motion is reduced, the collage crossfades to its back instead.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.keyboard.press("t");
+  await page.waitForTimeout(500);
+  await assertTurnedOver("reduced motion");
+  const calm = await page.evaluate(() => {
+    const leaf = document.querySelector(".collage-sheet__leaf");
+    const back = document.querySelector(".collage-back");
+    const front = document.querySelector(".collage-frame");
+    return {
+      leafTransform: getComputedStyle(leaf).transform,
+      backTransform: getComputedStyle(back).transform,
+      backOpacity: getComputedStyle(back).opacity,
+      frontOpacity: getComputedStyle(front).opacity,
+    };
+  });
+  console.log("reduced-motion back:", calm);
+  assert.equal(calm.leafTransform, "none", "no swing under reduced motion");
+  assert.equal(calm.backTransform, "none");
+  assert.equal(calm.backOpacity, "1");
+  assert.equal(calm.frontOpacity, "0");
+  await page.screenshot({ path: `${evidence}/21-back-reduced-motion.png` });
+  await page.keyboard.press("t");
+  await page.waitForTimeout(400);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+
+  // On the soft black paper the back is written in a light ink, so it still
+  // reads; the page's dark ink would disappear into it.
+  const choosePaper = async (tone) => {
+    const paperButton = page.getByRole("button", { name: "paper", exact: true });
+    await paperButton.click();
+    await page.waitForSelector(".collage-paper-popover");
+    await page.getByRole("button", { name: `Paper: ${tone}` }).click();
+    await paperButton.click();
+    await page.waitForTimeout(300);
+  };
+  await choosePaper("soft black");
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press("t");
+  await page.waitForTimeout(900);
+  await assertTurnedOver("the soft black paper");
+  await page.waitForSelector(".collage-back__bleed", { timeout: 20_000 });
+  await page.waitForTimeout(2500);
+  const darkInk = await page.evaluate(() => ({
+    domain: getComputedStyle(document.querySelector(".collage-back__domain"))
+      .color,
+    title: getComputedStyle(document.querySelector(".collage-back__title"))
+      .color,
+    paper: getComputedStyle(document.querySelector(".collage-back__paper"))
+      .backgroundColor,
+  }));
+  console.log("the back on soft black paper:", darkInk);
+  assert.equal(darkInk.domain, "rgb(245, 240, 232)");
+  assert.equal(darkInk.title, "rgb(245, 240, 232)");
+  await page.screenshot({ path: `${evidence}/25-back-dark-paper.png` });
+  await page.keyboard.press("t");
+  await page.waitForTimeout(900);
+  await choosePaper("scrap paper");
+
+  // Export hands over both sides, the same size, and the back really carries
+  // the writing and the front showing through.
+  const exported = await exportBothSides("one of each");
+  console.log("exported sides:", exported);
+
+  // The back is derived; turning over and exporting stores nothing new.
+  const afterBack = (await storedCollages()).find(
+    (row) => row.title === "one of each",
+  );
+  assert.equal(afterBack.pieces, 5, "the collage still has its five pieces");
 
   // ========================================= reaching a piece under a pile
   // Three pieces stacked on one spot, so a click has somewhere to dig.
@@ -1744,8 +2236,13 @@ try {
     .locator(".collage-card")
     .filter({ hasText: "one of each" })
     .first();
-  await toCopy.getByRole("button", { name: "duplicate" }).click();
+  await toCopy.locator('button[title="duplicate"]').click();
   await page.waitForTimeout(1500);
+  assert.equal(
+    await page.locator(".collage-bar").count(),
+    0,
+    "duplicating from the card's glyph must not open anything",
+  );
 
   const afterCopy = await storedCollages();
   const copy = afterCopy.find((row) => row.title === "one of each copy");
@@ -1786,7 +2283,7 @@ try {
     .locator(".collage-card")
     .filter({ hasText: "one of each copy" })
     .first()
-    .getByRole("button", { name: "keep editing" })
+    .locator(".collage-card__open")
     .click();
   await page.waitForTimeout(2500);
   await selectByTab();
@@ -1822,6 +2319,36 @@ try {
     "the original must not even have been rewritten",
   );
   await backToHistory();
+
+  // Deleting from the card asks first, and only the confirmed delete removes
+  // the collage; neither press opens it.
+  const moved = page
+    .locator(".collage-card")
+    .filter({ hasText: "the copy, moved" })
+    .first();
+  await moved.locator('button[title="delete"]').click();
+  await page.waitForTimeout(200);
+  assert.equal(await moved.getByRole("button", { name: "keep" }).count(), 1);
+  assert.equal(
+    await moved.locator('button[title="duplicate"]').count(),
+    0,
+    "the confirmation replaces the glyph row",
+  );
+  await moved.getByRole("button", { name: "keep" }).click();
+  await page.waitForTimeout(200);
+  assert.equal(await moved.locator('button[title="delete"]').count(), 1);
+  await moved.locator('button[title="delete"]').click();
+  await moved.getByRole("button", { name: "delete for good" }).click();
+  await page.waitForTimeout(800);
+  assert.equal(await page.locator(".collage-bar").count(), 0);
+  assert.ok(
+    !(await storedCollages()).some((row) => row.id === copy.id),
+    "the confirmed delete removes the collage",
+  );
+  assert.equal(
+    await page.locator(".collage-card").filter({ hasText: "the copy, moved" }).count(),
+    0,
+  );
 
   // ====================================== a collage whose picture never drew
   // A first-ever bake that fails stores the arrangement with no preview, and
@@ -2075,6 +2602,104 @@ try {
       `the thirty-piece bake should be a real PNG, got ${big.previewBytes} bytes`,
     );
     await page.screenshot({ path: `${evidence}/17-real-export-thirty.png` });
+
+    await backToHistory();
+
+    // A collage drawn from many real pages, one scrap from each, so the back
+    // has to step its type down and run into a second column. The drawer is
+    // windowed, so it is scrolled along to reach pages further down.
+    await openStudio();
+    // Headings, buttons and icons are drawn from what the scrap stored, so
+    // they bake here where the export's picture hosts are out of reach.
+    const wantedPages = 60;
+    const usedPages = new Set();
+    for (const kind of ["heads", "btns", "icons"]) {
+      await pickTrayKind(kind);
+      await page.waitForTimeout(400);
+      await page.evaluate(() => {
+        document.querySelector(".collage-tray__scroll").scrollTop = 0;
+      });
+      let stalled = 0;
+      while (usedPages.size < wantedPages && stalled < 4) {
+        const titles = await page
+          .locator(".collage-tray__slot")
+          .evaluateAll((nodes) =>
+            nodes.map((node) => node.getAttribute("title")),
+          );
+        const fresh = titles.findIndex(
+          (title) => title && !usedPages.has(title),
+        );
+        if (fresh === -1) {
+          const moved = await page.evaluate(() => {
+            const scroller = document.querySelector(".collage-tray__scroll");
+            const before = scroller.scrollTop;
+            scroller.scrollTop += scroller.clientHeight * 0.8;
+            return scroller.scrollTop !== before;
+          });
+          stalled = moved ? 0 : stalled + 1;
+          await page.waitForTimeout(250);
+          continue;
+        }
+        usedPages.add(titles[fresh]);
+        // Found and clicked in one step, since the windowed drawer can
+        // remount its slots between a lookup and a click.
+        const clicked = await page.evaluate((title) => {
+          const slot = [
+            ...document.querySelectorAll(".collage-tray__slot"),
+          ].find((node) => node.getAttribute("title") === title);
+          slot?.click();
+          return Boolean(slot);
+        }, titles[fresh]);
+        if (!clicked) usedPages.delete(titles[fresh]);
+        await page.waitForTimeout(60);
+      }
+    }
+    console.log(`placed one scrap from each of ${usedPages.size} pages`);
+    assert.ok(usedPages.size >= 20, "the export should reach many pages");
+    await page.locator(".collage-title-input").fill("many pages");
+    await page.keyboard.press("Meta+s");
+    await waitForStored(
+      "the many-pages collage to be stored",
+      (rows) => rows.some((row) => row.title === "many pages"),
+      240_000,
+    );
+    // The title was the last thing typed into, so focus leaves it first.
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("t");
+    await page.waitForTimeout(1200);
+    await assertTurnedOver("the many-pages collage");
+    const realBack = await readBackAgainstRecord("many pages");
+    const realLayout = await page.evaluate(() => {
+      const list = document.querySelector(".collage-back__list");
+      const style = getComputedStyle(list);
+      return {
+        fontSize: style.fontSize,
+        columns: style.gridTemplateColumns.split(" ").length,
+      };
+    });
+    console.log("the real back:", {
+      lines: realBack.lines.length,
+      more: realBack.more,
+      ...realLayout,
+    });
+    // The real export's pictures live on hosts this isolated run cannot reach,
+    // so the front may not draw; the back then says why, and is still read.
+    await page
+      .waitForSelector(".collage-back__bleed, .collage-notice", {
+        timeout: 120_000,
+      })
+      .catch(() => {});
+    await page.waitForTimeout(1500);
+    const realNotice = await page.locator(".collage-notice").allTextContents();
+    console.log("the real back's show-through:", {
+      drawn: (await page.locator(".collage-back__bleed").count()) > 0,
+      standing: await standing(),
+      notice: realNotice.map((text) => text.slice(0, 200)),
+    });
+    await page.screenshot({ path: `${evidence}/23-real-export-back.png` });
+    const realExport = await exportBothSides("many pages", "24");
+    console.log("real export sides:", realExport);
     await backToHistory();
   }
 

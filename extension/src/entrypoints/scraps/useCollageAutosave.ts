@@ -62,6 +62,11 @@ export interface CollageAutosave {
   noteChange: () => void;
   /** Writes right now, without waiting for the settle. */
   flush: () => void;
+  /**
+   * The last picture of this collage that actually drew, or null before one
+   * has. It matches the arrangement on screen only while `standing` is saved.
+   */
+  preview: Blob | null;
 }
 
 /**
@@ -100,6 +105,7 @@ export function useCollageAutosave(
   const loadedPreview =
     reopened?.preview.drawn === true ? reopened.preview.image : null;
   const previewRef = useRef<Blob | null>(loadedPreview);
+  const [preview, setPreview] = useState<Blob | null>(loadedPreview);
   const previewProblemRef = useRef<string | null>(null);
   /**
    * Exactly what is in the drawer. A preview is written back onto this rather
@@ -142,6 +148,7 @@ export function useCollageAutosave(
               try {
                 previewRef.current = await optionsRef.current.bake();
                 previewProblemRef.current = null;
+                setPreview(previewRef.current);
               } catch (error) {
                 previewProblemRef.current = describe(error);
               }
@@ -184,6 +191,7 @@ export function useCollageAutosave(
             if (stateRef.current.bakingToken !== token) return;
             previewRef.current = baked;
             previewProblemRef.current = null;
+            setPreview(baked);
             const written = storedRef.current;
             if (!written) {
               throw new Error(
@@ -243,7 +251,7 @@ export function useCollageAutosave(
 
   useEffect(() => () => cancelSettle(), [cancelSettle]);
 
-  return { standing, unwritten, noteChange, flush };
+  return { standing, unwritten, noteChange, flush, preview };
 }
 
 function describe(error: unknown): string {

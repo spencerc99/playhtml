@@ -13,6 +13,10 @@ import {
 } from "../entrypoints/scraps/useCollageAutosave";
 import type { CollageRecord } from "../entrypoints/scraps/collageRecord";
 
+// Tells React this suite drives its updates through act(), so it checks them.
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
+  true;
+
 /** Timers the test drives by hand, so a settle never waits on real time. */
 function manualTimers(): AutosaveTimers & { runAll: () => void } {
   const pending = new Map<number, () => void>();
@@ -242,5 +246,44 @@ describe("two bakes overlapping", () => {
     );
     expect(images).not.toContain(firstImage.type);
     expect(images[images.length - 1]).toBe(secondImage.type);
+  });
+});
+
+describe("the picture the back shows through", () => {
+  it("hands out the loaded picture, then each newer one that draws", async () => {
+    const loaded = new Blob(["the original picture"], { type: "image/gif" });
+    const rebaked = new Blob(["the new picture"], { type: "image/png" });
+    const bake = deferredBlob();
+    const timers = manualTimers();
+
+    const autosave = await mountAutosave({
+      draft: () => ({
+        record: baseRecord({ drawn: true, image: loaded }),
+        hasContent: true,
+      }),
+      bake: () => bake.promise,
+      store: async () => {},
+      onStored: () => {},
+      startsStored: true,
+      reopening: baseRecord({ drawn: true, image: loaded }),
+      timers,
+    });
+    expect(autosave.current().preview).toBe(loaded);
+
+    await act(async () => {
+      autosave.current().noteChange();
+      timers.runAll();
+    });
+    await act(async () => {});
+    // Written but not yet re-drawn: the old picture is still the last good one.
+    expect(autosave.current().preview).toBe(loaded);
+    expect(autosave.current().standing.kind).toBe("saving");
+
+    await act(async () => {
+      bake.settle(rebaked);
+    });
+    await act(async () => {});
+    expect(autosave.current().preview).toBe(rebaked);
+    expect(autosave.current().standing.kind).toBe("saved");
   });
 });
