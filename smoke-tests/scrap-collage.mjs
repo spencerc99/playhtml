@@ -2569,7 +2569,9 @@ try {
   });
   await freshPage.waitForTimeout(1500);
   await freshPage.getByRole("button", { name: "create", exact: true }).click();
-  await freshPage.waitForSelector("text=start a new one", { timeout: 20_000 });
+  await freshPage
+    .getByRole("button", { name: "new collage", exact: true })
+    .waitFor({ timeout: 20_000 });
   assert.equal(
     (await collagesWithGeometry(freshPage)).length,
     0,
