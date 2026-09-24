@@ -44,6 +44,20 @@ export interface CutoutImage {
   placement: CropFraction;
 }
 
+/**
+ * The mask at the cropped region's own resolution, as a canvas whose alpha is
+ * the coverage, with the source pixels it covers. Drawn over any frame of the
+ * image with `destination-in`, it cuts that frame exactly as the still is cut.
+ */
+export interface CutoutAlpha {
+  canvas: HTMLCanvasElement;
+  region: PixelRegion;
+  placement: CropFraction;
+  /** The whole source's size, which every frame of the image shares. */
+  sourceWidth: number;
+  sourceHeight: number;
+}
+
 /** The mask as an image a CSS `mask-image` can use, and where it sits. */
 export interface CutoutMaskImage {
   url: string;
@@ -60,6 +74,7 @@ function cacheKey(src: string, cutout: PieceCutout, crop: CropFraction): string 
 const masks = new Map<string, Promise<CutoutMask>>();
 const canvases = new Map<string, Promise<CutoutImage>>();
 const maskImages = new Map<string, Promise<CutoutMaskImage>>();
+const alphas = new Map<string, Promise<CutoutAlpha>>();
 
 /** Keeps a pending result for the session, forgetting it again if it fails. */
 function remember<T>(
@@ -206,16 +221,51 @@ export function cutoutCanvas(
     const pixels = full.context.getImageData(0, 0, region.width, region.height);
     applyMaskAlpha(
       { width: region.width, height: region.height, data: pixels.data },
-      scaleMask(
-        mask.coverage,
-        mask.width,
-        mask.height,
-        region.width,
-        region.height,
-      ),
+      regionCoverage(mask),
     );
     full.context.putImageData(pixels, 0, 0);
     return { canvas: full.canvas, placement: mask.placement };
+  });
+}
+
+/** The mask scaled from its working size up to the region's own pixels. */
+function regionCoverage(mask: CutoutMask): Uint8ClampedArray {
+  return scaleMask(
+    mask.coverage,
+    mask.width,
+    mask.height,
+    mask.region.width,
+    mask.region.height,
+  );
+}
+
+/**
+ * The mask alone at the region's resolution, for cutting every frame of an
+ * animated image the way its first frame is cut. The mask is taken from the
+ * first frame, as the studio's is.
+ */
+export function cutoutAlpha(
+  src: string,
+  cutout: PieceCutout,
+  crop: CropFraction,
+): Promise<CutoutAlpha> {
+  return remember(alphas, cacheKey(src, cutout, crop), async () => {
+    const mask = await cutoutMask(src, cutout, crop);
+    const { region } = mask;
+    const coverage = regionCoverage(mask);
+    const drawn = blankCanvas(region.width, region.height);
+    const pixels = drawn.context.createImageData(region.width, region.height);
+    for (let index = 0; index < coverage.length; index += 1) {
+      pixels.data[index * 4 + 3] = coverage[index];
+    }
+    drawn.context.putImageData(pixels, 0, 0);
+    return {
+      canvas: drawn.canvas,
+      region,
+      placement: mask.placement,
+      sourceWidth: mask.image.naturalWidth || mask.image.width,
+      sourceHeight: mask.image.naturalHeight || mask.image.height,
+    };
   });
 }
 

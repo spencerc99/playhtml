@@ -83,6 +83,8 @@ import { StudioTools } from "./StudioTools";
 import { FormatControl } from "./FormatControl";
 import { CollageBakeError, bakeCollage } from "./bakeCollage";
 import { bakeCollageBack, resolveBackFavicons } from "./bakeCollageBack";
+import { videoExportSupport } from "./imageAnimation";
+import { useCollageAnimates } from "./useCollageAnimates";
 import type { CollageBackContent } from "./collageBack";
 import { CollageBackFace } from "./CollageBackFace";
 import { saveCollage } from "./collageStore";
@@ -281,6 +283,8 @@ export function CollageStudio({
   const [clipboard, setClipboard] = useState<CollagePiece | null>(null);
   const [scale, setScale] = useState(1);
   const [exporting, setExporting] = useState(false);
+  /** How far a video export has come, as a share of its frames, while it runs. */
+  const [videoProgress, setVideoProgress] = useState<number | null>(null);
   const [showKeys, setShowKeys] = useState(false);
   const [notice, setNotice] = useState<
     { tone: "problem" | "quiet"; text: string } | null
@@ -1188,8 +1192,8 @@ export function CollageStudio({
   };
 
   /** Hands the browser a file to save under the given name. */
-  const saveFile = (png: Blob, name: string) => {
-    const url = URL.createObjectURL(png);
+  const saveFile = (file: Blob, name: string) => {
+    const url = URL.createObjectURL(file);
     const link = document.createElement("a");
     link.href = url;
     link.download = name;
@@ -1234,6 +1238,46 @@ export function CollageStudio({
       setNotice({ tone: "problem", text });
     } finally {
       setExporting(false);
+    }
+  };
+
+  const animates = useCollageAnimates(pieces);
+  const videoSupport = videoExportSupport();
+
+  /**
+   * Exports the front as a looping video of its animated pieces. The encoder
+   * loads only when asked for, so the studio stays light without it.
+   */
+  const downloadVideo = async () => {
+    if (!videoSupport.ok) {
+      setNotice({
+        tone: "problem",
+        text: `could not export mp4 — ${videoSupport.reason}`,
+      });
+      return;
+    }
+    setVideoProgress(0);
+    setNotice(null);
+    try {
+      const { bakeCollageVideo } = await import("./collageVideo");
+      const video = await bakeCollageVideo({
+        frame,
+        pieces,
+        paper: paper.color,
+        grain: paper.grain,
+        onProgress: (done, total) => setVideoProgress(done / total),
+      });
+      saveFile(video, `${title.trim() || "untitled collage"}.mp4`);
+    } catch (error) {
+      const text =
+        error instanceof CollageBakeError
+          ? `could not export mp4 — these could not be drawn: ${error.failures
+              .map((failure) => failure.label)
+              .join(", ")}`
+          : `could not export mp4 — ${error instanceof Error ? error.message : String(error)}`;
+      setNotice({ tone: "problem", text });
+    } finally {
+      setVideoProgress(null);
     }
   };
 
@@ -1622,11 +1666,26 @@ export function CollageStudio({
           <button
             type="button"
             className="collage-action"
-            disabled={exporting || pieces.length === 0}
+            disabled={exporting || videoProgress !== null || pieces.length === 0}
             onClick={() => void download()}
           >
             export png
           </button>
+          {animates && (
+            <button
+              type="button"
+              className="collage-action"
+              disabled={exporting || videoProgress !== null}
+              title={videoSupport.ok ? undefined : videoSupport.reason}
+              onClick={() => void downloadVideo()}
+            >
+              {videoProgress === null
+                ? "export mp4"
+                : // No wider than "export mp4" in the monospace face, so
+                  // the bar does not reflow while the video encodes.
+                  `mp4 · ${Math.round(videoProgress * 100)}%`}
+            </button>
+          )}
           {confirmingLeave ? (
             <>
               <button

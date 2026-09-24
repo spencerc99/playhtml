@@ -1,4 +1,4 @@
-// ABOUTME: Bakes a collage's placed pieces into a single PNG on a canvas.
+// ABOUTME: Bakes a collage's placed pieces into a PNG, with the per-piece drawing the video export shares.
 // ABOUTME: Fetches remote scrap images as blobs so the canvas stays untainted.
 
 import type { ScrapSnapshot } from "./collageRecord";
@@ -157,7 +157,7 @@ function pieceLabel(scrap: ScrapSnapshot): string {
  * What a piece draws. Most pieces draw their whole source; a cut-out image
  * draws only its cropped region, at `placement` within the source box.
  */
-interface PieceImage {
+export interface PieceImage {
   image: CanvasImageSource;
   placement?: CropFraction;
 }
@@ -206,87 +206,146 @@ export interface BakeOptions {
   grain?: boolean;
 }
 
+/** A piece ready to draw: where its whole source sits, and its still image. */
+export interface PreparedPiece {
+  piece: CollagePiece;
+  source: SourceBox;
+  still: PieceImage;
+}
+
+type SourceBox = ReturnType<typeof sourceBoxForCrop>;
+
+/**
+ * Loads every piece's imagery, bottom of the stack first. Throws
+ * `CollageBakeError` naming every piece that could not be drawn, rather than
+ * leaving a hole in the picture.
+ */
+export async function prepareCollagePieces(
+  pieces: readonly CollagePiece[],
+): Promise<PreparedPiece[]> {
+  const ordered = [...pieces].sort((a, b) => a.z - b.z);
+  const failures: BakeFailure[] = [];
+  const prepared = await Promise.all(
+    ordered.map(async (piece) => {
+      const source = sourceBoxForCrop(piece, piece.crop);
+      try {
+        const still = await pieceImage(
+          piece,
+          Math.max(1, Math.round(source.width)),
+          Math.max(1, Math.round(source.height)),
+        );
+        return { piece, source, still };
+      } catch (error) {
+        failures.push(pieceFailure(piece, error));
+        return null;
+      }
+    }),
+  );
+  if (failures.length > 0) throw new CollageBakeError(failures);
+  return prepared.filter((entry): entry is PreparedPiece => entry !== null);
+}
+
+/** Names a piece that could not be drawn, and why. */
+export function pieceFailure(piece: CollagePiece, error: unknown): BakeFailure {
+  return {
+    pieceId: piece.id,
+    label: pieceLabel(piece.scrap),
+    reason: error instanceof Error ? error.message : String(error),
+  };
+}
+
+/**
+ * Lays the paper, and its grain when asked, over a context already scaled to
+ * the frame's logical size. The grain goes on before the pieces, so it is the
+ * paper they sit on rather than a wash over the finished collage.
+ */
+export async function paintPaper(
+  context: CanvasRenderingContext2D,
+  frame: CollageFrame,
+  paper: string,
+  grain: boolean,
+): Promise<void> {
+  context.fillStyle = paper;
+  context.fillRect(0, 0, frame.width, frame.height);
+  if (grain) await drawGrain(context, frame.width, frame.height);
+}
+
+/**
+ * Draws one piece with the given image, which is its still for a picture or
+ * the frame showing at a moment for a video, so both place, turn, mirror and
+ * crop a piece identically.
+ */
+export function drawPiece(
+  context: CanvasRenderingContext2D,
+  piece: CollagePiece,
+  source: SourceBox,
+  { image, placement }: PieceImage,
+): void {
+  const centerX = piece.x + piece.width / 2;
+  const centerY = piece.y + piece.height / 2;
+  context.save();
+  context.translate(centerX, centerY);
+  context.rotate((piece.rotation * Math.PI) / 180);
+  // The mirror happens about the piece's own center, inside its box, so a
+  // flipped piece keeps its place, its angle and its crop window.
+  if (piece.flipX || piece.flipY) {
+    context.scale(piece.flipX ? -1 : 1, piece.flipY ? -1 : 1);
+  }
+  context.translate(-centerX, -centerY);
+  // The crop is a clip of the rendered piece, so the whole source is drawn
+  // and the visible box masks it — identical to how the studio shows it.
+  context.beginPath();
+  context.rect(piece.x, piece.y, piece.width, piece.height);
+  context.clip();
+  if (placement) {
+    context.drawImage(
+      image,
+      source.x + placement.x * source.width,
+      source.y + placement.y * source.height,
+      placement.width * source.width,
+      placement.height * source.height,
+    );
+  } else {
+    context.drawImage(image, source.x, source.y, source.width, source.height);
+  }
+  context.restore();
+}
+
+/** A canvas of the given pixel size and a 2d context scaled to the frame. */
+export function collageCanvas(
+  frame: CollageFrame,
+  width: number,
+  height: number,
+): { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D } {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Could not get a 2d drawing context for the collage");
+  }
+  context.scale(width / frame.width, height / frame.height);
+  context.imageSmoothingQuality = "high";
+  return { canvas, context };
+}
+
 /**
  * Draws the collage to a PNG. Throws `CollageBakeError` naming every piece that
  * could not be drawn, rather than leaving a hole in the saved image.
  */
 export async function bakeCollage(options: BakeOptions): Promise<Blob> {
-  const { frame, pieces } = options;
+  const { frame } = options;
   const scale = options.scale ?? 2;
-
-  const ordered = [...pieces].sort((a, b) => a.z - b.z);
-  const failures: BakeFailure[] = [];
-  const drawables = await Promise.all(
-    ordered.map(async (piece) => {
-      const source = sourceBoxForCrop(piece, piece.crop);
-      try {
-        const drawn = await pieceImage(
-          piece,
-          Math.max(1, Math.round(source.width)),
-          Math.max(1, Math.round(source.height)),
-        );
-        return { piece, source, ...drawn };
-      } catch (error) {
-        failures.push({
-          pieceId: piece.id,
-          label: pieceLabel(piece.scrap),
-          reason: error instanceof Error ? error.message : String(error),
-        });
-        return null;
-      }
-    }),
+  const prepared = await prepareCollagePieces(options.pieces);
+  const { canvas, context } = collageCanvas(
+    frame,
+    Math.round(frame.width * scale),
+    Math.round(frame.height * scale),
   );
-
-  if (failures.length > 0) throw new CollageBakeError(failures);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(frame.width * scale);
-  canvas.height = Math.round(frame.height * scale);
-  const context = canvas.getContext("2d");
-  if (!context) {
-    throw new Error("Could not get a 2d drawing context for the collage");
+  await paintPaper(context, frame, options.paper, options.grain ?? false);
+  for (const { piece, source, still } of prepared) {
+    drawPiece(context, piece, source, still);
   }
-  context.scale(scale, scale);
-  context.fillStyle = options.paper;
-  context.fillRect(0, 0, frame.width, frame.height);
-  // The grain goes on before the pieces, so it is the paper they sit on rather
-  // than a wash over the finished collage.
-  if (options.grain) await drawGrain(context, frame.width, frame.height);
-  context.imageSmoothingQuality = "high";
-
-  for (const drawable of drawables) {
-    if (!drawable) continue;
-    const { piece, source, image, placement } = drawable;
-    const centerX = piece.x + piece.width / 2;
-    const centerY = piece.y + piece.height / 2;
-    context.save();
-    context.translate(centerX, centerY);
-    context.rotate((piece.rotation * Math.PI) / 180);
-    // The mirror happens about the piece's own center, inside its box, so a
-    // flipped piece keeps its place, its angle and its crop window.
-    if (piece.flipX || piece.flipY) {
-      context.scale(piece.flipX ? -1 : 1, piece.flipY ? -1 : 1);
-    }
-    context.translate(-centerX, -centerY);
-    // The crop is a clip of the rendered piece, so the whole source is drawn
-    // and the visible box masks it — identical to how the studio shows it.
-    context.beginPath();
-    context.rect(piece.x, piece.y, piece.width, piece.height);
-    context.clip();
-    if (placement) {
-      context.drawImage(
-        image,
-        source.x + placement.x * source.width,
-        source.y + placement.y * source.height,
-        placement.width * source.width,
-        placement.height * source.height,
-      );
-    } else {
-      context.drawImage(image, source.x, source.y, source.width, source.height);
-    }
-    context.restore();
-  }
-
   return canvasPng(canvas, "The collage canvas produced no image");
 }
 
