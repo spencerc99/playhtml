@@ -107,6 +107,11 @@ import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
 import { isDocumentOversized } from "./quarantinePolicy";
 import { RoomCircuitBreaker } from "./roomCircuitBreaker";
 import { handleQuarantineControlRequest } from "./quarantineControl";
+import {
+  clearCachedDocument,
+  readCachedDocument,
+  writeCachedDocument,
+} from "./documentCache";
 export { PresenceServer } from "./presenceServer";
 
 const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
@@ -841,19 +846,55 @@ export class PartyServer extends YServer {
   ): Promise<void> {
     this.assertDocumentSaveAllowed(options);
 
-    const { error } = await supabase.from("documents").upsert(
-      {
-        name: this.name,
-        document: documentBase64,
-      },
-      { onConflict: "name" }
-    );
+    const { data, error } = await supabase
+      .from("documents")
+      .upsert(
+        {
+          name: this.name,
+          document: documentBase64,
+        },
+        { onConflict: "name" }
+      )
+      .select("version")
+      .single();
 
     if (error) {
       throw new Error(error.message);
     }
 
     this.markDocumentPersisted(documentBase64);
+    await this.refreshDocumentCache(data?.version, documentBase64);
+  }
+
+  // The local copy is an optimization: a failure here never fails the save. It
+  // only removes the copy so the next start loads from the database.
+  private async refreshDocumentCache(
+    version: unknown,
+    documentBase64: string
+  ): Promise<void> {
+    try {
+      if (typeof version !== "string") {
+        throw new Error(`documents row returned no version (got ${version})`);
+      }
+      await writeCachedDocument(this.ctx.storage, version, documentBase64);
+    } catch (error) {
+      console.error(
+        `[PartyServer] Document cache write failed for room=${this.name}; next start loads from the database`,
+        error
+      );
+      await this.clearDocumentCache();
+    }
+  }
+
+  private async clearDocumentCache(): Promise<void> {
+    try {
+      await clearCachedDocument(this.ctx.storage);
+    } catch (error) {
+      console.error(
+        `[PartyServer] Document cache clear failed for room=${this.name}`,
+        error
+      );
+    }
   }
 
   private assertDocumentSaveAllowed(options: SaveDocumentOptions): void {
@@ -1938,13 +1979,45 @@ export class PartyServer extends YServer {
     const loadStartedAt = Date.now();
     let successfulAttempt = 1;
     let successfulAttemptElapsedMs = 0;
+    // The database row's version decides whether the local copy of the last
+    // saved document can be used; the full document is only downloaded when
+    // the copy is missing or out of date.
     const result = await retryWithinTimeout(
       async (signal, attempt) => {
         const attemptStartedAt = Date.now();
         successfulAttempt = attempt;
+        const versionResult = await supabase
+          .from("documents")
+          .select("version")
+          .eq("name", this.name)
+          .abortSignal(signal)
+          .maybeSingle();
+        if (versionResult.error) {
+          throw new Error(versionResult.error.message);
+        }
+        if (versionResult.data === null) {
+          successfulAttemptElapsedMs = Date.now() - attemptStartedAt;
+          return { data: null, source: "database" as const };
+        }
+
+        const cachedDocument = await readCachedDocument(
+          this.ctx.storage,
+          versionResult.data.version
+        );
+        if (cachedDocument !== null) {
+          successfulAttemptElapsedMs = Date.now() - attemptStartedAt;
+          return {
+            data: {
+              document: cachedDocument,
+              version: versionResult.data.version as string,
+            },
+            source: "cache" as const,
+          };
+        }
+
         const queryResult = await supabase
           .from("documents")
-          .select("document")
+          .select("document, version")
           .eq("name", this.name)
           .abortSignal(signal)
           .maybeSingle();
@@ -1952,7 +2025,7 @@ export class PartyServer extends YServer {
         if (queryResult.error) {
           throw new Error(queryResult.error.message);
         }
-        return queryResult;
+        return { data: queryResult.data, source: "database" as const };
       },
       {
         attempts,
@@ -1978,6 +2051,17 @@ export class PartyServer extends YServer {
       return;
     }
 
+    if (result.source === "database") {
+      if (result.data) {
+        await this.refreshDocumentCache(
+          result.data.version,
+          result.data.document
+        );
+      } else {
+        await this.clearDocumentCache();
+      }
+    }
+
     if (successfulAttempt > 1) {
       console.log(
         `[PartyServer] Supabase document load recovered for room=${this.name} after ${successfulAttempt} attempts ` +
@@ -1991,6 +2075,10 @@ export class PartyServer extends YServer {
           `elapsedMs=${successfulAttemptElapsedMs}, timeoutMs=${timeoutMs}.`
       );
     }
+    console.log(
+      `[PartyServer] Document loaded: room=${this.name}, source=${result.source}, ` +
+        `bytes=${result.data?.document.length ?? 0}`
+    );
 
     let persistedDocument = result.data?.document;
     if (persistedDocument === undefined) {

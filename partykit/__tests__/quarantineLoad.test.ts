@@ -64,8 +64,22 @@ mock.module("cloudflare:workers", () => ({
 
 // A single mutable row stands in for the room's `documents` record. Tests assert
 // against `persistedRow.document` to prove risky paths never overwrite real data.
-type PersistedRow = { document: string | null };
-const persistedRow: PersistedRow = { document: null };
+// Like the database trigger, every document write gives the row a new version.
+type PersistedRow = { document: string | null; version: string };
+let persistedVersionCounter = 0;
+let persistedDocument: string | null = null;
+const persistedRow: PersistedRow = {
+  get document() {
+    return persistedDocument;
+  },
+  set document(value: string | null) {
+    persistedDocument = value;
+    persistedVersionCounter += 1;
+  },
+  get version() {
+    return `v${persistedVersionCounter}`;
+  },
+};
 let upsertCalls: Array<{ name: string; document: string }> = [];
 let upsertError: Error | null = null;
 let beforeUpsert: (() => Promise<void>) | null = null;
@@ -77,7 +91,14 @@ let documentReadCount = 0;
 let documentReadErrors: Error[] = [];
 let beforeDocumentRead: (() => Promise<void>) | null = null;
 
-function createDocumentRead() {
+// Every read of the row counts, including the version-only lookup that decides
+// whether a room can start from its local copy. `documentDownloadCount` counts
+// only reads that transfer the document itself.
+let documentDownloadCount = 0;
+function createDocumentRead(columns: string) {
+  const includesDocument = columns.split(",").some(
+    (column) => column.trim() === "document"
+  );
   const maybeSingle = async () => {
     documentReadCount += 1;
     await beforeDocumentRead?.();
@@ -85,13 +106,11 @@ function createDocumentRead() {
     if (error) {
       return { data: null, error: { message: error.message } };
     }
-    return {
-      data:
-        persistedRow.document === null
-          ? null
-          : { document: persistedRow.document },
-      error: null,
-    };
+    if (includesDocument) documentDownloadCount += 1;
+    if (persistedRow.document === null) return { data: null, error: null };
+    const data: Record<string, unknown> = { version: persistedRow.version };
+    if (includesDocument) data.document = persistedRow.document;
+    return { data, error: null };
   };
 
   return {
@@ -105,22 +124,25 @@ function createDocumentRead() {
 const supabaseStub = {
   from() {
     return {
-      select() {
+      select(columns: string) {
         return {
           eq() {
-            return createDocumentRead();
+            return createDocumentRead(columns);
           },
         };
       },
-      async upsert(row: { name: string; document: string }) {
-        upsertCalls.push(row);
-        await beforeUpsert?.();
-        if (upsertError) {
-          return { error: { message: upsertError.message } };
-        }
-        persistedRow.document = row.document;
-        await afterUpsert?.();
-        return { error: null };
+      upsert(row: { name: string; document: string }) {
+        const single = async () => {
+          upsertCalls.push(row);
+          await beforeUpsert?.();
+          if (upsertError) {
+            return { data: null, error: { message: upsertError.message } };
+          }
+          persistedRow.document = row.document;
+          await afterUpsert?.();
+          return { data: { version: persistedRow.version }, error: null };
+        };
+        return { select: () => ({ single }) };
       },
     };
   },
@@ -141,15 +163,26 @@ class FakeStorage {
   // before the risky work they protect.
   writeLog: Array<{ key: string; value: unknown }> = [];
 
-  async get(key: string) {
+  async get(key: string | string[]) {
+    if (Array.isArray(key)) {
+      return new Map(
+        key.filter((k) => this.values.has(k)).map((k) => [k, this.values.get(k)])
+      );
+    }
     return this.values.get(key);
   }
-  async put(key: string, value: unknown) {
-    this.writeLog.push({ key, value });
-    this.values.set(key, value);
+  async put(key: string | Record<string, unknown>, value?: unknown) {
+    const entries = typeof key === "string" ? { [key]: value } : key;
+    for (const [entryKey, entryValue] of Object.entries(entries)) {
+      this.writeLog.push({ key: entryKey, value: entryValue });
+      this.values.set(entryKey, entryValue);
+    }
   }
-  async delete(key: string) {
-    this.values.delete(key);
+  async delete(key: string | string[]) {
+    const keys = Array.isArray(key) ? key : [key];
+    let deleted = 0;
+    for (const k of keys) if (this.values.delete(k)) deleted += 1;
+    return Array.isArray(key) ? deleted : deleted > 0;
   }
   async getAlarm() {
     return this.alarm;
@@ -319,6 +352,7 @@ beforeEach(() => {
   beforeUpsert = null;
   afterUpsert = null;
   documentReadCount = 0;
+  documentDownloadCount = 0;
   documentReadErrors = [];
   beforeDocumentRead = null;
   kvStore.clear();
@@ -1164,7 +1198,9 @@ describe("load path", () => {
     // The new deadline was committed while the read count was still zero.
     expect(deadlineWrites).toEqual([0]);
     expect(room.circuitBreaker.isLoadDeferred()).toBe(false);
-    expect(documentReadCount).toBe(1);
+    // One version lookup, then one download: there is no local copy yet.
+    expect(documentReadCount).toBe(2);
+    expect(documentDownloadCount).toBe(1);
     expect(room.document.getMap("play").get("greeting")).toBe("hello");
   });
 
@@ -1175,7 +1211,8 @@ describe("load path", () => {
     await startRoom(room);
 
     expect(room.circuitBreaker.isLoadDeferred()).toBe(false);
-    expect(documentReadCount).toBe(1);
+    expect(documentReadCount).toBe(2);
+    expect(documentDownloadCount).toBe(1);
   });
 
   test("eight consecutive load failures quarantine as a last resort", async () => {
@@ -1541,7 +1578,9 @@ describe("hardening", () => {
       console.log = originalLog;
     }
 
-    expect(documentReadCount).toBe(2);
+    // A failed attempt, then a version lookup and the download.
+    expect(documentReadCount).toBe(3);
+    expect(documentDownloadCount).toBe(1);
     expect(room.isPersistenceAvailable()).toBe(true);
     expect(docIsEmpty(room.document)).toBe(false);
     expect(warnings).toEqual([
@@ -1550,6 +1589,9 @@ describe("hardening", () => {
     expect(logs).toEqual([
       expect.stringMatching(
         /^\[PartyServer\] Supabase document load recovered for room=example-room after 2 attempts \(attemptElapsedMs=\d+, totalElapsedMs=\d+\)\.$/
+      ),
+      expect.stringMatching(
+        /^\[PartyServer\] Document loaded: room=example-room, source=database, bytes=\d+$/
       ),
     ]);
   });
@@ -1630,7 +1672,7 @@ describe("hardening", () => {
       console.log = originalLog;
     }
 
-    expect(documentReadCount).toBe(4);
+    expect(documentReadCount).toBe(5);
     expect(room.isPersistenceAvailable()).toBe(true);
     expect(room.document.getMap("play").get("greeting")).toBe("hello");
     expect(storage.values.has("loadRetryAfter")).toBe(false);
@@ -3167,5 +3209,136 @@ describe("quarantine data safety", () => {
 
     expect(upsertCalls.length).toBe(1);
     expect(persistedRow.document).not.toBe(COMPACT_LETHAL_DOCUMENT);
+  });
+});
+
+describe("persisted document copy", () => {
+  function documentWith(value: string): string {
+    const doc = new Y.Doc();
+    doc.getMap("play").set("greeting", value);
+    return encodeDoc(doc);
+  }
+
+  // Saves log one autosave line each; capture it so test output stays clean.
+  async function saveCapturingAutosaveLog(room: any): Promise<boolean> {
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (message: unknown) => logs.push(String(message));
+    try {
+      return await room.saveLiveDocument();
+    } finally {
+      console.log = originalLog;
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toStartWith("[PartyServer] Autosave: room=example-room");
+    }
+  }
+
+  // Starts the room and asserts where its document came from.
+  async function startExpectingSource(
+    room: any,
+    source: "cache" | "database"
+  ): Promise<void> {
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (message: unknown) => logs.push(String(message));
+    try {
+      await startRoom(room);
+    } finally {
+      console.log = originalLog;
+    }
+    expect(logs).toEqual([
+      expect.stringMatching(
+        new RegExp(
+          `^\\[PartyServer\\] Document loaded: room=example-room, source=${source}, bytes=\\d+$`
+        )
+      ),
+    ]);
+  }
+
+  async function saveThroughRoom(value: string) {
+    const doc = new Y.Doc();
+    doc.getMap("play").set("greeting", value);
+    const storage = new FakeStorage();
+    const room = buildRoom(storage, "example-room", doc);
+    room.documentLoadCompleted = true;
+    await saveCapturingAutosaveLog(room);
+    return storage;
+  }
+
+  test("a restart starts from the saved copy without downloading", async () => {
+    const storage = await saveThroughRoom("saved");
+    documentReadCount = 0;
+    documentDownloadCount = 0;
+
+    const restarted = restartRoom(storage);
+    await startExpectingSource(restarted, "cache");
+
+    expect(documentReadCount).toBe(1);
+    expect(documentDownloadCount).toBe(0);
+    expect(restarted.document.getMap("play").get("greeting")).toBe("saved");
+  });
+
+  test("a document changed elsewhere is downloaded instead of the stale copy", async () => {
+    const storage = await saveThroughRoom("saved");
+    persistedRow.document = documentWith("edited-elsewhere");
+    documentDownloadCount = 0;
+
+    const restarted = restartRoom(storage);
+    await startExpectingSource(restarted, "database");
+
+    expect(documentDownloadCount).toBe(1);
+    expect(restarted.document.getMap("play").get("greeting")).toBe(
+      "edited-elsewhere"
+    );
+
+    // The download refreshed the copy, so the next start uses it.
+    documentDownloadCount = 0;
+    const again = restartRoom(storage);
+    await startExpectingSource(again, "cache");
+    expect(documentDownloadCount).toBe(0);
+    expect(again.document.getMap("play").get("greeting")).toBe(
+      "edited-elsewhere"
+    );
+  });
+
+  test("a failed copy write keeps the save and removes the copy", async () => {
+    const doc = new Y.Doc();
+    doc.getMap("play").set("greeting", "saved");
+    const storage = new FakeStorage();
+    const room = buildRoom(storage, "example-room", doc);
+    room.documentLoadCompleted = true;
+    const originalPut = storage.put.bind(storage);
+    storage.put = async (key: any, value?: unknown) => {
+      if (typeof key === "object") throw new Error("storage full");
+      return originalPut(key, value);
+    };
+    const errors: unknown[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => errors.push(args[0]);
+
+    let saved: boolean;
+    try {
+      saved = await saveCapturingAutosaveLog(room);
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(saved).toBe(true);
+    expect(persistedRow.document).toBe(encodeDoc(doc));
+    expect(errors).toEqual([
+      "[PartyServer] Document cache write failed for room=example-room; next start loads from the database",
+    ]);
+    expect(storage.values.has("documentCache:meta")).toBe(false);
+  });
+
+  test("a room with no stored row clears any old copy", async () => {
+    const storage = await saveThroughRoom("saved");
+    persistedRow.document = null;
+
+    const restarted = restartRoom(storage);
+    await startExpectingSource(restarted, "database");
+
+    expect(storage.values.has("documentCache:meta")).toBe(false);
+    expect(restarted.document.getMap("play").get("greeting")).toBeUndefined();
   });
 });
