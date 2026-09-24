@@ -1,7 +1,7 @@
 // ABOUTME: Full-tab extension page for browsing locally collected internet scraps.
 // ABOUTME: Hosts the drifting browse collage and the create mode for making your own.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
 import "@fontsource/atkinson-hyperlegible/latin-400.css";
@@ -17,7 +17,8 @@ import {
   type ScrapItem,
   type ScrapPosition,
 } from "@movement/components/ScrapCollage";
-import { useFeatureState } from "../../features/useFeatureAccess";
+import { useSettledFeatureState } from "../../features/useFeatureAccess";
+import { parsePlaceHash, placeHash, type ScrapsPlace } from "./scrapsPlace";
 import type { CollageRecord } from "./collageRecord";
 import {
   inBackground,
@@ -182,12 +183,111 @@ export function ScrapsPage() {
   >(null);
   const [createError, setCreateError] = useState(false);
   const seed = useMemo(() => Math.floor(Date.now() / 86_400_000), []);
-  const collagesFeature = useFeatureState("SCRAP_COLLAGES");
-  const canCreate = collagesFeature.enabled;
+  const collagesFeature = useSettledFeatureState("SCRAP_COLLAGES");
+  const canCreate = collagesFeature?.enabled ?? false;
+  /** The saved collage open in the studio, once it has an id to name. */
+  const [openCollageId, setOpenCollageId] = useState<string | null>(null);
+  /**
+   * False until the place the URL named has been restored, and while a place
+   * is being applied, so the URL is not rewritten from a half-set page.
+   */
+  const [placeSettled, setPlaceSettled] = useState(false);
+  const writtenHashRef = useRef<string | null>(null);
+  const restoredRef = useRef(false);
 
   useEffect(() => {
-    if (!canCreate && mode === "create") setMode("browse");
-  }, [canCreate, mode]);
+    if (collagesFeature && !canCreate && mode === "create") setMode("browse");
+  }, [collagesFeature, canCreate, mode]);
+
+  const openStudio = (record: CollageRecord | null) => {
+    if (record) inBackground(keepCollageImages(record));
+    setEditing(record);
+    setOpenCollageId(record?.id ?? null);
+    setStudioSession((value) => value + 1);
+    setStudioOpen(true);
+  };
+
+  const closeStudio = () => {
+    setEditing(null);
+    setOpenCollageId(null);
+    setStudioOpen(false);
+  };
+
+  /** Puts the page where a URL says, loading a named collage first. */
+  const applyPlace = useCallback(async (place: ScrapsPlace, creatable: boolean) => {
+    if (place.mode === "browse" || !creatable) {
+      setMode("browse");
+      closeStudio();
+      return;
+    }
+    setMode("create");
+    if (place.collage === null) {
+      closeStudio();
+      return;
+    }
+    if (place.collage === "new") {
+      openStudio(null);
+      return;
+    }
+    const { loadCollage } = await import("./collageStore");
+    const record = await loadCollage(place.collage.id);
+    if (!record) {
+      console.warn(`No collage ${place.collage.id} to reopen; showing the list`);
+      closeStudio();
+      return;
+    }
+    openStudio(record);
+  }, []);
+
+  // Once it is known whether collages can be made, go back to where the URL
+  // says the page was.
+  useEffect(() => {
+    if (!collagesFeature || restoredRef.current) return;
+    restoredRef.current = true;
+    const wanted = parsePlaceHash(window.location.hash);
+    applyPlace(wanted, collagesFeature.enabled)
+      .catch((placeError: unknown) => {
+        console.error("Could not restore the scraps page place:", placeError);
+      })
+      .finally(() => setPlaceSettled(true));
+  }, [applyPlace, collagesFeature]);
+
+  // Back and forward move between places like any other page.
+  useEffect(() => {
+    const onPop = () => {
+      setPlaceSettled(false);
+      applyPlace(parsePlaceHash(window.location.hash), canCreate)
+        .catch((placeError: unknown) => {
+          console.error("Could not move the scraps page:", placeError);
+        })
+        .finally(() => setPlaceSettled(true));
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [applyPlace, canCreate]);
+
+  const place: ScrapsPlace =
+    mode === "browse"
+      ? { mode: "browse" }
+      : !studioOpen
+        ? { mode: "create", collage: null }
+        : openCollageId
+          ? { mode: "create", collage: { id: openCollageId } }
+          : { mode: "create", collage: "new" };
+  const hash = placeHash(place);
+
+  useEffect(() => {
+    if (!placeSettled || hash === window.location.hash) return;
+    const url = hash || `${window.location.pathname}${window.location.search}`;
+    // A new collage that has just been saved is the same place under its
+    // id, so it replaces the entry rather than adding a step to go back to.
+    if (writtenHashRef.current === placeHash({ mode: "create", collage: "new" }) && hash.startsWith("#create/")) {
+      window.history.replaceState(null, "", url);
+    } else {
+      window.history.pushState(null, "", url);
+    }
+    writtenHashRef.current = hash;
+  }, [hash, placeSettled]);
 
   useEffect(() => {
     if (!canCreate || mode !== "create" || createMode) return;
@@ -440,25 +540,14 @@ export function ScrapsPage() {
           studioOpen={studioOpen}
           studioSession={studioSession}
           savedRevision={savedRevision}
-          onEdit={(record) => {
-            inBackground(keepCollageImages(record));
-            setEditing(record);
-            setStudioSession((value) => value + 1);
-            setStudioOpen(true);
-          }}
-          onStartNew={() => {
-            setEditing(null);
-            setStudioSession((value) => value + 1);
-            setStudioOpen(true);
-          }}
+          onEdit={(record) => openStudio(record)}
+          onStartNew={() => openStudio(null)}
           onSaved={(record) => {
             inBackground(keepCollageImages(record));
+            setOpenCollageId(record.id);
             setSavedRevision((value) => value + 1);
           }}
-          onLeave={() => {
-            setEditing(null);
-            setStudioOpen(false);
-          }}
+          onLeave={closeStudio}
         />
       )}
       {mode === "create" && !loading && !error && !createMode && (
