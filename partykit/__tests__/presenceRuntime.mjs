@@ -1,5 +1,5 @@
 // ABOUTME: Exercises presence persistence against real hibernating Workers WebSockets.
-// ABOUTME: Measures native attachment writes and verifies batching, rejection, and recovery.
+// ABOUTME: Measures attachment writes and verifies batching, recovery, and socket replacement.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { build } from "esbuild";
@@ -258,25 +258,33 @@ test("native presence attachment writes are batched and recoverable", async () =
     );
 
     const errorStart = await inspect();
+    const senderRemovals = () =>
+      messages.filter((message) => message.removes?.sender).length;
+    const removalsBeforeError = senderRemovals();
     const errored = await inspect({
       messages: [cursor(92), cursor(93)],
       error: true,
     });
-    assert.equal(errored.diagnostics.length, 2);
+    assert.equal(errored.diagnostics.length, 1);
     assert.match(
       errored.diagnostics[0][0],
       /WebSocket error: room=test connection=sender/,
     );
     assert.equal(errored.diagnostics[0][1], "Error: fixture failure");
-    assert.match(
-      errored.diagnostics[1][0],
-      /code=1011 reason="fixture failure"/,
-    );
     await sleep(40);
     assert.equal(
       (await inspect()).writes - errorStart.writes,
       1,
       "error discards the pending trailing attachment write",
+    );
+    const removalsAfterError = senderRemovals();
+    assert(removalsAfterError > removalsBeforeError, "error removes the sender");
+    await inspect({ close: true });
+    await sleep(40);
+    assert.equal(
+      senderRemovals(),
+      removalsAfterError,
+      "a close after an error does not remove the sender again",
     );
 
     const closeStart = await inspect();
@@ -291,6 +299,45 @@ test("native presence attachment writes are batched and recoverable", async () =
     assert(
       messages.some((message) => message.removes?.sender?.includes("cursor")),
     );
+    // A reconnect reuses the connection id while the old socket is still open.
+    const staleClose = new Promise((resolve) => {
+      const onClose = (event) => resolve(event.code);
+      connect("dup").then((ws) => {
+        ws.addEventListener("close", onClose);
+        ws.send(JSON.stringify(cursor(5)));
+      });
+    });
+    await sleep(40);
+    const replacement = await connect("dup");
+    assert.equal(
+      await Promise.race([staleClose, sleep(2000).then(() => "still open")]),
+      4000,
+      "the older socket is replaced",
+    );
+    replacement.send(JSON.stringify(cursor(7)));
+    await sleep(40);
+    const afterReplacement = messages.length;
+    // The replaced socket's close handshake completes after the new socket is live.
+    await sleep(200);
+    assert(
+      !messages
+        .slice(afterReplacement)
+        .some((message) => message.removes?.dup),
+      "a late close from the replaced socket keeps the new socket's presence",
+    );
+    const dupSyncStart = messages.length;
+    await connect("dup-observer");
+    await sleep(40);
+    assert(
+      messages
+        .slice(dupSyncStart)
+        .some(
+          (message) =>
+            message.type === "presence-sync" &&
+            message.peers.dup?.cursor?.cursor?.x === 7,
+        ),
+    );
+
     console.log(
       JSON.stringify({
         burstMessages: 90,
@@ -301,6 +348,8 @@ test("native presence attachment writes are batched and recoverable", async () =
         joinFlushedBeforeSync: true,
         errorDiscardedPendingWrite: true,
         closeDiscardedPendingWrite: true,
+        errorCloseRemovedOnce: true,
+        replacedSocketKeptPresence: true,
       }),
     );
   } finally {

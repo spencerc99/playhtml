@@ -47,4 +47,18 @@ describe("getConnectionCloseDiagnostic", () => {
       '[PartyServer] WebSocket closed abnormally: room=class.playhtml.fun-/week/1 connection=conn-1 code=1006 reason="Connection ended" wasClean=false durationMs=750'
     );
   });
+
+  it("keeps reporting long-lived 1006 closes when no report window is set", () => {
+    expect(
+      getConnectionCloseDiagnostic({
+        roomName: "room",
+        connectionId: "conn-1",
+        code: 1006,
+        reason: "",
+        wasClean: false,
+        openedAt: 0,
+        now: 60_000,
+      })
+    ).toContain("durationMs=60000");
+  });
 });

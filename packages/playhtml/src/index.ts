@@ -602,6 +602,18 @@ function onMessage(data: string) {
     return;
   }
 
+  // Sent when a client joins with an older epoch but no document history, so
+  // it can stay connected and only needs to remember the current epoch.
+  if (message.type === "reset-epoch") {
+    const resetEpoch = Number(message.resetEpoch);
+    if (!Number.isFinite(resetEpoch)) {
+      console.error("[PLAYHTML] Received reset-epoch without a resetEpoch");
+      return;
+    }
+    storeResetEpochForRoom(__currentRoomId, resetEpoch);
+    return;
+  }
+
   // Handle regular PlayHTML events
   const { type, eventPayload } = message as EventMessage;
   const maybeHandlers = eventHandlers.get(type);
@@ -953,20 +965,19 @@ function buildMainProvider(args: {
     discoveredSharedReferences.add(referenceKey);
   });
 
-  const storageKey = `playhtml_resetEpoch_${room}`;
-  const storedResetEpoch = localStorage.getItem(storageKey);
-  const clientResetEpoch = storedResetEpoch
-    ? parseInt(storedResetEpoch, 10)
-    : null;
-
-  yprovider = new YProvider(partykitHost, room, doc, {
-    params: {
+  // Resolved before every connect and reconnect, so a reconnect after a
+  // room-reset or reset-epoch notice always carries the latest epoch.
+  const params = () => {
+    const clientResetEpoch = getResetEpochForRoom(room);
+    return {
       sharedElements: JSON.stringify(sharedElements),
       sharedReferences: JSON.stringify(sharedReferences),
       clientResetEpoch:
         clientResetEpoch !== null ? String(clientResetEpoch) : null,
-    },
-  });
+    };
+  };
+
+  yprovider = new YProvider(partykitHost, room, doc, { params });
   yprovider.on("error", () => {
     onError?.();
   });
@@ -1235,12 +1246,39 @@ function buildCursors(args: {
   cursorPresenceHub.connect(cursorClient);
 }
 
+// The in-memory copy is authoritative for this page. localStorage only carries
+// the epoch across page loads and may be unavailable (blocked storage, quota).
+const resetEpochByRoom = new Map<string, number>();
+
+function getResetEpochStorageKey(room: string): string {
+  return `playhtml_resetEpoch_${room}`;
+}
+
+function getResetEpochForRoom(room: string): number | null {
+  const known = resetEpochByRoom.get(room);
+  if (known !== undefined) return known;
+
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(getResetEpochStorageKey(room));
+  } catch (error) {
+    console.warn("[PLAYHTML] Could not read the stored room reset epoch", error);
+  }
+  const parsed = stored === null ? NaN : Number(stored);
+  if (!Number.isFinite(parsed)) return null;
+  resetEpochByRoom.set(room, parsed);
+  return parsed;
+}
+
 function storeResetEpochForRoom(room: string, resetEpoch: number): void {
-  const storageKey = `playhtml_resetEpoch_${room}`;
-  localStorage.setItem(storageKey, String(resetEpoch));
-  console.log(
-    `[PLAYHTML] Stored resetEpoch=${resetEpoch} in localStorage key=${storageKey}`,
-  );
+  const known = resetEpochByRoom.get(room);
+  if (known !== undefined && known >= resetEpoch) return;
+  resetEpochByRoom.set(room, resetEpoch);
+  try {
+    localStorage.setItem(getResetEpochStorageKey(room), String(resetEpoch));
+  } catch (error) {
+    console.warn("[PLAYHTML] Could not store the room reset epoch", error);
+  }
 }
 
 function waitForMainProviderSync(timeoutMs?: number): Promise<void> {
