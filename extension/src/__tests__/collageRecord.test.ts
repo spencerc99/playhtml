@@ -154,6 +154,8 @@ describe("parseCollageRecord", () => {
       createdAt: 5_000,
       updatedAt: 6_000,
     });
+    // Both pieces share one page, which is listed once.
+    expect(summary.sourcePages).toEqual(["https://example.test/a"]);
   });
 });
 

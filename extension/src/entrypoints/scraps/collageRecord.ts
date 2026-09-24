@@ -104,6 +104,8 @@ export interface CollageSummary {
   createdAt: number;
   updatedAt: number;
   pieceCount: number;
+  /** Every distinct page its pieces came from, for counting across collages. */
+  sourcePages: string[];
   paper: CollagePaper;
   preview: CollagePreview;
 }
@@ -120,22 +122,19 @@ export function createCollageId(): string {
 const UNTITLED_COPY = "untitled collage copy";
 
 /**
- * A separate collage holding the same arrangement. Every piece is copied with
- * an id of its own, so editing the copy cannot reach back into the original,
- * and the two records share nothing.
+ * The same collage under an id of its own. Every piece is copied with an id of
+ * its own too, so editing the result cannot reach back into the record it came
+ * from, and the two share nothing. Title and timestamps are carried across.
  *
  * The preview comes across as it is: the arrangement is identical, so the
  * picture already drawn for it is the right one and nothing is re-baked.
  */
-export function duplicateCollage(
-  record: CollageRecord,
-  now: number = Date.now(),
-): CollageRecord {
+export function withFreshIds(record: CollageRecord): CollageRecord {
   return {
     id: createCollageId(),
-    title: record.title.trim() ? `${record.title.trim()} copy` : UNTITLED_COPY,
-    createdAt: now,
-    updatedAt: now,
+    title: record.title,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
     frame: { ...record.frame },
     format: record.format,
     paper: { ...record.paper },
@@ -150,6 +149,22 @@ export function duplicateCollage(
     preview: record.preview.drawn
       ? { drawn: true, image: record.preview.image }
       : { drawn: false, reason: record.preview.reason },
+  };
+}
+
+/**
+ * A separate collage holding the same arrangement, named as a copy and dated
+ * from the moment it was made.
+ */
+export function duplicateCollage(
+  record: CollageRecord,
+  now: number = Date.now(),
+): CollageRecord {
+  return {
+    ...withFreshIds(record),
+    title: record.title.trim() ? `${record.title.trim()} copy` : UNTITLED_COPY,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -333,6 +348,9 @@ export function summarizeCollage(record: CollageRecord): CollageSummary {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     pieceCount: record.pieces.length,
+    sourcePages: collageProvenance(record.pieces).map(
+      (source) => source.pageUrl,
+    ),
     paper: record.paper,
     preview: record.preview,
   };

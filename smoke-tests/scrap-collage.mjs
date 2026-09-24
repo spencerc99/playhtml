@@ -1,5 +1,5 @@
 // ABOUTME: Verifies the scrap collage create mode end to end in isolated Chromium.
-// ABOUTME: Covers every scrap kind through the bake, autosave, the source peek, and the collage's back.
+// ABOUTME: Covers every scrap kind through the bake, autosave, the source peek, the card's back, and files.
 
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -248,14 +248,22 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 const extension = resolve(workspace, "extension/dist/chrome-mv3");
 const pageErrors = [];
 let context;
+/** Profiles opened besides the main one, closed and removed at the end. */
+const extraProfiles = [];
 
-try {
-  context = await chromium.launchPersistentContext(profile, {
+/**
+ * Opens the built extension in an isolated headless profile at `dir`, with the
+ * network blocked except for the loopback fixture server, and early access to
+ * scraps and collages switched on.
+ */
+async function launchProfile(dir) {
+  const opened = await chromium.launchPersistentContext(dir, {
     channel: process.env.PLAYWRIGHT_CHROMIUM_PATH ? undefined : "chromium",
     ...(process.env.PLAYWRIGHT_CHROMIUM_PATH
       ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH }
       : {}),
     headless: true,
+    acceptDownloads: true,
     viewport: { width: 1500, height: 980 },
     args: [
       `--disable-extensions-except=${extension}`,
@@ -264,23 +272,23 @@ try {
       "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
     ],
   });
-  await context.route("**/*", (route) => {
+  await opened.route("**/*", (route) => {
     const url = new URL(route.request().url());
     return url.protocol === "chrome-extension:" || url.hostname === "127.0.0.1"
       ? route.continue()
       : route.abort("blockedbyclient");
   });
-  await context.routeWebSocket("**/*", (socket) => socket.close());
-  context.on("page", (page) => {
+  await opened.routeWebSocket("**/*", (socket) => socket.close());
+  opened.on("page", (page) => {
     page.on("pageerror", (error) => pageErrors.push(error.message));
   });
 
-  const worker =
-    context.serviceWorkers()[0] || (await context.waitForEvent("serviceworker"));
-  const extensionOrigin = `chrome-extension://${new URL(worker.url()).host}`;
+  const openedWorker =
+    opened.serviceWorkers()[0] || (await opened.waitForEvent("serviceworker"));
+  const openedOrigin = `chrome-extension://${new URL(openedWorker.url()).host}`;
 
   // The isolated tester has early access; a real user still opts in.
-  await worker.evaluate(async () => {
+  await openedWorker.evaluate(async () => {
     await chrome.storage.local.set({
       wwoFeatureAccess: {
         features: {
@@ -292,6 +300,70 @@ try {
       wwoFeatureOverrides: { SCRAPS: true, SCRAP_COLLAGES: true },
     });
   });
+  return { context: opened, worker: openedWorker, extensionOrigin: openedOrigin };
+}
+
+/** Every stored collage on `page`, with the fields a file must carry across. */
+function collagesWithGeometry(page) {
+  return page.evaluate(async () => {
+    const db = await new Promise((ok, bad) => {
+      const r = indexedDB.open("scrap_collages_db");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => bad(r.error);
+    });
+    let rows;
+    try {
+      rows = await new Promise((ok, bad) => {
+        const r = db.transaction("collages").objectStore("collages").getAll();
+        r.onsuccess = () => ok(r.result);
+        r.onerror = () => bad(r.error);
+      });
+    } finally {
+      db.close();
+    }
+    const base64Of = async (blob) => {
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let binary = "";
+      for (let at = 0; at < bytes.length; at += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+      }
+      return btoa(binary);
+    };
+    return Promise.all(
+      rows.map(async (row) => ({
+        id: row.id,
+        title: row.title,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        frame: row.frame,
+        format: row.format,
+        paper: row.paper,
+        pieceIds: row.pieces.map((piece) => piece.id),
+        geometry: row.pieces.map((piece) => ({
+          scrapId: piece.scrapId,
+          x: piece.x,
+          y: piece.y,
+          width: piece.width,
+          height: piece.height,
+          rotation: piece.rotation,
+          z: piece.z,
+          crop: piece.crop,
+          flipX: piece.flipX,
+          flipY: piece.flipY,
+        })),
+        previewType: row.preview.drawn ? row.preview.image.type : null,
+        previewBase64: row.preview.drawn
+          ? await base64Of(row.preview.image)
+          : null,
+      })),
+    );
+  });
+}
+
+try {
+  const launched = await launchProfile(profile);
+  context = launched.context;
+  const { worker, extensionOrigin } = launched;
 
   // Browse three pages so the collectors gather every scrap kind.
   for (const slug of ["first", "second", "third"]) {
@@ -431,14 +503,14 @@ try {
   }
 
   async function openStudio() {
-    await page.getByRole("button", { name: "start a new one" }).click();
+    await page.getByRole("button", { name: "new collage", exact: true }).click();
     await page.waitForTimeout(900);
   }
 
   /** Gets back to the history whatever the studio is showing. */
   async function backToHistory() {
     if (await page.locator(".collage-bar").count()) {
-      await page.getByRole("button", { name: "done" }).click();
+      await page.getByRole("button", { name: "back to collages" }).click();
       await page.waitForTimeout(900);
       const leaving = page.getByRole("button", { name: "leave without saving" });
       if (await leaving.count()) {
@@ -446,7 +518,9 @@ try {
         await page.waitForTimeout(700);
       }
     }
-    await page.waitForSelector("text=start a new one", { timeout: 20_000 });
+    await page
+      .getByRole("button", { name: "new collage", exact: true })
+      .waitFor({ timeout: 20_000 });
   }
 
   // ====================================================== browse filters
@@ -978,25 +1052,55 @@ try {
   );
   assert.equal(afterReload.length, 1, "autosaving must not multiply records");
 
-  // Reopen it and change something, then press done before the debounce fires.
+  // Reopen it and change something, then leave before the debounce fires.
   await page.getByRole("button", { name: "create", exact: true }).click();
   await page.waitForTimeout(600);
   await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(2500);
   await page.locator(".collage-title-input").fill("saved by leaving");
-  // Straight to done, well inside the settle window.
-  await page.getByRole("button", { name: "done" }).click();
+  // Straight back to the collages, well inside the settle window, by the one
+  // way out: the link at the stage's top-left.
+  assert.equal(
+    await page.getByRole("button", { name: "done" }).count(),
+    0,
+    "the studio has no done button any more",
+  );
+  const leaveBox = await page
+    .getByRole("button", { name: "back to collages" })
+    .boundingBox();
+  const toolsBox = await page.locator(".collage-tools").boundingBox();
+  const stageBox = await page.locator(".collage-frame-area__stage").boundingBox();
+  console.log("the way back:", { leaveBox, toolsBox, stageBox });
+  assert.ok(
+    leaveBox.x < toolsBox.x &&
+      leaveBox.x - stageBox.x < 40 &&
+      leaveBox.y - stageBox.y < 40,
+    "the way back sits leftmost in the stage's top row",
+  );
+  assert.ok(
+    Math.abs(
+      leaveBox.y + leaveBox.height / 2 - (toolsBox.y + toolsBox.height / 2),
+    ) < 4,
+    "the way back shares the tools' row",
+  );
+  assert.equal(
+    (
+      await page.getByRole("button", { name: "back to collages" }).textContent()
+    ).trim(),
+    "← collages",
+  );
+  await page.getByRole("button", { name: "back to collages" }).click();
   await page.waitForTimeout(3000);
   stored = await storedCollages();
   console.log("after done-before-debounce:", stored);
   assert.equal(
     stored.find((row) => row.id === collageId).title,
     "saved by leaving",
-    "pressing done must flush the pending change",
+    "leaving must flush the pending change",
   );
   assert.ok(
-    await page.getByRole("button", { name: "start a new one" }).isVisible(),
-    "a healthy autosave means done leaves with no prompt",
+    await page.getByRole("button", { name: "new collage", exact: true }).isVisible(),
+    "a healthy autosave means leaving asks nothing",
   );
   await page.screenshot({ path: `${evidence}/03-autosave-flushed-on-done.png` });
 
@@ -1653,8 +1757,8 @@ try {
   console.log("bottom bar buttons:", barButtons);
   assert.deepEqual(
     barButtons,
-    ["export png", "done"],
-    "the bottom bar should carry nothing but export and done",
+    ["export png"],
+    "the bottom bar should carry nothing but export",
   );
   assert.equal(
     await page.locator(".collage-bar .collage-glyph").count(),
@@ -1806,6 +1910,61 @@ try {
     .filter({ hasText: "one of each" })
     .first();
   await page.screenshot({ path: `${evidence}/13-history-cards.png` });
+  // The heading names the drawer and sums up exactly what is stored.
+  assert.equal(
+    (await page.locator(".collage-history__heading").textContent()).trim(),
+    "scrap collages",
+  );
+  const drawerTotals = await page.evaluate(async () => {
+    const db = await new Promise((ok, bad) => {
+      const r = indexedDB.open("scrap_collages_db");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => bad(r.error);
+    });
+    try {
+      const rows = await new Promise((ok, bad) => {
+        const r = db.transaction("collages").objectStore("collages").getAll();
+        r.onsuccess = () => ok(r.result);
+        r.onerror = () => bad(r.error);
+      });
+      const newest = rows.reduce((a, b) => (b.createdAt > a.createdAt ? b : a));
+      return {
+        collages: rows.length,
+        pieces: rows.reduce((total, row) => total + row.pieces.length, 0),
+        pages: new Set(
+          rows.flatMap((row) => row.pieces.map((piece) => piece.scrap.pageUrl)),
+        ).size,
+        day: new Date(newest.createdAt).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+        }),
+      };
+    } finally {
+      db.close();
+    }
+  });
+  const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+  const summaryLine = (
+    await page.locator(".collage-history__summary").textContent()
+  ).trim();
+  console.log("history summary:", summaryLine, drawerTotals);
+  assert.equal(
+    summaryLine,
+    `${plural(drawerTotals.collages, "collage", "collages")} · ${plural(
+      drawerTotals.pieces,
+      "piece",
+      "pieces",
+    )} from ${plural(drawerTotals.pages, "page", "pages")} · last one ${drawerTotals.day}`,
+  );
+  assert.equal(
+    (await page.locator(".collage-history__tagline").textContent()).trim(),
+    "turn browsing artifacts into self-portrait collages",
+  );
+  assert.equal(
+    await page.locator(".collage-history__scrap img").count(),
+    1,
+    "the scrap carries the newest collage's picture",
+  );
   assert.equal(
     await page.getByRole("button", { name: "sources" }).count(),
     0,
@@ -2350,6 +2509,164 @@ try {
     0,
   );
 
+  // ======================================== carrying a collage as a file
+  // Save the mixed collage's file from this profile, then open it in a fresh
+  // profile running the same build, as moving it to another browser would.
+  const toCarry = page
+    .locator(".collage-card")
+    .filter({ hasText: "one of each" })
+    .first();
+  await toCarry.scrollIntoViewIfNeeded();
+  await toCarry.locator('button[title="save file"]').hover();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${evidence}/19-save-file-card.png` });
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    toCarry.locator('button[title="save file"]').click(),
+  ]);
+  assert.equal(download.suggestedFilename(), "one of each.collage.json");
+  const carriedPath = `${evidence}/one of each.collage.json`;
+  await download.saveAs(carriedPath);
+  const carried = JSON.parse(await readFile(carriedPath, "utf8"));
+  const sourceRow = (await collagesWithGeometry(page)).find(
+    (row) => row.title === "one of each",
+  );
+  console.log("the saved file:", {
+    format: carried.format,
+    version: carried.version,
+    exportedAt: carried.exportedAt,
+    title: carried.collage.title,
+    pieces: carried.collage.pieces.length,
+    previewType: carried.collage.preview.image?.mediaType,
+    previewBase64Length: carried.collage.preview.image?.base64.length,
+  });
+  assert.equal(carried.format, "wwo-collage");
+  assert.equal(carried.version, 1);
+  assert.equal(typeof carried.exportedAt, "number");
+  assert.equal(carried.collage.id, sourceRow.id);
+  assert.equal(carried.collage.preview.drawn, true);
+  assert.equal(carried.collage.preview.image.mediaType, sourceRow.previewType);
+  assert.equal(
+    carried.collage.preview.image.base64,
+    sourceRow.previewBase64,
+    "the file should carry the stored preview byte for byte",
+  );
+  assert.ok(
+    carried.collage.pieces.every(
+      (piece) => piece.scrap && typeof piece.scrap.kind === "string",
+    ),
+    "every piece should carry its scrap snapshot",
+  );
+
+  const freshDir = await mkdtemp(resolve(tmpdir(), "wwo-scrap-collage-open-"));
+  const fresh = { dir: freshDir, context: null };
+  extraProfiles.push(fresh);
+  const freshLaunch = await launchProfile(freshDir);
+  fresh.context = freshLaunch.context;
+  const freshPage = await fresh.context.newPage();
+  await freshPage.goto(`${freshLaunch.extensionOrigin}/scraps.html`, {
+    waitUntil: "load",
+  });
+  await freshPage.waitForTimeout(1500);
+  await freshPage.getByRole("button", { name: "create", exact: true }).click();
+  await freshPage
+    .getByRole("button", { name: "new collage", exact: true })
+    .waitFor({ timeout: 20_000 });
+  assert.equal(
+    (await collagesWithGeometry(freshPage)).length,
+    0,
+    "the fresh profile should start with no collages",
+  );
+
+  async function importThroughButton(path) {
+    const [chooser] = await Promise.all([
+      freshPage.waitForEvent("filechooser"),
+      freshPage.getByRole("button", { name: "import a collage file" }).click(),
+    ]);
+    await chooser.setFiles(path);
+    await freshPage.waitForTimeout(1500);
+  }
+
+  // A file of the wrong kind is refused whole, and says why.
+  const wrongPath = `${freshDir}-wrong.json`;
+  await writeFile(
+    wrongPath,
+    JSON.stringify({ ...carried, format: "wwo-events" }),
+  );
+  await importThroughButton(wrongPath);
+  await rm(wrongPath, { force: true });
+  const refusal = (await freshPage.locator(".collage-notice").textContent()).trim();
+  console.log("opening the wrong kind of file:", refusal);
+  assert.ok(
+    refusal.includes("not a collage file"),
+    `the refusal should name the problem, got "${refusal}"`,
+  );
+  assert.equal((await collagesWithGeometry(freshPage)).length, 0);
+
+  await importThroughButton(carriedPath);
+  const openedOnce = await collagesWithGeometry(freshPage);
+  assert.equal(openedOnce.length, 1, "opening the file should add one collage");
+  const opened = openedOnce[0];
+  console.log("opened in the fresh profile:", {
+    id: opened.id,
+    title: opened.title,
+    pieces: opened.geometry.length,
+    previewType: opened.previewType,
+    createdAt: opened.createdAt,
+    updatedAt: opened.updatedAt,
+  });
+  assert.equal(opened.title, sourceRow.title);
+  assert.notEqual(opened.id, sourceRow.id, "an opened file is a new record");
+  assert.ok(
+    opened.pieceIds.every((id) => !sourceRow.pieceIds.includes(id)),
+    "every opened piece should have a fresh id",
+  );
+  assert.deepEqual(opened.geometry, sourceRow.geometry);
+  assert.deepEqual(opened.frame, sourceRow.frame);
+  assert.equal(opened.format, sourceRow.format);
+  assert.deepEqual(opened.paper, sourceRow.paper);
+  assert.equal(opened.createdAt, sourceRow.createdAt);
+  assert.equal(opened.updatedAt, sourceRow.updatedAt);
+  assert.equal(opened.previewType, sourceRow.previewType);
+  assert.equal(
+    opened.previewBase64,
+    sourceRow.previewBase64,
+    "the opened collage should keep the preview byte for byte",
+  );
+  assert.equal(
+    (await freshPage.locator(".collage-card__title").first().textContent()).trim(),
+    "one of each",
+  );
+  assert.equal(
+    await freshPage.locator(".collage-card img.collage-card__thumb").count(),
+    1,
+    "the opened collage should show its preview on the card",
+  );
+  // Resting state for the heading: the pointer off the import link.
+  await freshPage.mouse.move(700, 700);
+  await freshPage.waitForTimeout(200);
+  await freshPage.screenshot({ path: `${evidence}/20-opened-from-file.png` });
+
+  // The same file again is a second collage, never a clash with the first.
+  await importThroughButton(carriedPath);
+  const openedTwice = await collagesWithGeometry(freshPage);
+  console.log(
+    "after opening the file twice:",
+    openedTwice.map((row) => ({ id: row.id, title: row.title })),
+  );
+  assert.equal(openedTwice.length, 2);
+  assert.notEqual(openedTwice[0].id, openedTwice[1].id);
+  assert.ok(openedTwice.every((row) => row.title === "one of each"));
+  assert.ok(
+    openedTwice[0].pieceIds.every(
+      (id) => !openedTwice[1].pieceIds.includes(id),
+    ),
+    "the two opened collages should share no piece ids",
+  );
+  assert.equal(await freshPage.locator(".collage-card").count(), 2);
+  await fresh.context.close();
+  fresh.context = null;
+
   // ====================================== a collage whose picture never drew
   // A first-ever bake that fails stores the arrangement with no preview, and
   // the history draws a quiet face rather than breaking.
@@ -2721,6 +3038,10 @@ try {
   );
 } finally {
   await context?.close();
+  for (const extra of extraProfiles) {
+    await extra.context?.close();
+    await rm(extra.dir, { recursive: true, force: true });
+  }
   server.closeAllConnections();
   await new Promise((ok) => server.close(ok));
   await rm(profile, { recursive: true, force: true });

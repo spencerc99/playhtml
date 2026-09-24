@@ -74,6 +74,12 @@ export const GLYPHS = {
       <rect x="5.5" y="5.5" width="8" height="8" {...STROKE} />
     </Glyph>
   ),
+  saveFile: (
+    <Glyph>
+      <path d="M8 2v7.5M5 6.5l3 3 3-3" {...STROKE} />
+      <path d="M2.5 10v3.5h11V10" {...STROKE} />
+    </Glyph>
+  ),
   remove: (
     <Glyph>
       <path d="M3 4.5h10M6.5 4.5V2.5h3v2" {...STROKE} />

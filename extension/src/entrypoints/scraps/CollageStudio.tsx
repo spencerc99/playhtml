@@ -1615,6 +1615,7 @@ export function CollageStudio({
             onRedo={() => setHistory((current) => redo(current))}
             onKeys={() => setShowKeys((value) => !value)}
             onTurnOver={turnOver}
+            onBack={leave}
           />
 
           <FormatControl
@@ -1703,11 +1704,7 @@ export function CollageStudio({
                 stay
               </button>
             </>
-          ) : (
-            <button type="button" className="collage-action" onClick={leave}>
-              done
-            </button>
-          )}
+          ) : null}
         </div>
 
         {notice && (

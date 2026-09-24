@@ -8,25 +8,7 @@ import {
   type CollageRecord,
   type UnreadableCollage,
 } from "./collageRecord";
-import {
-  isEarlierCollageShape,
-  isUngrainedCollageShape,
-  upgradeEarlierCollage,
-  upgradeUngrainedCollage,
-} from "./upgradeCollageRecord";
-
-/**
- * Brings a stored row up to the current shape. The upgrades chain, because a
- * collage old enough to predate formats also predates grain.
- */
-function currentShape(stored: unknown): unknown {
-  const withFormats = isEarlierCollageShape(stored)
-    ? upgradeEarlierCollage(stored)
-    : stored;
-  return isUngrainedCollageShape(withFormats)
-    ? upgradeUngrainedCollage(withFormats)
-    : withFormats;
-}
+import { upgradeToCurrentShape } from "./upgradeCollageRecord";
 
 const DB_NAME = "scrap_collages_db";
 const DB_VERSION = 1;
@@ -87,7 +69,7 @@ export async function loadCollage(id: string): Promise<CollageRecord | null> {
  * stored so it can still be listed and deleted.
  */
 async function settleShape(stored: unknown): Promise<unknown> {
-  const upgraded = currentShape(stored);
+  const upgraded = upgradeToCurrentShape(stored);
   if (upgraded === stored) return stored;
   try {
     await withStore("readwrite", (store) => store.put(upgraded as never));
@@ -111,7 +93,9 @@ export async function listCollages(): Promise<CollageEntry[]> {
   return stored
     .map((value) => {
       try {
-        return summarizeCollage(parseCollageRecord(currentShape(value)));
+        return summarizeCollage(
+          parseCollageRecord(upgradeToCurrentShape(value)),
+        );
       } catch (error) {
         return unreadableEntry(value, error);
       }

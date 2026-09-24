@@ -1,5 +1,6 @@
 # Unreleased
 
+- You can turn off milestone popups in Browser settings.
 - Internet Commute now stops counting riders after they leave and always shows the train pull-up and cursor boarding intro for Slow Mode rides.
 - Internet Commute now starts a fresh route after returning to home station.
 - Internet Commute now keeps active riders together and gives each new train different stops.
