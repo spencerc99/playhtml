@@ -219,6 +219,24 @@ try {
   if (evidence)
     await page.screenshot({ path: resolve(evidence, "frame-off.png") });
 
+  await page.evaluate(() => {
+    for (let index = 0; index < 2; index += 1) {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "H",
+          ctrlKey: true,
+          shiftKey: true,
+          bubbles: true,
+        }),
+      );
+    }
+  });
+  await expect.poll(() => overlayLoads.length).toBe(1);
+  await page.waitForTimeout(300);
+  await expect(page.locator("#playhtml-historical-overlay-root")).toHaveCount(
+    0,
+  );
+
   await page.keyboard.press("Control+Shift+H");
   await expect(page.locator("#playhtml-historical-overlay-root")).toHaveCount(
     1,

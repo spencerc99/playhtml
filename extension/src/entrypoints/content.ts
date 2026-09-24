@@ -1215,8 +1215,10 @@ export default defineContentScript({
     let overlayUI: InjectedReactUI | null = null;
     let milestoneToastUI: InjectedReactUI | null = null;
     let overlayVisible = false;
+    let overlayRevision = 0;
 
     const toggleHistoricalOverlay = async () => {
+      const currentRevision = ++overlayRevision;
       try {
         overlayVisible = !overlayVisible;
 
@@ -1230,6 +1232,7 @@ export default defineContentScript({
           await import(
             /* @vite-ignore */ browser.runtime.getURL("historical-overlay.js")
           );
+          if (currentRevision !== overlayRevision || !overlayVisible) return;
           const mountHistoricalOverlay = (
             globalThis as typeof globalThis & {
               wwoHistoricalOverlay?: (props: {
@@ -1260,8 +1263,12 @@ export default defineContentScript({
           if (VERBOSE) console.log("[HistoricalOverlay] Overlay deactivated");
         }
       } catch (error) {
+        if (currentRevision !== overlayRevision) return;
         console.error("[HistoricalOverlay] Failed to toggle overlay:", error);
         overlayVisible = false;
+        overlayUI?.destroy();
+        overlayUI = null;
+        collectorManager?.resumeAll();
       }
     };
 
