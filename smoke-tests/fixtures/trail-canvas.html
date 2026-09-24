@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
       html, body { margin: 0; width: 100%; height: 100%; background: #faf9f6; }
-      #scene { position: relative; width: 100vw; height: 100vh; }
+      #scene { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
       svg, canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
     </style>
   </head>
@@ -24,10 +24,15 @@
       let paths = [];
       let element;
       let context;
+      let staticContext;
+      let dynamicContext;
+      let cameraElements = [];
       let mode;
       let mono;
       let canvasFilter;
       let activeCount;
+      let pixelRatio;
+      let lastCameraValue;
 
       function makeTrails(count, pointCount) {
         return Array.from({ length: count }, (_, index) => {
@@ -36,14 +41,72 @@
             y: height * (0.15 + 0.7 * ((index * 13) % count) / count) + Math.sin(point * 0.12 + index) * 22,
           }));
           const color = ["#d05a4e", "#4b8eae", "#758d51", "#aa75a2"][index % 4];
-          const data = Array.from({ length: frameCount }, (_, frame) => {
-            const end = Math.max(1, Math.floor((pointCount - 1) * (0.2 + frame * 0.8 / (frameCount - 1))));
-            return buildFreehandPathSegment(points, 0, end, 4, frame === frameCount - 1);
-          });
+          const finalData = buildFreehandPathSegment(
+            points,
+            0,
+            pointCount - 1,
+            4,
+            true,
+          );
           const active = index < activeCount;
-          return { points, data: active ? data : Array(frameCount).fill(data.at(-1)), color, active,
-            canvasPath: active ? null : new Path2D(data.at(-1)) };
+          return {
+            points,
+            finalData,
+            color,
+            active,
+            canvasPath: active ? null : new Path2D(finalData),
+          };
         });
+      }
+
+      function getPathData(trail, frame) {
+        if (!trail.active) return trail.finalData;
+        const end = Math.max(
+          1,
+          Math.floor(
+            (trail.points.length - 1) *
+              (0.2 + (frame * 0.8) / (frameCount - 1)),
+          ),
+        );
+        return buildFreehandPathSegment(
+          trail.points,
+          0,
+          end,
+          4,
+          frame === frameCount - 1,
+        );
+      }
+
+      function createCanvas() {
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(width * pixelRatio);
+        canvas.height = Math.round(height * pixelRatio);
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        const canvasContext = canvas.getContext("2d");
+        canvasContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+        scene.append(canvas);
+        return { canvas, canvasContext };
+      }
+
+      function drawCanvasPath(canvasContext, trail, pathData) {
+        canvasContext.fillStyle = mono ? "#000" : trail.color;
+        canvasContext.globalAlpha = mono ? 0.8 : 1;
+        canvasContext.filter = mono && canvasFilter ? "url(#ink-texture)" : "none";
+        canvasContext.fill(trail.active ? new Path2D(pathData) : trail.canvasPath);
+      }
+
+      function setCssCamera(view) {
+        const scaleX = width / view.w;
+        const scaleY = height / view.h;
+        const transform = `translate(${-view.x * scaleX}px, ${-view.y * scaleY}px) scale(${scaleX}, ${scaleY})`;
+        if (transform === lastCameraValue) return;
+        lastCameraValue = transform;
+        for (const cameraElement of cameraElements) {
+          cameraElement.style.transformOrigin = "0 0";
+          cameraElement.style.willChange = "transform";
+          cameraElement.style.transform = transform;
+        }
       }
 
       window.setup = (options) => {
@@ -51,24 +114,50 @@
         mono = options.mono;
         canvasFilter = options.canvasFilter;
         activeCount = options.activeCount ?? options.trails;
+        pixelRatio = options.pixelRatio ?? window.devicePixelRatio;
         paths = makeTrails(options.trails, options.points);
         scene.replaceChildren();
-        if (mode === "svg") {
+        cameraElements = [];
+        context = undefined;
+        staticContext = undefined;
+        dynamicContext = undefined;
+        lastCameraValue = undefined;
+        if (mode === "none") {
+          element = document.createElement("div");
+          scene.append(element);
+        } else if (mode === "svg" || mode === "svg-css") {
           const svg = document.createElementNS(ns, "svg");
           svg.setAttribute("width", "100%");
           svg.setAttribute("height", "100%");
           svg.setAttribute("preserveAspectRatio", "none");
+          if (mode === "svg-css") {
+            svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+            svg.style.width = `${width}px`;
+            svg.style.height = `${height}px`;
+            cameraElements.push(svg);
+          }
           svg.innerHTML = filter;
           for (const trail of paths) {
             const path = document.createElementNS(ns, "path");
             path.setAttribute("fill", mono ? "#000" : trail.color);
             path.setAttribute("opacity", mono ? "0.8" : "1");
             if (mono) path.setAttribute("filter", "url(#ink-texture)");
+            if (!trail.active) path.setAttribute("d", trail.finalData);
             svg.append(path);
             trail.element = path;
           }
           scene.append(svg);
           element = svg;
+        } else if (mode === "canvas-layered") {
+          const staticLayer = createCanvas();
+          const dynamicLayer = createCanvas();
+          staticContext = staticLayer.canvasContext;
+          dynamicContext = dynamicLayer.canvasContext;
+          for (const trail of paths) {
+            if (!trail.active) drawCanvasPath(staticContext, trail, trail.finalData);
+          }
+          cameraElements.push(staticLayer.canvas, dynamicLayer.canvas);
+          element = dynamicLayer.canvas;
         } else {
           if (mono && canvasFilter) {
             const definitions = document.createElementNS(ns, "svg");
@@ -77,40 +166,107 @@
             definitions.innerHTML = filter;
             scene.append(definitions);
           }
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          scene.append(canvas);
-          element = canvas;
-          context = canvas.getContext("2d");
+          const layer = createCanvas();
+          element = layer.canvas;
+          context = layer.canvasContext;
         }
         window.drawFrame(frameCount - 1, false);
       };
 
       window.drawFrame = (frame, moveCamera = true) => {
+        if (mode === "none") return;
         const view = moveCamera
           ? { x: frame * 0.35, y: frame * 0.12, w: width * 0.9, h: height * 0.9 }
           : { x: 0, y: 0, w: width, h: height };
-        if (mode === "svg") {
-          element.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
+        if (mode === "svg" || mode === "svg-css") {
+          if (mode === "svg") {
+            const viewBox = `${view.x} ${view.y} ${view.w} ${view.h}`;
+            if (viewBox !== lastCameraValue) {
+              element.setAttribute("viewBox", viewBox);
+              lastCameraValue = viewBox;
+            }
+          } else {
+            setCssCamera(view);
+          }
           for (const trail of paths) {
-            if (trail.active || !trail.element.hasAttribute("d")) {
-              trail.element.setAttribute("d", trail.data[frame]);
+            if (trail.active) {
+              trail.element.setAttribute("d", getPathData(trail, frame));
             }
           }
+        } else if (mode === "canvas-layered") {
+          dynamicContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+          dynamicContext.clearRect(0, 0, width, height);
+          for (const trail of paths) {
+            if (!trail.active) continue;
+            drawCanvasPath(dynamicContext, trail, getPathData(trail, frame));
+          }
+          setCssCamera(view);
         } else {
           context.setTransform(1, 0, 0, 1, 0, 0);
-          context.clearRect(0, 0, width, height);
-          context.setTransform(width / view.w, 0, 0, height / view.h,
-            -view.x * width / view.w, -view.y * height / view.h);
+          context.clearRect(0, 0, width * pixelRatio, height * pixelRatio);
+          context.setTransform(
+            (pixelRatio * width) / view.w,
+            0,
+            0,
+            (pixelRatio * height) / view.h,
+            (-view.x * pixelRatio * width) / view.w,
+            (-view.y * pixelRatio * height) / view.h,
+          );
           for (const trail of paths) {
-            context.fillStyle = mono ? "#000" : trail.color;
-            context.globalAlpha = mono ? 0.8 : 1;
-            context.filter = mono && canvasFilter ? "url(#ink-texture)" : "none";
-            context.fill(trail.active ? new Path2D(trail.data[frame]) : trail.canvasPath);
+            drawCanvasPath(context, trail, getPathData(trail, frame));
           }
         }
       };
+
+      window.measureDuration = async ({ durationMs, targetFps, moveCamera }) => {
+        const drawTimes = [];
+        const frameTimes = [];
+        const callbackTimes = [];
+        const timerDelays = [];
+        let previousCallback = 0;
+        let previousDraw = -Infinity;
+        let frame = 0;
+        let expectedTimer = performance.now() + 50;
+        const timer = setInterval(() => {
+          const now = performance.now();
+          timerDelays.push(Math.max(0, now - expectedTimer));
+          expectedTimer = now + 50;
+        }, 50);
+        const startedAt = performance.now();
+        while (performance.now() - startedAt < durationMs) {
+          await new Promise(requestAnimationFrame);
+          const now = performance.now();
+          if (previousCallback) callbackTimes.push(now - previousCallback);
+          previousCallback = now;
+          if (targetFps && now - previousDraw < 1000 / targetFps - 1) continue;
+          if (Number.isFinite(previousDraw)) frameTimes.push(now - previousDraw);
+          previousDraw = now;
+          const drawStart = performance.now();
+          window.drawFrame(frame % frameCount, moveCamera);
+          drawTimes.push(performance.now() - drawStart);
+          frame++;
+        }
+        clearInterval(timer);
+        return {
+          wallMs: performance.now() - startedAt,
+          drawTimes,
+          frameTimes,
+          callbackTimes,
+          timerDelays,
+        };
+      };
+
+      window.getBenchmarkInfo = () => ({
+        mode,
+        pixelRatio,
+        paths: paths.length,
+        activePaths: paths.filter((trail) => trail.active).length,
+        svgPaths: scene.querySelectorAll("path").length,
+        canvases: scene.querySelectorAll("canvas").length,
+        canvasBackingBytes: [...scene.querySelectorAll("canvas")]
+          .reduce((total, canvas) => total + canvas.width * canvas.height * 4, 0),
+        domElements: scene.querySelectorAll("*").length,
+      });
 
       window.measureFrames = async (repetitions = 1) => {
         const drawTimes = [];
