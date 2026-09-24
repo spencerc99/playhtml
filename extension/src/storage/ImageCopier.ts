@@ -57,15 +57,20 @@ export class ImageCopier {
     this.running = true;
     void (async () => {
       try {
-        while (this.queue.length > 0) {
-          const src = this.queue.shift()!;
-          try {
-            await this.copy(src);
-          } finally {
-            this.queued.delete(src);
+        // The trim yields, and an image collected meanwhile is queued while
+        // this loop still counts as running, so the queue is checked again
+        // after it rather than left for a later collection to restart.
+        do {
+          while (this.queue.length > 0) {
+            const src = this.queue.shift()!;
+            try {
+              await this.copy(src);
+            } finally {
+              this.queued.delete(src);
+            }
           }
-        }
-        await this.trim();
+          await this.trim();
+        } while (this.queue.length > 0);
       } finally {
         this.running = false;
       }
