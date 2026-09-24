@@ -20,6 +20,17 @@ import {
 // interval so observable expiry timing is unchanged.
 const PEER_SWEEP_INTERVAL_MS = 1_000;
 
+// How long a peer absent from a presence-sync snapshot keeps its folded
+// channels. After a server restart the first client back receives a near-empty
+// snapshot while everyone else is still reconnecting; holding absent peers
+// briefly keeps their cursors from fading out and straight back in.
+export const PEER_SYNC_GRACE_MS = 5_000;
+
+export type PeerStoreOptions = {
+  /** Override the sync grace window (ms) for peers missing from a snapshot. */
+  syncGraceMs?: number;
+};
+
 /** Coarse channel groupings that consumers subscribe to. A consumer for one
  * namespace is only notified when a message actually touched that namespace, so
  * frame-rate cursor traffic never wakes element/presence subscribers. */
@@ -64,8 +75,14 @@ export class PeerStore {
   };
   private unsubscribe: () => void;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
+  private syncGraceMs: number;
+  // Connection id -> time after which a peer missing from the latest sync is
+  // dropped, unless a later sync or update brings it back first.
+  private absentPeerDeadlines = new Map<string, number>();
+  private absentPeerTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(source: PeerMessageSource) {
+  constructor(source: PeerMessageSource, options: PeerStoreOptions = {}) {
+    this.syncGraceMs = options.syncGraceMs ?? PEER_SYNC_GRACE_MS;
     this.unsubscribe = source.subscribe((message) => this.handleMessage(message));
     // Client-side staleness backstop: drop a peer's stamped channels once their
     // `at` ages out, even if the server never sent a remove (killed tab, dropped
@@ -103,6 +120,8 @@ export class PeerStore {
       clearInterval(this.sweepTimer);
       this.sweepTimer = null;
     }
+    this.clearAbsentPeerTimer();
+    this.absentPeerDeadlines.clear();
     this.unsubscribe();
     for (const set of Object.values(this.listeners)) set.clear();
   }
@@ -128,10 +147,51 @@ export class PeerStore {
   }
 
   private applySync(snapshot: PresenceSnapshot): void {
-    this.peers.clear();
+    const now = Date.now();
+    for (const connectionId of this.peers.keys()) {
+      if (connectionId in snapshot) continue;
+      if (!this.absentPeerDeadlines.has(connectionId)) {
+        this.absentPeerDeadlines.set(connectionId, now + this.syncGraceMs);
+      }
+    }
     for (const [connectionId, channels] of Object.entries(snapshot)) {
       this.peers.set(connectionId, { ...channels });
+      this.absentPeerDeadlines.delete(connectionId);
     }
+    this.scheduleAbsentPeerExpiry();
+  }
+
+  private scheduleAbsentPeerExpiry(): void {
+    this.clearAbsentPeerTimer();
+    if (this.absentPeerDeadlines.size === 0) return;
+    const nextDeadline = Math.min(...this.absentPeerDeadlines.values());
+    this.absentPeerTimer = setTimeout(() => {
+      this.absentPeerTimer = null;
+      this.expireAbsentPeers(Date.now());
+    }, Math.max(0, nextDeadline - Date.now()));
+  }
+
+  private clearAbsentPeerTimer(): void {
+    if (this.absentPeerTimer === null) return;
+    clearTimeout(this.absentPeerTimer);
+    this.absentPeerTimer = null;
+  }
+
+  /** Drop peers whose sync grace ran out and notify the namespaces they held. */
+  private expireAbsentPeers(now: number): void {
+    const touched = new Set<PeerNamespace>();
+    for (const [connectionId, deadline] of this.absentPeerDeadlines) {
+      if (deadline > now) continue;
+      this.absentPeerDeadlines.delete(connectionId);
+      const channels = this.peers.get(connectionId);
+      if (!channels) continue;
+      this.peers.delete(connectionId);
+      for (const channel of Object.keys(channels)) {
+        touched.add(namespaceOf(channel));
+      }
+    }
+    this.scheduleAbsentPeerExpiry();
+    if (touched.size > 0) this.notify(touched);
   }
 
   private applyChanges(message: PresenceChangesMessage): Set<PeerNamespace> {
@@ -140,6 +200,8 @@ export class PeerStore {
     for (const [connectionId, channels] of Object.entries(message.updates)) {
       const peer = this.peers.get(connectionId) ?? {};
       this.peers.set(connectionId, peer);
+      // A live update proves the peer is back; it no longer awaits expiry.
+      this.absentPeerDeadlines.delete(connectionId);
       for (const [channel, value] of Object.entries(channels)) {
         peer[channel] = value;
         touched.add(namespaceOf(channel));
@@ -156,6 +218,7 @@ export class PeerStore {
       }
       if (Object.keys(peer).length === 0) {
         this.peers.delete(connectionId);
+        this.absentPeerDeadlines.delete(connectionId);
       }
     }
 
@@ -207,6 +270,7 @@ export class PeerStore {
       }
       if (Object.keys(channels).length === 0) {
         this.peers.delete(connectionId);
+        this.absentPeerDeadlines.delete(connectionId);
       }
     }
     return touched;

@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PresenceServerMessage } from "@playhtml/common";
-import { PeerStore } from "../peer-store";
+import { PEER_SYNC_GRACE_MS, PeerStore } from "../peer-store";
 
 // Pin the clock so the tiny `at` timestamps used as fold fixtures below stay
 // within PeerStore's staleness window (the staleness sweep is exercised by its
@@ -301,5 +301,106 @@ describe("PeerStore", () => {
     // Advancing time with only an unstamped identity channel expires nothing.
     vi.advanceTimersByTime(31_000);
     expect(cb).not.toHaveBeenCalled();
+  });
+
+  describe("peers missing from a sync snapshot", () => {
+    function syncTwoPeers(source: ReturnType<typeof makeSource>) {
+      source.emit({
+        type: "presence-sync",
+        peers: {
+          "conn-1": { identity: identity("pk_a") },
+          "conn-2": { identity: identity("pk_b") },
+        },
+      });
+    }
+
+    it("keeps an absent peer through the grace window, then removes and notifies", () => {
+      const source = makeSource();
+      const store = new PeerStore(source);
+      syncTwoPeers(source);
+      const cb = vi.fn();
+      store.subscribe("identity", cb);
+
+      source.emit({
+        type: "presence-sync",
+        peers: { "conn-1": { identity: identity("pk_a") } },
+      });
+      expect(store.getPeers().has("conn-2")).toBe(true);
+      cb.mockClear();
+
+      vi.advanceTimersByTime(PEER_SYNC_GRACE_MS - 1);
+      expect(store.getPeers().has("conn-2")).toBe(true);
+      expect(cb).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+      expect(store.getPeers().has("conn-2")).toBe(false);
+      expect(store.getPeers().has("conn-1")).toBe(true);
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it("cancels removal when a later sync includes the peer again", () => {
+      const source = makeSource();
+      const store = new PeerStore(source);
+      syncTwoPeers(source);
+
+      source.emit({ type: "presence-sync", peers: {} });
+      source.emit({
+        type: "presence-sync",
+        peers: { "conn-2": { identity: identity("pk_b2") } },
+      });
+      vi.advanceTimersByTime(PEER_SYNC_GRACE_MS);
+
+      expect(store.getPeers().has("conn-1")).toBe(false);
+      expect(store.getPeers().get("conn-2")).toEqual({
+        identity: identity("pk_b2"),
+      });
+    });
+
+    it("cancels removal when an update arrives for the peer", () => {
+      const source = makeSource();
+      const store = new PeerStore(source);
+      syncTwoPeers(source);
+
+      source.emit({ type: "presence-sync", peers: {} });
+      source.emit({
+        type: "presence-changes",
+        updates: { "conn-1": { "presence:status": { at: 100, t: 2 } } },
+        removes: {},
+      });
+      vi.advanceTimersByTime(PEER_SYNC_GRACE_MS);
+
+      expect(store.getPeers().has("conn-1")).toBe(true);
+      expect(store.getPeers().has("conn-2")).toBe(false);
+    });
+
+    it("does not extend the grace window across repeated syncs", () => {
+      const source = makeSource();
+      const store = new PeerStore(source);
+      syncTwoPeers(source);
+
+      source.emit({ type: "presence-sync", peers: {} });
+      vi.advanceTimersByTime(PEER_SYNC_GRACE_MS - 1_000);
+      source.emit({ type: "presence-sync", peers: {} });
+      vi.advanceTimersByTime(1_000);
+
+      expect(store.getPeers().size).toBe(0);
+    });
+
+    it("clears the pending expiry on destroy", () => {
+      const source = makeSource();
+      const store = new PeerStore(source, { syncGraceMs: 2_000 });
+      syncTwoPeers(source);
+      const cb = vi.fn();
+      store.subscribe("identity", cb);
+
+      source.emit({ type: "presence-sync", peers: {} });
+      expect(vi.getTimerCount()).toBe(2);
+      cb.mockClear();
+      store.destroy();
+
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(2_000);
+      expect(cb).not.toHaveBeenCalled();
+    });
   });
 });

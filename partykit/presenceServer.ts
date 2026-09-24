@@ -23,7 +23,10 @@ import {
   restorePresenceConnectionChannels,
   takePresenceChanges,
 } from "./presencePolicy";
-import { getConnectionCloseDiagnostic } from "./connectionDiagnostics";
+import {
+  getConnectionCloseDiagnostic,
+  PRESENCE_CLOSE_DIAGNOSTIC_POLICY,
+} from "./connectionDiagnostics";
 import {
   persistPresenceConnectionState,
   projectPresenceClientIdentity,
@@ -34,6 +37,8 @@ const PRESENCE_OPENED_AT_STATE_KEY = "__playhtmlPresenceOpenedAt";
 const PRESENCE_BROADCAST_INTERVAL_MS = 1000 / 60;
 const PRESENCE_INVALID_MESSAGE_WINDOW_MS = 1000;
 const PRESENCE_INVALID_MESSAGE_LIMIT = 10;
+// Close code sent to an older socket when a reconnect reuses its connection id.
+const PRESENCE_REPLACED_CLOSE_CODE = 4000;
 
 type PresenceConnectionState = Record<string, unknown> & {
   [PRESENCE_CHANNELS_STATE_KEY]?: Record<string, unknown>;
@@ -62,6 +67,10 @@ export class PresenceServer extends Server<Env> {
   >();
   private lastBroadcastAt = 0;
   private broadcastTimer: ReturnType<typeof setTimeout> | null = null;
+  // Sockets whose presence was already removed (error, replacement). A later
+  // close event for them must not remove or log a second time. Cleared when the
+  // socket sends another accepted message and so holds presence again.
+  private releasedConnections = new WeakSet<Connection>();
 
   override onConnect(
     connection: Connection,
@@ -69,6 +78,14 @@ export class PresenceServer extends Server<Env> {
   ): void | Promise<void> {
     const presenceConnection =
       connection as Connection<PresenceConnectionState>;
+    // PartySocket reuses its connection id across reconnects, so a new socket
+    // can arrive while the previous one is still open (its close not yet
+    // delivered). Retire the older socket now; otherwise its late close would
+    // remove the presence that belongs to the new one.
+    for (const other of this.getOtherOpenConnections(presenceConnection)) {
+      this.releasePresence(other);
+      other.close(PRESENCE_REPLACED_CLOSE_CODE, "replaced");
+    }
     presenceConnection.setState((previous) => ({
       ...(previous ?? {}),
       [PRESENCE_OPENED_AT_STATE_KEY]: Date.now(),
@@ -106,8 +123,9 @@ export class PresenceServer extends Server<Env> {
       return;
     }
 
+    this.releasedConnections.delete(presenceConnection);
     let pending = this.pendingMessages.get(presenceConnection.id);
-    if (!pending) {
+    if (!pending || pending.connection !== presenceConnection) {
       pending = { connection: presenceConnection, messages: new Map() };
       this.pendingMessages.set(presenceConnection.id, pending);
     }
@@ -141,11 +159,11 @@ export class PresenceServer extends Server<Env> {
   ): void | Promise<void> {
     const presenceConnection =
       connection as Connection<PresenceConnectionState>;
-    this.pendingMessages.delete(presenceConnection.id);
-    this.restorePeerFromConnection(presenceConnection);
-    recordPresenceRemoval(this.presenceState, presenceConnection.id);
-    clearPresenceMessageBudget(this.messageBudgets, presenceConnection.id);
-    this.invalidMessageWindows.delete(presenceConnection.id);
+    if (this.releasedConnections.has(presenceConnection)) return;
+    // A replacement socket with the same id owns this presence now.
+    if (this.getOtherOpenConnections(presenceConnection).length > 0) return;
+
+    this.releasePresence(presenceConnection);
     this.scheduleBroadcast();
 
     const diagnostic = this.getCloseDiagnostic(
@@ -165,7 +183,46 @@ export class PresenceServer extends Server<Env> {
       `[PresenceServer] WebSocket error: room=${this.name} connection=${connection.id}`,
       error,
     );
-    this.onClose(connection, 1011, getErrorMessage(error), false);
+    // PartyServer forwards webSocketError without promising a close event, so
+    // release presence here; releasePresence makes any later close a no-op.
+    const presenceConnection =
+      connection as Connection<PresenceConnectionState>;
+    if (this.releasedConnections.has(presenceConnection)) return;
+    if (this.getOtherOpenConnections(presenceConnection).length > 0) return;
+    this.releasePresence(presenceConnection);
+    this.scheduleBroadcast();
+  }
+
+  /** Remove a socket's presence and per-connection bookkeeping exactly once. */
+  private releasePresence(
+    connection: Connection<PresenceConnectionState>,
+  ): void {
+    this.releasedConnections.add(connection);
+    const pending = this.pendingMessages.get(connection.id);
+    if (pending?.connection === connection) {
+      this.pendingMessages.delete(connection.id);
+    }
+    this.restorePeerFromConnection(connection);
+    recordPresenceRemoval(this.presenceState, connection.id);
+    clearPresenceMessageBudget(this.messageBudgets, connection.id);
+    this.invalidMessageWindows.delete(connection.id);
+  }
+
+  /** Open sockets other than `connection` that share its connection id. */
+  private getOtherOpenConnections(
+    connection: Connection,
+  ): Connection<PresenceConnectionState>[] {
+    const others: Connection<PresenceConnectionState>[] = [];
+    // PartyServer tags every socket with its own id, so this lookup returns
+    // only sockets carrying that id (and skips ones that are not OPEN).
+    for (const other of this.getConnections<PresenceConnectionState>(
+      connection.id,
+    )) {
+      if (other !== connection && other.id === connection.id) {
+        others.push(other);
+      }
+    }
+    return others;
   }
 
   private scheduleBroadcast(): void {
@@ -310,7 +367,7 @@ export class PresenceServer extends Server<Env> {
       wasClean,
       openedAt,
       label: "PresenceServer",
-      quietCloseCodes: [1000, 1005],
+      ...PRESENCE_CLOSE_DIAGNOSTIC_POLICY,
     });
   }
 }
