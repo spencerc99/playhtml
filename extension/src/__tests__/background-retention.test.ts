@@ -88,6 +88,7 @@ describe("background local retention", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    browserMock.storage.local.get.mockResolvedValue({});
     Object.defineProperty(globalThis.navigator, "storage", {
       value: {
         estimate: vi.fn().mockResolvedValue({
@@ -137,6 +138,28 @@ describe("background local retention", () => {
 
     expect(storeMock.getGlobalStats).toHaveBeenCalledOnce();
     expect(storeMock.getAllDomains).toHaveBeenCalledOnce();
+  });
+
+  it("skips milestone checks when popups are disabled", async () => {
+    browserMock.storage.local.get.mockImplementation(async (key: string) =>
+      key === "milestoneToastsEnabled"
+        ? { milestoneToastsEnabled: false }
+        : {},
+    );
+    const background = await import("../entrypoints/background");
+    const startBackground = background.default as unknown as () => void;
+    startBackground();
+
+    const alarmListener =
+      browserMock.alarms.onAlarm.addListener.mock.calls[0]?.[0];
+    await alarmListener?.({ name: "checkMilestones" });
+
+    expect(storeMock.getGlobalStats).not.toHaveBeenCalled();
+    expect(storeMock.getAllDomains).not.toHaveBeenCalled();
+    expect(browserMock.tabs.sendMessage).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: "SHOW_MILESTONE" }),
+    );
   });
 
   it("reports extension local storage usage with collection event stats", async () => {

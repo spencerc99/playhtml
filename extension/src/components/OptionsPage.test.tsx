@@ -145,6 +145,27 @@ describe("OptionsPage", () => {
     }
   });
 
+  it("loads and saves the milestone popup preference", async () => {
+    vi.mocked(browser.storage.local.get).mockResolvedValue({
+      milestoneToastsEnabled: false,
+    });
+    const { container, root } = await renderOptions();
+    try {
+      const checkbox = Array.from(container.querySelectorAll("label")).find(
+        (label) => label.textContent?.includes("show milestone popups"),
+      )?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+
+      expect(checkbox?.checked).toBe(false);
+      await act(async () => checkbox?.click());
+      expect(checkbox?.checked).toBe(true);
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
+        milestoneToastsEnabled: true,
+      });
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
   it("merges project updates into Community and Developer mode into Experiments", async () => {
     const { container, root } = await renderOptions();
     try {
