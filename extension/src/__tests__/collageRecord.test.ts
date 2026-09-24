@@ -8,6 +8,8 @@ import {
   applyCrop,
   clearCrop,
   collageProvenance,
+  commitCropSession,
+  cropSessionStart,
   duplicateCollage,
   movePieceBackward,
   movePieceForward,
@@ -272,6 +274,57 @@ describe("cropping a piece", () => {
     expect(() =>
       clearCrop(piece({ crop: { x: 0, y: 0, width: 0, height: 1 } })),
     ).toThrow(/no area/);
+  });
+});
+
+describe("a crop session", () => {
+  const half = { x: 0.25, y: 0.25, width: 0.5, height: 0.5 };
+
+  it("opens on the piece's last crop rather than the whole image", () => {
+    const cropped = applyCrop(piece({ x: 0, y: 0, width: 200, height: 100 }), half);
+    expect(cropSessionStart(cropped)).toEqual(half);
+  });
+
+  it("opens on the whole image for a piece never cropped", () => {
+    expect(cropSessionStart(piece())).toEqual({
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    });
+  });
+
+  it("leaves the piece alone when it ends where it began", () => {
+    const cropped = applyCrop(piece({ x: 0, y: 0, width: 200, height: 100 }), half);
+    expect(commitCropSession(cropped, cropSessionStart(cropped))).toBe(cropped);
+  });
+
+  it("tightens a previous crop without moving the kept material", () => {
+    const original = piece({ x: 0, y: 0, width: 200, height: 100 });
+    const cropped = applyCrop(original, half);
+    const tighter = commitCropSession(cropped, {
+      x: 0.25,
+      y: 0.25,
+      width: 0.25,
+      height: 0.5,
+    });
+    expect(tighter.crop).toEqual({ x: 0.25, y: 0.25, width: 0.25, height: 0.5 });
+    expect(tighter).toMatchObject({ x: 50, y: 25, width: 50, height: 50 });
+  });
+
+  it("can be dragged back out to the whole image", () => {
+    const original = piece({ x: 0, y: 0, width: 200, height: 100 });
+    const restored = commitCropSession(applyCrop(original, half), {
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    });
+    expect(restored.crop).toEqual({ x: 0, y: 0, width: 1, height: 1 });
+    expect(restored.x).toBeCloseTo(0);
+    expect(restored.y).toBeCloseTo(0);
+    expect(restored.width).toBeCloseTo(200);
+    expect(restored.height).toBeCloseTo(100);
   });
 });
 

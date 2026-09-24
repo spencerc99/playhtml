@@ -24,6 +24,11 @@ import {
 } from "./collageFile";
 import { paperBackground } from "./paperGrain";
 import { GLYPHS } from "./PieceActions";
+import {
+  inBackground,
+  keepCollageImages,
+  releaseCollageImages,
+} from "./localScrapImages";
 
 interface CollageHistoryProps {
   /** Bumped by the studio after a save so the list reloads. */
@@ -104,6 +109,7 @@ export function CollageHistory({
     }
     const copy = duplicateCollage(source);
     await saveCollage(copy);
+    inBackground(keepCollageImages(copy));
     setError(null);
     setSummaries((current) =>
       current ? [summarizeCollage(copy), ...current] : current,
@@ -162,6 +168,7 @@ export function CollageHistory({
     try {
       const record = importCollageFile(await file.text());
       await saveCollage(record);
+      inBackground(keepCollageImages(record));
       setError(null);
       setSummaries((current) =>
         current ? [summarizeCollage(record), ...current] : current,
@@ -175,6 +182,7 @@ export function CollageHistory({
 
   const remove = async (id: string) => {
     await deleteCollage(id);
+    inBackground(releaseCollageImages(id));
     setConfirmingId(null);
     setSummaries((current) =>
       current ? current.filter((entry) => entry.id !== id) : current,

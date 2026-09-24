@@ -1,4 +1,4 @@
-// ABOUTME: Tests the scrap drawer's filters, its count line and reset, and that its fields keep their keys.
+// ABOUTME: Tests the scrap drawer's filters, count line, reset, provenance label, and that its fields keep their keys.
 // ABOUTME: Studio shortcuts must never fire while someone types in, or steers, the drawer's filters.
 
 import { act } from "react";
@@ -81,6 +81,22 @@ describe("ScrapTray filters", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+  });
+
+  it("labels the scrap under focus with where it came from", () => {
+    const slot = container.querySelector<HTMLButtonElement>(
+      '[aria-label="spencer.place — Notes"]',
+    )!;
+    const label = () => container.querySelector(".collage-peek--tray");
+    expect(label()).toBeNull();
+
+    act(() => slot.focus());
+    expect(label()!.textContent).toContain("spencer.place");
+    expect(label()!.textContent).toContain("Notes");
+    expect(label()!.textContent).toContain("picture · first seen");
+
+    act(() => slot.blur());
+    expect(label()).toBeNull();
   });
 
   const countLine = () =>

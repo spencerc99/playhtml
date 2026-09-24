@@ -8,6 +8,7 @@ import {
 } from '@movement/utils/scrapPhotoGroups'
 import { LocalEventStore } from '../storage/LocalEventStore'
 import { ImageFingerprints } from '../storage/imageFingerprints'
+import { ImageCopier } from '../storage/ImageCopier'
 import type {
   QueryOptions,
   WalkingRecordTraceTarget,
@@ -142,6 +143,7 @@ export type ScrapRecord = ScrapRecordBase &
   )
 
 const FEATURE_ACCESS_REFRESH_ALARM = 'refreshFeatureAccess'
+const IMAGE_COPY_BACKFILL_ALARM = 'copyScrapImages'
 
 function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
   const kind = (event.data as { kind?: unknown } | null)?.kind
@@ -220,6 +222,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
 
 const store = new LocalEventStore()
 const imageFingerprints = new ImageFingerprints(store)
+const imageCopier = new ImageCopier(store)
 
 const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
 const LOCAL_RAW_EVENT_RETENTION_DAYS = 30
@@ -402,6 +405,12 @@ export default defineBackground(() => {
   // additionally fire on navigation — see scheduleMilestoneCheck.
   browser.alarms.create('checkMilestones', { periodInMinutes: 5 })
   browser.alarms.create(FEATURE_ACCESS_REFRESH_ALARM, { periodInMinutes: 60 })
+  // Copies images for scraps collected before local copies existed. The pass
+  // finishes once; later alarms only read that it is done.
+  browser.alarms.create(IMAGE_COPY_BACKFILL_ALARM, {
+    delayInMinutes: 1,
+    periodInMinutes: 10,
+  })
   if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
     browser.alarms.create(LOCAL_RETENTION_ALARM, {
       periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
@@ -416,6 +425,11 @@ export default defineBackground(() => {
 
     if (alarm.name === FEATURE_ACCESS_REFRESH_ALARM) {
       await refreshExperimentAccess().catch(() => {})
+      return
+    }
+
+    if (alarm.name === IMAGE_COPY_BACKFILL_ALARM) {
+      await imageCopier.backfill()
       return
     }
 
@@ -676,6 +690,7 @@ export default defineBackground(() => {
       store
         .addEvents(events)
         .then((inserted) => {
+          imageCopier.noteCollected(inserted)
           void imageFingerprints
             .process(inserted)
             .then(({ checked }) => {

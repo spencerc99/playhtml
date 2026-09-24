@@ -8,6 +8,7 @@ import {
   boxForInnerRect,
   composeCrop,
   rotatePoint,
+  sameCrop,
   sourceBoxForCrop,
 } from "./collageGeometry";
 import { parseCutout, type PieceCutout } from "./backgroundCutout";
@@ -405,6 +406,26 @@ export function composeCropOnto(
     height: box.height,
     crop: fromSource,
   };
+}
+
+/**
+ * The crop a crop session opens on. It is the piece's own crop, so cropping
+ * again continues from the last crop; the session edits against the whole
+ * source, so the box can still be dragged back out to the full image.
+ */
+export function cropSessionStart(piece: CollagePiece): CropFraction {
+  return { ...piece.crop };
+}
+
+/**
+ * Applies the crop a session ended on. A session that ends where it began
+ * leaves the piece exactly as it was.
+ */
+export function commitCropSession(
+  piece: CollagePiece,
+  crop: CropFraction,
+): CollagePiece {
+  return sameCrop(piece.crop, crop) ? piece : composeCropOnto(piece, crop);
 }
 
 /** Mirrors what a piece shows, leaving its box and its crop alone. */

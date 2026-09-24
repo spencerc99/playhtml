@@ -5,6 +5,7 @@
 - Internet Commute now starts a fresh route after returning to home station.
 - Internet Commute now keeps active riders together and gives each new train different stops.
 - Internet scraps now also collects headings from the pages you read.
+- Internet scraps now keeps its pictures even after the original site removes them.
 
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow

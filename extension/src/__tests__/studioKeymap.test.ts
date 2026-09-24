@@ -148,6 +148,20 @@ describe("crop", () => {
     });
     expect(studioCommandFor(press("c"), cropping)).toBeNull();
   });
+
+  it("lets the cutout's edge control own the keys until it is done", () => {
+    const cuttingOut: KeymapContext = { ...IDLE, mode: "cutout" };
+    expect(studioCommandFor(press("Enter"), cuttingOut)).toEqual({
+      kind: "confirm",
+    });
+    expect(studioCommandFor(press("Escape"), cuttingOut)).toEqual({
+      kind: "cancel",
+    });
+    // Nothing else may open a second tool over the edge control.
+    expect(studioCommandFor(press("c"), cuttingOut)).toBeNull();
+    expect(studioCommandFor(press("b"), cuttingOut)).toBeNull();
+    expect(studioCommandFor(press("Delete"), cuttingOut)).toBeNull();
+  });
 });
 
 describe("ordering", () => {

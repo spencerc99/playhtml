@@ -19,6 +19,13 @@ import {
 } from "@movement/components/ScrapCollage";
 import { useFeatureState } from "../../features/useFeatureAccess";
 import type { CollageRecord } from "./collageRecord";
+import {
+  inBackground,
+  keepCollageImages,
+  serveLocalScrapImages,
+} from "./localScrapImages";
+
+serveLocalScrapImages();
 
 interface ScrapRecordBase {
   sources?: ScrapSource[];
@@ -434,6 +441,7 @@ export function ScrapsPage() {
           studioSession={studioSession}
           savedRevision={savedRevision}
           onEdit={(record) => {
+            inBackground(keepCollageImages(record));
             setEditing(record);
             setStudioSession((value) => value + 1);
             setStudioOpen(true);
@@ -443,7 +451,10 @@ export function ScrapsPage() {
             setStudioSession((value) => value + 1);
             setStudioOpen(true);
           }}
-          onSaved={() => setSavedRevision((value) => value + 1)}
+          onSaved={(record) => {
+            inBackground(keepCollageImages(record));
+            setSavedRevision((value) => value + 1);
+          }}
           onLeave={() => {
             setEditing(null);
             setStudioOpen(false);

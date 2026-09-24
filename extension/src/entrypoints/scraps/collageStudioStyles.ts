@@ -580,6 +580,33 @@ export const COLLAGE_STUDIO_STYLES = `
     inset: 0;
   }
 
+  /* The field over it shows the title, so the written one only holds its place. */
+  .collage-back__text--titled .collage-back__title {
+    visibility: hidden;
+  }
+
+  /* The title on the back, editable where it is written. It always reads as
+     the writing itself: no outline or text cursor, only a caret once it is
+     clicked into. */
+  .collage-back__title-field {
+    position: absolute;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    resize: none;
+    cursor: inherit;
+  }
+
+  .collage-back__title-field::placeholder {
+    color: var(--collage-back-muted);
+    opacity: 1;
+  }
+
   /* The side facing away takes no pointer, however the sheet turned over. */
   .collage-sheet__leaf > [inert] {
     pointer-events: none;
@@ -628,6 +655,14 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-piece__source {
     position: absolute;
+  }
+
+  /* The box a heading or button is set in before it is scaled to its piece. */
+  .collage-piece__lettering {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: left top;
   }
 
   /* A placed piece fills its box whatever kind of scrap it came from. */
@@ -879,18 +914,19 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   /* The peeked piece's own edge, so its label has something to belong to. */
+  /* While peeking, a piece and its label share one quiet tint, so the label
+     can be matched to its piece where pieces sit close or overlap. */
   .collage-peek-edge {
     position: absolute;
     z-index: 10004;
     border-style: dotted;
-    border-color: #827a72;
+    border-color: var(--peek-tint, #827a72);
     transform-origin: center;
     pointer-events: none;
   }
 
   .collage-peek-edge--on {
     border-style: solid;
-    border-color: #3d3833;
   }
 
   /* An archive label pinned to a piece while the peek key is held. It is a
@@ -903,11 +939,12 @@ export const COLLAGE_STUDIO_STYLES = `
     max-width: 230px;
     padding: 2px 5px;
     transform-origin: left top;
-    border: 1px solid rgba(61, 56, 51, 0.28);
+    border: 1px solid var(--peek-tint, rgba(61, 56, 51, 0.5));
+    border-left-width: 3px;
     border-radius: 2px;
     background: #f5f0e8;
-    /* A tag at rest is as quiet as its dotted edge; the hovered one is ink. */
-    color: #827a72;
+    color: #3d3833;
+    box-shadow: 0 2px 8px rgba(61, 56, 51, 0.18);
     font-family: "Martian Mono", monospace;
     font-size: 8px;
     line-height: 1.5;
@@ -916,10 +953,12 @@ export const COLLAGE_STUDIO_STYLES = `
     user-select: none;
   }
 
-  .collage-peek--full {
-    border-color: rgba(61, 56, 51, 0.5);
-    color: #3d3833;
-    box-shadow: 0 2px 8px rgba(61, 56, 51, 0.18);
+  /* The same label, floated over the drawer for the scrap under the pointer.
+     Fixed, so the drawer's scroll does not clip it. */
+  .collage-peek--tray {
+    position: fixed;
+    z-index: 10010;
+    border-left-width: 1px;
   }
 
   .collage-peek__where {
@@ -966,22 +1005,46 @@ export const COLLAGE_STUDIO_STYLES = `
     color: #c4724e;
   }
 
+  /* The cutout's edge control takes the piece strip's place beside the piece,
+     drawn at the same constant on-screen size. */
   .collage-tolerance {
     position: absolute;
-    z-index: 10002;
+    z-index: 10004;
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 8px;
-    transform: translateX(-50%);
-    border: 1px solid rgba(61, 56, 51, 0.18);
-    border-radius: 3px;
+    padding: 4px 6px 4px 8px;
+    transform-origin: left top;
+    border: 1px solid rgba(61, 56, 51, 0.2);
+    border-radius: 4px;
     background: #f5f0e8;
+    box-shadow: 0 4px 14px rgba(61, 56, 51, 0.18);
+    white-space: nowrap;
   }
 
   .collage-tolerance input {
     width: 96px;
     accent-color: #4a9a8a;
+  }
+
+  .collage-tolerance__button {
+    padding: 3px 6px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    color: #3d3833;
+    cursor: pointer;
+  }
+
+  .collage-tolerance__button:hover {
+    border-color: rgba(61, 56, 51, 0.2);
+  }
+
+  .collage-tolerance__button--done {
+    border-color: rgba(74, 154, 138, 0.5);
+    color: #2f6f62;
   }
 
   .collage-piece__cut {
