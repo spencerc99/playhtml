@@ -2578,10 +2578,10 @@ try {
     "the fresh profile should start with no collages",
   );
 
-  async function openThroughButton(path) {
+  async function importThroughButton(path) {
     const [chooser] = await Promise.all([
       freshPage.waitForEvent("filechooser"),
-      freshPage.getByRole("button", { name: "open file" }).click(),
+      freshPage.getByRole("button", { name: "import a collage file" }).click(),
     ]);
     await chooser.setFiles(path);
     await freshPage.waitForTimeout(1500);
@@ -2593,7 +2593,7 @@ try {
     wrongPath,
     JSON.stringify({ ...carried, format: "wwo-events" }),
   );
-  await openThroughButton(wrongPath);
+  await importThroughButton(wrongPath);
   await rm(wrongPath, { force: true });
   const refusal = (await freshPage.locator(".collage-notice").textContent()).trim();
   console.log("opening the wrong kind of file:", refusal);
@@ -2603,7 +2603,7 @@ try {
   );
   assert.equal((await collagesWithGeometry(freshPage)).length, 0);
 
-  await openThroughButton(carriedPath);
+  await importThroughButton(carriedPath);
   const openedOnce = await collagesWithGeometry(freshPage);
   assert.equal(openedOnce.length, 1, "opening the file should add one collage");
   const opened = openedOnce[0];
@@ -2642,10 +2642,13 @@ try {
     1,
     "the opened collage should show its preview on the card",
   );
+  // Resting state for the heading: the pointer off the import link.
+  await freshPage.mouse.move(700, 700);
+  await freshPage.waitForTimeout(200);
   await freshPage.screenshot({ path: `${evidence}/20-opened-from-file.png` });
 
   // The same file again is a second collage, never a clash with the first.
-  await openThroughButton(carriedPath);
+  await importThroughButton(carriedPath);
   const openedTwice = await collagesWithGeometry(freshPage);
   console.log(
     "after opening the file twice:",

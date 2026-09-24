@@ -1249,9 +1249,28 @@ export const COLLAGE_STUDIO_STYLES = `
     gap: 6px;
   }
 
-  .collage-history__start-actions {
-    display: flex;
-    gap: 8px;
+  .collage-history__import {
+    padding: 0;
+    border: 0;
+    background: none;
+    font-family: "Martian Mono", monospace;
+    font-size: 10px;
+    font-weight: 400;
+    color: #827a72;
+    cursor: pointer;
+  }
+
+  .collage-history__import:hover {
+    color: #3d3833;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .collage-history__import:focus-visible {
+    color: #3d3833;
+    outline: 2px solid rgba(74, 154, 138, 0.45);
+    outline-offset: 2px;
+    border-radius: 2px;
   }
 
   .collage-history__tagline {

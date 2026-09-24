@@ -280,10 +280,17 @@ describe("a collage card", () => {
 });
 
 describe("the history heading", () => {
-  it("opens a collage file as a new collage at the top of the list", async () => {
+  it("imports a collage file as a new collage at the top of the list", async () => {
     await saveCollage(record({ id: "collage_home", title: "already here" }));
     const { view } = await mount();
-    expect(buttonNamed(view, "open file")).toBeTruthy();
+    const importButton = buttonNamed(view, "import a collage file");
+    expect(importButton.textContent?.trim()).toBe("import collage");
+    expect(importButton.className).toBe("collage-history__import");
+    // The quiet import comes after the main call to start a new collage.
+    const headButtons = [
+      ...view.querySelectorAll(".collage-history__start button"),
+    ].map((button) => button.textContent?.trim());
+    expect(headButtons).toEqual(["new collage", "import collage"]);
 
     const filePicker = view.querySelector<HTMLInputElement>(
       'input[type="file"][aria-label="collage file to open"]',

@@ -1,5 +1,5 @@
 // ABOUTME: Browse saved collages: each card is its baked thumbnail, title, date and size.
-// ABOUTME: A card opens its collage; glyph buttons duplicate it, save it to a file, or delete it; a file can be opened as a collage.
+// ABOUTME: A card opens its collage; glyph buttons duplicate it, save it to a file, or delete it; a file can be imported as a collage.
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -204,18 +204,18 @@ export function CollageHistory({
           <p className="collage-history__tagline">
             turn browsing artifacts into self-portrait collages
           </p>
-          <div className="collage-history__start-actions">
-            <button
-              type="button"
-              className="collage-action"
-              onClick={() => filePicker.current?.click()}
-            >
-              open file
-            </button>
-            <button type="button" className="collage-action" onClick={onStartNew}>
-              new collage
-            </button>
-          </div>
+          <button type="button" className="collage-action" onClick={onStartNew}>
+            new collage
+          </button>
+          {/* Secondary to starting a new one, so it reads as a quiet link. */}
+          <button
+            type="button"
+            className="collage-history__import"
+            aria-label="import a collage file"
+            onClick={() => filePicker.current?.click()}
+          >
+            import collage
+          </button>
           <input
             ref={filePicker}
             type="file"
