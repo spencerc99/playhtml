@@ -34,6 +34,7 @@ import { markExtensionInstalled } from "../utils/extensionInstallMarker";
 import { isExtensionPageUrl } from "../utils/extensionPage";
 import { initHostedSlowModeContentBridge } from "../features/slowMode/slowModeHostedContentBridge";
 import { watchInstallationContent } from "./content/installationContent";
+import { MILESTONE_TOASTS_ENABLED_KEY } from "../milestones/state";
 
 // Scraps are local-only, so normalize any unsupported stored mode before the
 // collector starts.
@@ -1214,6 +1215,7 @@ export default defineContentScript({
     let collectorManager: CollectorManager | null = null;
     let overlayUI: InjectedReactUI | null = null;
     let milestoneToastUI: InjectedReactUI | null = null;
+    let milestoneToastsEnabled = true;
     let overlayVisible = false;
     let overlayRevision = 0;
 
@@ -1422,6 +1424,7 @@ export default defineContentScript({
     });
 
     const showMilestoneToast = (milestone: MilestoneToastData): void => {
+      if (!milestoneToastsEnabled) return;
       milestoneToastUI?.destroy();
 
       let ui: InjectedReactUI | null = null;
@@ -1462,6 +1465,15 @@ export default defineContentScript({
       );
       milestoneToastUI = ui;
     };
+
+    browser.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local" || !changes[MILESTONE_TOASTS_ENABLED_KEY]) return;
+      milestoneToastsEnabled = changes[MILESTONE_TOASTS_ENABLED_KEY].newValue !== false;
+      if (!milestoneToastsEnabled) {
+        milestoneToastUI?.destroy();
+        milestoneToastUI = null;
+      }
+    });
 
     // Listen for messages from popup/devtools
     browser.runtime.onMessage.addListener(

@@ -8,7 +8,9 @@ import {
   summarizeCollage,
   type CollageEntry,
   type CollageRecord,
+  type CollageSummary,
 } from "./collageRecord";
+import { collagesSummaryLine, newestCollage } from "./collageHistorySummary";
 import {
   deleteCollage,
   listCollages,
@@ -109,6 +111,16 @@ export function CollageHistory({
     });
   };
 
+  const readable = useMemo(
+    () =>
+      (entries ?? []).filter(
+        (entry): entry is CollageSummary => !isUnreadable(entry),
+      ),
+    [entries],
+  );
+  const newest = newestCollage(readable);
+  const newestPreview = newest ? previewUrls.get(newest.id) : undefined;
+
   const remove = async (id: string) => {
     await deleteCollage(id);
     setConfirmingId(null);
@@ -119,28 +131,32 @@ export function CollageHistory({
 
   return (
     <div className="collage-history">
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          gap: 12,
-          marginBottom: 16,
-        }}
-      >
-        <h2
-          style={{
-            margin: 0,
-            fontFamily: '"Lora", Georgia, serif',
-            fontSize: 19,
-            fontWeight: 700,
-          }}
-        >
-          your collages
-        </h2>
-        <button type="button" className="collage-action" onClick={onStartNew}>
-          start a new one
-        </button>
-      </div>
+      <header className="collage-history__head">
+        <div className="collage-history__title">
+          {/* A torn scrap of the newest collage, or bare kraft before one. */}
+          <span className="collage-history__scrap" aria-hidden="true">
+            <span className="collage-history__scrap-paper">
+              {newestPreview && <img src={newestPreview} alt="" />}
+            </span>
+          </span>
+          <div>
+            <h2 className="collage-history__heading">scrap collages</h2>
+            {entries && (
+              <p className="collage-history__summary">
+                {collagesSummaryLine(readable)}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="collage-history__start">
+          <p className="collage-history__tagline">
+            turn browsing artifacts into self-portrait collages
+          </p>
+          <button type="button" className="collage-action" onClick={onStartNew}>
+            new collage
+          </button>
+        </div>
+      </header>
 
       {error && (
         <p className="collage-notice" role="status">
@@ -149,11 +165,6 @@ export function CollageHistory({
       )}
       {!entries && !error && (
         <p className="collage-studio__label">opening the drawer...</p>
-      )}
-      {entries?.length === 0 && (
-        <p className="collage-studio__label">
-          nothing made yet - start a new one
-        </p>
       )}
 
       <div className="collage-history__grid">

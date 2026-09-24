@@ -103,6 +103,8 @@ export interface CollageSummary {
   createdAt: number;
   updatedAt: number;
   pieceCount: number;
+  /** Every distinct page its pieces came from, for counting across collages. */
+  sourcePages: string[];
   paper: CollagePaper;
   preview: CollagePreview;
 }
@@ -332,6 +334,9 @@ export function summarizeCollage(record: CollageRecord): CollageSummary {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     pieceCount: record.pieces.length,
+    sourcePages: collageProvenance(record.pieces).map(
+      (source) => source.pageUrl,
+    ),
     paper: record.paper,
     preview: record.preview,
   };

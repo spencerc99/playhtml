@@ -1,4 +1,4 @@
-// ABOUTME: The small cluster of studio-wide tools floating at the frame's top-left.
+// ABOUTME: The stage's top-left row: the way back to the collages, then the studio-wide tools.
 // ABOUTME: Undo, redo, turning the collage over, and the shortcut list, beside the canvas.
 
 import React from "react";
@@ -59,6 +59,8 @@ interface StudioToolsProps {
   onRedo: () => void;
   onKeys: () => void;
   onTurnOver: () => void;
+  /** Leaves the studio for the history, writing pending work first. */
+  onBack: () => void;
 }
 
 export function StudioTools({
@@ -70,50 +72,61 @@ export function StudioTools({
   onRedo,
   onKeys,
   onTurnOver,
+  onBack,
 }: StudioToolsProps) {
   return (
-    <div className="collage-tools" role="toolbar" aria-label="Studio">
+    <div className="collage-stage-top">
       <button
         type="button"
-        className="collage-glyph"
-        title="Undo (cmd + Z)"
-        aria-label="Undo"
-        disabled={!canUndo}
-        onClick={onUndo}
+        className="collage-leave"
+        aria-label="back to collages"
+        onClick={onBack}
       >
-        {UNDO}
+        &#8592; collages
       </button>
-      <button
-        type="button"
-        className="collage-glyph"
-        title="Redo (cmd + shift + Z)"
-        aria-label="Redo"
-        disabled={!canRedo}
-        onClick={onRedo}
-      >
-        {REDO}
-      </button>
-      <span className="collage-piece-actions__rule" aria-hidden="true" />
-      <button
-        type="button"
-        className={`collage-glyph${turnedOver ? " collage-glyph--on" : ""}`}
-        title={turnedOver ? "Turn face up (T or esc)" : "Turn over to read the sources (T)"}
-        aria-label="Turn the collage over"
-        aria-pressed={turnedOver}
-        onClick={onTurnOver}
-      >
-        {TURN_OVER}
-      </button>
-      <button
-        type="button"
-        className={`collage-glyph${keysOpen ? " collage-glyph--on" : ""}`}
-        title="Keyboard shortcuts (?)"
-        aria-label="Keyboard shortcuts"
-        aria-pressed={keysOpen}
-        onClick={onKeys}
-      >
-        {KEYS}
-      </button>
+      <div className="collage-tools" role="toolbar" aria-label="Studio">
+        <button
+          type="button"
+          className="collage-glyph"
+          title="Undo (cmd + Z)"
+          aria-label="Undo"
+          disabled={!canUndo}
+          onClick={onUndo}
+        >
+          {UNDO}
+        </button>
+        <button
+          type="button"
+          className="collage-glyph"
+          title="Redo (cmd + shift + Z)"
+          aria-label="Redo"
+          disabled={!canRedo}
+          onClick={onRedo}
+        >
+          {REDO}
+        </button>
+        <span className="collage-piece-actions__rule" aria-hidden="true" />
+        <button
+          type="button"
+          className={`collage-glyph${turnedOver ? " collage-glyph--on" : ""}`}
+          title={turnedOver ? "Turn face up (T or esc)" : "Turn over to read the sources (T)"}
+          aria-label="Turn the collage over"
+          aria-pressed={turnedOver}
+          onClick={onTurnOver}
+        >
+          {TURN_OVER}
+        </button>
+        <button
+          type="button"
+          className={`collage-glyph${keysOpen ? " collage-glyph--on" : ""}`}
+          title="Keyboard shortcuts (?)"
+          aria-label="Keyboard shortcuts"
+          aria-pressed={keysOpen}
+          onClick={onKeys}
+        >
+          {KEYS}
+        </button>
+      </div>
     </div>
   );
 }

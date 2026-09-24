@@ -148,29 +148,6 @@ export const COLLAGE_STUDIO_STYLES = `
     background: rgba(74, 154, 138, 0.25);
   }
 
-  .collage-chip {
-    padding: 3px 7px;
-    border: 1px solid rgba(61, 56, 51, 0.18);
-    border-radius: 3px;
-    background: transparent;
-    color: #827a72;
-    font-family: "Martian Mono", monospace;
-    font-size: 9px;
-    letter-spacing: 0.03em;
-    cursor: pointer;
-  }
-
-  .collage-chip:hover {
-    border-color: rgba(61, 56, 51, 0.35);
-    color: #3d3833;
-  }
-
-  .collage-chip--active {
-    background: rgba(61, 56, 51, 0.08);
-    border-color: rgba(61, 56, 51, 0.4);
-    color: #3d3833;
-  }
-
   .collage-tray__scroll {
     flex: 1 1 auto;
     min-height: 0;
@@ -358,11 +335,34 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   /* Undo, redo and the shortcut list, in the stage's top-left corner. */
-  .collage-tools {
+  /* The stage's top-left row: the way back, then the studio tools. */
+  .collage-stage-top {
     position: absolute;
     top: 12px;
     left: 12px;
     z-index: 10001;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .collage-leave {
+    padding: 4px 2px;
+    border: none;
+    background: none;
+    color: #827a72;
+    font-family: "Martian Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+  }
+
+  .collage-leave:hover,
+  .collage-leave:focus-visible {
+    color: #3d3833;
+  }
+
+  .collage-tools {
     display: flex;
     align-items: center;
     gap: 2px;
@@ -1180,6 +1180,83 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
   }
 
+  .collage-history__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px 24px;
+    margin-bottom: 18px;
+  }
+
+  .collage-history__title {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  /* A scrap torn from the newest collage: the shadow sits on the holder so
+     the torn edge the clip cuts still casts one. */
+  .collage-history__scrap {
+    flex: none;
+    display: block;
+    width: 46px;
+    height: 38px;
+    transform: rotate(-6deg);
+    filter: drop-shadow(0 2px 3px rgba(61, 56, 51, 0.22));
+  }
+
+  .collage-history__scrap-paper {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: #c9a47a;
+    clip-path: polygon(
+      2% 6%, 18% 1%, 34% 5%, 52% 0%, 71% 4%, 88% 1%, 99% 7%,
+      96% 29%, 100% 51%, 97% 74%, 99% 95%, 81% 99%, 63% 95%,
+      44% 100%, 26% 96%, 9% 100%, 1% 92%, 4% 70%, 0% 47%, 3% 25%
+    );
+  }
+
+  .collage-history__scrap-paper img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .collage-history__heading {
+    margin: 0;
+    font-family: "Lora", Georgia, serif;
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 1.15;
+    color: #3d3833;
+  }
+
+  .collage-history__summary {
+    margin: 4px 0 0;
+    font-family: "Martian Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+    color: #827a72;
+  }
+
+  .collage-history__start {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+
+  .collage-history__tagline {
+    margin: 0;
+    font-family: "Lora", Georgia, serif;
+    font-size: 11px;
+    font-style: italic;
+    color: #827a72;
+  }
+
   .collage-history__grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
@@ -1283,14 +1360,5 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-card__actions-gap {
     flex: 1 1 auto;
-  }
-
-  .collage-mode-switch {
-    display: inline-flex;
-    gap: 3px;
-    padding: 3px;
-    border: 1px solid rgba(61, 56, 51, 0.16);
-    border-radius: 4px;
-    background: rgba(245, 240, 232, 0.9);
   }
 `;

@@ -39,6 +39,7 @@ import {
   resetDailyIfNeeded,
   isOnCooldown,
   recordToastShown,
+  MILESTONE_TOASTS_ENABLED_KEY,
 } from '../milestones/state'
 import {
   checkAllMilestones,
@@ -1144,6 +1145,9 @@ export default defineBackground(() => {
   })
 
   async function runMilestoneCheck() {
+    const preference = await browser.storage.local.get(MILESTONE_TOASTS_ENABLED_KEY)
+    if (preference[MILESTONE_TOASTS_ENABLED_KEY] === false) return
+
     let state = await loadState()
     const today = todayString()
     state = resetDailyIfNeeded(state, today)
@@ -1247,6 +1251,9 @@ export default defineBackground(() => {
       const tabDomain = extractDomain(tab.url ?? null)
       if (tabDomain !== milestone.domain) return
     }
+
+    const currentPreference = await browser.storage.local.get(MILESTONE_TOASTS_ENABLED_KEY)
+    if (currentPreference[MILESTONE_TOASTS_ENABLED_KEY] === false) return
 
     const finalState = recordToastShown(updatedState, today)
     await saveState(finalState)
