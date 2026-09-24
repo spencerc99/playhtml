@@ -1,7 +1,8 @@
-// ABOUTME: Tests the collage history cards: the card opens its collage, glyphs act without opening.
-// ABOUTME: Runs the real collage store on an in-memory IndexedDB, rendered through React.
+// ABOUTME: Tests the collage history cards: the card opens its collage, glyphs act without opening,
+// ABOUTME: and a collage goes out to a file and comes back in from one. Real store on in-memory IndexedDB.
 
 import React, { act } from "react";
+import { File as NodeFile } from "node:buffer";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -11,6 +12,7 @@ import {
 import { CollageHistory } from "../entrypoints/scraps/CollageHistory";
 import { listCollages, saveCollage } from "../entrypoints/scraps/collageStore";
 import type { CollageRecord } from "../entrypoints/scraps/collageRecord";
+import { readCollageFile } from "../entrypoints/scraps/collageFile";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -217,5 +219,107 @@ describe("a collage card", () => {
     expect(
       view.querySelector(".collage-card__thumb--undrawn")?.textContent,
     ).toBe("no preview yet");
+  });
+
+  it("saves to a file from the glyph between duplicate and delete, without opening", async () => {
+    await saveCollage(record());
+    const { onEdit, view } = await mount();
+    const glyphs = [
+      ...view.querySelectorAll(".collage-card__actions > button"),
+    ].map((button) => button.getAttribute("title"));
+    expect(glyphs).toEqual(["duplicate", "save file", "delete"]);
+    const save = buttonNamed(view, "Save a walk as a file");
+    expect(save.querySelector("svg")).not.toBeNull();
+
+    // jsdom has no object URLs and cannot follow a download link, so the
+    // test holds on to the blob and the link the page hands the browser.
+    const blobs = new Map<string, Blob>();
+    Object.defineProperty(URL, "createObjectURL", {
+      value: (blob: Blob) => {
+        const url = `blob:test/${blobs.size}`;
+        blobs.set(url, blob);
+        return url;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      value: () => {},
+      configurable: true,
+    });
+    const followed: HTMLAnchorElement[] = [];
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        followed.push(this);
+      });
+    try {
+      await act(async () => save.click());
+      await settle();
+    } finally {
+      click.mockRestore();
+      delete (URL as { createObjectURL?: unknown }).createObjectURL;
+      delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
+    }
+
+    expect(onEdit).not.toHaveBeenCalled();
+    expect(followed).toHaveLength(1);
+    expect(followed[0].download).toBe("a walk.collage.json");
+    const blob = blobs.get(followed[0].getAttribute("href") ?? "");
+    if (!blob) throw new Error("the download link names no saved blob");
+    // jsdom's Blob has no text(), so the saved file is read the older way.
+    const savedText = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(blob);
+    });
+    const saved = readCollageFile(savedText);
+    expect(saved.id).toBe("collage_1");
+    expect(saved.title).toBe("a walk");
+  });
+});
+
+describe("the history heading", () => {
+  it("imports a collage file as a new collage at the top of the list", async () => {
+    await saveCollage(record({ id: "collage_home", title: "already here" }));
+    const { view } = await mount();
+    const importButton = buttonNamed(view, "import a collage file");
+    expect(importButton.textContent?.trim()).toBe("import collage");
+    expect(importButton.className).toBe("collage-history__import");
+    // The quiet import comes after the main call to start a new collage.
+    const headButtons = [
+      ...view.querySelectorAll(".collage-history__start button"),
+    ].map((button) => button.textContent?.trim());
+    expect(headButtons).toEqual(["new collage", "import collage"]);
+
+    const filePicker = view.querySelector<HTMLInputElement>(
+      'input[type="file"][aria-label="collage file to open"]',
+    );
+    if (!filePicker) throw new Error("no collage file input");
+    const carried = record({ id: "collage_away", title: "from elsewhere" });
+    const text = JSON.stringify({
+      format: "wwo-collage",
+      version: 1,
+      exportedAt: Date.UTC(2026, 2, 4),
+      collage: carried,
+    });
+    Object.defineProperty(filePicker, "files", {
+      // Node's File, because jsdom's has no text() for the page to read.
+      value: [new NodeFile([text], "from elsewhere.collage.json")],
+      configurable: true,
+    });
+    await act(async () => {
+      filePicker.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+
+    expect(
+      [...view.querySelectorAll(".collage-card__title")].map(
+        (title) => title.textContent,
+      ),
+    ).toEqual(["from elsewhere", "already here"]);
+    const stored = await listCollages();
+    expect(stored).toHaveLength(2);
+    expect(stored.some((row) => row.id === "collage_away")).toBe(false);
   });
 });

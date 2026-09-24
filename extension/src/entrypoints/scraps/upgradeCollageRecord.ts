@@ -116,3 +116,17 @@ export function upgradeUngrainedCollage(value: unknown): unknown {
   const paper = record.paper as Record<string, unknown>;
   return { ...record, paper: { ...paper, grain: false } };
 }
+
+/**
+ * Brings a collage from any earlier shape up to the current one. The upgrades
+ * chain, because a collage old enough to predate formats also predates grain.
+ * A collage already in the current shape is handed back as the same value.
+ */
+export function upgradeToCurrentShape(stored: unknown): unknown {
+  const withFormats = isEarlierCollageShape(stored)
+    ? upgradeEarlierCollage(stored)
+    : stored;
+  return isUngrainedCollageShape(withFormats)
+    ? upgradeUngrainedCollage(withFormats)
+    : withFormats;
+}
