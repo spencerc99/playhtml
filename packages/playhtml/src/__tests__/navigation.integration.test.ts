@@ -674,6 +674,78 @@ describe("playhtml.handleNavigation", () => {
     }
   });
 
+  it("remembers a reset-epoch notice without reconnecting and sends it on reconnect", async () => {
+    const origPath = window.location.pathname + window.location.search;
+    const providers = ((globalThis as any).PLAYHTML_TEST_PROVIDERS = []);
+    try {
+      history.replaceState(null, "", "/server-epoch-notice");
+      await playhtml.init({
+        host: "http://localhost:1999",
+        room: "/server-epoch-notice",
+      } as any);
+
+      const room = playhtml.roomId;
+      const page = playhtml.createPageData("p", { v: 0 });
+      page.setData({ v: 4 });
+      await new Promise((r) => queueMicrotask(r));
+
+      const provider = providers[providers.length - 1];
+      const providerCount = providers.length;
+      provider.emit(
+        "custom-message",
+        JSON.stringify({ type: "reset-epoch", resetEpoch: 555 }),
+      );
+      await new Promise((r) => queueMicrotask(r));
+
+      expect(providers.length).toBe(providerCount);
+      expect(page.getData()).toEqual({ v: 4 });
+      expect(localStorage.getItem(`playhtml_resetEpoch_${room}`)).toBe("555");
+      expect(provider.options.params().clientResetEpoch).toBe("555");
+    } finally {
+      history.replaceState(null, "", origPath);
+      localStorage.clear();
+    }
+  });
+
+  it("reconnects with the reset epoch when localStorage writes fail", async () => {
+    const origPath = window.location.pathname + window.location.search;
+    const providers = ((globalThis as any).PLAYHTML_TEST_PROVIDERS = []);
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new Error("QuotaExceededError");
+      });
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      history.replaceState(null, "", "/server-reset-no-storage");
+      await playhtml.init({
+        host: "http://localhost:1999",
+        room: "/server-reset-no-storage",
+      } as any);
+
+      const providerBefore = providers[providers.length - 1];
+      providerBefore.emit(
+        "custom-message",
+        JSON.stringify({ type: "room-reset", resetEpoch: 777 }),
+      );
+      await new Promise((r) => queueMicrotask(r));
+      await new Promise((r) => queueMicrotask(r));
+
+      const providerAfter = providers[providers.length - 1];
+      expect(providerAfter).not.toBe(providerBefore);
+      expect(providerAfter.options.params().clientResetEpoch).toBe("777");
+      expect(consoleWarn).toHaveBeenCalledWith(
+        "[PLAYHTML] Could not store the room reset epoch",
+        expect.any(Error),
+      );
+    } finally {
+      setItem.mockRestore();
+      consoleWarn.mockRestore();
+      history.replaceState(null, "", origPath);
+      localStorage.clear();
+    }
+  });
+
   it("runs another reconnect when a newer server reset arrives during reconnect", async () => {
     const origPath = window.location.pathname + window.location.search;
     const providers = ((globalThis as any).PLAYHTML_TEST_PROVIDERS = []);

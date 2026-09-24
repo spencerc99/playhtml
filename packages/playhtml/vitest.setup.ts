@@ -50,11 +50,13 @@ vi.mock("y-partyserver/provider", () => {
       private doc: any;
       private docUpdateListener?: (update: Uint8Array) => void;
       roomname: string;
-      constructor(_host: string, room: string, doc?: any) {
+      options: any;
+      constructor(_host: string, room: string, doc?: any, options?: any) {
         if ((globalThis as any).PLAYHTML_TEST_PROVIDER_THROW) {
           throw new Error("test provider init failure");
         }
         this.roomname = room;
+        this.options = options;
         this.doc = doc;
         this.ws = {
           send: vi.fn(),
