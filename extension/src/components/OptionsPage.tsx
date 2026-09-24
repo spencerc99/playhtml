@@ -25,6 +25,7 @@ import {
 import { hslToHex } from "../utils/color";
 import { isSafariExtensionPageUrl } from "../utils/extensionPage";
 import { NEWTAB_TAKEOVER_KEY } from "../features/newtab/takeover";
+import { MILESTONE_TOASTS_ENABLED_KEY } from "../milestones/state";
 import {
   useExperimentAccess,
   useFeatureState,
@@ -170,6 +171,7 @@ export function OptionsPage() {
   const [savingColor, setSavingColor] = useState(false);
   const [copied, setCopied] = useState(false);
   const [newTabTakeover, setNewTabTakeover] = useState(true);
+  const [milestoneToastsEnabled, setMilestoneToastsEnabled] = useState(true);
   const [setupEmail, setSetupEmail] = useState<string | null>(null);
   const [emailDraft, setEmailDraft] = useState("");
   const [editingEmail, setEditingEmail] = useState(false);
@@ -191,13 +193,18 @@ export function OptionsPage() {
   useEffect(() => {
     Promise.all([
       getPublicPlayerIdentity(),
-      browser.storage.local.get([NEWTAB_TAKEOVER_KEY, "setup_email"]),
+      browser.storage.local.get([
+        NEWTAB_TAKEOVER_KEY,
+        MILESTONE_TOASTS_ENABLED_KEY,
+        "setup_email",
+      ]),
     ])
       .then(([playerIdentity, stored]) => {
         setIdentity(playerIdentity);
         const savedColor = playerIdentity?.playerStyle.colorPalette[0];
         if (savedColor) setColor(savedColor);
         setNewTabTakeover(stored[NEWTAB_TAKEOVER_KEY] !== false);
+        setMilestoneToastsEnabled(stored[MILESTONE_TOASTS_ENABLED_KEY] !== false);
         const savedEmail = stored.setup_email;
         if (typeof savedEmail === "string" && savedEmail.length > 0) {
           setSetupEmail(savedEmail);
@@ -402,29 +409,54 @@ export function OptionsPage() {
         <section id="browser" className="options-page__section">
           <h1>Browser</h1>
           <div className="options-page__card">
-            <h2>New tab</h2>
-            <p>Open your history page in every new tab.</p>
-            {isSafari ? (
-              <p className="options-page__mono-note">
-                Safari doesn't let extensions change the new tab — bookmark or
-                pin the history page to keep it a click away.
-              </p>
-            ) : (
+            <div className="options-page__setting-row">
+              <div>
+                <h2>New tab</h2>
+                <p>Open your history page in every new tab.</p>
+                {isSafari && (
+                  <p className="options-page__mono-note">
+                    Safari doesn't let extensions change the new tab — bookmark or
+                    pin the history page to keep it a click away.
+                  </p>
+                )}
+              </div>
+              {!isSafari && (
+                <label className="options-page__checkbox">
+                  <input
+                    type="checkbox"
+                    checked={newTabTakeover}
+                    onChange={(event) => {
+                      const enabled = event.target.checked;
+                      setNewTabTakeover(enabled);
+                      void browser.storage.local.set({
+                        [NEWTAB_TAKEOVER_KEY]: enabled,
+                      });
+                    }}
+                  />
+                  make this my new tab
+                </label>
+              )}
+            </div>
+            <div className="options-page__setting-row">
+              <div>
+                <h2>Milestone popups</h2>
+                <p>Show small milestones as you browse.</p>
+              </div>
               <label className="options-page__checkbox">
                 <input
                   type="checkbox"
-                  checked={newTabTakeover}
+                  checked={milestoneToastsEnabled}
                   onChange={(event) => {
                     const enabled = event.target.checked;
-                    setNewTabTakeover(enabled);
+                    setMilestoneToastsEnabled(enabled);
                     void browser.storage.local.set({
-                      [NEWTAB_TAKEOVER_KEY]: enabled,
+                      [MILESTONE_TOASTS_ENABLED_KEY]: enabled,
                     });
                   }}
                 />
-                make this my new tab
+                show milestone popups
               </label>
-            )}
+            </div>
           </div>
         </section>
 
