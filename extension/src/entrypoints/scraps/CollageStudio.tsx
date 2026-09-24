@@ -123,6 +123,13 @@ const PLACED_MAX_SIDE = 220;
 const ROTATION_SNAP_DEGREES = 15;
 /** How far a pasted or duplicated piece lands from its original. */
 const COPY_OFFSET = 24;
+/** Stage padding around the frame, in screen pixels. */
+const STAGE_PADDING = 12;
+/**
+ * Room kept clear at the top of the stage for the tool and format bars that
+ * float there, so a frame fitted to a tall stage never slides under them.
+ */
+const STAGE_TOP_BAND = 52;
 /** Frame units the pointer must travel before an alt-drag pulls out a copy. */
 const ALT_DRAG_THRESHOLD = 4;
 /**
@@ -498,8 +505,8 @@ export function CollageStudio({
     const update = () => {
       setScale(
         frameScale(frame, {
-          width: stage.clientWidth - 24,
-          height: stage.clientHeight - 24,
+          width: stage.clientWidth - STAGE_PADDING * 2,
+          height: stage.clientHeight - STAGE_TOP_BAND - STAGE_PADDING,
         }),
       );
     };
@@ -1332,7 +1339,11 @@ export function CollageStudio({
       />
 
       <div className="collage-frame-area">
-        <div className="collage-frame-area__stage" ref={stageRef}>
+        <div
+          className="collage-frame-area__stage"
+          ref={stageRef}
+          style={{ padding: STAGE_PADDING, paddingTop: STAGE_TOP_BAND }}
+        >
           {/* The sheet holds both sides of the collage in one place and turns
               over about its vertical axis; only the side facing up is live. */}
           <div
