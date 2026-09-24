@@ -1,162 +1,129 @@
-// ABOUTME: Verifies playhtml.users.me persistence, mutation, and change notification.
-// ABOUTME: Covers identity publication, array snapshots, color selection, and subscriptions.
+// ABOUTME: Verifies user identity persistence and transport-backed discovery.
+// ABOUTME: Covers cursor-disabled peers, identity updates, and multi-tab deduplication.
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  createUsersAPI,
-  selectAllColors,
-  type UsersAwarenessLike,
-} from "../users";
-import { PLAYER_IDENTITY_STORAGE_KEY, type PlayerIdentity } from "@playhtml/common";
+  PLAYER_IDENTITY_STORAGE_KEY,
+  type PlayerIdentity,
+} from "@playhtml/common";
+import { createUsersAPI, selectAllColors } from "../users";
+import { createFakePresenceTransport } from "./presence-test-utils";
 
-function makeIdentity(publicKey: string, color = "#111111"): PlayerIdentity {
-  return {
-    publicKey,
-    playerStyle: { colorPalette: [color] },
-  } as PlayerIdentity;
+function makeIdentity(
+  publicKey: string,
+  color = "#123456",
+  name?: string,
+): PlayerIdentity {
+  return { publicKey, name, playerStyle: { colorPalette: [color] } };
 }
 
-function makeAwareness(clientID = 1): UsersAwarenessLike & {
-  states: Map<number, Record<string, unknown>>;
-  emitChange: () => void;
-} {
-  const states = new Map<number, Record<string, unknown>>();
-  const listeners = new Set<(...args: unknown[]) => void>();
-  states.set(clientID, {});
-  return {
-    clientID,
-    states,
-    getStates: () => states,
-    getLocalState: () => states.get(clientID) ?? null,
-    setLocalStateField(field, value) {
-      const cur = states.get(clientID) ?? {};
-      states.set(clientID, { ...cur, [field]: value });
-    },
-    on(event, cb) {
-      if (event === "change") listeners.add(cb);
-    },
-    emitChange() {
-      for (const listener of listeners) listener();
-    },
-  };
+function makeUsers(identity = makeIdentity("self")) {
+  const transport = createFakePresenceTransport();
+  const users = createUsersAPI(identity, {
+    getIdentityPeers: () => transport.peers.getPeers(),
+    onIdentityPeersChange: (callback) =>
+      transport.peers.subscribe("identity", callback),
+  });
+  return { users, transport };
 }
 
-describe("playhtml.users.me", () => {
+describe("users", () => {
   beforeEach(() => {
     localStorage.clear();
-  });
-
-  afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("persists color and name mutations", () => {
-    const awareness = makeAwareness();
-    const users = createUsersAPI(makeIdentity("local-key"), {
-      getAwareness: () => awareness,
-    });
-
-    users.me.color = "#222222";
-    users.me.name = "Ada";
-
-    const stored = JSON.parse(localStorage.getItem(PLAYER_IDENTITY_STORAGE_KEY)!);
-    expect(stored).toMatchObject({
-      publicKey: "local-key",
-      name: "Ada",
-      playerStyle: { colorPalette: ["#222222"] },
-    });
+  it("always includes self when cursors are disabled", () => {
+    const { users } = makeUsers(makeIdentity("self", "#abcdef", "Me"));
+    expect(users.getAll()).toEqual([
+      { pid: "self", name: "Me", color: "#abcdef", isMe: true },
+    ]);
   });
 
-  it("publishes __playhtml_identity__ at init and on every change", () => {
-    const awareness = makeAwareness();
-    const users = createUsersAPI(makeIdentity("local-key", "#111111"), {
-      getAwareness: () => awareness,
-    });
-
-    expect(
-      (awareness.getLocalState()?.["__playhtml_identity__"] as PlayerIdentity)
-        .publicKey,
-    ).toBe("local-key");
-
-    users.me.color = "#222222";
-    expect(
-      (awareness.getLocalState()?.["__playhtml_identity__"] as PlayerIdentity)
-        .playerStyle.colorPalette[0],
-    ).toBe("#222222");
-
-    users.me.name = "ada";
-    expect(
-      (awareness.getLocalState()?.["__playhtml_identity__"] as PlayerIdentity).name,
-    ).toBe("ada");
-  });
-
-  it("getAll() includes self and a remote identity from __playhtml_identity__", () => {
-    const awareness = makeAwareness(1);
-    const users = createUsersAPI(makeIdentity("local-key", "#111111"), {
-      getAwareness: () => awareness,
-    });
-
-    awareness.states.set(2, {
-      __playhtml_identity__: makeIdentity("remote-key", "#abcdef"),
-    });
-
-    const all = users.getAll();
-    expect(all).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ pid: "local-key", isMe: true }),
-      ]),
+  it("discovers identity-only peers and notifies on remote identity changes", () => {
+    const { users, transport } = makeUsers();
+    const snapshots: string[][] = [];
+    users.onChange((next) =>
+      snapshots.push(next.map((user) => `${user.pid}:${user.name}`)),
     );
-    expect(all.find((user) => user.pid === "remote-key")).toMatchObject({
-      pid: "remote-key",
-      color: "#abcdef",
-      isMe: false,
+
+    transport.emit({
+      type: "presence-sync",
+      peers: { tab1: { identity: makeIdentity("remote", "#00ff00", "Alice") } },
     });
+    transport.emit({
+      type: "presence-changes",
+      updates: {
+        tab1: { identity: makeIdentity("remote", "#00ff00", "Alicia") },
+      },
+      removes: {},
+    });
+
+    expect(snapshots.at(-1)).toEqual(["remote:Alicia", "self:undefined"]);
   });
 
-  it("getAll() falls back to the cursor awareness field's playerIdentity", () => {
-    const awareness = makeAwareness(1);
-    const users = createUsersAPI(makeIdentity("local-key"), {
-      getAwareness: () => awareness,
+  it("deduplicates multiple tabs by public key", () => {
+    const { users, transport } = makeUsers();
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        tab1: { identity: makeIdentity("remote", "#00ff00", "Alice") },
+        tab2: { identity: makeIdentity("remote", "#00ff00", "Alice") },
+      },
     });
-
-    awareness.states.set(2, {
-      __playhtml_cursors__: { playerIdentity: makeIdentity("remote-cursor-key", "#00ff00") },
-    });
-
-    const all = users.getAll();
-    expect(all.find((user) => user.pid === "remote-cursor-key")).toMatchObject({
-      pid: "remote-cursor-key",
-      color: "#00ff00",
-      isMe: false,
-    });
+    expect(users.getAll().filter((user) => user.pid === "remote")).toHaveLength(
+      1,
+    );
   });
 
-  it("onChange fires on a remote identity change and returns unsubscribe", () => {
-    const awareness = makeAwareness(1);
-    const users = createUsersAPI(makeIdentity("local-key"), {
-      getAwareness: () => awareness,
+  it("refreshes existing subscribers when another subscribes after a room change", () => {
+    let peers = new Map([["remote", { identity: makeIdentity("remote") }]]);
+    let changed = () => {};
+    const users = createUsersAPI(makeIdentity("self"), {
+      getIdentityPeers: () => peers,
+      onIdentityPeersChange: (callback) => {
+        changed = callback;
+        return () => {};
+      },
     });
+    const first = vi.fn();
+    users.onChange(first);
+    peers = new Map();
+    users.onChange(vi.fn());
+    changed();
+    expect(
+      first.mock.lastCall?.[0].map((user: { pid: string }) => user.pid),
+    ).toEqual(["self"]);
+  });
 
-    const seen: Array<Array<{ pid: string }>> = [];
-    const unsub = users.onChange((all) => seen.push(all));
-    const callsAfterSubscribe = seen.length;
+  it("selects the same multi-tab identity regardless of snapshot order", () => {
+    const { users, transport } = makeUsers();
+    const first = { identity: makeIdentity("remote", "#00ff00", "First") };
+    const last = { identity: makeIdentity("remote", "#0000ff", "Last") };
+    transport.emit({ type: "presence-sync", peers: { a: first, z: last } });
+    const expected = users.getAll();
+    transport.emit({ type: "presence-sync", peers: { z: last, a: first } });
+    expect(users.getAll()).toEqual(expected);
+  });
 
-    awareness.states.set(2, {
-      __playhtml_identity__: makeIdentity("remote-key", "#abcdef"),
+  it("persists and emits self identity mutations", () => {
+    const { users } = makeUsers();
+    const changes = vi.fn();
+    users.onSelfChange(changes);
+    users.me.name = "Spencer";
+    users.me.color = "#fedcba";
+    expect(changes).toHaveBeenCalledTimes(2);
+    expect(users.getIdentity()).toMatchObject({
+      name: "Spencer",
+      playerStyle: { colorPalette: ["#fedcba"] },
     });
-    awareness.emitChange();
-
-    expect(seen.length).toBeGreaterThan(callsAfterSubscribe);
-    expect(seen.at(-1)?.some((user) => user.pid === "remote-key")).toBe(true);
-
-    unsub();
+    expect(
+      JSON.parse(localStorage.getItem(PLAYER_IDENTITY_STORAGE_KEY)!),
+    ).toEqual(users.getIdentity());
   });
 
   it("onChange fires on self mutation", () => {
-    const awareness = makeAwareness();
-    const users = createUsersAPI(makeIdentity("local-key"), {
-      getAwareness: () => awareness,
-    });
+    const { users } = makeUsers(makeIdentity("local-key"));
 
     const seen: Array<Array<{ pid: string; name?: string }>> = [];
     users.onChange((all) => seen.push(all));
@@ -171,10 +138,7 @@ describe("playhtml.users.me", () => {
   });
 
   it("notifies onChange when the full self identity changes", () => {
-    const awareness = makeAwareness();
-    const users = createUsersAPI(makeIdentity("local-key"), {
-      getAwareness: () => awareness,
-    });
+    const { users } = makeUsers(makeIdentity("local-key"));
     const listener = vi.fn();
     users.onChange(listener);
     listener.mockClear();
@@ -191,7 +155,7 @@ describe("playhtml.users.me", () => {
   });
 
   it("does not notify onChange when only cursor position changes", () => {
-    const awareness = makeAwareness();
+    const transport = createFakePresenceTransport();
     const remoteIdentity = makeIdentity("remote-key", "#abcdef");
     let cursorPresences = new Map([
       [
@@ -204,7 +168,9 @@ describe("playhtml.users.me", () => {
     ]);
     let notifyCursorPresences = () => {};
     const users = createUsersAPI(makeIdentity("local-key"), {
-      getAwareness: () => awareness,
+      getIdentityPeers: () => transport.peers.getPeers(),
+      onIdentityPeersChange: (callback) =>
+        transport.peers.subscribe("identity", callback),
       getCursorPresences: () => cursorPresences,
       onCursorPresencesChange(callback) {
         notifyCursorPresences = () => callback(cursorPresences);
@@ -247,12 +213,11 @@ describe("playhtml.users.me", () => {
   });
 
   it("isolates throwing onChange subscribers during self mutation", () => {
-    const awareness = makeAwareness();
-    const users = createUsersAPI(makeIdentity("local-key"), {
-      getAwareness: () => awareness,
-    });
+    const { users } = makeUsers(makeIdentity("local-key"));
     const callbackError = new Error("onChange failed");
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     let throwOnNotification = false;
     users.onChange(() => {
       if (throwOnNotification) throw callbackError;
@@ -279,12 +244,11 @@ describe("playhtml.users.me", () => {
   });
 
   it("isolates throwing onSelfChange subscribers during self mutation", () => {
-    const awareness = makeAwareness();
-    const users = createUsersAPI(makeIdentity("local-key"), {
-      getAwareness: () => awareness,
-    });
+    const { users } = makeUsers(makeIdentity("local-key"));
     const callbackError = new Error("onSelfChange failed");
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     users.onSelfChange(() => {
       throw callbackError;
     });

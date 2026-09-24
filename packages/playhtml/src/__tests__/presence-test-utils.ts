@@ -1,7 +1,10 @@
 // ABOUTME: Shared helpers for driving fake presence PartySockets in tests.
 // ABOUTME: Builds presence transports, flushes publishes, and parses protocol messages.
 
-import type { PresenceServerMessage } from "@playhtml/common";
+import type { PlayerIdentity, PresenceServerMessage } from "@playhtml/common";
+import type { CursorOptions } from "../index";
+import { CursorClientAwareness } from "../cursors/cursor-client";
+import { createUsersAPI } from "../users";
 import { PeerStore } from "../peer-store";
 import type { PresenceJoinInput } from "../presence-transport";
 
@@ -52,6 +55,24 @@ export function createFakePresenceTransport(): FakePresenceTransport {
   } as FakePresenceTransport;
   transport.peers = new PeerStore(transport);
   return transport;
+}
+
+export function createTransportCursorClient(
+  options: CursorOptions,
+  transport = createFakePresenceTransport(),
+) {
+  const identity = options.playerIdentity as PlayerIdentity;
+  let client: CursorClientAwareness;
+  const users = createUsersAPI(identity, {
+    getIdentityPeers: () => transport.peers.getPeers(),
+    onIdentityPeersChange: (callback) =>
+      transport.peers.subscribe("identity", callback),
+    getCursorPresences: () => client?.getCursorPresences() ?? new Map(),
+    onCursorPresencesChange: (callback) =>
+      client?.onCursorPresencesChange(callback),
+  });
+  client = new CursorClientAwareness(options, transport as any, users);
+  return { client, transport, users };
 }
 
 export type FakePresenceSocket = {

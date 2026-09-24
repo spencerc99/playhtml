@@ -17,6 +17,7 @@ import {
 import { PeerStore } from "./peer-store";
 
 export type PresenceSocket = Pick<PartySocket, "readyState" | "send" | "close"> &
+  Partial<Pick<PartySocket, "id">> &
   Pick<EventTarget, "addEventListener" | "removeEventListener">;
 
 type HandlerPropertySocket = PresenceSocket & {
@@ -140,7 +141,8 @@ export class RealtimePresenceTransport {
       this.unreachableTimer = null;
       if (!this.hasEverOpened) this.markUnreachable();
     }, UNREACHABLE_GRACE_MS);
-    this.peers = new PeerStore(this);
+    // Connection identity stays stable when the player's public key changes.
+    this.peers = new PeerStore(this, this.socket.id);
   }
 
   /** Observability flag: whether the realtime socket is connecting, open, or
@@ -303,10 +305,6 @@ export class RealtimePresenceTransport {
     );
   }
 
-}
-
-export function canUseRealtimePresenceTransport(): boolean {
-  return typeof WebSocket !== "undefined";
 }
 
 function supportsHandlerProperties(

@@ -1,69 +1,17 @@
 // ABOUTME: Verifies cursor presence network pacing changes with room load.
 // ABOUTME: Keeps cursor movement ephemeral so shared document data is untouched.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as Y from "yjs";
-import { CursorClientAwareness } from "../cursor-client";
 import {
   getCursorNetworkHz,
   getCursorNetworkIntervalMs,
 } from "../cursor-network-pacing";
-import { createFakePresenceTransport } from "../../__tests__/presence-test-utils";
+import { createTransportCursorClient } from "../../__tests__/presence-test-utils";
 
 function makeIdentity(publicKey: string, color: string) {
   return {
     publicKey,
     playerStyle: { colorPalette: [color] },
   } as any;
-}
-
-function makeFakeProvider() {
-  const doc = new Y.Doc();
-  const listeners: Array<(args: any) => void> = [];
-  const localState: Record<string, unknown> = {};
-  const awareness: any = {
-    _states: new Map<number, Record<string, unknown>>(),
-    getStates() {
-      return this._states;
-    },
-    setLocalState() {},
-    setLocalStateField: vi.fn((field: string, value: unknown) => {
-      localState[field] = value;
-      awareness._states.set(awareness.clientID, { ...localState });
-    }),
-    getLocalState() {
-      return this._states.get(this.clientID) ?? null;
-    },
-    on(_event: string, cb: (args: any) => void) {
-      listeners.push(cb);
-    },
-    off() {},
-    emit(args: any) {
-      listeners.forEach((cb) => cb(args));
-    },
-    clientID: 1,
-    doc,
-  };
-  return { doc, awareness, on() {}, off() {} } as any;
-}
-
-function addRemoteCursors(provider: any, count: number) {
-  const added: number[] = [];
-  for (let i = 0; i < count; i++) {
-    const clientId = i + 2;
-    added.push(clientId);
-    provider.awareness._states.set(clientId, {
-      __playhtml_cursors__: {
-        cursor: { x: i, y: i, pointer: "mouse" },
-        page: "/",
-        playerIdentity: makeIdentity(
-          `remote-${i}`,
-          `#${String(i + 1).padStart(6, "0")}`,
-        ),
-        lastSeen: Date.now(),
-      },
-    });
-  }
-  provider.awareness.emit({ added, updated: [], removed: [] });
 }
 
 function dispatchMouseMove(x: number, y: number) {
@@ -106,101 +54,15 @@ describe("cursor network pacing", () => {
     expect(getCursorNetworkHz(200)).toBeCloseTo(150_000 / (200 * 199));
   });
 
-  it("keeps about twenty cursor connections at a 60Hz interval", () => {
-    const provider = makeFakeProvider();
-    const client = new CursorClientAwareness(provider, {
+  it("publishes pointer coordinates through the presence transport", () => {
+    const { client, transport } = createTransportCursorClient({
       enabled: true,
       playerIdentity: makeIdentity("local", "#ff0000"),
     });
-    addRemoteCursors(provider, 19);
-    const initialCallCount =
-      provider.awareness.setLocalStateField.mock.calls.length;
 
     dispatchMouseMove(10, 20);
     vi.advanceTimersByTime(Math.ceil(1000 / 60));
 
-    expect(provider.awareness.setLocalStateField).toHaveBeenCalledTimes(
-      initialCallCount + 1,
-    );
-
-    client.destroy();
-  });
-
-  it("coalesces pointer processing to one DOM hit-test per animation frame", () => {
-    const provider = makeFakeProvider();
-    const client = new CursorClientAwareness(provider, {
-      enabled: true,
-      playerIdentity: makeIdentity("local", "#ff0000"),
-    });
-    const elementFromPoint = vi.mocked(document.elementFromPoint);
-    elementFromPoint.mockClear();
-
-    dispatchMouseMove(10, 20);
-    dispatchMouseMove(11, 21);
-    dispatchMouseMove(12, 22);
-
-    expect(elementFromPoint).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(Math.ceil(1000 / 60));
-
-    expect(elementFromPoint).toHaveBeenCalledTimes(1);
-
-    client.destroy();
-  });
-
-  it("does not publish a pending movement update after a direct awareness update", () => {
-    const provider = makeFakeProvider();
-    const client = new CursorClientAwareness(provider, {
-      enabled: true,
-      playerIdentity: makeIdentity("local", "#ff0000"),
-    });
-    addRemoteCursors(provider, 19);
-    dispatchMouseMove(10, 20);
-    vi.advanceTimersByTime(Math.ceil(1000 / 60));
-
-    const callCountBeforeIdentityChange =
-      provider.awareness.setLocalStateField.mock.calls.length;
-    client.configure({
-      playerIdentity: makeIdentity("local", "#00ff00"),
-    });
-    const callCountAfterIdentityChange =
-      provider.awareness.setLocalStateField.mock.calls.length;
-
-    // Identity change writes two awareness fields: `__playhtml_identity__`
-    // (published by the users module on every identity change) and
-    // `__playhtml_cursors__` (cursor awareness, refreshed by the cursor client's
-    // reaction to that change).
-    expect(callCountAfterIdentityChange).toBe(callCountBeforeIdentityChange + 2);
-
-    vi.advanceTimersByTime(Math.ceil(getCursorNetworkIntervalMs(20)));
-
-    expect(provider.awareness.setLocalStateField).toHaveBeenCalledTimes(
-      callCountAfterIdentityChange,
-    );
-
-    client.destroy();
-  });
-
-  it("publishes movement through presence transport instead of cursor awareness when available", () => {
-    const provider = makeFakeProvider();
-    const transport = createFakePresenceTransport();
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        enabled: true,
-        playerIdentity: makeIdentity("local", "#ff0000"),
-      },
-      transport as any,
-    );
-    provider.awareness.setLocalStateField.mockClear();
-
-    dispatchMouseMove(10, 20);
-    vi.advanceTimersByTime(Math.ceil(1000 / 60));
-
-    expect(provider.awareness.setLocalStateField).not.toHaveBeenCalledWith(
-      "__playhtml_cursors__",
-      expect.anything(),
-    );
     expect(transport.updates).toHaveLength(1);
     expect(transport.updates[0]).toEqual({
       channel: "cursor",
@@ -214,16 +76,10 @@ describe("cursor network pacing", () => {
   });
 
   it("notifies local cursor presence listeners without waiting for transport echo", () => {
-    const provider = makeFakeProvider();
-    const transport = createFakePresenceTransport();
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        enabled: true,
-        playerIdentity: makeIdentity("local", "#ff0000"),
-      },
-      transport as any,
-    );
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
     const snapshots: Array<Map<string, any>> = [];
     client.onCursorPresencesChange((presences) => {
       snapshots.push(new Map(presences));
@@ -243,16 +99,10 @@ describe("cursor network pacing", () => {
   });
 
   it("renders remote cursors from presence transport sync messages", () => {
-    const provider = makeFakeProvider();
-    const transport = createFakePresenceTransport();
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        enabled: true,
-        playerIdentity: makeIdentity("local", "#ff0000"),
-      },
-      transport as any,
-    );
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
     transport.emit({
       type: "presence-sync",
       peers: {
@@ -279,16 +129,10 @@ describe("cursor network pacing", () => {
   });
 
   it("ignores unsafe remote custom cursor URLs", () => {
-    const provider = makeFakeProvider();
-    const transport = createFakePresenceTransport();
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        enabled: true,
-        playerIdentity: makeIdentity("local", "#ff0000"),
-      },
-      transport as any,
-    );
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
     transport.emit({
       type: "presence-sync",
       peers: {
@@ -315,16 +159,10 @@ describe("cursor network pacing", () => {
   });
 
   it("backs off transport-backed cursor publishing when about fifty peers are present", () => {
-    const provider = makeFakeProvider();
-    const transport = createFakePresenceTransport();
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        enabled: true,
-        playerIdentity: makeIdentity("local", "#ff0000"),
-      },
-      transport as any,
-    );
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
     const peers: Record<string, any> = {};
     for (let i = 0; i < 49; i++) {
       peers[`conn-${i}`] = {
@@ -349,7 +187,7 @@ describe("cursor network pacing", () => {
     expect(transport.updates).toHaveLength(0);
 
     vi.advanceTimersByTime(
-      Math.ceil(getCursorNetworkIntervalMs(50) - (1000 / 60)),
+      Math.ceil(getCursorNetworkIntervalMs(50) - 1000 / 60),
     );
 
     expect(transport.updates).toHaveLength(1);
@@ -358,16 +196,10 @@ describe("cursor network pacing", () => {
   });
 
   it("keeps transport publishing at 60Hz when joined peers have no active cursor", () => {
-    const provider = makeFakeProvider();
-    const transport = createFakePresenceTransport();
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        enabled: true,
-        playerIdentity: makeIdentity("local", "#ff0000"),
-      },
-      transport as any,
-    );
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
     const peers: Record<string, any> = {};
     for (let i = 0; i < 19; i++) {
       peers[`conn-${i}`] = {
@@ -391,16 +223,10 @@ describe("cursor network pacing", () => {
 
   it("expires stale transport cursor positions", () => {
     vi.setSystemTime(100_000);
-    const provider = makeFakeProvider();
-    const transport = createFakePresenceTransport();
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        enabled: true,
-        playerIdentity: makeIdentity("local", "#ff0000"),
-      },
-      transport as any,
-    );
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
 
     transport.emit({
       type: "presence-sync",
@@ -424,18 +250,12 @@ describe("cursor network pacing", () => {
   });
 
   it("checks proximity immediately after local transport cursor movement", () => {
-    const provider = makeFakeProvider();
-    const transport = createFakePresenceTransport();
     const onProximityEntered = vi.fn();
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        enabled: true,
-        onProximityEntered,
-        playerIdentity: makeIdentity("local", "#ff0000"),
-      },
-      transport as any,
-    );
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      onProximityEntered,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
 
     transport.emit({
       type: "presence-sync",
@@ -461,16 +281,10 @@ describe("cursor network pacing", () => {
   });
 
   it("uses server cursor rate messages as an additional publish cap", () => {
-    const provider = makeFakeProvider();
-    const transport = createFakePresenceTransport();
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        enabled: true,
-        playerIdentity: makeIdentity("local", "#ff0000"),
-      },
-      transport as any,
-    );
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
     transport.emit({ type: "presence-rate", channel: "cursor", hz: 10 });
     transport.updates = [];
 
@@ -486,21 +300,13 @@ describe("cursor network pacing", () => {
     client.destroy();
   });
 
-  it("does not itself warn on presence-error (the transport logs it now)", () => {
-    // Base control-message logging moved to RealtimePresenceTransport so it
-    // happens on every socket, not just the cursor client's. The cursor client
-    // only layers hz pacing; it must not duplicate the rejection warning.
-    const provider = makeFakeProvider();
-    const transport = createFakePresenceTransport();
+  it("does not duplicate transport rejection warnings", () => {
+    // Rejection logging belongs to the transport, once per socket.
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        enabled: true,
-        playerIdentity: makeIdentity("local", "#ff0000"),
-      },
-      transport as any,
-    );
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
 
     transport.emit({ type: "presence-error", message: "bad cursor" });
 
@@ -514,28 +320,18 @@ describe("cursor network pacing", () => {
   });
 
   it("omits overlong page paths from transport messages", () => {
-    const provider = makeFakeProvider();
-    const transport = createFakePresenceTransport();
     const identity = makeIdentity("local", "#ff0000");
     const originalPath = window.location.pathname;
     window.history.pushState(null, "", `/${"x".repeat(600)}`);
 
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        enabled: true,
-        playerIdentity: identity,
-      },
-      transport as any,
-    );
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: identity,
+    });
     try {
       dispatchMouseMove(10, 20);
       vi.advanceTimersByTime(Math.ceil(1000 / 60));
 
-      expect(transport.joins).toContainEqual({
-        identity,
-        page: undefined,
-      });
       expect(transport.updates[0]).toEqual({
         channel: "cursor",
         value: expect.objectContaining({
@@ -550,17 +346,11 @@ describe("cursor network pacing", () => {
   });
 
   it("repositions transport-backed remote cursors after viewport changes", () => {
-    const provider = makeFakeProvider();
-    const transport = createFakePresenceTransport();
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        coordinateMode: "relative",
-        enabled: true,
-        playerIdentity: makeIdentity("local", "#ff0000"),
-      },
-      transport as any,
-    );
+    const { client, transport } = createTransportCursorClient({
+      coordinateMode: "relative",
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       value: 1000,
@@ -602,20 +392,11 @@ describe("cursor network pacing", () => {
   });
 
   it("does not republish the identity channel itself on self-change (transport owns it)", () => {
-    // Identity broadcasting moved to the shared presence transport (one
-    // re-join per socket on users.onSelfChange). The cursor client only reacts
-    // to identity changes for rendering + CursorEvents, and must NOT also push
-    // the identity channel — that would be a second broadcaster on the socket.
-    const provider = makeFakeProvider();
-    const transport = createFakePresenceTransport();
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        enabled: true,
-        playerIdentity: makeIdentity("local", "#ff0000"),
-      },
-      transport as any,
-    );
+    // The transport owns identity broadcasting; cursor clients only render it.
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
     transport.updates = [];
 
     const colors: string[] = [];
@@ -642,16 +423,10 @@ describe("cursor network pacing", () => {
   });
 
   it("keeps the local player in allColors on the presence transport path", () => {
-    const provider = makeFakeProvider();
-    const transport = createFakePresenceTransport();
-    const client = new CursorClientAwareness(
-      provider,
-      {
-        enabled: true,
-        playerIdentity: makeIdentity("local", "#ff0000"),
-      },
-      transport as any,
-    );
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
     const allColorEvents: string[][] = [];
     client.on("allColors", (colors) => allColorEvents.push(colors));
 
@@ -670,13 +445,82 @@ describe("cursor network pacing", () => {
       },
     });
 
-    expect(client.getSnapshot().allColors).toEqual(["#ff0000", "#00ff00"]);
-    expect(window.cursors.allColors).toEqual(["#ff0000", "#00ff00"]);
-    expect(allColorEvents).toContainEqual(["#ff0000", "#00ff00"]);
+    expect(client.getSnapshot().allColors.sort()).toEqual([
+      "#00ff00",
+      "#ff0000",
+    ]);
+    expect(window.cursors.allColors.sort()).toEqual(["#00ff00", "#ff0000"]);
+    expect(
+      allColorEvents.map((colors) => colors.slice().sort()),
+    ).toContainEqual(["#00ff00", "#ff0000"]);
     expect(
       Object.getOwnPropertyDescriptor(window.cursors, "allColors")?.set,
     ).toBeUndefined();
 
     client.destroy();
+  });
+
+  it("coalesces pointer processing to one DOM hit-test per animation frame", () => {
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
+    const hitTest = vi.mocked(document.elementFromPoint);
+    hitTest.mockClear();
+    dispatchMouseMove(10, 20);
+    dispatchMouseMove(11, 21);
+    dispatchMouseMove(12, 22);
+    expect(hitTest).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(Math.ceil(1000 / 60));
+    expect(hitTest).toHaveBeenCalledTimes(1);
+    expect(transport.updates).toHaveLength(1);
+    expect(transport.updates[0].value).toMatchObject({
+      cursor: { x: 12, y: 22 },
+    });
+    client.destroy();
+  });
+
+  it("cancels pending movement when a direct identity change publishes it", () => {
+    const { client, transport, users } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
+    transport.emit({ type: "presence-rate", channel: "cursor", hz: 5 });
+    dispatchMouseMove(10, 20);
+    vi.advanceTimersByTime(20);
+    expect(transport.updates).toHaveLength(0);
+    users.me.color = "#00ff00";
+    expect(transport.updates).toHaveLength(1);
+    vi.advanceTimersByTime(200);
+    expect(transport.updates).toHaveLength(1);
+    client.destroy();
+  });
+
+  it("stops publishing and receiving cursors after teardown", () => {
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
+    dispatchMouseMove(10, 20);
+    client.destroy();
+    const count = transport.updates.length;
+    dispatchMouseMove(20, 30);
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        remote: {
+          identity: makeIdentity("remote", "#00ff00"),
+          cursor: {
+            cursor: { x: 1, y: 2, pointer: "mouse" },
+            page: "/",
+            at: Date.now(),
+          },
+        },
+      },
+    });
+    vi.advanceTimersByTime(500);
+    expect(transport.updates).toHaveLength(count);
+    expect(document.querySelector(".playhtml-cursor-other")).toBeNull();
+    expect(transport.clears).toContain("cursor");
   });
 });
