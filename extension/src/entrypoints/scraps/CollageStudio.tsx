@@ -1454,6 +1454,7 @@ export function CollageStudio({
                 {selected && !crop && !transform && (
                   <PieceHandles
                     piece={selected}
+                    scale={scale}
                     onResizeStart={(corner, event) => {
                       event.stopPropagation();
                       (event.target as Element).setPointerCapture?.(
@@ -1722,10 +1723,13 @@ export function CollageStudio({
 
 function PieceHandles({
   piece,
+  scale,
   onResizeStart,
   onRotateStart,
 }: {
   piece: CollagePiece;
+  /** The frame's zoom, so the outline and handles keep one size on screen. */
+  scale: number;
   onResizeStart: (corner: ResizeCorner, event: React.PointerEvent) => void;
   onRotateStart: (event: React.PointerEvent) => void;
 }) {
@@ -1743,13 +1747,25 @@ function PieceHandles({
         pointerEvents: "none",
       }}
     >
+      {/* Drawn above every piece, so a selection buried in a pile still
+          shows its whole edge. */}
+      <div
+        className="collage-selection-edge"
+        aria-hidden="true"
+        style={{ "--collage-zoom": scale } as React.CSSProperties}
+      />
       {RESIZE_CORNERS.map(({ corner, left, top }) => (
         <button
           key={corner}
           type="button"
           aria-label={`Resize from ${corner.replace("-", " ")}`}
           className="collage-handle"
-          style={{ left, top, pointerEvents: "auto" }}
+          style={{
+            left,
+            top,
+            pointerEvents: "auto",
+            transform: `scale(${1 / scale})`,
+          }}
           onPointerDown={(event) => onResizeStart(corner, event)}
         />
       ))}
@@ -1759,6 +1775,7 @@ function PieceHandles({
           left: "50%",
           top: -ROTATE_HANDLE_OFFSET,
           height: ROTATE_HANDLE_OFFSET,
+          width: 1.5 / scale,
         }}
       />
       <button
@@ -1769,6 +1786,7 @@ function PieceHandles({
           left: "50%",
           top: -ROTATE_HANDLE_OFFSET,
           pointerEvents: "auto",
+          transform: `scale(${1 / scale})`,
         }}
         onPointerDown={onRotateStart}
       />

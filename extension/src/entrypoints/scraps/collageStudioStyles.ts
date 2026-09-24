@@ -714,9 +714,17 @@ export const COLLAGE_STUDIO_STYLES = `
     transform: none;
   }
 
-  .collage-piece--selected {
-    outline: 1px solid rgba(74, 154, 138, 0.85);
-    outline-offset: 0;
+  /* The selected piece's edge: a solid teal line with a pale rim on either
+     side, so it reads on dark and light material alike. Sized in screen
+     pixels through the frame's zoom. */
+  .collage-selection-edge {
+    position: absolute;
+    inset: 0;
+    border: calc(2px / var(--collage-zoom)) solid #4a9a8a;
+    box-shadow:
+      0 0 0 calc(1px / var(--collage-zoom)) rgba(255, 253, 249, 0.9),
+      inset 0 0 0 calc(1px / var(--collage-zoom)) rgba(255, 253, 249, 0.9);
+    pointer-events: none;
   }
 
   .collage-handle {
@@ -724,7 +732,7 @@ export const COLLAGE_STUDIO_STYLES = `
     width: 11px;
     height: 11px;
     margin: -6px 0 0 -6px;
-    border: 1px solid rgba(61, 56, 51, 0.55);
+    border: 1.5px solid #4a9a8a;
     border-radius: 2px;
     background: #fffdf9;
     padding: 0;
@@ -739,7 +747,7 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-handle__tether {
     position: absolute;
     width: 1px;
-    background: rgba(61, 56, 51, 0.4);
+    background: #4a9a8a;
     pointer-events: none;
   }
 
