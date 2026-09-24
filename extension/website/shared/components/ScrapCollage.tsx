@@ -17,6 +17,7 @@ import {
 import type { FilterChip } from "../utils/eventUtils";
 import { hashString, seededRandom } from "../utils/styleUtils";
 import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
+import { useScrapImageSrc } from "../utils/scrapImageSource";
 import {
   isImageContentHash,
   canonicalButtonKey,
@@ -1381,6 +1382,9 @@ export function ScrapContent({
   onLoad,
   tileWidth,
 }: ScrapContentProps) {
+  const imageSrc = useScrapImageSrc(
+    item.kind === "image" ? item.src : undefined,
+  );
   switch (item.kind) {
     case "image":
       return (
@@ -1390,7 +1394,7 @@ export function ScrapContent({
             className={`scrap-collage__image scrap-collage__developing${
               loaded ? " scrap-collage__developed" : ""
             }`}
-            src={item.src}
+            src={imageSrc ?? undefined}
             alt={item.alt ?? ""}
             loading="lazy"
             draggable={false}

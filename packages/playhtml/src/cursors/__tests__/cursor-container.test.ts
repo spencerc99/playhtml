@@ -1,9 +1,8 @@
 // ABOUTME: Tests for cursor container resolution — element, selector, getter.
 // ABOUTME: Null handling and getter-on-every-call semantics.
-import { describe, it, expect, beforeEach } from "vitest";
-import * as Y from "yjs";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { resolveCursorContainer } from "../container";
-import { CursorClientAwareness } from "../cursor-client";
+import { createTransportCursorClient } from "../../__tests__/presence-test-utils";
 
 describe("resolveCursorContainer", () => {
   beforeEach(() => {
@@ -48,55 +47,23 @@ describe("resolveCursorContainer", () => {
 });
 
 describe("cursor client with container option", () => {
+  const clients: Array<{ destroy(): void }> = [];
+  afterEach(() => {
+    for (const client of clients.splice(0)) client.destroy();
+  });
   beforeEach(() => {
     document.body.innerHTML = "";
-    document.head.querySelectorAll("#playhtml-cursor-styles").forEach((n) => n.remove());
+    document.head
+      .querySelectorAll("#playhtml-cursor-styles")
+      .forEach((n) => n.remove());
   });
-
-  function makeFakeProvider() {
-    const doc = new Y.Doc();
-    const listeners: Array<(args: any) => void> = [];
-    const remoteState: Record<string, unknown> = {};
-    const awareness: any = {
-      _states: new Map<number, Record<string, unknown>>(),
-      getStates() {
-        return this._states;
-      },
-      setLocalState() {},
-      setLocalStateField(field: string, value: unknown) {
-        const local = (this._states.get(this.clientID) as Record<string, unknown>) ?? {};
-        local[field] = value;
-        this._states.set(this.clientID, local);
-      },
-      getLocalState() {
-        return this._states.get(this.clientID) ?? null;
-      },
-      on(_event: string, cb: (args: any) => void) {
-        listeners.push(cb);
-      },
-      off() {},
-      emit(args: any) {
-        listeners.forEach((cb) => cb(args));
-      },
-      clientID: 1,
-      doc,
-      remoteState,
-    };
-    return {
-      doc,
-      awareness,
-      on() {},
-      off() {},
-    } as any;
-  }
 
   it("appends cursor DOM into the container element", () => {
     const layer = document.createElement("div");
     layer.id = "cursor-layer";
     document.body.appendChild(layer);
 
-    const provider = makeFakeProvider();
-    const client = new CursorClientAwareness(provider, {
+    const { client, transport } = createTransportCursorClient({
       enabled: true,
       container: layer,
       playerIdentity: {
@@ -104,24 +71,30 @@ describe("cursor client with container option", () => {
         playerStyle: { colorPalette: ["#ff0000"] },
       } as any,
     });
+    clients.push(client);
 
-    // Inject a remote cursor into awareness and trigger change.
-    const remoteClientId = 42;
-    provider.awareness._states.set(remoteClientId, {
-      __playhtml_cursors__: {
-        connectionId: "remote-1",
-        cursor: { x: 10, y: 10, pointer: "default" },
-        page: "/",
-        playerIdentity: {
-          publicKey: "remote-1",
-          playerStyle: { colorPalette: ["#00ff00"] },
+    // Deliver a remote cursor through the presence protocol.
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        remote: {
+          identity: {
+            publicKey: "remote-1",
+            playerStyle: { colorPalette: ["#00ff00"] },
+          },
+          cursor: {
+            cursor: { x: 10, y: 10, pointer: "default" },
+            page: "/",
+
+            at: Date.now(),
+          },
         },
-        lastSeen: Date.now(),
       },
     });
-    provider.awareness.emit({ added: [remoteClientId], updated: [], removed: [] });
 
-    expect(layer.querySelectorAll(".playhtml-cursor-other").length).toBeGreaterThan(0);
+    expect(
+      layer.querySelectorAll(".playhtml-cursor-other").length,
+    ).toBeGreaterThan(0);
     expect(document.body.children[0]).toBe(layer);
 
     client.destroy?.();
@@ -132,8 +105,7 @@ describe("cursor client with container option", () => {
     layer.id = "cursor-layer";
     document.body.appendChild(layer);
 
-    const provider = makeFakeProvider();
-    new CursorClientAwareness(provider, {
+    const { client, transport } = createTransportCursorClient({
       enabled: true,
       container: layer,
       playerIdentity: {
@@ -141,22 +113,25 @@ describe("cursor client with container option", () => {
         playerStyle: { colorPalette: ["#ff0000"] },
       } as any,
     });
+    clients.push(client);
 
     expect(layer.querySelector("#playhtml-cursor-styles")).not.toBeNull();
     expect(document.head.querySelector("#playhtml-cursor-styles")).toBeNull();
   });
 
   it("falls back to document.head when container is document.body (default)", () => {
-    const provider = makeFakeProvider();
-    new CursorClientAwareness(provider, {
+    const { client, transport } = createTransportCursorClient({
       enabled: true,
       playerIdentity: {
         publicKey: "local-key",
         playerStyle: { colorPalette: ["#ff0000"] },
       } as any,
     });
+    clients.push(client);
 
-    expect(document.head.querySelector("#playhtml-cursor-styles")).not.toBeNull();
+    expect(
+      document.head.querySelector("#playhtml-cursor-styles"),
+    ).not.toBeNull();
   });
 
   it("migrates cursor DOM and styles when container changes", () => {
@@ -169,8 +144,7 @@ describe("cursor client with container option", () => {
     document.body.appendChild(layerB);
 
     let active: HTMLElement = layerA;
-    const provider = makeFakeProvider();
-    const client = new CursorClientAwareness(provider, {
+    const { client, transport } = createTransportCursorClient({
       enabled: true,
       container: () => active,
       playerIdentity: {
@@ -178,24 +152,30 @@ describe("cursor client with container option", () => {
         playerStyle: { colorPalette: ["#ff0000"] },
       } as any,
     });
+    clients.push(client);
 
     // Inject a remote cursor so DOM is in A
-    const remoteClientId = 99;
-    provider.awareness._states.set(remoteClientId, {
-      __playhtml_cursors__: {
-        connectionId: "remote-1",
-        cursor: { x: 0, y: 0, pointer: "default" },
-        page: "/",
-        playerIdentity: {
-          publicKey: "remote-1",
-          playerStyle: { colorPalette: ["#00ff00"] },
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        remote: {
+          identity: {
+            publicKey: "remote-1",
+            playerStyle: { colorPalette: ["#00ff00"] },
+          },
+          cursor: {
+            cursor: { x: 0, y: 0, pointer: "default" },
+            page: "/",
+
+            at: Date.now(),
+          },
         },
-        lastSeen: Date.now(),
       },
     });
-    provider.awareness.emit({ added: [remoteClientId], updated: [], removed: [] });
 
-    expect(layerA.querySelectorAll(".playhtml-cursor-other").length).toBeGreaterThan(0);
+    expect(
+      layerA.querySelectorAll(".playhtml-cursor-other").length,
+    ).toBeGreaterThan(0);
     expect(layerA.querySelector("#playhtml-cursor-styles")).not.toBeNull();
 
     // Change container and refresh.
@@ -203,16 +183,17 @@ describe("cursor client with container option", () => {
     client.refreshContainer();
 
     expect(layerA.querySelectorAll(".playhtml-cursor-other").length).toBe(0);
-    expect(layerB.querySelectorAll(".playhtml-cursor-other").length).toBeGreaterThan(0);
+    expect(
+      layerB.querySelectorAll(".playhtml-cursor-other").length,
+    ).toBeGreaterThan(0);
     expect(layerB.querySelector("#playhtml-cursor-styles")).not.toBeNull();
     expect(layerA.querySelector("#playhtml-cursor-styles")).toBeNull();
   });
 
   it("re-invokes getCursorStyle when refreshCursorStyles is called", () => {
-    const provider = makeFakeProvider();
     const calls: string[] = [];
 
-    const client = new CursorClientAwareness(provider, {
+    const { client, transport } = createTransportCursorClient({
       enabled: true,
       playerIdentity: {
         publicKey: "local-key",
@@ -223,22 +204,26 @@ describe("cursor client with container option", () => {
         return { opacity: "1" };
       },
     });
+    clients.push(client);
 
     // Inject a remote cursor
-    const remoteClientId = 77;
-    provider.awareness._states.set(remoteClientId, {
-      __playhtml_cursors__: {
-        connectionId: "remote-1",
-        cursor: { x: 0, y: 0, pointer: "default" },
-        page: "/",
-        playerIdentity: {
-          publicKey: "remote-1",
-          playerStyle: { colorPalette: ["#00ff00"] },
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        remote: {
+          identity: {
+            publicKey: "remote-1",
+            playerStyle: { colorPalette: ["#00ff00"] },
+          },
+          cursor: {
+            cursor: { x: 0, y: 0, pointer: "default" },
+            page: "/",
+
+            at: Date.now(),
+          },
         },
-        lastSeen: Date.now(),
       },
     });
-    provider.awareness.emit({ added: [remoteClientId], updated: [], removed: [] });
 
     const before = calls.length;
     client.refreshCursorStyles();
@@ -246,7 +231,6 @@ describe("cursor client with container option", () => {
   });
 
   it("removes stale keys when getCursorStyle returns fewer properties on re-apply", () => {
-    const provider = makeFakeProvider();
     // Note: use style properties that aren't also managed by the cursor
     // client's visibility logic (which sets display/opacity/transform).
     // `filter` and non-shorthand properties like `backgroundColor` are
@@ -256,7 +240,7 @@ describe("cursor client with container option", () => {
       backgroundColor: "rgb(255, 0, 0)",
     };
 
-    const client = new CursorClientAwareness(provider, {
+    const { client, transport } = createTransportCursorClient({
       enabled: true,
       playerIdentity: {
         publicKey: "local-key",
@@ -264,24 +248,24 @@ describe("cursor client with container option", () => {
       } as any,
       getCursorStyle: () => returnStyles,
     });
+    clients.push(client);
 
-    const remoteClientId = 88;
-    provider.awareness._states.set(remoteClientId, {
-      __playhtml_cursors__: {
-        connectionId: "remote-stale",
-        cursor: { x: 0, y: 0, pointer: "default" },
-        page: "/",
-        playerIdentity: {
-          publicKey: "remote-stale",
-          playerStyle: { colorPalette: ["#00ff00"] },
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        remote: {
+          identity: {
+            publicKey: "remote-stale",
+            playerStyle: { colorPalette: ["#00ff00"] },
+          },
+          cursor: {
+            cursor: { x: 0, y: 0, pointer: "default" },
+            page: "/",
+
+            at: Date.now(),
+          },
         },
-        lastSeen: Date.now(),
       },
-    });
-    provider.awareness.emit({
-      added: [remoteClientId],
-      updated: [],
-      removed: [],
     });
 
     const cursorEl = Array.from(
@@ -308,8 +292,7 @@ describe("cursor client with container option", () => {
     zoneEl.id = "zone-a";
     document.body.appendChild(zoneEl);
 
-    const provider = makeFakeProvider();
-    const client = new CursorClientAwareness(provider, {
+    const { client, transport } = createTransportCursorClient({
       enabled: true,
       playerIdentity: {
         publicKey: "local-key",
@@ -319,11 +302,11 @@ describe("cursor client with container option", () => {
       // the zone's style key must be cleaned up.
       getCursorStyle: () => ({}),
     });
+    clients.push(client);
     client.registerZone(zoneEl, {
       getCursorStyle: () => ({ outlineColor: "rgb(0, 255, 0)" }),
     });
 
-    const remoteId = 155;
     const basePresence = {
       connectionId: "remote-zone",
       cursor: { x: 10, y: 10, pointer: "default" },
@@ -336,13 +319,19 @@ describe("cursor client with container option", () => {
     };
 
     // Enter zone.
-    provider.awareness._states.set(remoteId, {
-      __playhtml_cursors__: {
-        ...basePresence,
-        zone: { zoneId: "zone-a", relX: 0.5, relY: 0.5 },
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        remote: {
+          identity: basePresence.playerIdentity,
+          cursor: {
+            ...basePresence,
+            at: basePresence.lastSeen,
+            zone: { zoneId: "zone-a", relX: 0.5, relY: 0.5 },
+          },
+        },
       },
     });
-    provider.awareness.emit({ added: [remoteId], updated: [], removed: [] });
 
     const cursorEl = Array.from(
       document.querySelectorAll(".playhtml-cursor-other"),
@@ -350,19 +339,27 @@ describe("cursor client with container option", () => {
     expect(cursorEl.style.outlineColor).toBe("rgb(0, 255, 0)");
 
     // Exit zone — zone's outlineColor must be removed.
-    provider.awareness._states.set(remoteId, {
-      __playhtml_cursors__: { ...basePresence, zone: undefined },
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        remote: {
+          identity: basePresence.playerIdentity,
+          cursor: {
+            ...basePresence,
+            at: basePresence.lastSeen,
+            zone: undefined,
+          },
+        },
+      },
     });
-    provider.awareness.emit({ added: [], updated: [remoteId], removed: [] });
 
     expect(cursorEl.style.outlineColor).toBe("");
   });
 
-  it("re-runs getCursorStyle on every remote awareness update (no zoneChanged guard)", () => {
-    const provider = makeFakeProvider();
+  it("re-runs getCursorStyle on every remote cursor update", () => {
     const pagesSeen: string[] = [];
 
-    const client = new CursorClientAwareness(provider, {
+    const { client, transport } = createTransportCursorClient({
       enabled: true,
       playerIdentity: {
         publicKey: "local-key",
@@ -373,8 +370,8 @@ describe("cursor client with container option", () => {
         return {};
       },
     });
+    clients.push(client);
 
-    const remoteClientId = 99;
     const basePresence = {
       connectionId: "remote-nav",
       cursor: { x: 0, y: 0, pointer: "default" },
@@ -385,23 +382,25 @@ describe("cursor client with container option", () => {
       lastSeen: Date.now(),
     };
 
-    provider.awareness._states.set(remoteClientId, {
-      __playhtml_cursors__: { ...basePresence, page: "/a" },
-    });
-    provider.awareness.emit({
-      added: [remoteClientId],
-      updated: [],
-      removed: [],
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        remote: {
+          identity: basePresence.playerIdentity,
+          cursor: { ...basePresence, at: basePresence.lastSeen, page: "/a" },
+        },
+      },
     });
 
     // Simulate remote client navigating (page changes, zone does not).
-    provider.awareness._states.set(remoteClientId, {
-      __playhtml_cursors__: { ...basePresence, page: "/b" },
-    });
-    provider.awareness.emit({
-      added: [],
-      updated: [remoteClientId],
-      removed: [],
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        remote: {
+          identity: basePresence.playerIdentity,
+          cursor: { ...basePresence, at: basePresence.lastSeen, page: "/b" },
+        },
+      },
     });
 
     expect(pagesSeen).toContain("/a");

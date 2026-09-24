@@ -65,7 +65,7 @@ export class PeerStore {
   private unsubscribe: () => void;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(source: PeerMessageSource) {
+  constructor(source: PeerMessageSource, private localConnectionId?: string) {
     this.unsubscribe = source.subscribe((message) => this.handleMessage(message));
     // Client-side staleness backstop: drop a peer's stamped channels once their
     // `at` ages out, even if the server never sent a remove (killed tab, dropped
@@ -77,7 +77,7 @@ export class PeerStore {
     }, PEER_SWEEP_INTERVAL_MS);
   }
 
-  /** The live folded peer map, keyed by connection id. Views read this. */
+  /** Remote peers keyed by connection id. Local state belongs to each view. */
   getPeers(): Map<string, PeerChannels> {
     return this.peers;
   }
@@ -130,6 +130,7 @@ export class PeerStore {
   private applySync(snapshot: PresenceSnapshot): void {
     this.peers.clear();
     for (const [connectionId, channels] of Object.entries(snapshot)) {
+      if (connectionId === this.localConnectionId) continue;
       this.peers.set(connectionId, { ...channels });
     }
   }
@@ -138,6 +139,13 @@ export class PeerStore {
     const touched = new Set<PeerNamespace>();
 
     for (const [connectionId, channels] of Object.entries(message.updates)) {
+      if (connectionId === this.localConnectionId) {
+        // Views source self values locally but refresh identity on join echoes.
+        for (const channel of Object.keys(channels)) {
+          touched.add(namespaceOf(channel));
+        }
+        continue;
+      }
       const peer = this.peers.get(connectionId) ?? {};
       this.peers.set(connectionId, peer);
       for (const [channel, value] of Object.entries(channels)) {
@@ -147,6 +155,10 @@ export class PeerStore {
     }
 
     for (const [connectionId, channels] of Object.entries(message.removes)) {
+      if (connectionId === this.localConnectionId) {
+        for (const channel of channels) touched.add(namespaceOf(channel));
+        continue;
+      }
       const peer = this.peers.get(connectionId);
       if (!peer) continue;
       for (const channel of channels) {

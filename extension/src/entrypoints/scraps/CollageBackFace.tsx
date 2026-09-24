@@ -1,10 +1,17 @@
 // ABOUTME: The back face of the collage in the studio: paper, the front showing through, the sources.
 // ABOUTME: Sets the same markup the bake rasterizes, with the same inlined fonts, so it matches the export.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { CollageFrame } from "./collageRecord";
 import type { CollagePaper } from "./collageFormats";
 import {
+  backInk,
   collageBackMarkup,
   type BackFavicon,
   type CollageBackContent,
@@ -27,6 +34,45 @@ interface CollageBackFaceProps {
   showing: boolean;
   /** Told when something the back needs could not be read. */
   onProblem: (text: string) => void;
+  /** Told as the title written on the back is edited. */
+  onTitle: (title: string) => void;
+}
+
+/** Where the written title sits on the back, and the type it is set in. */
+interface TitlePlace {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  font: string;
+}
+
+/**
+ * Finds the title the back's markup wrote, measured in the back's own units.
+ * Offsets are summed rather than read from the screen, because the sheet is
+ * scaled and turned in 3D.
+ */
+function titlePlace(container: HTMLElement): TitlePlace | null {
+  const title = container.querySelector<HTMLElement>(".collage-back__title");
+  if (!title) return null;
+  let left = 0;
+  let top = 0;
+  let node: HTMLElement | null = title;
+  while (node && node !== container) {
+    left += node.offsetLeft;
+    top += node.offsetTop;
+    node = node.offsetParent as HTMLElement | null;
+  }
+  if (node !== container) {
+    throw new Error("The back's title is not laid out inside the back");
+  }
+  return {
+    left,
+    top,
+    width: title.offsetWidth,
+    height: title.offsetHeight,
+    font: title.style.font,
+  };
 }
 
 export function CollageBackFace({
@@ -36,7 +82,10 @@ export function CollageBackFace({
   front,
   showing,
   onProblem,
+  onTitle,
 }: CollageBackFaceProps) {
+  const textRef = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<TitlePlace | null>(null);
   const [assets, setAssets] = useState<BackAssets | null>(null);
   const [favicons, setFavicons] = useState<ReadonlyMap<string, BackFavicon>>(
     () => new Map(),
@@ -116,6 +165,14 @@ export function CollageBackFace({
     [assets, bleed, content, favicons, frame, paper],
   );
 
+  // The written title is overlaid with a field set in the same place and type,
+  // so it is edited where it is read. The markup stays the one the bake draws.
+  useLayoutEffect(() => {
+    const container = textRef.current;
+    setPlace(container && markup ? titlePlace(container) : null);
+  }, [markup]);
+
+  const ink = backInk(paper.color);
   const name = content.title.trim() || "untitled collage";
   return (
     <section
@@ -133,9 +190,41 @@ export function CollageBackFace({
         <>
           <style>{assets.fontFaces}</style>
           <div
-            className="collage-back__text"
+            ref={textRef}
+            className={`collage-back__text${place ? " collage-back__text--titled" : ""}`}
             dangerouslySetInnerHTML={{ __html: markup }}
           />
+          {place && (
+            <textarea
+              className="collage-back__title-field"
+              value={content.title}
+              placeholder="untitled collage"
+              aria-label="Collage title"
+              rows={1}
+              spellCheck={false}
+              onChange={(event) =>
+                // A title is one line; a pasted break becomes a space.
+                onTitle(event.target.value.replace(/[\r\n]+/g, " "))
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === "Escape") {
+                  event.preventDefault();
+                  event.currentTarget.blur();
+                }
+              }}
+              style={
+                {
+                  left: place.left,
+                  top: place.top,
+                  width: place.width,
+                  height: place.height,
+                  font: place.font,
+                  color: ink.ink,
+                  "--collage-back-muted": ink.muted,
+                } as React.CSSProperties
+              }
+            />
+          )}
         </>
       )}
       <div className="collage-frame__edge" />

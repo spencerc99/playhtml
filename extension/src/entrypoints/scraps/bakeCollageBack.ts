@@ -16,6 +16,7 @@ import {
 import { webPageHref } from "./scrapLinks";
 import { canvasPng, loadImage } from "./bakeCollage";
 import { cutoutCanvas } from "./cutoutImages";
+import { FULL_CROP } from "./collageGeometry";
 
 /** How long a favicon may take before the back is written without it. */
 const FAVICON_TIMEOUT_MS = 5000;
@@ -38,11 +39,12 @@ const MARK_PAPER_TOLERANCE = 0.12;
  * flood a scrap's cutout uses, so only its lines press into the collage paper.
  */
 async function markIconDataUrl(): Promise<string> {
-  const cut = await cutoutCanvas(MARK_ICON_PATH, {
-    method: "edge-color",
-    tolerance: MARK_PAPER_TOLERANCE,
-  });
-  return cut.toDataURL("image/png");
+  const cut = await cutoutCanvas(
+    MARK_ICON_PATH,
+    { method: "edge-color", tolerance: MARK_PAPER_TOLERANCE },
+    FULL_CROP,
+  );
+  return cut.canvas.toDataURL("image/png");
 }
 
 function asDataUrl(blob: Blob): Promise<string> {

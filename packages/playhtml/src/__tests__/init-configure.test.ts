@@ -251,8 +251,6 @@ describe("playhtml configure() + init()", () => {
   });
 
   it("keeps extension-injected identity on the public identity shape", async () => {
-    const originalWebSocket = (globalThis as any).WebSocket;
-    (globalThis as any).WebSocket = undefined;
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
     try {
@@ -263,10 +261,13 @@ describe("playhtml configure() + init()", () => {
             publicKey: "page-key",
             name: "Page user",
             playerStyle: { colorPalette: ["#111111"] },
-            privateKey: { kty: "EC", d: "private" },
-            profile: { discoveredSites: ["example.com"] },
           } as any,
         },
+      });
+
+      Object.assign(playhtml.cursorClient!.getMyPlayerIdentity(), {
+        privateKey: { kty: "EC", d: "private" },
+        profile: { discoveredSites: ["example.com"] },
       });
 
       document.dispatchEvent(
@@ -301,7 +302,6 @@ describe("playhtml configure() + init()", () => {
       );
     } finally {
       log.mockRestore();
-      (globalThis as any).WebSocket = originalWebSocket;
     }
   });
 

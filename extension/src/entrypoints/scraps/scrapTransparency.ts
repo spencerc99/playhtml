@@ -2,6 +2,7 @@
 // ABOUTME: Sampled once per picture from a tiny canvas, then remembered.
 
 import type { ScrapItem } from "@movement/components/ScrapCollage";
+import { resolveScrapImageSrc } from "@movement/utils/scrapImageSource";
 
 /** Formats that can carry an alpha channel at all; the rest never do. */
 const MAYBE_TRANSPARENT = /\.(png|gif|webp|svg)(\?|#|$)/i;
@@ -102,7 +103,7 @@ export async function readTransparency(src: string): Promise<boolean> {
   const remembered = known.get(src);
   if (remembered !== undefined) return remembered;
 
-  const response = await fetch(src);
+  const response = await fetch(await resolveScrapImageSrc(src));
   if (!response.ok) {
     throw new Error(`could not read a thumbnail: fetch returned ${response.status}`);
   }

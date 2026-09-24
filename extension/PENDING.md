@@ -1,10 +1,12 @@
 # Unreleased
 
+- You can turn off milestone popups in Browser settings.
 - Internet Commute now stops counting riders after they leave and always shows the train pull-up and cursor boarding intro for Slow Mode rides.
 - Internet Commute now starts a fresh route after returning to home station.
 - Internet Commute now keeps active riders together and gives each new train different stops.
 - Internet scraps now also collects headings from the pages you read.
 - Internet scraps opens faster with large collections while search and filters still find older scraps.
+- Internet scraps now keeps its pictures even after the original site removes them.
 
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow

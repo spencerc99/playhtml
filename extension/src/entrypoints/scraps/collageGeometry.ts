@@ -45,6 +45,12 @@ export function isFullCrop(crop: CropFraction): boolean {
   );
 }
 
+export function sameCrop(a: CropFraction, b: CropFraction): boolean {
+  return (
+    a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
+  );
+}
+
 /**
  * Rotates a point around a center by `radians`. Used to convert between the
  * frame's axes and a rotated piece's own axes.

@@ -1,5 +1,5 @@
-// ABOUTME: Exercises the installation office status and reload interaction.
-// ABOUTME: Verifies production links, confirmation, progress, success, and errors.
+// ABOUTME: Exercises the installation office's window launch and reload controls.
+// ABOUTME: Verifies production links, launch feedback, confirmation, and errors.
 
 // @vitest-environment jsdom
 
@@ -32,6 +32,30 @@ describe("installation office", () => {
   beforeEach(() => {
     reloadScreens.mockReset();
     vi.mocked(window.confirm).mockReset();
+  });
+
+  it("opens the Ars layout from the machine links", async () => {
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    Object.defineProperties(window.screen, {
+      availLeft: { configurable: true, value: 0 },
+      availTop: { configurable: true, value: 0 },
+      availWidth: { configurable: true, value: 1440 },
+      availHeight: { configurable: true, value: 900 },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Open all in Ars layout" }));
+    });
+
+    expect(open).toHaveBeenCalledTimes(9);
+    expect(screen.getByRole("status").textContent).toContain("Allow pop-ups");
+    open.mockClear();
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Open" })[0]);
+    });
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open.mock.calls[0][2]).toContain("popup=yes,noopener,left=");
+    open.mockRestore();
   });
 
   it("shows all nine production links and warns on a non-production host", () => {
