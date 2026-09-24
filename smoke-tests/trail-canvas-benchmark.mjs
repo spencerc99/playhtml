@@ -41,7 +41,18 @@ for (const scene of [
     await page.evaluate(() => window.drawFrame(45, true));
     const label = `${scene.trails}x${scene.points}-${scene.activeCount ?? scene.trails}active-${scene.mono ? "mono" : "color"}-${mode}${canvasFilter ? "-filter" : ""}`;
     await page.screenshot({ path: path.join(outputDirectory, `${label}.png`) });
+    const metricsSession = await page.context().newCDPSession(page);
+    await metricsSession.send("Performance.enable");
+    const beforeMetrics = await metricsSession.send("Performance.getMetrics");
     const frames = await page.evaluate(() => window.measureFrames());
+    const afterMetrics = await metricsSession.send("Performance.getMetrics");
+    await metricsSession.detach();
+    const before = new Map(beforeMetrics.metrics.map(({ name, value }) => [name, value]));
+    const mainThreadMetricsMs = Object.fromEntries(
+      afterMetrics.metrics
+        .filter(({ name }) => ["TaskDuration", "ScriptDuration", "LayoutDuration", "RecalcStyleDuration"].includes(name))
+        .map(({ name, value }) => [name, (value - before.get(name)) * 1000]),
+    );
     const sortedFrameTimes = [...frames.frameTimes].sort((a, b) => a - b);
     results.push({
       ...scene,
@@ -50,6 +61,8 @@ for (const scene of [
       averageDrawMs: frames.drawTimes.reduce((sum, n) => sum + n, 0) / frames.drawTimes.length,
       p95FrameMs: sortedFrameTimes[Math.floor(sortedFrameTimes.length * 0.95)],
       slowFrames: frames.frameTimes.filter((n) => n > 20).length,
+      mainThreadMetricsMs,
+      geometryMs: mode === "svg" ? await page.evaluate(() => window.measureGeometry()) : undefined,
     });
     console.log(results.at(-1));
     await page.close();

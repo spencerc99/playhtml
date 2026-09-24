@@ -41,7 +41,7 @@
             return buildFreehandPathSegment(points, 0, end, 4, frame === frameCount - 1);
           });
           const active = index < activeCount;
-          return { data: active ? data : Array(frameCount).fill(data.at(-1)), color, active,
+          return { points, data: active ? data : Array(frameCount).fill(data.at(-1)), color, active,
             canvasPath: active ? null : new Path2D(data.at(-1)) };
         });
       }
@@ -126,6 +126,19 @@
           drawTimes.push(performance.now() - start);
         }
         return { drawTimes, frameTimes };
+      };
+      window.measureGeometry = () => {
+        const start = performance.now();
+        for (let frame = 0; frame < frameCount; frame++) {
+          for (const trail of paths) {
+            if (!trail.active) continue;
+            const end = Math.max(1, Math.floor((trail.points.length - 1) *
+              (0.2 + frame * 0.8 / (frameCount - 1))));
+            buildFreehandPathSegment(trail.points, 0, end, 4,
+              frame === frameCount - 1);
+          }
+        }
+        return performance.now() - start;
       };
       window.ready = true;
     </script>
