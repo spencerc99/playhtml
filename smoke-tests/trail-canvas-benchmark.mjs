@@ -19,6 +19,32 @@ await mkdir(outputDirectory, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const errors = [];
 
+async function measureTraceCpu(page) {
+  const session = await page.context().newCDPSession(page);
+  const events = [];
+  session.on("Tracing.dataCollected", ({ value }) => events.push(...value));
+  await session.send("Tracing.start", {
+    categories: "devtools.timeline,disabled-by-default-devtools.timeline,blink,cc,renderer.scheduler,toplevel",
+    options: "record-as-much-as-possible",
+  });
+  const start = performance.now();
+  await page.evaluate(() => window.measureFrames(2));
+  const frameWallMs = performance.now() - start;
+  const complete = new Promise((resolve) => session.once("Tracing.tracingComplete", resolve));
+  await session.send("Tracing.end");
+  await complete;
+  await session.detach();
+
+  const cpuMs = (name) => events
+    .filter((event) => event.name === name && event.tdur !== undefined)
+    .reduce((total, event) => total + event.tdur / 1000, 0);
+  return {
+    frameWallMs,
+    rasterTaskCpuMs: cpuMs("RasterTask"),
+    runTaskCpuMs: cpuMs("RunTask"),
+  };
+}
+
 const results = [];
 for (const scene of [
   { trails: 10, points: 200, mono: false },
@@ -63,6 +89,7 @@ for (const scene of [
       slowFrames: frames.frameTimes.filter((n) => n > 20).length,
       mainThreadMetricsMs,
       geometryMs: mode === "svg" ? await page.evaluate(() => window.measureGeometry()) : undefined,
+      traceCpuMs: await measureTraceCpu(page),
     });
     console.log(results.at(-1));
     await page.close();

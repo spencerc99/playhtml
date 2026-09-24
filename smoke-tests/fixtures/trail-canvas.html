@@ -112,17 +112,17 @@
         }
       };
 
-      window.measureFrames = async () => {
+      window.measureFrames = async (repetitions = 1) => {
         const drawTimes = [];
         const frameTimes = [];
         let previous = 0;
-        for (let frame = 0; frame < frameCount; frame++) {
+        for (let iteration = 0; iteration < frameCount * repetitions; iteration++) {
           await new Promise(requestAnimationFrame);
           const now = performance.now();
           if (previous) frameTimes.push(now - previous);
           previous = now;
           const start = performance.now();
-          window.drawFrame(frame);
+          window.drawFrame(iteration % frameCount);
           drawTimes.push(performance.now() - start);
         }
         return { drawTimes, frameTimes };
