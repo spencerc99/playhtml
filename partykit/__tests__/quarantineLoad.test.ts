@@ -1591,7 +1591,7 @@ describe("hardening", () => {
         /^\[PartyServer\] Supabase document load recovered for room=example-room after 2 attempts \(attemptElapsedMs=\d+, totalElapsedMs=\d+\)\.$/
       ),
       expect.stringMatching(
-        /^\[PartyServer\] Document loaded: room=example-room, source=database, bytes=\d+$/
+        /^\[PartyServer\] Document loaded: room=example-room, source=database, bytes=\d+, elapsedMs=\d+$/
       ),
     ]);
   });
@@ -3249,7 +3249,7 @@ describe("persisted document copy", () => {
     expect(logs).toEqual([
       expect.stringMatching(
         new RegExp(
-          `^\\[PartyServer\\] Document loaded: room=example-room, source=${source}, bytes=\\d+$`
+          `^\\[PartyServer\\] Document loaded: room=example-room, source=${source}, bytes=\\d+, elapsedMs=\\d+$`
         )
       ),
     ]);

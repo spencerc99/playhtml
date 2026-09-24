@@ -2077,7 +2077,7 @@ export class PartyServer extends YServer {
     }
     console.log(
       `[PartyServer] Document loaded: room=${this.name}, source=${result.source}, ` +
-        `bytes=${result.data?.document.length ?? 0}`
+        `bytes=${result.data?.document.length ?? 0}, elapsedMs=${Date.now() - loadStartedAt}`
     );
 
     let persistedDocument = result.data?.document;
