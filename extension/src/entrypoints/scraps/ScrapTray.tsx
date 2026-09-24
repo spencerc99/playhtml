@@ -126,9 +126,19 @@ export function ScrapTray({
       });
   }, []);
 
-  const measure = (node: HTMLDivElement | null) => {
-    if (node) setViewportHeight(node.clientHeight);
-  };
+  const scrollTopRef = useRef(0);
+  scrollTopRef.current = scrollTop;
+  /**
+   * Runs once each time the scroll box is put back, as when the drawer is
+   * reopened. The box comes back scrolled to the top, but only the rows near
+   * the remembered scroll are mounted, so it is returned to that scroll.
+   */
+  const attachScroll = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
+    node.scrollTop = scrollTopRef.current;
+    setScrollTop(node.scrollTop);
+    setViewportHeight(node.clientHeight);
+  }, []);
 
   if (collapsed) {
     return (
@@ -217,7 +227,7 @@ export function ScrapTray({
       </p>
       <div
         className="collage-tray__scroll"
-        ref={measure}
+        ref={attachScroll}
         onScroll={(event) => {
           setScrollTop(event.currentTarget.scrollTop);
           // The label was placed against where the slot used to be.
