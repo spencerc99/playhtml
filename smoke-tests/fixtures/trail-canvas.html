@@ -1,0 +1,133 @@
+<!-- ABOUTME: Compares SVG and Canvas cursor-trail path drawing in a browser. -->
+<!-- ABOUTME: Uses identical precomputed freehand outlines and camera rectangles. -->
+<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html, body { margin: 0; width: 100%; height: 100%; background: #faf9f6; }
+      #scene { position: relative; width: 100vw; height: 100vh; }
+      svg, canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+    </style>
+  </head>
+  <body>
+    <div id="scene"></div>
+    <script type="module">
+      import { buildFreehandPathSegment } from "../../extension/website/shared/utils/trailAnimation.ts";
+
+      const scene = document.getElementById("scene");
+      const width = 960;
+      const height = 640;
+      const frameCount = 60;
+      const ns = "http://www.w3.org/2000/svg";
+      const filter = `<defs><filter id="ink-texture" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="4" result="noise"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="2" xChannelSelector="R" yChannelSelector="G"/></filter></defs>`;
+      let paths = [];
+      let element;
+      let context;
+      let mode;
+      let mono;
+      let canvasFilter;
+      let activeCount;
+
+      function makeTrails(count, pointCount) {
+        return Array.from({ length: count }, (_, index) => {
+          const points = Array.from({ length: pointCount }, (_, point) => ({
+            x: (index * 97 + point * 2.7) % (width * 1.4) - width * 0.2,
+            y: height * (0.15 + 0.7 * ((index * 13) % count) / count) + Math.sin(point * 0.12 + index) * 22,
+          }));
+          const color = ["#d05a4e", "#4b8eae", "#758d51", "#aa75a2"][index % 4];
+          const data = Array.from({ length: frameCount }, (_, frame) => {
+            const end = Math.max(1, Math.floor((pointCount - 1) * (0.2 + frame * 0.8 / (frameCount - 1))));
+            return buildFreehandPathSegment(points, 0, end, 4, frame === frameCount - 1);
+          });
+          const active = index < activeCount;
+          return { data: active ? data : Array(frameCount).fill(data.at(-1)), color, active,
+            canvasPath: active ? null : new Path2D(data.at(-1)) };
+        });
+      }
+
+      window.setup = (options) => {
+        mode = options.mode;
+        mono = options.mono;
+        canvasFilter = options.canvasFilter;
+        activeCount = options.activeCount ?? options.trails;
+        paths = makeTrails(options.trails, options.points);
+        scene.replaceChildren();
+        if (mode === "svg") {
+          const svg = document.createElementNS(ns, "svg");
+          svg.setAttribute("width", "100%");
+          svg.setAttribute("height", "100%");
+          svg.setAttribute("preserveAspectRatio", "none");
+          svg.innerHTML = filter;
+          for (const trail of paths) {
+            const path = document.createElementNS(ns, "path");
+            path.setAttribute("fill", mono ? "#000" : trail.color);
+            path.setAttribute("opacity", mono ? "0.8" : "1");
+            if (mono) path.setAttribute("filter", "url(#ink-texture)");
+            svg.append(path);
+            trail.element = path;
+          }
+          scene.append(svg);
+          element = svg;
+        } else {
+          if (mono && canvasFilter) {
+            const definitions = document.createElementNS(ns, "svg");
+            definitions.setAttribute("width", "0");
+            definitions.setAttribute("height", "0");
+            definitions.innerHTML = filter;
+            scene.append(definitions);
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          scene.append(canvas);
+          element = canvas;
+          context = canvas.getContext("2d");
+        }
+        window.drawFrame(frameCount - 1, false);
+      };
+
+      window.drawFrame = (frame, moveCamera = true) => {
+        const view = moveCamera
+          ? { x: frame * 0.35, y: frame * 0.12, w: width * 0.9, h: height * 0.9 }
+          : { x: 0, y: 0, w: width, h: height };
+        if (mode === "svg") {
+          element.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
+          for (const trail of paths) {
+            if (trail.active || !trail.element.hasAttribute("d")) {
+              trail.element.setAttribute("d", trail.data[frame]);
+            }
+          }
+        } else {
+          context.setTransform(1, 0, 0, 1, 0, 0);
+          context.clearRect(0, 0, width, height);
+          context.setTransform(width / view.w, 0, 0, height / view.h,
+            -view.x * width / view.w, -view.y * height / view.h);
+          for (const trail of paths) {
+            context.fillStyle = mono ? "#000" : trail.color;
+            context.globalAlpha = mono ? 0.8 : 1;
+            context.filter = mono && canvasFilter ? "url(#ink-texture)" : "none";
+            context.fill(trail.active ? new Path2D(trail.data[frame]) : trail.canvasPath);
+          }
+        }
+      };
+
+      window.measureFrames = async () => {
+        const drawTimes = [];
+        const frameTimes = [];
+        let previous = 0;
+        for (let frame = 0; frame < frameCount; frame++) {
+          await new Promise(requestAnimationFrame);
+          const now = performance.now();
+          if (previous) frameTimes.push(now - previous);
+          previous = now;
+          const start = performance.now();
+          window.drawFrame(frame);
+          drawTimes.push(performance.now() - start);
+        }
+        return { drawTimes, frameTimes };
+      };
+      window.ready = true;
+    </script>
+  </body>
+</html>
