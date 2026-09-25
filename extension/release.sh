@@ -50,8 +50,12 @@ if [ "$SKIP_CHROME" -eq 0 ]; then
 fi
 
 VERSION=$(node -p "require('./package.json').version")
-SAFARI_VERSION="${SAFARI_VERSION:-1.0}"
 PUBLISH_DIR="publish"
+
+if [ "$SKIP_SAFARI" -eq 0 ] && [ -z "$DRY_RUN" ]; then
+  : "${BUILD_NUMBER:?BUILD_NUMBER is required for a Safari upload}"
+  SAFARI_VERSION=$(node scripts/safariRelease.mjs prepare)
+fi
 
 echo "Building extension v${VERSION} into ${PUBLISH_DIR}/ ..."
 rm -rf "${PUBLISH_DIR}"
@@ -110,9 +114,10 @@ fi
 
 if [ "$SKIP_SAFARI" -eq 0 ]; then
   if [ -n "$DRY_RUN" ]; then
-    VERSION="$SAFARI_VERSION" scripts/submitSafari.sh --dry-run
+    VERSION=1.0 scripts/submitSafari.sh --dry-run
   else
     VERSION="$SAFARI_VERSION" scripts/submitSafari.sh
+    VERSION="$SAFARI_VERSION" node scripts/safariRelease.mjs complete
   fi
 fi
 
