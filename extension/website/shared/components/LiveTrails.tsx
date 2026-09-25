@@ -26,6 +26,7 @@ import {
   startTrailVisibilityTransition,
   type TrailVisibilityTransition,
 } from "./trailVisibility";
+import { TrailCanvasRenderer } from "./trailCanvasRenderer";
 
 // A trail that hasn't gained a point in this long (and has drawn up to its tip)
 // has finished tracing and settles from the live full opacity to the completed
@@ -215,6 +216,8 @@ interface KeptTrail {
   visibility: TrailVisibilityTransition | null;
 }
 
+export type TrailPathRenderer = "svg" | "canvas";
+
 interface LiveTrailsProps {
   trailStates: TrailState[];
   frozen?: boolean;
@@ -223,6 +226,8 @@ interface LiveTrailsProps {
   cinematicNextSignal?: number;
   showClickRipples?: boolean;
   soundEngine?: SoundEngine | null;
+  /** Experimental path-painting backend. Cursor heads and ripples remain SVG. */
+  pathRenderer?: TrailPathRenderer;
   /** Called with trail ids once they have fully faded out and been removed, so
    * the owner can free their accumulated events. */
   onTrailsRemoved?: (ids: string[]) => void;
@@ -243,6 +248,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     cinematicNextSignal = 0,
     showClickRipples = false,
     soundEngine = null,
+    pathRenderer = "svg",
     onTrailsRemoved,
     settings,
   }) => {
@@ -254,6 +260,8 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       activeClickEffectsRef.current = activeClickEffects;
     }, [activeClickEffects]);
     const svgRef = useRef<SVGSVGElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const canvasRendererRef = useRef<TrailCanvasRenderer | null>(null);
     const cameraRef = useRef<CinematicCamera | null>(null);
     const cameraIndicesRef = useRef(new Map<string, number>());
     const nextCameraIndexRef = useRef(0);
@@ -274,10 +282,43 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     const consecutiveErrorsRef = useRef(0);
 
     const renderer = getTrailRenderer(settings.trailVisualStyle ?? "color");
+    const effectivePathRenderer =
+      pathRenderer === "canvas" && renderer.id === "color" ? "canvas" : "svg";
     const rendererRef = useRef(renderer);
     useEffect(() => {
       rendererRef.current = renderer;
     }, [renderer]);
+
+    const pathRendererRef = useRef(effectivePathRenderer);
+    useEffect(() => {
+      pathRendererRef.current = effectivePathRenderer;
+    }, [effectivePathRenderer]);
+
+    useEffect(() => {
+      const svg = svgRef.current;
+      const canvas = canvasRef.current;
+      if (effectivePathRenderer !== "canvas" || !svg || !canvas) {
+        canvasRendererRef.current = null;
+        return;
+      }
+
+      const canvasRenderer = new TrailCanvasRenderer(canvas);
+      canvasRendererRef.current = canvasRenderer;
+      const resize = () => {
+        const width = svg.clientWidth;
+        const height = svg.clientHeight;
+        canvasRenderer.resize(width, height, window.devicePixelRatio);
+      };
+      resize();
+      const observer = new ResizeObserver(resize);
+      observer.observe(svg);
+      return () => {
+        observer.disconnect();
+        if (canvasRendererRef.current === canvasRenderer) {
+          canvasRendererRef.current = null;
+        }
+      };
+    }, [effectivePathRenderer]);
 
     // Settings via refs so the loop reads latest without restarting.
     const strokeWidthRef = useRef(settings.strokeWidth);
@@ -775,6 +816,28 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`,
           );
         }
+        if (pathRendererRef.current === "canvas" && svgRef.current) {
+          const groups: SVGGElement[] = [];
+          for (const entry of entries) {
+            const group = trailHandles.current.get(entry.trail.trail.id)?.getGroup();
+            if (group) groups.push(group);
+          }
+          const svg = svgRef.current;
+          const viewport = svg.hasAttribute("viewBox")
+            ? {
+                x: svg.viewBox.baseVal.x,
+                y: svg.viewBox.baseVal.y,
+                width: svg.viewBox.baseVal.width,
+                height: svg.viewBox.baseVal.height,
+              }
+            : {
+                x: 0,
+                y: 0,
+                width: svg.clientWidth,
+                height: svg.clientHeight,
+              };
+          canvasRendererRef.current?.draw(groups, viewport);
+        }
         for (const key of cameraIndicesRef.current.keys()) {
           if (!present.has(key)) cameraIndicesRef.current.delete(key);
         }
@@ -825,7 +888,20 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
               <RippleEffect effect={effect} settings={settings} />
             </g>
           ))}
-        <g ref={pathLayerRef}>
+        {effectivePathRenderer === "canvas" && (
+          <foreignObject x="0" y="0" width="1" height="1">
+            <canvas
+              ref={canvasRef}
+              data-trail-path-canvas="true"
+              style={{ display: "block", pointerEvents: "none" }}
+            />
+          </foreignObject>
+        )}
+        <g
+          ref={pathLayerRef}
+          visibility={effectivePathRenderer === "canvas" ? "hidden" : undefined}
+          data-trail-path-renderer={effectivePathRenderer}
+        >
           {kept.map((entry) => {
             const ts = entry.trail;
             const key = ts.trail.id;
