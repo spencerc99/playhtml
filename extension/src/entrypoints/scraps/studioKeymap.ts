@@ -29,6 +29,7 @@ export type StudioCommand =
   | { kind: "confirm" }
   | { kind: "cancel" }
   | { kind: "deselect" }
+  | { kind: "selectAll" }
   | { kind: "selectNext" }
   | { kind: "selectPrevious" }
   /** Steps into a pile: the piece one below or above in the stacking order. */
@@ -61,6 +62,11 @@ export interface KeyEventShape {
 export interface KeymapContext {
   mode: StudioMode;
   hasSelection: boolean;
+  /**
+   * Whether more than one piece is in hand. Cropping and cutting out work on
+   * one picture at a time, so their keys wait until the hand is narrowed.
+   */
+  multiple: boolean;
   /** Whether anything is on the studio's own clipboard. */
   hasClipboard: boolean;
 }
@@ -113,7 +119,8 @@ export function studioCommandFor(
   if (leavesKeysAlone(event)) return null;
 
   const accel = event.metaKey || event.ctrlKey;
-  const { mode, hasSelection } = context;
+  const { mode, hasSelection, multiple } = context;
+  const single = hasSelection && !multiple;
   const transforming = mode === "rotate" || mode === "scale";
 
   // While a modal transform, a crop or a cutout is running, it owns the few
@@ -149,6 +156,8 @@ export function studioCommandFor(
         return hasSelection ? { kind: "copy" } : null;
       case "v":
         return context.hasClipboard ? { kind: "paste" } : null;
+      case "a":
+        return { kind: "selectAll" };
       default:
         return null;
     }
@@ -186,7 +195,7 @@ export function studioCommandFor(
   }
 
   if (event.key === "Enter") {
-    return hasSelection ? { kind: "enterCrop" } : null;
+    return single ? { kind: "enterCrop" } : null;
   }
 
   if (event.key === "?") return { kind: "showKeys" };
@@ -200,13 +209,13 @@ export function studioCommandFor(
 
   switch (event.key.toLowerCase()) {
     case "c":
-      return hasSelection ? { kind: "enterCrop" } : null;
+      return single ? { kind: "enterCrop" } : null;
     case "r":
       return hasSelection ? { kind: "beginRotate" } : null;
     case "s":
       return hasSelection ? { kind: "beginScale" } : null;
     case "b":
-      return hasSelection ? { kind: "cutout" } : null;
+      return single ? { kind: "cutout" } : null;
     case "h":
       return hasSelection ? { kind: "flip", axis: "x" } : null;
     case "v":
@@ -310,6 +319,16 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
       { keys: "shift + ] / [", what: "bring to front / send to back" },
       { keys: "tab / shift + tab", what: "step through pieces" },
       { keys: "\\", what: "tuck the drawer away" },
+    ],
+  },
+  {
+    group: "select several",
+    entries: [
+      { keys: "shift + click", what: "add or take away a piece" },
+      { keys: "drag on bare paper", what: "select every piece it touches" },
+      { keys: "shift + drag on bare paper", what: "add to what is selected" },
+      { keys: "cmd + A", what: "select every piece" },
+      { keys: "click one of them", what: "keep just that piece" },
     ],
   },
   {

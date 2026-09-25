@@ -1,7 +1,8 @@
-// ABOUTME: The compact strip of tools that floats beside the selected piece.
+// ABOUTME: The compact strip of tools that floats beside the selected piece or pieces.
 // ABOUTME: Small inline-SVG glyphs so the tools stay out of the material's way.
 
 import React, { useLayoutEffect, useRef, useState } from "react";
+import type { PieceBox } from "./collageGeometry";
 import type { CollagePiece } from "./collageRecord";
 import { placeBesidePiece } from "./studioPanels";
 
@@ -89,7 +90,13 @@ export const GLYPHS = {
 };
 
 export interface PieceActionsProps {
-  piece: CollagePiece;
+  /** The box the strip floats beside: the piece, or the bounds of several. */
+  box: PieceBox;
+  /**
+   * The piece in hand when it is the only one. Crop and cut-out work on one
+   * picture at a time, so with several in hand they leave the strip.
+   */
+  piece: CollagePiece | null;
   canUncrop: boolean;
   canCutOut: boolean;
   /** The frame's zoom, so the strip stays one size on screen. */
@@ -128,7 +135,7 @@ function isSeparator(action: Action): action is { separator: true; key: string }
  * same spot and only one of them is ever shown there.
  */
 export function useBesidePiece(
-  piece: CollagePiece,
+  piece: PieceBox,
   scale: number,
   frame: { width: number; height: number },
 ) {
@@ -162,6 +169,7 @@ export function useBesidePiece(
  * they stay on shift + the bracket keys, listed in the keys popover.
  */
 export function PieceActions({
+  box,
   piece,
   canUncrop,
   canCutOut,
@@ -175,7 +183,7 @@ export function PieceActions({
   onDuplicate,
   onRemove,
 }: PieceActionsProps) {
-  const placement = useBesidePiece(piece, scale, frame);
+  const placement = useBesidePiece(box, scale, frame);
 
   const actions: Action[] = [
     {
@@ -199,7 +207,7 @@ export function PieceActions({
       hint: "H",
       glyph: GLYPHS.flipX,
       run: () => onFlip("x"),
-      on: piece.flipX,
+      ...(piece ? { on: piece.flipX } : {}),
     },
     {
       key: "flip-y",
@@ -207,18 +215,22 @@ export function PieceActions({
       hint: "V",
       glyph: GLYPHS.flipY,
       run: () => onFlip("y"),
-      on: piece.flipY,
+      ...(piece ? { on: piece.flipY } : {}),
     },
-    {
-      key: "crop",
-      label: "Crop",
-      hint: "C",
-      glyph: GLYPHS.crop,
-      run: onCrop,
-    },
+    ...(piece
+      ? [
+          {
+            key: "crop",
+            label: "Crop",
+            hint: "C",
+            glyph: GLYPHS.crop,
+            run: onCrop,
+          },
+        ]
+      : []),
     // Restoring a crop has no key of its own, so it only appears once there
     // is a crop to undo rather than sitting there greyed out.
-    ...(canUncrop
+    ...(piece && canUncrop
       ? [
           {
             key: "uncrop",
@@ -230,7 +242,7 @@ export function PieceActions({
         ]
       : []),
     // Only a picture has a background to cut away.
-    ...(canCutOut
+    ...(piece && canCutOut
       ? [
           {
             key: "cut-out",
@@ -267,7 +279,7 @@ export function PieceActions({
       ref={placement.ref}
       className="collage-piece-actions"
       role="toolbar"
-      aria-label="Piece"
+      aria-label={piece ? "Piece" : "Pieces"}
       style={placement.style}
       // Clicking a tool must not reach the frame beneath and drop the
       // selection the tool is about to act on.

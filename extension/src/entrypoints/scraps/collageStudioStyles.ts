@@ -840,6 +840,27 @@ export const COLLAGE_STUDIO_STYLES = `
     pointer-events: none;
   }
 
+  /* Each piece inside a selection of several, traced lightly under the box
+     that holds them all. */
+  .collage-piece-member {
+    position: absolute;
+    z-index: 9999;
+    border-style: solid;
+    border-color: rgba(74, 154, 138, 0.85);
+    transform-origin: center;
+    pointer-events: none;
+  }
+
+  /* The area a drag across bare paper is sweeping. */
+  .collage-marquee {
+    position: absolute;
+    z-index: 10003;
+    border-style: solid;
+    border-color: #4a9a8a;
+    background: rgba(74, 154, 138, 0.08);
+    pointer-events: none;
+  }
+
   /* Every piece stacked under the pointer, so a buried one can be picked by
      eye rather than by clicking down through the pile. */
   .collage-here {
