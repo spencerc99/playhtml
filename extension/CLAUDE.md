@@ -157,6 +157,12 @@ build, and submits the version for App Review. Apple must approve the version
 before it becomes public. The containing app uses `online.wewere.app`; its
 embedded Safari extension uses `online.wewere.app.Extension`.
 
+If the Safari upload succeeds but App Store review submission fails, inspect
+the build and version in App Store Connect before retrying. Dispatch `Extension
+Release` with Chrome, Edge, and Firefox skipped, Safari enabled, and
+`review-safari-build` set to the existing build number. This attaches and
+submits that build without uploading it again.
+
 **Manual fallback:** The local `./release.sh` uses `.env.submit` instead of
 GitHub secrets. It requires Xcode 26 and a manual `extension/package.json` bump
 first. Set `APPLE_API_KEY_PATH` to the downloaded `.p8` file. Set

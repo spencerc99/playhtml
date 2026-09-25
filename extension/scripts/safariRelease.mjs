@@ -126,6 +126,7 @@ async function complete(request) {
   const buildNumber = process.env.BUILD_NUMBER;
   const expectedVersion = process.env.VERSION;
   if (!buildNumber || !expectedVersion) throw new Error("BUILD_NUMBER and VERSION are required to submit Safari for review.");
+  if (!/^\d+$/.test(buildNumber)) throw new Error(`Safari build number must contain only digits.`);
   const { appId, versions } = await appAndVersions(request);
   const selected = selectSafariVersion(versions);
   if (selected.version !== expectedVersion) {

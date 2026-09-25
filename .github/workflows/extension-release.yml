@@ -30,6 +30,10 @@ on:
         description: "Skip Safari submission"
         type: boolean
         default: false
+      review-safari-build:
+        description: "Submit an existing Safari build number for review without uploading it again"
+        type: string
+        default: ""
 
 concurrency: ${{ github.workflow }}
 
@@ -99,6 +103,7 @@ jobs:
       SKIP_EDGE: ${{ inputs.skip-edge && 'true' || 'false' }}
       SKIP_FIREFOX: ${{ inputs.skip-firefox && 'true' || 'false' }}
       SKIP_SAFARI: ${{ inputs.skip-safari && 'true' || 'false' }}
+      REVIEW_SAFARI_BUILD: ${{ inputs.review-safari-build || '' }}
       VERSION: ${{ needs.guard.outputs.version }}
     steps:
       - name: Checkout repo
@@ -106,6 +111,15 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate Safari review retry
+        run: |
+          if [ -n "$REVIEW_SAFARI_BUILD" ]; then
+            if [ "$DRY_RUN" = "true" ] || [ "$SKIP_SAFARI" = "true" ] || [ "$SKIP_CHROME" != "true" ] || [ "$SKIP_EDGE" != "true" ] || [ "$SKIP_FIREFOX" != "true" ]; then
+              echo "Reviewing an existing Safari build requires a live Safari-only dispatch."
+              exit 1
+            fi
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -259,7 +273,7 @@ jobs:
 
       - name: Package and upload Safari app
         id: submit-safari
-        if: always() && env.SKIP_SAFARI != 'true' && steps.build-safari.outcome == 'success' && steps.safari-version.outcome == 'success'
+        if: always() && env.SKIP_SAFARI != 'true' && env.REVIEW_SAFARI_BUILD == '' && steps.build-safari.outcome == 'success' && steps.safari-version.outcome == 'success'
         continue-on-error: true
         working-directory: extension
         env:
@@ -282,14 +296,14 @@ jobs:
 
       - name: Submit Safari app for review
         id: review-safari
-        if: always() && env.SKIP_SAFARI != 'true' && env.DRY_RUN != 'true' && steps.submit-safari.outcome == 'success'
+        if: always() && env.SKIP_SAFARI != 'true' && env.DRY_RUN != 'true' && (steps.submit-safari.outcome == 'success' || env.REVIEW_SAFARI_BUILD != '') && steps.safari-version.outcome == 'success'
         continue-on-error: true
         working-directory: extension
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           APPLE_API_KEY_PATH: ${{ steps.apple-key.outputs.path }}
-          BUILD_NUMBER: ${{ github.run_number }}
+          BUILD_NUMBER: ${{ inputs.review-safari-build || github.run_number }}
           VERSION: ${{ steps.safari-version.outputs.version }}
         run: node scripts/safariRelease.mjs complete
 
@@ -337,7 +351,9 @@ jobs:
             if [ "$DRY_RUN" != "true" ]; then
               check_outcome "Safari review submission" "$SAFARI_REVIEW_OUTCOME"
             fi
-            check_outcome "Safari upload" "$SAFARI_OUTCOME"
+            if [ -z "$REVIEW_SAFARI_BUILD" ]; then
+              check_outcome "Safari upload" "$SAFARI_OUTCOME"
+            fi
           fi
 
           exit "$FAILED"
