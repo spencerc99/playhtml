@@ -21,9 +21,6 @@ export const EVICTION_FADE_MS = 3000;
 export const COMPLETED_OPACITY = 0.5;
 export const COMPLETION_FADE_MS = 3000;
 
-// How many points to show behind the cursor while drawing
-export const TAIL_LENGTH = 1000;
-
 // Compute visible points and path data for a trail at a given elapsed time.
 // strokeSize is baked into the freehand outline geometry, so the path must be
 // rebuilt whenever it changes.
@@ -58,9 +55,7 @@ export function computeTrailFrame(
   const headIndex = Math.floor(exactVariedPosition);
   const headFraction = exactVariedPosition - headIndex;
 
-  const tailStart = isFinished
-    ? Math.max(0, totalVariedPoints - TAIL_LENGTH)
-    : Math.max(0, headIndex - TAIL_LENGTH + 1);
+  const tailStart = 0;
   const tailEnd = Math.min(headIndex, totalVariedPoints - 1);
 
   let interpolatedHead: { x: number; y: number } | undefined;
