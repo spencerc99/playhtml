@@ -140,10 +140,6 @@ App Store Connect:
 - `APPLE_API_ISSUER_ID` — issuer ID for the team API key
 - `APPLE_API_PRIVATE_KEY` — full contents of the downloaded `.p8` private key
 
-Set the optional GitHub Actions variable `SAFARI_VERSION` to the macOS version
-in App Store Connect. It defaults to `1.0`. Update it when you create the next
-macOS version.
-
 The App Store Connect key must support provisioning and app uploads. Before the
 first release, manually create one App Store Connect record with the macOS
 platform and bundle ID `online.wewere.app`. App Store Connect does not support
@@ -151,17 +147,22 @@ creating app records through its API. The macOS app is the minimal container
 required to distribute the Safari extension. A future native iOS app and iOS
 Safari extension can be added to this record as another platform.
 
-The release workflow uses Xcode cloud signing to create the provisioning
-profile, archive the macOS app, and upload the build. The containing app uses
-`online.wewere.app`; its embedded Safari extension uses
-`online.wewere.app.Extension`. Select the processed build and submit it for App
-Review in App Store Connect.
+The release workflow reads the current macOS version from App Store Connect.
+It reuses an editable version or increments the minor version after the last
+release. A version already in review blocks a new release before any store
+submission. Xcode cloud signing creates the provisioning profile, archives the
+macOS app, and uploads the build. The workflow then waits for Apple to process
+the build, updates the App Store release notes from `CHANGELOG.md`, attaches the
+build, and submits the version for App Review. Apple must approve the version
+before it becomes public. The containing app uses `online.wewere.app`; its
+embedded Safari extension uses `online.wewere.app.Extension`.
 
 **Manual fallback:** The local `./release.sh` uses `.env.submit` instead of
 GitHub secrets. It requires Xcode 26 and a manual `extension/package.json` bump
 first. Set `APPLE_API_KEY_PATH` to the downloaded `.p8` file. Set
-`SAFARI_VERSION` when the App Store version is not `1.0`. Use `--skip-safari`
-when Xcode or Apple credentials are not available.
+`BUILD_NUMBER` to a value greater than the previous macOS build. The local
+script uses the same App Store Connect version selection and review submission
+as CI. Use `--skip-safari` when Xcode or Apple credentials are not available.
 
 ## Website & experiments (`extension/website/`)
 

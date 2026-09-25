@@ -16,8 +16,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 EXTENSION_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "$EXTENSION_DIR"
 
-VERSION="${VERSION:-1.0}"
-BUILD_NUMBER="${BUILD_NUMBER:-1}"
+VERSION="${VERSION:-}"
+BUILD_NUMBER="${BUILD_NUMBER:-}"
 SAFARI_BUNDLE_ID="${SAFARI_BUNDLE_ID:-online.wewere.app}"
 SAFARI_BUILD_DIR="${SAFARI_BUILD_DIR:-publish/safari-mv3}"
 SAFARI_PROJECT_ROOT="publish/safari-app"
@@ -30,6 +30,11 @@ GENERATED_APP_BUNDLE_ID="${SAFARI_BUNDLE_ID%.*}.we-were-online"
 
 if [ "$DRY_RUN" -eq 0 ]; then
   : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required}"
+  : "${VERSION:?VERSION is required for a Safari upload}"
+  : "${BUILD_NUMBER:?BUILD_NUMBER is required for a Safari upload}"
+else
+  VERSION="${VERSION:-1.0}"
+  BUILD_NUMBER="${BUILD_NUMBER:-1}"
 fi
 
 if [ ! -f "${SAFARI_BUILD_DIR}/manifest.json" ]; then
