@@ -1616,6 +1616,16 @@ export function CollageStudio({
     ? pieces.find((piece) => piece.id === crop.pieceId) ?? null
     : null;
 
+  /**
+   * The area a marquee is sweeping. Its far corner only moves once the press
+   * has become a drag, so a click on bare paper draws nothing.
+   */
+  const marqueeArea =
+    gesture.kind === "marquee" &&
+    (gesture.end.x !== gesture.start.x || gesture.end.y !== gesture.start.y)
+      ? rectBetween(gesture.start, gesture.end)
+      : null;
+
   return (
     <div className="collage-studio">
       <ScrapTray
@@ -1801,12 +1811,15 @@ export function CollageStudio({
                   />
                 )}
 
-                {gesture.kind === "marquee" && (
+                {marqueeArea && (
                   <div
                     className="collage-marquee"
                     aria-hidden="true"
                     style={{
-                      ...rectBetween(gesture.start, gesture.end),
+                      left: marqueeArea.x,
+                      top: marqueeArea.y,
+                      width: marqueeArea.width,
+                      height: marqueeArea.height,
                       borderWidth: 1 / scale,
                     }}
                   />

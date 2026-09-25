@@ -529,6 +529,9 @@ export const COLLAGE_STUDIO_STYLES = `
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    /* A marquee or a handle drag sweeps across the stage; it must not pick up
+       the readout or the bars' labels as selected text on the way. */
+    user-select: none;
   }
 
   /* Both sides of the collage share one place on the stage. The sheet keeps
