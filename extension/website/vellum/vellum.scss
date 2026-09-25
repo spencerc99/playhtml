@@ -1,0 +1,17 @@
+// ABOUTME: Base page styles for the vellum experiment — resets, font smoothing, and the fixed full-viewport app root.
+// ABOUTME: The paper background itself is applied inline (driven by settings.paperColor) on the React root wrapper.
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#reactContent {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
