@@ -8,7 +8,7 @@ sidebar:
 Register a custom collaborative element with one initializer object. Use `register` for one element and `define` for a reusable capability.
 
 :::caution[Experimental]
-The declarative `view` renderer and the lit-html helpers are experimental. `register`, `define`, handles, and the imperative `updateElement` renderer are supported APIs.
+The declarative `view` renderer and the lit-html helpers are experimental. `register`, `define`, handles, and the imperative `update` renderer are supported APIs.
 :::
 
 ```js
@@ -28,7 +28,7 @@ const handle = playhtml.register(counter, {
       data.count += 1;
     });
   },
-  updateElement: ({ element, data }) => {
+  update: ({ element, data }) => {
     element.textContent = String(data.count);
   },
 });
@@ -63,11 +63,11 @@ const handle = playhtml.getHandle("card-1", "can-move");
 
 ## The `init` object
 
-The full annotated property list is on [Element API](/docs/reference/element-api/#initializer). Both `updateElement` and `view` receive the [callback context](/docs/reference/element-api/#callback-context-ctx).
+The full annotated property list is on [Element API](/docs/reference/element-api/#initializer). Both `update` and `view` receive the [callback context](/docs/reference/element-api/#callback-context-ctx).
 
 `defaultData` must be an object (or a function that returns one), not a bare value like `0` or `""`. Use `{ count: 0 }`, not `0`.
 
-A valid initializer provides exactly one update path — `view` **or** `updateElement`.
+A valid initializer provides exactly one update path — `view` **or** `update`.
 
 ## The `view` context
 
@@ -86,7 +86,7 @@ Returned by `register` and `getHandle`. Reads and writes resolve the live handle
   getData(),         // undefined until bound
   setData(next),
   setLocalData(next),
-  setMyAwareness(next),
+  setLive(next),
   requestUpdate(),   // no-op without a view
   unregister(),      // detach + run onMount cleanup; shared data is kept
 }

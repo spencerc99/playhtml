@@ -52,20 +52,20 @@ withSharedState<T, V, P>(
 ```tsx
 interface WithSharedStateConfig<T, V> {
   defaultData: T;
-  myDefaultAwareness?: V;
+  live?: V;
   id?: string;
   tagInfo?: TagType[];
 }
 ```
 
 - **`defaultData`**: required. The initial value of `data`. Survives reload.
-- **`myDefaultAwareness`**: optional. Initial value for this user's element awareness. This is ephemeral per-user presence scoped to the element. Does _not_ persist.
+- **`live`**: optional. Initial ephemeral value for this user on this element. It does _not_ persist.
 - **`id`**: optional. Stable id for the element. If omitted, playhtml derives one from the rendered DOM; see [Dynamic elements](/docs/advanced/dynamic-elements/) for why stable ids matter.
 - **`tagInfo`**: optional. Marks the element as one of the built-in capabilities (e.g. `[TagType.CanToggle]`). See [Capabilities](/docs/capabilities/).
 
-`defaultData` and `myDefaultAwareness` accept values, not functions that receive
-DOM elements. They are available on the first render. Derive them from React
-props with a [props-dependent config](#props-dependent-config).
+`defaultData`, `live`, and `myDefaultAwareness` accept values, not functions that
+receive DOM elements. They are available on the first render. Derive them from
+React props with a [props-dependent config](#props-dependent-config).
 
 ### Render-function props
 
@@ -73,16 +73,16 @@ props with a [props-dependent config](#props-dependent-config).
 interface ReactElementEventHandlerData<T, V> {
   data: T;
   setData: (data: T | ((draft: T) => void)) => void;
-  awareness: V[];
-  myAwareness?: V;
-  setMyAwareness: (data: V) => void;
+  live?: V;
+  users: Array<{ user: User; live: V }>;
+  setLive: (data: V) => void;
   ref: React.RefObject<HTMLElement>;
 }
 ```
 
 `setData` accepts either a replacement value or a mutator function. See [Data essentials](/docs/data/data-essentials/) for the merge semantics.
 
-`awareness`, `myAwareness`, and `setMyAwareness` are the element-scoped form of [presence](/docs/data/presence/#element-awareness). Use them for live per-user signals tied to this element, not state that should survive reload.
+`live`, `users`, and `setLive` are element-scoped per-user data. Use them for signals tied to this element that should disappear when the user leaves. Each `users` entry joins the person's identity with their current `live` value.
 
 ### Props-dependent config
 
@@ -109,14 +109,15 @@ Defaults seed shared state; changing props does not overwrite saved state.
 Component form of `withSharedState`. Useful when you want JSX children (render-prop style) instead of wrapping a component, or when you need ref access to a specific element.
 
 Pass computed values directly, such as `defaultData={{ count: initialCount }}`.
-The same value-only rule applies to `myDefaultAwareness`. DOM-dependent default
-functions belong to the [vanilla element API](/docs/reference/element-api/#defaultdata).
+The same value-only rule applies to `live` and `myDefaultAwareness`.
+DOM-dependent default functions belong to the
+[vanilla element API](/docs/reference/element-api/#defaultdata).
 
 ```tsx
 interface CanPlayElementProps<T, V> {
   id?: string;
   defaultData: T;
-  myDefaultAwareness?: V;
+  live?: V;
   tagInfo?: TagType[];
   standalone?: boolean;
   loading?: LoadingOptions;
@@ -128,7 +129,7 @@ interface CanPlayElementProps<T, V> {
 ```
 
 - **`id`**: required if the top-level child is a React Fragment. Otherwise defaults to the child's id, or a hash of the child's content. A stable id matters for cross-browser sync; see [Dynamic elements](/docs/advanced/dynamic-elements/).
-- **`myDefaultAwareness`**: optional. Initial element awareness for this user. Same lifetime as presence; it clears when the user leaves.
+- **`live`**: optional. Initial live value for this user. It clears when the user leaves.
 - **`standalone`**: when `true`, the element initializes playhtml itself if no `PlayProvider` is present. Use it for one-off components mounted outside your provider tree (e.g. an Astro island). A no-op when a provider already exists.
 - **`loading`**: controls the loading affordance shown before the element's first sync. See [Loading options](#loading-options).
 - **`dataSource`**, **`shared`**, **`dataSourceReadOnly`**: wire the element to a shared source across pages or sites. See [Shared data props](#shared-data-props) and the [Shared elements](/docs/advanced/shared-elements/) guide.
@@ -521,6 +522,4 @@ The repo has a collection of runnable React examples at [`packages/react/example
 
 A few things still in flux in the React package:
 
-- **Per-key persistence config.** Currently persistence is a whole-store choice: `setMyAwareness` for element-scoped presence, `setData` for persistent data, no local-only mode. A future `persistenceOptions` object might let you configure per-key (`none` / `local` / `global`).
-- **`awareness` splitting.** `awareness` currently includes the local user; it may split into `myAwareness` + `othersAwareness` for clarity.
 - **Hook ergonomics.** A pure-hook interface (`useSharedState({ id, defaultData })`) is being evaluated as an alternative to the HOC form. The blocker is that hooks have no natural place to pin a stable `id`.

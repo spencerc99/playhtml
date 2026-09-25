@@ -209,7 +209,7 @@ Throws a console warning if called before `init()` completes sync.
 
 ## Custom elements
 
-Use `register` for one custom element and `define` for a reusable capability. Both accept an `ElementInitializer` with either the supported imperative `updateElement` renderer or the experimental declarative `view` renderer. See [Registration API](/docs/reference/view-api/).
+Use `register` for one custom element and `define` for a reusable capability. Both accept an `ElementInitializer` with either the supported imperative `update` renderer or the experimental declarative `view` renderer. See [Registration API](/docs/reference/view-api/).
 
 ### `register(elementOrId, init)`
 
@@ -238,7 +238,7 @@ const handle = playhtml.register(counter, {
       data.count += 1;
     });
   },
-  updateElement: ({ element, data }) => {
+  update: ({ element, data }) => {
     element.textContent = `Clicked ${data.count} times`;
   },
 });
