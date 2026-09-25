@@ -1,0 +1,29 @@
+# Dependencies and build output
+node_modules/
+**/dist/
+**/site/
+**/site-dist/
+**/dist-ssr/
+**/.wxt/
+**/.output/
+**/coverage/
+extension/publish/
+
+# Generated declarations and lockfiles
+**/worker-configuration.d.ts
+bun.lock
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Static media and generated asset trees
+**/public/
+**/assets/
+**/generated/
+**/*.generated.*
+**/*.min.*
+
+# Environment and service configuration files are outside the formatter scope
+**/.env*
+**/.dev.vars*
+**/*.toml
