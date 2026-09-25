@@ -719,19 +719,20 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-selection-edge {
     position: absolute;
     inset: 0;
-    border: calc(2px / var(--collage-zoom)) solid #4a9a8a;
+    border: calc(3px / var(--collage-zoom)) solid #4a9a8a;
     box-shadow:
-      0 0 0 calc(1px / var(--collage-zoom)) rgba(255, 253, 249, 0.9),
-      inset 0 0 0 calc(1px / var(--collage-zoom)) rgba(255, 253, 249, 0.9);
+      0 0 0 calc(1.5px / var(--collage-zoom)) rgba(255, 253, 249, 0.95),
+      0 0 0 calc(3px / var(--collage-zoom)) rgba(61, 56, 51, 0.35),
+      inset 0 0 0 calc(1.5px / var(--collage-zoom)) rgba(255, 253, 249, 0.95);
     pointer-events: none;
   }
 
   .collage-handle {
     position: absolute;
-    width: 11px;
-    height: 11px;
-    margin: -6px 0 0 -6px;
-    border: 1.5px solid #4a9a8a;
+    width: 13px;
+    height: 13px;
+    margin: -7px 0 0 -7px;
+    border: 2px solid #4a9a8a;
     border-radius: 2px;
     background: #fffdf9;
     padding: 0;

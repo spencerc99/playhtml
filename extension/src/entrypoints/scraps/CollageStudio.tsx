@@ -1786,7 +1786,7 @@ function PieceHandles({
           left: "50%",
           top: -ROTATE_HANDLE_OFFSET,
           height: ROTATE_HANDLE_OFFSET,
-          width: 1.5 / scale,
+          width: 2 / scale,
         }}
       />
       <button
