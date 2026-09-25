@@ -109,6 +109,7 @@ interface ScrapCollageProps {
   targetCount?: number;
   perDomainCap?: number;
   showKindFilter?: boolean;
+  onFilterIntent?: () => void;
 }
 
 type ScrapView = "drift" | "archive";
@@ -1516,6 +1517,7 @@ export function ScrapCollage({
   targetCount,
   perDomainCap,
   showKindFilter = false,
+  onFilterIntent,
 }: ScrapCollageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const archiveScrollRef = useRef<HTMLDivElement>(null);
@@ -2195,6 +2197,7 @@ export function ScrapCollage({
               <div className="scrap-collage__controls-filters">
                 <ScrapFilters
                   items={groupedItems}
+                  onFilterIntent={onFilterIntent}
                   places={places}
                   onPlaces={setPlaces}
                   kind={selectedKind}

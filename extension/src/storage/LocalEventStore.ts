@@ -18,7 +18,7 @@ import { getScrapEncounterKey } from "../collectors/scrapUtils";
 import { isImageContentHash } from "@movement/utils/scrapIdentity";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 14;
+const DB_VERSION = 15;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
 const AGGREGATE_URLS_STORE_NAME = "aggregate_urls";
@@ -74,6 +74,16 @@ export interface QueryOptions {
   limit?: number;
   startTs?: number;
   endTs?: number;
+}
+
+export interface EventPageCursor {
+  ts: number;
+  id: string;
+}
+
+export interface EventPage {
+  events: CollectionEvent[];
+  nextCursor: EventPageCursor | null;
 }
 
 export interface DomainStats {
@@ -586,6 +596,12 @@ export class LocalEventStore {
               unique: false,
             });
           }
+        }
+
+        if (oldVersion < 15) {
+          store.createIndex("typeTsId", ["type", "ts", "id"], {
+            unique: true,
+          });
         }
 
         if (oldVersion < 9) {
@@ -1347,6 +1363,51 @@ export class LocalEventStore {
       };
 
       request.onerror = () => reject(request.error);
+    });
+  }
+
+  async queryEventPage(
+    type: CollectionEventType,
+    limit: number,
+    cursor?: EventPageCursor,
+  ): Promise<EventPage> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
+      throw new Error("Event page limit must be between 1 and 1000");
+    }
+    if (cursor && (!Number.isFinite(cursor.ts) || typeof cursor.id !== "string")) {
+      throw new Error("Invalid event page cursor");
+    }
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+      const transaction = this.db.transaction(STORE_NAME, "readonly");
+      const index = transaction.objectStore(STORE_NAME).index("typeTsId");
+      const upper = cursor ? [type, cursor.ts, cursor.id] : [type, []];
+      const range = IDBKeyRange.bound([type], upper, false, !!cursor);
+      const request = index.openCursor(range, "prev");
+      const events: CollectionEvent[] = [];
+
+      request.onsuccess = () => {
+        const position = request.result;
+        if (!position) {
+          resolve({ events, nextCursor: null });
+          return;
+        }
+        if (events.length === limit) {
+          const last = events[events.length - 1];
+          resolve({ events, nextCursor: { ts: last.ts, id: last.id } });
+          return;
+        }
+        events.push(toCollectionEvent(position.value as StoredCollectionEvent));
+        position.continue();
+      };
+      request.onerror = () => reject(request.error);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
     });
   }
 
