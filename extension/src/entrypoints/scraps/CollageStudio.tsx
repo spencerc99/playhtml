@@ -13,6 +13,9 @@ import type { ScrapItem } from "@movement/components/ScrapCollage";
 import {
   FULL_CROP,
   boxCenter,
+  cornerPoint,
+  pinInside,
+  type Bounds,
   fanOutPlacement,
   fitWithin,
   frameScale,
@@ -130,6 +133,8 @@ const STAGE_PADDING = 12;
  * float there, so a frame fitted to a tall stage never slides under them.
  */
 const STAGE_TOP_BAND = 52;
+/** How far inside the stage's edge a pinned handle stays, in screen pixels. */
+const HANDLE_INSET = 10;
 /** Frame units the pointer must travel before an alt-drag pulls out a copy. */
 const ALT_DRAG_THRESHOLD = 4;
 /**
@@ -159,6 +164,12 @@ type Gesture =
       pieceId: string;
       corner: ResizeCorner;
       origin: PieceBox;
+      /**
+       * From where the press landed to the real corner. A handle pinned into
+       * view sits away from its corner, and the drag acts as if the corner
+       * itself had been grabbed.
+       */
+      toCorner: Point;
     }
   | { kind: "rotate"; pieceId: string };
 
@@ -517,6 +528,33 @@ export function CollageStudio({
     // The fit is recomputed when the format changes, so a new size is shown
     // at its own zoom rather than the one the previous format was fitted at.
   }, [frame]);
+
+  /**
+   * The part of the stage in view, in frame units, kept clear of the bars
+   * along its top. A corner handle that would fall outside it is pinned to
+   * its edge.
+   */
+  const [inView, setInView] = useState<Bounds | null>(null);
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    const frameNode = frameRef.current;
+    if (!stage || !frameNode) return;
+    const measure = () => {
+      const area = stage.getBoundingClientRect();
+      const origin = frameNode.getBoundingClientRect();
+      const inset = HANDLE_INSET;
+      setInView({
+        x: (area.left + inset - origin.left) / scale,
+        y: (area.top + STAGE_TOP_BAND - origin.top) / scale,
+        width: (area.width - inset * 2) / scale,
+        height: (area.height - STAGE_TOP_BAND - inset) / scale,
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [scale, frame]);
 
   /** Converts a pointer event into frame coordinates. */
   const framePoint = useCallback(
@@ -1093,7 +1131,10 @@ export function CollageStudio({
           box: gesture.origin,
           rotationDegrees: rotation,
           corner: gesture.corner,
-          pointer: point,
+          pointer: {
+            x: point.x + gesture.toCorner.x,
+            y: point.y + gesture.toCorner.y,
+          },
           // Shift frees the ratio; alt grows the piece about its own center.
           keepAspect: !event.shiftKey,
         });
@@ -1414,6 +1455,10 @@ export function CollageStudio({
                   if (item) addPiece(item, framePoint(event));
                 }}
               >
+                {/* Only the pieces are cut off at the frame's edge. The selection,
+                    its handles and the other overlays may hang past it, so a
+                    piece mostly off the frame can still be grabbed and scaled. */}
+                <div className="collage-frame__pieces">
                 {ordered.map((piece) => {
                   const source = sourceBoxForCrop(piece, piece.crop);
                   const isSelected = piece.id === selectedId;
@@ -1461,15 +1506,23 @@ export function CollageStudio({
                     </div>
                   );
                 })}
+                </div>
 
                 {selected && !crop && !transform && (
                   <PieceHandles
                     piece={selected}
                     scale={scale}
+                    inView={inView}
                     onResizeStart={(corner, event) => {
                       event.stopPropagation();
                       (event.target as Element).setPointerCapture?.(
                         event.pointerId,
+                      );
+                      const pressed = framePoint(event);
+                      const actual = cornerPoint(
+                        selected,
+                        selected.rotation,
+                        corner,
                       );
                       setGesture({
                         kind: "resize",
@@ -1480,6 +1533,10 @@ export function CollageStudio({
                           y: selected.y,
                           width: selected.width,
                           height: selected.height,
+                        },
+                        toCorner: {
+                          x: actual.x - pressed.x,
+                          y: actual.y - pressed.y,
                         },
                       });
                     }}
@@ -1735,16 +1792,20 @@ export function CollageStudio({
 function PieceHandles({
   piece,
   scale,
+  inView,
   onResizeStart,
   onRotateStart,
 }: {
   piece: CollagePiece;
   /** The frame's zoom, so the outline and handles keep one size on screen. */
   scale: number;
+  /** The part of the stage in view, in frame units, once it is measured. */
+  inView: Bounds | null;
   onResizeStart: (corner: ResizeCorner, event: React.PointerEvent) => void;
   onRotateStart: (event: React.PointerEvent) => void;
 }) {
   return (
+    <>
     <div
       style={{
         position: "absolute",
@@ -1765,21 +1826,7 @@ function PieceHandles({
         aria-hidden="true"
         style={{ "--collage-zoom": scale } as React.CSSProperties}
       />
-      {RESIZE_CORNERS.map(({ corner, left, top }) => (
-        <button
-          key={corner}
-          type="button"
-          aria-label={`Resize from ${corner.replace("-", " ")}`}
-          className="collage-handle"
-          style={{
-            left,
-            top,
-            pointerEvents: "auto",
-            transform: `scale(${1 / scale})`,
-          }}
-          onPointerDown={(event) => onResizeStart(corner, event)}
-        />
-      ))}
+
       <div
         className="collage-handle__tether"
         style={{
@@ -1802,5 +1849,29 @@ function PieceHandles({
         onPointerDown={onRotateStart}
       />
     </div>
+    {/* Corner handles sit in frame space rather than turning with the
+        piece, so one whose corner is out of view can be pinned to the edge
+        of the stage and still be reached. */}
+    {RESIZE_CORNERS.map(({ corner }) => {
+      const actual = cornerPoint(piece, piece.rotation, corner);
+      const at = inView ? pinInside(actual, inView) : actual;
+      const pinned = at.x !== actual.x || at.y !== actual.y;
+      return (
+        <button
+          key={corner}
+          type="button"
+          aria-label={`Resize from ${corner.replace("-", " ")}`}
+          className={`collage-handle${pinned ? " collage-handle--pinned" : ""}`}
+          style={{
+            left: at.x,
+            top: at.y,
+            zIndex: 10_000,
+            transform: `scale(${1 / scale}) rotate(${piece.rotation}deg)`,
+          }}
+          onPointerDown={(event) => onResizeStart(corner, event)}
+        />
+      );
+    })}
+    </>
   );
 }

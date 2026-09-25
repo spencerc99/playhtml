@@ -558,9 +558,15 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-frame {
     position: relative;
     box-shadow: 0 10px 34px rgba(61, 56, 51, 0.16);
-    overflow: hidden;
     touch-action: none;
     backface-visibility: hidden;
+  }
+
+  /* What bakes stops at the frame's edge, so the pieces are clipped there. */
+  .collage-frame__pieces {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
   }
 
   /* The back: the same paper, the front faintly through it, and the sources. */
@@ -737,6 +743,13 @@ export const COLLAGE_STUDIO_STYLES = `
     background: #fffdf9;
     padding: 0;
     cursor: grab;
+  }
+
+  /* A corner handle held at the edge of the view because its corner is out
+     of sight; it still drags that corner. */
+  .collage-handle--pinned {
+    border-style: dashed;
+    background: #eef6f4;
   }
 
   .collage-handle--rotate {
