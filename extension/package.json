@@ -25,6 +25,7 @@
     "@playhtml/common": "workspace:*",
     "@playhtml/extension-types": "workspace:*",
     "@playhtml/react": "workspace:*",
+    "@tldraw/assets": "^5.4.2",
     "html2canvas": "^1.4.1",
     "mediabunny": "^1.59.1",
     "perfect-freehand": "^1.2.3",
@@ -32,6 +33,7 @@
     "profane-words": "^1.5.11",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "tldraw": "^5.4.2",
     "tldts": "^7.0.19",
     "webextension-polyfill": "^0.12.0"
   },

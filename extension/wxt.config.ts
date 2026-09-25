@@ -2,6 +2,27 @@
 // ABOUTME: Defines manifest metadata, output settings, and Vite aliases.
 import { defineConfig } from "wxt";
 import path from "path";
+import { loadEnv, type Plugin } from "vite";
+
+/**
+ * Builds without WXT_COLLAGE_ENGINE=tldraw swap the tldraw studio prototype
+ * for an empty module. Its import already sits in a dead branch, but the
+ * bundler still loads it and would emit tldraw's fonts and translations as
+ * unused files; the swap keeps them out of the build entirely.
+ */
+function leaveOutTldrawStudio(): Plugin {
+  const stub = "\0collage-tldraw-studio-left-out";
+  return {
+    name: "leave-out-tldraw-studio",
+    enforce: "pre",
+    resolveId(source) {
+      return source.endsWith("/tldraw/TldrawCollageStudio") ? stub : null;
+    },
+    load(id) {
+      return id === stub ? "export default null;" : null;
+    },
+  };
+}
 
 export default defineConfig({
   srcDir: "src",
@@ -62,7 +83,11 @@ export default defineConfig({
   // Force ASCII output so Chrome doesn't reject content scripts as "not UTF-8
   // encoded" — esbuild can emit non-ASCII characters in string literals which
   // Chrome's manifest loader misidentifies as invalid encoding.
-  vite: () => ({
+  vite: (env) => ({
+    plugins:
+      loadEnv(env.mode, __dirname, "WXT_").WXT_COLLAGE_ENGINE === "tldraw"
+        ? []
+        : [leaveOutTldrawStudio()],
     esbuild: {
       charset: "ascii",
     },
