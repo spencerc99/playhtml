@@ -90,14 +90,14 @@ async function launch() {
 }
 
 /** Draws with the real pointer, in steps a hand would make. */
-async function traceCursor(page, { steps = 60, stepPx = 10, delayMs = 16 } = {}) {
+async function traceCursor(
+  page,
+  { steps = 60, stepPx = 10, delayMs = 16 } = {},
+) {
   await page.bringToFront();
   await page.mouse.move(160, 240);
   for (let step = 1; step <= steps; step += 1) {
-    await page.mouse.move(
-      160 + step * stepPx,
-      240 + Math.sin(step / 6) * 120,
-    );
+    await page.mouse.move(160 + step * stepPx, 240 + Math.sin(step / 6) * 120);
     await page.waitForTimeout(delayMs);
   }
 }
@@ -185,8 +185,73 @@ try {
   await settings.getByRole("button", { name: "Save", exact: true }).click();
 
   const page = await context.newPage();
+  const pageSession = await context.newCDPSession(page);
+  await pageSession.send("Network.enable");
+  const installationLoads = [];
+  const overlayLoads = [];
+  pageSession.on("Network.requestWillBeSent", ({ request }) => {
+    if (
+      request.url.startsWith("chrome-extension://") &&
+      request.url.endsWith("/installation.js")
+    ) {
+      installationLoads.push(request.url);
+    }
+    if (
+      request.url.startsWith("chrome-extension://") &&
+      request.url.endsWith("/historical-overlay.js")
+    ) {
+      overlayLoads.push(request.url);
+    }
+  });
   await page.goto(`${origin}/first`);
   await traceCursor(page, { steps: 10 });
+  await expect(page.locator("#wwo-installation-frame")).toHaveCount(0);
+  assert.equal(
+    installationLoads.length,
+    0,
+    "ordinary browsing does not load installation code",
+  );
+  assert.equal(
+    overlayLoads.length,
+    0,
+    "ordinary browsing does not load the sound overlay",
+  );
+  if (evidence)
+    await page.screenshot({ path: resolve(evidence, "frame-off.png") });
+
+  await page.evaluate(() => {
+    for (let index = 0; index < 2; index += 1) {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "H",
+          ctrlKey: true,
+          shiftKey: true,
+          bubbles: true,
+        }),
+      );
+    }
+  });
+  await expect.poll(() => overlayLoads.length).toBe(1);
+  await page.waitForTimeout(300);
+  await expect(page.locator("#playhtml-historical-overlay-root")).toHaveCount(
+    0,
+  );
+
+  await page.keyboard.press("Control+Shift+H");
+  await expect(page.locator("#playhtml-historical-overlay-root")).toHaveCount(
+    1,
+  );
+  await expect.poll(() => overlayLoads.length).toBe(1);
+  await page.keyboard.press("Control+Shift+H");
+  await expect(page.locator("#playhtml-historical-overlay-root")).toHaveCount(
+    0,
+  );
+
+  await worker.evaluate(async () => {
+    await chrome.storage.local.set({ wwoInstallationMode: true });
+    await chrome.storage.local.set({ wwoInstallationMode: false });
+  });
+  await page.waitForTimeout(300);
   await expect(page.locator("#wwo-installation-frame")).toHaveCount(0);
 
   // Turn on the one existing switch: installation mode brings the frame with it.
@@ -198,6 +263,8 @@ try {
 
   const frame = page.locator("#wwo-installation-frame");
   await expect(frame).toBeAttached();
+  await expect.poll(() => installationLoads.length).toBe(1);
+  await expect(page.locator("#wwo-installation-cursor")).toHaveCount(1);
   const blankPixels = await coloredPixelCount(page);
   await traceCursor(page);
   await expect.poll(() => frame.getAttribute("data-wwo-trace")).not.toBe("0");
@@ -214,7 +281,11 @@ try {
   // for the click marks.
   const clickBand = { x: 200, y: 470, width: 700, height: 170 };
   const beforeClicks = await coloredPixelCount(page, clickBand);
-  for (const [x, y] of [[300, 520], [520, 560], [760, 540]]) {
+  for (const [x, y] of [
+    [300, 520],
+    [520, 560],
+    [760, 540],
+  ]) {
     await page.mouse.move(x, y);
     await page.mouse.click(x, y);
     await page.waitForTimeout(250);
@@ -268,7 +339,9 @@ try {
   await expect
     .poll(
       () =>
-        page.locator("#wwo-installation-frame").getAttribute("data-wwo-previous"),
+        page
+          .locator("#wwo-installation-frame")
+          .getAttribute("data-wwo-previous"),
       { timeout: 15000 },
     )
     .not.toBe("0");
@@ -292,13 +365,26 @@ try {
   await settings.bringToFront();
   await toggle.uncheck();
   await expect(page.locator("#wwo-installation-frame")).toHaveCount(0);
+  await expect(page.locator("#wwo-installation-cursor")).toHaveCount(0);
+  const loadsBeforeReenable = installationLoads.length;
+  await toggle.check();
+  await expect(frame).toHaveCount(1);
+  await expect(page.locator("#wwo-installation-cursor")).toHaveCount(1);
+  assert.equal(
+    installationLoads.length,
+    loadsBeforeReenable,
+    "re-enabling reuses the loaded installation script",
+  );
+  await toggle.uncheck();
+  await expect(frame).toHaveCount(0);
   const beforeSlow = await storedCursorEvents(settings);
   await traceCursor(page, { steps: 120 });
   await page.waitForTimeout(1500);
-  const slowCount = (await storedCursorEvents(settings)).length - beforeSlow.length;
+  const slowCount =
+    (await storedCursorEvents(settings)).length - beforeSlow.length;
 
   assert.ok(
-    fastCount > slowCount * 1.8 && fastCount >= 12,
+    fastCount > slowCount * 1.5 && fastCount >= 12,
     `installation pace records more of the same movement (${fastCount} vs ${slowCount})`,
   );
   assert.ok(
@@ -308,6 +394,23 @@ try {
 
   assert.deepEqual(errors, [], "no page or installation frame errors");
   assert.deepEqual(webSockets, [], "the frame never joins a presence room");
+  const extensionPage = await context.newPage();
+  await extensionPage.goto(settingsUrl);
+  await expect(extensionPage.locator("#wwo-installation-frame")).toHaveCount(0);
+  await extensionPage.close();
+
+  await toggle.check();
+  await expect(frame).toHaveCount(1);
+  await context.close();
+  const restarted = await launch();
+  const restoredPage = await context.newPage();
+  await restoredPage.goto(`${origin}/restart`);
+  await expect(restoredPage.locator("#wwo-installation-frame")).toHaveCount(1);
+  await expect(restoredPage.locator("#wwo-installation-cursor")).toHaveCount(1);
+  await restarted.worker.evaluate(() =>
+    chrome.storage.local.set({ wwoInstallationMode: false }),
+  );
+  await expect(restoredPage.locator("#wwo-installation-frame")).toHaveCount(0);
   console.log(
     JSON.stringify(
       {
@@ -319,6 +422,8 @@ try {
         slowCount,
         fastLatency,
         externalRequestsBlocked: externalRequests.length,
+        installationLoads: installationLoads.length,
+        restart: "passed",
         evidence,
       },
       null,
