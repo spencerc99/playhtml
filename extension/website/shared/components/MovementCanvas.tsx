@@ -27,6 +27,7 @@ import { AnimatedNavigationRadial } from "./AnimatedNavigationRadial";
 import { FaviconPortrait } from "./FaviconPortrait";
 import { DaySelector } from "./DaySelector";
 import { ActivityStrip } from "./ActivityStrip";
+import { timeOfDayMatches } from "../utils/timeOfDay";
 import { StatsConsole } from "./StatsConsole";
 import { DebugHoverProvider } from "./DebugHover";
 import {
@@ -1143,18 +1144,10 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   const filteredEvents = useMemo(() => {
     if (!selectedTimeRange && !timeOfDay) return events;
 
-    // Recurring time-of-day test: how far (in minutes, shortest way around the
-    // 24h clock) is an event's LOCAL time-of-day from the window center? Uses
-    // the viewer's local timezone via Date#getHours/getMinutes. Wraparound
-    // matters: a midnight window (center 0) must match both 23:50 and 00:10.
+    // Recurring time-of-day test in the viewer's local time; a midnight
+    // window wraps to match both 23:50 and 00:10.
     const todTest = timeOfDay
-      ? (ts: number) => {
-          const d = new Date(ts);
-          const minutesOfDay = d.getHours() * 60 + d.getMinutes();
-          let diff = Math.abs(minutesOfDay - timeOfDay.centerMinutes);
-          if (diff > 720) diff = 1440 - diff; // shortest distance around the clock
-          return diff <= timeOfDay.radiusMinutes;
-        }
+      ? (ts: number) => timeOfDayMatches(ts, timeOfDay)
       : null;
 
     return events.filter((e) => {
