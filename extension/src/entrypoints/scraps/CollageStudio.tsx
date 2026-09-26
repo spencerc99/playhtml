@@ -106,6 +106,7 @@ import {
   EMPTY_SELECTION,
   isSelected,
   marqueeSelection,
+  planBarePress,
   planSelectionPress,
   pruneSelection,
   selectMany,
@@ -1416,8 +1417,9 @@ export function CollageStudio({
 
   /**
    * A press on bare paper, in the frame or on the stage around it. It puts a
-   * running tool down; otherwise it lets go of what is in hand (shift keeps
-   * it) and starts a marquee that takes every piece it touches.
+   * running tool down. Inside the box around several held pieces it grabs
+   * them all (see planBarePress); elsewhere it lets go of what is in hand
+   * (shift keeps it) and starts a marquee that takes every piece it touches.
    */
   const onStagePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || over) return;
@@ -1445,17 +1447,44 @@ export function CollageStudio({
       return;
     }
     const at = framePoint(event);
-    const additive = event.shiftKey;
-    const base = additive ? selection : EMPTY_SELECTION;
-    setSelection(base);
+    const plan = planBarePress(
+      at,
+      selection,
+      multiple ? selectionBox : null,
+      event.shiftKey,
+    );
     event.currentTarget.setPointerCapture(event.pointerId);
+    if (plan.kind === "drag") {
+      // Bare paper inside the group's box is part of the group: a drag from
+      // there carries every piece, and the hand is kept until release.
+      pressRef.current = {
+        at,
+        downAt: performance.now(),
+        selectOnClick: plan.selectOnClick,
+        moved: false,
+      };
+      setGesture({
+        kind: "move",
+        origins: piecesById(pieces, plan.dragIds),
+        grabbedAt: at,
+        copyOnDrag: event.altKey,
+      });
+      return;
+    }
+    setSelection(plan.base);
     pressRef.current = {
       at,
       downAt: performance.now(),
-      selectOnClick: base,
+      selectOnClick: plan.base,
       moved: false,
     };
-    setGesture({ kind: "marquee", start: at, end: at, base, additive });
+    setGesture({
+      kind: "marquee",
+      start: at,
+      end: at,
+      base: plan.base,
+      additive: plan.additive,
+    });
   };
 
   /** Starts a corner drag on the box around several pieces. */

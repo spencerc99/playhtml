@@ -1,7 +1,7 @@
 // ABOUTME: The set of pieces in hand in the collage studio and how clicks, shift and marquees change it.
 // ABOUTME: Pure decisions, so a press settles the same way in the studio and in tests.
 
-import type { Point } from "./collageGeometry";
+import type { Bounds, Point } from "./collageGeometry";
 import type { CollagePiece } from "./collageRecord";
 import { piecesUnder, planPress } from "./pieceStack";
 
@@ -154,5 +154,56 @@ export function planSelectionPress(
     selectOnDown: selectOnly(single.selectOnDown),
     dragIds: [single.dragId],
     selectOnClick: selectOnly(single.selectOnClick),
+  };
+}
+
+/** What a press on bare paper does: carry the hand, or sweep a marquee. */
+export type BarePressPlan =
+  | {
+      kind: "drag";
+      /** The pieces a drag from this press moves. */
+      dragIds: readonly string[];
+      /** Held when the press ends without travelling. */
+      selectOnClick: Selection;
+    }
+  | {
+      kind: "marquee";
+      /** Held as the marquee begins, and still held if it never travels. */
+      base: Selection;
+      additive: boolean;
+    };
+
+/**
+ * Decides a press on bare paper. With several pieces held, a press inside the
+ * box around them grabs the box, shift or not, so a drag moves them all the
+ * way it does in Figma; a click there without a drag lets go of everything,
+ * as any click on bare paper does, unless shift is held. Anywhere else the
+ * press starts a marquee: a plain one lets go of what was held, a shift one
+ * keeps it and adds to it.
+ */
+export function planBarePress(
+  point: Point,
+  selection: Selection,
+  groupBox: Bounds | null,
+  additive: boolean,
+): BarePressPlan {
+  const insideGroup =
+    selection.ids.length > 1 &&
+    groupBox !== null &&
+    point.x >= groupBox.x &&
+    point.x <= groupBox.x + groupBox.width &&
+    point.y >= groupBox.y &&
+    point.y <= groupBox.y + groupBox.height;
+  if (insideGroup) {
+    return {
+      kind: "drag",
+      dragIds: selection.ids,
+      selectOnClick: additive ? selection : EMPTY_SELECTION,
+    };
+  }
+  return {
+    kind: "marquee",
+    base: additive ? selection : EMPTY_SELECTION,
+    additive,
   };
 }

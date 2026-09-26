@@ -7,6 +7,7 @@ import type { CollagePiece } from "../entrypoints/scraps/collageRecord";
 import {
   EMPTY_SELECTION,
   marqueeSelection,
+  planBarePress,
   planSelectionPress,
   pruneSelection,
   selectMany,
@@ -224,5 +225,53 @@ describe("a press with several held", () => {
     });
     expect(plan?.selectOnDown).toEqual(selectOnly("middle"));
     expect(plan?.dragIds).toEqual(["middle"]);
+  });
+});
+
+describe("a press on bare paper", () => {
+  const held = selectMany(["top", "apart"]);
+  const groupBox = { x: 0, y: 0, width: 500, height: 500 };
+  const betweenThem = { x: 250, y: 250 };
+  const outside = { x: 700, y: 50 };
+
+  it("inside the box around several grabs them all", () => {
+    expect(planBarePress(betweenThem, held, groupBox, false)).toEqual({
+      kind: "drag",
+      dragIds: ["top", "apart"],
+      selectOnClick: EMPTY_SELECTION,
+    });
+  });
+
+  it("inside the box with shift still grabs them, and a click keeps them", () => {
+    expect(planBarePress(betweenThem, held, groupBox, true)).toEqual({
+      kind: "drag",
+      dragIds: ["top", "apart"],
+      selectOnClick: held,
+    });
+  });
+
+  it("outside the box starts a marquee that lets go of the hand", () => {
+    expect(planBarePress(outside, held, groupBox, false)).toEqual({
+      kind: "marquee",
+      base: EMPTY_SELECTION,
+      additive: false,
+    });
+  });
+
+  it("outside the box with shift starts a marquee that keeps the hand", () => {
+    expect(planBarePress(outside, held, groupBox, true)).toEqual({
+      kind: "marquee",
+      base: held,
+      additive: true,
+    });
+  });
+
+  it("with one piece or none held always starts a marquee", () => {
+    expect(planBarePress(betweenThem, selectOnly("top"), groupBox, false).kind).toBe(
+      "marquee",
+    );
+    expect(planBarePress(betweenThem, EMPTY_SELECTION, null, false).kind).toBe(
+      "marquee",
+    );
   });
 });
