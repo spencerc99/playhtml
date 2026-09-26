@@ -85,8 +85,13 @@ import { CollageBakeError, bakeCollage } from "./bakeCollage";
 import { bakeCollageBack, resolveBackFavicons } from "./bakeCollageBack";
 import { videoExportSupport } from "./imageAnimation";
 import { useCollageAnimates } from "./useCollageAnimates";
-import type { CollageBackContent } from "./collageBack";
 import { CollageBackFace } from "./CollageBackFace";
+import { BackLookTuner } from "./BackLookTuner";
+import {
+  BACK_LOOK,
+  type BackLook,
+  type CollageBackContent,
+} from "./collageBack";
 import { saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
@@ -249,6 +254,7 @@ export function CollageStudio({
   const [drawer, setDrawer] = useState(() => readDrawerPreference());
   /** Whether the collage is turned over to its back, where the sources are. */
   const [over, setOver] = useState(false);
+  const [backLook, setBackLook] = useState<BackLook>(BACK_LOOK);
   /** The front as the back shows it through the paper. */
   const [bleed, setBleed] = useState<Blob | null>(null);
   /** When the stored collage last changed, for the back's dates. */
@@ -1223,6 +1229,7 @@ export function CollageStudio({
         content: backContent,
         front,
         favicons: await resolveBackFavicons(backContent.sources),
+        look: backLook,
       });
       saveFile(front, `${name} front.png`);
       saveFile(back, `${name} back.png`);
@@ -1598,6 +1605,7 @@ export function CollageStudio({
                 frame={frame}
                 paper={paper}
                 content={backContent}
+                look={backLook}
                 front={bleed}
                 showing={over}
                 onProblem={onBackProblem}
@@ -1629,6 +1637,10 @@ export function CollageStudio({
 
           {showKeys && <KeysPopover onClose={() => setShowKeys(false)} />}
         </div>
+
+        {import.meta.env.DEV && over && (
+          <BackLookTuner look={backLook} onLook={setBackLook} />
+        )}
 
         <div className="collage-bar">
           {/* The back already carries the title and the count, so while it

@@ -13,6 +13,7 @@ import type { CollagePaper } from "./collageFormats";
 import {
   backInk,
   backPaper,
+  type BackLook,
   collageBackMarkup,
   type BackFavicon,
   type CollageBackContent,
@@ -29,6 +30,7 @@ interface CollageBackFaceProps {
   frame: CollageFrame;
   paper: CollagePaper;
   content: CollageBackContent;
+  look: BackLook;
   /** The baked front, shown mirrored and faint, or null while there is none. */
   front: Blob | null;
   /** Whether the collage is turned over, so this face is the one being read. */
@@ -80,6 +82,7 @@ export function CollageBackFace({
   frame,
   paper,
   content,
+  look,
   front,
   showing,
   onProblem,
@@ -161,9 +164,10 @@ export function CollageBackFace({
             favicons,
             bleed,
             markIcon: assets.markIcon,
+            look,
           })
         : null,
-    [assets, bleed, content, favicons, frame, paper],
+    [assets, bleed, content, favicons, frame, look, paper],
   );
 
   // The written title is overlaid with a field set in the same place and type,
@@ -173,7 +177,7 @@ export function CollageBackFace({
     setPlace(container && markup ? titlePlace(container) : null);
   }, [markup]);
 
-  const card = backPaper(paper);
+  const card = backPaper(paper, look);
   const ink = backInk(card.color);
   const name = content.title.trim() || "untitled collage";
   return (

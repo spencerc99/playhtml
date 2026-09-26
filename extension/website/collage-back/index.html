@@ -1,0 +1,30 @@
+<!-- ABOUTME: Tuning bench for the back of a scraps collage, with no extension install. -->
+<!-- ABOUTME: Serves at /collage-back/; renders the real back with a test collage or an imported .collage.json. -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>collage back bench</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #ebe6de;
+        color: #3d3833;
+        font: 12px/1.4 "Martian Mono", ui-monospace, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="reactContent"></div>
+    <script type="module" src="./collage-back.tsx"></script>
+  </body>
+</html>
