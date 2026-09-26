@@ -104,7 +104,8 @@ export interface PieceActionsProps {
   /** The frame's size, so the strip can be kept inside it. */
   frame: { width: number; height: number };
   onOrder: (to: "forward" | "backward" | "front" | "back") => void;
-  onFlip: (axis: "x" | "y") => void;
+  /** Flipping, when this editor offers it from the strip. */
+  onFlip?: (axis: "x" | "y") => void;
   onCrop: () => void;
   onUncrop: () => void;
   onCutOut: () => void;
@@ -201,22 +202,26 @@ export function PieceActions({
       run: () => onOrder("forward"),
     },
     { separator: true, key: "after-order" },
-    {
-      key: "flip-x",
-      label: "Flip across",
-      hint: "H",
-      glyph: GLYPHS.flipX,
-      run: () => onFlip("x"),
-      ...(piece ? { on: piece.flipX } : {}),
-    },
-    {
-      key: "flip-y",
-      label: "Flip down",
-      hint: "V",
-      glyph: GLYPHS.flipY,
-      run: () => onFlip("y"),
-      ...(piece ? { on: piece.flipY } : {}),
-    },
+    ...(onFlip
+      ? [
+          {
+            key: "flip-x",
+            label: "Flip across",
+            hint: "H",
+            glyph: GLYPHS.flipX,
+            run: () => onFlip("x"),
+            ...(piece ? { on: piece.flipX } : {}),
+          },
+          {
+            key: "flip-y",
+            label: "Flip down",
+            hint: "V",
+            glyph: GLYPHS.flipY,
+            run: () => onFlip("y"),
+            ...(piece ? { on: piece.flipY } : {}),
+          },
+        ]
+      : []),
     ...(piece
       ? [
           {

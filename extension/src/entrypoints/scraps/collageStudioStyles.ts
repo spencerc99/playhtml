@@ -1268,6 +1268,19 @@ export const COLLAGE_STUDIO_STYLES = `
     letter-spacing: 0.02em;
   }
 
+  /* Why the regular editor opened when the tldraw one was chosen. */
+  .collage-engine-notice {
+    position: absolute;
+    left: 50%;
+    bottom: 52px;
+    z-index: 10002;
+    margin: 0;
+    transform: translateX(-50%);
+    border: 1px solid rgba(61, 56, 51, 0.12);
+    border-radius: 4px;
+    pointer-events: none;
+  }
+
   .collage-notice--quiet {
     border-top-color: rgba(61, 56, 51, 0.12);
     background: rgba(74, 154, 138, 0.08);

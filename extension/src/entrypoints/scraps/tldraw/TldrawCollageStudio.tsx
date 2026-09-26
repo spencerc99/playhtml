@@ -1,38 +1,50 @@
-// ABOUTME: Dev-only prototype of the collage studio built on the tldraw SDK, to compare its feel with ours.
-// ABOUTME: Reads saved collages but writes only to its own IndexedDB store, never to the real collages.
+// ABOUTME: The collage editor built on the tldraw SDK, chosen in settings in place of the regular one.
+// ABOUTME: Edits the same collage records through the same autosave, so either editor can open any collage.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Tldraw,
   useEditor,
   useValue,
-  getSnapshot,
   type Editor,
   type TLAssetStore,
   type TLCameraOptions,
   type TLComponents,
   type TLShape,
+  type TLShapeId,
   type TLShapePartial,
+  type TLUiActionItem,
   type TLUiOverrides,
   type TldrawOptions,
 } from "tldraw";
 import "tldraw/tldraw.css";
-import { getAssetUrlsByImport } from "@tldraw/assets/imports.vite";
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import { resolveScrapImageSrc } from "@movement/utils/scrapImageSource";
-import type { CollageRecord } from "../collageRecord";
+import {
+  clearCrop,
+  collageProvenance,
+  createCollageId,
+  normalizeStack,
+  type CollagePiece,
+  type CollageRecord,
+} from "../collageRecord";
 import {
   DEFAULT_FORMAT,
   DEFAULT_PAPER,
   formatOf,
   type CollageFormat,
+  type CollageFormatName,
   type CollagePaper,
 } from "../collageFormats";
-import { fanOutPlacement, type Point } from "../collageGeometry";
-import { DEFAULT_CUTOUT_TOLERANCE } from "../backgroundCutout";
+import { fanOutPlacement, type PieceBox, type Point } from "../collageGeometry";
+import { DEFAULT_CUTOUT_TOLERANCE, type PieceCutout } from "../backgroundCutout";
 import { paperBackground } from "../paperGrain";
 import { ScrapTray } from "../ScrapTray";
 import { StudioTools } from "../StudioTools";
+import { FormatControl } from "../FormatControl";
+import { PieceActions } from "../PieceActions";
+import { CutoutControl } from "../CutoutControl";
+import { ROTATE_HANDLE_OFFSET } from "../studioPanels";
 import {
   defaultDrawerWidth,
   readDrawerPreference,
@@ -40,41 +52,36 @@ import {
   type DrawerPreference,
 } from "../drawerPreference";
 import { CollageBakeError, bakeCollage } from "../bakeCollage";
+import { bakeCollageBack, resolveBackFavicons } from "../bakeCollageBack";
+import type { CollageBackContent } from "../collageBack";
+import { videoExportSupport } from "../imageAnimation";
+import { useCollageAnimates } from "../useCollageAnimates";
+import { saveCollage } from "../collageStore";
+import { useCollageAutosave, type CollageDraft } from "../useCollageAutosave";
+import type { SaveStanding } from "../autosaveSchedule";
 import { ScrapPieceShapeUtil } from "./ScrapPieceShapeUtil";
+import { TLDRAW_ASSET_URLS } from "./tldrawAssetUrls";
 import {
   SCRAP_PIECE_TYPE,
   imageAssetFor,
+  pieceForDrawing,
   pieceToShape,
-  piecesToRecords,
+  piecesToShapes,
   placedPiece,
-  shapeToPiece,
   shapesToPieces,
   type PieceShape,
+  type PieceSources,
 } from "./pieceShapes";
-import {
-  NEW_DRAFT_ID,
-  loadPrototypeDocument,
-  savePrototypeDocument,
-  type PrototypeDocument,
-} from "./prototypeStore";
 
-const LICENSE_KEY: string | undefined = import.meta.env.WXT_TLDRAW_LICENSE_KEY;
-if (!LICENSE_KEY) {
-  throw new Error(
-    "WXT_TLDRAW_LICENSE_KEY is not set. Put the tldraw license key in extension/.env " +
-      "(WXT_TLDRAW_LICENSE_KEY=...) before building with WXT_COLLAGE_ENGINE=tldraw.",
-  );
-}
-
-/** Stage padding around the frame, in screen pixels, as in the hand-built studio. */
+/** Stage padding around the frame, in screen pixels, as in the regular editor. */
 const STAGE_PADDING = 12;
 /** Room kept clear at the top of the stage for the tool row. */
 const STAGE_TOP_BAND = 52;
-/** How long edits settle before the prototype writes them down. */
-const SAVE_DELAY_MS = 500;
-
-/** Fonts, icons and translations bundled with the extension, so nothing loads from a CDN. */
-const ASSET_URLS = getAssetUrlsByImport();
+/** How far a duplicate lands from its original, in frame units. */
+const COPY_OFFSET = 24;
+const ROTATION_SNAP = Math.PI / 12;
+/** The teal the regular editor draws its selection in. */
+const SELECTION_TEAL = "#4a9a8a";
 
 const SHAPE_UTILS = [ScrapPieceShapeUtil];
 
@@ -86,7 +93,7 @@ const OPTIONS: Partial<TldrawOptions> = {
 /** Scrap images display from their kept local copies, like everywhere else on the page. */
 const ASSET_STORE: TLAssetStore = {
   upload: async () => {
-    throw new Error("The collage studio places scraps from the drawer and never uploads files");
+    throw new Error("The collage editor places scraps from the drawer and never uploads files");
   },
   resolve: (asset) => {
     const src = asset.props.src;
@@ -94,36 +101,26 @@ const ASSET_STORE: TLAssetStore = {
   },
 };
 
-/** The only tool is select; drawing, text and shape tools are left out. */
-const KEPT_ACTIONS = new Set([
-  "undo",
-  "redo",
-  "copy",
-  "cut",
-  "paste",
-  "delete",
-  "duplicate",
-  "select-all",
-  "select-none",
-  "bring-forward",
-  "bring-to-front",
-  "send-backward",
-  "send-to-back",
-  "flip-horizontal",
-  "flip-vertical",
-  "rotate-cw",
-  "rotate-ccw",
-]);
-
-const OVERRIDES: TLUiOverrides = {
-  tools(_editor, tools) {
-    return { select: tools.select };
-  },
-  actions(_editor, actions) {
-    return Object.fromEntries(
-      Object.entries(actions).filter(([id]) => KEPT_ACTIONS.has(id)),
-    );
-  },
+/**
+ * tldraw's actions kept here, with the keys the regular editor uses for
+ * stacking: brackets move one step, shift + brackets go all the way.
+ */
+const KEPT_ACTIONS: Record<string, string | undefined> = {
+  undo: undefined,
+  redo: undefined,
+  copy: undefined,
+  cut: undefined,
+  paste: undefined,
+  delete: undefined,
+  duplicate: undefined,
+  "select-all": undefined,
+  "select-none": undefined,
+  "flip-horizontal": undefined,
+  "flip-vertical": undefined,
+  "bring-forward": "]",
+  "send-backward": "[",
+  "bring-to-front": "shift+]",
+  "send-to-back": "shift+[",
 };
 
 function cameraOptionsFor(frame: CollageFormat): Partial<TLCameraOptions> {
@@ -136,7 +133,7 @@ function cameraOptionsFor(frame: CollageFormat): Partial<TLCameraOptions> {
       padding: { x: STAGE_PADDING, y: STAGE_TOP_BAND },
       origin: { x: 0.5, y: 0.5 },
       // tldraw's "fit-max" takes the smaller of the two axis fits, so the
-      // whole frame shows, never above 100% like the hand-built studio.
+      // whole frame shows, never above 100% like the regular editor.
       initialZoom: "fit-max-100",
       baseZoom: "fit-max-100",
       behavior: "fixed",
@@ -168,80 +165,97 @@ function isPieceShape(shape: TLShape): boolean {
 }
 
 function pieceShapesOf(editor: Editor): PieceShape[] {
-  return editor
-    .getCurrentPageShapes()
-    .filter(isPieceShape) as unknown as PieceShape[];
+  return editor.getCurrentPageShapes().filter(isPieceShape) as unknown as PieceShape[];
 }
 
-type Standing =
-  | { kind: "untouched" }
-  | { kind: "saving" }
-  | { kind: "saved" }
-  | { kind: "failed"; reason: string };
+function asShapeId(id: string): TLShapeId {
+  return id as TLShapeId;
+}
+
+/** What the toolbar says about where the work stands, as the regular editor says it. */
+function standingWords(standing: SaveStanding): { text: string; problem: boolean } {
+  switch (standing.kind) {
+    case "untouched":
+      return { text: "", problem: false };
+    case "saving":
+      return { text: "saving...", problem: false };
+    case "saved":
+      return { text: "saved", problem: false };
+    case "previewBehind":
+      return { text: "saved · preview out of date", problem: false };
+    case "failed":
+      return { text: `not saved — ${standing.reason}`, problem: true };
+  }
+}
+
+/**
+ * Swaps a shape for the one a changed piece draws as, keeping its id, place,
+ * stacking and the piece it was made from. Cutting a picture's background
+ * turns tldraw's image shape into our scrap shape and back.
+ */
+function replaceShape(editor: Editor, shape: PieceShape, next: CollagePiece): PieceShape {
+  const drawn = pieceToShape(next, shape.index);
+  const replacement = {
+    ...drawn,
+    x: shape.x,
+    y: shape.y,
+    rotation: shape.rotation,
+    meta: { ...drawn.meta, pieceId: shape.meta.pieceId },
+  } as PieceShape;
+  editor.run(() => {
+    if (replacement.type === "image" && next.scrap.kind === "image") {
+      const asset = imageAssetFor(next.scrap);
+      if (!editor.getAsset(asset.id)) editor.createAssets([asset]);
+    }
+    if (replacement.type === shape.type) {
+      editor.updateShape(replacement as unknown as TLShapePartial);
+    } else {
+      editor.deleteShapes([asShapeId(shape.id)]);
+      editor.createShape(replacement as unknown as TLShapePartial);
+    }
+    editor.select(asShapeId(replacement.id));
+  });
+  return replacement;
+}
 
 interface TldrawCollageStudioProps {
+  /** A license key already known to be in date. */
+  licenseKey: string;
   scraps: readonly ScrapItem[];
-  /** The collage opened from the list, read but never written. */
+  /** The collage being edited, or null when starting a fresh one. */
   editing: CollageRecord | null;
+  onSaved: (record: CollageRecord) => void;
   onLeave: () => void;
 }
 
-export default function TldrawCollageStudio(props: TldrawCollageStudioProps) {
-  const docId = props.editing?.id ?? NEW_DRAFT_ID;
-  const [opened, setOpened] = useState<
-    { doc: PrototypeDocument | null } | { error: string } | null
-  >(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    loadPrototypeDocument(docId)
-      .then((doc) => {
-        if (!cancelled) setOpened({ doc });
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setOpened({
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [docId]);
-
-  if (!opened) {
-    return <p className="collage-studio__label">opening the tldraw studio...</p>;
-  }
-  if ("error" in opened) {
-    return (
-      <p className="collage-notice" role="status">
-        the tldraw studio could not open its saved work — {opened.error}
-      </p>
-    );
-  }
-  return <StudioSurface {...props} docId={docId} doc={opened.doc} />;
-}
-
-function StudioSurface({
+export default function TldrawCollageStudio({
+  licenseKey,
   scraps,
   editing,
+  onSaved,
   onLeave,
-  docId,
-  doc,
-}: TldrawCollageStudioProps & { docId: string; doc: PrototypeDocument | null }) {
-  const format = doc?.format ?? editing?.format ?? DEFAULT_FORMAT;
-  const paper = doc?.paper ?? editing?.paper ?? DEFAULT_PAPER;
+}: TldrawCollageStudioProps) {
+  const [format, setFormat] = useState<CollageFormatName>(editing?.format ?? DEFAULT_FORMAT);
+  const [paper, setPaper] = useState<CollagePaper>(editing?.paper ?? DEFAULT_PAPER);
+  const [title, setTitle] = useState(editing?.title ?? "");
   const frame = formatOf(format);
 
   const [editor, setEditor] = useState<Editor | null>(null);
   const [drawer, setDrawer] = useState(() => readDrawerPreference());
-  const [standing, setStanding] = useState<Standing>({ kind: "untouched" });
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ tone: "problem" | "quiet"; text: string } | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [videoProgress, setVideoProgress] = useState<number | null>(null);
+  const [cutoutSession, setCutoutSession] = useState<{
+    shapeId: string;
+    before: PieceCutout | undefined;
+  } | null>(null);
   const draggingScrapRef = useRef<ScrapItem | null>(null);
-  const saveTimerRef = useRef<number | null>(null);
-  const saveRef = useRef<() => void>(() => {});
+
+  // Every piece handed to tldraw, so it comes back with nothing lost.
+  const sourcesRef = useRef<PieceSources>(new Map());
+  const recordOrderRef = useRef<string[]>(editing?.pieces.map((piece) => piece.id) ?? []);
+  const collageIdRef = useRef(editing?.id ?? createCollageId());
+  const createdAtRef = useRef(editing?.createdAt ?? Date.now());
 
   const updateDrawer = useCallback((change: Partial<DrawerPreference>) => {
     setDrawer((current) => {
@@ -251,74 +265,285 @@ function StudioSurface({
     });
   }, []);
 
+  const piecesNow = useCallback(
+    (from: Editor | null): CollagePiece[] =>
+      from
+        ? shapesToPieces(pieceShapesOf(from), sourcesRef.current, recordOrderRef.current)
+        : (editing?.pieces ?? []),
+    [editing],
+  );
+
+  const pieces = useValue("collage pieces", () => piecesNow(editor), [editor, piecesNow]);
+
+  // The collage as it stands, read at the moment of a write. Whatever the
+  // opened record carried that this editor does not show rides along as it was.
+  const settingsRef = useRef({ title, format, paper });
+  settingsRef.current = { title, format, paper };
+  const editorRef = useRef<Editor | null>(null);
+  editorRef.current = editor;
+  const draft = useCallback((): CollageDraft => {
+    const { title: name, format: formatName, paper: sheet } = settingsRef.current;
+    const size = formatOf(formatName);
+    const current = piecesNow(editorRef.current);
+    const { preview: _preview, ...carried } = editing ?? ({} as Partial<CollageRecord>);
+    return {
+      record: {
+        ...carried,
+        id: collageIdRef.current,
+        title: name.trim(),
+        createdAt: createdAtRef.current,
+        updatedAt: Date.now(),
+        frame: { width: size.width, height: size.height },
+        format: formatName,
+        paper: sheet,
+        pieces: current,
+      },
+      hasContent: current.length > 0 || name.trim().length > 0,
+    };
+  }, [editing, piecesNow]);
+
+  const autosave = useCollageAutosave({
+    draft,
+    bake: () => {
+      const { record } = draft();
+      return bakeCollage({
+        frame: formatOf(record.format),
+        pieces: record.pieces,
+        paper: record.paper.color,
+        grain: record.paper.grain,
+      });
+    },
+    store: saveCollage,
+    onStored: onSaved,
+    startsStored: editing !== null,
+    reopening: editing,
+  });
+  const { noteChange, flush } = autosave;
+
+  // A title, paper or format change is an edit like any move.
+  const firstSettingsRef = useRef(true);
+  useEffect(() => {
+    if (firstSettingsRef.current) {
+      firstSettingsRef.current = false;
+      return;
+    }
+    noteChange();
+  }, [title, format, paper.color, paper.grain, noteChange]);
+
+  // Every edit to the pieces feeds the same schedule.
+  useEffect(() => {
+    if (!editor) return;
+    return editor.store.listen(() => noteChange(), { source: "user", scope: "document" });
+  }, [editor, noteChange]);
+
+  // Leaving the tab, or the page itself, writes what is pending right away.
+  useEffect(() => {
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    const onPageHide = () => flush();
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [flush]);
+
   const cameraOptions = useMemo(() => cameraOptionsFor(frame), [frame]);
   const components = useMemo<TLComponents>(
     () => ({ Background: paperComponent(frame, paper) }),
     [frame, paper],
   );
 
-  const save = useCallback(() => {
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    if (!editor) return;
-    setStanding({ kind: "saving" });
-    savePrototypeDocument({
-      id: docId,
-      format,
-      paper,
-      document: getSnapshot(editor.store).document,
-      updatedAt: Date.now(),
-    })
-      .then(() => setStanding({ kind: "saved" }))
-      .catch((error: unknown) =>
-        setStanding({
-          kind: "failed",
-          reason: error instanceof Error ? error.message : String(error),
-        }),
-      );
-  }, [docId, editor, format, paper]);
-  saveRef.current = save;
-
-  // Every edit to the document schedules one write; a burst of edits during a
-  // drag settles into a single write once it pauses.
+  // A new format moves the locked frame, so the camera fits to it again.
   useEffect(() => {
     if (!editor) return;
-    const stop = editor.store.listen(
-      () => {
-        if (saveTimerRef.current !== null) return;
-        saveTimerRef.current = window.setTimeout(() => saveRef.current(), SAVE_DELAY_MS);
+    editor.setCameraOptions(cameraOptions);
+    editor.setCamera(editor.getCamera(), { immediate: true });
+  }, [editor, cameraOptions]);
+
+  const selectedShapes = useValue(
+    "selected pieces",
+    () =>
+      editor
+        ? (editor.getSelectedShapes().filter(isPieceShape) as unknown as PieceShape[])
+        : [],
+    [editor],
+  );
+  const only = selectedShapes.length === 1 ? selectedShapes[0] : null;
+  const selectedIds = selectedShapes.map((shape) => asShapeId(shape.id));
+
+  // The cutout session belongs to one piece and ends when it is let go.
+  useEffect(() => {
+    if (cutoutSession && only?.id !== cutoutSession.shapeId) setCutoutSession(null);
+  }, [cutoutSession, only?.id]);
+
+  const addPiece = useCallback(
+    (item: ScrapItem, at: Point) => {
+      if (!editor) return;
+      const piece = placedPiece(item, at);
+      const shape = pieceToShape(piece, editor.getHighestIndexForParent(editor.getCurrentPageId()));
+      sourcesRef.current.set(piece.id, { piece, written: shape });
+      editor.markHistoryStoppingPoint("place scrap");
+      editor.run(() => {
+        if (item.kind === "image") {
+          const asset = imageAssetFor(item);
+          if (!editor.getAsset(asset.id)) editor.createAssets([asset]);
+        }
+        editor.createShape(shape as unknown as TLShapePartial);
+        editor.select(asShapeId(shape.id));
+      });
+    },
+    [editor],
+  );
+
+  const startCrop = useCallback(() => {
+    if (!editor || !only) return;
+    editor.select(asShapeId(only.id));
+    editor.setCroppingShape(asShapeId(only.id));
+    editor.setCurrentTool("select.crop.idle");
+    // The strip's button had focus; the crop's keys belong to the editor.
+    editor.focus();
+  }, [editor, only]);
+
+  const uncrop = useCallback(() => {
+    if (!editor || !only || !only.props.crop) return;
+    editor.markHistoryStoppingPoint("uncrop");
+    const whole = clearCrop(pieceForDrawing(only));
+    const drawn = pieceToShape(whole, only.index);
+    editor.updateShape({
+      id: asShapeId(only.id),
+      type: only.type,
+      x: drawn.x,
+      y: drawn.y,
+      props: { w: drawn.props.w, h: drawn.props.h, crop: null },
+    } as TLShapePartial);
+  }, [editor, only]);
+
+  /** Opens the edge control on the one selected picture, cutting it at the default edge first. */
+  const beginCutout = useCallback(() => {
+    if (!editor || !only || only.meta.scrap.kind !== "image") return;
+    const piece = pieceForDrawing(only);
+    setCutoutSession({ shapeId: only.id, before: piece.cutout });
+    if (piece.cutout) return;
+    editor.markHistoryStoppingPoint("cutout");
+    replaceShape(editor, only, {
+      ...piece,
+      cutout: { method: "edge-color", tolerance: DEFAULT_CUTOUT_TOLERANCE },
+    });
+  }, [editor, only]);
+
+  const tuneCutout = useCallback(
+    (tolerance: number) => {
+      if (!editor || !only || only.type !== SCRAP_PIECE_TYPE) return;
+      editor.updateShape({
+        id: asShapeId(only.id),
+        type: SCRAP_PIECE_TYPE,
+        props: { cutout: { method: "edge-color", tolerance } },
+      } as TLShapePartial);
+    },
+    [editor, only],
+  );
+
+  const keepBackground = useCallback(() => {
+    if (!editor || !only) return;
+    const { cutout: _cut, ...uncut } = pieceForDrawing(only);
+    editor.markHistoryStoppingPoint("keep background");
+    replaceShape(editor, only, uncut);
+    setCutoutSession(null);
+  }, [editor, only]);
+
+  const order = useCallback(
+    (to: "forward" | "backward" | "front" | "back") => {
+      if (!editor || selectedIds.length === 0) return;
+      editor.markHistoryStoppingPoint("restack");
+      if (to === "forward") editor.bringForward(selectedIds);
+      else if (to === "backward") editor.sendBackward(selectedIds);
+      else if (to === "front") editor.bringToFront(selectedIds);
+      else editor.sendToBack(selectedIds);
+      editor.focus();
+    },
+    [editor, selectedIds],
+  );
+
+  const duplicate = useCallback(() => {
+    if (!editor || selectedIds.length === 0) return;
+    editor.markHistoryStoppingPoint("duplicate");
+    editor.duplicateShapes(selectedIds, { x: COPY_OFFSET, y: COPY_OFFSET });
+    editor.focus();
+  }, [editor, selectedIds]);
+
+  const remove = useCallback(() => {
+    if (!editor || selectedIds.length === 0) return;
+    editor.markHistoryStoppingPoint("remove");
+    editor.deleteShapes(selectedIds);
+    editor.focus();
+  }, [editor, selectedIds]);
+
+  // The strip's single-letter keys, read through a ref so tldraw's action
+  // list can stay put while the selection changes.
+  const keysRef = useRef({ crop: startCrop, cutout: beginCutout });
+  keysRef.current = { crop: startCrop, cutout: beginCutout };
+  const overrides = useMemo<TLUiOverrides>(
+    () => ({
+      tools(_editor, tools) {
+        return { select: tools.select };
       },
-      { source: "user", scope: "document" },
-    );
-    const flush = () => {
-      if (saveTimerRef.current !== null) saveRef.current();
-    };
-    const onHidden = () => {
-      if (document.visibilityState === "hidden") flush();
-    };
-    window.addEventListener("pagehide", flush);
-    document.addEventListener("visibilitychange", onHidden);
-    return () => {
-      stop();
-      flush();
-      window.removeEventListener("pagehide", flush);
-      document.removeEventListener("visibilitychange", onHidden);
-    };
-  }, [editor]);
+      actions(_editor, actions) {
+        const kept = Object.fromEntries(
+          Object.entries(actions)
+            .filter(([id]) => id in KEPT_ACTIONS)
+            .map(([id, action]) => [
+              id,
+              KEPT_ACTIONS[id] ? { ...action, kbd: KEPT_ACTIONS[id] } : action,
+            ]),
+        ) as Record<string, TLUiActionItem>;
+        kept["collage-crop"] = {
+          id: "collage-crop",
+          label: "action.crop" as TLUiActionItem["label"],
+          kbd: "c",
+          onSelect: () => keysRef.current.crop(),
+        };
+        kept["collage-cutout"] = {
+          id: "collage-cutout",
+          label: "action.cutout" as TLUiActionItem["label"],
+          kbd: "b",
+          onSelect: () => keysRef.current.cutout(),
+        };
+        return kept;
+      },
+    }),
+    [],
+  );
 
   const onMount = useCallback(
     (mounted: Editor) => {
       // Pieces snap only while cmd/ctrl is held, tldraw's own default.
       mounted.user.updateUserPreferences({ isSnapMode: false });
+      // The selection is drawn in the regular editor's teal.
+      const theme = mounted.getCurrentTheme();
+      mounted.updateTheme({
+        ...theme,
+        colors: {
+          ...theme.colors,
+          light: {
+            ...theme.colors.light,
+            selectionStroke: SELECTION_TEAL,
+            selectionFill: "rgba(74, 154, 138, 0.14)",
+            brushStroke: SELECTION_TEAL,
+            brushFill: "rgba(74, 154, 138, 0.1)",
+          },
+        },
+      });
       // Only scraps from the drawer become pieces; pasted text, links and
       // files are ignored rather than turned into tldraw's own shapes.
       for (const type of ["text", "url", "files", "svg-text", "embed", "excalidraw"] as const) {
         mounted.registerExternalContentHandler(type, () => {});
       }
-      if (!doc && editing && editing.pieces.length > 0) {
-        const { shapes, assets } = piecesToRecords(editing.pieces);
+      if (editing && editing.pieces.length > 0) {
+        const { shapes, assets, sources } = piecesToShapes(editing.pieces);
+        sourcesRef.current = sources;
         mounted.run(
           () => {
             mounted.createAssets(assets);
@@ -328,130 +553,176 @@ function StudioSurface({
         );
         mounted.clearHistory();
       }
-      // Reachable from devtools, for poking at the prototype while comparing it.
+      // Reachable from devtools, for looking into the editor's own state.
       (window as unknown as { collageEditor?: Editor }).collageEditor = mounted;
       setEditor(mounted);
     },
-    [doc, editing],
+    [editing],
   );
 
-  const addPiece = useCallback(
-    (item: ScrapItem, at: Point) => {
-      if (!editor) return;
-      const piece = placedPiece(item, at);
-      const index = editor.getHighestIndexForParent(editor.getCurrentPageId());
-      const shape = pieceToShape(piece, index);
-      editor.markHistoryStoppingPoint("place scrap");
-      editor.run(() => {
-        if (item.kind === "image") {
-          const asset = imageAssetFor(item);
-          if (!editor.getAsset(asset.id)) editor.createAssets([asset]);
-        }
-        editor.createShape(shape as unknown as TLShapePartial);
-        editor.select(shape.id as TLShape["id"]);
-      });
+  const canUndo = useValue("can undo", () => editor?.getCanUndo() ?? false, [editor]);
+  const canRedo = useValue("can redo", () => editor?.getCanRedo() ?? false, [editor]);
+  const camera = useValue("camera", () => editor?.getCamera() ?? { x: 0, y: 0, z: 1 }, [editor]);
+  /** Tools float over the selection only while it rests. */
+  const resting = useValue(
+    "selection at rest",
+    () => (editor ? editor.isInAny("select.idle", "select.pointing_selection", "select.pointing_shape") : false),
+    [editor],
+  );
+  const selection = useValue(
+    "selection frame",
+    () => {
+      if (!editor || editor.getSelectedShapeIds().length === 0) return null;
+      const rotated = editor.getSelectionRotatedPageBounds();
+      const bounds = editor.getSelectionPageBounds();
+      if (!rotated || !bounds) return null;
+      return {
+        rotation: editor.getSelectionRotation(),
+        rotated: { x: rotated.x, y: rotated.y, w: rotated.w, h: rotated.h },
+        box: { x: bounds.x, y: bounds.y, width: bounds.w, height: bounds.h } as PieceBox,
+      };
     },
     [editor],
   );
 
-  const pieceCount = useValue(
-    "piece count",
-    () => (editor ? pieceShapesOf(editor).length : 0),
-    [editor],
-  );
-  const canUndo = useValue("can undo", () => editor?.getCanUndo() ?? false, [editor]);
-  const canRedo = useValue("can redo", () => editor?.getCanRedo() ?? false, [editor]);
-  const selected = useValue(
-    "selected pieces",
-    () => (editor ? editor.getSelectedShapes().filter(isPieceShape) : []),
-    [editor],
-  );
-  const only = selected.length === 1 ? (selected[0] as unknown as PieceShape) : null;
-
-  /** Turns the one selected picture's cutout on or off, as one undoable step. */
-  const toggleCutout = () => {
-    if (!editor || !only) return;
-    const piece = shapeToPiece(only, 0);
-    if (piece.scrap.kind !== "image") return;
-    const next = piece.cutout
-      ? { ...piece, cutout: undefined }
-      : { ...piece, cutout: { method: "edge-color" as const, tolerance: DEFAULT_CUTOUT_TOLERANCE } };
-    const replacement = pieceToShape(next, only.index);
-    editor.markHistoryStoppingPoint("cutout");
-    editor.run(() => {
-      editor.deleteShapes([only.id as TLShape["id"]]);
-      if (replacement.type === "image" && piece.scrap.kind === "image") {
-        const asset = imageAssetFor(piece.scrap);
-        if (!editor.getAsset(asset.id)) editor.createAssets([asset]);
-      }
-      editor.createShape(replacement as unknown as TLShapePartial);
-      editor.select(replacement.id as TLShape["id"]);
-    });
+  /** Turns the selection about its center from the knob, snapping with shift. */
+  const beginRotate = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!editor || !selection) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const knob = event.currentTarget;
+    knob.setPointerCapture(event.pointerId);
+    const ids = editor.getSelectedShapeIds();
+    const { rotated, rotation } = selection;
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const center = {
+      x: rotated.x + (rotated.w / 2) * cos - (rotated.h / 2) * sin,
+      y: rotated.y + (rotated.w / 2) * sin + (rotated.h / 2) * cos,
+    };
+    const angleTo = (clientX: number, clientY: number) => {
+      const at = editor.screenToPage({ x: clientX, y: clientY });
+      return Math.atan2(at.y - center.y, at.x - center.x);
+    };
+    const startAngle = angleTo(event.clientX, event.clientY);
+    let applied = rotation;
+    editor.markHistoryStoppingPoint("rotate");
+    const onMove = (move: PointerEvent) => {
+      let target = rotation + angleTo(move.clientX, move.clientY) - startAngle;
+      if (move.shiftKey) target = Math.round(target / ROTATION_SNAP) * ROTATION_SNAP;
+      const delta = target - applied;
+      if (delta === 0) return;
+      editor.rotateShapesBy(ids, delta, { center });
+      applied = target;
+    };
+    const onUp = () => {
+      editor.focus();
+      knob.removeEventListener("pointermove", onMove);
+      knob.removeEventListener("pointerup", onUp);
+      knob.removeEventListener("pointercancel", onUp);
+    };
+    knob.addEventListener("pointermove", onMove);
+    knob.addEventListener("pointerup", onUp);
+    knob.addEventListener("pointercancel", onUp);
   };
 
-  const startCrop = () => {
-    if (!editor || !only) return;
-    editor.setCroppingShape(only.id as TLShape["id"]);
-    editor.setCurrentTool("select.crop.idle");
+  const animates = useCollageAnimates(pieces);
+  const videoSupport = videoExportSupport();
+
+  const backContent = useMemo<CollageBackContent>(
+    () => ({
+      title,
+      createdAt: createdAtRef.current,
+      changedAt: editing?.updatedAt ?? null,
+      pieceCount: pieces.length,
+      formatLabel: `${frame.label} · ${frame.width} × ${frame.height}`,
+      sources: collageProvenance(normalizeStack(pieces)),
+    }),
+    [editing, frame, pieces, title],
+  );
+
+  const saveFile = (file: Blob, name: string) => {
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
-  const exportPng = async () => {
-    if (!editor) return;
-    const pieces = shapesToPieces(pieceShapesOf(editor));
+  const failure = (what: string, error: unknown) =>
+    error instanceof CollageBakeError
+      ? `could not export ${what} — these could not be drawn: ${error.failures
+          .map((item) => item.label)
+          .join(", ")}`
+      : `could not export ${what} — ${error instanceof Error ? error.message : String(error)}`;
+
+  /** Exports the front and the back as two pictures, as the regular editor does. */
+  const download = async () => {
     if (pieces.length === 0) return;
     setExporting(true);
     setNotice(null);
+    const name = title.trim() || "collage";
     try {
-      const picture = await bakeCollage({
+      const front = await bakeCollage({ frame, pieces, paper: paper.color, grain: paper.grain });
+      const back = await bakeCollageBack({
         frame,
-        pieces,
-        paper: paper.color,
-        grain: paper.grain,
+        paper,
+        content: backContent,
+        front,
+        favicons: await resolveBackFavicons(backContent.sources),
       });
-      const url = URL.createObjectURL(picture);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${editing?.title.trim() || "collage"} (tldraw).png`;
-      link.click();
-      URL.revokeObjectURL(url);
+      saveFile(front, `${name} front.png`);
+      saveFile(back, `${name} back.png`);
     } catch (error) {
-      setNotice(
-        error instanceof CollageBakeError
-          ? `could not export — these could not be drawn: ${error.failures
-              .map((failure) => failure.label)
-              .join(", ")}`
-          : `could not export — ${error instanceof Error ? error.message : String(error)}`,
-      );
+      setNotice({ tone: "problem", text: failure("png", error) });
     } finally {
       setExporting(false);
     }
   };
 
-  const clearAll = () => {
-    if (!editor) return;
-    editor.markHistoryStoppingPoint("clear");
-    editor.deleteShapes([...editor.getCurrentPageShapeIds()]);
+  const downloadVideo = async () => {
+    if (!videoSupport.ok) {
+      setNotice({ tone: "problem", text: `could not export mp4 — ${videoSupport.reason}` });
+      return;
+    }
+    setVideoProgress(0);
+    setNotice(null);
+    try {
+      const { bakeCollageVideo } = await import("../collageVideo");
+      const video = await bakeCollageVideo({
+        frame,
+        pieces,
+        paper: paper.color,
+        grain: paper.grain,
+        onProgress: (done, total) => setVideoProgress(done / total),
+      });
+      saveFile(video, `${title.trim() || "untitled collage"}.mp4`);
+    } catch (error) {
+      setNotice({ tone: "problem", text: failure("mp4", error) });
+    } finally {
+      setVideoProgress(null);
+    }
   };
 
   const leave = () => {
-    if (saveTimerRef.current !== null) saveRef.current();
+    flush();
     onLeave();
   };
 
-  const standingText =
-    standing.kind === "saving"
-      ? "saving..."
-      : standing.kind === "saved"
-        ? "saved to the prototype store"
-        : standing.kind === "failed"
-          ? `not saved — ${standing.reason}`
-          : "";
+  const standing = standingWords(autosave.standing);
+  const onlyPiece = only ? pieceForDrawing(only) : null;
+  const scale = camera.z;
+  const cropping = useValue("cropping", () => editor?.isIn("select.crop") ?? false, [editor]);
 
   return (
     <div className="collage-studio collage-tldraw">
       <style>{`
         .collage-tldraw .tl-container {
           --tl-color-background: transparent;
+          --tl-color-selected: ${SELECTION_TEAL};
+          --tl-color-selection-stroke: ${SELECTION_TEAL};
+          --tl-color-selection-fill: rgba(74, 154, 138, 0.14);
           background: transparent;
         }
         .collage-tldraw .tl-background__wrapper { overflow: hidden; }
@@ -462,10 +733,28 @@ function StudioSurface({
           transform-origin: 0 0;
           box-shadow: 0 1px 2px rgba(61, 56, 51, 0.18), 0 8px 24px rgba(61, 56, 51, 0.12);
         }
-        /* Pieces are cut off at the frame's edge; selection handles live in a
-           separate layer and still hang past it. */
+        /* Pieces are cut off at the frame's edge; the selection is drawn in a
+           separate layer and still hangs past it. */
         .collage-tldraw .tl-shapes {
           clip-path: polygon(0px 0px, ${frame.width}px 0px, ${frame.width}px ${frame.height}px, 0px ${frame.height}px);
+        }
+        .collage-tldraw__over {
+          position: absolute;
+          inset: 0;
+          z-index: 10000;
+          overflow: hidden;
+          pointer-events: none;
+        }
+        .collage-tldraw__page {
+          position: absolute;
+          left: 0;
+          top: 0;
+          transform-origin: 0 0;
+        }
+        .collage-tldraw__page .collage-piece-actions,
+        .collage-tldraw__page .collage-tolerance,
+        .collage-tldraw__page .collage-handle {
+          pointer-events: auto;
         }
       `}</style>
       <ScrapTray
@@ -475,10 +764,8 @@ function StudioSurface({
         slotSize={drawer.slotSize}
         onWidth={(width) => updateDrawer({ width })}
         onCollapsed={(collapsed) => updateDrawer({ collapsed })}
-        onSlotSize={(slotSize) =>
-          updateDrawer({ slotSize, width: defaultDrawerWidth(slotSize) })
-        }
-        onPlace={(item) => addPiece(item, fanOutPlacement(pieceCount, frame))}
+        onSlotSize={(slotSize) => updateDrawer({ slotSize, width: defaultDrawerWidth(slotSize) })}
+        onPlace={(item) => addPiece(item, fanOutPlacement(pieces.length, frame))}
         onDragStart={(item, event) => {
           draggingScrapRef.current = item;
           event.dataTransfer.effectAllowed = "copy";
@@ -508,20 +795,102 @@ function StudioSurface({
         >
           <div style={{ position: "absolute", inset: 0 }}>
             <Tldraw
-              licenseKey={LICENSE_KEY}
-              assetUrls={ASSET_URLS}
+              licenseKey={licenseKey}
+              assetUrls={TLDRAW_ASSET_URLS}
               assets={ASSET_STORE}
               shapeUtils={SHAPE_UTILS}
               components={components}
-              overrides={OVERRIDES}
+              overrides={overrides}
               options={OPTIONS}
               cameraOptions={cameraOptions}
-              snapshot={doc?.document}
+              locale="en"
               hideUi
               autoFocus={false}
               onMount={onMount}
             />
           </div>
+
+          {/* The regular editor's tools, laid over tldraw in frame units so
+              they follow the camera. */}
+          <div className="collage-tldraw__over">
+            <div
+              className="collage-tldraw__page"
+              style={{
+                transform: `scale(${scale}) translate(${camera.x}px, ${camera.y}px)`,
+                width: frame.width,
+                height: frame.height,
+              }}
+            >
+              {selection && resting && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: selection.rotated.x,
+                    top: selection.rotated.y,
+                    width: selection.rotated.w,
+                    height: selection.rotated.h,
+                    transform: `rotate(${selection.rotation}rad)`,
+                    transformOrigin: "0 0",
+                  }}
+                >
+                  <div
+                    className="collage-handle__tether"
+                    style={{
+                      left: "50%",
+                      top: -ROTATE_HANDLE_OFFSET / scale,
+                      height: ROTATE_HANDLE_OFFSET / scale,
+                      width: 2 / scale,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Rotate"
+                    title="Rotate (shift snaps)"
+                    className="collage-handle collage-handle--rotate"
+                    style={{
+                      left: "50%",
+                      top: -ROTATE_HANDLE_OFFSET / scale,
+                      transform: `scale(${1 / scale})`,
+                    }}
+                    onPointerDown={beginRotate}
+                  />
+                </div>
+              )}
+
+              {selection && resting && !cutoutSession && (
+                <PieceActions
+                  box={onlyPiece ?? selection.box}
+                  piece={onlyPiece}
+                  canUncrop={only?.props.crop != null}
+                  canCutOut={onlyPiece?.scrap.kind === "image"}
+                  scale={scale}
+                  frame={frame}
+                  onOrder={order}
+                  onCrop={startCrop}
+                  onUncrop={uncrop}
+                  onCutOut={beginCutout}
+                  onDuplicate={duplicate}
+                  onRemove={remove}
+                />
+              )}
+
+              {cutoutSession && onlyPiece?.cutout && (
+                <CutoutControl
+                  piece={onlyPiece}
+                  tolerance={onlyPiece.cutout.tolerance}
+                  scale={scale}
+                  frame={frame}
+                  onTolerance={tuneCutout}
+                  onKeepBackground={keepBackground}
+                  onDone={() => {
+                    setCutoutSession(null);
+                    editor?.focus();
+                  }}
+                />
+              )}
+            </div>
+          </div>
+
           <StudioTools
             canUndo={canUndo}
             canRedo={canRedo}
@@ -530,66 +899,80 @@ function StudioSurface({
             onUndo={() => editor?.undo()}
             onRedo={() => editor?.redo()}
             onKeys={() =>
-              setNotice(
-                "tldraw keys: double-click a picture to crop · shift+H / shift+V flip · [ ] send to back / bring to front, alt+[ ] one step · cmd+D duplicate · shift while rotating snaps",
-              )
+              setNotice({
+                tone: "quiet",
+                text: "keys: C crop · B cut out background · [ ] one step back or forward, shift for all the way · shift+H / shift+V flip · cmd+D duplicate · cmd held while dragging snaps",
+              })
             }
             onTurnOver={() =>
-              setNotice("turning the collage over is not part of the tldraw prototype")
+              setNotice({
+                tone: "quiet",
+                text: "the back of a collage shows in the regular editor; turn the tldraw editor off in settings to see it",
+              })
             }
             onBack={leave}
+          />
+
+          <FormatControl
+            format={format}
+            paper={paper}
+            zoom={scale}
+            pieceCount={pieces.length}
+            onFormat={setFormat}
+            onPaper={setPaper}
           />
         </div>
 
         <div className="collage-bar">
-          <span className="collage-studio__label">tldraw prototype · saved apart from your collages</span>
+          <input
+            className="collage-title-input"
+            value={title}
+            placeholder="untitled collage"
+            onChange={(event) => setTitle(event.target.value)}
+            aria-label="Collage title"
+          />
           <span className="collage-bar__spacer" />
           <span className="collage-studio__label">
-            {pieceCount} piece{pieceCount === 1 ? "" : "s"}
-            {selected.length > 1 ? ` · ${selected.length} selected` : ""}
+            {pieces.length} piece{pieces.length === 1 ? "" : "s"}
+            {selectedShapes.length > 1 ? ` · ${selectedShapes.length} selected` : ""}
+            {cropping ? " · cropping · enter or click away to keep, esc to cancel" : ""}
           </span>
           <span className="collage-bar__spacer" />
-          {only && (
-            <>
-              <button type="button" className="collage-action" onClick={startCrop}>
-                crop
-              </button>
-              {only.meta.scrap.kind === "image" && (
-                <button type="button" className="collage-action" onClick={toggleCutout}>
-                  {only.type === SCRAP_PIECE_TYPE ? "keep background" : "cut out background"}
-                </button>
-              )}
-            </>
-          )}
-          {standingText && (
+          {standing.text && (
             <p
-              className={`collage-standing${standing.kind === "failed" ? " collage-standing--problem" : ""}`}
+              className={`collage-standing${standing.problem ? " collage-standing--problem" : ""}`}
               role="status"
             >
-              {standingText}
+              {standing.text}
             </p>
           )}
           <button
             type="button"
             className="collage-action"
-            disabled={pieceCount === 0}
-            onClick={clearAll}
-          >
-            clear
-          </button>
-          <button
-            type="button"
-            className="collage-action"
-            disabled={exporting || pieceCount === 0}
-            onClick={() => void exportPng()}
+            disabled={exporting || videoProgress !== null || pieces.length === 0}
+            onClick={() => void download()}
           >
             export png
           </button>
+          {animates && (
+            <button
+              type="button"
+              className="collage-action"
+              disabled={exporting || videoProgress !== null}
+              title={videoSupport.ok ? undefined : videoSupport.reason}
+              onClick={() => void downloadVideo()}
+            >
+              {videoProgress === null ? "export mp4" : `mp4 · ${Math.round(videoProgress * 100)}%`}
+            </button>
+          )}
         </div>
 
         {notice && (
-          <p className="collage-notice collage-notice--quiet" role="status">
-            {notice}
+          <p
+            className={`collage-notice${notice.tone === "quiet" ? " collage-notice--quiet" : ""}`}
+            role="status"
+          >
+            {notice.text}
           </p>
         )}
       </div>

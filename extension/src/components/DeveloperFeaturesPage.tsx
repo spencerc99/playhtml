@@ -16,7 +16,22 @@ import {
   getFeatureOverrides,
   setFeatureOverride,
 } from "../features/featureAccess";
+import {
+  BUILD_LICENSE_KEY,
+  licenseStatus,
+} from "../entrypoints/scraps/tldraw/tldrawLicense";
 import "./DeveloperFeaturesPage.scss";
+
+/**
+ * Why an experiment cannot be turned on in this build, or null when it can.
+ * The tldraw collage editor needs a license key baked into the build that is
+ * still in date.
+ */
+function blockedReason(feature: FeatureId): string | null {
+  if (feature !== "TLDRAW_COLLAGES") return null;
+  const license = licenseStatus(BUILD_LICENSE_KEY);
+  return license.usable ? null : license.message;
+}
 
 type Props = {
   onBack?: () => void;
@@ -96,11 +111,13 @@ export function DeveloperFeaturesPage({ onBack, embedded = false }: Props) {
           ).map((feature) => {
             const definition = FEATURE_CATALOG[feature];
             const state = states[feature];
+            const blocked = blockedReason(feature);
             return (
               <label className="developer-features__row" key={feature}>
                 <span className="developer-features__copy">
                   <strong>{definition.name}</strong>
                   <span>{definition.description}</span>
+                  {blocked && <span>{blocked}</span>}
                   <small>
                     {stageLabel(state.stage)}
                     {state.source === "choice" ? " · your choice" : ""}
@@ -111,7 +128,8 @@ export function DeveloperFeaturesPage({ onBack, embedded = false }: Props) {
                 </span>
                 <input
                   type="checkbox"
-                  checked={state.enabled}
+                  checked={state.enabled && !blocked}
+                  disabled={blocked !== null}
                   onChange={() => toggleFeature(feature)}
                   aria-label={`Enable ${definition.name}`}
                 />

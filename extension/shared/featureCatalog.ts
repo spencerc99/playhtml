@@ -49,6 +49,12 @@ const FEATURE_DEFINITIONS = {
     defaultStage: "internal",
     requiresReload: false,
   },
+  TLDRAW_COLLAGES: {
+    name: "tldraw collage editor",
+    description: "Arrange scrap collages in an editor built on tldraw instead of the regular one.",
+    defaultStage: "internal",
+    requiresReload: false,
+  },
   BAG_SETTINGS: {
     name: "Bag settings",
     description: "Show controls for unfinished PlayHTML Bag features.",

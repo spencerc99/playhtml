@@ -15,7 +15,7 @@ import { pieceMaterialTransform } from "../collageRecord";
 import { sourceBoxForCrop } from "../collageGeometry";
 import {
   SCRAP_PIECE_TYPE,
-  shapeToPiece,
+  pieceForDrawing,
   type PieceShape,
   type ScrapPieceShapeProps,
 } from "./pieceShapes";
@@ -60,10 +60,12 @@ export class ScrapPieceShapeUtil extends BaseBoxShapeUtil<ScrapPieceShape> {
 
   override component(shape: ScrapPieceShape) {
     // The shape's own position does not matter to the material, only its box.
-    const piece = shapeToPiece(
-      { ...shape, x: 0, y: 0, rotation: 0 } as unknown as PieceShape,
-      0,
-    );
+    const piece = pieceForDrawing({
+      ...shape,
+      x: 0,
+      y: 0,
+      rotation: 0,
+    } as unknown as PieceShape);
     const source = sourceBoxForCrop(piece, piece.crop);
     return (
       <HTMLContainer
