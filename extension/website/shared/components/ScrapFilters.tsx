@@ -1,4 +1,4 @@
-// ABOUTME: Filters scraps by where they were found, their kind, and an always-visible search field.
+// ABOUTME: Filters scraps by where and when they were found, their kind, and an always-visible search field.
 // ABOUTME: Lays out as one bar or as two drawer rows; popovers anchor to their chip and return focus.
 
 import {
@@ -17,7 +17,22 @@ import {
   parseFilterChip,
   type FilterChip,
 } from "../utils/eventUtils";
-import { matchesScrapFilters, scrapLocations } from "../utils/scrapFilters";
+import {
+  ANY_TIME,
+  isAnyTime,
+  matchesScrapFilters,
+  matchesScrapWhen,
+  scrapDays,
+  scrapLocations,
+  scrapSightings,
+  type ScrapWhenFilter,
+} from "../utils/scrapFilters";
+import type { TimeOfDayFilter } from "../config";
+import { formatTimeOfDay, localDayKey } from "../utils/timeOfDay";
+import { DAY_GRID_WIDTH, DayGrid, formatSingleDate } from "./DayGrid";
+import { TimeOfDayInputs } from "./TimeOfDayInputs";
+
+export { ANY_TIME, isAnyTime, type ScrapWhenFilter };
 
 export type ScrapKindFilter = ScrapItem["kind"] | "all";
 
@@ -30,17 +45,36 @@ const kinds: { kind: ScrapKindFilter; label: string }[] = [
   { kind: "cursor", label: "cursors" },
 ];
 
+/** Quarter-day windows in local time, offered as starting points for the time of day. */
+const timesOfDay: { label: string; window: TimeOfDayFilter }[] = [
+  { label: "night", window: { centerMinutes: 180, radiusMinutes: 180 } },
+  { label: "morning", window: { centerMinutes: 540, radiusMinutes: 180 } },
+  { label: "afternoon", window: { centerMinutes: 900, radiusMinutes: 180 } },
+  { label: "evening", window: { centerMinutes: 1260, radiusMinutes: 180 } },
+];
+
 /** Whether a scrap passes every filter at once, shared by each surface that filters scraps. */
 export function scrapPassesFilters(
   item: ScrapItem,
   kind: ScrapKindFilter,
   places: FilterChip[],
   search: string,
+  when: ScrapWhenFilter,
 ): boolean {
   return (
     (kind === "all" || item.kind === kind) &&
-    matchesScrapFilters(item, places, search)
+    matchesScrapFilters(item, places, search) &&
+    matchesScrapWhen(item, when)
   );
+}
+
+/** The chip's short summary of a day and time-of-day filter. */
+export function formatScrapWhen(when: ScrapWhenFilter): string {
+  const parts = [
+    when.day === null ? null : formatSingleDate(when.day),
+    when.timeOfDay === null ? null : formatTimeOfDay(when.timeOfDay),
+  ].filter((part): part is string => part !== null);
+  return parts.length === 0 ? "any time" : parts.join(" · ");
 }
 
 interface Props {
@@ -51,6 +85,9 @@ interface Props {
   onKind: (kind: ScrapKindFilter) => void;
   search: string;
   onSearch: (search: string) => void;
+  /** The local day and time of day a scrap must have been seen at. */
+  when: ScrapWhenFilter;
+  onWhen: (when: ScrapWhenFilter) => void;
   /** How many scraps match every filter, shown in the search field while a query is typed. */
   matchCount?: number;
   /** Counts a group of scraps, so a surface that folds repeats counts each scrap once. */
@@ -65,7 +102,7 @@ interface Props {
   chipsAccessory?: ReactNode;
 }
 
-type Panel = "places" | "type";
+type Panel = "places" | "type" | "when";
 
 const countEach = (group: ScrapItem[]) => group.length;
 
@@ -77,6 +114,8 @@ export function ScrapFilters({
   onKind,
   search,
   onSearch,
+  when,
+  onWhen,
   matchCount,
   countScraps = countEach,
   layout = "bar",
@@ -91,6 +130,9 @@ export function ScrapFilters({
   const typeAnchor = useRef<HTMLSpanElement>(null);
   const placeButton = useRef<HTMLButtonElement>(null);
   const typeButton = useRef<HTMLButtonElement>(null);
+  const whenAnchor = useRef<HTMLSpanElement>(null);
+  const whenButton = useRef<HTMLButtonElement>(null);
+  const whenPanel = useRef<HTMLElement>(null);
   const placeInput = useRef<HTMLInputElement>(null);
   /** A site row to hand focus back to once toggling it has moved it. */
   const refocusPlace = useRef<string | null>(null);
@@ -120,7 +162,7 @@ export function ScrapFilters({
     for (const domain of domains) counts.set(domain, 0);
     const byDomain = new Map<string, ScrapItem[]>();
     for (const item of items) {
-      if (!scrapPassesFilters(item, kind, [], search)) continue;
+      if (!scrapPassesFilters(item, kind, [], search, when)) continue;
       for (const domain of itemDomains(item)) {
         const group = byDomain.get(domain) ?? [];
         group.push(item);
@@ -130,12 +172,14 @@ export function ScrapFilters({
     for (const [domain, group] of byDomain)
       counts.set(domain, countScraps(group));
     return counts;
-  }, [panel, items, domains, kind, search, countScraps]);
+  }, [panel, items, domains, kind, search, when, countScraps]);
   const kindCounts = useMemo(() => {
     const counts = new Map<ScrapKindFilter, number>();
     if (panel !== "type") return counts;
-    const matching = items.filter((item) =>
-      matchesScrapFilters(item, places, search),
+    const matching = items.filter(
+      (item) =>
+        matchesScrapFilters(item, places, search) &&
+        matchesScrapWhen(item, when),
     );
     counts.set("all", countScraps(matching));
     for (const option of kinds) {
@@ -146,7 +190,26 @@ export function ScrapFilters({
       );
     }
     return counts;
-  }, [panel, items, places, search, countScraps]);
+  }, [panel, items, places, search, when, countScraps]);
+  // Every day anything was seen stays in the grid, so narrowing another
+  // filter thins a day's texture rather than moving the calendar around.
+  const dayCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (panel !== "when") return counts;
+    for (const item of items)
+      for (const ts of scrapSightings(item)) counts.set(localDayKey(ts), 0);
+    const byDay = new Map<string, ScrapItem[]>();
+    for (const item of items) {
+      if (!scrapPassesFilters(item, kind, places, search, ANY_TIME)) continue;
+      for (const day of scrapDays(item, when.timeOfDay)) {
+        const group = byDay.get(day) ?? [];
+        group.push(item);
+        byDay.set(day, group);
+      }
+    }
+    for (const [day, group] of byDay) counts.set(day, countScraps(group));
+    return counts;
+  }, [panel, items, kind, places, search, when.timeOfDay, countScraps]);
 
   const selected = places.map(formatFilterChip);
   const candidate = parseFilterChip(draft);
@@ -176,8 +239,18 @@ export function ScrapFilters({
       .find((row) => row.dataset.place === label)
       ?.focus();
   });
+  const panelButton = {
+    places: placeButton,
+    type: typeButton,
+    when: whenButton,
+  };
+  const panelAnchor = {
+    places: placeAnchor,
+    type: typeAnchor,
+    when: whenAnchor,
+  };
   const close = () => {
-    (panel === "places" ? placeButton : typeButton).current?.focus();
+    if (panel) panelButton[panel].current?.focus();
     setPanel(null);
   };
 
@@ -187,8 +260,14 @@ export function ScrapFilters({
       typeOptions.current
         ?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')
         ?.focus();
+    if (panel === "when")
+      (
+        whenPanel.current?.querySelector<HTMLElement>(
+          '[role="button"][aria-pressed="true"]',
+        ) ?? whenPanel.current?.querySelector<HTMLElement>("button")
+      )?.focus({ preventScroll: true });
     if (!panel) return;
-    const anchor = (panel === "places" ? placeAnchor : typeAnchor).current;
+    const anchor = panelAnchor[panel].current;
     const outside = (event: Event) => {
       if (event.target instanceof Node && !anchor?.contains(event.target))
         setPanel(null);
@@ -479,6 +558,111 @@ export function ScrapFilters({
     </span>
   );
 
+  const whenOn = !isAnyTime(when);
+  const whenChip = (
+    <span className="scrap-filters__anchor" ref={whenAnchor}>
+      <button
+        type="button"
+        ref={whenButton}
+        className="scrap-filters__chip"
+        data-on={whenOn || undefined}
+        aria-expanded={panel === "when"}
+        aria-controls={`${id}-when`}
+        onClick={() => setPanel(panel === "when" ? null : "when")}
+      >
+        <span className="scrap-filters__key">when</span>
+        <span className="scrap-filters__value">{formatScrapWhen(when)}</span>
+        <span className="scrap-filters__more" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      {panel === "when" && (
+        <>
+          {caret}
+          <section
+            ref={(node) => {
+              popover.current = node;
+              whenPanel.current = node;
+            }}
+            id={`${id}-when`}
+            className={`scrap-filters__popover scrap-filters__popover--when scrap-filters__popover--${placement}`}
+            aria-label="When found"
+          >
+            <div className="scrap-filters__heading">
+              <span>day</span>
+              <button
+                type="button"
+                className="scrap-filters__link"
+                onClick={() => onWhen(ANY_TIME)}
+              >
+                clear
+              </button>
+            </div>
+            {dayCounts.size === 0 ? (
+              <p className="scrap-filters__empty">no days yet</p>
+            ) : (
+              <DayGrid
+                dayCounts={dayCounts}
+                selectedDay={when.day}
+                onSelectDay={(day) => onWhen({ ...when, day })}
+                style={{
+                  flex: "none",
+                  maxHeight: "min(170px, 28vh)",
+                  padding: 0,
+                }}
+              />
+            )}
+            <div className="scrap-filters__heading scrap-filters__heading--time">
+              <span>time of day</span>
+            </div>
+            <div className="scrap-filters__times">
+              {timesOfDay.map((option) => {
+                const on =
+                  when.timeOfDay !== null &&
+                  when.timeOfDay.centerMinutes ===
+                    option.window.centerMinutes &&
+                  when.timeOfDay.radiusMinutes === option.window.radiusMinutes;
+                return (
+                  <button
+                    key={option.label}
+                    type="button"
+                    className="scrap-filters__time"
+                    aria-pressed={on}
+                    title={formatTimeOfDay(option.window)}
+                    onClick={() =>
+                      onWhen({ ...when, timeOfDay: on ? null : option.window })
+                    }
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            {when.timeOfDay !== null && (
+              <div
+                className="scrap-filters__window"
+                title="Recurring time-of-day window (local time), across every day"
+              >
+                <TimeOfDayInputs
+                  value={when.timeOfDay}
+                  onChange={(timeOfDay) => onWhen({ ...when, timeOfDay })}
+                />
+                <button
+                  type="button"
+                  className="scrap-filters__clear"
+                  aria-label="Clear time of day"
+                  onClick={() => onWhen({ ...when, timeOfDay: null })}
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </section>
+        </>
+      )}
+    </span>
+  );
+
   return (
     <div
       className={`scrap-filters scrap-filters--${layout}`}
@@ -503,6 +687,7 @@ export function ScrapFilters({
           <div className="scrap-filters__row">
             {placesChip}
             {typeChip}
+            {whenChip}
             <span className="scrap-filters__spacer" />
             {chipsAccessory}
           </div>
@@ -512,6 +697,7 @@ export function ScrapFilters({
           {searchField}
           {placesChip}
           {typeChip}
+          {whenChip}
         </div>
       )}
     </div>
@@ -555,6 +741,17 @@ const styles = `
 .scrap-filters--drawer .scrap-filters__popover { left:0; }
 .scrap-filters--drawer .scrap-filters__popover--places { width:280px; }
 .scrap-filters__popover--type { width:200px; }
+.scrap-filters__popover--when { width:${DAY_GRID_WIDTH + 22}px; }
+.scrap-filters--bar .scrap-filters__popover--when { right:0; }
+.scrap-filters__heading--time { margin-top:10px; }
+.scrap-filters__times { display:flex; flex-wrap:wrap; gap:4px; }
+.scrap-filters .scrap-filters__time { flex:1 1 auto; height:22px; padding:0 6px; border:1px solid rgba(61,56,51,.18); border-radius:999px; background:#faf9f6; font-size:9px; }
+.scrap-filters .scrap-filters__time:hover { border-color:rgba(61,56,51,.38); }
+.scrap-filters .scrap-filters__time[aria-pressed=true] { border-color:rgba(74,154,138,.55); background:rgba(74,154,138,.1); color:#2f6b60; }
+.scrap-filters .scrap-filters__time:focus-visible { outline:none; border-color:#4a9a8a; box-shadow:0 0 0 3px rgba(74,154,138,.16); }
+.scrap-filters__window { display:flex; align-items:center; gap:4px; margin-top:8px; font-size:10px; }
+.scrap-filters__window .scrap-filters__clear { margin-left:auto; }
+.scrap-filters [role=button][data-day]:focus-visible { outline:2px solid #4a9a8a; outline-offset:-2px; }
 .scrap-filters__caret { position:absolute; left:50%; z-index:4; box-sizing:border-box; width:9px; height:9px; border:1px solid rgba(61,56,51,.2); background:#f5f0e8; transform:translateX(-50%) rotate(45deg); }
 .scrap-filters__caret--above { bottom:calc(100% + 7.5px); border-top-color:transparent; border-left-color:transparent; }
 .scrap-filters__caret--below { top:calc(100% + 5.5px); border-bottom-color:transparent; border-right-color:transparent; }
