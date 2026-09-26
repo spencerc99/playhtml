@@ -14,14 +14,16 @@ import {
   FULL_CROP,
   boxCenter,
   cornerPoint,
-  pinInside,
   type Bounds,
+  type BoxEdge,
   fanOutPlacement,
   fitWithin,
   frameScale,
   isFullCrop,
   normalizeDegrees,
   dragCorner,
+  dragEdge,
+  edgeGrabOffset,
   lockToAxis,
   rotationToPointer,
   sameCrop,
@@ -120,6 +122,7 @@ import {
   angleAbout,
   groupBounds,
   groupScaleFromCorner,
+  groupScaleFromEdge,
   mirrorGroup,
   piecesInRect,
   rectBetween,
@@ -138,8 +141,8 @@ import {
   removePieces,
   replacePieces,
 } from "./pieceGroup";
+import { handleZones, type HandleZone } from "./handleZones";
 import {
-  ROTATE_HANDLE_OFFSET,
   toolSessionActive,
   visiblePanel,
   type PanelState,
@@ -175,12 +178,10 @@ const ALT_DRAG_THRESHOLD = 4;
  */
 const CLICK_MAX_MS = 350;
 
-const RESIZE_CORNERS: { corner: ResizeCorner; left: string; top: string }[] = [
-  { corner: "top-left", left: "0%", top: "0%" },
-  { corner: "top-right", left: "100%", top: "0%" },
-  { corner: "bottom-left", left: "0%", top: "100%" },
-  { corner: "bottom-right", left: "100%", top: "100%" },
-];
+/** What a scaling drag took hold of: a corner or an edge of the box. */
+type ScaleGrip =
+  | { kind: "corner"; corner: ResizeCorner }
+  | { kind: "edge"; edge: BoxEdge };
 
 type Gesture =
   | { kind: "idle" }
@@ -193,32 +194,39 @@ type Gesture =
     }
   | {
       kind: "resize";
-      corner: ResizeCorner;
+      grip: ScaleGrip;
       /** The piece as it was when the drag began. */
       before: CollagePiece;
       /**
-       * From where the press landed to the real corner. A handle pinned into
-       * view sits away from its corner, and the drag acts as if the corner
-       * itself had been grabbed.
+       * From where the press landed to the real corner or edge. A handle
+       * pinned into view sits away from its corner, and an edge's grip is a
+       * few pixels wide; either way the drag acts as if the corner or the
+       * edge line itself had been grabbed.
        */
-      toCorner: Point;
+      toGrip: Point;
     }
-  | { kind: "rotate"; pieceId: string }
+  | {
+      kind: "rotate";
+      /** The piece as it was when the turn began. */
+      before: CollagePiece;
+      /** The angle from the piece's center to where the press landed. */
+      grabAngle: number;
+    }
   | {
       kind: "groupScale";
-      corner: ResizeCorner;
+      grip: ScaleGrip;
       /** The group's box when the drag began. */
       bounds: Bounds;
       before: readonly CollagePiece[];
-      /** From the press to the real corner, as for a single piece's handle. */
-      toCorner: Point;
+      /** From the press to the real corner or edge, as for a single piece. */
+      toGrip: Point;
     }
   | {
       kind: "groupRotate";
       /** The group's box when the turn began; it turns with the pieces. */
       bounds: Bounds;
       before: readonly CollagePiece[];
-      /** The angle from the group's center to where the knob was grabbed. */
+      /** The angle from the group's center to where the press landed. */
       grabAngle: number;
       /** How far the group has turned so far, in degrees. */
       turned: number;
@@ -1309,17 +1317,21 @@ export function CollageStudio({
         return;
       }
       if (gesture.kind === "groupScale") {
-        const grow = groupScaleFromCorner({
+        const { grip } = gesture;
+        const reach = {
           bounds: gesture.bounds,
-          corner: gesture.corner,
           pointer: {
-            x: point.x + gesture.toCorner.x,
-            y: point.y + gesture.toCorner.y,
+            x: point.x + gesture.toGrip.x,
+            y: point.y + gesture.toGrip.y,
           },
           // As on one piece: shift frees the ratio, alt grows about the middle.
           keepAspect: !event.shiftKey,
           aboutCenter: event.altKey,
-        });
+        };
+        const grow =
+          grip.kind === "corner"
+            ? groupScaleFromCorner({ ...reach, corner: grip.corner })
+            : groupScaleFromEdge({ ...reach, edge: grip.edge });
         editPieces(scaleGroup(gesture.before, grow), "groupScale");
         const across = grow.x < 0 || grow.y < 0 ? " · flipped" : "";
         const wide = Math.round(Math.abs(grow.x) * 100);
@@ -1345,20 +1357,24 @@ export function CollageStudio({
         return;
       }
       if (gesture.kind === "resize") {
-        const { before } = gesture;
-        const drag = dragCorner({
+        const { before, grip } = gesture;
+        const reach = {
           box: before,
           rotationDegrees: before.rotation,
-          corner: gesture.corner,
           pointer: {
-            x: point.x + gesture.toCorner.x,
-            y: point.y + gesture.toCorner.y,
+            x: point.x + gesture.toGrip.x,
+            y: point.y + gesture.toGrip.y,
           },
-          // Shift frees the ratio; alt grows the piece about its own center.
+          // A picture keeps its proportions, from an edge as from a corner;
+          // shift frees them and alt grows the piece about its own center.
           keepAspect: !event.shiftKey,
           aboutCenter: event.altKey,
-        });
-        // Pulled past the far corner, the piece turns over across that axis.
+        };
+        const drag =
+          grip.kind === "corner"
+            ? dragCorner({ ...reach, corner: grip.corner })
+            : dragEdge({ ...reach, edge: grip.edge });
+        // Pulled past the far side, the piece turns over across that axis.
         editPieces(
           [
             {
@@ -1370,25 +1386,27 @@ export function CollageStudio({
           ],
           `resize:${before.id}`,
         );
+        const wide = Math.round((drag.box.width / before.width) * 100);
+        const tall = Math.round((drag.box.height / before.height) * 100);
+        const across = drag.flippedX || drag.flippedY ? " · flipped" : "";
         setGestureReadout(
-          `scale ${Math.round((drag.box.width / before.width) * 100)}%${
-            drag.flippedX || drag.flippedY ? " · flipped" : ""
-          }`,
+          wide === tall
+            ? `scale ${wide}%${across}`
+            : `scale ${wide}% × ${tall}%${across}`,
         );
         return;
       }
       if (gesture.kind === "rotate") {
-        const turning = pieces.find((piece) => piece.id === gesture.pieceId);
-        if (!turning) return;
-        const raw = rotationToPointer(turning, point);
+        const { before, grabAngle } = gesture;
+        // The piece turns by as much as the pointer has gone round its
+        // center since the press, so grabbing any corner starts it still.
+        const raw = normalizeDegrees(
+          before.rotation + angleAbout(boxCenter(before), point) - grabAngle,
+        );
         const degrees = event.shiftKey
           ? snapDegrees(raw, ROTATION_SNAP_DEGREES)
           : raw;
-        editPiece(
-          gesture.pieceId,
-          (piece) => ({ ...piece, rotation: degrees }),
-          `rotate:${gesture.pieceId}`,
-        );
+        editPieces([{ ...before, rotation: degrees }], `rotate:${before.id}`);
         setGestureReadout(`rotate ${Math.round(degrees)} deg`);
       }
     },
@@ -1526,34 +1544,54 @@ export function CollageStudio({
     });
   };
 
-  /** Starts a corner drag on the box around several pieces. */
-  const beginGroupScale = (corner: ResizeCorner, event: React.PointerEvent) => {
+  /**
+   * Starts a drag from one of the grips around the selection: a corner or an
+   * edge scales it, and the squares just past the corners turn it about its
+   * middle. One piece and several work the same way.
+   */
+  const beginGrip = (zone: HandleZone, event: React.PointerEvent) => {
     event.stopPropagation();
-    if (!selectionBox) return;
+    if (event.button !== 0 || !selectionBox) return;
     (event.target as Element).setPointerCapture?.(event.pointerId);
     const pressed = framePoint(event);
-    const actual = cornerPoint(selectionBox, 0, corner);
-    setGesture({
-      kind: "groupScale",
-      corner,
-      bounds: selectionBox,
-      before: selectedPieces,
-      toCorner: { x: actual.x - pressed.x, y: actual.y - pressed.y },
-    });
-  };
-
-  /** Starts turning several pieces about the middle of their box. */
-  const beginGroupRotate = (event: React.PointerEvent) => {
-    event.stopPropagation();
-    if (!selectionBox) return;
-    (event.target as Element).setPointerCapture?.(event.pointerId);
-    setGesture({
-      kind: "groupRotate",
-      bounds: selectionBox,
-      before: selectedPieces,
-      grabAngle: angleAbout(boxCenter(selectionBox), framePoint(event)),
-      turned: 0,
-    });
+    const box = selectionBox;
+    if (zone.kind === "rotate") {
+      const grabAngle = angleAbout(boxCenter(box), pressed);
+      if (multiple) {
+        setGesture({
+          kind: "groupRotate",
+          bounds: box,
+          before: selectedPieces,
+          grabAngle,
+          turned: 0,
+        });
+      } else {
+        setGesture({ kind: "rotate", before: selectedPieces[0], grabAngle });
+      }
+      return;
+    }
+    const grip: ScaleGrip =
+      zone.kind === "corner"
+        ? { kind: "corner", corner: zone.corner }
+        : { kind: "edge", edge: zone.edge };
+    let toGrip: Point;
+    if (grip.kind === "corner") {
+      const actual = cornerPoint(box, box.rotation, grip.corner);
+      toGrip = { x: actual.x - pressed.x, y: actual.y - pressed.y };
+    } else {
+      toGrip = edgeGrabOffset(box, box.rotation, grip.edge, pressed);
+    }
+    if (multiple) {
+      setGesture({
+        kind: "groupScale",
+        grip,
+        bounds: box,
+        before: selectedPieces,
+        toGrip,
+      });
+    } else {
+      setGesture({ kind: "resize", grip, before: selectedPieces[0], toGrip });
+    }
   };
 
   /**
@@ -1874,8 +1912,7 @@ export function CollageStudio({
                     label="selection"
                     scale={scale}
                     inView={inView}
-                    onResizeStart={beginGroupScale}
-                    onRotateStart={beginGroupRotate}
+                    onGrip={beginGrip}
                   />
                 )}
 
@@ -1899,34 +1936,7 @@ export function CollageStudio({
                     label="piece"
                     scale={scale}
                     inView={inView}
-                    onResizeStart={(corner, event) => {
-                      event.stopPropagation();
-                      (event.target as Element).setPointerCapture?.(
-                        event.pointerId,
-                      );
-                      const pressed = framePoint(event);
-                      const actual = cornerPoint(
-                        selected,
-                        selected.rotation,
-                        corner,
-                      );
-                      setGesture({
-                        kind: "resize",
-                        corner,
-                        before: selected,
-                        toCorner: {
-                          x: actual.x - pressed.x,
-                          y: actual.y - pressed.y,
-                        },
-                      });
-                    }}
-                    onRotateStart={(event) => {
-                      event.stopPropagation();
-                      (event.target as Element).setPointerCapture?.(
-                        event.pointerId,
-                      );
-                      setGesture({ kind: "rotate", pieceId: selected.id });
-                    }}
+                    onGrip={beginGrip}
                   />
                 )}
 
@@ -2163,92 +2173,90 @@ export function CollageStudio({
 }
 
 function PieceHandles({
-  box: piece,
+  box,
   label,
   scale,
   inView,
-  onResizeStart,
-  onRotateStart,
+  onGrip,
 }: {
   /** The box the handles sit on: one piece, or the box around several. */
   box: PlacedBox;
   /** What the handles act on, for their accessible names. */
   label: "piece" | "selection";
-  /** The frame's zoom, so the outline and handles keep one size on screen. */
+  /** The frame's zoom, so the outline and grips keep one size on screen. */
   scale: number;
   /** The part of the stage in view, in frame units, once it is measured. */
   inView: Bounds | null;
-  onResizeStart: (corner: ResizeCorner, event: React.PointerEvent) => void;
-  onRotateStart: (event: React.PointerEvent) => void;
+  onGrip: (zone: HandleZone, event: React.PointerEvent) => void;
 }) {
+  const zones = handleZones(box, scale, inView);
   return (
     <>
-    <div
-      style={{
-        position: "absolute",
-        left: piece.x,
-        top: piece.y,
-        width: piece.width,
-        height: piece.height,
-        transform: `rotate(${piece.rotation}deg)`,
-        transformOrigin: "center",
-        zIndex: 10_000,
-        pointerEvents: "none",
-      }}
-    >
-      {/* Drawn above every piece, so a selection buried in a pile still
-          shows its whole edge. */}
       <div
-        className="collage-selection-edge"
-        aria-hidden="true"
-        style={{ "--collage-zoom": scale } as React.CSSProperties}
-      />
-
-      <div
-        className="collage-handle__tether"
         style={{
-          left: "50%",
-          top: -ROTATE_HANDLE_OFFSET,
-          height: ROTATE_HANDLE_OFFSET,
-          width: 2 / scale,
+          position: "absolute",
+          left: box.x,
+          top: box.y,
+          width: box.width,
+          height: box.height,
+          transform: `rotate(${box.rotation}deg)`,
+          transformOrigin: "center",
+          zIndex: 10_000,
+          pointerEvents: "none",
         }}
-      />
-      <button
-        type="button"
-        aria-label={`Rotate ${label}`}
-        className="collage-handle collage-handle--rotate"
-        style={{
-          left: "50%",
-          top: -ROTATE_HANDLE_OFFSET,
-          pointerEvents: "auto",
-          transform: `scale(${1 / scale})`,
-        }}
-        onPointerDown={onRotateStart}
-      />
-    </div>
-    {/* Corner handles sit in frame space rather than turning with the
-        piece, so one whose corner is out of view can be pinned to the edge
-        of the stage and still be reached. */}
-    {RESIZE_CORNERS.map(({ corner }) => {
-      const actual = cornerPoint(piece, piece.rotation, corner);
-      const at = inView ? pinInside(actual, inView) : actual;
-      const pinned = at.x !== actual.x || at.y !== actual.y;
-      return (
-        <button
-          key={corner}
-          type="button"
-          aria-label={`Resize ${label} from ${corner.replace("-", " ")}`}
-          className={`collage-handle${pinned ? " collage-handle--pinned" : ""}`}
-          style={{
-            left: at.x,
-            top: at.y,
-            zIndex: 10_000,
-            transform: `scale(${1 / scale}) rotate(${piece.rotation}deg)`,
-          }}
-          onPointerDown={(event) => onResizeStart(corner, event)}
+      >
+        {/* Drawn above every piece, so a selection buried in a pile still
+            shows its whole edge. */}
+        <div
+          className="collage-selection-edge"
+          aria-hidden="true"
+          style={{ "--collage-zoom": scale } as React.CSSProperties}
         />
-      );
-    })}
+      </div>
+      {/* The grips sit in frame space at a fixed size on screen: the edges
+          and the squares just past the corners carry no mark of their own,
+          only a cursor that says what a drag there does. */}
+      {zones.map((zone) => {
+        if (zone.kind === "corner") {
+          return (
+            <button
+              key={`corner-${zone.corner}`}
+              type="button"
+              aria-label={`Resize ${label} from ${zone.corner.replace("-", " ")}`}
+              data-grip={`corner-${zone.corner}`}
+              className={`collage-handle${zone.pinned ? " collage-handle--pinned" : ""}`}
+              style={{
+                left: zone.center.x,
+                top: zone.center.y,
+                zIndex: 10_003,
+                cursor: zone.cursor,
+                transform: `scale(${1 / scale}) rotate(${zone.rotation}deg)`,
+              }}
+              onPointerDown={(event) => onGrip(zone, event)}
+            />
+          );
+        }
+        const key =
+          zone.kind === "edge" ? `edge-${zone.edge}` : `rotate-${zone.corner}`;
+        return (
+          <div
+            key={key}
+            data-grip={key}
+            aria-hidden="true"
+            className="collage-grip"
+            style={{
+              left: zone.center.x,
+              top: zone.center.y,
+              width: zone.width,
+              height: zone.height,
+              zIndex: zone.kind === "edge" ? 10_002 : 10_001,
+              cursor: zone.cursor,
+              transform: `translate(-50%, -50%) scale(${1 / scale}) rotate(${zone.rotation}deg)`,
+            }}
+            onPointerDown={(event) => onGrip(zone, event)}
+          />
+        );
+      })}
     </>
   );
 }

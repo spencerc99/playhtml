@@ -2,6 +2,7 @@
 // ABOUTME: A running tool owns the space, so nothing else can open on top of its controls.
 
 import type { PieceBox } from "./collageGeometry";
+import { GRIP_REACH } from "./handleZones";
 
 /**
  * The floating panels that can sit over the collage. At most one is ever on
@@ -59,20 +60,12 @@ export function toolSessionActive(state: PanelState): boolean {
 /** How far from the piece a panel sits, in on-screen pixels. */
 export const PANEL_GAP = 10;
 
-/** How far the rotate knob's tether reaches above a selected piece, in frame units. */
-export const ROTATE_HANDLE_OFFSET = 26;
-
-/**
- * Everything the rotate knob covers above the piece, in frame units: the
- * tether plus half the knob drawn at its end.
- */
-export const ROTATE_HANDLE_REACH = ROTATE_HANDLE_OFFSET + 6;
-
 /**
  * Where a panel floating beside a piece goes, in frame coordinates. It sits
- * above the piece, clear of the rotate knob, drops below when there is no
- * room above, and is kept inside the frame. The panel is drawn at its own
- * on-screen size, so its measured size is converted through the zoom.
+ * above the piece, clear of the grips that reach out past its corners, drops
+ * below (just as clear) when there is no room above, and is kept inside the
+ * frame. The panel and the grips are drawn at their own on-screen size, so
+ * both are converted through the zoom.
  */
 export function placeBesidePiece(
   piece: PieceBox,
@@ -80,11 +73,11 @@ export function placeBesidePiece(
   scale: number,
   frame: { width: number; height: number },
 ): { left: number; top: number } {
-  const gap = PANEL_GAP / scale;
+  const clear = (GRIP_REACH + PANEL_GAP) / scale;
   const width = panel.width / scale;
   const height = panel.height / scale;
-  const above = piece.y - ROTATE_HANDLE_REACH - gap - height;
-  const top = above >= 0 ? above : piece.y + piece.height + gap;
+  const above = piece.y - clear - height;
+  const top = above >= 0 ? above : piece.y + piece.height + clear;
   const centered = piece.x + piece.width / 2 - width / 2;
   const left =
     width >= frame.width

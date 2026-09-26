@@ -753,16 +753,13 @@ export const COLLAGE_STUDIO_STYLES = `
     background: #eef6f4;
   }
 
-  .collage-handle--rotate {
-    border-radius: 50%;
-    cursor: crosshair;
-  }
-
-  .collage-handle__tether {
+  /* An invisible grip around the selection: along an edge it scales, just
+     past a corner it turns. Only its cursor says which. */
+  .collage-grip {
     position: absolute;
-    width: 1px;
-    background: #4a9a8a;
-    pointer-events: none;
+    transform-origin: center;
+    background: transparent;
+    touch-action: none;
   }
 
   /*

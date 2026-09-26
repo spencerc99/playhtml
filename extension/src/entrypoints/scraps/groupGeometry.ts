@@ -6,7 +6,9 @@ import {
   boxCenter,
   normalizeDegrees,
   rotatePoint,
+  isSideEdge,
   signedCornerScale,
+  type BoxEdge,
   type Bounds,
   type PieceBox,
   type Point,
@@ -181,6 +183,45 @@ export function groupScaleFromCorner(options: {
     minimum: { x: MIN_GROUP_FACTOR, y: MIN_GROUP_FACTOR },
   });
   return { anchor, ...scale };
+}
+
+/**
+ * The scale an edge drag on a group's box asks for. The opposite edge stays
+ * put, or the center does with `aboutCenter`. With `keepAspect` the group
+ * scales evenly about the middle of that edge; without it the group
+ * stretches along the one axis. Carried past the anchor, it turns over.
+ */
+export function groupScaleFromEdge(options: {
+  bounds: Bounds;
+  edge: BoxEdge;
+  pointer: Point;
+  keepAspect: boolean;
+  aboutCenter: boolean;
+}): GroupScale {
+  const { bounds, edge, pointer, keepAspect, aboutCenter } = options;
+  if (bounds.width <= 0 || bounds.height <= 0) {
+    throw new Error("groupScaleFromEdge needs a group with area");
+  }
+  const center = boxCenter(bounds);
+  const side = isSideEdge(edge);
+  const grabbed =
+    edge === "left"
+      ? bounds.x
+      : edge === "right"
+        ? bounds.x + bounds.width
+        : edge === "top"
+          ? bounds.y
+          : bounds.y + bounds.height;
+  const opposite = side
+    ? (edge === "left" ? bounds.x + bounds.width : bounds.x)
+    : (edge === "top" ? bounds.y + bounds.height : bounds.y);
+  const fixed = aboutCenter ? (side ? center.x : center.y) : opposite;
+  const raw = ((side ? pointer.x : pointer.y) - fixed) / (grabbed - fixed);
+  const along = (raw < 0 ? -1 : 1) * Math.max(MIN_GROUP_FACTOR, Math.abs(raw));
+  const cross = keepAspect ? Math.abs(along) : 1;
+  return side
+    ? { anchor: { x: fixed, y: center.y }, x: along, y: cross }
+    : { anchor: { x: center.x, y: fixed }, x: cross, y: along };
 }
 
 /**
