@@ -10,9 +10,11 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  ANY_TIME,
   ScrapFilters,
   scrapPassesFilters,
   type ScrapKindFilter,
+  type ScrapWhenFilter,
 } from "./ScrapFilters";
 import type { FilterChip } from "../utils/eventUtils";
 import { hashString, seededRandom } from "../utils/styleUtils";
@@ -1523,6 +1525,7 @@ export function ScrapCollage({
   const [selectedKind, setSelectedKind] = useState<ScrapKindFilter>("all");
   const [places, setPlaces] = useState<FilterChip[]>([]);
   const [search, setSearch] = useState("");
+  const [when, setWhen] = useState<ScrapWhenFilter>(ANY_TIME);
   const [controlsFocused, setControlsFocused] = useState(false);
   const [view, setView] = useState<ScrapView>("drift");
   const [display, setDisplay] = useState<ScrapDisplay>(readScrapDisplay);
@@ -1610,9 +1613,9 @@ export function ScrapCollage({
   const filteredItems = useMemo(
     () =>
       groupedItems.filter((item) =>
-        scrapPassesFilters(item, selectedKind, places, search),
+        scrapPassesFilters(item, selectedKind, places, search, when),
       ),
-    [groupedItems, selectedKind, places, search],
+    [groupedItems, selectedKind, places, search, when],
   );
   const archiveScraps = useMemo(
     () =>
@@ -1744,7 +1747,7 @@ export function ScrapCollage({
     setHovered(false);
     setFocused(false);
     setWashingOut([]);
-  }, [archiveMode, selectedKind, places, search]);
+  }, [archiveMode, selectedKind, places, search, when]);
 
   /**
    * Drives the tide as a chain of self-scheduling events rather than a metronome:
@@ -2201,6 +2204,8 @@ export function ScrapCollage({
                   onKind={setSelectedKind}
                   search={search}
                   onSearch={setSearch}
+                  when={when}
+                  onWhen={setWhen}
                   matchCount={archiveScraps.length}
                   countScraps={countUniqueScraps}
                 />

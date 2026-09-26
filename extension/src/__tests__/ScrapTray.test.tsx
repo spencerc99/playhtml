@@ -1,4 +1,4 @@
-// ABOUTME: Tests the scrap drawer's filters, count line, reset, provenance label, and that its fields keep their keys.
+// ABOUTME: Tests the scrap drawer's filters (including day and time of day), count line, reset, provenance label, and field keys.
 // ABOUTME: Studio shortcuts must never fire while someone types in, or steers, the drawer's filters.
 
 import { act } from "react";
@@ -211,6 +211,118 @@ describe("ScrapTray filters", () => {
     window.removeEventListener("keydown", reachedWindow);
     expect(search().value).toBe("");
     expect(reachedWindow).not.toHaveBeenCalled();
+    expect(countLine()).toBe("4 to draw from");
+  });
+});
+
+describe("ScrapTray day and time-of-day filters", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  const at = (day: number, hour: number) =>
+    new Date(2026, 8, day, hour, 15).getTime();
+  const dated: ScrapItem[] = [
+    scrap("m1", "https://are.na/a", "Morning one", "image", at(1, 8)),
+    scrap("n1", "https://are.na/b", "Night one", "image", at(1, 23)),
+    scrap("m2", "https://are.na/c", "Morning two", "image", at(2, 9)),
+    scrap("e2", "https://are.na/d", "Evening two", "button", at(2, 19)),
+  ];
+
+  beforeEach(() => {
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() =>
+      root.render(
+        <ScrapTray
+          items={dated}
+          width={384}
+          collapsed={false}
+          slotSize="medium"
+          onWidth={vi.fn()}
+          onCollapsed={vi.fn()}
+          onSlotSize={vi.fn()}
+          onPlace={vi.fn()}
+          onDragStart={vi.fn()}
+        />,
+      ),
+    );
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  const countLine = () =>
+    container.querySelector(".collage-tray__count")!.textContent;
+  const chip = (label: string) =>
+    Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.startsWith(label),
+    )!;
+  const slots = () =>
+    Array.from(container.querySelectorAll(".collage-tray__slot")).map(
+      (slot) => slot.getAttribute("aria-label"),
+    );
+
+  it("narrows to a day, then a time of day, and resets both", () => {
+    expect(chip("when").textContent).toContain("any time");
+
+    act(() => chip("when").click());
+    act(() =>
+      container.querySelector<HTMLElement>('[data-day="2026-09-02"]')!.click(),
+    );
+    expect(countLine()).toBe("2 of 4 · reset");
+    expect(chip("when").textContent).toContain("Sep 2");
+
+    act(() =>
+      Array.from(
+        container.querySelectorAll<HTMLButtonElement>(".scrap-filters__time"),
+      )
+        .find((button) => button.textContent === "morning")!
+        .click(),
+    );
+    expect(countLine()).toBe("1 of 4 · reset");
+    expect(slots()).toEqual(["are.na — Morning two"]);
+    expect(chip("when").textContent).toContain("Sep 2 · morning");
+
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>(".collage-tray__reset")!
+        .click(),
+    );
+    expect(countLine()).toBe("4 to draw from");
+    expect(chip("when").textContent).toContain("any time");
+  });
+
+  it("keeps every seen day in the grid and clears from the popover", () => {
+    act(() => chip("when").click());
+    const days = () =>
+      Array.from(container.querySelectorAll<HTMLElement>("[data-day]")).map(
+        (cell) => cell.dataset.day,
+      );
+    expect(days()).toEqual(["2026-09-01", "2026-09-02"]);
+
+    act(() =>
+      Array.from(
+        container.querySelectorAll<HTMLButtonElement>(".scrap-filters__time"),
+      )
+        .find((button) => button.textContent === "night")!
+        .click(),
+    );
+    // 23:15 sits outside 00:00–06:00, so nothing matches, but both days stay.
+    expect(countLine()).toBe("0 of 4 · reset");
+    expect(days()).toEqual(["2026-09-01", "2026-09-02"]);
+
+    act(() =>
+      Array.from(
+        container.querySelectorAll<HTMLButtonElement>(".scrap-filters__link"),
+      )
+        .find((button) => button.textContent === "clear")!
+        .click(),
+    );
     expect(countLine()).toBe("4 to draw from");
   });
 });
