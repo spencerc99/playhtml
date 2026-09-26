@@ -722,17 +722,15 @@ export const COLLAGE_STUDIO_STYLES = `
     transform: none;
   }
 
-  /* The selected piece's edge: a solid teal line with a pale rim on either
-     side, so it reads on dark and light material alike. Sized in screen
-     pixels through the frame's zoom. */
+  /* The edge of the selected piece, or of the box around several: a plain
+     teal line two screen pixels wide, kept that weight through the frame's
+     zoom. It is drawn as an inset shadow because the browser rounds a
+     border's width to whole pixels before the zoom applies, which would
+     leave the line thinner or thicker than two pixels on screen. */
   .collage-selection-edge {
     position: absolute;
     inset: 0;
-    border: calc(3px / var(--collage-zoom)) solid #4a9a8a;
-    box-shadow:
-      0 0 0 calc(1.5px / var(--collage-zoom)) rgba(255, 253, 249, 0.95),
-      0 0 0 calc(3px / var(--collage-zoom)) rgba(61, 56, 51, 0.35),
-      inset 0 0 0 calc(1.5px / var(--collage-zoom)) rgba(255, 253, 249, 0.95);
+    box-shadow: inset 0 0 0 calc(2px / var(--collage-zoom)) #4a9a8a;
     pointer-events: none;
   }
 
