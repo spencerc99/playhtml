@@ -21,7 +21,8 @@ import {
   frameScale,
   isFullCrop,
   normalizeDegrees,
-  resizeFromCorner,
+  dragCorner,
+  lockToAxis,
   rotationToPointer,
   sameCrop,
   scaleAboutCenter,
@@ -192,9 +193,9 @@ type Gesture =
     }
   | {
       kind: "resize";
-      pieceId: string;
       corner: ResizeCorner;
-      origin: PieceBox;
+      /** The piece as it was when the drag began. */
+      before: CollagePiece;
       /**
        * From where the press landed to the real corner. A handle pinned into
        * view sits away from its corner, and the drag acts as if the corner
@@ -1171,6 +1172,44 @@ export function CollageStudio({
     setHistory((current) => endRun(current));
   }, []);
 
+  /**
+   * Carries the pieces a move gesture holds to follow the pointer. Shift keeps
+   * the move to the axis the drag has mostly travelled along, decided afresh
+   * each time so the axis can change mid-drag.
+   */
+  const carry = useCallback(
+    (
+      origins: readonly CollagePiece[],
+      grabbedAt: Point,
+      point: Point,
+      lockAxis: boolean,
+    ) => {
+      const travel = { x: point.x - grabbedAt.x, y: point.y - grabbedAt.y };
+      const delta = lockAxis ? lockToAxis(travel) : travel;
+      editPieces(translateGroup(origins, delta.x, delta.y), "move");
+    },
+    [editPieces],
+  );
+
+  // Pressing or letting go of shift mid-drag locks or frees the axis at once,
+  // without waiting for the pointer to move again.
+  useEffect(() => {
+    if (gesture.kind !== "move") return;
+    const { origins, grabbedAt } = gesture;
+    const onShift = (event: KeyboardEvent) => {
+      if (event.key !== "Shift") return;
+      const point = lastPointerRef.current;
+      if (!point || !pressRef.current?.moved) return;
+      carry(origins, grabbedAt, point, event.type === "keydown");
+    };
+    window.addEventListener("keydown", onShift);
+    window.addEventListener("keyup", onShift);
+    return () => {
+      window.removeEventListener("keydown", onShift);
+      window.removeEventListener("keyup", onShift);
+    };
+  }, [carry, gesture]);
+
   const onStagePointerMove = useCallback(
     (event: React.PointerEvent) => {
       if (over) return;
@@ -1266,14 +1305,7 @@ export function CollageStudio({
           setGesture({ kind: "move", origins: copies, grabbedAt });
           return;
         }
-        editPieces(
-          translateGroup(
-            origins,
-            point.x - grabbedAt.x,
-            point.y - grabbedAt.y,
-          ),
-          "move",
-        );
+        carry(origins, grabbedAt, point, event.shiftKey);
         return;
       }
       if (gesture.kind === "groupScale") {
@@ -1289,10 +1321,13 @@ export function CollageStudio({
           aboutCenter: event.altKey,
         });
         editPieces(scaleGroup(gesture.before, grow), "groupScale");
+        const across = grow.x < 0 || grow.y < 0 ? " · flipped" : "";
+        const wide = Math.round(Math.abs(grow.x) * 100);
+        const tall = Math.round(Math.abs(grow.y) * 100);
         setGestureReadout(
-          grow.x === grow.y
-            ? `scale ${Math.round(grow.x * 100)}%`
-            : `scale ${Math.round(grow.x * 100)}% × ${Math.round(grow.y * 100)}%`,
+          wide === tall
+            ? `scale ${wide}%${across}`
+            : `scale ${wide}% × ${tall}%${across}`,
         );
         return;
       }
@@ -1310,11 +1345,10 @@ export function CollageStudio({
         return;
       }
       if (gesture.kind === "resize") {
-        const rotation =
-          pieces.find((piece) => piece.id === gesture.pieceId)?.rotation ?? 0;
-        const next = resizeFromCorner({
-          box: gesture.origin,
-          rotationDegrees: rotation,
+        const { before } = gesture;
+        const drag = dragCorner({
+          box: before,
+          rotationDegrees: before.rotation,
           corner: gesture.corner,
           pointer: {
             x: point.x + gesture.toCorner.x,
@@ -1322,20 +1356,24 @@ export function CollageStudio({
           },
           // Shift frees the ratio; alt grows the piece about its own center.
           keepAspect: !event.shiftKey,
+          aboutCenter: event.altKey,
         });
-        const box = event.altKey
-          ? scaleAboutCenter(
-              gesture.origin,
-              next.width / gesture.origin.width,
-            )
-          : next;
-        editPiece(
-          gesture.pieceId,
-          (piece) => ({ ...piece, ...box }),
-          `resize:${gesture.pieceId}`,
+        // Pulled past the far corner, the piece turns over across that axis.
+        editPieces(
+          [
+            {
+              ...before,
+              ...drag.box,
+              flipX: drag.flippedX ? !before.flipX : before.flipX,
+              flipY: drag.flippedY ? !before.flipY : before.flipY,
+            },
+          ],
+          `resize:${before.id}`,
         );
         setGestureReadout(
-          `scale ${Math.round((box.width / gesture.origin.width) * 100)}%`,
+          `scale ${Math.round((drag.box.width / before.width) * 100)}%${
+            drag.flippedX || drag.flippedY ? " · flipped" : ""
+          }`,
         );
         return;
       }
@@ -1355,6 +1393,7 @@ export function CollageStudio({
       }
     },
     [
+      carry,
       duplicatePieces,
       editPiece,
       editPieces,
@@ -1873,14 +1912,8 @@ export function CollageStudio({
                       );
                       setGesture({
                         kind: "resize",
-                        pieceId: selected.id,
                         corner,
-                        origin: {
-                          x: selected.x,
-                          y: selected.y,
-                          width: selected.width,
-                          height: selected.height,
-                        },
+                        before: selected,
                         toCorner: {
                           x: actual.x - pressed.x,
                           y: actual.y - pressed.y,

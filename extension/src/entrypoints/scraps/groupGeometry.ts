@@ -6,6 +6,7 @@ import {
   boxCenter,
   normalizeDegrees,
   rotatePoint,
+  signedCornerScale,
   type Bounds,
   type PieceBox,
   type Point,
@@ -110,14 +111,20 @@ export function piecesInRect<T extends PlacedBox>(
   return pieces.filter((piece) => boxMeetsRect(piece, rect));
 }
 
-/** A group scale: every point moves away from `anchor` by `x` and `y`. */
+/**
+ * A group scale: every point moves away from `anchor` by `x` and `y`. A
+ * negative factor carries points across the anchor, mirroring the group.
+ */
 export interface GroupScale {
   anchor: Point;
   x: number;
   y: number;
 }
 
-/** The smallest a corner drag may shrink a group to, as a share of its size. */
+/**
+ * The smallest a corner drag may shrink a group to, as a share of its size,
+ * on either side of the anchor.
+ */
 export const MIN_GROUP_FACTOR = 0.05;
 
 function boundsCorner(bounds: Bounds, corner: ResizeCorner): Point {
@@ -148,8 +155,8 @@ function oppositeCorner(corner: ResizeCorner): ResizeCorner {
  * The scale a corner drag on a group's box asks for. The opposite corner
  * stays put, or the center does with `aboutCenter`. With `keepAspect` both
  * axes take the larger of the two stretches, as a single piece's corner does.
- * A drag past the anchor stops at a small size rather than turning the group
- * inside out.
+ * A drag carried past the anchor turns the group over across that axis
+ * (see signedCornerScale).
  */
 export function groupScaleFromCorner(options: {
   bounds: Bounds;
@@ -166,19 +173,14 @@ export function groupScaleFromCorner(options: {
     ? boxCenter(bounds)
     : boundsCorner(bounds, oppositeCorner(corner));
   const grabbed = boundsCorner(bounds, corner);
-  const x = Math.max(
-    MIN_GROUP_FACTOR,
-    (pointer.x - anchor.x) / (grabbed.x - anchor.x),
-  );
-  const y = Math.max(
-    MIN_GROUP_FACTOR,
-    (pointer.y - anchor.y) / (grabbed.y - anchor.y),
-  );
-  if (keepAspect) {
-    const both = Math.max(x, y);
-    return { anchor, x: both, y: both };
-  }
-  return { anchor, x, y };
+  const scale = signedCornerScale({
+    anchor,
+    grabbed,
+    pointer,
+    keepAspect,
+    minimum: { x: MIN_GROUP_FACTOR, y: MIN_GROUP_FACTOR },
+  });
+  return { anchor, ...scale };
 }
 
 /**
@@ -186,8 +188,11 @@ export function groupScaleFromCorner(options: {
  * scale, and each piece grows along its own turned axes by however much the
  * scale stretches that axis. An even scale is exact; an uneven one on a turned
  * piece keeps the piece a rectangle, which is as close as a box can come.
+ * A negative factor mirrors the group as mirrorGroup does: centers cross the
+ * anchor, and each piece's material flips across that axis with its turn
+ * reversed.
  */
-export function scaleGroup<T extends PlacedBox>(
+export function scaleGroup<T extends FlippableBox>(
   pieces: readonly T[],
   scale: GroupScale,
 ): T[] {
@@ -208,12 +213,21 @@ export function scaleGroup<T extends PlacedBox>(
       x: scale.anchor.x + (center.x - scale.anchor.x) * scale.x,
       y: scale.anchor.y + (center.y - scale.anchor.y) * scale.y,
     };
+    const acrossX = scale.x < 0;
+    const acrossY = scale.y < 0;
+    // One mirror reverses a turn; two mirrors make a half turn, which the
+    // two flipped materials already show, so the turn stands.
+    const rotation =
+      acrossX !== acrossY ? normalizeDegrees(-piece.rotation) : piece.rotation;
     return {
       ...piece,
       x: next.x - width / 2,
       y: next.y - height / 2,
       width,
       height,
+      rotation,
+      flipX: acrossX ? !piece.flipX : piece.flipX,
+      flipY: acrossY ? !piece.flipY : piece.flipY,
     };
   });
 }

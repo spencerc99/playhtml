@@ -162,16 +162,66 @@ describe("scaling a group from a corner", () => {
     expect(grow.x).toBeCloseTo(2, 6);
   });
 
-  it("stops short of turning the group inside out", () => {
+  it("turns the group over when dragged past the opposite corner", () => {
     const grow = groupScaleFromCorner({
       bounds,
       corner: "bottom-right",
-      pointer: { x: -300, y: -300 },
+      pointer: { x: -200, y: 50 },
       keepAspect: false,
       aboutCenter: false,
     });
-    expect(grow.x).toBeGreaterThan(0);
-    expect(grow.y).toBeGreaterThan(0);
+    expect(grow.x).toBeCloseTo(-1, 6);
+    expect(grow.y).toBeCloseTo(0.5, 6);
+  });
+
+  it("with the aspect kept flips across one axis without changing size", () => {
+    const grow = groupScaleFromCorner({
+      bounds,
+      corner: "bottom-right",
+      pointer: { x: -200, y: 100 },
+      keepAspect: true,
+      aboutCenter: false,
+    });
+    expect(grow.x).toBeCloseTo(-1, 6);
+    expect(grow.y).toBeCloseTo(1, 6);
+  });
+
+  it("never collapses to nothing right at the anchor", () => {
+    const grow = groupScaleFromCorner({
+      bounds,
+      corner: "bottom-right",
+      pointer: { x: 0, y: 0 },
+      keepAspect: false,
+      aboutCenter: false,
+    });
+    expect(Math.abs(grow.x)).toBeGreaterThan(0);
+    expect(Math.abs(grow.y)).toBeGreaterThan(0);
+  });
+
+  it("mirrors each piece when the scale crosses the anchor", () => {
+    const [left, right] = scaleGroup(
+      [box({ x: 0, y: 0, rotation: 20 }), box({ x: 100, y: 0, flipX: true })],
+      { anchor: { x: 0, y: 0 }, x: -1, y: 1 },
+    );
+    // Centers cross to the other side of the anchor at the same distance.
+    expectPoint(boxCenter(left), -50, 25);
+    expectPoint(boxCenter(right), -150, 25);
+    expect(left.flipX).toBe(true);
+    expect(right.flipX).toBe(false);
+    expect(left.rotation).toBe(340);
+    expect(left.width).toBeCloseTo(100, 6);
+  });
+
+  it("turns each piece half round when both axes cross", () => {
+    const [piece] = scaleGroup([box({ x: 10, y: 10, rotation: 30 })], {
+      anchor: { x: 0, y: 0 },
+      x: -1,
+      y: -1,
+    });
+    expectPoint(boxCenter(piece), -60, -35);
+    expect(piece.flipX).toBe(true);
+    expect(piece.flipY).toBe(true);
+    expect(piece.rotation).toBe(30);
   });
 
   it("moves each piece's place and size with the scale", () => {
