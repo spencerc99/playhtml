@@ -91,6 +91,12 @@ export default defineConfig({
     esbuild: {
       charset: "ascii",
     },
+    // tldraw's asset list imports each font and icon with `?url`. The dev
+    // server's dependency pre-bundling drops those imports, which leaves the
+    // list with undefined entries, so the package is served as-is instead.
+    optimizeDeps: {
+      exclude: ["@tldraw/assets"],
+    },
     resolve: {
       alias: {
         "@extension": path.resolve(__dirname, "src"),
