@@ -275,7 +275,7 @@ describe("ScrapTray day and time-of-day filters", () => {
       container.querySelector<HTMLElement>('[data-day="2026-09-02"]')!.click(),
     );
     expect(countLine()).toBe("2 of 4 · reset");
-    expect(chip("when").textContent).toContain("Sep 2, 2026");
+    expect(chip("when").textContent).toContain("Sep 2");
 
     act(() =>
       Array.from(
@@ -286,7 +286,7 @@ describe("ScrapTray day and time-of-day filters", () => {
     );
     expect(countLine()).toBe("1 of 4 · reset");
     expect(slots()).toEqual(["are.na — Morning two"]);
-    expect(chip("when").textContent).toContain("Sep 2, 2026 · 06:00–12:00");
+    expect(chip("when").textContent).toContain("Sep 2 · morning");
 
     act(() =>
       container

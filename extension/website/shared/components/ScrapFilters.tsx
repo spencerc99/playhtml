@@ -29,7 +29,7 @@ import {
 } from "../utils/scrapFilters";
 import type { TimeOfDayFilter } from "../config";
 import { formatTimeOfDay, localDayKey } from "../utils/timeOfDay";
-import { DAY_GRID_WIDTH, DayGrid, formatSingleDate } from "./DayGrid";
+import { DAY_GRID_WIDTH, DayGrid } from "./DayGrid";
 import { TimeOfDayInputs } from "./TimeOfDayInputs";
 
 export { ANY_TIME, isAnyTime, type ScrapWhenFilter };
@@ -68,11 +68,23 @@ export function scrapPassesFilters(
   );
 }
 
-/** The chip's short summary of a day and time-of-day filter. */
+/** The chip's short summary of a day and time-of-day filter, naming a quarter-day window when it is one. */
 export function formatScrapWhen(when: ScrapWhenFilter): string {
+  const { day, timeOfDay } = when;
   const parts = [
-    when.day === null ? null : formatSingleDate(when.day),
-    when.timeOfDay === null ? null : formatTimeOfDay(when.timeOfDay),
+    day === null
+      ? null
+      : new Date(`${day}T00:00:00`).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        }),
+    timeOfDay === null
+      ? null
+      : (timesOfDay.find(
+          (option) =>
+            option.window.centerMinutes === timeOfDay.centerMinutes &&
+            option.window.radiusMinutes === timeOfDay.radiusMinutes,
+        )?.label ?? formatTimeOfDay(timeOfDay)),
   ].filter((part): part is string => part !== null);
   return parts.length === 0 ? "any time" : parts.join(" · ");
 }
@@ -281,7 +293,9 @@ export function ScrapFilters({
   }, [panel]);
 
   // A popover is anchored to its chip, then slid sideways just enough to stay
-  // inside the drawer, or inside the window when it floats over the page.
+  // inside the drawer, or inside the window when it floats over the page. A
+  // pick can relabel a chip and move it onto another row, so it is measured
+  // again after each one.
   useLayoutEffect(() => {
     const element = popover.current;
     if (!element || !root.current) return;
@@ -297,7 +311,7 @@ export function ScrapFilters({
     if (bounds.right > right - margin) nudge = right - margin - bounds.right;
     if (bounds.left + nudge < left + margin) nudge = left + margin - bounds.left;
     element.style.setProperty("--scrap-filters-nudge", `${nudge}px`);
-  }, [panel, layout]);
+  }, [panel, layout, places, kind, when]);
 
   const siteLabel =
     selected.length === 0
@@ -744,8 +758,8 @@ const styles = `
 .scrap-filters__popover--when { width:${DAY_GRID_WIDTH + 22}px; }
 .scrap-filters--bar .scrap-filters__popover--when { right:0; }
 .scrap-filters__heading--time { margin-top:10px; }
-.scrap-filters__times { display:flex; flex-wrap:wrap; gap:4px; }
-.scrap-filters .scrap-filters__time { flex:1 1 auto; height:22px; padding:0 6px; border:1px solid rgba(61,56,51,.18); border-radius:999px; background:#faf9f6; font-size:9px; }
+.scrap-filters__times { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+.scrap-filters .scrap-filters__time { height:22px; padding:0 6px; border:1px solid rgba(61,56,51,.18); border-radius:999px; background:#faf9f6; font-size:9px; }
 .scrap-filters .scrap-filters__time:hover { border-color:rgba(61,56,51,.38); }
 .scrap-filters .scrap-filters__time[aria-pressed=true] { border-color:rgba(74,154,138,.55); background:rgba(74,154,138,.1); color:#2f6b60; }
 .scrap-filters .scrap-filters__time:focus-visible { outline:none; border-color:#4a9a8a; box-shadow:0 0 0 3px rgba(74,154,138,.16); }
