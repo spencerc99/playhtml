@@ -8,6 +8,7 @@ import {
   SOURCE_TYPE_STEPS,
   backDate,
   backDetailLines,
+  BACK_CARD_COLOR,
   backInk,
   backLayout,
   collageBackDocument,
@@ -431,7 +432,7 @@ describe("collageBackMarkup", () => {
     expect(bleed?.getAttribute("src")).toBe("data:image/jpeg;base64,RlJPTlQ=");
     const declared = bleed?.getAttribute("style") ?? "";
     expect(declared).toContain("scaleX(-1)");
-    expect(declared).toContain("opacity:0.11");
+    expect(declared).toContain("opacity:0.3");
     expect(declared).toContain("blur(");
     expect(declared).toContain("mix-blend-mode:multiply");
 
@@ -445,9 +446,13 @@ describe("collageBackMarkup", () => {
         markIcon: MARK,
       }),
     );
+    // The paper color stays on the front; the back is always the plain card.
     expect(
       onDark.querySelector(".collage-back__bleed")?.getAttribute("style"),
-    ).toContain("mix-blend-mode:screen");
+    ).toContain("mix-blend-mode:multiply");
+    expect(
+      onDark.querySelector(".collage-back__paper")?.getAttribute("style"),
+    ).toContain(BACK_CARD_COLOR);
 
     const withoutFront = parse(
       collageBackMarkup({

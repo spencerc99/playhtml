@@ -12,6 +12,7 @@ import type { CollageFrame } from "./collageRecord";
 import type { CollagePaper } from "./collageFormats";
 import {
   backInk,
+  backPaper,
   collageBackMarkup,
   type BackFavicon,
   type CollageBackContent,
@@ -172,7 +173,8 @@ export function CollageBackFace({
     setPlace(container && markup ? titlePlace(container) : null);
   }, [markup]);
 
-  const ink = backInk(paper.color);
+  const card = backPaper(paper);
+  const ink = backInk(card.color);
   const name = content.title.trim() || "untitled collage";
   return (
     <section
@@ -183,7 +185,7 @@ export function CollageBackFace({
         width: frame.width,
         height: frame.height,
         // Bare paper while the writing's fonts are still being read.
-        ...paperBackground(paper.color, paper.grain, frame.width, frame.height),
+        ...paperBackground(card.color, card.grain, frame.width, frame.height),
       }}
     >
       {assets && markup && (

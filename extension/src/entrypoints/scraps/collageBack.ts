@@ -211,8 +211,20 @@ export function backInk(paperColor: string): BackInk {
   return luminance(paperColor) < 0.2 ? INK_ON_DARK : INK_ON_PALE;
 }
 
+/**
+ * The card the back is printed on. The paper color belongs to the front, where
+ * the pieces mostly cover it; on the back it would be all there is to see, so
+ * the back is always this plain card and the collage showing through is what
+ * gives it its color. The grain follows the front's choice.
+ */
+export const BACK_CARD_COLOR = "#faf7f2";
+
+export function backPaper(paper: CollagePaper): CollagePaper {
+  return { color: BACK_CARD_COLOR, grain: paper.grain };
+}
+
 /** How strongly the front shows through the paper. */
-export const BLEED_OPACITY = 0.11;
+export const BLEED_OPACITY = 0.3;
 /** How soft the show-through is, in frame units. */
 export const BLEED_BLUR = 1.5;
 
@@ -466,7 +478,8 @@ export interface CollageBackMarkupOptions {
  * what exports. Every value is escaped for XML, and nothing on it is a link.
  */
 export function collageBackMarkup(options: CollageBackMarkupOptions): string {
-  const { frame, paper, content, favicons, bleed, markIcon } = options;
+  const { frame, content, favicons, bleed, markIcon } = options;
+  const paper = backPaper(options.paper);
   const ink = backInk(paper.color);
   const list = backList(content.sources);
   const layout = backLayout(frame, list.lines.length);
