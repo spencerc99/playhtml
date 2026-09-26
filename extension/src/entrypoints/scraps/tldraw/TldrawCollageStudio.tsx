@@ -310,7 +310,8 @@ function StudioSurface({
 
   const onMount = useCallback(
     (mounted: Editor) => {
-      mounted.user.updateUserPreferences({ isSnapMode: true });
+      // Pieces snap only while cmd/ctrl is held, tldraw's own default.
+      mounted.user.updateUserPreferences({ isSnapMode: false });
       // Only scraps from the drawer become pieces; pasted text, links and
       // files are ignored rather than turned into tldraw's own shapes.
       for (const type of ["text", "url", "files", "svg-text", "embed", "excalidraw"] as const) {
