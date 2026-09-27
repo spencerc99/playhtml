@@ -86,6 +86,16 @@ export function soleSelected(selection: Selection): string | null {
   return selection.ids.length === 1 ? selection.ids[0] : null;
 }
 
+/** Whether an upright box holds a point, edges included. */
+function boxHolds(box: Bounds, point: Point): boolean {
+  return (
+    point.x >= box.x &&
+    point.x <= box.x + box.width &&
+    point.y >= box.y &&
+    point.y <= box.y + box.height
+  );
+}
+
 /** What one press on the collage does to the hand, settled as it lands. */
 export interface SelectionPressPlan {
   /** Held as soon as the pointer goes down. */
@@ -102,10 +112,11 @@ export interface SelectionPressPlan {
  * Shift adds the frontmost piece under the pointer, or, when that piece is
  * already held, a click puts it down while a drag still moves the whole hand.
  *
- * With several pieces held, a press inside any of them keeps the hand so a
- * drag moves them all, even where an unheld piece lies over it; a click
- * without a drag narrows the hand to the frontmost piece at that spot, the
- * one the eye sees clicked. A press elsewhere takes the frontmost piece alone.
+ * With several pieces held, a press anywhere inside the box around them keeps
+ * the hand so a drag moves them all: on a held piece, on an unheld piece lying
+ * over one, or on an unheld piece that only sits inside the box. A click there
+ * without a drag takes the frontmost piece at that spot alone, the one the eye
+ * sees clicked. A press outside the box takes the frontmost piece alone.
  *
  * With one piece or none held, the single-piece rules apply (see planPress):
  * clicking the held piece again steps down the pile, and cmd or ctrl reaches
@@ -115,6 +126,8 @@ export function planSelectionPress(
   pieces: readonly CollagePiece[],
   point: Point,
   selection: Selection,
+  /** The box around the hand when several pieces are held, else null. */
+  groupBox: Bounds | null,
   modifiers: { deep: boolean; additive: boolean },
 ): SelectionPressPlan | null {
   const stack = piecesUnder(pieces, point);
@@ -134,7 +147,10 @@ export function planSelectionPress(
   }
 
   if (selection.ids.length > 1 && !modifiers.deep) {
-    if (stack.some((piece) => isSelected(selection, piece.id))) {
+    if (
+      stack.some((piece) => isSelected(selection, piece.id)) ||
+      (groupBox !== null && boxHolds(groupBox, point))
+    ) {
       return {
         selectOnDown: selection,
         dragIds: selection.ids,
@@ -188,12 +204,7 @@ export function planBarePress(
   additive: boolean,
 ): BarePressPlan {
   const insideGroup =
-    selection.ids.length > 1 &&
-    groupBox !== null &&
-    point.x >= groupBox.x &&
-    point.x <= groupBox.x + groupBox.width &&
-    point.y >= groupBox.y &&
-    point.y <= groupBox.y + groupBox.height;
+    selection.ids.length > 1 && groupBox !== null && boxHolds(groupBox, point);
   if (insideGroup) {
     return {
       kind: "drag",

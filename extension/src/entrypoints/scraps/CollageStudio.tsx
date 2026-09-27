@@ -1445,10 +1445,16 @@ export function CollageStudio({
     const at = framePoint(event);
     // The element took the press, so when the rotated-box test misses by a
     // rounding hair at an edge, the piece the page hit is the answer.
-    const plan = planSelectionPress(pieces, at, selection, {
-      deep: event.metaKey || event.ctrlKey,
-      additive: event.shiftKey,
-    }) ?? {
+    const plan = planSelectionPress(
+      pieces,
+      at,
+      selection,
+      multiple ? selectionBox : null,
+      {
+        deep: event.metaKey || event.ctrlKey,
+        additive: event.shiftKey,
+      },
+    ) ?? {
       selectOnDown: selectOnly(piece.id),
       dragIds: [piece.id],
       selectOnClick: selectOnly(piece.id),

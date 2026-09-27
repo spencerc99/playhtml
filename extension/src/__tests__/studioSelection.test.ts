@@ -123,7 +123,7 @@ describe("a marquee", () => {
 
 describe("a press with one piece or none held", () => {
   it("takes the frontmost piece when nothing is held", () => {
-    const plan = planSelectionPress(pieces, inThePile, EMPTY_SELECTION, plain);
+    const plan = planSelectionPress(pieces, inThePile, EMPTY_SELECTION, null, plain);
     expect(plan).toEqual({
       selectOnDown: selectOnly("top"),
       dragIds: ["top"],
@@ -132,20 +132,20 @@ describe("a press with one piece or none held", () => {
   });
 
   it("clicking the held piece again steps one down the pile", () => {
-    const plan = planSelectionPress(pieces, inThePile, selectOnly("top"), plain);
+    const plan = planSelectionPress(pieces, inThePile, selectOnly("top"), null, plain);
     expect(plan?.selectOnDown).toEqual(selectOnly("top"));
     expect(plan?.dragIds).toEqual(["top"]);
     expect(plan?.selectOnClick).toEqual(selectOnly("middle"));
   });
 
   it("drags the held piece even where another lies on top", () => {
-    const plan = planSelectionPress(pieces, inThePile, selectOnly("bottom"), plain);
+    const plan = planSelectionPress(pieces, inThePile, selectOnly("bottom"), null, plain);
     expect(plan?.dragIds).toEqual(["bottom"]);
     expect(plan?.selectOnDown).toEqual(selectOnly("bottom"));
   });
 
   it("reaches the next piece down straight away with cmd", () => {
-    const plan = planSelectionPress(pieces, inThePile, selectOnly("top"), {
+    const plan = planSelectionPress(pieces, inThePile, selectOnly("top"), null, {
       deep: true,
       additive: false,
     });
@@ -155,14 +155,14 @@ describe("a press with one piece or none held", () => {
 
   it("does nothing on bare paper", () => {
     expect(
-      planSelectionPress(pieces, { x: 300, y: 10 }, selectOnly("top"), plain),
+      planSelectionPress(pieces, { x: 300, y: 10 }, selectOnly("top"), null, plain),
     ).toBeNull();
   });
 });
 
 describe("a shift press", () => {
   it("adds the frontmost piece and drags the whole hand", () => {
-    const plan = planSelectionPress(pieces, onApart, selectOnly("top"), shift);
+    const plan = planSelectionPress(pieces, onApart, selectOnly("top"), null, shift);
     const both = { ids: ["top", "apart"], primary: "apart" };
     expect(plan).toEqual({
       selectOnDown: both,
@@ -173,7 +173,7 @@ describe("a shift press", () => {
 
   it("on a held piece keeps the hand for a drag and puts it down on a click", () => {
     const held = selectMany(["apart", "top"]);
-    const plan = planSelectionPress(pieces, onApart, held, shift);
+    const plan = planSelectionPress(pieces, onApart, held, null, shift);
     expect(plan?.selectOnDown).toBe(held);
     expect(plan?.dragIds).toEqual(["apart", "top"]);
     expect(plan?.selectOnClick).toEqual(selectOnly("top"));
@@ -184,34 +184,37 @@ describe("a press with several held", () => {
   const held = selectMany(["apart", "top"]);
 
   it("on a held piece keeps the hand so a drag moves them all", () => {
-    const plan = planSelectionPress(pieces, onApart, held, plain);
+    const plan = planSelectionPress(pieces, onApart, held, null, plain);
     expect(plan?.selectOnDown).toBe(held);
     expect(plan?.dragIds).toEqual(["apart", "top"]);
   });
 
   it("narrows to the clicked piece on a click without a drag", () => {
-    const plan = planSelectionPress(pieces, onApart, held, plain);
+    const plan = planSelectionPress(pieces, onApart, held, null, plain);
     expect(plan?.selectOnClick).toEqual(selectOnly("apart"));
   });
 
   it("does not step down the pile the way a single held piece does", () => {
-    const plan = planSelectionPress(pieces, inThePile, held, plain);
+    const plan = planSelectionPress(pieces, inThePile, held, null, plain);
     expect(plan?.selectOnClick).toEqual(selectOnly("top"));
   });
 
   it("carries the hand from a held piece buried under an unheld one", () => {
     const buried = selectMany(["bottom", "apart"]);
-    const plan = planSelectionPress(pieces, inThePile, buried, plain);
+    const plan = planSelectionPress(pieces, inThePile, buried, null, plain);
     expect(plan?.dragIds).toEqual(["bottom", "apart"]);
     // A click there takes the piece the eye sees on top.
     expect(plan?.selectOnClick).toEqual(selectOnly("top"));
   });
 
   it("takes an unheld piece alone when pressed away from the hand", () => {
+    // The pile's box, which "apart" lies well outside.
+    const pileBox = { x: 0, y: 0, width: 100, height: 100 };
     const plan = planSelectionPress(
       pieces,
       onApart,
       selectMany(["top", "middle"]),
+      pileBox,
       plain,
     );
     expect(plan?.selectOnDown).toEqual(selectOnly("apart"));
@@ -219,7 +222,7 @@ describe("a press with several held", () => {
   });
 
   it("with cmd reaches down from the primary alone", () => {
-    const plan = planSelectionPress(pieces, inThePile, selectMany(["apart", "top"]), {
+    const plan = planSelectionPress(pieces, inThePile, selectMany(["apart", "top"]), null, {
       deep: true,
       additive: false,
     });
@@ -273,5 +276,48 @@ describe("a press on bare paper", () => {
     expect(planBarePress(betweenThem, EMPTY_SELECTION, null, false).kind).toBe(
       "marquee",
     );
+  });
+});
+
+describe("a press on an unheld piece inside the box around several", () => {
+  /** A piece that sits between the held ones without touching them. */
+  const between = piece({ id: "between", z: 4, x: 200, y: 200, width: 50, height: 50 });
+  const spread = [...pieces, between];
+  const held = selectMany(["top", "apart"]);
+  // The box around "top" (0..100) and "apart" (400..500).
+  const groupBox = { x: 0, y: 0, width: 500, height: 500 };
+  const onBetween = { x: 225, y: 225 };
+
+  it("keeps the hand so a drag moves them all", () => {
+    const plan = planSelectionPress(spread, onBetween, held, groupBox, plain);
+    expect(plan?.selectOnDown).toBe(held);
+    expect(plan?.dragIds).toEqual(["top", "apart"]);
+  });
+
+  it("takes that piece alone on a click without a drag", () => {
+    const plan = planSelectionPress(spread, onBetween, held, groupBox, plain);
+    expect(plan?.selectOnClick).toEqual(selectOnly("between"));
+  });
+
+  it("with shift adds it to the hand", () => {
+    const plan = planSelectionPress(spread, onBetween, held, groupBox, shift);
+    const grown = { ids: ["top", "apart", "between"], primary: "between" };
+    expect(plan?.selectOnDown).toEqual(grown);
+    expect(plan?.dragIds).toEqual(["top", "apart", "between"]);
+  });
+
+  it("outside the box takes the piece alone as before", () => {
+    const smallBox = { x: 0, y: 0, width: 150, height: 150 };
+    const plan = planSelectionPress(spread, onBetween, held, smallBox, plain);
+    expect(plan?.selectOnDown).toEqual(selectOnly("between"));
+    expect(plan?.dragIds).toEqual(["between"]);
+  });
+
+  it("with cmd still reaches down from the pointer, not the box", () => {
+    const plan = planSelectionPress(spread, onBetween, held, groupBox, {
+      deep: true,
+      additive: false,
+    });
+    expect(plan?.selectOnDown).toEqual(selectOnly("between"));
   });
 });
