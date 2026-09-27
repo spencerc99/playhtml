@@ -1,7 +1,8 @@
-// ABOUTME: The compact strip of tools that floats beside the selected piece.
+// ABOUTME: The compact strip of tools that floats beside the selected piece or pieces.
 // ABOUTME: Small inline-SVG glyphs so the tools stay out of the material's way.
 
 import React, { useLayoutEffect, useRef, useState } from "react";
+import type { PieceBox } from "./collageGeometry";
 import type { CollagePiece } from "./collageRecord";
 import { placeBesidePiece } from "./studioPanels";
 
@@ -101,7 +102,13 @@ export const GLYPHS = {
 };
 
 export interface PieceActionsProps {
-  piece: CollagePiece;
+  /** The box the strip floats beside: the piece, or the bounds of several. */
+  box: PieceBox;
+  /**
+   * The piece in hand when it is the only one. Crop and cut-out work on one
+   * picture at a time, so with several in hand they leave the strip.
+   */
+  piece: CollagePiece | null;
   canCutOut: boolean;
   /** The frame's zoom, so the strip stays one size on screen. */
   scale: number;
@@ -111,7 +118,7 @@ export interface PieceActionsProps {
   onFlip: (axis: "x" | "y") => void;
   onCrop: () => void;
   onCutOut: () => void;
-  /** Holds the piece in place; it is let go again from the pieces-here list. */
+  /** Holds what is in hand in place; each piece is let go again from the pieces-here list. */
   onLock: () => void;
   onDuplicate: () => void;
   onRemove: () => void;
@@ -140,7 +147,7 @@ function isSeparator(action: Action): action is { separator: true; key: string }
  * same spot and only one of them is ever shown there.
  */
 export function useBesidePiece(
-  piece: CollagePiece,
+  piece: PieceBox,
   scale: number,
   frame: { width: number; height: number },
 ) {
@@ -174,6 +181,7 @@ export function useBesidePiece(
  * they stay on shift + the bracket keys, listed in the keys popover.
  */
 export function PieceActions({
+  box,
   piece,
   canCutOut,
   scale,
@@ -186,7 +194,7 @@ export function PieceActions({
   onDuplicate,
   onRemove,
 }: PieceActionsProps) {
-  const placement = useBesidePiece(piece, scale, frame);
+  const placement = useBesidePiece(box, scale, frame);
 
   const actions: Action[] = [
     {
@@ -210,7 +218,7 @@ export function PieceActions({
       hint: "H",
       glyph: GLYPHS.flipX,
       run: () => onFlip("x"),
-      on: piece.flipX,
+      ...(piece ? { on: piece.flipX } : {}),
     },
     {
       key: "flip-y",
@@ -218,17 +226,21 @@ export function PieceActions({
       hint: "V",
       glyph: GLYPHS.flipY,
       run: () => onFlip("y"),
-      on: piece.flipY,
+      ...(piece ? { on: piece.flipY } : {}),
     },
-    {
-      key: "crop",
-      label: "Crop",
-      hint: "C",
-      glyph: GLYPHS.crop,
-      run: onCrop,
-    },
+    ...(piece
+      ? [
+          {
+            key: "crop",
+            label: "Crop",
+            hint: "C",
+            glyph: GLYPHS.crop,
+            run: onCrop,
+          },
+        ]
+      : []),
     // Only a picture has a background to cut away.
-    ...(canCutOut
+    ...(piece && canCutOut
       ? [
           {
             key: "cut-out",
@@ -245,7 +257,7 @@ export function PieceActions({
     { separator: true, key: "after-shape" },
     {
       key: "lock",
-      label: "Lock in place",
+      label: piece ? "Lock in place" : "Lock these in place",
       hint: "right-click the spot to unlock",
       glyph: GLYPHS.lock,
       run: onLock,
@@ -272,7 +284,7 @@ export function PieceActions({
       ref={placement.ref}
       className="collage-piece-actions"
       role="toolbar"
-      aria-label="Piece"
+      aria-label={piece ? "Piece" : "Pieces"}
       style={placement.style}
       // Clicking a tool must not reach the frame beneath and drop the
       // selection the tool is about to act on.

@@ -4,12 +4,12 @@
 import { describe, expect, it } from "vitest";
 import {
   PANEL_GAP,
-  ROTATE_HANDLE_REACH,
   placeBesidePiece,
   toolSessionActive,
   visiblePanel,
   type PanelState,
 } from "../entrypoints/scraps/studioPanels";
+import { GRIP_REACH } from "../entrypoints/scraps/handleZones";
 
 const RESTING: PanelState = {
   turnedOver: false,
@@ -98,21 +98,21 @@ describe("placing a panel beside a piece", () => {
   const frame = { width: 1000, height: 800 };
   const panel = { width: 200, height: 30 };
 
-  it("sits centered above the piece, clear of the rotate knob", () => {
+  it("sits centered above the piece, clear of the grips past its corners", () => {
     const piece = { x: 400, y: 300, width: 200, height: 100 };
     const placed = placeBesidePiece(piece, panel, 1, frame);
     expect(placed).toEqual({
       left: 400,
-      top: 300 - ROTATE_HANDLE_REACH - PANEL_GAP - 30,
+      top: 300 - GRIP_REACH - PANEL_GAP - 30,
     });
-    // The panel's bottom edge stays above the knob's top.
-    expect(placed.top + 30).toBeLessThan(300 - ROTATE_HANDLE_REACH);
+    // The panel's bottom edge stays above the rotate grips' top.
+    expect(placed.top + 30).toBeLessThan(300 - GRIP_REACH);
   });
 
-  it("drops below the piece when there is no room above", () => {
+  it("drops below the piece, just as clear, when there is no room above", () => {
     const piece = { x: 400, y: 10, width: 200, height: 100 };
     expect(placeBesidePiece(piece, panel, 1, frame).top).toBe(
-      10 + 100 + PANEL_GAP,
+      10 + 100 + GRIP_REACH + PANEL_GAP,
     );
   });
 
@@ -128,7 +128,7 @@ describe("placing a panel beside a piece", () => {
     // At half zoom the panel covers twice as many frame units.
     expect(placeBesidePiece(piece, panel, 0.5, frame)).toEqual({
       left: 300,
-      top: 300 - ROTATE_HANDLE_REACH - PANEL_GAP * 2 - 60,
+      top: 300 - (GRIP_REACH + PANEL_GAP) * 2 - 60,
     });
   });
 });
