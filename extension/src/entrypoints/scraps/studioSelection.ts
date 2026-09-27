@@ -64,8 +64,27 @@ export function marqueeSelection(
 }
 
 /**
- * Drops pieces that no longer exist, as after an undo or a delete, keeping
- * the rest in the order they were taken.
+ * The pieces a click, a marquee, select-all or a step can take. A locked
+ * piece is held in place and passed over by all of them; it is reached again
+ * only from the list of pieces under a point.
+ */
+export function selectablePieces<T extends { locked?: true }>(
+  pieces: readonly T[],
+): T[] {
+  return pieces.filter((piece) => piece.locked !== true);
+}
+
+/** Takes every piece that can be taken, skipping locked ones. */
+export function selectAll(
+  pieces: readonly { id: string; locked?: true }[],
+): Selection {
+  return selectMany(selectablePieces(pieces).map((piece) => piece.id));
+}
+
+/**
+ * Drops pieces that are no longer in `pieces`, as after an undo or a delete,
+ * or when a piece is locked and `pieces` holds only the selectable ones,
+ * keeping the rest in the order they were taken.
  */
 export function pruneSelection(
   selection: Selection,

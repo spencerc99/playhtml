@@ -11,6 +11,7 @@ import {
   collageBackDocument,
   collageBackMarkup,
   type BackFavicon,
+  type BackLook,
   type CollageBackContent,
 } from "./collageBack";
 import { webPageHref } from "./scrapLinks";
@@ -178,6 +179,7 @@ export interface BackBakeOptions {
   favicons: ReadonlyMap<string, BackFavicon>;
   /** Pixel density relative to the frame's logical size, matching the front. */
   scale?: number;
+  look: BackLook;
 }
 
 /**
@@ -199,6 +201,7 @@ export async function bakeCollageBack(options: BackBakeOptions): Promise<Blob> {
         favicons: options.favicons,
         bleed,
         markIcon,
+        look: options.look,
       }),
       fontFaces,
       pixelScale: scale,

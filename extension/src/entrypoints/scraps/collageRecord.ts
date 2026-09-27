@@ -47,6 +47,11 @@ export interface CollagePiece {
   flipY: boolean;
   /** How this piece's backdrop was removed, absent when it was left alone. */
   cutout?: PieceCutout;
+  /**
+   * Present when the piece is held in place: clicks pass through it to what is
+   * beneath. It is only reached again from the list of pieces under a point.
+   */
+  locked?: true;
 }
 
 export interface CollageRecord {
@@ -278,7 +283,26 @@ export function parseCollagePiece(value: unknown): CollagePiece {
     flipY: readBoolean(piece, "flipY"),
     // Collages saved before cutouts existed simply have no field to read.
     ...(piece.cutout === undefined ? {} : { cutout: parseCutout(piece.cutout) }),
+    // Likewise a piece that was never locked carries no lock.
+    ...(piece.locked === undefined ? {} : { locked: readLocked(piece.locked) }),
   };
+}
+
+function readLocked(value: unknown): true {
+  if (value !== true) {
+    throw new Error(`Collage piece lock is not true: ${String(value)}`);
+  }
+  return value;
+}
+
+/** Holds a piece in place, or lets it go; an unlocked piece carries no lock. */
+export function setPieceLocked(
+  piece: CollagePiece,
+  locked: boolean,
+): CollagePiece {
+  if (locked) return { ...piece, locked: true };
+  const { locked: _released, ...rest } = piece;
+  return rest;
 }
 
 export function parseCollageRecord(value: unknown): CollageRecord {

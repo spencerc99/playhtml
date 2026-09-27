@@ -211,10 +211,37 @@ export function backInk(paperColor: string): BackInk {
   return luminance(paperColor) < 0.2 ? INK_ON_DARK : INK_ON_PALE;
 }
 
-/** How strongly the front shows through the paper. */
-export const BLEED_OPACITY = 0.11;
-/** How soft the show-through is, in frame units. */
-export const BLEED_BLUR = 1.5;
+/** How the back is printed: its card, the collage through it, and the maker's mark. */
+export interface BackLook {
+  /**
+   * The card the back is printed on. The paper color belongs to the front,
+   * where the pieces mostly cover it; on the back it would be all there is to
+   * see, so the back is a plain card and the collage showing through is what
+   * gives it its color. The grain follows the front's choice.
+   */
+  cardColor: string;
+  /** How strongly the front shows through the card. */
+  bleedOpacity: number;
+  /** How soft the show-through is, in frame units. */
+  bleedBlur: number;
+  /** How strongly the engraving and wordmark are pressed in. */
+  markOpacity: number;
+  /** The engraving's size in frame units; the wordmark scales with it. */
+  markSize: number;
+}
+
+export const BACK_LOOK: BackLook = {
+  cardColor: "#faf7f2",
+  bleedOpacity: 0.3,
+  bleedBlur: 1.5,
+  markOpacity: 0.8,
+  markSize: 44,
+};
+
+export function backPaper(paper: CollagePaper, look: BackLook): CollagePaper {
+  return { color: look.cardColor, grain: paper.grain };
+}
+
 
 export function backDate(ts: number): string {
   return new Date(ts).toLocaleDateString(undefined, {
@@ -379,10 +406,6 @@ const SERIF = `'${BACK_FONTS.serif}', 'Lora', Georgia, serif`;
 const MONO = `'${BACK_FONTS.mono}', 'Martian Mono', ui-monospace, monospace`;
 const WORDMARK = `'${BACK_FONTS.wordmark}', 'Source Serif 4', 'Lora', Georgia, serif`;
 
-/** The maker's mark: the engraving and the wordmark, faint as if pressed in. */
-export const MARK_OPACITY = 0.55;
-export const MARK_ICON_SIZE = 34;
-
 function style(declarations: string[]): string {
   return escapeXml(declarations.join(";"));
 }
@@ -457,6 +480,7 @@ export interface CollageBackMarkupOptions {
   bleed: string | null;
   /** The extension's engraved icon as a data URL, for the maker's mark. */
   markIcon: string;
+  look: BackLook;
 }
 
 /**
@@ -466,7 +490,8 @@ export interface CollageBackMarkupOptions {
  * what exports. Every value is escaped for XML, and nothing on it is a link.
  */
 export function collageBackMarkup(options: CollageBackMarkupOptions): string {
-  const { frame, paper, content, favicons, bleed, markIcon } = options;
+  const { frame, content, favicons, bleed, markIcon, look } = options;
+  const paper = backPaper(options.paper, look);
   const ink = backInk(paper.color);
   const list = backList(content.sources);
   const layout = backLayout(frame, list.lines.length);
@@ -494,8 +519,8 @@ export function collageBackMarkup(options: CollageBackMarkupOptions): string {
         `height:${frame.height}px`,
         // Mirrored across the vertical axis, as the front reads from behind.
         "transform:scaleX(-1)",
-        `opacity:${BLEED_OPACITY}`,
-        `filter:blur(${BLEED_BLUR}px)`,
+        `opacity:${look.bleedOpacity}`,
+        `filter:blur(${look.bleedBlur}px)`,
         `mix-blend-mode:${ink.bleedBlend}`,
       ])}"/>`
     : "";
@@ -531,17 +556,17 @@ export function collageBackMarkup(options: CollageBackMarkupOptions): string {
     "display:flex",
     "align-items:center",
     "justify-content:flex-end",
-    `gap:${Math.round(MARK_ICON_SIZE * 0.3)}px`,
+    `gap:${Math.round(look.markSize * 0.3)}px`,
   ])}"><img alt="" src="${escapeXml(markIcon)}" style="${style([
-    `width:${MARK_ICON_SIZE}px`,
-    `height:${MARK_ICON_SIZE}px`,
+    `width:${look.markSize}px`,
+    `height:${look.markSize}px`,
     "flex:none",
-    `opacity:${MARK_OPACITY}`,
+    `opacity:${look.markOpacity}`,
     ...ink.markBlend,
   ])}"/><span class="collage-back__wordmark" style="${style([
-    `font:italic 200 ${Math.round(MARK_ICON_SIZE * 0.6)}px/1 ${WORDMARK}`,
+    `font:italic 200 ${Math.round(look.markSize * 0.6)}px/1 ${WORDMARK}`,
     `color:${ink.ink}`,
-    `opacity:${MARK_OPACITY}`,
+    `opacity:${look.markOpacity}`,
     "white-space:nowrap",
   ])}">we were online</span></div>`;
 

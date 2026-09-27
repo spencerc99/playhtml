@@ -890,8 +890,42 @@ export const COLLAGE_STUDIO_STYLES = `
     border: 1px solid transparent;
     border-radius: 3px;
     background: transparent;
+  }
+
+  .collage-here__pick {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
     text-align: left;
     cursor: pointer;
+  }
+
+  .collage-here__pick:disabled {
+    cursor: default;
+  }
+
+  .collage-here__row--locked .collage-here__thumb,
+  .collage-here__row--locked .collage-here__what {
+    opacity: 0.55;
+  }
+
+  /* The lock only shows on the row being pointed at, and on locked rows. */
+  .collage-here__lock {
+    flex: none;
+    opacity: 0;
+  }
+
+  .collage-here__row:hover .collage-here__lock,
+  .collage-here__row--locked .collage-here__lock,
+  .collage-here__lock:focus-visible {
+    opacity: 1;
   }
 
   .collage-here__row:hover {
@@ -1080,6 +1114,15 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-tolerance__button:hover {
     border-color: rgba(61, 56, 51, 0.2);
+  }
+
+  .collage-tolerance__button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .collage-tolerance__button:disabled:hover {
+    border-color: transparent;
   }
 
   .collage-tolerance__button--done {
