@@ -817,6 +817,7 @@ export default function TldrawCollageStudio({
                   onOrder={order}
                   onCrop={startCrop}
                   onLock={lock}
+                  lockHint="unlock from the bar below"
                   onCutOut={beginCutout}
                   onDuplicate={duplicate}
                   onRemove={remove}

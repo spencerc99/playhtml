@@ -121,6 +121,8 @@ export interface PieceActionsProps {
   onCutOut: () => void;
   /** Holds what is in hand in place; each piece is let go again from the pieces-here list. */
   onLock: () => void;
+  /** How a locked piece is let go again in this editor, shown with the lock. */
+  lockHint?: string;
   onDuplicate: () => void;
   onRemove: () => void;
 }
@@ -192,6 +194,7 @@ export function PieceActions({
   onCrop,
   onCutOut,
   onLock,
+  lockHint = "right-click the spot to unlock",
   onDuplicate,
   onRemove,
 }: PieceActionsProps) {
@@ -263,7 +266,7 @@ export function PieceActions({
     {
       key: "lock",
       label: piece ? "Lock in place" : "Lock these in place",
-      hint: "right-click the spot to unlock",
+      hint: lockHint,
       glyph: GLYPHS.lock,
       run: onLock,
     },
