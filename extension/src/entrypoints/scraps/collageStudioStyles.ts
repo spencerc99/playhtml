@@ -528,8 +528,10 @@ export const COLLAGE_STUDIO_STYLES = `
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 12px;
     overflow: hidden;
+    /* A marquee or a handle drag sweeps across the stage; it must not pick up
+       the readout or the bars' labels as selected text on the way. */
+    user-select: none;
   }
 
   /* Both sides of the collage share one place on the stage. The sheet keeps
@@ -559,9 +561,15 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-frame {
     position: relative;
     box-shadow: 0 10px 34px rgba(61, 56, 51, 0.16);
-    overflow: hidden;
     touch-action: none;
     backface-visibility: hidden;
+  }
+
+  /* What bakes stops at the frame's edge, so the pieces are clipped there. */
+  .collage-frame__pieces {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
   }
 
   /* The back: the same paper, the front faintly through it, and the sources. */
@@ -714,33 +722,44 @@ export const COLLAGE_STUDIO_STYLES = `
     transform: none;
   }
 
-  .collage-piece--selected {
-    outline: 1px solid rgba(74, 154, 138, 0.85);
-    outline-offset: 0;
+  /* The edge of the selected piece, or of the box around several: a plain
+     teal line two screen pixels wide, kept that weight through the frame's
+     zoom. It is drawn as an inset shadow because the browser rounds a
+     border's width to whole pixels before the zoom applies, which would
+     leave the line thinner or thicker than two pixels on screen. */
+  .collage-selection-edge {
+    position: absolute;
+    inset: 0;
+    box-shadow: inset 0 0 0 calc(2px / var(--collage-zoom)) #4a9a8a;
+    pointer-events: none;
   }
 
   .collage-handle {
     position: absolute;
-    width: 11px;
-    height: 11px;
-    margin: -6px 0 0 -6px;
-    border: 1px solid rgba(61, 56, 51, 0.55);
+    width: 13px;
+    height: 13px;
+    margin: -7px 0 0 -7px;
+    border: 2px solid #4a9a8a;
     border-radius: 2px;
     background: #fffdf9;
     padding: 0;
     cursor: grab;
   }
 
-  .collage-handle--rotate {
-    border-radius: 50%;
-    cursor: crosshair;
+  /* A corner handle held at the edge of the view because its corner is out
+     of sight; it still drags that corner. */
+  .collage-handle--pinned {
+    border-style: dashed;
+    background: #eef6f4;
   }
 
-  .collage-handle__tether {
+  /* An invisible grip around the selection: along an edge it scales, just
+     past a corner it turns. Only its cursor says which. */
+  .collage-grip {
     position: absolute;
-    width: 1px;
-    background: rgba(61, 56, 51, 0.4);
-    pointer-events: none;
+    transform-origin: center;
+    background: transparent;
+    touch-action: none;
   }
 
   /*
@@ -819,6 +838,27 @@ export const COLLAGE_STUDIO_STYLES = `
     pointer-events: none;
   }
 
+  /* Each piece inside a selection of several, traced lightly under the box
+     that holds them all. */
+  .collage-piece-member {
+    position: absolute;
+    z-index: 9999;
+    border-style: solid;
+    border-color: rgba(74, 154, 138, 0.85);
+    transform-origin: center;
+    pointer-events: none;
+  }
+
+  /* The area a drag across bare paper is sweeping. */
+  .collage-marquee {
+    position: absolute;
+    z-index: 10003;
+    border-style: solid;
+    border-color: #4a9a8a;
+    background: rgba(74, 154, 138, 0.08);
+    pointer-events: none;
+  }
+
   /* Every piece stacked under the pointer, so a buried one can be picked by
      eye rather than by clicking down through the pile. */
   .collage-here {
@@ -850,8 +890,42 @@ export const COLLAGE_STUDIO_STYLES = `
     border: 1px solid transparent;
     border-radius: 3px;
     background: transparent;
+  }
+
+  .collage-here__pick {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
     text-align: left;
     cursor: pointer;
+  }
+
+  .collage-here__pick:disabled {
+    cursor: default;
+  }
+
+  .collage-here__row--locked .collage-here__thumb,
+  .collage-here__row--locked .collage-here__what {
+    opacity: 0.55;
+  }
+
+  /* The lock only shows on the row being pointed at, and on locked rows. */
+  .collage-here__lock {
+    flex: none;
+    opacity: 0;
+  }
+
+  .collage-here__row:hover .collage-here__lock,
+  .collage-here__row--locked .collage-here__lock,
+  .collage-here__lock:focus-visible {
+    opacity: 1;
   }
 
   .collage-here__row:hover {
@@ -1040,6 +1114,15 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-tolerance__button:hover {
     border-color: rgba(61, 56, 51, 0.2);
+  }
+
+  .collage-tolerance__button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .collage-tolerance__button:disabled:hover {
+    border-color: transparent;
   }
 
   .collage-tolerance__button--done {

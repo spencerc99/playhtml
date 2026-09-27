@@ -1,6 +1,6 @@
 ---
 title: "Presence & identity"
-description: "PlayerIdentity, page-level presence channels, element awareness, and isolated presence rooms."
+description: "PlayerIdentity, page-level presence channels, element users, and isolated presence rooms."
 sidebar:
   order: 5
 ---
@@ -113,7 +113,7 @@ room.destroy();
 
 ---
 
-## Element awareness
+## Element users
 
 Presence scoped to one playhtml element. Same lifetime as page presence — ephemeral, no replay.
 
@@ -121,14 +121,14 @@ Set on the [Element API](/docs/reference/element-api/):
 
 | Property / callback field | Role |
 | --- | --- |
-| `myDefaultAwareness` | Your starting awareness value. |
-| `awareness` | Read-only array of every user's value in callbacks. |
-| `setMyAwareness` | Broadcast your value. |
-| `updateElementAwareness` | Imperative hook when awareness changes. |
+| `live` | Your starting ephemeral value for this element. |
+| `users` | Every current user's identity and live value. |
+| `setLive` | Broadcast your value. |
+| `update` | Render shared data and element users through one callback. |
 
-Built-in example: `can-hover` uses awareness `{ hover: boolean }` and sets `[data-playhtml-hover]` when anyone hovers.
+Built-in example: `can-hover` uses a live `{ hover: boolean }` value and sets `[data-playhtml-hover]` when anyone hovers.
 
-In React, `withSharedState` / `<CanPlayElement>` expose the same fields on render props: `awareness`, `myAwareness`, `setMyAwareness`.
+In React, `withSharedState` / `<CanPlayElement>` expose the same `live`, `users`, and `setLive` fields on render props.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 title: "Element initializer API"
-description: "Configure data defaults, renderers, event handlers, awareness, and lifecycle callbacks."
+description: "Configure data defaults, renderers, event handlers, live users, and lifecycle callbacks."
 sidebar:
   order: 3
 ---
@@ -11,7 +11,7 @@ The `ElementInitializer` configures a custom collaborative element. Use the same
 2. **`playhtml.define(name, initializer)`** for a reusable capability
 3. **`extraCapabilities`** in `playhtml.init()` for capabilities declared during initialization
 
-The initializer has three state buckets: shared **`data`**, per-user **`localData`**, and ephemeral **`awareness`**.
+The initializer has three state buckets: shared **`data`**, per-tab **`localData`**, and ephemeral per-user **`live`** data.
 
 For usage examples, see [Custom elements](/docs/custom-elements/).
 
@@ -21,26 +21,26 @@ Directly assigning initializer fields to an element remains supported for compat
 
 ### Callback context (`ctx`)
 
-Passed to `updateElement`, `view`, `onClick`, `onDrag`, and `onDragStart`:
+Passed to `update`, `view`, `onClick`, `onDrag`, and `onDragStart`:
 
 ```js
 {
   data,                // shared synced state (read-only snapshot)
   localData,           // per-user, per-tab; not synced
-  awareness,           // array of every user's awareness value for this element
-  awarenessByStableId, // Map<stableId, awareness value>
+  live,                // your ephemeral value for this element
+  users,               // [{ user: { pid, name, color, isMe }, live }]
   element,             // the HTMLElement
 
   setData,             // (next) mutator fn or replacement object
   setLocalData,        // (next) mutator fn or replacement; re-renders view
-  setMyAwareness,      // (next) your ephemeral awareness value
+  setLive,             // (next) your ephemeral value for this element
   requestUpdate,       // () re-run view now; no-op without view
 }
 ```
 
-`updateElementAwareness` receives the same fields, plus **`myAwareness`** (your own awareness value).
+The deprecated `awareness`, `awarenessByStableId`, `myAwareness`, and `setMyAwareness` fields remain available as compatibility aliases.
 
-Do not call `setData`, `setLocalData`, or `setMyAwareness` during a `view` render — playhtml logs an error and ignores the write. `setData` merge rules: [Data essentials](/docs/data/data-essentials/).
+Do not call `setData`, `setLocalData`, or `setLive` during a `view` render — playhtml logs an error and ignores the write. `setData` merge rules: [Data essentials](/docs/data/data-essentials/).
 
 ### `onMount` context
 
@@ -50,12 +50,13 @@ Do not call `setData`, `setLocalData`, or `setMyAwareness` during a `view` rende
 {
   getData,             // () => current shared data
   getLocalData,        // () => current local data
-  getAwareness,        // () => awareness array
+  getLive,             // () => your current live value
+  getUsers,            // () => current element users
   getElement,          // () => the HTMLElement
 
   setData,             // same setters as ctx
   setLocalData,
-  setMyAwareness,
+  setLive,
   requestUpdate,
 }
 ```
@@ -68,32 +69,27 @@ Everything you can put in an initializer for `register`, `define`, or `extraCapa
 {
   // Starting shared state for elements that render from shared data. Must be
   // an object (or a function that returns one) — not a bare number or string.
-  // Synced across the room. Must be paired with updateElement or view.
+  // Synced across the room. Must be paired with update or view.
   defaultData: { count: 0 },
   // defaultData: (element) => ({ color: element.dataset.color }),
 
   // Per-user, per-tab state. Never synced. Drag anchors, drafts, UI flags.
   defaultLocalData: undefined,
 
-  // Your starting awareness value for this element. Ephemeral — clears on
-  // disconnect. Pair with updateElementAwareness.
-  myDefaultAwareness: undefined,
+  // Your starting live value for this element. Clears when you disconnect.
+  live: undefined,
 
-  // --- data update path: provide updateElement OR view, not both ---
+  // --- render path: provide update OR view, not both ---
 
-  updateElement(ctx) {
-    // ctx — see Callback context above. Write the DOM from ctx.data.
+  update(ctx) {
+    // ctx — see Callback context above. Write the DOM from ctx.data and ctx.users.
     // Do not call ctx.setData here — it loops.
   },
 
   view(ctx) {
     // ctx — see Callback context above. Return a lit-html template.
-    // Mutually exclusive with updateElement, onClick, onDrag, onDragStart.
+    // Mutually exclusive with update, onClick, onDrag, onDragStart.
     // Drive ctx.setData from @click handlers, not during render.
-  },
-
-  updateElementAwareness(ctx) {
-    // ctx — Callback context + myAwareness. Pair with myDefaultAwareness.
   },
 
   // --- event handlers (ignored when using view) ---
@@ -150,28 +146,29 @@ const initializer = {
 
 ---
 
-## `myDefaultAwareness`
+## `live`
 
-Your starting awareness value for this element. Awareness is ephemeral — it clears when you disconnect. Other clients read it through the `awareness` array in callbacks.
+Your starting ephemeral value for this element. It clears when you disconnect. Other clients receive it in `users`, joined with your identity.
 
 ```js
 const initializer = {
-  myDefaultAwareness: "#2563eb",
+  live: { ready: false },
 };
 ```
 
 ---
 
-## `updateElement`
+## `update`
 
-Imperative update path. playhtml calls it on mount and whenever shared `data`, `localData`, or awareness changes (locally or from another tab). Write the DOM from `ctx.data`.
+Imperative update path. playhtml calls it on mount and whenever shared `data` or an element user's `live` value changes. Write the DOM from `ctx.data`, `ctx.live`, and `ctx.users`.
 
-Mutually exclusive with `view`. Do not call `setData` inside `updateElement` — that creates a write loop. See [Data essentials](/docs/data/data-essentials/) rule 7.
+Mutually exclusive with `view`. Do not call `setData` inside `update` — that creates a write loop. See [Data essentials](/docs/data/data-essentials/) rule 7.
 
 ```js
 const initializer = {
-  updateElement: ({ element, data }) => {
+  update: ({ element, data, users }) => {
     element.textContent = String(data.count);
+    element.dataset.users = String(users.length);
   },
 };
 ```
@@ -182,25 +179,15 @@ const initializer = {
 
 **Experimental.** Declarative update path. Return a [lit-html](https://lit.dev/) template; playhtml patches the DOM when state changes.
 
-Mutually exclusive with `updateElement`, `onClick`, `onDrag`, and `onDragStart` — put events in the template (`@click`, etc.).
+Mutually exclusive with `update`, `onClick`, `onDrag`, and `onDragStart` — put events in the template (`@click`, etc.).
 
 See [Registration API](/docs/reference/view-api/) for `register`, `define`, helpers, and handle methods.
 
 ---
 
-## `updateElementAwareness`
+## Deprecated compatibility names
 
-Called when element awareness changes. Same context as `updateElement`, plus `myAwareness` (your own value).
-
-```js
-const initializer = {
-  updateElementAwareness: ({ element, awareness }) => {
-    element.dataset.viewers = String(awareness.length);
-  },
-};
-```
-
-If the element also has a `view`, awareness changes re-render the view automatically.
+`updateElement`, `myDefaultAwareness`, `updateElementAwareness`, `awareness`, `awarenessByStableId`, `myAwareness`, `setMyAwareness`, and `getAwareness` remain available for existing elements. New code should use `update`, `live`, `users`, `setLive`, `getLive`, and `getUsers`. Supplying both names from an alias pair, such as `update` and `updateElement`, is an error.
 
 ---
 
@@ -317,7 +304,7 @@ Pass the initializer to `playhtml.register`. The element needs a stable, unique 
         data.count += 1;
       });
     },
-    updateElement: ({ element, data }) => {
+    update: ({ element, data }) => {
       element.textContent = String(data.count);
     },
   });
@@ -344,9 +331,9 @@ If existing code assigns those properties and calls `setupPlayElement(element)`,
 
 At registration time, playhtml checks:
 
-- `defaultData` and `updateElement` / `view` are provided together
-- `myDefaultAwareness`, when present, is paired with `updateElementAwareness`
-- At least one update function exists: `updateElement`, `view`, or `updateElementAwareness`
-- `register` / `define` throw if both `view` and `updateElement` are set, or if `view` is combined with `onClick` / `onDrag` / `onDragStart`
+- `defaultData` and `update` / `view` are provided together
+- `live`, when present, is paired with `update` / `view`
+- At least one renderer exists: `update` or `view`
+- `register` / `define` throw if both `view` and `update` are set, if both `update` and `updateElement` are set, or if `view` is combined with `onClick` / `onDrag` / `onDragStart`
 
 If validation fails, the element is skipped and a console error lists the missing or invalid pair.

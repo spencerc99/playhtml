@@ -12,16 +12,32 @@ import {
   hasPrivateExperimentAccess,
 } from "./featureAccess";
 
+const UNSETTLED_FEATURE_STATE: FeatureState = {
+  enabled: false,
+  available: false,
+  stage: "internal",
+  source: "unavailable",
+};
+
 export function useFeatureState(feature: FeatureId): FeatureState {
-  const [state, setState] = useState<FeatureState>({
-    enabled: false,
-    available: false,
-    stage: "internal",
-    source: "unavailable",
-  });
+  return useSettledFeatureState(feature) ?? UNSETTLED_FEATURE_STATE;
+}
+
+/**
+ * The feature's state, or null until it has been read once, for a surface
+ * that must tell "not yet known" apart from "unavailable".
+ */
+export function useSettledFeatureState(feature: FeatureId): FeatureState | null {
+  const [state, setState] = useState<FeatureState | null>(null);
 
   const reload = useCallback(() => {
-    getFeatureState(feature).then(setState).catch(() => {});
+    getFeatureState(feature)
+      .then(setState)
+      .catch((error: unknown) => {
+        // A state that cannot be read is treated as unavailable, and said so.
+        console.warn(`Could not read feature state for ${feature}:`, error);
+        setState(UNSETTLED_FEATURE_STATE);
+      });
   }, [feature]);
 
   useEffect(() => {

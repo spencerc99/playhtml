@@ -15,6 +15,7 @@ import {
   movePieceForward,
   normalizeStack,
   parseCollagePiece,
+  setPieceLocked,
   parseCollageRecord,
   summarizeCollage,
   type CollagePiece,
@@ -101,6 +102,27 @@ describe("parseCollagePiece", () => {
     expect(() =>
       parseCollagePiece({ ...piece(), crop: { x: 0, y: 0, width: 1 } }),
     ).toThrow(/numeric height/);
+  });
+});
+
+describe("locking a piece", () => {
+  it("marks a locked piece and carries no lock once it is let go", () => {
+    const locked = setPieceLocked(piece(), true);
+    expect(locked.locked).toBe(true);
+    const released = setPieceLocked(locked, false);
+    expect("locked" in released).toBe(false);
+    expect(released).toEqual(piece());
+  });
+
+  it("reads a lock back, and reads a piece saved without one as unlocked", () => {
+    const locked = setPieceLocked(piece(), true);
+    expect(parseCollagePiece(structuredClone(locked)).locked).toBe(true);
+    expect("locked" in parseCollagePiece(structuredClone(piece()))).toBe(false);
+  });
+
+  it("refuses a lock that is not simply true", () => {
+    expect(() => parseCollagePiece({ ...piece(), locked: "yes" })).toThrow();
+    expect(() => parseCollagePiece({ ...piece(), locked: false })).toThrow();
   });
 });
 

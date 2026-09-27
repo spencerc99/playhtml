@@ -1,7 +1,8 @@
-// ABOUTME: The compact strip of tools that floats beside the selected piece.
+// ABOUTME: The compact strip of tools that floats beside the selected piece or pieces.
 // ABOUTME: Small inline-SVG glyphs so the tools stay out of the material's way.
 
 import React, { useLayoutEffect, useRef, useState } from "react";
+import type { PieceBox } from "./collageGeometry";
 import type { CollagePiece } from "./collageRecord";
 import { placeBesidePiece } from "./studioPanels";
 
@@ -21,18 +22,24 @@ function Glyph({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** The strip's glyphs, shared with the collage history's card actions. */
+/**
+ * The strip's glyphs, shared with the collage history's card actions.
+ *
+ * The order glyphs follow the common drawing-tool convention: two overlapping
+ * squares, the one being moved drawn solid. Forward, it sits on top; back,
+ * only the part the other square leaves uncovered shows.
+ */
 export const GLYPHS = {
   forward: (
     <Glyph>
-      <rect x="2.5" y="4.5" width="7" height="7" {...STROKE} />
-      <path d="M8 8.5h5.5V3" {...STROKE} />
+      <path d="M2.5 9.5v-7h7" {...STROKE} />
+      <rect x="5.5" y="5.5" width="8" height="8" fill="currentColor" />
     </Glyph>
   ),
   backward: (
     <Glyph>
-      <rect x="6.5" y="4.5" width="7" height="7" {...STROKE} />
-      <path d="M8 7.5H2.5V13" {...STROKE} />
+      <path d="M2 2h8v3.5H5.5V10H2z" fill="currentColor" />
+      <rect x="6.5" y="6.5" width="7" height="7" {...STROKE} />
     </Glyph>
   ),
   flipX: (
@@ -55,17 +62,23 @@ export const GLYPHS = {
       <path d="M1.5 4.5h10v10" {...STROKE} />
     </Glyph>
   ),
-  uncrop: (
-    <Glyph>
-      <rect x="2.5" y="2.5" width="11" height="11" {...STROKE} />
-      <path d="M5.5 8h5M8 5.5v5" {...STROKE} />
-    </Glyph>
-  ),
   cutOut: (
     <Glyph>
       <circle cx="4" cy="12" r="1.8" {...STROKE} />
       <circle cx="12" cy="12" r="1.8" {...STROKE} />
       <path d="M5.3 10.7L12 2M10.7 10.7L4 2" {...STROKE} />
+    </Glyph>
+  ),
+  lock: (
+    <Glyph>
+      <rect x="3.5" y="7.5" width="9" height="6.5" rx="1" {...STROKE} />
+      <path d="M5.5 7.5V5a2.5 2.5 0 015 0v2.5" {...STROKE} />
+    </Glyph>
+  ),
+  unlock: (
+    <Glyph>
+      <rect x="3.5" y="7.5" width="9" height="6.5" rx="1" {...STROKE} />
+      <path d="M5.5 7.5V5a2.5 2.5 0 014.8-1" {...STROKE} />
     </Glyph>
   ),
   duplicate: (
@@ -89,8 +102,13 @@ export const GLYPHS = {
 };
 
 export interface PieceActionsProps {
-  piece: CollagePiece;
-  canUncrop: boolean;
+  /** The box the strip floats beside: the piece, or the bounds of several. */
+  box: PieceBox;
+  /**
+   * The piece in hand when it is the only one. Crop and cut-out work on one
+   * picture at a time, so with several in hand they leave the strip.
+   */
+  piece: CollagePiece | null;
   canCutOut: boolean;
   /** The frame's zoom, so the strip stays one size on screen. */
   scale: number;
@@ -99,8 +117,9 @@ export interface PieceActionsProps {
   onOrder: (to: "forward" | "backward" | "front" | "back") => void;
   onFlip: (axis: "x" | "y") => void;
   onCrop: () => void;
-  onUncrop: () => void;
   onCutOut: () => void;
+  /** Holds what is in hand in place; each piece is let go again from the pieces-here list. */
+  onLock: () => void;
   onDuplicate: () => void;
   onRemove: () => void;
 }
@@ -128,7 +147,7 @@ function isSeparator(action: Action): action is { separator: true; key: string }
  * same spot and only one of them is ever shown there.
  */
 export function useBesidePiece(
-  piece: CollagePiece,
+  piece: PieceBox,
   scale: number,
   frame: { width: number; height: number },
 ) {
@@ -162,20 +181,20 @@ export function useBesidePiece(
  * they stay on shift + the bracket keys, listed in the keys popover.
  */
 export function PieceActions({
+  box,
   piece,
-  canUncrop,
   canCutOut,
   scale,
   frame,
   onOrder,
   onFlip,
   onCrop,
-  onUncrop,
   onCutOut,
+  onLock,
   onDuplicate,
   onRemove,
 }: PieceActionsProps) {
-  const placement = useBesidePiece(piece, scale, frame);
+  const placement = useBesidePiece(box, scale, frame);
 
   const actions: Action[] = [
     {
@@ -199,7 +218,7 @@ export function PieceActions({
       hint: "H",
       glyph: GLYPHS.flipX,
       run: () => onFlip("x"),
-      on: piece.flipX,
+      ...(piece ? { on: piece.flipX } : {}),
     },
     {
       key: "flip-y",
@@ -207,30 +226,21 @@ export function PieceActions({
       hint: "V",
       glyph: GLYPHS.flipY,
       run: () => onFlip("y"),
-      on: piece.flipY,
+      ...(piece ? { on: piece.flipY } : {}),
     },
-    {
-      key: "crop",
-      label: "Crop",
-      hint: "C",
-      glyph: GLYPHS.crop,
-      run: onCrop,
-    },
-    // Restoring a crop has no key of its own, so it only appears once there
-    // is a crop to undo rather than sitting there greyed out.
-    ...(canUncrop
+    ...(piece
       ? [
           {
-            key: "uncrop",
-            label: "Undo the crop",
-            hint: "restores the whole picture",
-            glyph: GLYPHS.uncrop,
-            run: onUncrop,
+            key: "crop",
+            label: "Crop",
+            hint: "C",
+            glyph: GLYPHS.crop,
+            run: onCrop,
           },
         ]
       : []),
     // Only a picture has a background to cut away.
-    ...(canCutOut
+    ...(piece && canCutOut
       ? [
           {
             key: "cut-out",
@@ -245,6 +255,13 @@ export function PieceActions({
         ]
       : []),
     { separator: true, key: "after-shape" },
+    {
+      key: "lock",
+      label: piece ? "Lock in place" : "Lock these in place",
+      hint: "right-click the spot to unlock",
+      glyph: GLYPHS.lock,
+      run: onLock,
+    },
     {
       key: "duplicate",
       label: "Duplicate",
@@ -267,7 +284,7 @@ export function PieceActions({
       ref={placement.ref}
       className="collage-piece-actions"
       role="toolbar"
-      aria-label="Piece"
+      aria-label={piece ? "Piece" : "Pieces"}
       style={placement.style}
       // Clicking a tool must not reach the frame beneath and drop the
       // selection the tool is about to act on.

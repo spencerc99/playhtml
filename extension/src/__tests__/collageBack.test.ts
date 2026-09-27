@@ -8,6 +8,7 @@ import {
   SOURCE_TYPE_STEPS,
   backDate,
   backDetailLines,
+  BACK_LOOK,
   backInk,
   backLayout,
   collageBackDocument,
@@ -329,6 +330,7 @@ describe("collageBackMarkup", () => {
       paper: PALE,
       bleed: null,
       markIcon: MARK,
+      look: BACK_LOOK,
       favicons: noFavicons,
     });
     const document = parse(markup);
@@ -356,6 +358,7 @@ describe("collageBackMarkup", () => {
       paper: PALE,
       bleed: null,
       markIcon: MARK,
+      look: BACK_LOOK,
       favicons: noFavicons,
     });
     const document = parse(markup);
@@ -381,6 +384,7 @@ describe("collageBackMarkup", () => {
         paper: PALE,
       bleed: null,
       markIcon: MARK,
+      look: BACK_LOOK,
         favicons: noFavicons,
       }),
     );
@@ -405,6 +409,7 @@ describe("collageBackMarkup", () => {
         paper: PALE,
       bleed: null,
       markIcon: MARK,
+      look: BACK_LOOK,
         favicons,
       }),
     );
@@ -425,13 +430,14 @@ describe("collageBackMarkup", () => {
         favicons: noFavicons,
         bleed: "data:image/jpeg;base64,RlJPTlQ=",
         markIcon: MARK,
+        look: BACK_LOOK,
       }),
     );
     const bleed = withFront.querySelector(".collage-back__bleed");
     expect(bleed?.getAttribute("src")).toBe("data:image/jpeg;base64,RlJPTlQ=");
     const declared = bleed?.getAttribute("style") ?? "";
     expect(declared).toContain("scaleX(-1)");
-    expect(declared).toContain("opacity:0.11");
+    expect(declared).toContain(`opacity:${BACK_LOOK.bleedOpacity}`);
     expect(declared).toContain("blur(");
     expect(declared).toContain("mix-blend-mode:multiply");
 
@@ -443,11 +449,16 @@ describe("collageBackMarkup", () => {
         favicons: noFavicons,
         bleed: "data:image/jpeg;base64,RlJPTlQ=",
         markIcon: MARK,
+        look: BACK_LOOK,
       }),
     );
+    // The paper color stays on the front; the back is always the plain card.
     expect(
       onDark.querySelector(".collage-back__bleed")?.getAttribute("style"),
-    ).toContain("mix-blend-mode:screen");
+    ).toContain("mix-blend-mode:multiply");
+    expect(
+      onDark.querySelector(".collage-back__paper")?.getAttribute("style"),
+    ).toContain(BACK_LOOK.cardColor);
 
     const withoutFront = parse(
       collageBackMarkup({
@@ -457,6 +468,7 @@ describe("collageBackMarkup", () => {
         favicons: noFavicons,
         bleed: null,
         markIcon: MARK,
+        look: BACK_LOOK,
       }),
     );
     expect(withoutFront.querySelector(".collage-back__bleed")).toBeNull();
@@ -471,6 +483,7 @@ describe("collageBackMarkup", () => {
         favicons: noFavicons,
         bleed: null,
         markIcon: MARK,
+        look: BACK_LOOK,
       }),
     );
     const maker = document.querySelector(
@@ -480,7 +493,7 @@ describe("collageBackMarkup", () => {
     const icon = maker?.querySelector("img");
     expect(icon?.getAttribute("src")).toBe(MARK);
     expect(icon?.getAttribute("style")).toContain("mix-blend-mode:multiply");
-    expect(icon?.getAttribute("style")).toContain("opacity:0.55");
+    expect(icon?.getAttribute("style")).toContain(`opacity:${BACK_LOOK.markOpacity}`);
     const wordmark = maker?.querySelector(".collage-back__wordmark");
     expect(wordmark?.textContent).toBe("we were online");
     expect(wordmark?.getAttribute("style")).toContain("italic 200");
@@ -495,6 +508,7 @@ describe("collageBackMarkup", () => {
         paper: PALE,
       bleed: null,
       markIcon: MARK,
+      look: BACK_LOOK,
         favicons: noFavicons,
       }),
     );

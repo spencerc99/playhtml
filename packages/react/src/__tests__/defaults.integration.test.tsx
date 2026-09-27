@@ -45,7 +45,7 @@ describe("React default values", () => {
     expect(renderToString(<Selection label="Bob" />)).toContain("Bob");
   });
 
-  it.each(["defaultData", "myDefaultAwareness"])("rejects a callback for %s", (prop) => {
+  it.each(["defaultData", "live", "myDefaultAwareness"])("rejects a callback for %s", (prop) => {
     let calls = 0;
     const callback = () => {
       calls += 1;
