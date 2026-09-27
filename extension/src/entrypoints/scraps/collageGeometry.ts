@@ -432,3 +432,32 @@ export function frameScale(
     available.height / frame.height,
   );
 }
+
+/** Where a corner of a rotated piece sits in frame space. */
+export function cornerPoint(
+  box: PieceBox,
+  rotationDegrees: number,
+  corner: ResizeCorner,
+): Point {
+  const local = {
+    x: corner === "top-left" || corner === "bottom-left" ? box.x : box.x + box.width,
+    y: corner === "top-left" || corner === "top-right" ? box.y : box.y + box.height,
+  };
+  return rotatePoint(local, boxCenter(box), (rotationDegrees * Math.PI) / 180);
+}
+
+/** A rectangle in frame space, such as the part of the stage in view. */
+export interface Bounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** The nearest point to `point` inside `bounds`. */
+export function pinInside(point: Point, bounds: Bounds): Point {
+  return {
+    x: Math.min(Math.max(point.x, bounds.x), bounds.x + bounds.width),
+    y: Math.min(Math.max(point.y, bounds.y), bounds.y + bounds.height),
+  };
+}

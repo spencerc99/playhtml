@@ -528,7 +528,6 @@ export const COLLAGE_STUDIO_STYLES = `
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 12px;
     overflow: hidden;
   }
 
@@ -559,9 +558,15 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-frame {
     position: relative;
     box-shadow: 0 10px 34px rgba(61, 56, 51, 0.16);
-    overflow: hidden;
     touch-action: none;
     backface-visibility: hidden;
+  }
+
+  /* What bakes stops at the frame's edge, so the pieces are clipped there. */
+  .collage-frame__pieces {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
   }
 
   /* The back: the same paper, the front faintly through it, and the sources. */
@@ -714,21 +719,37 @@ export const COLLAGE_STUDIO_STYLES = `
     transform: none;
   }
 
-  .collage-piece--selected {
-    outline: 1px solid rgba(74, 154, 138, 0.85);
-    outline-offset: 0;
+  /* The selected piece's edge: a solid teal line with a pale rim on either
+     side, so it reads on dark and light material alike. Sized in screen
+     pixels through the frame's zoom. */
+  .collage-selection-edge {
+    position: absolute;
+    inset: 0;
+    border: calc(3px / var(--collage-zoom)) solid #4a9a8a;
+    box-shadow:
+      0 0 0 calc(1.5px / var(--collage-zoom)) rgba(255, 253, 249, 0.95),
+      0 0 0 calc(3px / var(--collage-zoom)) rgba(61, 56, 51, 0.35),
+      inset 0 0 0 calc(1.5px / var(--collage-zoom)) rgba(255, 253, 249, 0.95);
+    pointer-events: none;
   }
 
   .collage-handle {
     position: absolute;
-    width: 11px;
-    height: 11px;
-    margin: -6px 0 0 -6px;
-    border: 1px solid rgba(61, 56, 51, 0.55);
+    width: 13px;
+    height: 13px;
+    margin: -7px 0 0 -7px;
+    border: 2px solid #4a9a8a;
     border-radius: 2px;
     background: #fffdf9;
     padding: 0;
     cursor: grab;
+  }
+
+  /* A corner handle held at the edge of the view because its corner is out
+     of sight; it still drags that corner. */
+  .collage-handle--pinned {
+    border-style: dashed;
+    background: #eef6f4;
   }
 
   .collage-handle--rotate {
@@ -739,7 +760,7 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-handle__tether {
     position: absolute;
     width: 1px;
-    background: rgba(61, 56, 51, 0.4);
+    background: #4a9a8a;
     pointer-events: none;
   }
 
