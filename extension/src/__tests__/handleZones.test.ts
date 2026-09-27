@@ -162,14 +162,57 @@ describe("the cursor over each grip", () => {
     expect(rotateCursorAngle("top-left", 100)).toBe(10);
   });
 
-  it("draws its cursors as turned pictures with a plain fallback", () => {
-    const across = resizeCursor(0);
-    expect(across).toMatch(/^url\("data:image\/svg\+xml,/);
-    expect(across).toMatch(/ 12 12, ew-resize$/);
-    expect(decodeURIComponent(resizeCursor(30))).toContain("rotate(30 12 12)");
-    expect(resizeCursor(90)).toMatch(/ns-resize$/);
-    expect(resizeCursor(45)).toMatch(/nwse-resize$/);
-    expect(rotateCursor(90)).toMatch(/ grab$/);
+  it("uses the system resize cursor nearest each arrow direction", () => {
+    expect(resizeCursor(0)).toBe("ew-resize");
+    expect(resizeCursor(45)).toBe("nwse-resize");
+    expect(resizeCursor(90)).toBe("ns-resize");
+    expect(resizeCursor(135)).toBe("nesw-resize");
+    expect(resizeCursor(180)).toBe("ew-resize");
+    expect(resizeCursor(-45)).toBe("nesw-resize");
+  });
+
+  it("switches cursor exactly at the 22.5 degree boundaries", () => {
+    expect(resizeCursor(22.4)).toBe("ew-resize");
+    expect(resizeCursor(22.6)).toBe("nwse-resize");
+    expect(resizeCursor(67.4)).toBe("nwse-resize");
+    expect(resizeCursor(67.6)).toBe("ns-resize");
+    expect(resizeCursor(112.4)).toBe("ns-resize");
+    expect(resizeCursor(112.6)).toBe("nesw-resize");
+    expect(resizeCursor(157.4)).toBe("nesw-resize");
+    expect(resizeCursor(157.6)).toBe("ew-resize");
+    expect(resizeCursor(359.9)).toBe("ew-resize");
+  });
+
+  it("picks the cursor for a grip on a turned selection", () => {
+    // A left edge turned 20 degrees still reads across; turned 30 it reads
+    // along the down-right diagonal.
+    expect(resizeCursor(resizeCursorAngle("left", 20))).toBe("ew-resize");
+    expect(resizeCursor(resizeCursorAngle("left", 30))).toBe("nwse-resize");
+    expect(resizeCursor(resizeCursorAngle("top", 0))).toBe("ns-resize");
+    expect(resizeCursor(resizeCursorAngle("top-left", 30))).toBe("ns-resize");
+    expect(resizeCursor(resizeCursorAngle("top-right", 0))).toBe("nesw-resize");
+    expect(resizeCursor(resizeCursorAngle("bottom-left", 90))).toBe("nwse-resize");
+  });
+
+  it("gives each grip its cursor", () => {
+    const zones = handleZones({ ...box, rotation: 30 }, 1, null);
+    const cursorOf = (name: string) =>
+      zones.find((zone) =>
+        zone.kind === "edge" ? `edge-${zone.edge}` === name : `${zone.kind}-${zone.corner}` === name,
+      )?.cursor;
+    expect(cursorOf("edge-left")).toBe("nwse-resize");
+    expect(cursorOf("corner-top-left")).toBe("ns-resize");
+    expect(cursorOf("rotate-top-left")).toMatch(/^url\("data:image\/svg\+xml,/);
+  });
+
+  it("draws the rotate cursor at a system cursor's size with its hotspot in the middle", () => {
+    const cursor = rotateCursor(90);
+    expect(cursor).toMatch(/ 16 16, grab$/);
+    const svg = decodeURIComponent(cursor);
+    expect(svg).toContain('width="32" height="32"');
+    expect(svg).toContain("rotate(90 16 16)");
+    // A white ring under the ink so it reads on any picture.
+    expect(svg).toContain('stroke="#fffdf9" stroke-width="7"');
   });
 
   it("uses no emoji", () => {

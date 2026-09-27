@@ -1,5 +1,5 @@
 // ABOUTME: Where the grips around a selection sit: edges scale, corners scale, just past corners turn.
-// ABOUTME: Also the cursor each grip shows, turned with the piece so its arrows follow the box.
+// ABOUTME: Also the cursor each grip shows: the nearest system resize cursor, or a drawn rotate arrow.
 
 import {
   boxCenter,
@@ -81,48 +81,56 @@ export function rotateCursorAngle(
   return normalizeDegrees(base + rotationDegrees);
 }
 
-const CURSOR_INK = "#3d3833";
-const CURSOR_HALO = "#fffdf9";
-
-function svgCursor(body: string, degrees: number, fallback: string): string {
-  const turned = Math.round(degrees);
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">` +
-    `<g transform="rotate(${turned} 12 12)">${body}</g></svg>`;
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 12 12, ${fallback}`;
-}
-
-/** The nearest of the browser's own resize cursors, for when an image cursor cannot load. */
-function plainResizeCursor(degrees: number): string {
-  const step = Math.round(normalizeDegrees(degrees) / 45) % 4;
-  return ["ew-resize", "nwse-resize", "ns-resize", "nesw-resize"][step];
-}
-
-/** A double-headed arrow along `degrees`, outlined so it reads on any material. */
-export function resizeCursor(degrees: number): string {
-  const arrow = `M3 12 L7 8 L7 10.5 L17 10.5 L17 8 L21 12 L17 16 L17 13.5 L7 13.5 L7 16 Z`;
-  const body =
-    `<path d="${arrow}" fill="${CURSOR_INK}" stroke="${CURSOR_HALO}" ` +
-    `stroke-width="1.5" stroke-linejoin="round"/>`;
-  return svgCursor(body, degrees, plainResizeCursor(degrees));
-}
+/** The browser's own resize cursors, one for each 45 degree direction. */
+export type StandardResizeCursor =
+  | "ew-resize"
+  | "nwse-resize"
+  | "ns-resize"
+  | "nesw-resize";
 
 /**
- * A quarter-circle arrow with a head at each end, curving round the corner
- * it sits beyond; `degrees` turns it to face that corner.
+ * The browser's own resize cursor nearest to an arrow direction. The four
+ * cursors are 45 degrees apart, so each covers the directions within 22.5
+ * degrees of its own; a direction exactly on the boundary goes to the next
+ * one round.
+ */
+export function resizeCursor(degrees: number): StandardResizeCursor {
+  const step = Math.round(normalizeDegrees(degrees) / 45) % 4;
+  return (["ew-resize", "nwse-resize", "ns-resize", "nesw-resize"] as const)[
+    step
+  ];
+}
+
+const CURSOR_INK = "#3d3833";
+const CURSOR_HALO = "#fffdf9";
+/** The rotate cursor's canvas, in pixels: the size a system cursor reads at. */
+export const ROTATE_CURSOR_SIZE = 32;
+
+/**
+ * A curved arrow with a head at each end, wrapping round the corner its grip
+ * sits beyond; `degrees` turns it to face that corner. It is drawn at a
+ * system cursor's size, thick and ringed in white so it reads on dark and
+ * light pictures alike, with its hotspot at its middle.
  */
 export function rotateCursor(degrees: number): string {
-  // The arc is a quarter of a circle about (6, 18); each head points along
-  // the arc where it ends, and the whole drawing is nudged onto the hotspot.
-  const arc = `M6 9 A9 9 0 0 1 15 18`;
-  const heads = `M2.5 9 L6.5 5.5 L6.5 12.5 Z M15 21.5 L11.5 17.5 L18.5 17.5 Z`;
+  const middle = ROTATE_CURSOR_SIZE / 2;
+  // A quarter circle about (9, 23), bulging toward the top-right; each head
+  // points along the arc where it ends. The drawing spans (4, 6) to (26, 28),
+  // so it is moved by (1, -1) to sit centered on the hotspot.
+  const arc = `M9 11 A12 12 0 0 1 21 23`;
+  const heads = `M3.5 11 L10.5 5 L10.5 17 Z M21 28.5 L15 21.5 L27 21.5 Z`;
   const body =
-    `<g transform="translate(1.5 -1.5)">` +
-    `<path d="${arc}" fill="none" stroke="${CURSOR_HALO}" stroke-width="4.5" stroke-linecap="round"/>` +
-    `<path d="${heads}" fill="${CURSOR_INK}" stroke="${CURSOR_HALO}" stroke-width="1.5" stroke-linejoin="round"/>` +
-    `<path d="${arc}" fill="none" stroke="${CURSOR_INK}" stroke-width="1.8" stroke-linecap="round"/>` +
+    `<g transform="translate(1 -1)">` +
+    `<path d="${arc}" fill="none" stroke="${CURSOR_HALO}" stroke-width="7" stroke-linecap="round"/>` +
+    `<path d="${heads}" fill="${CURSOR_INK}" stroke="${CURSOR_HALO}" stroke-width="3" ` +
+    `stroke-linejoin="round" paint-order="stroke"/>` +
+    `<path d="${arc}" fill="none" stroke="${CURSOR_INK}" stroke-width="3" stroke-linecap="round"/>` +
     `</g>`;
-  return svgCursor(body, degrees, "grab");
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${ROTATE_CURSOR_SIZE}" height="${ROTATE_CURSOR_SIZE}" ` +
+    `viewBox="0 0 ${ROTATE_CURSOR_SIZE} ${ROTATE_CURSOR_SIZE}">` +
+    `<g transform="rotate(${Math.round(degrees)} ${middle} ${middle})">${body}</g></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${middle} ${middle}, grab`;
 }
 
 /** One grip around the selection, laid out in frame space. */
