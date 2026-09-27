@@ -7,9 +7,12 @@ import {
   type ScrapItem,
 } from "@movement/components/ScrapCollage";
 import {
+  ANY_TIME,
   ScrapFilters,
+  isAnyTime,
   scrapPassesFilters,
   type ScrapKindFilter,
+  type ScrapWhenFilter,
 } from "@movement/components/ScrapFilters";
 import type { FilterChip } from "@movement/utils/eventUtils";
 import {
@@ -62,6 +65,7 @@ export function ScrapTray({
   const [kind, setKind] = useState<ScrapKindFilter>("all");
   const [places, setPlaces] = useState<FilterChip[]>([]);
   const [search, setSearch] = useState("");
+  const [when, setWhen] = useState<ScrapWhenFilter>(ANY_TIME);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const resizingRef = useRef(false);
@@ -74,10 +78,14 @@ export function ScrapTray({
   const filtered = useMemo(() => {
     const sorted = [...items].sort((a, b) => b.ts - a.ts);
     return sorted.filter((item) =>
-      scrapPassesFilters(item, kind, places, search),
+      scrapPassesFilters(item, kind, places, search, when),
     );
-  }, [items, kind, places, search]);
-  const filtering = kind !== "all" || places.length > 0 || search.trim() !== "";
+  }, [items, kind, places, search, when]);
+  const filtering =
+    kind !== "all" ||
+    places.length > 0 ||
+    search.trim() !== "" ||
+    !isAnyTime(when);
 
   const columns = drawerColumns(width, slotSize);
   // Every thumbnail keeps its own proportions, so the placement is worked out
@@ -160,6 +168,8 @@ export function ScrapTray({
         onKind={setKind}
         search={search}
         onSearch={setSearch}
+        when={when}
+        onWhen={setWhen}
         matchCount={filtered.length}
         layout="drawer"
         placement="below"
@@ -206,6 +216,7 @@ export function ScrapTray({
                 setSearch("");
                 setPlaces([]);
                 setKind("all");
+                setWhen(ANY_TIME);
               }}
             >
               reset
