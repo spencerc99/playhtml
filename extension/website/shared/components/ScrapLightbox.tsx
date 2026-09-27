@@ -9,6 +9,7 @@ import React, {
   useState,
 } from "react";
 import { headingDisplayFontSize, type ScrapItem } from "./ScrapCollage";
+import { useScrapImageSrc } from "../utils/scrapImageSource";
 
 /** Fraction of the viewport's smaller dimension the lifted scrap fills. */
 const LIFTED_VIEWPORT_FRACTION = 0.55;
@@ -509,11 +510,14 @@ interface ScrapLightboxProps {
 }
 
 function ScrapMedia({ item }: { item: ScrapItem }) {
+  const imageSrc = useScrapImageSrc(
+    item.kind === "image" ? item.src : undefined,
+  );
   switch (item.kind) {
     case "image":
       return (
         <div className="scrap-lightbox__scrap-media">
-          <img src={item.src} alt={item.alt ?? ""} draggable={false} />
+          <img src={imageSrc ?? undefined} alt={item.alt ?? ""} draggable={false} />
         </div>
       );
     case "button":

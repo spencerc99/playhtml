@@ -5,7 +5,13 @@
  * What the studio is in the middle of, which changes what a key means. "back"
  * is the collage turned over to read its sources.
  */
-export type StudioMode = "idle" | "crop" | "rotate" | "scale" | "back";
+export type StudioMode =
+  | "idle"
+  | "crop"
+  | "cutout"
+  | "rotate"
+  | "scale"
+  | "back";
 
 export type StudioCommand =
   | { kind: "delete" }
@@ -110,9 +116,9 @@ export function studioCommandFor(
   const { mode, hasSelection } = context;
   const transforming = mode === "rotate" || mode === "scale";
 
-  // While a modal transform or a crop is running, it owns the few keys that
-  // finish it and nothing else may interrupt.
-  if (mode === "crop" || transforming) {
+  // While a modal transform, a crop or a cutout is running, it owns the few
+  // keys that finish it and nothing else may interrupt.
+  if (mode === "crop" || mode === "cutout" || transforming) {
     if (event.key === "Escape") return { kind: "cancel" };
     if (event.key === "Enter") return { kind: "confirm" };
     if (transforming && event.key === "Shift") return null;
@@ -285,7 +291,7 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
       { keys: "enter, C", what: "crop" },
       { keys: "R", what: "rotate, then click to confirm" },
       { keys: "S", what: "scale, then click to confirm" },
-      { keys: "B", what: "cut out the background" },
+      { keys: "B", what: "cut out the background, then tune its edge" },
       { keys: "H / V", what: "flip across / flip down" },
       { keys: "shift while rotating", what: "snap to 15 degrees" },
       { keys: "shift on a corner", what: "free the aspect ratio" },
@@ -309,7 +315,7 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
   {
     group: "reach a buried piece",
     entries: [
-      { keys: "click again", what: "take the next piece down" },
+      { keys: "cmd + click", what: "take the next piece down" },
       { keys: ", / .", what: "step down / up the stack" },
       { keys: "right-click", what: "list every piece here" },
     ],

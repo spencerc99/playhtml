@@ -91,8 +91,9 @@ function PeopleHere() {
 const ReactionButton = withSharedState(
   ({ initialCount }: { initialCount: number }) => ({
     defaultData: { count: initialCount },
+    live: { hovering: false },
   }),
-  ({ data, setData, ref }) => {
+  ({ data, users, setData, setLive, ref }) => {
     const [hasReacted, setHasReacted] = useState(false);
 
     useEffect(() => {
@@ -104,6 +105,8 @@ const ReactionButton = withSharedState(
     return (
       <button
         id="reaction-button"
+        onPointerEnter={() => setLive({ hovering: true })}
+        onPointerLeave={() => setLive({ hovering: false })}
         onClick={() => {
           if (hasReacted) {
             setData((draft) => {
@@ -126,7 +129,7 @@ const ReactionButton = withSharedState(
         className={`reaction ${hasReacted ? "reacted" : ""}`}
         style={{ fontSize: "24px", padding: "10px 20px", margin: "10px 0" }}
       >
-        💖 <span>{data.count}</span>
+        💖 <span>{data.count}</span> · {users.filter(({ live }) => live.hovering).length} here
       </button>
     );
   }

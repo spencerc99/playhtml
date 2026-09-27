@@ -1,6 +1,8 @@
 // ABOUTME: Removes a scrap image's backdrop by flooding inward from its border.
 // ABOUTME: Pure mask math plus a canvas pipeline that recomputes from stored parameters.
 
+import type { CropFraction } from "./collageGeometry";
+
 /**
  * How a piece's background was removed. Adding another way of cutting out
  * means adding a member here, so a stored collage always says which one made
@@ -22,6 +24,84 @@ const FEATHER_RADIUS = 2;
 
 /** Share of the border one tone must hold to count as the backdrop. */
 const BACKDROP_BORDER_SHARE = 1 / 3;
+
+/**
+ * A piece's crop snapped outward to whole source pixels. The cut is computed
+ * over exactly these pixels, so the backdrop is judged from the border of what
+ * the piece shows rather than from the border of the whole picture.
+ */
+export interface PixelRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Slack for a crop edge that lands a hair off a pixel boundary through
+ * floating point, so 0.3 of 100 pixels snaps to 30 rather than 31.
+ */
+const PIXEL_SNAP_EPSILON = 1e-6;
+
+export function cropPixelRegion(
+  crop: CropFraction,
+  width: number,
+  height: number,
+): PixelRegion {
+  if (width <= 0 || height <= 0) {
+    throw new Error("cropPixelRegion requires a positive source size");
+  }
+  if (crop.width <= 0 || crop.height <= 0) {
+    throw new Error("cropPixelRegion received a crop with no area");
+  }
+  const left = Math.min(
+    width - 1,
+    Math.max(0, Math.floor(crop.x * width + PIXEL_SNAP_EPSILON)),
+  );
+  const top = Math.min(
+    height - 1,
+    Math.max(0, Math.floor(crop.y * height + PIXEL_SNAP_EPSILON)),
+  );
+  const right = Math.min(
+    width,
+    Math.max(
+      left + 1,
+      Math.ceil((crop.x + crop.width) * width - PIXEL_SNAP_EPSILON),
+    ),
+  );
+  const bottom = Math.min(
+    height,
+    Math.max(
+      top + 1,
+      Math.ceil((crop.y + crop.height) * height - PIXEL_SNAP_EPSILON),
+    ),
+  );
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/** Where a pixel region sits in its source, as fractions of the source. */
+export function regionPlacement(
+  region: PixelRegion,
+  width: number,
+  height: number,
+): CropFraction {
+  return {
+    x: region.x / width,
+    y: region.y / height,
+    width: region.width / width,
+    height: region.height / height,
+  };
+}
+
+/**
+ * The CSS `mask-position` percentage that puts a mask `size` wide (a fraction
+ * of the element) at `start`. CSS resolves the percentage against the space
+ * left over once the mask is sized, not against the element itself.
+ */
+export function maskPositionPercent(start: number, size: number): number {
+  if (size >= 1) return 0;
+  return (start / (1 - size)) * 100;
+}
 
 export function isCutoutMethod(value: unknown): value is PieceCutout["method"] {
   return value === "edge-color";

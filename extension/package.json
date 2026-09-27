@@ -1,6 +1,6 @@
 {
   "name": "@playhtml/extension",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "private": true,
   "type": "module",
   "scripts": {
@@ -26,6 +26,7 @@
     "@playhtml/extension-types": "workspace:*",
     "@playhtml/react": "workspace:*",
     "html2canvas": "^1.4.1",
+    "mediabunny": "^1.59.1",
     "perfect-freehand": "^1.2.3",
     "playhtml": "workspace:*",
     "profane-words": "^1.5.11",
