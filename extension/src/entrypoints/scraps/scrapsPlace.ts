@@ -24,5 +24,11 @@ export function parsePlaceHash(hash: string): ScrapsPlace {
   if (head !== CREATE) return { mode: "browse" };
   if (!rest) return { mode: "create", collage: null };
   if (rest === NEW) return { mode: "create", collage: NEW };
-  return { mode: "create", collage: { id: decodeURIComponent(rest) } };
+  let id: string;
+  try {
+    id = decodeURIComponent(rest);
+  } catch {
+    return { mode: "browse" };
+  }
+  return { mode: "create", collage: { id } };
 }

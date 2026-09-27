@@ -192,7 +192,6 @@ export function ScrapsPage() {
    * is being applied, so the URL is not rewritten from a half-set page.
    */
   const [placeSettled, setPlaceSettled] = useState(false);
-  const writtenHashRef = useRef<string | null>(null);
   const restoredRef = useRef(false);
 
   useEffect(() => {
@@ -281,12 +280,12 @@ export function ScrapsPage() {
     const url = hash || `${window.location.pathname}${window.location.search}`;
     // A new collage that has just been saved is the same place under its
     // id, so it replaces the entry rather than adding a step to go back to.
-    if (writtenHashRef.current === placeHash({ mode: "create", collage: "new" }) && hash.startsWith("#create/")) {
+    // This reads the live hash so it also holds after a reload of #create/new.
+    if (window.location.hash === placeHash({ mode: "create", collage: "new" }) && hash.startsWith("#create/")) {
       window.history.replaceState(null, "", url);
     } else {
       window.history.pushState(null, "", url);
     }
-    writtenHashRef.current = hash;
   }, [hash, placeSettled]);
 
   useEffect(() => {

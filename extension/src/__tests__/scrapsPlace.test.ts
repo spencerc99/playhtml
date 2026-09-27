@@ -29,4 +29,9 @@ describe("scraps place hash", () => {
     expect(parsePlaceHash("#somewhere")).toEqual({ mode: "browse" });
     expect(parsePlaceHash("")).toEqual({ mode: "browse" });
   });
+
+  it("reads a malformed escape as browse instead of throwing", () => {
+    expect(parsePlaceHash("#create/%")).toEqual({ mode: "browse" });
+    expect(parsePlaceHash("#create/%E0%A4%A")).toEqual({ mode: "browse" });
+  });
 });
