@@ -33,6 +33,7 @@ import {
   commitCropSession,
   createCollageId,
   cropSessionStart,
+  setPieceLocked,
   createPieceId,
   movePieceBackward,
   movePieceForward,
@@ -434,6 +435,11 @@ export function CollageStudio({
     [pieces, selectedId],
   );
   const ordered = useMemo(() => stackOrder(pieces), [pieces]);
+  /** The pieces a click, a hover or a step can reach; locked ones are passed over. */
+  const reachable = useMemo(
+    () => ordered.filter((piece) => !piece.locked),
+    [ordered],
+  );
   const hovered = useMemo(
     () => pieces.find((piece) => piece.id === hoveredId) ?? null,
     [pieces, hoveredId],
@@ -757,17 +763,17 @@ export function CollageStudio({
 
   const stepSelection = useCallback(
     (direction: 1 | -1) => {
-      if (ordered.length === 0) return;
-      const index = ordered.findIndex((piece) => piece.id === selectedId);
+      if (reachable.length === 0) return;
+      const index = reachable.findIndex((piece) => piece.id === selectedId);
       const next =
         index === -1
           ? direction === 1
             ? 0
-            : ordered.length - 1
-          : (index + direction + ordered.length) % ordered.length;
-      setSelectedId(ordered[next].id);
+            : reachable.length - 1
+          : (index + direction + reachable.length) % reachable.length;
+      setSelectedId(reachable[next].id);
     },
-    [ordered, selectedId],
+    [reachable, selectedId],
   );
 
   // The peek is a held key, so it lives outside the command map: it has no
@@ -913,7 +919,7 @@ export function CollageStudio({
         case "selectInStack": {
           // Stepping into a pile only changes what is in hand, never the
           // order the pieces are stacked in.
-          const next = neighborInStack(pieces, selectedId, command.direction);
+          const next = neighborInStack(reachable, selectedId, command.direction);
           if (next) setSelectedId(next);
           break;
         }
@@ -971,6 +977,7 @@ export function CollageStudio({
     enterCrop,
     mode,
     pieces,
+    reachable,
     removeSelected,
     selected,
     stepSelection,
@@ -1005,7 +1012,7 @@ export function CollageStudio({
       // What a click would take, shown faintly so a buried piece can be seen
       // before it is reached for. A rotated-rect test per piece, no pixels.
       if (gesture.kind === "idle" && !toolActive) {
-        const under = topPieceUnder(pieces, point);
+        const under = topPieceUnder(reachable, point);
         setHoveredId(under?.id ?? null);
       }
 
@@ -1126,7 +1133,7 @@ export function CollageStudio({
         setGestureReadout(`rotate ${Math.round(degrees)} deg`);
       }
     },
-    [duplicatePiece, editPiece, framePoint, gesture, pieces, toolActive, transform],
+    [duplicatePiece, editPiece, framePoint, gesture, pieces, reachable, toolActive, transform],
   );
 
   /**
@@ -1150,7 +1157,7 @@ export function CollageStudio({
     // The element took the press, so when the rotated-box test misses by a
     // rounding hair at an edge, the piece the page hit is the answer.
     const plan = planPress(
-      pieces,
+      reachable,
       at,
       selectedId,
       event.metaKey || event.ctrlKey,
@@ -1432,6 +1439,8 @@ export function CollageStudio({
                         zIndex: piece.z + 1,
                         transform: `rotate(${piece.rotation}deg)`,
                         visibility: hidden ? "hidden" : "visible",
+                        // A locked piece lets clicks through to what is beneath.
+                        pointerEvents: piece.locked ? "none" : undefined,
                       }}
                       onPointerDown={(event) => beginMove(piece, event)}
                       onPointerUp={endGesture}
@@ -1546,6 +1555,10 @@ export function CollageStudio({
                       setSelectedId(pieceId);
                       setHereMenu(null);
                     }}
+                    onLock={(pieceId, locked) => {
+                      editPiece(pieceId, (piece) => setPieceLocked(piece, locked));
+                      if (locked && pieceId === selectedId) setSelectedId(null);
+                    }}
                     onClose={() => setHereMenu(null)}
                   />
                 )}
@@ -1600,6 +1613,10 @@ export function CollageStudio({
                     }
                     onCrop={enterCrop}
                     onCutOut={beginCutout}
+                    onLock={() => {
+                      editPiece(selected.id, (piece) => setPieceLocked(piece, true));
+                      setSelectedId(null);
+                    }}
                     onDuplicate={() => duplicatePiece(selected)}
                     onRemove={removeSelected}
                   />

@@ -68,6 +68,18 @@ export const GLYPHS = {
       <path d="M5.3 10.7L12 2M10.7 10.7L4 2" {...STROKE} />
     </Glyph>
   ),
+  lock: (
+    <Glyph>
+      <rect x="3.5" y="7.5" width="9" height="6.5" rx="1" {...STROKE} />
+      <path d="M5.5 7.5V5a2.5 2.5 0 015 0v2.5" {...STROKE} />
+    </Glyph>
+  ),
+  unlock: (
+    <Glyph>
+      <rect x="3.5" y="7.5" width="9" height="6.5" rx="1" {...STROKE} />
+      <path d="M5.5 7.5V5a2.5 2.5 0 014.8-1" {...STROKE} />
+    </Glyph>
+  ),
   duplicate: (
     <Glyph>
       <rect x="2.5" y="2.5" width="8" height="8" {...STROKE} />
@@ -99,6 +111,8 @@ export interface PieceActionsProps {
   onFlip: (axis: "x" | "y") => void;
   onCrop: () => void;
   onCutOut: () => void;
+  /** Holds the piece in place; it is let go again from the pieces-here list. */
+  onLock: () => void;
   onDuplicate: () => void;
   onRemove: () => void;
 }
@@ -168,6 +182,7 @@ export function PieceActions({
   onFlip,
   onCrop,
   onCutOut,
+  onLock,
   onDuplicate,
   onRemove,
 }: PieceActionsProps) {
@@ -228,6 +243,13 @@ export function PieceActions({
         ]
       : []),
     { separator: true, key: "after-shape" },
+    {
+      key: "lock",
+      label: "Lock in place",
+      hint: "right-click the spot to unlock",
+      glyph: GLYPHS.lock,
+      run: onLock,
+    },
     {
       key: "duplicate",
       label: "Duplicate",
