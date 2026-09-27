@@ -16,7 +16,6 @@ import {
   fanOutPlacement,
   fitWithin,
   frameScale,
-  isFullCrop,
   resizeFromCorner,
   rotationToPointer,
   sameCrop,
@@ -30,7 +29,6 @@ import {
   type ResizeCorner,
 } from "./collageGeometry";
 import {
-  clearCrop,
   collageProvenance,
   commitCropSession,
   createCollageId,
@@ -115,6 +113,7 @@ import {
   type PanelState,
 } from "./studioPanels";
 import { CutoutControl } from "./CutoutControl";
+import { CropControl } from "./CropControl";
 import { createPeekState, stepPeek, type PeekEvent } from "./peekHold";
 import {
   useCollageAutosave,
@@ -1489,13 +1488,23 @@ export function CollageStudio({
                 )}
 
                 {panel === "crop" && crop && cropping && (
-                  <CropSession
-                    piece={cropping}
-                    crop={crop.crop}
-                    onChange={(next) => setCrop({ ...crop, crop: next })}
-                    onCommit={commitCrop}
-                    framePoint={framePoint}
-                  />
+                  <>
+                    <CropSession
+                      piece={cropping}
+                      crop={crop.crop}
+                      onChange={(next) => setCrop({ ...crop, crop: next })}
+                      onCommit={commitCrop}
+                      framePoint={framePoint}
+                    />
+                    <CropControl
+                      piece={cropping}
+                      crop={crop.crop}
+                      scale={scale}
+                      frame={frame}
+                      onWhole={() => setCrop({ ...crop, crop: { ...FULL_CROP } })}
+                      onDone={commitCrop}
+                    />
+                  </>
                 )}
 
                 {/* What a click would take, shown faintly so a piece under a pile
@@ -1573,7 +1582,6 @@ export function CollageStudio({
                 {panel === "pieceActions" && selected && (
                   <PieceActions
                     piece={selected}
-                    canUncrop={!isFullCrop(selected.crop)}
                     canCutOut={selected.scrap.kind === "image"}
                     scale={scale}
                     frame={frame}
@@ -1591,7 +1599,6 @@ export function CollageStudio({
                       editPiece(selected.id, (piece) => flipPiece(piece, axis))
                     }
                     onCrop={enterCrop}
-                    onUncrop={() => editPiece(selected.id, clearCrop)}
                     onCutOut={beginCutout}
                     onDuplicate={() => duplicatePiece(selected)}
                     onRemove={removeSelected}

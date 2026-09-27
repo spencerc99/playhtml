@@ -21,18 +21,24 @@ function Glyph({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** The strip's glyphs, shared with the collage history's card actions. */
+/**
+ * The strip's glyphs, shared with the collage history's card actions.
+ *
+ * The order glyphs follow the common drawing-tool convention: two overlapping
+ * squares, the one being moved drawn solid. Forward, it sits on top; back,
+ * only the part the other square leaves uncovered shows.
+ */
 export const GLYPHS = {
   forward: (
     <Glyph>
-      <rect x="2.5" y="4.5" width="7" height="7" {...STROKE} />
-      <path d="M8 8.5h5.5V3" {...STROKE} />
+      <path d="M2.5 9.5v-7h7" {...STROKE} />
+      <rect x="5.5" y="5.5" width="8" height="8" fill="currentColor" />
     </Glyph>
   ),
   backward: (
     <Glyph>
-      <rect x="6.5" y="4.5" width="7" height="7" {...STROKE} />
-      <path d="M8 7.5H2.5V13" {...STROKE} />
+      <path d="M2 2h8v3.5H5.5V10H2z" fill="currentColor" />
+      <rect x="6.5" y="6.5" width="7" height="7" {...STROKE} />
     </Glyph>
   ),
   flipX: (
@@ -53,12 +59,6 @@ export const GLYPHS = {
     <Glyph>
       <path d="M4.5 1.5v10h10" {...STROKE} />
       <path d="M1.5 4.5h10v10" {...STROKE} />
-    </Glyph>
-  ),
-  uncrop: (
-    <Glyph>
-      <rect x="2.5" y="2.5" width="11" height="11" {...STROKE} />
-      <path d="M5.5 8h5M8 5.5v5" {...STROKE} />
     </Glyph>
   ),
   cutOut: (
@@ -90,7 +90,6 @@ export const GLYPHS = {
 
 export interface PieceActionsProps {
   piece: CollagePiece;
-  canUncrop: boolean;
   canCutOut: boolean;
   /** The frame's zoom, so the strip stays one size on screen. */
   scale: number;
@@ -99,7 +98,6 @@ export interface PieceActionsProps {
   onOrder: (to: "forward" | "backward" | "front" | "back") => void;
   onFlip: (axis: "x" | "y") => void;
   onCrop: () => void;
-  onUncrop: () => void;
   onCutOut: () => void;
   onDuplicate: () => void;
   onRemove: () => void;
@@ -163,14 +161,12 @@ export function useBesidePiece(
  */
 export function PieceActions({
   piece,
-  canUncrop,
   canCutOut,
   scale,
   frame,
   onOrder,
   onFlip,
   onCrop,
-  onUncrop,
   onCutOut,
   onDuplicate,
   onRemove,
@@ -216,19 +212,6 @@ export function PieceActions({
       glyph: GLYPHS.crop,
       run: onCrop,
     },
-    // Restoring a crop has no key of its own, so it only appears once there
-    // is a crop to undo rather than sitting there greyed out.
-    ...(canUncrop
-      ? [
-          {
-            key: "uncrop",
-            label: "Undo the crop",
-            hint: "restores the whole picture",
-            glyph: GLYPHS.uncrop,
-            run: onUncrop,
-          },
-        ]
-      : []),
     // Only a picture has a background to cut away.
     ...(canCutOut
       ? [

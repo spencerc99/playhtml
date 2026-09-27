@@ -1042,6 +1042,15 @@ export const COLLAGE_STUDIO_STYLES = `
     border-color: rgba(61, 56, 51, 0.2);
   }
 
+  .collage-tolerance__button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .collage-tolerance__button:disabled:hover {
+    border-color: transparent;
+  }
+
   .collage-tolerance__button--done {
     border-color: rgba(74, 154, 138, 0.5);
     color: #2f6f62;
