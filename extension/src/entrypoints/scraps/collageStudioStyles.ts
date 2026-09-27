@@ -1268,6 +1268,21 @@ export const COLLAGE_STUDIO_STYLES = `
     letter-spacing: 0.02em;
   }
 
+  .collage-editor-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .collage-editor-switch .collage-studio__label {
+    margin-right: 3px;
+  }
+
+  .collage-editor-switch .collage-chip:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
   /* Why the regular editor opened when the tldraw one was chosen. */
   .collage-engine-notice {
     position: absolute;

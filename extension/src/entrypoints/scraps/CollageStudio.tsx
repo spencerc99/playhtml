@@ -82,6 +82,11 @@ import {
   type DrawerPreference,
 } from "./drawerPreference";
 import { PieceActions } from "./PieceActions";
+import {
+  EditorSwitch,
+  collageToHandOver,
+  type EditorSwitchChoice,
+} from "./EditorSwitch";
 import { StudioTools } from "./StudioTools";
 import { FormatControl } from "./FormatControl";
 import { CollageBakeError, bakeCollage } from "./bakeCollage";
@@ -266,6 +271,8 @@ interface CollageStudioProps {
   onLeave: () => void;
   /** Timers the autosave runs on, so a test can drive the schedule directly. */
   autosaveTimers?: AutosaveTimers;
+  /** The choice of editor, offered to people with experiment access. */
+  editorSwitch?: EditorSwitchChoice;
 }
 
 /** What the toolbar says about where the work stands. */
@@ -312,6 +319,7 @@ export function CollageStudio({
   onSaved,
   onLeave,
   autosaveTimers,
+  editorSwitch,
 }: CollageStudioProps) {
   const initial = useMemo<readonly CollagePiece[]>(
     () => editing?.pieces.map((piece) => ({ ...piece })) ?? [],
@@ -2112,6 +2120,20 @@ export function CollageStudio({
             </>
           )}
           <span className="collage-bar__spacer" />
+          {editorSwitch && (
+            <EditorSwitch
+              choice={editorSwitch}
+              handOver={() => {
+                flush();
+                return collageToHandOver({
+                  draft: draftRef.current,
+                  standing: autosave.standing,
+                  opened: editing,
+                  preview: autosave.preview,
+                });
+              }}
+            />
+          )}
           {standing.text && (
             <p
               className={`collage-standing${

@@ -1,13 +1,15 @@
 // ABOUTME: Renders saved collage history and the collage studio after Create is selected.
 // ABOUTME: Loads create-only components and styles together as one scraps page boundary.
 
-import React from "react";
+import React, { useState } from "react";
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import { CollageHistory } from "./CollageHistory";
 import { CollageStudio } from "./CollageStudio";
 import { COLLAGE_STUDIO_STYLES } from "./collageStudioStyles";
 import type { CollageRecord } from "./collageRecord";
 import { useSettledFeatureState } from "../../features/useFeatureAccess";
+import { setFeatureOverride } from "../../features/featureAccess";
+import type { EditorSwitchChoice } from "./EditorSwitch";
 import { BUILD_LICENSE_KEY, licenseStatus } from "./tldraw/tldrawLicense";
 
 /**
@@ -53,7 +55,9 @@ export function CreateMode({
 }: CreateModeProps) {
   const tldrawChoice = useSettledFeatureState("TLDRAW_COLLAGES");
   const license = licenseStatus(BUILD_LICENSE_KEY);
-  const wantsTldraw = tldrawChoice?.enabled === true;
+  /** The editor picked from the bar this visit, ahead of the stored choice catching up. */
+  const [picked, setPicked] = useState<boolean | null>(null);
+  const wantsTldraw = picked ?? tldrawChoice?.enabled === true;
   const useTldraw = wantsTldraw && license.usable;
   // Someone who chose the tldraw editor hears why they got the regular one;
   // a build without a key at all just never offers it.
@@ -61,6 +65,24 @@ export function CreateMode({
     wantsTldraw && !license.usable && license.reason !== "missing"
       ? license.message
       : null;
+
+  // Only people with access to the experiment see the choice at all.
+  const editorSwitch: EditorSwitchChoice | undefined = tldrawChoice?.available
+    ? {
+        current: useTldraw ? "tldraw" : "studio",
+        blocked: license.usable ? null : license.message,
+        onSwitch: (to, collage) => {
+          const toTldraw = to === "tldraw";
+          setPicked(toTldraw);
+          setFeatureOverride("TLDRAW_COLLAGES", toTldraw).catch((error: unknown) =>
+            console.error("[collage studio] could not remember the editor choice:", error),
+          );
+          // The same collage reopens, now in the other editor.
+          if (collage) onEdit(collage);
+          else onStartNew();
+        },
+      }
+    : undefined;
 
   return (
     <>
@@ -87,6 +109,7 @@ export function CreateMode({
               editing={editing}
               onSaved={onSaved}
               onLeave={onLeave}
+              editorSwitch={editorSwitch}
             />
           </React.Suspense>
         ) : (
@@ -97,6 +120,7 @@ export function CreateMode({
               editing={editing}
               onSaved={onSaved}
               onLeave={onLeave}
+              editorSwitch={editorSwitch}
             />
             {fallbackNotice && (
               <p className="collage-notice collage-notice--quiet collage-engine-notice" role="status">

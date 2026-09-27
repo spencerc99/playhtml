@@ -43,8 +43,12 @@ import { ScrapTray } from "../ScrapTray";
 import { StudioTools } from "../StudioTools";
 import { FormatControl } from "../FormatControl";
 import { PieceActions } from "../PieceActions";
+import {
+  EditorSwitch,
+  collageToHandOver,
+  type EditorSwitchChoice,
+} from "../EditorSwitch";
 import { CutoutControl } from "../CutoutControl";
-import { ROTATE_HANDLE_OFFSET } from "../studioPanels";
 import {
   defaultDrawerWidth,
   readDrawerPreference,
@@ -79,7 +83,6 @@ const STAGE_PADDING = 12;
 const STAGE_TOP_BAND = 52;
 /** How far a duplicate lands from its original, in frame units. */
 const COPY_OFFSET = 24;
-const ROTATION_SNAP = Math.PI / 12;
 /** The teal the regular editor draws its selection in. */
 const SELECTION_TEAL = "#4a9a8a";
 
@@ -226,6 +229,8 @@ interface TldrawCollageStudioProps {
   editing: CollageRecord | null;
   onSaved: (record: CollageRecord) => void;
   onLeave: () => void;
+  /** The choice of editor, offered to people with experiment access. */
+  editorSwitch?: EditorSwitchChoice;
 }
 
 export default function TldrawCollageStudio({
@@ -234,6 +239,7 @@ export default function TldrawCollageStudio({
   editing,
   onSaved,
   onLeave,
+  editorSwitch,
 }: TldrawCollageStudioProps) {
   const [format, setFormat] = useState<CollageFormatName>(editing?.format ?? DEFAULT_FORMAT);
   const [paper, setPaper] = useState<CollagePaper>(editing?.paper ?? DEFAULT_PAPER);
@@ -553,8 +559,11 @@ export default function TldrawCollageStudio({
         );
         mounted.clearHistory();
       }
-      // Reachable from devtools, for looking into the editor's own state.
-      (window as unknown as { collageEditor?: Editor }).collageEditor = mounted;
+      // Reachable from devtools in development builds, for looking into the
+      // editor's own state.
+      if (import.meta.env.MODE === "development") {
+        (window as unknown as { collageEditor?: Editor }).collageEditor = mounted;
+      }
       setEditor(mounted);
     },
     [editing],
@@ -569,62 +578,19 @@ export default function TldrawCollageStudio({
     () => (editor ? editor.isInAny("select.idle", "select.pointing_selection", "select.pointing_shape") : false),
     [editor],
   );
+  /** The bounds of what is selected, for placing the strip beside it. */
   const selection = useValue(
     "selection frame",
     () => {
       if (!editor || editor.getSelectedShapeIds().length === 0) return null;
-      const rotated = editor.getSelectionRotatedPageBounds();
       const bounds = editor.getSelectionPageBounds();
-      if (!rotated || !bounds) return null;
+      if (!bounds) return null;
       return {
-        rotation: editor.getSelectionRotation(),
-        rotated: { x: rotated.x, y: rotated.y, w: rotated.w, h: rotated.h },
         box: { x: bounds.x, y: bounds.y, width: bounds.w, height: bounds.h } as PieceBox,
       };
     },
     [editor],
   );
-
-  /** Turns the selection about its center from the knob, snapping with shift. */
-  const beginRotate = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!editor || !selection) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const knob = event.currentTarget;
-    knob.setPointerCapture(event.pointerId);
-    const ids = editor.getSelectedShapeIds();
-    const { rotated, rotation } = selection;
-    const cos = Math.cos(rotation);
-    const sin = Math.sin(rotation);
-    const center = {
-      x: rotated.x + (rotated.w / 2) * cos - (rotated.h / 2) * sin,
-      y: rotated.y + (rotated.w / 2) * sin + (rotated.h / 2) * cos,
-    };
-    const angleTo = (clientX: number, clientY: number) => {
-      const at = editor.screenToPage({ x: clientX, y: clientY });
-      return Math.atan2(at.y - center.y, at.x - center.x);
-    };
-    const startAngle = angleTo(event.clientX, event.clientY);
-    let applied = rotation;
-    editor.markHistoryStoppingPoint("rotate");
-    const onMove = (move: PointerEvent) => {
-      let target = rotation + angleTo(move.clientX, move.clientY) - startAngle;
-      if (move.shiftKey) target = Math.round(target / ROTATION_SNAP) * ROTATION_SNAP;
-      const delta = target - applied;
-      if (delta === 0) return;
-      editor.rotateShapesBy(ids, delta, { center });
-      applied = target;
-    };
-    const onUp = () => {
-      editor.focus();
-      knob.removeEventListener("pointermove", onMove);
-      knob.removeEventListener("pointerup", onUp);
-      knob.removeEventListener("pointercancel", onUp);
-    };
-    knob.addEventListener("pointermove", onMove);
-    knob.addEventListener("pointerup", onUp);
-    knob.addEventListener("pointercancel", onUp);
-  };
 
   const animates = useCollageAnimates(pieces);
   const videoSupport = videoExportSupport();
@@ -752,8 +718,7 @@ export default function TldrawCollageStudio({
           transform-origin: 0 0;
         }
         .collage-tldraw__page .collage-piece-actions,
-        .collage-tldraw__page .collage-tolerance,
-        .collage-tldraw__page .collage-handle {
+        .collage-tldraw__page .collage-tolerance {
           pointer-events: auto;
         }
       `}</style>
@@ -821,42 +786,6 @@ export default function TldrawCollageStudio({
                 height: frame.height,
               }}
             >
-              {selection && resting && (
-                <div
-                  style={{
-                    position: "absolute",
-                    left: selection.rotated.x,
-                    top: selection.rotated.y,
-                    width: selection.rotated.w,
-                    height: selection.rotated.h,
-                    transform: `rotate(${selection.rotation}rad)`,
-                    transformOrigin: "0 0",
-                  }}
-                >
-                  <div
-                    className="collage-handle__tether"
-                    style={{
-                      left: "50%",
-                      top: -ROTATE_HANDLE_OFFSET / scale,
-                      height: ROTATE_HANDLE_OFFSET / scale,
-                      width: 2 / scale,
-                    }}
-                  />
-                  <button
-                    type="button"
-                    aria-label="Rotate"
-                    title="Rotate (shift snaps)"
-                    className="collage-handle collage-handle--rotate"
-                    style={{
-                      left: "50%",
-                      top: -ROTATE_HANDLE_OFFSET / scale,
-                      transform: `scale(${1 / scale})`,
-                    }}
-                    onPointerDown={beginRotate}
-                  />
-                </div>
-              )}
-
               {selection && resting && !cutoutSession && (
                 <PieceActions
                   box={onlyPiece ?? selection.box}
@@ -938,6 +867,20 @@ export default function TldrawCollageStudio({
             {cropping ? " · cropping · enter or click away to keep, esc to cancel" : ""}
           </span>
           <span className="collage-bar__spacer" />
+          {editorSwitch && (
+            <EditorSwitch
+              choice={editorSwitch}
+              handOver={() => {
+                flush();
+                return collageToHandOver({
+                  draft: draft(),
+                  standing: autosave.standing,
+                  opened: editing,
+                  preview: autosave.preview,
+                });
+              }}
+            />
+          )}
           {standing.text && (
             <p
               className={`collage-standing${standing.problem ? " collage-standing--problem" : ""}`}
