@@ -19,7 +19,6 @@ import {
   fanOutPlacement,
   fitWithin,
   frameScale,
-  isFullCrop,
   normalizeDegrees,
   dragCorner,
   dragEdge,
@@ -37,11 +36,11 @@ import {
   type ResizeCorner,
 } from "./collageGeometry";
 import {
-  clearCrop,
   collageProvenance,
   commitCropSession,
   createCollageId,
   cropSessionStart,
+  setPieceLocked,
   createPieceId,
   normalizeStack,
   flipPiece,
@@ -88,8 +87,13 @@ import { CollageBakeError, bakeCollage } from "./bakeCollage";
 import { bakeCollageBack, resolveBackFavicons } from "./bakeCollageBack";
 import { videoExportSupport } from "./imageAnimation";
 import { useCollageAnimates } from "./useCollageAnimates";
-import type { CollageBackContent } from "./collageBack";
 import { CollageBackFace } from "./CollageBackFace";
+import { BackLookTuner } from "./BackLookTuner";
+import {
+  BACK_LOOK,
+  type BackLook,
+  type CollageBackContent,
+} from "./collageBack";
 import { saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
@@ -112,7 +116,9 @@ import {
   planBarePress,
   planSelectionPress,
   pruneSelection,
+  selectAll,
   selectMany,
+  selectablePieces,
   selectOnly,
   soleSelected,
   type Selection,
@@ -148,6 +154,7 @@ import {
   type PanelState,
 } from "./studioPanels";
 import { CutoutControl } from "./CutoutControl";
+import { CropControl } from "./CropControl";
 import { createPeekState, stepPeek, type PeekEvent } from "./peekHold";
 import {
   useCollageAutosave,
@@ -336,6 +343,7 @@ export function CollageStudio({
   const [drawer, setDrawer] = useState(() => readDrawerPreference());
   /** Whether the collage is turned over to its back, where the sources are. */
   const [over, setOver] = useState(false);
+  const [backLook, setBackLook] = useState<BackLook>(BACK_LOOK);
   /** The front as the back shows it through the paper. */
   const [bleed, setBleed] = useState<Blob | null>(null);
   /** When the stored collage last changed, for the back's dates. */
@@ -516,11 +524,14 @@ export function CollageStudio({
   }, [autosave.unwritten]);
 
   const ordered = useMemo(() => stackOrder(pieces), [pieces]);
-  // An undo or a delete can take away pieces that were in hand; the hand only
-  // ever holds pieces that are on the collage.
+  /** The pieces a click, a hover or a step can reach; locked ones are passed over. */
+  const reachable = useMemo(() => selectablePieces(ordered), [ordered]);
+  // An undo or a delete can take away pieces that were in hand, and a lock
+  // holds a piece out of reach; the hand only ever holds pieces that are on
+  // the collage and free to move, so no group edit can touch a locked one.
   const selection = useMemo(
-    () => pruneSelection(heldSelection, pieces),
-    [heldSelection, pieces],
+    () => pruneSelection(heldSelection, reachable),
+    [heldSelection, reachable],
   );
   /** Everything in hand, back to front. */
   const selectedPieces = useMemo(
@@ -726,6 +737,16 @@ export function CollageStudio({
     },
     [editPiece, editPieces, selectedPieces],
   );
+
+  /**
+   * Holds everything in hand in place and puts it down. Each piece is let go
+   * again on its own, from the list of pieces under a point.
+   */
+  const lockSelection = useCallback(() => {
+    if (selectedPieces.length === 0) return;
+    editPieces(selectedPieces.map((piece) => setPieceLocked(piece, true)));
+    setSelection(EMPTY_SELECTION);
+  }, [editPieces, selectedPieces]);
 
   const restackSelection = useCallback(
     (to: "forward" | "backward" | "front" | "back") => {
@@ -936,19 +957,19 @@ export function CollageStudio({
 
   const stepSelection = useCallback(
     (direction: 1 | -1) => {
-      if (ordered.length === 0) return;
-      const index = ordered.findIndex(
+      if (reachable.length === 0) return;
+      const index = reachable.findIndex(
         (piece) => piece.id === selection.primary,
       );
       const next =
         index === -1
           ? direction === 1
             ? 0
-            : ordered.length - 1
-          : (index + direction + ordered.length) % ordered.length;
-      selectPiece(ordered[next].id);
+            : reachable.length - 1
+          : (index + direction + reachable.length) % reachable.length;
+      selectPiece(reachable[next].id);
     },
-    [ordered, selectPiece, selection.primary],
+    [reachable, selectPiece, selection.primary],
   );
 
   // The peek is a held key, so it lives outside the command map: it has no
@@ -1085,7 +1106,7 @@ export function CollageStudio({
           setSelection(EMPTY_SELECTION);
           break;
         case "selectAll":
-          setSelection(selectMany(ordered.map((piece) => piece.id)));
+          setSelection(selectAll(ordered));
           break;
         case "selectNext":
           stepSelection(1);
@@ -1097,7 +1118,7 @@ export function CollageStudio({
           // Stepping into a pile only changes what is in hand, never the
           // order the pieces are stacked in.
           const next = neighborInStack(
-            pieces,
+            reachable,
             selection.primary,
             command.direction,
           );
@@ -1149,6 +1170,7 @@ export function CollageStudio({
     multiple,
     ordered,
     pieces,
+    reachable,
     removeSelected,
     restackSelection,
     selectPiece,
@@ -1227,7 +1249,7 @@ export function CollageStudio({
       // What a click would take, shown faintly so a buried piece can be seen
       // before it is reached for. A rotated-rect test per piece, no pixels.
       if (gesture.kind === "idle" && !toolActive) {
-        const under = topPieceUnder(pieces, point);
+        const under = topPieceUnder(reachable, point);
         setHoveredId(under?.id ?? null);
       }
 
@@ -1295,7 +1317,7 @@ export function CollageStudio({
         // the hand is left as the press found it.
         if (!press?.moved) return;
         const area = rectBetween(gesture.start, point);
-        const touched = piecesInRect(ordered, area).map((piece) => piece.id);
+        const touched = piecesInRect(reachable, area).map((piece) => piece.id);
         setSelection(marqueeSelection(gesture.base, touched, gesture.additive));
         setGesture({ ...gesture, end: point });
         return;
@@ -1417,9 +1439,8 @@ export function CollageStudio({
       editPieces,
       framePoint,
       gesture,
-      ordered,
       over,
-      pieces,
+      reachable,
       toolActive,
       transform,
     ],
@@ -1446,7 +1467,7 @@ export function CollageStudio({
     // The element took the press, so when the rotated-box test misses by a
     // rounding hair at an edge, the piece the page hit is the answer.
     const plan = planSelectionPress(
-      pieces,
+      reachable,
       at,
       selection,
       multiple ? selectionBox : null,
@@ -1646,6 +1667,7 @@ export function CollageStudio({
         content: backContent,
         front,
         favicons: await resolveBackFavicons(backContent.sources),
+        look: backLook,
       });
       saveFile(front, `${name} front.png`);
       saveFile(back, `${name} back.png`);
@@ -1862,6 +1884,8 @@ export function CollageStudio({
                         zIndex: piece.z + 1,
                         transform: `rotate(${piece.rotation}deg)`,
                         visibility: hidden ? "hidden" : "visible",
+                        // A locked piece lets clicks through to what is beneath.
+                        pointerEvents: piece.locked ? "none" : undefined,
                       }}
                       onPointerDown={(event) => beginMove(piece, event)}
                       onPointerUp={endGesture}
@@ -1947,13 +1971,23 @@ export function CollageStudio({
                 )}
 
                 {panel === "crop" && crop && cropping && (
-                  <CropSession
-                    piece={cropping}
-                    crop={crop.crop}
-                    onChange={(next) => setCrop({ ...crop, crop: next })}
-                    onCommit={commitCrop}
-                    framePoint={framePoint}
-                  />
+                  <>
+                    <CropSession
+                      piece={cropping}
+                      crop={crop.crop}
+                      onChange={(next) => setCrop({ ...crop, crop: next })}
+                      onCommit={commitCrop}
+                      framePoint={framePoint}
+                    />
+                    <CropControl
+                      piece={cropping}
+                      crop={crop.crop}
+                      scale={scale}
+                      frame={frame}
+                      onWhole={() => setCrop({ ...crop, crop: { ...FULL_CROP } })}
+                      onDone={commitCrop}
+                    />
+                  </>
                 )}
 
                 {/* What a click would take, shown faintly so a piece under a pile
@@ -1996,6 +2030,11 @@ export function CollageStudio({
                       selectPiece(pieceId);
                       setHereMenu(null);
                     }}
+                    onLock={(pieceId, locked) => {
+                      // A piece locked here also leaves the hand, since the
+                      // hand only ever holds pieces free to move.
+                      editPiece(pieceId, (piece) => setPieceLocked(piece, locked));
+                    }}
                     onClose={() => setHereMenu(null)}
                   />
                 )}
@@ -2033,17 +2072,14 @@ export function CollageStudio({
                   <PieceActions
                     box={selectionBox}
                     piece={selected}
-                    canUncrop={selected !== null && !isFullCrop(selected.crop)}
                     canCutOut={selected?.scrap.kind === "image"}
                     scale={scale}
                     frame={frame}
                     onOrder={restackSelection}
                     onFlip={flipSelection}
                     onCrop={enterCrop}
-                    onUncrop={() => {
-                      if (selected) editPiece(selected.id, clearCrop);
-                    }}
                     onCutOut={beginCutout}
+                    onLock={lockSelection}
                     onDuplicate={() => duplicatePieces(selectedPieces)}
                     onRemove={removeSelected}
                   />
@@ -2056,6 +2092,7 @@ export function CollageStudio({
                 frame={frame}
                 paper={paper}
                 content={backContent}
+                look={backLook}
                 front={bleed}
                 showing={over}
                 onProblem={onBackProblem}
@@ -2087,6 +2124,10 @@ export function CollageStudio({
 
           {showKeys && <KeysPopover onClose={() => setShowKeys(false)} />}
         </div>
+
+        {import.meta.env.DEV && over && (
+          <BackLookTuner look={backLook} onLook={setBackLook} />
+        )}
 
         <div className="collage-bar">
           {/* The back already carries the title and the count, so while it

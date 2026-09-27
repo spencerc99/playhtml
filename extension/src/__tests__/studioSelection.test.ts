@@ -10,11 +10,15 @@ import {
   planBarePress,
   planSelectionPress,
   pruneSelection,
+  selectAll,
   selectMany,
   selectOnly,
+  selectablePieces,
   soleSelected,
   toggleInSelection,
 } from "../entrypoints/scraps/studioSelection";
+import { piecesInRect } from "../entrypoints/scraps/groupGeometry";
+import { setPieceLocked } from "../entrypoints/scraps/collageRecord";
 
 const scrap: ScrapItem = {
   id: "scrap",
@@ -319,5 +323,78 @@ describe("a press on an unheld piece inside the box around several", () => {
       additive: false,
     });
     expect(plan?.selectOnDown).toEqual(selectOnly("between"));
+  });
+});
+
+describe("locked pieces", () => {
+  const lockedMiddle = setPieceLocked(middle, true);
+  const withLock = [bottom, lockedMiddle, top, apart];
+
+  it("are left out of what can be selected, and an unlocked piece is not", () => {
+    expect(selectablePieces(withLock).map((piece) => piece.id)).toEqual([
+      "bottom",
+      "top",
+      "apart",
+    ]);
+    const released = setPieceLocked(lockedMiddle, false);
+    expect(selectablePieces([released]).map((piece) => piece.id)).toEqual([
+      "middle",
+    ]);
+  });
+
+  it("are skipped by select-all", () => {
+    expect(selectAll(withLock)).toEqual({
+      ids: ["bottom", "top", "apart"],
+      primary: "apart",
+    });
+  });
+
+  it("are never touched by a marquee drawn over them", () => {
+    const everything = { x: -10, y: -10, width: 600, height: 600 };
+    const touched = piecesInRect(selectablePieces(withLock), everything);
+    expect(touched.map((piece) => piece.id)).not.toContain("middle");
+    expect(touched).toHaveLength(3);
+  });
+
+  it("drop out of the hand once locked, so no group edit reaches them", () => {
+    const held = selectMany(["top", "middle", "apart"]);
+    expect(pruneSelection(held, selectablePieces(withLock))).toEqual({
+      ids: ["top", "apart"],
+      primary: "apart",
+    });
+  });
+
+  it("let a press reach the piece beneath, as bare paper would", () => {
+    // A plain press on the pile takes the front piece as before...
+    const plan = planSelectionPress(
+      selectablePieces(withLock),
+      inThePile,
+      EMPTY_SELECTION,
+      null,
+      plain,
+    );
+    expect(plan?.selectOnDown).toEqual(selectOnly("top"));
+    // ...and stepping down past it skips the locked piece entirely.
+    const deeper = planSelectionPress(
+      selectablePieces(withLock),
+      inThePile,
+      selectOnly("top"),
+      null,
+      plain,
+    );
+    expect(deeper?.selectOnClick).toEqual(selectOnly("bottom"));
+  });
+
+  it("are not added by shift-click, which reaches only selectable pieces", () => {
+    const lockedApart = [bottom, middle, top, setPieceLocked(apart, true)];
+    expect(
+      planSelectionPress(
+        selectablePieces(lockedApart),
+        onApart,
+        selectOnly("top"),
+        null,
+        shift,
+      ),
+    ).toBeNull();
   });
 });
