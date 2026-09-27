@@ -82,6 +82,7 @@ function awkwardPieces(): CollagePiece[] {
       z: 3,
       rotation: 91.7,
       cutout: { method: "edge-color", tolerance: 0.17 },
+      locked: true,
     }),
   ];
 }
@@ -168,6 +169,20 @@ describe("round trip", () => {
     for (const other of back.filter((p) => p.id !== "piece_top")) {
       expect(other).toBe(original.find((p) => p.id === other.id));
     }
+  });
+
+  it("maps a lock to tldraw's locked shape and brings a change back", () => {
+    const original = awkwardPieces();
+    const { shapes, sources } = piecesToShapes(original);
+    const stored = throughStore(shapes);
+    expect(stored.find((s) => s.meta.pieceId === "piece_cut")!.isLocked).toBe(true);
+    expect(stored.find((s) => s.meta.pieceId === "piece_top")!.isLocked).toBe(false);
+    stored.find((s) => s.meta.pieceId === "piece_cut")!.isLocked = false;
+    stored.find((s) => s.meta.pieceId === "piece_top")!.isLocked = true;
+    const back = shapesToPieces(stored, sources, original.map((p) => p.id));
+    const unlocked = back.find((p) => p.id === "piece_cut")!;
+    expect("locked" in unlocked).toBe(false);
+    expect(back.find((p) => p.id === "piece_top")!.locked).toBe(true);
   });
 
   it("carries a cutout through untouched, and takes a changed one", () => {

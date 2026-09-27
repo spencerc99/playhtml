@@ -13,7 +13,7 @@ import {
 } from "tldraw";
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import type { CollagePiece } from "../collageRecord";
-import { createPieceId } from "../collageRecord";
+import { createPieceId, setPieceLocked } from "../collageRecord";
 import {
   FULL_CROP,
   fitWithin,
@@ -65,6 +65,8 @@ interface ShapeBase {
   y: number;
   rotation: number;
   index: IndexKey;
+  /** A locked piece is tldraw's locked shape: it cannot be selected or moved. */
+  isLocked: boolean;
   meta: PieceShapeMeta;
 }
 
@@ -179,6 +181,7 @@ export function pieceToShape(piece: CollagePiece, index: IndexKey): PieceShape {
     y: center.y + corner.y,
     rotation: radians,
     index,
+    isLocked: piece.locked === true,
     meta: {
       pieceId: piece.id,
       scrapId: piece.scrapId,
@@ -296,6 +299,7 @@ export function pieceForDrawing(shape: PieceShape): CollagePiece {
     flipX: shape.props.flipX,
     flipY: shape.props.flipY,
     ...(cutout ? { cutout } : {}),
+    ...(shape.isLocked ? { locked: true as const } : {}),
   };
 }
 
@@ -329,6 +333,8 @@ export function shapeToPiece(shape: PieceShape, sources: PieceSources): CollageP
   }
   if (shape.props.flipX !== written.props.flipX) piece = { ...piece, flipX: shape.props.flipX };
   if (shape.props.flipY !== written.props.flipY) piece = { ...piece, flipY: shape.props.flipY };
+
+  if (shape.isLocked !== written.isLocked) piece = setPieceLocked(piece, shape.isLocked);
 
   const cutout = cutoutOf(shape);
   if (!sameJson(cutout, cutoutOf(written))) {

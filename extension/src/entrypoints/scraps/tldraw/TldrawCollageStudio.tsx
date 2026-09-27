@@ -21,7 +21,6 @@ import "tldraw/tldraw.css";
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import { resolveScrapImageSrc } from "@movement/utils/scrapImageSource";
 import {
-  clearCrop,
   collageProvenance,
   createCollageId,
   normalizeStack,
@@ -57,7 +56,7 @@ import {
 } from "../drawerPreference";
 import { CollageBakeError, bakeCollage } from "../bakeCollage";
 import { bakeCollageBack, resolveBackFavicons } from "../bakeCollageBack";
-import type { CollageBackContent } from "../collageBack";
+import { BACK_LOOK, type CollageBackContent } from "../collageBack";
 import { videoExportSupport } from "../imageAnimation";
 import { useCollageAnimates } from "../useCollageAnimates";
 import { saveCollage } from "../collageStore";
@@ -413,20 +412,6 @@ export default function TldrawCollageStudio({
     editor.focus();
   }, [editor, only]);
 
-  const uncrop = useCallback(() => {
-    if (!editor || !only || !only.props.crop) return;
-    editor.markHistoryStoppingPoint("uncrop");
-    const whole = clearCrop(pieceForDrawing(only));
-    const drawn = pieceToShape(whole, only.index);
-    editor.updateShape({
-      id: asShapeId(only.id),
-      type: only.type,
-      x: drawn.x,
-      y: drawn.y,
-      props: { w: drawn.props.w, h: drawn.props.h, crop: null },
-    } as TLShapePartial);
-  }, [editor, only]);
-
   /** Opens the edge control on the one selected picture, cutting it at the default edge first. */
   const beginCutout = useCallback(() => {
     if (!editor || !only || only.meta.scrap.kind !== "image") return;
@@ -472,6 +457,40 @@ export default function TldrawCollageStudio({
     },
     [editor, selectedIds],
   );
+
+  /**
+   * Holds what is in hand in place as one undo step. A locked shape can be
+   * neither selected nor moved in tldraw, so it also leaves the hand.
+   */
+  const lock = useCallback(() => {
+    if (!editor || selectedIds.length === 0) return;
+    editor.markHistoryStoppingPoint("lock");
+    editor.run(
+      () => {
+        editor.selectNone();
+        editor.updateShapes(
+          selectedShapes.map((shape) => ({ id: asShapeId(shape.id), type: shape.type, isLocked: true })) as TLShapePartial[],
+        );
+      },
+      { ignoreShapeLock: true },
+    );
+    editor.focus();
+  }, [editor, selectedIds, selectedShapes]);
+
+  /** Lets every locked piece go again, as one undo step. */
+  const unlockAll = useCallback(() => {
+    if (!editor) return;
+    const locked = pieceShapesOf(editor).filter((shape) => shape.isLocked);
+    if (locked.length === 0) return;
+    editor.markHistoryStoppingPoint("unlock all");
+    editor.run(
+      () =>
+        editor.updateShapes(
+          locked.map((shape) => ({ id: asShapeId(shape.id), type: shape.type, isLocked: false })) as TLShapePartial[],
+        ),
+      { ignoreShapeLock: true },
+    );
+  }, [editor]);
 
   const duplicate = useCallback(() => {
     if (!editor || selectedIds.length === 0) return;
@@ -637,6 +656,7 @@ export default function TldrawCollageStudio({
         content: backContent,
         front,
         favicons: await resolveBackFavicons(backContent.sources),
+        look: BACK_LOOK,
       });
       saveFile(front, `${name} front.png`);
       saveFile(back, `${name} back.png`);
@@ -679,6 +699,7 @@ export default function TldrawCollageStudio({
   const standing = standingWords(autosave.standing);
   const onlyPiece = only ? pieceForDrawing(only) : null;
   const scale = camera.z;
+  const lockedCount = pieces.filter((piece) => piece.locked).length;
   const cropping = useValue("cropping", () => editor?.isIn("select.crop") ?? false, [editor]);
 
   return (
@@ -790,13 +811,12 @@ export default function TldrawCollageStudio({
                 <PieceActions
                   box={onlyPiece ?? selection.box}
                   piece={onlyPiece}
-                  canUncrop={only?.props.crop != null}
                   canCutOut={onlyPiece?.scrap.kind === "image"}
                   scale={scale}
                   frame={frame}
                   onOrder={order}
                   onCrop={startCrop}
-                  onUncrop={uncrop}
+                  onLock={lock}
                   onCutOut={beginCutout}
                   onDuplicate={duplicate}
                   onRemove={remove}
@@ -867,6 +887,16 @@ export default function TldrawCollageStudio({
             {cropping ? " · cropping · enter or click away to keep, esc to cancel" : ""}
           </span>
           <span className="collage-bar__spacer" />
+          {lockedCount > 0 && (
+            <button
+              type="button"
+              className="collage-action"
+              title="Locked pieces cannot be picked up here until they are let go"
+              onClick={unlockAll}
+            >
+              unlock {lockedCount} locked
+            </button>
+          )}
           {editorSwitch && (
             <EditorSwitch
               choice={editorSwitch}
