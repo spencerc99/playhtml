@@ -59,13 +59,14 @@ describe("ScrapsLaunchCard", () => {
     document.body.innerHTML = "";
   });
 
-  it("shows hosted examples when nothing has washed up yet", async () => {
+  it("shows hosted examples when nothing has been collected yet", async () => {
     vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ scraps: [] });
     const { container, root } = await renderCard();
 
     try {
       expect(container.textContent).toContain("internet scraps");
-      expect(container.textContent).toContain("wash up on a shore of your own");
+      expect(container.textContent).toContain("WWO now collects images");
+      expect(container.textContent).not.toContain("so far");
       expect(
         container.querySelector(".scraps-launch__strip-chip")?.textContent,
       ).toBe("examples");
@@ -94,13 +95,27 @@ describe("ScrapsLaunchCard", () => {
     const { container, root } = await renderCard();
 
     try {
-      expect(container.textContent).toContain("12 scraps have washed up");
+      expect(container.textContent).toContain("(12 scraps so far)");
       expect(container.querySelector(".scraps-launch__strip-chip")).toBeNull();
       const images = container.querySelectorAll<HTMLImageElement>(
         ".scraps-launch__piece--image",
       );
       expect(images.length).toBe(8);
       expect(images[0].src).toBe("https://example.com/scrap-0.png");
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("counts every collected scrap, not only the loaded page", async () => {
+    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({
+      scraps: [scrapImage("only")],
+      total: 431,
+    });
+    const { container, root } = await renderCard();
+
+    try {
+      expect(container.textContent).toContain("(431 scraps so far)");
     } finally {
       cleanup(root, container);
     }

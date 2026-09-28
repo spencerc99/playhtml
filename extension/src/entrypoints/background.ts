@@ -770,13 +770,13 @@ export default defineBackground(() => {
               return scrap ? [scrap] : []
             }),
         )
-        .then((scraps) =>
+        .then((scraps) => {
+          const grouped = groupPhotoEncounters(scraps).sort((a, b) => b.ts - a.ts)
           reply({
-            scraps: groupPhotoEncounters(scraps)
-              .sort((a, b) => b.ts - a.ts)
-              .slice(0, limit ?? Infinity),
-          }),
-        )
+            scraps: grouped.slice(0, limit ?? Infinity),
+            total: grouped.length,
+          })
+        })
         .catch((e) => {
           console.error('[Background] GET_SCRAPS error:', e)
           reply({ scraps: [] })

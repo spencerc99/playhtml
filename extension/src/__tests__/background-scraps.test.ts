@@ -252,6 +252,7 @@ describe("background scrap queries", () => {
           naturalHeight: 800,
         },
       ],
+      total: 5,
     });
   });
 

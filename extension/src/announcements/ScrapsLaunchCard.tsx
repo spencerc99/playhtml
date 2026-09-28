@@ -46,6 +46,8 @@ type ScrapRecord = ScrapRecordBase &
 
 interface ScrapsResponse {
   scraps?: ScrapRecord[];
+  /** Every scrap collected, not only the ones returned under the limit. */
+  total?: number;
 }
 
 type StripImage = { kind: "image"; key: string; src: string; alt: string };
@@ -216,6 +218,7 @@ export function ScrapsLaunchCard() {
   const [available, setAvailable] = useState(false);
   const [dismissed, setDismissed] = useState(true);
   const [scraps, setScraps] = useState<ScrapRecord[] | null>(null);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -239,7 +242,9 @@ export function ScrapsLaunchCard() {
           options: { limit: 200 },
         })) as ScrapsResponse;
         if (cancelled) return;
-        setScraps(Array.isArray(response?.scraps) ? response.scraps : []);
+        const loaded = Array.isArray(response?.scraps) ? response.scraps : [];
+        setScraps(loaded);
+        setTotal(response?.total ?? loaded.length);
       } catch (loadError: unknown) {
         console.error("[ScrapsLaunchCard] Could not load scraps:", loadError);
         if (!cancelled) setScraps([]);
@@ -264,12 +269,13 @@ export function ScrapsLaunchCard() {
   if (!available || dismissed || scraps === null) return null;
 
   const hasScraps = scraps.length > 0;
-  const body = hasScraps
-    ? `${scraps.length} scraps have washed up from your wandering so far. images, buttons, icons, cursors - the debris of everywhere you've been.`
-    : "as you wander, the little things you pass - images, buttons, icons, cursors - wash up on a shore of your own. these are examples of what it keeps; your own finds take their place as you browse.";
+  const collected = hasScraps
+    ? ` (${total} ${total === 1 ? "scrap" : "scraps"} so far)`
+    : "";
+  const body = `WWO now collects images, buttons, headings, and other element debris from your browsing${collected}. Visit the scraps page to get snapshots of your browsing.`;
   const finePrint = hasScraps
-    ? "collected on this device only. nothing leaves your browser."
-    : "examples from playhtml.fun + wewere.online · your collection stays on this device";
+    ? "collected locally only"
+    : "examples from playhtml.fun + wewere.online · collected locally only";
 
   return (
     <section className="scraps-launch" aria-labelledby="scraps-launch-title">
@@ -297,7 +303,7 @@ export function ScrapsLaunchCard() {
             className="scraps-launch__cta"
             href={browser.runtime.getURL("scraps.html")}
           >
-            visit your shore →
+            view your scraps →
           </a>
           <button
             type="button"
