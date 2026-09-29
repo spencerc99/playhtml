@@ -1,0 +1,49 @@
+// ABOUTME: Styles the scattered strip of newest internet scraps.
+// ABOUTME: Wraps onto more rows as the piece count grows, on the same pale paper.
+
+@use "../styles/variables" as *;
+
+.scrap-strip {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 14px 18px;
+  min-height: 120px;
+  padding: 20px 22px;
+  box-sizing: border-box;
+  background: #fdfbf6;
+  border-bottom: 1px dashed $border-strong;
+  overflow: hidden;
+}
+
+.scrap-strip__piece {
+  flex: 0 0 auto;
+  transform-origin: center;
+}
+
+.scrap-strip__piece--photo {
+  max-height: 76px;
+  object-fit: contain;
+}
+
+.scrap-strip__piece--icon {
+  max-height: 30px;
+  object-fit: contain;
+}
+
+.scrap-strip__piece--text {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.scrap-strip__piece--filled {
+  padding: 5px 10px;
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(90, 78, 65, 0.22);
+}

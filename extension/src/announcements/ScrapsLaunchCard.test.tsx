@@ -71,7 +71,7 @@ describe("ScrapsLaunchCard", () => {
         container.querySelector(".scraps-launch__strip-chip")?.textContent,
       ).toBe("examples");
       const images = container.querySelectorAll<HTMLImageElement>(
-        ".scraps-launch__piece--image",
+        ".scrap-strip__piece--photo",
       );
       expect(images.length).toBeGreaterThan(0);
       for (const image of images) {
@@ -98,7 +98,7 @@ describe("ScrapsLaunchCard", () => {
       expect(container.textContent).toContain("(12 scraps so far)");
       expect(container.querySelector(".scraps-launch__strip-chip")).toBeNull();
       const images = container.querySelectorAll<HTMLImageElement>(
-        ".scraps-launch__piece--image",
+        ".scrap-strip__piece--photo",
       );
       expect(images.length).toBe(8);
       expect(images[0].src).toBe("https://example.com/scrap-0.png");
