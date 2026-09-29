@@ -11,7 +11,49 @@
   overflow: hidden;
 }
 
+.scraps-launch__pile {
+  position: relative;
+  height: var(--scraps-pile-height, 240px);
+  background: #fdfbf6;
+  border-bottom: 1px dashed $border-strong;
+  overflow: hidden;
+}
+
+.scraps-launch--compact .scraps-launch__pile {
+  height: var(--scraps-pile-height, 200px);
+}
+
+.scraps-launch__footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 14px 9px;
+}
+
+.scraps-launch__footer-label {
+  color: $text-faint;
+  font-family: $font-mono;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.scraps-launch__footer-link {
+  color: $accent-rust;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: rgba(196, 114, 78, 0.4);
+  text-underline-offset: 3px;
+
+  &:hover {
+    text-decoration-color: $accent-rust;
+  }
+}
+
 .scraps-launch__strip-chip {
+  z-index: 3;
   position: absolute;
   right: 10px;
   bottom: 8px;

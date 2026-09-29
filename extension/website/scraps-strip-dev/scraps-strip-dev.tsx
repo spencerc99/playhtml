@@ -1,14 +1,15 @@
-// ABOUTME: Renders the real scraps launch card from a local export with a live piece-count slider.
+// ABOUTME: Renders the real new-tab scraps card from a local export with live count and size sliders.
 // ABOUTME: Reads ./local-scraps.json (gitignored) or a dropped-in export file.
 
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import React, { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { ScrapsLaunchCardView } from "@extension/announcements/ScrapsLaunchCard";
-import type { ScrapRecord } from "@extension/announcements/ScrapStrip";
+import type { ScrapRecord } from "@extension/entrypoints/scraps/scrapItems";
 
 const MIN_COUNT = 4;
 const MAX_COUNT = 60;
 const DEFAULT_COUNT = 20;
+const DEFAULT_PILE_HEIGHT = 240;
 
 function newestFirst(scraps: ScrapRecord[]): ScrapRecord[] {
   return [...scraps].sort((first, second) => second.ts - first.ts);
@@ -27,6 +28,9 @@ function DevPage() {
   const [error, setError] = useState<string | null>(null);
   const [count, setCount] = useState(DEFAULT_COUNT);
   const [width, setWidth] = useState(1100);
+  const [pileHeight, setPileHeight] = useState(DEFAULT_PILE_HEIGHT);
+  const [textDismissed, setTextDismissed] = useState(false);
+  const newest = useMemo(() => scraps?.slice(0, count) ?? [], [scraps, count]);
 
   useEffect(() => {
     fetch("./local-scraps.json")
@@ -100,6 +104,27 @@ function DevPage() {
           />
           <strong>{width}px</strong>
         </label>
+        <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          pile height
+          <input
+            type="range"
+            min={120}
+            max={480}
+            step={10}
+            value={pileHeight}
+            onChange={(event) => setPileHeight(Number(event.target.value))}
+            style={{ width: 140 }}
+          />
+          <strong>{pileHeight}px</strong>
+        </label>
+        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            type="checkbox"
+            checked={textDismissed}
+            onChange={(event) => setTextDismissed(event.target.checked)}
+          />
+          text dismissed
+        </label>
         <input type="file" accept="application/json" onChange={onFile} />
         <span style={{ color: "#8a8279" }}>{kinds}</span>
       </div>
@@ -107,13 +132,20 @@ function DevPage() {
       {error ? <p style={{ color: "#c4724e" }}>{error}</p> : null}
 
       {scraps ? (
-        <ScrapsLaunchCardView
-          scraps={scraps}
-          total={scraps.length}
-          capacity={count}
-          scrapsHref="#"
-          onDismiss={() => undefined}
-        />
+        <div
+          style={
+            { "--scraps-pile-height": `${pileHeight}px` } as React.CSSProperties
+          }
+        >
+          <ScrapsLaunchCardView
+            key={count}
+            scraps={newest}
+            total={scraps.length}
+            textDismissed={textDismissed}
+            scrapsHref="#"
+            onDismiss={() => setTextDismissed(true)}
+          />
+        </div>
       ) : null}
     </main>
   );

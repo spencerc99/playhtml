@@ -1,11 +1,11 @@
 // ABOUTME: Verifies the new-tab internet-scraps launch card states, dismissal, and feature gate.
-// ABOUTME: Covers the example strip, the collected-scraps strip, and the dark-feature no-render case.
+// ABOUTME: Covers the example pile, the reader's pile, the compact pile after dismissal, and the dark-feature case.
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import browser from "webextension-polyfill";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ScrapsLaunchCard } from "./ScrapsLaunchCard";
+import { PILE_CAPACITY, ScrapsLaunchCard } from "./ScrapsLaunchCard";
 import { FLAGS } from "../flags";
 
 function cleanup(root: Root, container: HTMLDivElement) {
@@ -52,10 +52,19 @@ describe("ScrapsLaunchCard", () => {
       wwoFeatureOverrides: { SCRAPS: true },
     });
     vi.mocked(browser.storage.local.set).mockResolvedValue(undefined);
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     document.body.innerHTML = "";
   });
 
@@ -67,18 +76,10 @@ describe("ScrapsLaunchCard", () => {
       expect(container.textContent).toContain("internet scraps");
       expect(container.textContent).toContain("WWO now collects images");
       expect(container.textContent).not.toContain("so far");
+      expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
       expect(
         container.querySelector(".scraps-launch__strip-chip")?.textContent,
       ).toBe("examples");
-      const images = container.querySelectorAll<HTMLImageElement>(
-        ".scrap-strip__piece--photo",
-      );
-      expect(images.length).toBeGreaterThan(0);
-      for (const image of images) {
-        expect(image.src).toMatch(
-          /^https:\/\/(playhtml\.fun|wewere\.online)\//,
-        );
-      }
       expect(
         container.querySelector<HTMLAnchorElement>(".scraps-launch__cta")?.href,
       ).toBe("chrome-extension://test/scraps.html");
@@ -87,7 +88,7 @@ describe("ScrapsLaunchCard", () => {
     }
   });
 
-  it("renders the reader's own scraps and caps the strip at eight", async () => {
+  it("asks for the newest scraps and shows the reader's own pile", async () => {
     const scraps = Array.from({ length: 12 }, (_unused, index) =>
       scrapImage(`scrap-${index}`),
     );
@@ -95,13 +96,13 @@ describe("ScrapsLaunchCard", () => {
     const { container, root } = await renderCard();
 
     try {
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+        type: "GET_SCRAPS",
+        options: { limit: PILE_CAPACITY },
+      });
       expect(container.textContent).toContain("(12 scraps so far)");
+      expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
       expect(container.querySelector(".scraps-launch__strip-chip")).toBeNull();
-      const images = container.querySelectorAll<HTMLImageElement>(
-        ".scrap-strip__piece--photo",
-      );
-      expect(images.length).toBe(8);
-      expect(images[0].src).toBe("https://example.com/scrap-0.png");
     } finally {
       cleanup(root, container);
     }
@@ -121,8 +122,11 @@ describe("ScrapsLaunchCard", () => {
     }
   });
 
-  it("hides the card once dismissed and records the dismissal", async () => {
-    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ scraps: [] });
+  it("keeps the pile as a compact window once the text is dismissed", async () => {
+    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({
+      scraps: [scrapImage("kept")],
+      total: 7,
+    });
     const { container, root } = await renderCard();
 
     try {
@@ -135,10 +139,32 @@ describe("ScrapsLaunchCard", () => {
         dismiss?.click();
       });
 
-      expect(container.querySelector(".scraps-launch")).toBeNull();
+      expect(container.querySelector(".scraps-launch__title")).toBeNull();
+      expect(container.querySelector(".scraps-launch--compact")).not.toBeNull();
+      expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
+      expect(
+        container.querySelector(".scraps-launch__footer-link")?.textContent,
+      ).toBe("view all 7 →");
       expect(browser.storage.local.set).toHaveBeenCalledWith({
         "announcement_seen_scraps-2026-08-newtab": "dismissed",
       });
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("leaves nothing behind once dismissed with no scraps yet", async () => {
+    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ scraps: [] });
+    const { container, root } = await renderCard();
+
+    try {
+      await act(async () => {
+        container
+          .querySelector<HTMLButtonElement>(".scraps-launch__dismiss")
+          ?.click();
+      });
+
+      expect(container.querySelector(".scraps-launch")).toBeNull();
     } finally {
       cleanup(root, container);
     }

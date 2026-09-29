@@ -10,6 +10,12 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  backingFor,
+  hasOwnFill,
+  inkNeedsBacking,
+  lightIconInk,
+} from "../utils/scrapLegibility";
+import {
   ANY_TIME,
   ScrapFilters,
   scrapPassesFilters,
@@ -1200,6 +1206,12 @@ export const COLLAGE_STYLES = `
     pointer-events: none;
   }
 
+  .scrap-collage__backdrop--ink {
+    padding: 4px 8px;
+    border-radius: 3px;
+    box-shadow: 0 1px 2px rgba(40, 30, 20, 0.25);
+  }
+
   .scrap-collage__heading {
     box-sizing: border-box;
     display: flex;
@@ -1363,17 +1375,32 @@ function ScrapSwatch({
  */
 export function ScrapBackdrop({
   color,
+  ink = false,
   children,
 }: {
   color?: string;
+  /** The backing is ours, added so light ink reads, not the page's own. */
+  ink?: boolean;
   children: React.ReactNode;
 }) {
   if (!color) return <>{children}</>;
   return (
-    <span className="scrap-collage__backdrop" style={{ background: color }}>
+    <span
+      className={`scrap-collage__backdrop${ink ? " scrap-collage__backdrop--ink" : ""}`}
+      style={{ background: color }}
+    >
       {children}
     </span>
   );
+}
+
+/**
+ * A dark backing for lettering too light to read on the collage paper, when
+ * the scrap has no fill of its own to carry it.
+ */
+function inkBackingFor(styles: Record<string, string>): string | undefined {
+  if (hasOwnFill(styles.backgroundColor)) return undefined;
+  return inkNeedsBacking(styles.color) ? backingFor(styles.color!) : undefined;
 }
 
 export function ScrapContent({
@@ -1406,7 +1433,10 @@ export function ScrapContent({
       );
     case "button":
       return (
-        <ScrapBackdrop color={item.backdropColor}>
+        <ScrapBackdrop
+          color={item.backdropColor ?? inkBackingFor(item.styles)}
+          ink={!item.backdropColor}
+        >
           <span
             className="scrap-collage__button"
             style={{
@@ -1428,28 +1458,43 @@ export function ScrapContent({
           </span>
         </ScrapBackdrop>
       );
-    case "svg-icon":
-      return (
+    case "svg-icon": {
+      const lightInk = lightIconInk(item.markup);
+      const icon = (
         <div
           className="scrap-collage__svg"
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: item.markup }}
         />
       );
+      return lightInk ? (
+        <ScrapBackdrop color={backingFor(lightInk)} ink>
+          {icon}
+        </ScrapBackdrop>
+      ) : (
+        icon
+      );
+    }
     case "heading":
       return (
-        <span
-          className="scrap-collage__heading"
-          style={{
-            ...(item.styles as React.CSSProperties),
-            fontSize: headingDisplayFontSize(item.styles, item.text, tileWidth),
-            // The captured line height belongs to the captured font size; at
-            // display size it would space wrapped lines far too far apart.
-            lineHeight: HEADING_LINE_HEIGHT,
-          }}
-        >
-          {item.text}
-        </span>
+        <ScrapBackdrop color={inkBackingFor(item.styles)} ink>
+          <span
+            className="scrap-collage__heading"
+            style={{
+              ...(item.styles as React.CSSProperties),
+              fontSize: headingDisplayFontSize(
+                item.styles,
+                item.text,
+                tileWidth,
+              ),
+              // The captured line height belongs to the captured font size; at
+              // display size it would space wrapped lines far too far apart.
+              lineHeight: HEADING_LINE_HEIGHT,
+            }}
+          >
+            {item.text}
+          </span>
+        </ScrapBackdrop>
       );
     case "cursor":
       return (
