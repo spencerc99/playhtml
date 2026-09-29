@@ -117,10 +117,17 @@ interface ScrapCollageProps {
   targetCount?: number;
   perDomainCap?: number;
   showKindFilter?: boolean;
+  /** Which view the collage opens in; the drifting tide unless told otherwise. */
+  initialView?: ScrapView;
+  /**
+   * A display this collage always uses, ignoring the reader's remembered
+   * choice from the scraps page.
+   */
+  fixedDisplay?: ScrapDisplay;
 }
 
-type ScrapView = "drift" | "archive";
-type ScrapDisplay = "pile" | "grid";
+export type ScrapView = "drift" | "archive";
+export type ScrapDisplay = "pile" | "grid";
 const DISPLAY_STORAGE_KEY = "scraps-display";
 function readScrapDisplay(): ScrapDisplay {
   try {
@@ -1207,6 +1214,14 @@ export const COLLAGE_STYLES = `
   }
 
   .scrap-collage__backdrop--ink {
+    /* A faint checkerboard: the backing is ours, not the page's. */
+    background-image: conic-gradient(
+      rgba(255, 255, 255, 0.08) 25%,
+      transparent 0 50%,
+      rgba(255, 255, 255, 0.08) 0 75%,
+      transparent 0
+    );
+    background-size: 8px 8px;
     padding: 4px 8px;
     border-radius: 3px;
     box-shadow: 0 1px 2px rgba(40, 30, 20, 0.25);
@@ -1387,11 +1402,42 @@ export function ScrapBackdrop({
   return (
     <span
       className={`scrap-collage__backdrop${ink ? " scrap-collage__backdrop--ink" : ""}`}
-      style={{ background: color }}
+      style={ink ? { backgroundColor: color } : { background: color }}
     >
       {children}
     </span>
   );
+}
+
+const BUTTON_LENGTH_PROPERTIES = [
+  "fontSize",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+] as const;
+
+/**
+ * A button's captured styles shrunk to the tile it was laid out in. A tile
+ * narrower than the button's measured width would otherwise leave its
+ * lettering spilling past its own face.
+ */
+function buttonStylesAtWidth(
+  styles: Record<string, string>,
+  text: string,
+  tileWidth: number | undefined,
+): Record<string, string> {
+  if (tileWidth === undefined) return styles;
+  const shrink = tileWidth / estimateButtonWidth(text);
+  if (shrink >= 1) return styles;
+  const scaled = { ...styles };
+  for (const property of BUTTON_LENGTH_PROPERTIES) {
+    const pixels = Number.parseFloat(styles[property] ?? "");
+    if (Number.isFinite(pixels) && styles[property]!.trim().endsWith("px")) {
+      scaled[property] = `${pixels * shrink}px`;
+    }
+  }
+  return scaled;
 }
 
 /**
@@ -1440,7 +1486,11 @@ export function ScrapContent({
           <span
             className="scrap-collage__button"
             style={{
-              ...(item.styles as React.CSSProperties),
+              ...(buttonStylesAtWidth(
+                item.styles,
+                item.text,
+                tileWidth,
+              ) as React.CSSProperties),
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
@@ -1563,6 +1613,8 @@ export function ScrapCollage({
   targetCount,
   perDomainCap,
   showKindFilter = false,
+  initialView = "drift",
+  fixedDisplay,
 }: ScrapCollageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const archiveScrollRef = useRef<HTMLDivElement>(null);
@@ -1572,8 +1624,10 @@ export function ScrapCollage({
   const [search, setSearch] = useState("");
   const [when, setWhen] = useState<ScrapWhenFilter>(ANY_TIME);
   const [controlsFocused, setControlsFocused] = useState(false);
-  const [view, setView] = useState<ScrapView>("drift");
-  const [display, setDisplay] = useState<ScrapDisplay>(readScrapDisplay);
+  const [view, setView] = useState<ScrapView>(initialView);
+  const [display, setDisplay] = useState<ScrapDisplay>(
+    () => fixedDisplay ?? readScrapDisplay(),
+  );
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const pendingScrollRef = useRef<number | null>(null);

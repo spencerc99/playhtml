@@ -204,7 +204,13 @@ export function ScrapsLaunchCardView({
 
   const pile = (
     <div className="scraps-launch__pile">
-      <ScrapCollage items={items} seed={seed} targetCount={items.length} />
+      <ScrapCollage
+        items={items}
+        seed={seed}
+        targetCount={items.length}
+        initialView="archive"
+        fixedDisplay="pile"
+      />
       {hasScraps ? null : (
         <span className="scraps-launch__strip-chip">examples</span>
       )}
