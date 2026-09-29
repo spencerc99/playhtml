@@ -8,8 +8,8 @@ import type { ScrapRecord } from "@extension/entrypoints/scraps/scrapItems";
 
 const MIN_COUNT = 4;
 const MAX_COUNT = 60;
-const DEFAULT_COUNT = 20;
-const DEFAULT_PILE_HEIGHT = 240;
+const DEFAULT_COUNT = 40;
+const DEFAULT_PILE_HEIGHT = 320;
 
 function newestFirst(scraps: ScrapRecord[]): ScrapRecord[] {
   return [...scraps].sort((first, second) => second.ts - first.ts);
@@ -27,7 +27,7 @@ function DevPage() {
   const [scraps, setScraps] = useState<ScrapRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [count, setCount] = useState(DEFAULT_COUNT);
-  const [width, setWidth] = useState(1100);
+  const [width, setWidth] = useState(1000);
   const [pileHeight, setPileHeight] = useState(DEFAULT_PILE_HEIGHT);
   const [textDismissed, setTextDismissed] = useState(false);
   const newest = useMemo(() => scraps?.slice(0, count) ?? [], [scraps, count]);

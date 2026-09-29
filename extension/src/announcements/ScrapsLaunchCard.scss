@@ -13,14 +13,10 @@
 
 .scraps-launch__pile {
   position: relative;
-  height: var(--scraps-pile-height, 240px);
+  height: var(--scraps-pile-height, 320px);
   background: #fdfbf6;
   border-bottom: 1px dashed $border-strong;
   overflow: hidden;
-}
-
-.scraps-launch--compact .scraps-launch__pile {
-  height: var(--scraps-pile-height, 200px);
 }
 
 .scraps-launch__footer {
