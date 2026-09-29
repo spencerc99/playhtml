@@ -8,8 +8,8 @@ import type { ScrapRecord } from "@extension/entrypoints/scraps/scrapItems";
 
 const MIN_COUNT = 4;
 const MAX_COUNT = 60;
-const DEFAULT_COUNT = 40;
-const DEFAULT_PILE_HEIGHT = 320;
+const DEFAULT_COUNT = 32;
+const DEFAULT_PILE_HEIGHT = 300;
 /** The history page column: 776px wide with 28px side padding. */
 const HISTORY_COLUMN_WIDTH = 776;
 

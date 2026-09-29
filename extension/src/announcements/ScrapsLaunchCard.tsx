@@ -15,7 +15,7 @@ import "./ScrapsLaunchCard.scss";
 export const SCRAPS_LAUNCH_CARD_ID = "scraps-2026-08-newtab";
 
 /** How many of the newest scraps the pile draws from. */
-export const PILE_CAPACITY = 40;
+export const PILE_CAPACITY = 32;
 
 interface ScrapsResponse {
   scraps?: ScrapRecord[];
