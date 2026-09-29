@@ -10,6 +10,8 @@ const MIN_COUNT = 4;
 const MAX_COUNT = 60;
 const DEFAULT_COUNT = 40;
 const DEFAULT_PILE_HEIGHT = 320;
+/** The history page column: 776px wide with 28px side padding. */
+const HISTORY_COLUMN_WIDTH = 776;
 
 function newestFirst(scraps: ScrapRecord[]): ScrapRecord[] {
   return [...scraps].sort((first, second) => second.ts - first.ts);
@@ -27,7 +29,7 @@ function DevPage() {
   const [scraps, setScraps] = useState<ScrapRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [count, setCount] = useState(DEFAULT_COUNT);
-  const [width, setWidth] = useState(1000);
+  const [width, setWidth] = useState(HISTORY_COLUMN_WIDTH);
   const [pileHeight, setPileHeight] = useState(DEFAULT_PILE_HEIGHT);
   const [textDismissed, setTextDismissed] = useState(false);
   const newest = useMemo(() => scraps?.slice(0, count) ?? [], [scraps, count]);
@@ -67,7 +69,7 @@ function DevPage() {
   }, [scraps]);
 
   return (
-    <main style={{ maxWidth: width, margin: "0 auto", padding: "32px 24px" }}>
+    <main style={{ maxWidth: width, margin: "0 auto", padding: "32px 28px", boxSizing: "border-box" }}>
       <div
         style={{
           display: "flex",
