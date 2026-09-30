@@ -775,6 +775,17 @@ export default defineBackground(() => {
       return true
     }
 
+    if (message.type === 'GET_SCRAP_COUNT') {
+      store
+        .countEventsOfType('element')
+        .then((total) => reply({ total }))
+        .catch((e) => {
+          console.error('[Background] GET_SCRAP_COUNT error:', e)
+          reply({ error: String(e) })
+        })
+      return true
+    }
+
     if (message.type === 'GET_DOMAIN_STATS') {
       const domain = message.domain as string
       const rawUrl = message.url as string | undefined

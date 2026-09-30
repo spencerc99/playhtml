@@ -10,6 +10,12 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  backingFor,
+  hasOwnFill,
+  inkNeedsBacking,
+  lightIconInk,
+} from "../utils/scrapLegibility";
+import {
   ANY_TIME,
   ScrapFilters,
   scrapPassesFilters,
@@ -111,11 +117,18 @@ interface ScrapCollageProps {
   targetCount?: number;
   perDomainCap?: number;
   showKindFilter?: boolean;
+  /** Which view the collage opens in; the drifting tide unless told otherwise. */
+  initialView?: ScrapView;
+  /**
+   * A display this collage always uses, ignoring the reader's remembered
+   * choice from the scraps page.
+   */
+  fixedDisplay?: ScrapDisplay;
   onFilterIntent?: () => void;
 }
 
-type ScrapView = "drift" | "archive";
-type ScrapDisplay = "pile" | "grid";
+export type ScrapView = "drift" | "archive";
+export type ScrapDisplay = "pile" | "grid";
 const DISPLAY_STORAGE_KEY = "scraps-display";
 function readScrapDisplay(): ScrapDisplay {
   try {
@@ -1201,6 +1214,20 @@ export const COLLAGE_STYLES = `
     pointer-events: none;
   }
 
+  .scrap-collage__backdrop--ink {
+    /* A faint checkerboard: the backing is ours, not the page's. */
+    background-image: conic-gradient(
+      rgba(255, 255, 255, 0.08) 25%,
+      transparent 0 50%,
+      rgba(255, 255, 255, 0.08) 0 75%,
+      transparent 0
+    );
+    background-size: 8px 8px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    box-shadow: 0 1px 2px rgba(40, 30, 20, 0.25);
+  }
+
   .scrap-collage__heading {
     box-sizing: border-box;
     display: flex;
@@ -1364,17 +1391,63 @@ function ScrapSwatch({
  */
 export function ScrapBackdrop({
   color,
+  ink = false,
   children,
 }: {
   color?: string;
+  /** The backing is ours, added so light ink reads, not the page's own. */
+  ink?: boolean;
   children: React.ReactNode;
 }) {
   if (!color) return <>{children}</>;
   return (
-    <span className="scrap-collage__backdrop" style={{ background: color }}>
+    <span
+      className={`scrap-collage__backdrop${ink ? " scrap-collage__backdrop--ink" : ""}`}
+      style={ink ? { backgroundColor: color } : { background: color }}
+    >
       {children}
     </span>
   );
+}
+
+const BUTTON_LENGTH_PROPERTIES = [
+  "fontSize",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+] as const;
+
+/**
+ * A button's captured styles shrunk to the tile it was laid out in. A tile
+ * narrower than the button's measured width would otherwise leave its
+ * lettering spilling past its own face.
+ */
+function buttonStylesAtWidth(
+  styles: Record<string, string>,
+  text: string,
+  tileWidth: number | undefined,
+): Record<string, string> {
+  if (tileWidth === undefined) return styles;
+  const shrink = tileWidth / estimateButtonWidth(text);
+  if (shrink >= 1) return styles;
+  const scaled = { ...styles };
+  for (const property of BUTTON_LENGTH_PROPERTIES) {
+    const pixels = Number.parseFloat(styles[property] ?? "");
+    if (Number.isFinite(pixels) && styles[property]!.trim().endsWith("px")) {
+      scaled[property] = `${pixels * shrink}px`;
+    }
+  }
+  return scaled;
+}
+
+/**
+ * A dark backing for lettering too light to read on the collage paper, when
+ * the scrap has no fill of its own to carry it.
+ */
+function inkBackingFor(styles: Record<string, string>): string | undefined {
+  if (hasOwnFill(styles.backgroundColor)) return undefined;
+  return inkNeedsBacking(styles.color) ? backingFor(styles.color!) : undefined;
 }
 
 export function ScrapContent({
@@ -1407,11 +1480,18 @@ export function ScrapContent({
       );
     case "button":
       return (
-        <ScrapBackdrop color={item.backdropColor}>
+        <ScrapBackdrop
+          color={item.backdropColor ?? inkBackingFor(item.styles)}
+          ink={!item.backdropColor}
+        >
           <span
             className="scrap-collage__button"
             style={{
-              ...(item.styles as React.CSSProperties),
+              ...(buttonStylesAtWidth(
+                item.styles,
+                item.text,
+                tileWidth,
+              ) as React.CSSProperties),
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
@@ -1429,28 +1509,43 @@ export function ScrapContent({
           </span>
         </ScrapBackdrop>
       );
-    case "svg-icon":
-      return (
+    case "svg-icon": {
+      const lightInk = lightIconInk(item.markup);
+      const icon = (
         <div
           className="scrap-collage__svg"
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: item.markup }}
         />
       );
+      return lightInk ? (
+        <ScrapBackdrop color={backingFor(lightInk)} ink>
+          {icon}
+        </ScrapBackdrop>
+      ) : (
+        icon
+      );
+    }
     case "heading":
       return (
-        <span
-          className="scrap-collage__heading"
-          style={{
-            ...(item.styles as React.CSSProperties),
-            fontSize: headingDisplayFontSize(item.styles, item.text, tileWidth),
-            // The captured line height belongs to the captured font size; at
-            // display size it would space wrapped lines far too far apart.
-            lineHeight: HEADING_LINE_HEIGHT,
-          }}
-        >
-          {item.text}
-        </span>
+        <ScrapBackdrop color={inkBackingFor(item.styles)} ink>
+          <span
+            className="scrap-collage__heading"
+            style={{
+              ...(item.styles as React.CSSProperties),
+              fontSize: headingDisplayFontSize(
+                item.styles,
+                item.text,
+                tileWidth,
+              ),
+              // The captured line height belongs to the captured font size; at
+              // display size it would space wrapped lines far too far apart.
+              lineHeight: HEADING_LINE_HEIGHT,
+            }}
+          >
+            {item.text}
+          </span>
+        </ScrapBackdrop>
       );
     case "cursor":
       return (
@@ -1519,6 +1614,8 @@ export function ScrapCollage({
   targetCount,
   perDomainCap,
   showKindFilter = false,
+  initialView = "drift",
+  fixedDisplay,
   onFilterIntent,
 }: ScrapCollageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1529,8 +1626,10 @@ export function ScrapCollage({
   const [search, setSearch] = useState("");
   const [when, setWhen] = useState<ScrapWhenFilter>(ANY_TIME);
   const [controlsFocused, setControlsFocused] = useState(false);
-  const [view, setView] = useState<ScrapView>("drift");
-  const [display, setDisplay] = useState<ScrapDisplay>(readScrapDisplay);
+  const [view, setView] = useState<ScrapView>(initialView);
+  const [display, setDisplay] = useState<ScrapDisplay>(
+    () => fixedDisplay ?? readScrapDisplay(),
+  );
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const pendingScrollRef = useRef<number | null>(null);

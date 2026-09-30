@@ -388,4 +388,52 @@ describe("background scrap queries", () => {
     expect(response.scraps).toHaveLength(200);
   });
 
+
+  it("counts every scrap from the index for the new-tab card", async () => {
+    const countEventsOfType = vi.fn().mockResolvedValue(4321);
+    const onMessageAddListener = vi.fn();
+
+    vi.doMock("../storage/LocalEventStore", () => ({
+      LocalEventStore: vi.fn(() => ({ countEventsOfType })),
+    }));
+    vi.doMock("../storage/sync", () => ({ uploadEvents: vi.fn() }));
+    vi.doMock("../storage/restore", () => ({ fetchEventsByPid: vi.fn() }));
+    vi.doMock("webextension-polyfill", () => ({
+      default: {
+        storage: {
+          local: {
+            get: vi.fn().mockResolvedValue({}),
+            set: vi.fn().mockResolvedValue(undefined),
+          },
+        },
+        runtime: {
+          onInstalled: { addListener: vi.fn() },
+          onMessage: { addListener: onMessageAddListener },
+          getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
+        },
+        tabs: {
+          create: vi.fn().mockResolvedValue(undefined),
+          query: vi.fn().mockResolvedValue([]),
+          sendMessage: vi.fn().mockResolvedValue(undefined),
+        },
+        alarms: {
+          create: vi.fn(),
+          onAlarm: { addListener: vi.fn() },
+        },
+      },
+    }));
+    (globalThis as any).defineBackground = (setup: () => void) => {
+      setup();
+      return setup;
+    };
+
+    await import("../entrypoints/background");
+    const listener = onMessageAddListener.mock.calls[0][0];
+    const response = await new Promise((resolve) => {
+      expect(listener({ type: "GET_SCRAP_COUNT" }, {}, resolve)).toBe(true);
+    });
+
+    expect(countEventsOfType).toHaveBeenCalledWith("element");
+    expect(response).toEqual({ total: 4321 });
+  });
 });

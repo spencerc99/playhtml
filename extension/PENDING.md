@@ -16,3 +16,5 @@ extension/website/public/changelog/media/ and reference them here:
 ![Screenshot title](/changelog/media/file.png)
 ![video: Demo title](/changelog/media/file.mp4)
 -->
+
+- Notices in the popup now go away once you open them, and on their own after a few views.
