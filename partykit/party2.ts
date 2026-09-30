@@ -33,6 +33,7 @@ import {
 } from "./const";
 import { getErrorMessage, retryWithinTimeout } from "./persistenceMode";
 import { PresenceServer } from "./presenceServer";
+import { getBridgeAuthFailure } from "./bridgeAuth";
 import {
   V2_BRIDGE_STORAGE_KEYS,
   createBridge2Request,
@@ -248,6 +249,13 @@ export class PartyServerV2 extends PresenceServer {
     if (request.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
     }
+    // Every v2 room HTTP endpoint is a room-to-room bridge call, and the
+    // Worker routes /parties/v2/<room> publicly, so authenticate before parsing.
+    const bridgeAuthFailure = getBridgeAuthFailure(
+      request,
+      env.PARTYKIT_BRIDGE_SECRET,
+    );
+    if (bridgeAuthFailure) return bridgeAuthFailure;
 
     let body: unknown;
     try {
@@ -342,7 +350,7 @@ export class PartyServerV2 extends PresenceServer {
         elementIds: reference.elementIds,
       };
       const response = await sourceRoom.fetch(
-        createBridge2Request("/subscribe", request),
+        createBridge2Request("/subscribe", request, env.PARTYKIT_BRIDGE_SECRET),
       );
       if (!response.ok) return;
       const subscription = (await response.json()) as Bridge2SubscribeResponse;
@@ -613,7 +621,7 @@ export class PartyServerV2 extends PresenceServer {
         message,
       };
       const response = await sourceRoom.fetch(
-        createBridge2Request("/operation", request),
+        createBridge2Request("/operation", request, env.PARTYKIT_BRIDGE_SECRET),
       );
       const result = (await response.json()) as Bridge2ApplyResponse;
       if (response.ok && result.ok) return;
@@ -659,7 +667,13 @@ export class PartyServerV2 extends PresenceServer {
               sourceGeneration: this.generation,
               payload,
             };
-            await consumerRoom.fetch(createBridge2Request("/forward", request));
+            await consumerRoom.fetch(
+              createBridge2Request(
+                "/forward",
+                request,
+                env.PARTYKIT_BRIDGE_SECRET,
+              ),
+            );
           } catch {
             // Subscribers retain their last mirrored state and renew later.
           }

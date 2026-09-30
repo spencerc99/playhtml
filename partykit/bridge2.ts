@@ -1,6 +1,7 @@
 // ABOUTME: Defines version 2 shared-element bridge messages and state helpers.
 // ABOUTME: Keeps cross-room leases, snapshots, and forwarded operation metadata typed.
 
+import { createBridgeRequest } from "./bridgeAuth";
 import type {
   ClientOperationMessage,
   OperationRejectionCode,
@@ -139,15 +140,17 @@ export function isBridge2Request(value: unknown): value is Bridge2Request {
   return false;
 }
 
+/**
+ * Builds a room-to-room bridge request carrying the deployment's bridge
+ * credential. Room HTTP endpoints are publicly routable, so the receiving room
+ * rejects bridge requests without it.
+ */
 export function createBridge2Request(
   path: string,
   body: Bridge2Request,
+  bridgeSecret: string | undefined,
 ): Request {
-  return new Request(`http://internal${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  return createBridgeRequest(path, body, bridgeSecret);
 }
 
 export function extractBridge2Snapshot(

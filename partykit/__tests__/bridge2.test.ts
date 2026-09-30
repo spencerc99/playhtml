@@ -25,7 +25,9 @@ type RoomServer = {
 const rooms = new Map<string, RoomServer>();
 const SOURCE_ROOM_ID = "source-%2Froom";
 const deliveredRequests: Array<{ roomName: string; body: unknown }> = [];
+const BRIDGE_SECRET = "test-bridge-secret";
 const workerEnv: Record<string, unknown> = {
+  PARTYKIT_BRIDGE_SECRET: BRIDGE_SECRET,
   SUPABASE_LOAD_ATTEMPTS: "1",
   SUPABASE_LOAD_RETRY_DELAY_MS: "1",
   SUPABASE_LOAD_TIMEOUT_MS: "100",
@@ -458,12 +460,53 @@ describe("PartyServerV2 shared-element bridge", () => {
       createBridge2Request(
         "/forward",
         delivery!.body as Bridge2ForwardOperationRequest,
+        BRIDGE_SECRET,
       ),
     );
 
     expect(response.ok).toBe(true);
     expect(await response.json()).toEqual({ ok: true, applied: false });
     expect(parsedMessages(bridge.consumerConnection)).toHaveLength(1);
+  });
+
+  test("rejects bridge requests without the deployment credential", async () => {
+    const bridge = await setupBridge("read-write");
+    bridge.consumerConnection.sent = [];
+    const forged = JSON.stringify({
+      action: "bridge2-forward-operation",
+      sourceRoomId: SOURCE_ROOM_ID,
+      sourceSequence: 1_000,
+      sourceGeneration: 0,
+      payload: {
+        sequence: 1_000,
+        generation: 0,
+        clientId: "attacker",
+        mutationId: 1,
+        operation: setMessage("counter", 99).operation,
+      },
+    } satisfies Bridge2ForwardOperationRequest);
+
+    const unauthenticated = await bridge.consumer.room.onRequest(
+      new Request("https://example.com/parties/v2/consumer-room", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: forged,
+      }),
+    );
+    const wrongSecret = await bridge.consumer.room.onRequest(
+      new Request("https://example.com/parties/v2/consumer-room", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-playhtml-bridge-secret": "guessed",
+        },
+        body: forged,
+      }),
+    );
+
+    expect(unauthenticated.status).toBe(401);
+    expect(wrongSecret.status).toBe(403);
+    expect(parsedMessages(bridge.consumerConnection)).toEqual([]);
   });
 
   test("removes expired subscriber leases on alarm", async () => {
