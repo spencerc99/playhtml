@@ -20,6 +20,10 @@ import {
   type V2Socket,
   type V2SocketFactory,
 } from "../v2/transport";
+import {
+  RECONNECT_DELAY_JITTER_MS,
+  RECONNECT_DELAY_MIN_MS,
+} from "../presence-transport";
 
 const initialSnapshot = (): RoomSnapshot => ({
   state: {
@@ -521,6 +525,12 @@ describe("V2Transport", () => {
       party: "v2",
       maxEnqueuedMessages: 0,
     });
+    expect(socketOptions?.minReconnectionDelay).toBeGreaterThanOrEqual(
+      RECONNECT_DELAY_MIN_MS,
+    );
+    expect(socketOptions?.minReconnectionDelay).toBeLessThanOrEqual(
+      RECONNECT_DELAY_MIN_MS + RECONNECT_DELAY_JITTER_MS,
+    );
     const store = new V2Store({
       snapshot: initialSnapshot(),
       generation: 1,

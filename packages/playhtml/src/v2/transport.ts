@@ -16,6 +16,7 @@ import type {
 } from "@playhtml/common";
 import { PROTOCOL_VERSION } from "@playhtml/common";
 import { checkSnapshotIntegrity } from "@playhtml/common";
+import { pickReconnectionDelay } from "../presence-transport";
 
 export type V2Socket = Pick<PartySocket, "readyState" | "send" | "close"> &
   Pick<EventTarget, "addEventListener" | "removeEventListener">;
@@ -276,6 +277,9 @@ export class V2Transport {
       room,
       party: "v2",
       maxEnqueuedMessages: 0,
+      // Spread reconnects after a room restart instead of every client
+      // retrying at PartySocket's fixed first delay.
+      minReconnectionDelay: pickReconnectionDelay(),
       query: {
         ...(options.sharedElements
           ? { sharedElements: options.sharedElements }
