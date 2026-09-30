@@ -29,6 +29,7 @@ export interface MilestoneState {
 }
 
 const STORAGE_KEY = "milestoneState";
+export const MILESTONE_TOASTS_ENABLED_KEY = "milestoneToastsEnabled";
 const COOLDOWN_MS = 10 * 60 * 1000;
 
 export function buildEmptyState(): MilestoneState {

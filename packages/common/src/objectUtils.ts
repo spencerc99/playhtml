@@ -1,3 +1,5 @@
+// ABOUTME: Compares and updates plain shared-data structures without redundant writes.
+// ABOUTME: Preserves proxy identity while avoiding unnecessary CRDT history.
 export function isPlainObject(value: any): value is Record<string, any> {
   return (
     value !== null &&
@@ -6,9 +8,33 @@ export function isPlainObject(value: any): value is Record<string, any> {
   );
 }
 
+function valuesEqual(left: any, right: any): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return (
+      left.length === right.length &&
+      left.every((value, index) => valuesEqual(value, right[index]))
+    );
+  }
+  if (isPlainObject(left) && isPlainObject(right)) {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    return (
+      leftKeys.length === rightKeys.length &&
+      rightKeys.every(
+        (key) =>
+          Object.prototype.hasOwnProperty.call(left, key) &&
+          valuesEqual(left[key], right[key]),
+      )
+    );
+  }
+  return false;
+}
+
 export function deepReplaceIntoProxy(target: any, src: any) {
   if (src === null || src === undefined) return;
   if (Array.isArray(src)) {
+    if (valuesEqual(target, src)) return;
     target.splice(0, target.length, ...src);
     return;
   }
@@ -24,7 +50,9 @@ export function deepReplaceIntoProxy(target: any, src: any) {
         if (!isPlainObject(target[k])) target[k] = {};
         deepReplaceIntoProxy(target[k], v);
       } else {
-        (target as any)[k] = v as any;
+        if (!Object.is(target[k], v)) {
+          (target as any)[k] = v as any;
+        }
       }
     }
     return;

@@ -1,0 +1,319 @@
+// ABOUTME: The compact strip of tools that floats beside the selected piece or pieces.
+// ABOUTME: Small inline-SVG glyphs so the tools stay out of the material's way.
+
+import React, { useLayoutEffect, useRef, useState } from "react";
+import type { PieceBox } from "./collageGeometry";
+import type { CollagePiece } from "./collageRecord";
+import { placeBesidePiece } from "./studioPanels";
+
+const STROKE = {
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.3,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+
+function Glyph({ children }: { children: React.ReactNode }) {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+
+/**
+ * The strip's glyphs, shared with the collage history's card actions.
+ *
+ * The order glyphs follow the common drawing-tool convention: two overlapping
+ * squares, the one being moved drawn solid. Forward, it sits on top; back,
+ * only the part the other square leaves uncovered shows.
+ */
+export const GLYPHS = {
+  forward: (
+    <Glyph>
+      <path d="M2.5 9.5v-7h7" {...STROKE} />
+      <rect x="5.5" y="5.5" width="8" height="8" fill="currentColor" />
+    </Glyph>
+  ),
+  backward: (
+    <Glyph>
+      <path d="M2 2h8v3.5H5.5V10H2z" fill="currentColor" />
+      <rect x="6.5" y="6.5" width="7" height="7" {...STROKE} />
+    </Glyph>
+  ),
+  flipX: (
+    <Glyph>
+      <path d="M8 1.5v13" {...STROKE} strokeDasharray="2 2" />
+      <path d="M6 4L2 8l4 4z" {...STROKE} />
+      <path d="M10 4l4 4-4 4z" {...STROKE} />
+    </Glyph>
+  ),
+  flipY: (
+    <Glyph>
+      <path d="M1.5 8h13" {...STROKE} strokeDasharray="2 2" />
+      <path d="M4 6L8 2l4 4z" {...STROKE} />
+      <path d="M4 10l4 4 4-4z" {...STROKE} />
+    </Glyph>
+  ),
+  crop: (
+    <Glyph>
+      <path d="M4.5 1.5v10h10" {...STROKE} />
+      <path d="M1.5 4.5h10v10" {...STROKE} />
+    </Glyph>
+  ),
+  cutOut: (
+    <Glyph>
+      <circle cx="4" cy="12" r="1.8" {...STROKE} />
+      <circle cx="12" cy="12" r="1.8" {...STROKE} />
+      <path d="M5.3 10.7L12 2M10.7 10.7L4 2" {...STROKE} />
+    </Glyph>
+  ),
+  lock: (
+    <Glyph>
+      <rect x="3.5" y="7.5" width="9" height="6.5" rx="1" {...STROKE} />
+      <path d="M5.5 7.5V5a2.5 2.5 0 015 0v2.5" {...STROKE} />
+    </Glyph>
+  ),
+  unlock: (
+    <Glyph>
+      <rect x="3.5" y="7.5" width="9" height="6.5" rx="1" {...STROKE} />
+      <path d="M5.5 7.5V5a2.5 2.5 0 014.8-1" {...STROKE} />
+    </Glyph>
+  ),
+  duplicate: (
+    <Glyph>
+      <rect x="2.5" y="2.5" width="8" height="8" {...STROKE} />
+      <rect x="5.5" y="5.5" width="8" height="8" {...STROKE} />
+    </Glyph>
+  ),
+  saveFile: (
+    <Glyph>
+      <path d="M8 2v7.5M5 6.5l3 3 3-3" {...STROKE} />
+      <path d="M2.5 10v3.5h11V10" {...STROKE} />
+    </Glyph>
+  ),
+  remove: (
+    <Glyph>
+      <path d="M3 4.5h10M6.5 4.5V2.5h3v2" {...STROKE} />
+      <path d="M4.5 4.5l.7 9h5.6l.7-9" {...STROKE} />
+    </Glyph>
+  ),
+};
+
+export interface PieceActionsProps {
+  /** The box the strip floats beside: the piece, or the bounds of several. */
+  box: PieceBox;
+  /**
+   * The piece in hand when it is the only one. Crop and cut-out work on one
+   * picture at a time, so with several in hand they leave the strip.
+   */
+  piece: CollagePiece | null;
+  canCutOut: boolean;
+  /** The frame's zoom, so the strip stays one size on screen. */
+  scale: number;
+  /** The frame's size, so the strip can be kept inside it. */
+  frame: { width: number; height: number };
+  onOrder: (to: "forward" | "backward" | "front" | "back") => void;
+  onFlip: (axis: "x" | "y") => void;
+  onCrop: () => void;
+  onCutOut: () => void;
+  /** Holds what is in hand in place; each piece is let go again from the pieces-here list. */
+  onLock: () => void;
+  onDuplicate: () => void;
+  onRemove: () => void;
+}
+
+type Action =
+  | { separator: true; key: string }
+  | {
+      key: string;
+      label: string;
+      hint: string;
+      glyph: React.ReactNode;
+      run: () => void;
+      disabled?: boolean;
+      danger?: boolean;
+      on?: boolean;
+    };
+
+function isSeparator(action: Action): action is { separator: true; key: string } {
+  return "separator" in action;
+}
+
+/**
+ * Measures a panel and places it beside a piece, kept inside the frame. Every
+ * panel that floats with the selection shares this, so they all land in the
+ * same spot and only one of them is ever shown there.
+ */
+export function useBesidePiece(
+  piece: PieceBox,
+  scale: number,
+  frame: { width: number; height: number },
+) {
+  const ref = useRef<HTMLDivElement>(null);
+  /** The panel's own on-screen size, measured so it can be kept in frame. */
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useLayoutEffect(() => {
+    const panel = ref.current;
+    if (!panel) return;
+    const measure = () => {
+      const box = panel.getBoundingClientRect();
+      setSize({ width: box.width, height: box.height });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, []);
+
+  const { left, top } = placeBesidePiece(piece, size, scale, frame);
+  return {
+    ref,
+    style: { left, top, transform: `scale(${1 / scale})` },
+  };
+}
+
+/**
+ * The tools for whatever is in hand, floating beside the piece itself rather
+ * than in a bar the eye has to travel to. To-front and to-back are not here:
+ * they stay on shift + the bracket keys, listed in the keys popover.
+ */
+export function PieceActions({
+  box,
+  piece,
+  canCutOut,
+  scale,
+  frame,
+  onOrder,
+  onFlip,
+  onCrop,
+  onCutOut,
+  onLock,
+  onDuplicate,
+  onRemove,
+}: PieceActionsProps) {
+  const placement = useBesidePiece(box, scale, frame);
+
+  const actions: Action[] = [
+    {
+      key: "backward",
+      label: "Send back one",
+      hint: "[",
+      glyph: GLYPHS.backward,
+      run: () => onOrder("backward"),
+    },
+    {
+      key: "forward",
+      label: "Bring forward one",
+      hint: "]",
+      glyph: GLYPHS.forward,
+      run: () => onOrder("forward"),
+    },
+    { separator: true, key: "after-order" },
+    {
+      key: "flip-x",
+      label: "Flip across",
+      hint: "H",
+      glyph: GLYPHS.flipX,
+      run: () => onFlip("x"),
+      ...(piece ? { on: piece.flipX } : {}),
+    },
+    {
+      key: "flip-y",
+      label: "Flip down",
+      hint: "V",
+      glyph: GLYPHS.flipY,
+      run: () => onFlip("y"),
+      ...(piece ? { on: piece.flipY } : {}),
+    },
+    ...(piece
+      ? [
+          {
+            key: "crop",
+            label: "Crop",
+            hint: "C",
+            glyph: GLYPHS.crop,
+            run: onCrop,
+          },
+        ]
+      : []),
+    // Only a picture has a background to cut away.
+    ...(piece && canCutOut
+      ? [
+          {
+            key: "cut-out",
+            label: piece.cutout
+              ? "Adjust the cut-out edge"
+              : "Cut out the background",
+            hint: "B",
+            glyph: GLYPHS.cutOut,
+            run: onCutOut,
+            on: piece.cutout !== undefined,
+          },
+        ]
+      : []),
+    { separator: true, key: "after-shape" },
+    {
+      key: "lock",
+      label: piece ? "Lock in place" : "Lock these in place",
+      hint: "right-click the spot to unlock",
+      glyph: GLYPHS.lock,
+      run: onLock,
+    },
+    {
+      key: "duplicate",
+      label: "Duplicate",
+      hint: "cmd + D",
+      glyph: GLYPHS.duplicate,
+      run: onDuplicate,
+    },
+    {
+      key: "remove",
+      label: "Remove",
+      hint: "delete",
+      glyph: GLYPHS.remove,
+      run: onRemove,
+      danger: true,
+    },
+  ];
+
+  return (
+    <div
+      ref={placement.ref}
+      className="collage-piece-actions"
+      role="toolbar"
+      aria-label={piece ? "Piece" : "Pieces"}
+      style={placement.style}
+      // Clicking a tool must not reach the frame beneath and drop the
+      // selection the tool is about to act on.
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      {actions.map((action) =>
+        isSeparator(action) ? (
+          <span
+            key={action.key}
+            className="collage-piece-actions__rule"
+            aria-hidden="true"
+          />
+        ) : (
+          <button
+            key={action.key}
+            type="button"
+            className={`collage-glyph${action.on ? " collage-glyph--on" : ""}${
+              action.danger ? " collage-glyph--danger" : ""
+            }`}
+            title={`${action.label} (${action.hint})`}
+            aria-label={action.label}
+            aria-pressed={action.on === undefined ? undefined : action.on}
+            disabled={action.disabled}
+            onClick={action.run}
+          >
+            {action.glyph}
+          </button>
+        ),
+      )}
+    </div>
+  );
+}

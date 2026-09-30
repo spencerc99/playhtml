@@ -11,19 +11,19 @@ describe("matter physics recipe", () => {
       "/docs/examples/matter-physics/",
     );
     expect(matterPhysicsRecipe.html).toMatch(/^<!doctype html>/);
-    expect(matterPhysicsRecipe.html).toContain(
-      'id="physics-world" can-play',
-    );
+    expect(matterPhysicsRecipe.html).toContain('id="physics-world"');
     expect(matterPhysicsRecipe.html).toContain(
       'from "https://esm.sh/matter-js@0.20.0"',
     );
   });
 
-  it("configures the can-play element before initialization", () => {
+  it("registers the element before initialization", () => {
     const source = matterPhysicsRecipe.html;
-    const configPosition = source.indexOf("worldElement.defaultData =");
-    const updatePosition = source.indexOf("worldElement.updateElement =");
-    const mountPosition = source.indexOf("worldElement.onMount =");
+    const configPosition = source.indexOf(
+      'playhtml.register("physics-world", {',
+    );
+    const updatePosition = source.indexOf("updateElement:", configPosition);
+    const mountPosition = source.indexOf("onMount:", configPosition);
     const initPosition = source.indexOf("await playhtml.init(");
 
     expect(configPosition).toBeGreaterThan(-1);
@@ -34,6 +34,9 @@ describe("matter physics recipe", () => {
 
   it("uses one controller and bounded, throttled keyed writes", () => {
     const source = matterPhysicsRecipe.html;
+    const registerPosition = source.indexOf(
+      'playhtml.register("physics-world", {',
+    );
 
     expect(source).toContain("const SYNC_INTERVAL_MS = 100;");
     expect(source).toContain("draft.controllerId !== CLIENT_ID");
@@ -42,8 +45,8 @@ describe("matter physics recipe", () => {
     expect(source).toContain("resetLocalBodies();");
 
     const updateBody = source.slice(
-      source.indexOf("worldElement.updateElement ="),
-      source.indexOf("worldElement.onMount ="),
+      source.indexOf("updateElement:", registerPosition),
+      source.indexOf("onMount:", registerPosition),
     );
     expect(updateBody).not.toContain("setData");
   });

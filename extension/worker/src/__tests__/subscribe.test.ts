@@ -27,6 +27,11 @@ const ENV: Env = {
   RESEND_API_KEY: 'r',
   CODA_API_TOKEN: 'c',
   LIVE_EVENTS_HUB: {} as DurableObjectNamespace,
+  COMMUTE_TRAIN_DISPATCHER: {} as DurableObjectNamespace,
+  COMMUTE_BOARD_RATE_LIMITER: {
+    limit: async () => ({ success: true }),
+  },
+  WWO_ADMIN_DB: {} as D1Database,
 };
 
 function makeRequest(body: unknown, ip = '1.2.3.4'): Request {

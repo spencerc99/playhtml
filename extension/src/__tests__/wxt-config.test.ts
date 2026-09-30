@@ -57,6 +57,12 @@ describe("WXT manifest", () => {
     });
   });
 
+  it("leaves the browser's own new tab page in place", async () => {
+    const manifest = await manifestFor("chrome");
+
+    expect(manifest.chrome_url_overrides).toBeUndefined();
+  });
+
   it("removes unsupported idle and options tab settings in Safari", async () => {
     const manifest = await manifestFor("safari");
     const generatedManifest = await generatedManifestFor("safari");

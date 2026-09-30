@@ -72,6 +72,77 @@ function selfOf(presences: Map<string, PresenceView>): PresenceView {
 }
 
 describe("PresenceClient", () => {
+  it.each([false, true])("notifies self identity changes with channel set=%s", (hasChannel) => {
+    const identity = remoteIdentity("self-key");
+    const { client, socket, transport } = createClient(identity);
+    if (hasChannel) client.setMyPresence("status", "Clicked");
+    const listener = vi.fn();
+    client.onPresenceChange("status", listener);
+    listener.mockClear();
+
+    identity.publicKey = "adopted-key";
+    identity.name = "Alicia";
+    transport.join({ identity });
+    socket.receive({
+      type: "presence-changes",
+      updates: { "self-connection": { identity } },
+      removes: {},
+    });
+    expect(listener).toHaveBeenCalledOnce();
+    const self = selfOf(listener.mock.calls[0][0]);
+    expect(self.playerIdentity).toMatchObject({ publicKey: "adopted-key", name: "Alicia" });
+    expect((self as any).status).toBe(hasChannel ? "Clicked" : undefined);
+    listener.mockClear();
+    identity.name = "Alice";
+    transport.join({ identity });
+    socket.receive({
+      type: "presence-changes",
+      updates: { "self-connection": { identity } },
+      removes: {},
+    });
+    expect(listener).toHaveBeenCalledOnce();
+    expect(selfOf(listener.mock.calls[0][0]).playerIdentity?.name).toBe("Alice");
+    client.destroy();
+    transport.destroy();
+  });
+
+  it("notifies identity-only changes for a remote channel participant", () => {
+    const { client, socket, transport } = createClient();
+    socket.receive({
+      type: "presence-sync",
+      peers: {
+        remote: { identity: remoteIdentity("remote-key"), "presence:status": "Clicked" },
+      },
+    });
+    const listener = vi.fn();
+    client.onPresenceChange("status", listener);
+    listener.mockClear();
+    socket.receive({
+      type: "presence-changes",
+      updates: { remote: { identity: { ...remoteIdentity("remote-key"), name: "Alicia" } } },
+      removes: {},
+    });
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener.mock.calls[0][0].get("remote-key").playerIdentity.name).toBe("Alicia");
+    listener.mockClear();
+    socket.receive({
+      type: "presence-changes",
+      updates: { remote: { cursor: { x: 10, y: 20 } } },
+      removes: {},
+    });
+    expect(listener).not.toHaveBeenCalled();
+    socket.receive({
+      type: "presence-changes",
+      updates: { remote: { identity: remoteIdentity("adopted-remote-key") } },
+      removes: {},
+    });
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener.mock.calls[0][0].has("remote-key")).toBe(false);
+    expect(listener.mock.calls[0][0].get("adopted-remote-key").status).toBe("Clicked");
+    client.destroy();
+    transport.destroy();
+  });
+
   it("joins with identity on construction", () => {
     const { parsedSent } = createClient();
     expect(parsedSent()[0]).toMatchObject({

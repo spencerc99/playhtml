@@ -1,10 +1,12 @@
 // ABOUTME: Verifies persistence degradation helpers for Supabase outage handling.
 // ABOUTME: Covers startup timeouts, explicit operator logs, and admin error responses.
 import { describe, expect, test } from "bun:test";
+import { once } from "node:events";
+import { createServer } from "node:http";
 import {
   createPersistenceUnavailableResponse,
   formatPersistenceFailureLog,
-  retryWithTimeout,
+  retryWithinTimeout,
   withTimeout,
 } from "../persistenceMode";
 
@@ -58,11 +60,67 @@ describe("withTimeout", () => {
   });
 });
 
-describe("retryWithTimeout", () => {
+describe("retryWithinTimeout", () => {
+  test("lets one slow HTTP read finish within the total deadline", async () => {
+    let requests = 0;
+    const server = createServer((_request, response) => {
+      requests += 1;
+      setTimeout(() => {
+        response.writeHead(200, { "content-type": "text/plain" });
+        response.end("loaded");
+      }, 60);
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("Expected the test server to listen on a TCP port");
+    }
+
+    try {
+      const response = await retryWithinTimeout(
+        (signal) =>
+          fetch(`http://127.0.0.1:${address.port}`, {
+            signal,
+          }),
+        {
+          attempts: 3,
+          timeoutMs: 150,
+          retryDelayMs: 5,
+          errorMessage: "timed out",
+        }
+      );
+
+      expect(await response.text()).toBe("loaded");
+      expect(requests).toBe(1);
+
+      await expect(
+        retryWithinTimeout(
+          (signal) =>
+            fetch(`http://127.0.0.1:${address.port}`, {
+              signal,
+            }),
+          {
+            attempts: 3,
+            timeoutMs: 30,
+            retryDelayMs: 5,
+            errorMessage: "timed out",
+          }
+        )
+      ).rejects.toThrow("timed out");
+      expect(requests).toBe(2);
+    } finally {
+      server.closeAllConnections();
+      const closed = once(server, "close");
+      server.close();
+      await closed;
+    }
+  });
+
   test("returns a later successful attempt", async () => {
     const failures: number[] = [];
 
-    const result = await retryWithTimeout(
+    const result = await retryWithinTimeout(
       (_signal, attempt) => {
         if (attempt === 1) throw new Error("temporary failure");
         return Promise.resolve("loaded");
@@ -83,7 +141,7 @@ describe("retryWithTimeout", () => {
   test("can recover on the final configured attempt", async () => {
     const attempts: number[] = [];
 
-    const result = await retryWithTimeout(
+    const result = await retryWithinTimeout(
       (_signal, attempt) => {
         attempts.push(attempt);
         if (attempt < 3) throw new Error(`failure ${attempt}`);
@@ -105,7 +163,7 @@ describe("retryWithTimeout", () => {
     const attempts: number[] = [];
 
     await expect(
-      retryWithTimeout(
+      retryWithinTimeout(
         (_signal, attempt) => {
           attempts.push(attempt);
           throw new Error(`failure ${attempt}`);
@@ -124,7 +182,7 @@ describe("retryWithTimeout", () => {
 
   test("rejects an invalid attempt count", async () => {
     await expect(
-      retryWithTimeout(() => Promise.resolve("loaded"), {
+      retryWithinTimeout(() => Promise.resolve("loaded"), {
         attempts: 0,
         timeoutMs: 100,
         retryDelayMs: 1,
@@ -148,8 +206,8 @@ describe("formatPersistenceFailureLog", () => {
     expect(message).toContain("timeoutMs=5000");
     expect(message).toContain("attempts=3");
     expect(message).toContain("connection timeout");
-    expect(message).toContain("TRANSIENT MODE");
-    expect(message).toContain("awareness may continue");
+    expect(message).toContain("RECOVERY MODE");
+    expect(message).toContain("connections closed with 1013");
     expect(message).toContain("shared-data writes disabled");
     expect(message).toContain("autosave disabled");
   });
@@ -170,7 +228,7 @@ describe("createPersistenceUnavailableResponse", () => {
     expect(body).toEqual({
       error: "persistence_unavailable",
       message:
-        "Supabase persistence is unavailable for this room; shared-data and admin writes are disabled while awareness runs in transient mode.",
+        "Supabase persistence is unavailable for this room; clients reconnect after document recovery completes.",
       roomId: "example-room",
       failedAt: "2026-05-26T21:05:45.000Z",
       reason: "connection timeout",

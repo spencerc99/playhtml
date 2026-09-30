@@ -32,7 +32,7 @@ describe("AnnouncementPostcard", () => {
       body: "Find it in every new tab or from the popup.",
       cta: {
         label: "open history →",
-        extensionPath: "newtab.html",
+        extensionPath: "walking-record.html",
       },
     };
     const onCtaClick = vi.fn();
@@ -61,16 +61,16 @@ describe("AnnouncementPostcard", () => {
       const cta = container.querySelector<HTMLAnchorElement>(
         ".announcement-postcard__cta",
       );
-      expect(cta?.href).toBe("chrome-extension://test/newtab.html");
+      expect(cta?.href).toBe("chrome-extension://test/walking-record.html");
 
       await act(async () => {
         cta?.click();
       });
 
-      expect(browser.runtime.getURL).toHaveBeenCalledWith("newtab.html");
+      expect(browser.runtime.getURL).toHaveBeenCalledWith("walking-record.html");
       expect(onCtaClick).toHaveBeenCalledWith(
         "history",
-        "chrome-extension://test/newtab.html",
+        "chrome-extension://test/walking-record.html",
       );
     } finally {
       cleanup(root, container);

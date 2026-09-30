@@ -1,5 +1,38 @@
+// ABOUTME: Verifies persistent page-data values and subscriptions with real shared documents.
+// ABOUTME: Covers value replacement, draft updates, and channel lifecycle behavior.
 import { describe, it, expect, beforeAll } from "vitest";
+import { getYjsDoc, syncedStore } from "@syncedstore/core";
+import * as Y from "yjs";
 import { playhtml } from "../index";
+import { createPageDataChannel, PAGE_TAG } from "../page-data";
+
+function createPageDataTestDeps(
+  store: ReturnType<typeof syncedStore<{ play: Record<string, Record<string, unknown>> }>>,
+) {
+  const doc = getYjsDoc(store);
+  const proxyByTagAndId = new Map<string, Map<string, unknown>>();
+  const yObserverByKey = new Map<string, (...args: unknown[]) => void>();
+
+  return {
+    ensureProxy<T>(tag: string, id: string, defaultData: T): T {
+      if (!proxyByTagAndId.has(tag)) proxyByTagAndId.set(tag, new Map());
+      const proxies = proxyByTagAndId.get(tag)!;
+      if (!proxies.has(id)) {
+        store.play[tag] ??= {};
+        store.play[tag][id] ??= defaultData;
+        proxies.set(id, store.play[tag][id]);
+      }
+      return proxies.get(id) as T;
+    },
+    getProxy: (tag: string, id: string) => proxyByTagAndId.get(tag)?.get(id),
+    getDoc: () => doc,
+    getStorePlay: () => store.play,
+    proxyByTagAndId,
+    yObserverByKey,
+    channelRefCounts: new Map<string, number>(),
+    channelListeners: new Map<string, Set<(data: unknown) => void>>(),
+  };
+}
 
 beforeAll(async () => {
   await playhtml.init({});
@@ -26,6 +59,200 @@ describe("playhtml.createPageData", () => {
     });
     await new Promise((r) => queueMicrotask(r));
     expect(channel.getData()).toEqual({ count: 10 });
+  });
+
+  it("ignores terse object mutator returns", async () => {
+    const channel = playhtml.createPageData("test-terse-mutator", { count: 0 });
+
+    channel.setData((draft) => draft.count++);
+    await new Promise((r) => queueMicrotask(r));
+
+    expect(channel.getData()).toEqual({ count: 1 });
+  });
+
+  it.each(["value", "updater"])("clears nullable object data with a %s", async (form) => {
+    const store = syncedStore<{ play: Record<string, Record<string, unknown>> }>({ play: {} });
+    const channel = createPageDataChannel<{ name: string } | null>(
+      "selection", null, createPageDataTestDeps(store),
+    );
+    const updates: Array<{ name: string } | null> = [];
+    const peer = new Y.Doc();
+    channel.onUpdate((value) => updates.push(value));
+
+    channel.setData({ name: "Alice" });
+    await new Promise((resolve) => queueMicrotask(resolve));
+    channel.setData(form === "value" ? null : () => null);
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(channel.getData()).toBeNull();
+    expect(updates).toEqual([{ name: "Alice" }, null]);
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(getYjsDoc(store)));
+    expect(peer.getMap("play").toJSON()[PAGE_TAG].selection).toBeNull();
+
+    channel.setData({ name: "Bob" });
+    await new Promise((resolve) => queueMicrotask(resolve));
+    expect(channel.getData()).toEqual({ name: "Bob" });
+    expect(updates.at(-1)).toEqual({ name: "Bob" });
+
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(getYjsDoc(store)));
+    expect(peer.getMap("play").toJSON()[PAGE_TAG].selection).toEqual({ name: "Bob" });
+    channel.destroy();
+    peer.destroy();
+    getYjsDoc(store).destroy();
+  });
+
+  it("clears and restores nullable array data", async () => {
+    const store = syncedStore<{ play: Record<string, Record<string, unknown>> }>({ play: {} });
+    const channel = createPageDataChannel<string[] | null>(
+      "selection", null, createPageDataTestDeps(store),
+    );
+    const updates: Array<string[] | null> = [];
+    channel.onUpdate((value) => updates.push(value));
+
+    channel.setData(["Alice"]);
+    await new Promise((resolve) => queueMicrotask(resolve));
+    channel.setData(() => null);
+    await new Promise((resolve) => queueMicrotask(resolve));
+    expect(channel.getData()).toBeNull();
+    channel.setData(["Bob"]);
+    await new Promise((resolve) => queueMicrotask(resolve));
+    expect(channel.getData()).toEqual(["Bob"]);
+    channel.setData(null);
+    await new Promise((resolve) => queueMicrotask(resolve));
+    expect(channel.getData()).toBeNull();
+    expect(updates).toEqual([["Alice"], null, ["Bob"], null]);
+    channel.destroy();
+    getYjsDoc(store).destroy();
+  });
+
+  it("replaces primitive roots with values and functional updates", async () => {
+    const channel = playhtml.createPageData("test-primitive-root", 0);
+    const updates: number[] = [];
+    channel.onUpdate((value) => updates.push(value));
+
+    channel.setData(1);
+    await new Promise((r) => queueMicrotask(r));
+    channel.setData((value) => value + 1);
+    await new Promise((r) => queueMicrotask(r));
+
+    expect(channel.getData()).toBe(2);
+    expect(updates).toEqual([1, 2]);
+  });
+
+  it("coalesces synchronous primitive notifications", async () => {
+    const channel = playhtml.createPageData("test-primitive-coalescing", 0);
+    const updates: number[] = [];
+    channel.onUpdate((value) => updates.push(value));
+
+    for (let value = 1; value <= 100; value++) {
+      channel.setData(value);
+    }
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(channel.getData()).toBe(100);
+    expect(updates).toEqual([100]);
+  });
+
+  it("keeps notifying after a nullable root becomes an object", async () => {
+    type Value = { nested: { count: number } } | null;
+    const store = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
+      play: {},
+    });
+    const channel = createPageDataChannel<Value>(
+      "nullable-object",
+      null,
+      createPageDataTestDeps(store),
+    );
+    const updates: Value[] = [];
+    channel.onUpdate((value) => updates.push(value));
+
+    channel.setData({ nested: { count: 1 } });
+    await new Promise((resolve) => queueMicrotask(resolve));
+    channel.setData({ nested: { count: 2 } });
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(channel.getData()).toEqual({ nested: { count: 2 } });
+    expect(updates).toEqual([
+      { nested: { count: 1 } },
+      { nested: { count: 2 } },
+    ]);
+  });
+
+  it("keeps notifying across remote nullable root replacements", async () => {
+    type Value = { nested: { count: number } } | null;
+    const firstStore = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
+      play: {},
+    });
+    const secondStore = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
+      play: {},
+    });
+    const firstDoc = getYjsDoc(firstStore);
+    const secondDoc = getYjsDoc(secondStore);
+    const secondChannel = createPageDataChannel<Value>(
+      "remote-nullable-object",
+      null,
+      createPageDataTestDeps(secondStore),
+    );
+    const updates: Value[] = [];
+    secondChannel.onUpdate((value) => updates.push(value));
+    Y.applyUpdate(firstDoc, Y.encodeStateAsUpdate(secondDoc));
+
+    firstStore.play[PAGE_TAG]!["remote-nullable-object"] = {
+      nested: { count: 1 },
+    };
+    Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    const firstValue = firstStore.play[PAGE_TAG]!["remote-nullable-object"] as {
+      nested: { count: number };
+    };
+    firstValue.nested.count = 2;
+    Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    firstStore.play[PAGE_TAG]!["remote-nullable-object"] = null;
+    Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    firstStore.play[PAGE_TAG]!["remote-nullable-object"] = {
+      nested: { count: 3 },
+    };
+    Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
+    await new Promise((resolve) => queueMicrotask(resolve));
+
+    expect(secondChannel.getData()).toEqual({ nested: { count: 3 } });
+    expect(updates).toEqual([
+      { nested: { count: 1 } },
+      { nested: { count: 2 } },
+      null,
+      { nested: { count: 3 } },
+    ]);
+  });
+
+  it("uses a remotely updated primitive value for functional updates", () => {
+    const firstStore = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
+      play: {},
+    });
+    const secondStore = syncedStore<{ play: Record<string, Record<string, unknown>> }>({
+      play: {},
+    });
+    const firstDoc = getYjsDoc(firstStore);
+    const secondDoc = getYjsDoc(secondStore);
+    const secondChannel = createPageDataChannel(
+      "view-count",
+      0,
+      createPageDataTestDeps(secondStore),
+    );
+
+    Y.applyUpdate(firstDoc, Y.encodeStateAsUpdate(secondDoc));
+    firstStore.play[PAGE_TAG]!["view-count"] = 1;
+    Y.applyUpdate(secondDoc, Y.encodeStateAsUpdate(firstDoc));
+
+    expect(secondChannel.getData()).toBe(1);
+
+    secondChannel.setData((value) => value + 1);
+
+    expect(secondChannel.getData()).toBe(2);
   });
 
   it("onUpdate fires on local changes", async () => {

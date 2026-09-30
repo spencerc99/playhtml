@@ -15,6 +15,7 @@ import {
 import React, { useContext, useEffect, useState, useRef } from "react";
 import { PlayProvider } from "../packages/react/src";
 import { canDeleteFridgeWord, DeleteWordLimit } from "./fridgeDeletion";
+import { getDefaultFridgeWordId } from "./fridgeWordIdentity";
 import { useLocation } from "./useLocation";
 
 // Detect mobile viewport
@@ -1166,7 +1167,9 @@ const FridgeWordsContent = withSharedState(
     ) : (
       <>
         {data.showDefaultWords &&
-          Words.map((w, i) => <FridgeWord key={i} word={w} />)}
+          Words.map((w, i) => (
+            <FridgeWord id={getDefaultFridgeWordId(i)} key={i} word={w} />
+          ))}
         <WordControls
           wall={wall}
           onChangeWall={onChangeWall}

@@ -51,9 +51,10 @@ describe("Collections", () => {
           stats: {
             totalEvents: 128430,
             estimatedSizeBytes: 1536,
+            estimatedSizeBytesByType: { element: 5242880 },
             localUsageBytes: 3145728,
             oldestEvent: Date.now(),
-            countsByType: { cursor: 88210, keyboard: 8108 },
+            countsByType: { cursor: 88210, keyboard: 8108, element: 2819 },
           },
         };
       }
@@ -83,6 +84,7 @@ describe("Collections", () => {
       expect(storageIndex).toBeGreaterThanOrEqual(0);
       expect(eventsIndex).toBeGreaterThanOrEqual(0);
       expect(sizeIndex).toBeGreaterThanOrEqual(0);
+      expect(text).toContain("5.0 MBinternet scraps");
       expect(storageIndex).toBeGreaterThan(titleIndex);
       expect(storageIndex).toBeGreaterThan(keyboardIndex);
       expect(exportIndex).toBeGreaterThan(sizeIndex);
@@ -105,6 +107,7 @@ describe("Collections", () => {
           stats: {
             totalEvents: 0,
             estimatedSizeBytes: 0,
+            estimatedSizeBytesByType: {},
             localUsageBytes: 2048,
             oldestEvent: 0,
             countsByType: {},
@@ -123,6 +126,36 @@ describe("Collections", () => {
       expect(text).toContain("2.0 KBlocal storage");
       expect(text).toContain("0events");
       expect(text).toContain("0 Bevent data");
+    } finally {
+      cleanupRoot(root, container);
+    }
+  });
+
+  it("renders storage stats from a background worker without per-type sizes", async () => {
+    vi.mocked(browser.runtime.sendMessage).mockImplementation(async (message) => {
+      if (message?.type === "GET_STORAGE_STATS") {
+        return {
+          success: true,
+          stats: {
+            totalEvents: 12,
+            estimatedSizeBytes: 1536,
+            localUsageBytes: 2048,
+            oldestEvent: Date.now(),
+            countsByType: { cursor: 12 },
+          },
+        };
+      }
+      return { success: true };
+    });
+
+    const { container, root } = await renderCollections();
+
+    try {
+      const text = container.textContent ?? "";
+
+      expect(text).toContain("12events");
+      expect(text).toContain("1.5 KBevent data");
+      expect(text).not.toContain("internet scraps");
     } finally {
       cleanupRoot(root, container);
     }
@@ -153,12 +186,79 @@ describe("Collections", () => {
     }
   });
 
+  it("offers no shared mode for the scrap collector", async () => {
+    vi.mocked(browser.storage.local.get).mockImplementation(async (keys) => {
+      if (keys === "wwoFeatureAccess") {
+        return { wwoFeatureAccess: { features: { SCRAPS: { stage: "beta", available: true } }, checkedAt: 1 } };
+      }
+      if (keys === "wwoFeatureOverrides") {
+        return { wwoFeatureOverrides: { SCRAPS: true } };
+      }
+      return {};
+    });
+
+    const { container, root } = await renderCollections();
+
+    try {
+      const scrapModes = Array.from(
+        container.querySelectorAll<HTMLInputElement>(
+          'input[name="mode-element"]',
+        ),
+      ).map((input) => input.value);
+      const cursorModes = Array.from(
+        container.querySelectorAll<HTMLInputElement>(
+          'input[name="mode-cursor"]',
+        ),
+      ).map((input) => input.value);
+
+      expect(scrapModes).toEqual(["off", "local"]);
+      expect(cursorModes).toEqual(["off", "local", "shared"]);
+    } finally {
+      cleanupRoot(root, container);
+    }
+  });
+
+  it("shows a stored shared scrap mode as local and repairs storage", async () => {
+    vi.mocked(browser.storage.local.get).mockImplementation(async (keys) => {
+      if (keys === "wwoFeatureAccess") {
+        return { wwoFeatureAccess: { features: { SCRAPS: { stage: "beta", available: true } }, checkedAt: 1 } };
+      }
+      if (keys === "wwoFeatureOverrides") {
+        return { wwoFeatureOverrides: { SCRAPS: true } };
+      }
+      if (
+        Array.isArray(keys) &&
+        keys.every((key) => key.startsWith("collection_mode_"))
+      ) {
+        return { collection_mode_element: "shared" };
+      }
+      return {};
+    });
+
+    const { container, root } = await renderCollections();
+
+    try {
+      const checked = Array.from(
+        container.querySelectorAll<HTMLInputElement>(
+          'input[name="mode-element"]',
+        ),
+      ).filter((input) => input.checked);
+
+      expect(checked.map((input) => input.value)).toEqual(["local"]);
+      expect(browser.storage.local.set).toHaveBeenCalledWith(
+        expect.objectContaining({ collection_mode_element: "local" }),
+      );
+    } finally {
+      cleanupRoot(root, container);
+    }
+  });
+
   it("does not message content scripts on Safari extension pages", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(browser.tabs.query).mockResolvedValue([
       {
         id: 1,
-        url: "safari-web-extension://test/newtab.html",
+        url: "safari-web-extension://test/walking-record.html",
       } as any,
     ]);
 

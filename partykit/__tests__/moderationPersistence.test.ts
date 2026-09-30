@@ -4,10 +4,7 @@ import { describe, expect, it } from "bun:test";
 import * as Y from "yjs";
 import { Buffer } from "node:buffer";
 import { createAdminSnapshotFromPlayData } from "../adminMutation";
-import {
-  jsonToDoc,
-  docToJson,
-} from "../docUtils";
+import { jsonToDoc, docToJson } from "../docUtils";
 import {
   extractRecords,
   recordsFromPlay,
@@ -45,7 +42,7 @@ function targetFor(play: Record<string, unknown>, key: string): RemoveTarget {
 // Returns the play data re-extracted from the fresh snapshot that would be saved.
 function runRemovalThroughDoc(
   play: Record<string, unknown>,
-  targets: RemoveTarget[]
+  targets: RemoveTarget[],
 ) {
   const doc = jsonToDoc(play);
   const livePlay = docToJson(doc);
@@ -58,14 +55,32 @@ function runRemovalThroughDoc(
 
   const snapshot = createAdminSnapshotFromPlayData(result.play, 1234);
   const reDoc = new Y.Doc();
-  Y.applyUpdate(
-    reDoc,
-    new Uint8Array(Buffer.from(snapshot.base64, "base64"))
-  );
+  Y.applyUpdate(reDoc, new Uint8Array(Buffer.from(snapshot.base64, "base64")));
   return { result, rePlay: docToJson(reDoc) };
 }
 
 describe("moderation removal persistence round-trip", () => {
+  it("persists removal beneath dotted keys without touching an identical nested record", () => {
+    const message = { text: "same content" };
+    const play = {
+      "can-play": {
+        "chat.v1": { messages: [message] },
+        chat: { v1: { messages: [message] } },
+      },
+    };
+    const [target] = recordsFromPlay(play);
+    const { result, rePlay } = runRemovalThroughDoc(play, [target]);
+    expect(result.removed).toBe(1);
+    expect(result.skipped).toEqual([]);
+    expect(rePlay).toEqual({
+      "can-play": {
+        "chat.v1": { messages: [] },
+        chat: { v1: { messages: [message] } },
+      },
+    });
+    expect(extractRecords(rePlay!)).toHaveLength(1);
+  });
+
   it("removes the targeted record and leaves the rest intact in the doc", () => {
     const play = samplePlay();
     const target = targetFor(play, "can-play.newWords#1");
@@ -114,7 +129,7 @@ describe("moderation removal persistence round-trip", () => {
     ]);
     expect(second.removed).toBe(1);
     const words = (second.play["can-play"] as any).newWords.map(
-      (r: any) => r.word
+      (r: any) => r.word,
     );
     expect(words).toEqual(["also-keep"]);
   });

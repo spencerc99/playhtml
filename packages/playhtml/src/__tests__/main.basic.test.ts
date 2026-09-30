@@ -64,7 +64,7 @@ describe("playhtml basic setup with SyncedStore", () => {
     expect(playhtml.syncedStore["can-toggle"]["foo"]).toEqual({ on: false });
   });
 
-  it("keeps can-play element props scoped when combined with can-move", async () => {
+  it("keeps direct can-play property configuration compatible with can-move", async () => {
     const el = document.createElement("img");
     el.id = "composed-candle";
     el.setAttribute("can-play", "");
@@ -155,46 +155,38 @@ describe("playhtml basic setup with SyncedStore", () => {
       {
         id: "empty-widget",
         props: {},
-        message: "updateElement, view, or updateElementAwareness",
+        message: "update, updateElement, view, or updateElementAwareness",
       },
       {
         id: "data-without-render",
         props: { defaultData: {} },
-        message: "defaultData requires updateElement or view",
+        message: "defaultData requires update, updateElement, or view",
       },
       {
         id: "data-with-awareness-render-only",
         props: { defaultData: {}, updateElementAwareness: vi.fn() },
-        message: "defaultData requires updateElement or view",
+        message: "defaultData requires update, updateElement, or view",
       },
       {
         id: "render-without-data",
         props: { updateElement: vi.fn() },
-        message: "updateElement or view requires defaultData",
+        message: "update, updateElement, or view requires defaultData or live",
       },
       {
         id: "view-without-data",
         props: { view: vi.fn() },
-        message: "updateElement or view requires defaultData",
+        message: "update, updateElement, or view requires defaultData or live",
       },
       {
         id: "render-with-awareness-render-without-data",
         props: { updateElement: vi.fn(), updateElementAwareness: vi.fn() },
-        message: "updateElement or view requires defaultData",
+        message: "update, updateElement, or view requires defaultData or live",
       },
       {
         id: "awareness-without-render",
         props: { myDefaultAwareness: { seated: false } },
-        message: "myDefaultAwareness requires updateElementAwareness",
-      },
-      {
-        id: "awareness-with-data-render-only",
-        props: {
-          defaultData: {},
-          updateElement: vi.fn(),
-          myDefaultAwareness: { seated: false },
-        },
-        message: "myDefaultAwareness requires updateElementAwareness",
+        message:
+          "myDefaultAwareness requires update, updateElement, view, or updateElementAwareness",
       },
       {
         id: "primitive-default-data",
@@ -341,6 +333,89 @@ describe("playhtml basic setup with SyncedStore", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(reinitialize).not.toHaveBeenCalled();
+  });
+
+  it("does not re-render elements that are already bound during a page scan", async () => {
+    const el = document.createElement("div");
+    el.id = "scan-existing";
+    el.setAttribute("can-play", "");
+    (el as any).defaultData = { count: 0 };
+    let renderCount = 0;
+    (el as any).updateElement = () => {
+      renderCount += 1;
+    };
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
+    const renderCountAfterSetup = renderCount;
+
+    const added = document.createElement("div");
+    added.id = "scan-added";
+    added.setAttribute("can-play", "");
+    (added as any).defaultData = { count: 0 };
+    (added as any).updateElement = () => {};
+    document.body.appendChild(added);
+
+    playhtml.setupPlayElements();
+    await waitForCondition(
+      () => elementHandlers.get("can-play")?.has("scan-added") === true,
+      "Expected the page scan to bind the added element",
+    );
+
+    expect(renderCount).toBe(renderCountAfterSetup);
+  });
+
+  it("does not re-render registered elements during a page scan", async () => {
+    const el = document.createElement("div");
+    el.id = "scan-registered";
+    document.body.appendChild(el);
+    let renderCount = 0;
+    playhtml.register("scan-registered", {
+      defaultData: { count: 0 },
+      updateElement: () => {
+        renderCount += 1;
+      },
+    });
+    await waitForCondition(
+      () => elementHandlers.get("can-play")?.has("scan-registered") === true,
+      "Expected the registered element to bind",
+    );
+    const renderCountAfterSetup = renderCount;
+
+    playhtml.setupPlayElements();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(el.hasAttribute("can-play")).toBe(false);
+    expect(renderCount).toBe(renderCountAfterSetup);
+  });
+
+  it("binds a replacement DOM node with the same ID during a page scan", async () => {
+    const first = document.createElement("div");
+    first.id = "scan-replacement";
+    first.setAttribute("can-play", "");
+    (first as any).defaultData = { count: 0 };
+    (first as any).updateElement = () => {};
+    document.body.appendChild(first);
+    await playhtml.setupPlayElementForTag(first, "can-play");
+    first.remove();
+
+    const replacement = document.createElement("div");
+    replacement.id = "scan-replacement";
+    replacement.setAttribute("can-play", "");
+    (replacement as any).defaultData = { count: 0 };
+    (replacement as any).updateElement = () => {};
+    document.body.appendChild(replacement);
+
+    playhtml.setupPlayElements();
+    await waitForCondition(
+      () =>
+        elementHandlers.get("can-play")?.get("scan-replacement")?.element ===
+        replacement,
+      "Expected the page scan to bind the replacement element",
+    );
+
+    expect(
+      elementHandlers.get("can-play")?.get("scan-replacement")?.element,
+    ).toBe(replacement);
   });
 
   it("deleteElementData cleans up all data and handlers", async () => {

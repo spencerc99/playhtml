@@ -9,7 +9,7 @@ import { ExtensionPageNav } from "../components/ExtensionPageNav";
 
 vi.mock("../components/ExtensionPageNav.scss", () => ({}));
 
-async function renderNavigation(currentPage: "portrait" | "time") {
+async function renderNavigation(currentPage: "portrait" | "walking-record") {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -42,34 +42,32 @@ describe("ExtensionPageNav", () => {
   });
 
   it("shows the shared public pages and identifies the current page", async () => {
-    vi.mocked(browser.storage.local.get).mockResolvedValue({
-      internalDevFeaturesEnabled: false,
-    });
-    const { container, root } = await renderNavigation("time");
+    vi.mocked(browser.storage.local.get).mockResolvedValue({});
+    const { container, root } = await renderNavigation("portrait");
 
     try {
       expect(container.textContent).toContain("portrait");
-      expect(container.textContent).toContain("time");
       expect(container.textContent).toContain("history");
+      expect(container.textContent).not.toContain("time");
       expect(container.textContent).not.toContain("walking record");
       expect(container.textContent).not.toContain("scraps");
       expect(
         container.querySelector('[aria-current="page"]')?.textContent,
-      ).toBe("time");
+      ).toBe("portrait");
     } finally {
       cleanup(root, container);
     }
   });
 
-  it("does not release scraps through internal development mode", async () => {
+  it("shows scraps when the tester has access and opts in", async () => {
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      internalDevFeaturesEnabled: true,
+      wwoFeatureAccess: { features: { SCRAPS: { stage: "beta", available: true } }, checkedAt: 123 },
+      wwoFeatureOverrides: { SCRAPS: true },
     });
     const { container, root } = await renderNavigation("portrait");
 
     try {
-      expect(container.textContent).not.toContain("scraps");
-      expect(browser.storage.local.get).not.toHaveBeenCalled();
+      expect(container.textContent).toContain("scraps");
     } finally {
       cleanup(root, container);
     }

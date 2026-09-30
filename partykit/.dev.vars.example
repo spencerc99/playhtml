@@ -3,3 +3,4 @@
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your-secret-key-here
 ADMIN_TOKEN=your-admin-token-here
+PARTYKIT_BRIDGE_SECRET=your-bridge-secret-here

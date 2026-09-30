@@ -31,7 +31,7 @@ import {
   DEFAULT_V2_MAX_OPERATION_BYTES,
   DEFAULT_SUBSCRIBER_LEASE_MS,
 } from "./const";
-import { getErrorMessage, retryWithTimeout } from "./persistenceMode";
+import { getErrorMessage, retryWithinTimeout } from "./persistenceMode";
 import { PresenceServer } from "./presenceServer";
 import {
   V2_BRIDGE_STORAGE_KEYS,
@@ -790,7 +790,7 @@ export class PartyServerV2 extends PresenceServer {
       DEFAULT_SUPABASE_LOAD_RETRY_DELAY_MS,
     );
 
-    const result = await retryWithTimeout(
+    const result = await retryWithinTimeout(
       async (signal) => {
         const queryResult = await supabase
           .from("documents")

@@ -7,6 +7,7 @@ import {
   COMMUTE_SERVICE_CHANNEL,
   COMMUTE_SERVICE_STOP_LIMIT,
   createCommuteService,
+  estimateServerTimeOffset,
   getCommuteServiceEndTime,
   getCommuteServicesFromPresences,
   getCommuteStops,
@@ -24,6 +25,16 @@ function presenceFor(service: ReturnType<typeof createCommuteService>) {
 }
 
 describe("Internet Commute service", () => {
+  it("estimates server time from the request midpoint", () => {
+    expect(estimateServerTimeOffset(10_050, 9_900, 10_100)).toBe(50);
+  });
+
+  it("rejects invalid server timing samples", () => {
+    expect(() => estimateServerTimeOffset(10_000, 10_100, 10_000)).toThrow(
+      "valid server timing sample",
+    );
+  });
+
   it("creates a route snapshot that does not follow later local mutations", () => {
     const stops = SAMPLE_STOPS.slice(0, 2).map((stop) => ({ ...stop }));
     const service = createCommuteService(1_000, "rider-a", stops);

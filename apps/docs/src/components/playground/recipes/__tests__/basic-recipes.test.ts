@@ -67,28 +67,44 @@ describe("basic canonical recipes", () => {
     );
   });
 
-  it("configures can-play elements before initialization", () => {
+  it("registers can-play elements before initialization", () => {
     for (const recipe of [sharedCounterRecipe, sharedGuestbookRecipe]) {
+      const registerIndex = recipe.html.indexOf("playhtml.register(");
       const initIndex = recipe.html.indexOf("await playhtml.init");
-      expect(recipe.html.indexOf(".defaultData")).toBeLessThan(initIndex);
-      expect(recipe.html.indexOf(".updateElement")).toBeLessThan(initIndex);
+      expect(registerIndex).toBeGreaterThan(-1);
+      expect(registerIndex).toBeLessThan(initIndex);
+      expect(recipe.html.indexOf("defaultData:", registerIndex)).toBeLessThan(
+        initIndex,
+      );
+      expect(recipe.html.indexOf("updateElement:", registerIndex)).toBeLessThan(
+        initIndex,
+      );
     }
   });
 
   it("writes counter and guestbook data only from user handlers", () => {
+    const counterRegister = sharedCounterRecipe.html.indexOf(
+      'playhtml.register("ph-docs-counter", {',
+    );
     const counterUpdate = sharedCounterRecipe.html.indexOf(
-      "counter.updateElement",
+      "updateElement:",
+      counterRegister,
     );
     const counterInit = sharedCounterRecipe.html.indexOf("await playhtml.init");
     expect(
       sharedCounterRecipe.html.slice(counterUpdate, counterInit),
     ).not.toContain("setData(");
 
+    const guestbookRegister = sharedGuestbookRecipe.html.indexOf(
+      "playhtml.register(guestbook, {",
+    );
     const guestbookUpdate = sharedGuestbookRecipe.html.indexOf(
-      "guestbook.updateElement",
+      "updateElement:",
+      guestbookRegister,
     );
     const guestbookClick = sharedGuestbookRecipe.html.indexOf(
-      "guestbook.onClick",
+      "onClick:",
+      guestbookRegister,
     );
     expect(
       sharedGuestbookRecipe.html.slice(guestbookUpdate, guestbookClick),
@@ -96,7 +112,7 @@ describe("basic canonical recipes", () => {
     expect(
       sharedGuestbookRecipe.html.slice(
         guestbookClick,
-        sharedGuestbookRecipe.html.indexOf("guestbook.onMount"),
+        sharedGuestbookRecipe.html.indexOf("onMount:", guestbookRegister),
       ),
     ).toContain("setData(");
     expect(sharedGuestbookRecipe.html).toContain(

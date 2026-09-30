@@ -1,0 +1,684 @@
+// ABOUTME: Geometry for placing, resizing, rotating, and cropping collage pieces.
+// ABOUTME: Pure math shared by the collage studio surface and the PNG bake.
+
+/** A rectangle expressed as 0..1 fractions of a piece's source box. */
+export interface CropFraction {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface PieceBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export const FULL_CROP: CropFraction = { x: 0, y: 0, width: 1, height: 1 };
+
+/** Smallest side a piece is allowed to shrink to, in frame units. */
+export const MIN_PIECE_SIDE = 12;
+
+export type ResizeCorner =
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right";
+
+export function clamp(value: number, min: number, max: number): number {
+  if (Number.isNaN(value)) {
+    throw new Error("clamp received NaN");
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+export function isFullCrop(crop: CropFraction): boolean {
+  return (
+    crop.x === 0 && crop.y === 0 && crop.width === 1 && crop.height === 1
+  );
+}
+
+export function sameCrop(a: CropFraction, b: CropFraction): boolean {
+  return (
+    a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
+  );
+}
+
+/**
+ * Rotates a point around a center by `radians`. Used to convert between the
+ * frame's axes and a rotated piece's own axes.
+ */
+export function rotatePoint(
+  point: Point,
+  center: Point,
+  radians: number,
+): Point {
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+  return {
+    x: center.x + dx * cos - dy * sin,
+    y: center.y + dx * sin + dy * cos,
+  };
+}
+
+export function boxCenter(box: PieceBox): Point {
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+/**
+ * Maps a frame-space point into the unrotated local space of a piece, where
+ * (0,0) is the piece's top-left corner and (width,height) its bottom-right.
+ */
+export function toLocalPoint(
+  point: Point,
+  box: PieceBox,
+  rotationDegrees: number,
+): Point {
+  const center = boxCenter(box);
+  const unrotated = rotatePoint(point, center, (-rotationDegrees * Math.PI) / 180);
+  return { x: unrotated.x - box.x, y: unrotated.y - box.y };
+}
+
+/**
+ * Resizes a box by dragging one corner, keeping the opposite corner pinned in
+ * frame space so a rotated piece grows along its own axes. With `keepAspect`
+ * the drag is projected onto the box's starting aspect ratio.
+ */
+export function resizeFromCorner(options: {
+  box: PieceBox;
+  rotationDegrees: number;
+  corner: ResizeCorner;
+  pointer: Point;
+  keepAspect: boolean;
+}): PieceBox {
+  const { box, rotationDegrees, corner, pointer, keepAspect } = options;
+  const radians = (rotationDegrees * Math.PI) / 180;
+  const center = boxCenter(box);
+  const local = rotatePoint(pointer, center, -radians);
+
+  const anchorX = corner === "top-left" || corner === "bottom-left"
+    ? box.x + box.width
+    : box.x;
+  const anchorY = corner === "top-left" || corner === "top-right"
+    ? box.y + box.height
+    : box.y;
+
+  let width = Math.abs(local.x - anchorX);
+  let height = Math.abs(local.y - anchorY);
+
+  if (keepAspect) {
+    const aspect = box.width / box.height;
+    if (width / height > aspect) {
+      height = width / aspect;
+    } else {
+      width = height * aspect;
+    }
+  }
+
+  width = Math.max(MIN_PIECE_SIDE, width);
+  height = Math.max(MIN_PIECE_SIDE, height);
+
+  const signX = corner === "top-left" || corner === "bottom-left" ? -1 : 1;
+  const signY = corner === "top-left" || corner === "top-right" ? -1 : 1;
+  const nextLocal: PieceBox = {
+    x: signX === 1 ? anchorX : anchorX - width,
+    y: signY === 1 ? anchorY : anchorY - height,
+    width,
+    height,
+  };
+
+  // The box rotates about its own center, so moving a corner moves the center;
+  // re-anchor so the pinned corner lands back where the user left it.
+  const pinnedBefore = rotatePoint(
+    { x: anchorX, y: anchorY },
+    center,
+    radians,
+  );
+  const nextCenter = boxCenter(nextLocal);
+  const pinnedAfter = rotatePoint(
+    { x: anchorX, y: anchorY },
+    nextCenter,
+    radians,
+  );
+
+  return {
+    ...nextLocal,
+    x: nextLocal.x + (pinnedBefore.x - pinnedAfter.x),
+    y: nextLocal.y + (pinnedBefore.y - pinnedAfter.y),
+  };
+}
+
+/**
+ * The scale a corner drag asks for along each axis, signed: a drag carried
+ * past the anchor comes out negative, which turns the box over across that
+ * axis. Each magnitude stops at its minimum rather than reaching zero. With
+ * `keepAspect` both axes take the larger magnitude and keep their own sign,
+ * so a corner pulled straight across flips without changing size.
+ */
+export function signedCornerScale(options: {
+  anchor: Point;
+  grabbed: Point;
+  pointer: Point;
+  keepAspect: boolean;
+  minimum: { x: number; y: number };
+}): { x: number; y: number } {
+  const { anchor, grabbed, pointer, keepAspect, minimum } = options;
+  const spanX = grabbed.x - anchor.x;
+  const spanY = grabbed.y - anchor.y;
+  if (spanX === 0 || spanY === 0) {
+    throw new Error("signedCornerScale needs a corner away from its anchor");
+  }
+  const rawX = (pointer.x - anchor.x) / spanX;
+  const rawY = (pointer.y - anchor.y) / spanY;
+  const signX = rawX < 0 ? -1 : 1;
+  const signY = rawY < 0 ? -1 : 1;
+  let sizeX = Math.abs(rawX);
+  let sizeY = Math.abs(rawY);
+  if (keepAspect) {
+    const both = Math.max(sizeX, sizeY);
+    sizeX = both;
+    sizeY = both;
+  }
+  return {
+    x: signX * Math.max(minimum.x, sizeX),
+    y: signY * Math.max(minimum.y, sizeY),
+  };
+}
+
+/** A corner or edge drag's result: the new box, and whether it turned over. */
+export interface CornerDrag {
+  box: PieceBox;
+  /** The drag crossed the anchor left to right, so the piece mirrors across. */
+  flippedX: boolean;
+  /** The drag crossed the anchor top to bottom, so the piece mirrors down. */
+  flippedY: boolean;
+}
+
+/** One side of a piece's box, in the piece's own turned axes. */
+export type BoxEdge = "top" | "right" | "bottom" | "left";
+
+/**
+ * Scales a turned box in its own axes about a point given in those axes,
+ * then moves it so that point stays where it was on screen. A negative
+ * factor turns the box over across that axis.
+ */
+function scaleInOwnAxes(
+  box: PieceBox,
+  rotationDegrees: number,
+  anchor: Point,
+  scale: { x: number; y: number },
+): CornerDrag {
+  const radians = (rotationDegrees * Math.PI) / 180;
+  const center = boxCenter(box);
+  const xs = [box.x, box.x + box.width].map(
+    (x) => anchor.x + (x - anchor.x) * scale.x,
+  );
+  const ys = [box.y, box.y + box.height].map(
+    (y) => anchor.y + (y - anchor.y) * scale.y,
+  );
+  const nextLocal: PieceBox = {
+    x: Math.min(...xs),
+    y: Math.min(...ys),
+    width: box.width * Math.abs(scale.x),
+    height: box.height * Math.abs(scale.y),
+  };
+  // The box turns about its own center, so re-anchor it until the anchor
+  // sits where it sat on screen before the drag.
+  const pinnedBefore = rotatePoint(anchor, center, radians);
+  const pinnedAfter = rotatePoint(anchor, boxCenter(nextLocal), radians);
+  return {
+    box: {
+      ...nextLocal,
+      x: nextLocal.x + (pinnedBefore.x - pinnedAfter.x),
+      y: nextLocal.y + (pinnedBefore.y - pinnedAfter.y),
+    },
+    flippedX: scale.x < 0,
+    flippedY: scale.y < 0,
+  };
+}
+
+/**
+ * Drags one corner of a turned piece the way a drawing tool does. The
+ * opposite corner stays put, or the center does with `aboutCenter`, and the
+ * piece grows along its own axes. Carried past that anchor, the piece turns
+ * over across the axis it crossed instead of stopping at its smallest size.
+ * With `keepAspect` the piece keeps its proportions.
+ */
+export function dragCorner(options: {
+  box: PieceBox;
+  rotationDegrees: number;
+  corner: ResizeCorner;
+  pointer: Point;
+  keepAspect: boolean;
+  aboutCenter: boolean;
+}): CornerDrag {
+  const { box, rotationDegrees, corner, pointer, keepAspect, aboutCenter } =
+    options;
+  const center = boxCenter(box);
+  const local = rotatePoint(pointer, center, (-rotationDegrees * Math.PI) / 180);
+  const left = corner === "top-left" || corner === "bottom-left";
+  const top = corner === "top-left" || corner === "top-right";
+  const grabbed = {
+    x: left ? box.x : box.x + box.width,
+    y: top ? box.y : box.y + box.height,
+  };
+  const anchor = aboutCenter
+    ? center
+    : {
+        x: left ? box.x + box.width : box.x,
+        y: top ? box.y + box.height : box.y,
+      };
+  const scale = signedCornerScale({
+    anchor,
+    grabbed,
+    pointer: local,
+    keepAspect,
+    minimum: {
+      x: MIN_PIECE_SIDE / box.width,
+      y: MIN_PIECE_SIDE / box.height,
+    },
+  });
+  return scaleInOwnAxes(box, rotationDegrees, anchor, scale);
+}
+
+/** Whether an edge runs up and down the piece, so dragging it widens the piece. */
+export function isSideEdge(edge: BoxEdge): boolean {
+  return edge === "left" || edge === "right";
+}
+
+/**
+ * Drags one edge of a turned piece. The opposite edge stays put, or the
+ * center does with `aboutCenter`. With `keepAspect` the whole piece scales
+ * evenly, growing about the middle of the opposite edge, the way a picture
+ * does in a drawing tool; without it the piece stretches along that one axis.
+ * Carried past the anchor, the piece turns over across that axis.
+ */
+export function dragEdge(options: {
+  box: PieceBox;
+  rotationDegrees: number;
+  edge: BoxEdge;
+  pointer: Point;
+  keepAspect: boolean;
+  aboutCenter: boolean;
+}): CornerDrag {
+  const { box, rotationDegrees, edge, pointer, keepAspect, aboutCenter } =
+    options;
+  const center = boxCenter(box);
+  const local = rotatePoint(pointer, center, (-rotationDegrees * Math.PI) / 180);
+  const side = isSideEdge(edge);
+  const grabbed =
+    edge === "left"
+      ? box.x
+      : edge === "right"
+        ? box.x + box.width
+        : edge === "top"
+          ? box.y
+          : box.y + box.height;
+  const across = side ? center.x : center.y;
+  const opposite = side
+    ? (edge === "left" ? box.x + box.width : box.x)
+    : (edge === "top" ? box.y + box.height : box.y);
+  const fixed = aboutCenter ? across : opposite;
+  const raw = ((side ? local.x : local.y) - fixed) / (grabbed - fixed);
+  const sign = raw < 0 ? -1 : 1;
+  const alongMinimum = MIN_PIECE_SIDE / (side ? box.width : box.height);
+  const crossMinimum = MIN_PIECE_SIDE / (side ? box.height : box.width);
+  const magnitude = Math.max(alongMinimum, Math.abs(raw));
+  const along = sign * magnitude;
+  const cross = keepAspect ? Math.max(crossMinimum, magnitude) : 1;
+  const anchor = side ? { x: fixed, y: center.y } : { x: center.x, y: fixed };
+  return scaleInOwnAxes(
+    box,
+    rotationDegrees,
+    anchor,
+    side ? { x: along, y: cross } : { x: cross, y: along },
+  );
+}
+
+/**
+ * From where a press landed to the edge it grabbed, in frame space: the
+ * drag then acts as if the edge line itself had been taken, however far into
+ * its grip the press fell.
+ */
+export function edgeGrabOffset(
+  box: PieceBox,
+  rotationDegrees: number,
+  edge: BoxEdge,
+  pressed: Point,
+): Point {
+  const radians = (rotationDegrees * Math.PI) / 180;
+  const local = rotatePoint(pressed, boxCenter(box), -radians);
+  const gap =
+    edge === "left"
+      ? { x: box.x - local.x, y: 0 }
+      : edge === "right"
+        ? { x: box.x + box.width - local.x, y: 0 }
+        : edge === "top"
+          ? { x: 0, y: box.y - local.y }
+          : { x: 0, y: box.y + box.height - local.y };
+  return rotatePoint(gap, { x: 0, y: 0 }, radians);
+}
+
+/**
+ * Keeps a drag to the axis it has mostly travelled along, for a shift-drag.
+ * Measured from where the drag began, so the axis can change as it goes.
+ */
+export function lockToAxis(delta: Point): Point {
+  return Math.abs(delta.x) >= Math.abs(delta.y)
+    ? { x: delta.x, y: 0 }
+    : { x: 0, y: delta.y };
+}
+
+/** Angle in degrees from a box's center to a pointer, with 0 pointing up. */
+export function rotationToPointer(box: PieceBox, pointer: Point): number {
+  const center = boxCenter(box);
+  const degrees =
+    (Math.atan2(pointer.y - center.y, pointer.x - center.x) * 180) / Math.PI +
+    90;
+  return normalizeDegrees(degrees);
+}
+
+export function normalizeDegrees(degrees: number): number {
+  const wrapped = degrees % 360;
+  if (wrapped < 0) return wrapped + 360;
+  // A rotation of negative zero reads as a tiny leftward turn downstream, so
+  // it settles to plain zero.
+  return wrapped === 0 ? 0 : wrapped;
+}
+
+/** Rounds a rotation to the nearest `step` degrees, for shift-constrained drags. */
+export function snapDegrees(degrees: number, step: number): number {
+  if (step <= 0) throw new Error("snapDegrees requires a positive step");
+  return normalizeDegrees(Math.round(degrees / step) * step);
+}
+
+/**
+ * Builds a crop from a drag inside a piece's local box. The result is clamped
+ * to the piece and expressed as 0..1 fractions of its source box.
+ */
+export function cropFromLocalDrag(
+  start: Point,
+  end: Point,
+  box: PieceBox,
+): CropFraction {
+  const left = clamp(Math.min(start.x, end.x), 0, box.width);
+  const right = clamp(Math.max(start.x, end.x), 0, box.width);
+  const top = clamp(Math.min(start.y, end.y), 0, box.height);
+  const bottom = clamp(Math.max(start.y, end.y), 0, box.height);
+  return {
+    x: left / box.width,
+    y: top / box.height,
+    width: Math.max((right - left) / box.width, 0),
+    height: Math.max((bottom - top) / box.height, 0),
+  };
+}
+
+/**
+ * Composes a new crop drawn inside an already-cropped piece back onto the
+ * source box, so successive crops keep referring to the original material.
+ */
+export function composeCrop(
+  outer: CropFraction,
+  inner: CropFraction,
+): CropFraction {
+  return {
+    x: outer.x + inner.x * outer.width,
+    y: outer.y + inner.y * outer.height,
+    width: inner.width * outer.width,
+    height: inner.height * outer.height,
+  };
+}
+
+/** Whether a crop selection is big enough to be worth applying. */
+export function isUsableCrop(crop: CropFraction): boolean {
+  return crop.width > 0.02 && crop.height > 0.02;
+}
+
+/**
+ * The piece's full source box, recovered from its visible (cropped) box. The
+ * studio and the bake both draw the whole source and clip it to the crop.
+ */
+export function sourceBoxForCrop(
+  visible: PieceBox,
+  crop: CropFraction,
+): PieceBox {
+  if (crop.width <= 0 || crop.height <= 0) {
+    throw new Error("sourceBoxForCrop received a crop with no area");
+  }
+  const width = visible.width / crop.width;
+  const height = visible.height / crop.height;
+  return {
+    x: visible.x - crop.x * width,
+    y: visible.y - crop.y * height,
+    width,
+    height,
+  };
+}
+
+/**
+ * Shrinks a box to an inner rectangle of itself while keeping the part the user
+ * kept sitting exactly where it sat on screen. A piece turns about its own
+ * center, so trimming it moves that center and the box must be re-anchored.
+ */
+export function boxForInnerRect(
+  box: PieceBox,
+  inner: CropFraction,
+  rotationDegrees: number,
+): PieceBox {
+  const radians = (rotationDegrees * Math.PI) / 180;
+  const kept: PieceBox = {
+    x: box.x + inner.x * box.width,
+    y: box.y + inner.y * box.height,
+    width: box.width * inner.width,
+    height: box.height * inner.height,
+  };
+  const before = rotatePoint(
+    { x: kept.x, y: kept.y },
+    boxCenter(box),
+    radians,
+  );
+  const after = rotatePoint(
+    { x: kept.x, y: kept.y },
+    boxCenter(kept),
+    radians,
+  );
+  return {
+    ...kept,
+    x: kept.x + (before.x - after.x),
+    y: kept.y + (before.y - after.y),
+  };
+}
+
+/** The eight grips on a crop box, plus sliding the source under it. */
+export type CropGrip =
+  | "top"
+  | "bottom"
+  | "left"
+  | "right"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right"
+  | "inside";
+
+/** Smallest fraction of the source a crop may keep on either axis. */
+export const MIN_CROP_FRACTION = 0.03;
+
+/**
+ * Moves one edge or corner of a crop box. `delta` is in source-box units, so
+ * the caller converts pointer movement into the piece's own unrotated space
+ * first. The box stays inside the source and never inverts.
+ */
+export function dragCropGrip(
+  crop: CropFraction,
+  grip: CropGrip,
+  delta: { x: number; y: number },
+  source: { width: number; height: number },
+): CropFraction {
+  const dx = delta.x / source.width;
+  const dy = delta.y / source.height;
+
+  if (grip === "inside") {
+    return {
+      ...crop,
+      x: clamp(crop.x + dx, 0, 1 - crop.width),
+      y: clamp(crop.y + dy, 0, 1 - crop.height),
+    };
+  }
+
+  let { x, y, width, height } = crop;
+  const right = x + width;
+  const bottom = y + height;
+
+  if (grip.includes("left")) {
+    const next = clamp(x + dx, 0, right - MIN_CROP_FRACTION);
+    width = right - next;
+    x = next;
+  }
+  if (grip.includes("right")) {
+    width = clamp(right + dx, x + MIN_CROP_FRACTION, 1) - x;
+  }
+  if (grip.includes("top")) {
+    const next = clamp(y + dy, 0, bottom - MIN_CROP_FRACTION);
+    height = bottom - next;
+    y = next;
+  }
+  if (grip.includes("bottom")) {
+    height = clamp(bottom + dy, y + MIN_CROP_FRACTION, 1) - y;
+  }
+
+  return { x, y, width, height };
+}
+
+/** Scale factor for a modal scale, from how far the pointer left the center. */
+export function scaleFromPointer(
+  center: Point,
+  anchor: Point,
+  pointer: Point,
+): number {
+  const startDistance = Math.hypot(anchor.x - center.x, anchor.y - center.y);
+  if (startDistance < 1) return 1;
+  return Math.hypot(pointer.x - center.x, pointer.y - center.y) / startDistance;
+}
+
+/** Resizes a box about its own center, for a modal scale. */
+export function scaleAboutCenter(box: PieceBox, factor: number): PieceBox {
+  const center = boxCenter(box);
+  const width = Math.max(MIN_PIECE_SIDE, box.width * factor);
+  const height = Math.max(MIN_PIECE_SIDE, box.height * factor);
+  return {
+    x: center.x - width / 2,
+    y: center.y - height / 2,
+    width,
+    height,
+  };
+}
+
+/**
+ * How far a scrap smaller than the placement size may be enlarged. A 32px
+ * cursor blown up to the full size would dominate the frame and look nothing
+ * like the thing that was collected, but at its own size it is too small to
+ * grab, so it comes in a little bigger and no more.
+ */
+export const MAX_PLACEMENT_UPSCALE = 2;
+
+/**
+ * The size a freshly placed piece takes: a large photo scales down so its
+ * longest side is `maxSide`, and a small icon comes up only as far as
+ * `MAX_PLACEMENT_UPSCALE` allows. The aspect ratio is kept either way.
+ */
+export function fitWithin(
+  naturalWidth: number,
+  naturalHeight: number,
+  maxSide: number,
+): { width: number; height: number } {
+  if (naturalWidth <= 0 || naturalHeight <= 0) {
+    throw new Error("fitWithin requires positive natural dimensions");
+  }
+  const longest = Math.max(naturalWidth, naturalHeight);
+  const scale = Math.min(maxSide / longest, MAX_PLACEMENT_UPSCALE);
+  return {
+    width: Math.max(MIN_PIECE_SIDE, naturalWidth * scale),
+    height: Math.max(MIN_PIECE_SIDE, naturalHeight * scale),
+  };
+}
+
+/**
+ * Where the nth scrap placed by clicking the tray lands.
+ *
+ * Successive pieces walk outward along a loose spiral rather than a short
+ * repeating diagonal, so a run of clicks spreads across the frame and every
+ * piece stays reachable instead of burying the ones beneath it.
+ */
+export function fanOutPlacement(
+  index: number,
+  frame: { width: number; height: number },
+): Point {
+  // An irrational turn keeps successive pieces from lining up into spokes.
+  const turn = index * 2.399963229728653;
+  const reach = 34 * Math.sqrt(index);
+  const inset = 120;
+  return {
+    x: clamp(
+      frame.width / 2 + Math.cos(turn) * reach,
+      inset,
+      frame.width - inset,
+    ),
+    y: clamp(
+      frame.height / 2 + Math.sin(turn) * reach,
+      inset,
+      frame.height - inset,
+    ),
+  };
+}
+
+/** Scale that fits a frame into an available viewport area, never above 1. */
+export function frameScale(
+  frame: { width: number; height: number },
+  available: { width: number; height: number },
+): number {
+  if (available.width <= 0 || available.height <= 0) return 1;
+  return Math.min(
+    1,
+    available.width / frame.width,
+    available.height / frame.height,
+  );
+}
+
+/** Where a corner of a rotated piece sits in frame space. */
+export function cornerPoint(
+  box: PieceBox,
+  rotationDegrees: number,
+  corner: ResizeCorner,
+): Point {
+  const local = {
+    x: corner === "top-left" || corner === "bottom-left" ? box.x : box.x + box.width,
+    y: corner === "top-left" || corner === "top-right" ? box.y : box.y + box.height,
+  };
+  return rotatePoint(local, boxCenter(box), (rotationDegrees * Math.PI) / 180);
+}
+
+/** A rectangle in frame space, such as the part of the stage in view. */
+export interface Bounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** The nearest point to `point` inside `bounds`. */
+export function pinInside(point: Point, bounds: Bounds): Point {
+  return {
+    x: Math.min(Math.max(point.x, bounds.x), bounds.x + bounds.width),
+    y: Math.min(Math.max(point.y, bounds.y), bounds.y + bounds.height),
+  };
+}

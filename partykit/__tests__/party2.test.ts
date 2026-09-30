@@ -97,6 +97,7 @@ class FakeStorage {
 
 type FakeConnection = {
   id: string;
+  readyState: number;
   sent: string[];
   state: Record<string, unknown> | null;
   send(message: string): void;
@@ -112,6 +113,7 @@ type FakeConnection = {
 function createConnection(id = "connection-1"): FakeConnection {
   return {
     id,
+    readyState: 1,
     sent: [],
     state: null,
     send(message) {

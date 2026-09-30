@@ -1,6 +1,6 @@
 {
   "name": "@playhtml/extension",
-  "version": "0.1.22",
+  "version": "0.1.25",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,20 +16,23 @@
     "submit": "./release.sh",
     "submit:dry": "./release.sh --dry-run",
     "submit:refresh-chrome-token": "./scripts/refresh-chrome-token.sh",
+    "prepare:types": "wxt prepare",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "wxt prepare"
+    "postinstall": "bun run prepare:types"
   },
   "dependencies": {
     "@playhtml/common": "workspace:*",
     "@playhtml/extension-types": "workspace:*",
     "@playhtml/react": "workspace:*",
     "html2canvas": "^1.4.1",
+    "mediabunny": "^1.59.1",
     "perfect-freehand": "^1.2.3",
     "playhtml": "workspace:*",
     "profane-words": "^1.5.11",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "tldts": "^7.0.19",
     "webextension-polyfill": "^0.12.0"
   },
   "devDependencies": {

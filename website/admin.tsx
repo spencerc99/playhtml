@@ -588,6 +588,12 @@ const LoginScreen: React.FC<{
         <h1 style={{ marginTop: 0, marginBottom: "1.5rem" }}>
           🛠️ PlayHTML Admin
         </h1>
+        <a
+          className="admin-office-link"
+          href="https://wewere.online/admin/"
+        >
+          Open WWO Internal Office ↗
+        </a>
 
         <div style={{ marginBottom: "1.5rem" }}>
           <label
@@ -2333,7 +2339,10 @@ const AdminConsole: React.FC = () => {
   return (
     <div className="admin-container">
       <header className="admin-header">
-        <h1>🛠️ PlayHTML Admin Console</h1>
+        <div className="admin-header-title">
+          <h1>🛠️ PlayHTML Admin Console</h1>
+          <a href="https://wewere.online/admin/">WWO Internal Office ↗</a>
+        </div>
         <div>
           <EnvironmentDisplay currentEnv={hostEnv} />
           <div className="auth-controls">

@@ -126,6 +126,103 @@ body {
 
 .wiki-excerpt a { color: #0645ad; text-decoration: none; }
 
+/* Mock popup frames — approximate the 350px extension popup around PopupNav */
+.popup-variants {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+
+.popup-variant-row__frames {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.popup-variant__label {
+  font-family: 'Lora', Georgia, serif;
+  font-weight: 600;
+  font-size: 15px;
+  color: #3d3833;
+  margin-bottom: 2px;
+}
+
+.popup-variant__note {
+  font-size: 11px;
+  color: #8a8279;
+  margin-bottom: 10px;
+  max-width: 640px;
+  line-height: 1.4;
+}
+
+.popup-frame__count {
+  font-family: 'Martian Mono', monospace;
+  font-size: 9px;
+  color: #b5aea5;
+  margin-bottom: 8px;
+}
+
+/* Nav sits on its own line inside the header block */
+.popup-frame__navrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.popup-frame__row--tight {
+  margin-bottom: 4px;
+}
+
+.popup-frame__navrow--tight {
+  margin-bottom: 0;
+}
+
+.popup-frame {
+  width: 350px;
+  padding: 16px;
+  background: #faf7f2;
+  border: 1px solid rgba(90, 78, 65, 0.25);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(90, 78, 65, 0.08);
+}
+
+/* Mirrors .portrait-home__header-row in the real popup */
+.popup-frame__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.popup-frame__wordmark {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-style: italic;
+  font-weight: 200;
+  font-size: 18px;
+  color: #3d3833;
+  white-space: nowrap;
+}
+
+/* Measurement boundary: wordmark top to last header line bottom */
+.popup-frame__header > *:last-child {
+  margin-bottom: 0;
+}
+
+.popup-frame__body {
+  margin-top: 12px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(90, 78, 65, 0.25);
+  border-radius: 8px;
+  font-family: 'Martian Mono', monospace;
+  font-size: 10px;
+  color: #b5aea5;
+}
+
 .milestone-preview-cell {
   display: flex;
   justify-content: flex-start;

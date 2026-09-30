@@ -1,8 +1,7 @@
 // ABOUTME: Initializes inventory + social experiments that run on every page.
 // ABOUTME: Inventory is built first so deps.inventory exists when each experiment's init registers items.
 
-import browser from "webextension-polyfill";
-import { FLAGS } from "../flags";
+import { getAllFeatureStates } from "./featureAccess";
 import { SOCIAL_EXPERIMENTS } from "./social/registry";
 import type { GlobalFeatureDeps } from "./social/types";
 import { InventoryManager } from "./inventory/InventoryManager";
@@ -14,43 +13,20 @@ export type { GlobalFeatureDeps } from "./social/types";
 type CallerDeps = Omit<GlobalFeatureDeps, "inventory">;
 
 /**
- * Dev override: when a developer has toggled internal dev features on
- * (Cmd+Shift+. in the popup → browser.storage.local.internalDevFeaturesEnabled),
- * ALL social experiments run regardless of their committed flags. This lets us
- * land experiments on main flag-off (inert for users) while still testing them.
- */
-async function internalDevFeaturesEnabled(): Promise<boolean> {
-  try {
-    const r = await browser.storage.local.get("internalDevFeaturesEnabled");
-    return Boolean(r.internalDevFeaturesEnabled);
-  } catch {
-    return false;
-  }
-}
-
-function isExperimentActive(
-  exp: { flag: keyof typeof FLAGS },
-  devEnabled: boolean,
-): boolean {
-  // Run if shipped-on for everyone, or if this dev has internal features on.
-  return Boolean(FLAGS[exp.flag]) || devEnabled;
-}
-
-/**
  * Whether any social experiment would run on this page. The content script
  * calls this before deciding to spin up a headless playhtml instance — on
  * pages where no experiment is active we open no connection at all.
  */
 export async function anyGlobalFeatureActive(): Promise<boolean> {
-  const devEnabled = await internalDevFeaturesEnabled();
-  return SOCIAL_EXPERIMENTS.some((exp) => isExperimentActive(exp, devEnabled));
+  const states = await getAllFeatureStates();
+  return SOCIAL_EXPERIMENTS.some((experiment) => states[experiment.flag].enabled);
 }
 
 export async function initGlobalFeatures(
   caller: CallerDeps,
 ): Promise<() => void> {
   const cleanups: (() => void)[] = [];
-  const devEnabled = await internalDevFeaturesEnabled();
+  const states = await getAllFeatureStates();
 
   const manager = new InventoryManager();
   try {
@@ -62,7 +38,7 @@ export async function initGlobalFeatures(
   const deps: GlobalFeatureDeps = { ...caller, inventory: manager.api };
 
   for (const exp of SOCIAL_EXPERIMENTS) {
-    if (!isExperimentActive(exp, devEnabled)) continue;
+    if (!states[exp.flag].enabled) continue;
     try {
       const cleanup = await exp.init(deps);
       cleanups.push(cleanup);
@@ -72,7 +48,7 @@ export async function initGlobalFeatures(
   }
 
   // Mount the satchel surface only if inventory is enabled and at least one item registered.
-  if (FLAGS.INVENTORY && manager.api.list().length > 0) {
+  if (states.INVENTORY.enabled && manager.api.list().length > 0) {
     cleanups.push(initInventorySurface(deps));
   }
 

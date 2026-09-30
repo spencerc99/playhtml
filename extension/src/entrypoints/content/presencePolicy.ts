@@ -6,6 +6,18 @@ export type ExtensionPresenceDecision = {
   cursorsEnabled: boolean;
 };
 
+export type CopresenceInitializationDecision = {
+  featureEnabled: boolean;
+  customSiteCursorsEnabled: boolean;
+};
+
+export function shouldInitializeCopresence({
+  featureEnabled,
+  customSiteCursorsEnabled,
+}: CopresenceInitializationDecision): boolean {
+  return featureEnabled || customSiteCursorsEnabled;
+}
+
 export function shouldStartExtensionPresence({
   nativePlayhtmlDetected,
   cursorsEnabled,

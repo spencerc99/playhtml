@@ -1,0 +1,167 @@
+/* ABOUTME: Styling for the internet map theme editor, in the WWO token set. */
+/* ABOUTME: Deliberately separate from style.css so upstream stays diffable. */
+
+#im-dev {
+  position: fixed;
+  z-index: 40;
+  top: 12px;
+  right: 12px;
+  width: 340px;
+  max-height: calc(100vh - 24px);
+  display: none;
+  flex-direction: column;
+  background: #faf7f2;
+  color: #3d3833;
+  border: 1px solid rgba(90, 78, 65, 0.25);
+  border-radius: 3px;
+  box-shadow: 0 6px 24px rgba(90, 78, 65, 0.18);
+  font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  /* The map body disables smoothing for the pixel font; the panel is real type. */
+  -webkit-font-smoothing: antialiased;
+  image-rendering: auto;
+}
+#im-dev.on { display: flex; }
+
+#im-dev-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 9px;
+  border-bottom: 1px solid rgba(90, 78, 65, 0.12);
+  background: #f5f0e8;
+}
+#im-dev-head b {
+  font-family: "Lora", Georgia, serif;
+  font-weight: 600;
+  font-size: 13px;
+  margin-right: auto;
+}
+#im-dev select {
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+  color: #3d3833;
+  background: #faf7f2;
+  border: 1px solid rgba(90, 78, 65, 0.25);
+  border-radius: 2px;
+}
+#im-dev-close {
+  border: 0;
+  background: none;
+  color: #8a8279;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 3px;
+  cursor: pointer;
+}
+#im-dev-close:hover { color: #3d3833; }
+
+#im-dev-body {
+  overflow-y: auto;
+  padding: 4px 9px 8px;
+  flex: 1;
+}
+
+.im-sec { border-bottom: 1px solid rgba(90, 78, 65, 0.12); padding: 5px 0; }
+.im-sec:last-child { border-bottom: 0; }
+.im-sec > summary {
+  cursor: pointer;
+  font-family: "Martian Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #3a7d6f;
+  padding: 2px 0;
+}
+.im-sec > summary::marker { color: #b5aea5; }
+
+.im-swatches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 8px;
+  padding: 4px 0 2px;
+}
+.im-swatch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  cursor: pointer;
+}
+.im-swatch span {
+  font-size: 12px;
+  color: #3d3833;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.im-swatch input[type="color"] {
+  width: 20px;
+  height: 18px;
+  flex: none;
+  padding: 0;
+  border: 1px solid rgba(90, 78, 65, 0.25);
+  border-radius: 2px;
+  background: none;
+  cursor: pointer;
+}
+
+.im-dial {
+  display: grid;
+  grid-template-columns: 124px 1fr 38px;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+.im-dial label { font-size: 12px; color: #3d3833; }
+.im-dial input[type="range"] { width: 100%; accent-color: #4a9a8a; }
+.im-dial output {
+  font-family: "Martian Mono", monospace;
+  font-size: 11px;
+  text-align: right;
+  color: #3d3833;
+}
+
+#im-dev-foot {
+  border-top: 1px solid rgba(90, 78, 65, 0.12);
+  padding: 8px 9px;
+  background: #f5f0e8;
+}
+.im-btns { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+#im-dev button:not(#im-dev-close) {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 8px;
+  color: #3d3833;
+  background: #faf7f2;
+  border: 1px solid rgba(90, 78, 65, 0.25);
+  border-radius: 2px;
+  cursor: pointer;
+}
+#im-dev button:not(#im-dev-close):hover {
+  background: #4a9a8a;
+  border-color: #4a9a8a;
+  color: #faf7f2;
+}
+#im-dev textarea {
+  width: 100%;
+  font-family: "Martian Mono", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #3d3833;
+  background: #faf7f2;
+  border: 1px solid rgba(90, 78, 65, 0.25);
+  border-radius: 2px;
+  padding: 4px 5px;
+  margin-bottom: 5px;
+  resize: vertical;
+}
+#im-dev-note {
+  font-family: "Martian Mono", monospace;
+  font-size: 10.5px;
+  color: #3a7d6f;
+  min-height: 12px;
+  margin-top: 4px;
+}

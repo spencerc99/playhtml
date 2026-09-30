@@ -128,6 +128,54 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect((element as any).onDrag).toBe(capabilityOnDrag);
   });
 
+  it("provides default data on the first render", async () => {
+    const { container } = render(
+      <CanPlayElement
+        // @ts-ignore
+        tagInfo={[TagType.CanMove]}
+        defaultData={{ tag: "DIV" }}
+        defaultLocalData={{ startMouseX: 0, startMouseY: 0 }}
+        updateElement={() => {}}
+        resetShortcut="shiftKey"
+      >
+        {({ data }) => <div id="default-data-child">{data.tag}</div>}
+      </CanPlayElement>,
+    );
+
+    const element = container.querySelector("[can-move]") as HTMLElement;
+    expect(element).toBeTruthy();
+
+    await act(async () => {});
+
+    const child = container.querySelector("#default-data-child") as HTMLElement;
+    expect(child.textContent).toBe("DIV");
+  });
+
+  it("provides default awareness on the first render", async () => {
+    const { container } = render(
+      <CanPlayElement
+        // @ts-ignore
+        tagInfo={[TagType.CanHover]}
+        defaultData={{}}
+        myDefaultAwareness={{ tag: "DIV" }}
+        updateElement={() => {}}
+        updateElementAwareness={() => {}}
+      >
+        {({ myAwareness }) => (
+          <div id="default-awareness-child">{myAwareness.tag}</div>
+        )}
+      </CanPlayElement>,
+    );
+
+    const element = container.querySelector("[can-hover]") as HTMLElement;
+    expect(element).toBeTruthy();
+
+    await act(async () => {});
+
+    const child = container.querySelector("#default-awareness-child") as HTMLElement;
+    expect(child.textContent).toBe("DIV");
+  });
+
   it("does not remove the element when synced data updates React state", () => {
     const setupSpy = vi
       .spyOn(playhtml, "setupPlayElement")
@@ -425,6 +473,8 @@ describe("CanPlayElement with built-in capabilities", () => {
       act(() => {
         (element as any).updateElement({
           data: ["a", "b"],
+          live: undefined,
+          users: [],
           awareness: [],
           awarenessByStableId: new Map(),
           myAwareness: undefined,
@@ -432,6 +482,7 @@ describe("CanPlayElement with built-in capabilities", () => {
           localData: [],
           setData: vi.fn(),
           setLocalData: vi.fn(),
+          setLive: vi.fn(),
           setMyAwareness: vi.fn(),
         });
       });
@@ -522,6 +573,53 @@ describe("CanPlayElement with built-in capabilities", () => {
     });
 
     expect(lastByStableId?.get("alice")).toEqual({ isHovering: true });
+  });
+
+  it("exposes live users through the React render context", () => {
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
+
+    let renderedContext: any;
+    const { container } = render(
+      <CanPlayElement defaultData={{}} live={{ active: true }}>
+        {(context) => {
+          renderedContext = context;
+          return <div id="live-users-child" />;
+        }}
+      </CanPlayElement>,
+    );
+    const element = container.querySelector("[can-play]") as HTMLElement;
+
+    act(() => {
+      (element as any).updateElement({
+        data: {},
+        localData: undefined,
+        live: { active: true },
+        users: [
+          {
+            user: { pid: "alice", color: "blue", isMe: false },
+            live: { active: false },
+          },
+        ],
+        awareness: [{ active: false }],
+        awarenessByStableId: new Map([["alice", { active: false }]]),
+        myAwareness: { active: true },
+        element,
+        setData: vi.fn(),
+        setLocalData: vi.fn(),
+        setLive: vi.fn(),
+        setMyAwareness: vi.fn(),
+      });
+    });
+
+    expect(renderedContext.live).toEqual({ active: true });
+    expect(renderedContext.users).toEqual([
+      {
+        user: { pid: "alice", color: "blue", isMe: false },
+        live: { active: false },
+      },
+    ]);
+    expect(renderedContext.setLive).toBeTypeOf("function");
   });
 
   it("works without a capability updateElement (pure can-play)", () => {

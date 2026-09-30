@@ -1,106 +1,50 @@
 // ABOUTME: Full-tab extension page for browsing locally collected internet scraps.
-// ABOUTME: Loads scraps from the background and renders a daily seeded paper collage.
+// ABOUTME: Hosts the drifting browse collage and the create mode for making your own.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
+import "@fontsource/atkinson-hyperlegible/latin-400.css";
+import "@fontsource/atkinson-hyperlegible/latin-700.css";
+import "@fontsource/lora/latin-400-italic.css";
+import "@fontsource/lora/latin-600.css";
+import "@fontsource/lora/latin-700.css";
+import { groupPhotoEncounters } from "@movement/utils/scrapPhotoGroups";
 import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import {
+  COLLAGE_STYLES,
   ScrapCollage,
   type ScrapItem,
 } from "@movement/components/ScrapCollage";
+import { toScrapItem, type ScrapRecord } from "./scrapItems";
+import { useSettledFeatureState } from "../../features/useFeatureAccess";
+import { parsePlaceHash, placeHash, type ScrapsPlace } from "./scrapsPlace";
+import type { CollageRecord } from "./collageRecord";
+import {
+  inBackground,
+  keepCollageImages,
+  serveLocalScrapImages,
+} from "./localScrapImages";
 
-interface ScrapRecordBase {
-  id: string;
-  key: string;
-  pageTitle: string;
-  faviconUrl?: string;
-  domain: string;
-  pageUrl: string;
-  ts: number;
-}
-
-type ScrapRecord = ScrapRecordBase &
-  (
-    | {
-        kind: "image";
-        src: string;
-        alt?: string;
-        naturalWidth: number;
-        naturalHeight: number;
-      }
-    | {
-        kind: "button";
-        text: string;
-        styles: Record<string, string>;
-        innerSvg?: string;
-      }
-    | {
-        kind: "svg-icon";
-        markup: string;
-        width: number;
-        height: number;
-      }
-    | {
-        kind: "cursor";
-        url: string;
-        hotspotX?: number;
-        hotspotY?: number;
-      }
-  );
+serveLocalScrapImages();
 
 interface ScrapsResponse {
   scraps: ScrapRecord[];
+  nextCursor: { ts: number; id: string } | null;
+  error?: string;
 }
 
-function toScrapItem(record: ScrapRecord): ScrapItem {
-  const base = {
-    id: record.id,
-    key: record.key,
-    pageTitle: record.pageTitle,
-    ...(record.faviconUrl !== undefined
-      ? { faviconUrl: record.faviconUrl }
-      : {}),
-    domain: record.domain,
-    pageUrl: record.pageUrl,
-    ts: record.ts,
-  };
-
-  switch (record.kind) {
-    case "image":
-      return {
-        ...base,
-        kind: record.kind,
-        src: record.src,
-        ...(record.alt !== undefined ? { alt: record.alt } : {}),
-        naturalWidth: record.naturalWidth,
-        naturalHeight: record.naturalHeight,
-      };
-    case "button":
-      return {
-        ...base,
-        kind: record.kind,
-        text: record.text,
-        styles: record.styles,
-        ...(record.innerSvg !== undefined ? { innerSvg: record.innerSvg } : {}),
-      };
-    case "svg-icon":
-      return {
-        ...base,
-        kind: record.kind,
-        markup: record.markup,
-        width: record.width,
-        height: record.height,
-      };
-    case "cursor":
-      return {
-        ...base,
-        kind: record.kind,
-        url: record.url,
-        ...(record.hotspotX !== undefined ? { hotspotX: record.hotspotX } : {}),
-        ...(record.hotspotY !== undefined ? { hotspotY: record.hotspotY } : {}),
-      };
-  }
+function isScrapsResponse(
+  response: ScrapsResponse | undefined,
+): response is ScrapsResponse {
+  return (
+    !!response &&
+    Array.isArray(response.scraps) &&
+    !response.error &&
+    (response.nextCursor === null ||
+      (Number.isFinite(response.nextCursor?.ts) &&
+        typeof response.nextCursor.id === "string"))
+  );
 }
 
 const centeredMessageStyle: React.CSSProperties = {
@@ -118,35 +62,289 @@ const centeredMessageStyle: React.CSSProperties = {
   textAlign: "center",
 };
 
+type ScrapsMode = "browse" | "create";
+const SCRAPS_PAGE_SIZE = 500;
+const FILTER_PAGE_SIZE = 1_000;
+
 export function ScrapsPage() {
-  const [items, setItems] = useState<ScrapItem[]>([]);
+  const [records, setRecords] = useState<ScrapRecord[]>([]);
+  const [nextCursor, setNextCursor] = useState<ScrapsResponse["nextCursor"]>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searchHistory, setSearchHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [mode, setMode] = useState<ScrapsMode>("browse");
+  const [editing, setEditing] = useState<CollageRecord | null>(null);
+  const [studioOpen, setStudioOpen] = useState(false);
+  /** Bumped when a studio is opened, so each editing session starts fresh. */
+  const [studioSession, setStudioSession] = useState(0);
+  const [savedRevision, setSavedRevision] = useState(0);
+  const requestGeneration = useRef(0);
+  const items = useMemo(
+    () =>
+      groupPhotoEncounters(records)
+        .sort((a, b) => b.ts - a.ts)
+        .map(toScrapItem),
+    [records],
+  );
+  const [createMode, setCreateMode] = useState<
+    typeof import("./CreateMode") | null
+  >(null);
+  const [createError, setCreateError] = useState(false);
   const seed = useMemo(() => Math.floor(Date.now() / 86_400_000), []);
+  const collagesFeature = useSettledFeatureState("SCRAP_COLLAGES");
+  const canCreate = collagesFeature?.enabled ?? false;
+  /** The saved collage open in the studio, once it has an id to name. */
+  const [openCollageId, setOpenCollageId] = useState<string | null>(null);
+  /**
+   * False until the place the URL named has been restored, and while a place
+   * is being applied, so the URL is not rewritten from a half-set page.
+   */
+  const [placeSettled, setPlaceSettled] = useState(false);
+  const restoredRef = useRef(false);
 
   useEffect(() => {
+    if (collagesFeature && !canCreate && mode === "create") setMode("browse");
+  }, [collagesFeature, canCreate, mode]);
+
+  const openStudio = (record: CollageRecord | null) => {
+    if (record) inBackground(keepCollageImages(record));
+    setEditing(record);
+    setOpenCollageId(record?.id ?? null);
+    setStudioSession((value) => value + 1);
+    setStudioOpen(true);
+  };
+
+  const closeStudio = () => {
+    setEditing(null);
+    setOpenCollageId(null);
+    setStudioOpen(false);
+  };
+
+  /** Puts the page where a URL says, loading a named collage first. */
+  const applyPlace = useCallback(async (place: ScrapsPlace, creatable: boolean) => {
+    if (place.mode === "browse" || !creatable) {
+      setMode("browse");
+      closeStudio();
+      return;
+    }
+    setMode("create");
+    if (place.collage === null) {
+      closeStudio();
+      return;
+    }
+    if (place.collage === "new") {
+      openStudio(null);
+      return;
+    }
+    const { loadCollage } = await import("./collageStore");
+    const record = await loadCollage(place.collage.id);
+    if (!record) {
+      console.warn(`No collage ${place.collage.id} to reopen; showing the list`);
+      closeStudio();
+      return;
+    }
+    openStudio(record);
+  }, []);
+
+  // Once it is known whether collages can be made, go back to where the URL
+  // says the page was.
+  useEffect(() => {
+    if (!collagesFeature || restoredRef.current) return;
+    restoredRef.current = true;
+    const wanted = parsePlaceHash(window.location.hash);
+    applyPlace(wanted, collagesFeature.enabled)
+      .catch((placeError: unknown) => {
+        console.error("Could not restore the scraps page place:", placeError);
+      })
+      .finally(() => setPlaceSettled(true));
+  }, [applyPlace, collagesFeature]);
+
+  // Back and forward move between places like any other page.
+  useEffect(() => {
+    const onPop = () => {
+      setPlaceSettled(false);
+      applyPlace(parsePlaceHash(window.location.hash), canCreate)
+        .catch((placeError: unknown) => {
+          console.error("Could not move the scraps page:", placeError);
+        })
+        .finally(() => setPlaceSettled(true));
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [applyPlace, canCreate]);
+
+  const place: ScrapsPlace =
+    mode === "browse"
+      ? { mode: "browse" }
+      : !studioOpen
+        ? { mode: "create", collage: null }
+        : openCollageId
+          ? { mode: "create", collage: { id: openCollageId } }
+          : { mode: "create", collage: "new" };
+  const hash = placeHash(place);
+
+  useEffect(() => {
+    if (!placeSettled || hash === window.location.hash) return;
+    const url = hash || `${window.location.pathname}${window.location.search}`;
+    // A new collage that has just been saved is the same place under its
+    // id, so it replaces the entry rather than adding a step to go back to.
+    // This reads the live hash so it also holds after a reload of #create/new.
+    if (window.location.hash === placeHash({ mode: "create", collage: "new" }) && hash.startsWith("#create/")) {
+      window.history.replaceState(null, "", url);
+    } else {
+      window.history.pushState(null, "", url);
+    }
+  }, [hash, placeSettled]);
+
+  useEffect(() => {
+    if (!canCreate || mode !== "create" || createMode) return;
+    let cancelled = false;
+    import("./CreateMode")
+      .then((module) => {
+        if (!cancelled) {
+          setCreateMode(module);
+          setCreateError(false);
+        }
+      })
+      .catch((loadError: unknown) => {
+        if (!cancelled) {
+          setCreateError(true);
+          console.error("Failed to load collage create mode:", loadError);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canCreate, mode, createMode]);
+
+  useEffect(() => {
+    const onMessage = (message: unknown) => {
+      if (
+        typeof message === "object" &&
+        message !== null &&
+        "type" in message &&
+        message.type === "SCRAP_PHOTOS_UPDATED"
+      ) {
+        setRevision((value) => value + 1);
+      }
+    };
+    browser.runtime.onMessage.addListener(onMessage);
+    return () => browser.runtime.onMessage.removeListener(onMessage);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    requestGeneration.current += 1;
+    setLoading(true);
+    setLoadingMore(false);
+    setLoadMoreError(null);
+    setRecords([]);
+    setNextCursor(null);
     const loadScraps = async () => {
       try {
         const response = (await browser.runtime.sendMessage({
           type: "GET_SCRAPS",
-          options: { limit: 5000 },
+          options: { limit: SCRAPS_PAGE_SIZE },
         })) as ScrapsResponse;
-        if (!response || !Array.isArray(response.scraps)) {
+        if (!isScrapsResponse(response)) {
           throw new Error("GET_SCRAPS returned an invalid response");
         }
-        setItems(response.scraps.map(toScrapItem));
+        if (!cancelled) {
+          setRecords(response.scraps);
+          setNextCursor(response.nextCursor);
+          setError(null);
+        }
       } catch (loadError) {
         const message =
           loadError instanceof Error ? loadError.message : String(loadError);
-        setError(message);
+        if (!cancelled) setError(message);
         console.error("Failed to load internet scraps:", loadError);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     void loadScraps();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [revision]);
+
+  useEffect(() => {
+    if (!searchHistory || !nextCursor || loading || loadingMore) return;
+    let cancelled = false;
+    const generation = requestGeneration.current;
+    setLoadingHistory(true);
+
+    const loadHistory = async () => {
+      const olderRecords: ScrapRecord[] = [];
+      let cursor: ScrapsResponse["nextCursor"] = nextCursor;
+      try {
+        while (cursor && !cancelled && generation === requestGeneration.current) {
+          const response = (await browser.runtime.sendMessage({
+            type: "GET_SCRAPS",
+            options: { limit: FILTER_PAGE_SIZE, cursor },
+          })) as ScrapsResponse;
+          if (!isScrapsResponse(response)) {
+            throw new Error("GET_SCRAPS returned an invalid response");
+          }
+          olderRecords.push(...response.scraps);
+          cursor = response.nextCursor;
+        }
+        if (!cancelled && generation === requestGeneration.current) {
+          setRecords((current) => [...current, ...olderRecords]);
+          setNextCursor(cursor);
+          setLoadMoreError(null);
+        }
+      } catch (loadError) {
+        if (!cancelled && generation === requestGeneration.current) {
+          setLoadMoreError(
+            loadError instanceof Error ? loadError.message : String(loadError),
+          );
+          setSearchHistory(false);
+        }
+      } finally {
+        if (!cancelled && generation === requestGeneration.current) {
+          setLoadingHistory(false);
+        }
+      }
+    };
+
+    void loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchHistory, nextCursor, loading, loadingMore]);
+
+  const loadMore = async () => {
+    if (!nextCursor || loadingMore || loadingHistory) return;
+    const generation = requestGeneration.current;
+    setLoadingMore(true);
+    try {
+      const response = (await browser.runtime.sendMessage({
+        type: "GET_SCRAPS",
+        options: { limit: SCRAPS_PAGE_SIZE, cursor: nextCursor },
+      })) as ScrapsResponse;
+      if (!isScrapsResponse(response)) {
+        throw new Error("GET_SCRAPS returned an invalid response");
+      }
+      if (generation === requestGeneration.current) {
+        setRecords((current) => [...current, ...response.scraps]);
+        setNextCursor(response.nextCursor);
+        setLoadMoreError(null);
+      }
+    } catch (loadError) {
+      if (generation === requestGeneration.current) {
+        setLoadMoreError(loadError instanceof Error ? loadError.message : String(loadError));
+      }
+    } finally {
+      if (generation === requestGeneration.current) setLoadingMore(false);
+    }
+  };
 
   return (
     <main
@@ -159,6 +357,7 @@ export function ScrapsPage() {
         color: "#3d3833",
       }}
     >
+      {canCreate && <style>{COLLAGE_STYLES}</style>}
       <svg
         width="100%"
         height="100%"
@@ -220,13 +419,50 @@ export function ScrapsPage() {
         <ExtensionPageNav currentPage="scraps" />
       </div>
 
+      <style>{`
+        .collage-chip {
+          padding: 3px 7px;
+          border: 1px solid rgba(61, 56, 51, 0.18);
+          border-radius: 3px;
+          background: transparent;
+          color: #827a72;
+          font-family: "Martian Mono", monospace;
+          font-size: 9px;
+          letter-spacing: 0.03em;
+          cursor: pointer;
+        }
+        .collage-chip:hover {
+          border-color: rgba(61, 56, 51, 0.35);
+          color: #3d3833;
+        }
+        .collage-chip--active {
+          background: rgba(61, 56, 51, 0.08);
+          border-color: rgba(61, 56, 51, 0.4);
+          color: #3d3833;
+        }
+        .collage-mode-switch {
+          display: inline-flex;
+          gap: 3px;
+          padding: 3px;
+          border: 1px solid rgba(61, 56, 51, 0.16);
+          border-radius: 4px;
+          background: rgba(245, 240, 232, 0.9);
+        }
+        .scraps-heading { top: 14px; width: min(520px, calc(100vw - 320px)); }
+        .scraps-stage { inset: 64px 0 0; }
+        .scraps-load-more { position: absolute; top: 80px; right: 16px; z-index: 5; text-align: center; }
+        @media (max-width: 620px) {
+          .scraps-heading { top: 48px; width: calc(100vw - 32px); }
+          .scraps-stage { inset: 104px 0 0; }
+          .scraps-load-more { top: 120px; }
+        }
+      `}</style>
       <header
+        className="scraps-heading"
         style={{
           position: "absolute",
-          top: 14,
           left: "50%",
           zIndex: 4,
-          width: "min(520px, calc(100vw - 320px))",
           textAlign: "center",
           transform: "translateX(-50%)",
           pointerEvents: "none",
@@ -255,17 +491,100 @@ export function ScrapsPage() {
         >
           images that washed up while you browsed
         </p>
+        {canCreate && (
+          <div
+            className="collage-mode-switch"
+            style={{ marginTop: 8, pointerEvents: "auto" }}
+          >
+            <button
+              type="button"
+              className={`collage-chip${mode === "browse" ? " collage-chip--active" : ""}`}
+              onClick={() => setMode("browse")}
+            >
+              browse
+            </button>
+            <button
+              type="button"
+              className={`collage-chip${mode === "create" ? " collage-chip--active" : ""}`}
+              onClick={() => setMode("create")}
+            >
+              create
+            </button>
+          </div>
+        )}
       </header>
 
-      {!loading && !error && items.length > 0 && (
+      {mode === "browse" && !loading && !error && items.length > 0 && (
         <div
+          className="scraps-stage"
           style={{
             position: "absolute",
-            inset: "74px 20px 18px",
             zIndex: 2,
           }}
         >
-          <ScrapCollage items={items} seed={seed} showKindFilter={true} />
+          <ScrapCollage
+            items={items}
+            seed={seed}
+            showKindFilter={true}
+            onFilterIntent={() => setSearchHistory(true)}
+          />
+        </div>
+      )}
+
+      {!loading && !error && nextCursor && (
+        <div className="scraps-load-more">
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            disabled={loadingMore || loadingHistory}
+            style={{
+              border: "1px solid #827a72",
+              borderRadius: 999,
+              background: "#faf9f6",
+              color: "#3d3833",
+              padding: "9px 16px",
+              fontFamily: '"Martian Mono", monospace',
+              fontSize: 11,
+              cursor: "pointer",
+            }}
+          >
+            {loadingHistory
+              ? "searching older scraps..."
+              : loadingMore
+                ? "gathering more..."
+                : "load more scraps"}
+          </button>
+          {loadMoreError && (
+            <div
+              role="alert"
+              style={{ marginTop: 6, color: "#827a72", fontSize: 11 }}
+            >
+              scraps could not be gathered
+            </div>
+          )}
+        </div>
+      )}
+
+      {mode === "create" && !loading && !error && createMode && (
+        <createMode.CreateMode
+          items={items}
+          editing={editing}
+          studioOpen={studioOpen}
+          studioSession={studioSession}
+          savedRevision={savedRevision}
+          onEdit={(record) => openStudio(record)}
+          onStartNew={() => openStudio(null)}
+          onSaved={(record) => {
+            inBackground(keepCollageImages(record));
+            setOpenCollageId(record.id);
+            setSavedRevision((value) => value + 1);
+          }}
+          onLeave={closeStudio}
+        />
+      )}
+      {mode === "create" && !loading && !error && !createMode && (
+        <div style={centeredMessageStyle}>
+          {createError ? "collage tools could not be opened" : "opening collage tools..."}
         </div>
       )}
 
@@ -273,7 +592,7 @@ export function ScrapsPage() {
       {!loading && error && (
         <div style={centeredMessageStyle}>scraps could not be gathered</div>
       )}
-      {!loading && !error && items.length === 0 && (
+      {mode === "browse" && !loading && !error && items.length === 0 && (
         <div style={centeredMessageStyle}>
           nothing has washed up yet - browse a while
         </div>

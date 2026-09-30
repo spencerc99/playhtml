@@ -29,10 +29,6 @@ vi.mock("webextension-polyfill", () => ({
   },
 }));
 
-vi.mock("../flags", () => ({
-  FLAGS: { COPRESENCE: true },
-}));
-
 vi.mock("../collectors/CollectorManager", () => ({
   CollectorManager: class {
     registerCollector = vi.fn();
@@ -73,10 +69,18 @@ describe("content page-lifecycle wiring", () => {
 
     storageGet.mockReset();
     storageGet.mockImplementation((keys: string | string[]) => {
-      if (!Array.isArray(keys)) return Promise.resolve({});
-      if (keys.includes("internalDevFeaturesEnabled")) {
-        return Promise.resolve({ internalDevFeaturesEnabled: false });
+      if (keys === "wwoFeatureAccess") {
+        return Promise.resolve({
+          wwoFeatureAccess: {
+            features: { COPRESENCE: { stage: "internal", available: true } },
+            checkedAt: 1,
+          },
+        });
       }
+      if (keys === "wwoFeatureOverrides") {
+        return Promise.resolve({ wwoFeatureOverrides: { COPRESENCE: true } });
+      }
+      if (!Array.isArray(keys)) return Promise.resolve({});
       return Promise.resolve(
         Object.fromEntries(
           keys

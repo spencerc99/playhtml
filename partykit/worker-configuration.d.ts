@@ -12,6 +12,7 @@ declare namespace Cloudflare {
     SUPABASE_URL: string;
     SUPABASE_KEY: string;
     ADMIN_TOKEN: string;
+    PARTYKIT_BRIDGE_SECRET: string;
     Main: DurableObjectNamespace<import("./worker").PartyServer>;
     Presence: DurableObjectNamespace<import("./worker").PresenceServer>;
     V2: DurableObjectNamespace<import("./worker").PartyServerV2>;
@@ -21,6 +22,7 @@ declare namespace Cloudflare {
     SUPABASE_URL: string;
     SUPABASE_KEY: string;
     ADMIN_TOKEN: string;
+    PARTYKIT_BRIDGE_SECRET: string;
     Main: DurableObjectNamespace<import("./worker").PartyServer>;
     Presence: DurableObjectNamespace<import("./worker").PresenceServer>;
     V2: DurableObjectNamespace<import("./worker").PartyServerV2>;

@@ -733,7 +733,7 @@ describe("deriveWalkingRecord", () => {
       "site-5.example",
       "3 others",
     ]);
-    expect(record.timeSpent[0].time).toBe("1h 20m");
+    expect(record.timeSpent[0].time).toBe("1h20m");
     expect(record.timeSpent.at(-1)?.time).toBe("1h");
   });
 

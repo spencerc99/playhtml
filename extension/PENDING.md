@@ -1,5 +1,7 @@
 # Unreleased
 
+- Internet scraps opens faster with large collections while search and filters still find older scraps.
+
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
 watches this file: when there are bullets, it opens (or updates) a release PR
@@ -15,6 +17,4 @@ extension/website/public/changelog/media/ and reference them here:
 ![video: Demo title](/changelog/media/file.mp4)
 -->
 
-- Wikipedia now keeps your article-name consistent across tabs and counts each connected reader once across pages.
-- Wikipedia shows other readers' live text selections in their cursor colors.
-- Wikipedia editing sessions now stay separate from article-reading rooms.
+- Notices in the popup now go away once you open them, and on their own after a few views.

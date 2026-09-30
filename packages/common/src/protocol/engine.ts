@@ -703,7 +703,7 @@ const createElementWorkingSnapshot = (
  * The touched element is replaced atomically; callers must not mutate snapshots
  * while an apply is in progress.
  *
- * @internal
+ * Shared by the client store and room server.
  */
 export const applyOperationInPlace = (
   snapshot: RoomSnapshot,
@@ -761,7 +761,7 @@ export const applyOperationInPlace = (
  * Replaces one element in an owned snapshot from another complete snapshot.
  * The value and sidecars are cloned so later optimistic writes stay isolated.
  *
- * @internal
+ * Shared by the client store and room server.
  */
 export const replaceSnapshotElementInPlace = (
   target: RoomSnapshot,

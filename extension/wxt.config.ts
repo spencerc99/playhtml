@@ -13,15 +13,12 @@ export default defineConfig({
       "storage",
       "tabs",
       "alarms",
-      ...(browser === "safari" ? [] : ["idle"]),
+      ...(browser === "safari" ? [] : ["idle", "webNavigation"]),
       "unlimitedStorage",
     ],
     host_permissions: ["http://*/*", "https://*/*"],
     action: {
       default_title: "we were online",
-    },
-    chrome_url_overrides: {
-      newtab: "newtab.html",
     },
     commands: {
       "open-inventory": {
@@ -34,7 +31,12 @@ export default defineConfig({
     },
     web_accessible_resources: [
       {
-        resources: ["content-scripts/content.css", "inventory/*"],
+        resources: [
+          "content-scripts/content.css",
+          "installation.js",
+          "historical-overlay.js",
+          "inventory/*",
+        ],
         matches: ["<all_urls>"],
       },
     ],
