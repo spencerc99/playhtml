@@ -3,6 +3,10 @@
 /// <reference lib="dom"/>
 /// <reference types="vite/client" />
 import YProvider from "y-partyserver/provider";
+import {
+  coalesceProviderUpdates,
+  type UpdateCoalescer,
+} from "./updateCoalescer";
 import "./style.scss";
 import {
   ElementData,
@@ -201,6 +205,8 @@ function getCurrentRoomHost(): string {
 }
 
 let yprovider: YProvider;
+let mainUpdateCoalescer: UpdateCoalescer | null = null;
+let flushesUpdatesOnPageHide = false;
 let cursorClient: CursorClientAwareness | null = null;
 let currentCursorRoomId = "";
 // The stable object returned by playhtml.presence for the instance lifetime.
@@ -1007,6 +1013,12 @@ function buildMainProvider(args: {
   };
 
   yprovider = new YProvider(partykitHost, room, doc, { params });
+  mainUpdateCoalescer = coalesceProviderUpdates(yprovider as any);
+  if (!flushesUpdatesOnPageHide && typeof window !== "undefined") {
+    flushesUpdatesOnPageHide = true;
+    // Send changes still waiting for the next batch before the page goes away.
+    window.addEventListener("pagehide", () => mainUpdateCoalescer?.flush());
+  }
   yprovider.on("error", () => {
     onError?.();
   });
@@ -1032,6 +1044,8 @@ function teardownCursors(): void {
 
 /** Disconnect and destroy the main Yjs provider. */
 function teardownMainProvider(): void {
+  try { mainUpdateCoalescer?.flush(); } catch {}
+  mainUpdateCoalescer = null;
   try { yprovider?.disconnect?.(); } catch {}
   try { yprovider?.destroy?.(); } catch {}
 }

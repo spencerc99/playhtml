@@ -2,6 +2,7 @@
 // ABOUTME: Verifies pixel-grid style changes coalesce before leaving the client.
 import { beforeEach, describe, expect, it } from "vitest";
 import { playhtml, resetPlayHTML } from "../index";
+import { UPDATE_SEND_INTERVAL_MS } from "../updateCoalescer";
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 const flushFrame = () =>
@@ -56,6 +57,8 @@ describe("can-mirror network pacing", () => {
     }
 
     await flushFrame();
+    // Outgoing updates are batched; wait for the batch to send.
+    await new Promise((resolve) => setTimeout(resolve, UPDATE_SEND_INTERVAL_MS));
     await flush();
 
     expect(provider.ws.send).toHaveBeenCalledTimes(1);
