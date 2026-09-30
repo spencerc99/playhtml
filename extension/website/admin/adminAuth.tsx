@@ -51,8 +51,8 @@ export function AdminLogin({ onLogin }: { onLogin: (token: string) => void }) {
   return (
     <main className="office-login">
       <div className="office-login__card">
-        <span className="office-kicker">WE WERE ONLINE</span>
-        <h1>Internal Office</h1>
+        <span className="office-wordmark">we were online</span>
+        <h1>Internal office</h1>
         <p>Use the Worker admin key to open WWO operator tools.</p>
         <form onSubmit={(event) => {
           event.preventDefault();
@@ -78,7 +78,7 @@ export function AdminHeader({
 }) {
   return (
     <header className="office-header">
-      <div><span className="office-kicker">WE WERE ONLINE</span><h1>Internal Office</h1></div>
+      <div className="office-header__brand"><a className="office-wordmark" href="/">we were online</a><h1>internal office</h1></div>
       <nav aria-label="Internal tools">
         <a aria-current={currentPage === "access" ? "page" : undefined} href="/admin/">Access control</a>
         <a aria-current={currentPage === "installation" ? "page" : undefined}
