@@ -244,6 +244,17 @@ export class AdminHandler {
       // Get reset epoch
       const resetEpoch = await this.context.getResetEpoch();
 
+      // The stored document lags the live one by whatever the write-behind log
+      // holds, so inspection reports the log alongside it.
+      let writeBehind: unknown;
+      try {
+        writeBehind = await this.context.getWriteBehindStatus();
+      } catch (error: unknown) {
+        writeBehind = {
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+
       const roomData = {
         roomId: this.context.name,
         subscribers,
@@ -255,6 +266,7 @@ export class AdminHandler {
         timestamp: new Date().toISOString(),
         documentSize: documentSize || 0,
         resetEpoch: resetEpoch,
+        writeBehind,
       };
 
       return new Response(JSON.stringify(roomData, null, 2), {

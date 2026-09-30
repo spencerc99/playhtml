@@ -80,14 +80,16 @@ export function clearDocState(doc: Y.Doc): void {
  * @param doc The live Y.Doc to update
  * @param snapshotBase64 Base64-encoded Y.Doc update from the database
  */
+// Transaction origin of replaceDocFromSnapshot, so observers can tell a
+// wholesale replacement apart from an ordinary edit.
+export const REPLACE_DOCUMENT_ORIGIN = "hard-reset";
+
 export function replaceDocFromSnapshot(
   doc: Y.Doc,
   snapshotBase64: string
 ): void {
   const buffer = new Uint8Array(Buffer.from(snapshotBase64, "base64"));
-
-  // Use a specific origin to help distinguish this "system" update if needed
-  const origin = "hard-reset";
+  const origin = REPLACE_DOCUMENT_ORIGIN;
 
   doc.transact(() => {
     // NUCLEAR OPTION: Deep clean the Y.Doc internals to remove history/tombstones.

@@ -121,6 +121,13 @@ export const DEFAULT_SUPABASE_RECOVERY_RETRY_DELAY_MS = 5_000;
 export const DEFAULT_SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS = 5 * 60_000;
 // Save retries use a single deadline while limiting database traffic during outages.
 export const DEFAULT_DOCUMENT_SAVE_RETRY_MS = 60_000;
+// Write-behind persistence: autosaves append Yjs updates to Durable Object
+// storage and write the full document to the database at most this often while
+// a room stays connected. Rooms also checkpoint when they empty.
+export const DEFAULT_WRITE_BEHIND_CHECKPOINT_INTERVAL_MS = 5 * 60_000;
+// A log larger than this is checkpointed at the next save, which bounds the
+// work a cold start does replaying it.
+export const DEFAULT_WRITE_BEHIND_LOG_MAX_BYTES = 1024 * 1024;
 export const ORIGIN_S2C = "__bridge_s2c__";
 export const ORIGIN_C2S = "__bridge_c2s__";
 

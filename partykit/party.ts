@@ -18,6 +18,7 @@ import {
   replaceDocFromSnapshot,
   setDocResetEpoch,
   getDocResetEpoch,
+  REPLACE_DOCUMENT_ORIGIN,
 } from "./docUtils";
 import {
   createAdminSnapshotFromPlayData,
@@ -43,6 +44,8 @@ import {
   DEFAULT_SUPABASE_RECOVERY_RETRY_DELAY_MS,
   DEFAULT_SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS,
   DEFAULT_DOCUMENT_SAVE_RETRY_MS,
+  DEFAULT_WRITE_BEHIND_CHECKPOINT_INTERVAL_MS,
+  DEFAULT_WRITE_BEHIND_LOG_MAX_BYTES,
   DEFAULT_PRUNE_INTERVAL_MS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
   ORIGIN_S2C,
@@ -114,6 +117,21 @@ import {
   readCachedDocument,
   writeCachedDocument,
 } from "./documentCache";
+import {
+  appendLogEntry,
+  getLogCheckpointDueAt,
+  getLogHydrationDecision,
+  hasLogEntries,
+  orphanLog,
+  readBaseStateVector,
+  readLogEntries,
+  readLogMeta,
+  readOrphan,
+  resetLog,
+  shouldCheckpointLog,
+  type WriteBehindLogMeta,
+  type WriteBehindOrphan,
+} from "./writeBehindLog";
 export { PresenceServer } from "./presenceServer";
 
 const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
@@ -152,6 +170,9 @@ type CommitCompactedDocumentOptions = {
 
 type PersistLiveDocumentOptions = {
   allowCompaction: boolean;
+  // Write the full document to the database even when the write-behind log
+  // could hold this save.
+  checkpoint: boolean;
 };
 
 type RoomState =
@@ -163,6 +184,27 @@ type RoomState =
 
 type SaveDocumentOptions = {
   operation?: "shared-data" | "reset" | "quarantine-repair";
+  // State vector of `documentBase64`, when the caller already has it.
+  stateVector?: Uint8Array;
+  // What happens to write-behind log entries this document replaces. Documents
+  // derived from the live document already contain them and discard the log.
+  // Documents from outside (an operator snapshot, the database row) keep the
+  // entries as an orphan so they can still be recovered.
+  logDisposition?: "discard" | "orphan";
+};
+
+// Where a restored snapshot came from. "live" snapshots are derived from the
+// live document, so they contain every logged update.
+type SnapshotSource = "live" | "external";
+
+export type WriteBehindStatus = {
+  pendingUpdates: number;
+  logEntries: number;
+  logBytes: number;
+  firstEntryAt: number | null;
+  baseVersion: string | null;
+  checkpointRequired: boolean;
+  orphan: WriteBehindOrphan | null;
 };
 
 type DocumentSaveRetry = {
@@ -230,6 +272,17 @@ export class PartyServer extends YServer {
   private documentWriteTail: Promise<void> = Promise.resolve();
   private documentGeneration = 0;
   private persistenceObserverAttached = false;
+  // Write-behind persistence (see writeBehindLog.ts): saves append the updates
+  // accepted since the last database checkpoint to a Durable Object storage
+  // log, and the full document reaches the database on a checkpoint cadence.
+  // `writeBehindPending` holds captured updates that are not in the log yet.
+  // The log only grows while this instance knows which checkpoint it is
+  // relative to; otherwise every save writes the full document.
+  private writeBehindPending: Uint8Array[] = [];
+  private writeBehindPendingResets = 0;
+  private writeBehindMeta: WriteBehindLogMeta | null | undefined;
+  private writeBehindCheckpointVersion: string | null | undefined;
+  private writeBehindCheckpointRequired = false;
   private emptyRoomCompactionPromise: Promise<void> | null = null;
   private compactionAutosaveSnapshot: string | null = null;
   private cachedResetEpoch: number | null | undefined;
@@ -615,10 +668,26 @@ export class PartyServer extends YServer {
   private attachPersistenceObserver(): void {
     if (this.persistenceObserverAttached) return;
     this.documentGeneration ??= 0;
-    this.document.on("update", () => {
+    this.document.on("update", (update: Uint8Array, origin: unknown) => {
       this.documentGeneration += 1;
+      this.captureWriteBehindUpdate(update, origin);
     });
     this.persistenceObserverAttached = true;
+  }
+
+  // Every replacement of the live document first writes the replacement to the
+  // database, so the updates captured before it are already covered.
+  private captureWriteBehindUpdate(update: Uint8Array, origin: unknown): void {
+    if (origin === REPLACE_DOCUMENT_ORIGIN) {
+      this.clearWriteBehindPending();
+      return;
+    }
+    (this.writeBehindPending ??= []).push(update);
+  }
+
+  private clearWriteBehindPending(): void {
+    this.writeBehindPending = [];
+    this.writeBehindPendingResets = (this.writeBehindPendingResets ?? 0) + 1;
   }
 
   private roomState(): RoomState {
@@ -867,14 +936,18 @@ export class PartyServer extends YServer {
   }
 
   async saveLiveDocument(): Promise<boolean> {
-    return this.persistLiveDocument({ allowCompaction: false });
+    return this.persistLiveDocument({ allowCompaction: false, checkpoint: true });
   }
 
+  // Writes a full document to the database. This is the only database write
+  // path, so it is also where the write-behind log restarts from the new
+  // checkpoint.
   private async saveDocumentBase64Now(
     documentBase64: string,
     options: SaveDocumentOptions = {}
   ): Promise<void> {
     this.assertDocumentSaveAllowed(options);
+    this.attachPersistenceObserver();
 
     const { data, error } = await supabase
       .from("documents")
@@ -894,6 +967,223 @@ export class PartyServer extends YServer {
 
     this.markDocumentPersisted(documentBase64);
     await this.refreshDocumentCache(data?.version, documentBase64);
+    await this.restartWriteBehindLog({
+      version: data?.version,
+      documentBase64,
+      stateVector: options.stateVector,
+      logDisposition: options.logDisposition ?? "discard",
+    });
+  }
+
+  private getWriteBehindCheckpointIntervalMs(): number {
+    return readPositiveNumberEnv(
+      "WRITE_BEHIND_CHECKPOINT_INTERVAL_MS",
+      DEFAULT_WRITE_BEHIND_CHECKPOINT_INTERVAL_MS
+    );
+  }
+
+  private getWriteBehindLogMaxBytes(): number {
+    return readPositiveNumberEnv(
+      "WRITE_BEHIND_LOG_MAX_BYTES",
+      DEFAULT_WRITE_BEHIND_LOG_MAX_BYTES
+    );
+  }
+
+  // The log may only grow while this instance knows the checkpoint it is
+  // relative to and has captured every update since that checkpoint.
+  private canAppendToWriteBehindLog(): boolean {
+    const meta = this.writeBehindMeta;
+    return (
+      this.persistenceObserverAttached &&
+      !this.writeBehindCheckpointRequired &&
+      meta !== undefined &&
+      meta !== null &&
+      this.writeBehindCheckpointVersion !== undefined &&
+      meta.baseVersion === this.writeBehindCheckpointVersion
+    );
+  }
+
+  private hasUnsavedWriteBehindState(): boolean {
+    const meta = this.writeBehindMeta;
+    return (
+      (this.writeBehindPending?.length ?? 0) > 0 ||
+      (meta !== undefined && meta !== null && hasLogEntries(meta))
+    );
+  }
+
+  // Moves captured updates into the durable log. Returns false when the log
+  // could not be written; the updates stay captured and the caller must write
+  // the full document instead.
+  private async appendPendingToWriteBehindLog(): Promise<boolean> {
+    const meta = this.writeBehindMeta;
+    if (!this.canAppendToWriteBehindLog() || !meta) return false;
+    const taken = this.writeBehindPending ?? [];
+    if (taken.length === 0) return true;
+
+    const resets = this.writeBehindPendingResets ?? 0;
+    this.writeBehindPending = [];
+    const update = taken.length === 1 ? taken[0] : Y.mergeUpdates(taken);
+    try {
+      this.writeBehindMeta = await appendLogEntry(
+        this.ctx.storage,
+        meta,
+        update,
+        Date.now()
+      );
+    } catch (error) {
+      console.error(
+        `[PartyServer] Write-behind append failed for room=${this.name}; writing the full document instead`,
+        error
+      );
+      // A replacement while the write was in flight already covers `taken`.
+      if ((this.writeBehindPendingResets ?? 0) === resets) {
+        this.writeBehindPending = [...taken, ...this.writeBehindPending];
+      }
+      this.writeBehindCheckpointRequired = true;
+      return false;
+    }
+    return true;
+  }
+
+  // After a successful database write the log restarts on top of that
+  // document. If the restart fails the old log stays in place, which is safe
+  // (see getLogHydrationDecision), and saves write the full document until a
+  // restart succeeds.
+  private async restartWriteBehindLog({
+    version,
+    documentBase64,
+    stateVector,
+    logDisposition,
+  }: {
+    version: unknown;
+    documentBase64: string;
+    stateVector: Uint8Array | undefined;
+    logDisposition: "discard" | "orphan";
+  }): Promise<void> {
+    const storage = this.ctx.storage;
+    try {
+      if (typeof version !== "string") {
+        throw new Error(`documents row returned no version (got ${version})`);
+      }
+      const previous =
+        this.writeBehindMeta !== undefined
+          ? this.writeBehindMeta
+          : await readLogMeta(storage);
+      const keepPreviousEntries =
+        logDisposition === "orphan" &&
+        previous !== null &&
+        hasLogEntries(previous);
+      if (keepPreviousEntries) {
+        await orphanLog(storage, previous, version, Date.now());
+        console.warn(
+          `[PartyServer] Write-behind log kept as orphan for room=${this.name}: ` +
+            `a replacement document superseded ${previous.nextSeq - previous.firstSeq} entries (${previous.bytes} bytes) ` +
+            `logged on top of version=${previous.baseVersion ?? "none"}`
+        );
+      }
+      this.writeBehindMeta = await resetLog(
+        storage,
+        previous,
+        version,
+        stateVector ??
+          Y.encodeStateVectorFromUpdate(
+            new Uint8Array(Buffer.from(documentBase64, "base64"))
+          ),
+        { keepPreviousEntries }
+      );
+      this.writeBehindCheckpointVersion = version;
+      this.writeBehindCheckpointRequired = false;
+    } catch (error) {
+      console.error(
+        `[PartyServer] Write-behind log restart failed for room=${this.name}; saves write the full document until it succeeds`,
+        error
+      );
+      this.writeBehindCheckpointRequired = true;
+    }
+  }
+
+  // Loads the log a starting room replays on top of the database document,
+  // and leaves the log based on that document. `getDatabaseStateVector`
+  // returns the Yjs state vector of the loaded database document.
+  private async prepareWriteBehindReplay(
+    databaseVersion: string | null,
+    getDatabaseStateVector: () => Uint8Array
+  ): Promise<Uint8Array[]> {
+    const storage = this.ctx.storage;
+    let meta = await readLogMeta(storage);
+    let entries: Uint8Array[] = [];
+    let rebased = false;
+
+    if (meta !== null && hasLogEntries(meta)) {
+      const versionsMatch = meta.baseVersion === databaseVersion;
+      const decision = getLogHydrationDecision({
+        meta,
+        databaseVersion,
+        databaseStateVector:
+          versionsMatch || databaseVersion === null
+            ? new Map()
+            : Y.decodeStateVector(getDatabaseStateVector()),
+        baseStateVector: versionsMatch
+          ? new Map()
+          : await readBaseStateVector(storage, meta),
+      });
+
+      if (decision.kind === "apply") {
+        entries = await readLogEntries(storage, meta);
+        rebased = decision.rebased;
+        console.log(
+          `[PartyServer] Write-behind log replayed: room=${this.name}, entries=${entries.length}, ` +
+            `bytes=${meta.bytes}, baseVersion=${meta.baseVersion ?? "none"}, databaseVersion=${databaseVersion ?? "none"}`
+        );
+      } else if (decision.kind === "orphan") {
+        await orphanLog(storage, meta, databaseVersion, Date.now());
+        console.error(
+          `[PartyServer] WRITE-BEHIND LOG ORPHANED for room=${this.name}: the stored document was replaced outside this room ` +
+            `(baseVersion=${meta.baseVersion ?? "none"}, databaseVersion=${databaseVersion ?? "none"}). ` +
+            `The stored document wins; ${meta.nextSeq - meta.firstSeq} log entries (${meta.bytes} bytes) are kept for recovery.`
+        );
+        meta = await resetLog(
+          storage,
+          meta,
+          databaseVersion,
+          getDatabaseStateVector(),
+          { keepPreviousEntries: true }
+        );
+      }
+    }
+
+    if (
+      entries.length === 0 &&
+      (meta === null || meta.baseVersion !== databaseVersion)
+    ) {
+      meta = await resetLog(
+        storage,
+        meta,
+        databaseVersion,
+        getDatabaseStateVector()
+      );
+    }
+
+    this.writeBehindMeta = meta;
+    this.writeBehindCheckpointVersion = databaseVersion;
+    this.writeBehindCheckpointRequired = rebased;
+    return entries;
+  }
+
+  async getWriteBehindStatus(): Promise<WriteBehindStatus> {
+    const meta =
+      this.writeBehindMeta !== undefined
+        ? this.writeBehindMeta
+        : await readLogMeta(this.ctx.storage);
+    return {
+      pendingUpdates: this.writeBehindPending?.length ?? 0,
+      logEntries: meta ? meta.nextSeq - meta.firstSeq : 0,
+      logBytes: meta?.bytes ?? 0,
+      firstEntryAt: meta?.firstEntryAt ?? null,
+      baseVersion: meta?.baseVersion ?? null,
+      checkpointRequired: this.writeBehindCheckpointRequired ?? false,
+      orphan: await readOrphan(this.ctx.storage),
+    };
   }
 
   // The local copy is an optimization: a failure here never fails the save. It
@@ -975,7 +1265,10 @@ export class PartyServer extends YServer {
           `[PartyServer] Compaction skipped for room=${this.name}: live document changed while the candidate was built`
         );
         this.documentMaintenanceInProgress = false;
-        await this.persistLiveDocumentNow({ allowCompaction: false });
+        await this.persistLiveDocumentNow({
+          allowCompaction: false,
+          checkpoint: true,
+        });
         return false;
       }
 
@@ -998,7 +1291,10 @@ export class PartyServer extends YServer {
             `[PartyServer] Compaction skipped for room=${this.name}: persisted document no longer matches compacted source; saving live document first`
           );
           this.documentMaintenanceInProgress = false;
-          await this.persistLiveDocumentNow({ allowCompaction: false });
+          await this.persistLiveDocumentNow({
+          allowCompaction: false,
+          checkpoint: true,
+        });
           return false;
         }
 
@@ -1017,7 +1313,10 @@ export class PartyServer extends YServer {
           `[PartyServer] Compaction skipped for room=${this.name}: live document changed during validation`
         );
         this.documentMaintenanceInProgress = false;
-        await this.persistLiveDocumentNow({ allowCompaction: false });
+        await this.persistLiveDocumentNow({
+          allowCompaction: false,
+          checkpoint: true,
+        });
         return false;
       }
 
@@ -1244,6 +1543,7 @@ export class PartyServer extends YServer {
       allowQuarantined?: boolean;
       connectionCloseReason?: string;
       completeHydration?: boolean;
+      snapshotSource?: SnapshotSource;
     }
   ): Promise<{
     documentSize: number;
@@ -1262,6 +1562,7 @@ export class PartyServer extends YServer {
       allowQuarantined?: boolean;
       connectionCloseReason?: string;
       completeHydration?: boolean;
+      snapshotSource?: SnapshotSource;
     }
   ): Promise<{
     documentSize: number;
@@ -1307,11 +1608,19 @@ export class PartyServer extends YServer {
       }
       const documentSize = updatedBase64.length;
 
+      // An external snapshot supersedes whatever the live document holds.
+      // Durably log the live edits first so the orphaned log keeps them.
+      const snapshotSource = options?.snapshotSource ?? "external";
+      if (snapshotSource === "external") {
+        await this.appendPendingToWriteBehindLog();
+      }
+
       // Save to database
       console.log(`[Restore Snapshot] Saving snapshot to database...`);
       try {
         await this.saveDocumentBase64Now(updatedBase64, {
           operation: options?.allowQuarantined ? "quarantine-repair" : "reset",
+          logDisposition: snapshotSource === "external" ? "orphan" : "discard",
         });
       } catch (saveError) {
         console.error(
@@ -1404,7 +1713,10 @@ export class PartyServer extends YServer {
   }> {
     const resetEpoch = await this.createResetEpoch();
     const snapshot = createAdminSnapshotFromPlayData(playData, resetEpoch);
-    return this.restoreFromSnapshotNow(snapshot.base64, { bumpEpoch: false });
+    return this.restoreFromSnapshotNow(snapshot.base64, {
+      bumpEpoch: false,
+      snapshotSource: "live",
+    });
   }
 
   async mutateAdminPlayData<T>(
@@ -1456,10 +1768,19 @@ export class PartyServer extends YServer {
     const documentSaveRetry = await this.getDocumentSaveRetry();
     const loadRetryAlarm =
       await this.circuitBreaker.getFailureRetryAfter("load");
+    // A pending save retry already owns the next checkpoint attempt.
+    const writeBehindCheckpointAlarm =
+      documentSaveRetry === null
+        ? getLogCheckpointDueAt(
+            this.writeBehindMeta,
+            this.getWriteBehindCheckpointIntervalMs()
+          )
+        : null;
     const nextAlarm = [
       maintenanceAlarm,
       documentSaveRetry?.retryAt ?? null,
       loadRetryAlarm,
+      writeBehindCheckpointAlarm,
     ].reduce<number | null>(
       (earliest, candidate) =>
         candidate === null
@@ -2059,6 +2380,25 @@ export class PartyServer extends YServer {
         error
       );
     }
+
+    // An empty room writes everything it logged to the database.
+    if (
+      this.getOpenConnectionCount() === 0 &&
+      this.canWriteSharedData() &&
+      this.hasUnsavedWriteBehindState()
+    ) {
+      try {
+        await this.persistLiveDocument({
+          allowCompaction: true,
+          checkpoint: true,
+        });
+      } catch (error) {
+        console.error(
+          `[PartyServer] Empty-room checkpoint failed after close: room=${this.name} connection=${connection.id}`,
+          error
+        );
+      }
+    }
   }
 
   // Benign disconnect errors thrown by the Cloudflare runtime when a client's
@@ -2247,26 +2587,52 @@ export class PartyServer extends YServer {
       this.markDocumentPersisted(result.data.document);
     }
 
+    const databaseVersion = result.data
+      ? this.requireDocumentVersion(result.data.version)
+      : null;
+    const persistedDocumentBytes = new Uint8Array(
+      Buffer.from(persistedDocument, "base64")
+    );
+    this.attachPersistenceObserver();
+
     const persistenceRecoveryPending =
       (await this.ctx.storage.get(STORAGE_KEYS.persistenceRecoveryPending)) ===
       true;
     if (persistenceRecoveryPending) {
-      // The persisted snapshot is authoritative. Transient and quarantined
-      // rooms may have an in-memory Y.Doc containing state that was never
-      // accepted for persistence, so merging here would resurrect it.
-      await this.restoreFromSnapshotNow(persistedDocument, {
+      // The persisted snapshot plus the updates logged on top of it are
+      // authoritative. Transient and quarantined rooms may have an in-memory
+      // Y.Doc containing state that was never accepted for persistence, so
+      // merging here would resurrect it.
+      const logEntries = await this.prepareWriteBehindReplay(
+        databaseVersion,
+        () => Y.encodeStateVectorFromUpdate(persistedDocumentBytes)
+      );
+      const recoverySnapshot =
+        logEntries.length === 0
+          ? persistedDocument
+          : Buffer.from(
+              Y.mergeUpdates([persistedDocumentBytes, ...logEntries])
+            ).toString("base64");
+      await this.restoreFromSnapshotNow(recoverySnapshot, {
         bumpEpoch: true,
         allowQuarantined: true,
         connectionCloseReason: "Room Persistence Restored",
         completeHydration: false,
+        snapshotSource: "live",
       });
       await this.ctx.storage.delete(STORAGE_KEYS.persistenceRecoveryPending);
     } else {
       if (result.data) {
-        Y.applyUpdate(
-          this.document,
-          new Uint8Array(Buffer.from(persistedDocument, "base64"))
-        );
+        Y.applyUpdate(this.document, persistedDocumentBytes);
+      }
+      const logEntries = await this.prepareWriteBehindReplay(
+        databaseVersion,
+        () => Y.encodeStateVector(this.document)
+      );
+      for (const entry of logEntries) {
+        Y.applyUpdate(this.document, entry);
+      }
+      if (result.data || logEntries.length > 0) {
         const documentResetEpoch = getDocResetEpoch(this.document);
         const storedResetEpoch = await this.getResetEpoch();
         if (
@@ -2282,6 +2648,8 @@ export class PartyServer extends YServer {
       }
       this.markDocumentHydrated();
     }
+    // Hydration itself is already durable in the database and the log.
+    this.clearWriteBehindPending();
 
     // Recovery evidence is cleared only after the authoritative reset and
     // recovery intent cleanup both succeed.
@@ -2292,9 +2660,16 @@ export class PartyServer extends YServer {
     }
   }
 
+  private requireDocumentVersion(version: unknown): string {
+    if (typeof version !== "string") {
+      throw new Error(`documents row returned no version (got ${version})`);
+    }
+    return version;
+  }
+
   override async onSave(): Promise<void> {
     this.attachPersistenceObserver();
-    await this.persistLiveDocument({ allowCompaction: true });
+    await this.persistLiveDocument({ allowCompaction: true, checkpoint: false });
   }
 
   private async getUsefulCompactedDocument({
@@ -2419,18 +2794,18 @@ export class PartyServer extends YServer {
     return true;
   }
 
-  private async persistLiveDocument({
-    allowCompaction,
-  }: PersistLiveDocumentOptions): Promise<boolean> {
-    return this.runDocumentWrite(() =>
-      this.persistLiveDocumentNow({ allowCompaction })
-    );
+  private async persistLiveDocument(
+    options: PersistLiveDocumentOptions
+  ): Promise<boolean> {
+    return this.runDocumentWrite(() => this.persistLiveDocumentNow(options));
   }
 
   private async persistLiveDocumentNow({
     allowCompaction,
+    checkpoint,
   }: PersistLiveDocumentOptions): Promise<boolean> {
     const doc = this.document;
+    this.attachPersistenceObserver();
 
     const state = this.roomState();
     if (state !== "ready") {
@@ -2468,13 +2843,54 @@ export class PartyServer extends YServer {
     // compaction), which bump the reset epoch and are caught by the validation above.
     //
     // Consequence: direct/external writes to the documents row (SQL, Supabase
-    // console, scripts) are NOT supported. They do not bump the reset epoch, so
-    // the next autosave overwrites them with the live doc. To change a room's
+    // console, scripts) are NOT supported while the room is running. They do
+    // not bump the reset epoch, so the next checkpoint overwrites them with the
+    // live doc. A row edited while the room is stopped wins on the next start
+    // (see getLogHydrationDecision). To change a room's
     // persisted data out of band, go through the admin console (force-reload-live
     // or an admin edit), which creates a reset boundary.
-    const documentBase64 = encodeDocToBase64(doc);
-    const documentSize = documentBase64.length;
     const activeConnectionCount = this.getOpenConnectionCount();
+
+    // Write-behind: the captured updates go to the Durable Object log, which is
+    // durable once the append resolves. The full document only goes to the
+    // database when a checkpoint is due. Checkpoints still log first, so a
+    // failed database write loses nothing.
+    if (this.canAppendToWriteBehindLog()) {
+      const hadLogEntries =
+        this.writeBehindMeta !== null &&
+        this.writeBehindMeta !== undefined &&
+        hasLogEntries(this.writeBehindMeta);
+      const appended = await this.appendPendingToWriteBehindLog();
+      const meta = this.writeBehindMeta;
+      if (appended && !checkpoint && meta) {
+        const saveRetry = await this.getDocumentSaveRetry();
+        if (
+          !shouldCheckpointLog({
+            meta,
+            now: Date.now(),
+            activeConnectionCount,
+            checkpointIntervalMs: this.getWriteBehindCheckpointIntervalMs(),
+            maxLogBytes: this.getWriteBehindLogMaxBytes(),
+            saveRetryAt: saveRetry?.retryAt ?? null,
+          })
+        ) {
+          this.compactionAutosaveSnapshot = null;
+          // The first entry of a log sets its checkpoint deadline.
+          if (meta.firstEntryAt !== null && !hadLogEntries) {
+            await this.scheduleNextAlarm();
+          }
+          return true;
+        }
+      }
+    }
+
+    // The encoded document, its state vector, and the captured updates it
+    // covers are all taken together, before any await.
+    const documentBase64 = encodeDocToBase64(doc);
+    const documentStateVector = Y.encodeStateVector(doc);
+    const coveredPendingCount = this.writeBehindPending?.length ?? 0;
+    const pendingResets = this.writeBehindPendingResets ?? 0;
+    const documentSize = documentBase64.length;
 
     this.lastKnownDocumentBytes = documentSize;
 
@@ -2541,7 +2957,14 @@ export class PartyServer extends YServer {
     }
 
     try {
-      await this.saveDocumentBase64Now(documentBase64);
+      await this.saveDocumentBase64Now(documentBase64, {
+        stateVector: documentStateVector,
+      });
+      if ((this.writeBehindPendingResets ?? 0) === pendingResets) {
+        this.writeBehindPending = (this.writeBehindPending ?? []).slice(
+          coveredPendingCount
+        );
+      }
     } catch (error) {
       console.error(
         `[PartyServer] SUPABASE AUTOSAVE FAILED for room ${this.name}:`,
@@ -3178,6 +3601,7 @@ export class PartyServer extends YServer {
       const restored = await this.restoreFromSnapshotNow(freshBase64, {
         bumpEpoch: false,
         connectionCloseReason: "Room Reset by Admin",
+        snapshotSource: "live",
       });
 
       const sizeReduction = beforeSize - afterSize;
@@ -3211,6 +3635,19 @@ export class PartyServer extends YServer {
   }
 
   private async compactEmptyRoomDocumentOnce(): Promise<void> {
+    // Compaction validates against the stored document, so logged updates are
+    // written to the database first.
+    if (this.hasUnsavedWriteBehindState()) {
+      const saved = await this.persistLiveDocumentNow({
+        allowCompaction: false,
+        checkpoint: true,
+      });
+      if (!saved) {
+        await this.clearEmptyRoomCompactAfter();
+        return;
+      }
+    }
+
     const compactedDocument = this.buildCompactedDocument(this.document);
     if (compactedDocument === null) {
       await this.clearEmptyRoomCompactAfter();
@@ -3330,7 +3767,10 @@ export class PartyServer extends YServer {
         if (this.roomState() === "ready") {
           await this.clearDocumentSaveRetry();
           try {
-            await this.persistLiveDocument({ allowCompaction: false });
+            await this.persistLiveDocument({
+              allowCompaction: false,
+              checkpoint: true,
+            });
           } catch (error) {
             await this.scheduleDocumentSaveRetry();
             throw error;
@@ -3341,6 +3781,27 @@ export class PartyServer extends YServer {
           // retry marker and try again on the next alarm instead of clearing
           // it here — clearing unconditionally would silently drop this save
           // forever if no further edit ever re-triggers persistence.
+          await this.scheduleDocumentSaveRetry();
+        }
+      }
+
+      // A log that stopped receiving saves (idle but connected clients, or a
+      // restarted room nobody rejoined) still reaches the database on time.
+      const checkpointDueAt = getLogCheckpointDueAt(
+        this.writeBehindMeta,
+        this.getWriteBehindCheckpointIntervalMs()
+      );
+      if (
+        checkpointDueAt !== null &&
+        checkpointDueAt <= Date.now() &&
+        (await this.getDocumentSaveRetry()) === null
+      ) {
+        if (this.roomState() === "ready") {
+          await this.persistLiveDocument({
+            allowCompaction: false,
+            checkpoint: true,
+          });
+        } else {
           await this.scheduleDocumentSaveRetry();
         }
       }

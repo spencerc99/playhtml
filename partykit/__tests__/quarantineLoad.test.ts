@@ -3326,9 +3326,13 @@ describe("persisted document copy", () => {
 
     expect(saved).toBe(true);
     expect(persistedRow.document).toBe(encodeDoc(doc));
+    // The same storage failure also stops the write-behind log from restarting,
+    // which only means the next save writes the full document again.
     expect(errors).toEqual([
       "[PartyServer] Document cache write failed for room=example-room; next start loads from the database",
+      "[PartyServer] Write-behind log restart failed for room=example-room; saves write the full document until it succeeds",
     ]);
+    expect(room.writeBehindCheckpointRequired).toBe(true);
     expect(storage.values.has("documentCache:meta")).toBe(false);
   });
 
@@ -3549,3 +3553,449 @@ describe("stale reset-epoch connections", () => {
     expect(storage.writeLog.length).toBe(writesBefore);
   });
 });
+
+describe("write-behind persistence", () => {
+  type Captured = { logs: string[]; warnings: string[]; errors: string[] };
+
+  // Runs `work` with console output captured so expected log lines are
+  // asserted rather than printed.
+  async function capturing<T>(
+    work: () => Promise<T>
+  ): Promise<{ result: T } & Captured> {
+    const captured: Captured = { logs: [], warnings: [], errors: [] };
+    const original = {
+      log: console.log,
+      warn: console.warn,
+      error: console.error,
+    };
+    console.log = (...args: unknown[]) => captured.logs.push(String(args[0]));
+    console.warn = (...args: unknown[]) =>
+      captured.warnings.push(String(args[0]));
+    console.error = (...args: unknown[]) =>
+      captured.errors.push(String(args[0]));
+    try {
+      return { result: await work(), ...captured };
+    } finally {
+      console.log = original.log;
+      console.warn = original.warn;
+      console.error = original.error;
+    }
+  }
+
+  function fakeConnection(id: string) {
+    const state: Record<string, unknown> = {};
+    return {
+      id,
+      readyState: 1,
+      closes: [] as string[],
+      send() {},
+      close(_code: number, reason: string) {
+        this.closes.push(reason);
+      },
+      get state() {
+        return state;
+      },
+      setState(next: unknown) {
+        const resolved = typeof next === "function" ? next(state) : next;
+        Object.assign(state, resolved);
+      },
+    };
+  }
+
+  // A room loaded from the stored row with one connected client.
+  async function startConnectedRoom(storage = new FakeStorage()) {
+    const room = restartRoom(storage);
+    const connections = [fakeConnection("c1")];
+    room.getConnections = () => connections;
+    room.broadcastCustomMessage = () => {};
+    await capturing(() => startRoom(room));
+    room.document.awareness = new awarenessProtocol.Awareness(room.document);
+    return { room, storage, connections };
+  }
+
+  async function edit(room: any, key: string, value: unknown) {
+    room.document.getMap("play").set(key, value);
+    return capturing(() => room.onSave());
+  }
+
+  function storedPlay(): Record<string, unknown> {
+    const doc = new Y.Doc();
+    Y.applyUpdate(
+      doc,
+      new Uint8Array(Buffer.from(persistedRow.document!, "base64"))
+    );
+    return doc.getMap("play").toJSON();
+  }
+
+  function withEnv(name: string, value: string, work: () => Promise<void>) {
+    return async () => {
+      const previous = workerEnv[name];
+      workerEnv[name] = value;
+      try {
+        await work();
+      } finally {
+        if (previous === undefined) delete workerEnv[name];
+        else workerEnv[name] = previous;
+      }
+    };
+  }
+
+  test("a busy room logs its edits instead of rewriting the stored document", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = await startConnectedRoom();
+    upsertCalls = [];
+
+    for (let index = 0; index < 20; index += 1) {
+      const { logs, warnings, errors } = await edit(room, `key-${index}`, index);
+      expect([...logs, ...warnings, ...errors]).toEqual([]);
+    }
+
+    expect(upsertCalls).toEqual([]);
+    const status = await room.getWriteBehindStatus();
+    expect(status.logEntries).toBe(20);
+    expect(status.pendingUpdates).toBe(0);
+    // The first entry set the deadline for the checkpoint alarm.
+    expect(storage.alarm).toBe(status.firstEntryAt + 5 * 60_000);
+
+    // A restart replays the log on top of the local copy of the stored row.
+    documentDownloadCount = 0;
+    const restarted = restartRoom(storage);
+    const { logs } = await capturing(() => startRoom(restarted));
+    expect(documentDownloadCount).toBe(0);
+    expect(logs).toContainEqual(
+      expect.stringContaining(
+        "[PartyServer] Write-behind log replayed: room=example-room, entries=20"
+      )
+    );
+    const play = restarted.document.getMap("play").toJSON();
+    expect(play.greeting).toBe("hello");
+    for (let index = 0; index < 20; index += 1) {
+      expect(play[`key-${index}`]).toBe(index);
+    }
+  });
+
+  test("the room checkpoints once the oldest logged edit waited the interval", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = await startConnectedRoom();
+    upsertCalls = [];
+    await edit(room, "first", 1);
+    room.writeBehindMeta = {
+      ...room.writeBehindMeta,
+      firstEntryAt: Date.now() - 5 * 60_000,
+    };
+
+    await edit(room, "second", 2);
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(storedPlay()).toMatchObject({ first: 1, second: 2 });
+    const status = await room.getWriteBehindStatus();
+    expect(status.logEntries).toBe(0);
+    expect(status.baseVersion).toBe(persistedRow.version);
+    expect(
+      [...storage.values.keys()].filter((key) =>
+        key.startsWith("writeBehind:entry:")
+      )
+    ).toEqual([]);
+  });
+
+  test(
+    "the room checkpoints when its log passes the size bound",
+    withEnv("WRITE_BEHIND_LOG_MAX_BYTES", "200", async () => {
+      persistedRow.document = SMALL_DOCUMENT;
+      const { room } = await startConnectedRoom();
+      upsertCalls = [];
+
+      await edit(room, "small", "x");
+      expect(upsertCalls).toHaveLength(0);
+      await edit(room, "large", "y".repeat(300));
+
+      expect(upsertCalls).toHaveLength(1);
+      expect(storedPlay()).toMatchObject({ small: "x" });
+    })
+  );
+
+  test("the last client leaving writes the log to the database", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, connections } = await startConnectedRoom();
+    upsertCalls = [];
+    await edit(room, "left-behind", true);
+    expect(upsertCalls).toHaveLength(0);
+
+    const [connection] = connections;
+    connections.length = 0;
+    await capturing(() => room.onClose(connection, 1000, "", true));
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(storedPlay()["left-behind"]).toBe(true);
+    expect((await room.getWriteBehindStatus()).logEntries).toBe(0);
+  });
+
+  test("an alarm checkpoints a log that stopped receiving saves", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { storage } = await (async () => {
+      const started = await startConnectedRoom();
+      await edit(started.room, "idle", "edit");
+      return started;
+    })();
+    upsertCalls = [];
+
+    // The Durable Object restarts and nobody edits again.
+    const restarted = restartRoom(storage);
+    restarted.getConnections = () => [fakeConnection("idle-client")];
+    await capturing(() => startRoom(restarted));
+    restarted.writeBehindMeta = {
+      ...restarted.writeBehindMeta,
+      firstEntryAt: Date.now() - 5 * 60_000,
+    };
+    await capturing(() => restarted.onAlarm());
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(storedPlay().idle).toBe("edit");
+    expect((await restarted.getWriteBehindStatus()).logEntries).toBe(0);
+  });
+
+  test("a failed checkpoint keeps the log and leaves the retry to the alarm", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage, connections } = await startConnectedRoom();
+    upsertCalls = [];
+    connections.length = 0;
+    upsertError = new Error("database down");
+
+    const first = await edit(room, "during-outage", 1);
+    expect(first.errors).toEqual([
+      "[PartyServer] SUPABASE AUTOSAVE FAILED for room example-room:",
+    ]);
+    expect(upsertCalls).toHaveLength(1);
+    expect(storage.values.get("documentSaveRetry")).toBeDefined();
+
+    // Later saves while the retry is pending only append.
+    await edit(room, "still-down", 2);
+    expect(upsertCalls).toHaveLength(1);
+    expect((await room.getWriteBehindStatus()).logEntries).toBe(2);
+
+    // Nothing was lost: a restart replays both edits.
+    upsertError = null;
+    const restarted = restartRoom(storage);
+    await capturing(() => startRoom(restarted));
+    expect(restarted.document.getMap("play").toJSON()).toMatchObject({
+      "during-outage": 1,
+      "still-down": 2,
+    });
+  });
+
+  test("a stored document replaced outside the room wins over the log", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = await startConnectedRoom();
+    await edit(room, "unsaved", "edit");
+    const editedElsewhere = new Y.Doc();
+    editedElsewhere.getMap("play").set("greeting", "edited-elsewhere");
+    persistedRow.document = encodeDoc(editedElsewhere);
+
+    const restarted = restartRoom(storage);
+    const { errors } = await capturing(() => startRoom(restarted));
+
+    expect(restarted.document.getMap("play").toJSON()).toEqual({
+      greeting: "edited-elsewhere",
+    });
+    expect(errors).toEqual([
+      expect.stringMatching(/^\[PartyServer\] WRITE-BEHIND LOG ORPHANED for room=example-room/),
+    ]);
+    const status = await restarted.getWriteBehindStatus();
+    expect(status.logEntries).toBe(0);
+    expect(status.baseVersion).toBe(persistedRow.version);
+    expect(status.orphan).toMatchObject({
+      databaseVersion: persistedRow.version,
+      firstSeq: 0,
+      nextSeq: 1,
+    });
+    // The orphaned edit is still in storage for recovery.
+    expect(storage.values.has("writeBehind:entry:0")).toBe(true);
+
+    // The room keeps logging on top of the new stored document.
+    restarted.getConnections = () => [fakeConnection("c2")];
+    await edit(restarted, "after", 1);
+    const again = restartRoom(storage);
+    await capturing(() => startRoom(again));
+    expect(again.document.getMap("play").toJSON()).toEqual({
+      greeting: "edited-elsewhere",
+      after: 1,
+    });
+  });
+
+  test("a deleted stored row wins over the log", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = await startConnectedRoom();
+    await edit(room, "unsaved", "edit");
+    persistedRow.document = null;
+
+    const restarted = restartRoom(storage);
+    const { errors } = await capturing(() => startRoom(restarted));
+
+    expect(restarted.document.getMap("play").toJSON()).toEqual({});
+    expect(errors).toHaveLength(1);
+    expect((await restarted.getWriteBehindStatus()).orphan).not.toBeNull();
+  });
+
+  test("a checkpoint whose confirmation was lost still replays the log safely", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = await startConnectedRoom();
+    await edit(room, "before-checkpoint", 1);
+    // The database took a full save of the live document, but the room never
+    // learned the new version, so the log still names the old base.
+    persistedRow.document = encodeDoc(room.document);
+    await edit(room, "after-checkpoint", 2);
+    upsertCalls = [];
+
+    const restarted = restartRoom(storage);
+    restarted.getConnections = () => [fakeConnection("c2")];
+    const { errors } = await capturing(() => startRoom(restarted));
+
+    expect(errors).toEqual([]);
+    expect(restarted.document.getMap("play").toJSON()).toEqual({
+      greeting: "hello",
+      "before-checkpoint": 1,
+      "after-checkpoint": 2,
+    });
+    // The replayed log is rebased by the next save, which checkpoints.
+    expect(restarted.writeBehindCheckpointRequired).toBe(true);
+    await edit(restarted, "next", 3);
+    expect(upsertCalls).toHaveLength(1);
+    expect(storedPlay()).toMatchObject({
+      "before-checkpoint": 1,
+      "after-checkpoint": 2,
+      next: 3,
+    });
+    expect(restarted.writeBehindCheckpointRequired).toBe(false);
+  });
+
+  test("a hard reset writes the logged edits and clears the log", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = await startConnectedRoom();
+    await edit(room, "logged", "kept");
+    upsertCalls = [];
+
+    await capturing(() => room.performHardReset());
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(storedPlay()).toEqual({ greeting: "hello", logged: "kept" });
+    const status = await room.getWriteBehindStatus();
+    expect(status.logEntries).toBe(0);
+    expect(status.orphan).toBeNull();
+
+    // No pre-reset history comes back on the next start.
+    const restarted = restartRoom(storage);
+    await capturing(() => startRoom(restarted));
+    expect(restarted.document.getMap("play").toJSON()).toEqual({
+      greeting: "hello",
+      logged: "kept",
+    });
+  });
+
+  test("restoring an operator snapshot keeps the superseded log as an orphan", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = await startConnectedRoom();
+    await edit(room, "logged", "superseded");
+    room.document.getMap("play").set("captured", "not yet logged");
+    const operatorDoc = new Y.Doc();
+    operatorDoc.getMap("play").set("greeting", "restored");
+
+    const { warnings } = await capturing(() =>
+      room.restoreFromSnapshot(encodeDoc(operatorDoc), { bumpEpoch: true })
+    );
+
+    expect(warnings).toContainEqual(
+      expect.stringMatching(/^\[PartyServer\] Write-behind log kept as orphan for room=example-room/)
+    );
+    expect(storedPlay()).toEqual({ greeting: "restored" });
+    const status = await room.getWriteBehindStatus();
+    expect(status.logEntries).toBe(0);
+    expect(status.orphan).toMatchObject({ firstSeq: 0, nextSeq: 2 });
+
+    const restarted = restartRoom(storage);
+    await capturing(() => startRoom(restarted));
+    expect(restarted.document.getMap("play").toJSON()).toEqual({
+      greeting: "restored",
+    });
+  });
+
+  test("persistence recovery restores the stored document plus its log", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = await startConnectedRoom();
+    await edit(room, "logged-before-outage", 1);
+    storage.values.set("persistenceRecoveryPending", true);
+    upsertCalls = [];
+
+    const restarted = restartRoom(storage);
+    await capturing(() => startRoom(restarted));
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(storedPlay()).toEqual({
+      greeting: "hello",
+      "logged-before-outage": 1,
+    });
+    expect((await restarted.getWriteBehindStatus()).logEntries).toBe(0);
+  });
+
+  test("transient rooms log nothing", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room } = await startConnectedRoom();
+    room.persistenceMode = {
+      kind: "transient",
+      reason: "test",
+      failedAt: Date.now(),
+    };
+
+    const { warnings } = await edit(room, "transient", 1);
+
+    expect(warnings).toEqual([
+      "[PartyServer] Autosave skipped for room example-room: room state is transient.",
+    ]);
+    expect((await room.getWriteBehindStatus()).logEntries).toBe(0);
+  });
+
+  test("a document with a stale reset epoch is not logged", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = await startConnectedRoom();
+    setStoredResetEpochForTest(storage, room, Date.now());
+
+    const { warnings } = await edit(room, "stale", 1);
+
+    expect(warnings).toEqual([
+      expect.stringMatching(/^\[PartyServer\] Autosave skipped for room example-room:/),
+    ]);
+    expect((await room.getWriteBehindStatus()).logEntries).toBe(0);
+  });
+
+  test("a failed append falls back to writing the full document", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = await startConnectedRoom();
+    upsertCalls = [];
+    const originalPut = storage.put.bind(storage);
+    storage.put = async (key: any, value?: unknown) => {
+      if (typeof key === "object" && "writeBehind:meta" in key) {
+        throw new Error("storage full");
+      }
+      return originalPut(key, value);
+    };
+
+    const { errors } = await edit(room, "fallback", 1);
+
+    expect(errors).toContainEqual(
+      "[PartyServer] Write-behind append failed for room=example-room; writing the full document instead"
+    );
+    expect(upsertCalls).toHaveLength(1);
+    expect(storedPlay().fallback).toBe(1);
+  });
+});
+
+// Moves the server epoch past the live document's so autosave treats the live
+// document as stale.
+function setStoredResetEpochForTest(
+  storage: FakeStorage,
+  room: any,
+  epoch: number
+): void {
+  storage.values.set("resetEpoch", epoch);
+  room.cachedResetEpoch = undefined;
+  room.document.getMap("__playhtml_meta").set("resetEpoch", epoch - 1000);
+}
