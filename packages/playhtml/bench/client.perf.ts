@@ -1,6 +1,6 @@
 // ABOUTME: Measures generic client costs: setData sync traffic, remote update fan-out, init scans.
 // ABOUTME: Writes deterministic counts to bench/out/metrics.json for the hillclimb runner.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as Y from "yjs";
@@ -26,6 +26,10 @@ function sentBytes(calls: unknown[][]): number {
 async function flush(ms = 400) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 beforeEach(async () => {
   try {
@@ -67,11 +71,14 @@ async function measureWrites(
   const { handler, p, doc } = await setupCanPlay(id, defaultData, `/bench-${id}`);
   const before = Y.encodeStateAsUpdate(doc).byteLength;
   p.ws.send.mockClear();
+  // Simulated clock: one frame every 16 ms, as on a 60 Hz display.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "performance"] });
   for (let frame = 1; frame <= frames; frame += 1) {
-    await yieldFrame();
+    await vi.advanceTimersByTimeAsync(16);
     write(handler, frame);
   }
-  await flush();
+  await vi.advanceTimersByTimeAsync(1000);
+  vi.useRealTimers();
   const remote = new Y.Doc();
   Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc));
   return {
