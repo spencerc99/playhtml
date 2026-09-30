@@ -1811,12 +1811,28 @@ function markElementAsReady(element: HTMLElement): void {
   element.removeAttribute("aria-live");
 }
 
+// Finds every capability element with one document scan and groups them by
+// capability attribute, each group in document order. An element with several
+// capabilities appears in each of their groups.
+function getPlayElementsByTag(): Map<TagType | string, HTMLElement[]> {
+  const tags = getTagTypes();
+  const byTag = new Map<TagType | string, HTMLElement[]>(
+    tags.map((tag) => [tag, []]),
+  );
+  const selector = tags.map((tag) => `[${tag}]`).join(",");
+  for (const element of document.querySelectorAll(selector)) {
+    if (!isHTMLElement(element)) continue;
+    for (const tag of tags) {
+      if (element.hasAttribute(tag)) byTag.get(tag)!.push(element);
+    }
+  }
+  return byTag;
+}
+
 function getPlayElements(): Set<HTMLElement> {
   const elements = new Set<HTMLElement>();
-  for (const tag of getTagTypes()) {
-    for (const element of document.querySelectorAll(`[${tag}]`)) {
-      if (isHTMLElement(element)) elements.add(element);
-    }
+  for (const tagElements of getPlayElementsByTag().values()) {
+    for (const element of tagElements) elements.add(element);
   }
   for (const id of elementInitializersById.keys()) {
     const element = document.getElementById(id);
@@ -2185,10 +2201,8 @@ function setupElementsFromDocument(reinitializeExisting: boolean): void {
 
   observeRegisteredElements();
 
-  for (const tag of getTagTypes()) {
-    const tagElements = new Set<HTMLElement>(
-      Array.from(document.querySelectorAll(`[${tag}]`)).filter(isHTMLElement),
-    );
+  for (const [tag, elementsForTag] of getPlayElementsByTag()) {
+    const tagElements = new Set<HTMLElement>(elementsForTag);
     if (tag === TagType.CanPlay) {
       for (const id of elementInitializersById.keys()) {
         const element = document.getElementById(id);
