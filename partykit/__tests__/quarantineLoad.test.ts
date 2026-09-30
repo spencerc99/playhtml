@@ -3966,6 +3966,48 @@ describe("write-behind persistence", () => {
     expect((await room.getWriteBehindStatus()).logEntries).toBe(0);
   });
 
+  test("a damaged log stops the room from starting until an operator restore replaces it", async () => {
+    persistedRow.document = SMALL_DOCUMENT;
+    const { room, storage } = await startConnectedRoom();
+    await edit(room, "logged", 1);
+    storage.values.set("writeBehind:meta", { damaged: true });
+
+    const broken = restartRoom(storage);
+    await expect(capturing(() => startRoom(broken))).rejects.toThrow(
+      "Unreadable write-behind log meta"
+    );
+
+    const repaired = restartRoom(storage);
+    const operatorDoc = new Y.Doc();
+    operatorDoc.getMap("play").set("greeting", "repaired");
+    const { errors } = await capturing(() =>
+      repaired.restoreFromSnapshot(encodeDoc(operatorDoc), {
+        bumpEpoch: true,
+        allowQuarantined: true,
+      })
+    );
+    expect(errors).toContainEqual(
+      "[PartyServer] Unreadable write-behind log for room=example-room is replaced by the document just written"
+    );
+
+    expect(storedPlay()).toEqual({ greeting: "repaired" });
+    const status = await repaired.getWriteBehindStatus();
+    expect(status).toMatchObject({
+      logEntries: 0,
+      baseVersion: persistedRow.version,
+      checkpointRequired: false,
+    });
+
+    // Once the failed start's backoff is over, the room starts cleanly.
+    storage.values.delete("quarantineLoadAttempts");
+    storage.values.delete("loadRetryAfter");
+    const restarted = restartRoom(storage);
+    await capturing(() => startRoom(restarted));
+    expect(restarted.document.getMap("play").toJSON()).toEqual({
+      greeting: "repaired",
+    });
+  });
+
   test("a failed append falls back to writing the full document", async () => {
     persistedRow.document = SMALL_DOCUMENT;
     const { room, storage } = await startConnectedRoom();

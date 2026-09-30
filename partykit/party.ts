@@ -1068,7 +1068,7 @@ export class PartyServer extends YServer {
       const previous =
         this.writeBehindMeta !== undefined
           ? this.writeBehindMeta
-          : await readLogMeta(storage);
+          : await this.readLogMetaForRestart();
       const keepPreviousEntries =
         logDisposition === "orphan" &&
         previous !== null &&
@@ -1099,6 +1099,20 @@ export class PartyServer extends YServer {
         error
       );
       this.writeBehindCheckpointRequired = true;
+    }
+  }
+
+  // A log that cannot be read would also stop the room from starting, so a
+  // full document written to the database replaces it rather than failing.
+  private async readLogMetaForRestart(): Promise<WriteBehindLogMeta | null> {
+    try {
+      return await readLogMeta(this.ctx.storage);
+    } catch (error) {
+      console.error(
+        `[PartyServer] Unreadable write-behind log for room=${this.name} is replaced by the document just written`,
+        error
+      );
+      return null;
     }
   }
 
