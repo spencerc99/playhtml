@@ -31,6 +31,7 @@ const workerEnv: Record<string, unknown> = {
   SUPABASE_LOAD_ATTEMPTS: "1",
   SUPABASE_LOAD_RETRY_DELAY_MS: "1",
   SUPABASE_LOAD_TIMEOUT_MS: "100",
+  SUPABASE_RECOVERY_RETRY_DELAY_MS: "600000",
   V2: {
     idFromName(name: string) {
       return name;

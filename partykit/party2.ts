@@ -25,6 +25,8 @@ import {
   DEFAULT_SUPABASE_LOAD_ATTEMPTS,
   DEFAULT_SUPABASE_LOAD_RETRY_DELAY_MS,
   DEFAULT_SUPABASE_LOAD_TIMEOUT_MS,
+  DEFAULT_SUPABASE_RECOVERY_RETRY_DELAY_MS,
+  DEFAULT_SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS,
   DEFAULT_V2_AUTOSAVE_DEBOUNCE_MS,
   DEFAULT_V2_AUTOSAVE_MAX_WAIT_MS,
   DEFAULT_V2_DOCUMENT_WARNING_BYTES,
@@ -173,6 +175,12 @@ export class PartyServerV2 extends PresenceServer {
   private savePromise: Promise<void> | null = null;
   private hasWarnedDocumentSize = false;
   private bridgeForwardPromise: Promise<void> = Promise.resolve();
+  // Set when the Supabase load or first save failed. Unlike an unreadable
+  // document, that failure is expected to clear, so the room keeps retrying
+  // instead of staying presence-only until every client leaves.
+  private loadFailed = false;
+  private hydrationRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private hydrationRetryDelayMs: number | null = null;
 
   override async onStart(): Promise<void> {
     await this.hydrate();
@@ -182,6 +190,7 @@ export class PartyServerV2 extends PresenceServer {
     connection: Connection,
     ctx: ConnectionContext,
   ): Promise<void> {
+    if (this.loadFailed) this.scheduleHydrationRetry();
     await this.registerBridgeDeclarations(ctx.request.url);
     await super.onConnect(connection, ctx);
     connection.send(JSON.stringify(this.createSnapshotMessage()));
@@ -827,22 +836,20 @@ export class PartyServerV2 extends PresenceServer {
         },
       },
     ).catch((error) => {
-      this.transient = true;
-      console.error(
-        `[PartyServerV2] SUPABASE PERSISTENCE UNAVAILABLE: room=${this.name} ` +
-          `reason=${getErrorMessage(error)} Entering TRANSIENT MODE: presence remains available and operations are disabled.`,
-      );
+      this.enterLoadFailure(error);
       return undefined;
     });
 
     if (result === undefined) return;
 
     this.transient = false;
+    this.loadFailed = false;
     if (result === null) {
       this.hydrated = true;
       return;
     }
 
+    let convertedFromV1 = false;
     try {
       if (result.protocol_version === PROTOCOL_VERSION) {
         const persisted = parsePersistedDocument(result.document_json);
@@ -855,15 +862,70 @@ export class PartyServerV2 extends PresenceServer {
         this.snapshot = conversion.snapshot;
         this.sequence = 0;
         this.generation = 0;
-        await this.persistDocument();
+        convertedFromV1 = true;
       }
-      this.hydrated = true;
     } catch (error) {
+      // An unreadable document fails the same way on every attempt, so the
+      // room stays presence-only rather than retrying or overwriting it.
       this.transient = true;
       console.error(
         `[PartyServerV2] Failed to hydrate room=${this.name}; entering transient mode: ${getErrorMessage(error)}`,
       );
+      return;
     }
+
+    if (convertedFromV1) {
+      try {
+        await this.persistDocument();
+      } catch (error) {
+        this.enterLoadFailure(error);
+        return;
+      }
+    }
+    this.hydrated = true;
+  }
+
+  private enterLoadFailure(error: unknown): void {
+    this.transient = true;
+    this.loadFailed = true;
+    console.error(
+      `[PartyServerV2] SUPABASE PERSISTENCE UNAVAILABLE: room=${this.name} ` +
+        `reason=${getErrorMessage(error)} Entering TRANSIENT MODE: presence remains available and operations are disabled until a retry succeeds.`,
+    );
+    this.scheduleHydrationRetry();
+  }
+
+  private scheduleHydrationRetry(): void {
+    if (this.hydrationRetryTimer !== null) return;
+    const delayMs =
+      this.hydrationRetryDelayMs ??
+      readPositiveNumberEnv(
+        "SUPABASE_RECOVERY_RETRY_DELAY_MS",
+        DEFAULT_SUPABASE_RECOVERY_RETRY_DELAY_MS,
+      );
+    this.hydrationRetryDelayMs = Math.min(
+      delayMs * 2,
+      DEFAULT_SUPABASE_RECOVERY_RETRY_MAX_DELAY_MS,
+    );
+    this.hydrationRetryTimer = setTimeout(() => {
+      this.hydrationRetryTimer = null;
+      void this.retryHydration();
+    }, delayMs);
+  }
+
+  private async retryHydration(): Promise<void> {
+    // With nobody connected, the next connection resumes the retry; a timer
+    // alone would only keep an idle room awake.
+    if (Array.from(this.getConnections()).length === 0) return;
+    // The row is re-read even after a failed conversion save: another server
+    // instance may have converted and written it in the meantime.
+    await this.hydrate();
+    if (!this.hydrated || this.transient) return;
+    this.hydrationRetryDelayMs = null;
+    console.warn(
+      `[PartyServerV2] Supabase persistence recovered for room=${this.name}; operations re-enabled.`,
+    );
+    this.broadcast(JSON.stringify(this.createSnapshotMessage()));
   }
 
   private handleSnapshotRequest(

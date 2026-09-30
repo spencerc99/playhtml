@@ -238,6 +238,9 @@ beforeEach(() => {
   hangReads = false;
   workerEnv.SUPABASE_LOAD_ATTEMPTS = "1";
   workerEnv.SUPABASE_LOAD_TIMEOUT_MS = "100";
+  // Recovery retries are exercised explicitly; elsewhere they must not fire
+  // into a later test that shares the stubbed database.
+  workerEnv.SUPABASE_RECOVERY_RETRY_DELAY_MS = "600000";
   delete workerEnv.V2_MAX_OPERATION_BYTES;
 });
 
@@ -448,6 +451,77 @@ describe("PartyServerV2 protocol", () => {
     );
     expect(errors).toHaveLength(1);
     expect(upsertCalls).toEqual([]);
+  });
+
+  test("recovers from a failed load while clients stay connected", async () => {
+    readError = new Error("database offline");
+    workerEnv.SUPABASE_RECOVERY_RETRY_DELAY_MS = "5";
+    const { room, connections } = createRoom();
+    const errors: unknown[][] = [];
+    const warnings: unknown[][] = [];
+    const originalError = console.error;
+    const originalWarn = console.warn;
+    console.error = (...args: unknown[]) => errors.push(args);
+    console.warn = (...args: unknown[]) => warnings.push(args);
+    try {
+      await startRoom(room);
+      const connection = await connectRoom(room, connections);
+      await room.onMessage(
+        connection as never,
+        JSON.stringify(operationMessage()),
+      );
+      expect(parsedMessages(connection)).toContainEqual(
+        expect.objectContaining({ code: "room-unavailable" }),
+      );
+
+      readError = null;
+      persistedRow = {
+        document: null,
+        document_json: {
+          sequence: 4,
+          generation: 0,
+          snapshot: {
+            state: { "can-toggle": { light: { on: true } } },
+            arrays: [],
+            lastMutationIds: {},
+          },
+        },
+        protocol_version: 2,
+      };
+      connection.sent = [];
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(parsedMessages(connection)).toContainEqual(
+        expect.objectContaining({
+          type: "snapshot",
+          sequence: 4,
+          snapshot: expect.objectContaining({
+            state: { "can-toggle": { light: { on: true } } },
+          }),
+        }),
+      );
+      connection.sent = [];
+      await room.onMessage(
+        connection as never,
+        JSON.stringify(operationMessage({ mutationId: 2 })),
+      );
+      expect(parsedMessages(connection)).toContainEqual(
+        expect.objectContaining({
+          type: "operation",
+          payload: expect.objectContaining({ sequence: 5, mutationId: 2 }),
+        }),
+      );
+      await closeRoom(room, connections, connection);
+    } finally {
+      console.error = originalError;
+      console.warn = originalWarn;
+    }
+
+    expect(errors).toHaveLength(1);
+    expect(String(warnings.at(-1)?.[0])).toContain("recovered");
+    expect(persistedSnapshot().state["can-play"]).toEqual({
+      counter: { count: 1 },
+    });
   });
 
   test("autosaves snapshot, sequence, and last mutation ids on last disconnect", async () => {
