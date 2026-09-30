@@ -1,8 +1,7 @@
 // ABOUTME: Builds the core playhtml package and generated declaration bundle.
 // ABOUTME: Keeps public declarations pointed at package imports, not workspace paths.
 import path from "path";
-import { transform } from "esbuild";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, transformWithEsbuild, type Plugin } from "vite";
 import dts from "vite-plugin-dts";
 
 const commonSourceImport = /from ["'](?:\.\.\/)+common\/src["']/g;
@@ -14,8 +13,8 @@ const commonSourceDynamicImport = /import\(["'](?:\.\.\/)+common\/src["']\)/g;
 function minifyWhitespace(): Plugin {
   return {
     name: "playhtml-minify-whitespace",
-    async renderChunk(code) {
-      const result = await transform(code, {
+    async renderChunk(code, chunk) {
+      const result = await transformWithEsbuild(code, chunk.fileName, {
         format: "esm",
         minifyWhitespace: true,
         sourcemap: true,
