@@ -39,6 +39,15 @@ function scrapImage(key: string) {
   };
 }
 
+function mockScraps(scraps: unknown[], total = scraps.length) {
+  vi.mocked(browser.runtime.sendMessage).mockImplementation(
+    async (message: unknown) =>
+      (message as { type: string }).type === "GET_SCRAP_COUNT"
+        ? { total }
+        : { scraps },
+  );
+}
+
 describe("ScrapsLaunchCard", () => {
   beforeEach(() => {
     (
@@ -69,7 +78,7 @@ describe("ScrapsLaunchCard", () => {
   });
 
   it("shows hosted examples when nothing has been collected yet", async () => {
-    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ scraps: [] });
+    mockScraps([]);
     const { container, root } = await renderCard();
 
     try {
@@ -92,7 +101,7 @@ describe("ScrapsLaunchCard", () => {
     const scraps = Array.from({ length: 12 }, (_unused, index) =>
       scrapImage(`scrap-${index}`),
     );
-    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ scraps });
+    mockScraps(scraps);
     const { container, root } = await renderCard();
 
     try {
@@ -109,10 +118,7 @@ describe("ScrapsLaunchCard", () => {
   });
 
   it("counts every collected scrap, not only the loaded page", async () => {
-    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({
-      scraps: [scrapImage("only")],
-      total: 431,
-    });
+    mockScraps([scrapImage("only")], 431);
     const { container, root } = await renderCard();
 
     try {
@@ -123,10 +129,7 @@ describe("ScrapsLaunchCard", () => {
   });
 
   it("keeps the pile as a compact window once the text is dismissed", async () => {
-    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({
-      scraps: [scrapImage("kept")],
-      total: 7,
-    });
+    mockScraps([scrapImage("kept")], 7);
     const { container, root } = await renderCard();
 
     try {
@@ -154,7 +157,7 @@ describe("ScrapsLaunchCard", () => {
   });
 
   it("leaves nothing behind once dismissed with no scraps yet", async () => {
-    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ scraps: [] });
+    mockScraps([]);
     const { container, root } = await renderCard();
 
     try {
@@ -176,7 +179,7 @@ describe("ScrapsLaunchCard", () => {
       wwoFeatureAccess: { features: { SCRAPS: { stage: "beta", available: false } }, checkedAt: 1 },
       wwoFeatureOverrides: { SCRAPS: true },
     });
-    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ scraps: [] });
+    mockScraps([]);
     const { container, root } = await renderCard();
 
     try {

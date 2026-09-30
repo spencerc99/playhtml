@@ -1411,6 +1411,20 @@ describe("LocalEventStore pending uploads", () => {
     ).toBe(5);
   });
 
+  it("counts one event type without reading the others", async () => {
+    const store = createStore();
+    await store.addEvents([
+      scrapEvent("a", "https://assets.example/a.png"),
+      scrapEvent("b", "https://assets.example/b.png"),
+      buttonScrapEvent("c"),
+      event("cursor", "cursor"),
+    ]);
+
+    expect(await store.countEventsOfType("element")).toBe(3);
+    expect(await store.countEventsOfType("cursor")).toBe(1);
+    expect(await store.countEventsOfType("keyboard")).toBe(0);
+  });
+
   it("upgrades version 14 history in place for indexed pages", async () => {
     const database = await openScrapDatabase(
       [

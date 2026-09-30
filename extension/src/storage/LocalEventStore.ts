@@ -1366,6 +1366,25 @@ export class LocalEventStore {
     });
   }
 
+  /** How many events of one type are stored, read from the type index alone. */
+  async countEventsOfType(type: CollectionEventType): Promise<number> {
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+      const request = this.db
+        .transaction(STORE_NAME, "readonly")
+        .objectStore(STORE_NAME)
+        .index("type")
+        .count(IDBKeyRange.only(type));
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   async queryEventPage(
     type: CollectionEventType,
     limit: number,
