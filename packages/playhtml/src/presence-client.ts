@@ -96,6 +96,8 @@ export class PresenceClient implements PresenceAPI {
     // but-connected peer's presence doesn't age out of peers' views.
     this.stopKeepalive = startPresenceKeepalive(() => {
       if (this.destroyed || this.localChannels.size === 0) return;
+      // A server that answers liveness pings refreshes these stamps itself.
+      if (this.transport.serverRefreshesPresence) return;
       this.republishLiveChannels();
     });
     this.join();

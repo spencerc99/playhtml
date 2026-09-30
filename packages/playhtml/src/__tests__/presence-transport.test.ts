@@ -16,8 +16,14 @@ class FakeSocket {
   readyState = WebSocket.CONNECTING;
   listeners = new Map<string, Set<(event: MessageEvent) => void>>();
 
+  // Liveness pings are kept apart from protocol messages.
+  pings = 0;
   send(message: string): boolean {
     if (this.readyState !== WebSocket.OPEN) return false;
+    if (message === "ping") {
+      this.pings += 1;
+      return true;
+    }
     this.sent.push(message);
     return true;
   }
@@ -51,6 +57,13 @@ class FakeSocket {
     this.readyState = WebSocket.OPEN;
     const event = {} as MessageEvent;
     for (const listener of this.listeners.get("open") ?? []) {
+      listener(event);
+    }
+  }
+
+  receiveRaw(data: string): void {
+    const event = { data } as MessageEvent;
+    for (const listener of this.listeners.get("message") ?? []) {
       listener(event);
     }
   }
@@ -537,5 +550,72 @@ describe("RealtimePresenceTransport", () => {
     } finally {
       warnSpy.mockRestore();
     }
+  });
+
+  describe("liveness pings", () => {
+    function openTransport() {
+      const socket = new FakeSocket();
+      const transport = new RealtimePresenceTransport({
+        host: "example.com",
+        room: "room-1",
+        socketFactory: () => socket,
+      });
+      socket.open();
+      return { socket, transport };
+    }
+
+    it("pings on open and every ten seconds while the server answers", () => {
+      vi.useFakeTimers();
+      try {
+        const { socket, transport } = openTransport();
+        expect(socket.pings).toBe(1);
+        expect(transport.serverRefreshesPresence).toBe(false);
+
+        socket.receiveRaw("pong");
+        expect(transport.serverRefreshesPresence).toBe(true);
+        vi.advanceTimersByTime(30_000);
+        expect(socket.pings).toBe(4);
+        // A pong is transport-level only and never reaches subscribers.
+        expect(socket.sent.every((message) => message !== "pong")).toBe(true);
+        transport.destroy();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("stops pinging a server that never answers", () => {
+      vi.useFakeTimers();
+      try {
+        const { socket, transport } = openTransport();
+        vi.advanceTimersByTime(60_000);
+        expect(socket.pings).toBe(1);
+        expect(transport.serverRefreshesPresence).toBe(false);
+        transport.destroy();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("asks every new socket to prove its server answers again", () => {
+      vi.useFakeTimers();
+      try {
+        const { socket, transport } = openTransport();
+        socket.receiveRaw("pong");
+        socket.disconnect();
+        expect(transport.serverRefreshesPresence).toBe(false);
+        vi.advanceTimersByTime(30_000);
+        expect(socket.pings).toBe(1);
+
+        socket.open();
+        expect(socket.pings).toBe(2);
+        socket.receiveRaw("pong");
+        expect(transport.serverRefreshesPresence).toBe(true);
+        transport.destroy();
+        vi.advanceTimersByTime(30_000);
+        expect(socket.pings).toBe(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

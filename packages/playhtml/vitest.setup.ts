@@ -129,8 +129,14 @@ vi.mock("partysocket", () => {
       }
     }
 
+    // Liveness pings are kept apart from protocol messages.
+    pings = 0;
     send(message: string): void {
       if (this.readyState !== 1) return;
+      if (message === "ping") {
+        this.pings += 1;
+        return;
+      }
       this.sent.push(message);
     }
 

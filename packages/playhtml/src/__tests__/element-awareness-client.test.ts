@@ -16,7 +16,13 @@ class FakeSocket {
   closed = false;
   readyState = 1;
   listeners = new Map<string, Set<(event: MessageEvent) => void>>();
+  // Liveness pings are kept apart from protocol messages.
+  pings = 0;
   send(message: string): void {
+    if (message === "ping") {
+      this.pings += 1;
+      return;
+    }
     this.sent.push(message);
   }
   close(): void {

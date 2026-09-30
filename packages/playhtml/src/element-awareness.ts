@@ -110,6 +110,8 @@ export class ElementAwarenessClient {
     // when there IS local awareness — an empty client publishes nothing.
     this.stopKeepalive = startPresenceKeepalive(() => {
       if (this.destroyed || this.localTags.size === 0) return;
+      // A server that answers liveness pings refreshes these stamps itself.
+      if (this.transport.serverRefreshesPresence) return;
       this.publishLocalAwareness();
     });
     this.join();

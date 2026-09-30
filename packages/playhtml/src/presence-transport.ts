@@ -7,11 +7,18 @@ import type {
   PresenceClientMessage,
   PresenceServerMessage,
 } from "@playhtml/common";
-import { clonePlain, validatePresenceClientMessage } from "@playhtml/common";
+import {
+  clonePlain,
+  PRESENCE_PING_MESSAGE,
+  PRESENCE_PONG_MESSAGE,
+  validatePresenceClientMessage,
+} from "@playhtml/common";
 import {
   isPresenceRecord,
   isPresenceRemoves,
   isPresenceSnapshot,
+  PRESENCE_PING_INTERVAL_MS,
+  PRESENCE_PONG_TIMEOUT_MS,
   safeInvoke,
 } from "./presence-utils";
 import { PeerStore } from "./peer-store";
@@ -86,7 +93,18 @@ export class RealtimePresenceTransport {
   private unreachableTimer: ReturnType<typeof setTimeout> | null = null;
   private lastControlLogAt = new Map<string, number>();
   private usesHandlerProperties = false;
+  // Liveness pings (see PRESENCE_PING_MESSAGE). Each open socket pings once
+  // right away; a pong within PRESENCE_PONG_TIMEOUT_MS means the server keeps
+  // this client's presence stamps fresh, and pings continue on an interval. No
+  // pong means an older server: pings stop and consumers keep republishing.
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
+  private pongTimer: ReturnType<typeof setTimeout> | null = null;
+  private pongReceived = false;
   private onMessage = (event: MessageEvent) => {
+    if (event.data === PRESENCE_PONG_MESSAGE) {
+      this.handlePong();
+      return;
+    }
     const message = parsePresenceServerMessage(event.data);
     if (!message) return;
     this.handleControlMessage(message);
@@ -106,11 +124,15 @@ export class RealtimePresenceTransport {
       this.unreachableTimer = null;
     }
     this.flushCurrentState();
+    this.startPinging();
   };
   private onCloseOrError = () => {
     // PartySocket retries silently forever. Track failures so a never-opening
     // socket surfaces ONE loud error instead of an invisible dead transport.
     if (this._connectionState !== "open") this.failedReconnects += 1;
+    // A new socket has to prove again that its server answers pings.
+    this.stopPinging();
+    this.pongReceived = false;
     if (this._connectionState !== "unreachable") {
       this._connectionState = "connecting";
     }
@@ -159,6 +181,51 @@ export class RealtimePresenceTransport {
    * has been declared unreachable. Never gates behavior — for tests/debugging. */
   get connectionState(): PresenceConnectionState {
     return this._connectionState;
+  }
+
+  /** True while the server answers this socket's liveness pings, which means
+   * it refreshes the stamps of this client's element and page presence. Until
+   * then (and against servers that never answer) consumers republish those
+   * channels themselves to keep them from aging out of peers' views. */
+  get serverRefreshesPresence(): boolean {
+    return this.pongReceived;
+  }
+
+  private startPinging(): void {
+    this.stopPinging();
+    this.pongReceived = false;
+    this.sendPing();
+    this.pongTimer = setTimeout(() => {
+      this.pongTimer = null;
+      if (!this.pongReceived) this.stopPinging();
+    }, PRESENCE_PONG_TIMEOUT_MS);
+    this.pingTimer = setInterval(() => {
+      this.sendPing();
+    }, PRESENCE_PING_INTERVAL_MS);
+  }
+
+  private stopPinging(): void {
+    if (this.pingTimer !== null) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
+    if (this.pongTimer !== null) {
+      clearTimeout(this.pongTimer);
+      this.pongTimer = null;
+    }
+  }
+
+  private sendPing(): void {
+    if (!this.isSocketOpen()) return;
+    this.socket.send(PRESENCE_PING_MESSAGE);
+  }
+
+  private handlePong(): void {
+    this.pongReceived = true;
+    if (this.pongTimer !== null) {
+      clearTimeout(this.pongTimer);
+      this.pongTimer = null;
+    }
   }
 
   private markUnreachable(): void {
@@ -252,6 +319,7 @@ export class RealtimePresenceTransport {
       clearTimeout(this.unreachableTimer);
       this.unreachableTimer = null;
     }
+    this.stopPinging();
     this.peers.destroy();
     if (
       this.usesHandlerProperties &&

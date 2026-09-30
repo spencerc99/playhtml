@@ -11,7 +11,13 @@ class FakeSocket {
   closed = false;
   readyState = 1;
   listeners = new Map<string, Set<(event: MessageEvent) => void>>();
+  // Liveness pings are kept apart from protocol messages.
+  pings = 0;
   send(message: string): void {
+    if (message === "ping") {
+      this.pings += 1;
+      return;
+    }
     this.sent.push(message);
   }
   close(): void {
@@ -687,6 +693,33 @@ describe("PresenceClient", () => {
       // Same payload, newer `at` (keepalive re-stamp): must not re-fire.
       socket.receive(statusAt(2000));
       expect(received).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves stamp refreshes to a server that answers liveness pings", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    try {
+      const { client, socket, parsedSent } = createClient();
+      socket.open();
+      socket.listeners.get("message")?.forEach((listener) =>
+        listener({ data: "pong" } as MessageEvent),
+      );
+      client.setMyPresence("status", { text: "idle" });
+      // Past the trailing rate-window republish every publish schedules.
+      await vi.advanceTimersByTimeAsync(2_000);
+      const updatesAfterInitial = parsedSent().filter(
+        (m) => m.type === "presence-update",
+      ).length;
+
+      await vi.advanceTimersByTimeAsync(31_000);
+      const updatesLater = parsedSent().filter(
+        (m) => m.type === "presence-update",
+      ).length;
+      expect(updatesLater).toBe(updatesAfterInitial);
+      expect(socket.pings).toBe(4);
     } finally {
       vi.useRealTimers();
     }

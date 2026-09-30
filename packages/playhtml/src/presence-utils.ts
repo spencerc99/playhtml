@@ -2,10 +2,13 @@
 // ABOUTME: A dependency-free leaf module so transport consumers avoid duplication.
 
 import {
+  ELEMENT_CHANNEL_PREFIX,
   isCursor,
   isPlayerIdentity,
   isPresenceRecord,
   MAX_PRESENCE_VALUE_BYTES,
+  PAGE_PRESENCE_CHANNEL_PREFIX,
+  PRESENCE_STALE_MS,
   type Cursor,
   type CursorZonePosition,
 } from "@playhtml/common";
@@ -23,8 +26,7 @@ export { isCursor, isPlayerIdentity, isPresenceRecord };
 // Shared so the transport, the PeerStore, and every view agree on wire names
 // without redeclaring the strings (a channel name is protocol, not local).
 export const IDENTITY_CHANNEL = "identity";
-export const ELEMENT_CHANNEL_PREFIX = "element:";
-export const PAGE_PRESENCE_CHANNEL_PREFIX = "presence:";
+export { ELEMENT_CHANNEL_PREFIX, PAGE_PRESENCE_CHANNEL_PREFIX };
 
 // PresenceView's trusted system fields. A custom presence channel must never
 // use these names: they are populated from validated identity/cursor state, and
@@ -63,12 +65,21 @@ export function fromPagePresenceChannel(channel: string): string {
 // page presence. Yjs awareness dropped peers that went quiet for ~30s even when
 // the server never saw the disconnect (killed tab, dropped network, lid close);
 // the transport views reproduce that by stamping publications with `at` and
-// age-filtering here. Peers re-stamp on every publish and on a keepalive re-
-// publish well under this window, so only genuinely-gone peers expire.
-export const PRESENCE_STALE_MS = 30_000;
+// age-filtering against PRESENCE_STALE_MS. Peers re-stamp on every publish.
+// While a peer's liveness pings are answered, the presence server re-stamps its
+// element and page presence channels; against a server that does not answer
+// pings, the peer re-stamps them itself on the keepalive below. Either way
+// only genuinely-gone peers expire.
+export { PRESENCE_STALE_MS };
 // Re-stamp interval: comfortably under PRESENCE_STALE_MS so a quiet-but-
 // connected peer keeps its presence alive across the window.
 export const PRESENCE_KEEPALIVE_MS = 10_000;
+// Liveness ping interval. Pings are answered without waking the server, and
+// the server treats a peer as connected while pings keep arriving.
+export const PRESENCE_PING_INTERVAL_MS = 10_000;
+// How long after a ping the client waits for a pong before concluding the
+// server does not answer pings.
+export const PRESENCE_PONG_TIMEOUT_MS = 5_000;
 
 /** True when a publication's `at` timestamp is within the staleness window.
  * A missing/non-finite `at` is treated as fresh (older peers that never stamp
