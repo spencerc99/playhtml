@@ -10,7 +10,11 @@ import {
   type FeatureStage,
 } from '../../../shared/featureCatalog';
 import { getAdminAuthError } from '../lib/adminAuth';
-import { resolveFeaturePolicies, resolveFeatureStage } from '../lib/featurePolicy';
+import {
+  BETA_COHORT_ID,
+  resolveFeaturePolicies,
+  resolveFeatureStage,
+} from '../lib/featurePolicy';
 import { createIpRateLimiter } from '../lib/ipRateLimit';
 import { createResendClient } from '../lib/resend';
 import type { Env } from '../lib/supabase';
@@ -30,6 +34,7 @@ type FeatureRow = {
 };
 
 type FeatureGrantRow = {
+  cohort_id: string;
   feature_id: string | null;
   grants_all_unreleased: number;
 };
@@ -138,7 +143,7 @@ export async function handleFeatureAccessCheck(
       'SELECT feature_id, stage FROM features',
     )),
     allRows<FeatureGrantRow>(env.WWO_ADMIN_DB.prepare(
-      `SELECT c.grants_all_unreleased, cf.feature_id
+      `SELECT cm.cohort_id, c.grants_all_unreleased, cf.feature_id
        FROM cohort_memberships cm
        JOIN cohorts c ON c.cohort_id = cm.cohort_id
        LEFT JOIN cohort_features cf ON cf.cohort_id = c.cohort_id
@@ -146,6 +151,7 @@ export async function handleFeatureAccessCheck(
     ).bind(publicId)),
   ]);
   const grantsAllUnreleased = grantRows.some((row) => row.grants_all_unreleased === 1);
+  const inBetaCohort = grantRows.some((row) => row.cohort_id === BETA_COHORT_ID);
   const grantedFeatureIds = new Set(
     grantRows.flatMap((row) => row.feature_id ? [row.feature_id] : []),
   );
@@ -156,6 +162,7 @@ export async function handleFeatureAccessCheck(
   const features = resolveFeaturePolicies({
     storedStages,
     grantsAllUnreleased,
+    inBetaCohort,
     grantedFeatureIds,
   });
 
