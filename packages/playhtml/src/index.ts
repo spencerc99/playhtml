@@ -38,10 +38,8 @@ import type {
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
-import {
-  CursorClientAwareness,
-  getPresencePage,
-} from "./cursors/cursor-client";
+import type { CursorClientAwareness } from "./cursors/cursor-client";
+import { getPresencePage } from "./cursors/presence-page";
 import { createUsersAPI, defaultSeedIdentity } from "./users";
 import type { UsersAPI } from "./users";
 import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
@@ -208,6 +206,14 @@ let yprovider: YProvider;
 let mainUpdateCoalescer: UpdateCoalescer | null = null;
 let flushesUpdatesOnPageHide = false;
 let cursorClient: CursorClientAwareness | null = null;
+// Pages without cursors never download the cursor client. Callers load it
+// before changing any state, so building cursors stays synchronous and a
+// reset cannot land between tearing down and rebuilding.
+let cursorModule: typeof import("./cursors/cursor-client") | null = null;
+
+async function loadCursorModule(): Promise<void> {
+  cursorModule ??= await import("./cursors/cursor-client");
+}
 let currentCursorRoomId = "";
 // The stable object returned by playhtml.presence for the instance lifetime.
 // Delegates to the current inner client, which is rebuilt on room change; the
@@ -1220,9 +1226,14 @@ function buildCursors(args: {
     currentCursorRoomId = mainRoom;
   }
 
+  if (cursorModule === null) {
+    throw new Error(
+      "[playhtml] buildCursors requires the cursor client to be loaded first.",
+    );
+  }
   const cursorPresenceTransport = acquirePresenceTransport(currentCursorRoomId);
   cursorPresenceTransportRoom = currentCursorRoomId;
-  cursorClient = new CursorClientAwareness(
+  cursorClient = new cursorModule.CursorClientAwareness(
     cursorOptions,
     cursorPresenceTransport,
     usersAPI,
@@ -1350,6 +1361,11 @@ async function resetCurrentRoomFromServer(): Promise<void> {
     throw new Error("playhtml cannot reset before init()");
   }
 
+  if (configuredOptions?.cursors?.enabled) {
+    await loadCursorModule();
+    // A full reset while the cursor client loaded leaves nothing to rebuild.
+    if (!__currentRoomId || !__currentHost) return;
+  }
   teardownMainProvider();
   teardownCursors();
   hasSynced = false;
@@ -1424,6 +1440,10 @@ function setupExtensionIdentityListener(): void {
 async function runHandleNavigation(): Promise<void> {
   // firstSetup is true before init and after resetPlayHTML — skip nav in both.
   if (firstSetup) return;
+  if (configuredOptions?.cursors?.enabled) {
+    await loadCursorModule();
+    if (firstSetup) return;
+  }
 
   const nextRoomInput =
     resolveExplicitRoom() ??
@@ -1618,6 +1638,7 @@ async function initPlayHTMLOnce() {
   lockConfigForBootstrap();
   const host = configuredOptions?.host;
   const cursors = configuredOptions?.cursors ?? {};
+  if (cursors.enabled) await loadCursorModule();
   const inputRoom =
     resolveExplicitRoom() ??
     getDefaultRoom(
