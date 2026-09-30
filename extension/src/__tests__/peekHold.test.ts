@@ -102,7 +102,7 @@ describe("the peek key alongside the rest of the studio", () => {
             shiftKey: false,
             altKey: false,
           },
-          { mode: "idle", hasSelection, hasClipboard: false },
+          { mode: "idle", hasSelection, multiple: false, hasClipboard: false },
         ),
       ).toBeNull();
     }

@@ -14,6 +14,7 @@ import {
 const IDLE: KeymapContext = {
   mode: "idle",
   hasSelection: true,
+  multiple: false,
   hasClipboard: false,
 };
 

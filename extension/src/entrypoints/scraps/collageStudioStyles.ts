@@ -529,6 +529,9 @@ export const COLLAGE_STUDIO_STYLES = `
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    /* A marquee or a handle drag sweeps across the stage; it must not pick up
+       the readout or the bars' labels as selected text on the way. */
+    user-select: none;
   }
 
   /* Both sides of the collage share one place on the stage. The sheet keeps
@@ -719,17 +722,15 @@ export const COLLAGE_STUDIO_STYLES = `
     transform: none;
   }
 
-  /* The selected piece's edge: a solid teal line with a pale rim on either
-     side, so it reads on dark and light material alike. Sized in screen
-     pixels through the frame's zoom. */
+  /* The edge of the selected piece, or of the box around several: a plain
+     teal line two screen pixels wide, kept that weight through the frame's
+     zoom. It is drawn as an inset shadow because the browser rounds a
+     border's width to whole pixels before the zoom applies, which would
+     leave the line thinner or thicker than two pixels on screen. */
   .collage-selection-edge {
     position: absolute;
     inset: 0;
-    border: calc(3px / var(--collage-zoom)) solid #4a9a8a;
-    box-shadow:
-      0 0 0 calc(1.5px / var(--collage-zoom)) rgba(255, 253, 249, 0.95),
-      0 0 0 calc(3px / var(--collage-zoom)) rgba(61, 56, 51, 0.35),
-      inset 0 0 0 calc(1.5px / var(--collage-zoom)) rgba(255, 253, 249, 0.95);
+    box-shadow: inset 0 0 0 calc(2px / var(--collage-zoom)) #4a9a8a;
     pointer-events: none;
   }
 
@@ -752,16 +753,13 @@ export const COLLAGE_STUDIO_STYLES = `
     background: #eef6f4;
   }
 
-  .collage-handle--rotate {
-    border-radius: 50%;
-    cursor: crosshair;
-  }
-
-  .collage-handle__tether {
+  /* An invisible grip around the selection: along an edge it scales, just
+     past a corner it turns. Only its cursor says which. */
+  .collage-grip {
     position: absolute;
-    width: 1px;
-    background: #4a9a8a;
-    pointer-events: none;
+    transform-origin: center;
+    background: transparent;
+    touch-action: none;
   }
 
   /*
@@ -837,6 +835,27 @@ export const COLLAGE_STUDIO_STYLES = `
     border-style: solid;
     border-color: rgba(61, 56, 51, 0.32);
     transform-origin: center;
+    pointer-events: none;
+  }
+
+  /* Each piece inside a selection of several, traced lightly under the box
+     that holds them all. */
+  .collage-piece-member {
+    position: absolute;
+    z-index: 9999;
+    border-style: solid;
+    border-color: rgba(74, 154, 138, 0.85);
+    transform-origin: center;
+    pointer-events: none;
+  }
+
+  /* The area a drag across bare paper is sweeping. */
+  .collage-marquee {
+    position: absolute;
+    z-index: 10003;
+    border-style: solid;
+    border-color: #4a9a8a;
+    background: rgba(74, 154, 138, 0.08);
     pointer-events: none;
   }
 
