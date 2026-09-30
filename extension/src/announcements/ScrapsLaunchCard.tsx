@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import browser from "webextension-polyfill";
+import { groupPhotoEncounters } from "@movement/utils/scrapPhotoGroups";
 import { getState, setState } from "./announcement-storage";
 import { scrapsAvailable } from "../scraps-availability";
 import "./ScrapsLaunchCard.scss";
@@ -239,7 +240,11 @@ export function ScrapsLaunchCard() {
           options: { limit: 200 },
         })) as ScrapsResponse;
         if (cancelled) return;
-        setScraps(Array.isArray(response?.scraps) ? response.scraps : []);
+        setScraps(
+          Array.isArray(response?.scraps)
+            ? groupPhotoEncounters(response.scraps).sort((a, b) => b.ts - a.ts)
+            : [],
+        );
       } catch (loadError: unknown) {
         console.error("[ScrapsLaunchCard] Could not load scraps:", loadError);
         if (!cancelled) setScraps([]);

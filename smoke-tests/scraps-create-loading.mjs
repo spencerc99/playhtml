@@ -109,25 +109,26 @@ try {
     );
     const createRequestsBefore = requests.filter((url) => /CreateMode-|html2canvas/.test(url));
     const createResourcesBefore = browseResources.filter((url) => /CreateMode-|html2canvas/.test(url));
-    const scrapCount = await page.evaluate(async () => {
+    const scrapPage = await page.evaluate(async () => {
       const response = await chrome.runtime.sendMessage({ type: "GET_SCRAPS" });
-      return response.scraps.length;
+      return { count: response.scraps.length, nextCursor: response.nextCursor };
     });
-    assert.equal(scrapCount, 1000);
+    assert.equal(scrapPage.count, 200);
+    assert.ok(scrapPage.nextCursor);
     if (process.env.SCRAPS_EXPECT_LAZY === "1") {
       assert.deepEqual(createRequestsBefore, []);
       assert.deepEqual(createResourcesBefore, []);
     }
     if (index === 0) await page.screenshot({ path: `${evidence}/browse.png` });
     await page.getByRole("button", { name: "create", exact: true }).click();
-    await page.getByRole("heading", { name: "your collages" }).waitFor();
+    await page.getByRole("heading", { name: "scrap collages" }).waitFor();
     await page.getByText("opening the drawer...").waitFor({ state: "hidden" });
     const createRequestsAfter = requests.filter((url) => /CreateMode-|html2canvas/.test(url));
     if (process.env.SCRAPS_EXPECT_LAZY === "1") {
       assert.ok(createRequestsAfter.some((url) => /CreateMode-/.test(url)));
     }
     if (index === 0) await page.screenshot({ path: `${evidence}/create.png` });
-    await page.getByRole("button", { name: "start a new one" }).click();
+    await page.getByRole("button", { name: "new collage" }).click();
     await page.locator(".collage-studio").waitFor();
     if (index === 0) await page.screenshot({ path: `${evidence}/studio.png` });
     await page.getByRole("button", { name: "browse", exact: true }).click();
