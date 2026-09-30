@@ -1,5 +1,5 @@
 // ABOUTME: Starts the local presence-only Worker without persistence secrets.
-// ABOUTME: Verifies its real WebSocket endpoint returns an initial presence sync.
+// ABOUTME: Verifies its real WebSocket endpoint syncs presence and answers liveness pings.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -89,6 +89,30 @@ async function readInitialSync() {
   }
 }
 
+// The runtime answers pings itself (WebSocket auto-response).
+async function readPong() {
+  const socket = new WebSocket(
+    `ws://127.0.0.1:${port}/parties/presence/local-presence-smoke`,
+  );
+  try {
+    await once(socket, "open");
+    return await new Promise((resolveMessage, rejectMessage) => {
+      const timeout = setTimeout(() => {
+        rejectMessage(new Error("presence endpoint did not answer a ping"));
+      }, 10_000);
+      socket.on("message", (data) => {
+        const text = data.toString();
+        if (text !== "pong") return;
+        clearTimeout(timeout);
+        resolveMessage(text);
+      });
+      socket.send("ping");
+    });
+  } finally {
+    socket.close();
+  }
+}
+
 async function stopWorker() {
   if (worker.exitCode !== null) return;
   worker.kill("SIGTERM");
@@ -101,6 +125,7 @@ try {
   await waitForWorker();
   const message = await readInitialSync();
   assert.deepEqual(message, { type: "presence-sync", peers: {} });
+  assert.equal(await readPong(), "pong");
   console.log(
     `[presence-local] PASS - ws://127.0.0.1:${port}/parties/presence/local-presence-smoke`,
   );

@@ -8,6 +8,8 @@ import {
   type WSMessage,
 } from "partyserver";
 import {
+  PRESENCE_PING_MESSAGE,
+  PRESENCE_PONG_MESSAGE,
   type PresenceClientMessage,
   type PresenceSnapshot,
   type PresenceSyncMessage,
@@ -20,9 +22,18 @@ import {
   createPresenceMessageBudgetState,
   createPresenceRoomState,
   recordPresenceRemoval,
+  recordPresenceUpdate,
   restorePresenceConnectionChannels,
   takePresenceChanges,
 } from "./presencePolicy";
+import {
+  getRestampedChannels,
+  isDeadPresenceSocket,
+  isVouchedPresencePeer,
+  PRESENCE_SWEEP_INTERVAL_MS,
+  shouldSweepPresenceRoom,
+  type PresenceLivenessInput,
+} from "./presenceLiveness";
 import {
   getConnectionCloseDiagnostic,
   PRESENCE_CLOSE_DIAGNOSTIC_POLICY,
@@ -39,6 +50,8 @@ const PRESENCE_INVALID_MESSAGE_WINDOW_MS = 1000;
 const PRESENCE_INVALID_MESSAGE_LIMIT = 10;
 // Close code sent to an older socket when a reconnect reuses its connection id.
 const PRESENCE_REPLACED_CLOSE_CODE = 4000;
+// Close code sent to a socket that stopped answering liveness pings.
+const PRESENCE_DEAD_CLOSE_CODE = 4001;
 
 type PresenceConnectionState = Record<string, unknown> & {
   [PRESENCE_CHANNELS_STATE_KEY]?: Record<string, unknown>;
@@ -71,11 +84,24 @@ export class PresenceServer extends Server<Env> {
   // close event for them must not remove or log a second time. Cleared when the
   // socket sends another accepted message and so holds presence again.
   private releasedConnections = new WeakSet<Connection>();
+  // When this instance last handled a message from each connection id. Lost on
+  // hibernation; pinging peers are covered by the runtime's ping timestamps.
+  private lastMessageAt = new Map<string, number>();
 
-  override onConnect(
+  override onStart(): void {
+    // Pings are answered by the runtime without waking the room.
+    this.ctx.setWebSocketAutoResponse(
+      new WebSocketRequestResponsePair(
+        PRESENCE_PING_MESSAGE,
+        PRESENCE_PONG_MESSAGE,
+      ),
+    );
+  }
+
+  override async onConnect(
     connection: Connection,
     _ctx: ConnectionContext,
-  ): void | Promise<void> {
+  ): Promise<void> {
     const presenceConnection =
       connection as Connection<PresenceConnectionState>;
     // PartySocket reuses its connection id across reconnects, so a new socket
@@ -92,9 +118,16 @@ export class PresenceServer extends Server<Env> {
     }));
     this.flushBroadcast();
     presenceConnection.send(JSON.stringify(this.createSyncMessage()));
+    await this.scheduleSweep();
   }
 
   override onMessage(connection: Connection, message: WSMessage): void {
+    this.lastMessageAt.set(connection.id, Date.now());
+    // Only reached when the runtime auto-response did not answer the ping.
+    if (message === PRESENCE_PING_MESSAGE) {
+      connection.send(PRESENCE_PONG_MESSAGE);
+      return;
+    }
     if (typeof message !== "string") {
       this.sendError(connection, "Presence messages must be strings");
       return;
@@ -206,6 +239,73 @@ export class PresenceServer extends Server<Env> {
     recordPresenceRemoval(this.presenceState, connection.id);
     clearPresenceMessageBudget(this.messageBudgets, connection.id);
     this.invalidMessageWindows.delete(connection.id);
+    this.lastMessageAt.delete(connection.id);
+  }
+
+  /**
+   * Liveness sweep. Pinging peers never wake the room, so while two or more
+   * sockets are open the room wakes on this alarm to refresh the element and
+   * page presence stamps of peers whose pings are still arriving (the job each
+   * client's keepalive republish used to do), and to close sockets whose pings
+   * stopped long ago.
+   */
+  override async onAlarm(): Promise<void> {
+    const now = Date.now();
+    this.flushBroadcast();
+    for (const connection of this.getConnections<PresenceConnectionState>()) {
+      const liveness = this.getLivenessInput(connection);
+      if (isDeadPresenceSocket(liveness, now)) {
+        if (!this.releasedConnections.has(connection)) {
+          this.releasePresence(connection);
+        }
+        connection.close(PRESENCE_DEAD_CLOSE_CODE, "presence ping timeout");
+        continue;
+      }
+      if (!isVouchedPresencePeer(liveness, now)) continue;
+      const channels = connection.state?.[PRESENCE_CHANNELS_STATE_KEY];
+      if (!channels) continue;
+      for (const [channel, value] of Object.entries(
+        getRestampedChannels(channels, now),
+      )) {
+        recordPresenceUpdate(this.presenceState, connection.id, channel, value);
+      }
+    }
+    this.flushBroadcast();
+    if (this.hasPingingConnection()) await this.scheduleSweep();
+  }
+
+  private async scheduleSweep(): Promise<void> {
+    if (!shouldSweepPresenceRoom(this.getOpenConnectionCount())) return;
+    if ((await this.ctx.storage.getAlarm()) !== null) return;
+    await this.ctx.storage.setAlarm(Date.now() + PRESENCE_SWEEP_INTERVAL_MS);
+  }
+
+  private getOpenConnectionCount(): number {
+    let count = 0;
+    for (const _connection of this.getConnections()) count += 1;
+    return count;
+  }
+
+  private hasPingingConnection(): boolean {
+    for (const connection of this.getConnections<PresenceConnectionState>()) {
+      if (this.getLivenessInput(connection).pingedAt !== null) return true;
+    }
+    return false;
+  }
+
+  private getLivenessInput(
+    connection: Connection<PresenceConnectionState>,
+  ): PresenceLivenessInput {
+    // PartyServer connections are the runtime's WebSocket objects.
+    const pingedAt = this.ctx.getWebSocketAutoResponseTimestamp(
+      connection as unknown as WebSocket,
+    );
+    const openedAt = connection.state?.[PRESENCE_OPENED_AT_STATE_KEY];
+    return {
+      pingedAt: pingedAt === null ? null : pingedAt.getTime(),
+      lastMessageAt: this.lastMessageAt.get(connection.id) ?? null,
+      openedAt: typeof openedAt === "number" ? openedAt : null,
+    };
   }
 
   /** Open sockets other than `connection` that share its connection id. */
@@ -270,11 +370,19 @@ export class PresenceServer extends Server<Env> {
   }
 
   private createSyncMessage(): PresenceSyncMessage {
+    const now = Date.now();
     const peers: PresenceSnapshot = {};
     for (const connection of this.getConnections<PresenceConnectionState>()) {
       const channels = connection.state?.[PRESENCE_CHANNELS_STATE_KEY];
       if (!channels || Object.keys(channels).length === 0) continue;
-      peers[connection.id] = { ...channels };
+      // Stored stamps of a connected peer can predate the last sweep's
+      // refresh, which is only broadcast, so a joining client gets them fresh.
+      peers[connection.id] = isVouchedPresencePeer(
+        this.getLivenessInput(connection),
+        now,
+      )
+        ? { ...channels, ...getRestampedChannels(channels, now) }
+        : { ...channels };
     }
     return {
       type: "presence-sync",

@@ -15,6 +15,23 @@ export const MAX_PRESENCE_VALUE_BYTES = 4096;
 
 export type PresenceChannelCadence = "frame" | "interactive" | "event";
 
+// Wire channel prefixes: element awareness shards and page presence channels.
+export const ELEMENT_CHANNEL_PREFIX = "element:";
+export const PAGE_PRESENCE_CHANNEL_PREFIX = "presence:";
+
+// Clients hide a peer's stamped channels once their `at` stamp is older than
+// this, so peers that vanish without a close (killed tab, dropped network)
+// disappear.
+export const PRESENCE_STALE_MS = 30_000;
+
+// Liveness ping. The presence server answers it with PRESENCE_PONG_MESSAGE
+// without running any server code (a Durable Object WebSocket auto-response),
+// so an idle connection never wakes the room. A pong also tells the client the
+// server keeps its element and page presence stamps fresh while the pings
+// continue, so the client does not republish them to stay visible.
+export const PRESENCE_PING_MESSAGE = "ping";
+export const PRESENCE_PONG_MESSAGE = "pong";
+
 export type PresenceJoinMessage = {
   type: "presence-join";
   identity?: PlayerIdentity;

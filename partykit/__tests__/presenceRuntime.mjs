@@ -1,5 +1,5 @@
 // ABOUTME: Exercises presence persistence against real hibernating Workers WebSockets.
-// ABOUTME: Measures attachment writes and verifies batching, recovery, and socket replacement.
+// ABOUTME: Measures attachment writes and wakes; verifies batching, recovery, pings, and sweeps.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { build } from "esbuild";
@@ -22,10 +22,21 @@ const worker = await build({
         writes.set(id, (writes.get(id) ?? 0) + 1);
         return result;
       };
+      // Counts the Durable Object invocations that wake the room.
+      const wakes = { message: 0, alarm: 0 };
       export class Presence extends PresenceServer {
         incarnation = crypto.randomUUID();
+        async webSocketMessage(ws, message) {
+          wakes.message += 1;
+          return super.webSocketMessage(ws, message);
+        }
+        async alarm() {
+          wakes.alarm += 1;
+          return super.alarm();
+        }
         async onRequest(request) {
           const action = await request.json();
+          if (action.sweep) await this.onAlarm();
           const connection = this.getConnection(action.id);
           if (action.messages) {
             for (const message of action.messages) {
@@ -47,6 +58,8 @@ const worker = await build({
           if (action.close) this.onClose(connection, 1000, "", true);
           return Response.json({
             diagnostics,
+            wakes: { ...wakes },
+            alarm: await this.ctx.storage.getAlarm(),
             incarnation: this.incarnation,
             writes: writes.get(action.id) ?? 0,
             state: connection?.state,
@@ -350,6 +363,143 @@ test("native presence attachment writes are batched and recoverable", async () =
         closeDiscardedPendingWrite: true,
         errorCloseRemovedOnce: true,
         replacedSocketKeptPresence: true,
+      }),
+    );
+  } finally {
+    for (const ws of sockets) ws.close(1000);
+    await mf.dispose();
+  }
+});
+
+test("pings are answered without waking the room and the sweep refreshes pinging peers", async () => {
+  const mf = new Miniflare({
+    modules: true,
+    compatibilityDate: "2024-09-23",
+    compatibilityFlags: ["nodejs_compat"],
+    script: worker.outputFiles[0].text,
+    durableObjects: {
+      Presence: {
+        className: "Presence",
+        useSQLite: true,
+        unsafePreventEviction: false,
+      },
+    },
+  });
+  const sockets = [];
+  const received = [];
+  const url = "http://presence.test/parties/presence/liveness";
+  async function connect(id) {
+    const response = await mf.dispatchFetch(`${url}?_pk=${id}`, {
+      headers: { Upgrade: "websocket" },
+    });
+    assert.equal(response.status, 101);
+    const ws = response.webSocket;
+    ws.accept();
+    ws.addEventListener("message", (event) =>
+      received.push({ to: id, data: event.data }),
+    );
+    sockets.push(ws);
+    return ws;
+  }
+  async function inspect(action = {}) {
+    const response = await mf.dispatchFetch(url, {
+      method: "POST",
+      body: JSON.stringify({ id: "pinger", ...action }),
+    });
+    assert.equal(response.status, 200);
+    return response.json();
+  }
+  const pongsTo = (id) =>
+    received.filter((message) => message.to === id && message.data === "pong")
+      .length;
+  const changesSince = (start) =>
+    received
+      .slice(start)
+      .filter((message) => message.data !== "pong")
+      .map((message) => JSON.parse(message.data))
+      .filter((message) => message.type === "presence-changes");
+
+  try {
+    const pinger = await connect("pinger");
+    const legacy = await connect("legacy");
+    await connect("viewer");
+    const staleAt = Date.now() - 10_000;
+    for (const ws of [pinger, legacy]) {
+      ws.send(
+        JSON.stringify({
+          type: "presence-update",
+          channel: "presence:status",
+          value: { at: staleAt, value: "here" },
+        }),
+      );
+      ws.send(
+        JSON.stringify({
+          type: "presence-update",
+          channel: "cursor",
+          value: { cursor: { x: 1, y: 1, pointer: "mouse" }, at: staleAt },
+        }),
+      );
+    }
+    pinger.send("ping");
+    await sleep(100);
+    const beforeIdle = await inspect();
+    assert.ok(beforeIdle.alarm, "a room with several sockets schedules a sweep");
+
+    // Let the room hibernate, then ping while it sleeps.
+    await sleep(12_000);
+    const pongsBefore = pongsTo("pinger");
+    for (let index = 0; index < 5; index += 1) {
+      pinger.send("ping");
+      await sleep(100);
+    }
+    assert.equal(pongsTo("pinger") - pongsBefore, 5, "every ping is answered");
+    const afterPings = await inspect();
+    assert.notEqual(
+      afterPings.incarnation,
+      beforeIdle.incarnation,
+      "the room hibernated while idle",
+    );
+    assert.equal(
+      afterPings.wakes.message,
+      beforeIdle.wakes.message,
+      "answering pings never ran the room's message handler",
+    );
+
+    // The sweep refreshes the pinging peer's presence stamp only: the legacy
+    // peer refreshes its own, and cursor stamps are left to fade.
+    const sweepStart = received.length;
+    const sweptAt = Date.now();
+    await inspect({ sweep: true });
+    await sleep(100);
+    const changes = changesSince(sweepStart);
+    const refreshed = changes.flatMap((message) =>
+      Object.entries(message.updates).flatMap(([peer, channels]) =>
+        Object.keys(channels).map((channel) => `${peer}/${channel}`),
+      ),
+    );
+    assert.deepEqual([...new Set(refreshed)].sort(), ["pinger/presence:status"]);
+    const refreshedStatus = changes.find(
+      (message) => message.updates.pinger,
+    ).updates.pinger["presence:status"];
+    assert.equal(refreshedStatus.value, "here");
+    assert.ok(refreshedStatus.at >= sweptAt, "the stamp is refreshed");
+
+    // A client joining after the sweep sees the pinging peer's fresh stamp.
+    const syncStart = received.length;
+    await connect("late");
+    await sleep(100);
+    const sync = received
+      .slice(syncStart)
+      .map((message) => JSON.parse(message.data))
+      .find((message) => message.type === "presence-sync");
+    assert.ok(sync.peers.pinger["presence:status"].at >= sweptAt);
+    assert.equal(sync.peers.legacy["presence:status"].at, staleAt);
+
+    console.log(
+      JSON.stringify({
+        pingsAnsweredWhileHibernated: 5,
+        messageHandlerRunsForPings: 0,
+        sweepRefreshed: [...new Set(refreshed)],
       }),
     );
   } finally {
