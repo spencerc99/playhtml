@@ -1,32 +1,14 @@
 // ABOUTME: Builds the core playhtml package and generated declaration bundle.
 // ABOUTME: Keeps public declarations pointed at package imports, not workspace paths.
 import path from "path";
-import { defineConfig, transformWithEsbuild, type Plugin } from "vite";
+import { defineConfig } from "vite";
 import dts from "vite-plugin-dts";
 
 const commonSourceImport = /from ["'](?:\.\.\/)+common\/src["']/g;
 const commonSourceDynamicImport = /import\(["'](?:\.\.\/)+common\/src["']\)/g;
 
-// Vite leaves whitespace in ES library output so downstream bundlers keep
-// pure annotations. esbuild keeps those annotations while stripping whitespace,
-// and the package is also loaded unbundled from CDNs, so strip it here.
-function minifyWhitespace(): Plugin {
-  return {
-    name: "playhtml-minify-whitespace",
-    async renderChunk(code, chunk) {
-      const result = await transformWithEsbuild(code, chunk.fileName, {
-        format: "esm",
-        minifyWhitespace: true,
-        sourcemap: true,
-      });
-      return { code: result.code, map: result.map };
-    },
-  };
-}
-
 export default defineConfig({
   plugins: [
-    minifyWhitespace(),
     dts({
       rollupTypes: true,
       beforeWriteFile(filePath, content) {
@@ -40,6 +22,12 @@ export default defineConfig({
     }),
   ],
   build: {
+    // Vite's esbuild pass keeps whitespace in ES library output; terser strips
+    // it, and preserve_annotations keeps pure annotations for downstream
+    // tree-shaking. The package is also loaded unbundled
+    // from CDNs, so ship it minified with source maps for debugging.
+    minify: "terser",
+    terserOptions: { format: { preserve_annotations: true } },
     sourcemap: true,
     rollupOptions: {
       input: ["src/init.ts", "src/index.ts", "src/leafEditor.ts"],
