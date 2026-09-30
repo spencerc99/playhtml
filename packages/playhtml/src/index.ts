@@ -69,6 +69,10 @@ import { CanMirrorDataQueue } from "./canMirrorDataQueue";
 import { resolveRoomHost } from "./roomHost";
 import { V2Store, type V2StoreStatusEvent } from "./v2/store";
 import { V2Transport, type V2TransportStatusEvent } from "./v2/transport";
+import {
+  createV2PageDataChannel,
+  type V2PageDataChannel,
+} from "./v2/page-data";
 import type { JsonValue } from "@playhtml/common";
 
 export {
@@ -211,6 +215,7 @@ let v2TransportStatusUnsubscribe: (() => void) | null = null;
 let v2StoreStatusUnsubscribe: (() => void) | null = null;
 const v2ElementUnsubscribeByKey = new Map<string, () => void>();
 const v2ElementApplyFrameByKey = new Map<string, number>();
+const v2PageDataChannels = new Set<V2PageDataChannel<unknown>>();
 
 let cursorClient: CursorClientAwareness | null = null;
 let currentCursorRoomId = "";
@@ -1709,7 +1714,9 @@ async function runHandleNavigation(): Promise<void> {
   markAllElementsAsLoading();
 
   if (mainRoomChanged) {
-    if (!configuredOptions?.v2) {
+    if (configuredOptions?.v2) {
+      for (const channel of v2PageDataChannels) channel.rebind();
+    } else {
       await waitForMainProviderSync();
       refreshPageDataChannels(getPageDataDeps());
     }
@@ -2449,6 +2456,21 @@ function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
   if (!hasSynced) {
     throw new Error("playhtml.createPageData is not available before init()");
   }
+  if (configuredOptions?.v2) {
+    const channel: V2PageDataChannel<T> = createV2PageDataChannel(
+      name,
+      defaultValue,
+      () => {
+        if (!v2Store) {
+          throw new Error("playhtml version 2 store is unavailable after sync");
+        }
+        return v2Store;
+      },
+      () => v2PageDataChannels.delete(channel as V2PageDataChannel<unknown>),
+    );
+    v2PageDataChannels.add(channel as V2PageDataChannel<unknown>);
+    return channel;
+  }
   return createPageDataChannel(name, defaultValue, getPageDataDeps());
 }
 
@@ -2573,6 +2595,7 @@ export async function resetPlayHTML(): Promise<void> {
     elementHandlers.clear();
     pageDataRefCounts.clear();
     pageDataListeners.clear();
+    v2PageDataChannels.clear();
     mainProviderSyncWaiters.clear();
     disconnectRegisteredElementObserver();
 

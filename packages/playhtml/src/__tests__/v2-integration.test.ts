@@ -169,6 +169,72 @@ describe("playhtml version 2 integration", () => {
     });
   });
 
+  it("persists page data through the operation socket", async () => {
+    const server = new InProcessServer();
+    server.snapshot.state.__page__ = { visits: 3, board: { notes: ["a"] } };
+    server.snapshot.arrays = [
+      {
+        capability: "__page__",
+        elementId: "board",
+        path: ["notes"],
+        itemIds: ["note-a"],
+      },
+    ];
+    const initialized = playhtml.init({
+      v2: true,
+      host: "localhost:1999",
+      room: "/v2-page-data",
+    });
+    const socket = await waitForV2Socket();
+    socket.receive(server.snapshotMessage());
+    await initialized;
+
+    const visits = playhtml.createPageData("visits", 0);
+    const board = playhtml.createPageData("board", {
+      notes: [] as string[],
+    });
+    const fresh = playhtml.createPageData("fresh", { on: false });
+    const updates: number[] = [];
+    visits.onUpdate((value) => updates.push(value));
+
+    expect(visits.getData()).toBe(3);
+    expect(board.getData()).toEqual({ notes: ["a"] });
+
+    visits.setData((value) => value + 1);
+    board.setData((draft) => {
+      draft.notes.push("b");
+    });
+    await waitForOutgoingFlush();
+    let sentCount = flushClientMessages(server, socket, 0);
+
+    expect(server.snapshot.state.__page__).toEqual({
+      visits: 4,
+      board: { notes: ["a", "b"] },
+      fresh: { on: false },
+    });
+    expect(updates).toContain(4);
+
+    socket.receive(
+      server.applyRemote({
+        type: "set",
+        capability: "__page__",
+        elementId: "visits",
+        path: [],
+        value: 10,
+        arrays: [],
+      }),
+    );
+    await Promise.resolve();
+    expect(visits.getData()).toBe(10);
+    expect(updates.at(-1)).toBe(10);
+
+    fresh.setData({ on: true });
+    await waitForOutgoingFlush();
+    sentCount = flushClientMessages(server, socket, sentCount);
+    expect(server.snapshot.state.__page__?.fresh).toEqual({ on: true });
+    expect(sentCount).toBeGreaterThan(0);
+  });
+
   it("seeds, mutates, and renders remote operations without a Yjs provider", async () => {
     const server = new InProcessServer();
     const updateElement = vi.fn(({ element, data }) => {
