@@ -109,13 +109,6 @@ export class ParameterAutomation {
     startTime: number,
     timeConstant: number,
   ): void {
-    if (!this.events.has(param)) {
-      this.record(param, {
-        time: startTime,
-        value: param.value,
-        kind: "set",
-      });
-    }
     // The curve starts from whatever is rendered at `startTime`, so the hold
     // value is recorded as the anchor the interpolation above reads back.
     const anchor = this.valueAt(param, startTime);

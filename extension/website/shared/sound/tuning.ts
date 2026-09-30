@@ -1,13 +1,13 @@
-// ABOUTME: One tunable constants file for the orchestra upgrade — phrasing, density, conductor
+// ABOUTME: Tunable constants for per-voice phrasing and how it shows in the drawn trail
 // ABOUTME: Every number here is a starting point meant to be moved by ear, not a derived value
 
 /**
- * Phase 1 — per-voice phrasing.
+ * Per-voice phrasing.
  *
  * The split this encodes: a voice's *instant* parameters (gain, brightness,
  * vowel, pan) keep tracking motion every frame, and its *phrased* parameter —
- * pitch — changes only when the trail turns. Re-reading pitch per frame is what
- * made a fast cursor sound like a siren rather than a player; a note that is
+ * pitch — changes only when the trail turns. Re-reading pitch per frame makes
+ * a fast cursor sound like a siren rather than a player; a note that is
  * chosen once and then held is what makes a line.
  */
 export const PHRASING_TUNING = {
@@ -37,11 +37,6 @@ export const PHRASING_TUNING = {
   glideMaxMs: 150,
   glideMinMs: 20,
   sharpnessRangeDegrees: 150,
-  /**
-   * `setTargetAtTime` reaches ~95% of its target in three time constants, so a
-   * glide asked for in ms is applied as `glideMs / 3000` seconds.
-   */
-  glideTimeConstantDivisor: 3000,
 
   /**
    * Swell and settle. Every note re-articulates: a fast ramp to full, then a
@@ -55,8 +50,7 @@ export const PHRASING_TUNING = {
   articulationSettleTimeConstant: 1.5,
 
   /**
-   * The octave "bloom": a quiet ×2 layer crossfaded in with speed, replacing
-   * the old ×2/×4 pitch jumps. It stays inside the voice's register, so speed
+   * The octave "bloom": a quiet ×2 layer crossfaded in with speed. It stays inside the voice's register, so speed
    * never introduces a pitch the harmony did not ask for.
    */
   bloomMultiple: 2,

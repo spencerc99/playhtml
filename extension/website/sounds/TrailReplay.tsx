@@ -2,7 +2,7 @@
 // ABOUTME: The way to hear the arrangement at its quiet and crowded extremes on demand
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SoundEngine } from "../shared/sound/SoundEngine";
+import { SoundEngine, VoiceSnapshot } from "../shared/sound/SoundEngine";
 import { TrailSoundFrame } from "../shared/sound/types";
 import { VoiceMotionState } from "../shared/sound/phrasing";
 import { articulationBreath } from "../shared/sound/tuning";
@@ -46,7 +46,6 @@ interface Slot {
   /** Harness clock the next trail starts on, once this one has run out. */
   resumesMs: number;
   ribbon: Array<{ x: number; y: number }>;
-  color: string;
 }
 
 const labelStyle: React.CSSProperties = {
@@ -129,9 +128,7 @@ export const TrailReplay = ({ getEngine }: TrailReplayProps) => {
   const [density, setDensity] = useState<Density>(5);
   const [running, setRunning] = useState(false);
   const [source, setSource] = useState("bundled sample");
-  const [snapshot, setSnapshot] = useState<ReturnType<
-    SoundEngine["getVoiceSnapshot"]
-  > | null>(null);
+  const [snapshot, setSnapshot] = useState<VoiceSnapshot | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<SoundEngine | null>(null);
@@ -165,7 +162,6 @@ export const TrailReplay = ({ getEngine }: TrailReplayProps) => {
           startedMs: nowMs - Math.random() * Math.max(1, trailDurationMs(trail)),
           resumesMs: nowMs,
           ribbon: [],
-          color: trail.color,
         });
       }
     },
@@ -203,7 +199,6 @@ export const TrailReplay = ({ getEngine }: TrailReplayProps) => {
             slot.ribbon.length = 0;
             slot.resumesMs = nowMs + gap();
             slot.trail = pick(trailsRef.current);
-            slot.color = slot.trail.color;
             slot.startedMs = slot.resumesMs;
           }
           continue;
@@ -221,7 +216,7 @@ export const TrailReplay = ({ getEngine }: TrailReplayProps) => {
           prevY: previous.y,
           cursorType: slot.trail.cursor,
           progress: localMs / Math.max(1, trailDurationMs(slot.trail)),
-          color: slot.color,
+          color: slot.trail.color,
           isNewlyActive: false,
           identityKey: `${slot.trailIndex}:${slot.trail.id}`,
         });
@@ -241,16 +236,18 @@ export const TrailReplay = ({ getEngine }: TrailReplayProps) => {
           const breath = articulationBreath(
             engineRef.current?.getArticulation(slot.trailIndex),
           );
-          ctx.strokeStyle = slot.color;
+          ctx.strokeStyle = slot.trail.color;
           ctx.globalAlpha = 0.55 * breath.opacityScale;
           ctx.lineWidth = 1.5 * breath.widthScale;
           ctx.beginPath();
           ctx.moveTo(slot.ribbon[0].x, slot.ribbon[0].y);
-          for (const point of slot.ribbon.slice(1)) ctx.lineTo(point.x, point.y);
+          for (let i = 1; i < slot.ribbon.length; i++) {
+            ctx.lineTo(slot.ribbon[i].x, slot.ribbon[i].y);
+          }
           ctx.stroke();
           const head = slot.ribbon[slot.ribbon.length - 1];
           ctx.globalAlpha = 0.9 * breath.opacityScale;
-          ctx.fillStyle = slot.color;
+          ctx.fillStyle = slot.trail.color;
           ctx.beginPath();
           ctx.arc(head.x, head.y, 2.5, 0, Math.PI * 2);
           ctx.fill();

@@ -349,6 +349,27 @@ export type SoloistVoice =
 export const SOLOIST_VOICES: SoloistVoice[] = ["bells", "arpeggio", "presence"];
 
 /** Configurable sound modes */
+/** One voice's line in `SoundEngine.getVoiceSnapshot`. */
+export interface VoiceSnapshotLine {
+  trailIndex: number;
+  state: VoiceMotionState;
+  speed: number;
+  articulation: number;
+  bloom: number;
+  frequency: number;
+  present: boolean;
+}
+
+/** The whole arrangement as a debug overlay reads it. */
+export interface VoiceSnapshot {
+  energy: number;
+  chord: string;
+  progression: ProgressionId;
+  fullVoices: number;
+  pooledVoices: number;
+  voices: VoiceSnapshotLine[];
+}
+
 export interface SoundConfig {
   mode: SoundMode;
   chordVoicing: boolean;
@@ -1645,8 +1666,7 @@ interface Voice {
    */
   articulationNode: GainNode;
   /**
-   * The octave layer speed crossfades in, replacing the old velocity-driven
-   * octave jump. Same shape as the halo and built the same way; it stays inside
+   * The octave layer speed crossfades in. Same shape as the halo and built the same way; it stays inside
    * the voice's register, so speed can never introduce an out-of-key pitch.
    */
   bloom: HaloNodes | null;
@@ -2176,8 +2196,6 @@ export class SoundEngine {
       this.config.spotlight = config.mode === "spotlight";
     }
 
-    // Turning the arc off must hand the reverb back to its fixed default,
-    // otherwise it stays frozen at whatever the last energy value set.
     // Phrasing turned off mid-scene leaves every voice holding whatever level
     // its last note settled to, so the bed stays quiet until something
     // articulates it again — which, with phrasing off, nothing ever does. The
@@ -2195,6 +2213,8 @@ export class SoundEngine {
       }
     }
 
+    // Turning the arc off must hand the reverb back to its fixed default,
+    // otherwise it stays frozen at whatever the last energy value set.
     if (config.energyArc === false && this.reverbGain) {
       this.energy = 0;
       this.lastEnergyTickMs = null;
@@ -4447,11 +4467,6 @@ export class SoundEngine {
   }
 
   /**
-   * The choral part a trail is singing, or null when it has no fingerprint.
-   * The playground shows this beside the home tone so the colour-to-register
-   * mapping can be checked by eye against what is being heard.
-   */
-  /**
    * How far through its swell-and-settle a trail's voice currently is, 0-1, or
    * null when the trail has no phrasing yet.
    *
@@ -4476,31 +4491,8 @@ export class SoundEngine {
    * readout plus one line per voice. Read-only and allocated per call, so it is
    * for a dev panel rather than for anything on the audio path.
    */
-  getVoiceSnapshot(): {
-    energy: number;
-    chord: string;
-    progression: ProgressionId;
-    fullVoices: number;
-    pooledVoices: number;
-    voices: Array<{
-      trailIndex: number;
-      state: VoiceMotionState;
-      speed: number;
-      articulation: number;
-      bloom: number;
-      frequency: number;
-      present: boolean;
-    }>;
-  } {
-    const voices: Array<{
-      trailIndex: number;
-      state: VoiceMotionState;
-      speed: number;
-      articulation: number;
-      bloom: number;
-      frequency: number;
-      present: boolean;
-    }> = [];
+  getVoiceSnapshot(): VoiceSnapshot {
+    const voices: VoiceSnapshotLine[] = [];
     for (const [trailIndex, voice] of this.voices) {
       const phrasing = this.phrasings.get(trailIndex);
       voices.push({
@@ -4518,14 +4510,19 @@ export class SoundEngine {
       energy: this.energy,
       chord: this.getCurrentChordName(),
       progression: this.config.progression,
-      // Every sounding trail still gets a voice of its own; the split between
-      // soloists and pooled section pads arrives with the voice manager.
+      // Every sounding trail gets a voice of its own; pooled counts the
+      // active trails that do not currently hold one.
       fullVoices: voices.length,
       pooledVoices: Math.max(0, this.lastActiveTrailCount - voices.length),
       voices,
     };
   }
 
+  /**
+   * The choral part a trail is singing, or null when it has no fingerprint.
+   * The playground shows this beside the home tone so the colour-to-register
+   * mapping can be checked by eye against what is being heard.
+   */
   getRegisterBand(trailIndex: number): RegisterBand | null {
     if (!this.config.trailVoices) return null;
     return this.fingerprints.get(trailIndex)?.band ?? null;
@@ -5345,8 +5342,8 @@ export class SoundEngine {
    * onto a closed hum and the vibrato widens over several seconds.
    *
    * A trail that stops travelling but keeps moving is a person hovering over
-   * something, and the old behaviour held a flat tone for as long as they did.
-   * Development is what turns that from a stuck note into a held one.
+   * something. Without development it would hold a flat tone for as long as
+   * they did; development turns that from a stuck note into a held one.
    */
   private developLinger(voice: Voice): void {
     if (!this.ctx) return;
@@ -5396,9 +5393,9 @@ export class SoundEngine {
   /**
    * Crossfade the voice's octave layer to `amount` of its full level.
    *
-   * This is what replaced the velocity-driven octave jump. A jump moved the
-   * voice's own pitch, so a fast cursor could land a fourth above the chord it
-   * was doubling; a layer adds the octave underneath the line the voice is
+   * A layer rather than an octave jump in the voice itself. A jump moves the
+   * voice's own pitch, so a fast cursor can land a fourth above the chord it
+   * is doubling; a layer adds the octave underneath the line the voice is
    * already singing, which is always in key by construction. It is built on
    * first need and then left in place, because creating and destroying an
    * oscillator per gesture is exactly the graph churn the tick path avoids.

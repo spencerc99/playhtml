@@ -66,7 +66,6 @@ const MIN_DURATION_MS = 1500;
  */
 export function recordTrailsFromEvents(events: SampleEvent[]): RecordedTrail[] {
   const trails: RecordedTrail[] = [];
-  let colorIndex = 0;
   for (const track of buildMoveTracks(events).values()) {
     let stroke: RecordedPoint[] = [];
     let cursor: string | undefined;
@@ -77,11 +76,10 @@ export function recordTrailsFromEvents(events: SampleEvent[]): RecordedTrail[] {
       if (stroke.length >= MIN_POINTS && span >= MIN_DURATION_MS) {
         trails.push({
           id: `${track.pid}-${trails.length}`,
-          color: TRAIL_COLORS[colorIndex % TRAIL_COLORS.length],
+          color: TRAIL_COLORS[trails.length % TRAIL_COLORS.length],
           points: stroke,
           cursor,
         });
-        colorIndex++;
       }
       stroke = [];
       cursor = undefined;
