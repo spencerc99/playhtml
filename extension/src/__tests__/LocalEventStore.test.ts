@@ -508,7 +508,7 @@ describe("LocalEventStore aggregates", () => {
 
     const upgradedDatabase = await new Promise<IDBDatabase>(
       (resolve, reject) => {
-        const request = fakeIndexedDB.open(DB_NAME, 15);
+        const request = fakeIndexedDB.open(DB_NAME, 16);
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       },
@@ -1382,6 +1382,61 @@ describe("LocalEventStore pending uploads", () => {
     expect(events.map((storedEvent) => storedEvent.id)).toEqual([
       "scrap-last",
       "scrap-middle",
+    ]);
+  });
+
+  it("pages one event type by timestamp and id without skipping equal timestamps", async () => {
+    const store = createStore();
+    await store.addEvents([
+      { ...scrapEvent("a", "https://assets.example/a.png"), ts: 3_000 },
+      { ...scrapEvent("b", "https://assets.example/b.png"), ts: 3_000 },
+      { ...scrapEvent("c", "https://assets.example/c.png"), ts: 3_000 },
+      { ...buttonScrapEvent("d"), ts: 2_000 },
+      { ...scrapEvent("e", "https://assets.example/e.png"), ts: 1_000 },
+      { ...event("cursor", "cursor"), ts: 4_000 },
+    ]);
+
+    const first = await store.queryEventPage("element", 2);
+    const second = await store.queryEventPage("element", 2, first.nextCursor!);
+    const third = await store.queryEventPage("element", 2, second.nextCursor!);
+
+    expect(first.events.map(({ id }) => id)).toEqual(["c", "b"]);
+    expect(second.events.map(({ id }) => id)).toEqual(["a", "d"]);
+    expect(third.events.map(({ id }) => id)).toEqual(["e"]);
+    expect(third.nextCursor).toBeNull();
+    expect(
+      new Set(
+        [...first.events, ...second.events, ...third.events].map(({ id }) => id),
+      ).size,
+    ).toBe(5);
+  });
+
+  it("upgrades version 14 history in place for indexed pages", async () => {
+    const database = await openScrapDatabase(
+      [
+        {
+          ...scrapEvent("earlier", "https://assets.example/earlier.png"),
+          ts: 1_000,
+        },
+        {
+          ...scrapEvent("later", "https://assets.example/later.png"),
+          ts: 2_000,
+        },
+      ],
+      14,
+    );
+    database.close();
+
+    const store = createStore();
+    const first = await store.queryEventPage("element", 1);
+    const second = await store.queryEventPage("element", 1, first.nextCursor!);
+
+    expect(first.events.map(({ id }) => id)).toEqual(["later"]);
+    expect(second.events.map(({ id }) => id)).toEqual(["earlier"]);
+    expect(second.nextCursor).toBeNull();
+    expect((await store.getAllEvents()).map(({ id }) => id).sort()).toEqual([
+      "earlier",
+      "later",
     ]);
   });
 

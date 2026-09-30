@@ -2,10 +2,7 @@
 // ABOUTME: coordinates event writes, uploads, and data reads for all extension surfaces
 import browser from 'webextension-polyfill'
 import { scrapEncounterDay } from '@movement/utils/scrapEncounterDay'
-import {
-  groupPhotoEncounters,
-  type ScrapSource,
-} from '@movement/utils/scrapPhotoGroups'
+import type { ScrapSource } from '@movement/utils/scrapPhotoGroups'
 import { LocalEventStore } from '../storage/LocalEventStore'
 import { ImageFingerprints } from '../storage/imageFingerprints'
 import { ImageCopier } from '../storage/ImageCopier'
@@ -758,28 +755,33 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'GET_SCRAPS') {
-      // No limit returns every scrap; the scraps page filters the full set.
-      const limit = message.options?.limit as number | undefined
+      const limit = message.options?.limit ?? 200
+      const cursor = message.options?.cursor
       store
-        .queryByType('element')
-        .then((events) =>
-          events
-            .sort((first, second) => second.ts - first.ts)
-            .flatMap((event): ScrapRecord[] => {
+        .queryEventPage('element', limit, cursor)
+        .then(({ events, nextCursor }) =>
+          reply({
+            scraps: events.flatMap((event): ScrapRecord[] => {
               const scrap = toScrapRecord(event)
               return scrap ? [scrap] : []
             }),
+            nextCursor,
+          }),
         )
-        .then((scraps) => {
-          const grouped = groupPhotoEncounters(scraps).sort((a, b) => b.ts - a.ts)
-          reply({
-            scraps: grouped.slice(0, limit ?? Infinity),
-            total: grouped.length,
-          })
-        })
         .catch((e) => {
           console.error('[Background] GET_SCRAPS error:', e)
-          reply({ scraps: [] })
+          reply({ scraps: [], error: String(e) })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_SCRAP_COUNT') {
+      store
+        .countEventsOfType('element')
+        .then((total) => reply({ total }))
+        .catch((e) => {
+          console.error('[Background] GET_SCRAP_COUNT error:', e)
+          reply({ error: String(e) })
         })
       return true
     }

@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import browser from "webextension-polyfill";
 import { ScrapCollage, type ScrapItem } from "@movement/components/ScrapCollage";
+import { groupPhotoEncounters } from "@movement/utils/scrapPhotoGroups";
 import { getState, setState } from "./announcement-storage";
 import { scrapsAvailable } from "../scraps-availability";
 import {
@@ -19,8 +20,12 @@ export const PILE_CAPACITY = 32;
 
 interface ScrapsResponse {
   scraps?: ScrapRecord[];
-  /** Every scrap collected, not only the ones returned under the limit. */
+  error?: string;
+}
+
+interface ScrapCountResponse {
   total?: number;
+  error?: string;
 }
 
 function exampleImage(
@@ -141,14 +146,25 @@ export function ScrapsLaunchCard() {
       if (!featureOn) return;
 
       try {
-        const response = (await browser.runtime.sendMessage({
-          type: "GET_SCRAPS",
-          options: { limit: PILE_CAPACITY },
-        })) as ScrapsResponse;
+        const [response, countResponse] = (await Promise.all([
+          browser.runtime.sendMessage({
+            type: "GET_SCRAPS",
+            options: { limit: PILE_CAPACITY },
+          }),
+          browser.runtime.sendMessage({ type: "GET_SCRAP_COUNT" }),
+        ])) as [ScrapsResponse, ScrapCountResponse];
         if (cancelled) return;
-        const loaded = Array.isArray(response?.scraps) ? response.scraps : [];
+        if (response?.error) throw new Error(response.error);
+        if (typeof countResponse?.total !== "number") {
+          throw new Error(
+            `GET_SCRAP_COUNT returned no total: ${countResponse?.error ?? "unknown"}`,
+          );
+        }
+        const loaded = Array.isArray(response?.scraps)
+          ? groupPhotoEncounters(response.scraps).sort((a, b) => b.ts - a.ts)
+          : [];
         setScraps(loaded);
-        setTotal(response?.total ?? loaded.length);
+        setTotal(countResponse.total);
       } catch (loadError: unknown) {
         console.error("[ScrapsLaunchCard] Could not load scraps:", loadError);
         if (!cancelled) setScraps([]);

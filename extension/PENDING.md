@@ -1,5 +1,7 @@
 # Unreleased
 
+- Internet scraps opens faster with large collections while search and filters still find older scraps.
+
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
 watches this file: when there are bullets, it opens (or updates) a release PR
