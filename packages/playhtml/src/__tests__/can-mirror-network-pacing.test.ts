@@ -49,6 +49,8 @@ describe("can-mirror network pacing", () => {
     await flush();
 
     const provider = getMainProvider();
+    // Let setup's batched updates finish sending before counting.
+    await new Promise((resolve) => setTimeout(resolve, UPDATE_SEND_INTERVAL_MS * 2));
     provider.ws.send.mockClear();
 
     for (const pixel of pixels) {
