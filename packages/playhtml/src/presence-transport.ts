@@ -17,6 +17,7 @@ import {
 import { PeerStore } from "./peer-store";
 
 export type PresenceSocket = Pick<PartySocket, "readyState" | "send" | "close"> &
+  Partial<Pick<PartySocket, "id">> &
   Pick<EventTarget, "addEventListener" | "removeEventListener">;
 
 type HandlerPropertySocket = PresenceSocket & {
@@ -57,6 +58,15 @@ const UNREACHABLE_GRACE_MS = 15_000;
 // Rate-limit per-event-type control logging so a reconnect/reject loop can't
 // spam the console (one line per event type per window).
 const CONTROL_LOG_WINDOW_MS = 5_000;
+// PartySocket waits a fixed minReconnectionDelay before its first retry, so
+// after a server restart every client would reconnect in the same instant.
+// Each transport picks its own base delay in this range to spread them out.
+export const RECONNECT_DELAY_MIN_MS = 500;
+export const RECONNECT_DELAY_JITTER_MS = 2_500;
+
+export function pickReconnectionDelay(random: () => number = Math.random): number {
+  return RECONNECT_DELAY_MIN_MS + random() * RECONNECT_DELAY_JITTER_MS;
+}
 
 export class RealtimePresenceTransport {
   private socket: PresenceSocket;
@@ -119,6 +129,7 @@ export class RealtimePresenceTransport {
       room: options.room,
       party: "presence",
       maxEnqueuedMessages: 0,
+      minReconnectionDelay: pickReconnectionDelay(),
     });
     // PartySocket 1.2.0 redispatches cloned events through a custom EventTarget,
     // which Firefox WebExtension content scripts can skip (playhtml#358). Its
@@ -140,7 +151,8 @@ export class RealtimePresenceTransport {
       this.unreachableTimer = null;
       if (!this.hasEverOpened) this.markUnreachable();
     }, UNREACHABLE_GRACE_MS);
-    this.peers = new PeerStore(this);
+    // Connection identity stays stable when the player's public key changes.
+    this.peers = new PeerStore(this, this.socket.id);
   }
 
   /** Observability flag: whether the realtime socket is connecting, open, or
@@ -303,10 +315,6 @@ export class RealtimePresenceTransport {
     );
   }
 
-}
-
-export function canUseRealtimePresenceTransport(): boolean {
-  return typeof WebSocket !== "undefined";
 }
 
 function supportsHandlerProperties(

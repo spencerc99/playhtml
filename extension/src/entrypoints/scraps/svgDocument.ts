@@ -49,8 +49,14 @@ export function requireXmlFragment(markup: string, label: string): string {
 export interface ForeignObjectOptions {
   /** Already-XML-safe body markup placed inside the foreignObject. */
   body: string;
+  /** The box the body is laid out in. */
   width: number;
   height: number;
+  /**
+   * How much larger the document is drawn than the box its body is laid out
+   * in, so lettering set at its own type size scales with the piece.
+   */
+  scale?: number;
 }
 
 /**
@@ -67,9 +73,10 @@ export function foreignObjectDataUrl({
   body,
   width,
   height,
+  scale = 1,
 }: ForeignObjectOptions): string {
   const svg = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width * scale}" height="${height * scale}" viewBox="0 0 ${width} ${height}">`,
     `<foreignObject x="0" y="0" width="${width}" height="${height}">`,
     `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;display:flex;align-items:center;justify-content:center;">`,
     body,

@@ -30,6 +30,7 @@ function press(
 const IDLE: KeymapContext = {
   mode: "idle",
   hasSelection: true,
+  multiple: false,
   hasClipboard: false,
 };
 
@@ -147,6 +148,20 @@ describe("crop", () => {
       kind: "cancel",
     });
     expect(studioCommandFor(press("c"), cropping)).toBeNull();
+  });
+
+  it("lets the cutout's edge control own the keys until it is done", () => {
+    const cuttingOut: KeymapContext = { ...IDLE, mode: "cutout" };
+    expect(studioCommandFor(press("Enter"), cuttingOut)).toEqual({
+      kind: "confirm",
+    });
+    expect(studioCommandFor(press("Escape"), cuttingOut)).toEqual({
+      kind: "cancel",
+    });
+    // Nothing else may open a second tool over the edge control.
+    expect(studioCommandFor(press("c"), cuttingOut)).toBeNull();
+    expect(studioCommandFor(press("b"), cuttingOut)).toBeNull();
+    expect(studioCommandFor(press("Delete"), cuttingOut)).toBeNull();
   });
 });
 
@@ -355,7 +370,7 @@ describe("selection", () => {
 
 describe("keys the studio does not own", () => {
   it("leaves unrelated accelerators to the browser", () => {
-    for (const key of ["a", "f", "p", "t", "w", "l", "n"]) {
+    for (const key of ["f", "p", "t", "w", "l", "n"]) {
       expect(
         studioCommandFor(press(key, { metaKey: true }), IDLE),
       ).toBeNull();
@@ -495,5 +510,59 @@ describe("the shortcut list", () => {
   it("carries no emoji", () => {
     const text = JSON.stringify(STUDIO_SHORTCUTS);
     expect(/\p{Extended_Pictographic}/u.test(text)).toBe(false);
+  });
+});
+
+describe("several pieces in hand", () => {
+  const SEVERAL: KeymapContext = { ...IDLE, multiple: true };
+
+  it("selects every piece with cmd or ctrl + A", () => {
+    expect(studioCommandFor(press("a", { metaKey: true }), IDLE)).toEqual({
+      kind: "selectAll",
+    });
+    expect(
+      studioCommandFor(press("a", { ctrlKey: true }), {
+        ...IDLE,
+        hasSelection: false,
+      }),
+    ).toEqual({ kind: "selectAll" });
+  });
+
+  it("leaves select-all to a field being typed in", () => {
+    expect(
+      studioCommandFor(
+        press("a", { metaKey: true, target: { tagName: "INPUT" } }),
+        IDLE,
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps crop and cut-out for one picture at a time", () => {
+    expect(studioCommandFor(press("c"), SEVERAL)).toBeNull();
+    expect(studioCommandFor(press("Enter"), SEVERAL)).toBeNull();
+    expect(studioCommandFor(press("b"), SEVERAL)).toBeNull();
+  });
+
+  it("turns, scales, flips, nudges, restacks and removes them all", () => {
+    expect(studioCommandFor(press("r"), SEVERAL)).toEqual({ kind: "beginRotate" });
+    expect(studioCommandFor(press("s"), SEVERAL)).toEqual({ kind: "beginScale" });
+    expect(studioCommandFor(press("h"), SEVERAL)).toEqual({
+      kind: "flip",
+      axis: "x",
+    });
+    expect(studioCommandFor(press("ArrowLeft"), SEVERAL)).toEqual({
+      kind: "nudge",
+      dx: -1,
+      dy: 0,
+    });
+    expect(
+      studioCommandFor(press("]", { code: "BracketRight" }), SEVERAL),
+    ).toEqual({ kind: "order", to: "forward" });
+    expect(studioCommandFor(press("Delete"), SEVERAL)).toEqual({
+      kind: "delete",
+    });
+    expect(studioCommandFor(press("d", { metaKey: true }), SEVERAL)).toEqual({
+      kind: "duplicate",
+    });
   });
 });

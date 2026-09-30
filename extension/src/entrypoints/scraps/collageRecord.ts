@@ -8,6 +8,7 @@ import {
   boxForInnerRect,
   composeCrop,
   rotatePoint,
+  sameCrop,
   sourceBoxForCrop,
 } from "./collageGeometry";
 import { parseCutout, type PieceCutout } from "./backgroundCutout";
@@ -46,6 +47,11 @@ export interface CollagePiece {
   flipY: boolean;
   /** How this piece's backdrop was removed, absent when it was left alone. */
   cutout?: PieceCutout;
+  /**
+   * Present when the piece is held in place: clicks pass through it to what is
+   * beneath. It is only reached again from the list of pieces under a point.
+   */
+  locked?: true;
 }
 
 export interface CollageRecord {
@@ -121,22 +127,19 @@ export function createCollageId(): string {
 const UNTITLED_COPY = "untitled collage copy";
 
 /**
- * A separate collage holding the same arrangement. Every piece is copied with
- * an id of its own, so editing the copy cannot reach back into the original,
- * and the two records share nothing.
+ * The same collage under an id of its own. Every piece is copied with an id of
+ * its own too, so editing the result cannot reach back into the record it came
+ * from, and the two share nothing. Title and timestamps are carried across.
  *
  * The preview comes across as it is: the arrangement is identical, so the
  * picture already drawn for it is the right one and nothing is re-baked.
  */
-export function duplicateCollage(
-  record: CollageRecord,
-  now: number = Date.now(),
-): CollageRecord {
+export function withFreshIds(record: CollageRecord): CollageRecord {
   return {
     id: createCollageId(),
-    title: record.title.trim() ? `${record.title.trim()} copy` : UNTITLED_COPY,
-    createdAt: now,
-    updatedAt: now,
+    title: record.title,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
     frame: { ...record.frame },
     format: record.format,
     paper: { ...record.paper },
@@ -151,6 +154,22 @@ export function duplicateCollage(
     preview: record.preview.drawn
       ? { drawn: true, image: record.preview.image }
       : { drawn: false, reason: record.preview.reason },
+  };
+}
+
+/**
+ * A separate collage holding the same arrangement, named as a copy and dated
+ * from the moment it was made.
+ */
+export function duplicateCollage(
+  record: CollageRecord,
+  now: number = Date.now(),
+): CollageRecord {
+  return {
+    ...withFreshIds(record),
+    title: record.title.trim() ? `${record.title.trim()} copy` : UNTITLED_COPY,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -264,7 +283,26 @@ export function parseCollagePiece(value: unknown): CollagePiece {
     flipY: readBoolean(piece, "flipY"),
     // Collages saved before cutouts existed simply have no field to read.
     ...(piece.cutout === undefined ? {} : { cutout: parseCutout(piece.cutout) }),
+    // Likewise a piece that was never locked carries no lock.
+    ...(piece.locked === undefined ? {} : { locked: readLocked(piece.locked) }),
   };
+}
+
+function readLocked(value: unknown): true {
+  if (value !== true) {
+    throw new Error(`Collage piece lock is not true: ${String(value)}`);
+  }
+  return value;
+}
+
+/** Holds a piece in place, or lets it go; an unlocked piece carries no lock. */
+export function setPieceLocked(
+  piece: CollagePiece,
+  locked: boolean,
+): CollagePiece {
+  if (locked) return { ...piece, locked: true };
+  const { locked: _released, ...rest } = piece;
+  return rest;
 }
 
 export function parseCollageRecord(value: unknown): CollageRecord {
@@ -392,6 +430,26 @@ export function composeCropOnto(
     height: box.height,
     crop: fromSource,
   };
+}
+
+/**
+ * The crop a crop session opens on. It is the piece's own crop, so cropping
+ * again continues from the last crop; the session edits against the whole
+ * source, so the box can still be dragged back out to the full image.
+ */
+export function cropSessionStart(piece: CollagePiece): CropFraction {
+  return { ...piece.crop };
+}
+
+/**
+ * Applies the crop a session ended on. A session that ends where it began
+ * leaves the piece exactly as it was.
+ */
+export function commitCropSession(
+  piece: CollagePiece,
+  crop: CropFraction,
+): CollagePiece {
+  return sameCrop(piece.crop, crop) ? piece : composeCropOnto(piece, crop);
 }
 
 /** Mirrors what a piece shows, leaving its box and its crop alone. */

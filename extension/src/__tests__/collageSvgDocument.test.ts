@@ -238,6 +238,20 @@ describe("data URLs", () => {
     expect(decoded).toContain('xmlns="http://www.w3.org/1999/xhtml"');
   });
 
+  it("draws a scaled document larger than the box its body is laid out in", () => {
+    const url = foreignObjectDataUrl({
+      body: "<span>hi</span>",
+      width: 100,
+      height: 40,
+      scale: 2.5,
+    });
+    const decoded = decodeURIComponent(
+      url.slice("data:image/svg+xml;charset=utf-8,".length),
+    );
+    expect(decoded).toContain('width="250" height="100" viewBox="0 0 100 40"');
+    expect(decoded).toContain('<foreignObject x="0" y="0" width="100" height="40">');
+  });
+
   it("percent-encodes characters that would break a data URL", () => {
     const url = foreignObjectDataUrl({
       body: "<span>a#b&c</span>",

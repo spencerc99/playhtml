@@ -16,7 +16,7 @@ interface CreateModeProps {
   savedRevision: number;
   onEdit: (record: CollageRecord) => void;
   onStartNew: () => void;
-  onSaved: () => void;
+  onSaved: (record: CollageRecord) => void;
   onLeave: () => void;
 }
 

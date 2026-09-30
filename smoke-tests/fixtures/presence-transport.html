@@ -1,0 +1,133 @@
+<!doctype html>
+<!-- ABOUTME: Exercises built PlayHTML users, cursors, element awareness, and shared data. -->
+<!-- ABOUTME: Connects only to an explicitly supplied backend in isolated smoke rooms. -->
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Presence transport verification</title>
+  <link rel="stylesheet" href="/packages/playhtml/dist/style.css" />
+  <style>
+    body {
+      font: 18px system-ui;
+      margin: 56px;
+      background: #f8f7f3;
+      color: #242424;
+    }
+    main {
+      max-width: 850px;
+    }
+    section {
+      margin: 24px 0;
+      padding: 20px;
+      border: 1px solid #bbb;
+    }
+    button {
+      font: inherit;
+      padding: 16px;
+      cursor: pointer;
+    }
+    h1 {
+      font-size: 32px;
+    }
+    li {
+      margin: 8px 0;
+    }
+    pre {
+      white-space: pre-wrap;
+      font-size: 14px;
+    }
+  </style>
+  <main>
+    <h1>Presence transport verification</h1>
+    <p id="mode"></p>
+    <section>
+      <h2>People in this room</h2>
+      <ul id="users"></ul>
+    </section>
+    <section>
+      <button id="counter">Shared count: 0</button>
+      <p id="element-presence"></p>
+    </section>
+    <section>
+      <h2>Page presence</h2>
+      <pre id="presence"></pre>
+    </section>
+  </main>
+  <script type="module">
+    import {
+      playhtml,
+      resetPlayHTML,
+    } from "/packages/playhtml/dist/playhtml.es.js";
+    const params = new URLSearchParams(location.search);
+    const host = params.get("host");
+    const run = params.get("run");
+    if (!host || !run) throw new Error("host and run are required");
+    const enabled = params.get("cursors") !== "off";
+    const scope = params.get("scope");
+    const identity = {
+      publicKey: params.get("pid"),
+      name: params.get("name"),
+      playerStyle: { colorPalette: [params.get("color")] },
+    };
+    window.app = playhtml;
+    window.resetApp = resetPlayHTML;
+    window.elementPeers = [];
+    window.userSnapshots = [];
+    playhtml.register(document.getElementById("counter"), {
+      defaultData: { count: 0 },
+      updateElement({ data, element }) {
+        element.textContent = `Shared count: ${data.count}`;
+      },
+      updateElementAwareness({ awarenessByStableId }) {
+        window.elementPeers = [...awarenessByStableId];
+        document.getElementById("element-presence").textContent =
+          `Element presence: ${window.elementPeers.map(([id]) => id).join(", ")}`;
+      },
+      onClick(_event, { setData, setMyAwareness }) {
+        setData((data) => {
+          data.count += 1;
+        });
+        setMyAwareness({ active: true });
+        playhtml.presence.setMyPresence("status", {
+          text: "Clicked the counter",
+        });
+      },
+    });
+    await playhtml.init({
+      host,
+      room: () => `${run}${location.pathname}`,
+      playerIdentity: identity,
+      cursors: {
+        enabled,
+        ...(scope === "domain" ? { room: () => `${run}/domain` } : {}),
+      },
+    });
+    function renderMode() {
+      document.getElementById("mode").textContent =
+        `Cursors ${enabled ? "enabled" : "disabled"} · ${scope === "domain" ? "shared cursor room" : "page room"} · ${location.pathname}`;
+    }
+    renderMode();
+    document.addEventListener("playhtml:navigated", renderMode);
+    playhtml.users.onChange((users) => {
+      window.userSnapshots.push(users);
+      const list = document.getElementById("users");
+      list.replaceChildren(
+        ...users.map((user) => {
+          const item = document.createElement("li");
+          item.textContent = `${user.name} (${user.pid})${user.isMe ? " · you" : ""}`;
+          item.style.color = user.color;
+          return item;
+        }),
+      );
+    });
+    playhtml.presence.onPresenceChange("status", (peers) => {
+      document.getElementById("presence").textContent = [...peers]
+        .map(
+          ([pid, view]) =>
+            `${pid}: ${view.status?.text ?? "No status published"}`,
+        )
+        .join("\n");
+    });
+    window.named = playhtml.createPresenceRoom(`${run}-named`);
+    window.ready = true;
+  </script>
+</html>

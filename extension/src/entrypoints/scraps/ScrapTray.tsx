@@ -7,9 +7,12 @@ import {
   type ScrapItem,
 } from "@movement/components/ScrapCollage";
 import {
+  ANY_TIME,
   ScrapFilters,
+  isAnyTime,
   scrapPassesFilters,
   type ScrapKindFilter,
+  type ScrapWhenFilter,
 } from "@movement/components/ScrapFilters";
 import type { FilterChip } from "@movement/utils/eventUtils";
 import {
@@ -21,6 +24,7 @@ import {
   type DrawerSlotSize,
 } from "./drawerPreference";
 import { cellLeft, layOutDrawer } from "./drawerLayout";
+import { ProvenanceLines } from "./ProvenancePeek";
 import {
   backingForKind,
   couldBeTransparent,
@@ -30,6 +34,10 @@ import {
 
 /** How far above and below the view thumbnails are kept mounted, in pixels. */
 const OVERSCAN = 400;
+/** Room a full label needs above a slot before it drops below it instead. */
+const LABEL_ROOM = 56;
+/** The widest a label gets, from the peek label's own max-width. */
+const LABEL_WIDTH = 240;
 
 interface ScrapTrayProps {
   items: readonly ScrapItem[];
@@ -57,17 +65,27 @@ export function ScrapTray({
   const [kind, setKind] = useState<ScrapKindFilter>("all");
   const [places, setPlaces] = useState<FilterChip[]>([]);
   const [search, setSearch] = useState("");
+  const [when, setWhen] = useState<ScrapWhenFilter>(ANY_TIME);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const resizingRef = useRef(false);
+  /** The scrap under the pointer or focus, and where its slot sits on screen. */
+  const [pointed, setPointed] = useState<{
+    item: ScrapItem;
+    box: DOMRect;
+  } | null>(null);
 
   const filtered = useMemo(() => {
     const sorted = [...items].sort((a, b) => b.ts - a.ts);
     return sorted.filter((item) =>
-      scrapPassesFilters(item, kind, places, search),
+      scrapPassesFilters(item, kind, places, search, when),
     );
-  }, [items, kind, places, search]);
-  const filtering = kind !== "all" || places.length > 0 || search.trim() !== "";
+  }, [items, kind, places, search, when]);
+  const filtering =
+    kind !== "all" ||
+    places.length > 0 ||
+    search.trim() !== "" ||
+    !isAnyTime(when);
 
   const columns = drawerColumns(width, slotSize);
   // Every thumbnail keeps its own proportions, so the placement is worked out
@@ -116,9 +134,19 @@ export function ScrapTray({
       });
   }, []);
 
-  const measure = (node: HTMLDivElement | null) => {
-    if (node) setViewportHeight(node.clientHeight);
-  };
+  const scrollTopRef = useRef(0);
+  scrollTopRef.current = scrollTop;
+  /**
+   * Runs once each time the scroll box is put back, as when the drawer is
+   * reopened. The box comes back scrolled to the top, but only the rows near
+   * the remembered scroll are mounted, so it is returned to that scroll.
+   */
+  const attachScroll = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
+    node.scrollTop = scrollTopRef.current;
+    setScrollTop(node.scrollTop);
+    setViewportHeight(node.clientHeight);
+  }, []);
 
   if (collapsed) {
     return (
@@ -150,6 +178,8 @@ export function ScrapTray({
         onKind={setKind}
         search={search}
         onSearch={setSearch}
+        when={when}
+        onWhen={setWhen}
         matchCount={filtered.length}
         layout="drawer"
         placement="below"
@@ -196,6 +226,7 @@ export function ScrapTray({
                 setSearch("");
                 setPlaces([]);
                 setKind("all");
+                setWhen(ANY_TIME);
               }}
             >
               reset
@@ -207,8 +238,12 @@ export function ScrapTray({
       </p>
       <div
         className="collage-tray__scroll"
-        ref={measure}
-        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+        ref={attachScroll}
+        onScroll={(event) => {
+          setScrollTop(event.currentTarget.scrollTop);
+          // The label was placed against where the slot used to be.
+          setPointed(null);
+        }}
       >
         <div className="collage-tray__runway" style={{ height: layout.height }}>
           {visible.map((cell) => {
@@ -227,15 +262,32 @@ export function ScrapTray({
                 type="button"
                 className="collage-tray__slot"
                 draggable
-                title={`${item.domain} — ${item.pageTitle}`}
+                aria-label={`${item.domain} — ${item.pageTitle}`}
                 style={{
                   top: cell.top,
                   left: cellLeft(cell, layout.columnWidth),
                   width: layout.columnWidth,
                   height: cell.height,
                 }}
-                onDragStart={(event) => onDragStart(item, event)}
+                onDragStart={(event) => {
+                  setPointed(null);
+                  onDragStart(item, event);
+                }}
                 onClick={() => onPlace(item)}
+                onPointerEnter={(event) =>
+                  setPointed({
+                    item,
+                    box: event.currentTarget.getBoundingClientRect(),
+                  })
+                }
+                onPointerLeave={() => setPointed(null)}
+                onFocus={(event) =>
+                  setPointed({
+                    item,
+                    box: event.currentTarget.getBoundingClientRect(),
+                  })
+                }
+                onBlur={() => setPointed(null)}
               >
                 <span
                   className={`collage-tray__thumb collage-tray__thumb--${backing}${
@@ -262,6 +314,25 @@ export function ScrapTray({
           })}
         </div>
       </div>
+      {pointed && (
+        // The same archive label a piece carries in the collage, so a scrap
+        // can be traced back to its page before it is placed.
+        <div
+          className="collage-peek collage-peek--tray"
+          aria-hidden="true"
+          style={{
+            left: Math.max(
+              4,
+              Math.min(pointed.box.left, window.innerWidth - LABEL_WIDTH),
+            ),
+            ...(pointed.box.top >= LABEL_ROOM
+              ? { bottom: window.innerHeight - pointed.box.top + 3 }
+              : { top: pointed.box.bottom + 3 }),
+          }}
+        >
+          <ProvenanceLines scrap={pointed.item} />
+        </div>
+      )}
       <div
         className="collage-tray__grip"
         role="separator"

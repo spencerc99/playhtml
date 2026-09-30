@@ -1,5 +1,35 @@
 # Change Log
 
+## 3.0.0
+
+### Major Changes
+
+- 4b3be52: React `defaultData`, `live`, and `myDefaultAwareness` now accept values only. DOM-dependent callbacks are rejected with a migration message, so child render functions receive supplied defaults on their first render. Replace `defaultData={element => ...}` with a value computed from React props, or use `withSharedState(props => ({ defaultData: ... }), render)`. The vanilla element API still supports DOM-dependent default functions.
+
+### Minor Changes
+
+- 35088f1: Add the element `live`, `users`, `setLive`, and `update` APIs so one renderer can combine shared state with current per-user values and identity. Existing awareness and `updateElement` names remain available as deprecated compatibility aliases.
+
+### Patch Changes
+
+- bddcd97: Register newly mounted interactive elements before the browser can receive input so they respond immediately without requiring a refresh.
+- 68aa385: Fix function-form `defaultData`/`myDefaultAwareness` (e.g. `(el) => ({ text: el.id })`) being resolved against `null` during the initial render instead of the real element, crashing on mount. It now resolves once the element is attached.
+- 262d360: Fix `usePresence().myIdentity` freezing at sync completion and never reflecting a later identity change (e.g. the "we were online" extension injecting identity post-sync). It now updates reactively, mirroring `usePlayerIdentity`.
+- ad66821: Page-data channels can now update primitive roots with functional updates that return the next value.
+- 732acd2: Stop cursor-presence updates from re-rendering every playhtml component on the page. PlayProvider no longer stores live cursor positions in context state (the context value is now memoized and the presence map keeps a stable identity; reactive consumers use the useCursorPresences hook, which is unchanged), and usePlayerIdentity only re-renders its consumers when the identity actually changes rather than on every presence tick. On a room with ~3,000 elements this reduced renders during a one-second drag from ~340,000 to just the elements whose data changed.
+- Updated dependencies [35088f1]
+- Updated dependencies [9f3e2c3]
+- Updated dependencies [74e4d35]
+- Updated dependencies [db2f919]
+- Updated dependencies [8301126]
+- Updated dependencies [ad66821]
+- Updated dependencies [23e3b32]
+- Updated dependencies [6c0a07e]
+- Updated dependencies [9c4cbed]
+- Updated dependencies [6c0a07e]
+- Updated dependencies [fb24e9b]
+  - playhtml@2.15.0
+
 ## 2.1.0
 
 ### Minor Changes

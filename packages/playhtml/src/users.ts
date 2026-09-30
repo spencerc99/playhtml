@@ -1,5 +1,5 @@
 // ABOUTME: Owns durable user identity (name/color) independent of cursors.
-// ABOUTME: Persists to localStorage, publishes to main-room awareness, and notifies subscribers.
+// ABOUTME: Persists to localStorage, discovers peers through presence transport, and notifies subscribers.
 
 import {
   generatePersistentPlayerIdentity,
@@ -8,22 +8,11 @@ import {
   type CursorPresenceView,
   type PlayerIdentity,
 } from "@playhtml/common";
-import { getStableIdForAwareness } from "./awareness-utils";
-
-const IDENTITY_FIELD = "__playhtml_identity__";
-const CURSOR_FIELD = "__playhtml_cursors__";
-
-/** Minimal awareness interface matching YPartyKitProvider.awareness */
-export interface UsersAwarenessLike {
-  clientID: number;
-  getStates(): Map<number, Record<string, unknown>>;
-  getLocalState(): Record<string, unknown> | null;
-  setLocalStateField(field: string, value: unknown): void;
-  on(event: string, callback: (...args: unknown[]) => void): void;
-}
+import type { PeerChannels } from "./peer-store";
 
 interface UsersDeps {
-  getAwareness: () => UsersAwarenessLike;
+  getIdentityPeers: () => Map<string, PeerChannels>;
+  onIdentityPeersChange: (callback: () => void) => () => void;
   getCursorPresences?: () => Map<string, CursorPresenceView>;
   onCursorPresencesChange?: (
     callback: (presences: Map<string, CursorPresenceView>) => void,
@@ -79,11 +68,9 @@ export interface UsersAPI {
 
 /**
  * Creates the users module: the single mutator of the shared PlayerIdentity
- * object, owning localStorage persistence and publication of
- * `__playhtml_identity__` to main-room awareness. `deps.getAwareness` may
- * return a different awareness instance across calls (e.g. after SPA
- * navigation rebuilds the provider) — identity is republished on every self
- * change and re-attached lazily on read.
+ * object and owning localStorage persistence. Remote identities come from the
+ * page-room presence transport; cursor snapshots are merged in so domain and
+ * custom cursor rooms keep contributing their correctly scoped participants.
  */
 export function createUsersAPI(
   seedIdentity: PlayerIdentity,
@@ -93,25 +80,9 @@ export function createUsersAPI(
   assertValidPlayerIdentity(identity);
   const selfChangeListeners = new Set<(identity: PlayerIdentity) => void>();
   const usersChangeListeners = new Set<(users: User[]) => void>();
-  const attachedAwarenessObjects = new WeakSet<UsersAwarenessLike>();
-  let currentAwareness: UsersAwarenessLike | null = null;
+  let identityPeersUnsubscribe: (() => void) | null = null;
   let cursorPresencesUnsubscribe: (() => void) | null = null;
-  let lastIdentityFingerprint = "";
   let notifiedUsers: User[] | null = null;
-
-  function publishIdentity(): void {
-    deps.getAwareness().setLocalStateField(IDENTITY_FIELD, identity);
-  }
-
-  // Idempotent: writes identity into the current awareness's local state if
-  // it isn't already there. Keyed on the current awareness object's local
-  // state (not a closure boolean) so a rebuilt awareness (e.g. SPA navigation)
-  // re-arms the write — same rationale as presence.ts's ensureAwarenessIdentity.
-  function ensureIdentityWritten(): void {
-    const awareness = deps.getAwareness();
-    if (awareness.getLocalState()?.[IDENTITY_FIELD]) return;
-    publishIdentity();
-  }
 
   function notifySubscribers<T>(
     listeners: Set<(value: T) => void>,
@@ -152,51 +123,8 @@ export function createUsersAPI(
     notifySubscribers(usersChangeListeners, users, "users change");
   }
 
-  function attachAwarenessListener(): void {
-    const awareness = deps.getAwareness();
-    if (currentAwareness === awareness) return;
-    currentAwareness = awareness;
-    if (attachedAwarenessObjects.has(awareness)) return;
-    attachedAwarenessObjects.add(awareness);
-    lastIdentityFingerprint = identityFingerprint(awareness.getStates());
-    awareness.on("change", handleAwarenessChange);
-  }
-
-  // Fingerprint of __playhtml_identity__ and __playhtml_cursors__.playerIdentity
-  // across all awareness states. Presence API channel fingerprints only cover
-  // PRESENCE_FIELD/cursor position, so identity changes need their own listener.
-  function identityFingerprint(
-    states: Map<number, Record<string, unknown>>,
-  ): string {
-    const parts: string[] = [];
-    const clientIds = Array.from(states.keys()).sort((a, b) => a - b);
-    for (const clientId of clientIds) {
-      const state = states.get(clientId);
-      if (!state) continue;
-      const value =
-        state[IDENTITY_FIELD] ??
-        (state[CURSOR_FIELD] as { playerIdentity?: unknown } | undefined)
-          ?.playerIdentity;
-      try {
-        parts.push(`${clientId}:${JSON.stringify(value ?? null)}`);
-      } catch {
-        parts.push(`${clientId}:null`);
-      }
-    }
-    return parts.join("|");
-  }
-
-  function handleAwarenessChange(): void {
-    const states = deps.getAwareness().getStates();
-    const fingerprint = identityFingerprint(states);
-    if (fingerprint === lastIdentityFingerprint) return;
-    lastIdentityFingerprint = fingerprint;
-    notifyUsersChange();
-  }
-
   function ensureSubscribed(): void {
-    ensureIdentityWritten();
-    attachAwarenessListener();
+    identityPeersUnsubscribe ??= deps.onIdentityPeersChange(notifyUsersChange);
     if (!cursorPresencesUnsubscribe && deps.onCursorPresencesChange) {
       const unsubscribe = deps.onCursorPresencesChange(() => {
         notifyUsersChange();
@@ -207,67 +135,29 @@ export function createUsersAPI(
     }
   }
 
-  function getSelfStableId(): string {
-    const awareness = deps.getAwareness();
-    const localState = awareness.getLocalState();
-    if (localState) {
-      return getStableIdForAwareness(localState, awareness.clientID);
-    }
-    return identity.publicKey;
-  }
-
   function getAll(): User[] {
     const usersByStableId = new Map<string, User>();
-    const awareness = deps.getAwareness();
-    const states = awareness.getStates();
-    const mySelfStableId = getSelfStableId();
+    const mySelfStableId = identity.publicKey;
 
-    // Collapse multiple tabs of the same user (same stableId, different
-    // clientId) into one entry — prefer self's local clientID, otherwise the
-    // highest clientID (stable tiebreaker, avoids flapping on iteration order).
-    const winningClientIdByStableId = new Map<string, number>();
-    states.forEach((state: Record<string, unknown>, clientId: number) => {
-      const stableId = getStableIdForAwareness(state, clientId);
-      const isSelf = stableId === mySelfStableId;
-      const existing = winningClientIdByStableId.get(stableId);
-      if (existing === undefined) {
-        winningClientIdByStableId.set(stableId, clientId);
-        return;
+    const peers = deps.getIdentityPeers();
+    for (const connectionId of Array.from(peers.keys()).sort()) {
+      const channels = peers.get(connectionId)!;
+      const remoteIdentity = channels.identity as PlayerIdentity | undefined;
+      if (!remoteIdentity || remoteIdentity.publicKey === mySelfStableId) {
+        continue;
       }
-      if (isSelf && clientId === awareness.clientID) {
-        winningClientIdByStableId.set(stableId, clientId);
-        return;
-      }
-      if (isSelf && existing === awareness.clientID) return;
-      if (clientId > existing) winningClientIdByStableId.set(stableId, clientId);
-    });
-
-    for (const [stableId, clientId] of winningClientIdByStableId) {
-      const state = states.get(clientId);
-      if (!state) continue;
-      const isMe = stableId === mySelfStableId;
-      const cursorState = state[CURSOR_FIELD] as
-        | { playerIdentity?: PlayerIdentity }
-        | undefined;
-      const remoteIdentity =
-        (state[IDENTITY_FIELD] as PlayerIdentity | undefined) ??
-        cursorState?.playerIdentity;
-      if (isMe) {
-        usersByStableId.set(stableId, toUser(identity, true));
-      } else if (remoteIdentity) {
-        try {
-          usersByStableId.set(stableId, toUser(remoteIdentity, false));
-        } catch {
-          // Remote identity missing a primary color (old client, corrupted
-          // state) — skip rather than surface an invalid User.
-        }
+      try {
+        usersByStableId.set(
+          remoteIdentity.publicKey,
+          toUser(remoteIdentity, false),
+        );
+      } catch {
+        // Skip malformed remote identities rather than surfacing invalid users.
       }
     }
 
-    // Self is always present, even if awareness hasn't synced yet.
-    if (!usersByStableId.has(mySelfStableId)) {
-      usersByStableId.set(mySelfStableId, toUser(identity, true));
-    }
+    // Self is always present, even before the transport has connected.
+    usersByStableId.set(mySelfStableId, toUser(identity, true));
 
     const cursorPresences = deps.getCursorPresences?.();
     if (cursorPresences) {
@@ -291,7 +181,6 @@ export function createUsersAPI(
   function applyIdentityMutation(mutate: () => void): void {
     mutate();
     savePlayerIdentityToStorage(identity);
-    publishIdentity();
     notifySelfChange();
     notifyUsersChange(true);
   }
@@ -325,8 +214,6 @@ export function createUsersAPI(
     },
   };
 
-  ensureIdentityWritten();
-
   return {
     me,
     getAll(): User[] {
@@ -335,6 +222,7 @@ export function createUsersAPI(
     },
     onChange(callback: (users: User[]) => void): () => void {
       ensureSubscribed();
+      notifyUsersChange();
       usersChangeListeners.add(callback);
       const users = getAll();
       notifiedUsers = users;
@@ -364,7 +252,8 @@ export function createUsersAPI(
       usersChangeListeners.clear();
       cursorPresencesUnsubscribe?.();
       cursorPresencesUnsubscribe = null;
-      currentAwareness = null;
+      identityPeersUnsubscribe?.();
+      identityPeersUnsubscribe = null;
     },
   };
 }

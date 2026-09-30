@@ -2,12 +2,10 @@
 // ABOUTME: coordinates event writes, uploads, and data reads for all extension surfaces
 import browser from 'webextension-polyfill'
 import { scrapEncounterDay } from '@movement/utils/scrapEncounterDay'
-import {
-  groupPhotoEncounters,
-  type ScrapSource,
-} from '@movement/utils/scrapPhotoGroups'
+import type { ScrapSource } from '@movement/utils/scrapPhotoGroups'
 import { LocalEventStore } from '../storage/LocalEventStore'
 import { ImageFingerprints } from '../storage/imageFingerprints'
+import { ImageCopier } from '../storage/ImageCopier'
 import type {
   QueryOptions,
   WalkingRecordTraceTarget,
@@ -142,6 +140,7 @@ export type ScrapRecord = ScrapRecordBase &
   )
 
 const FEATURE_ACCESS_REFRESH_ALARM = 'refreshFeatureAccess'
+const IMAGE_COPY_BACKFILL_ALARM = 'copyScrapImages'
 
 function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
   const kind = (event.data as { kind?: unknown } | null)?.kind
@@ -220,6 +219,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
 
 const store = new LocalEventStore()
 const imageFingerprints = new ImageFingerprints(store)
+const imageCopier = new ImageCopier(store)
 
 const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
 const LOCAL_RAW_EVENT_RETENTION_DAYS = 30
@@ -402,6 +402,12 @@ export default defineBackground(() => {
   // additionally fire on navigation — see scheduleMilestoneCheck.
   browser.alarms.create('checkMilestones', { periodInMinutes: 5 })
   browser.alarms.create(FEATURE_ACCESS_REFRESH_ALARM, { periodInMinutes: 60 })
+  // Copies images for scraps collected before local copies existed. The pass
+  // finishes once; later alarms only read that it is done.
+  browser.alarms.create(IMAGE_COPY_BACKFILL_ALARM, {
+    delayInMinutes: 1,
+    periodInMinutes: 10,
+  })
   if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
     browser.alarms.create(LOCAL_RETENTION_ALARM, {
       periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
@@ -416,6 +422,11 @@ export default defineBackground(() => {
 
     if (alarm.name === FEATURE_ACCESS_REFRESH_ALARM) {
       await refreshExperimentAccess().catch(() => {})
+      return
+    }
+
+    if (alarm.name === IMAGE_COPY_BACKFILL_ALARM) {
+      await imageCopier.backfill()
       return
     }
 
@@ -676,6 +687,7 @@ export default defineBackground(() => {
       store
         .addEvents(events)
         .then((inserted) => {
+          imageCopier.noteCollected(inserted)
           void imageFingerprints
             .process(inserted)
             .then(({ checked }) => {
@@ -743,28 +755,22 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'GET_SCRAPS') {
-      // No limit returns every scrap; the scraps page filters the full set.
-      const limit = message.options?.limit as number | undefined
+      const limit = message.options?.limit ?? 200
+      const cursor = message.options?.cursor
       store
-        .queryByType('element')
-        .then((events) =>
-          events
-            .sort((first, second) => second.ts - first.ts)
-            .flatMap((event): ScrapRecord[] => {
+        .queryEventPage('element', limit, cursor)
+        .then(({ events, nextCursor }) =>
+          reply({
+            scraps: events.flatMap((event): ScrapRecord[] => {
               const scrap = toScrapRecord(event)
               return scrap ? [scrap] : []
             }),
-        )
-        .then((scraps) =>
-          reply({
-            scraps: groupPhotoEncounters(scraps)
-              .sort((a, b) => b.ts - a.ts)
-              .slice(0, limit ?? Infinity),
+            nextCursor,
           }),
         )
         .catch((e) => {
           console.error('[Background] GET_SCRAPS error:', e)
-          reply({ scraps: [] })
+          reply({ scraps: [], error: String(e) })
         })
       return true
     }

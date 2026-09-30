@@ -47,6 +47,10 @@ export function CropSession({
   framePoint,
 }: CropSessionProps) {
   const dragRef = useRef<{ grip: CropGrip; last: Point } | null>(null);
+  // The cutout is computed over the committed crop, so while the crop is being
+  // redrawn the source shows uncut; the cut is redone against the new crop
+  // once the session commits.
+  const { cutout: _cutout, ...uncut } = piece;
   const source = sourceBoxForCrop(piece, piece.crop);
   const sourceBox: PieceBox = {
     x: source.x,
@@ -110,7 +114,7 @@ export function CropSession({
       }}
     >
       <div className="collage-crop__source">
-        <PieceMaterial piece={piece} />
+        <PieceMaterial piece={uncut} />
       </div>
       <div className="collage-crop__shade" />
       <div
@@ -128,7 +132,7 @@ export function CropSession({
               height: source.height,
             }}
           >
-            <PieceMaterial piece={piece} />
+            <PieceMaterial piece={uncut} />
           </div>
         </div>
       </div>

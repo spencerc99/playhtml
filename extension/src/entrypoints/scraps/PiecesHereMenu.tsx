@@ -4,6 +4,7 @@
 import React, { useEffect, useRef } from "react";
 import { ScrapContent } from "@movement/components/ScrapCollage";
 import type { CollagePiece } from "./collageRecord";
+import { GLYPHS } from "./PieceActions";
 
 interface PiecesHereMenuProps {
   /** The pieces under the pointer, frontmost first. */
@@ -14,6 +15,8 @@ interface PiecesHereMenuProps {
   scale: number;
   selectedId: string | null;
   onPick: (pieceId: string) => void;
+  /** Holds a piece in place or lets it go. */
+  onLock: (pieceId: string, locked: boolean) => void;
   onClose: () => void;
 }
 
@@ -38,6 +41,7 @@ export function PiecesHereMenu({
   scale,
   selectedId,
   onPick,
+  onLock,
   onClose,
 }: PiecesHereMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -78,28 +82,45 @@ export function PiecesHereMenu({
     >
       <p className="collage-studio__label collage-here__head">pieces here</p>
       {pieces.map((piece) => (
-        <button
+        <div
           key={piece.id}
-          type="button"
-          role="menuitem"
           className={`collage-here__row${
             piece.id === selectedId ? " collage-here__row--on" : ""
-          }`}
-          onClick={() => onPick(piece.id)}
+          }${piece.locked ? " collage-here__row--locked" : ""}`}
         >
-          <span className="collage-here__thumb" aria-hidden="true">
-            <ScrapContent
-              item={piece.scrap}
-              loaded={true}
-              onLoad={() => {}}
-              onError={() => {}}
-            />
-          </span>
-          <span className="collage-here__what">
-            <span className="collage-here__kind">{scrapKindName(piece)}</span>
-            <span className="collage-here__where">{piece.scrap.domain}</span>
-          </span>
-        </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="collage-here__pick"
+            // A locked piece stays put until it is let go.
+            disabled={piece.locked}
+            title={piece.locked ? "Locked. Unlock it to move it." : undefined}
+            onClick={() => onPick(piece.id)}
+          >
+            <span className="collage-here__thumb" aria-hidden="true">
+              <ScrapContent
+                item={piece.scrap}
+                loaded={true}
+                onLoad={() => {}}
+                onError={() => {}}
+              />
+            </span>
+            <span className="collage-here__what">
+              <span className="collage-here__kind">{scrapKindName(piece)}</span>
+              <span className="collage-here__where">{piece.scrap.domain}</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            className="collage-glyph collage-here__lock"
+            aria-label={piece.locked ? "Unlock" : "Lock in place"}
+            aria-pressed={piece.locked === true}
+            title={piece.locked ? "Unlock" : "Lock in place"}
+            onClick={() => onLock(piece.id, !piece.locked)}
+          >
+            {piece.locked ? GLYPHS.lock : GLYPHS.unlock}
+          </button>
+        </div>
       ))}
     </div>
   );
