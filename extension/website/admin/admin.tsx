@@ -299,7 +299,7 @@ function InternalOffice() {
         </>}
 
         <aside className="office-roadmap">
-          <span className="office-section-number">Coming later</span>
+          <span className="office-section-number">COMING LATER</span>
           <h2>Commute curation</h2>
           <p>The commute stop review tool can use this same D1-backed office and navigation.</p>
         </aside>
