@@ -167,7 +167,6 @@ export class PartyServerV2 extends PresenceServer {
   private generation = 0;
   private hydrated = false;
   private transient = false;
-  private legacyDocument: string | null = null;
   private autosaveTimer: ReturnType<typeof setTimeout> | null = null;
   private firstDirtyAt: number | null = null;
   private dirty = false;
@@ -844,7 +843,6 @@ export class PartyServerV2 extends PresenceServer {
       return;
     }
 
-    this.legacyDocument = result.document;
     try {
       if (result.protocol_version === PROTOCOL_VERSION) {
         const persisted = parsePersistedDocument(result.document_json);
@@ -1082,12 +1080,14 @@ export class PartyServerV2 extends PresenceServer {
       sequence: this.sequence,
       generation: this.generation,
     };
+    // The v1 `document` column is deliberately absent: the upsert leaves it
+    // untouched for rollback, and resending it would re-upload the whole
+    // legacy Yjs snapshot on every save.
     const { error } = await supabase.from("documents").upsert(
       {
         name: this.name,
         document_json: documentJson,
         protocol_version: PROTOCOL_VERSION,
-        document: this.legacyDocument,
       },
       { onConflict: "name" },
     );

@@ -72,7 +72,14 @@ const supabaseStub = {
       async upsert(row: Record<string, unknown>) {
         upsertCalls.push(structuredClone(row));
         if (upsertError) return { error: { message: upsertError.message } };
-        persistedRow = structuredClone(row) as PersistedRow;
+        // PostgREST upsert updates only the columns present in the payload.
+        persistedRow = {
+          document: null,
+          document_json: null,
+          protocol_version: 1,
+          ...persistedRow,
+          ...structuredClone(row),
+        } as PersistedRow;
         return { error: null };
       },
     };
@@ -457,7 +464,6 @@ describe("PartyServerV2 protocol", () => {
     expect(upsertCalls).toHaveLength(1);
     expect(upsertCalls[0]).toEqual({
       name: "example-room",
-      document: null,
       protocol_version: 2,
       document_json: {
         sequence: 1,
@@ -485,6 +491,7 @@ describe("PartyServerV2 protocol", () => {
     await startRoom(first.room);
 
     expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0]).not.toHaveProperty("document");
     expect(persistedRow?.protocol_version).toBe(2);
     expect(persistedRow?.document).toBe(base64);
     expect(persistedSnapshot().state).toEqual({
@@ -495,6 +502,34 @@ describe("PartyServerV2 protocol", () => {
     const restarted = createRoom();
     await startRoom(restarted.room);
     expect(upsertCalls).toEqual([]);
+  });
+
+  test("autosaves of a converted room never resend the v1 document", async () => {
+    const document = jsonToDoc({ "can-toggle": { light: { on: true } } });
+    const base64 = encodeDocToBase64(document);
+    document.destroy();
+    persistedRow = {
+      document: base64,
+      document_json: null,
+      protocol_version: 1,
+    };
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    upsertCalls = [];
+    const connection = await connectRoom(room, connections);
+    await room.onMessage(
+      connection as never,
+      JSON.stringify(operationMessage()),
+    );
+
+    await closeRoom(room, connections, connection);
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0]).not.toHaveProperty("document");
+    expect(persistedRow?.document).toBe(base64);
+    expect(persistedSnapshot().state["can-play"]).toEqual({
+      counter: { count: 1 },
+    });
   });
 
   test("restart hydration prevents a saved mutation replay from applying twice", async () => {

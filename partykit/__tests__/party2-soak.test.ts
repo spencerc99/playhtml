@@ -52,7 +52,14 @@ const supabaseStub = {
       },
       async upsert(row: Record<string, unknown>) {
         upsertCalls.push(structuredClone(row));
-        persistedRow = structuredClone(row) as PersistedRow;
+        // PostgREST upsert updates only the columns present in the payload.
+        persistedRow = {
+          document: null,
+          document_json: null,
+          protocol_version: 1,
+          ...persistedRow,
+          ...structuredClone(row),
+        } as PersistedRow;
         return { error: null };
       },
     };

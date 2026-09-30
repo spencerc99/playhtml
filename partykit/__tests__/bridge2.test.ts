@@ -93,10 +93,14 @@ const supabaseStub = {
         };
       },
       async upsert(row: Record<string, unknown>) {
-        persistedRows.set(
-          row.name as string,
-          structuredClone(row) as PersistedRow,
-        );
+        // PostgREST upsert updates only the columns present in the payload.
+        persistedRows.set(row.name as string, {
+          document: null,
+          document_json: null,
+          protocol_version: 1,
+          ...persistedRows.get(row.name as string),
+          ...structuredClone(row),
+        } as PersistedRow);
         return { error: null };
       },
     };
