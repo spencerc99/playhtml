@@ -24,7 +24,7 @@ const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
 describe("WWO admin access form", () => {
   beforeAll(async () => {
     document.body.innerHTML = '<div id="root"></div>';
-    sessionStorage.setItem("wwo-admin-token", "secret");
+    localStorage.setItem("wwo-admin-token", JSON.stringify({ token: "secret", expiresAt: Date.now() + 60_000 }));
     vi.stubGlobal("fetch", fetchMock);
     await act(async () => {
       await import("./admin");
