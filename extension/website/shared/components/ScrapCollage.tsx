@@ -555,7 +555,11 @@ function estimateButtonWidth(text: string): number {
  * typeface still fits the tile measured for it.
  */
 const HEADING_CHARACTER_ADVANCE = 0.68;
-const HEADING_TILE_PADDING = 16;
+/**
+ * Horizontal room a heading's words lose inside its tile: the heading's own
+ * 4px sides plus the 8px sides of the patch it sits on.
+ */
+const HEADING_TILE_PADDING = 24;
 const MAX_HEADING_TILE_WIDTH = 340;
 
 /**

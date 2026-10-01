@@ -307,6 +307,7 @@ export function ScrapTray({
                     loaded={true}
                     onLoad={() => {}}
                     onError={() => {}}
+                    tileWidth={layout.columnWidth}
                   />
                 </span>
               </button>
