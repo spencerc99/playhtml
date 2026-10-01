@@ -48,12 +48,16 @@ const SOURCES = (
   </Glyph>
 );
 
-/** A card with an arrow swinging around it: turn the collage over. */
+/** A card split down its middle, its far half dashed: the side you are not seeing. */
 const TURN_OVER = (
   <Glyph>
-    <rect x="4.5" y="3.5" width="7" height="9" rx="0.8" {...STROKE} />
-    <path d="M2 9.5a6 3 0 0 0 12 0" {...STROKE} />
-    <path d="M12.2 11.4l1.8-1.9.5 2.4" {...STROKE} />
+    <path d="M8 2.5v11" {...STROKE} />
+    <path d="M6 4H3.2a.7.7 0 0 0-.7.7v6.6a.7.7 0 0 0 .7.7H6" {...STROKE} />
+    <path
+      d="M10 4h2.8a.7.7 0 0 1 .7.7v6.6a.7.7 0 0 1-.7.7H10"
+      {...STROKE}
+      strokeDasharray="1.4 1.4"
+    />
   </Glyph>
 );
 
