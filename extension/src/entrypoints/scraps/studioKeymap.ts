@@ -38,7 +38,13 @@ export type StudioCommand =
   | { kind: "order"; to: "forward" | "backward" | "front" | "back" }
   | { kind: "showKeys" }
   /** Turns the collage over to its back, or face up again. */
-  | { kind: "turnOver" };
+  | { kind: "turnOver" }
+  /**
+   * A key the studio claims so the browser does nothing with it, though it
+   * means nothing here. The browser's own undo would otherwise reach back
+   * into the last field typed in, such as the drawer's search.
+   */
+  | { kind: "withhold" };
 
 export interface KeyEventShape {
   key: string;
@@ -116,6 +122,15 @@ export function studioCommandFor(
   event: KeyEventShape,
   context: KeymapContext,
 ): StudioCommand | null {
+  if (isTypingTarget(event)) return null;
+
+  // Undo and redo are always the studio's, whatever is running and even from
+  // a control that owns its other keys: the studio finishes a running session
+  // before stepping, and a press left to the browser would undo the last text
+  // typed, such as the drawer's search.
+  const history = historyCommand(event);
+  if (history) return context.mode === "back" ? { kind: "withhold" } : history;
+
   if (leavesKeysAlone(event)) return null;
 
   const accel = event.metaKey || event.ctrlKey;
@@ -146,10 +161,6 @@ export function studioCommandFor(
 
   if (accel) {
     switch (event.key.toLowerCase()) {
-      case "z":
-        return event.shiftKey ? { kind: "redo" } : { kind: "undo" };
-      case "y":
-        return { kind: "redo" };
       case "d":
         return hasSelection ? { kind: "duplicate" } : null;
       case "c":
@@ -227,6 +238,15 @@ export function studioCommandFor(
     default:
       return null;
   }
+}
+
+/** Undo or redo, when the event is cmd/ctrl + Z, cmd/ctrl + shift + Z, or cmd/ctrl + Y. */
+function historyCommand(event: KeyEventShape): StudioCommand | null {
+  if (!(event.metaKey || event.ctrlKey)) return null;
+  const key = event.key.toLowerCase();
+  if (key === "z") return event.shiftKey ? { kind: "redo" } : { kind: "undo" };
+  if (key === "y") return { kind: "redo" };
+  return null;
 }
 
 /**
