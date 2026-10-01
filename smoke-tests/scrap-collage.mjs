@@ -176,11 +176,20 @@ const SOLID_JPEG = Buffer.from(SOLID_JPEG_BASE64, "base64");
 
 /** Flipped on to make a photo that browsed fine vanish at bake time. */
 let missingPhotoGone = false;
-/** Flipped on to make every photo fetch fail, so a re-bake cannot succeed. */
-let photosBlocked = false;
+/**
+ * Flipped on to take the image host away: every photo and the cursor image
+ * fail to load. Photos have local copies the bake falls back on, but a cursor
+ * piece always draws from its URL, so a collage holding one cannot re-bake.
+ */
+let imageHostDown = false;
 
 const server = createServer((request, response) => {
   const path = request.url.split("?")[0];
+  if (imageHostDown && (path === "/cursor.svg" || path.startsWith("/photo/"))) {
+    response.writeHead(404);
+    response.end("gone");
+    return;
+  }
   if (path === "/cursor.svg") {
     response.setHeader("content-type", "image/svg+xml");
     response.end(cursorImage);
@@ -192,7 +201,7 @@ const server = createServer((request, response) => {
     return;
   }
   if (path.startsWith("/photo/")) {
-    if (photosBlocked || (path.includes("missing") && missingPhotoGone)) {
+    if (path.includes("missing") && missingPhotoGone) {
       response.writeHead(404);
       response.end("gone");
       return;
@@ -1127,6 +1136,26 @@ try {
     "saved by the key",
     "cmd+S should write right away",
   );
+
+  // A photo bakes from its local copy, so only a piece that draws from its
+  // URL can fail to bake. A cursor is one: add it while the host is up so the
+  // collage carries a good preview of both.
+  await placeFromTray("curs", 0);
+  await page.locator(".collage-frame").click({ position: { x: 6, y: 6 } });
+  stored = await waitForStored(
+    "the cursor piece to be saved with a fresh preview",
+    (rows) => {
+      const row = rows.find((candidate) => candidate.id === collageId);
+      return row?.pieces === 2 && row.drawn;
+    },
+  );
+  await page.waitForTimeout(SETTLE_MS + 3000);
+  stored = await storedCollages();
+  assert.equal(
+    await standing(),
+    "saved",
+    "a collage holding a cursor should save cleanly while its host is up",
+  );
   const previewBeforeBlock = stored.find(
     (row) => row.id === collageId,
   ).previewBytes;
@@ -1134,7 +1163,7 @@ try {
 
   // A bake that fails is not a save failure: the arrangement lands, the last
   // good preview is kept, and the status says the picture is behind.
-  photosBlocked = true;
+  imageHostDown = true;
   await selectByTab();
   for (let step = 0; step < 3; step += 1) {
     await page.keyboard.press("Shift+ArrowDown");
@@ -1177,19 +1206,20 @@ try {
     `an export must fail loudly, got "${exportNotice}"`,
   );
 
-  photosBlocked = false;
+  imageHostDown = false;
   await backToHistory();
 
   // ======================= a reopened collage keeps the picture it was loaded with
   // Reopening starts a fresh studio, so the picture the collage already has is
-  // the only one it holds. Editing with the image host away must write the new
-  // arrangement without blanking that picture on the way past.
+  // the only one it holds. Editing with the image host away, so the cursor
+  // piece cannot be redrawn, must write the new arrangement without blanking
+  // that picture on the way past.
   const beforeReopen = (await storedCollages()).find(
     (row) => row.id === collageId,
   );
   await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(1200);
-  photosBlocked = true;
+  imageHostDown = true;
   await selectByTab();
   for (let step = 0; step < 3; step += 1) {
     await page.keyboard.press("Shift+ArrowRight");
@@ -1216,7 +1246,7 @@ try {
     beforeReopen.previewBytes,
     "the loaded preview must survive an edit whose re-bake cannot run",
   );
-  photosBlocked = false;
+  imageHostDown = false;
   await backToHistory();
 
   // =============================================== every kind through the bake
@@ -1476,8 +1506,10 @@ try {
     });
   });
   console.log("thumbnail backings:", backings);
-  const jpeg = backings.find((row) => row.src.includes("/photo/solid"));
-  const holes = backings.find((row) => row.src.includes("/photo/holes"));
+  // The drawer shows each picture from its local copy, a blob URL, so the
+  // pictures are found by the alt text they were collected with.
+  const jpeg = backings.find((row) => row.alt.startsWith("Solid jpeg"));
+  const holes = backings.find((row) => row.alt.startsWith("See-through png"));
   assert.ok(jpeg, "the solid jpeg should be in the drawer");
   assert.ok(holes, "the see-through png should be in the drawer");
   assert.equal(
@@ -2720,8 +2752,46 @@ try {
 
   // ====================================== a collage whose picture never drew
   // A first-ever bake that fails stores the arrangement with no preview, and
-  // the history draws a quiet face rather than breaking.
+  // the history draws a quiet face rather than breaking. A photo only fails
+  // to bake when both its host and its local copy are gone, as when an
+  // unpinned copy was let go to stay under budget and the site later went
+  // away. The copy is dropped through the page's own copy store, and the page
+  // is reloaded so it holds no answer from before.
   missingPhotoGone = true;
+  const droppedCopies = await page.evaluate(async () => {
+    const db = await new Promise((ok, bad) => {
+      const r = indexedDB.open("scrap_image_copies_db");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => bad(r.error);
+    });
+    try {
+      const transaction = db.transaction("sources", "readwrite");
+      const sources = transaction.objectStore("sources");
+      const keys = await new Promise((ok, bad) => {
+        const r = sources.getAllKeys();
+        r.onsuccess = () => ok(r.result);
+        r.onerror = () => bad(r.error);
+      });
+      const gone = keys.filter((src) => src.includes("/photo/missing"));
+      for (const src of gone) sources.delete(src);
+      await new Promise((ok, bad) => {
+        transaction.oncomplete = ok;
+        transaction.onerror = () => bad(transaction.error);
+      });
+      return gone;
+    } finally {
+      db.close();
+    }
+  });
+  console.log("local copies dropped for the vanishing photo:", droppedCopies);
+  assert.equal(
+    droppedCopies.length,
+    1,
+    "the vanishing photo should have had a local copy to drop",
+  );
+  await page.reload({ waitUntil: "load" });
+  await page.waitForTimeout(1500);
+  await backToHistory();
   await openStudio();
   await pickTrayKind("pics");
   await page.waitForTimeout(400);
