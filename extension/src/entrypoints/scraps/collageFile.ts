@@ -36,6 +36,19 @@ export function collageFileName(title: string): string {
   return `${title.trim() || "untitled collage"}.collage.json`;
 }
 
+/**
+ * The shared stem of an exported picture or video, before its suffix. It names
+ * the project, the collage, and the local day, so untitled exports stay apart.
+ */
+export function collageExportName(title: string, at: Date = new Date()): string {
+  const day = [
+    at.getFullYear(),
+    String(at.getMonth() + 1).padStart(2, "0"),
+    String(at.getDate()).padStart(2, "0"),
+  ].join("-");
+  return `we were online - ${title.trim() || "collage"} - ${day}`;
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   // Built in slices, because spreading a multi-megabyte picture into one
   // String.fromCharCode call overflows the argument limit.

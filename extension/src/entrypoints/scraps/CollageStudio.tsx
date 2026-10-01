@@ -171,6 +171,7 @@ import {
   type CollageDraft,
 } from "./useCollageAutosave";
 import type { SaveStanding } from "./autosaveSchedule";
+import { collageExportName } from "./collageFile";
 
 /** Longest side a freshly placed piece takes, in frame units. */
 const PLACED_MAX_SIDE = 220;
@@ -1709,7 +1710,7 @@ export function CollageStudio({
     if (pieces.length === 0) return;
     setExporting(true);
     setNotice(null);
-    const name = title.trim() || "collage";
+    const name = collageExportName(title);
     try {
       const front = await bakeCollage({
         frame,
@@ -1768,7 +1769,7 @@ export function CollageStudio({
         grain: paper.grain,
         onProgress: (done, total) => setVideoProgress(done / total),
       });
-      saveFile(video, `${title.trim() || "untitled collage"}.mp4`);
+      saveFile(video, `${collageExportName(title)}.mp4`);
     } catch (error) {
       const text =
         error instanceof CollageBakeError
