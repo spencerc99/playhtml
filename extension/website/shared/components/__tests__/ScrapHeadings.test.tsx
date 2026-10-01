@@ -214,7 +214,8 @@ describe("heading scraps in the collage", () => {
     expect(rendered?.style.fontFamily).toBe("Georgia, serif");
     expect(rendered?.style.fontWeight).toBe("700");
     expect(rendered?.style.color).toBe("rgb(61, 56, 51)");
-    expect(rendered?.style.fontSize).toBe("22px");
+    // Sized to fit its tile inside the patch the heading sits on.
+    expect(rendered?.style.fontSize).toBe("21px");
   });
 
   it("renders heading text as text rather than markup", () => {

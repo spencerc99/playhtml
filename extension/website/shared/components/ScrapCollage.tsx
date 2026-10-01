@@ -124,7 +124,6 @@ interface ScrapCollageProps {
    * choice from the scraps page.
    */
   fixedDisplay?: ScrapDisplay;
-  onFilterIntent?: () => void;
 }
 
 export type ScrapView = "drift" | "archive";
@@ -556,7 +555,11 @@ function estimateButtonWidth(text: string): number {
  * typeface still fits the tile measured for it.
  */
 const HEADING_CHARACTER_ADVANCE = 0.68;
-const HEADING_TILE_PADDING = 16;
+/**
+ * Horizontal room a heading's words lose inside its tile: the heading's own
+ * 4px sides plus the 8px sides of the patch it sits on.
+ */
+const HEADING_TILE_PADDING = 24;
 const MAX_HEADING_TILE_WIDTH = 340;
 
 /**
@@ -1228,6 +1231,20 @@ export const COLLAGE_STYLES = `
     box-shadow: 0 1px 2px rgba(40, 30, 20, 0.25);
   }
 
+  /* The light counterpart of the ink chequer, for dark lettering. */
+  .scrap-collage__backdrop--checker {
+    background-image: conic-gradient(
+      rgba(61, 56, 51, 0.07) 25%,
+      transparent 0 50%,
+      rgba(61, 56, 51, 0.07) 0 75%,
+      transparent 0
+    );
+    background-size: 8px 8px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px rgba(61, 56, 51, 0.1);
+  }
+
   .scrap-collage__heading {
     box-sizing: border-box;
     display: flex;
@@ -1358,6 +1375,11 @@ export interface ScrapContentProps {
   onLoad: () => void;
   /** Laid-out tile width, so text-bearing scraps can size themselves to it. */
   tileWidth?: number;
+  /**
+   * Whether dark lettering sits on a light chequer. Browsed and drawer tiles
+   * show it; a piece placed in a collage sits directly on the collage.
+   */
+  letteringChecker?: boolean;
 }
 
 /**
@@ -1392,14 +1414,27 @@ function ScrapSwatch({
 export function ScrapBackdrop({
   color,
   ink = false,
+  checker = false,
   children,
 }: {
   color?: string;
   /** The backing is ours, added so light ink reads, not the page's own. */
   ink?: boolean;
+  /**
+   * With no color to paint, still give the scrap a faint light chequer, the
+   * counterpart of the dark one behind light ink.
+   */
+  checker?: boolean;
   children: React.ReactNode;
 }) {
-  if (!color) return <>{children}</>;
+  if (!color) {
+    if (!checker) return <>{children}</>;
+    return (
+      <span className="scrap-collage__backdrop scrap-collage__backdrop--checker">
+        {children}
+      </span>
+    );
+  }
   return (
     <span
       className={`scrap-collage__backdrop${ink ? " scrap-collage__backdrop--ink" : ""}`}
@@ -1456,6 +1491,7 @@ export function ScrapContent({
   onError,
   onLoad,
   tileWidth,
+  letteringChecker = true,
 }: ScrapContentProps) {
   const imageSrc = useScrapImageSrc(
     item.kind === "image" ? item.src : undefined,
@@ -1528,7 +1564,11 @@ export function ScrapContent({
     }
     case "heading":
       return (
-        <ScrapBackdrop color={inkBackingFor(item.styles)} ink>
+        <ScrapBackdrop
+          color={inkBackingFor(item.styles)}
+          ink
+          checker={letteringChecker && !hasOwnFill(item.styles.backgroundColor)}
+        >
           <span
             className="scrap-collage__heading"
             style={{
@@ -1616,12 +1656,11 @@ export function ScrapCollage({
   showKindFilter = false,
   initialView = "drift",
   fixedDisplay,
-  onFilterIntent,
 }: ScrapCollageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const archiveScrollRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const [selectedKind, setSelectedKind] = useState<ScrapKindFilter>("all");
+  const [selectedKind, setSelectedKind] = useState<ScrapKindFilter>([]);
   const [places, setPlaces] = useState<FilterChip[]>([]);
   const [search, setSearch] = useState("");
   const [when, setWhen] = useState<ScrapWhenFilter>(ANY_TIME);
@@ -2299,7 +2338,6 @@ export function ScrapCollage({
               <div className="scrap-collage__controls-filters">
                 <ScrapFilters
                   items={groupedItems}
-                  onFilterIntent={onFilterIntent}
                   places={places}
                   onPlaces={setPlaces}
                   kind={selectedKind}

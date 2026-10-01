@@ -500,13 +500,19 @@ try {
     curs: "cursor",
   };
 
-  /** Narrows the drawer to one kind through its type popover. */
+  /**
+   * Narrows the drawer to one kind through its type popover. Types are a
+   * multi-select, so "all" clears earlier picks first.
+   */
   async function pickTrayKind(filter) {
     const tray = page.locator(".collage-tray");
-    await tray.locator(".scrap-filters__chip", { hasText: "type" }).click();
+    if (!(await tray.locator(".scrap-filters__popover--type").count()))
+      await tray.locator(".scrap-filters__chip", { hasText: "type" }).click();
+    await tray.locator('[data-scrap-kind="all"]').click();
     await tray
       .locator(`[data-scrap-kind="${TRAY_KINDS[filter]}"]`)
       .click();
+    await page.keyboard.press("Escape");
   }
 
   async function placeFromTray(filter, index = 0) {

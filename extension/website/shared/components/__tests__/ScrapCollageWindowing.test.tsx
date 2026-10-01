@@ -259,13 +259,14 @@ describe("ScrapCollage archive-mode windowing", () => {
       scroll.scrollTop = 20_000;
       scroll.dispatchEvent(new Event("scroll", { bubbles: true }));
     });
-    for (const kind of ["image", "button", "all"]) {
-      // Picking a type closes its popover, so each pick reopens it.
-      act(() =>
-        Array.from(container.querySelectorAll("button"))
-          .find((button) => button.textContent?.startsWith("type"))
-          ?.click(),
-      );
+    // Types are a multi-select: the popover stays open across picks, and
+    // "all" clears the picks before buttons are chosen on their own.
+    act(() =>
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent?.startsWith("type"))
+        ?.click(),
+    );
+    for (const kind of ["image", "all", "button"]) {
       act(() =>
         container
           .querySelector<HTMLButtonElement>(`[data-scrap-kind="${kind}"]`)
