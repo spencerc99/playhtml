@@ -21,6 +21,11 @@ const profile = await mkdtemp(resolve(tmpdir(), "wwo-scrap-collage-"));
 const exportPath = process.env.SCRAPS_EXPORT || null;
 /** How long the studio waits for an arrangement to settle before writing. */
 const SETTLE_MS = 1200;
+/**
+ * The most a five-piece stored preview may weigh. With the paper's grain baked
+ * in, previews ran to about 13 MB; the pieces alone are a small fraction.
+ */
+const PREVIEW_MAX_BYTES = 600_000;
 
 const photo = (fill) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="600" height="400" fill="${fill}"/><circle cx="300" cy="200" r="120" fill="#b76841"/></svg>`;
@@ -845,6 +850,19 @@ try {
         };
         const f = await decode(front);
         const b = await decode(back);
+        // A run of the front's corner pixels, so grain can be told from a flat
+        // fill: grain makes neighbouring paper pixels differ.
+        const frontCorner = [];
+        for (let step = 0; step < 24; step += 1) {
+          const i = (4 * f.width + 4 + step) * 4;
+          frontCorner.push([f.data[i], f.data[i + 1], f.data[i + 2]]);
+        }
+        const frontCornerVaries = frontCorner.some(
+          (pixel) =>
+            pixel[0] !== frontCorner[0][0] ||
+            pixel[1] !== frontCorner[0][1] ||
+            pixel[2] !== frontCorner[0][2],
+        );
         const lum = (data, i) =>
           0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
         let dark = 0;
@@ -930,6 +948,7 @@ try {
           markCornerShift: Math.max(
             ...corners.map((value) => Math.abs(value - paperLum)),
           ),
+          frontCornerVaries,
         };
       },
       {
@@ -1310,9 +1329,9 @@ try {
     context.drawImage(bitmap, 0, 0);
     const scaleX = bitmap.width / record.frame.width;
     const scaleY = bitmap.height / record.frame.height;
-    const background = [...context.getImageData(4, 4, 1, 1).data].slice(0, 3);
     const samples = record.pieces.map((piece) => {
-      // A piece that baked draws pixels away from the frame background.
+      // The preview holds only the pieces on a clear canvas, so a piece that
+      // baked is wherever the pixels are not see-through.
       let painted = 0;
       let total = 0;
       for (let sx = 0.2; sx <= 0.8; sx += 0.1) {
@@ -1322,22 +1341,18 @@ try {
           if (x < 0 || y < 0 || x >= bitmap.width || y >= bitmap.height) {
             continue;
           }
-          const [r, g, b] = context.getImageData(x, y, 1, 1).data;
+          const alpha = context.getImageData(x, y, 1, 1).data[3];
           total += 1;
-          const distance =
-            Math.abs(r - background[0]) +
-            Math.abs(g - background[1]) +
-            Math.abs(b - background[2]);
-          if (distance > 24) painted += 1;
+          if (alpha > 0) painted += 1;
         }
       }
       return { kind: piece.scrap.kind, painted, total };
     });
-    // A run of corner pixels, so grain can be told from a flat fill: grain
-    // makes neighbouring paper pixels differ, a flat tone makes them equal.
+    // A run of corner pixels, where no piece sits: the paper is left out of
+    // the preview, so they should all be see-through.
     const corner = [];
     for (let step = 0; step < 24; step += 1) {
-      corner.push([...context.getImageData(4 + step, 4, 1, 1).data].slice(0, 3));
+      corner.push(context.getImageData(4 + step, 4, 1, 1).data[3]);
     }
     return {
       pieceCount: record.pieces.length,
@@ -1365,33 +1380,46 @@ try {
   for (const sample of baked.samples) {
     assert.ok(
       sample.painted > 0,
-      `the baked ${sample.kind} drew nothing but frame background`,
+      `the baked ${sample.kind} drew nothing onto the clear preview`,
     );
   }
-  // The bake must show the same paper the studio did: grained paper varies
-  // pixel to pixel where a flat tone is uniform.
-  const cornerVaries = baked.corner.some(
-    (pixel) =>
-      pixel[0] !== baked.corner[0][0] ||
-      pixel[1] !== baked.corner[0][1] ||
-      pixel[2] !== baked.corner[0][2],
+  // The stored preview leaves the paper out: whatever shows it paints the
+  // paper behind it. Baked in, grain's per-pixel noise made every preview a
+  // PNG of many megabytes. The exported front still carries the paper; the
+  // export below checks that.
+  console.log("baked paper:", baked.paper, "corner alpha:", baked.corner);
+  assert.ok(
+    baked.corner.every((alpha) => alpha === 0),
+    "the stored preview should be see-through where no piece sits",
   );
-  console.log(
-    "baked paper:",
-    baked.paper,
-    "corner varies:",
-    cornerVaries,
-    baked.corner.slice(0, 4),
-  );
-  assert.equal(
-    cornerVaries,
-    baked.paper.grain,
-    baked.paper.grain
-      ? "grained paper should bake as grain, not a flat tone"
-      : "ungrained paper should bake flat",
+  assert.ok(
+    baked.previewBytes < PREVIEW_MAX_BYTES,
+    `a five-piece preview should stay small, got ${baked.previewBytes} bytes`,
   );
 
   await backToHistory();
+  // The history paints each card's paper, grain and all, behind its preview.
+  const cardThumb = page
+    .locator(".collage-card")
+    .filter({ hasText: "one of each" })
+    .first()
+    .locator(".collage-card__thumb");
+  const cardPaint = await cardThumb.evaluate((node) => ({
+    color: getComputedStyle(node).backgroundColor,
+    image: getComputedStyle(node).backgroundImage,
+  }));
+  console.log("history card paper:", cardPaint);
+  assert.notEqual(
+    cardPaint.color,
+    "rgba(0, 0, 0, 0)",
+    "the card should paint the collage's paper tone behind the preview",
+  );
+  assert.equal(
+    cardPaint.image !== "none",
+    baked.paper.grain,
+    "the card should carry the grain exactly when the collage's paper does",
+  );
+  await cardThumb.screenshot({ path: `${evidence}/11-history-card-paper.png` });
 
   // ==================================== a button that brought its own backdrop
   // The outlined button is light text with no background of its own, read
@@ -1439,24 +1467,25 @@ try {
     context.drawImage(bitmap, 0, 0);
     const scaleX = bitmap.width / record.frame.width;
     const scaleY = bitmap.height / record.frame.height;
-    // Sample across the piece and keep the darkest pixel found: the patch is
-    // dark even where the light glyphs and border are not.
+    // Sample across the piece and keep the darkest solid pixel found: the
+    // patch is dark even where the light glyphs and border are not. A clear
+    // pixel reads as black, so only what the piece actually drew counts.
     let darkest = 255;
     for (let sx = 0.1; sx <= 0.9; sx += 0.05) {
       for (let sy = 0.2; sy <= 0.8; sy += 0.05) {
         const x = Math.round((piece.x + piece.width * sx) * scaleX);
         const y = Math.round((piece.y + piece.height * sy) * scaleY);
         if (x < 0 || y < 0 || x >= bitmap.width || y >= bitmap.height) continue;
-        const [r, g, b] = context.getImageData(x, y, 1, 1).data;
+        const [r, g, b, a] = context.getImageData(x, y, 1, 1).data;
+        if (a < 250) continue;
         darkest = Math.min(darkest, (r + g + b) / 3);
       }
     }
-    const [pr, pg, pb] = context.getImageData(4, 4, 1, 1).data;
     return {
       kind: piece.scrap.kind,
       backdropColor: piece.scrap.backdropColor ?? null,
       darkest,
-      paperLuma: (pr + pg + pb) / 3,
+      cornerAlpha: context.getImageData(4, 4, 1, 1).data[3],
     };
   });
   console.log("backdrop bake:", backdropBake);
@@ -1469,9 +1498,10 @@ try {
     backdropBake.darkest < 90,
     `the backdrop should bake as dark pixels behind the text, darkest was ${backdropBake.darkest}`,
   );
-  assert.ok(
-    backdropBake.paperLuma > 200,
-    "the surrounding paper should still be pale, so the patch is the piece's own",
+  assert.equal(
+    backdropBake.cornerAlpha,
+    0,
+    "the preview around the piece should be clear, so the dark patch is the piece's own",
   );
   // ============================================================== the drawer
   // A chequer means "this has holes in it", so only material that really does
@@ -2223,6 +2253,32 @@ try {
   // the writing and the front showing through.
   const exported = await exportBothSides("one of each");
   console.log("exported sides:", exported);
+  // The export shows the same paper the studio did: grained paper varies
+  // pixel to pixel where a flat tone is uniform.
+  const exportedPaper = await page.evaluate(async () => {
+    const db = await new Promise((ok, bad) => {
+      const r = indexedDB.open("scrap_collages_db");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => bad(r.error);
+    });
+    try {
+      const rows = await new Promise((ok, bad) => {
+        const r = db.transaction("collages").objectStore("collages").getAll();
+        r.onsuccess = () => ok(r.result);
+        r.onerror = () => bad(r.error);
+      });
+      return rows.find((row) => row.title === "one of each").paper;
+    } finally {
+      db.close();
+    }
+  });
+  assert.equal(
+    exported.frontCornerVaries,
+    exportedPaper.grain,
+    exportedPaper.grain
+      ? "grained paper should export as grain, not a flat tone"
+      : "ungrained paper should export flat",
+  );
 
   // The back is derived; turning over and exporting stores nothing new.
   const afterBack = (await storedCollages()).find(

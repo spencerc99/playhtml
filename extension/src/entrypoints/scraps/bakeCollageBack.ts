@@ -15,7 +15,12 @@ import {
   type CollageBackContent,
 } from "./collageBack";
 import { webPageHref } from "./scrapLinks";
-import { canvasPng, loadImage } from "./bakeCollage";
+import {
+  canvasPng,
+  collageCanvas,
+  loadImage,
+  paintPaper,
+} from "./bakeCollage";
 import { cutoutCanvas } from "./cutoutImages";
 import { FULL_CROP } from "./collageGeometry";
 
@@ -146,24 +151,27 @@ export async function resolveBackFavicons(
   return new Map<string, BackFavicon>(entries);
 }
 
-/** The baked front, shrunk to the size it is shown through the back at. */
+/**
+ * The front on its paper, shrunk to the size it is shown through the back at.
+ * A stored preview carries only the pieces on a clear canvas, so the paper and
+ * its grain are laid down first, as the front shows them.
+ */
 export async function bleedDataUrl(
   front: Blob,
   frame: CollageFrame,
+  paper: CollagePaper,
 ): Promise<string> {
   const url = URL.createObjectURL(front);
   try {
     const image = await loadImage(url);
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(frame.width * BLEED_SCALE);
-    canvas.height = Math.round(frame.height * BLEED_SCALE);
-    const context = canvas.getContext("2d");
-    if (!context) {
-      throw new Error("Could not get a 2d drawing context for the show-through");
-    }
-    context.imageSmoothingQuality = "high";
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    // The front is drawn on opaque paper, so nothing is lost to a JPEG.
+    const { canvas, context } = collageCanvas(
+      frame,
+      Math.round(frame.width * BLEED_SCALE),
+      Math.round(frame.height * BLEED_SCALE),
+    );
+    await paintPaper(context, frame, paper.color, paper.grain);
+    context.drawImage(image, 0, 0, frame.width, frame.height);
+    // The paper underneath leaves nothing see-through, so nothing is lost to a JPEG.
     return canvas.toDataURL("image/jpeg", 0.85);
   } finally {
     URL.revokeObjectURL(url);
@@ -190,7 +198,9 @@ export async function bakeCollageBack(options: BackBakeOptions): Promise<Blob> {
   const { frame } = options;
   const scale = options.scale ?? 2;
   const { fontFaces, markIcon } = await backAssets();
-  const bleed = options.front ? await bleedDataUrl(options.front, frame) : null;
+  const bleed = options.front
+    ? await bleedDataUrl(options.front, frame, options.paper)
+    : null;
   const image = await loadImage(
     collageBackDocument({
       frame,
