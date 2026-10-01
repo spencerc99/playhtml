@@ -138,7 +138,7 @@ export function CollageBackFace({
       return;
     }
     let cancelled = false;
-    bleedDataUrl(front, frame)
+    bleedDataUrl(front, frame, paper)
       .then((url) => {
         if (!cancelled) setBleed(url);
       })
@@ -152,7 +152,7 @@ export function CollageBackFace({
     return () => {
       cancelled = true;
     };
-  }, [frame, front, onProblem]);
+  }, [frame, front, onProblem, paper]);
 
   const markup = useMemo(
     () =>
