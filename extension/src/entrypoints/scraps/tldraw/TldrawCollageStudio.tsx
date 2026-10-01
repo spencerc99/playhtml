@@ -39,7 +39,7 @@ import { fanOutPlacement, type PieceBox, type Point } from "../collageGeometry";
 import { DEFAULT_CUTOUT_TOLERANCE, type PieceCutout } from "../backgroundCutout";
 import { paperBackground } from "../paperGrain";
 import { ScrapTray } from "../ScrapTray";
-import { StudioTools } from "../StudioTools";
+import { KeysButton, StudioTools, StudioViews } from "../StudioTools";
 import { FormatControl } from "../FormatControl";
 import { PieceActions } from "../PieceActions";
 import {
@@ -844,23 +844,22 @@ export default function TldrawCollageStudio({
           <StudioTools
             canUndo={canUndo}
             canRedo={canRedo}
-            keysOpen={false}
-            turnedOver={false}
             onUndo={() => editor?.undo()}
             onRedo={() => editor?.redo()}
-            onKeys={() =>
-              setNotice({
-                tone: "quiet",
-                text: "keys: C crop · B cut out background · [ ] one step back or forward, shift for all the way · shift+H / shift+V flip · cmd+D duplicate · cmd held while dragging snaps",
-              })
-            }
+            onBack={leave}
+          />
+
+          <StudioViews
+            turnedOver={false}
+            sourcesOn={false}
+            canShowSources={false}
             onTurnOver={() =>
               setNotice({
                 tone: "quiet",
                 text: "the back of a collage shows in the regular editor; turn the tldraw editor off in settings to see it",
               })
             }
-            onBack={leave}
+            onSources={() => {}}
           />
 
           <FormatControl
@@ -888,6 +887,15 @@ export default function TldrawCollageStudio({
             {cropping ? " · cropping · enter or click away to keep, esc to cancel" : ""}
           </span>
           <span className="collage-bar__spacer" />
+          <KeysButton
+            open={false}
+            onToggle={() =>
+              setNotice({
+                tone: "quiet",
+                text: "keys: C crop · B cut out background · [ ] one step back or forward, shift for all the way · shift+H / shift+V flip · cmd+D duplicate · cmd held while dragging snaps",
+              })
+            }
+          />
           {lockedCount > 0 && (
             <button
               type="button"
