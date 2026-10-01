@@ -599,14 +599,14 @@ try {
       0,
       `${how}: the back should be live while turned over`,
     );
-    // The back carries the title and the count, so the bar gives them up.
+    // The back carries the title and the count, so the mat's caption gives them up.
     assert.equal(
       await page.locator(".collage-title-input").count(),
       0,
       `${how}: the title field should be put away while turned over`,
     );
     const hint = (
-      await page.locator(".collage-bar__turned").textContent()
+      await page.locator(".collage-mat__caption .collage-studio__label").textContent()
     ).trim();
     assert.equal(hint, "turned over · T or esc to turn back");
     assert.equal(
@@ -629,7 +629,10 @@ try {
       1,
       `${how}: the title field should be back`,
     );
-    assert.equal(await page.locator(".collage-bar__turned").count(), 0);
+    assert.ok(
+      !(await page.locator(".collage-mat__caption").textContent()).includes("turned over"),
+      `${how}: the caption should say the count and date again`,
+    );
   }
 
   /**
@@ -1052,8 +1055,15 @@ try {
   );
   assert.equal(afterReload.length, 1, "autosaving must not multiply records");
 
-  // Reopen it and change something, then leave before the debounce fires.
-  await page.getByRole("button", { name: "create", exact: true }).click();
+  // A reload lands back inside the collage (its place is in the URL), so
+  // step out to the list, reopen it, change something, and leave before the
+  // debounce fires.
+  assert.equal(
+    await page.locator(".collage-mat").count(),
+    1,
+    "a reload should land back inside the collage",
+  );
+  await page.getByRole("button", { name: "back to collages" }).click();
   await page.waitForTimeout(600);
   await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(2500);
@@ -1662,26 +1672,42 @@ try {
   }
   await page.waitForTimeout(400);
 
-  // The studio tools sit in the stage's top-left, beside the canvas.
+  // History sits at the stage's top-left, the views at its top-right.
   const toolLabels = await page
     .locator(".collage-tools button")
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")));
   console.log("studio tools:", toolLabels);
-  assert.deepEqual(toolLabels, [
-    "Undo",
-    "Redo",
-    "Turn the collage over",
-    "Keyboard shortcuts",
-  ]);
-
-  // The paper popover holds the document settings.
-  const paperReadout = (
-    await page.locator(".collage-format .collage-studio__label").first().textContent()
-  ).trim();
-  console.log("paper readout:", paperReadout);
+  assert.deepEqual(toolLabels, ["Undo", "Redo"]);
+  const viewLabels = await page
+    .locator(".collage-views button")
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")));
+  console.log("studio views:", viewLabels);
+  assert.deepEqual(viewLabels, ["Turn the collage over", "Show sources"]);
+  const viewsBox = await page.locator(".collage-views").boundingBox();
+  const viewsStage = await page.locator(".collage-frame-area__stage").boundingBox();
   assert.ok(
-    /^postcard · 1500 × 1000 · \d+%$/.test(paperReadout),
-    `the readout should name size and zoom, got "${paperReadout}"`,
+    viewsBox.x + viewsBox.width > viewsStage.x + viewsStage.width - 40 &&
+      viewsBox.y < viewsStage.y + 40,
+    "the views should sit at the stage's top-right",
+  );
+  // The mat carries the collage's caption: its name, piece count and date.
+  const caption = (await page.locator(".collage-mat__caption").textContent()).trim();
+  console.log("mat caption:", caption);
+  assert.ok(
+    /\d+ pieces? · made /.test(caption),
+    `the mat should say the count and when it was made, got "${caption}"`,
+  );
+
+  // Size and paper live at the bottom bar's left, beside the zoom.
+  const zoomReadout = (
+    await page.locator(".collage-bar .collage-format .collage-studio__label").first().textContent()
+  ).trim();
+  console.log("zoom readout:", zoomReadout);
+  assert.ok(/^\d+%$/.test(zoomReadout), `the bar should show the zoom, got "${zoomReadout}"`);
+  assert.equal(
+    await page.getByRole("button", { name: "Size: postcard" }).count(),
+    1,
+    "the size button should name the format",
   );
   assert.equal(
     await page.locator(".collage-paper-popover").count(),
@@ -1748,7 +1774,7 @@ try {
     "escape should close the popover",
   );
 
-  // The bottom bar is status only.
+  // The bottom bar: size and paper at its left, keys and export at its right.
   const barButtons = await page
     .locator(".collage-bar button")
     .evaluateAll((nodes) =>
@@ -1757,8 +1783,8 @@ try {
   console.log("bottom bar buttons:", barButtons);
   assert.deepEqual(
     barButtons,
-    ["export png"],
-    "the bottom bar should carry nothing but export",
+    ["postcard▾", "paper▾", "keys", "export png"],
+    "the bottom bar should carry size, paper, keys and export",
   );
   assert.equal(
     await page.locator(".collage-bar .collage-glyph").count(),
@@ -1806,7 +1832,7 @@ try {
   await page.keyboard.down("i");
   await page.waitForTimeout(500);
   const tags = await page.locator(".collage-peek").count();
-  const fuller = await page.locator(".collage-peek--full").count();
+  const fuller = await page.locator(".collage-peek-edge--on").count();
   console.log(`peek tags: ${tags} for ${pieceCount} pieces, ${fuller} fuller`);
   assert.equal(tags, pieceCount, "every piece should get a tag");
   assert.equal(fuller, 1, "only the hovered piece gets the fuller tag");
@@ -1822,7 +1848,7 @@ try {
     "the hover hint should stand aside during a peek too",
   );
   const peekText = (
-    await page.locator(".collage-peek--full").textContent()
+    await page.locator(".collage-peek").first().textContent()
   ).trim();
   console.log("the fuller tag says:", peekText);
   assert.ok(
@@ -1852,6 +1878,23 @@ try {
     await page.locator(".collage-peek").count(),
     0,
     "releasing the key should put the tags away",
+  );
+  // The sources view can also be left on from its toggle, and put away the same way.
+  const sourcesToggle = page.getByRole("button", { name: "Show sources" });
+  await sourcesToggle.click();
+  await page.waitForTimeout(300);
+  assert.equal(await sourcesToggle.getAttribute("aria-pressed"), "true");
+  assert.ok(
+    (await page.locator(".collage-peek").count()) > 0,
+    "the sources toggle should show the tags without holding a key",
+  );
+  await page.screenshot({ path: `${evidence}/09c-sources-toggle.png` });
+  await sourcesToggle.click();
+  await page.waitForTimeout(300);
+  assert.equal(
+    await page.locator(".collage-peek").count(),
+    0,
+    "turning the sources toggle off should put the tags away",
   );
   if (selectedDuringPeek > 0) {
     assert.equal(
@@ -2025,6 +2068,9 @@ try {
     0,
     "no strip or handles while turned over",
   );
+  // A click on the back can land in its editable title; leave the field so
+  // the keys below reach the studio instead of the text.
+  await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.down("i");
   await page.waitForTimeout(300);
   assert.equal(
@@ -2040,6 +2086,9 @@ try {
   );
 
   // Escape turns it face up; T turns it over again, mid-swing on the way.
+  // The back's title is editable, so leave that field first: Escape inside
+  // it belongs to the text, not the studio.
+  await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.press("Escape");
   await page.waitForTimeout(900);
   await assertFaceUp("escape");
@@ -2129,8 +2178,10 @@ try {
       .backgroundColor,
   }));
   console.log("the back on soft black paper:", darkInk);
-  assert.equal(darkInk.domain, "rgb(245, 240, 232)");
-  assert.equal(darkInk.title, "rgb(245, 240, 232)");
+  // The back is printed on its own plain card, not on the front's paper, so
+  // even with soft black paper it keeps the page's dark ink.
+  assert.equal(darkInk.domain, "rgb(61, 56, 51)");
+  assert.equal(darkInk.title, "rgb(61, 56, 51)");
   await page.screenshot({ path: `${evidence}/25-back-dark-paper.png` });
   await page.keyboard.press("t");
   await page.waitForTimeout(900);
