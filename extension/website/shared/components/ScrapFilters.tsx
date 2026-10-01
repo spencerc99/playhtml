@@ -1,4 +1,4 @@
-// ABOUTME: Filters scraps by where and when they were found, their kind, and an always-visible search field.
+// ABOUTME: Filters scraps by where and when they were found, their kind and shape, and an always-visible search field.
 // ABOUTME: Lays out as one bar or as two drawer rows; popovers anchor to their chip and return focus.
 
 import {
@@ -24,7 +24,9 @@ import {
   matchesScrapWhen,
   scrapDays,
   scrapLocations,
+  scrapShape,
   scrapSightings,
+  type ScrapShape,
   type ScrapWhenFilter,
 } from "../utils/scrapFilters";
 import type { TimeOfDayFilter } from "../config";
@@ -38,6 +40,18 @@ export { ANY_TIME, isAnyTime, type ScrapWhenFilter };
 export type ScrapKindFilter = ScrapItem["kind"][];
 
 type KindOption = ScrapItem["kind"] | "all";
+
+/** The scrap shapes to show; an empty list shows every shape. */
+export type ScrapShapeFilter = ScrapShape[];
+
+type ShapeOption = ScrapShape | "all";
+
+const shapes: { shape: ShapeOption; label: string; glyph: string }[] = [
+  { shape: "all", label: "any", glyph: "" },
+  { shape: "tall", label: "tall", glyph: "▯" },
+  { shape: "square", label: "square", glyph: "□" },
+  { shape: "wide", label: "wide", glyph: "▭" },
+];
 
 const kinds: { kind: KindOption; label: string }[] = [
   { kind: "all", label: "all" },
@@ -60,15 +74,23 @@ const timesOfDay: { label: string; window: TimeOfDayFilter }[] = [
 export function scrapPassesFilters(
   item: ScrapItem,
   kind: ScrapKindFilter,
+  shape: ScrapShapeFilter,
   places: FilterChip[],
   search: string,
   when: ScrapWhenFilter,
 ): boolean {
   return (
     (kind.length === 0 || kind.includes(item.kind)) &&
+    matchesShape(item, shape) &&
     matchesScrapFilters(item, places, search) &&
     matchesScrapWhen(item, when)
   );
+}
+
+function matchesShape(item: ScrapItem, shape: ScrapShapeFilter): boolean {
+  if (shape.length === 0) return true;
+  const itemShape = scrapShape(item);
+  return itemShape !== null && shape.includes(itemShape);
 }
 
 /** The chip's short summary of a day and time-of-day filter, naming a quarter-day window when it is one. */
@@ -98,6 +120,8 @@ interface Props {
   onPlaces: (places: FilterChip[]) => void;
   kind: ScrapKindFilter;
   onKind: (kind: ScrapKindFilter) => void;
+  shape: ScrapShapeFilter;
+  onShape: (shape: ScrapShapeFilter) => void;
   search: string;
   onSearch: (search: string) => void;
   /** The local day and time of day a scrap must have been seen at. */
@@ -117,7 +141,7 @@ interface Props {
   chipsAccessory?: ReactNode;
 }
 
-type Panel = "places" | "type" | "when";
+type Panel = "places" | "type" | "shape" | "when";
 
 const countEach = (group: ScrapItem[]) => group.length;
 
@@ -127,6 +151,8 @@ export function ScrapFilters({
   onPlaces,
   kind,
   onKind,
+  shape,
+  onShape,
   search,
   onSearch,
   when,
@@ -145,6 +171,9 @@ export function ScrapFilters({
   const typeAnchor = useRef<HTMLSpanElement>(null);
   const placeButton = useRef<HTMLButtonElement>(null);
   const typeButton = useRef<HTMLButtonElement>(null);
+  const shapeAnchor = useRef<HTMLSpanElement>(null);
+  const shapeButton = useRef<HTMLButtonElement>(null);
+  const shapeOptions = useRef<HTMLDivElement>(null);
   const whenAnchor = useRef<HTMLSpanElement>(null);
   const whenButton = useRef<HTMLButtonElement>(null);
   const whenPanel = useRef<HTMLElement>(null);
@@ -184,7 +213,8 @@ export function ScrapFilters({
     for (const domain of domains) counts.set(domain, 0);
     const byDomain = new Map<string, ScrapItem[]>();
     for (const item of items) {
-      if (!scrapPassesFilters(item, kind, [], search, when)) continue;
+      if (!scrapPassesFilters(item, kind, shape, [], search, when))
+        continue;
       for (const domain of itemDomains(item)) {
         const group = byDomain.get(domain) ?? [];
         group.push(item);
@@ -194,14 +224,12 @@ export function ScrapFilters({
     for (const [domain, group] of byDomain)
       counts.set(domain, countScraps(group));
     return counts;
-  }, [panel, items, domains, kind, search, when, countScraps]);
+  }, [panel, items, domains, kind, shape, search, when, countScraps]);
   const kindCounts = useMemo(() => {
     const counts = new Map<KindOption, number>();
     if (panel !== "type") return counts;
-    const matching = items.filter(
-      (item) =>
-        matchesScrapFilters(item, places, search) &&
-        matchesScrapWhen(item, when),
+    const matching = items.filter((item) =>
+      scrapPassesFilters(item, [], shape, places, search, when),
     );
     counts.set("all", countScraps(matching));
     for (const option of kinds) {
@@ -212,7 +240,23 @@ export function ScrapFilters({
       );
     }
     return counts;
-  }, [panel, items, places, search, when, countScraps]);
+  }, [panel, items, shape, places, search, when, countScraps]);
+  const shapeCounts = useMemo(() => {
+    const counts = new Map<ShapeOption, number>();
+    if (panel !== "shape") return counts;
+    const matching = items.filter((item) =>
+      scrapPassesFilters(item, kind, [], places, search, when),
+    );
+    counts.set("all", countScraps(matching));
+    for (const option of shapes) {
+      if (option.shape === "all") continue;
+      counts.set(
+        option.shape,
+        countScraps(matching.filter((item) => scrapShape(item) === option.shape)),
+      );
+    }
+    return counts;
+  }, [panel, items, kind, places, search, when, countScraps]);
   // Every day anything was seen stays in the grid, so narrowing another
   // filter thins a day's texture rather than moving the calendar around.
   const dayCounts = useMemo(() => {
@@ -222,7 +266,8 @@ export function ScrapFilters({
       for (const ts of scrapSightings(item)) counts.set(localDayKey(ts), 0);
     const byDay = new Map<string, ScrapItem[]>();
     for (const item of items) {
-      if (!scrapPassesFilters(item, kind, places, search, ANY_TIME)) continue;
+      if (!scrapPassesFilters(item, kind, shape, places, search, ANY_TIME))
+        continue;
       for (const day of scrapDays(item, when.timeOfDay)) {
         const group = byDay.get(day) ?? [];
         group.push(item);
@@ -231,7 +276,16 @@ export function ScrapFilters({
     }
     for (const [day, group] of byDay) counts.set(day, countScraps(group));
     return counts;
-  }, [panel, items, kind, places, search, when.timeOfDay, countScraps]);
+  }, [
+    panel,
+    items,
+    kind,
+    shape,
+    places,
+    search,
+    when.timeOfDay,
+    countScraps,
+  ]);
 
   const selected = places.map(formatFilterChip);
   const candidate = parseFilterChip(draft);
@@ -264,11 +318,13 @@ export function ScrapFilters({
   const panelButton = {
     places: placeButton,
     type: typeButton,
+    shape: shapeButton,
     when: whenButton,
   };
   const panelAnchor = {
     places: placeAnchor,
     type: typeAnchor,
+    shape: shapeAnchor,
     when: whenAnchor,
   };
   const close = () => {
@@ -280,6 +336,10 @@ export function ScrapFilters({
     if (panel === "places") placeInput.current?.focus();
     if (panel === "type")
       typeOptions.current
+        ?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')
+        ?.focus();
+    if (panel === "shape")
+      shapeOptions.current
         ?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')
         ?.focus();
     if (panel === "when")
@@ -321,7 +381,7 @@ export function ScrapFilters({
     if (bounds.right > right - margin) nudge = right - margin - bounds.right;
     if (bounds.left + nudge < left + margin) nudge = left + margin - bounds.left;
     element.style.setProperty("--scrap-filters-nudge", `${nudge}px`);
-  }, [panel, layout, places, kind, when]);
+  }, [panel, layout, places, kind, shape, when]);
 
   const siteLabel =
     selected.length === 0
@@ -350,6 +410,29 @@ export function ScrapFilters({
       : [...kind, option];
     // Picking every kind is the same as picking none.
     onKind(next.length === kinds.length - 1 ? [] : next);
+  };
+
+  const shapeLabel =
+    shape.length === 0
+      ? "any"
+      : shape.length > 1
+        ? `${shape.length} shapes`
+        : shapes
+          .filter(
+            (option) => option.shape !== "all" && shape.includes(option.shape),
+          )
+          .map((option) => option.label)
+          .join(", ");
+  const toggleShape = (option: ShapeOption) => {
+    if (option === "all") {
+      onShape([]);
+      return;
+    }
+    const next = shape.includes(option)
+      ? shape.filter((value) => value !== option)
+      : [...shape, option];
+    // Picking every shape is the same as picking none.
+    onShape(next.length === shapes.length - 1 ? [] : next);
   };
 
   const searchField = (
@@ -609,6 +692,79 @@ export function ScrapFilters({
     </span>
   );
 
+  const shapeChip = (
+    <span className="scrap-filters__anchor" ref={shapeAnchor}>
+      <button
+        type="button"
+        ref={shapeButton}
+        className="scrap-filters__chip"
+        data-on={shape.length > 0 || undefined}
+        aria-expanded={panel === "shape"}
+        aria-controls={`${id}-shape`}
+        onClick={() => setPanel(panel === "shape" ? null : "shape")}
+      >
+        <span className="scrap-filters__key">shape</span>
+        <span className="scrap-filters__value">{shapeLabel}</span>
+        <span className="scrap-filters__more" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      {panel === "shape" && (
+        <>
+          {caret}
+          <section
+            ref={popover}
+            id={`${id}-shape`}
+            className={`scrap-filters__popover scrap-filters__popover--shape scrap-filters__popover--${placement}`}
+            aria-label="Scrap shapes"
+          >
+            <div className="scrap-filters__heading">
+              <span>shape</span>
+            </div>
+            <div className="scrap-filters__options" ref={shapeOptions}>
+              {shapes.map((option) => {
+                const on =
+                  option.shape === "all"
+                    ? shape.length === 0
+                    : shape.includes(option.shape);
+                return (
+                  <div key={option.shape} className="scrap-filters__kind">
+                    <button
+                      type="button"
+                      className="scrap-filters__option"
+                      data-scrap-shape={option.shape}
+                      aria-pressed={on}
+                      onClick={() => toggleShape(option.shape)}
+                    >
+                      <span className="scrap-filters__check" aria-hidden="true">
+                        {on ? "✓" : ""}
+                      </span>
+                      <span className="scrap-filters__name">
+                        {option.label}
+                      </span>
+                      <span
+                        className="scrap-filters__glyph"
+                        aria-hidden="true"
+                      >
+                        {option.glyph}
+                      </span>
+                      <span className="scrap-filters__count">
+                        {shapeCounts.get(option.shape)}
+                      </span>
+                    </button>
+                    {option.shape === "all" && (
+                      <hr className="scrap-filters__separator" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </>
+      )}
+    </span>
+  );
+
   const whenOn = !isAnyTime(when);
   const whenChip = (
     <span className="scrap-filters__anchor" ref={whenAnchor}>
@@ -738,6 +894,7 @@ export function ScrapFilters({
           <div className="scrap-filters__row">
             {placesChip}
             {typeChip}
+            {shapeChip}
             {whenChip}
             <span className="scrap-filters__spacer" />
             {chipsAccessory}
@@ -748,6 +905,7 @@ export function ScrapFilters({
           {searchField}
           {placesChip}
           {typeChip}
+          {shapeChip}
           {whenChip}
         </div>
       )}
@@ -758,7 +916,9 @@ export function ScrapFilters({
 const styles = `
 .scrap-filters { display:flex; flex-direction:column; gap:8px; min-width:0; font-family:"Martian Mono",monospace; color:#3d3833; }
 .scrap-filters__row { display:flex; align-items:center; gap:6px; min-width:0; }
-.scrap-filters--bar .scrap-filters__row { flex-wrap:nowrap; }
+/* Chips wrap under the search field rather than squeezing it shut. */
+.scrap-filters--bar .scrap-filters__row { flex-wrap:wrap; }
+.scrap-filters--bar .scrap-filters__search { min-width:140px; }
 .scrap-filters--drawer .scrap-filters__row { flex-wrap:wrap; }
 .scrap-filters__spacer { flex:1 1 auto; }
 .scrap-filters button { font-family:"Martian Mono",monospace; color:inherit; cursor:pointer; }
@@ -791,7 +951,8 @@ const styles = `
 .scrap-filters--bar .scrap-filters__popover--type { right:0; }
 .scrap-filters--drawer .scrap-filters__popover { left:0; }
 .scrap-filters--drawer .scrap-filters__popover--places { width:280px; }
-.scrap-filters__popover--type { width:200px; }
+.scrap-filters__popover--type,.scrap-filters__popover--shape { width:200px; }
+.scrap-filters--bar .scrap-filters__popover--shape { right:0; }
 .scrap-filters__popover--when { width:${DAY_GRID_WIDTH + 22}px; }
 .scrap-filters--bar .scrap-filters__popover--when { right:0; }
 .scrap-filters__heading--time { margin-top:10px; }
@@ -819,6 +980,7 @@ const styles = `
 .scrap-filters .scrap-filters__option:focus-visible { outline:none; background:rgba(61,56,51,.06); box-shadow:inset 0 0 0 1px #4a9a8a; }
 .scrap-filters__name { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .scrap-filters__count { flex:0 0 auto; color:#827a72; }
+.scrap-filters__glyph { flex:0 0 auto; color:#a39b91; font-size:12px; line-height:1; }
 .scrap-filters__check { display:grid; place-items:center; flex:0 0 auto; box-sizing:border-box; width:12px; height:12px; border:1px solid rgba(61,56,51,.3); border-radius:3px; background:#faf9f6; color:#fff; font-size:8px; line-height:1; }
 .scrap-filters__option[aria-pressed=true] .scrap-filters__check { border-color:#4a9a8a; background:#4a9a8a; }
 .scrap-filters__option[aria-pressed=true] .scrap-filters__name { color:#2f6b60; }

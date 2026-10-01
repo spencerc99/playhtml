@@ -1,4 +1,4 @@
-// ABOUTME: Matches scraps against saved source locations, searchable text, and when they were seen.
+// ABOUTME: Matches scraps against saved source locations, searchable text, when they were seen, and shape.
 // ABOUTME: Retains complete photo provenance when any encounter matches a filter.
 
 import type { ScrapItem } from "../components/ScrapCollage";
@@ -16,6 +16,39 @@ export const ANY_TIME: ScrapWhenFilter = { day: null, timeOfDay: null };
 
 export function isAnyTime(when: ScrapWhenFilter): boolean {
   return when.day === null && when.timeOfDay === null;
+}
+
+/** The outline a scrap has in the collage, read from its own proportions. */
+export type ScrapShape = "tall" | "square" | "wide";
+
+/** How far a scrap's width-to-height ratio may lean from 1:1 and still count as square. */
+const SQUARE_TOLERANCE = 1.25;
+
+/**
+ * Photos and icons take the shape of their own pixels, buttons and headings
+ * are runs of words and always sit wide, and cursors are drawn in a square
+ * tile. A scrap whose size was never measured has no shape.
+ */
+export function scrapShape(item: ScrapItem): ScrapShape | null {
+  switch (item.kind) {
+    case "image":
+      return shapeOf(item.naturalWidth, item.naturalHeight);
+    case "svg-icon":
+      return shapeOf(item.width, item.height);
+    case "button":
+    case "heading":
+      return "wide";
+    case "cursor":
+      return "square";
+  }
+}
+
+function shapeOf(width: number, height: number): ScrapShape | null {
+  if (!(width > 0) || !(height > 0)) return null;
+  const ratio = width / height;
+  if (ratio > SQUARE_TOLERANCE) return "wide";
+  if (ratio < 1 / SQUARE_TOLERANCE) return "tall";
+  return "square";
 }
 
 export function scrapLocations(item: ScrapItem) {

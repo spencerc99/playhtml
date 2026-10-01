@@ -20,6 +20,7 @@ import {
   ScrapFilters,
   scrapPassesFilters,
   type ScrapKindFilter,
+  type ScrapShapeFilter,
   type ScrapWhenFilter,
 } from "./ScrapFilters";
 import type { FilterChip } from "../utils/eventUtils";
@@ -918,7 +919,7 @@ export const COLLAGE_STYLES = `
     align-items: stretch;
     gap: 8px;
     box-sizing: border-box;
-    width: 560px;
+    width: 620px;
     max-width: calc(100% - 24px);
     padding: 8px;
     border: 1px solid rgba(61, 56, 51, 0.2);
@@ -1661,6 +1662,7 @@ export function ScrapCollage({
   const archiveScrollRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [selectedKind, setSelectedKind] = useState<ScrapKindFilter>([]);
+  const [shape, setShape] = useState<ScrapShapeFilter>([]);
   const [places, setPlaces] = useState<FilterChip[]>([]);
   const [search, setSearch] = useState("");
   const [when, setWhen] = useState<ScrapWhenFilter>(ANY_TIME);
@@ -1753,9 +1755,9 @@ export function ScrapCollage({
   const filteredItems = useMemo(
     () =>
       groupedItems.filter((item) =>
-        scrapPassesFilters(item, selectedKind, places, search, when),
+        scrapPassesFilters(item, selectedKind, shape, places, search, when),
       ),
-    [groupedItems, selectedKind, places, search, when],
+    [groupedItems, selectedKind, shape, places, search, when],
   );
   const archiveScraps = useMemo(
     () =>
@@ -1887,7 +1889,7 @@ export function ScrapCollage({
     setHovered(false);
     setFocused(false);
     setWashingOut([]);
-  }, [archiveMode, selectedKind, places, search, when]);
+  }, [archiveMode, selectedKind, shape, places, search, when]);
 
   /**
    * Drives the tide as a chain of self-scheduling events rather than a metronome:
@@ -2342,6 +2344,8 @@ export function ScrapCollage({
                   onPlaces={setPlaces}
                   kind={selectedKind}
                   onKind={setSelectedKind}
+                  shape={shape}
+                  onShape={setShape}
                   search={search}
                   onSearch={setSearch}
                   when={when}

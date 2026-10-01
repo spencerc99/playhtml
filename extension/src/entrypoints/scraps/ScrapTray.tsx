@@ -12,6 +12,7 @@ import {
   isAnyTime,
   scrapPassesFilters,
   type ScrapKindFilter,
+  type ScrapShapeFilter,
   type ScrapWhenFilter,
 } from "@movement/components/ScrapFilters";
 import type { FilterChip } from "@movement/utils/eventUtils";
@@ -63,6 +64,7 @@ export function ScrapTray({
   onDragStart,
 }: ScrapTrayProps) {
   const [kind, setKind] = useState<ScrapKindFilter>([]);
+  const [shape, setShape] = useState<ScrapShapeFilter>([]);
   const [places, setPlaces] = useState<FilterChip[]>([]);
   const [search, setSearch] = useState("");
   const [when, setWhen] = useState<ScrapWhenFilter>(ANY_TIME);
@@ -78,11 +80,12 @@ export function ScrapTray({
   const filtered = useMemo(() => {
     const sorted = [...items].sort((a, b) => b.ts - a.ts);
     return sorted.filter((item) =>
-      scrapPassesFilters(item, kind, places, search, when),
+      scrapPassesFilters(item, kind, shape, places, search, when),
     );
-  }, [items, kind, places, search, when]);
+  }, [items, kind, shape, places, search, when]);
   const filtering =
     kind.length > 0 ||
+    shape.length > 0 ||
     places.length > 0 ||
     search.trim() !== "" ||
     !isAnyTime(when);
@@ -176,6 +179,8 @@ export function ScrapTray({
         onPlaces={setPlaces}
         kind={kind}
         onKind={setKind}
+        shape={shape}
+        onShape={setShape}
         search={search}
         onSearch={setSearch}
         when={when}
@@ -226,6 +231,7 @@ export function ScrapTray({
                 setSearch("");
                 setPlaces([]);
                 setKind([]);
+                setShape([]);
                 setWhen(ANY_TIME);
               }}
             >
