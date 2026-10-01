@@ -1,6 +1,5 @@
-// ABOUTME: Tracks local and remote cursor awareness for collaborative pages.
+// ABOUTME: Tracks local and remote cursor presence for collaborative pages.
 // ABOUTME: Renders ephemeral cursor presence without writing shared document data.
-import type YProvider from "y-partyserver/provider";
 import {
   CursorPresence,
   CursorPresenceView,
@@ -8,7 +7,6 @@ import {
   PlayerIdentity,
   Cursor,
   type PresenceServerMessage,
-  generatePersistentPlayerIdentity,
   MAX_PRESENCE_PAGE_LENGTH,
   PROXIMITY_THRESHOLD,
   CursorEvents,
@@ -16,17 +14,13 @@ import {
 } from "@playhtml/common";
 import { SpatialGrid } from "./spatial-grid";
 import type { CursorOptions, CursorZoneOptions } from "..";
-import { getStableIdForAwareness } from "../awareness-utils";
-import { createUsersAPI, selectAllColors, type UsersAPI } from "../users";
+import { selectAllColors, type UsersAPI } from "../users";
 import { CursorChat } from "./chat";
 import { resolveCursorContainer } from "./container";
 import { getCursorNetworkIntervalMs } from "./cursor-network-pacing";
 import { CursorPresenceStore } from "./cursor-presence-store";
 import { PRESENCE_STALE_MS } from "../presence-utils";
 import type { RealtimePresenceTransport } from "../presence-transport";
-
-// Reserved awareness field for cursors - won't conflict with user awareness
-const CURSOR_AWARENESS_FIELD = "__playhtml_cursors__";
 
 
 /** Cursor presence that has been validated: has cursor, playerIdentity with publicKey and primary color. */
@@ -56,30 +50,6 @@ function assertValidPlayerIdentity(identity: PlayerIdentity): void {
     throw new Error("[playhtml] Player identity must have publicKey.");
   }
   getPrimaryColor(identity);
-}
-
-/**
- * Validates raw awareness state into a renderable cursor presence, or null.
- * Invalid when: no cursor data, missing cursor position, missing playerIdentity/publicKey,
- * or missing primary color (e.g. old clients, corrupted state, or not yet initialized).
- * Call this once when reading from awareness; downstream code then assumes valid data.
- */
-function getValidCursorPresence(
-  state: Record<string, unknown> | undefined,
-  _clientId: number,
-): ValidCursorPresence | null {
-  const cursorData = state?.[CURSOR_AWARENESS_FIELD] as
-    | CursorPresence
-    | undefined;
-  if (!cursorData?.cursor || !cursorData.playerIdentity?.publicKey) {
-    return null;
-  }
-  try {
-    getPrimaryColor(cursorData.playerIdentity);
-  } catch {
-    return null;
-  }
-  return cursorData as ValidCursorPresence;
 }
 
 // Global cursor API interface (like cursor-party)
@@ -426,7 +396,6 @@ export class CursorClientAwareness {
   private proximityUsers: Set<string> = new Set();
   private currentCursor: Cursor | null = null;
   private users: UsersAPI;
-  private ownsUsers: boolean = false;
   private unsubscribeSelfChange: (() => void) | null = null;
   private unsubscribeUsersChange: (() => void) | null = null;
   private awarenessUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -538,12 +507,6 @@ export class CursorClientAwareness {
   // properties than the previous call.
   private cursorStyleKeys: Map<string, Set<string>> = new Map();
   private lastKnownContainer: HTMLElement | null = null;
-  // Maps Yjs clientId -> stableId (publicKey). Multiple clientIds can map to
-  // the same stableId when a user has multiple tabs open. Used to:
-  // (a) skip rendering our own cursor from other tabs
-  // (b) collapse multiple tabs from the same remote user into one cursor
-  // (c) clean up cursor elements correctly when a clientId disconnects
-  private clientIdToStableId: Map<number, string> = new Map();
   // Tracks pending fade-out removal timeouts by stableId so they can be
   // cancelled if a new update arrives for the same stableId (e.g. when one
   // tab disconnects but another tab of the same user is still active).
@@ -556,32 +519,13 @@ export class CursorClientAwareness {
   }
 
   constructor(
-    private provider: YProvider,
     private options: CursorOptions = {},
-    private presenceTransport?: RealtimePresenceTransport,
-    users?: UsersAPI,
+    private presenceTransport: RealtimePresenceTransport,
+    users: UsersAPI,
   ) {
-    // Callers that construct playhtml via init() always pass the shared users
-    // module (created once, before the cursor client). Standalone callers
-    // (tests, or embedding CursorClientAwareness outside playhtml's own
-    // bootstrap) get a private users module wired to this provider's awareness,
-    // owned and destroyed by this client.
-    if (users) {
-      this.users = users;
-      if (options.playerIdentity) {
-        this.users.adoptIdentity(options.playerIdentity);
-      }
-    } else {
-      this.users = createUsersAPI(
-        options.playerIdentity ?? generatePersistentPlayerIdentity(),
-        {
-          getAwareness: () => this.provider.awareness,
-          getCursorPresences: () => this.getCursorPresences(),
-          onCursorPresencesChange: (callback) =>
-            this.onCursorPresencesChange(callback),
-        },
-      );
-      this.ownsUsers = true;
+    this.users = users;
+    if (options.playerIdentity) {
+      this.users.adoptIdentity(options.playerIdentity);
     }
     assertValidPlayerIdentity(this.playerIdentity);
     this.visibilityThreshold = options.visibilityThreshold || undefined;
@@ -657,11 +601,7 @@ export class CursorClientAwareness {
   private initialize(): void {
     this.addCursorStyles();
     this.setupCursorTracking();
-    if (this.presenceTransport) {
-      this.setupPresenceTransportHandling();
-    } else {
-      this.setupAwarenessHandling();
-    }
+    this.setupPresenceTransportHandling();
 
     // Set initial cursor style (throws if identity has no primary color)
     document.documentElement.style.cursor = getCursorStyleForUser(
@@ -669,21 +609,7 @@ export class CursorClientAwareness {
     );
   }
 
-  private setupAwarenessHandling(): void {
-    // Listen to awareness changes for cursor updates
-    this.provider.awareness.on("change", ({ added, updated, removed }: any) => {
-      this.handleAwarenessChange(added, updated, removed);
-    });
-
-    // Initial sync of existing awareness states
-    // First, publish our own player identity so others (and us) see it immediately
-    this.updateCursorAwareness();
-    // Then, sync existing states (including ours) into local structures
-    this.syncExistingAwareness();
-  }
-
   private setupPresenceTransportHandling(): void {
-    if (!this.presenceTransport) return;
     // Cursor view over the shared per-socket PeerStore (the sole consumer of
     // presence-sync/changes). We subscribe to the cursor + identity namespaces
     // so a peer's cursor move or identity change re-renders, but frame-rate
@@ -769,122 +695,13 @@ export class CursorClientAwareness {
     this.notifyCursorPresenceListeners();
   }
 
-  private syncExistingAwareness(): void {
-    const states = this.provider.awareness.getStates();
-    const added = Array.from(states.keys());
-    this.handleAwarenessChange(added, [], []);
-  }
-
-  private handleAwarenessChange(
-    added: number[],
-    updated: number[],
-    removed: number[],
-  ): void {
-    const states = this.provider.awareness.getStates();
-    const myClientId = this.provider.awareness.clientID;
-    const myPublicKey = this.playerIdentity.publicKey;
-
-    [...added, ...updated].forEach((clientId) => {
-      const state = states.get(clientId) as Record<string, unknown> | undefined;
-      let stableId = state
-        ? getStableIdForAwareness(state, clientId)
-        : String(clientId);
-
-      // When cursor awareness is cleared (e.g. beforeunload sets it to null),
-      // getStableIdForAwareness falls back to String(clientId). Use the
-      // previously known stableId so we can find and remove the right cursor.
-      if (stableId === String(clientId)) {
-        stableId = this.clientIdToStableId.get(clientId) ?? stableId;
-      }
-
-      this.clientIdToStableId.set(clientId, stableId);
-
-      // Skip our own cursor: both this tab AND other tabs with the same publicKey
-      if (clientId === myClientId || stableId === myPublicKey) {
-        return;
-      }
-
-      const valid = getValidCursorPresence(state, clientId);
-      if (valid) {
-        this.updateCursor(stableId, valid);
-      } else {
-        if (!this.hasOtherClientForStableId(stableId, clientId)) {
-          this.removeCursor(stableId);
-        }
-      }
-
-      // Track messages for chat CTA (keyed by stableId)
-      const cursorData = state?.[CURSOR_AWARENESS_FIELD] as
-        | { message?: string | null }
-        | undefined;
-      if (cursorData?.message) {
-        this.otherUsersWithMessages.add(stableId);
-      } else {
-        this.otherUsersWithMessages.delete(stableId);
-      }
-    });
-
-    removed.forEach((clientId) => {
-      const stableId = this.clientIdToStableId.get(clientId);
-      this.clientIdToStableId.delete(clientId);
-
-      if (stableId) {
-        this.otherUsersWithMessages.delete(stableId);
-        if (!this.hasOtherClientForStableId(stableId, clientId)) {
-          this.removeCursor(stableId);
-        }
-      }
-    });
-
-    this.rebuildSpatialGrid();
-    this.updateChatCTA();
-    this.checkProximityOptimized();
-    this.notifyCursorPresenceListeners();
-  }
-
-  // Returns true if any clientId other than the excluded one maps to the given stableId.
-  private hasOtherClientForStableId(stableId: string, excludeClientId: number): boolean {
-    for (const [cid, sid] of this.clientIdToStableId) {
-      if (sid === stableId && cid !== excludeClientId) return true;
-    }
-    return false;
-  }
-
-  private *cursorPresenceEntries(options: {
-    includeLocalAwareness?: boolean;
-  } = {}): Iterable<[string, RemoteCursorPresence]> {
-    if (this.presenceTransport && this.presenceStore) {
-      const presences = this.presenceStore.getRemotePresences(
-        this.playerIdentity.publicKey,
-      );
-      for (const [stableId, presence] of presences) {
-        yield [stableId, presence];
-      }
-      return;
-    }
-
-    const states = this.provider.awareness.getStates();
-    const myClientId = this.provider.awareness.clientID;
-    const myPublicKey = this.playerIdentity.publicKey;
-
-    for (const [clientId, state] of states) {
-      const stableId = getStableIdForAwareness(
-        state as Record<string, unknown>,
-        clientId,
-      );
-      if (
-        !options.includeLocalAwareness &&
-        (clientId === myClientId || stableId === myPublicKey)
-      ) {
-        continue;
-      }
-
-      const valid = getValidCursorPresence(
-        state as Record<string, unknown>,
-        clientId,
-      );
-      if (!valid) continue;
-      yield [stableId, valid];
+  private *cursorPresenceEntries(): Iterable<[string, RemoteCursorPresence]> {
+    const presences = this.presenceStore?.getRemotePresences(
+      this.playerIdentity.publicKey,
+    );
+    if (!presences) return;
+    for (const [stableId, presence] of presences) {
+      yield [stableId, presence];
     }
   }
 
@@ -916,7 +733,6 @@ export class CursorClientAwareness {
     presence: RemoteCursorPresence,
     now: number,
   ): boolean {
-    if (!this.presenceTransport) return true;
     if (!Number.isFinite(presence.lastSeen)) return false;
     return now - Number(presence.lastSeen) <= PRESENCE_STALE_MS;
   }
@@ -1324,11 +1140,7 @@ export class CursorClientAwareness {
 
     // Clean up presence when the page is actually closed/navigated away
     this.addCursorEventListener(window, "beforeunload", () => {
-      if (this.presenceTransport) {
-        this.presenceTransport.clear("cursor");
-      } else {
-        this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
-      }
+      this.presenceTransport.clear("cursor");
     });
   }
 
@@ -1438,34 +1250,22 @@ export class CursorClientAwareness {
       zone: this.currentZone,
     };
 
-    if (this.presenceTransport) {
-      this.presenceTransport.update("cursor", {
-        cursor: cursorPresence.cursor,
-        page: cursorPresence.page,
-        zone: cursorPresence.zone,
-        at: lastSeen,
-      });
-      if (this.currentMessage !== this.lastSentMessage) {
-        this.presenceTransport.update("message", this.currentMessage);
-        this.lastSentMessage = this.currentMessage;
-      }
-      this.lastUpdate = performance.now();
-      this.checkProximityOptimized();
-      this.notifyCursorPresenceListeners();
-      return;
+    this.presenceTransport.update("cursor", {
+      cursor: cursorPresence.cursor,
+      page: cursorPresence.page,
+      zone: cursorPresence.zone,
+      at: lastSeen,
+    });
+    if (this.currentMessage !== this.lastSentMessage) {
+      this.presenceTransport.update("message", this.currentMessage);
+      this.lastSentMessage = this.currentMessage;
     }
-
-    // Set cursor data in awareness using reserved field
-    this.provider.awareness.setLocalStateField(
-      CURSOR_AWARENESS_FIELD,
-      cursorPresence,
-    );
     this.lastUpdate = performance.now();
+    this.checkProximityOptimized();
+    this.notifyCursorPresenceListeners();
   }
 
   private publishPresenceTransportState(): void {
-    if (!this.presenceTransport) return;
-
     const page = getPresencePage();
     this.presenceTransport.join({
       identity: this.playerIdentity,
@@ -2172,10 +1972,6 @@ export class CursorClientAwareness {
     this.unsubscribeSelfChange = null;
     this.unsubscribeUsersChange?.();
     this.unsubscribeUsersChange = null;
-    if (this.ownsUsers) {
-      this.users.destroy();
-    }
-
     this.cursorEventCleanups.forEach((cleanup) => cleanup());
     this.cursorEventCleanups = [];
 
@@ -2205,7 +2001,6 @@ export class CursorClientAwareness {
     this.cursorStyleKeys.clear();
 
     // Clean up dedup tracking
-    this.clientIdToStableId.clear();
     this.pendingRemovals.forEach((timeout) => clearTimeout(timeout));
     this.pendingRemovals.clear();
 
@@ -2214,13 +2009,9 @@ export class CursorClientAwareness {
       this.chat.destroy();
     }
 
-    if (this.presenceTransport) {
-      this.presenceTransportUnsubscribe?.();
-      this.presenceTransportUnsubscribe = null;
-      this.presenceTransport.clear("cursor");
-    } else {
-      this.provider.awareness.setLocalStateField(CURSOR_AWARENESS_FIELD, null);
-    }
+    this.presenceTransportUnsubscribe?.();
+    this.presenceTransportUnsubscribe = null;
+    this.presenceTransport.clear("cursor");
   }
 
   // Debug method to inspect spatial partitioning efficiency
@@ -2273,39 +2064,30 @@ export class CursorClientAwareness {
     return this.playerIdentity;
   }
 
-  // Get the provider (needed for awareness access)
-  getProvider(): YProvider {
-    return this.provider;
-  }
-
   // Get all cursor presences keyed by stable ID (slim shape for rendering).
   // Cursor coordinates are converted from storage (e.g. viewport % when coordinateMode is "relative")
   // to client pixel coordinates so consumers can use them directly for CSS left/top.
   getCursorPresences(): Map<string, CursorPresenceView> {
     const presences = new Map<string, CursorPresenceView>();
 
-    if (this.presenceTransport) {
-      const page = getPresencePage();
-      const localCoords = this.currentCursor
-        ? this.storageToClient(this.currentCursor.x, this.currentCursor.y)
-        : null;
-      presences.set(this.playerIdentity.publicKey, {
-        cursor: localCoords && this.currentCursor
-          ? {
-              x: localCoords.x,
-              y: localCoords.y,
-              pointer: this.currentCursor.pointer,
-            }
-          : null,
-        playerIdentity: this.playerIdentity,
-        zone: this.currentZone,
-        page,
-      });
-    }
+    const page = getPresencePage();
+    const localCoords = this.currentCursor
+      ? this.storageToClient(this.currentCursor.x, this.currentCursor.y)
+      : null;
+    presences.set(this.playerIdentity.publicKey, {
+      cursor: localCoords && this.currentCursor
+        ? {
+            x: localCoords.x,
+            y: localCoords.y,
+            pointer: this.currentCursor.pointer,
+          }
+        : null,
+      playerIdentity: this.playerIdentity,
+      zone: this.currentZone,
+      page,
+    });
 
-    for (const [stableId, presence] of this.cursorPresenceEntries({
-      includeLocalAwareness: !this.presenceTransport,
-    })) {
+    for (const [stableId, presence] of this.cursorPresenceEntries()) {
       const clientCoords = presence.cursor
         ? this.storageToClient(presence.cursor.x, presence.cursor.y)
         : null;

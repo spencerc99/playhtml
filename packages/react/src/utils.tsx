@@ -23,15 +23,29 @@ export interface PlayableChildren<T = object, V = any> {
 export type ReactElementInitializer<T = object, V = any> = Omit<
   ElementInitializer<T, any, V>,
   | "updateElement"
+  | "update"
   | "defaultData"
   | "defaultLocalData"
   | "myDefaultAwareness"
+  | "live"
   | "updateElementAwareness"
 > & {
-  defaultData: T | ((element: HTMLElement) => T);
-  myDefaultAwareness?: V | ((element: HTMLElement) => V);
+  defaultData: Exclude<T, (...args: any[]) => any>;
+  live?: Exclude<V, (...args: any[]) => any>;
+  /** @deprecated Use `live`. */
+  myDefaultAwareness?: Exclude<V, (...args: any[]) => any>;
   id?: string;
 } & PlayableChildren<T, V>;
+
+export function requireDefaultValue<T>(value: T, name: string): Exclude<T, (...args: any[]) => any> {
+  if (typeof value === "function") {
+    throw new Error(
+      `[@playhtml/react] ${name} must be a value, not a function. ` +
+      `Derive it from React props before passing it, or use withSharedState(props => config).`,
+    );
+  }
+  return value as Exclude<T, (...args: any[]) => any>;
+}
 
 // Reads the real handler from the module-level registry rather than the public
 // getHandle facade: the binding layer needs handler identity (handler.element)

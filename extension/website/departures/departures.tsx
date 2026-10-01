@@ -2,7 +2,7 @@
 // ABOUTME: Seeds the board from recent history, then flips in live departures from the stream.
 
 import "./departures.scss";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { Departures } from "../shared/components/Departures";
 import { RECENT_EVENTS_URL } from "../shared/config";

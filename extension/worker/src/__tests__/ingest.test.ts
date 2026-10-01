@@ -19,6 +19,11 @@ const pageMetadataHistory = {
   single: vi.fn(),
 };
 
+const participants = {
+  select: vi.fn(),
+  in: vi.fn(),
+};
+
 vi.mock('../lib/supabase', () => ({
   createSupabaseClient: vi.fn(() => ({
     from: vi.fn((table: string) => {
@@ -27,6 +32,9 @@ vi.mock('../lib/supabase', () => ({
       }
       if (table === 'page_metadata_history') {
         return pageMetadataHistory;
+      }
+      if (table === 'participants') {
+        return participants;
       }
       throw new Error(`Unexpected table: ${table}`);
     }),
@@ -41,7 +49,12 @@ const ENV: Env = {
   ADMIN_KEY: 'a',
   RESEND_API_KEY: 'r',
   CODA_API_TOKEN: 'c',
-  LIVE_EVENTS_HUB: {} as DurableObjectNamespace,
+  LIVE_EVENTS_HUB: {
+    idFromName: () => ({}) as DurableObjectId,
+    get: () => ({
+      fetch: async () => new Response(null, { status: 204 }),
+    }),
+  } as unknown as DurableObjectNamespace,
   COMMUTE_TRAIN_DISPATCHER: {} as DurableObjectNamespace,
   COMMUTE_BOARD_RATE_LIMITER: {
     limit: async () => ({ success: true }),
@@ -95,6 +108,8 @@ describe('handleIngest', () => {
     pageMetadataHistory.eq.mockReset();
     pageMetadataHistory.insert.mockReset();
     pageMetadataHistory.single.mockReset();
+    participants.select.mockReset();
+    participants.in.mockReset();
     waitUntil.mockReset();
 
     collectionEvents.upsert.mockReturnValue({
@@ -116,6 +131,8 @@ describe('handleIngest', () => {
       },
       error: null,
     });
+    participants.select.mockReturnValue(participants);
+    participants.in.mockResolvedValue({ data: [] });
   });
 
   it('accepts event upserts without selecting inserted row ids', async () => {

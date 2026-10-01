@@ -7,11 +7,22 @@ import {
   CanMoveBoundsMinVisiblePx,
   TagTypeToElement,
   TagType,
+  type ElementInitializer,
 } from "playhtml";
 import * as React from "react";
 import { useEffect, useId, useState } from "react";
 import { CanPlayElement, WithPlayOptionalProps } from ".";
-import { SingleChildOrPlayable, renderSingleChildOrPlayable } from "./utils";
+import { SingleChildOrPlayable, renderSingleChildOrPlayable, requireDefaultValue } from "./utils";
+
+function capabilityDefaults<T, U, V>(initializer: ElementInitializer<T, U, V>) {
+  const defaultData = requireDefaultValue(initializer.defaultData, "defaultData");
+  const live = requireDefaultValue(initializer.live, "live");
+  const myDefaultAwareness = requireDefaultValue(initializer.myDefaultAwareness, "myDefaultAwareness");
+  if (defaultData === undefined) {
+    return { ...initializer, defaultData: undefined, live, myDefaultAwareness };
+  }
+  return { ...initializer, defaultData, live, myDefaultAwareness };
+}
 
 /**
  * Props for clamping a `can-move` element to a container. Mirrors the
@@ -71,7 +82,7 @@ export function CanMoveElement({
     <CanPlayElement
       // @ts-ignore
       tagInfo={[TagType.CanMove]}
-      {...TagTypeToElement[TagType.CanMove]}
+      {...capabilityDefaults(TagTypeToElement[TagType.CanMove])}
       {...(dataSource ? { dataSource } : {})}
       {...(shared ? { shared } : {})}
       {...(standalone ? { standalone } : {})}
@@ -104,7 +115,7 @@ export function CanToggleElement({
     <CanPlayElement<any>
       // @ts-ignore
       tagInfo={[TagType.CanToggle]}
-      {...TagTypeToElement[TagType.CanToggle]}
+      {...capabilityDefaults(TagTypeToElement[TagType.CanToggle])}
       {...(dataSource ? { dataSource } : {})}
       {...(shared ? { shared } : {})}
       {...(standalone ? { standalone } : {})}
@@ -130,7 +141,7 @@ export function CanSpinElement({
     <CanPlayElement
       // @ts-ignore
       tagInfo={[TagType.CanSpin]}
-      {...TagTypeToElement[TagType.CanSpin]}
+      {...capabilityDefaults(TagTypeToElement[TagType.CanSpin])}
       {...(dataSource ? { dataSource } : {})}
       {...(shared ? { shared } : {})}
       {...(standalone ? { standalone } : {})}
@@ -155,7 +166,7 @@ export function CanGrowElement({
     <CanPlayElement
       // @ts-ignore
       tagInfo={[TagType.CanGrow]}
-      {...TagTypeToElement[TagType.CanGrow]}
+      {...capabilityDefaults(TagTypeToElement[TagType.CanGrow])}
       {...(dataSource ? { dataSource } : {})}
       {...(shared ? { shared } : {})}
       {...(standalone ? { standalone } : {})}
@@ -239,7 +250,7 @@ export function CanDuplicateElement({
     <CanPlayElement
       // @ts-ignore
       tagInfo={tagInfo}
-      {...TagTypeToElement[TagType.CanDuplicate]}
+      {...capabilityDefaults(TagTypeToElement[TagType.CanDuplicate])}
       children={(renderData) => {
         const renderedChild = renderSingleChildOrPlayable(children, renderData);
         // Stamp a stable id onto the trigger if the consumer didn't give one,
@@ -270,7 +281,7 @@ export function CanHoverElement({
     <CanPlayElement
       // @ts-ignore
       tagInfo={[TagType.CanHover]}
-      {...TagTypeToElement[TagType.CanHover]}
+      {...capabilityDefaults(TagTypeToElement[TagType.CanHover])}
       {...(dataSource ? { dataSource } : {})}
       {...(shared ? { shared } : {})}
       {...(standalone ? { standalone } : {})}

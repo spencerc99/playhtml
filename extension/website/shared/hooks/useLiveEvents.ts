@@ -12,8 +12,8 @@ interface StreamFrame {
 interface UseLiveEventsOptions {
   /** Max events retained in memory. Older events fall off the front. */
   maxEvents?: number;
-  /** Event types to subscribe to. The server defaults to cursor-only when
-   * omitted, so existing consumers keep their behavior. */
+  /** Event types to subscribe to. The server defaults to cursor, viewport, and
+   * keyboard when omitted, so existing consumers keep their behavior. */
   types?: string[];
 }
 

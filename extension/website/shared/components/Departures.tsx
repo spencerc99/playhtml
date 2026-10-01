@@ -1,7 +1,7 @@
 // ABOUTME: Train-station departures board rendering navigation events as departures.
 // ABOUTME: Rows show traveler color, favicon + destination, origin, dwell time, time, and status.
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CollectionEvent } from "../types";
 import { extractDomain, getColorForEvent } from "../utils/eventUtils";
 import "./Departures.scss";

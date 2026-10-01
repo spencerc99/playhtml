@@ -11,7 +11,7 @@ import type { HostedSlowModeRide } from "../../features/slowMode/slowModeHostedB
 import type { CommuteStop } from "./commuteStops";
 
 const COMMUTE_RIDER_TOKEN_KEY = "wwo-commute-rider-token";
-const COMMUTE_TRAIN_REFRESH_MS = 3_000;
+const COMMUTE_TRAIN_REFRESH_MS = 5_000;
 
 export type CommuteTrainNextAction =
   | { kind: "refresh"; delayMs: number }
@@ -93,7 +93,7 @@ export function rotateCommuteRiderToken(): string {
 export function getCommuteTrainNextAction(
   assignment: CommuteTrainAssignment,
 ): CommuteTrainNextAction {
-  if (assignment.joinable) {
+  if (assignment.phase !== "complete") {
     return { kind: "refresh", delayMs: COMMUTE_TRAIN_REFRESH_MS };
   }
   return {

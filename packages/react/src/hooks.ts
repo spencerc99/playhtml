@@ -1,7 +1,7 @@
 // ABOUTME: Custom React hooks for playhtml functionality
 // ABOUTME: Cursor, presence, page-data, and presence-room hooks that safely no-op pre-sync
 
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import type * as React from "react";
 import { PlayContext } from "./PlayProvider";
 import playhtml from "./playhtml-singleton";
@@ -44,6 +44,24 @@ function usePlayhtmlSubscription<T>(
   }, [isLoading, ...dependencies]);
 
   return value;
+}
+
+function identityEquals(
+  a: PlayerIdentity | null,
+  b: PlayerIdentity | null,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.publicKey === b.publicKey &&
+    a.name === b.name &&
+    a.createdAt === b.createdAt &&
+    a.playerStyle.cursorStyle === b.playerStyle.cursorStyle &&
+    a.playerStyle.colorPalette.length === b.playerStyle.colorPalette.length &&
+    a.playerStyle.colorPalette.every(
+      (color, i) => color === b.playerStyle.colorPalette[i],
+    )
+  );
 }
 
 function isPresenceRoomNotReadyError(error: unknown): boolean {
@@ -140,10 +158,24 @@ export function usePresence<
     [isLoading, channel],
   );
 
-  const myIdentity = useMemo(
-    () => (isLoading ? null : playhtml.presence.getMyIdentity()),
-    [isLoading],
-  );
+  // Re-derived on every identity change (not just once at sync completion) —
+  // e.g. the "we were online" extension can inject identity post-sync via the
+  // `playhtml:configure-identity` event. `users.onChange` fires on every
+  // presence tick, so dedupe by value to avoid re-rendering consumers when the
+  // identity itself hasn't changed.
+  const [myIdentity, setMyIdentity] = useState<PlayerIdentity | null>(null);
+  useEffect(() => {
+    if (isLoading) {
+      setMyIdentity(null);
+      return;
+    }
+    const readIdentity = () => {
+      const next = playhtml.presence.getMyIdentity();
+      setMyIdentity((prev) => (identityEquals(prev, next) ? prev : next));
+    };
+    readIdentity();
+    return playhtml.users.onChange(readIdentity);
+  }, [isLoading]);
 
   return { presences, setMyPresence, myIdentity };
 }

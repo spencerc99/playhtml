@@ -33,6 +33,8 @@ import {
 import { markExtensionInstalled } from "../utils/extensionInstallMarker";
 import { isExtensionPageUrl } from "../utils/extensionPage";
 import { initHostedSlowModeContentBridge } from "../features/slowMode/slowModeHostedContentBridge";
+import { watchInstallationContent } from "./content/installationContent";
+import { MILESTONE_TOASTS_ENABLED_KEY } from "../milestones/state";
 
 // Scraps are local-only, so normalize any unsupported stored mode before the
 // collector starts.
@@ -61,6 +63,8 @@ export default defineContentScript({
     markExtensionInstalled(document.documentElement);
     const removeSlowModeBridge = initHostedSlowModeContentBridge();
     ctx?.onInvalidated(removeSlowModeBridge);
+    const removeInstallationContent = watchInstallationContent();
+    ctx?.onInvalidated(removeInstallationContent);
 
     let currentPresenceCount = 0;
 
@@ -1211,9 +1215,12 @@ export default defineContentScript({
     let collectorManager: CollectorManager | null = null;
     let overlayUI: InjectedReactUI | null = null;
     let milestoneToastUI: InjectedReactUI | null = null;
+    let milestoneToastsEnabled = true;
     let overlayVisible = false;
+    let overlayRevision = 0;
 
     const toggleHistoricalOverlay = async () => {
+      const currentRevision = ++overlayRevision;
       try {
         overlayVisible = !overlayVisible;
 
@@ -1224,21 +1231,28 @@ export default defineContentScript({
           // interacting with the overlay UI shouldn't pollute the data.
           collectorManager?.pauseAll();
 
-          const { HistoricalOverlay } = await import("../components/HistoricalOverlay");
-
-          overlayUI = injectShadowReact(
-            HistoricalOverlay,
-            {
-              visible: true,
-              currentUrl: window.location.href,
-              onClose: () => toggleHistoricalOverlay(),
-            },
-            {
-              hostId: "playhtml-historical-overlay-root",
-              fontUrl:
-                "https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;400&family=Lora:ital,wght@1,600&display=swap",
-            },
+          await import(
+            /* @vite-ignore */ browser.runtime.getURL("historical-overlay.js")
           );
+          if (currentRevision !== overlayRevision || !overlayVisible) return;
+          const mountHistoricalOverlay = (
+            globalThis as typeof globalThis & {
+              wwoHistoricalOverlay?: (props: {
+                visible: boolean;
+                currentUrl: string;
+                onClose: () => void;
+              }) => InjectedReactUI;
+            }
+          ).wwoHistoricalOverlay;
+          if (!mountHistoricalOverlay) {
+            throw new Error("Historical overlay did not register");
+          }
+
+          overlayUI = mountHistoricalOverlay({
+            visible: true,
+            currentUrl: window.location.href,
+            onClose: () => toggleHistoricalOverlay(),
+          });
 
           if (VERBOSE) console.log("[HistoricalOverlay] Overlay activated");
         } else {
@@ -1251,8 +1265,12 @@ export default defineContentScript({
           if (VERBOSE) console.log("[HistoricalOverlay] Overlay deactivated");
         }
       } catch (error) {
+        if (currentRevision !== overlayRevision) return;
         console.error("[HistoricalOverlay] Failed to toggle overlay:", error);
         overlayVisible = false;
+        overlayUI?.destroy();
+        overlayUI = null;
+        collectorManager?.resumeAll();
       }
     };
 
@@ -1406,6 +1424,7 @@ export default defineContentScript({
     });
 
     const showMilestoneToast = (milestone: MilestoneToastData): void => {
+      if (!milestoneToastsEnabled) return;
       milestoneToastUI?.destroy();
 
       let ui: InjectedReactUI | null = null;
@@ -1446,6 +1465,15 @@ export default defineContentScript({
       );
       milestoneToastUI = ui;
     };
+
+    browser.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local" || !changes[MILESTONE_TOASTS_ENABLED_KEY]) return;
+      milestoneToastsEnabled = changes[MILESTONE_TOASTS_ENABLED_KEY].newValue !== false;
+      if (!milestoneToastsEnabled) {
+        milestoneToastUI?.destroy();
+        milestoneToastUI = null;
+      }
+    });
 
     // Listen for messages from popup/devtools
     browser.runtime.onMessage.addListener(

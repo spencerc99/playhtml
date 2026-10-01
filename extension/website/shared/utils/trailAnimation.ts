@@ -68,19 +68,54 @@ export interface FreehandStrokeStyle {
   taper?: number;
 }
 
+interface StrokePath {
+  outline: number[][];
+  curves: string[];
+}
+
+const strokePaths = new WeakMap<Array<{ x: number; y: number }>, StrokePath>();
+
 // Converts a perfect-freehand outline polygon into a closed SVG path,
 // smoothing between outline points with quadratic midpoint curves.
-function getSvgPathFromStroke(outline: number[][]): string {
+function getSvgPathFromStroke(
+  outline: number[][],
+  points: Array<{ x: number; y: number }>,
+): string {
   if (outline.length < 3) return "";
 
-  let path = `M ${outline[0][0].toFixed(2)} ${outline[0][1].toFixed(2)} Q`;
+  const previous = strokePaths.get(points);
+  const curves = new Array<string>(outline.length);
+  const matches = (
+    index: number,
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+  ) => {
+    if (!previous || index < 0 || index >= previous.outline.length)
+      return false;
+    const a = previous.outline[index];
+    const b = previous.outline[(index + 1) % previous.outline.length];
+    return a[0] === x0 && a[1] === y0 && b[0] === x1 && b[1] === y1;
+  };
   for (let i = 0; i < outline.length; i++) {
     const [x0, y0] = outline[i];
     const [x1, y1] = outline[(i + 1) % outline.length];
-    path += ` ${x0.toFixed(2)} ${y0.toFixed(2)} ${((x0 + x1) / 2).toFixed(2)} ${((y0 + y1) / 2).toFixed(2)}`;
+    // The outline runs forward along one side and backward along the other.
+    // Growing heads leave both a stable prefix and a stable suffix.
+    const suffixIndex = i + (previous?.outline.length ?? 0) - outline.length;
+    if (previous && matches(i, x0, y0, x1, y1)) {
+      curves[i] = previous.curves[i];
+    } else if (previous && matches(suffixIndex, x0, y0, x1, y1)) {
+      curves[i] = previous.curves[suffixIndex];
+    } else {
+      curves[i] =
+        ` ${x0.toFixed(2)} ${y0.toFixed(2)} ${((x0 + x1) / 2).toFixed(2)} ${((y0 + y1) / 2).toFixed(2)}`;
+    }
   }
 
-  return path + " Z";
+  strokePaths.set(points, { outline, curves });
+  return `M ${outline[0][0].toFixed(2)} ${outline[0][1].toFixed(2)} Q${curves.join("")} Z`;
 }
 
 // Builds a filled freehand-stroke outline for a window of trail points. The
@@ -121,7 +156,10 @@ export function buildFreehandPathSegment(
       : { taper: 0, cap: true },
   });
 
-  return getSvgPathFromStroke(outline);
+  const path = getSvgPathFromStroke(outline, points);
+  // Completed frames are retained by TrailPath; their curve cache can be freed.
+  if (isComplete) strokePaths.delete(points);
+  return path;
 }
 
 export function getFinishedTrailRenderRange(
@@ -141,13 +179,13 @@ export function getFinishedTrailRenderRange(
   }
 
   const evictionCutoffMs = elapsedTimeMs - evictionFadeMs;
-  let start = 0;
-  while (
-    start < excessCount &&
-    sortedFinishOrder[start + windowSize].finishedAtMs <= evictionCutoffMs
-  ) {
-    start++;
-  }
+  const start = Math.min(
+    excessCount,
+    Math.max(
+      0,
+      getFinishedCount(sortedFinishOrder, evictionCutoffMs) - windowSize,
+    ),
+  );
 
   return { start, end: finishedCount, finishedCount };
 }

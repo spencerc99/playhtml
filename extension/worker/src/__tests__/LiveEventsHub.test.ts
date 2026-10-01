@@ -187,7 +187,7 @@ describe('LiveEventsHub', () => {
     expect(replay.events.map((e: CollectionEvent) => e.id)).toEqual(['n1']);
   });
 
-  it('falls back to cursor-only for an invalid types param', async () => {
+  it('falls back to the default movement types for an invalid types param', async () => {
     const hub = makeHub();
     await hub.fetch(
       new Request('https://do/ws?types=bogus', { headers: { Upgrade: 'websocket' } }),
@@ -198,7 +198,11 @@ describe('LiveEventsHub', () => {
       new Request('https://do/broadcast', {
         method: 'POST',
         body: JSON.stringify({
-          events: [ev('c1'), ev('n1', Date.now(), 'navigation')],
+          events: [
+            ev('c1'),
+            ev('v1', Date.now(), 'viewport'),
+            ev('n1', Date.now(), 'navigation'),
+          ],
         }),
       }),
     );
@@ -206,6 +210,6 @@ describe('LiveEventsHub', () => {
     const ids = server.sent
       .flatMap((s) => JSON.parse(s).events)
       .map((e: CollectionEvent) => e.id);
-    expect(ids).toEqual(['c1']);
+    expect(ids).toEqual(['c1', 'v1']);
   });
 });

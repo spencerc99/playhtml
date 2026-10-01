@@ -54,9 +54,9 @@ describe("feature flags", () => {
     });
   });
 
-  it("keeps newly granted experiments off until the tester opts in", () => {
+  it("turns newly granted experiments on until the tester opts out", () => {
     expect(resolveFeatureState("COMMUTE", { access: access(["COMMUTE"]) })).toEqual({
-      enabled: false,
+      enabled: true,
       available: true,
       stage: "beta",
       source: "available",

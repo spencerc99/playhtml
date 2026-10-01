@@ -9,6 +9,7 @@ import type {
 import {
   CommuteTrainDispatcher,
   CommuteTrainCapacityError,
+  COMMUTE_TRAIN_RIDER_LEASE_MS,
   EMPTY_COMMUTE_TRAIN_DISPATCHER_STATE,
   MAX_RETAINED_COMMUTE_TRAINS,
 } from '../commuteTrainDispatcher';
@@ -35,15 +36,10 @@ const COMMUNAL_STOPS: CommuteTrainCommunalStop[] = [
   },
 ];
 
-function rider(
-  riderToken: string,
-  domain?: string,
-): CommuteTrainBoardRequest {
+function rider(riderToken: string, domain?: string): CommuteTrainBoardRequest {
   return {
     riderToken,
-    requestedStop: domain
-      ? { kind: 'domain', domain }
-      : { kind: 'none' },
+    requestedStop: domain ? { kind: 'domain', domain } : { kind: 'none' },
   };
 }
 
@@ -62,18 +58,99 @@ describe('CommuteTrainDispatcher', () => {
       subject.board(rider(`rider-${index}`), COMMUNAL_STOPS, NOW),
     );
 
-    expect(new Set(assignments.map((assignment) => assignment.trainId)).size).toBe(25);
-    expect(Math.max(...assignments.map((assignment) => assignment.riderCount))).toBe(4);
+    expect(
+      new Set(assignments.map((assignment) => assignment.trainId)).size,
+    ).toBe(25);
+    expect(
+      Math.max(...assignments.map((assignment) => assignment.riderCount)),
+    ).toBe(4);
   });
 
   it('returns the same assignment for an idempotent rider request', () => {
     const subject = dispatcher();
-    const first = subject.board(rider('rider-a', 'example.com'), COMMUNAL_STOPS, NOW);
-    const repeated = subject.board(rider('rider-a', 'other.example'), [], NOW + 10_000);
+    const first = subject.board(
+      rider('rider-a', 'example.com'),
+      COMMUNAL_STOPS,
+      NOW,
+    );
+    const repeated = subject.board(
+      rider('rider-a', 'other.example'),
+      [],
+      NOW + 10_000,
+    );
 
     expect(repeated.trainId).toBe(first.trainId);
     expect(repeated.routeVersion).toBe(first.routeVersion);
     expect(repeated.stops).toEqual(first.stops);
+  });
+
+  it('reuses capacity after disconnected rider leases expire', () => {
+    const subject = dispatcher();
+    const first = subject.board(rider('rider-a'), COMMUNAL_STOPS, NOW);
+    subject.board(rider('rider-b'), [], NOW);
+    subject.board(rider('rider-c'), [], NOW);
+    subject.board(rider('rider-d'), [], NOW);
+
+    const replacement = subject.board(
+      rider('rider-e'),
+      [],
+      NOW + COMMUTE_TRAIN_RIDER_LEASE_MS + 1,
+    );
+
+    expect(replacement.trainId).toBe(first.trainId);
+    expect(replacement.riderCount).toBe(1);
+  });
+
+  it('keeps refreshed rider leases active', () => {
+    const subject = dispatcher();
+    const first = subject.board(rider('rider-a'), COMMUNAL_STOPS, NOW);
+
+    subject.board(rider('rider-a'), [], NOW + COMMUTE_TRAIN_RIDER_LEASE_MS - 1);
+    const joined = subject.board(
+      rider('rider-b'),
+      [],
+      NOW + COMMUTE_TRAIN_RIDER_LEASE_MS + 1,
+    );
+
+    expect(joined.trainId).toBe(first.trainId);
+    expect(joined.riderCount).toBe(2);
+  });
+
+  it('moves an expired rider when replacement riders fill their train', () => {
+    const subject = dispatcher();
+    const first = subject.board(rider('rider-a'), COMMUNAL_STOPS, NOW);
+    subject.board(rider('rider-b'), [], NOW);
+    subject.board(rider('rider-c'), [], NOW);
+    subject.board(rider('rider-d'), [], NOW);
+    const replacementsAt = NOW + COMMUTE_TRAIN_RIDER_LEASE_MS + 1;
+    subject.board(rider('rider-e'), [], replacementsAt);
+    subject.board(rider('rider-f'), [], replacementsAt);
+    subject.board(rider('rider-g'), [], replacementsAt);
+    subject.board(rider('rider-h'), [], replacementsAt);
+
+    expect(subject.needsCommunalStops('rider-a', replacementsAt + 1)).toBe(
+      true,
+    );
+    const moved = subject.board(
+      rider('rider-a'),
+      COMMUNAL_STOPS,
+      replacementsAt + 1,
+    );
+
+    expect(moved.trainId).not.toBe(first.trainId);
+    expect(moved.riderCount).toBe(1);
+  });
+
+  it('treats deployed rider records without leases as active', () => {
+    const subject = dispatcher();
+    subject.board(rider('rider-a'), COMMUNAL_STOPS, NOW);
+    const state = subject.snapshot();
+    delete state.trains[0].riders['rider-a'].activeUntil;
+
+    const restored = new CommuteTrainDispatcher(state, () => 'restored-id');
+    const joined = restored.board(rider('rider-b'), [], NOW + 20_000);
+
+    expect(joined.riderCount).toBe(2);
   });
 
   it('boards the same rider onto a fresh train after their route completes', () => {
@@ -91,8 +168,16 @@ describe('CommuteTrainDispatcher', () => {
 
   it('appends new domains without reordering existing stops', () => {
     const subject = dispatcher();
-    const first = subject.board(rider('rider-a', 'a.example'), COMMUNAL_STOPS, NOW);
-    const second = subject.board(rider('rider-b', 'b.example'), [], NOW + 20_000);
+    const first = subject.board(
+      rider('rider-a', 'a.example'),
+      COMMUNAL_STOPS,
+      NOW,
+    );
+    const second = subject.board(
+      rider('rider-b', 'b.example'),
+      [],
+      NOW + 20_000,
+    );
 
     expect(second.trainId).toBe(first.trainId);
     expect(second.stops.map((stop) => stop.domain)).toEqual([
@@ -128,6 +213,15 @@ describe('CommuteTrainDispatcher', () => {
     expect(later.trainId).not.toBe(first.trainId);
   });
 
+  it('reports communal domains used by retained trains', () => {
+    const subject = dispatcher();
+    subject.board(rider('rider-a'), COMMUNAL_STOPS, NOW);
+
+    expect(subject.getRecentCommunalDomains(NOW)).toEqual(
+      new Set(['html.energy', 'special.fish']),
+    );
+  });
+
   it('deletes completed trains after the retention window', () => {
     const subject = dispatcher();
     subject.board(rider('rider-a'), COMMUNAL_STOPS, NOW);
@@ -148,9 +242,9 @@ describe('CommuteTrainDispatcher', () => {
     expect(() =>
       subject.board(rider('rider-over-capacity'), COMMUNAL_STOPS, NOW),
     ).toThrow(CommuteTrainCapacityError);
-    expect(
-      subject.board(rider('rider-0'), [], NOW + 1).trainId,
-    ).toBe(assignments[0].trainId);
+    expect(subject.board(rider('rider-0'), [], NOW + 1).trainId).toBe(
+      assignments[0].trainId,
+    );
     expect(subject.snapshot().trains).toHaveLength(MAX_RETAINED_COMMUTE_TRAINS);
   });
 });

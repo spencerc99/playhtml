@@ -5,10 +5,22 @@ import { describe, expect, it } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  formatDateRange,
   formatDuration,
   getPortraitStrokeCount,
   PortraitCard,
 } from "../components/PortraitCard";
+
+describe("formatDateRange", () => {
+  it.each([
+    ["2026-09-13T12:00:00.000Z", "2026-09-20T12:00:00.000Z", "Sep 2026"],
+    ["2026-08-20T12:00:00.000Z", "2026-09-13T12:00:00.000Z", "Aug–Sep 2026"],
+    ["2025-12-20T12:00:00.000Z", "2026-09-13T12:00:00.000Z", "Dec 2025–Sep 2026"],
+    ["2026-09-13", "2026-09-13", "Sep 2026"],
+  ])("formats %s through %s", (oldest, newest, expected) => {
+    expect(formatDateRange(oldest, newest)).toBe(expected);
+  });
+});
 
 describe("getPortraitStrokeCount", () => {
   it("renders an empty portrait as zero minutes", () => {

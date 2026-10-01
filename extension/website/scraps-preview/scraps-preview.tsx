@@ -1,7 +1,6 @@
 // ABOUTME: Renders ScrapCollage with synthetic image, button, svg-icon, and cursor scraps.
 // ABOUTME: Network-free demo data for visually checking mixed-media collage rendering.
 
-import React from "react";
 import { createRoot } from "react-dom/client";
 import { ScrapCollage } from "@movement/components/ScrapCollage";
 import { buildItems, DAY_MS, NOW } from "./demoScraps";

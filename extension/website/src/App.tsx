@@ -14,7 +14,7 @@ import {
 import { LiveTrails } from "@movement/components/LiveTrails";
 import { LiveIndicator } from "@movement/components/LiveIndicator";
 import { WordmarkClock } from "@movement/components/WordmarkClock";
-import { CLICK_DEFAULTS } from "@movement/components/clickDefaults";
+import { LIVE_CURSOR_CLICK_SETTINGS } from "@movement/components/clickDefaults";
 import { useCursorTrails } from "@movement/hooks/useCursorTrails";
 import { summarizeActiveLocations } from "@movement/utils/eventUtils";
 import { useLiveEvents } from "@movement/hooks/useLiveEvents";
@@ -201,8 +201,7 @@ const ANIMATION_SETTINGS = {
   pointSize: 4,
   trailOpacity: 0.5,
   animationSpeed: 1.0,
-  ...CLICK_DEFAULTS,
-  clickMaxRadius: 30,
+  ...LIVE_CURSOR_CLICK_SETTINGS,
 };
 
 export default function App() {

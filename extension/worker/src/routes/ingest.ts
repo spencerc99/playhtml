@@ -337,10 +337,9 @@ export async function handleIngest(
       console.log(`[Ingest] Inserted ${inserted} new events, ${duplicates} duplicates ignored`);
     }
     
-    // Fan out cursor and navigation events to the live stream. Fire-and-forget
-    // — must never affect the ingest result. The cast is sound for these types:
-    // the live consumers read cursor position / navigation URLs from `data`,
-    // and tolerate the optional `meta` fields (url/vw/vh/tz) being absent.
+    // Fan out renderable movement and navigation events to the live stream. Fire-and-forget
+    // must never affect the ingest result. Live consumers tolerate optional
+    // metadata fields being absent.
     ctx.waitUntil(
       broadcastLiveEvents(
         env.LIVE_EVENTS_HUB,

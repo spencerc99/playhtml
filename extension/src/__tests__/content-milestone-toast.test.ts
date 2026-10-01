@@ -110,6 +110,7 @@ type RuntimeMessageListener = (
 describe("content milestone toasts", () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.clearAllMocks();
     vi.stubGlobal("defineContentScript", (definition: unknown) => definition);
     vi.stubGlobal("requestAnimationFrame", vi.fn(() => 0));
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
@@ -151,5 +152,31 @@ describe("content milestone toasts", () => {
 
     expect(secondResponse).toEqual({ success: true });
     expect(document.body.childElementCount).toBe(1);
+  });
+
+  it("dismisses a visible milestone when popups are disabled", async () => {
+    const browser = (await import("webextension-polyfill")).default;
+    const contentScript = (await import("../entrypoints/content")).default as {
+      main: () => void;
+    };
+    contentScript.main();
+
+    const messageListener = vi.mocked(browser.runtime.onMessage.addListener)
+      .mock.calls[0][0] as RuntimeMessageListener;
+    messageListener({ type: "SHOW_MILESTONE", milestone }, {}, () => {});
+    expect(document.body.childElementCount).toBe(1);
+
+    const storageListeners = vi.mocked(browser.storage.onChanged.addListener)
+      .mock.calls.map(([listener]) => listener);
+    for (const listener of storageListeners) {
+      listener(
+        { milestoneToastsEnabled: { oldValue: true, newValue: false } },
+        "local",
+      );
+    }
+
+    expect(document.body.childElementCount).toBe(0);
+    messageListener({ type: "SHOW_MILESTONE", milestone }, {}, () => {});
+    expect(document.body.childElementCount).toBe(0);
   });
 });

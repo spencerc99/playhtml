@@ -1,5 +1,5 @@
 // ABOUTME: Durable Object that holds website WebSocket connections and a ring buffer.
-// ABOUTME: Replays recent events on connect, then broadcasts live events filtered per socket.
+// ABOUTME: Replays recent renderable events on connect, then broadcasts new events filtered per socket.
 
 import type { Env } from '../lib/supabase';
 import { getValidEventTypes, type CollectionEvent } from '@playhtml/extension-types';
@@ -10,8 +10,7 @@ import { getValidEventTypes, type CollectionEvent } from '@playhtml/extension-ty
 const MAX_AGE_MS = 2 * 60_000;
 
 // Hard cap on buffered events as a memory backstop for traffic spikes, applied
-// on top of the time window. At ~10 events per trail this is roughly one
-// canvas-worth (~60 trails); a viral burst is trimmed to the most recent.
+// on top of the time window. A traffic burst is trimmed to the most recent.
 const MAX_BUFFER = 600;
 
 interface BroadcastBody {
@@ -23,12 +22,12 @@ interface StreamFrame {
   events: CollectionEvent[];
 }
 
-/** Sockets that connect without a `types` query param get cursor events only,
- * matching the behavior clients relied on before per-socket filtering. */
-const DEFAULT_TYPES: ReadonlySet<string> = new Set(['cursor']);
+/** Sockets that connect without a `types` query param get the movement events
+ * the live portrait and installation playback render. Navigation is opt-in. */
+const DEFAULT_TYPES: ReadonlySet<string> = new Set(['cursor', 'viewport', 'keyboard']);
 
 /** Parse the `types` query param into a set of valid event types. Invalid or
- * empty selections fall back to the cursor-only default. */
+ * empty selections fall back to the default movement types. */
 function parseTypesParam(raw: string | null): ReadonlySet<string> {
   if (!raw) return DEFAULT_TYPES;
   const valid = new Set<string>(getValidEventTypes());
