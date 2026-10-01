@@ -122,18 +122,21 @@ export function studioCommandFor(
   event: KeyEventShape,
   context: KeymapContext,
 ): StudioCommand | null {
+  if (isTypingTarget(event)) return null;
+
+  // Undo and redo are always the studio's, whatever is running and even from
+  // a control that owns its other keys: the studio finishes a running session
+  // before stepping, and a press left to the browser would undo the last text
+  // typed, such as the drawer's search.
+  const history = historyCommand(event);
+  if (history) return context.mode === "back" ? { kind: "withhold" } : history;
+
   if (leavesKeysAlone(event)) return null;
 
   const accel = event.metaKey || event.ctrlKey;
   const { mode, hasSelection, multiple } = context;
   const single = hasSelection && !multiple;
   const transforming = mode === "rotate" || mode === "scale";
-
-  // Undo and redo are always the studio's, whatever is running: the studio
-  // finishes a running session before stepping, and a press left to the
-  // browser would undo typing in the drawer's search instead.
-  const history = historyCommand(event);
-  if (history) return mode === "back" ? { kind: "withhold" } : history;
 
   // While a modal transform, a crop or a cutout is running, it owns the few
   // keys that finish it and nothing else may interrupt.

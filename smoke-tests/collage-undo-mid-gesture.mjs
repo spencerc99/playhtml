@@ -192,6 +192,48 @@ try {
   await page.waitForTimeout(150);
   assert.deepEqual(await pieceBox(), beforeKeyScale, "the scale mode has ended");
   await page.screenshot({ path: `${evidence}/6-key-scale-undone.png` });
+
+  // A filter chip keeps its own keys, but undo from there is still the
+  // studio's: the browser's undo would erase the search text.
+  await page.keyboard.press("ControlOrMeta+Shift+z");
+  await page.waitForTimeout(200);
+  const chip = page.locator(".collage-tray .scrap-filters__chip", { hasText: "type" });
+  await chip.focus();
+  await page.keyboard.press("ControlOrMeta+z");
+  await page.waitForTimeout(200);
+  assert.equal(await search.inputValue(), "Swatch", "undo from a filter chip leaves the search text alone");
+  assert.deepEqual(await pieceBox(), beforeKeyScale, "undo from a filter chip undoes the collage");
+
+  // A reopened collage starts with no history. A crop lives outside the
+  // history until it is committed, so the Undo button must still offer to
+  // take back a crop that is the first edit.
+  await page.getByRole("button", { name: "back to collages" }).click();
+  await page.waitForTimeout(900);
+  const leaving = page.getByRole("button", { name: "leave without saving" });
+  if (await leaving.count()) await leaving.click();
+  await page.locator(".collage-card__open").first().click();
+  await page.locator(".collage-piece").first().waitFor();
+  await page.waitForTimeout(900);
+  const undoButton = page.getByRole("button", { name: "Undo", exact: true });
+  assert.equal(await undoButton.isDisabled(), true, "a reopened collage has nothing to undo");
+  const beforeCrop = await pieceBox();
+  await page.locator(".collage-piece").first().click();
+  await page.keyboard.press("c");
+  const cropGrip = await page.getByRole("button", { name: "Crop from the right" }).boundingBox();
+  await page.mouse.move(cropGrip.x + cropGrip.width / 2, cropGrip.y + cropGrip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(cropGrip.x - 40, cropGrip.y + cropGrip.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  assert.equal(await undoButton.isDisabled(), false, "a pending crop can be undone from the toolbar");
+  await page.screenshot({ path: `${evidence}/7-pending-crop-undo-enabled.png` });
+  await undoButton.click();
+  await page.waitForTimeout(200);
+  assert.equal(await page.locator(".collage-crop").count(), 0, "undo ends the crop session");
+  assert.deepEqual(await pieceBox(), beforeCrop, "undo takes back the crop");
+  assert.equal(await page.getByRole("button", { name: "Redo", exact: true }).isDisabled(), false, "redo can bring the crop back");
+  await page.screenshot({ path: `${evidence}/8-pending-crop-undone.png` });
+
   assert.deepEqual(errors, []);
   console.log("PASS");
 } finally {

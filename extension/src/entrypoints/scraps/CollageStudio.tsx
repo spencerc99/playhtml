@@ -802,6 +802,16 @@ export function CollageStudio({
 
   const cancelCrop = useCallback(() => setCrop(null), []);
 
+  /**
+   * Whether the running crop has changed the piece. The crop lives outside
+   * the history until it is committed, so this is an edit undo can take back.
+   */
+  const cropPending = useMemo(() => {
+    if (!crop) return false;
+    const target = pieces.find((piece) => piece.id === crop.pieceId);
+    return Boolean(target && !sameCrop(target.crop, crop.crop));
+  }, [crop, pieces]);
+
   const beginTransform = useCallback(
     (kind: "rotate" | "scale") => {
       if (!selectionBox) return;
@@ -2187,7 +2197,7 @@ export function CollageStudio({
           </div>
 
           <StudioTools
-            canUndo={!over && canUndo(history)}
+            canUndo={!over && (canUndo(history) || cropPending)}
             canRedo={!over && canRedo(history)}
             onUndo={() => {
               finishRunning();

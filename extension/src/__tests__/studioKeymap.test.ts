@@ -73,7 +73,7 @@ describe("shortcuts while typing", () => {
 });
 
 describe("controls that own their keys", () => {
-  it("leaves every key to a control marked as owning them", () => {
+  it("leaves every key but undo and redo to a control marked as owning them", () => {
     const owned = {
       target: {
         tagName: "BUTTON",
@@ -94,6 +94,36 @@ describe("controls that own their keys", () => {
     expect(studioCommandFor(press("\\", plain), IDLE)).toEqual({
       kind: "toggleDrawer",
     });
+  });
+
+  // The browser's own undo would reach back into the last text typed, such
+  // as the drawer's search, so the studio keeps undo even from a filter chip.
+  it("still takes undo and redo from a control that owns its keys", () => {
+    const chip = {
+      tagName: "BUTTON",
+      closest: (selector: string) =>
+        selector === "[data-owns-keys]" ? {} : null,
+    };
+    expect(
+      studioCommandFor(press("z", { metaKey: true, target: chip }), IDLE),
+    ).toEqual({ kind: "undo" });
+    expect(
+      studioCommandFor(
+        press("z", { metaKey: true, shiftKey: true, target: chip }),
+        IDLE,
+      ),
+    ).toEqual({ kind: "redo" });
+  });
+
+  it("leaves undo to a text field inside a control that owns its keys", () => {
+    const field = {
+      tagName: "INPUT",
+      closest: (selector: string) =>
+        selector === "[data-owns-keys]" ? {} : null,
+    };
+    expect(
+      studioCommandFor(press("z", { metaKey: true, target: field }), IDLE),
+    ).toBeNull();
   });
 });
 
