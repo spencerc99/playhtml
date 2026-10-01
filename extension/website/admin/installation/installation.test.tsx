@@ -19,7 +19,7 @@ describe("installation office", () => {
   beforeAll(async () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     document.body.innerHTML = '<div id="root"></div>';
-    sessionStorage.setItem("wwo-admin-token", "admin-secret");
+    localStorage.setItem("wwo-admin-token", JSON.stringify({ token: "admin-secret", expiresAt: Date.now() + 60_000 }));
     getControl.mockResolvedValue({ generation: 4, updatedAt: "2026-09-06 12:00:00" });
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
     vi.stubGlobal("confirm", vi.fn());

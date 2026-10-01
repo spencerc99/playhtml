@@ -1,5 +1,5 @@
 // ABOUTME: The collage's document settings: its fixed size and the paper it is made on.
-// ABOUTME: A quiet readout with the settings tucked into a popover beside it.
+// ABOUTME: Two small buttons in the bottom bar (size, paper) and the zoom, opening one popover.
 
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -76,18 +76,24 @@ export function FormatControl({
 
   return (
     <div className="collage-format" ref={holderRef}>
-      <span className="collage-studio__label">
-        {current.label} &#183; {current.width} &#215; {current.height} &#183;{" "}
-        {Math.round(zoom * 100)}%
-      </span>
+      <button
+        type="button"
+        className={`collage-setting${open ? " collage-setting--open" : ""}`}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-label={`Size: ${current.label}`}
+        onClick={() => (open ? close() : setOpen(true))}
+      >
+        {current.label}
+        <span className="collage-setting__caret" aria-hidden="true">&#9662;</span>
+      </button>
       <button
         ref={buttonRef}
         type="button"
-        className={`collage-chip collage-paper-button${
-          open ? " collage-chip--active" : ""
-        }`}
+        className={`collage-setting${open ? " collage-setting--open" : ""}`}
         aria-expanded={open}
         aria-haspopup="dialog"
+        aria-label="paper"
         onClick={() => (open ? close() : setOpen(true))}
       >
         <span
@@ -96,7 +102,14 @@ export function FormatControl({
           aria-hidden="true"
         />
         paper
+        <span className="collage-setting__caret" aria-hidden="true">&#9662;</span>
       </button>
+      <span
+        className="collage-studio__label"
+        title={`${current.width} × ${current.height}`}
+      >
+        {Math.round(zoom * 100)}%
+      </span>
 
       {open && (
         <div

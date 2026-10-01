@@ -176,11 +176,20 @@ const SOLID_JPEG = Buffer.from(SOLID_JPEG_BASE64, "base64");
 
 /** Flipped on to make a photo that browsed fine vanish at bake time. */
 let missingPhotoGone = false;
-/** Flipped on to make every photo fetch fail, so a re-bake cannot succeed. */
-let photosBlocked = false;
+/**
+ * Flipped on to take the image host away: every photo and the cursor image
+ * fail to load. Photos have local copies the bake falls back on, but a cursor
+ * piece always draws from its URL, so a collage holding one cannot re-bake.
+ */
+let imageHostDown = false;
 
 const server = createServer((request, response) => {
   const path = request.url.split("?")[0];
+  if (imageHostDown && (path === "/cursor.svg" || path.startsWith("/photo/"))) {
+    response.writeHead(404);
+    response.end("gone");
+    return;
+  }
   if (path === "/cursor.svg") {
     response.setHeader("content-type", "image/svg+xml");
     response.end(cursorImage);
@@ -192,7 +201,7 @@ const server = createServer((request, response) => {
     return;
   }
   if (path.startsWith("/photo/")) {
-    if (photosBlocked || (path.includes("missing") && missingPhotoGone)) {
+    if (path.includes("missing") && missingPhotoGone) {
       response.writeHead(404);
       response.end("gone");
       return;
@@ -599,14 +608,14 @@ try {
       0,
       `${how}: the back should be live while turned over`,
     );
-    // The back carries the title and the count, so the bar gives them up.
+    // The back carries the title and the count, so the mat's caption gives them up.
     assert.equal(
       await page.locator(".collage-title-input").count(),
       0,
       `${how}: the title field should be put away while turned over`,
     );
     const hint = (
-      await page.locator(".collage-bar__turned").textContent()
+      await page.locator(".collage-mat__caption .collage-studio__label").textContent()
     ).trim();
     assert.equal(hint, "turned over · T or esc to turn back");
     assert.equal(
@@ -629,7 +638,10 @@ try {
       1,
       `${how}: the title field should be back`,
     );
-    assert.equal(await page.locator(".collage-bar__turned").count(), 0);
+    assert.ok(
+      !(await page.locator(".collage-mat__caption").textContent()).includes("turned over"),
+      `${how}: the caption should say the count and date again`,
+    );
   }
 
   /**
@@ -1052,8 +1064,15 @@ try {
   );
   assert.equal(afterReload.length, 1, "autosaving must not multiply records");
 
-  // Reopen it and change something, then leave before the debounce fires.
-  await page.getByRole("button", { name: "create", exact: true }).click();
+  // A reload lands back inside the collage (its place is in the URL), so
+  // step out to the list, reopen it, change something, and leave before the
+  // debounce fires.
+  assert.equal(
+    await page.locator(".collage-mat").count(),
+    1,
+    "a reload should land back inside the collage",
+  );
+  await page.getByRole("button", { name: "back to collages" }).click();
   await page.waitForTimeout(600);
   await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(2500);
@@ -1117,6 +1136,26 @@ try {
     "saved by the key",
     "cmd+S should write right away",
   );
+
+  // A photo bakes from its local copy, so only a piece that draws from its
+  // URL can fail to bake. A cursor is one: add it while the host is up so the
+  // collage carries a good preview of both.
+  await placeFromTray("curs", 0);
+  await page.locator(".collage-frame").click({ position: { x: 6, y: 6 } });
+  stored = await waitForStored(
+    "the cursor piece to be saved with a fresh preview",
+    (rows) => {
+      const row = rows.find((candidate) => candidate.id === collageId);
+      return row?.pieces === 2 && row.drawn;
+    },
+  );
+  await page.waitForTimeout(SETTLE_MS + 3000);
+  stored = await storedCollages();
+  assert.equal(
+    await standing(),
+    "saved",
+    "a collage holding a cursor should save cleanly while its host is up",
+  );
   const previewBeforeBlock = stored.find(
     (row) => row.id === collageId,
   ).previewBytes;
@@ -1124,7 +1163,7 @@ try {
 
   // A bake that fails is not a save failure: the arrangement lands, the last
   // good preview is kept, and the status says the picture is behind.
-  photosBlocked = true;
+  imageHostDown = true;
   await selectByTab();
   for (let step = 0; step < 3; step += 1) {
     await page.keyboard.press("Shift+ArrowDown");
@@ -1167,19 +1206,20 @@ try {
     `an export must fail loudly, got "${exportNotice}"`,
   );
 
-  photosBlocked = false;
+  imageHostDown = false;
   await backToHistory();
 
   // ======================= a reopened collage keeps the picture it was loaded with
   // Reopening starts a fresh studio, so the picture the collage already has is
-  // the only one it holds. Editing with the image host away must write the new
-  // arrangement without blanking that picture on the way past.
+  // the only one it holds. Editing with the image host away, so the cursor
+  // piece cannot be redrawn, must write the new arrangement without blanking
+  // that picture on the way past.
   const beforeReopen = (await storedCollages()).find(
     (row) => row.id === collageId,
   );
   await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(1200);
-  photosBlocked = true;
+  imageHostDown = true;
   await selectByTab();
   for (let step = 0; step < 3; step += 1) {
     await page.keyboard.press("Shift+ArrowRight");
@@ -1206,7 +1246,7 @@ try {
     beforeReopen.previewBytes,
     "the loaded preview must survive an edit whose re-bake cannot run",
   );
-  photosBlocked = false;
+  imageHostDown = false;
   await backToHistory();
 
   // =============================================== every kind through the bake
@@ -1466,8 +1506,10 @@ try {
     });
   });
   console.log("thumbnail backings:", backings);
-  const jpeg = backings.find((row) => row.src.includes("/photo/solid"));
-  const holes = backings.find((row) => row.src.includes("/photo/holes"));
+  // The drawer shows each picture from its local copy, a blob URL, so the
+  // pictures are found by the alt text they were collected with.
+  const jpeg = backings.find((row) => row.alt.startsWith("Solid jpeg"));
+  const holes = backings.find((row) => row.alt.startsWith("See-through png"));
   assert.ok(jpeg, "the solid jpeg should be in the drawer");
   assert.ok(holes, "the see-through png should be in the drawer");
   assert.equal(
@@ -1662,26 +1704,42 @@ try {
   }
   await page.waitForTimeout(400);
 
-  // The studio tools sit in the stage's top-left, beside the canvas.
+  // History sits at the stage's top-left, the views at its top-right.
   const toolLabels = await page
     .locator(".collage-tools button")
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")));
   console.log("studio tools:", toolLabels);
-  assert.deepEqual(toolLabels, [
-    "Undo",
-    "Redo",
-    "Turn the collage over",
-    "Keyboard shortcuts",
-  ]);
-
-  // The paper popover holds the document settings.
-  const paperReadout = (
-    await page.locator(".collage-format .collage-studio__label").first().textContent()
-  ).trim();
-  console.log("paper readout:", paperReadout);
+  assert.deepEqual(toolLabels, ["Undo", "Redo"]);
+  const viewLabels = await page
+    .locator(".collage-views button")
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")));
+  console.log("studio views:", viewLabels);
+  assert.deepEqual(viewLabels, ["Turn the collage over", "Show sources"]);
+  const viewsBox = await page.locator(".collage-views").boundingBox();
+  const viewsStage = await page.locator(".collage-frame-area__stage").boundingBox();
   assert.ok(
-    /^postcard · 1500 × 1000 · \d+%$/.test(paperReadout),
-    `the readout should name size and zoom, got "${paperReadout}"`,
+    viewsBox.x + viewsBox.width > viewsStage.x + viewsStage.width - 40 &&
+      viewsBox.y < viewsStage.y + 40,
+    "the views should sit at the stage's top-right",
+  );
+  // The mat carries the collage's caption: its name, piece count and date.
+  const caption = (await page.locator(".collage-mat__caption").textContent()).trim();
+  console.log("mat caption:", caption);
+  assert.ok(
+    /\d+ pieces? · made /.test(caption),
+    `the mat should say the count and when it was made, got "${caption}"`,
+  );
+
+  // Size and paper live at the bottom bar's left, beside the zoom.
+  const zoomReadout = (
+    await page.locator(".collage-bar .collage-format .collage-studio__label").first().textContent()
+  ).trim();
+  console.log("zoom readout:", zoomReadout);
+  assert.ok(/^\d+%$/.test(zoomReadout), `the bar should show the zoom, got "${zoomReadout}"`);
+  assert.equal(
+    await page.getByRole("button", { name: "Size: postcard" }).count(),
+    1,
+    "the size button should name the format",
   );
   assert.equal(
     await page.locator(".collage-paper-popover").count(),
@@ -1748,7 +1806,7 @@ try {
     "escape should close the popover",
   );
 
-  // The bottom bar is status only.
+  // The bottom bar: size and paper at its left, keys and export at its right.
   const barButtons = await page
     .locator(".collage-bar button")
     .evaluateAll((nodes) =>
@@ -1757,8 +1815,8 @@ try {
   console.log("bottom bar buttons:", barButtons);
   assert.deepEqual(
     barButtons,
-    ["export png"],
-    "the bottom bar should carry nothing but export",
+    ["postcard▾", "paper▾", "keys", "export png"],
+    "the bottom bar should carry size, paper, keys and export",
   );
   assert.equal(
     await page.locator(".collage-bar .collage-glyph").count(),
@@ -1806,7 +1864,7 @@ try {
   await page.keyboard.down("i");
   await page.waitForTimeout(500);
   const tags = await page.locator(".collage-peek").count();
-  const fuller = await page.locator(".collage-peek--full").count();
+  const fuller = await page.locator(".collage-peek-edge--on").count();
   console.log(`peek tags: ${tags} for ${pieceCount} pieces, ${fuller} fuller`);
   assert.equal(tags, pieceCount, "every piece should get a tag");
   assert.equal(fuller, 1, "only the hovered piece gets the fuller tag");
@@ -1822,7 +1880,7 @@ try {
     "the hover hint should stand aside during a peek too",
   );
   const peekText = (
-    await page.locator(".collage-peek--full").textContent()
+    await page.locator(".collage-peek").first().textContent()
   ).trim();
   console.log("the fuller tag says:", peekText);
   assert.ok(
@@ -1852,6 +1910,23 @@ try {
     await page.locator(".collage-peek").count(),
     0,
     "releasing the key should put the tags away",
+  );
+  // The sources view can also be left on from its toggle, and put away the same way.
+  const sourcesToggle = page.getByRole("button", { name: "Show sources" });
+  await sourcesToggle.click();
+  await page.waitForTimeout(300);
+  assert.equal(await sourcesToggle.getAttribute("aria-pressed"), "true");
+  assert.ok(
+    (await page.locator(".collage-peek").count()) > 0,
+    "the sources toggle should show the tags without holding a key",
+  );
+  await page.screenshot({ path: `${evidence}/09c-sources-toggle.png` });
+  await sourcesToggle.click();
+  await page.waitForTimeout(300);
+  assert.equal(
+    await page.locator(".collage-peek").count(),
+    0,
+    "turning the sources toggle off should put the tags away",
   );
   if (selectedDuringPeek > 0) {
     assert.equal(
@@ -2025,6 +2100,9 @@ try {
     0,
     "no strip or handles while turned over",
   );
+  // A click on the back can land in its editable title; leave the field so
+  // the keys below reach the studio instead of the text.
+  await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.down("i");
   await page.waitForTimeout(300);
   assert.equal(
@@ -2040,6 +2118,9 @@ try {
   );
 
   // Escape turns it face up; T turns it over again, mid-swing on the way.
+  // The back's title is editable, so leave that field first: Escape inside
+  // it belongs to the text, not the studio.
+  await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.press("Escape");
   await page.waitForTimeout(900);
   await assertFaceUp("escape");
@@ -2129,8 +2210,10 @@ try {
       .backgroundColor,
   }));
   console.log("the back on soft black paper:", darkInk);
-  assert.equal(darkInk.domain, "rgb(245, 240, 232)");
-  assert.equal(darkInk.title, "rgb(245, 240, 232)");
+  // The back is printed on its own plain card, not on the front's paper, so
+  // even with soft black paper it keeps the page's dark ink.
+  assert.equal(darkInk.domain, "rgb(61, 56, 51)");
+  assert.equal(darkInk.title, "rgb(61, 56, 51)");
   await page.screenshot({ path: `${evidence}/25-back-dark-paper.png` });
   await page.keyboard.press("t");
   await page.waitForTimeout(900);
@@ -2669,8 +2752,46 @@ try {
 
   // ====================================== a collage whose picture never drew
   // A first-ever bake that fails stores the arrangement with no preview, and
-  // the history draws a quiet face rather than breaking.
+  // the history draws a quiet face rather than breaking. A photo only fails
+  // to bake when both its host and its local copy are gone, as when an
+  // unpinned copy was let go to stay under budget and the site later went
+  // away. The copy is dropped through the page's own copy store, and the page
+  // is reloaded so it holds no answer from before.
   missingPhotoGone = true;
+  const droppedCopies = await page.evaluate(async () => {
+    const db = await new Promise((ok, bad) => {
+      const r = indexedDB.open("scrap_image_copies_db");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => bad(r.error);
+    });
+    try {
+      const transaction = db.transaction("sources", "readwrite");
+      const sources = transaction.objectStore("sources");
+      const keys = await new Promise((ok, bad) => {
+        const r = sources.getAllKeys();
+        r.onsuccess = () => ok(r.result);
+        r.onerror = () => bad(r.error);
+      });
+      const gone = keys.filter((src) => src.includes("/photo/missing"));
+      for (const src of gone) sources.delete(src);
+      await new Promise((ok, bad) => {
+        transaction.oncomplete = ok;
+        transaction.onerror = () => bad(transaction.error);
+      });
+      return gone;
+    } finally {
+      db.close();
+    }
+  });
+  console.log("local copies dropped for the vanishing photo:", droppedCopies);
+  assert.equal(
+    droppedCopies.length,
+    1,
+    "the vanishing photo should have had a local copy to drop",
+  );
+  await page.reload({ waitUntil: "load" });
+  await page.waitForTimeout(1500);
+  await backToHistory();
   await openStudio();
   await pickTrayKind("pics");
   await page.waitForTimeout(400);

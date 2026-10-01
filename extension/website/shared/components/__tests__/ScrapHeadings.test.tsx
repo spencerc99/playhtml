@@ -233,7 +233,7 @@ describe("heading scraps in the collage", () => {
     expect(container.querySelector("img[src='x']")).toBeNull();
   });
 
-  it("renders a heading as bare text, with its own color and no patch", () => {
+  it("backs a heading too pale for the paper in a dark shade, keeping its color", () => {
     act(() => {
       root.render(
         <ScrapCollage
@@ -246,13 +246,16 @@ describe("heading scraps in the collage", () => {
         />,
       );
     });
-    expect(container.querySelector(".scrap-collage__backdrop")).toBeNull();
+    const backing = container.querySelector<HTMLElement>(
+      ".scrap-collage__backdrop--ink",
+    );
+    expect(backing).not.toBeNull();
+    expect(backing?.style.background).not.toBe("");
     const rendered = container.querySelector<HTMLElement>(
       ".scrap-collage__heading",
     );
     expect(rendered?.textContent).toBe("Pale type from a dark page");
     expect(rendered?.style.color).toBe("rgb(245, 240, 232)");
-    expect(rendered?.style.background).toBe("");
   });
 
   it("offers a headings type filter that narrows the collage to headings", () => {

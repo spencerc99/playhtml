@@ -9,14 +9,14 @@ import "@fontsource/atkinson-hyperlegible/latin-700.css";
 import "@fontsource/lora/latin-400-italic.css";
 import "@fontsource/lora/latin-600.css";
 import "@fontsource/lora/latin-700.css";
-import type { ScrapSource } from "@movement/utils/scrapPhotoGroups";
+import { groupPhotoEncounters } from "@movement/utils/scrapPhotoGroups";
 import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import {
   COLLAGE_STYLES,
   ScrapCollage,
   type ScrapItem,
-  type ScrapPosition,
 } from "@movement/components/ScrapCollage";
+import { toScrapItem, type ScrapRecord } from "./scrapItems";
 import { useSettledFeatureState } from "../../features/useFeatureAccess";
 import { parsePlaceHash, placeHash, type ScrapsPlace } from "./scrapsPlace";
 import type { CollageRecord } from "./collageRecord";
@@ -28,126 +28,23 @@ import {
 
 serveLocalScrapImages();
 
-interface ScrapRecordBase {
-  sources?: ScrapSource[];
-  encounterCount?: number;
-  encounterDay?: string;
-  id: string;
-  key: string;
-  pageTitle: string;
-  faviconUrl?: string;
-  domain: string;
-  pageUrl: string;
-  ts: number;
-  position?: ScrapPosition;
-}
-
-type ScrapRecord = ScrapRecordBase &
-  (
-    | {
-        kind: "image";
-        src: string;
-        contentHash?: string;
-        alt?: string;
-        naturalWidth: number;
-        naturalHeight: number;
-      }
-    | {
-        kind: "button";
-        text: string;
-        styles: Record<string, string>;
-        innerSvg?: string;
-        backdropColor?: string;
-      }
-    | {
-        kind: "svg-icon";
-        markup: string;
-        width: number;
-        height: number;
-      }
-    | {
-        kind: "heading";
-        text: string;
-        level: 1 | 2 | 3;
-        styles: Record<string, string>;
-        backdropColor?: never;
-      }
-    | {
-        kind: "cursor";
-        url: string;
-        hotspotX?: number;
-        hotspotY?: number;
-      }
-  );
-
 interface ScrapsResponse {
   scraps: ScrapRecord[];
+  nextCursor: { ts: number; id: string } | null;
+  error?: string;
 }
 
-function toScrapItem(record: ScrapRecord): ScrapItem {
-  const base = {
-    id: record.id,
-    encounterCount: record.encounterCount,
-    encounterDay: record.encounterDay,
-    ...(record.sources ? { sources: record.sources } : {}),
-    key: record.key,
-    pageTitle: record.pageTitle,
-    ...(record.faviconUrl !== undefined
-      ? { faviconUrl: record.faviconUrl }
-      : {}),
-    domain: record.domain,
-    pageUrl: record.pageUrl,
-    ts: record.ts,
-    ...(record.position ? { position: record.position } : {}),
-  };
-
-  switch (record.kind) {
-    case "image":
-      return {
-        ...base,
-        kind: record.kind,
-        src: record.src,
-        ...(record.contentHash ? { contentHash: record.contentHash } : {}),
-        ...(record.alt !== undefined ? { alt: record.alt } : {}),
-        naturalWidth: record.naturalWidth,
-        naturalHeight: record.naturalHeight,
-      };
-    case "button":
-      return {
-        ...base,
-        kind: record.kind,
-        text: record.text,
-        styles: record.styles,
-        ...(record.innerSvg !== undefined ? { innerSvg: record.innerSvg } : {}),
-        ...(record.backdropColor !== undefined
-          ? { backdropColor: record.backdropColor }
-          : {}),
-      };
-    case "svg-icon":
-      return {
-        ...base,
-        kind: record.kind,
-        markup: record.markup,
-        width: record.width,
-        height: record.height,
-      };
-    case "heading":
-      return {
-        ...base,
-        kind: record.kind,
-        text: record.text,
-        level: record.level,
-        styles: record.styles,
-      };
-    case "cursor":
-      return {
-        ...base,
-        kind: record.kind,
-        url: record.url,
-        ...(record.hotspotX !== undefined ? { hotspotX: record.hotspotX } : {}),
-        ...(record.hotspotY !== undefined ? { hotspotY: record.hotspotY } : {}),
-      };
-  }
+function isScrapsResponse(
+  response: ScrapsResponse | undefined,
+): response is ScrapsResponse {
+  return (
+    !!response &&
+    Array.isArray(response.scraps) &&
+    !response.error &&
+    (response.nextCursor === null ||
+      (Number.isFinite(response.nextCursor?.ts) &&
+        typeof response.nextCursor.id === "string"))
+  );
 }
 
 const centeredMessageStyle: React.CSSProperties = {
@@ -166,9 +63,16 @@ const centeredMessageStyle: React.CSSProperties = {
 };
 
 type ScrapsMode = "browse" | "create";
+const SCRAPS_PAGE_SIZE = 500;
+const FILTER_PAGE_SIZE = 1_000;
 
 export function ScrapsPage() {
-  const [items, setItems] = useState<ScrapItem[]>([]);
+  const [records, setRecords] = useState<ScrapRecord[]>([]);
+  const [nextCursor, setNextCursor] = useState<ScrapsResponse["nextCursor"]>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searchHistory, setSearchHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
@@ -178,6 +82,14 @@ export function ScrapsPage() {
   /** Bumped when a studio is opened, so each editing session starts fresh. */
   const [studioSession, setStudioSession] = useState(0);
   const [savedRevision, setSavedRevision] = useState(0);
+  const requestGeneration = useRef(0);
+  const items = useMemo(
+    () =>
+      groupPhotoEncounters(records)
+        .sort((a, b) => b.ts - a.ts)
+        .map(toScrapItem),
+    [records],
+  );
   const [createMode, setCreateMode] = useState<
     typeof import("./CreateMode") | null
   >(null);
@@ -326,16 +238,24 @@ export function ScrapsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    requestGeneration.current += 1;
+    setLoading(true);
+    setLoadingMore(false);
+    setLoadMoreError(null);
+    setRecords([]);
+    setNextCursor(null);
     const loadScraps = async () => {
       try {
         const response = (await browser.runtime.sendMessage({
           type: "GET_SCRAPS",
+          options: { limit: SCRAPS_PAGE_SIZE },
         })) as ScrapsResponse;
-        if (!response || !Array.isArray(response.scraps)) {
+        if (!isScrapsResponse(response)) {
           throw new Error("GET_SCRAPS returned an invalid response");
         }
         if (!cancelled) {
-          setItems(response.scraps.map(toScrapItem));
+          setRecords(response.scraps);
+          setNextCursor(response.nextCursor);
           setError(null);
         }
       } catch (loadError) {
@@ -353,6 +273,78 @@ export function ScrapsPage() {
       cancelled = true;
     };
   }, [revision]);
+
+  useEffect(() => {
+    if (!searchHistory || !nextCursor || loading || loadingMore) return;
+    let cancelled = false;
+    const generation = requestGeneration.current;
+    setLoadingHistory(true);
+
+    const loadHistory = async () => {
+      const olderRecords: ScrapRecord[] = [];
+      let cursor: ScrapsResponse["nextCursor"] = nextCursor;
+      try {
+        while (cursor && !cancelled && generation === requestGeneration.current) {
+          const response = (await browser.runtime.sendMessage({
+            type: "GET_SCRAPS",
+            options: { limit: FILTER_PAGE_SIZE, cursor },
+          })) as ScrapsResponse;
+          if (!isScrapsResponse(response)) {
+            throw new Error("GET_SCRAPS returned an invalid response");
+          }
+          olderRecords.push(...response.scraps);
+          cursor = response.nextCursor;
+        }
+        if (!cancelled && generation === requestGeneration.current) {
+          setRecords((current) => [...current, ...olderRecords]);
+          setNextCursor(cursor);
+          setLoadMoreError(null);
+        }
+      } catch (loadError) {
+        if (!cancelled && generation === requestGeneration.current) {
+          setLoadMoreError(
+            loadError instanceof Error ? loadError.message : String(loadError),
+          );
+          setSearchHistory(false);
+        }
+      } finally {
+        if (!cancelled && generation === requestGeneration.current) {
+          setLoadingHistory(false);
+        }
+      }
+    };
+
+    void loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchHistory, nextCursor, loading, loadingMore]);
+
+  const loadMore = async () => {
+    if (!nextCursor || loadingMore || loadingHistory) return;
+    const generation = requestGeneration.current;
+    setLoadingMore(true);
+    try {
+      const response = (await browser.runtime.sendMessage({
+        type: "GET_SCRAPS",
+        options: { limit: SCRAPS_PAGE_SIZE, cursor: nextCursor },
+      })) as ScrapsResponse;
+      if (!isScrapsResponse(response)) {
+        throw new Error("GET_SCRAPS returned an invalid response");
+      }
+      if (generation === requestGeneration.current) {
+        setRecords((current) => [...current, ...response.scraps]);
+        setNextCursor(response.nextCursor);
+        setLoadMoreError(null);
+      }
+    } catch (loadError) {
+      if (generation === requestGeneration.current) {
+        setLoadMoreError(loadError instanceof Error ? loadError.message : String(loadError));
+      }
+    } finally {
+      if (generation === requestGeneration.current) setLoadingMore(false);
+    }
+  };
 
   return (
     <main
@@ -458,9 +450,11 @@ export function ScrapsPage() {
         }
         .scraps-heading { top: 14px; width: min(520px, calc(100vw - 320px)); }
         .scraps-stage { inset: 64px 0 0; }
+        .scraps-load-more { position: absolute; top: 80px; right: 16px; z-index: 5; text-align: center; }
         @media (max-width: 620px) {
           .scraps-heading { top: 48px; width: calc(100vw - 32px); }
           .scraps-stage { inset: 104px 0 0; }
+          .scraps-load-more { top: 120px; }
         }
       `}</style>
       <header
@@ -528,7 +522,46 @@ export function ScrapsPage() {
             zIndex: 2,
           }}
         >
-          <ScrapCollage items={items} seed={seed} showKindFilter={true} />
+          <ScrapCollage
+            items={items}
+            seed={seed}
+            showKindFilter={true}
+            onFilterIntent={() => setSearchHistory(true)}
+          />
+        </div>
+      )}
+
+      {!loading && !error && nextCursor && (
+        <div className="scraps-load-more">
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            disabled={loadingMore || loadingHistory}
+            style={{
+              border: "1px solid #827a72",
+              borderRadius: 999,
+              background: "#faf9f6",
+              color: "#3d3833",
+              padding: "9px 16px",
+              fontFamily: '"Martian Mono", monospace',
+              fontSize: 11,
+              cursor: "pointer",
+            }}
+          >
+            {loadingHistory
+              ? "searching older scraps..."
+              : loadingMore
+                ? "gathering more..."
+                : "load more scraps"}
+          </button>
+          {loadMoreError && (
+            <div
+              role="alert"
+              style={{ marginTop: 6, color: "#827a72", fontSize: 11 }}
+            >
+              scraps could not be gathered
+            </div>
+          )}
         </div>
       )}
 

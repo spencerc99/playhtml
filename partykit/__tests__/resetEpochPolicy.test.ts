@@ -1,8 +1,11 @@
 // ABOUTME: Verifies reset-epoch parsing and stale-boundary decisions for PartyServer.
 // ABOUTME: Covers malformed client epochs that must not bypass room reset enforcement.
 import { describe, expect, it } from "bun:test";
+import * as Y from "yjs";
 import {
   getAutosaveResetEpochDecision,
+  getHeldConnectionMessageDecision,
+  readSyncStep1StateVectorSize,
   isResetEpochStale,
   parseClientResetEpoch,
 } from "../resetEpochPolicy";
@@ -62,5 +65,81 @@ describe("getAutosaveResetEpochDecision", () => {
     expect(getAutosaveResetEpochDecision(100, 100)).toEqual({
       kind: "save",
     });
+  });
+});
+
+function writeVarUint(bytes: number[], value: number): void {
+  let remaining = value;
+  while (remaining >= 0x80) {
+    bytes.push((remaining & 0x7f) | 0x80);
+    remaining = Math.floor(remaining / 0x80);
+  }
+  bytes.push(remaining);
+}
+
+function syncMessage(syncType: number, payload: Uint8Array): Uint8Array {
+  const bytes: number[] = [];
+  writeVarUint(bytes, 0);
+  writeVarUint(bytes, syncType);
+  writeVarUint(bytes, payload.length);
+  return Uint8Array.from([...bytes, ...payload]);
+}
+
+function docWithHistory(entries: number): Y.Doc {
+  const doc = new Y.Doc();
+  const map = doc.getMap("play");
+  for (let i = 0; i < entries; i += 1) map.set(`key-${i}`, i);
+  return doc;
+}
+
+describe("readSyncStep1StateVectorSize", () => {
+  it("reads an empty state vector from a fresh document", () => {
+    const message = syncMessage(0, Y.encodeStateVector(new Y.Doc()));
+    expect(readSyncStep1StateVectorSize(message)).toBe(0);
+  });
+
+  it("counts clients in a document with history", () => {
+    const merged = docWithHistory(3);
+    Y.applyUpdate(merged, Y.encodeStateAsUpdate(docWithHistory(200)));
+    const message = syncMessage(0, Y.encodeStateVector(merged));
+    expect(readSyncStep1StateVectorSize(message)).toBe(2);
+  });
+
+  it("ignores other message shapes and truncated input", () => {
+    expect(
+      readSyncStep1StateVectorSize(
+        syncMessage(2, Y.encodeStateAsUpdate(docWithHistory(1)))
+      )
+    ).toBe(null);
+    expect(readSyncStep1StateVectorSize(Uint8Array.from([0, 0, 5, 1]))).toBe(
+      null
+    );
+    expect(readSyncStep1StateVectorSize(new Uint8Array())).toBe(null);
+  });
+});
+
+describe("getHeldConnectionMessageDecision", () => {
+  it("admits a client whose first sync step carries no history", () => {
+    const message = syncMessage(0, Y.encodeStateVector(new Y.Doc()));
+    expect(getHeldConnectionMessageDecision(message)).toBe("admit");
+    expect(getHeldConnectionMessageDecision(message.buffer)).toBe("admit");
+  });
+
+  it("rejects a client that carries document history", () => {
+    const withHistory = syncMessage(
+      0,
+      Y.encodeStateVector(docWithHistory(1))
+    );
+    expect(getHeldConnectionMessageDecision(withHistory)).toBe("reject");
+    const update = syncMessage(2, Y.encodeStateAsUpdate(docWithHistory(1)));
+    expect(getHeldConnectionMessageDecision(update)).toBe("reject");
+    expect(getHeldConnectionMessageDecision(new Uint8Array())).toBe("reject");
+  });
+
+  it("waits through awareness and custom string messages", () => {
+    expect(getHeldConnectionMessageDecision(Uint8Array.from([1, 0]))).toBe(
+      "wait"
+    );
+    expect(getHeldConnectionMessageDecision("__YPS:{}")).toBe("wait");
   });
 });

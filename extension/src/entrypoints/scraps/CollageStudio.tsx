@@ -86,7 +86,7 @@ import {
   collageToHandOver,
   type EditorSwitchChoice,
 } from "./EditorSwitch";
-import { StudioTools } from "./StudioTools";
+import { KeysButton, StudioTools, StudioViews } from "./StudioTools";
 import { FormatControl } from "./FormatControl";
 import { CollageBakeError, bakeCollage } from "./bakeCollage";
 import { bakeCollageBack, resolveBackFavicons } from "./bakeCollageBack";
@@ -180,6 +180,9 @@ const STAGE_PADDING = 12;
  * float there, so a frame fitted to a tall stage never slides under them.
  */
 const STAGE_TOP_BAND = 52;
+/** The mat around the frame, in screen pixels, and the band under it that carries the caption. */
+const MAT = 26;
+const MAT_CAPTION = 44;
 /** How far inside the stage's edge a pinned handle stays, in screen pixels. */
 const HANDLE_INSET = 10;
 /** Frame units the pointer must travel before an alt-drag pulls out a copy. */
@@ -320,6 +323,15 @@ function placedPiece(item: ScrapItem, at: Point, z: number): CollagePiece {
   };
 }
 
+/** The day a collage was started, the way the history cards write it. */
+function madeOn(timestamp: number): string {
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).toLowerCase();
+}
+
 export function CollageStudio({
   scraps,
   editing,
@@ -396,6 +408,8 @@ export function CollageStudio({
   >(null);
   const [dropActive, setDropActive] = useState(false);
   const [peek, setPeek] = useState(createPeekState);
+  /** The sources view left on from its toggle; holding i shows it too. */
+  const [sourcesOn, setSourcesOn] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   /** The pile the "pieces here" menu is listing, and where it opened. */
   const [hereMenu, setHereMenu] = useState<{
@@ -586,7 +600,7 @@ export function CollageStudio({
     cuttingOut: cutoutSession !== null,
     piecesHereOpen: hereStack.length > 0,
     gestureRunning: gesture.kind !== "idle",
-    peekHeld: peek.held,
+    peekHeld: (peek.held || sourcesOn) && !over,
     hasSelection: selectedPieces.length > 0,
   };
   const panel = visiblePanel(panelState);
@@ -648,8 +662,9 @@ export function CollageStudio({
     const update = () => {
       setScale(
         frameScale(frame, {
-          width: stage.clientWidth - STAGE_PADDING * 2,
-          height: stage.clientHeight - STAGE_TOP_BAND - STAGE_PADDING,
+          width: stage.clientWidth - STAGE_PADDING * 2 - MAT * 2,
+          height:
+            stage.clientHeight - STAGE_TOP_BAND - STAGE_PADDING - MAT - MAT_CAPTION,
         }),
       );
     };
@@ -1808,6 +1823,26 @@ export function CollageStudio({
         >
           {/* The sheet holds both sides of the collage in one place and turns
               over about its vertical axis; only the side facing up is live. */}
+          {/* The frame sits on a mat, and the mat carries the collage's name,
+              count and date under it, so a screenshot of the mat says what it is. */}
+          <div
+            className="collage-mat"
+            data-marquee-ground=""
+            style={{
+              width: frame.width * scale + MAT * 2,
+              height: frame.height * scale + MAT + MAT_CAPTION,
+            }}
+          >
+          <div
+            className="collage-mat__window"
+            data-marquee-ground=""
+            style={{
+              left: MAT,
+              top: MAT,
+              width: frame.width * scale,
+              height: frame.height * scale,
+            }}
+          >
           <div
             className={`collage-sheet${over ? " collage-sheet--over" : ""}`}
             data-marquee-ground=""
@@ -2003,7 +2038,7 @@ export function CollageStudio({
                 {hovered &&
                   !isSelected(selection, hovered.id) &&
                   gesture.kind !== "marquee" &&
-                  !peek.held &&
+                  !(peek.held || sourcesOn) &&
                   !toolActive && (
                   <div
                     className="collage-piece-hover"
@@ -2019,7 +2054,7 @@ export function CollageStudio({
                   />
                 )}
 
-                {peek.held && (
+                {(peek.held || sourcesOn) && !over && (
                   <ProvenancePeek
                     pieces={ordered}
                     hoveredId={hoveredId}
@@ -2108,26 +2143,45 @@ export function CollageStudio({
               />
             </div>
           </div>
+          </div>
+            <div className="collage-mat__caption" style={{ left: MAT, right: MAT }}>
+              {over ? (
+                <span className="collage-studio__label">
+                  turned over · T or esc to turn back
+                </span>
+              ) : (
+                <>
+                  <input
+                    className="collage-title-input"
+                    value={title}
+                    placeholder="untitled collage"
+                    onChange={(event) => setTitle(event.target.value)}
+                    aria-label="Collage title"
+                  />
+                  <span className="collage-bar__spacer" />
+                  <span className="collage-studio__label">
+                    {pieces.length} piece{pieces.length === 1 ? "" : "s"} · made{" "}
+                    {madeOn(createdAtRef.current)}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
 
           <StudioTools
             canUndo={!over && canUndo(history)}
             canRedo={!over && canRedo(history)}
-            keysOpen={showKeys}
-            turnedOver={over}
             onUndo={() => setHistory((current) => undo(current))}
             onRedo={() => setHistory((current) => redo(current))}
-            onKeys={() => setShowKeys((value) => !value)}
-            onTurnOver={turnOver}
             onBack={leave}
           />
 
-          <FormatControl
-            format={format}
-            paper={paper}
-            zoom={scale}
-            pieceCount={pieces.length}
-            onFormat={setFormat}
-            onPaper={setPaper}
+          <StudioViews
+            turnedOver={over}
+            sourcesOn={sourcesOn}
+            canShowSources={!over && pieces.length > 0}
+            onTurnOver={turnOver}
+            onSources={() => setSourcesOn((value) => !value)}
           />
 
           {showKeys && <KeysPopover onClose={() => setShowKeys(false)} />}
@@ -2138,28 +2192,14 @@ export function CollageStudio({
         )}
 
         <div className="collage-bar">
-          {/* The back already carries the title and the count, so while it
-              is being read the bar only says how to turn it face up. */}
-          {over ? (
-            <span className="collage-studio__label collage-bar__turned">
-              turned over · T or esc to turn back
-            </span>
-          ) : (
-            <>
-              <input
-                className="collage-title-input"
-                value={title}
-                placeholder="untitled collage"
-                onChange={(event) => setTitle(event.target.value)}
-                aria-label="Collage title"
-              />
-              <span className="collage-bar__spacer" />
-              <span className="collage-studio__label">
-                {pieces.length} piece{pieces.length === 1 ? "" : "s"}
-                {pieces.length > 0 && " · hold i for sources"}
-              </span>
-            </>
-          )}
+          <FormatControl
+            format={format}
+            paper={paper}
+            zoom={scale}
+            pieceCount={pieces.length}
+            onFormat={setFormat}
+            onPaper={setPaper}
+          />
           <span className="collage-bar__spacer" />
           {editorSwitch && (
             <EditorSwitch
@@ -2185,6 +2225,10 @@ export function CollageStudio({
               {standing.text}
             </p>
           )}
+          <KeysButton
+            open={showKeys}
+            onToggle={() => setShowKeys((value) => !value)}
+          />
           <button
             type="button"
             className="collage-action"
