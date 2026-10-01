@@ -307,7 +307,6 @@ export function ScrapTray({
                     loaded={true}
                     onLoad={() => {}}
                     onError={() => {}}
-                    letteringChecker={false}
                   />
                 </span>
               </button>

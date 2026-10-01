@@ -1372,8 +1372,8 @@ export interface ScrapContentProps {
   /** Laid-out tile width, so text-bearing scraps can size themselves to it. */
   tileWidth?: number;
   /**
-   * Whether dark lettering sits on a light chequer. Only browsed tiles show
-   * it; the Create drawer and a piece placed in a collage leave it off.
+   * Whether dark lettering sits on a light chequer. Browsed and drawer tiles
+   * show it; a piece placed in a collage sits directly on the collage.
    */
   letteringChecker?: boolean;
 }
