@@ -1,5 +1,5 @@
 // ABOUTME: Verifies source-aware filtering without dropping photo encounter history.
-// ABOUTME: Covers domain/path scopes, saved-text search, and local day / time-of-day sightings.
+// ABOUTME: Covers domain/path scopes, saved-text search, local day / time-of-day sightings, and shape buckets.
 import { describe, expect, it } from "vitest";
 import type { ScrapItem } from "../../components/ScrapCollage";
 import { groupPhotoEncounters } from "../scrapPhotoGroups";
@@ -9,6 +9,7 @@ import {
   matchesScrapFilters,
   matchesScrapWhen,
   scrapDays,
+  scrapShape,
 } from "../scrapFilters";
 
 const photo: ScrapItem = {
@@ -137,5 +138,39 @@ describe("scrap day and time-of-day filters", () => {
       "2026-09-03",
     ]);
     expect([...scrapDays(seenTwice, morning)]).toEqual(["2026-09-01"]);
+  });
+
+  it("buckets scraps into five rough shapes", () => {
+    const sized = (naturalWidth: number, naturalHeight: number): ScrapItem => ({
+      ...photo,
+      naturalWidth,
+      naturalHeight,
+    });
+    expect(scrapShape(sized(100, 400))).toBe("very-tall");
+    expect(scrapShape(sized(100, 200))).toBe("very-tall");
+    expect(scrapShape(sized(100, 199))).toBe("tall");
+    expect(scrapShape(sized(100, 126))).toBe("tall");
+    expect(scrapShape(sized(100, 124))).toBe("square");
+    expect(scrapShape(sized(124, 100))).toBe("square");
+    expect(scrapShape(sized(126, 100))).toBe("wide");
+    expect(scrapShape(sized(199, 100))).toBe("wide");
+    expect(scrapShape(sized(200, 100))).toBe("very-wide");
+    expect(scrapShape(sized(0, 100))).toBeNull();
+    expect(
+      scrapShape({
+        ...photo,
+        kind: "svg-icon",
+        markup: "<svg/>",
+        width: 10,
+        height: 30,
+      } as ScrapItem),
+    ).toBe("very-tall");
+    expect(
+      scrapShape({ ...photo, kind: "cursor", url: "c.png" } as ScrapItem),
+    ).toBe("square");
+    const heading = (text: string) =>
+      ({ ...photo, kind: "heading", text, level: 1, styles: {} }) as ScrapItem;
+    expect(scrapShape(heading("Hi"))).toBe("wide");
+    expect(scrapShape(heading("A much longer heading"))).toBe("very-wide");
   });
 });
