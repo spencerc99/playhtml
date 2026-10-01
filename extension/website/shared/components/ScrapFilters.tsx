@@ -34,9 +34,12 @@ import { TimeOfDayInputs } from "./TimeOfDayInputs";
 
 export { ANY_TIME, isAnyTime, type ScrapWhenFilter };
 
-export type ScrapKindFilter = ScrapItem["kind"] | "all";
+/** The scrap kinds to show; an empty list shows every kind. */
+export type ScrapKindFilter = ScrapItem["kind"][];
 
-const kinds: { kind: ScrapKindFilter; label: string }[] = [
+type KindOption = ScrapItem["kind"] | "all";
+
+const kinds: { kind: KindOption; label: string }[] = [
   { kind: "all", label: "all" },
   { kind: "image", label: "images" },
   { kind: "button", label: "buttons" },
@@ -62,7 +65,7 @@ export function scrapPassesFilters(
   when: ScrapWhenFilter,
 ): boolean {
   return (
-    (kind === "all" || item.kind === kind) &&
+    (kind.length === 0 || kind.includes(item.kind)) &&
     matchesScrapFilters(item, places, search) &&
     matchesScrapWhen(item, when)
   );
@@ -159,13 +162,20 @@ export function ScrapFilters({
         .map((source) => extractDomain(source.pageUrl))
         .filter(Boolean),
     );
-  const domains = useMemo(
-    () =>
-      Array.from(
-        new Set(items.flatMap((item) => [...itemDomains(item)])),
-      ).sort(),
-    [items],
-  );
+  // Sites are listed by when a scrap was last met there, newest first.
+  const domains = useMemo(() => {
+    const lastSeen = new Map<string, number>();
+    for (const item of items) {
+      for (const location of scrapLocations(item)) {
+        const domain = extractDomain(location.pageUrl);
+        if (!domain) continue;
+        lastSeen.set(domain, Math.max(lastSeen.get(domain) ?? 0, location.ts));
+      }
+    }
+    return Array.from(lastSeen.keys()).sort(
+      (a, b) => lastSeen.get(b)! - lastSeen.get(a)! || a.localeCompare(b),
+    );
+  }, [items]);
   // Counts answer "how many would I see if I picked this", so each facet
   // honours the other filters but not its own.
   const domainCounts = useMemo(() => {
@@ -186,7 +196,7 @@ export function ScrapFilters({
     return counts;
   }, [panel, items, domains, kind, search, when, countScraps]);
   const kindCounts = useMemo(() => {
-    const counts = new Map<ScrapKindFilter, number>();
+    const counts = new Map<KindOption, number>();
     if (panel !== "type") return counts;
     const matching = items.filter(
       (item) =>
@@ -319,7 +329,28 @@ export function ScrapFilters({
       : selected.length === 1
         ? selected[0]
         : `${selected.length} sites`;
-  const kindLabel = kinds.find((option) => option.kind === kind)?.label;
+  const kindLabel =
+    kind.length === 0
+      ? "all"
+      : kind.length <= 2
+        ? kinds
+            .filter(
+              (option) => option.kind !== "all" && kind.includes(option.kind),
+            )
+            .map((option) => option.label)
+            .join(", ")
+        : `${kind.length} types`;
+  const toggleKind = (option: KindOption) => {
+    if (option === "all") {
+      onKind([]);
+      return;
+    }
+    const next = kind.includes(option)
+      ? kind.filter((value) => value !== option)
+      : [...kind, option];
+    // Picking every kind is the same as picking none.
+    onKind(next.length === kinds.length - 1 ? [] : next);
+  };
 
   const searchField = (
     <label className="scrap-filters__search">
@@ -517,7 +548,7 @@ export function ScrapFilters({
         type="button"
         ref={typeButton}
         className="scrap-filters__chip"
-        data-on={kind !== "all" || undefined}
+        data-on={kind.length > 0 || undefined}
         aria-expanded={panel === "type"}
         aria-controls={`${id}-type`}
         onClick={() => setPanel(panel === "type" ? null : "type")}
@@ -541,30 +572,36 @@ export function ScrapFilters({
               <span>type</span>
             </div>
             <div className="scrap-filters__options" ref={typeOptions}>
-              {kinds.map((option) => (
-                <div key={option.kind} className="scrap-filters__kind">
-                  <button
-                    type="button"
-                    className="scrap-filters__option"
-                    data-scrap-kind={option.kind}
-                    aria-pressed={option.kind === kind}
-                    onClick={() => {
-                      onKind(option.kind);
-                      typeButton.current?.focus();
-                      setPanel(null);
-                    }}
-                  >
-                    <span className="scrap-filters__radio" aria-hidden="true" />
-                    <span className="scrap-filters__name">{option.label}</span>
-                    <span className="scrap-filters__count">
-                      {kindCounts.get(option.kind)}
-                    </span>
-                  </button>
-                  {option.kind === "all" && (
-                    <hr className="scrap-filters__separator" />
-                  )}
-                </div>
-              ))}
+              {kinds.map((option) => {
+                const on =
+                  option.kind === "all"
+                    ? kind.length === 0
+                    : kind.includes(option.kind);
+                return (
+                  <div key={option.kind} className="scrap-filters__kind">
+                    <button
+                      type="button"
+                      className="scrap-filters__option"
+                      data-scrap-kind={option.kind}
+                      aria-pressed={on}
+                      onClick={() => toggleKind(option.kind)}
+                    >
+                      <span className="scrap-filters__check" aria-hidden="true">
+                        {on ? "✓" : ""}
+                      </span>
+                      <span className="scrap-filters__name">
+                        {option.label}
+                      </span>
+                      <span className="scrap-filters__count">
+                        {kindCounts.get(option.kind)}
+                      </span>
+                    </button>
+                    {option.kind === "all" && (
+                      <hr className="scrap-filters__separator" />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </section>
         </>
@@ -784,8 +821,6 @@ const styles = `
 .scrap-filters__count { flex:0 0 auto; color:#827a72; }
 .scrap-filters__check { display:grid; place-items:center; flex:0 0 auto; box-sizing:border-box; width:12px; height:12px; border:1px solid rgba(61,56,51,.3); border-radius:3px; background:#faf9f6; color:#fff; font-size:8px; line-height:1; }
 .scrap-filters__option[aria-pressed=true] .scrap-filters__check { border-color:#4a9a8a; background:#4a9a8a; }
-.scrap-filters__radio { flex:0 0 auto; box-sizing:border-box; width:12px; height:12px; border:1px solid rgba(61,56,51,.3); border-radius:999px; background:#faf9f6; }
-.scrap-filters__option[aria-pressed=true] .scrap-filters__radio { border:4px solid #4a9a8a; }
 .scrap-filters__option[aria-pressed=true] .scrap-filters__name { color:#2f6b60; }
 .scrap-filters__separator { height:1px; margin:4px 2px; border:0; background:rgba(61,56,51,.14); }
 .scrap-filters__empty { margin:6px; color:#827a72; }

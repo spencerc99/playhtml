@@ -324,54 +324,6 @@ export function ScrapsPage() {
       }}
     >
       {canCreate && <style>{COLLAGE_STYLES}</style>}
-      <svg
-        width="100%"
-        height="100%"
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: 1,
-          opacity: 0.7,
-          pointerEvents: "none",
-          mixBlendMode: "multiply",
-        }}
-      >
-        <defs>
-          <filter id="scraps-paper-noise">
-            <feTurbulence
-              type="fractalNoise"
-              baseFrequency="0.9"
-              numOctaves="3"
-              stitchTiles="stitch"
-            />
-            <feColorMatrix
-              type="matrix"
-              values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 2 -1"
-            />
-          </filter>
-          <filter id="scraps-paper-grain">
-            <feTurbulence
-              type="turbulence"
-              baseFrequency="0.5"
-              numOctaves="2"
-              stitchTiles="stitch"
-            />
-            <feColorMatrix type="saturate" values="0" />
-            <feComponentTransfer>
-              <feFuncA type="discrete" tableValues="0 0.2 0.3 0.4" />
-            </feComponentTransfer>
-          </filter>
-        </defs>
-        <rect width="100%" height="100%" filter="url(#scraps-paper-noise)" />
-        <rect
-          width="100%"
-          height="100%"
-          filter="url(#scraps-paper-grain)"
-          style={{ opacity: 0.3 }}
-        />
-      </svg>
-
       <div
         style={{
           position: "absolute",

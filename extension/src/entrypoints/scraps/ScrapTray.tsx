@@ -62,7 +62,7 @@ export function ScrapTray({
   onPlace,
   onDragStart,
 }: ScrapTrayProps) {
-  const [kind, setKind] = useState<ScrapKindFilter>("all");
+  const [kind, setKind] = useState<ScrapKindFilter>([]);
   const [places, setPlaces] = useState<FilterChip[]>([]);
   const [search, setSearch] = useState("");
   const [when, setWhen] = useState<ScrapWhenFilter>(ANY_TIME);
@@ -82,7 +82,7 @@ export function ScrapTray({
     );
   }, [items, kind, places, search, when]);
   const filtering =
-    kind !== "all" ||
+    kind.length > 0 ||
     places.length > 0 ||
     search.trim() !== "" ||
     !isAnyTime(when);
@@ -225,7 +225,7 @@ export function ScrapTray({
               onClick={() => {
                 setSearch("");
                 setPlaces([]);
-                setKind("all");
+                setKind([]);
                 setWhen(ANY_TIME);
               }}
             >
