@@ -18,16 +18,21 @@ export function isAnyTime(when: ScrapWhenFilter): boolean {
   return when.day === null && when.timeOfDay === null;
 }
 
-/** The outline a scrap has in the collage, read from its own proportions. */
-export type ScrapShape = "tall" | "square" | "wide";
+/** The outline a scrap has in the collage, read roughly from its own proportions. */
+export type ScrapShape = "very-wide" | "wide" | "square" | "tall" | "very-tall";
 
-/** How far a scrap's width-to-height ratio may lean from 1:1 and still count as square. */
-const SQUARE_TOLERANCE = 1.25;
+/** Width-to-height ratios past which a scrap leans wide (or, inverted, tall). */
+const LEANS = 1.25;
+/** Width-to-height ratios past which a scrap is very wide (or, inverted, very tall). */
+const STRETCHED = 2;
+/** Headings and buttons longer than this many characters read as very wide strips. */
+const SHORT_WORDING = 8;
 
 /**
- * Photos and icons take the shape of their own pixels, buttons and headings
- * are runs of words and always sit wide, and cursors are drawn in a square
- * tile. A scrap whose size was never measured has no shape.
+ * Photos and icons take the shape of their own pixels. Buttons and headings
+ * are runs of words, so they sit wide, or very wide once the wording is long.
+ * Cursors are drawn in a square tile. A scrap whose size was never measured
+ * has no shape.
  */
 export function scrapShape(item: ScrapItem): ScrapShape | null {
   switch (item.kind) {
@@ -37,7 +42,7 @@ export function scrapShape(item: ScrapItem): ScrapShape | null {
       return shapeOf(item.width, item.height);
     case "button":
     case "heading":
-      return "wide";
+      return item.text.trim().length > SHORT_WORDING ? "very-wide" : "wide";
     case "cursor":
       return "square";
   }
@@ -46,8 +51,10 @@ export function scrapShape(item: ScrapItem): ScrapShape | null {
 function shapeOf(width: number, height: number): ScrapShape | null {
   if (!(width > 0) || !(height > 0)) return null;
   const ratio = width / height;
-  if (ratio > SQUARE_TOLERANCE) return "wide";
-  if (ratio < 1 / SQUARE_TOLERANCE) return "tall";
+  if (ratio >= STRETCHED) return "very-wide";
+  if (ratio > LEANS) return "wide";
+  if (ratio <= 1 / STRETCHED) return "very-tall";
+  if (ratio < 1 / LEANS) return "tall";
   return "square";
 }
 

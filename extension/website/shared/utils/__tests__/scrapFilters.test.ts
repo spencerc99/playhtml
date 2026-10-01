@@ -140,17 +140,21 @@ describe("scrap day and time-of-day filters", () => {
     expect([...scrapDays(seenTwice, morning)]).toEqual(["2026-09-01"]);
   });
 
-  it("buckets scraps by shape with a square band around 1:1", () => {
+  it("buckets scraps into five rough shapes", () => {
     const sized = (naturalWidth: number, naturalHeight: number): ScrapItem => ({
       ...photo,
       naturalWidth,
       naturalHeight,
     });
-    expect(scrapShape(sized(100, 400))).toBe("tall");
+    expect(scrapShape(sized(100, 400))).toBe("very-tall");
+    expect(scrapShape(sized(100, 200))).toBe("very-tall");
+    expect(scrapShape(sized(100, 199))).toBe("tall");
     expect(scrapShape(sized(100, 126))).toBe("tall");
     expect(scrapShape(sized(100, 124))).toBe("square");
     expect(scrapShape(sized(124, 100))).toBe("square");
     expect(scrapShape(sized(126, 100))).toBe("wide");
+    expect(scrapShape(sized(199, 100))).toBe("wide");
+    expect(scrapShape(sized(200, 100))).toBe("very-wide");
     expect(scrapShape(sized(0, 100))).toBeNull();
     expect(
       scrapShape({
@@ -160,18 +164,13 @@ describe("scrap day and time-of-day filters", () => {
         width: 10,
         height: 30,
       } as ScrapItem),
-    ).toBe("tall");
+    ).toBe("very-tall");
     expect(
       scrapShape({ ...photo, kind: "cursor", url: "c.png" } as ScrapItem),
     ).toBe("square");
-    expect(
-      scrapShape({
-        ...photo,
-        kind: "heading",
-        text: "Hi",
-        level: 1,
-        styles: {},
-      } as ScrapItem),
-    ).toBe("wide");
+    const heading = (text: string) =>
+      ({ ...photo, kind: "heading", text, level: 1, styles: {} }) as ScrapItem;
+    expect(scrapShape(heading("Hi"))).toBe("wide");
+    expect(scrapShape(heading("A much longer heading"))).toBe("very-wide");
   });
 });
