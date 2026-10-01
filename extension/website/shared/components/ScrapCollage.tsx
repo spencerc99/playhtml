@@ -124,7 +124,6 @@ interface ScrapCollageProps {
    * choice from the scraps page.
    */
   fixedDisplay?: ScrapDisplay;
-  onFilterIntent?: () => void;
 }
 
 export type ScrapView = "drift" | "archive";
@@ -1228,6 +1227,20 @@ export const COLLAGE_STYLES = `
     box-shadow: 0 1px 2px rgba(40, 30, 20, 0.25);
   }
 
+  /* The light counterpart of the ink chequer, for dark lettering. */
+  .scrap-collage__backdrop--checker {
+    background-image: conic-gradient(
+      rgba(61, 56, 51, 0.07) 25%,
+      transparent 0 50%,
+      rgba(61, 56, 51, 0.07) 0 75%,
+      transparent 0
+    );
+    background-size: 8px 8px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px rgba(61, 56, 51, 0.1);
+  }
+
   .scrap-collage__heading {
     box-sizing: border-box;
     display: flex;
@@ -1392,14 +1405,27 @@ function ScrapSwatch({
 export function ScrapBackdrop({
   color,
   ink = false,
+  checker = false,
   children,
 }: {
   color?: string;
   /** The backing is ours, added so light ink reads, not the page's own. */
   ink?: boolean;
+  /**
+   * With no color to paint, still give the scrap a faint light chequer, the
+   * counterpart of the dark one behind light ink.
+   */
+  checker?: boolean;
   children: React.ReactNode;
 }) {
-  if (!color) return <>{children}</>;
+  if (!color) {
+    if (!checker) return <>{children}</>;
+    return (
+      <span className="scrap-collage__backdrop scrap-collage__backdrop--checker">
+        {children}
+      </span>
+    );
+  }
   return (
     <span
       className={`scrap-collage__backdrop${ink ? " scrap-collage__backdrop--ink" : ""}`}
@@ -1528,7 +1554,11 @@ export function ScrapContent({
     }
     case "heading":
       return (
-        <ScrapBackdrop color={inkBackingFor(item.styles)} ink>
+        <ScrapBackdrop
+          color={inkBackingFor(item.styles)}
+          ink
+          checker={!hasOwnFill(item.styles.backgroundColor)}
+        >
           <span
             className="scrap-collage__heading"
             style={{
@@ -1616,7 +1646,6 @@ export function ScrapCollage({
   showKindFilter = false,
   initialView = "drift",
   fixedDisplay,
-  onFilterIntent,
 }: ScrapCollageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const archiveScrollRef = useRef<HTMLDivElement>(null);
@@ -2299,7 +2328,6 @@ export function ScrapCollage({
               <div className="scrap-collage__controls-filters">
                 <ScrapFilters
                   items={groupedItems}
-                  onFilterIntent={onFilterIntent}
                   places={places}
                   onPlaces={setPlaces}
                   kind={selectedKind}

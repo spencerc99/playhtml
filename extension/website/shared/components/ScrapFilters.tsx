@@ -97,7 +97,6 @@ interface Props {
   onKind: (kind: ScrapKindFilter) => void;
   search: string;
   onSearch: (search: string) => void;
-  onFilterIntent?: () => void;
   /** The local day and time of day a scrap must have been seen at. */
   when: ScrapWhenFilter;
   onWhen: (when: ScrapWhenFilter) => void;
@@ -127,7 +126,6 @@ export function ScrapFilters({
   onKind,
   search,
   onSearch,
-  onFilterIntent,
   when,
   onWhen,
   matchCount,
@@ -683,8 +681,6 @@ export function ScrapFilters({
     <div
       className={`scrap-filters scrap-filters--${layout}`}
       ref={root}
-      onClickCapture={onFilterIntent}
-      onFocusCapture={onFilterIntent}
       // The collage studio leaves every key pressed in here to the filters.
       data-owns-keys=""
       onKeyDown={(event) => {

@@ -64,15 +64,12 @@ const centeredMessageStyle: React.CSSProperties = {
 
 type ScrapsMode = "browse" | "create";
 const SCRAPS_PAGE_SIZE = 500;
-const FILTER_PAGE_SIZE = 1_000;
+const HISTORY_PAGE_SIZE = 1_000;
 
 export function ScrapsPage() {
   const [records, setRecords] = useState<ScrapRecord[]>([]);
   const [nextCursor, setNextCursor] = useState<ScrapsResponse["nextCursor"]>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [searchHistory, setSearchHistory] = useState(false);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
@@ -240,8 +237,7 @@ export function ScrapsPage() {
     let cancelled = false;
     requestGeneration.current += 1;
     setLoading(true);
-    setLoadingMore(false);
-    setLoadMoreError(null);
+    setHistoryError(null);
     setRecords([]);
     setNextCursor(null);
     const loadScraps = async () => {
@@ -274,11 +270,12 @@ export function ScrapsPage() {
     };
   }, [revision]);
 
+  // The first page paints quickly; the rest of the archive follows in the
+  // background so the count, collage, search, and filters cover everything.
   useEffect(() => {
-    if (!searchHistory || !nextCursor || loading || loadingMore) return;
+    if (!nextCursor || loading || historyError) return;
     let cancelled = false;
     const generation = requestGeneration.current;
-    setLoadingHistory(true);
 
     const loadHistory = async () => {
       const olderRecords: ScrapRecord[] = [];
@@ -287,7 +284,7 @@ export function ScrapsPage() {
         while (cursor && !cancelled && generation === requestGeneration.current) {
           const response = (await browser.runtime.sendMessage({
             type: "GET_SCRAPS",
-            options: { limit: FILTER_PAGE_SIZE, cursor },
+            options: { limit: HISTORY_PAGE_SIZE, cursor },
           })) as ScrapsResponse;
           if (!isScrapsResponse(response)) {
             throw new Error("GET_SCRAPS returned an invalid response");
@@ -298,18 +295,13 @@ export function ScrapsPage() {
         if (!cancelled && generation === requestGeneration.current) {
           setRecords((current) => [...current, ...olderRecords]);
           setNextCursor(cursor);
-          setLoadMoreError(null);
+          setHistoryError(null);
         }
       } catch (loadError) {
         if (!cancelled && generation === requestGeneration.current) {
-          setLoadMoreError(
+          setHistoryError(
             loadError instanceof Error ? loadError.message : String(loadError),
           );
-          setSearchHistory(false);
-        }
-      } finally {
-        if (!cancelled && generation === requestGeneration.current) {
-          setLoadingHistory(false);
         }
       }
     };
@@ -318,33 +310,7 @@ export function ScrapsPage() {
     return () => {
       cancelled = true;
     };
-  }, [searchHistory, nextCursor, loading, loadingMore]);
-
-  const loadMore = async () => {
-    if (!nextCursor || loadingMore || loadingHistory) return;
-    const generation = requestGeneration.current;
-    setLoadingMore(true);
-    try {
-      const response = (await browser.runtime.sendMessage({
-        type: "GET_SCRAPS",
-        options: { limit: SCRAPS_PAGE_SIZE, cursor: nextCursor },
-      })) as ScrapsResponse;
-      if (!isScrapsResponse(response)) {
-        throw new Error("GET_SCRAPS returned an invalid response");
-      }
-      if (generation === requestGeneration.current) {
-        setRecords((current) => [...current, ...response.scraps]);
-        setNextCursor(response.nextCursor);
-        setLoadMoreError(null);
-      }
-    } catch (loadError) {
-      if (generation === requestGeneration.current) {
-        setLoadMoreError(loadError instanceof Error ? loadError.message : String(loadError));
-      }
-    } finally {
-      if (generation === requestGeneration.current) setLoadingMore(false);
-    }
-  };
+  }, [nextCursor, loading, historyError]);
 
   return (
     <main
@@ -450,11 +416,11 @@ export function ScrapsPage() {
         }
         .scraps-heading { top: 14px; width: min(520px, calc(100vw - 320px)); }
         .scraps-stage { inset: 64px 0 0; }
-        .scraps-load-more { position: absolute; top: 80px; right: 16px; z-index: 5; text-align: center; }
+        .scraps-history-error { position: absolute; top: 80px; right: 16px; z-index: 5; color: #827a72; font-size: 11px; }
         @media (max-width: 620px) {
           .scraps-heading { top: 48px; width: calc(100vw - 32px); }
           .scraps-stage { inset: 104px 0 0; }
-          .scraps-load-more { top: 120px; }
+          .scraps-history-error { top: 120px; }
         }
       `}</style>
       <header
@@ -526,42 +492,13 @@ export function ScrapsPage() {
             items={items}
             seed={seed}
             showKindFilter={true}
-            onFilterIntent={() => setSearchHistory(true)}
           />
         </div>
       )}
 
-      {!loading && !error && nextCursor && (
-        <div className="scraps-load-more">
-          <button
-            type="button"
-            onClick={() => void loadMore()}
-            disabled={loadingMore || loadingHistory}
-            style={{
-              border: "1px solid #827a72",
-              borderRadius: 999,
-              background: "#faf9f6",
-              color: "#3d3833",
-              padding: "9px 16px",
-              fontFamily: '"Martian Mono", monospace',
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            {loadingHistory
-              ? "searching older scraps..."
-              : loadingMore
-                ? "gathering more..."
-                : "load more scraps"}
-          </button>
-          {loadMoreError && (
-            <div
-              role="alert"
-              style={{ marginTop: 6, color: "#827a72", fontSize: 11 }}
-            >
-              scraps could not be gathered
-            </div>
-          )}
+      {historyError && (
+        <div role="alert" className="scraps-history-error">
+          older scraps could not be gathered
         </div>
       )}
 
