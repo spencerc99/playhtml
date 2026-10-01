@@ -71,6 +71,17 @@ describe("scrap filters", () => {
     };
     expect(matchesScrapFilters(button, [], "later spencer")).toBe(true);
   });
+  it("searches the words of a heading", () => {
+    const heading: ScrapItem = {
+      ...photo,
+      kind: "heading",
+      text: "A field guide to moss",
+      level: 1,
+      styles: {},
+    };
+    expect(matchesScrapFilters(heading, [], "moss guide")).toBe(true);
+    expect(matchesScrapFilters(heading, [], "lichen")).toBe(false);
+  });
 });
 
 describe("scrap day and time-of-day filters", () => {

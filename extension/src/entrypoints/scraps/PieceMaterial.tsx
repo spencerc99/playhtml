@@ -114,6 +114,7 @@ export function PieceMaterial({ piece, onCutoutFailed }: PieceMaterialProps) {
       loaded={true}
       onLoad={() => {}}
       onError={() => {}}
+      letteringChecker={false}
     />
   );
   if (!isLettered(scrap)) return content;

@@ -374,7 +374,7 @@ export function ScrapFilters({
       <input
         ref={searchInput}
         aria-label="Search scraps"
-        placeholder="search titles, urls, alt text"
+        placeholder="search words, titles, urls"
         value={search}
         onChange={(event) => onSearch(event.target.value)}
         onKeyDown={(event) => {

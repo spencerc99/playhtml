@@ -1371,6 +1371,11 @@ export interface ScrapContentProps {
   onLoad: () => void;
   /** Laid-out tile width, so text-bearing scraps can size themselves to it. */
   tileWidth?: number;
+  /**
+   * Whether dark lettering sits on a light chequer. Only browsed tiles show
+   * it; the Create drawer and a piece placed in a collage leave it off.
+   */
+  letteringChecker?: boolean;
 }
 
 /**
@@ -1482,6 +1487,7 @@ export function ScrapContent({
   onError,
   onLoad,
   tileWidth,
+  letteringChecker = true,
 }: ScrapContentProps) {
   const imageSrc = useScrapImageSrc(
     item.kind === "image" ? item.src : undefined,
@@ -1557,7 +1563,7 @@ export function ScrapContent({
         <ScrapBackdrop
           color={inkBackingFor(item.styles)}
           ink
-          checker={!hasOwnFill(item.styles.backgroundColor)}
+          checker={letteringChecker && !hasOwnFill(item.styles.backgroundColor)}
         >
           <span
             className="scrap-collage__heading"
