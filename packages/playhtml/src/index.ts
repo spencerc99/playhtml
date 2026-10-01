@@ -1022,8 +1022,13 @@ function buildMainProvider(args: {
   mainUpdateCoalescer = coalesceProviderUpdates(yprovider as any);
   if (!flushesUpdatesOnPageHide && typeof window !== "undefined") {
     flushesUpdatesOnPageHide = true;
-    // Send changes still waiting for the next batch before the page goes away.
+    // Send changes still waiting for the next batch before the page goes
+    // away or is hidden; hidden tabs throttle the batch timer for up to a
+    // minute.
     window.addEventListener("pagehide", () => mainUpdateCoalescer?.flush());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") mainUpdateCoalescer?.flush();
+    });
   }
   yprovider.on("error", () => {
     onError?.();
@@ -1638,7 +1643,8 @@ async function initPlayHTMLOnce() {
   lockConfigForBootstrap();
   const host = configuredOptions?.host;
   const cursors = configuredOptions?.cursors ?? {};
-  if (cursors.enabled) await loadCursorModule();
+  // The cursor client downloads while the main socket connects.
+  const cursorModuleLoading = cursors.enabled ? loadCursorModule() : null;
   const inputRoom =
     resolveExplicitRoom() ??
     getDefaultRoom(
@@ -1675,6 +1681,12 @@ async function initPlayHTMLOnce() {
     onError,
     onMessage,
   });
+
+  if (cursorModuleLoading) {
+    await cursorModuleLoading;
+    // A reset while the cursor client downloaded tore this connection down.
+    if (__currentRoomId !== room) return yprovider;
+  }
 
   // Users module owns identity for the lifetime of this playhtml instance —
   // created unconditionally, before the cursor client, so `playhtml.users`

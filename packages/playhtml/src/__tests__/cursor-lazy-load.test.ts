@@ -40,6 +40,8 @@ describe("cursor client lazy loading", () => {
     for (let i = 0; i < 10; i += 1) await new Promise((r) => setTimeout(r, 0));
     expect(cursorModuleRequested).toBe(true);
     expect(initialized).toBe(false);
+    // The main connection opens while the cursor client downloads.
+    expect((globalThis as any).PLAYHTML_TEST_PROVIDERS.length).toBe(1);
 
     releaseCursorModule();
     await initializing;
