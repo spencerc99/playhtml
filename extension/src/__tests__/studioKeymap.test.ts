@@ -119,9 +119,30 @@ describe("modal transforms", () => {
     });
     expect(studioCommandFor(press("r"), rotating)).toBeNull();
     expect(studioCommandFor(press("Backspace"), rotating)).toBeNull();
-    expect(
-      studioCommandFor(press("z", { metaKey: true }), rotating),
-    ).toBeNull();
+  });
+
+  // The studio finishes the running session before it steps. A press left to
+  // the browser would undo the last text typed, such as the drawer's search.
+  it("claims undo and redo while a session is running", () => {
+    for (const mode of ["crop", "cutout", "rotate", "scale"] as const) {
+      const running: KeymapContext = { ...IDLE, mode };
+      expect(
+        studioCommandFor(press("z", { metaKey: true }), running),
+        `${mode} cmd+z`,
+      ).toEqual({ kind: "undo" });
+      expect(
+        studioCommandFor(press("z", { ctrlKey: true }), running),
+        `${mode} ctrl+z`,
+      ).toEqual({ kind: "undo" });
+      expect(
+        studioCommandFor(press("Z", { metaKey: true, shiftKey: true }), running),
+        `${mode} cmd+shift+z`,
+      ).toEqual({ kind: "redo" });
+      expect(
+        studioCommandFor(press("y", { ctrlKey: true }), running),
+        `${mode} ctrl+y`,
+      ).toEqual({ kind: "redo" });
+    }
   });
 
   it("leaves the shift key alone while rotating so snapping can read it", () => {
@@ -474,7 +495,15 @@ describe("turning the collage over", () => {
     ]) {
       expect(studioCommandFor(press(key), BACK), key).toBeNull();
     }
-    for (const key of ["z", "d", "c", "v", "y"]) {
+    // Undo and redo are withheld from the browser, so they cannot reach
+    // back into a field, but they change nothing while the back is read.
+    for (const key of ["z", "y"]) {
+      expect(
+        studioCommandFor(press(key, { metaKey: true }), BACK),
+        `cmd+${key}`,
+      ).toEqual({ kind: "withhold" });
+    }
+    for (const key of ["d", "c", "v"]) {
       expect(
         studioCommandFor(press(key, { metaKey: true }), {
           ...BACK,

@@ -1048,6 +1048,49 @@ export function CollageStudio({
     return () => window.removeEventListener("keydown", onSaveNow);
   }, [flush]);
 
+  /**
+   * Ends a run so the next edit becomes its own undo step. A press that never
+   * travelled was a click, which settles on what its plan chose: the frontmost
+   * piece under the pointer, the deeper one a cmd-click reached, the one piece
+   * a click narrows a group to, or nothing for a click on bare paper.
+   */
+  const endGesture = useCallback((event?: React.PointerEvent) => {
+    const press = pressRef.current;
+    pressRef.current = null;
+    if (
+      event &&
+      press &&
+      !press.moved &&
+      performance.now() - press.downAt <= CLICK_MAX_MS
+    ) {
+      setSelection(press.selectOnClick);
+    }
+    setGesture({ kind: "idle" });
+    setGestureReadout(null);
+    setHistory((current) => endRun(current));
+  }, []);
+
+  /**
+   * Finishes whatever is running so undo and redo step from a settled
+   * arrangement: a crop, cutout or modal transform is kept as it stands, and
+   * a drag stops where it is and no longer follows the pointer.
+   */
+  const finishRunning = useCallback(() => {
+    if (crop) commitCrop();
+    else if (cutoutSession) confirmCutout();
+    else if (transform) confirmTransform();
+    if (gesture.kind !== "idle") endGesture();
+  }, [
+    commitCrop,
+    confirmCutout,
+    confirmTransform,
+    crop,
+    cutoutSession,
+    endGesture,
+    gesture.kind,
+    transform,
+  ]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const command = studioCommandFor(
@@ -1084,10 +1127,14 @@ export function CollageStudio({
           if (clipboard) duplicatePieces(clipboard);
           break;
         case "undo":
+          finishRunning();
           setHistory((current) => undo(current));
           break;
         case "redo":
+          finishRunning();
           setHistory((current) => redo(current));
+          break;
+        case "withhold":
           break;
         case "enterCrop":
           enterCrop();
@@ -1180,6 +1227,7 @@ export function CollageStudio({
     duplicatePieces,
     editPieces,
     enterCrop,
+    finishRunning,
     flipSelection,
     mode,
     multiple,
@@ -1194,28 +1242,6 @@ export function CollageStudio({
     stepSelection,
     turnOver,
   ]);
-
-  /**
-   * Ends a run so the next edit becomes its own undo step. A press that never
-   * travelled was a click, which settles on what its plan chose: the frontmost
-   * piece under the pointer, the deeper one a cmd-click reached, the one piece
-   * a click narrows a group to, or nothing for a click on bare paper.
-   */
-  const endGesture = useCallback((event?: React.PointerEvent) => {
-    const press = pressRef.current;
-    pressRef.current = null;
-    if (
-      event &&
-      press &&
-      !press.moved &&
-      performance.now() - press.downAt <= CLICK_MAX_MS
-    ) {
-      setSelection(press.selectOnClick);
-    }
-    setGesture({ kind: "idle" });
-    setGestureReadout(null);
-    setHistory((current) => endRun(current));
-  }, []);
 
   /**
    * Carries the pieces a move gesture holds to follow the pointer. Shift keeps
@@ -2163,8 +2189,14 @@ export function CollageStudio({
           <StudioTools
             canUndo={!over && canUndo(history)}
             canRedo={!over && canRedo(history)}
-            onUndo={() => setHistory((current) => undo(current))}
-            onRedo={() => setHistory((current) => redo(current))}
+            onUndo={() => {
+              finishRunning();
+              setHistory((current) => undo(current));
+            }}
+            onRedo={() => {
+              finishRunning();
+              setHistory((current) => redo(current));
+            }}
             onBack={leave}
           />
 
