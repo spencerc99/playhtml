@@ -65,7 +65,7 @@ describe('broadcastLiveEvents', () => {
     mockColorRows.length = 0;
   });
 
-  it('forwards cursor, viewport, and keyboard events to the DO', async () => {
+  it('forwards cursor, viewport, keyboard, and navigation events to the DO', async () => {
     const stubFetch = vi.fn(async () => new Response(null, { status: 204 }));
     const ns = fakeNamespace(stubFetch);
     const pid = uniquePid();
@@ -78,6 +78,7 @@ describe('broadcastLiveEvents', () => {
         ev('b', 'navigation', pid),
         ev('c', 'viewport', pid),
         ev('d', 'keyboard', pid),
+        ev('e', 'element', pid),
       ],
       1000,
     );
@@ -85,7 +86,37 @@ describe('broadcastLiveEvents', () => {
     expect(stubFetch).toHaveBeenCalledTimes(1);
     const sentReq = (stubFetch.mock.calls[0] as unknown[])[0] as Request;
     const body = (await sentReq.json()) as { events: CollectionEvent[] };
-    expect(body.events.map((e) => e.id)).toEqual(['a', 'c', 'd']);
+    expect(body.events.map((e) => e.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('projects navigation events to the event kind and a sanitized favicon', async () => {
+    const stubFetch = vi.fn(async () => new Response(null, { status: 204 }));
+    const ns = fakeNamespace(stubFetch);
+    const navigation = {
+      ...ev('nav', 'navigation', uniquePid()),
+      data: {
+        event: 'popstate',
+        url: 'https://example.com/private?token=secret',
+        from_url: 'https://example.com/secret-from',
+        title: 'Private secret title',
+        canonical_url: 'https://example.com/secret-canonical',
+        state: { secret: true },
+        favicon_url: 'https://example.com/favicon.ico?token=secret',
+        quantity: 2,
+      },
+    } as CollectionEvent;
+
+    await broadcastLiveEvents(ns, ENV, [navigation], 1000);
+
+    const sentReq = (stubFetch.mock.calls[0] as unknown[])[0] as Request;
+    const bodyText = await sentReq.text();
+    const body = JSON.parse(bodyText) as { events: CollectionEvent[] };
+    expect(bodyText).not.toContain('secret');
+    expect(body.events[0].data).toEqual({
+      event: 'popstate',
+      quantity: 2,
+      favicon_url: 'https://example.com/favicon.ico',
+    });
   });
 
   it('projects keyboard events to redacted live-only payloads', async () => {
@@ -309,7 +340,7 @@ describe('broadcastLiveEvents', () => {
   it('does nothing when there are no renderable live events', async () => {
     const stubFetch = vi.fn(async () => new Response(null, { status: 204 }));
     const ns = fakeNamespace(stubFetch);
-    await broadcastLiveEvents(ns, ENV, [ev('b', 'navigation')], 1000);
+    await broadcastLiveEvents(ns, ENV, [ev('b', 'element')], 1000);
     expect(stubFetch).not.toHaveBeenCalled();
   });
 

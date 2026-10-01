@@ -464,14 +464,24 @@ describe("ScrapCollage controls", () => {
     expect(kindCount("cursor")).toBe("0");
 
     const typeChip = chip("type");
-    act(() =>
-      container
-        .querySelector<HTMLButtonElement>('[data-scrap-kind="image"]')!
-        .click(),
-    );
-    expect(container.querySelector(".scrap-filters__popover")).toBeNull();
-    expect(document.activeElement).toBe(typeChip);
+    const kindOption = (kind: string) =>
+      container.querySelector<HTMLButtonElement>(
+        `[data-scrap-kind="${kind}"]`,
+      )!;
+    act(() => kindOption("image").click());
+    // Types are a multi-select, so the popover stays open for more picks.
+    expect(
+      container.querySelector(".scrap-filters__popover--type"),
+    ).not.toBeNull();
+    expect(kindOption("image").getAttribute("aria-pressed")).toBe("true");
+    expect(kindOption("all").getAttribute("aria-pressed")).toBe("false");
     expect(typeChip.hasAttribute("data-on")).toBe(true);
+    act(() => kindOption("button").click());
+    expect(kindOption("image").getAttribute("aria-pressed")).toBe("true");
+    expect(kindOption("button").getAttribute("aria-pressed")).toBe("true");
+    expect(typeChip.textContent).toContain("images, buttons");
+    act(() => kindOption("button").click());
+    expect(kindOption("button").getAttribute("aria-pressed")).toBe("false");
 
     act(() => chip("from").click());
     expect(count("are.na")).toBe("1");

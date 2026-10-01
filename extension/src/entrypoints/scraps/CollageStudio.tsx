@@ -88,7 +88,11 @@ import {
 } from "./EditorSwitch";
 import { KeysButton, StudioTools, StudioViews } from "./StudioTools";
 import { FormatControl } from "./FormatControl";
-import { CollageBakeError, bakeCollage } from "./bakeCollage";
+import {
+  CollageBakeError,
+  bakeCollage,
+  bakeCollagePreview,
+} from "./bakeCollage";
 import { bakeCollageBack, resolveBackFavicons } from "./bakeCollageBack";
 import { videoExportSupport } from "./imageAnimation";
 import { useCollageAnimates } from "./useCollageAnimates";
@@ -473,11 +477,9 @@ export function CollageStudio({
       record: { ...draftRef.current.record, updatedAt: Date.now() },
     }),
     bake: () =>
-      bakeCollage({
+      bakeCollagePreview({
         frame: formatOf(draftRef.current.record.format),
         pieces: draftRef.current.record.pieces,
-        paper: draftRef.current.record.paper.color,
-        grain: draftRef.current.record.paper.grain,
       }),
     store: saveCollage,
     onStored: (record) => {
@@ -951,12 +953,7 @@ export function CollageStudio({
     if (lastPreview && standingKind === "saved") return;
     if (standingKind === "saving") return;
     let cancelled = false;
-    bakeCollage({
-      frame,
-      pieces,
-      paper: paper.color,
-      grain: paper.grain,
-    })
+    bakeCollagePreview({ frame, pieces })
       .then((baked) => {
         if (!cancelled) setBleed(baked);
       })
@@ -976,7 +973,7 @@ export function CollageStudio({
     return () => {
       cancelled = true;
     };
-  }, [frame, lastPreview, over, paper.color, paper.grain, pieces, standingKind]);
+  }, [frame, lastPreview, over, pieces, standingKind]);
 
   const stepSelection = useCallback(
     (direction: 1 | -1) => {

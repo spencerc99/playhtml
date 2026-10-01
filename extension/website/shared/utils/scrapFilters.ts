@@ -44,7 +44,7 @@ export function matchesScrapFilters(
     ]),
     item.kind === "image"
       ? (item.alt ?? "")
-      : item.kind === "button"
+      : item.kind === "button" || item.kind === "heading"
         ? item.text
         : "",
   ]
