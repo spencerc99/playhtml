@@ -138,4 +138,75 @@ describe("deepReplaceIntoProxy", () => {
     first.destroy();
     second.destroy();
   });
+
+  function forkStore(doc: Y.Doc) {
+    const fork = new Y.Doc();
+    Y.applyUpdate(fork, Y.encodeStateAsUpdate(doc));
+    const forkStore = syncedStore<{ value: Record<string, any> }>(
+      { value: {} },
+      fork,
+    );
+    return { fork, forkStore };
+  }
+
+  function exchange(a: Y.Doc, b: Y.Doc) {
+    Y.applyUpdate(a, Y.encodeStateAsUpdate(b));
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
+  }
+
+  test("a concurrent reorder never moves another person's edit onto a different item", () => {
+    const initial = [
+      { id: "x", votes: 0 },
+      { id: "y", votes: 0 },
+    ];
+    const { doc: sorter, store: sorterStore } = listStore(initial);
+    const { fork: voter, forkStore: voterStore } = forkStore(sorter);
+
+    sorter.transact(() =>
+      deepReplaceIntoProxy(sorterStore.value, { list: [initial[1], initial[0]] }),
+    );
+    voter.transact(() =>
+      deepReplaceIntoProxy(voterStore.value, {
+        list: [{ id: "x", votes: 1 }, initial[1]],
+      }),
+    );
+    exchange(sorter, voter);
+
+    for (const list of [sorterStore.value.list, voterStore.value.list]) {
+      const y = list.find((item: any) => item.id === "y");
+      expect(y).toEqual({ id: "y", votes: 0 });
+    }
+    expect(sorterStore.value.list).toEqual(voterStore.value.list);
+    sorter.destroy();
+    voter.destroy();
+  });
+
+  test("reordered items without ids are replaced, not rewritten field by field", () => {
+    const { doc, store } = listStore([{ name: "a" }, { name: "b" }]);
+    const first = getYjsValue(store.value.list[0]);
+
+    doc.transact(() =>
+      deepReplaceIntoProxy(store.value, { list: [{ name: "b" }, { name: "a" }] }),
+    );
+
+    expect(store.value.list).toEqual([{ name: "b" }, { name: "a" }]);
+    expect(getYjsValue(store.value.list[0])).not.toBe(first);
+    doc.destroy();
+  });
+
+  test("a single changed item without an id is still edited in place", () => {
+    const { doc, store } = listStore([{ name: "a", n: 1 }, { name: "b", n: 1 }]);
+    const second = getYjsValue(store.value.list[1]);
+
+    doc.transact(() =>
+      deepReplaceIntoProxy(store.value, {
+        list: [{ name: "a", n: 1 }, { name: "b", n: 2 }],
+      }),
+    );
+
+    expect(getYjsValue(store.value.list[1])).toBe(second);
+    expect(store.value.list[1]).toEqual({ name: "b", n: 2 });
+    doc.destroy();
+  });
 });
+
