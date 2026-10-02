@@ -64,6 +64,7 @@ import { useCollageAutosave, type CollageDraft } from "../useCollageAutosave";
 import type { SaveStanding } from "../autosaveSchedule";
 import { ScrapPieceShapeUtil } from "./ScrapPieceShapeUtil";
 import { TLDRAW_ASSET_URLS } from "./tldrawAssetUrls";
+import { collageExportName } from "../collageFile";
 import {
   SCRAP_PIECE_TYPE,
   imageAssetFor,
@@ -647,7 +648,7 @@ export default function TldrawCollageStudio({
     if (pieces.length === 0) return;
     setExporting(true);
     setNotice(null);
-    const name = title.trim() || "collage";
+    const name = collageExportName(title);
     try {
       const front = await bakeCollage({ frame, pieces, paper: paper.color, grain: paper.grain });
       const back = await bakeCollageBack({
@@ -683,7 +684,7 @@ export default function TldrawCollageStudio({
         grain: paper.grain,
         onProgress: (done, total) => setVideoProgress(done / total),
       });
-      saveFile(video, `${title.trim() || "untitled collage"}.mp4`);
+      saveFile(video, `${collageExportName(title)}.mp4`);
     } catch (error) {
       setNotice({ tone: "problem", text: failure("mp4", error) });
     } finally {

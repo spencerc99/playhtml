@@ -6,6 +6,7 @@ import { Blob as NodeBlob } from "node:buffer";
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import {
   CollageFileError,
+  collageExportName,
   collageFileName,
   encodeCollageFile,
   importCollageFile,
@@ -121,6 +122,22 @@ describe("encodeCollageFile", () => {
   it("names the file after the collage, or as untitled", () => {
     expect(collageFileName("  a walk  ")).toBe("a walk.collage.json");
     expect(collageFileName("   ")).toBe("untitled collage.collage.json");
+  });
+});
+
+describe("collageExportName", () => {
+  const day = new Date(2026, 9, 1, 23, 30);
+
+  it("names the project, the title, and the local day", () => {
+    expect(collageExportName("  a walk  ", day)).toBe(
+      "we were online - a walk - 2026-10-01",
+    );
+  });
+
+  it("names an untitled collage plainly", () => {
+    expect(collageExportName("   ", day)).toBe(
+      "we were online - collage - 2026-10-01",
+    );
   });
 });
 
