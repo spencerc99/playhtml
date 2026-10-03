@@ -78,6 +78,9 @@ export default defineContentScript({
       // The extension's own playhtml instance, lazily inited. Shared between the
       // cursor-site path and the headless every-page path for social experiments.
       private playhtmlInstance: typeof import("playhtml").playhtml | null = null;
+      // Whether the page runs its own playhtml, resolved once per page so the
+      // presence path and the social-experiment path share one detection wait.
+      private nativePlayhtmlDetection: Promise<boolean> | null = null;
 
       async init() {
         if (this.isInitialized) return;
@@ -939,6 +942,17 @@ export default defineContentScript({
         );
       }
 
+      // Checks for the page's own playhtml, waiting briefly because on dev
+      // servers (Vite) page scripts may load after our content script.
+      // Memoized: must run before the extension inits its own playhtml, which
+      // sets the same DOM marker.
+      private detectNativePlayhtml(): Promise<boolean> {
+        this.nativePlayhtmlDetection ??= this.hasNativePlayhtml()
+          ? Promise.resolve(true)
+          : this.waitForNativePlayhtml(1500);
+        return this.nativePlayhtmlDetection;
+      }
+
       private waitForNativePlayhtml(timeoutMs: number): Promise<boolean> {
         return new Promise((resolve) => {
           const observer = new MutationObserver(() => {
@@ -1008,7 +1022,7 @@ export default defineContentScript({
 
       /**
        * Initialize social experiments (bottles, …) on this page. They run on
-       * every page, independent of cursor support and native playhtml. When no
+       * every page without its own playhtml, independent of cursor support. When no
        * experiment is active we open no connection at all. If the extension
        * hasn't already inited playhtml (cursor-site path), spin up a headless
        * instance (cursors off) so experiments have a createPageData handle.
@@ -1022,7 +1036,14 @@ export default defineContentScript({
         if (!(await anyGlobalFeatureActive())) return;
 
         if (!this.playhtmlInstance) {
-          // No instance yet (normal or native-playhtml page): stand up our own,
+          // Skip pages that run their own playhtml. A second playhtml instance
+          // shares the page DOM even from the isolated world: init() adopts
+          // every capability element (can-move, can-toggle, …) into our room
+          // and resets them to that room's empty data, so the site's elements
+          // jump to their defaults.
+          if (await this.detectNativePlayhtml()) return;
+
+          // No instance yet on a page without playhtml: stand up our own,
           // in an extension-owned room isolated from any site's playhtml room so
           // WWO data can't be read/written by the host site. The room is
           // auto-prefixed with the page host; we add a `wwo` segment; the room
@@ -1098,18 +1119,8 @@ export default defineContentScript({
         // page's instance (we only inject our identity). We don't stand up our
         // own cursor instance here — but bottles still get one later via
         // ensureGlobalFeatures, in their own extension-owned room.
-        if (this.hasNativePlayhtml()) {
-          console.log("[we-were-online] Native playhtml detected at startup");
-          this.injectIdentityIntoMainWorld();
-          this.listenForPresenceCount();
-          return;
-        }
-
-        // Race condition: on dev servers (Vite), page scripts may load after
-        // our content script. Wait briefly for the data-playhtml marker or
-        // cursor styles to appear before initializing our own instance.
-        if (await this.waitForNativePlayhtml(1500)) {
-          console.log("[we-were-online] Native playhtml detected after waiting");
+        if (await this.detectNativePlayhtml()) {
+          console.log("[we-were-online] Native playhtml detected");
           this.injectIdentityIntoMainWorld();
           this.listenForPresenceCount();
           return;
