@@ -395,6 +395,27 @@ export function buildTapeGroup(
   return grp;
 }
 
+/** Does segment p1→p2 cross (or start/end inside) the rect? */
+export function segmentCrossesRect(
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  r: DOMRect,
+): boolean {
+  const inside = (p: { x: number; y: number }) =>
+    p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
+  if (inside(p1) || inside(p2)) return true;
+  const corners = [
+    { x: r.left, y: r.top },
+    { x: r.right, y: r.top },
+    { x: r.right, y: r.bottom },
+    { x: r.left, y: r.bottom },
+  ];
+  for (let i = 0; i < 4; i++) {
+    if (segmentCross(p1, p2, corners[i], corners[(i + 1) % 4])) return true;
+  }
+  return false;
+}
+
 /** The four viewport edges as [x1,y1,x2,y2] segments, for the armed glow. */
 export function edgeSegments(): Array<[number, number, number, number]> {
   const W = vw(),
