@@ -37,6 +37,24 @@ export function normalizeUrl(url: string): string {
 }
 
 /**
+ * Strip the query string and hash fragment from a URL before it leaves the
+ * device (e.g. upload to the shared worker). Unlike `normalizeUrl`, this
+ * preserves protocol/host/path casing exactly — it exists purely to drop
+ * potentially sensitive query params (search terms, order IDs, tokens) and
+ * fragments, not to canonicalize for matching.
+ */
+export function stripQueryAndFragment(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
  * Extract domain from URL, removing www prefix
  *
  * Examples:
