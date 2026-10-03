@@ -1,5 +1,11 @@
 # @playhtml/extension
 
+## 0.1.26 (2026-10-03)
+
+- Internet scraps opens faster with large collections while search and filters still find older scraps.
+- Notices in the popup now go away once you open them, and on their own after a few views.
+
+
 ## 0.1.25 (2026-09-24)
 
 - You can turn off milestone popups in Browser settings.
