@@ -414,6 +414,8 @@ export interface FreeLayoutOptions extends PieceRules {
   spreadRounds: number;
   /** "gather" piles pieces around the heroes; "pack" fits them snugly edge to edge. */
   arrangement: "layered" | "gather" | "pack";
+  /** Lay the backgrounds as a wallpaper behind the gathered and packed arrangements too. */
+  wallpaper: boolean;
   /** Layered: how many images tile the wallpaper behind everything. */
   wallpaperTiles: number;
   /** Layered: the most times one accent repeats in its little row or grid. */
@@ -433,11 +435,25 @@ const PACK_COLUMNS = 220;
 
 
 export function freeLayout(casting: Casting, frame: Frame, options: FreeLayoutOptions): PackedLayout {
-  const { cast } = casting;
+  if (options.arrangement === "layered") return layeredFree(casting.cast, frame, options);
+  if (!options.wallpaper) return arrangeFree(casting.cast, frame, options);
+  // Backgrounds go behind as a wallpaper; the arrangement places everything else on top.
+  const wall = wallpaperOf(casting.cast, frame, options);
+  // Pieces on top cover only part of the canvas, so the wallpaper shows through.
+  const rest = arrangeFree(casting.cast.filter((m) => !wall.ids.has(m.item.scrap.id)), frame, { ...options, density: options.layeredDensity });
+  return {
+    ...rest,
+    placements: [
+      ...wall.placements,
+      ...rest.placements.map((placement) => ({ ...placement, z: placement.z + wall.placements.length })),
+    ],
+  };
+}
+
+function arrangeFree(cast: Cast[], frame: Frame, options: FreeLayoutOptions): PackedLayout {
   const { sizing, seed } = options;
   const short = Math.min(frame.width, frame.height);
   if (options.arrangement === "pack") return packFree(cast, frame, options);
-  if (options.arrangement === "layered") return layeredFree(cast, frame, options);
   const clamp = (center: { x: number; y: number }, box: { width: number; height: number }) => ({
     x: Math.max(box.width * 0.3, Math.min(frame.width - box.width * 0.3, center.x)),
     y: Math.max(box.height * 0.3, Math.min(frame.height - box.height * 0.3, center.y)),
@@ -491,10 +507,12 @@ export function freeLayout(casting: Casting, frame: Frame, options: FreeLayoutOp
       const at = centers.get(anchor.item.scrap.id) as { x: number; y: number };
       const anchorBox = boxes.get(anchor.item.scrap.id) as { width: number; height: number };
       const angle = own() * Math.PI * 2;
-      const reach = (Math.hypot(anchorBox.width, anchorBox.height) + Math.hypot(box.width, box.height)) * 0.38 * (0.8 + own() * 0.8);
+      // Clusters reach well out from their hero, so together they span the
+      // canvas instead of piling up between the heroes.
+      const reach = Math.hypot(anchorBox.width, anchorBox.height) * 0.35 + Math.pow(own(), 0.7) * 0.55 * short;
       center = clamp({ x: at.x + Math.cos(angle) * reach, y: at.y + Math.sin(angle) * reach }, box);
       say(member, why);
-      say(member, `position: supporting -> gathered around ${anchor.role} "${(anchor.item.scrap.alt || anchor.item.scrap.pageTitle).slice(0, 40)}", random angle`);
+      say(member, `position: supporting -> clustered around ${anchor.role} "${(anchor.item.scrap.alt || anchor.item.scrap.pageTitle).slice(0, 40)}", random angle`);
     } else {
       center = clamp({ x: own() * frame.width, y: own() * frame.height }, box);
       say(member, why);
@@ -695,19 +713,13 @@ const MIN_WALLPAPER = 3;
 const REPEAT_PATTERNS = ["row", "column", "grid"] as const;
 
 /**
- * The layered collage, after collages that start from a full-bleed
- * wallpaper of photos, set a few big cut-out heroes on top, pack supporting
- * pieces around them, and scatter small accents, each repeated like a
- * sticker sheet.
+ * The wallpaper: every background Clef found, strongest getting the most
+ * room, laid edge to edge. Supporting pieces top it up only when there are
+ * too few backgrounds to cover the canvas.
  */
-function layeredFree(cast: Cast[], frame: Frame, options: FreeLayoutOptions): PackedLayout {
-  const { seed, sizing } = options;
+function wallpaperOf(cast: Cast[], frame: Frame, options: FreeLayoutOptions): { placements: Placement[]; ids: Set<string> } {
+  const { seed } = options;
   const random = seededRandom(seed ^ 0x1a7e);
-  const short = Math.min(frame.width, frame.height);
-
-  // 1. Wallpaper: every background Clef found, strongest getting the most
-  // room, laid edge to edge. Supporting pieces top it up only when there are
-  // too few backgrounds to cover the canvas.
   const byBackground = (a: Cast, b: Cast) =>
     (b.item.answers.role.probabilities.background ?? 0) - (a.item.answers.role.probabilities.background ?? 0);
   const backgrounds = cast.filter((m) => m.role === "background").sort(byBackground).slice(0, options.wallpaperTiles);
@@ -753,6 +765,24 @@ function layeredFree(cast: Cast[], frame: Frame, options: FreeLayoutOptions): Pa
       ],
     };
   });
+
+  return { placements: wallpaper, ids: wallIds };
+}
+
+/**
+ * The layered collage, after collages that start from a full-bleed
+ * wallpaper of photos, set a few big cut-out heroes on top, pack supporting
+ * pieces around them, and scatter small accents, each repeated like a
+ * sticker sheet.
+ */
+function layeredFree(cast: Cast[], frame: Frame, options: FreeLayoutOptions): PackedLayout {
+  const { seed, sizing } = options;
+  const short = Math.min(frame.width, frame.height);
+
+  // 1. Wallpaper.
+  const wall = wallpaperOf(cast, frame, options);
+  const wallpaper = wall.placements;
+  const wallIds = wall.ids;
 
   // 2 and 3. Heroes on the composition template, supporting pieces packed
   // snugly around them, leaving some wallpaper showing.
@@ -910,6 +940,26 @@ function cleanShape(base: ShapeMask, options: ShapeLayoutOptions): ShapeMask {
     mask = mask.map((value, i) => (value > 0 || !touchesBorder[label[i]] ? 255 : 0));
   }
   return { mask, width, height };
+}
+
+/**
+ * How fillable a silhouette is, from 0 to 1: its thickest point relative to
+ * its size. A ladder or a wire outline scores low, a teapot high.
+ */
+export function silhouetteThickness(base: ShapeMask): number {
+  const distance = distanceInside(base);
+  let deepest = 0;
+  let minX = base.width, minY = base.height, maxX = -1, maxY = -1;
+  for (let i = 0; i < base.mask.length; i += 1) {
+    if (base.mask[i] === 0) continue;
+    deepest = Math.max(deepest, distance[i]);
+    const x = i % base.width;
+    const y = Math.floor(i / base.width);
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  }
+  if (maxX < 0) return 0;
+  return Math.min(1, deepest / (Math.min(maxX - minX + 1, maxY - minY + 1) / 2));
 }
 
 /** Distance in pixels from each inside pixel to the nearest outside pixel (chamfer approximation). */

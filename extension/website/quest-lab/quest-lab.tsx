@@ -32,6 +32,7 @@ import {
   hashId,
   seededRandom,
   shapeLayout,
+  silhouetteThickness,
   type Frame,
   type Judged,
   type Placement,
@@ -411,6 +412,7 @@ function App() {
   const [accentRepeats, setAccentRepeats] = useRemembered("accentRepeats", 4);
   const [layeredSupporting, setLayeredSupporting] = useRemembered("layeredSupporting", 24);
   const [layeredDensity, setLayeredDensity] = useRemembered("layeredDensity", 0.4);
+  const [wallpaperEverywhere, setWallpaperEverywhere] = useRemembered("wallpaperEverywhere", true);
   const sizing: RoleSizing = useMemo(
     () => ({ heroCount, heroSide, accentSide, contrast }),
     [heroCount, heroSide, accentSide, contrast],
@@ -589,19 +591,32 @@ function App() {
     () => [...judged].sort((a, b) => baseRank(b.answers) - baseRank(a.answers)),
     [judged],
   );
-  const baseId = quest ? baseByQuest[quest.id] ?? ranked[0]?.scrap.id : undefined;
-  const base = judged.find((item) => item.scrap.id === baseId);
+  const pickedBase = quest ? judged.find((item) => item.scrap.id === baseByQuest[quest.id]) : undefined;
 
-  // Cutouts are made only where they are seen: the top base candidates, the
-  // base itself, and pieces Clef wants cut out.
+  // Cutouts are made only where they are seen: the top base candidates, a
+  // picked base, and pieces Clef wants cut out.
   const cutoutTargets = useMemo(() => {
     const wanted = new Map<string, ImageScrap>();
     for (const { scrap } of ranked.slice(0, 24)) wanted.set(scrap.id, scrap);
-    if (base) wanted.set(base.scrap.id, base.scrap);
+    if (pickedBase) wanted.set(pickedBase.scrap.id, pickedBase.scrap);
     for (const { scrap, answers: a } of judged) if (cutAll || a.cutout.noul >= cutoutThreshold) wanted.set(scrap.id, scrap);
     return [...wanted.values()];
-  }, [ranked, base, judged, cutoutThreshold, cutAll]);
+  }, [ranked, pickedBase, judged, cutoutThreshold, cutAll]);
   const allCutouts = useCutouts(cutoutTargets, toleranceFor);
+  const thickness = useMemo(
+    () => new Map([...allCutouts].map(([id, cut]) => [id, silhouetteThickness(cut)])),
+    [allCutouts],
+  );
+  /** Clef's base rank, discounted for outlines too thin to fill, like a ladder or a wire. */
+  const fillableRank = useCallback(
+    (item: Judged) => baseRank(item.answers) * Math.min(1, Math.max(0.15, (thickness.get(item.scrap.id) ?? 0.4) / 0.4)),
+    [thickness],
+  );
+  // By default the base is the best fillable outline among Clef's top picks.
+  const base =
+    pickedBase ??
+    ranked.slice(0, 8).reduce<Judged | undefined>((best, item) => (!best || fillableRank(item) > fillableRank(best) ? item : best), undefined);
+  const baseId = base?.scrap.id;
   const frame = frameOf(format);
 
   const settledJudged = useSettled(judged, 800);
@@ -622,8 +637,8 @@ function App() {
   );
   const baseCutout = base ? allCutouts.get(base.scrap.id) : undefined;
   const freeOptions = useMemo(
-    () => ({ ...rules, seed, density, spreadRounds, sizing, outlineOf, visibleShare, gap, wallpaperTiles, accentRepeats, layeredSupporting, layeredDensity }),
-    [rules, seed, density, spreadRounds, sizing, outlineOf, visibleShare, gap, wallpaperTiles, accentRepeats, layeredSupporting, layeredDensity],
+    () => ({ ...rules, seed, density, spreadRounds, sizing, outlineOf, visibleShare, gap, wallpaperTiles, accentRepeats, layeredSupporting, layeredDensity, wallpaper: wallpaperEverywhere }),
+    [rules, seed, density, spreadRounds, sizing, outlineOf, visibleShare, gap, wallpaperTiles, accentRepeats, layeredSupporting, layeredDensity, wallpaperEverywhere],
   );
   const shapeOptions = useMemo(
     () => ({ ...rules, visibleShare, outlineOf, gap, seed, fill, packFill, tries: 60, largestPartOnly, fillHoles, inset, sizing }),
@@ -882,12 +897,16 @@ function App() {
                         ))}
                       </select>
                     </label>
-                    <Slider label="density" value={density} min={0.3} max={2.5} step={0.1} onChange={setDensity} />
+                    <Slider label="density (no wallpaper)" value={density} min={0.3} max={2.5} step={0.1} onChange={setDensity} />
                     <Slider label="spread (gathered only)" value={spreadRounds} min={0} max={60} step={2} onChange={setSpreadRounds} />
-                    <Slider label="background images in the wallpaper, at most (layered)" value={wallpaperTiles} min={0} max={30} step={1} onChange={setWallpaperTiles} />
+                    <label className="check">
+                      <input type="checkbox" checked={wallpaperEverywhere} onChange={(e) => setWallpaperEverywhere(e.target.checked)} />
+                      wallpaper of backgrounds behind packed and gathered too
+                    </label>
+                    <Slider label="background images in the wallpaper, at most" value={wallpaperTiles} min={0} max={30} step={1} onChange={setWallpaperTiles} />
                     <Slider label="accent repeats, at most (layered)" value={accentRepeats} min={1} max={9} step={1} onChange={setAccentRepeats} />
                     <Slider label="supporting pieces on top (layered)" value={layeredSupporting} min={0} max={200} step={2} onChange={setLayeredSupporting} />
-                    <Slider label="area pieces cover (layered)" value={layeredDensity} min={0.1} max={1.2} step={0.05} onChange={setLayeredDensity} />
+                    <Slider label="area pieces on top of the wallpaper cover" value={layeredDensity} min={0.1} max={1.2} step={0.05} onChange={setLayeredDensity} />
                   </fieldset>
                   <fieldset>
                     <legend>inside the shape</legend>
@@ -926,6 +945,9 @@ function App() {
                           <span className="muted">{scrap.domain} · {IMAGE_KINDS[a.kind.choice as keyof typeof IMAGE_KINDS] ?? a.kind.choice}</span>
                         </div>
                         <Bar label="silhouette" value={a.silhouette.score} max={4} />
+                        {thickness.has(scrap.id) && (
+                          <Bar label="fillable" value={thickness.get(scrap.id) as number} hint="how thick the outline is at its widest; thin shapes like ladders are hard to fill" />
+                        )}
                         <Bar label="isolated" value={a.isolated.noul} />
                         <Bar label="fits the quest" value={a.questFit.score} max={3} />
                         {cut && <Bar label="edge cut kept" value={cut.keptShare} hint="share of pixels the editor's edge cut keeps; 1.00 means it removed nothing" />}
