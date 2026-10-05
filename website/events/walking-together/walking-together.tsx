@@ -438,7 +438,13 @@ const StageSwitch = withSharedState(
           <URLChat />
           <GroupActivityDisplay />
         </div>
-        {stage === "collage" && <CollageStage />}
+        {/* Mounted for the whole session, not only during the collage stage:
+         * an element first registered by several clients at the same moment
+         * (as everyone would when the stage flips) can each seed their own
+         * copy of its shared data, and only one copy survives the merge. */}
+        {session.hasCollageStage && (
+          <CollageStage active={stage === "collage"} />
+        )}
         <RosterAdmin />
       </div>
     );

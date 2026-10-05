@@ -1,0 +1,264 @@
+// ABOUTME: Styles for the shared table collage: a grained paper table and paper-ish scraps.
+// ABOUTME: Texture and shadows stay subtle so the scraps carry the page.
+
+$mono-font: "Cousine", "Courier", monospace;
+$ink: #3d3833;
+$ink-muted: #8a8279;
+$paper: #f4efe6;
+
+// Fine fractal grain, multiplied over the paper tone. Same recipe as the
+// scraps page grain, eased off so it reads as texture rather than speckle.
+$grain: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.24 0 0 0 0 0.22 0 0 0 0 0.2 0 0 0 1.2 -0.55'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
+
+.collage-stage {
+  position: absolute;
+  inset: 0;
+  display: block;
+  z-index: 5;
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+.collage-table {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background-color: $paper;
+  background-image: $grain;
+  font-family: $mono-font;
+  color: $ink;
+  touch-action: none;
+  transition: box-shadow 160ms ease;
+
+  &--drop {
+    box-shadow: inset 0 0 0 3px rgba(74, 154, 138, 0.35);
+  }
+}
+
+.collage-template {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+
+  polygon,
+  line {
+    fill: rgba(61, 56, 51, 0.03);
+    stroke: rgba(61, 56, 51, 0.35);
+    stroke-width: 1.5;
+    stroke-dasharray: 2 7;
+    stroke-linecap: round;
+  }
+
+  circle {
+    opacity: 0.45;
+  }
+}
+
+.collage-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  font-size: 13px;
+  color: $ink-muted;
+  pointer-events: none;
+  text-align: center;
+}
+
+.collage-piece {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.collage-piece__paper {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  cursor: grab;
+  transform-origin: center;
+  // Soft, close shadow: a scrap resting on the table, not floating above it.
+  filter: drop-shadow(0 1px 1px rgba(61, 56, 51, 0.18))
+    drop-shadow(0 3px 6px rgba(61, 56, 51, 0.1));
+  transition: filter 160ms ease;
+
+  img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  &:hover {
+    filter: drop-shadow(0 2px 2px rgba(61, 56, 51, 0.2))
+      drop-shadow(0 8px 12px rgba(61, 56, 51, 0.14));
+  }
+}
+
+.collage-table--locked .collage-piece__paper {
+  cursor: default;
+}
+
+.collage-piece--active .collage-piece__paper,
+.collage-piece--remote .collage-piece__paper {
+  cursor: grabbing;
+  filter: drop-shadow(0 3px 3px rgba(61, 56, 51, 0.2))
+    drop-shadow(0 12px 16px rgba(61, 56, 51, 0.16));
+}
+
+// A scrap whose image would not load: a torn slip with the site it came from.
+.collage-piece__torn {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #e9e1d2;
+  background-image: $grain;
+  clip-path: polygon(
+    0% 3%, 8% 0%, 17% 2%, 26% 0%, 37% 3%, 48% 1%, 59% 3%, 70% 0%, 81% 2%,
+    92% 0%, 100% 3%, 98% 15%, 100% 28%, 97% 41%, 100% 54%, 98% 67%, 100% 80%,
+    97% 92%, 100% 100%, 89% 97%, 78% 100%, 66% 98%, 55% 100%, 43% 97%,
+    31% 100%, 20% 98%, 9% 100%, 0% 97%, 2% 85%, 0% 72%, 3% 59%, 0% 46%,
+    2% 33%, 0% 20%
+  );
+
+  span {
+    max-width: 85%;
+    font-size: 11px;
+    color: #6f665c;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+// One corner handle that turns and resizes together. Shown on hover only.
+.collage-piece__handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fffdf8;
+  border: 1px solid rgba(61, 56, 51, 0.45);
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.collage-piece__remove {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(61, 56, 51, 0.3);
+  background: #fffdf8;
+  color: $ink;
+  font-family: $mono-font;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+
+  &:hover {
+    background: #fff;
+  }
+}
+
+.collage-piece__paper:hover,
+.collage-piece--active .collage-piece__paper {
+  .collage-piece__handle,
+  .collage-piece__remove {
+    opacity: 1;
+  }
+}
+
+// Who placed a scrap and where it came from, kept upright under the scrap.
+.collage-piece__label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 0.6em;
+  padding: 2px 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  background: rgba(255, 253, 248, 0.92);
+  border: 1px solid rgba(61, 56, 51, 0.12);
+  pointer-events: none;
+}
+
+.collage-piece__domain {
+  color: $ink-muted;
+}
+
+.collage-toolbar {
+  position: fixed;
+  left: 1em;
+  bottom: 1em;
+  z-index: 100000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35em;
+  font-size: 11px;
+
+  form {
+    display: flex;
+    gap: 0.35em;
+  }
+
+  input {
+    width: 16em;
+    padding: 4px 6px;
+    font-family: $mono-font;
+    font-size: 11px;
+    background: rgba(255, 253, 248, 0.9);
+    border: 1px solid rgba(61, 56, 51, 0.2);
+  }
+
+  button {
+    padding: 4px 8px;
+    font-family: $mono-font;
+    font-size: 11px;
+  }
+}
+
+.collage-toolbar__note {
+  color: $ink-muted;
+}
+
+.collage-admin {
+  position: fixed;
+  right: 1em;
+  bottom: 3em;
+  z-index: 100000;
+  display: flex;
+  gap: 0.35em;
+
+  button {
+    padding: 2px 6px;
+    font-family: $mono-font;
+    font-size: 10px;
+    opacity: 0.55;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+}

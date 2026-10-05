@@ -272,13 +272,3 @@ input {
     opacity: 0.8;
   }
 }
-
-.collage-stage {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-family: $mono-font;
-}
