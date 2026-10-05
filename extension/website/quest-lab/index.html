@@ -132,6 +132,37 @@
       .focus { margin-bottom: 24px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
       .focus-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
       .focus .collage { max-width: none; }
+      .role-badge {
+        display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;
+        color: #fff; background: var(--muted); vertical-align: 1px;
+      }
+      .role-hero { --role: var(--rust); }
+      .role-background { --role: #5b8db8; }
+      .role-supporting { --role: #8a8279; }
+      .role-accent { --role: #d4b85c; }
+      .role-failed-to-load, .role-not-used { --role: #c9c1b6; }
+      .role-badge[class*="role-"] { background: var(--role); }
+      .role-filter { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+      .role-filter button { display: flex; align-items: center; gap: 4px; }
+      .role-group { margin-bottom: 18px; }
+      .role-group h3 { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+      .scrap-grid figure[class*="role-"] { border: 2px solid var(--role); }
+      .scrap-grid figure.role-not-used { opacity: 0.4; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+      .card {
+        background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 8px;
+        display: flex; flex-direction: column; gap: 5px; min-width: 0;
+      }
+      .card[class*="role-"] { border: 2px solid var(--role); }
+      .card.chosen { box-shadow: 0 0 0 3px var(--teal); }
+      .card.dimmed { opacity: 0.45; }
+      .card .pair { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 110px; gap: 6px; height: 110px; overflow: hidden; }
+      .card .pair.single { grid-template-columns: 1fr; }
+      .card .pair img { width: 100%; height: 110px; min-height: 0; object-fit: contain; background: var(--surface); border-radius: 4px; }
+      .card .pair .sil { background: #fff; }
+      .card .meta { font-size: 12px; display: flex; flex-direction: column; overflow-wrap: anywhere; }
+      .card .meta b { font-family: "Martian Mono", monospace; font-weight: 400; }
+      .card-actions { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: auto; }
       @media (max-width: 800px) {
         .body { grid-template-columns: 1fr; }
         aside { max-height: none; border-right: 0; border-bottom: 1px solid var(--line); }

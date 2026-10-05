@@ -40,7 +40,7 @@ import {
 } from "./layouts";
 
 type ClefModel = "clef-flash" | "clef";
-const TABS = ["scraps", "base", "compare"] as const;
+const TABS = ["scraps", "compare"] as const;
 type Tab = (typeof TABS)[number];
 
 /** Every layout style the compare view can show, each a row of its own. */
@@ -294,6 +294,14 @@ function CollageCanvas({
   );
 }
 
+/** Roles in the order the scraps tab groups them. */
+const ROLE_ORDER = ["hero", "background", "supporting", "accent"] as const;
+type RoleName = (typeof ROLE_ORDER)[number];
+
+function RoleBadge({ role }: { role: RoleName | "failed to load" | "not used" }) {
+  return <span className={`role-badge role-${role.replace(/ /g, "-")}`}>{role}</span>;
+}
+
 function Json({ value }: { value: unknown }) {
   return <pre className="json">{JSON.stringify(value, null, 2)}</pre>;
 }
@@ -393,7 +401,7 @@ function App() {
   const [maxPieces, setMaxPieces] = useRemembered("maxPieces", 40);
   const [useAll, setUseAll] = useRemembered("useAll", true);
   const [storedTab, setTab] = useRemembered<string>("tab", "compare");
-  const tab: Tab = (TABS as readonly string[]).includes(storedTab) ? (storedTab as Tab) : "compare";
+  const tab: Tab = storedTab === "base" ? "scraps" : (TABS as readonly string[]).includes(storedTab) ? (storedTab as Tab) : "compare";
   const [format, setFormat] = useRemembered<CollageFormatName>("format", "postcard");
   const [seed, setSeed] = useState(1);
   const [density, setDensity] = useRemembered("density", 1.1);
@@ -424,7 +432,7 @@ function App() {
     () => ({ heroCount, heroSide, accentSide, contrast }),
     [heroCount, heroSide, accentSide, contrast],
   );
-  const [basesShown, setBasesShown] = useState(40);
+  const [openCards, setOpenCards] = useState(new Set<string>());
   const [baseByQuest, setBaseByQuest] = useRemembered<Record<string, string>>("bases", {});
   const [defaultTolerance, setDefaultTolerance] = useRemembered("tolerance", DEFAULT_CUTOUT_TOLERANCE);
   const [tolerances, setTolerances] = useRemembered<Record<string, number>>("tolerances", {});
@@ -636,6 +644,7 @@ function App() {
   const settledJudged = useSettled(judged, 800);
   const settledRandom = useSettled(judgedRandom, 800);
   const casting = useMemo(() => castRoles(settledJudged, sizing, contest), [settledJudged, sizing, contest]);
+  const roleOfScrap = useMemo(() => new Map(casting.cast.map((m) => [m.item.scrap.id, m.role])), [casting]);
   const settledCutouts = useSettled(allCutouts, 800);
   const outlineOf = useCallback(
     (scrap: ImageScrap) => {
@@ -712,6 +721,100 @@ function App() {
     baseCutout && baseCutout.keptShare === 0
       ? "The base shape's cutout removed the whole image. Lower its cutout edge in base shapes, or pick another base."
       : "Pick a base shape in the base shapes tab (its cutout is still loading, or none is chosen).";
+
+  /**
+   * One scrap as a card. It starts as just the image and fills in as Clef's
+   * answers and the cut-out arrive; its base-shape scores open on demand.
+   */
+  const scrapCard = (scrap: ImageScrap, expanded: boolean, dimmed = false) => {
+    const a = answers.get(scrap.id);
+    const cut = allCutouts.get(scrap.id);
+    const role = roleOfScrap.get(scrap.id) as RoleName | undefined;
+    const chosen = scrap.id === baseId;
+    const open = expanded || openCards.has(scrap.id);
+    return (
+      <article
+        key={scrap.id}
+        className={["card", role ? `role-${role}` : "", chosen ? "chosen" : "", dimmed ? "dimmed" : ""].join(" ")}
+      >
+        <div className={cut ? "pair" : "pair single"}>
+          <img src={imageUrl(scrap)} loading="lazy" title={`${scrap.alt || scrap.pageTitle}\n${scrap.domain}`} />
+          {cut && <img className="sil" src={silhouetteUrl(cut, "#3d3833")} />}
+        </div>
+        <div className="meta">
+          <span>
+            {role && <RoleBadge role={role} />} {a && <b>{baseRank(a).toFixed(2)}</b>} {scrap.alt || scrap.pageTitle}
+          </span>
+          {a && <span className="muted">{scrap.domain} · {IMAGE_KINDS[a.kind.choice as keyof typeof IMAGE_KINDS] ?? a.kind.choice}</span>}
+        </div>
+        {a && open && (
+          <>
+            <Bar label="silhouette" value={a.silhouette.score} max={4} />
+            {thickness.has(scrap.id) && (
+              <Bar label="fillable" value={thickness.get(scrap.id) as number} hint="how thick the outline is at its widest; thin shapes like ladders are hard to fill" />
+            )}
+            <Bar label="isolated" value={a.isolated.noul} />
+            <Bar label="fits the quest" value={a.questFit.score} max={3} />
+            {cut && <Bar label="edge cut kept" value={cut.keptShare} hint="share of pixels the editor's edge cut keeps; 1.00 means it removed nothing" />}
+            <label className="control">
+              <span>
+                cutout edge <b>{toleranceFor(scrap).toFixed(2)}</b>
+                {tolerances[scrap.id] !== undefined && (
+                  <button
+                    className="link"
+                    onClick={() => {
+                      const { [scrap.id]: _, ...rest } = tolerances;
+                      setTolerances(rest);
+                    }}
+                  >
+                    reset
+                  </button>
+                )}
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={0.6}
+                step={0.01}
+                value={toleranceFor(scrap)}
+                onChange={(e) => setTolerances({ ...tolerances, [scrap.id]: Number(e.target.value) })}
+              />
+            </label>
+            <details className="trace">
+              <summary>sent and answered</summary>
+              {sent.get(scrap.id) && (
+                <>
+                  <img className="sent" src={sent.get(scrap.id)?.image} />
+                  <Json value={sent.get(scrap.id)?.state} />
+                </>
+              )}
+              <Json value={a} />
+            </details>
+          </>
+        )}
+        {a && (
+          <div className="card-actions">
+            {!expanded && (
+              <button
+                className="link"
+                onClick={() => {
+                  const next = new Set(openCards);
+                  if (open) next.delete(scrap.id);
+                  else next.add(scrap.id);
+                  setOpenCards(next);
+                }}
+              >
+                {open ? "less" : "details"}
+              </button>
+            )}
+            <button disabled={chosen} onClick={() => quest && setBaseByQuest({ ...baseByQuest, [quest.id]: scrap.id })}>
+              {chosen ? "base shape" : "use as base"}
+            </button>
+          </div>
+        )}
+      </article>
+    );
+  };
 
   return (
     <div className="lab">
@@ -828,7 +931,6 @@ function App() {
                 {(
                   [
                     ["scraps", "scraps"],
-                    ["base", "base shapes"],
                     ["compare", "compare layouts"],
                   ] as const
                 ).map(([id, label]) => (
@@ -838,22 +940,38 @@ function App() {
                 ))}
               </nav>
 
-              {tab === "scraps" && (
-                <section className="scrap-grid">
-                  {quest.scraps.map((scrap, index) => {
-                    const a = answers.get(scrap.id);
-                    const member = casting.cast.find((m) => m.item.scrap.id === scrap.id);
-                    return (
-                      <figure key={scrap.id} className={index >= pieceLimit ? "unused" : ""}>
-                        <img src={imageUrl(scrap)} loading="lazy" title={`${scrap.alt || scrap.pageTitle}\n${scrap.domain}`} />
-                        <figcaption>
-                          {index >= pieceLimit ? "not used" : member ? member.role : a ? "" : "..."}
-                        </figcaption>
-                      </figure>
-                    );
-                  })}
-                </section>
-              )}
+              {tab === "scraps" && (() => {
+                const used = quest.scraps.slice(0, pieceLimit);
+                const groups: { name: RoleName | "failed to load" | "not used"; scraps: ImageScrap[] }[] = [
+                  ...ROLE_ORDER.map((role) => ({ name: role, scraps: used.filter((scrap) => roleOfScrap.get(scrap.id) === role) })),
+                  { name: "failed to load" as const, scraps: used.filter((scrap) => !roleOfScrap.has(scrap.id)) },
+                  { name: "not used" as const, scraps: quest.scraps.slice(pieceLimit) },
+                ];
+                const candidates = ranked.slice(0, 8).map((item) => item.scrap);
+                if (base && !candidates.some((scrap) => scrap.id === base.scrap.id)) candidates.unshift(base.scrap);
+                return (
+                  <>
+                    {candidates.length > 0 && (
+                      <section className="role-group">
+                        <h3>best base shapes</h3>
+                        <div className="cards">{candidates.map((scrap) => scrapCard(scrap, true))}</div>
+                      </section>
+                    )}
+                    {groups
+                      .filter((group) => group.scraps.length > 0)
+                      .map((group) => (
+                        <section key={group.name} className="role-group">
+                          <h3>
+                            <RoleBadge role={group.name} /> {group.scraps.length}
+                          </h3>
+                          <div className="cards">
+                            {group.scraps.map((scrap) => scrapCard(scrap, false, group.name === "not used"))}
+                          </div>
+                        </section>
+                      ))}
+                  </>
+                );
+              })()}
 
               {tab === "compare" && (
                 <section className="settings">
@@ -940,79 +1058,6 @@ function App() {
                       show base ghost
                     </label>
                   </fieldset>
-                </section>
-              )}
-
-              {tab === "base" && (
-                <section className="bases">
-                  {ranked.slice(0, basesShown).map(({ scrap, answers: a }) => {
-                    const cut = allCutouts.get(scrap.id);
-                    const chosen = scrap.id === baseId;
-                    return (
-                      <article key={scrap.id} className={chosen ? "base chosen" : "base"}>
-                        <div className="pair">
-                          <img src={imageUrl(scrap)} />
-                          {cut && <img className="sil" src={silhouetteUrl(cut, "#3d3833")} />}
-                        </div>
-                        <div className="meta">
-                          <b>{baseRank(a).toFixed(2)}</b> {scrap.alt || scrap.pageTitle}
-                          <span className="muted">{scrap.domain} · {IMAGE_KINDS[a.kind.choice as keyof typeof IMAGE_KINDS] ?? a.kind.choice}</span>
-                        </div>
-                        <Bar label="silhouette" value={a.silhouette.score} max={4} />
-                        {thickness.has(scrap.id) && (
-                          <Bar label="fillable" value={thickness.get(scrap.id) as number} hint="how thick the outline is at its widest; thin shapes like ladders are hard to fill" />
-                        )}
-                        <Bar label="isolated" value={a.isolated.noul} />
-                        <Bar label="fits the quest" value={a.questFit.score} max={3} />
-                        {cut && <Bar label="edge cut kept" value={cut.keptShare} hint="share of pixels the editor's edge cut keeps; 1.00 means it removed nothing" />}
-                        <label className="control">
-                          <span>
-                            cutout edge <b>{toleranceFor(scrap).toFixed(2)}</b>
-                            {tolerances[scrap.id] !== undefined && (
-                              <button
-                                className="link"
-                                onClick={() => {
-                                  const { [scrap.id]: _, ...rest } = tolerances;
-                                  setTolerances(rest);
-                                }}
-                              >
-                                reset
-                              </button>
-                            )}
-                          </span>
-                          <input
-                            type="range"
-                            min={0}
-                            max={0.6}
-                            step={0.01}
-                            value={toleranceFor(scrap)}
-                            onChange={(e) => setTolerances({ ...tolerances, [scrap.id]: Number(e.target.value) })}
-                          />
-                        </label>
-                        <details className="trace">
-                          <summary>sent and answered</summary>
-                          {sent.get(scrap.id) && (
-                            <>
-                              <img className="sent" src={sent.get(scrap.id)?.image} />
-                              <Json value={sent.get(scrap.id)?.state} />
-                            </>
-                          )}
-                          <Json value={a} />
-                        </details>
-                        <button
-                          disabled={chosen}
-                          onClick={() => setBaseByQuest({ ...baseByQuest, [quest.id]: scrap.id })}
-                        >
-                          {chosen ? "base shape" : "use as base"}
-                        </button>
-                      </article>
-                    );
-                  })}
-                  {ranked.length > basesShown && (
-                    <button onClick={() => setBasesShown(basesShown + 40)}>
-                      show 40 more ({ranked.length - basesShown} left)
-                    </button>
-                  )}
                 </section>
               )}
 
