@@ -161,6 +161,54 @@ describe("concurrent first registration of the same element id", () => {
     );
     expect((peerStore.play as any)[tag][id].rotation).toBe(180);
   });
+  it("keeps a local element whose id is missing from the winning tag map", async () => {
+    // Both clients create the first can-grow record, but for different ids.
+    // The merge keeps the peer's whole tag map, which has no record for ours.
+    const tag = "can-grow";
+    const id = "race-tag-mine";
+    const peerDoc = new Y.Doc();
+    peerDoc.clientID = nextWinningClientId--;
+    Y.applyUpdate(peerDoc, Y.encodeStateAsUpdate(localDoc()));
+    const peerStore = syncedStore({ play: {} as any }, peerDoc);
+
+    const el = document.createElement("div");
+    el.id = id;
+    el.setAttribute(tag, "");
+    document.body.appendChild(el);
+    playhtml.setupPlayElementForTag(el, tag);
+    elementHandlers.get(tag)!.get(id)!.setData({ scale: 2 });
+    await flush();
+    (peerStore.play as any)[tag] = { "race-tag-theirs": { scale: 1 } };
+
+    Y.applyUpdate(
+      localDoc(),
+      Y.encodeStateAsUpdate(peerDoc, Y.encodeStateVector(localDoc())),
+    );
+    await flush();
+    const syncLocalToPeer = () =>
+      Y.applyUpdate(
+        peerDoc,
+        Y.encodeStateAsUpdate(localDoc(), Y.encodeStateVector(peerDoc)),
+      );
+    syncLocalToPeer();
+    expect((peerStore.play as any)[tag]["race-tag-theirs"]).toEqual({
+      scale: 1,
+    });
+    expect((peerStore.play as any)[tag][id]).toEqual({ scale: 2 });
+
+    elementHandlers.get(tag)!.get(id)!.setData({ scale: 3 });
+    await flush();
+    syncLocalToPeer();
+    expect((peerStore.play as any)[tag][id]).toEqual({ scale: 3 });
+
+    (peerStore.play as any)[tag][id].scale = 4;
+    Y.applyUpdate(
+      localDoc(),
+      Y.encodeStateAsUpdate(peerDoc, Y.encodeStateVector(localDoc())),
+    );
+    await flush();
+    expect(elementHandlers.get(tag)!.get(id)!.data).toEqual({ scale: 4 });
+  });
 });
 
 describe("concurrent first creation of the same page-data channel", () => {

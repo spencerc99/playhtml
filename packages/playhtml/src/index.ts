@@ -2740,21 +2740,46 @@ function watchPlayMapReplacement(): void {
       const handlers = elementHandlers.get(changedTag);
       if (!handlers) continue;
       for (const elementId of handlers.keys()) {
-        rebindElementRecord(changedTag, elementId);
+        rebindElementRecord(changedTag, elementId, { restoreMissing: true });
       }
     }
   });
 }
 
-function rebindElementRecord(tag: string, elementId: string): void {
+/**
+ * Points an element at its live record. With `restoreMissing`, used when the
+ * whole tag map was replaced, an element whose id is absent from the winning
+ * map is written back from its local data: its record was only discarded by
+ * the merge, not deleted by anyone. Not used for single-key changes, where a
+ * missing record means another client deleted it.
+ */
+function rebindElementRecord(
+  tag: string,
+  elementId: string,
+  { restoreMissing = false }: { restoreMissing?: boolean } = {},
+): void {
   const handler = elementHandlers.get(tag)?.get(elementId);
-  const record = store.play[tag]?.[elementId];
-  if (!handler || record === undefined) return;
+  if (!handler) return;
+  const tagRecord = store.play[tag];
+  if (
+    restoreMissing &&
+    tagRecord !== undefined &&
+    tagRecord[elementId] === undefined &&
+    handler.data !== undefined &&
+    canWriteElementData(handler.element)
+  ) {
+    doc.transact(() => {
+      tagRecord[elementId] = clonePlain(handler.data);
+    });
+  }
+  const record = tagRecord?.[elementId];
+  if (record === undefined) return;
   const key = `${tag}:${elementId}`;
   const observed = (yObserverByKey.get(key) as ElementRecordObserver | undefined)
     ?.target;
   if (observed === getYjsValue(record)) return;
-  proxyByTagAndId.get(tag)?.set(elementId, record);
+  if (!proxyByTagAndId.has(tag)) proxyByTagAndId.set(tag, new Map());
+  proxyByTagAndId.get(tag)!.set(elementId, record);
   attachSyncedStoreObserver(tag, elementId);
   applySharedElementDataToHandler(tag, elementId, handler);
 }
