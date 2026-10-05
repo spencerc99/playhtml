@@ -299,6 +299,10 @@ export default function SetupPage() {
             className="setup-step"
             onSubmit={(event) => {
               event.preventDefault();
+              // Read the field directly: browser autofill can fill it without
+              // an input event, which a React-controlled value would discard.
+              const submitted = new FormData(event.currentTarget).get("email");
+              setEmail(typeof submitted === "string" ? submitted : "");
               setStep("configure");
             }}
           >
@@ -373,9 +377,9 @@ export default function SetupPage() {
               </label>
               <input
                 id="updates-email"
+                name="email"
                 type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                defaultValue={email}
                 placeholder="you@example.com"
                 autoComplete="email"
                 aria-describedby="updates-email-help"
