@@ -660,17 +660,18 @@ function App() {
     [base, baseCutout, sizing, frame.width, frame.height, freeOptions, shapeOptions],
   );
 
-  // Layouts are only worked out while the compare view shows them; packing is not free.
+  // Layouts are only worked out while the compare view shows them, and only
+  // once Clef has answered: packing on every arrival starves the asking.
   const results = useMemo(
     () =>
-      tab !== "compare"
+      tab !== "compare" || !answeredAll
         ? []
         : LAYOUTS.filter((layout) => shownLayouts.includes(layout.id)).map((layout) => ({
             layout,
             clef: runLayout(layout.id, settledJudged, contest),
             random: showRandom ? runLayout(layout.id, settledRandom) : null,
           })),
-    [tab, shownLayouts, showRandom, runLayout, settledJudged, settledRandom, contest],
+    [tab, answeredAll, shownLayouts, showRandom, runLayout, settledJudged, settledRandom, contest],
   );
   const focusedRow = focused ? results.find((row) => row.layout.id === focused.id) : undefined;
   const focusedResult = focusedRow ? focusedRow[focused?.source ?? "clef"] : null;
@@ -993,6 +994,12 @@ function App() {
                   <LayoutView frame={frame} result={focusedResult} cutouts={allCutouts} showGhost={showGhost} />
                   <PlacementTrace placements={focusedResult.placements} />
                 </section>
+              )}
+
+              {tab === "compare" && !answeredAll && progress && (
+                <p className="muted">
+                  Waiting for Clef to sort every scrap ({progress.done}/{progress.total}) before laying anything out.
+                </p>
               )}
 
               {tab === "compare" && (
