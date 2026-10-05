@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<!-- ABOUTME: Hosts the quest lab, a dev-only workbench for AI-guided scrap collages. -->
+<!-- ABOUTME: Serves at /quest-lab/ under the Vite dev server, which provides its /api/quest-lab routes. -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>quest lab</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Lora:wght@600&family=Martian+Mono:wght@400&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #faf7f2;
+        --surface: #f5f0e8;
+        --text: #3d3833;
+        --muted: #8a8279;
+        --line: #e2d9cc;
+        --teal: #4a9a8a;
+        --rust: #c4724e;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; background: var(--bg); color: var(--text); }
+      body { font: 14px/1.4 "Atkinson Hyperlegible", system-ui, sans-serif; }
+      h1, h2, h3 { font-family: Lora, serif; font-weight: 600; margin: 0; }
+      h1 { font-size: 22px; }
+      h2 { font-size: 16px; margin-bottom: 8px; }
+      h3 { font-size: 14px; margin-bottom: 6px; }
+      code { font: 12px "Martian Mono", monospace; }
+      button, input, select { font: inherit; color: inherit; }
+      button {
+        background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+        padding: 6px 10px; cursor: pointer;
+      }
+      button:hover:not(:disabled) { border-color: var(--muted); }
+      button:disabled { opacity: 0.5; cursor: default; }
+      button.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+      input[type="text"], input:not([type]), select {
+        background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+      }
+      .muted { color: var(--muted); }
+      .warn { color: var(--rust); margin-top: 4px; }
+
+      .lab header {
+        display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; align-items: center;
+        padding: 14px 20px; border-bottom: 1px solid var(--line);
+      }
+      .lab header .status { grid-column: 1 / -1; color: var(--muted); }
+      .path { display: flex; gap: 8px; }
+      .path input { flex: 1; font-family: "Martian Mono", monospace; font-size: 12px; }
+      .body { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 90px); }
+      aside { border-right: 1px solid var(--line); padding: 16px; overflow-y: auto; max-height: calc(100vh - 90px); }
+      main { padding: 16px 20px; min-width: 0; }
+
+      .control { display: flex; flex-direction: column; gap: 2px; font-size: 12px; margin-bottom: 8px; }
+      .control b { font-family: "Martian Mono", monospace; font-weight: 400; }
+      .check { display: flex; gap: 6px; align-items: center; font-size: 12px; margin-bottom: 8px; }
+
+      .quests { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+      .quests button {
+        width: 100%; text-align: left; display: flex; flex-direction: column; gap: 2px; background: #fff;
+      }
+      .quests button.active { background: var(--surface); color: var(--text); border-color: var(--text); }
+      .quests i { color: var(--teal); font-style: normal; }
+      .strip { display: flex; gap: 3px; margin-top: 4px; overflow: hidden; }
+      .strip img { height: 28px; width: auto; max-width: 48px; object-fit: cover; border-radius: 2px; }
+
+      .quest-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 12px; }
+      .goal { display: flex; flex-direction: column; gap: 2px; font-size: 12px; flex: 1; min-width: 260px; }
+      .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+      .controls {
+        display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: end; margin-bottom: 12px;
+        padding: 10px 12px; background: var(--surface); border-radius: 8px;
+      }
+
+      .bases { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+      .base { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+      .base.chosen { border-color: var(--teal); box-shadow: 0 0 0 2px var(--teal); }
+      .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; height: 120px; }
+      .pair img { width: 100%; height: 100%; object-fit: contain; background: var(--surface); border-radius: 4px; }
+      .pair .sil { background: #fff; }
+      .meta { display: flex; flex-direction: column; font-size: 12px; overflow-wrap: anywhere; }
+      .meta b { font-family: "Martian Mono", monospace; font-weight: 400; }
+      .bar { display: grid; grid-template-columns: 76px 1fr 34px; gap: 6px; align-items: center; font-size: 11px; }
+      .bar-track { height: 6px; background: var(--surface); border-radius: 3px; overflow: hidden; }
+      .bar-fill { height: 100%; background: var(--teal); }
+      .bar-value { font-family: "Martian Mono", monospace; color: var(--muted); }
+
+      .canvas-wrap { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+      .collage {
+        position: relative; width: 100%; max-width: 1100px; overflow: hidden;
+        box-shadow: 0 1px 2px rgba(61, 56, 51, 0.15), 0 8px 24px rgba(61, 56, 51, 0.12);
+      }
+      .collage .piece { position: absolute; object-fit: fill; box-shadow: 0 1px 3px rgba(61, 56, 51, 0.25); }
+      .collage .piece.cut { box-shadow: none; filter: drop-shadow(0 1px 2px rgba(61, 56, 51, 0.3)); }
+      .collage .piece.cropped { overflow: hidden; box-shadow: none; }
+      .collage .piece.cropped img { position: absolute; max-width: none; }
+      .collage .ghost { position: absolute; opacity: 0.1; pointer-events: none; }
+      .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+      .trace { margin: 0 0 12px; font-size: 12px; }
+      .trace summary { cursor: pointer; color: var(--muted); }
+      .trace p { max-width: 70ch; }
+      .trace ol { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+      .trace ol > li { display: grid; grid-template-columns: 64px 1fr; gap: 10px; }
+      .trace ol img { width: 64px; height: 64px; object-fit: contain; background: var(--surface); }
+      .trace ul { margin: 4px 0 0; padding-left: 16px; }
+      .trace .code-step { color: var(--rust); }
+      .trace .sent { width: 100%; margin-top: 6px; }
+      .json {
+        font: 11px/1.4 "Martian Mono", monospace; background: var(--surface); padding: 8px;
+        border-radius: 6px; overflow: auto; max-height: 320px; white-space: pre-wrap;
+      }
+      button.link { background: none; border: 0; padding: 0 0 0 6px; color: var(--teal); text-decoration: underline; }
+      .scrap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+      .scrap-grid figure { margin: 0; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 4px; }
+      .scrap-grid img { width: 100%; height: 90px; object-fit: contain; display: block; }
+      .scrap-grid figcaption { font-size: 11px; color: var(--muted); text-align: center; }
+      .scrap-grid .out, .scrap-grid .unused { opacity: 0.4; }
+      .settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-bottom: 14px; }
+      .settings fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--surface); margin: 0; }
+      .settings legend { font-family: Lora, serif; font-weight: 600; padding: 0 4px; }
+      .layout-grid { display: grid; grid-template-columns: 1fr; gap: 18px; }
+      .layout-grid.two { grid-template-columns: 1fr 1fr; }
+      .layout-grid.two .layout-row { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .layout-cell { margin: 0; }
+      .layout-cell figcaption { font-size: 12px; margin-bottom: 4px; }
+      .layout-cell .open { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+      .focus { margin-bottom: 24px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+      .focus-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
+      .focus .collage { max-width: none; }
+      @media (max-width: 800px) {
+        .body { grid-template-columns: 1fr; }
+        aside { max-height: none; border-right: 0; border-bottom: 1px solid var(--line); }
+        .compare { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./quest-lab.tsx"></script>
+  </body>
+</html>

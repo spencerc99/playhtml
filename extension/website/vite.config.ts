@@ -5,10 +5,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { glob } from "glob";
+import { questLabServer } from "./quest-lab/labServer";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), questLabServer()],
   resolve: {
     alias: {
       "@movement": path.resolve(__dirname, "./shared"),
