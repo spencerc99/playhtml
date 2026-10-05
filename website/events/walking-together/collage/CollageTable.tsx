@@ -2,7 +2,6 @@
 // ABOUTME: Gestures stay local (plus a live preview) and commit to shared data on release.
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { playhtml, usePlayerIdentity } from "@playhtml/react";
-import type { ElementUser } from "@playhtml/common";
 import { isAdmin } from "../admin";
 import {
   countPlacedBy,
@@ -40,7 +39,8 @@ import "./collage.scss";
 interface Props {
   data: CollageData;
   setData: (data: CollageData | ((draft: CollageData) => void)) => void;
-  users: ElementUser<CollageLive>[];
+  /** Everyone's in-progress drag, from the drag presence channel. */
+  peers: Array<{ user: { isMe: boolean }; live: CollageLive | undefined }>;
   setLive: (live: CollageLive) => void;
 }
 
@@ -82,7 +82,7 @@ function isTextField(target: EventTarget | null): boolean {
   );
 }
 
-export function CollageTable({ data, setData, users, setLive }: Props) {
+export function CollageTable({ data, setData, peers, setLive }: Props) {
   const { pid, name, color } = usePlayerIdentity();
   const admin = isAdmin(name, color);
   const pieces = piecesOf(data);
@@ -113,7 +113,7 @@ export function CollageTable({ data, setData, users, setLive }: Props) {
 
   const myCount = pid ? countPlacedBy(pieces, pid) : 0;
   const atLimit = myCount >= MAX_PIECES_PER_PERSON;
-  const remote = remoteDragTransforms(users);
+  const remote = remoteDragTransforms(peers);
 
   const flashNotice = useCallback((message: string) => {
     setNotice(message);

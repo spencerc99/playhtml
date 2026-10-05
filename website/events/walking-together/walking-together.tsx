@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import {
   PlayProvider,
   withSharedState,
+  usePageData,
   usePlayerIdentity,
 } from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
@@ -60,8 +61,8 @@ const IS_ARCHIVED = SESSION?.archived ?? false;
 // outerHTML (which varies per render and would break cross-client sync).
 const ROSTER_ID = "walking-together-roster";
 
-// Element id for the shared stage (walk vs collage) store.
-const STAGE_ID = "walking-together-stage";
+// Page data channel holding which stage (walk vs collage) the room is on.
+const STAGE_DATA_NAME = "walking-together-stage";
 
 const CURSOR_PROMPTS = SESSION?.prompts ?? [];
 
@@ -411,45 +412,45 @@ export const GroupActivityDisplay = withSharedState(
   },
 );
 
-/** Holds which stage the whole room is on. Everyone follows the shared stage;
- * only the admin sees the switch. The walk stage stays mounted (just hidden)
- * during the collage so its shared elements keep their registrations. */
-const StageSwitch = withSharedState(
-  { defaultData: { stage: "walk" as SessionStage } },
-  ({ data, setData }, { session }: { session: WorkshopSession }) => {
-    const { name, color } = usePlayerIdentity();
-    const admin = isAdmin(name, color);
-    const stage: SessionStage = session.hasCollageStage ? data.stage : "walk";
-    const nextStage: SessionStage = stage === "walk" ? "collage" : "walk";
+/** Holds which stage the whole room is on. The stage belongs to the page, not
+ * to any one element, so it lives in page data. Everyone follows it; only the
+ * admin sees the switch. The walk stage stays mounted (just hidden) during the
+ * collage so its elements keep their registrations. */
+function StageSwitch({ session }: { session: WorkshopSession }) {
+  const [stageData, setStageData] = usePageData<{ stage: SessionStage }>(
+    STAGE_DATA_NAME,
+    { stage: "walk" },
+  );
+  const { name, color } = usePlayerIdentity();
+  const admin = isAdmin(name, color);
+  const stage: SessionStage = session.hasCollageStage
+    ? stageData.stage
+    : "walk";
+  const nextStage: SessionStage = stage === "walk" ? "collage" : "walk";
 
-    return (
-      <div className="walking-together" id={STAGE_ID} data-stage={stage}>
-        {admin && session.hasCollageStage && !session.archived && (
-          <button
-            className="stage-switch"
-            onClick={() => setData({ stage: nextStage })}
-            title={`Switch everyone to the ${nextStage} stage`}
-          >
-            {stage === "walk" ? "→ collage" : "← walk"}
-          </button>
-        )}
-        <div className="walk-stage" hidden={stage !== "walk"}>
-          <UserSetup />
-          <URLChat />
-          <GroupActivityDisplay />
-        </div>
-        {/* Mounted for the whole session, not only during the collage stage:
-         * an element first registered by several clients at the same moment
-         * (as everyone would when the stage flips) can each seed their own
-         * copy of its shared data, and only one copy survives the merge. */}
-        {session.hasCollageStage && (
-          <CollageStage active={stage === "collage"} />
-        )}
-        <RosterAdmin />
+  return (
+    <div className="walking-together" data-stage={stage}>
+      {admin && session.hasCollageStage && !session.archived && (
+        <button
+          className="stage-switch"
+          onClick={() => setStageData({ stage: nextStage })}
+          title={`Switch everyone to the ${nextStage} stage`}
+        >
+          {stage === "walk" ? "→ collage" : "← walk"}
+        </button>
+      )}
+      <div className="walk-stage" hidden={stage !== "walk"}>
+        <UserSetup />
+        <URLChat />
+        <GroupActivityDisplay />
       </div>
-    );
-  },
-);
+      {session.hasCollageStage && (
+        <CollageStage active={stage === "collage"} />
+      )}
+      <RosterAdmin />
+    </div>
+  );
+}
 
 function Main({ session }: { session: WorkshopSession }) {
   return (
