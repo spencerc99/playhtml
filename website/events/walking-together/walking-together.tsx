@@ -1,5 +1,5 @@
 // ABOUTME: Runs the walking-together workshop session page.
-// ABOUTME: Coordinates shared URL posting, cursor activity prompts, roster state, and portraits.
+// ABOUTME: Coordinates the walk/collage stages, URL posting, cursor prompts, roster, and portraits.
 import ReactDOM from "react-dom";
 import React, { useState } from "react";
 import {
@@ -11,11 +11,13 @@ import { useStickyState } from "../../hooks/useStickyState";
 import {
   resolveSession,
   roomForCurrentPage,
+  type SessionStage,
   type SubtitleSegment,
   type WorkshopSession,
 } from "./sessions";
 import { isAdmin } from "./admin";
 import { PortraitOverlay } from "./PortraitOverlay";
+import { CollageStage } from "./CollageStage";
 import {
   rosterPids,
   rosterEntryIsCurrent,
@@ -58,15 +60,10 @@ const IS_ARCHIVED = SESSION?.archived ?? false;
 // outerHTML (which varies per render and would break cross-client sync).
 const ROSTER_ID = "walking-together-roster";
 
-const CURSOR_INSTRUCTIONS = [
-  "Make a circle together",
-  "Play tag with each other",
-  "Stack all cursors in the center",
-  "Make a zigzag together",
-  "Coordinate by colors",
-  "Split into your preferred corner",
-  "Imagine your cursor as a falling rain drop",
-];
+// Element id for the shared stage (walk vs collage) store.
+const STAGE_ID = "walking-together-stage";
+
+const CURSOR_PROMPTS = SESSION?.prompts ?? [];
 
 /** How long each group activity runs before advancing, in seconds. */
 const ACTIVITY_DURATION_S = 30;
@@ -352,7 +349,7 @@ export const GroupActivityDisplay = withSharedState(
           advancedFromRef.current = d.lastChangeTime;
           setData({
             currentInstructionIndex:
-              (d.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
+              (d.currentInstructionIndex + 1) % CURSOR_PROMPTS.length,
             lastChangeTime: Date.now(),
           });
         }
@@ -370,7 +367,7 @@ export const GroupActivityDisplay = withSharedState(
     const handleSkip = () => {
       setData({
         currentInstructionIndex:
-          (data.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
+          (data.currentInstructionIndex + 1) % CURSOR_PROMPTS.length,
         lastChangeTime: Date.now(),
       });
     };
@@ -379,7 +376,7 @@ export const GroupActivityDisplay = withSharedState(
       <div className="group-activity" id="group-activity">
         <h3>Current Activity:</h3>
         <p className="instruction">
-          {CURSOR_INSTRUCTIONS[data.currentInstructionIndex]}
+          {CURSOR_PROMPTS[data.currentInstructionIndex % CURSOR_PROMPTS.length]}
         </p>
         <div
           style={{
@@ -414,6 +411,40 @@ export const GroupActivityDisplay = withSharedState(
   },
 );
 
+/** Holds which stage the whole room is on. Everyone follows the shared stage;
+ * only the admin sees the switch. The walk stage stays mounted (just hidden)
+ * during the collage so its shared elements keep their registrations. */
+const StageSwitch = withSharedState(
+  { defaultData: { stage: "walk" as SessionStage } },
+  ({ data, setData }, { session }: { session: WorkshopSession }) => {
+    const { name, color } = usePlayerIdentity();
+    const admin = isAdmin(name, color);
+    const stage: SessionStage = session.hasCollageStage ? data.stage : "walk";
+    const nextStage: SessionStage = stage === "walk" ? "collage" : "walk";
+
+    return (
+      <div className="walking-together" id={STAGE_ID} data-stage={stage}>
+        {admin && session.hasCollageStage && !session.archived && (
+          <button
+            className="stage-switch"
+            onClick={() => setData({ stage: nextStage })}
+            title={`Switch everyone to the ${nextStage} stage`}
+          >
+            {stage === "walk" ? "→ collage" : "← walk"}
+          </button>
+        )}
+        <div className="walk-stage" hidden={stage !== "walk"}>
+          <UserSetup />
+          <URLChat />
+          <GroupActivityDisplay />
+        </div>
+        {stage === "collage" && <CollageStage />}
+        <RosterAdmin />
+      </div>
+    );
+  },
+);
+
 function Main({ session }: { session: WorkshopSession }) {
   return (
     <PlayProvider
@@ -422,12 +453,7 @@ function Main({ session }: { session: WorkshopSession }) {
         cursors: { enabled: true, coordinateMode: "relative" },
       }}
     >
-      <div className="walking-together">
-        <UserSetup />
-        <URLChat />
-        <GroupActivityDisplay />
-        <RosterAdmin />
-      </div>
+      <StageSwitch session={session} />
     </PlayProvider>
   );
 }
