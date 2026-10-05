@@ -407,7 +407,7 @@ function App() {
   const [heroSide, setHeroSide] = useRemembered("heroSide", 0.35);
   const [contrast, setContrast] = useRemembered("contrast", 2.5);
   const [accentSide, setAccentSide] = useRemembered("accentSide", 0.09);
-  const [wallpaperTiles, setWallpaperTiles] = useRemembered("wallpaperTiles", 7);
+  const [wallpaperTiles, setWallpaperTiles] = useRemembered("wallpaperBackgrounds", 12);
   const [accentRepeats, setAccentRepeats] = useRemembered("accentRepeats", 4);
   const [layeredSupporting, setLayeredSupporting] = useRemembered("layeredSupporting", 24);
   const [layeredDensity, setLayeredDensity] = useRemembered("layeredDensity", 0.4);
@@ -883,7 +883,7 @@ function App() {
                     </label>
                     <Slider label="density" value={density} min={0.3} max={2.5} step={0.1} onChange={setDensity} />
                     <Slider label="spread (gathered only)" value={spreadRounds} min={0} max={60} step={2} onChange={setSpreadRounds} />
-                    <Slider label="wallpaper tiles (layered)" value={wallpaperTiles} min={0} max={16} step={1} onChange={setWallpaperTiles} />
+                    <Slider label="background images in the wallpaper, at most (layered)" value={wallpaperTiles} min={0} max={30} step={1} onChange={setWallpaperTiles} />
                     <Slider label="accent repeats, at most (layered)" value={accentRepeats} min={1} max={9} step={1} onChange={setAccentRepeats} />
                     <Slider label="supporting pieces on top (layered)" value={layeredSupporting} min={0} max={200} step={2} onChange={setLayeredSupporting} />
                     <Slider label="area pieces cover (layered)" value={layeredDensity} min={0.1} max={1.2} step={0.05} onChange={setLayeredDensity} />

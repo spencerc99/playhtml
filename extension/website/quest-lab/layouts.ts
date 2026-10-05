@@ -652,25 +652,27 @@ interface Rect {
 }
 
 /**
- * Splits a rectangle into one cell per item, always cutting across the
- * longer side, with the cut nudged off center so tiles vary in size.
+ * Splits a rectangle into one cell per weight, cutting across the longer
+ * side so each cell's area follows its weight, nudged so tiles vary.
  */
-function tileRects(rect: Rect, count: number, random: () => number): Rect[] {
-  if (count <= 1) return [rect];
-  const first = Math.floor(count / 2);
-  const share = (first / count) * (0.75 + random() * 0.5);
-  const clamped = Math.min(0.8, Math.max(0.2, share));
+function tileRects(rect: Rect, weights: number[], random: () => number): Rect[] {
+  if (weights.length <= 1) return [rect];
+  const firstCount = Math.floor(weights.length / 2);
+  const total = weights.reduce((a, b) => a + b, 0);
+  const firstWeight = weights.slice(0, firstCount).reduce((a, b) => a + b, 0);
+  const share = Math.min(0.82, Math.max(0.18, (firstWeight / total) * (0.85 + random() * 0.3)));
+  const [first, rest] = [weights.slice(0, firstCount), weights.slice(firstCount)];
   if (rect.width >= rect.height) {
-    const w = rect.width * clamped;
+    const w = rect.width * share;
     return [
       ...tileRects({ x: rect.x, y: rect.y, width: w, height: rect.height }, first, random),
-      ...tileRects({ x: rect.x + w, y: rect.y, width: rect.width - w, height: rect.height }, count - first, random),
+      ...tileRects({ x: rect.x + w, y: rect.y, width: rect.width - w, height: rect.height }, rest, random),
     ];
   }
-  const h = rect.height * clamped;
+  const h = rect.height * share;
   return [
     ...tileRects({ x: rect.x, y: rect.y, width: rect.width, height: h }, first, random),
-    ...tileRects({ x: rect.x, y: rect.y + h, width: rect.width, height: rect.height - h }, count - first, random),
+    ...tileRects({ x: rect.x, y: rect.y + h, width: rect.width, height: rect.height - h }, rest, random),
   ];
 }
 
@@ -686,6 +688,9 @@ function coverCrop(item: Judged, cell: Rect, random: () => number): CropShare {
   return { x: 0, y: random() * (1 - height), width: 1, height };
 }
 
+/** Fewest wallpaper tiles; below this, supporting pieces are drafted in to cover the canvas. */
+const MIN_WALLPAPER = 3;
+
 /** Accent repeats lie in a row, a column, or a small grid. */
 const REPEAT_PATTERNS = ["row", "column", "grid"] as const;
 
@@ -700,37 +705,50 @@ function layeredFree(cast: Cast[], frame: Frame, options: FreeLayoutOptions): Pa
   const random = seededRandom(seed ^ 0x1a7e);
   const short = Math.min(frame.width, frame.height);
 
-  // 1. Wallpaper: background pieces first, topped up from the supporting
-  // pieces Clef saw as most background-like, tiled edge to edge.
+  // 1. Wallpaper: every background Clef found, strongest getting the most
+  // room, laid edge to edge. Supporting pieces top it up only when there are
+  // too few backgrounds to cover the canvas.
   const byBackground = (a: Cast, b: Cast) =>
     (b.item.answers.role.probabilities.background ?? 0) - (a.item.answers.role.probabilities.background ?? 0);
-  const wallCandidates = [
-    ...cast.filter((m) => m.role === "background").sort(byBackground),
-    ...cast.filter((m) => m.role === "supporting").sort(byBackground),
-  ].slice(0, options.wallpaperTiles);
+  const backgrounds = cast.filter((m) => m.role === "background").sort(byBackground).slice(0, options.wallpaperTiles);
+  const topUp = cast
+    .filter((m) => m.role === "supporting")
+    .sort(byBackground)
+    .slice(0, Math.max(0, Math.min(MIN_WALLPAPER, options.wallpaperTiles) - backgrounds.length));
+  const wallCandidates = [...backgrounds, ...topUp];
   const wallIds = new Set(wallCandidates.map((m) => m.item.scrap.id));
-  const cells = tileRects({ x: 0, y: 0, width: frame.width, height: frame.height }, wallCandidates.length, random);
+  const weights = wallCandidates.map((m) => 0.4 + (m.item.answers.role.probabilities.background ?? 0));
+  const cells = tileRects({ x: 0, y: 0, width: frame.width, height: frame.height }, weights, random);
+  // Tiles are pasted down rather than gridded: each a little oversized and
+  // turned, overlapping its neighbors in a random order.
+  const pasteOrder = wallCandidates.map((_, i) => ({ i, key: random() })).sort((a, b) => a.key - b.key);
+  const zOf = new Map(pasteOrder.map(({ i }, z) => [i, z]));
   const wallpaper: Placement[] = wallCandidates.map((member, i) => {
+    const own = pieceRandom(member.item.scrap, seed, "wallpaper");
+    const grow = 1.04 + own() * 0.14;
     const cell = cells[i];
-    // A sliver of overlap hides seams between tiles.
-    const bleed = 0.01 * short;
+    const box = {
+      x: cell.x + cell.width / 2 - (cell.width * grow) / 2,
+      y: cell.y + cell.height / 2 - (cell.height * grow) / 2,
+      width: cell.width * grow,
+      height: cell.height * grow,
+    };
+    const turn = (own() - 0.5) * 2 * Math.min(options.maxRotation, 4);
     return {
       key: member.item.scrap.id,
       scrap: member.item.scrap,
       answers: member.item.answers,
-      x: cell.x - bleed,
-      y: cell.y - bleed,
-      width: cell.width + bleed * 2,
-      height: cell.height + bleed * 2,
-      rotation: 0,
-      z: i,
+      ...box,
+      rotation: turn,
+      z: zOf.get(i) as number,
       cutout: false,
       tolerance: options.toleranceFor(member.item.scrap),
       role: "background",
-      crop: coverCrop(member.item, cell, random),
+      crop: coverCrop(member.item, box, random),
       trace: [
-        member.role === "background" ? member.why : `${member.why}; drafted into the wallpaper as one of the most background-like`,
-        `size and position (code, not Clef): wallpaper tile ${i + 1} of ${wallCandidates.length}, the canvas split again and again across its longer side`,
+        member.role === "background" ? member.why : `${member.why}; drafted into the wallpaper because there were too few backgrounds`,
+        `size and position (code, not Clef): wallpaper tile ${i + 1} of ${wallCandidates.length}, sized by its background odds, ` +
+          `then grown ${Math.round((grow - 1) * 100)}% and turned ${turn.toFixed(1)} degrees so the tiles overlap like pasted paper`,
         "crop: cropped to fill its tile without stretching, never cut out",
       ],
     };

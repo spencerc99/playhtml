@@ -29,9 +29,11 @@ export interface ScoreAnswer {
  */
 export const ROLES = {
   hero: "A visually striking, clear single subject that would look great large and cut out, the kind of thing your eye lands on first",
-  supporting: "A solid image that fills in the collage around the standouts without needing attention of its own",
+  supporting:
+    "A solid image with a clear subject, such as a person, a product, or a screenshot, that fills in the collage around the standouts without needing attention of its own",
   accent: "A small, simple, graphic thing (a logo, icon, sticker, button, or little object) that works as a small mark, even repeated",
-  background: "A wide, textured, or patterned image (foliage, sky, fabric, a crowd, a landscape, a page of text) that works as wallpaper behind everything else",
+  background:
+    "An image with no single focal subject, so no person or object front and center: foliage, sky, water, fabric, a pattern, a landscape, a distant crowd, or a page of text. It works as wallpaper behind everything else",
 } as const;
 export type Role = keyof typeof ROLES;
 
