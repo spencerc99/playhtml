@@ -127,11 +127,23 @@ export function cutoutOf(scrap: ImageScrap, tolerance: number): Promise<Cutout> 
   return pending;
 }
 
-/** The silhouette filled solid, as a data URL, for judging the shape by eye. */
+const silhouettes = new WeakMap<Uint8ClampedArray, Map<string, string>>();
+
+/** The silhouette filled solid, as a data URL, for judging the shape by eye. Drawn once per mask and color. */
 export function silhouetteUrl(
   cutout: Pick<Cutout, "mask" | "width" | "height">,
   color: string,
 ): string {
+  let byColor = silhouettes.get(cutout.mask);
+  if (!byColor) silhouettes.set(cutout.mask, (byColor = new Map()));
+  const known = byColor.get(color);
+  if (known) return known;
+  const url = drawSilhouette(cutout, color);
+  byColor.set(color, url);
+  return url;
+}
+
+function drawSilhouette(cutout: Pick<Cutout, "mask" | "width" | "height">, color: string): string {
   const canvas = document.createElement("canvas");
   canvas.width = cutout.width;
   canvas.height = cutout.height;

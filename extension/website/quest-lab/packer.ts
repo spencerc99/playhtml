@@ -47,10 +47,21 @@ export interface PackOptions {
   gap: number;
 }
 
+export interface Skipped {
+  id: string;
+  /** Size asked for, in frame pixels. */
+  width: number;
+  height: number;
+  /** Cells the piece covers at full size; one cell means its outline came out empty. */
+  cells: number;
+  /** Least overlap found at any size and spot, or null when no free spot was left at all. */
+  clash: number | null;
+}
+
 export interface PackResult {
   placed: Map<string, Packed>;
-  /** Pieces that found no room even after shrinking. */
-  skipped: string[];
+  /** Pieces that found no room even after shrinking, with their best try. */
+  skipped: Skipped[];
   /** Share of the region covered by piece cells. */
   coverage: number;
 }
@@ -125,7 +136,7 @@ function freeDistance(region: PackRegion, taken: Uint8Array): Float32Array {
 }
 
 /** Shrink steps tried when a piece does not fit at its size. */
-const SHRINKS = [1, 0.82, 0.66, 0.5];
+const SHRINKS = [1, 0.82, 0.66, 0.5, 0.36, 0.25];
 /** Clash allowed at full effort; a piece over this at every size is skipped. */
 const FIT_CLASH = 0.04;
 const LAST_RESORT_CLASH = 0.18;
@@ -145,7 +156,7 @@ export function pack(region: PackRegion, pieces: PackPiece[], options: PackOptio
   if (regionCells === 0) throw new Error("The region to pack is empty");
 
   const placed = new Map<string, Packed>();
-  const skipped: string[] = [];
+  const skipped: Skipped[] = [];
   let distance = freeDistance(region, taken);
   let sinceDistance = 0;
 
@@ -210,7 +221,13 @@ export function pack(region: PackRegion, pieces: PackPiece[], options: PackOptio
     }
 
     if (!best || best.clash > LAST_RESORT_CLASH) {
-      skipped.push(piece.id);
+      skipped.push({
+        id: piece.id,
+        width: piece.width,
+        height: piece.height,
+        cells: rasterize(piece, piece.width / region.scale, piece.height / region.scale, 0).cells.length,
+        clash: best ? best.clash : null,
+      });
       continue;
     }
     for (const [dx, dy] of best.raster.cells) {

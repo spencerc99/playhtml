@@ -13,7 +13,7 @@ import {
   type CollagePiece,
   type CollageRecord,
 } from "@extension/entrypoints/scraps/collageRecord";
-import { pack, type PackPiece, type PackRegion } from "./packer";
+import { pack, type PackPiece, type PackRegion, type Skipped } from "./packer";
 import { ROLES, type ImageScrap, type Role, type ScrapAnswers } from "./questions";
 
 export interface Judged {
@@ -333,8 +333,8 @@ export type OutlineOf = (scrap: ImageScrap) => { mask: Uint8ClampedArray; width:
 export interface PackedLayout {
   placements: Placement[];
   coverage: number;
-  /** Pieces that found no room even after shrinking. */
-  skipped: Cast[];
+  /** Pieces that found no room even after shrinking, with their best try. */
+  skipped: { member: Cast; attempt: Skipped }[];
 }
 
 /**
@@ -401,7 +401,10 @@ function packCast(
   return {
     placements,
     coverage: result.coverage,
-    skipped: order.filter((m) => !result.placed.has(m.item.scrap.id)),
+    skipped: result.skipped.map((attempt) => ({
+      member: order.find((m) => m.item.scrap.id === attempt.id) as Cast,
+      attempt,
+    })),
   };
 }
 
@@ -608,6 +611,11 @@ function packSizes(
   area: number,
   reference: number,
   options: { sizing: RoleSizing; visibleShare: (scrap: ImageScrap) => number } & PieceRules,
+  /**
+   * Longest side any piece may have. Inside a shape this is how thick the
+   * shape actually is, so pieces fit a thin handle instead of the shape's box.
+   */
+  maxSide = Infinity,
 ) {
   const { sizing } = options;
   const boxes = new Map<string, { width: number; height: number }>();
@@ -620,19 +628,24 @@ function packSizes(
   );
   for (const member of cast) {
     if (member.role !== "hero" && member.role !== "accent") continue;
-    const long = member.role === "hero"
+    const wanted = member.role === "hero"
       ? heroLong(heroRank.get(member.item.scrap.id) as number, sizing, reference)
       : sizing.accentSide * reference;
+    const long = Math.min(wanted, maxSide * (member.role === "hero" ? 1.15 : 0.5));
     const box = boxOfLongSide(member.item, long);
     boxes.set(member.item.scrap.id, box);
-    notes.set(member.item.scrap.id, `size: ${member.role} -> long side ${Math.round(long)}px`);
+    notes.set(
+      member.item.scrap.id,
+      `size: ${member.role} -> long side ${Math.round(long)}px` + (long < wanted ? ` (capped to fit how thick the shape is)` : ""),
+    );
     reserved += box.width * box.height * share(member);
   }
   const rest = cast.filter((m) => m.role === "supporting" || m.role === "background");
-  const supportBoxes = supportingBoxes(rest, Math.max(area - reserved, area / 3), reference * 0.45, sizing.contrast);
+  const cap = Math.min(reference * 0.45, maxSide * 0.85);
+  const supportBoxes = supportingBoxes(rest, Math.max(area - reserved, area / 3), cap, sizing.contrast);
   for (const member of rest) {
     const { why, ...box } = supportBoxes.get(member.item.scrap.id) as { width: number; height: number; why: string };
-    const grow = Math.min(1 / Math.sqrt(share(member)), (reference * 0.45) / Math.max(box.width, box.height));
+    const grow = Math.min(1 / Math.sqrt(share(member)), cap / Math.max(box.width, box.height));
     boxes.set(member.item.scrap.id, grow > 1 ? { width: box.width * grow, height: box.height * grow } : box);
     notes.set(member.item.scrap.id, grow > 1 ? `${why}; grown ${grow.toFixed(2)}x since its cut-out shows ${Math.round(share(member) * 100)}% of its box` : why);
   }
@@ -881,7 +894,7 @@ export interface ShapeLayout {
   /** Share of all piece area that falls outside the silhouette. */
   spill: number;
   /** Pieces that found no room in a packing. */
-  skipped: Cast[];
+  skipped: PackedLayout["skipped"];
 }
 
 /** Labels 4-connected regions of set pixels; returns the label per pixel and each label's size. */
@@ -1025,7 +1038,11 @@ export function shapeLayout(
 
   if (options.mode === "pack") {
     const members = casting.cast.map((m): Cast => (m.role === "background" ? { ...m, role: "supporting", why: `${m.why}; inside a shape it plays supporting` } : m));
-    const { boxes, notes } = packSizes(members, area * scale * scale * options.packFill, reference, options);
+    // The shape's thickest point caps piece sizes, so a thin handle still fills.
+    let deepest = 0;
+    for (const value of distance) if (value > deepest) deepest = value;
+    const thick = deepest * 2 * scale;
+    const { boxes, notes } = packSizes(members, area * scale * scale * options.packFill, reference, options, thick);
     const heroCount = members.filter((m) => m.role === "hero").length;
     const spots = heroSpots(heroCount, options.seed);
     const packed = packCast({ mask, width: mw, height: mh, scale, offsetX, offsetY }, members, boxes, notes, options.seed, options, options.outlineOf, options.gap, (rank) => {

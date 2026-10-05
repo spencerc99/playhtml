@@ -60,7 +60,7 @@ interface LayoutResult {
   /** Share of the area covered, when the layout measures it. */
   coverage: number | null;
   spill: number | null;
-  skipped: number;
+  skipped: { member: { item: Judged; role: string }; attempt: { width: number; height: number; cells: number; clash: number | null } }[];
   silhouette?: { mask: Uint8ClampedArray; width: number; height: number };
   silhouetteBox?: { x: number; y: number; width: number; height: number };
 }
@@ -177,27 +177,34 @@ function useSettled<T>(value: T, ms: number): T {
   return settled;
 }
 
+/** Cut-outs for these scraps, and how many have finished (made or failed). */
 function useCutouts(
   scraps: ImageScrap[],
   toleranceFor: (scrap: ImageScrap) => number,
-): Map<string, Cutout> {
+): { cutouts: Map<string, Cutout>; finished: number; total: number } {
   const [cutouts, setCutouts] = useState(new Map<string, Cutout>());
+  const [finished, setFinished] = useState(new Set<string>());
   const key = scraps.map((scrap) => `${scrap.id}@${toleranceFor(scrap)}`).join(",");
   useEffect(() => {
     let live = true;
     for (const scrap of scraps) {
+      const tag = `${scrap.id}@${toleranceFor(scrap)}`;
       cutoutOf(scrap, toleranceFor(scrap))
         .then((cutout) => {
           if (live) setCutouts((current) => new Map(current).set(scrap.id, cutout));
         })
-        .catch((error) => console.error(error));
+        .catch((error) => console.error(error))
+        .finally(() => {
+          if (live) setFinished((current) => new Set(current).add(tag));
+        });
     }
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  return cutouts;
+  const wanted = key ? key.split(",") : [];
+  return { cutouts, finished: wanted.filter((tag) => finished.has(tag)).length, total: wanted.length };
 }
 
 function Bar({ label, value, max = 1, hint }: { label: string; value: number; max?: number; hint?: string }) {
@@ -341,7 +348,7 @@ function layoutStats(result: LayoutResult): string {
     `${result.placements.length} pieces`,
     result.coverage !== null ? `covers ${Math.round(result.coverage * 100)}%` : "",
     result.spill ? `spills ${Math.round(result.spill * 100)}%` : "",
-    result.skipped ? `${result.skipped} found no room` : "",
+    result.skipped.length ? `${result.skipped.length} found no room` : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -409,7 +416,7 @@ function App() {
   const [contrast, setContrast] = useRemembered("contrast", 2.5);
   const [accentSide, setAccentSide] = useRemembered("accentSide", 0.09);
   const [wallpaperTiles, setWallpaperTiles] = useRemembered("wallpaperBackgrounds", 12);
-  const [accentRepeats, setAccentRepeats] = useRemembered("accentRepeats", 4);
+  const [accentRepeats, setAccentRepeats] = useRemembered("accentRepeatsMax", 1);
   const [layeredSupporting, setLayeredSupporting] = useRemembered("layeredSupporting", 24);
   const [layeredDensity, setLayeredDensity] = useRemembered("layeredDensity", 0.4);
   const [wallpaperEverywhere, setWallpaperEverywhere] = useRemembered("wallpaperEverywhere", true);
@@ -417,6 +424,7 @@ function App() {
     () => ({ heroCount, heroSide, accentSide, contrast }),
     [heroCount, heroSide, accentSide, contrast],
   );
+  const [basesShown, setBasesShown] = useState(40);
   const [baseByQuest, setBaseByQuest] = useRemembered<Record<string, string>>("bases", {});
   const [defaultTolerance, setDefaultTolerance] = useRemembered("tolerance", DEFAULT_CUTOUT_TOLERANCE);
   const [tolerances, setTolerances] = useRemembered<Record<string, number>>("tolerances", {});
@@ -597,12 +605,18 @@ function App() {
   // picked base, and pieces Clef wants cut out.
   const cutoutTargets = useMemo(() => {
     const wanted = new Map<string, ImageScrap>();
-    for (const { scrap } of ranked.slice(0, 24)) wanted.set(scrap.id, scrap);
+    if (answeredAll) for (const { scrap } of ranked.slice(0, 24)) wanted.set(scrap.id, scrap);
     if (pickedBase) wanted.set(pickedBase.scrap.id, pickedBase.scrap);
-    for (const { scrap, answers: a } of judged) if (cutAll || a.cutout.noul >= cutoutThreshold) wanted.set(scrap.id, scrap);
+    // Piece cut-outs wait for Clef to finish: cutting hundreds of images at
+    // once competes with the requests and slows both.
+    if (answeredAll) {
+      for (const { scrap, answers: a } of judged) if (cutAll || a.cutout.noul >= cutoutThreshold) wanted.set(scrap.id, scrap);
+    }
     return [...wanted.values()];
-  }, [ranked, pickedBase, judged, cutoutThreshold, cutAll]);
-  const allCutouts = useCutouts(cutoutTargets, toleranceFor);
+  }, [ranked, pickedBase, judged, cutoutThreshold, cutAll, answeredAll]);
+  const cutting = useCutouts(cutoutTargets, toleranceFor);
+  const allCutouts = cutting.cutouts;
+  const cutAllDone = cutting.finished === cutting.total;
   const thickness = useMemo(
     () => new Map([...allCutouts].map(([id, cut]) => [id, silhouetteThickness(cut)])),
     [allCutouts],
@@ -655,7 +669,7 @@ function App() {
           placements: result.placements,
           coverage: style.arrangement === "pack" ? result.coverage : null,
           spill: null,
-          skipped: result.skipped.length,
+          skipped: result.skipped,
         };
       }
       // A cut that removed every pixel leaves no shape to fill.
@@ -667,7 +681,7 @@ function App() {
         placements: result.placements,
         coverage: result.coverage,
         spill: result.spill,
-        skipped: result.skipped.length,
+        skipped: result.skipped,
         silhouette: result.shape,
         silhouetteBox: result.silhouetteBox,
       };
@@ -679,14 +693,14 @@ function App() {
   // once Clef has answered: packing on every arrival starves the asking.
   const results = useMemo(
     () =>
-      tab !== "compare" || !answeredAll
+      tab !== "compare" || !answeredAll || !cutAllDone
         ? []
         : LAYOUTS.filter((layout) => shownLayouts.includes(layout.id)).map((layout) => ({
             layout,
             clef: runLayout(layout.id, settledJudged, contest),
             random: showRandom ? runLayout(layout.id, settledRandom) : null,
           })),
-    [tab, answeredAll, shownLayouts, showRandom, runLayout, settledJudged, settledRandom, contest],
+    [tab, answeredAll, cutAllDone, shownLayouts, showRandom, runLayout, settledJudged, settledRandom, contest],
   );
   const focusedRow = focused ? results.find((row) => row.layout.id === focused.id) : undefined;
   const focusedResult = focusedRow ? focusedRow[focused?.source ?? "clef"] : null;
@@ -931,7 +945,7 @@ function App() {
 
               {tab === "base" && (
                 <section className="bases">
-                  {ranked.map(({ scrap, answers: a }) => {
+                  {ranked.slice(0, basesShown).map(({ scrap, answers: a }) => {
                     const cut = allCutouts.get(scrap.id);
                     const chosen = scrap.id === baseId;
                     return (
@@ -994,6 +1008,11 @@ function App() {
                       </article>
                     );
                   })}
+                  {ranked.length > basesShown && (
+                    <button onClick={() => setBasesShown(basesShown + 40)}>
+                      show 40 more ({ranked.length - basesShown} left)
+                    </button>
+                  )}
                 </section>
               )}
 
@@ -1015,12 +1034,40 @@ function App() {
                   </div>
                   <LayoutView frame={frame} result={focusedResult} cutouts={allCutouts} showGhost={showGhost} />
                   <PlacementTrace placements={focusedResult.placements} />
+                  {focusedResult.skipped.length > 0 && (
+                    <details className="trace">
+                      <summary>found no room ({focusedResult.skipped.length})</summary>
+                      <ol>
+                        {focusedResult.skipped.map(({ member, attempt }) => (
+                          <li key={member.item.scrap.id}>
+                            <img src={imageUrl(member.item.scrap)} />
+                            <div>
+                              <b>{member.item.scrap.alt || member.item.scrap.pageTitle}</b>
+                              <ul>
+                                <li>
+                                  {member.role}, asked for {Math.round(attempt.width)}x{Math.round(attempt.height)}px, covering {attempt.cells} grid cells;{" "}
+                                  {attempt.clash === null
+                                    ? "no free spot was left anywhere"
+                                    : `best try still overlapped ${Math.round(attempt.clash * 100)}%, even shrunk to a quarter`}
+                                </li>
+                              </ul>
+                            </div>
+                          </li>
+                        ))}
+                      </ol>
+                    </details>
+                  )}
                 </section>
               )}
 
               {tab === "compare" && !answeredAll && progress && (
                 <p className="muted">
                   Waiting for Clef to sort every scrap ({progress.done}/{progress.total}) before laying anything out.
+                </p>
+              )}
+              {tab === "compare" && answeredAll && !cutAllDone && (
+                <p className="muted">
+                  Cutting out pieces ({cutting.finished}/{cutting.total}) before laying anything out.
                 </p>
               )}
 
