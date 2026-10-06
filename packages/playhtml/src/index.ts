@@ -32,6 +32,7 @@ import type {
   CursorPresenceView,
 } from "@playhtml/common";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
+import type { Map as YMap } from "yjs";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
 import {
@@ -53,6 +54,7 @@ import {
   createPageDataChannel,
   PAGE_TAG,
   refreshPageDataChannels,
+  rebindPageDataChannels,
 } from "./page-data";
 import { createReadOnlyStore, type ReadOnlyStore } from "./readOnlyStore";
 import { RealtimePresenceTransport } from "./presence-transport";
@@ -1879,8 +1881,13 @@ function createPlayElementData<T extends TagType, TData = any>(
         return;
       }
 
+      // Resolve at write time: a concurrent first registration on another
+      // client can replace this element's record after registration.
+      const currentProxy =
+        (proxyByTagAndId.get(tag)?.get(elementId) as TData | undefined) ??
+        dataProxy;
       doc.transact(() => {
-        applyElementDataChange(elementId, dataProxy, newData);
+        applyElementDataChange(elementId, currentProxy, newData);
       });
     },
     onAwarenessChange: (elementAwarenessData) => {
@@ -2202,7 +2209,6 @@ function setupElementsFromDocument(reinitializeExisting: boolean): void {
 function getPageDataDeps() {
   return {
     ensureProxy: ensureElementProxy,
-    getProxy: (tag: string, id: string) => proxyByTagAndId.get(tag)?.get(id),
     // Getters so a handle held across a room change (which recreates store/doc)
     // reads the current ones, not stale references captured at creation.
     getDoc: () => doc,
@@ -2218,6 +2224,7 @@ function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
   if (!hasSynced) {
     throw new Error("playhtml.createPageData is not available before init()");
   }
+  watchPlayMapReplacement();
   return createPageDataChannel(name, defaultValue, getPageDataDeps());
 }
 
@@ -2686,6 +2693,97 @@ function applySharedElementDataToHandler(
   return true;
 }
 
+type ElementRecordObserver = (() => void) & { target?: unknown };
+
+function detachElementObserver(key: string): void {
+  const existing = yObserverByKey.get(key) as ElementRecordObserver | undefined;
+  if (!existing) return;
+  (existing.target as any)?.unobserveDeep?.(existing);
+  yObserverByKey.delete(key);
+}
+
+// Y.Maps already watched for replaced child records, so each gets one observer.
+const watchedRecordParents = new WeakSet<object>();
+
+/**
+ * When two clients create the same record (a tag map or an element record)
+ * before seeing each other's, the Yjs merge keeps only one. The losing client
+ * still holds a proxy and deep observer on its discarded copy. Watch the parent
+ * maps and re-point affected elements at the surviving record.
+ */
+function watchElementRecordReplacement(tag: string): void {
+  watchPlayMapReplacement();
+  const tagMap = getYjsValue(store.play[tag]) as YMap<unknown> | undefined;
+  if (tagMap && !watchedRecordParents.has(tagMap)) {
+    watchedRecordParents.add(tagMap);
+    tagMap.observe((event) => {
+      // A tag map discarded by a merge can still fire; only the live one counts.
+      if (getYjsValue(store.play[tag]) !== tagMap) return;
+      for (const elementId of event.keysChanged) {
+        rebindElementRecord(tag, elementId);
+      }
+    });
+  }
+}
+
+/** Watches the root `play` map for replaced tag maps (including page data). */
+function watchPlayMapReplacement(): void {
+  const playMap = getYjsValue(store.play) as YMap<unknown> | undefined;
+  if (!playMap || watchedRecordParents.has(playMap)) return;
+  watchedRecordParents.add(playMap);
+  playMap.observe((event) => {
+    for (const changedTag of event.keysChanged) {
+      if (changedTag === PAGE_TAG) {
+        rebindPageDataChannels(getPageDataDeps());
+        continue;
+      }
+      const handlers = elementHandlers.get(changedTag);
+      if (!handlers) continue;
+      for (const elementId of handlers.keys()) {
+        rebindElementRecord(changedTag, elementId, { restoreMissing: true });
+      }
+    }
+  });
+}
+
+/**
+ * Points an element at its live record. With `restoreMissing`, used when the
+ * whole tag map was replaced, an element whose id is absent from the winning
+ * map is written back from its local data: its record was only discarded by
+ * the merge, not deleted by anyone. Not used for single-key changes, where a
+ * missing record means another client deleted it.
+ */
+function rebindElementRecord(
+  tag: string,
+  elementId: string,
+  { restoreMissing = false }: { restoreMissing?: boolean } = {},
+): void {
+  const handler = elementHandlers.get(tag)?.get(elementId);
+  if (!handler) return;
+  const tagRecord = store.play[tag];
+  if (
+    restoreMissing &&
+    tagRecord !== undefined &&
+    tagRecord[elementId] === undefined &&
+    handler.data !== undefined &&
+    canWriteElementData(handler.element)
+  ) {
+    doc.transact(() => {
+      tagRecord[elementId] = clonePlain(handler.data);
+    });
+  }
+  const record = tagRecord?.[elementId];
+  if (record === undefined) return;
+  const key = `${tag}:${elementId}`;
+  const observed = (yObserverByKey.get(key) as ElementRecordObserver | undefined)
+    ?.target;
+  if (observed === getYjsValue(record)) return;
+  if (!proxyByTagAndId.has(tag)) proxyByTagAndId.set(tag, new Map());
+  proxyByTagAndId.get(tag)!.set(elementId, record);
+  attachSyncedStoreObserver(tag, elementId);
+  applySharedElementDataToHandler(tag, elementId, handler);
+}
+
 function attachSyncedStoreObserver(tag: string, elementId: string) {
   const key = `${tag}:${elementId}`;
   const tagHandlers = elementHandlers.get(tag);
@@ -2693,16 +2791,13 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
   const handler = tagHandlers.get(elementId);
   if (!handler) return;
 
-  // Detach previous observer if present
+  watchElementRecordReplacement(tag);
+
   const yVal = getYjsValue(store.play[tag]?.[elementId]);
   if (!yVal || typeof (yVal as any).observeDeep !== "function") return;
-  const existing = yObserverByKey.get(key);
-  if (existing) {
-    // @ts-ignore
-    (yVal as any).unobserveDeep(existing);
-  }
+  detachElementObserver(key);
   let scheduled = false;
-  const observer = () => {
+  const observer: ElementRecordObserver = () => {
     if (scheduled) return;
     scheduled = true;
     queueMicrotask(() => {
@@ -2718,6 +2813,7 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
       }
     });
   };
+  observer.target = yVal;
   // @ts-ignore
   (yVal as any).observeDeep(observer);
   yObserverByKey.set(key, observer);
@@ -2856,17 +2952,7 @@ function removePlayElement(element: Element | null) {
     }
 
     const key = `${tag}:${elementId}`;
-    const yVal = getYjsValue(store.play[tag]?.[elementId]);
-    const observer = yObserverByKey.get(key);
-    if (
-      yVal &&
-      observer &&
-      typeof (yVal as any).unobserveDeep === "function"
-    ) {
-      // @ts-ignore
-      (yVal as any).unobserveDeep(observer);
-    }
-    yObserverByKey.delete(key);
+    detachElementObserver(key);
     sharedUpdateSeen.delete(key);
     const timerId = sharedHydrationTimers.get(key);
     if (timerId !== undefined) {
@@ -3252,18 +3338,10 @@ function deleteElementData(tag: string, elementId: string): void {
   const key = `${tag}:${elementId}`;
 
   // 1. Remove observer
-  const yVal = getYjsValue(store.play[tag]?.[elementId]);
-  if (yVal && typeof (yVal as any).observeDeep === "function") {
-    const observer = yObserverByKey.get(key);
-    if (observer) {
-      try {
-        // @ts-ignore
-        (yVal as any).unobserveDeep(observer);
-      } catch (error) {
-        console.warn(`[PLAYHTML] Failed to remove observer for ${key}:`, error);
-      }
-      yObserverByKey.delete(key);
-    }
+  try {
+    detachElementObserver(key);
+  } catch (error) {
+    console.warn(`[PLAYHTML] Failed to remove observer for ${key}:`, error);
   }
 
   // 2. Remove from SyncedStore
