@@ -75,7 +75,6 @@ import {
   type CollagePaper,
 } from "./collageFormats";
 import {
-  defaultDrawerWidth,
   readDrawerPreference,
   writeDrawerPreference,
   type DrawerPreference,
@@ -1823,13 +1822,8 @@ export function CollageStudio({
         items={scraps}
         width={drawer.width}
         collapsed={drawer.collapsed}
-        slotSize={drawer.slotSize}
         onWidth={(width) => updateDrawer({ width })}
         onCollapsed={(collapsed) => updateDrawer({ collapsed })}
-        onSlotSize={(slotSize) =>
-          // The drawer follows the new slot size so three still fit across.
-          updateDrawer({ slotSize, width: defaultDrawerWidth(slotSize) })
-        }
         onPlace={(item) => {
           // Placing a scrap is an edit, so the collage turns face up for it.
           if (over) turnOver();

@@ -49,7 +49,6 @@ import {
 } from "../EditorSwitch";
 import { CutoutControl } from "../CutoutControl";
 import {
-  defaultDrawerWidth,
   readDrawerPreference,
   writeDrawerPreference,
   type DrawerPreference,
@@ -748,10 +747,8 @@ export default function TldrawCollageStudio({
         items={scraps}
         width={drawer.width}
         collapsed={drawer.collapsed}
-        slotSize={drawer.slotSize}
         onWidth={(width) => updateDrawer({ width })}
         onCollapsed={(collapsed) => updateDrawer({ collapsed })}
-        onSlotSize={(slotSize) => updateDrawer({ slotSize, width: defaultDrawerWidth(slotSize) })}
         onPlace={(item) => addPiece(item, fanOutPlacement(pieces.length, frame))}
         onDragStart={(item, event) => {
           draggingScrapRef.current = item;
