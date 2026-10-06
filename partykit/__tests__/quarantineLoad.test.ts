@@ -66,8 +66,11 @@ mock.module("cloudflare:workers", () => ({
 // A single mutable row stands in for the room's `documents` record. Tests assert
 // against `persistedRow.document` to prove risky paths never overwrite real data.
 // Like the database trigger, every document write gives the row a new version.
-type PersistedRow = { document: string | null; version: string };
+// A row written before the version column existed has a NULL version until
+// its next document write; `persistedRowUnversioned` simulates that.
+type PersistedRow = { document: string | null; version: string | null };
 let persistedVersionCounter = 0;
+let persistedRowUnversioned = false;
 let persistedDocument: string | null = null;
 const persistedRow: PersistedRow = {
   get document() {
@@ -76,8 +79,10 @@ const persistedRow: PersistedRow = {
   set document(value: string | null) {
     persistedDocument = value;
     persistedVersionCounter += 1;
+    persistedRowUnversioned = false;
   },
   get version() {
+    if (persistedRowUnversioned) return null;
     return `v${persistedVersionCounter}`;
   },
 };
@@ -348,6 +353,7 @@ const COMPACT_LETHAL_DOCUMENT = encodeDoc(COMPACT_LETHAL_DOC);
 
 beforeEach(() => {
   persistedRow.document = null;
+  persistedRowUnversioned = false;
   upsertCalls = [];
   upsertError = null;
   beforeUpsert = null;
@@ -3300,6 +3306,46 @@ describe("persisted document copy", () => {
     expect(again.document.getMap("play").get("greeting")).toBe(
       "edited-elsewhere"
     );
+  });
+
+  test("a row saved before versions existed loads from the database until its next save", async () => {
+    const storage = await saveThroughRoom("saved");
+    // The row predates the version column: a copy exists but nothing proves
+    // it matches, so it must not be used.
+    persistedDocument = documentWith("legacy");
+    persistedRowUnversioned = true;
+    documentDownloadCount = 0;
+
+    // A missing version is expected for every room until it saves, so it
+    // must not log as a cache failure.
+    const errors: unknown[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => errors.push(args[0]);
+    let again: any;
+    try {
+      const restarted = restartRoom(storage);
+      await startExpectingSource(restarted, "database");
+      expect(documentDownloadCount).toBe(1);
+      expect(restarted.document.getMap("play").get("greeting")).toBe("legacy");
+
+      // Still unversioned, so the next start downloads again.
+      documentDownloadCount = 0;
+      again = restartRoom(storage);
+      await startExpectingSource(again, "database");
+      expect(documentDownloadCount).toBe(1);
+    } finally {
+      console.error = originalError;
+    }
+    expect(errors).toEqual([]);
+
+    // The first save assigns a version and the copy is trusted from then on.
+    again.documentLoadCompleted = true;
+    await saveCapturingAutosaveLog(again);
+    documentDownloadCount = 0;
+    const versioned = restartRoom(storage);
+    await startExpectingSource(versioned, "cache");
+    expect(documentDownloadCount).toBe(0);
+    expect(versioned.document.getMap("play").get("greeting")).toBe("legacy");
   });
 
   test("a failed copy write keeps the save and removes the copy", async () => {

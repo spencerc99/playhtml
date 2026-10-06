@@ -2141,15 +2141,19 @@ export class PartyServer extends YServer {
           return { data: null, source: "database" as const };
         }
 
-        const cachedDocument = await this.readDocumentCache(
-          versionResult.data.version
-        );
+        // Rows saved before the version column existed have no version until
+        // their next save; they always load from the database.
+        const rowVersion = versionResult.data.version;
+        const cachedDocument =
+          typeof rowVersion === "string"
+            ? await this.readDocumentCache(rowVersion)
+            : null;
         if (cachedDocument !== null) {
           successfulAttemptElapsedMs = Date.now() - attemptStartedAt;
           return {
             data: {
               document: cachedDocument,
-              version: versionResult.data.version as string,
+              version: rowVersion as string,
             },
             source: "cache" as const,
           };
@@ -2192,7 +2196,11 @@ export class PartyServer extends YServer {
     }
 
     if (result.source === "database") {
-      if (result.data) {
+      if (result.data && result.data.version == null) {
+        // Not versioned yet: nothing to trust, so drop any copy until the
+        // next save assigns a version.
+        await this.clearDocumentCache();
+      } else if (result.data) {
         await this.refreshDocumentCache(
           result.data.version,
           result.data.document
