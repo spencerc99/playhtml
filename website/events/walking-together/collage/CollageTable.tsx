@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { playhtml, usePlayerIdentity } from "@playhtml/react";
 import { isAdmin } from "../admin";
 import {
+  arrangeIntoShape,
   countPlacedBy,
   hasReachedLimit,
   isOnTop,
@@ -54,6 +55,12 @@ interface Gesture {
   centerPx: { x: number; y: number };
   moved: boolean;
 }
+
+/** How long after a gather its staggered glide still applies. */
+const GATHER_WINDOW_MS = 6000;
+/** The whole stagger fits in this span, however many scraps there are. */
+const GATHER_SPREAD_MS = 2400;
+const GATHER_MAX_STEP_MS = 140;
 
 function useElementSize(ref: React.RefObject<HTMLElement | null>) {
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -369,6 +376,34 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
     });
   };
 
+  /** The collaging effect: every scrap glides into the captured shape (or a
+   * soft oval when none was captured), packed densely with overlaps. One
+   * shared write; each client staggers the glide from `arrangedAt`. */
+  const gatherIntoShape = () => {
+    const current = piecesRef.current;
+    if (lockedRef.current || Object.keys(current).length === 0) {
+      flashNotice("no scraps on the table to gather");
+      return;
+    }
+    const aspect = size.height > 0 ? size.width / size.height : 16 / 9;
+    const shape = orderAroundCentroid(templatePoints, aspect);
+    const layout = arrangeIntoShape(current, shape, aspect, Math.random);
+    setData((draft) => {
+      if (!draft.pieces) return;
+      for (const [id, t] of Object.entries(layout)) {
+        const piece = draft.pieces[id];
+        // Someone may have removed it since the layout was computed.
+        if (!piece) continue;
+        piece.x = t.x;
+        piece.y = t.y;
+        piece.width = t.width;
+        piece.rotation = t.rotation;
+        piece.z = t.z;
+      }
+      draft.arrangedAt = Date.now();
+    });
+  };
+
   const clearShape = () => {
     setData((draft) => {
       draft.templatePoints = {};
@@ -400,6 +435,14 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
 
   const ordered = sortedPieces(pieces);
   const frontZ = topZ(pieces) + 1;
+  // Right after a gather, scraps glide in one after another, bottom of the
+  // stack first, so the collage visibly assembles.
+  const gathering =
+    !!data?.arrangedAt && Date.now() - data.arrangedAt < GATHER_WINDOW_MS;
+  const gatherStep = Math.min(
+    GATHER_MAX_STEP_MS,
+    GATHER_SPREAD_MS / Math.max(1, ordered.length),
+  );
   const tableAspect = size.height > 0 ? size.width / size.height : 1;
   const outline = orderAroundCentroid(templatePoints, tableAspect);
 
@@ -452,7 +495,7 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
       )}
 
       {size.width > 0 &&
-        ordered.map((piece) => {
+        ordered.map((piece, index) => {
           const mine = gesture?.id === piece.id;
           const t = mine
             ? gesture.transform
@@ -484,11 +527,19 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
                 width: widthPx,
                 height: heightPx,
                 zIndex: mine ? frontZ : piece.z,
+                transitionDelay: gathering
+                  ? `${Math.round(index * gatherStep)}ms`
+                  : undefined,
               }}
             >
               <div
                 className="collage-piece__paper"
-                style={{ transform: `rotate(${t.rotation}deg)` }}
+                style={{
+                  transform: `rotate(${t.rotation}deg)`,
+                  transitionDelay: gathering
+                    ? `${Math.round(index * gatherStep)}ms`
+                    : undefined,
+                }}
                 onPointerDown={(e) => startGesture(e, piece, "move")}
                 onPointerEnter={() => setHoveredId(piece.id)}
                 onPointerLeave={() =>
@@ -588,6 +639,12 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
           {templatePoints.length > 0 && (
             <button onClick={clearShape}>clear shape</button>
           )}
+          <button
+            onClick={gatherIntoShape}
+            title="Glide every scrap into the shape, packed together"
+          >
+            collage into shape
+          </button>
           <button onClick={toggleLock}>{locked ? "unlock" : "lock"}</button>
           <button onClick={exportPng} disabled={exporting}>
             {exporting ? "exporting" : "export png"}

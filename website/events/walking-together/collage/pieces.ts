@@ -41,6 +41,10 @@ export interface CollageData {
   pieces: Pieces;
   templatePoints: TemplatePoints;
   locked: boolean;
+  /** When the admin last gathered the scraps into the shape (ms). Optional,
+   * since rooms from before the gather have no value; clients use it to
+   * stagger the glide so the collage assembles piece by piece. */
+  arrangedAt?: number;
 }
 
 /** Soft cap on how many scraps one person can have on the table at once. */
@@ -311,4 +315,145 @@ export function remoteDragTransforms(
     byPiece[live.drag.id] = live.drag.transform;
   }
   return byPiece;
+}
+
+/** True when a point is inside a closed polygon (even-odd rule). */
+export function pointInPolygon(
+  point: { x: number; y: number },
+  polygon: Array<{ x: number; y: number }>,
+): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i];
+    const b = polygon[j];
+    if (
+      a.y > point.y !== b.y > point.y &&
+      point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Area of a polygon in relative table units (shoelace formula). */
+export function polygonArea(polygon: Array<{ x: number; y: number }>): number {
+  let sum = 0;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    sum += (polygon[j].x + polygon[i].x) * (polygon[j].y - polygon[i].y);
+  }
+  return Math.abs(sum) / 2;
+}
+
+/** The shape scraps gather into when no cursor shape was captured: a soft
+ * oval in the middle of the table, round on screen at any table aspect. */
+export function defaultShape(tableAspect: number, sides = 24): TemplatePoint[] {
+  const ry = 0.32;
+  const rx = Math.min(0.42, ry / tableAspect);
+  return Array.from({ length: sides }, (_, i) => {
+    const a = (i / sides) * Math.PI * 2;
+    return {
+      x: 0.5 + rx * Math.cos(a),
+      y: 0.5 + ry * Math.sin(a),
+      color: "#888888",
+    };
+  });
+}
+
+/** How much paper to lay down relative to the shape's area. Above 1 means the
+ * scraps overlap, which reads as a collage rather than a tidy grid. */
+export const SHAPE_COVERAGE = 1.6;
+
+/**
+ * Lays every piece out inside a shape: spots spread evenly across the shape
+ * (farthest-point sampling), one width for all scraps sized so their paper
+ * covers the shape with overlap, and a fresh tilt and stacking order so the
+ * result reads as a hand-made collage. Returns the new transform and z per
+ * piece. Positions are relative to the table, like everything else.
+ */
+export function arrangeIntoShape(
+  pieces: Pieces,
+  shape: TemplatePoint[],
+  tableAspect: number,
+  random: () => number,
+): Record<string, PieceTransform & { z: number }> {
+  const list = Object.values(pieces).sort((a, b) => a.placedAt - b.placedAt);
+  const result: Record<string, PieceTransform & { z: number }> = {};
+  if (list.length === 0) return result;
+
+  const polygon =
+    shape.length >= 3 && polygonArea(shape) > 0.002
+      ? shape
+      : defaultShape(tableAspect);
+  const area = polygonArea(polygon);
+
+  // Piece area as a fraction of the table is width * width * aspect * tableAspect.
+  const aspectSum = list.reduce((sum, p) => sum + p.aspect, 0);
+  const width = clamp(
+    Math.sqrt((SHAPE_COVERAGE * area) / (tableAspect * aspectSum)),
+    MIN_PIECE_WIDTH,
+    MAX_PIECE_WIDTH,
+  );
+
+  // Candidate spots: random points that land inside the shape.
+  const xs = polygon.map((p) => p.x);
+  const ys = polygon.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const candidates: Array<{ x: number; y: number }> = [];
+  const wanted = Math.max(200, list.length * 30);
+  for (let tries = 0; candidates.length < wanted && tries < wanted * 20; tries++) {
+    const p = {
+      x: minX + random() * (maxX - minX),
+      y: minY + random() * (maxY - minY),
+    };
+    if (pointInPolygon(p, polygon)) candidates.push(p);
+  }
+  if (candidates.length === 0) {
+    candidates.push({
+      x: xs.reduce((s, x) => s + x, 0) / xs.length,
+      y: ys.reduce((s, y) => s + y, 0) / ys.length,
+    });
+  }
+
+  // Farthest-point sampling, measured in on-screen proportions, so spots
+  // spread across the whole shape instead of clumping.
+  const spots: Array<{ x: number; y: number }> = [];
+  const nearest = candidates.map(() => Infinity);
+  let next = Math.floor(random() * candidates.length);
+  while (spots.length < list.length) {
+    const chosen = candidates[next];
+    spots.push(chosen);
+    let best = -1;
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i];
+      const d = Math.hypot((c.x - chosen.x) * tableAspect, c.y - chosen.y);
+      if (d < nearest[i]) nearest[i] = d;
+      if (best === -1 || nearest[i] > nearest[best]) best = i;
+    }
+    next = best;
+  }
+
+  // Shuffle who gets which spot and who sits on top, so one person's scraps
+  // don't cluster and the stack doesn't follow placement order.
+  const order = list.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  const baseZ = topZ(pieces) + 1;
+  list.forEach((piece, i) => {
+    const spot = spots[order[i]];
+    result[piece.id] = {
+      x: clamp(spot.x, 0, 1),
+      y: clamp(spot.y, 0, 1),
+      // A little size variety keeps it from looking like a contact sheet.
+      width: clamp(width * (0.85 + random() * 0.3), MIN_PIECE_WIDTH, MAX_PIECE_WIDTH),
+      rotation: Math.round((random() * 16 - 8) * 10) / 10,
+      z: baseZ + order[i],
+    };
+  });
+  return result;
 }

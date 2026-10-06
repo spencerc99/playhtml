@@ -85,7 +85,7 @@ export const SESSIONS: WorkshopSession[] = [
     // prompts, walk the web collecting scraps, then collage them together.
     id: "2026-10-beta-collage-night",
     label: "walking together (internet walk + collage night)",
-    date: "2026-10-12",
+    date: "2026-10-11",
     archived: false,
     subtitle: [
       "with ",
