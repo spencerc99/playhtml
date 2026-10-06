@@ -24,7 +24,6 @@ function createPageDataTestDeps(
       }
       return proxies.get(id) as T;
     },
-    getProxy: (tag: string, id: string) => proxyByTagAndId.get(tag)?.get(id),
     getDoc: () => doc,
     getStorePlay: () => store.play,
     proxyByTagAndId,
