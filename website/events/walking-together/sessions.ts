@@ -44,6 +44,9 @@ export interface WorkshopSession {
   prompts: string[];
   /** When true, the admin can switch the room into the collage stage. */
   hasCollageStage: boolean;
+  /** When true, people can join the walk and their pages draw as trails
+   * behind the walk stage. */
+  hasJoinWalk: boolean;
 }
 
 export const SESSIONS: WorkshopSession[] = [
@@ -66,6 +69,7 @@ export const SESSIONS: WorkshopSession[] = [
     ],
     prompts: WORKSHOP_CURSOR_PROMPTS,
     hasCollageStage: false,
+    hasJoinWalk: false,
   },
   {
     id: "2026-06-06-byod",
@@ -79,6 +83,7 @@ export const SESSIONS: WorkshopSession[] = [
     ],
     prompts: WORKSHOP_CURSOR_PROMPTS,
     hasCollageStage: false,
+    hasJoinWalk: false,
   },
   {
     // Closed beta testers for playhtml / we were online: warm up with cursor
@@ -106,6 +111,7 @@ export const SESSIONS: WorkshopSession[] = [
       "Make a shape for the internet you want, and hold it",
     ],
     hasCollageStage: true,
+    hasJoinWalk: true,
   },
 ];
 

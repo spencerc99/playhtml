@@ -19,6 +19,7 @@ import {
 import { isAdmin } from "./admin";
 import { PortraitOverlay } from "./PortraitOverlay";
 import { CollageStage } from "./CollageStage";
+import { WalkStage } from "./walk/WalkStage";
 import {
   rosterPids,
   rosterEntryIsCurrent,
@@ -438,6 +439,9 @@ function StageSwitch({ session }: { session: WorkshopSession }) {
         >
           {stage === "walk" ? "→ collage" : "← walk"}
         </button>
+      )}
+      {session.hasJoinWalk && !session.archived && (
+        <WalkStage active={stage === "walk"} />
       )}
       <div className="walk-stage" hidden={stage !== "walk"}>
         <UserSetup />
