@@ -275,3 +275,83 @@ $grain: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/20
     }
   }
 }
+
+// Scraps the extension collected on this walk, ready to place.
+.scraps-panel {
+  position: fixed;
+  top: 1em;
+  left: 1em;
+  bottom: 5em;
+  z-index: 100000;
+  width: 132px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  font-size: 11px;
+  pointer-events: none;
+
+  > * {
+    pointer-events: auto;
+  }
+
+  &--closed {
+    bottom: auto;
+  }
+}
+
+.scraps-panel__header {
+  display: flex;
+  gap: 0.35em;
+
+  button {
+    padding: 4px 6px;
+    font-family: $mono-font;
+    font-size: 11px;
+    text-align: left;
+    background: rgba(255, 253, 248, 0.92);
+    border: 1px solid rgba(61, 56, 51, 0.2);
+    color: $ink;
+    cursor: pointer;
+  }
+}
+
+.scraps-panel__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px;
+  background: rgba(255, 253, 248, 0.7);
+  border: 1px solid rgba(61, 56, 51, 0.12);
+}
+
+.scraps-panel__empty {
+  margin: 0;
+  color: $ink-muted;
+}
+
+.scraps-panel__scrap {
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: grab;
+  filter: drop-shadow(0 1px 1px rgba(61, 56, 51, 0.18));
+
+  img {
+    display: block;
+    width: 100%;
+    height: auto;
+    pointer-events: none;
+  }
+
+  &--placed {
+    opacity: 0.4;
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+}

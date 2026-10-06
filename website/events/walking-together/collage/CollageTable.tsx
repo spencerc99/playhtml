@@ -35,6 +35,7 @@ import {
   type ScrapInput,
 } from "./scrapInput";
 import { downloadBlob, renderCollagePng } from "./exportPng";
+import { ScrapsPanel } from "./ScrapsPanel";
 import "./collage.scss";
 
 interface Props {
@@ -627,6 +628,14 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
           </>
         )}
       </div>
+
+      {!locked && (
+        <ScrapsPanel
+          placedSrcs={new Set(ordered.map((p) => p.src))}
+          disabled={atLimit}
+          onPick={(input) => void addScrap(input)}
+        />
+      )}
 
       {admin && (
         <div
