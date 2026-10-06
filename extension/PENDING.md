@@ -1,5 +1,6 @@
 # Unreleased
 
+- At a walking together event, the scraps you collected on the walk now show up in a panel on the shared collage table, ready to place.
 - Internet scraps opens faster with large collections while search and filters still find older scraps.
 
 <!--

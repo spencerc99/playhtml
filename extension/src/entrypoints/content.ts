@@ -33,6 +33,7 @@ import {
 import { markExtensionInstalled } from "../utils/extensionInstallMarker";
 import { isExtensionPageUrl } from "../utils/extensionPage";
 import { initHostedSlowModeContentBridge } from "../features/slowMode/slowModeHostedContentBridge";
+import { initSessionScrapsContentBridge } from "../features/sessionScraps/sessionScrapsContentBridge";
 import { watchInstallationContent } from "./content/installationContent";
 import { MILESTONE_TOASTS_ENABLED_KEY } from "../milestones/state";
 
@@ -63,6 +64,8 @@ export default defineContentScript({
     markExtensionInstalled(document.documentElement);
     const removeSlowModeBridge = initHostedSlowModeContentBridge();
     ctx?.onInvalidated(removeSlowModeBridge);
+    const removeSessionScrapsBridge = initSessionScrapsContentBridge();
+    ctx?.onInvalidated(removeSessionScrapsBridge);
     const removeInstallationContent = watchInstallationContent();
     ctx?.onInvalidated(removeInstallationContent);
 
