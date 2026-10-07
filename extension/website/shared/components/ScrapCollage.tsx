@@ -1120,8 +1120,9 @@ export const COLLAGE_STYLES = `
     color: #3d3833;
   }
 
-  /* A lone on/off option, so it wears the switch's edge itself. It matches
-     the collage studio's sources button: a chain mark, and teal when on. */
+  /* A lone option, so it wears the switch's edge itself. Its words name what
+     a click does; like the collage studio's sources button it carries a chain
+     mark and turns teal while the outlines show. */
   .scrap-collage__sources-toggle {
     box-sizing: border-box;
     gap: 6px;
@@ -1130,7 +1131,7 @@ export const COLLAGE_STYLES = `
     background: rgba(61, 56, 51, 0.05);
   }
 
-  .scrap-collage__sources-toggle[aria-pressed="true"] {
+  .scrap-collage__sources-toggle--on {
     border-color: rgba(74, 154, 138, 0.7);
     background: rgba(74, 154, 138, 0.12);
     box-shadow: none;
@@ -2556,9 +2557,14 @@ export function ScrapCollage({
                 {archiveMode && (
                   <button
                     type="button"
-                    className="scrap-collage__view-option scrap-collage__sources-toggle"
-                    aria-pressed={showSources}
-                    title="Outline the scraps that came from each site"
+                    className={`scrap-collage__view-option scrap-collage__sources-toggle${
+                      showSources ? " scrap-collage__sources-toggle--on" : ""
+                    }`}
+                    title={
+                      showSources
+                        ? "Hide the outlines around each site's scraps"
+                        : "Outline the scraps that came from each site"
+                    }
                     onClick={toggleSources}
                   >
                     {/* Two links of a chain, the collage studio's sources mark. */}
@@ -2585,7 +2591,7 @@ export function ScrapCollage({
                         strokeLinejoin="round"
                       />
                     </svg>
-                    sources
+                    {showSources ? "hide sources" : "show sources"}
                   </button>
                 )}
                 <span className="scrap-collage__controls-spacer" />
