@@ -1,7 +1,11 @@
 // ABOUTME: Background service worker — holds the extension-origin event store and
 // ABOUTME: coordinates event writes, uploads, and data reads for all extension surfaces
 import browser from 'webextension-polyfill'
+import { scrapEncounterDay } from '@movement/utils/scrapEncounterDay'
+import type { ScrapSource } from '@movement/utils/scrapPhotoGroups'
 import { LocalEventStore } from '../storage/LocalEventStore'
+import { ImageFingerprints } from '../storage/imageFingerprints'
+import { ImageCopier } from '../storage/ImageCopier'
 import type {
   QueryOptions,
   WalkingRecordTraceTarget,
@@ -9,7 +13,7 @@ import type {
 import { uploadEvents } from '../storage/sync'
 import { fetchEventsByPid } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
-import type { ScrapEventData } from '../collectors/types'
+import type { ScrapEventData, ScrapPosition } from '../collectors/types'
 import { getScrapKey } from '../collectors/scrapUtils'
 import {
   collectionModeStorageKey,
@@ -33,6 +37,7 @@ import {
   resetDailyIfNeeded,
   isOnCooldown,
   recordToastShown,
+  MILESTONE_TOASTS_ENABLED_KEY,
 } from '../milestones/state'
 import {
   checkAllMilestones,
@@ -83,6 +88,9 @@ function replyWithWikipediaHandle(
 }
 
 interface ScrapRecordBase {
+  sources?: ScrapSource[]
+  encounterCount?: number
+  encounterDay?: string
   id: string
   key: string
   domain: string
@@ -90,6 +98,7 @@ interface ScrapRecordBase {
   ts: number
   pageTitle: string
   faviconUrl?: string
+  position?: ScrapPosition
 }
 
 export type ScrapRecord = ScrapRecordBase &
@@ -97,6 +106,7 @@ export type ScrapRecord = ScrapRecordBase &
     | {
         kind: 'image'
         src: string
+        contentHash?: string
         alt?: string
         naturalWidth: number
         naturalHeight: number
@@ -106,12 +116,20 @@ export type ScrapRecord = ScrapRecordBase &
         text: string
         styles: Record<string, string>
         innerSvg?: string
+        backdropColor?: string
       }
     | {
         kind: 'svg-icon'
         markup: string
         width: number
         height: number
+      }
+    | {
+        kind: 'heading'
+        text: string
+        level: 1 | 2 | 3
+        styles: Record<string, string>
+        backdropColor?: never
       }
     | {
         kind: 'cursor'
@@ -122,6 +140,7 @@ export type ScrapRecord = ScrapRecordBase &
   )
 
 const FEATURE_ACCESS_REFRESH_ALARM = 'refreshFeatureAccess'
+const IMAGE_COPY_BACKFILL_ALARM = 'copyScrapImages'
 
 function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
   const kind = (event.data as { kind?: unknown } | null)?.kind
@@ -129,6 +148,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
     kind !== 'image' &&
     kind !== 'button' &&
     kind !== 'svg-icon' &&
+    kind !== 'heading' &&
     kind !== 'cursor'
   ) {
     return undefined
@@ -146,6 +166,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
     ts: event.ts,
     pageTitle: data.pageTitle,
     ...(data.faviconUrl ? { faviconUrl: data.faviconUrl } : {}),
+    ...(data.position ? { position: data.position } : {}),
   }
 
   switch (data.kind) {
@@ -154,6 +175,8 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
         ...base,
         kind: data.kind,
         src: data.src,
+        encounterDay: scrapEncounterDay(event.ts, event.meta.tz),
+        ...(data.contentHash ? { contentHash: data.contentHash } : {}),
         ...(data.alt ? { alt: data.alt } : {}),
         naturalWidth: data.naturalWidth,
         naturalHeight: data.naturalHeight,
@@ -165,6 +188,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
         text: data.text,
         styles: data.styles,
         ...(data.innerSvg ? { innerSvg: data.innerSvg } : {}),
+        ...(data.backdropColor ? { backdropColor: data.backdropColor } : {}),
       }
     case 'svg-icon':
       return {
@@ -173,6 +197,14 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
         markup: data.markup,
         width: data.width,
         height: data.height,
+      }
+    case 'heading':
+      return {
+        ...base,
+        kind: data.kind,
+        text: data.text,
+        level: data.level,
+        styles: data.styles,
       }
     case 'cursor':
       return {
@@ -186,6 +218,8 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
 }
 
 const store = new LocalEventStore()
+const imageFingerprints = new ImageFingerprints(store)
+const imageCopier = new ImageCopier(store)
 
 const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
 const LOCAL_RAW_EVENT_RETENTION_DAYS = 30
@@ -368,6 +402,12 @@ export default defineBackground(() => {
   // additionally fire on navigation — see scheduleMilestoneCheck.
   browser.alarms.create('checkMilestones', { periodInMinutes: 5 })
   browser.alarms.create(FEATURE_ACCESS_REFRESH_ALARM, { periodInMinutes: 60 })
+  // Copies images for scraps collected before local copies existed. The pass
+  // finishes once; later alarms only read that it is done.
+  browser.alarms.create(IMAGE_COPY_BACKFILL_ALARM, {
+    delayInMinutes: 1,
+    periodInMinutes: 10,
+  })
   if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
     browser.alarms.create(LOCAL_RETENTION_ALARM, {
       periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
@@ -382,6 +422,11 @@ export default defineBackground(() => {
 
     if (alarm.name === FEATURE_ACCESS_REFRESH_ALARM) {
       await refreshExperimentAccess().catch(() => {})
+      return
+    }
+
+    if (alarm.name === IMAGE_COPY_BACKFILL_ALARM) {
+      await imageCopier.backfill()
       return
     }
 
@@ -641,7 +686,22 @@ export default defineBackground(() => {
       const events = (message.events || []) as CollectionEvent[]
       store
         .addEvents(events)
-        .then(() => {
+        .then((inserted) => {
+          imageCopier.noteCollected(inserted)
+          void imageFingerprints
+            .process(inserted)
+            .then(({ checked }) => {
+              if (checked > 0)
+                return browser.runtime
+                  .sendMessage({ type: 'SCRAP_PHOTOS_UPDATED' })
+                  .catch(() => {})
+            })
+            .catch((error) =>
+              console.warn(
+                '[Background] Photo fingerprint update failed:',
+                error,
+              ),
+            )
           // A navigation focus is the canonical "user is now looking at this
           // domain" signal — the moment a domain-visit milestone could fire
           // with the right tab in front. Trigger an immediate check (cooldown
@@ -695,21 +755,55 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'GET_SCRAPS') {
-      const limit = (message.options?.limit ?? 5000) as number
+      const limit = message.options?.limit ?? 200
+      const cursor = message.options?.cursor
       store
-        .queryByType('element', { limit })
-        .then((events) =>
-          events
-            .sort((first, second) => second.ts - first.ts)
-            .flatMap((event): ScrapRecord[] => {
+        .queryEventPage('element', limit, cursor)
+        .then(({ events, nextCursor }) =>
+          reply({
+            scraps: events.flatMap((event): ScrapRecord[] => {
               const scrap = toScrapRecord(event)
               return scrap ? [scrap] : []
             }),
+            nextCursor,
+          }),
         )
-        .then((scraps) => reply({ scraps }))
         .catch((e) => {
           console.error('[Background] GET_SCRAPS error:', e)
-          reply({ scraps: [] })
+          reply({ scraps: [], error: String(e) })
+        })
+      return true
+    }
+
+    if (message.type === 'DELETE_SCRAPS') {
+      // Only the extension's own pages may delete; a content script runs
+      // beside arbitrary sites and has no reason to.
+      if (!sender.url?.startsWith(browser.runtime.getURL('/'))) {
+        reply({ error: 'DELETE_SCRAPS is only accepted from extension pages' })
+        return true
+      }
+      const ids: unknown = message.ids
+      if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
+        reply({ error: 'DELETE_SCRAPS needs a list of scrap ids' })
+        return true
+      }
+      store
+        .deleteScrapEvents(ids)
+        .then((deleted) => reply({ deleted }))
+        .catch((e) => {
+          console.error('[Background] DELETE_SCRAPS error:', e)
+          reply({ error: String(e) })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_SCRAP_COUNT') {
+      store
+        .countEventsOfType('element')
+        .then((total) => reply({ total }))
+        .catch((e) => {
+          console.error('[Background] GET_SCRAP_COUNT error:', e)
+          reply({ error: String(e) })
         })
       return true
     }
@@ -780,8 +874,8 @@ export default defineBackground(() => {
           const dateRange =
             agg?.firstVisit && agg?.lastVisit
               ? {
-                  oldest: new Date(agg.firstVisit).toLocaleDateString(),
-                  newest: new Date(agg.lastVisit).toLocaleDateString(),
+                  oldest: new Date(agg.firstVisit).toISOString(),
+                  newest: new Date(agg.lastVisit).toISOString(),
                 }
               : null
 
@@ -1033,8 +1127,18 @@ export default defineBackground(() => {
           if (parsed.version !== 1)
             throw new Error('Unsupported export version')
           const events = parsed.events as CollectionEvent[]
-          await store.addImportedEvents(events)
-          reply({ success: true, imported: events.length })
+          const stored = await store.addImportedEvents(events)
+          const imported = stored.length
+          const alreadyHeld = events.length - imported
+          if (
+            stored.some((event) => event.type === 'element') &&
+            imported > 0
+          ) {
+            await browser.runtime
+              .sendMessage({ type: 'SCRAP_PHOTOS_UPDATED' })
+              .catch(() => {})
+          }
+          reply({ success: true, imported, alreadyHeld })
         } catch (e) {
           console.error('[Background] IMPORT_EVENTS error:', e)
           reply({ success: false, error: String(e) })
@@ -1080,6 +1184,9 @@ export default defineBackground(() => {
   })
 
   async function runMilestoneCheck() {
+    const preference = await browser.storage.local.get(MILESTONE_TOASTS_ENABLED_KEY)
+    if (preference[MILESTONE_TOASTS_ENABLED_KEY] === false) return
+
     let state = await loadState()
     const today = todayString()
     state = resetDailyIfNeeded(state, today)
@@ -1183,6 +1290,9 @@ export default defineBackground(() => {
       const tabDomain = extractDomain(tab.url ?? null)
       if (tabDomain !== milestone.domain) return
     }
+
+    const currentPreference = await browser.storage.local.get(MILESTONE_TOASTS_ENABLED_KEY)
+    if (currentPreference[MILESTONE_TOASTS_ENABLED_KEY] === false) return
 
     const finalState = recordToastShown(updatedState, today)
     await saveState(finalState)

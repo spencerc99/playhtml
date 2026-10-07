@@ -4,6 +4,7 @@
 import type {
   CollectionEvent,
   CollectionEventType,
+  ImageScrapData,
   CursorEventData,
   NavigationEventData,
 } from "../collectors/types";
@@ -12,10 +13,12 @@ import {
   normalizeUrl,
   extractDomain as extractDomainUtil,
 } from "../utils/urlNormalization";
-import { getCanonicalScrapKey } from "../collectors/scrapUtils";
+import { getScrapEncounterKey } from "../collectors/scrapUtils";
+
+import { isImageContentHash } from "@movement/utils/scrapIdentity";
 
 const DB_NAME = "collection_events_db";
-const DB_VERSION = 12;
+const DB_VERSION = 15;
 const STORE_NAME = "events";
 const STATS_STORE_NAME = "domain_stats";
 const AGGREGATE_URLS_STORE_NAME = "aggregate_urls";
@@ -71,6 +74,16 @@ export interface QueryOptions {
   limit?: number;
   startTs?: number;
   endTs?: number;
+}
+
+export interface EventPageCursor {
+  ts: number;
+  id: string;
+}
+
+export interface EventPage {
+  events: CollectionEvent[];
+  nextCursor: EventPageCursor | null;
 }
 
 export interface DomainStats {
@@ -585,6 +598,12 @@ export class LocalEventStore {
           }
         }
 
+        if (oldVersion < 15) {
+          store.createIndex("typeTsId", ["type", "ts", "id"], {
+            unique: true,
+          });
+        }
+
         if (oldVersion < 9) {
           if (store.indexNames.contains("uploaded")) {
             store.deleteIndex("uploaded");
@@ -592,12 +611,14 @@ export class LocalEventStore {
           if (!store.indexNames.contains("uploadState")) {
             store.createIndex("uploadState", "uploadState", { unique: false });
           }
-
         }
 
-        if (oldVersion < 12) {
+        if (oldVersion < 14) {
           // Backfill event fields in one cursor so every migrated row is written once.
-          const backfillRequest = store.openCursor();
+          const backfillRequest =
+            oldVersion >= 12
+              ? store.index("type").openCursor(IDBKeyRange.only("element"))
+              : store.openCursor();
           backfillRequest.onsuccess = () => {
             const cursor = backfillRequest.result;
             if (!cursor) return;
@@ -632,9 +653,12 @@ export class LocalEventStore {
             if (storedEvent.type === "element") {
               const domain =
                 storedEvent.domain || extractDomain(storedEvent.meta.url);
-              const canonicalScrapKey = getCanonicalScrapKey(
+              const canonicalScrapKey = getScrapEncounterKey(
                 domain,
                 storedEvent.data,
+                storedEvent.meta.url,
+                storedEvent.ts,
+                storedEvent.meta.tz,
               );
               if (
                 canonicalScrapKey !== undefined &&
@@ -1260,6 +1284,43 @@ export class LocalEventStore {
     });
   }
 
+  /** Updates only a retained image's fingerprint; a deleted event stays deleted. */
+  async setImageContentHash(
+    id: string,
+    src: string,
+    contentHash: string,
+  ): Promise<boolean> {
+    if (!isImageContentHash(contentHash))
+      throw new Error("Invalid image fingerprint");
+    await this.ensureInitialized();
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+      const transaction = this.db.transaction(STORE_NAME, "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get(id);
+      let updated = false;
+      request.onsuccess = () => {
+        const event = request.result as StoredCollectionEvent | undefined;
+        const data = event?.data as Partial<ImageScrapData> | undefined;
+        if (
+          event?.type !== "element" ||
+          data?.kind !== "image" ||
+          data.src !== src
+        )
+          return;
+        event.data = { ...data, contentHash };
+        store.put(event);
+        updated = true;
+      };
+      transaction.oncomplete = () => resolve(updated);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+  }
+
   async queryByType(
     type: CollectionEventType,
     options: Pick<QueryOptions, "limit" | "startTs" | "endTs"> = {},
@@ -1302,6 +1363,70 @@ export class LocalEventStore {
       };
 
       request.onerror = () => reject(request.error);
+    });
+  }
+
+  /** How many events of one type are stored, read from the type index alone. */
+  async countEventsOfType(type: CollectionEventType): Promise<number> {
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+      const request = this.db
+        .transaction(STORE_NAME, "readonly")
+        .objectStore(STORE_NAME)
+        .index("type")
+        .count(IDBKeyRange.only(type));
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async queryEventPage(
+    type: CollectionEventType,
+    limit: number,
+    cursor?: EventPageCursor,
+  ): Promise<EventPage> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
+      throw new Error("Event page limit must be between 1 and 1000");
+    }
+    if (cursor && (!Number.isFinite(cursor.ts) || typeof cursor.id !== "string")) {
+      throw new Error("Invalid event page cursor");
+    }
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+      const transaction = this.db.transaction(STORE_NAME, "readonly");
+      const index = transaction.objectStore(STORE_NAME).index("typeTsId");
+      const upper = cursor ? [type, cursor.ts, cursor.id] : [type, []];
+      const range = IDBKeyRange.bound([type], upper, false, !!cursor);
+      const request = index.openCursor(range, "prev");
+      const events: CollectionEvent[] = [];
+
+      request.onsuccess = () => {
+        const position = request.result;
+        if (!position) {
+          resolve({ events, nextCursor: null });
+          return;
+        }
+        if (events.length === limit) {
+          const last = events[events.length - 1];
+          resolve({ events, nextCursor: { ts: last.ts, id: last.id } });
+          return;
+        }
+        events.push(toCollectionEvent(position.value as StoredCollectionEvent));
+        position.continue();
+      };
+      request.onerror = () => reject(request.error);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
     });
   }
 
@@ -2267,10 +2392,10 @@ export class LocalEventStore {
    * Add a batch of events using ID upserts and canonical scrap deduplication.
    * Incrementally updates aggregates for accepted events.
    */
-  async addEvents(events: CollectionEvent[]): Promise<void> {
+  async addEvents(events: CollectionEvent[]): Promise<CollectionEvent[]> {
     await this.ensureInitialized();
 
-    if (events.length === 0) return;
+    if (events.length === 0) return [];
 
     const canUpdateStats = await this.canUpdateStatsIncrementally();
 
@@ -2286,9 +2411,12 @@ export class LocalEventStore {
         }
       }
       if (storedEvent.type === "element") {
-        const canonicalScrapKey = getCanonicalScrapKey(
+        const canonicalScrapKey = getScrapEncounterKey(
           storedEvent.domain ?? "",
           storedEvent.data,
+          storedEvent.meta.url,
+          storedEvent.ts,
+          storedEvent.meta.tz,
         );
         if (canonicalScrapKey !== undefined) {
           storedEvent.canonicalScrapKey = canonicalScrapKey;
@@ -2380,7 +2508,7 @@ export class LocalEventStore {
       this.ensureSessionStatsBackfilled().catch((e) =>
         console.error("[LocalEventStore] Session stats backfill failed:", e),
       );
-      return;
+      return eventsForStats;
     }
 
     // Update domain aggregates in a separate transaction so a stats
@@ -2400,18 +2528,26 @@ export class LocalEventStore {
         console.error("[LocalEventStore] Failed to update active days:", e);
       }
     }
+    return eventsForStats;
   }
 
-  /** Rebuild aggregates after importing event history from a file. */
-  async addImportedEvents(events: CollectionEvent[]): Promise<void> {
+  /**
+   * Rebuild aggregates after importing event history from a file. Returns the
+   * events that were newly stored; events already held under the same id or
+   * canonical scrap key are left as they were and omitted.
+   */
+  async addImportedEvents(
+    events: CollectionEvent[],
+  ): Promise<CollectionEvent[]> {
     await this.ensureSessionStatsBackfilled();
-    await this.addEvents(events);
+    const stored = await this.addEvents(events);
     await this.rebuildSessionStats();
     await this.rebuildAggregateDays();
     await this.writeDaysBackfillState("complete");
     this.daysBackfillComplete = true;
     await this.writeStatsBackfillState("complete");
     this.statsBackfillComplete = true;
+    return stored;
   }
 
   /** Store server-restored history as uploaded before rebuilding aggregates. */
@@ -2696,7 +2832,7 @@ export class LocalEventStore {
    * Add a single event — delegates to addEvents
    */
   async addEvent(event: CollectionEvent): Promise<void> {
-    return this.addEvents([event]);
+    await this.addEvents([event]);
   }
 
   /**
@@ -2811,6 +2947,41 @@ export class LocalEventStore {
         resolve();
       };
       transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
+  /**
+   * Permanently deletes the scrap events with these ids. Ids that name a
+   * missing event or one that is not a scrap are left alone, so a stale or
+   * mistaken id can never remove other browsing history.
+   */
+  async deleteScrapEvents(ids: string[]): Promise<number> {
+    await this.ensureInitialized();
+    if (ids.length === 0) return 0;
+
+    return new Promise<number>((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      let deleted = 0;
+      const transaction = this.db.transaction([STORE_NAME], "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      for (const id of new Set(ids)) {
+        const getRequest = store.get(id);
+        getRequest.onsuccess = () => {
+          const evt = getRequest.result as StoredCollectionEvent | undefined;
+          if (evt?.type !== "element") return;
+          const deleteRequest = store.delete(id);
+          deleteRequest.onsuccess = () => {
+            deleted++;
+          };
+        };
+      }
+      transaction.oncomplete = () => resolve(deleted);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
     });
   }
 

@@ -203,7 +203,6 @@ const DENSITY_DATA = DENSITY_TIERS.map((t) => ({
 
 const BG = "#faf7f2"; // warm linen
 const SURFACE = "#f5f0e8"; // aged paper
-const SURFACE_D = "#efe9df"; // hover/deeper surface
 const TEXT = "#3d3833"; // warm dark brown
 const TEXT_MUTED = "#8a8279";
 const TEXT_FAINT = "#b5aea5";
@@ -1534,7 +1533,6 @@ import {
   applyInlineGlow,
   applySingleLineGlow,
   buildPseudoElementCSS,
-  type GlowStyle,
 } from "@extension/features/link-glow-renderer";
 
 interface LinkTraceData {
@@ -1564,25 +1562,6 @@ function ltHslToHex(h: number, s: number, l: number): string {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
-
-function ltPickColors(n: number): string[] {
-  const seeds = [42, 137, 251, 88, 195, 314, 67, 200];
-  return seeds.slice(0, Math.min(n, seeds.length)).map((seed) => {
-    const hue = seed % 360;
-    const s = 65 + (seed % 15);
-    const l = 55 + ((seed * 7) % 15);
-    return ltHslToHex(hue, s, l);
-  });
-}
-
-function ltSmearGradient(colors: string[]): string {
-  if (colors.length === 0) return "transparent";
-  if (colors.length === 1) return colors[0];
-  const stops = colors.map(
-    (c, i) => `${c} ${((i / (colors.length - 1)) * 100).toFixed(0)}%`,
-  );
-  return `linear-gradient(105deg, ${stops.join(", ")})`;
-}
 
 const LT_PAGE_MAX = 800;
 
@@ -2965,7 +2944,7 @@ ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement,
 ).render(
   <>
-    <Agentation />
+    {Agentation && <Agentation />}
     <PreviewPage />
   </>,
 );

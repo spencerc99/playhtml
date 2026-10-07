@@ -29,7 +29,7 @@ playhtml.register("ph-docs-counter", {
       draft.count += 1;
     });
   },
-  updateElement: ({ element, data }) => {
+  update: ({ element, data }) => {
     element.querySelector("[data-count]").textContent = String(data.count);
   },
 });
@@ -40,7 +40,7 @@ remote update.
 
 ## Render the current count
 
-`updateElement` in the registered initializer reads shared data without writing
+`update` in the registered initializer reads shared data without writing
 it. playhtml calls it after initialization and whenever the shared count changes.
 
 See [Data essentials](/docs/data/data-essentials/) for mutator and replacement

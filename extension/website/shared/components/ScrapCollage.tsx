@@ -1,18 +1,63 @@
 // ABOUTME: Curates collected image scraps and arranges them in a deterministic scatter collage.
 // ABOUTME: Shows source provenance on hover and links each surviving image to its page.
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
+import {
+  backingFor,
+  hasOwnFill,
+  inkNeedsBacking,
+  lightIconInk,
+} from "../utils/scrapLegibility";
+import {
+  ANY_TIME,
+  isAnyTime,
+  ScrapFilters,
+  scrapPassesFilters,
+  type ScrapKindFilter,
+  type ScrapShapeFilter,
+  type ScrapWhenFilter,
+} from "./ScrapFilters";
+import type { FilterChip } from "../utils/eventUtils";
 import { hashString, seededRandom } from "../utils/styleUtils";
 import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
+import { useScrapImageSrc } from "../utils/scrapImageSource";
 import {
+  isImageContentHash,
   canonicalButtonKey,
   canonicalCursorKey,
+  canonicalHeadingKey,
   canonicalImageKey,
   canonicalSvgIconKey,
 } from "../utils/scrapIdentity";
 
+import {
+  groupPhotoEncounters,
+  type ScrapSource,
+} from "../utils/scrapPhotoGroups";
+
+/**
+ * Where a scrap sat on the page it was taken from: its centre in document
+ * coordinates, plus that document's scroll size. Absent on scraps collected
+ * before the extension recorded it.
+ */
+export interface ScrapPosition {
+  pageX: number;
+  pageY: number;
+  pageWidth: number;
+  pageHeight: number;
+}
+
 interface ScrapItemBase {
+  sources?: ScrapSource[];
+  encounterCount?: number;
+  encounterDay?: string;
   id: string;
   key: string;
   pageTitle: string;
@@ -20,6 +65,7 @@ interface ScrapItemBase {
   domain: string;
   pageUrl: string;
   ts: number;
+  position?: ScrapPosition;
 }
 
 export type ScrapItem = ScrapItemBase &
@@ -27,6 +73,7 @@ export type ScrapItem = ScrapItemBase &
     | {
         kind: "image";
         src: string;
+        contentHash?: string;
         alt?: string;
         naturalWidth: number;
         naturalHeight: number;
@@ -36,12 +83,21 @@ export type ScrapItem = ScrapItemBase &
         text: string;
         styles: Record<string, string>;
         innerSvg?: string;
+        backdropColor?: string;
       }
     | {
         kind: "svg-icon";
         markup: string;
         width: number;
         height: number;
+      }
+    | {
+        kind: "heading";
+        text: string;
+        level: 1 | 2 | 3;
+        styles: Record<string, string>;
+        /** A heading is words-material: it never carries a backdrop. */
+        backdropColor?: never;
       }
     | {
         kind: "cursor";
@@ -63,10 +119,24 @@ interface ScrapCollageProps {
   targetCount?: number;
   perDomainCap?: number;
   showKindFilter?: boolean;
+  /** Which view the collage opens in; the drifting tide unless told otherwise. */
+  initialView?: ScrapView;
+  /**
+   * Permanently removes these scraps. When given, the examine view offers to
+   * delete a scrap and the controls offer to delete whatever the filters show.
+   */
+  onDeleteScraps?: (items: ScrapItem[]) => Promise<void>;
 }
 
-type ScrapView = "drift" | "archive";
-type VisibleScrapCount = "auto" | 100 | 200 | 300 | 500;
+export type ScrapView = "drift" | "archive";
+export type ScrapDisplay = "pile" | "grid";
+/** The collage always piles its scraps; the layout helpers still accept "grid". */
+const COLLAGE_DISPLAY: ScrapDisplay = "pile";
+function archiveCell(display: ScrapDisplay) {
+  return display === "pile"
+    ? { width: 76, height: 74 }
+    : { width: ARCHIVE_CELL_WIDTH, height: ARCHIVE_ROW_HEIGHT };
+}
 
 interface ScrapLayout {
   item: ScrapItem;
@@ -110,15 +180,12 @@ const TIDE_BAND_BELOW = 0.15;
 const TIDE_BAND_ABOVE = 0.05;
 const LONG_EDGE_BY_TIER = [96, 152, 208] as const;
 const CURSOR_TILE_SIZE = 48;
-const SCRAP_KIND_OPTIONS = [
-  { kind: "image", label: "images" },
-  { kind: "button", label: "buttons" },
-  { kind: "svg-icon", label: "icons" },
-  { kind: "cursor", label: "cursors" },
-] as const;
-
-type ScrapKind = ScrapItem["kind"];
-type ScrapKindFilter = "all" | ScrapKind;
+/** Captured font sizes range from hairline to billboard; display needs a narrower band. */
+const MIN_HEADING_DISPLAY_FONT_SIZE = 11;
+const MAX_HEADING_DISPLAY_FONT_SIZE = 34;
+const HEADING_TILE_HEIGHT = 44;
+/** Line spacing headings are drawn at, replacing the page's captured value. */
+const HEADING_LINE_HEIGHT = 1.15;
 
 export function responsiveTargetCount(width: number, height: number): number {
   if (width <= 0 || height <= 0) return DEFAULT_TARGET_COUNT;
@@ -137,6 +204,10 @@ function naturalArea(item: ScrapItem): number {
       return estimateButtonWidth(item.text) * 40;
     case "svg-icon":
       return item.width * item.height;
+    case "heading": {
+      const size = headingTileSize(item);
+      return size.width * size.height;
+    }
     case "cursor":
       return CURSOR_TILE_SIZE * CURSOR_TILE_SIZE;
   }
@@ -157,11 +228,19 @@ function itemOrder(item: ScrapItem, seed: number): number {
 export function canonicalScrapKey(item: ScrapItem): string {
   switch (item.kind) {
     case "image":
-      return canonicalImageKey(item.src);
+      return isImageContentHash(item.contentHash)
+        ? `image:sha256:${item.contentHash}`
+        : canonicalImageKey(item.src);
     case "button":
-      return canonicalButtonKey(item.domain, item.text, item.styles.backgroundColor);
+      return canonicalButtonKey(
+        item.domain,
+        item.text,
+        item.styles.backgroundColor,
+      );
     case "svg-icon":
       return canonicalSvgIconKey(item.domain, item.markup);
+    case "heading":
+      return canonicalHeadingKey(item.domain, item.text);
     case "cursor":
       return canonicalCursorKey(item.url);
   }
@@ -182,7 +261,7 @@ function compareDomainScraps(a: ScrapItem, b: ScrapItem, seed: number): number {
 
 function newestUniqueScraps(items: ScrapItem[]): ScrapItem[] {
   const newestByCanonicalKey = new Map<string, ScrapItem>();
-  for (const item of items) {
+  for (const item of groupPhotoEncounters(items)) {
     const canonicalKey = canonicalScrapKey(item);
     const current = newestByCanonicalKey.get(canonicalKey);
     if (!current || item.ts > current.ts) {
@@ -198,6 +277,11 @@ function newestUniqueScraps(items: ScrapItem[]): ScrapItem[] {
     }
   }
   return Array.from(newestByKey.values());
+}
+
+/** Counts scraps the way the archive lists them, once per scrap however often it was met. */
+function countUniqueScraps(items: ScrapItem[]): number {
+  return newestUniqueScraps(items).length;
 }
 
 export function curateScraps(
@@ -282,10 +366,17 @@ export interface TideEvent {
 }
 
 function tideAshoreCount(state: TideState): number {
-  return state.ashore.reduce((count, key) => (key === null ? count : count + 1), 0);
+  return state.ashore.reduce(
+    (count, key) => (key === null ? count : count + 1),
+    0,
+  );
 }
 
-function randomBetween(rand: () => number, minimum: number, maximum: number): number {
+function randomBetween(
+  rand: () => number,
+  minimum: number,
+  maximum: number,
+): number {
   return minimum + rand() * (maximum - minimum);
 }
 
@@ -308,11 +399,12 @@ export function nextTideEvent(
   const canWashIn = state.offshore.length > 0 && ashoreCount < ceiling;
   const canWashOut = ashoreCount > 0;
 
-  const wantsWashIn = ashoreCount < floor
-    ? true
-    : ashoreCount >= targetCount
-      ? false
-      : rand() < 0.5;
+  const wantsWashIn =
+    ashoreCount < floor
+      ? true
+      : ashoreCount >= targetCount
+        ? false
+        : rand() < 0.5;
   const kind: TideEventKind =
     wantsWashIn && canWashIn ? "in" : canWashOut ? "out" : "in";
 
@@ -320,7 +412,11 @@ export function nextTideEvent(
     randomBetween(rand, TIDE_GAP_MIN_MS, TIDE_GAP_MAX_MS),
   );
 
-  if (kind === "out" && ashoreCount > TIDE_WAVE_MIN_COUNT && rand() < TIDE_WAVE_CHANCE) {
+  if (
+    kind === "out" &&
+    ashoreCount > TIDE_WAVE_MIN_COUNT &&
+    rand() < TIDE_WAVE_CHANCE
+  ) {
     const count = Math.min(
       ashoreCount,
       Math.floor(
@@ -448,6 +544,95 @@ function estimateButtonWidth(text: string): number {
   return clamp(100, 240, 48 + text.trim().length * 8);
 }
 
+/**
+ * Advance per character as a share of font size, wide enough that a broad
+ * typeface still fits the tile measured for it.
+ */
+const HEADING_CHARACTER_ADVANCE = 0.68;
+/**
+ * Horizontal room a heading's words lose inside its tile: the heading's own
+ * 4px sides plus the 8px sides of the patch it sits on.
+ */
+const HEADING_TILE_PADDING = 24;
+const MAX_HEADING_TILE_WIDTH = 340;
+
+/**
+ * The size a heading is drawn at: its captured size brought into a band the
+ * collage can hold, then reduced so the wording fits the width available to
+ * it. A billboard headline and a hairline subhead both end up legible scraps
+ * rather than clipped ones. `availableWidth` is the laid-out tile width when
+ * the caller knows it, and otherwise the widest tile a heading is given.
+ */
+export function headingDisplayFontSize(
+  styles: Record<string, string>,
+  text = "",
+  availableWidth = MAX_HEADING_TILE_WIDTH,
+): number {
+  const capturedSize = Number.parseFloat(styles.fontSize ?? "");
+  const bandedSize = Number.isFinite(capturedSize) && capturedSize > 0
+    ? clamp(
+        MIN_HEADING_DISPLAY_FONT_SIZE,
+        MAX_HEADING_DISPLAY_FONT_SIZE,
+        capturedSize,
+      )
+    : MIN_HEADING_DISPLAY_FONT_SIZE;
+
+  const characterCount = text.trim().length;
+  if (characterCount === 0) return bandedSize;
+
+  const widthBudget = Math.max(
+    HEADING_TILE_PADDING,
+    availableWidth - HEADING_TILE_PADDING,
+  );
+  const sizeThatFits =
+    widthBudget / (characterCount * HEADING_CHARACTER_ADVANCE);
+  return Math.round(
+    Math.max(MIN_HEADING_DISPLAY_FONT_SIZE, Math.min(bandedSize, sizeThatFits)),
+  );
+}
+
+/**
+ * The box a heading needs at display size: wide enough for its wording on one
+ * line where that fits inside the widest tile a heading gets, and otherwise as
+ * wide as that tile and tall enough for the lines the wording wraps onto.
+ */
+function headingTileSize(item: Extract<ScrapItem, { kind: "heading" }>): {
+  width: number;
+  height: number;
+} {
+  const fontSize = headingDisplayFontSize(item.styles, item.text);
+  const textWidth =
+    item.text.trim().length * fontSize * HEADING_CHARACTER_ADVANCE;
+  const width = clamp(
+    90,
+    MAX_HEADING_TILE_WIDTH,
+    HEADING_TILE_PADDING + textWidth,
+  );
+  return { width, height: headingHeightAtWidth(item, width) };
+}
+
+/**
+ * How tall a heading needs to be once its words wrap to `width`. Used both to
+ * size a heading in the tide and to re-derive its height after the archive has
+ * scaled its width down to a cell.
+ */
+function headingHeightAtWidth(
+  item: Extract<ScrapItem, { kind: "heading" }>,
+  width: number,
+): number {
+  const fontSize = headingDisplayFontSize(item.styles, item.text, width);
+  const textWidth =
+    item.text.trim().length * fontSize * HEADING_CHARACTER_ADVANCE;
+  const lineCount = Math.max(
+    1,
+    Math.ceil(textWidth / Math.max(1, width - HEADING_TILE_PADDING)),
+  );
+  return Math.max(
+    HEADING_TILE_HEIGHT,
+    lineCount * fontSize * HEADING_LINE_HEIGHT + 12,
+  );
+}
+
 function imageSize(
   item: Extract<ScrapItem, { kind: "image" }>,
   tier: number,
@@ -497,12 +682,17 @@ function itemSize(
       return { width: estimateButtonWidth(item.text), height: 40 };
     case "svg-icon":
       return svgIconSize(item, itemSeed);
+    case "heading":
+      return headingTileSize(item);
     case "cursor":
       return { width: CURSOR_TILE_SIZE, height: CURSOR_TILE_SIZE };
   }
 }
 
-function tierBounds(items: ScrapItem[]): { lowerArea: number; upperArea: number } {
+function tierBounds(items: ScrapItem[]): {
+  lowerArea: number;
+  upperArea: number;
+} {
   const sortedAreas = items
     .filter(
       (item): item is Extract<ScrapItem, { kind: "image" }> =>
@@ -536,23 +726,25 @@ export function buildArchiveWindow(
   viewportHeight: number,
   seed: number,
   sizeBounds = tierBounds(items),
+  display: ScrapDisplay = "grid",
 ): { fieldHeight: number; layout: ScrapLayout[] } {
   if (items.length === 0 || width <= 0 || viewportHeight <= 0) {
     return { fieldHeight: 0, layout: [] };
   }
 
-  const columnCount = Math.max(1, Math.floor(width / ARCHIVE_CELL_WIDTH));
+  const cell = archiveCell(display);
+  const columnCount = Math.max(1, Math.floor(width / cell.width));
   const rowCount = Math.ceil(items.length / columnCount);
-  const fieldHeight = Math.max(viewportHeight, rowCount * ARCHIVE_ROW_HEIGHT);
+  const fieldHeight = Math.max(viewportHeight, rowCount * cell.height);
   const cellWidth = width / columnCount;
   const overscan = viewportHeight * ARCHIVE_OVERSCAN_VIEWPORTS;
   const firstRow = Math.max(
     0,
-    Math.floor((scrollTop - overscan) / ARCHIVE_ROW_HEIGHT),
+    Math.floor((scrollTop - overscan) / cell.height),
   );
   const lastRow = Math.min(
     rowCount - 1,
-    Math.ceil((scrollTop + viewportHeight + overscan) / ARCHIVE_ROW_HEIGHT),
+    Math.ceil((scrollTop + viewportHeight + overscan) / cell.height),
   );
   const firstIndex = firstRow * columnCount;
   const lastIndex = Math.min(items.length, (lastRow + 1) * columnCount);
@@ -561,21 +753,48 @@ export function buildArchiveWindow(
   for (let index = firstIndex; index < lastIndex; index += 1) {
     const item = items[index];
     const itemSeed = seed + hashString(item.key);
-    const tier = tierForItem(
-      item,
-      sizeBounds.lowerArea,
-      sizeBounds.upperArea,
-    );
+    const tier = tierForItem(item, sizeBounds.lowerArea, sizeBounds.upperArea);
     const dimensions = itemSize(item, tier, itemSeed);
+    const rotation =
+      display === "pile" ? seededRandom(itemSeed, 4) * 12 - 6 : 0;
+    {
+      const angle = (Math.abs(rotation) * Math.PI) / 180;
+      const rotatedWidth =
+        dimensions.width * Math.cos(angle) +
+        dimensions.height * Math.sin(angle);
+      const rotatedHeight =
+        dimensions.height * Math.cos(angle) +
+        dimensions.width * Math.sin(angle);
+      const scale = Math.min(
+        1,
+        (cellWidth * (display === "pile" ? 1.05 : 0.8)) / rotatedWidth,
+        (cell.height * (display === "pile" ? 1.05 : 0.8)) / rotatedHeight,
+      );
+      dimensions.width *= scale;
+      dimensions.height *= scale;
+      if (item.kind === "heading") {
+        // A heading's words wrap to whatever width survives the scale, so its
+        // height follows from that width rather than scaling with it.
+        dimensions.height = Math.min(
+          cell.height,
+          headingHeightAtWidth(item, dimensions.width),
+        );
+      }
+    }
     const column = index % columnCount;
     const row = Math.floor(index / columnCount);
-    const jitterX = (seededRandom(itemSeed, 2) - 0.5) * cellWidth * 0.45;
+    const jitterX =
+      (display === "pile" ? seededRandom(itemSeed, 2) - 0.5 : 0) *
+      cellWidth *
+      (item.kind === "image" ? 0.2 : 0.45);
     const jitterY =
-      (seededRandom(itemSeed, 3) - 0.5) * ARCHIVE_ROW_HEIGHT * 0.35;
+      (display === "pile" ? seededRandom(itemSeed, 3) - 0.5 : 0) *
+      cell.height *
+      (item.kind === "image" ? 0.2 : 0.35);
     const unclampedX =
       (column + 0.5) * cellWidth + jitterX - dimensions.width / 2;
     const unclampedY =
-      (row + 0.5) * ARCHIVE_ROW_HEIGHT + jitterY - dimensions.height / 2;
+      (row + 0.5) * cell.height + jitterY - dimensions.height / 2;
     const x = Math.max(4, Math.min(width - dimensions.width - 4, unclampedX));
     const y = Math.max(
       4,
@@ -589,7 +808,7 @@ export function buildArchiveWindow(
       y,
       width: dimensions.width,
       height: dimensions.height,
-      rotation: seededRandom(itemSeed, 4) * 12 - 6,
+      rotation,
       zIndex:
         Math.floor(seededRandom(itemSeed, 5) * ARCHIVE_STACK_LAYER_COUNT) + 1,
       cardAbove: y - scrollTop > viewportHeight * 0.58,
@@ -611,6 +830,7 @@ function buildLayout(
   width: number,
   height: number,
   seed: number,
+  display: ScrapDisplay,
 ): ScrapLayout[] {
   if (slots.length === 0 || width === 0 || height === 0) return [];
 
@@ -632,10 +852,25 @@ function buildLayout(
     const tier = tierForItem(item, lowerArea, upperArea);
     const itemSeed = seed + hashString(item.key);
     const itemDimensions = itemSize(item, tier, itemSeed);
+    if (display === "grid") {
+      const scale = Math.min(
+        1,
+        (cellWidth * 0.8) / itemDimensions.width,
+        (cellHeight * 0.8) / itemDimensions.height,
+      );
+      itemDimensions.width *= scale;
+      itemDimensions.height *= scale;
+    }
     const column = index % columnCount;
     const row = Math.floor(index / columnCount);
-    const jitterX = (seededRandom(itemSeed, 2) - 0.5) * cellWidth * 0.6;
-    const jitterY = (seededRandom(itemSeed, 3) - 0.5) * cellHeight * 0.6;
+    const jitterX =
+      (display === "pile" ? seededRandom(itemSeed, 2) - 0.5 : 0) *
+      cellWidth *
+      0.6;
+    const jitterY =
+      (display === "pile" ? seededRandom(itemSeed, 3) - 0.5 : 0) *
+      cellHeight *
+      0.6;
     const unclampedX =
       (column + 0.5) * cellWidth + jitterX - itemDimensions.width / 2;
     const unclampedY =
@@ -657,7 +892,7 @@ function buildLayout(
         y,
         width: itemDimensions.width,
         height: itemDimensions.height,
-        rotation: seededRandom(itemSeed, 4) * 12 - 6,
+        rotation: display === "pile" ? seededRandom(itemSeed, 4) * 12 - 6 : 0,
         zIndex: Math.floor(seededRandom(itemSeed, 5) * 80) + 1,
         cardAbove: y > height * 0.58,
         cardRightAligned: x > width * 0.68,
@@ -666,7 +901,7 @@ function buildLayout(
   });
 }
 
-const COLLAGE_STYLES = `
+export const COLLAGE_STYLES = `
   .scrap-collage__controls {
     position: absolute;
     bottom: 12px;
@@ -675,12 +910,13 @@ const COLLAGE_STYLES = `
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 7px;
+    gap: 8px;
     box-sizing: border-box;
+    width: 620px;
     max-width: calc(100% - 24px);
-    padding: 7px;
+    padding: 8px;
     border: 1px solid rgba(61, 56, 51, 0.2);
-    border-radius: 5px;
+    border-radius: 8px;
     background: #f5f0e8;
     box-shadow: 0 8px 24px rgba(61, 56, 51, 0.2);
     pointer-events: auto;
@@ -688,34 +924,42 @@ const COLLAGE_STYLES = `
   }
 
   .scrap-collage__controls--collapsed {
+    width: auto;
     padding: 0;
     border: 0;
     background: transparent;
     box-shadow: none;
   }
 
-  .scrap-collage__control-group {
+  .scrap-collage__controls-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 5px;
-  }
-
-  .scrap-collage__controls-header,
-  .scrap-collage__controls-body {
-    display: flex;
-    align-items: center;
-    justify-content: center;
     gap: 6px;
   }
 
-  .scrap-collage__controls-header {
-    justify-content: space-between;
-    padding-bottom: 6px;
-    border-bottom: 1px solid rgba(61, 56, 51, 0.12);
+  .scrap-collage__controls-header > :not(.scrap-collage__controls-spacer) {
+    flex: 0 0 auto;
+  }
+
+  .scrap-collage__shuffle-mark {
+    font-size: 12px;
+  }
+
+  .scrap-collage__controls-spacer {
+    flex: 1 1 auto;
+  }
+
+  .scrap-collage__controls-filters {
+    padding-top: 8px;
+    border-top: 1px solid rgba(61, 56, 51, 0.12);
   }
 
   .scrap-collage__view-switch {
     display: inline-flex;
+    align-items: stretch;
+    box-sizing: border-box;
+    height: 28px;
     padding: 2px;
     border: 1px solid rgba(61, 56, 51, 0.18);
     border-radius: 999px;
@@ -724,7 +968,9 @@ const COLLAGE_STYLES = `
 
   .scrap-collage__view-option {
     appearance: none;
-    padding: 3px 12px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
     border: 0;
     border-radius: 999px;
     background: transparent;
@@ -732,7 +978,7 @@ const COLLAGE_STYLES = `
     cursor: pointer;
     font-family: "Martian Mono", monospace;
     font-size: 9px;
-    line-height: 1.4;
+    line-height: 1;
   }
 
   .scrap-collage__view-option[aria-pressed="true"] {
@@ -749,127 +995,102 @@ const COLLAGE_STYLES = `
   .scrap-collage__archive-summary {
     color: #827a72;
     font-family: "Martian Mono", monospace;
-    font-size: 8px;
-    white-space: nowrap;
-  }
-
-  .scrap-collage__control-label {
-    color: #827a72;
-    font-family: "Martian Mono", monospace;
-    font-size: 8px;
-    letter-spacing: 0.03em;
-  }
-
-  .scrap-collage__select {
-    appearance: none;
-    min-width: 112px;
-    padding: 4px 24px 4px 9px;
-    border: 1px solid rgba(61, 56, 51, 0.18);
-    border-radius: 3px;
-    background-color: #faf9f6;
-    background-image:
-      linear-gradient(45deg, transparent 50%, #827a72 50%),
-      linear-gradient(135deg, #827a72 50%, transparent 50%);
-    background-position:
-      calc(100% - 11px) 50%,
-      calc(100% - 7px) 50%;
-    background-repeat: no-repeat;
-    background-size: 4px 4px, 4px 4px;
-    color: #3d3833;
-    cursor: pointer;
-    font-family: "Martian Mono", monospace;
     font-size: 9px;
-    line-height: 1.4;
+    white-space: nowrap;
   }
 
   .scrap-collage__filter {
     appearance: none;
-    padding: 4px 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    box-sizing: border-box;
+    height: 28px;
+    padding: 0 11px;
     border: 1px solid rgba(61, 56, 51, 0.18);
     border-radius: 999px;
-    background: #f5f0e8;
+    background: transparent;
     color: #3d3833;
     cursor: pointer;
     font-family: "Martian Mono", monospace;
     font-size: 9px;
-    line-height: 1.4;
+    line-height: 1;
     white-space: nowrap;
     transition:
-      transform 140ms ease,
-      box-shadow 140ms ease,
-      border-color 140ms ease,
-      background-color 140ms ease,
-      color 140ms ease;
+      border-color 120ms ease,
+      box-shadow 120ms ease,
+      background-color 120ms ease;
+  }
+
+  .scrap-collage__controls--collapsed .scrap-collage__filter {
+    background: #f5f0e8;
   }
 
   .scrap-collage__filter--collapse {
-    min-width: 30px;
-    padding-inline: 8px;
+    width: 28px;
+    padding: 0;
+    color: #827a72;
   }
 
-  .scrap-collage__filter-count {
-    color: #8a8279;
-  }
-
-  .scrap-collage__filter[aria-pressed="true"] {
-    border-color: #4a9a8a;
-    background: rgba(74, 154, 138, 0.1);
-    color: #4a9a8a;
-  }
-
-  .scrap-collage__filter[aria-pressed="true"] .scrap-collage__filter-count {
-    color: #4a9a8a;
-  }
-
-  .scrap-collage__filter:hover,
-  .scrap-collage__filter:focus-visible {
-    border-color: #4a9a8a;
-    box-shadow: 0 5px 10px rgba(61, 56, 51, 0.14);
-    transform: translateY(-2px);
-  }
-
-  .scrap-collage__select:focus-visible {
-    border-color: #4a9a8a;
-    outline: 2px solid rgba(74, 154, 138, 0.45);
-    outline-offset: 2px;
+  .scrap-collage__filter:hover {
+    border-color: rgba(61, 56, 51, 0.38);
   }
 
   .scrap-collage__filter:focus-visible {
-    outline: 2px solid rgba(74, 154, 138, 0.45);
-    outline-offset: 2px;
+    outline: none;
+    border-color: #4a9a8a;
+    box-shadow: 0 0 0 3px rgba(74, 154, 138, 0.16);
   }
 
-  .scrap-collage__filter--cycle {
-    gap: 6px;
+  .scrap-collage__bulk-delete {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: -4px;
+    color: #a39b92;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
   }
 
-  .scrap-collage__cycle-status {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #aaa59d;
-    box-shadow: inset 0 0 0 1px rgba(61, 56, 51, 0.12);
-    transition: background 140ms ease, box-shadow 140ms ease;
+  .scrap-collage__text-action {
+    appearance: none;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #a39b92;
+    font: inherit;
+    cursor: pointer;
   }
 
-  .scrap-collage__filter--cycle[aria-pressed="true"] {
-    border-color: #4a9a70;
-    background: rgba(74, 154, 112, 0.1);
-    color: #3f855f;
+  .scrap-collage__text-action:hover,
+  .scrap-collage__text-action:focus-visible {
+    color: #3d3833;
+    text-decoration: underline;
+    outline: none;
   }
 
-  .scrap-collage__filter--cycle[aria-pressed="true"] .scrap-collage__cycle-status {
-    background: #4a9a70;
-    box-shadow: 0 0 0 2px rgba(74, 154, 112, 0.16);
+  .scrap-collage__text-action--danger {
+    color: #a8553f;
   }
 
-  .scrap-collage__filter--cycle:hover,
-  .scrap-collage__filter--cycle:focus-visible {
-    border-color: #4a9a70;
+  .scrap-collage__text-action--danger:hover,
+  .scrap-collage__text-action--danger:focus-visible {
+    color: #91462f;
   }
 
-  .scrap-collage__filter--cycle:focus-visible {
-    outline-color: rgba(74, 154, 112, 0.45);
+  .scrap-collage__text-action:disabled {
+    cursor: default;
+    opacity: 0.6;
+    text-decoration: none;
+  }
+
+  @media (max-width: 619px) {
+    .scrap-collage__view-option {
+      padding: 0 9px;
+    }
   }
 
   .scrap-collage__scroll {
@@ -878,26 +1099,6 @@ const COLLAGE_STYLES = `
     overflow-y: auto;
     overflow-x: hidden;
     height: 100%;
-  }
-
-  @media (max-width: 620px) {
-    .scrap-collage__controls:not(.scrap-collage__controls--collapsed) {
-      width: calc(100% - 24px);
-      align-items: stretch;
-    }
-
-    .scrap-collage__controls-body {
-      flex-wrap: wrap;
-    }
-
-    .scrap-collage__controls-body .scrap-collage__control-group {
-      flex: 1 1 auto;
-    }
-
-    .scrap-collage__select {
-      flex: 1 1 auto;
-      min-width: 0;
-    }
   }
 
   .scrap-collage__field {
@@ -1042,6 +1243,62 @@ const COLLAGE_STYLES = `
     display: block;
   }
 
+  /* The torn-out patch: the element's box plus an even margin, square edges. */
+  .scrap-collage__backdrop {
+    box-sizing: border-box;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    padding: 3px;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .scrap-collage__backdrop--ink {
+    /* A faint checkerboard: the backing is ours, not the page's. */
+    background-image: conic-gradient(
+      rgba(255, 255, 255, 0.08) 25%,
+      transparent 0 50%,
+      rgba(255, 255, 255, 0.08) 0 75%,
+      transparent 0
+    );
+    background-size: 8px 8px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    box-shadow: 0 1px 2px rgba(40, 30, 20, 0.25);
+  }
+
+  /* The light counterpart of the ink chequer, for dark lettering. */
+  .scrap-collage__backdrop--checker {
+    background-image: conic-gradient(
+      rgba(61, 56, 51, 0.07) 25%,
+      transparent 0 50%,
+      rgba(61, 56, 51, 0.07) 0 75%,
+      transparent 0
+    );
+    background-size: 8px 8px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px rgba(61, 56, 51, 0.1);
+  }
+
+  .scrap-collage__heading {
+    box-sizing: border-box;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    padding: 0 4px;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    text-align: center;
+    /* Wording too long for its tile at the smallest legible size wraps and
+       breaks rather than running off the edge. */
+    overflow-wrap: anywhere;
+    pointer-events: none;
+  }
+
   .scrap-collage__cursor {
     position: absolute;
     left: 50%;
@@ -1123,6 +1380,8 @@ function scrapTitle(item: ScrapItem): string {
       return item.text.trim() || "button";
     case "svg-icon":
       return "icon";
+    case "heading":
+      return item.text.trim() || "heading";
     case "cursor":
       return "cursor";
   }
@@ -1140,16 +1399,25 @@ function isRenderableScrap(item: ScrapItem): boolean {
       return Boolean(item.text.trim() || item.innerSvg?.trim());
     case "svg-icon":
       return Boolean(item.markup.trim() && item.width > 0 && item.height > 0);
+    case "heading":
+      return item.text.trim().length > 0;
     case "cursor":
       return item.url.trim().length > 0;
   }
 }
 
-interface ScrapContentProps {
+export interface ScrapContentProps {
   item: ScrapItem;
   loaded: boolean;
   onError: () => void;
   onLoad: () => void;
+  /** Laid-out tile width, so text-bearing scraps can size themselves to it. */
+  tileWidth?: number;
+  /**
+   * Whether dark lettering sits on a light chequer. Browsed and drawer tiles
+   * show it; a piece placed in a collage sits directly on the collage.
+   */
+  letteringChecker?: boolean;
 }
 
 /**
@@ -1175,7 +1443,97 @@ function ScrapSwatch({
   );
 }
 
-function ScrapContent({ item, loaded, onError, onLoad }: ScrapContentProps) {
+/**
+ * Paints the color a see-through element was read against as a snug patch
+ * behind it, so the scrap carries the contrast its page supplied and reads as
+ * a piece torn out rather than text floating on the collage's paper. Scraps
+ * collected before the backdrop was recorded simply render without one.
+ */
+export function ScrapBackdrop({
+  color,
+  ink = false,
+  checker = false,
+  children,
+}: {
+  color?: string;
+  /** The backing is ours, added so light ink reads, not the page's own. */
+  ink?: boolean;
+  /**
+   * With no color to paint, still give the scrap a faint light chequer, the
+   * counterpart of the dark one behind light ink.
+   */
+  checker?: boolean;
+  children: React.ReactNode;
+}) {
+  if (!color) {
+    if (!checker) return <>{children}</>;
+    return (
+      <span className="scrap-collage__backdrop scrap-collage__backdrop--checker">
+        {children}
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`scrap-collage__backdrop${ink ? " scrap-collage__backdrop--ink" : ""}`}
+      style={ink ? { backgroundColor: color } : { background: color }}
+    >
+      {children}
+    </span>
+  );
+}
+
+const BUTTON_LENGTH_PROPERTIES = [
+  "fontSize",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+] as const;
+
+/**
+ * A button's captured styles shrunk to the tile it was laid out in. A tile
+ * narrower than the button's measured width would otherwise leave its
+ * lettering spilling past its own face.
+ */
+function buttonStylesAtWidth(
+  styles: Record<string, string>,
+  text: string,
+  tileWidth: number | undefined,
+): Record<string, string> {
+  if (tileWidth === undefined) return styles;
+  const shrink = tileWidth / estimateButtonWidth(text);
+  if (shrink >= 1) return styles;
+  const scaled = { ...styles };
+  for (const property of BUTTON_LENGTH_PROPERTIES) {
+    const pixels = Number.parseFloat(styles[property] ?? "");
+    if (Number.isFinite(pixels) && styles[property]!.trim().endsWith("px")) {
+      scaled[property] = `${pixels * shrink}px`;
+    }
+  }
+  return scaled;
+}
+
+/**
+ * A dark backing for lettering too light to read on the collage paper, when
+ * the scrap has no fill of its own to carry it.
+ */
+function inkBackingFor(styles: Record<string, string>): string | undefined {
+  if (hasOwnFill(styles.backgroundColor)) return undefined;
+  return inkNeedsBacking(styles.color) ? backingFor(styles.color!) : undefined;
+}
+
+export function ScrapContent({
+  item,
+  loaded,
+  onError,
+  onLoad,
+  tileWidth,
+  letteringChecker = true,
+}: ScrapContentProps) {
+  const imageSrc = useScrapImageSrc(
+    item.kind === "image" ? item.src : undefined,
+  );
   switch (item.kind) {
     case "image":
       return (
@@ -1185,7 +1543,7 @@ function ScrapContent({ item, loaded, onError, onLoad }: ScrapContentProps) {
             className={`scrap-collage__image scrap-collage__developing${
               loaded ? " scrap-collage__developed" : ""
             }`}
-            src={item.src}
+            src={imageSrc ?? undefined}
             alt={item.alt ?? ""}
             loading="lazy"
             draggable={false}
@@ -1196,33 +1554,76 @@ function ScrapContent({ item, loaded, onError, onLoad }: ScrapContentProps) {
       );
     case "button":
       return (
-        <span
-          className="scrap-collage__button"
-          style={{
-            ...(item.styles as React.CSSProperties),
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            whiteSpace: "nowrap",
-          }}
+        <ScrapBackdrop
+          color={item.backdropColor ?? inkBackingFor(item.styles)}
+          ink={!item.backdropColor}
         >
-          {item.innerSvg && (
-            <span
-              className="scrap-collage__button-icon"
-              aria-hidden="true"
-              dangerouslySetInnerHTML={{ __html: item.innerSvg }}
-            />
-          )}
-          {item.text}
-        </span>
+          <span
+            className="scrap-collage__button"
+            style={{
+              ...(buttonStylesAtWidth(
+                item.styles,
+                item.text,
+                tileWidth,
+              ) as React.CSSProperties),
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {item.innerSvg && (
+              <span
+                className="scrap-collage__button-icon"
+                aria-hidden="true"
+                dangerouslySetInnerHTML={{ __html: item.innerSvg }}
+              />
+            )}
+            {item.text}
+          </span>
+        </ScrapBackdrop>
       );
-    case "svg-icon":
-      return (
+    case "svg-icon": {
+      const lightInk = lightIconInk(item.markup);
+      const icon = (
         <div
           className="scrap-collage__svg"
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: item.markup }}
         />
+      );
+      return lightInk ? (
+        <ScrapBackdrop color={backingFor(lightInk)} ink>
+          {icon}
+        </ScrapBackdrop>
+      ) : (
+        icon
+      );
+    }
+    case "heading":
+      return (
+        <ScrapBackdrop
+          color={inkBackingFor(item.styles)}
+          ink
+          checker={letteringChecker && !hasOwnFill(item.styles.backgroundColor)}
+        >
+          <span
+            className="scrap-collage__heading"
+            style={{
+              ...(item.styles as React.CSSProperties),
+              fontSize: headingDisplayFontSize(
+                item.styles,
+                item.text,
+                tileWidth,
+              ),
+              // The captured line height belongs to the captured font size; at
+              // display size it would space wrapped lines far too far apart.
+              lineHeight: HEADING_LINE_HEIGHT,
+            }}
+          >
+            {item.text}
+          </span>
+        </ScrapBackdrop>
       );
     case "cursor":
       return (
@@ -1291,14 +1692,23 @@ export function ScrapCollage({
   targetCount,
   perDomainCap,
   showKindFilter = false,
+  initialView = "drift",
+  onDeleteScraps,
 }: ScrapCollageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const archiveScrollRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const [selectedKind, setSelectedKind] =
-    useState<ScrapKindFilter>("all");
-  const [view, setView] = useState<ScrapView>("drift");
-  const [visibleScrapCount, setVisibleScrapCount] =
-    useState<VisibleScrapCount>("auto");
+  const [selectedKind, setSelectedKind] = useState<ScrapKindFilter>([]);
+  const [shape, setShape] = useState<ScrapShapeFilter>([]);
+  const [places, setPlaces] = useState<FilterChip[]>([]);
+  const [search, setSearch] = useState("");
+  const [when, setWhen] = useState<ScrapWhenFilter>(ANY_TIME);
+  const [controlsFocused, setControlsFocused] = useState(false);
+  const [view, setView] = useState<ScrapView>(initialView);
+  const display = COLLAGE_DISPLAY;
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const shufflePreviousKeysRef = useRef(new Set<string>());
   const [archiveScrollTop, setArchiveScrollTop] = useState(0);
   const [controlsExpanded, setControlsExpanded] = useState(true);
   const [shuffleIndex, setShuffleIndex] = useState(0);
@@ -1312,7 +1722,7 @@ export function ScrapCollage({
     () => new Set(),
   );
   const prefersReducedMotion = usePrefersReducedMotion();
-  const [tidePaused, setTidePaused] = useState(prefersReducedMotion);
+
   const [tide, setTide] = useState<TideState | null>(null);
   const tideShuffleIndexRef = useRef(shuffleIndex);
   const tideRef = useRef(tide);
@@ -1327,43 +1737,33 @@ export function ScrapCollage({
     key: string;
     origin: ScrapOrigin;
   } | null>(null);
-  // Tide state to restore when the examine view closes; the tide holds still
-  // while a scrap is being looked at.
-  const tidePausedBeforeExamineRef = useRef<boolean | null>(null);
+  const tidePaused =
+    prefersReducedMotion ||
+    hovered ||
+    focused ||
+    controlsFocused ||
+    examining !== null;
   const examineTriggerRef = useRef<HTMLElement | null>(null);
   // Rendered tile elements by scrap key, so arrow-key navigation can re-anchor
   // the examine view on the next scrap's actual slot.
   const tileElementsRef = useRef(new Map<string, HTMLElement>());
   const archiveMode = view === "archive";
-  const layoutSeed = seed + shuffleIndex * 10_007;
+  const layoutSeed = seed + (archiveMode ? 0 : shuffleIndex * 10_007);
   const selectedTargetCount =
     targetCount ??
-    (visibleScrapCount === "auto"
-      ? responsiveTargetCount(containerSize.width, containerSize.height)
-      : visibleScrapCount);
+    responsiveTargetCount(containerSize.width, containerSize.height);
 
-  const kindCounts = useMemo(() => {
-    const counts: Record<ScrapKind, number> = {
-      image: 0,
-      button: 0,
-      "svg-icon": 0,
-      cursor: 0,
-    };
-    for (const item of newestUniqueScraps(items)) {
-      counts[item.kind] += 1;
-    }
-    return counts;
-  }, [items]);
-  const totalScrapCount = Object.values(kindCounts).reduce(
-    (total, count) => total + count,
-    0,
+  const groupedItems = useMemo(() => groupPhotoEncounters(items), [items]);
+  const uniqueItems = useMemo(
+    () => newestUniqueScraps(groupedItems),
+    [groupedItems],
   );
   const filteredItems = useMemo(
     () =>
-      selectedKind === "all"
-        ? items
-        : items.filter((item) => item.kind === selectedKind),
-    [items, selectedKind],
+      groupedItems.filter((item) =>
+        scrapPassesFilters(item, selectedKind, shape, places, search, when),
+      ),
+    [groupedItems, selectedKind, shape, places, search, when],
   );
   const archiveScraps = useMemo(
     () =>
@@ -1373,6 +1773,29 @@ export function ScrapCollage({
       ),
     [filteredItems],
   );
+  const filtersActive =
+    selectedKind.length > 0 ||
+    shape.length > 0 ||
+    places.length > 0 ||
+    search.trim() !== "" ||
+    !isAnyTime(when);
+  const [bulkDeleteStep, setBulkDeleteStep] = useState<
+    "idle" | "confirm" | "deleting" | "failed"
+  >("idle");
+  // A confirmation names a count for one set of filters; changing them asks again.
+  useEffect(() => {
+    setBulkDeleteStep("idle");
+  }, [selectedKind, shape, places, search, when]);
+  const deleteFiltered = () => {
+    if (!onDeleteScraps) return;
+    setBulkDeleteStep("deleting");
+    onDeleteScraps(archiveScraps)
+      .then(() => setBulkDeleteStep("idle"))
+      .catch((error: unknown) => {
+        console.error("Could not delete the filtered scraps:", error);
+        setBulkDeleteStep("failed");
+      });
+  };
   const archiveSizeBounds = useMemo(
     () => tierBounds(archiveScraps),
     [archiveScraps],
@@ -1382,7 +1805,7 @@ export function ScrapCollage({
       curateScraps(filteredItems, {
         seed: layoutSeed,
         targetCount: selectedTargetCount,
-        perDomainCap,
+        perDomainCap: perDomainCap ?? Infinity,
       }),
     [filteredItems, layoutSeed, perDomainCap, selectedTargetCount],
   );
@@ -1397,8 +1820,16 @@ export function ScrapCollage({
     for (const item of curatedScraps) {
       if (byKey.delete(item.key)) ordered.push(item);
     }
-    return [...ordered, ...byKey.values()];
-  }, [archiveScraps, curatedScraps]);
+    const pool = [...ordered, ...byKey.values()];
+    if (shuffleIndex > 0)
+      pool.sort(
+        (a, b) =>
+          Number(shufflePreviousKeysRef.current.has(a.key)) -
+            Number(shufflePreviousKeysRef.current.has(b.key)) ||
+          itemOrder(a, layoutSeed) - itemOrder(b, layoutSeed),
+      );
+    return pool;
+  }, [archiveScraps, curatedScraps, shuffleIndex, layoutSeed]);
   const tideCapacity = Math.min(curatedScraps.length, tidePool.length);
   const tideAvailable = !archiveMode && tidePool.length > tideCapacity;
   const poolByKey = useMemo(
@@ -1413,7 +1844,7 @@ export function ScrapCollage({
       return deriveTideState(
         tidePool.map((item) => item.key),
         tideCapacity,
-        shuffled ? undefined : current ?? undefined,
+        shuffled ? undefined : (current ?? undefined),
       );
     });
   }, [shuffleIndex, tideCapacity, tidePool]);
@@ -1425,7 +1856,7 @@ export function ScrapCollage({
   const slots = useMemo<(ScrapItem | null)[]>(() => {
     if (!tide) return curatedScraps;
     return tide.ashore.map((key) =>
-      key === null ? null : poolByKey.get(key) ?? null,
+      key === null ? null : (poolByKey.get(key) ?? null),
     );
   }, [curatedScraps, poolByKey, tide]);
   const archiveWindow = useMemo(
@@ -1438,6 +1869,7 @@ export function ScrapCollage({
             containerSize.height,
             layoutSeed,
             archiveSizeBounds,
+            display,
           )
         : { fieldHeight: 0, layout: [] },
     [
@@ -1445,6 +1877,7 @@ export function ScrapCollage({
       archiveScraps,
       archiveScrollTop,
       archiveSizeBounds,
+      display,
       containerSize,
       layoutSeed,
     ],
@@ -1461,8 +1894,16 @@ export function ScrapCollage({
             containerSize.width,
             containerSize.height,
             layoutSeed,
+            display,
           ),
-    [archiveMode, archiveWindow.layout, containerSize, layoutSeed, slots],
+    [
+      archiveMode,
+      archiveWindow.layout,
+      containerSize,
+      layoutSeed,
+      slots,
+      display,
+    ],
   );
 
   const layoutRef = useRef(layout);
@@ -1471,15 +1912,13 @@ export function ScrapCollage({
   // that just washed in from one that was already ashore.
   const renderedKeysRef = useRef<Set<string> | null>(null);
 
-  useEffect(() => {
-    if (selectedKind !== "all" && kindCounts[selectedKind] === 0) {
-      setSelectedKind("all");
-    }
-  }, [kindCounts, selectedKind]);
-
-  useEffect(() => {
-    if (!archiveMode) setArchiveScrollTop(0);
-  }, [archiveMode]);
+  useLayoutEffect(() => {
+    if (archiveScrollRef.current) archiveScrollRef.current.scrollTop = 0;
+    setArchiveScrollTop(0);
+    setHovered(false);
+    setFocused(false);
+    setWashingOut([]);
+  }, [archiveMode, selectedKind, shape, places, search, when]);
 
   /**
    * Drives the tide as a chain of self-scheduling events rather than a metronome:
@@ -1573,39 +2012,19 @@ export function ScrapCollage({
     const soonest = Math.min(
       ...washingOut.map((scrap) => scrap.startedAt + TIDE_WASH_OUT_MS - now),
     );
-    const timeout = window.setTimeout(() => {
-      const cutoff = Date.now();
-      setWashingOut((current) =>
-        current.filter(
-          (scrap) => cutoff - scrap.startedAt < TIDE_WASH_OUT_MS,
-        ),
-      );
-    }, Math.max(soonest, 0));
+    const timeout = window.setTimeout(
+      () => {
+        const cutoff = Date.now();
+        setWashingOut((current) =>
+          current.filter(
+            (scrap) => cutoff - scrap.startedAt < TIDE_WASH_OUT_MS,
+          ),
+        );
+      },
+      Math.max(soonest, 0),
+    );
     return () => window.clearTimeout(timeout);
   }, [washingOut]);
-
-  useEffect(() => {
-    if (!tideAvailable) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== "Space" || event.metaKey || event.ctrlKey || event.altKey) {
-        return;
-      }
-      const active = document.activeElement;
-      if (
-        active instanceof HTMLElement &&
-        (active.isContentEditable ||
-          ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(active.tagName))
-      ) {
-        return;
-      }
-      event.preventDefault();
-      setTidePaused((current) => !current);
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [tideAvailable]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -1655,22 +2074,17 @@ export function ScrapCollage({
    */
   const examinableScraps = layout
     .map((scrap) => scrap.item)
-    .filter(
-      (item) => !failedScraps.has(item.key) && isRenderableScrap(item),
-    );
+    .filter((item) => !failedScraps.has(item.key) && isRenderableScrap(item));
   const examineIndex = examining
     ? examinableScraps.findIndex((item) => item.key === examining.key)
     : -1;
-  const examinedItem = examineIndex >= 0 ? examinableScraps[examineIndex] : null;
+  const examinedItem =
+    examineIndex >= 0 ? examinableScraps[examineIndex] : null;
 
   const openExamine = (item: ScrapItem, element: HTMLElement) => {
     const bounds = element.getBoundingClientRect();
     const layoutEntry = layout.find((scrap) => scrap.item.key === item.key);
     examineTriggerRef.current = element;
-    if (tidePausedBeforeExamineRef.current === null) {
-      tidePausedBeforeExamineRef.current = tidePaused;
-      setTidePaused(true);
-    }
     setExamining({
       key: item.key,
       origin: {
@@ -1685,10 +2099,6 @@ export function ScrapCollage({
 
   const closeExamine = () => {
     setExamining(null);
-    if (tidePausedBeforeExamineRef.current !== null) {
-      setTidePaused(tidePausedBeforeExamineRef.current);
-      tidePausedBeforeExamineRef.current = null;
-    }
     // The origin tile can be gone (a filter change, a wash-out); fall back to
     // the collage itself so focus never escapes to the top of the document.
     const trigger = examineTriggerRef.current;
@@ -1721,7 +2131,9 @@ export function ScrapCollage({
     const next = examinableScraps[examineIndex + delta];
     if (!next) return;
     const layoutEntry = layout.find((scrap) => scrap.item.key === next.key);
-    const bounds = tileElementsRef.current.get(next.key)?.getBoundingClientRect();
+    const bounds = tileElementsRef.current
+      .get(next.key)
+      ?.getBoundingClientRect();
     setExamining({
       key: next.key,
       origin: bounds
@@ -1773,6 +2185,10 @@ export function ScrapCollage({
         }}
         aria-label={`Examine ${title}`}
         aria-haspopup="dialog"
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         style={tileStyle}
         onClick={(event) => {
           // Plain clicks open the examine view; modifier clicks keep the
@@ -1794,6 +2210,7 @@ export function ScrapCollage({
           loaded={loadedScraps.has(scrap.item.key)}
           onLoad={() => markScrapLoaded(scrap.item.key)}
           onError={() => removeScrap(scrap.item.key)}
+          tileWidth={scrap.width}
         />
         <div
           className="scrap-collage__provenance"
@@ -1845,9 +2262,7 @@ export function ScrapCollage({
   const tiles = layout.map((scrap) =>
     renderTile(
       scrap,
-      washInKeys.has(scrap.item.key)
-        ? " scrap-collage__tile--washing-in"
-        : "",
+      washInKeys.has(scrap.item.key) ? " scrap-collage__tile--washing-in" : "",
     ),
   );
 
@@ -1862,6 +2277,13 @@ export function ScrapCollage({
           className={`scrap-collage__controls${
             controlsExpanded ? "" : " scrap-collage__controls--collapsed"
           }`}
+          onFocus={() => setControlsFocused(true)}
+          onBlur={(event) => {
+            if (
+              !event.currentTarget.contains(event.relatedTarget as Node | null)
+            )
+              setControlsFocused(false);
+          }}
           aria-label="Scrap controls"
         >
           {controlsExpanded ? (
@@ -1889,6 +2311,34 @@ export function ScrapCollage({
                     archive
                   </button>
                 </div>
+                <span className="scrap-collage__controls-spacer" />
+                {archiveMode ? (
+                  <span className="scrap-collage__archive-summary">
+                    newest first · {archiveScraps.length} of{" "}
+                    {uniqueItems.length}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="scrap-collage__filter"
+                    onClick={() => {
+                      shufflePreviousKeysRef.current = new Set(
+                        tideRef.current?.ashore.filter(
+                          (key): key is string => key !== null,
+                        ) ?? [],
+                      );
+                      setShuffleIndex((current) => current + 1);
+                    }}
+                  >
+                    <span
+                      className="scrap-collage__shuffle-mark"
+                      aria-hidden="true"
+                    >
+                      ⟳
+                    </span>{" "}
+                    shuffle
+                  </button>
+                )}
                 <button
                   type="button"
                   className="scrap-collage__filter scrap-collage__filter--collapse"
@@ -1899,86 +2349,64 @@ export function ScrapCollage({
                   ↓
                 </button>
               </div>
-              <div className="scrap-collage__controls-body">
-                <label className="scrap-collage__control-group">
-                  <span className="scrap-collage__control-label">show</span>
-                  <select
-                    className="scrap-collage__select"
-                    aria-label="Kinds of scraps shown"
-                    value={selectedKind}
-                    onChange={(event) =>
-                      setSelectedKind(
-                        event.currentTarget.value as ScrapKindFilter,
-                      )
-                    }
-                  >
-                    <option value="all">all · {totalScrapCount}</option>
-                    {SCRAP_KIND_OPTIONS.map(({ kind, label }) =>
-                      kindCounts[kind] > 0 ? (
-                        <option key={kind} value={kind}>
-                          {label} · {kindCounts[kind]}
-                        </option>
-                      ) : null,
-                    )}
-                  </select>
-                </label>
-                {archiveMode ? (
-                  <span className="scrap-collage__archive-summary">
-                    newest first · {archiveScraps.length}
-                  </span>
-                ) : (
-                  <>
-                    <label className="scrap-collage__control-group">
-                      <span className="scrap-collage__control-label">
-                        amount
-                      </span>
-                      <select
-                        className="scrap-collage__select"
-                        aria-label="Number of scraps shown"
-                        value={visibleScrapCount}
-                        onChange={(event) => {
-                          const value = event.currentTarget.value;
-                          setVisibleScrapCount(
-                            value === "auto"
-                              ? value
-                              : (Number(value) as VisibleScrapCount),
-                          );
-                        }}
-                      >
-                        <option value="auto">
-                          fill screen · {selectedTargetCount}
-                        </option>
-                        <option value="100">100</option>
-                        <option value="200">200</option>
-                        <option value="300">300</option>
-                        <option value="500">500</option>
-                      </select>
-                    </label>
-                    <button
-                      type="button"
-                      className="scrap-collage__filter"
-                      onClick={() => setShuffleIndex((current) => current + 1)}
-                    >
-                      shuffle
-                    </button>
-                    {tideAvailable && (
+              <div className="scrap-collage__controls-filters">
+                <ScrapFilters
+                  items={groupedItems}
+                  places={places}
+                  onPlaces={setPlaces}
+                  kind={selectedKind}
+                  onKind={setSelectedKind}
+                  shape={shape}
+                  onShape={setShape}
+                  search={search}
+                  onSearch={setSearch}
+                  when={when}
+                  onWhen={setWhen}
+                  matchCount={archiveScraps.length}
+                  countScraps={countUniqueScraps}
+                />
+              </div>
+              {onDeleteScraps && filtersActive && archiveScraps.length > 0 && (
+                <div className="scrap-collage__bulk-delete" role="group">
+                  {bulkDeleteStep === "idle" || bulkDeleteStep === "failed" ? (
+                    <>
+                      {bulkDeleteStep === "failed" && (
+                        <span role="alert">could not delete them</span>
+                      )}
                       <button
                         type="button"
-                        className="scrap-collage__filter scrap-collage__filter--cycle"
-                        aria-pressed={!tidePaused}
-                        title="Turn automatic cycling on or off (spacebar)"
-                        onClick={() => setTidePaused((current) => !current)}
+                        className="scrap-collage__text-action"
+                        onClick={() => setBulkDeleteStep("confirm")}
                       >
-                        <span
-                          className="scrap-collage__cycle-status"
-                          aria-hidden="true"
-                        />
-                        cycle
+                        delete {archiveScraps.length === 1 ? "this scrap" : `these ${archiveScraps.length}`}
                       </button>
-                    )}
-                  </>
-                )}
-              </div>
+                    </>
+                  ) : (
+                    <>
+                      <span>
+                        delete {archiveScraps.length}{" "}
+                        {archiveScraps.length === 1 ? "scrap" : "scraps"} for good?
+                      </span>
+                      <button
+                        type="button"
+                        className="scrap-collage__text-action scrap-collage__text-action--danger"
+                        disabled={bulkDeleteStep === "deleting"}
+                        onClick={deleteFiltered}
+                      >
+                        {bulkDeleteStep === "deleting" ? "deleting..." : "delete"}
+                      </button>
+                      <button
+                        type="button"
+                        className="scrap-collage__text-action"
+                        disabled={bulkDeleteStep === "deleting"}
+                        onClick={() => setBulkDeleteStep("idle")}
+                      >
+                        keep
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <button
@@ -1992,6 +2420,21 @@ export function ScrapCollage({
           )}
         </div>
       )}
+      {filteredItems.length === 0 && (
+        <div
+          role="status"
+          style={{
+            position: "absolute",
+            top: "40%",
+            width: "100%",
+            textAlign: "center",
+            color: "#827a72",
+            fontFamily: "monospace",
+          }}
+        >
+          No scraps match these filters.
+        </div>
+      )}
       {washingOut.map((scrap) => (
         <React.Fragment key={`washing-out-${scrap.washOutId}`}>
           {renderTile(scrap.layout, " scrap-collage__tile--washing-out")}
@@ -1999,15 +2442,13 @@ export function ScrapCollage({
       ))}
       {archiveMode ? (
         <div
+          ref={archiveScrollRef}
           className="scrap-collage__scroll"
           onScroll={(event) =>
             setArchiveScrollTop(event.currentTarget.scrollTop)
           }
         >
-          <div
-            className="scrap-collage__field"
-            style={{ height: fieldHeight }}
-          >
+          <div className="scrap-collage__field" style={{ height: fieldHeight }}>
             {tiles}
           </div>
         </div>
@@ -2051,6 +2492,11 @@ export function ScrapCollage({
             onClose={closeExamine}
             onPrevious={() => stepExamine(-1)}
             onNext={() => stepExamine(1)}
+            onDelete={
+              onDeleteScraps
+                ? () => onDeleteScraps([examinedItem])
+                : undefined
+            }
           />,
           document.body,
         )}

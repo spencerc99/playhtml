@@ -1,11 +1,8 @@
 # Unreleased
 
 - Partial typing legibility now keeps or hides whole words, and playback shows text as recorded.
-
-- Slow Mode commute rides now connect reliably when the hosted route loads before the extension.
-- Internet Commute now stops counting riders after they leave and always shows the train pull-up and cursor boarding intro for Slow Mode rides.
-- Internet Commute now starts a fresh route after returning to home station.
-- Internet Commute now keeps active riders together and gives each new train different stops.
+- Internet scraps opens faster with large collections while search and filters still find older scraps.
+- You can now hide scraps from sites you don't want to see in the scraps site filter.
 
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
@@ -21,3 +18,5 @@ extension/website/public/changelog/media/ and reference them here:
 ![Screenshot title](/changelog/media/file.png)
 ![video: Demo title](/changelog/media/file.mp4)
 -->
+
+- Notices in the popup now go away once you open them, and on their own after a few views.

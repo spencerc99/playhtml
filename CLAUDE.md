@@ -26,6 +26,7 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 - `bun run doctor`: check whether dependencies, WXT metadata, and package build outputs are ready
 - `bun dev`: Website dev server (Vite)
 - `bun dev-server`: PartyKit dev server for real-time sync
+- `bun run dev-server:presence`: presence-only PartyKit server without Supabase persistence
 - `PLAYHTML_PARTYKIT_PORT=2000 bun dev-server`: PartyKit dev server on a non-default port
 - `bun dev-extension`: Extension dev server (WXT hot reload)
 - `bun build-packages`: Build all library packages

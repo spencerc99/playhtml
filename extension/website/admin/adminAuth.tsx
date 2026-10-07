@@ -1,24 +1,46 @@
-// ABOUTME: Shares session-scoped authentication and navigation across WWO admin pages.
-// ABOUTME: Keeps the Worker admin token out of URLs and persistent browser storage.
+// ABOUTME: Shares authentication and navigation across WWO admin pages.
+// ABOUTME: Keeps the Worker admin token out of URLs; remembers it in this browser for 30 days of inactivity.
 
 import { useState } from "react";
 
 const TOKEN_STORAGE_KEY = "wwo-admin-token";
+const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PLAYHTML_ADMIN_URL = "https://playhtml.fun/admin.html";
 
 export type AdminPage = "access" | "installation";
 
+function saveToken(token: string) {
+  localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ token, expiresAt: Date.now() + TOKEN_TTL_MS }));
+}
+
+// Each visit pushes the expiry out again, so regular use never signs you out.
+function loadToken(): string {
+  const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (!raw) return "";
+  try {
+    const stored = JSON.parse(raw) as { token?: unknown; expiresAt?: unknown };
+    if (typeof stored.token === "string" && typeof stored.expiresAt === "number" && stored.expiresAt > Date.now()) {
+      saveToken(stored.token);
+      return stored.token;
+    }
+  } catch {
+    // Unreadable entry: treat as signed out.
+  }
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+  return "";
+}
+
 export function useAdminToken() {
-  const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
+  const [token, setToken] = useState(loadToken);
 
   return {
     token,
     login(nextToken: string) {
-      sessionStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
+      saveToken(nextToken);
       setToken(nextToken);
     },
     logout() {
-      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
       setToken("");
     },
   };

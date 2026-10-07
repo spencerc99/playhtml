@@ -104,8 +104,8 @@ const TOP_PAGES = 10;
 function dateRangeFromDomain(domain: DomainEntry): DomainStats["dateRange"] {
   if (!domain.firstVisit || !domain.lastVisit) return null;
   return {
-    oldest: new Date(domain.firstVisit).toLocaleDateString(),
-    newest: new Date(domain.lastVisit).toLocaleDateString(),
+    oldest: new Date(domain.firstVisit).toISOString(),
+    newest: new Date(domain.lastVisit).toISOString(),
   };
 }
 

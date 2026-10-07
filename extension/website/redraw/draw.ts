@@ -10,6 +10,7 @@ export interface LibraryItem {
   points: Point[];
   color: string;
   id: string;
+  pid: string;
 }
 
 const SHAPE_SAMPLE_POINTS = 24;
@@ -98,12 +99,18 @@ function matchShapes(
   return best;
 }
 
-function makeTrail(points: Point[], color: string, id: string): Trail {
+function makeTrail(
+  points: Point[],
+  color: string,
+  id: string,
+  pid: string,
+): Trail {
   return {
     points: points.map((p, index) => ({ x: p.x, y: p.y, ts: index })),
     color,
     opacity: 1,
     id,
+    pid,
     startTime: 0,
     endTime: Math.max(1, points.length - 1),
     clicks: [],
@@ -167,7 +174,9 @@ export function mosaicTrails(
       };
     });
 
-    trails.push(makeTrail(placed, item.color, `mosaic-${strokeIndex}`));
+    trails.push(
+      makeTrail(placed, item.color, `mosaic-${strokeIndex}`, item.pid),
+    );
   });
 
   return trails;
@@ -226,13 +235,13 @@ export function inPlaceTrails(
     return true;
   };
 
-  const segments: Array<{ points: Point[]; color: string }> = [];
+  const segments: Array<{ points: Point[]; color: string; pid: string }> = [];
 
   for (const trail of trails) {
     let run: Point[] = [];
     const flush = () => {
       if (run.length >= IN_PLACE_MIN_RUN_POINTS) {
-        segments.push({ points: run, color: trail.color });
+        segments.push({ points: run, color: trail.color, pid: trail.pid });
       }
       run = [];
     };
@@ -253,7 +262,12 @@ export function inPlaceTrails(
   return segments
     .slice(0, maxStrokes)
     .map((segment, index) =>
-      makeTrail(segment.points, segment.color, `inplace-${index}`),
+      makeTrail(
+        segment.points,
+        segment.color,
+        `inplace-${index}`,
+        segment.pid,
+      ),
     );
 }
 
@@ -315,7 +329,12 @@ export function warpTrails(
     });
 
     trails.push(
-      makeTrail(smoothPoints(bent), item.color, `warp-${strokeIndex}`),
+      makeTrail(
+        smoothPoints(bent),
+        item.color,
+        `warp-${strokeIndex}`,
+        item.pid,
+      ),
     );
   });
 

@@ -13,6 +13,7 @@ function trailState(id: string, startOffsetMs: number): TrailState {
   return {
     trail: {
       id,
+      pid: "participant",
       points: [
         { x: 0, y: 0, ts: 0 },
         { x: 1, y: 1, ts: 100 },

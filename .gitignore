@@ -45,6 +45,7 @@ extension/src/**/*.js.map
 
 
 .wxt
+extension/web-ext.config.ts
 .output
 extension/dist
 extension/publish
@@ -65,3 +66,6 @@ tools/playwright/videos
 .playwright-mcp/
 
 .env.submit
+
+# Internet map bundles carry real participants' browsing URLs and titles.
+extension/website/public/internet-map/data/

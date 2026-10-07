@@ -570,11 +570,13 @@ export class KeyboardCollector extends BaseCollector<KeyboardEventData> {
     // Reset sequence and element tracking
     this.sequence = [];
     this.firstActionTime = 0;
-    this.lastElementKey = null;
-    this.cachedPosition = null;
-    this.cachedSelector = null;
-    this.cachedStyling = null;
-    this.cachedIsContentEditable = false;
+    if (!this.focusedInput) {
+      this.lastElementKey = null;
+      this.cachedPosition = null;
+      this.cachedSelector = null;
+      this.cachedStyling = null;
+      this.cachedIsContentEditable = false;
+    }
   }
 
   /**
