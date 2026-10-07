@@ -1915,7 +1915,7 @@ export class CursorClientAwareness {
     // Update options object
     Object.assign(this.options, options);
 
-    if (options.shouldRenderCursor !== undefined) {
+    if ("shouldRenderCursor" in options) {
       for (const [stableId, presence] of this.activeCursorPresenceEntries()) {
         this.updateCursor(stableId, presence);
       }
