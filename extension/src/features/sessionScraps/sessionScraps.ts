@@ -5,6 +5,7 @@
 export interface SessionScrap {
   id: string;
   src: string;
+  /** Only the origin of the page the scrap came from; its path, query and fragment stay behind. */
   pageUrl: string;
   alt?: string;
   width: number;
@@ -44,6 +45,19 @@ export interface SessionScrapsAnswer {
 /** Only web images travel: data: and blob: URLs would only resolve on this machine. */
 function isWebImage(src: string): boolean {
   return /^https?:\/\//i.test(src);
+}
+
+/**
+ * A page's address can carry private paths, document ids or tokens, and the
+ * collage only shows where a scrap came from, so only the origin travels.
+ */
+export function pageOrigin(pageUrl: string): string {
+  try {
+    const url = new URL(pageUrl);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : "";
+  } catch {
+    return "";
+  }
 }
 
 /** The window a page asked for, clamped to the lookback and to now. */
@@ -92,7 +106,7 @@ export function selectSessionScraps(
     scraps.push({
       id: scrap.id,
       src: scrap.src,
-      pageUrl: scrap.pageUrl,
+      pageUrl: pageOrigin(scrap.pageUrl),
       ...(scrap.alt ? { alt: scrap.alt } : {}),
       width: scrap.naturalWidth,
       height: scrap.naturalHeight,

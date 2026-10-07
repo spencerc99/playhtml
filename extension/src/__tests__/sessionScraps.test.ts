@@ -70,6 +70,17 @@ describe("selectSessionScraps", () => {
     );
   });
 
+  it("hands over only the origin of the page a scrap came from", () => {
+    const answer = selectSessionScraps(
+      [
+        scrap(1, { pageUrl: "https://docs.example.com/d/secret-doc/edit?invite=token#heading" }),
+        scrap(2, { pageUrl: "file:///Users/me/notes.html" }),
+      ],
+      { now: NOW },
+    );
+    expect(answer.scraps.map((s) => s.pageUrl)).toEqual(["https://docs.example.com", ""]);
+  });
+
   it("caps the answer", () => {
     const many = Array.from({ length: SESSION_SCRAP_LIMIT + 20 }, (_, i) => scrap(i * 0.1));
     expect(selectSessionScraps(many, { now: NOW }).scraps).toHaveLength(SESSION_SCRAP_LIMIT);
