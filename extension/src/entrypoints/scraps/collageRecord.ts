@@ -93,9 +93,10 @@ export type CollagePreview =
  * A preview read out of IndexedDB, copied into memory so it can be written
  * back. The Blob IndexedDB hands out is backed by the stored row's file, and a
  * reopened collage carries it into every save until a re-bake replaces it.
- * Writing such a Blob back can fail with an UnknownError ("The operation failed
- * for reasons unrelated to the database itself..."), which left a reopened
- * collage unable to save at all. An in-memory copy has no tie to the row it
+ * In Firefox the first save back succeeds, but it lets go of the file behind
+ * that Blob, so every later save carrying it fails with an UnknownError ("The
+ * operation failed for reasons unrelated to the database itself...") and the
+ * collage can no longer be saved. An in-memory copy has no tie to the row it
  * came from. A picture whose bytes can no longer be read is dropped, so the
  * arrangement still saves and a re-bake draws it again.
  */
