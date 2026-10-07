@@ -105,6 +105,8 @@ export function ScrapsPanel({ placedSrcs, onPick }: Props) {
                   src={scrap.src}
                   alt={scrap.alt ?? ""}
                   draggable={false}
+                  loading="lazy"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                 />
               </button>
