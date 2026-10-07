@@ -209,7 +209,7 @@ Throws a console warning if called before `init()` completes sync.
 
 ## Custom elements
 
-Use `register` for one custom element and `define` for a reusable capability. Both accept an `ElementInitializer` with either the supported imperative `updateElement` renderer or the experimental declarative `view` renderer. See [Registration API](/docs/reference/view-api/).
+Use `register` for one custom element and `define` for a reusable capability. Both accept an `ElementInitializer` with either the supported imperative `update` renderer or the experimental declarative `view` renderer. See [Registration API](/docs/reference/view-api/).
 
 ### `register(elementOrId, init)`
 
@@ -238,7 +238,7 @@ const handle = playhtml.register(counter, {
       data.count += 1;
     });
   },
-  updateElement: ({ element, data }) => {
+  update: ({ element, data }) => {
     element.textContent = `Clicked ${data.count} times`;
   },
 });
@@ -367,7 +367,7 @@ views.onUpdate((n) => {
 |---|---|
 | `getData(): T` | Returns the current value. |
 | `setData(data: T \| updater): void` | Updates the value. Mutate object/array drafts in place; an updater for a primitive returns its next value. |
-| `onUpdate(callback: (data: T) => void): () => void` | Subscribes to changes. Returns an unsubscribe function. |
+| `onUpdate(callback: (data: T) => void): () => void` | Subscribes to changes. Synchronous writes produce one callback with the final value. Returns an unsubscribe function. |
 | `destroy(): void` | Tears down the channel and removes all subscriptions. |
 
 Throws if called before `init()` completes sync.

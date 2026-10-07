@@ -6,14 +6,15 @@ import { CollectionEvent, ScrollAnimation } from "../types";
 import {
   getColorForEvent,
   eventMatchesAnyFilter,
-  SCROLL_SESSION_THRESHOLD,
   SCROLL_TIME_COMPRESSION,
   MAX_VIEWPORT_ANIMATION_DURATION,
   type FilterChip,
 } from "../utils/eventUtils";
+import { groupScrollEvents } from "../utils/scrollEventGroups";
 
 // Settings interface for viewport scroll
 export interface ViewportScrollSettings {
+  recordedTiming?: boolean;
   filters: readonly FilterChip[];
   pidFilter: string;
   viewportEventFilter: {
@@ -107,48 +108,25 @@ export function useViewportScroll(
       return { animations: [], timeBounds: { min: 0, max: 0 } };
     }
 
-    // Group viewport events by session (pid + sid + url) with time windows
-    const scrollsBySession = new Map<string, CollectionEvent[]>();
-
-    filteredEvents.forEach((event) => {
-      const key = `${event.meta.pid}|${event.meta.sid}|${event.meta.url}`;
-      if (!scrollsBySession.has(key)) {
-        scrollsBySession.set(key, []);
+    const groupsBySession = new Map<
+      string,
+      ReturnType<typeof groupScrollEvents>
+    >();
+    for (const group of groupScrollEvents(filteredEvents)) {
+      const sessionGroups = groupsBySession.get(group.sessionId);
+      if (sessionGroups) {
+        sessionGroups.push(group);
+      } else {
+        groupsBySession.set(group.sessionId, [group]);
       }
-      scrollsBySession.get(key)!.push(event);
-    });
+    }
 
-    // Create ScrollAnimation objects by merging events within time windows
+    // Create ScrollAnimation objects from the shared session boundaries.
     const scrollAnimations: ScrollAnimation[] = [];
     let totalMergedSessions = 0;
 
-    scrollsBySession.forEach((sessionEvents) => {
-      sessionEvents.sort((a, b) => a.ts - b.ts);
-
-      // Merge events within SCROLL_SESSION_THRESHOLD
-      const mergedSessions: CollectionEvent[][] = [];
-      let currentSession: CollectionEvent[] = [];
-
-      sessionEvents.forEach((event) => {
-        if (currentSession.length === 0) {
-          currentSession.push(event);
-        } else {
-          const lastEvent = currentSession[currentSession.length - 1];
-          const timeDiff = event.ts - lastEvent.ts;
-
-          if (timeDiff <= SCROLL_SESSION_THRESHOLD) {
-            currentSession.push(event);
-          } else {
-            // Start new session
-            mergedSessions.push(currentSession);
-            currentSession = [event];
-          }
-        }
-      });
-
-      if (currentSession.length > 0) {
-        mergedSessions.push(currentSession);
-      }
+    groupsBySession.forEach((sessionGroups) => {
+      const mergedSessions = sessionGroups.map((group) => group.events);
 
       totalMergedSessions += mergedSessions.length;
 
@@ -195,13 +173,20 @@ export function useViewportScroll(
             viewportHeight: e.meta.vh,
           }));
 
-        // Use resize/zoom events from the entire session
-        const resizeEvents = sessionResizeEvents;
-        const zoomEvents = sessionZoomEvents;
+        // Recorded playback keeps resize and zoom within this visit.
+        const withinVisit = (event: { timestamp: number }) =>
+          event.timestamp >= mergedSessionEvents[0].ts &&
+          event.timestamp <= mergedSessionEvents[mergedSessionEvents.length - 1].ts;
+        const resizeEvents = settings.recordedTiming
+          ? sessionResizeEvents.filter(withinVisit)
+          : sessionResizeEvents;
+        const zoomEvents = settings.recordedTiming
+          ? sessionZoomEvents.filter(withinVisit)
+          : sessionZoomEvents;
 
         // Compress timing for scroll events
         let compressedScrollEvents = scrollEvents;
-        if (scrollEvents.length > 0) {
+        if (!settings.recordedTiming && scrollEvents.length > 0) {
           const compressedStartTime = scrollEvents[0].timestamp;
           compressedScrollEvents = scrollEvents.map((e, i) => {
             if (i === 0) return e;
@@ -232,8 +217,8 @@ export function useViewportScroll(
             : mergedSessionEvents[0].ts;
 
         // Compress timing for resize events
-        let compressedResizeEvents: typeof resizeEvents = [];
-        if (resizeEvents.length > 0) {
+        let compressedResizeEvents = resizeEvents;
+        if (!settings.recordedTiming && resizeEvents.length > 0) {
           compressedResizeEvents = resizeEvents.map((e) => {
             const timeDelta = e.timestamp - baseStartTime;
             const compressedDelta = timeDelta * SCROLL_TIME_COMPRESSION;
@@ -245,8 +230,8 @@ export function useViewportScroll(
         }
 
         // Compress timing for zoom events
-        let compressedZoomEvents: typeof zoomEvents = [];
-        if (zoomEvents.length > 0) {
+        let compressedZoomEvents = zoomEvents;
+        if (!settings.recordedTiming && zoomEvents.length > 0) {
           compressedZoomEvents = zoomEvents.map((e) => {
             const timeDelta = e.timestamp - baseStartTime;
             const compressedDelta = timeDelta * SCROLL_TIME_COMPRESSION;
@@ -303,7 +288,7 @@ export function useViewportScroll(
           let cappedResizeEvents = compressedResizeEvents;
           let cappedZoomEvents = compressedZoomEvents;
 
-          if (originalDuration > MAX_VIEWPORT_ANIMATION_DURATION) {
+          if (!settings.recordedTiming && originalDuration > MAX_VIEWPORT_ANIMATION_DURATION) {
             cappedEndTime = startTime + MAX_VIEWPORT_ANIMATION_DURATION;
 
             // Keep only events within the capped duration
@@ -354,6 +339,7 @@ export function useViewportScroll(
           const animUrl = mergedSessionEvents[0].meta.url;
           const metadata = urlMetadata.get(animUrl);
           const anim = {
+            eventId: mergedSessionEvents[0].id,
             participantId: mergedSessionEvents[0].meta.pid,
             sessionId: mergedSessionEvents[0].meta.sid,
             pageUrl: animUrl,
@@ -453,6 +439,7 @@ export function useViewportScroll(
     viewportEvents,
     urlMetadata,
     viewportSize.width,
+    settings.recordedTiming,
     settings.filters,
     settings.pidFilter,
     settings.viewportEventFilter,

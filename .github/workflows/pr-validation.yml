@@ -5,6 +5,39 @@ on:
     branches: [ main ]
 
 jobs:
+  sound-changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      should-run: ${{ steps.paths.outputs.should-run }}
+    steps:
+      - name: Check for sound regression inputs
+        id: paths
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100,
+            });
+            const soundPaths = [
+              /^extension\/website\/shared\/sound\//,
+              /^scripts\/sound-samples\//,
+              /^extension\/website\/sounds\/(SamplePlayback\.tsx|sampleEvents\.json)$/,
+              /^extension\/website\/shared\/utils\/eventUtils\.ts$/,
+              /^package\.json$/,
+              /^\.github\/workflows\/pr-validation\.yml$/,
+            ];
+            const shouldRun = files.some(({ filename, previous_filename }) =>
+              [filename, previous_filename].filter(Boolean).some((path) =>
+                soundPaths.some((pattern) => pattern.test(path)),
+              ),
+            );
+            core.setOutput("should-run", shouldRun);
+
   build-site:
     runs-on: ubuntu-latest
     
@@ -54,6 +87,9 @@ jobs:
       run: bunx playwright install --with-deps chromium
       working-directory: smoke-tests
 
+    - name: Run navigation browser tests
+      run: bun run smoke:navigation
+
     - name: Run extension smoke tests
       run: bun run smoke:extension
 
@@ -69,3 +105,26 @@ jobs:
           smoke-tests/playwright-report
           smoke-tests/test-results
         retention-days: 7
+
+  sound-regression:
+    needs: sound-changes
+    if: needs.sound-changes.outputs.should-run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+      - name: Prepare workspace
+        run: bun run setup
+      - name: Install native audio library
+        run: sudo apt-get update && sudo apt-get install -y libjack-jackd2-0
+      - name: Install native audio renderer
+        run: bun install --frozen-lockfile
+        working-directory: scripts/sound-samples
+      - name: Check audio continuity
+        run: bun run test:sound

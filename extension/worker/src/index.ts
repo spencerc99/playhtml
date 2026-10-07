@@ -28,6 +28,10 @@ import {
   handleAdminPersonCohortsUpdate,
   handleFeatureAccessCheck,
 } from './routes/accessControl';
+import {
+  handleAdminInstallationReload,
+  handleInstallationControl,
+} from './routes/installationControl';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
@@ -132,6 +136,14 @@ export default {
 
     if (path === '/admin/access-control/people' && request.method === 'POST') {
       return handleAdminPeopleAdd(request, env);
+    }
+
+    if (path === '/installation/control' && request.method === 'GET') {
+      return handleInstallationControl(env);
+    }
+
+    if (path === '/admin/installation/reload' && request.method === 'POST') {
+      return handleAdminInstallationReload(request, env);
     }
 
     const adminFeatureMatch = path.match(/^\/admin\/access-control\/features\/([^/]+)$/);

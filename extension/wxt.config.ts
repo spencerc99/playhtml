@@ -31,7 +31,12 @@ export default defineConfig({
     },
     web_accessible_resources: [
       {
-        resources: ["content-scripts/content.css", "inventory/*"],
+        resources: [
+          "content-scripts/content.css",
+          "installation.js",
+          "historical-overlay.js",
+          "inventory/*",
+        ],
         matches: ["<all_urls>"],
       },
     ],
@@ -60,6 +65,12 @@ export default defineConfig({
   vite: () => ({
     esbuild: {
       charset: "ascii",
+    },
+    // tldraw's asset list imports each font and icon with `?url`. The dev
+    // server's dependency pre-bundling drops those imports, which leaves the
+    // list with undefined entries, so the package is served as-is instead.
+    optimizeDeps: {
+      exclude: ["@tldraw/assets"],
     },
     resolve: {
       alias: {

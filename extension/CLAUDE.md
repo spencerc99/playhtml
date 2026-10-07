@@ -140,10 +140,6 @@ App Store Connect:
 - `APPLE_API_ISSUER_ID` — issuer ID for the team API key
 - `APPLE_API_PRIVATE_KEY` — full contents of the downloaded `.p8` private key
 
-Set the optional GitHub Actions variable `SAFARI_VERSION` to the macOS version
-in App Store Connect. It defaults to `1.0`. Update it when you create the next
-macOS version.
-
 The App Store Connect key must support provisioning and app uploads. Before the
 first release, manually create one App Store Connect record with the macOS
 platform and bundle ID `online.wewere.app`. App Store Connect does not support
@@ -151,23 +147,40 @@ creating app records through its API. The macOS app is the minimal container
 required to distribute the Safari extension. A future native iOS app and iOS
 Safari extension can be added to this record as another platform.
 
-The release workflow uses Xcode cloud signing to create the provisioning
-profile, archive the macOS app, and upload the build. The containing app uses
-`online.wewere.app`; its embedded Safari extension uses
-`online.wewere.app.Extension`. Select the processed build and submit it for App
-Review in App Store Connect.
+The release workflow reads the current macOS version from App Store Connect.
+It reuses an editable version or increments the minor version after the last
+release. A version already in review blocks a new release before any store
+submission. Xcode cloud signing creates the provisioning profile, archives the
+macOS app, and uploads the build. The workflow then waits for Apple to process
+the build, updates the App Store release notes from `CHANGELOG.md`, attaches the
+build, and submits the version for App Review. Apple must approve the version
+before it becomes public. The containing app uses `online.wewere.app`; its
+embedded Safari extension uses `online.wewere.app.Extension`.
+
+If the Safari upload succeeds but App Store review submission fails, inspect
+the build and version in App Store Connect before retrying. Dispatch `Extension
+Release` with Chrome, Edge, and Firefox skipped, Safari enabled, and
+`review-safari-build` set to the existing build number. This attaches and
+submits that build without uploading it again.
 
 **Manual fallback:** The local `./release.sh` uses `.env.submit` instead of
 GitHub secrets. It requires Xcode 26 and a manual `extension/package.json` bump
 first. Set `APPLE_API_KEY_PATH` to the downloaded `.p8` file. Set
-`SAFARI_VERSION` when the App Store version is not `1.0`. Use `--skip-safari`
-when Xcode or Apple credentials are not available.
+`BUILD_NUMBER` to a value greater than the previous macOS build. The local
+script uses the same App Store Connect version selection and review submission
+as CI. Use `--skip-safari` when Xcode or Apple credentials are not available.
 
 ## Website & experiments (`extension/website/`)
 
 The `extension/website/` Vite app serves both the marketing/landing pages
 (`index.html`, `privacy.html`) and the visualization experiments:
 
+- `extension/website/install/` — `wewere.online/install`, the short URL for
+  loading the extension unpacked on an installation machine before a store
+  release. It serves `public/wwo-extension.zip`; rebuild that zip
+  (`bun run build-extension && (cd extension/dist && zip -r ../website/public/wwo-extension.zip chrome-mv3)`)
+  whenever the machines need a newer build, and drop both once the store
+  version covers it.
 - `extension/website/changelog/` — public extension release notes rendered
   from `extension/CHANGELOG.md`; supports Markdown images and
   `![video: Title](...)` media references.
@@ -309,6 +322,76 @@ Cloudflare Worker + Supabase PostgreSQL + Resend:
 **Wrangler config gotcha:** `bun run` scripts in `extension/worker/package.json` (`dev`, `deploy`, `tail`, `secret`, `secrets`) all pin `--config wrangler.toml`. Do NOT invoke bare `wrangler ...` from `extension/worker/` — wrangler walks up the filesystem and finds the partykit config in `partykit/wrangler.jsonc`, applying secrets/deploys to the wrong worker. Use the `bun run` wrappers.
 
 ## Configuration
+
+### Installation mode
+
+In extension Settings, press Cmd/Ctrl+Shift+8 to reveal **Installation mode**
+under Identity. It is the single switch for everything a browsing machine in the
+installation needs, and it persists across browser restarts. It starts off;
+while enabled, its checkbox stays visible in Settings.
+
+It turns on five things together:
+
+1. **The cursor.** The participant's own colored cursor replaces the native one
+   (`src/entrypoints/content/installationCursor.ts`). Color changes apply to
+   open pages. Browser pages and embedded frame contents keep their native
+   cursor. Open shadow roots receive cursor suppression when the pointer enters,
+   including roots attached later. Closed roots retain their native cursor while
+   the installation overlay hides — except the frame's own root, which is
+   skipped by id.
+2. **The frame** (`src/entrypoints/content/installationFrame.ts`). A hairline
+   border in the participant's color, a pill reading "participating in we were
+   online — browse to contribute to the portrait" (the wordmark links to the
+   site), and an info icon opening a panel that explains the piece. Everything
+   lives in a closed shadow root and is inert to pointer input except the panel,
+   the icon, and the pill's link. The canvas draws the live
+   trace over the participant's earlier traces on that domain, fetched once per
+   page through `GET_RECENT_EVENTS`. The host carries `data-wwo-trace`,
+   `data-wwo-previous`, and `data-wwo-sound` so its state is readable without
+   opening the shadow root.
+3. **The ink** (`src/entrypoints/content/installationTrace.ts`). The trace is
+   drawn the way the screens draw it: `perfect-freehand` outlines filled at the
+   screens' stroke width and opacities, and clicks ringing out with the screens'
+   ripple geometry at the full `CLICK_DEFAULTS` radius (the live portrait's
+   smaller one exists because thousands of clicks land in one frame). Strokes
+   and click marks share one lifecycle — settle to a resting weight, hold, then
+   depart — so a visit accumulates as a portrait rather than a comet tail, and
+   shows where it stopped as well as where it went. Points live in **document
+   space** — the same absolute placement the visualizations use
+   (`x * vw + scrollX`) — so marks stay on the content they were made over when
+   the page scrolls, and a scroll under a still cursor splits the stroke instead
+   of drawing a slash.
+4. **Live sound** (`src/entrypoints/content/installationSound.ts`). The same
+   `@movement` `SoundEngine` the screens use, driven by the local cursor: one
+   voice follows movement, clicks ring the bell. Browsers require a gesture
+   before audio starts, so the engine is created on the first click or keypress.
+   There is no switch in the frame — a visitor should not have to turn the piece
+   on — but an operator can silence one machine by setting
+   `INSTALLATION_SOUND_KEY` to false; unset means on, and an open page follows
+   the change without a reload.
+5. **Installation pace** (`INSTALLATION_PACE` in `src/features/installationMode.ts`).
+   Cursor sampling drops from 250ms/15px to 80ms/4px and both EventBuffer hops
+   shorten (store 1s → 200ms, upload 3s → 500ms), so marks reach the screens
+   close to live. `CollectorManager` applies and reverts this through
+   `watchInstallationMode`; ordinary browsing keeps the cheaper defaults.
+
+This is a local machine setting, independent of feature entitlements and
+collection modes. It does not start cursor presence connections. The frame's
+earlier traces and the faster pace only produce marks when cursor collection is
+itself on.
+
+Nothing hosted is needed to explain the piece: the frame's "about this" panel is
+the only introduction a visitor gets, and the installation office at
+`/admin/installation/` carries the operator's setup note.
+
+Build with `bun run build-extension`, then run
+`node smoke-tests/installation-cursor.mjs` (cursor) and
+`node smoke-tests/installation-frame.mjs` (frame, trace pixels, earlier traces,
+sound, and pace) in isolated Chromium. Set `INSTALLATION_EVIDENCE_DIR` to save
+screenshots, and `PLAYWRIGHT_CHROMIUM_PATH` when the Chromium build is not the
+Playwright `chromium` channel.
+
+### Files
 
 - `src/config.ts`: `VERBOSE` debug logging flag
 - `src/flags.ts`: Feature flags (`COPRESENCE: true`)

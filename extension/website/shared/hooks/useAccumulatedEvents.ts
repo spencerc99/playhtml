@@ -196,7 +196,7 @@ export function useAccumulatedEvents(
   const finishedEventIdsRef = useRef<Set<string>>(new Set());
 
   const flat = useMemo(() => {
-    if (!enabled) return events;
+    if (!enabled) return { events, evictions: new Set<string>() };
 
     // Apply any pending evictions reported by the animator. We READ the set here
     // (and clear it in the effect below) rather than clearing it inside the memo:
@@ -205,7 +205,7 @@ export function useAccumulatedEvents(
     // (deleting an already-deleted group is a no-op).
     const evict =
       evictIdsRef && evictIdsRef.current.size > 0
-        ? evictIdsRef.current
+        ? new Set(evictIdsRef.current)
         : undefined;
 
     finishedEventIdsRef.current = collectFinishedEventIds(
@@ -223,6 +223,13 @@ export function useAccumulatedEvents(
       finishedEventIdsRef.current,
     );
 
+    // Density-evicted history remains retired while it is in the live window.
+    for (const event of events) {
+      if (!groupsRef.current.has(groupKey(event))) {
+        finishedEventIdsRef.current.add(event.id);
+      }
+    }
+
     // Flatten groups into a single ts-ordered array. The total-event budget is
     // enforced inside accumulateEvents by evicting whole oldest groups, so no
     // mid-trail truncation happens here.
@@ -231,16 +238,16 @@ export function useAccumulatedEvents(
       result.push(...group.events);
     }
     result.sort((a, b) => a.ts - b.ts);
-    return result;
+    return { events: result, evictions: evict };
   }, [events, maxGroups, enabled, evictIdsRef]);
 
   // Clear the applied evictions after commit (not inside the memo, so a
   // double-invoked memo can't drop them).
   useEffect(() => {
-    if (evictIdsRef && evictIdsRef.current.size > 0) {
-      evictIdsRef.current = new Set();
+    if (evictIdsRef && flat.evictions) {
+      for (const id of flat.evictions) evictIdsRef.current.delete(id);
     }
-  });
+  }, [flat, evictIdsRef]);
 
-  return flat;
+  return flat.events;
 }

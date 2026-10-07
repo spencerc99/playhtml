@@ -129,6 +129,7 @@ export function useArchiveEvents(params: {
   const [prefetchRetryVersion, setPrefetchRetryVersion] = useState(0);
   const batchQueueRef = useRef(batchQueue);
   const batchGenerationRef = useRef(0);
+  const fixedFetchGenerationRef = useRef(0);
   const batchSequenceRef = useRef(0);
   const prefetchRequestRef = useRef("");
 
@@ -136,6 +137,13 @@ export function useArchiveEvents(params: {
   const fetchedTypesRef = useRef<Set<string>>(new Set());
   // Track the last domain+day combo we fetched for so we know when to force refresh
   const lastFetchKeyRef = useRef<string>("");
+
+  useEffect(() => {
+    fixedFetchGenerationRef.current++;
+    batchGenerationRef.current++;
+    fetchedTypesRef.current = new Set();
+    lastFetchKeyRef.current = "";
+  }, [batchPlayback]);
 
   // Fetch daily counts for the heatmap calendar
   useEffect(() => {
@@ -192,6 +200,7 @@ export function useArchiveEvents(params: {
 
       setLoading(true);
       setError(null);
+      const requestGeneration = ++fixedFetchGenerationRef.current;
 
       try {
         // Retry with exponential backoff so a transient network hiccup or a 5xx
@@ -258,6 +267,8 @@ export function useArchiveEvents(params: {
           fetched = results.flat();
         }
 
+        if (requestGeneration !== fixedFetchGenerationRef.current) return;
+
         // Track what we've fetched
         for (const t of typesToFetch) {
           fetchedTypesRef.current.add(t);
@@ -269,10 +280,13 @@ export function useArchiveEvents(params: {
           setEvents((prev) => [...prev, ...fetched]);
         }
       } catch (err) {
+        if (requestGeneration !== fixedFetchGenerationRef.current) return;
         setError(err instanceof Error ? err.message : "Failed to fetch events");
         console.error("Error fetching events:", err);
       } finally {
-        setLoading(false);
+        if (requestGeneration === fixedFetchGenerationRef.current) {
+          setLoading(false);
+        }
       }
     },
     [],

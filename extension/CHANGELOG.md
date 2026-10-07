@@ -1,5 +1,12 @@
 # @playhtml/extension
 
+## 0.1.25 (2026-09-24)
+
+- You can turn off milestone popups in Browser settings.
+- Internet Commute now starts a fresh route after returning to home station.
+- Internet Commute now keeps active riders together and gives each new train different stops.
+
+
 ## 0.1.24 (2026-08-27)
 
 - Fix a bug with Wikipedia part showing up

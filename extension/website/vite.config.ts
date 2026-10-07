@@ -34,6 +34,10 @@ export default defineConfig({
     dedupe: ["react", "react-dom"],
   },
   build: {
+    // The internet map viewer loads its data with a top-level await, which
+    // Vite's default target predates. Every browser the site supports has had
+    // it for years.
+    target: "es2022",
     rollupOptions: {
       input: glob.sync(path.resolve(__dirname, "**/*.html"), {
         ignore: ["**/node_modules/**", "**/dist/**"],

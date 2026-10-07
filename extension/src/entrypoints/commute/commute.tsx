@@ -16,7 +16,6 @@ import trainIceUrl from "../../assets/train-ice.png";
 import {
   PlayProvider,
   usePlayContext,
-  usePresence,
   useUsers,
   withSharedState,
 } from "@playhtml/react";
@@ -305,6 +304,7 @@ function useCommuteTrain(
           refreshTimer = window.setTimeout(() => void board(), 3_000);
         } else {
           setConnection((current) => ({ ...current, status: "error" }));
+          refreshTimer = window.setTimeout(() => void board(), 3_000);
         }
       }
     };
@@ -1148,7 +1148,11 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const canExit = doorOpen && !props.atOrigin;
 
     return (
-      <section id={props.id} className="train-car-wrap" ref={ref}>
+      <section
+        id={props.id}
+        className="train-car-wrap"
+        ref={ref as React.RefObject<HTMLElement>}
+      >
         <section
           className={`train-car train-car--${props.phase}`}
           aria-label="Internet commute carriage"

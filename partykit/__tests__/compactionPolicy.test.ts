@@ -12,6 +12,7 @@ import {
   shouldCommitCompactionSnapshot,
   shouldUseEmergencyCompactedDocument,
   shouldStoreCompactedDocument,
+  shouldCommitEmptyRoomCompaction,
 } from "../compactionPolicy";
 
 describe("shouldStoreCompactedDocument", () => {
@@ -19,6 +20,21 @@ describe("shouldStoreCompactedDocument", () => {
     expect(shouldStoreCompactedDocument(100, 99)).toBe(true);
     expect(shouldStoreCompactedDocument(100, 100)).toBe(false);
     expect(shouldStoreCompactedDocument(100, 101)).toBe(false);
+  });
+});
+
+describe("shouldCommitEmptyRoomCompaction", () => {
+  it("commits rewrites that reclaim a quarter and at least 32KB", () => {
+    expect(shouldCommitEmptyRoomCompaction(54_644, 92)).toBe(true);
+    expect(shouldCommitEmptyRoomCompaction(128 * 1024, 96 * 1024)).toBe(true);
+  });
+
+  it("skips small or proportionally minor savings", () => {
+    expect(shouldCommitEmptyRoomCompaction(40_000, 20_000)).toBe(false);
+    expect(shouldCommitEmptyRoomCompaction(1024 * 1024, 900 * 1024)).toBe(
+      false
+    );
+    expect(shouldCommitEmptyRoomCompaction(100, 101)).toBe(false);
   });
 });
 

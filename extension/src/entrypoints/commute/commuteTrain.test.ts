@@ -60,20 +60,25 @@ describe("commute train client", () => {
     expect(getCommuteRiderToken(null)).toBe(nextToken);
   });
 
-  it("refreshes open trains and reboards riders after completion", () => {
+  it("refreshes active rider leases and reboards riders after completion", () => {
     expect(getCommuteTrainNextAction(assignment)).toEqual({
       kind: "refresh",
-      delayMs: 3_000,
+      delayMs: 5_000,
     });
     expect(
-      getCommuteTrainNextAction(
-        { ...assignment, joinable: false, serverNow: 75_000 },
-      ),
-    ).toEqual({ kind: "reboard", delayMs: 5_000 });
+      getCommuteTrainNextAction({
+        ...assignment,
+        joinable: false,
+        serverNow: 75_000,
+      }),
+    ).toEqual({ kind: "refresh", delayMs: 5_000 });
     expect(
-      getCommuteTrainNextAction(
-        { ...assignment, joinable: false, serverNow: 85_000, phase: "complete" },
-      ),
+      getCommuteTrainNextAction({
+        ...assignment,
+        joinable: false,
+        serverNow: 85_000,
+        phase: "complete",
+      }),
     ).toEqual({ kind: "reboard", delayMs: 0 });
   });
 
