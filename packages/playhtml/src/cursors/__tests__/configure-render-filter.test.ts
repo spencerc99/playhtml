@@ -2,72 +2,46 @@
 // ABOUTME: Predicate changes apply without waiting for another peer update.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as Y from "yjs";
-import { CursorClientAwareness } from "../cursor-client";
+import {
+  createFakePresenceTransport,
+  createTransportCursorClient,
+  type FakePresenceTransport,
+} from "../../__tests__/presence-test-utils";
 
-function makeFakeProvider() {
-  const doc = new Y.Doc();
-  const listeners: Array<(args: any) => void> = [];
-  const awareness: any = {
-    _states: new Map<number, Record<string, unknown>>(),
-    getStates() {
-      return this._states;
-    },
-    setLocalStateField(field: string, value: unknown) {
-      const local =
-        (this._states.get(this.clientID) as Record<string, unknown>) ?? {};
-      local[field] = value;
-      this._states.set(this.clientID, local);
-    },
-    getLocalState() {
-      return this._states.get(this.clientID) ?? null;
-    },
-    on(_event: string, callback: (args: any) => void) {
-      listeners.push(callback);
-    },
-    off() {},
-    emit(args: any) {
-      listeners.forEach((callback) => callback(args));
-    },
-    clientID: 1,
-    doc,
-  };
-
-  return { doc, awareness, on() {}, off() {} } as any;
-}
-
-function addRemoteCursor(provider: ReturnType<typeof makeFakeProvider>) {
-  const remoteClientId = 42;
-  provider.awareness._states.set(remoteClientId, {
-    __playhtml_cursors__: {
-      cursor: { x: 10, y: 20, pointer: "default" },
-      page: "/",
-      playerIdentity: {
-        publicKey: "remote-key",
-        playerStyle: { colorPalette: ["#00ff00"] },
+function addRemoteCursor(transport: FakePresenceTransport) {
+  transport.emit({
+    type: "presence-sync",
+    peers: {
+      remote: {
+        identity: {
+          publicKey: "remote-key",
+          playerStyle: { colorPalette: ["#00ff00"] },
+        },
+        cursor: {
+          cursor: { x: 10, y: 20, pointer: "default" },
+          page: "/",
+          at: Date.now(),
+        },
       },
-      lastSeen: Date.now(),
     },
-  });
-  provider.awareness.emit({
-    added: [remoteClientId],
-    updated: [],
-    removed: [],
-  });
+  } as any);
 }
 
 function makeClient(
-  provider: ReturnType<typeof makeFakeProvider>,
+  transport: FakePresenceTransport,
   shouldRenderCursor?: () => boolean,
 ) {
-  return new CursorClientAwareness(provider, {
-    enabled: true,
-    playerIdentity: {
-      publicKey: "local-key",
-      playerStyle: { colorPalette: ["#ff0000"] },
-    } as any,
-    shouldRenderCursor,
-  });
+  return createTransportCursorClient(
+    {
+      enabled: true,
+      playerIdentity: {
+        publicKey: "local-key",
+        playerStyle: { colorPalette: ["#ff0000"] },
+      } as any,
+      shouldRenderCursor,
+    },
+    transport,
+  ).client;
 }
 
 describe("configure({ shouldRenderCursor })", () => {
@@ -84,9 +58,9 @@ describe("configure({ shouldRenderCursor })", () => {
   });
 
   it("filters a rendered cursor without another peer update", () => {
-    const provider = makeFakeProvider();
-    const client = makeClient(provider);
-    addRemoteCursor(provider);
+    const transport = createFakePresenceTransport();
+    const client = makeClient(transport);
+    addRemoteCursor(transport);
 
     const cursor = document.querySelector(".playhtml-cursor-other");
     expect(cursor).not.toBeNull();
@@ -101,13 +75,27 @@ describe("configure({ shouldRenderCursor })", () => {
   });
 
   it("renders a previously filtered cursor without another peer update", () => {
-    const provider = makeFakeProvider();
-    const client = makeClient(provider, () => false);
-    addRemoteCursor(provider);
+    const transport = createFakePresenceTransport();
+    const client = makeClient(transport, () => false);
+    addRemoteCursor(transport);
 
     expect(document.querySelector(".playhtml-cursor-other")).toBeNull();
 
     client.configure({ shouldRenderCursor: () => true });
+
+    expect(document.querySelector(".playhtml-cursor-other")).not.toBeNull();
+
+    client.destroy();
+  });
+
+  it("renders a filtered cursor when the filter is cleared", () => {
+    const transport = createFakePresenceTransport();
+    const client = makeClient(transport, () => false);
+    addRemoteCursor(transport);
+
+    expect(document.querySelector(".playhtml-cursor-other")).toBeNull();
+
+    client.configure({ shouldRenderCursor: undefined });
 
     expect(document.querySelector(".playhtml-cursor-other")).not.toBeNull();
 
