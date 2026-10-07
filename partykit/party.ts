@@ -53,6 +53,7 @@ import {
   type MessageLimitState,
   type ServerLimits,
 } from "./serverLimits";
+import { addPartyRoomHeader } from "./routing";
 import {
   getSourceRoomId,
   parseSharedElementsFromUrl,
@@ -1950,7 +1951,10 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
       return (
-        (await routePartykitRequest(request, env)) ||
+        (await routePartykitRequest(request, env, {
+          onBeforeConnect: addPartyRoomHeader,
+          onBeforeRequest: addPartyRoomHeader,
+        })) ||
         new Response("Not Found", { status: 404 })
       );
     } catch (error) {
