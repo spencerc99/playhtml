@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;1,500&family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #4a9a8a; } a:hover { color: #3a7a6e; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 800px; box-sizing: border-box; background: #faf7f2; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; color: #3d3833; display: flex; flex-direction: column;">
+
+  <div style="padding: 26px 34px 16px; display: flex; align-items: baseline; gap: 14px; border-bottom: 1px solid #e0d8cc;">
+    <span style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #8a8279;">01</span>
+    <h2 style="font-family: Lora, Georgia, serif; font-weight: 600; font-size: 25px; margin: 0;">Under the seat</h2>
+    <span style="font-size: 14px; color: #8a8279;">crouch to find what someone left</span>
+  </div>
+
+  <!-- scene -->
+  <div style="flex-grow: 1; position: relative; padding: 30px 34px; display: flex; flex-direction: column;">
+
+    <!-- windows -->
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; margin-bottom: 26px;">
+      <div style="height: 116px; border: 2px solid #cfc5b4; border-radius: 3px; background: #f2ece1;"></div>
+      <div style="height: 116px; border: 2px solid #cfc5b4; border-radius: 3px; background: #f2ece1;"></div>
+      <div style="height: 116px; border: 2px solid #cfc5b4; border-radius: 3px; background: #f2ece1;"></div>
+      <div style="height: 116px; border: 2px solid #cfc5b4; border-radius: 3px; background: #f2ece1;"></div>
+    </div>
+
+    <!-- seat row -->
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px;">
+
+      <!-- seat 1: empty -->
+      <div style="display: flex; flex-direction: column; gap: 0;">
+        <div style="height: 92px; border: 2px solid #b9ad99; border-bottom: none; border-radius: 6px 6px 0 0; background: #ece4d6;"></div>
+        <div style="height: 26px; border: 2px solid #b9ad99; background: #e2d8c6;"></div>
+        <div style="height: 54px; position: relative; border-left: 2px dashed #d5cbb8; border-right: 2px dashed #d5cbb8;"></div>
+      </div>
+
+      <!-- seat 2: note tucked, unfound -->
+      <div style="display: flex; flex-direction: column; gap: 0;">
+        <div style="height: 92px; border: 2px solid #b9ad99; border-bottom: none; border-radius: 6px 6px 0 0; background: #ece4d6;"></div>
+        <div style="height: 26px; border: 2px solid #b9ad99; background: #e2d8c6;"></div>
+        <div style="height: 54px; position: relative; border-left: 2px dashed #d5cbb8; border-right: 2px dashed #d5cbb8;">
+          <div style="position: absolute; left: 18px; top: 10px; width: 46px; height: 30px; background: #f7f2e6; border: 1.5px solid #c9bda6; transform: rotate(-7deg); box-shadow: 1px 2px 0 rgba(61,56,51,0.08);"></div>
+        </div>
+      </div>
+
+      <!-- seat 3: hovered, revealing -->
+      <div style="display: flex; flex-direction: column; gap: 0; position: relative;">
+        <div style="height: 92px; border: 2px solid #b9ad99; border-bottom: none; border-radius: 6px 6px 0 0; background: #ece4d6;"></div>
+        <div style="height: 26px; border: 2px solid #b9ad99; background: #e2d8c6;"></div>
+        <div style="height: 54px; position: relative; border-left: 2px solid #4a9a8a; border-right: 2px solid #4a9a8a;">
+          <div style="position: absolute; left: 14px; top: 6px; width: 54px; height: 36px; background: #fffdf6; border: 1.5px solid #4a9a8a; transform: rotate(-4deg); box-shadow: 2px 3px 0 rgba(74,154,138,0.16);"></div>
+          <div style="position: absolute; left: 74px; top: 16px; width: 34px; height: 24px; background: #f7f2e6; border: 1.5px solid #c9bda6; transform: rotate(6deg);"></div>
+        </div>
+
+        <!-- read-out -->
+        <div style="position: absolute; left: 0; top: 178px; width: 252px; background: #fffdf6; border: 1.5px solid #4a9a8a; padding: 13px 15px; box-shadow: 3px 4px 0 rgba(74,154,138,0.14);">
+          <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #4a9a8a; margin-bottom: 7px;">left 3 stops ago</div>
+          <div style="font-family: Lora, Georgia, serif; font-style: italic; font-size: 15px; line-height: 1.45; color: #3d3833;">the third link on this one is the good one. dont skim past it</div>
+          <div style="margin-top: 10px; padding-top: 9px; border-top: 1px dashed #d5cbb8; font-size: 12px; color: #8a8279;">→ bobbby.online</div>
+        </div>
+      </div>
+
+      <!-- seat 4: worn, many notes -->
+      <div style="display: flex; flex-direction: column; gap: 0;">
+        <div style="height: 92px; border: 2px solid #b9ad99; border-bottom: none; border-radius: 6px 6px 0 0; background: #e6dcc9;"></div>
+        <div style="height: 26px; border: 2px solid #b9ad99; background: #dcd1bc;"></div>
+        <div style="height: 54px; position: relative; border-left: 2px dashed #d5cbb8; border-right: 2px dashed #d5cbb8;">
+          <div style="position: absolute; left: 10px; top: 8px; width: 40px; height: 28px; background: #f7f2e6; border: 1.5px solid #c9bda6; transform: rotate(-9deg);"></div>
+          <div style="position: absolute; left: 40px; top: 14px; width: 42px; height: 26px; background: #f4eee0; border: 1.5px solid #c9bda6; transform: rotate(5deg);"></div>
+          <div style="position: absolute; left: 68px; top: 6px; width: 38px; height: 30px; background: #f7f2e6; border: 1.5px solid #c9bda6; transform: rotate(-3deg);"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- cursor -->
+    <svg width="20" height="26" viewBox="0 0 20 26" style="position: absolute; left: 636px; top: 318px;" aria-hidden="true">
+      <path d="M2 2 L2 20 L7 15.5 L10.5 23 L13.5 21.5 L10 14.5 L16.5 14 Z" fill="#3d3833" stroke="#faf7f2" stroke-width="1.4" stroke-linejoin="round"/>
+    </svg>
+
+    <div style="flex-grow: 1;"></div>
+
+    <div style="display: flex; gap: 30px; align-items: flex-start; border-top: 1px solid #e0d8cc; padding-top: 16px;">
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 5px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8279;">the act</div>
+        <div style="font-size: 14px; line-height: 1.5; color: #5c554d;">Crouching is the whole interaction — you move the cursor low and under. Nothing is listed anywhere; you find notes by looking where people hide things.</div>
+      </div>
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 5px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #c4724e;">at zero riders</div>
+        <div style="font-size: 14px; line-height: 1.5; color: #5c554d;">Old notes stay tucked and yellow with age. An empty car still has things under the seats — it reads as <em>long-running</em>, not abandoned.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

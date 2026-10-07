@@ -1,0 +1,43 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1280, "h": 860, "title": "The argument" },
+    { "file": "WearPattern.dc.html", "x": 1400, "y": 0, "w": 1180, "h": 800, "title": "03 · The wear pattern" },
+    { "file": "UnderTheSeat.dc.html", "x": 2700, "y": 0, "w": 1180, "h": 800, "title": "01 · Under the seat" },
+    { "file": "FoggedWindow.dc.html", "x": 1400, "y": 900, "w": 1180, "h": 800, "title": "02 · The fogged window" },
+    { "file": "OverheadRack.dc.html", "x": 2700, "y": 900, "w": 1180, "h": 800, "title": "04 · The overhead rack" },
+    { "file": "PullingTheCord.dc.html", "x": 0, "y": 960, "w": 1180, "h": 800, "title": "05 · Pulling the cord" },
+    { "file": "GettingThere.dc.html", "x": 0, "y": 2000, "w": 1180, "h": 800, "title": "Entry · Getting there" },
+    { "file": "TheStraps.dc.html", "x": 1400, "y": 2000, "w": 1180, "h": 800, "title": "06 · The straps" }
+  ],
+  "annotations": [
+    {
+      "id": "strongest-bet",
+      "x": 1400,
+      "y": -150,
+      "w": 400,
+      "text": "Strongest bet →\n\nThe wear pattern needs no participation at all, so it can't fail at low traffic. Everything else layers on top of it."
+    },
+    {
+      "id": "seed-note",
+      "x": 2700,
+      "y": -150,
+      "w": 400,
+      "text": "Under the seat + the rack are the two that carry actual link curation. The rack is the most Stumble-like and the most fragile when empty."
+    },
+    {
+      "id": "pick-order",
+      "x": 0,
+      "y": 1810,
+      "w": 560,
+      "text": "Picks: 02 fogged window + 01 under the seat, confirmed.\nThis round: window entry multiplied — mid-bank bays + glazed lower-wall gaps (see entry sketch). 06 now answers \"isn't this just sitting?\" in its footer, with a fallback if the answer doesn't hold."
+    },
+    {
+      "id": "entry-note",
+      "x": 2700,
+      "y": 2000,
+      "w": 420,
+      "text": "Entry pattern is proximity + contextual verb — the same plumbing the carriage already uses for sit / stand / exit. No menus, no toolbar.\n\nWindow bays cost one seat per bank (top row 156 / 532 / 952 become glass slots) and glaze the two lower-wall gaps at x 262–420 / 694–840. Five bays total; dashed teal = walk-in zone."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

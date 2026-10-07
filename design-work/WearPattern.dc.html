@@ -1,0 +1,119 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;1,500&family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #4a9a8a; } a:hover { color: #3a7a6e; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 800px; box-sizing: border-box; background: #faf7f2; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; color: #3d3833; display: flex; flex-direction: column;">
+
+  <div style="padding: 26px 34px 16px; display: flex; align-items: baseline; gap: 14px; border-bottom: 1px solid #e0d8cc;">
+    <span style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #8a8279;">03</span>
+    <h2 style="font-family: Lora, Georgia, serif; font-weight: 600; font-size: 25px; margin: 0;">The wear pattern</h2>
+    <span style="font-size: 14px; color: #8a8279;">nothing to do · the car records you anyway</span>
+  </div>
+
+  <div style="flex-grow: 1; padding: 30px 34px; display: flex; flex-direction: column;">
+
+    <!-- top-down car plan -->
+    <div style="border: 2px solid #b9ad99; border-radius: 8px; background: #f2ece1; padding: 26px 30px; position: relative; margin-bottom: 22px;">
+
+      <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8279; margin-bottom: 18px;">car 3 · looking down</div>
+
+      <div style="display: flex; gap: 26px; align-items: stretch;">
+
+        <!-- left seat bank -->
+        <div style="display: flex; flex-direction: column; gap: 12px; width: 190px;">
+          <div style="height: 54px; border: 2px solid #b9ad99; border-radius: 4px; background: #cbbda1;"></div>
+          <div style="height: 54px; border: 2px solid #b9ad99; border-radius: 4px; background: #ded3bd;"></div>
+          <div style="height: 54px; border: 2px solid #b9ad99; border-radius: 4px; background: #b8a684;"></div>
+          <div style="height: 54px; border: 2px solid #b9ad99; border-radius: 4px; background: #ece4d6;"></div>
+        </div>
+
+        <!-- aisle with worn path -->
+        <div style="flex-grow: 1; position: relative; border-left: 2px dashed #d5cbb8; border-right: 2px dashed #d5cbb8; background: linear-gradient(to bottom, #e8dfcd 0%, #ddd1b9 42%, #d3c5a9 68%, #e8dfcd 100%);">
+          <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
+            <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #8a8279; background: rgba(250,247,242,0.82); padding: 4px 10px; border: 1px solid #cfc5b4;">most-walked line</div>
+          </div>
+          <svg width="20" height="26" viewBox="0 0 20 26" style="position: absolute; left: 50%; top: 208px; margin-left: -10px;" aria-hidden="true">
+            <path d="M2 2 L2 20 L7 15.5 L10.5 23 L13.5 21.5 L10 14.5 L16.5 14 Z" fill="#3d3833" stroke="#faf7f2" stroke-width="1.4" stroke-linejoin="round"/>
+          </svg>
+        </div>
+
+        <!-- right seat bank -->
+        <div style="display: flex; flex-direction: column; gap: 12px; width: 190px;">
+          <div style="height: 54px; border: 2px solid #b9ad99; border-radius: 4px; background: #ece4d6;"></div>
+          <div style="height: 54px; border: 2px solid #4a9a8a; border-radius: 4px; background: #c3b391; position: relative;">
+            <div style="position: absolute; right: -8px; top: -10px; background: #fffdf6; border: 1.5px solid #4a9a8a; padding: 4px 9px; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; color: #3d3833; white-space: nowrap; box-shadow: 2px 2px 0 rgba(74,154,138,0.14);">sat in 214 times</div>
+          </div>
+          <div style="height: 54px; border: 2px solid #b9ad99; border-radius: 4px; background: #d6cab2;"></div>
+          <div style="height: 54px; border: 2px solid #b9ad99; border-radius: 4px; background: #e4dbc9;"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- legend -->
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; margin-bottom: 20px;">
+
+      <div style="border: 1px solid #e0d8cc; background: #f5f0e8; padding: 16px 20px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8279; margin-bottom: 12px;">upholstery darkens with use</div>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="height: 34px; border: 1px solid #b9ad99; background: #ece4d6;"></div>
+            <div style="font-size: 11px; color: #8a8279;">never</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="height: 34px; border: 1px solid #b9ad99; background: #ded3bd;"></div>
+            <div style="font-size: 11px; color: #8a8279;">a few</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="height: 34px; border: 1px solid #b9ad99; background: #cbbda1;"></div>
+            <div style="font-size: 11px; color: #8a8279;">often</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="height: 34px; border: 1px solid #b9ad99; background: #b8a684;"></div>
+            <div style="font-size: 11px; color: #8a8279;">the favorite</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="border-left: 3px solid #4a9a8a; padding: 2px 0 2px 18px; display: flex; flex-direction: column; gap: 8px; justify-content: center;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #4a9a8a;">why this one matters most</div>
+        <div style="font-size: 14px; line-height: 1.55; color: #5c554d;">This is the only activity with <strong>no activity</strong>. Sitting is already what you do. The history accumulates from presence alone, which means it works at any scale of participation — including people who never engage with anything.</div>
+      </div>
+
+    </div>
+
+    <div style="flex-grow: 1;"></div>
+
+    <div style="display: flex; gap: 30px; align-items: flex-start; border-top: 1px solid #e0d8cc; padding-top: 16px;">
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 5px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8279;">the act</div>
+        <div style="font-size: 14px; line-height: 1.5; color: #5c554d;">Choose a seat. That's it. Over months the car develops a shape — a worn aisle line, a favorite window seat, a bank nobody uses — that is legibly the product of everyone who rode.</div>
+      </div>
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 5px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #c4724e;">at zero riders</div>
+        <div style="font-size: 14px; line-height: 1.5; color: #5c554d;">Strongest of the five. Wear is cumulative and never resets, so an empty car is <em>still</em> full of evidence. The fewer people, the more each visit shows.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

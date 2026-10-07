@@ -1,0 +1,107 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;1,500&family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #4a9a8a; } a:hover { color: #3a7a6e; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 800px; box-sizing: border-box; background: #faf7f2; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; color: #3d3833; display: flex; flex-direction: column;">
+
+  <div style="padding: 26px 34px 16px; display: flex; align-items: baseline; gap: 14px; border-bottom: 1px solid #e0d8cc;">
+    <span style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #8a8279;">04</span>
+    <h2 style="font-family: Lora, Georgia, serif; font-weight: 600; font-size: 25px; margin: 0;">The overhead rack</h2>
+    <span style="font-size: 14px; color: #8a8279;">leave something · take something</span>
+  </div>
+
+  <div style="flex-grow: 1; padding: 30px 34px; display: flex; flex-direction: column;">
+
+    <!-- the rack -->
+    <div style="position: relative; margin-bottom: 28px;">
+      <div style="height: 5px; background: #b9ad99; border-radius: 3px;"></div>
+      <div style="border-left: 2px solid #cfc5b4; border-right: 2px solid #cfc5b4; border-bottom: 2px solid #cfc5b4; padding: 20px 24px 26px; background: #f2ece1; display: flex; gap: 18px; align-items: flex-start;">
+
+        <!-- item: a page someone left -->
+        <div style="width: 176px; background: #fffdf6; border: 1.5px solid #c9bda6; padding: 13px 14px; transform: rotate(-1.5deg); box-shadow: 2px 3px 0 rgba(61,56,51,0.07); display: flex; flex-direction: column; gap: 8px;">
+          <div style="height: 74px; background: #ece4d6; border: 1px solid #ddd3c0;"></div>
+          <div style="font-size: 12.5px; line-height: 1.4; color: #3d3833;">a directory of handmade web rings, still updated</div>
+          <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; color: #8a8279;">left 2d ago</div>
+        </div>
+
+        <!-- item: hovered -->
+        <div style="width: 176px; background: #fffdf6; border: 1.5px solid #4a9a8a; padding: 13px 14px; transform: rotate(1deg); box-shadow: 3px 4px 0 rgba(74,154,138,0.16); display: flex; flex-direction: column; gap: 8px; position: relative;">
+          <div style="height: 74px; background: #e3ede9; border: 1px solid #a9cfc4;"></div>
+          <div style="font-size: 12.5px; line-height: 1.4; color: #3d3833;">someone's 2003 photo scans of their walk to school</div>
+          <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; color: #4a9a8a;">left 6h ago · 3 have taken it</div>
+          <div style="background: #4a9a8a; color: #faf7f2; text-align: center; padding: 8px 0; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;">take it with you</div>
+        </div>
+
+        <!-- item -->
+        <div style="width: 176px; background: #fffdf6; border: 1.5px solid #c9bda6; padding: 13px 14px; transform: rotate(-0.5deg); box-shadow: 2px 3px 0 rgba(61,56,51,0.07); display: flex; flex-direction: column; gap: 8px;">
+          <div style="height: 74px; background: #ece4d6; border: 1px solid #ddd3c0;"></div>
+          <div style="font-size: 12.5px; line-height: 1.4; color: #3d3833;">a single very long page about lighthouse lenses</div>
+          <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; color: #8a8279;">left 5d ago</div>
+        </div>
+
+        <!-- empty slot -->
+        <div style="width: 176px; height: 152px; border: 1.5px dashed #cfc5b4; display: flex; align-items: center; justify-content: center; text-align: center; padding: 12px; box-sizing: border-box;">
+          <div style="font-size: 12.5px; line-height: 1.45; color: #a09789;">leave the page<br>you came from</div>
+        </div>
+
+      </div>
+
+      <svg width="20" height="26" viewBox="0 0 20 26" style="position: absolute; left: 340px; top: 128px;" aria-hidden="true">
+        <path d="M2 2 L2 20 L7 15.5 L10.5 23 L13.5 21.5 L10 14.5 L16.5 14 Z" fill="#3d3833" stroke="#faf7f2" stroke-width="1.4" stroke-linejoin="round"/>
+      </svg>
+    </div>
+
+    <!-- the rule that keeps it from becoming a feed -->
+    <div style="border: 1px solid #e0d8cc; background: #f5f0e8; padding: 20px 24px; margin-bottom: 20px;">
+      <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8279; margin-bottom: 14px;">three rules that keep this from turning into a feed</div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px;">
+        <div style="display: flex; flex-direction: column; gap: 6px; border-top: 2px solid #3d3833; padding-top: 11px;">
+          <div style="font-size: 14px; font-weight: 700; color: #3d3833;">The rack holds four</div>
+          <div style="font-size: 13px; line-height: 1.5; color: #5c554d;">A fifth pushes the oldest off. Scarcity does the curating; there is no ranking and no archive to scroll.</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; border-top: 2px solid #3d3833; padding-top: 11px;">
+          <div style="font-size: 14px; font-weight: 700; color: #3d3833;">No caption field</div>
+          <div style="font-size: 13px; line-height: 1.5; color: #5c554d;">You leave the page itself. The line under it is the page's own title — not your take on it.</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; border-top: 2px solid #3d3833; padding-top: 11px;">
+          <div style="font-size: 14px; font-weight: 700; color: #3d3833;">Taking goes to the site</div>
+          <div style="font-size: 13px; line-height: 1.5; color: #5c554d;">Not to a saved list. Take it and you are on the page, the way Stumble worked.</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1;"></div>
+
+    <div style="display: flex; gap: 30px; align-items: flex-start; border-top: 1px solid #e0d8cc; padding-top: 16px;">
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 5px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8279;">the act</div>
+        <div style="font-size: 14px; line-height: 1.5; color: #5c554d;">One click leaves the page you arrived from. One click takes one down and rides it to the site. This is the closest thing here to a Stumble button — but the queue is other riders, not an algorithm.</div>
+      </div>
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 5px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #c4724e;">at zero riders</div>
+        <div style="font-size: 14px; line-height: 1.5; color: #5c554d;">Weakest of the five — an empty rack is just empty. This is the one that needs seeding from your own curation until traffic carries it.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;1,500&family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #4a9a8a; } a:hover { color: #3a7a6e; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 800px; box-sizing: border-box; background: #faf7f2; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; color: #3d3833; display: flex; flex-direction: column;">
+
+  <div style="padding: 24px 34px 14px; display: flex; align-items: baseline; gap: 14px; border-bottom: 1px solid #e0d8cc;">
+    <span style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #8a8279;">entry</span>
+    <h2 style="font-family: Lora, Georgia, serif; font-weight: 600; font-size: 25px; margin: 0;">Getting there from the carriage</h2>
+    <span style="font-size: 14px; color: #8a8279;">walk up · a verb appears · the camera pushes in</span>
+  </div>
+
+  <div style="flex-grow: 1; padding: 20px 34px 0; display: flex; flex-direction: column; gap: 16px;">
+
+    <div style="display: flex; gap: 20px; align-items: flex-start;">
+
+      <!-- the real carriage, bird's-eye, at 0.76 scale -->
+      <div style="width: 838px; height: 392px; flex-shrink: 0; overflow: hidden;">
+        <div style="width: 1100px; height: 510px; transform: scale(0.76); transform-origin: top left; position: relative;">
+
+          <!-- upper window / landscape -->
+          <div style="position: absolute; left: 0; top: 0; width: 1100px; height: 92px; background: #efe6cf; overflow: hidden; border: 1px solid #ddd5c8; box-sizing: border-box;">
+            <svg viewBox="0 0 1100 92" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-hidden="true">
+              <path d="M0 62 q90 -34 190 -16 q110 20 230 -8 q120 -26 240 2 q130 28 240 -6 q100 -28 200 -4" fill="none" stroke="#5f574a" stroke-width="1.6" opacity="0.7"/>
+              <path d="M60 62 l10 -16 l10 16 M330 58 l9 -14 l9 14 M820 60 l10 -15 l10 15" fill="none" stroke="#5f574a" stroke-width="1.4" opacity="0.6"/>
+              <ellipse cx="200" cy="20" rx="42" ry="9" fill="none" stroke="#5f574a" stroke-width="1" opacity="0.35"/>
+              <ellipse cx="760" cy="16" rx="52" ry="10" fill="none" stroke="#5f574a" stroke-width="1" opacity="0.35"/>
+            </svg>
+          </div>
+
+          <!-- car shell -->
+          <div style="position: absolute; left: 0; top: 92px; width: 1100px; height: 360px; background: #e7e0d4; border: 2px solid #b9b2a7; box-sizing: border-box;">
+
+            <!-- hull edges -->
+            <div style="position: absolute; left: 0; top: 0; width: 100%; height: 24px; background: #dcd4c5; border-bottom: 1px solid #b9b2a7;"></div>
+            <div style="position: absolute; left: 0; bottom: 0; width: 100%; height: 24px; background: #dcd4c5; border-top: 1px solid #b9b2a7;"></div>
+
+            <!-- exit doors on top wall, x 276 / 696, 128x22 -->
+            <div style="position: absolute; left: 276px; top: 2px; width: 128px; height: 22px; background: #f5f0e8; border: 1.5px solid #b9b2a7; box-sizing: border-box; display: flex;">
+              <div style="width: 50%; border-right: 1px solid #b9b2a7;"></div><div style="width: 50%;"></div>
+            </div>
+            <div style="position: absolute; left: 696px; top: 2px; width: 128px; height: 22px; background: #f5f0e8; border: 1.5px solid #b9b2a7; box-sizing: border-box; display: flex;">
+              <div style="width: 50%; border-right: 1px solid #b9b2a7;"></div><div style="width: 50%;"></div>
+            </div>
+            <div style="position: absolute; left: 276px; top: 26px; width: 128px; height: 8px; background: repeating-linear-gradient(45deg, #d4b85c 0 8px, #3d3833 8px 16px); opacity: 0.4;"></div>
+            <div style="position: absolute; left: 696px; top: 26px; width: 128px; height: 8px; background: repeating-linear-gradient(45deg, #d4b85c 0 8px, #3d3833 8px 16px); opacity: 0.4;"></div>
+
+            <!-- strap bands y 116 / 234 -->
+            <div style="position: absolute; left: 40px; top: 116px; width: 1020px; height: 10px; background: repeating-linear-gradient(90deg, #b9b2a7 0 4px, transparent 4px 34px); opacity: 0.85;"></div>
+            <div style="position: absolute; left: 40px; top: 234px; width: 1020px; height: 10px; background: repeating-linear-gradient(90deg, #b9b2a7 0 4px, transparent 4px 34px); opacity: 0.85;"></div>
+
+            <!-- aisle rule -->
+            <div style="position: absolute; left: 40px; top: 179px; width: 1020px; height: 0; border-top: 2px dashed #cfc7b8;"></div>
+
+            <!-- floor lights -->
+            <div style="position: absolute; left: 288px; top: 160px; width: 38px; height: 38px; border-radius: 50%; border: 2px solid #d4b85c; background: #f2e9cf;"></div>
+            <div style="position: absolute; left: 798px; top: 160px; width: 38px; height: 38px; border-radius: 50%; border: 2px solid #d4b85c; background: #f2e9cf;"></div>
+
+            <!-- seats: banks x=[44,100,156,212],[420,476,532,588,644],[840,896,952,1008], rows y=32/284, 50x44 -->
+            <!-- top row -->
+            <div style="position: absolute; left: 44px; top: 32px; width: 50px; height: 44px; background: #cbb3c0; border: 1.5px solid #8b6b7f;"></div>
+            <div style="position: absolute; left: 100px; top: 32px; width: 50px; height: 44px; background: #a9cfc4; border: 1.5px solid #4a9a8a;"></div>
+            <div style="position: absolute; left: 212px; top: 32px; width: 50px; height: 44px; background: #a9cfc4; border: 1.5px solid #4a9a8a;"></div>
+            <div style="position: absolute; left: 420px; top: 32px; width: 50px; height: 44px; background: #e3d3a1; border: 1.5px solid #d4b85c;"></div>
+            <div style="position: absolute; left: 476px; top: 32px; width: 50px; height: 44px; background: #e3d3a1; border: 1.5px solid #d4b85c;"></div>
+            <div style="position: absolute; left: 588px; top: 32px; width: 50px; height: 44px; background: #e3d3a1; border: 1.5px solid #d4b85c;"></div>
+            <div style="position: absolute; left: 644px; top: 32px; width: 50px; height: 44px; background: #e3d3a1; border: 1.5px solid #d4b85c;"></div>
+            <div style="position: absolute; left: 840px; top: 32px; width: 50px; height: 44px; background: #a9cfc4; border: 1.5px solid #4a9a8a;"></div>
+            <div style="position: absolute; left: 896px; top: 32px; width: 50px; height: 44px; background: #a9cfc4; border: 1.5px solid #4a9a8a;"></div>
+            <div style="position: absolute; left: 1008px; top: 32px; width: 50px; height: 44px; background: #cbb3c0; border: 1.5px solid #8b6b7f;"></div>
+
+            <!-- mid-bank window bays: a seat slot gives way to glass (top row x 156 / 532 / 952) -->
+            <div style="position: absolute; left: 154px; top: 2px; width: 54px; height: 22px; background: #efe6cf; border: 1.5px solid #9db5aa; box-sizing: border-box; overflow: hidden;">
+              <svg viewBox="0 0 54 22" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-hidden="true"><path d="M0 14 q14 -7 27 -2 q14 5 27 -3" fill="none" stroke="#5f574a" stroke-width="1.2" opacity="0.55"/></svg>
+            </div>
+            <div style="position: absolute; left: 158px; top: 30px; width: 46px; height: 44px; border: 1.5px dashed #4a9a8a; background: rgba(169,207,196,0.14); box-sizing: border-box;"></div>
+            <div style="position: absolute; left: 530px; top: 2px; width: 54px; height: 22px; background: #efe6cf; border: 1.5px solid #9db5aa; box-sizing: border-box; overflow: hidden;">
+              <svg viewBox="0 0 54 22" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-hidden="true"><path d="M0 15 q13 -8 27 -3 q14 5 27 -4" fill="none" stroke="#5f574a" stroke-width="1.2" opacity="0.55"/></svg>
+            </div>
+            <div style="position: absolute; left: 534px; top: 30px; width: 46px; height: 44px; border: 1.5px dashed #4a9a8a; background: rgba(169,207,196,0.14); box-sizing: border-box;"></div>
+            <div style="position: absolute; left: 950px; top: 2px; width: 54px; height: 22px; background: #efe6cf; border: 1.5px solid #9db5aa; box-sizing: border-box; overflow: hidden;">
+              <svg viewBox="0 0 54 22" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-hidden="true"><path d="M0 13 q14 -6 27 -1 q14 5 27 -4" fill="none" stroke="#5f574a" stroke-width="1.2" opacity="0.55"/></svg>
+            </div>
+            <div style="position: absolute; left: 954px; top: 30px; width: 46px; height: 44px; border: 1.5px dashed #4a9a8a; background: rgba(169,207,196,0.14); box-sizing: border-box;"></div>
+
+            <!-- lower-wall gap windows: the two non-door gaps read as glass, x 262-420 / 694-840 -->
+            <div style="position: absolute; left: 272px; top: 338px; width: 138px; height: 20px; background: #efe6cf; border: 1.5px solid #9db5aa; box-sizing: border-box; overflow: hidden;">
+              <svg viewBox="0 0 138 20" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-hidden="true"><path d="M0 12 q34 -7 69 -2 q35 5 69 -4" fill="none" stroke="#5f574a" stroke-width="1.2" opacity="0.55"/></svg>
+            </div>
+            <div style="position: absolute; left: 278px; top: 290px; width: 126px; height: 44px; border: 1.5px dashed #4a9a8a; background: rgba(169,207,196,0.14); box-sizing: border-box;"></div>
+            <div style="position: absolute; left: 704px; top: 338px; width: 126px; height: 20px; background: #efe6cf; border: 1.5px solid #9db5aa; box-sizing: border-box; overflow: hidden;">
+              <svg viewBox="0 0 126 20" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-hidden="true"><path d="M0 13 q31 -8 63 -3 q32 5 63 -4" fill="none" stroke="#5f574a" stroke-width="1.2" opacity="0.55"/></svg>
+            </div>
+            <div style="position: absolute; left: 710px; top: 290px; width: 114px; height: 44px; border: 1.5px dashed #4a9a8a; background: rgba(169,207,196,0.14); box-sizing: border-box;"></div>
+            <!-- bottom row -->
+            <div style="position: absolute; left: 44px; top: 284px; width: 50px; height: 44px; background: #cbb3c0; border: 1.5px solid #8b6b7f;"></div>
+            <div style="position: absolute; left: 100px; top: 284px; width: 50px; height: 44px; background: #a9cfc4; border: 1.5px solid #4a9a8a;"></div>
+            <div style="position: absolute; left: 156px; top: 284px; width: 50px; height: 44px; background: #a9cfc4; border: 1.5px solid #4a9a8a;"></div>
+            <div style="position: absolute; left: 212px; top: 284px; width: 50px; height: 44px; background: #a9cfc4; border: 1.5px solid #4a9a8a;"></div>
+            <div style="position: absolute; left: 420px; top: 284px; width: 50px; height: 44px; background: #e3d3a1; border: 1.5px solid #d4b85c;"></div>
+            <div style="position: absolute; left: 476px; top: 284px; width: 50px; height: 44px; background: #e3d3a1; border: 1.5px solid #d4b85c;"></div>
+            <div style="position: absolute; left: 532px; top: 284px; width: 50px; height: 44px; background: #e3d3a1; border: 1.5px solid #d4b85c; box-shadow: 0 0 0 3px rgba(74,154,138,0.35);"></div>
+            <div style="position: absolute; left: 588px; top: 284px; width: 50px; height: 44px; background: #e3d3a1; border: 1.5px solid #d4b85c;"></div>
+            <div style="position: absolute; left: 644px; top: 284px; width: 50px; height: 44px; background: #e3d3a1; border: 1.5px solid #d4b85c;"></div>
+            <div style="position: absolute; left: 840px; top: 284px; width: 50px; height: 44px; background: #a9cfc4; border: 1.5px solid #4a9a8a;"></div>
+            <div style="position: absolute; left: 896px; top: 284px; width: 50px; height: 44px; background: #a9cfc4; border: 1.5px solid #4a9a8a;"></div>
+            <div style="position: absolute; left: 952px; top: 284px; width: 50px; height: 44px; background: #a9cfc4; border: 1.5px solid #4a9a8a;"></div>
+            <div style="position: absolute; left: 1008px; top: 284px; width: 50px; height: 44px; background: #cbb3c0; border: 1.5px solid #8b6b7f;"></div>
+
+            <!-- your avatar, standing by seat x532 bottom -->
+            <svg width="20" height="26" viewBox="0 0 20 26" style="position: absolute; left: 548px; top: 244px;" aria-hidden="true">
+              <path d="M2 2 L2 20 L7 15.5 L10.5 23 L13.5 21.5 L10 14.5 L16.5 14 Z" fill="#c4724e" stroke="#faf7f2" stroke-width="1.4" stroke-linejoin="round"/>
+            </svg>
+            <!-- verb chip like .train-seat__prompt -->
+            <div style="position: absolute; left: 500px; top: 210px; background: #fffdf6; border: 1.5px solid #4a9a8a; padding: 4px 10px; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 11px; color: #3d3833; box-shadow: 2px 2px 0 rgba(74,154,138,0.16); white-space: nowrap;">look under</div>
+
+            <!-- hotspot markers -->
+            <div style="position: absolute; left: 542px; top: 37px; width: 30px; height: 30px; border-radius: 50%; background: #4a9a8a; color: #faf7f2; display: flex; align-items: center; justify-content: center; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 13px;">2</div>
+            <div style="position: absolute; left: 326px; top: 297px; width: 30px; height: 30px; border-radius: 50%; background: #4a9a8a; color: #faf7f2; display: flex; align-items: center; justify-content: center; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 13px;">2</div>
+            <div style="position: absolute; left: 542px; top: 290px; width: 30px; height: 30px; border-radius: 50%; background: #4a9a8a; color: #faf7f2; display: flex; align-items: center; justify-content: center; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 13px;">1</div>
+            <div style="position: absolute; left: 900px; top: 106px; width: 30px; height: 30px; border-radius: 50%; background: #4a9a8a; color: #faf7f2; display: flex; align-items: center; justify-content: center; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 13px;">3</div>
+
+            <!-- existing exit label, grey -->
+            <div style="position: absolute; left: 276px; top: -26px; width: 128px; text-align: center; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 10px; color: #8a8279;">leave this train →</div>
+          </div>
+
+          <!-- lower window -->
+          <div style="position: absolute; left: 0; top: 452px; width: 1100px; height: 58px; background: #efe6cf; border: 1px solid #ddd5c8; box-sizing: border-box; overflow: hidden;">
+            <svg viewBox="0 0 1100 58" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-hidden="true">
+              <path d="M0 34 q60 -8 120 0 q60 8 120 0 q60 -8 120 0 q60 8 120 0 q60 -8 120 0 q60 8 120 0 q60 -8 120 0 q60 8 120 0 q60 -8 140 0" fill="none" stroke="#5f574a" stroke-width="1.2" opacity="0.5"/>
+              <path d="M0 44 q80 -6 160 0 q80 6 160 0 q80 -6 160 0 q80 6 160 0 q80 -6 160 0 q80 6 160 0 q70 -5 140 0" fill="none" stroke="#5f574a" stroke-width="1" opacity="0.35"/>
+            </svg>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- hotspot key -->
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 12px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8279;">no menus — three places in the car</div>
+
+        <div style="display: flex; gap: 10px; align-items: flex-start; border: 1px solid #e0d8cc; background: #f5f0e8; padding: 12px 14px;">
+          <div style="width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: #4a9a8a; color: #faf7f2; display: flex; align-items: center; justify-content: center; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 11px;">1</div>
+          <div style="font-size: 13px; line-height: 1.5; color: #5c554d;"><strong>Any seat</strong> → stand next to it and the prompt gains a second verb: <span style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 11px;">sit · look under</span>. Look under opens 01.</div>
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: flex-start; border: 1px solid #e0d8cc; background: #f5f0e8; padding: 12px 14px;">
+          <div style="width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: #4a9a8a; color: #faf7f2; display: flex; align-items: center; justify-content: center; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 11px;">2</div>
+          <div style="font-size: 13px; line-height: 1.5; color: #5c554d;"><strong>Window bays</strong> — five, not just the door wall: a seat slot in the middle of each bank gives way to glass, and the two open gaps on the lower wall are glazed too. Stand in any dashed gap: <span style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 11px;">wipe the glass</span>. Opens 02, one pane per bay — no seat is more than two seats from a window.</div>
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: flex-start; border: 1px solid #e0d8cc; background: #f5f0e8; padding: 12px 14px;">
+          <div style="width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: #4a9a8a; color: #faf7f2; display: flex; align-items: center; justify-content: center; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 11px;">3</div>
+          <div style="font-size: 13px; line-height: 1.5; color: #5c554d;"><strong>The strap bands</strong> → walk under one: <span style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 11px;">grab hold</span>. Opens 06 in place — no camera move, you just hang.</div>
+        </div>
+
+        <div style="border-left: 3px solid #c4724e; padding: 2px 0 2px 14px; font-size: 13px; line-height: 1.5; color: #5c554d;">All three reuse the plumbing the car already has: the seat hover prompt, the one contextual mobile action, walk-into-it triggering. Doors keep <span style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 11px;">exit</span>; nothing competes with leaving.</div>
+      </div>
+
+    </div>
+
+    <!-- transition strip -->
+    <div style="border: 1px solid #e0d8cc; background: #f5f0e8; padding: 14px 18px;">
+      <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8279; margin-bottom: 10px;">the push-in · bird's-eye to side view and back</div>
+      <div style="display: grid; grid-template-columns: 1fr 28px 1fr 28px 1fr; gap: 8px; align-items: center;">
+        <div style="border: 1.5px solid #b9b2a7; background: #faf7f2; height: 92px; position: relative; overflow: hidden;">
+          <div style="position: absolute; left: 34%; top: 30%; width: 26px; height: 22px; background: #e3d3a1; border: 1px solid #d4b85c;"></div>
+          <svg width="13" height="17" viewBox="0 0 20 26" style="position: absolute; left: 48%; top: 52%;" aria-hidden="true"><path d="M2 2 L2 20 L7 15.5 L10.5 23 L13.5 21.5 L10 14.5 L16.5 14 Z" fill="#c4724e"/></svg>
+          <div style="position: absolute; left: 8px; bottom: 6px; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; color: #8a8279;">walk up · verb appears</div>
+        </div>
+        <svg width="28" height="16" viewBox="0 0 28 16" aria-hidden="true"><path d="M2 8 L22 8 M17 3 L23 8 L17 13" fill="none" stroke="#8a8279" stroke-width="1.6"/></svg>
+        <div style="border: 1.5px solid #b9b2a7; background: #faf7f2; height: 92px; position: relative; overflow: hidden;">
+          <div style="position: absolute; left: 22%; top: 16%; width: 56%; height: 68%; border: 1.5px dashed #4a9a8a; background: rgba(169,207,196,0.18);"></div>
+          <svg viewBox="0 0 100 60" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-hidden="true">
+            <path d="M14 10 L26 16 M86 10 L74 16 M14 50 L26 44 M86 50 L74 44" fill="none" stroke="#4a9a8a" stroke-width="1.4"/>
+          </svg>
+          <div style="position: absolute; left: 8px; bottom: 6px; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; color: #8a8279;">camera pushes in</div>
+        </div>
+        <svg width="28" height="16" viewBox="0 0 28 16" aria-hidden="true"><path d="M2 8 L22 8 M17 3 L23 8 L17 13" fill="none" stroke="#8a8279" stroke-width="1.6"/></svg>
+        <div style="border: 1.5px solid #4a9a8a; background: #faf7f2; height: 92px; position: relative; overflow: hidden;">
+          <div style="position: absolute; left: 12%; top: 18%; width: 34%; height: 40%; background: #ece4d6; border: 1.5px solid #b9ad99; border-radius: 4px 4px 0 0;"></div>
+          <div style="position: absolute; left: 18%; top: 62%; width: 15%; height: 12%; background: #f7f2e6; border: 1px solid #c9bda6; transform: rotate(-6deg);"></div>
+          <div style="position: absolute; right: 8px; top: 6px; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; color: #4a9a8a;">side view · esc steps back</div>
+          <div style="position: absolute; left: 8px; bottom: 6px; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; color: #8a8279;">the activity, full frame</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1;"></div>
+
+    <div style="display: flex; gap: 30px; align-items: flex-start; border-top: 1px solid #e0d8cc; padding: 12px 0 18px;">
+      <div style="flex-grow: 1; font-size: 13.5px; line-height: 1.5; color: #5c554d;"><span style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8279; margin-right: 10px;">why proximity</span>Discovery stays embodied — you find the fogged window because you wandered near the glass, the same way you find the notes by crouching. A menu would flatten all three into features.</div>
+      <div style="flex-grow: 1; font-size: 13.5px; line-height: 1.5; color: #5c554d;"><span style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #c4724e; margin-right: 10px;">open question</span>While you're pushed into a side view, the train keeps moving. If it reaches your stop mid-activity, does it pull you back out, or do you miss the stop? Missing it might be the charming answer.</div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;1,500&family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #4a9a8a; } a:hover { color: #3a7a6e; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 800px; box-sizing: border-box; background: #faf7f2; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; color: #3d3833; display: flex; flex-direction: column;">
+
+  <div style="padding: 26px 34px 16px; display: flex; align-items: baseline; gap: 14px; border-bottom: 1px solid #e0d8cc;">
+    <span style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #8a8279;">02</span>
+    <h2 style="font-family: Lora, Georgia, serif; font-weight: 600; font-size: 25px; margin: 0;">The fogged window</h2>
+    <span style="font-size: 14px; color: #8a8279;">drag to clear it · it fogs back over</span>
+  </div>
+
+  <div style="flex-grow: 1; padding: 30px 34px; display: flex; flex-direction: column;">
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px; margin-bottom: 24px;">
+
+      <!-- window 1: fully fogged, faint ghost of old drawing -->
+      <div style="display: flex; flex-direction: column; gap: 9px;">
+        <div style="height: 260px; border: 2px solid #b9ad99; border-radius: 4px; background: #ebe6dc; position: relative; overflow: hidden;">
+          <svg viewBox="0 0 300 260" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-hidden="true">
+            <path d="M70 170 q30 -50 62 -8 q26 -44 66 6" fill="none" stroke="#ded7c9" stroke-width="7" stroke-linecap="round"/>
+            <circle cx="150" cy="96" r="26" fill="none" stroke="#ded7c9" stroke-width="7"/>
+          </svg>
+        </div>
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #8a8279;">fogged over · ~4h old</div>
+      </div>
+
+      <!-- window 2: being drawn now -->
+      <div style="display: flex; flex-direction: column; gap: 9px;">
+        <div style="height: 260px; border: 2px solid #4a9a8a; border-radius: 4px; background: #ebe6dc; position: relative; overflow: hidden;">
+          <svg viewBox="0 0 300 260" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-hidden="true">
+            <!-- cleared streaks reveal the world outside -->
+            <path d="M52 200 q40 -74 88 -30 q34 -62 92 -4" fill="none" stroke="#cfe4dd" stroke-width="24" stroke-linecap="round"/>
+            <path d="M52 200 q40 -74 88 -30 q34 -62 92 -4" fill="none" stroke="#a9cfc4" stroke-width="9" stroke-linecap="round"/>
+            <!-- hills glimpsed through the clear part -->
+            <path d="M60 198 q34 -40 70 -14 q30 -34 76 -6" fill="none" stroke="#7fb3a6" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
+          </svg>
+          <svg width="20" height="26" viewBox="0 0 20 26" style="position: absolute; left: 224px; top: 152px;" aria-hidden="true">
+            <path d="M2 2 L2 20 L7 15.5 L10.5 23 L13.5 21.5 L10 14.5 L16.5 14 Z" fill="#3d3833" stroke="#faf7f2" stroke-width="1.4" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #4a9a8a;">you, now</div>
+      </div>
+
+      <!-- window 3: someone else's, fresh -->
+      <div style="display: flex; flex-direction: column; gap: 9px;">
+        <div style="height: 260px; border: 2px solid #b9ad99; border-radius: 4px; background: #ebe6dc; position: relative; overflow: hidden;">
+          <svg viewBox="0 0 300 260" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-hidden="true">
+            <path d="M96 88 L96 176 M96 88 q46 -22 62 12 q-30 26 -62 12" fill="none" stroke="#cfe4dd" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M96 88 L96 176 M96 88 q46 -22 62 12 q-30 26 -62 12" fill="none" stroke="#a9cfc4" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M186 104 q26 34 -2 66" fill="none" stroke="#a9cfc4" stroke-width="7" stroke-linecap="round"/>
+          </svg>
+          <div style="position: absolute; right: 10px; bottom: 10px; background: #f5f0e8; border: 1px solid #cfc5b4; padding: 3px 8px; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; color: #8a8279;">drawn 11m ago</div>
+        </div>
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #8a8279;">someone ahead of you</div>
+      </div>
+
+    </div>
+
+    <!-- decay strip -->
+    <div style="border: 1px solid #e0d8cc; background: #f5f0e8; padding: 16px 20px; margin-bottom: 20px;">
+      <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8279; margin-bottom: 12px;">a drawing's life</div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: end;">
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div style="height: 42px; background: #a9cfc4;"></div>
+          <div style="font-size: 12px; color: #5c554d;">drawn · sharp</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div style="height: 42px; background: #c2dcd4;"></div>
+          <div style="font-size: 12px; color: #5c554d;">1h · softening</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div style="height: 42px; background: #d8e4de;"></div>
+          <div style="font-size: 12px; color: #5c554d;">4h · ghost</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div style="height: 42px; background: #ebe6dc; border: 1px dashed #cfc5b4;"></div>
+          <div style="font-size: 12px; color: #5c554d;">gone · fogged</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1;"></div>
+
+    <div style="display: flex; gap: 30px; align-items: flex-start; border-top: 1px solid #e0d8cc; padding-top: 16px;">
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 5px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8279;">the act</div>
+        <div style="font-size: 14px; line-height: 1.5; color: #5c554d;">Drag across the glass and it clears. What you clear is a drawing <em>and</em> a window — where you wipe, you can see out. Effort is near zero and there is nothing to write.</div>
+      </div>
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 5px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #c4724e;">at zero riders</div>
+        <div style="font-size: 14px; line-height: 1.5; color: #5c554d;">Fully fogged glass is the natural resting state, not a failure state. Faint ghosts of old drawings say people were here without needing anyone here now.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

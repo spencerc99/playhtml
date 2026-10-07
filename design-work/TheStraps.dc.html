@@ -1,0 +1,135 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;1,500&family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #4a9a8a; } a:hover { color: #3a7a6e; }
+  </style>
+</helmet>
+
+<div style="width: 1180px; height: 800px; box-sizing: border-box; background: #faf7f2; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; color: #3d3833; display: flex; flex-direction: column;">
+
+  <div style="padding: 26px 34px 16px; display: flex; align-items: baseline; gap: 14px; border-bottom: 1px solid #e0d8cc;">
+    <span style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #8a8279;">06</span>
+    <h2 style="font-family: Lora, Georgia, serif; font-weight: 600; font-size: 25px; margin: 0;">The straps</h2>
+    <span style="font-size: 14px; color: #8a8279;">grab hold · swing · the train does the rest</span>
+  </div>
+
+  <div style="flex-grow: 1; padding: 26px 34px 0; display: flex; flex-direction: column;">
+
+    <!-- side-view scene: ceiling rail with straps -->
+    <div style="border: 2px solid #b9b2a7; background: #e7e0d4; height: 250px; position: relative; overflow: hidden; margin-bottom: 20px;">
+
+      <!-- ceiling -->
+      <div style="position: absolute; left: 0; top: 0; width: 100%; height: 26px; background: #dcd4c5; border-bottom: 2px solid #b9b2a7;"></div>
+      <!-- rail -->
+      <div style="position: absolute; left: 40px; top: 40px; width: 1030px; height: 5px; background: #b9b2a7; border-radius: 3px;"></div>
+
+      <!-- straps: loops hanging from the rail -->
+      <svg viewBox="0 0 1110 250" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-hidden="true">
+        <!-- idle straps, swaying slightly with the ride -->
+        <path d="M110 45 q-2 26 3 40 M110 85 a11 13 0 1 0 6 0" fill="none" stroke="#8a8279" stroke-width="4" stroke-linecap="round" transform="rotate(-4 110 45)"/>
+        <path d="M210 45 q2 26 -2 40 M210 85 a11 13 0 1 0 6 0" fill="none" stroke="#8a8279" stroke-width="4" stroke-linecap="round" transform="rotate(3 210 45)"/>
+        <path d="M310 45 q-1 26 2 40 M310 85 a11 13 0 1 0 6 0" fill="none" stroke="#8a8279" stroke-width="4" stroke-linecap="round" transform="rotate(-2 310 45)"/>
+        <!-- occupied strap: someone hanging, swung back -->
+        <path d="M450 45 q-8 24 -14 38 M436 83 a11 13 0 1 0 6 0" fill="none" stroke="#5b8db8" stroke-width="4.5" stroke-linecap="round" transform="rotate(-16 450 45)"/>
+        <!-- idle -->
+        <path d="M560 45 q1 26 -1 40 M560 85 a11 13 0 1 0 6 0" fill="none" stroke="#8a8279" stroke-width="4" stroke-linecap="round" transform="rotate(2 560 45)"/>
+        <!-- occupied strap: you, swung forward -->
+        <path d="M680 45 q10 24 16 38 M696 83 a11 13 0 1 0 6 0" fill="none" stroke="#c4724e" stroke-width="4.5" stroke-linecap="round" transform="rotate(18 680 45)"/>
+        <!-- swing arc between straps: someone mid-flight -->
+        <path d="M800 120 q60 44 130 6" fill="none" stroke="#4a9a8a" stroke-width="1.6" stroke-dasharray="5 5" opacity="0.8"/>
+        <!-- idle straps right -->
+        <path d="M810 45 q-2 26 2 40 M810 85 a11 13 0 1 0 6 0" fill="none" stroke="#8a8279" stroke-width="4" stroke-linecap="round" transform="rotate(-3 810 45)"/>
+        <path d="M940 45 q6 24 12 38 M952 83 a11 13 0 1 0 6 0" fill="none" stroke="#8a8279" stroke-width="4" stroke-linecap="round" transform="rotate(12 940 45)"/>
+      </svg>
+
+      <!-- hanging cursor: blue rider -->
+      <svg width="20" height="26" viewBox="0 0 20 26" style="position: absolute; left: 446px; top: 102px; transform: rotate(14deg);" aria-hidden="true">
+        <path d="M2 2 L2 20 L7 15.5 L10.5 23 L13.5 21.5 L10 14.5 L16.5 14 Z" fill="#5b8db8" stroke="#faf7f2" stroke-width="1.4" stroke-linejoin="round"/>
+      </svg>
+      <!-- hanging cursor: you -->
+      <svg width="20" height="26" viewBox="0 0 20 26" style="position: absolute; left: 676px; top: 102px; transform: rotate(-16deg);" aria-hidden="true">
+        <path d="M2 2 L2 20 L7 15.5 L10.5 23 L13.5 21.5 L10 14.5 L16.5 14 Z" fill="#c4724e" stroke="#faf7f2" stroke-width="1.4" stroke-linejoin="round"/>
+      </svg>
+      <div style="position: absolute; left: 672px; top: 136px; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; color: #c4724e;">you</div>
+      <!-- mid-flight cursor on the arc -->
+      <svg width="20" height="26" viewBox="0 0 20 26" style="position: absolute; left: 856px; top: 134px; transform: rotate(34deg);" aria-hidden="true">
+        <path d="M2 2 L2 20 L7 15.5 L10.5 23 L13.5 21.5 L10 14.5 L16.5 14 Z" fill="#4a9a8a" stroke="#faf7f2" stroke-width="1.4" stroke-linejoin="round"/>
+      </svg>
+      <div style="position: absolute; left: 866px; top: 106px; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; color: #4a9a8a;">strap to strap</div>
+
+      <!-- floor + watcher -->
+      <div style="position: absolute; left: 0; bottom: 0; width: 100%; height: 22px; background: #dcd4c5; border-top: 2px solid #b9b2a7;"></div>
+      <svg width="20" height="26" viewBox="0 0 20 26" style="position: absolute; left: 180px; bottom: 26px;" aria-hidden="true">
+        <path d="M2 2 L2 20 L7 15.5 L10.5 23 L13.5 21.5 L10 14.5 L16.5 14 Z" fill="#8b6b7f" stroke="#faf7f2" stroke-width="1.4" stroke-linejoin="round"/>
+      </svg>
+
+      <!-- tilted landscape sliver: the car is rocking -->
+      <div style="position: absolute; right: 18px; top: 34px; width: 150px; height: 64px; background: #efe6cf; border: 1.5px solid #ddd5c8; overflow: hidden; transform: rotate(-2.5deg);">
+        <svg viewBox="0 0 150 64" style="position: absolute; inset: 0; width: 100%; height: 100%;" aria-hidden="true">
+          <path d="M0 42 q30 -18 60 -6 q34 12 90 -8" fill="none" stroke="#5f574a" stroke-width="1.4" opacity="0.6"/>
+        </svg>
+        <div style="position: absolute; left: 6px; bottom: 4px; font-family: 'Martian Mono', ui-monospace, monospace; font-size: 8px; color: #8a8279;">the view tilts for everyone</div>
+      </div>
+    </div>
+
+    <!-- the train drives the physics -->
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-bottom: 18px;">
+      <div style="border: 1px solid #e0d8cc; background: #f5f0e8; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #4a9a8a;">riding</div>
+        <div style="font-size: 13.5px; line-height: 1.5; color: #5c554d;">Straps sway on the car's existing 1.7s rumble. Your swing adds on top of it — pump in time and you go higher.</div>
+      </div>
+      <div style="border: 1px solid #e0d8cc; background: #f5f0e8; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #c4724e;">arriving</div>
+        <div style="font-size: 13.5px; line-height: 1.5; color: #5c554d;">The brake throws every hanging rider forward at once — the one shared slapstick moment per stop, nobody triggers it.</div>
+      </div>
+      <div style="border: 1px solid #e0d8cc; background: #f5f0e8; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8279;">stopped</div>
+        <div style="font-size: 13.5px; line-height: 1.5; color: #5c554d;">Everything hangs dead still. Swinging at a platform feels conspicuous — which is correct.</div>
+      </div>
+    </div>
+
+    <!-- together + variants -->
+    <div style="display: flex; gap: 22px; margin-bottom: 18px;">
+      <div style="flex-grow: 1.4; flex-basis: 0; border-left: 3px solid #4a9a8a; padding: 3px 0 3px 16px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #4a9a8a; margin-bottom: 6px;">swinging together</div>
+        <div style="font-size: 13.5px; line-height: 1.55; color: #5c554d;">Three or more riders pumping in rhythm and the whole car starts to rock — the window landscape tilts for <em>everyone</em>, sitters included. The payoff is public: you can't tell from inside a feed that other people are here right now, but you can feel a rocking train. Emotes still work while hanging; this doesn't replace the wheel, it gives your body something the wheel can't.</div>
+      </div>
+      <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8279;">two more realtime verbs, unbuilt</div>
+        <div style="font-size: 13px; line-height: 1.5; color: #5c554d;"><strong>Pole rhythm</strong> — tap the handrail pole; taps quantize to the rumble so any two people accidentally make a beat. The music idea, without instruments.</div>
+        <div style="font-size: 13px; line-height: 1.5; color: #5c554d;"><strong>Floor-light hopscotch</strong> — the two floor circles light when stood on; two riders on both at once makes the aisle glow. A reason to cross the car toward a stranger.</div>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1;"></div>
+
+    <div style="display: flex; gap: 30px; align-items: flex-start; border-top: 1px solid #e0d8cc; padding: 14px 0 18px;">
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 5px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8279;">the act</div>
+        <div style="font-size: 14px; line-height: 1.5; color: #5c554d;">Walk under a strap, grab hold, pump with clicks or keys. No camera move, no mode — you're still in the car, still visible, still able to let go and walk to your door. Leaves no trace; it's the realtime complement to 01 and 02.</div>
+      </div>
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 5px;">
+        <div style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #c4724e;">isn't this just sitting?</div>
+        <div style="font-size: 14px; line-height: 1.5; color: #5c554d;">Sitting is parked presence — the seat holds you while your attention leaves for the site. A strap only moves while you pump it, so a swinging strap is proof someone is here <em>right now</em>. Enforce that: the strap goes dead the instant input stops. If it still reads as a third parking spot, the fallback is to cut <span style="font-family: 'Martian Mono', ui-monospace, monospace; font-size: 11px;">grab hold</span> as a chosen verb and make it the automatic standing state under a band — swinging becomes something you discover by wiggling, not an activity you select.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
