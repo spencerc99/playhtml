@@ -4,19 +4,18 @@
 import browser from 'webextension-polyfill';
 import type { CollectionEvent } from '../collectors/types';
 import { VERBOSE } from '../config';
-import { stripQueryAndFragment } from '../utils/urlNormalization';
+import { stripFragment } from '../utils/urlNormalization';
 
 /**
- * Query strings and hash fragments can carry sensitive content (search
- * terms, order IDs, auth tokens) regardless of event type — not just
- * navigation events. Strip them from the outgoing payload only; the local
- * IndexedDB copy (used for the user's own history/visualization features)
- * keeps the full URL.
+ * Hash fragments can carry sensitive content (OAuth tokens, in-page state)
+ * regardless of event type. Strip them from the outgoing payload only; the
+ * local IndexedDB copy (used for the user's own history/visualization
+ * features) keeps the full URL.
  */
 function sanitizeForUpload(events: CollectionEvent[]): CollectionEvent[] {
   return events.map((event) =>
     event.meta?.url
-      ? { ...event, meta: { ...event.meta, url: stripQueryAndFragment(event.meta.url) } }
+      ? { ...event, meta: { ...event.meta, url: stripFragment(event.meta.url) } }
       : event
   );
 }

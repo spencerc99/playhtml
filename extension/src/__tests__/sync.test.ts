@@ -1,4 +1,4 @@
-// ABOUTME: Tests that event upload strips query strings/fragments from meta.url
+// ABOUTME: Tests that event upload strips hash fragments from meta.url
 // ABOUTME: before events leave the device, without touching the caller's objects.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -27,19 +27,19 @@ afterEach(() => {
 });
 
 describe("uploadEvents", () => {
-  it("strips query string and hash from meta.url for every event type, not just navigation", async () => {
+  it("strips the hash but keeps the query string in meta.url for every event type", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(new Response(JSON.stringify({ inserted: 1, duplicates: 0 }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const event = makeEvent("https://example.com/search?q=sensitive+query&session=abc123#results");
+    const event = makeEvent("https://www.youtube.com/watch?v=dQw4w9WgXcQ#access_token=abc123");
     await uploadEvents([event]);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0];
     const body = JSON.parse(init.body as string);
-    expect(body.events[0].meta.url).toBe("https://example.com/search");
+    expect(body.events[0].meta.url).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
   });
 
   it("does not mutate the original event object passed in", async () => {
@@ -48,9 +48,9 @@ describe("uploadEvents", () => {
       vi.fn().mockResolvedValue(new Response(JSON.stringify({ inserted: 1, duplicates: 0 }), { status: 200 }))
     );
 
-    const event = makeEvent("https://example.com/page?token=secret");
+    const event = makeEvent("https://example.com/page#token=secret");
     await uploadEvents([event]);
 
-    expect(event.meta.url).toBe("https://example.com/page?token=secret");
+    expect(event.meta.url).toBe("https://example.com/page#token=secret");
   });
 });
