@@ -412,11 +412,10 @@ const LIGHTBOX_STYLES = `
 
   .scrap-lightbox__delete {
     appearance: none;
-    padding: 6px 12px;
-    border: 1px solid rgba(61, 56, 51, 0.22);
-    border-radius: 3px;
-    background: transparent;
-    color: #827a72;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #a39b92;
     font-family: "Martian Mono", monospace;
     font-size: 10px;
     cursor: pointer;
@@ -424,33 +423,32 @@ const LIGHTBOX_STYLES = `
 
   .scrap-lightbox__delete:hover,
   .scrap-lightbox__delete:focus-visible {
-    border-color: #a8553f;
-    color: #a8553f;
+    color: #3d3833;
+    text-decoration: underline;
+    outline: none;
   }
 
   .scrap-lightbox__delete--confirm {
-    border-color: #a8553f;
-    background: #a8553f;
-    color: #faf7f2;
+    color: #a8553f;
   }
 
   .scrap-lightbox__delete--confirm:hover,
   .scrap-lightbox__delete--confirm:focus-visible {
-    background: #91462f;
-    color: #faf7f2;
+    color: #91462f;
   }
 
   .scrap-lightbox__delete:disabled {
     cursor: default;
     opacity: 0.6;
+    text-decoration: none;
   }
 
   .scrap-lightbox__delete-confirm {
     display: inline-flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    color: #3d3833;
+    align-items: baseline;
+    gap: 8px;
+    color: #827a72;
     font-family: "Martian Mono", monospace;
     font-size: 10px;
   }

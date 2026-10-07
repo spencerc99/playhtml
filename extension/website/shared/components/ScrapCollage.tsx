@@ -1059,28 +1059,45 @@ export const COLLAGE_STYLES = `
   .scrap-collage__bulk-delete {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
+    align-items: baseline;
     justify-content: flex-end;
-    gap: 6px;
-    color: #827a72;
+    gap: 8px;
+    margin-top: -4px;
+    color: #a39b92;
     font-family: "Martian Mono", monospace;
     font-size: 9px;
   }
 
-  .scrap-collage__filter--danger {
-    border-color: #a8553f;
-    background: #a8553f;
-    color: #faf7f2;
+  .scrap-collage__text-action {
+    appearance: none;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #a39b92;
+    font: inherit;
+    cursor: pointer;
   }
 
-  .scrap-collage__filter--danger:hover {
-    border-color: #91462f;
-    background: #91462f;
+  .scrap-collage__text-action:hover,
+  .scrap-collage__text-action:focus-visible {
+    color: #3d3833;
+    text-decoration: underline;
+    outline: none;
   }
 
-  .scrap-collage__filter:disabled {
+  .scrap-collage__text-action--danger {
+    color: #a8553f;
+  }
+
+  .scrap-collage__text-action--danger:hover,
+  .scrap-collage__text-action--danger:focus-visible {
+    color: #91462f;
+  }
+
+  .scrap-collage__text-action:disabled {
     cursor: default;
     opacity: 0.6;
+    text-decoration: none;
   }
 
   @media (max-width: 619px) {
@@ -2420,7 +2437,7 @@ export function ScrapCollage({
                       )}
                       <button
                         type="button"
-                        className="scrap-collage__filter"
+                        className="scrap-collage__text-action"
                         onClick={() => setBulkDeleteStep("confirm")}
                       >
                         delete {archiveScraps.length === 1 ? "this scrap" : `these ${archiveScraps.length}`}
@@ -2434,7 +2451,7 @@ export function ScrapCollage({
                       </span>
                       <button
                         type="button"
-                        className="scrap-collage__filter scrap-collage__filter--danger"
+                        className="scrap-collage__text-action scrap-collage__text-action--danger"
                         disabled={bulkDeleteStep === "deleting"}
                         onClick={deleteFiltered}
                       >
@@ -2442,7 +2459,7 @@ export function ScrapCollage({
                       </button>
                       <button
                         type="button"
-                        className="scrap-collage__filter"
+                        className="scrap-collage__text-action"
                         disabled={bulkDeleteStep === "deleting"}
                         onClick={() => setBulkDeleteStep("idle")}
                       >
