@@ -18,11 +18,9 @@ import {
 import type { FilterChip } from "@movement/utils/eventUtils";
 import {
   DRAWER_RAIL_WIDTH,
-  SLOT_SIZE_NAMES,
   clampDrawerWidth,
   defaultDrawerWidth,
   drawerColumns,
-  type DrawerSlotSize,
 } from "./drawerPreference";
 import { cellLeft, layOutDrawer } from "./drawerLayout";
 import { ProvenanceLines } from "./ProvenancePeek";
@@ -44,10 +42,8 @@ interface ScrapTrayProps {
   items: readonly ScrapItem[];
   width: number;
   collapsed: boolean;
-  slotSize: DrawerSlotSize;
   onWidth: (width: number) => void;
   onCollapsed: (collapsed: boolean) => void;
-  onSlotSize: (slotSize: DrawerSlotSize) => void;
   onPlace: (item: ScrapItem) => void;
   onDragStart: (item: ScrapItem, event: React.DragEvent) => void;
 }
@@ -56,10 +52,8 @@ export function ScrapTray({
   items,
   width,
   collapsed,
-  slotSize,
   onWidth,
   onCollapsed,
-  onSlotSize,
   onPlace,
   onDragStart,
 }: ScrapTrayProps) {
@@ -90,7 +84,7 @@ export function ScrapTray({
     search.trim() !== "" ||
     !isAnyTime(when);
 
-  const columns = drawerColumns(width, slotSize);
+  const columns = drawerColumns(width);
   // Every thumbnail keeps its own proportions, so the placement is worked out
   // once and the visible range is then a lookup rather than a measurement.
   const layout = useMemo(
@@ -199,25 +193,6 @@ export function ScrapTray({
           >
             &#8249;
           </button>
-        }
-        chipsAccessory={
-          <div className="collage-tray__sizes">
-            {SLOT_SIZE_NAMES.map((name) => (
-              <button
-                key={name}
-                type="button"
-                className={`collage-tray__size${
-                  name === slotSize ? " collage-tray__size--on" : ""
-                }`}
-                title={`Show scraps ${name}`}
-                aria-label={`Show scraps ${name}`}
-                aria-pressed={name === slotSize}
-                onClick={() => onSlotSize(name)}
-              >
-                {name[0]}
-              </button>
-            ))}
-          </div>
         }
       />
       <p className="collage-studio__label collage-tray__count">
@@ -351,7 +326,7 @@ export function ScrapTray({
         }}
         onPointerMove={(event) => {
           if (!resizingRef.current) return;
-          onWidth(clampDrawerWidth(event.clientX, window.innerWidth, slotSize));
+          onWidth(clampDrawerWidth(event.clientX, window.innerWidth));
         }}
         onPointerUp={() => {
           resizingRef.current = false;
@@ -359,7 +334,7 @@ export function ScrapTray({
         onPointerCancel={() => {
           resizingRef.current = false;
         }}
-        onDoubleClick={() => onWidth(defaultDrawerWidth(slotSize))}
+        onDoubleClick={() => onWidth(defaultDrawerWidth())}
       />
     </aside>
   );
