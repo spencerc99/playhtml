@@ -2950,6 +2950,41 @@ export class LocalEventStore {
     });
   }
 
+  /**
+   * Permanently deletes the scrap events with these ids. Ids that name a
+   * missing event or one that is not a scrap are left alone, so a stale or
+   * mistaken id can never remove other browsing history.
+   */
+  async deleteScrapEvents(ids: string[]): Promise<number> {
+    await this.ensureInitialized();
+    if (ids.length === 0) return 0;
+
+    return new Promise<number>((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+
+      let deleted = 0;
+      const transaction = this.db.transaction([STORE_NAME], "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      for (const id of new Set(ids)) {
+        const getRequest = store.get(id);
+        getRequest.onsuccess = () => {
+          const evt = getRequest.result as StoredCollectionEvent | undefined;
+          if (evt?.type !== "element") return;
+          const deleteRequest = store.delete(id);
+          deleteRequest.onsuccess = () => {
+            deleted++;
+          };
+        };
+      }
+      transaction.oncomplete = () => resolve(deleted);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+  }
+
   async pruneOlderThan(cutoffTs: number): Promise<number> {
     return this.pruneUploadedEventsOlderThan(cutoffTs);
   }

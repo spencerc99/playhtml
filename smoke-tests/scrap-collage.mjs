@@ -121,9 +121,9 @@ const SOLID_JPEG_BASE64 =
   "/9k=";
 
 /**
- * Each page carries one of every scrap kind: a photo, a styled button with an
- * inner icon, a standalone inline svg icon, a heading, and an element with a
- * custom cursor. The button's background is a gradient and its font-family is
+ * Each page carries one of every collected scrap kind: a photo, a styled
+ * button with an inner icon, a heading, and an element with a custom cursor.
+ * Its standalone inline svg icon checks that icons are no longer collected. The button's background is a gradient and its font-family is
  * quoted, so the bake's XML escaping is exercised with real captured styles.
  *
  * A second button is light text outlined on a dark section, carrying no
@@ -438,9 +438,55 @@ try {
     }
   });
   console.log("scraps collected by kind:", byKind);
-  for (const kind of ["image", "button", "svg-icon", "heading", "cursor"]) {
+  for (const kind of ["image", "button", "heading", "cursor"]) {
     assert.ok(byKind[kind] > 0, `expected at least one ${kind} scrap`);
   }
+  assert.equal(byKind["svg-icon"], undefined, "standalone icons are no longer collected");
+
+  // Icons collected before collection stopped still live in people's
+  // archives, so one is stored the way the old collector wrote it.
+  await worker.evaluate(async () => {
+    const db = await new Promise((ok, bad) => {
+      const r = indexedDB.open("collection_events_db");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => bad(r.error);
+    });
+    try {
+      const store = db.transaction("events", "readwrite").objectStore("events");
+      const button = await new Promise((ok, bad) => {
+        const rows = [];
+        const r = store.index("type").openCursor("element");
+        r.onsuccess = () => {
+          const cursor = r.result;
+          if (!cursor) return ok(rows.find((row) => row.data?.kind === "button"));
+          rows.push(cursor.value);
+          cursor.continue();
+        };
+        r.onerror = () => bad(r.error);
+      });
+      const { canonicalScrapKey: _unused, ...base } = button;
+      const markup =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" fill="rgb(74, 154, 138)"/></svg>';
+      await new Promise((ok, bad) => {
+        const r = store.put({
+          ...base,
+          id: `${button.id}-legacy-icon`,
+          data: {
+            kind: "svg-icon",
+            markup,
+            width: 40,
+            height: 40,
+            pageTitle: button.data.pageTitle,
+            ...(button.data.faviconUrl ? { faviconUrl: button.data.faviconUrl } : {}),
+          },
+        });
+        r.onsuccess = () => ok();
+        r.onerror = () => bad(r.error);
+      });
+    } finally {
+      db.close();
+    }
+  });
 
   const page = await context.newPage();
   await page.goto(`${extensionOrigin}/scraps.html`, { waitUntil: "load" });
