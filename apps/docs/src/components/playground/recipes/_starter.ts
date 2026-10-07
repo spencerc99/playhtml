@@ -1,5 +1,6 @@
 // ABOUTME: Single-file HTML starter loaded by bare /play. Showcase of the
 // ABOUTME: most-used playhtml capabilities, designed for "see the range, keep what you want."
+import type { RunnableRecipe } from "./types";
 
 // Images are pulled from the live playhtml.fun deployment.
 // Why: the iframe is sandboxed without allow-same-origin (spec §4.2,
@@ -14,7 +15,7 @@
 // copies because that's the URL that works inside the sandboxed iframe.
 const IMG_BASE = "https://playhtml.fun/playground-starter";
 
-export const starterRecipe: { id: string; html: string } = {
+export const starterRecipe: RunnableRecipe = {
   id: "_starter",
   html: `<!doctype html>
 <html lang="en">

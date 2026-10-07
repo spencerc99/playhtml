@@ -63,6 +63,9 @@ describe("Collector Integration", () => {
       if ((message as { type?: string }).type === "GET_PUBLIC_PLAYER_IDENTITY") {
         return Promise.resolve(publicIdentity);
       }
+      if ((message as { type?: string }).type === "STORE_EVENTS") {
+        return Promise.resolve({ success: true });
+      }
       return Promise.resolve({});
     });
 

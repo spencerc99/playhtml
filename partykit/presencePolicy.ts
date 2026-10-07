@@ -8,16 +8,16 @@ import type {
   PresenceSnapshot,
   PresenceSyncMessage,
 } from "@playhtml/common";
-import { getPresenceChannelCadence } from "@playhtml/common";
 
 const PRESENCE_RATE_WINDOW_MS = 1000;
 const MAX_PRESENCE_CHANNELS_PER_CONNECTION = 32;
-const PRESENCE_MESSAGE_BUDGET_HZ: Record<PresenceMessageBudgetBucket, number> = {
-  frame: 90,
-  interactive: 45,
-  event: 20,
-  control: 10,
-};
+const PRESENCE_MESSAGE_BUDGET_HZ: Record<PresenceMessageBudgetBucket, number> =
+  {
+    frame: 90,
+    interactive: 45,
+    event: 20,
+    control: 10,
+  };
 
 type PresenceMessageBudgetBucket = PresenceChannelCadence | "control";
 
@@ -206,8 +206,6 @@ export function applyPresenceClientMessage(
     case "presence-clear":
       recordPresenceClear(state, connectionId, message.channel);
       return;
-    case "presence-ping":
-      return;
   }
 }
 
@@ -218,38 +216,67 @@ export function commitPresenceClientMessage(
   message: PresenceClientMessage,
   persist: (channels: Record<string, unknown>) => void,
 ): void {
+  commitPresenceClientMessages(
+    state,
+    connectionId,
+    storedChannels,
+    [message],
+    persist,
+  );
+}
+
+export function commitPresenceClientMessages(
+  state: PresenceRoomState,
+  connectionId: string,
+  storedChannels: Record<string, unknown>,
+  messages: readonly PresenceClientMessage[],
+  persist: (channels: Record<string, unknown>) => void,
+): void {
   const candidateState = createPresenceRoomState();
   restorePresenceConnectionChannels(
     candidateState,
     connectionId,
     storedChannels,
   );
-  applyPresenceClientMessage(candidateState, connectionId, message);
+  for (const message of messages) {
+    applyPresenceClientMessage(candidateState, connectionId, message);
+  }
 
   const candidate = candidateState.peers.get(connectionId);
-  persist(candidate ? Object.fromEntries(candidate) : {});
+  const channels = candidate ? Object.fromEntries(candidate) : {};
+  // Keepalives still publish below, but an unchanged attachment needs no write.
+  if (JSON.stringify(channels) !== JSON.stringify(storedChannels)) {
+    persist(channels);
+  }
 
   restorePresenceConnectionChannels(state, connectionId, storedChannels);
-  applyPresenceClientMessage(state, connectionId, message);
+  for (const message of messages) {
+    applyPresenceClientMessage(state, connectionId, message);
+  }
 }
 
-function getPresenceMessageBudgetTarget(
-  message: PresenceClientMessage,
-): { bucket: PresenceMessageBudgetBucket; channel: string } {
+function getPresenceMessageBudgetTarget(message: PresenceClientMessage): {
+  bucket: PresenceMessageBudgetBucket;
+  channel: string;
+} {
   if (message.type === "presence-update" || message.type === "presence-clear") {
     return {
-      bucket: getPresenceChannelCadence(message.channel),
+      bucket: getPresenceMessageBudgetBucket(message.channel),
       channel: message.channel,
     };
   }
   return { bucket: "control", channel: "control" };
 }
 
-function getOrCreate<K, V>(
-  map: Map<K, V>,
-  key: K,
-  createValue: () => V,
-): V {
+function getPresenceMessageBudgetBucket(
+  channel: string,
+): PresenceChannelCadence {
+  if (channel === "cursor") return "frame";
+  if (channel.startsWith("element:")) return "interactive";
+  return "event";
+}
+
+function getOrCreate<K, V>(map: Map<K, V>, key: K, createValue: () => V): V {
   let value = map.get(key);
   if (value === undefined) {
     value = createValue();
@@ -260,11 +287,7 @@ function getOrCreate<K, V>(
 
 function deleteChannelAndPrune<
   T extends { delete(key: string): boolean; size: number },
->(
-  map: Map<string, T>,
-  connectionId: string,
-  channel: string,
-): void {
+>(map: Map<string, T>, connectionId: string, channel: string): void {
   const channels = map.get(connectionId);
   if (!channels) return;
   channels.delete(channel);

@@ -1,5 +1,5 @@
-// ABOUTME: Registers a listener for the manifest "open-inventory" command (forwarded from background).
-// ABOUTME: Reliable across sites because it rides browser.commands, not a page keydown.
+// ABOUTME: Opens inventory from the manifest command or its direct page shortcut fallback.
+// ABOUTME: Keeps the shortcut working when a browser leaves the extension command unassigned.
 
 import browser from "webextension-polyfill";
 
@@ -9,6 +9,23 @@ export function registerKeyboardSummon(onOpen: () => void): () => void {
       onOpen();
     }
   };
+  const onKeyDown = (event: KeyboardEvent) => {
+    const key = event.key.toLowerCase();
+    if (
+      !event.shiftKey ||
+      event.altKey ||
+      (!event.metaKey && !event.ctrlKey) ||
+      (key !== "i" && key !== "b")
+    ) {
+      return;
+    }
+    event.preventDefault();
+    onOpen();
+  };
   browser.runtime.onMessage.addListener(handler);
-  return () => browser.runtime.onMessage.removeListener(handler);
+  window.addEventListener("keydown", onKeyDown, true);
+  return () => {
+    browser.runtime.onMessage.removeListener(handler);
+    window.removeEventListener("keydown", onKeyDown, true);
+  };
 }

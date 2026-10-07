@@ -32,7 +32,7 @@ const CursorController = withSharedState(
     };
     const userCursorIsGif = userCursor && userCursor.endsWith(".gif");
     const [cursorLocation, setCursorLocation] = useState({ x: 0, y: 0 });
-    const { dispatchPlayEvent, hasSynced } = useContext(PlayContext);
+    const { dispatchPlayEvent, isLoading } = useContext(PlayContext);
 
     useEffect(() => {
       // TODO: doesn't handle scroll
@@ -61,7 +61,7 @@ const CursorController = withSharedState(
         document.removeEventListener("mousemove", move);
         document.removeEventListener("click", click);
       };
-    }, [hasSynced]);
+    }, [isLoading]);
     useEffect(() => {
       if (cursors.length === 0 || userCursor) return;
 

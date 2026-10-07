@@ -22,8 +22,19 @@ export const ALLTIME_THRESHOLDS = {
 
 export const DOMAIN_VISIT_THRESHOLDS = [10, 25, 50, 100];
 
+/** A return counts as a "long gap" once the previous visit is this far back */
+export const LONG_GAP_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** How recent the returning visit must be to count as "just returned" */
+const RETURN_RECENCY_MS = 24 * 60 * 60 * 1000;
+
 export interface MilestoneFired {
-  type: "cursorDistance" | "screenTime" | "sitesExplored" | "domainVisits";
+  type:
+    | "longGapReturn"
+    | "cursorDistance"
+    | "screenTime"
+    | "sitesExplored"
+    | "domainVisits";
   threshold: number;
   /** The display value (miles, "2h 14m", domain count, visit count) */
   displayValue: string;
@@ -40,6 +51,64 @@ export interface MilestoneFired {
   period: "today" | "alltime";
   /** Sparkline data for screen time: 7 values 0-1 normalized */
   sparkline?: number[];
+  /** For long-gap returns — a few previous visit timestamps to display */
+  previousVisits?: number[];
+}
+
+export interface LongGapReturn {
+  /** Timestamp of the returning visit (newer event in the crossing pair) */
+  returnTs: number;
+  /** Timestamp of the visit before the gap (older event in the pair) */
+  previousVisitTs: number;
+  /** The gap length in ms */
+  gapMs: number;
+  /** Up to 4 distinct previous visit days (ms, one per calendar day), newest first */
+  previousVisits: number[];
+}
+
+/**
+ * Detect whether the user just returned to a domain after a long absence.
+ * Walks consecutive navigation timestamps (any order) from newest to oldest
+ * and returns the first gap that exceeds the threshold and whose newer visit
+ * is recent. Pure so it can be unit-tested without IndexedDB.
+ */
+export function detectLongGapReturn(
+  timestamps: number[],
+  now: number,
+): LongGapReturn | null {
+  const sorted = [...timestamps].sort((a, b) => b - a);
+  for (let i = 0; i + 1 < sorted.length; i++) {
+    const returnTs = sorted[i];
+    const previousVisitTs = sorted[i + 1];
+    const gapMs = returnTs - previousVisitTs;
+    if (gapMs <= LONG_GAP_THRESHOLD_MS) continue;
+    if (now - returnTs > RETURN_RECENCY_MS) continue;
+
+    // Collect up to 4 distinct previous visit days (before the gap), newest first.
+    const previousVisits: number[] = [];
+    const seenDays = new Set<string>();
+    for (let j = i + 1; j < sorted.length && previousVisits.length < 4; j++) {
+      const day = new Date(sorted[j]).toDateString();
+      if (seenDays.has(day)) continue;
+      seenDays.add(day);
+      previousVisits.push(sorted[j]);
+    }
+
+    return { returnTs, previousVisitTs, gapMs, previousVisits };
+  }
+  return null;
+}
+
+/** Format a gap length using compact week, month, or year tiers */
+export function formatGap(gapMs: number): string {
+  const days = Math.round(gapMs / (24 * 60 * 60 * 1000));
+  if (days < 60) {
+    return `${Math.round(days / 7)}wks`;
+  }
+  if (days < 730) {
+    return `${Math.round(days / 30.44)}mo`;
+  }
+  return `${Math.round(days / 365)}yr`;
 }
 
 /** Pick a random copy string, avoiding back-to-back repeats */
@@ -135,8 +204,52 @@ export function checkAllMilestones(
   },
   cursorDistancePx: number,
   topDomains: Array<{ domain: string; visitCount: number; faviconUrl?: string }>,
+  longGap?: {
+    domain: string;
+    faviconUrl?: string;
+    return: LongGapReturn;
+  } | null,
 ): { milestone: MilestoneFired; updatedState: MilestoneState } | null {
   const miles = pxToMiles(cursorDistancePx);
+
+  // 0. Long-gap return (all-time, per domain) — rare and contextual to the
+  // page the user just landed on, so it takes priority over the others.
+  if (longGap) {
+    const { domain, faviconUrl, return: gap } = longGap;
+    const lastShown = state.allTimeShown.longGapReturn[domain];
+    if (lastShown !== gap.previousVisitTs) {
+      const { copy, newIndex } = pickCopy(
+        MILESTONE_COPY.longGapReturn,
+        "longGapReturn",
+        state,
+      );
+      return {
+        milestone: {
+          type: "longGapReturn",
+          threshold: LONG_GAP_THRESHOLD_MS,
+          displayValue: formatGap(gap.gapMs),
+          copy,
+          ctaLabel: "see your history there",
+          ctaAction: "TOGGLE_HISTORICAL_OVERLAY",
+          period: "alltime",
+          domain,
+          faviconUrl,
+          previousVisits: gap.previousVisits,
+        },
+        updatedState: {
+          ...state,
+          allTimeShown: {
+            ...state.allTimeShown,
+            longGapReturn: {
+              ...state.allTimeShown.longGapReturn,
+              [domain]: gap.previousVisitTs,
+            },
+          },
+          lastCopyIndex: { ...state.lastCopyIndex, longGapReturn: newIndex },
+        },
+      };
+    }
+  }
 
   // 1. Cursor distance (daily)
   const cursorHit = findNextDailyMilestone("cursorDistance", miles, state);

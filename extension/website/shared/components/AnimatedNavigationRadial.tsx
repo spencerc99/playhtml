@@ -30,7 +30,6 @@ const STEP_DURATION = 800; // ms per step (edge draw + node appear/grow)
 const PAUSE_BETWEEN_SESSIONS = 1500;
 const PAUSE_BETWEEN_DAYS = 2400; // longer pause when crossing to a new day (canvas clears then repaints)
 const CLEAR_DURATION = 450; // ms to show empty canvas when transitioning to a new day so the clear is visible
-const GROWTH_DURATION = 200;
 const DEFAULT_MAX_CONCURRENT_EDGES = 3;
 const BASE_RADIUS = 12;
 const NODE_RADIUS_LERP = 0.055; // smooth transition toward target radius (per frame); lower = slower growth
@@ -431,7 +430,7 @@ export const AnimatedNavigationRadial: React.FC<AnimatedNavigationRadialProps> =
     const [footprintAnimatedRadii, setFootprintAnimatedRadii] = useState<
       Map<string, number>
     >(new Map());
-    const animationRef = useRef<number>();
+    const animationRef = useRef<number | undefined>(undefined);
     const sessionOrderRef = useRef<number[]>([]);
     const activeEdgesRef = useRef<ActiveEdge[]>([]);
     const nextStepIndexRef = useRef<number>(1);

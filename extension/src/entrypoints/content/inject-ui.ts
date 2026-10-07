@@ -56,6 +56,8 @@ export function injectShadow(options: ShadowOptions = {}): {
 }
 
 export interface InjectedReactUI {
+  /** Shadow host attached to the page. */
+  host: HTMLElement;
   /** Re-render the component with new props. */
   render: (props: Record<string, unknown>) => void;
   /** Unmount the component and remove the host element from the page. */
@@ -96,6 +98,7 @@ export function injectShadowReact<P extends Record<string, unknown>>(
   root.render(createElement(component, props));
 
   return {
+    host,
     render(nextProps) {
       root.render(createElement(component, nextProps as P));
     },

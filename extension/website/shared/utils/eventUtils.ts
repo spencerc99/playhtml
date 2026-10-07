@@ -217,6 +217,18 @@ export function getColorForParticipant(pid: string): string {
 }
 
 /**
+ * Get the participant color adjusted for the local time of an event.
+ */
+export function getColorForEvent(
+  event: CollectionEvent,
+  timestamp = event.ts,
+): string {
+  const baseColor = event.meta.cursor_color;
+  if (!baseColor) return getColorForParticipant(event.meta.pid);
+  return deriveSessionColor(baseColor, timestamp, event.meta.tz);
+}
+
+/**
  * Extract the domain from a URL, removing 'www.' prefix
  */
 export function extractDomain(url: string): string {

@@ -8,6 +8,10 @@ import {
 } from "../shared/hooks/useCursorTrails";
 import { useCursorEventPool } from "../shared/hooks/useCursorEventPool";
 import { useChromeToggle } from "../shared/hooks/useChromeToggle";
+import { useDailyPageReload } from "../shared/hooks/useDailyPageReload";
+import { useInstallationReload } from "../shared/hooks/useInstallationReload";
+import { parseCleanFromUrl } from "../shared/config";
+import { resolveLiveInstallationProfile } from "../shared/utils/liveInstallationProfiles";
 import { detectTouches, buildCoPresenceTimeline } from "./detect";
 import { createTouchesSketch, MarkStyle, SketchSettings } from "./sketch";
 import { createTouchesSketchGlsl } from "./sketchGlsl";
@@ -83,20 +87,40 @@ const styles = {
 };
 
 const CursorTouches = () => {
-  const chromeHidden = useChromeToggle();
+  const profile = useMemo(() => resolveLiveInstallationProfile(), []);
+  const scale = useMemo(() => {
+    const value = Number(new URLSearchParams(window.location.search).get("scale"));
+    return Number.isFinite(value) && value > 0
+      ? Math.min(value, 4)
+      : (profile?.touchesSettings?.scale ?? 1);
+  }, [profile]);
+  useDailyPageReload();
+  useInstallationReload({ enabled: profile !== null });
+  const chromeHidden = useChromeToggle(true);
+  const cleanMode = useMemo(() => parseCleanFromUrl() >= 1, []);
+  const profileSettings = profile?.touchesSettings;
   const { events, loading, deepening, error } = useCursorEventPool(
     "",
     MAX_POOL_EVENTS,
   );
 
-  const [touchRadius, setTouchRadius] = useState(20);
-  const [speed, setSpeed] = useState(1);
-  const [afterglowSec, setAfterglowSec] = useState(2);
-  const [showCursors, setShowCursors] = useState(true);
-  const [samePersonOk, setSamePersonOk] = useState(false);
-  const [night, setNight] = useState(false);
-  const [renderer, setRenderer] = useState<Renderer>("nebula");
-  const [markStyle, setMarkStyle] = useState<MarkStyle>("hands");
+  const [touchRadius, setTouchRadius] = useState(
+    profileSettings?.touchRadius ?? 20,
+  );
+  const [speed, setSpeed] = useState(profileSettings?.speed ?? 1);
+  const [showCursors, setShowCursors] = useState(
+    profileSettings?.showCursors ?? true,
+  );
+  const [samePersonOk, setSamePersonOk] = useState(
+    profileSettings?.samePersonOk ?? false,
+  );
+  const [night, setNight] = useState(profileSettings?.night ?? false);
+  const [renderer, setRenderer] = useState<Renderer>(
+    profileSettings?.renderer ?? "nebula",
+  );
+  const [markStyle, setMarkStyle] = useState<MarkStyle>(
+    profileSettings?.markStyle ?? "hands",
+  );
 
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
@@ -129,6 +153,22 @@ const CursorTouches = () => {
 
   const { trails } = useCursorTrails(events, viewportSize, cursorSettings);
 
+  useEffect(() => {
+    if (loading || deepening || trails.length === 0) return;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        (window as unknown as { __movementReady?: boolean }).__movementReady =
+          true;
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [loading, deepening, trails.length]);
+
   const touches = useMemo(
     () => detectTouches(trails, touchRadius, !samePersonOk),
     [trails, touchRadius, samePersonOk],
@@ -142,7 +182,6 @@ const CursorTouches = () => {
   // Settings the sketch reads every frame without re-instantiating.
   const settingsRef = useRef<SketchSettings>({
     speed,
-    afterglowMs: afterglowSec * 1000,
     showCursors,
     night,
     markStyle,
@@ -150,12 +189,11 @@ const CursorTouches = () => {
   useEffect(() => {
     settingsRef.current = {
       speed,
-      afterglowMs: afterglowSec * 1000,
       showCursors,
       night,
       markStyle,
     };
-  }, [speed, afterglowSec, showCursors, night, markStyle]);
+  }, [speed, showCursors, night, markStyle]);
 
   const hostRef = useRef<HTMLDivElement>(null);
   // The replayed moment's real date/time, written imperatively from the
@@ -206,28 +244,31 @@ const CursorTouches = () => {
 
   return (
     <div style={{ ...styles.page, background: night ? "#100d13" : "#faf7f2" }}>
-      <div ref={hostRef} style={styles.canvasHost} />
+      <div
+        ref={hostRef}
+        style={{ ...styles.canvasHost, transform: `scale(${scale})` }}
+      />
       {!chromeHidden && (
-        <div
-          style={{ ...styles.title, color: night ? "#e8e2d8" : "#3d3833" }}
-        >
+        <div style={{ ...styles.title, color: night ? "#e8e2d8" : "#3d3833" }}>
           cursor touches
         </div>
       )}
       {!chromeHidden && <div style={styles.status}>{statusText}</div>}
-      <div
-        ref={timeReadoutRef}
-        style={{
-          position: "fixed",
-          bottom: 16,
-          left: 20,
-          fontFamily: "'Martian Mono', monospace",
-          fontSize: "10px",
-          color: "#8a8279",
-          zIndex: 10,
-          pointerEvents: "none",
-        }}
-      />
+      {!cleanMode && (
+        <div
+          ref={timeReadoutRef}
+          style={{
+            position: "fixed",
+            bottom: 16,
+            left: 20,
+            fontFamily: "'Martian Mono', monospace",
+            fontSize: "10px",
+            color: "#8a8279",
+            zIndex: 10,
+            pointerEvents: "none",
+          }}
+        />
+      )}
 
       {!chromeHidden && (
         <div style={styles.panel}>
@@ -296,17 +337,6 @@ const CursorTouches = () => {
               max={120}
               value={speed}
               onChange={(e) => setSpeed(Number(e.target.value))}
-              style={styles.slider}
-            />
-          </div>
-          <div style={styles.row}>
-            <span>afterglow: {afterglowSec}s</span>
-            <input
-              type="range"
-              min={0}
-              max={15}
-              value={afterglowSec}
-              onChange={(e) => setAfterglowSec(Number(e.target.value))}
               style={styles.slider}
             />
           </div>

@@ -1,12 +1,12 @@
 // ABOUTME: Boots the playhtml homepage and its React-backed shared examples.
 // ABOUTME: Wires homepage-only collaboration state into non-React page chrome.
 
-import { ElementInitializer } from "@playhtml/common";
 import words from "profane-words";
 import "./home.scss";
 // NOTE: this pins it to the working code so we can test library changes through this home page.
 import { createRoot } from "react-dom/client";
 import { PlayProvider } from "@playhtml/react";
+import { playhtml, type ElementInitializer } from "playhtml";
 import FeaturesGrid from "./components/FeaturesGrid";
 import ExperimentsArchive from "./components/ExperimentsArchive";
 import {
@@ -27,10 +27,6 @@ const GuestbookSubmissionLimit = {
 };
 const GuestbookNameStorageKey = "name";
 type HomepageAwareness = { online: true };
-type HomepageAwarenessElement = HTMLElement &
-  Partial<
-    ElementInitializer<Record<string, never>, undefined, HomepageAwareness>
-  >;
 
 function getFormDataId(formData: FormData) {
   return `${formData.name}-${formData.timestamp}`;
@@ -77,25 +73,51 @@ function setupGuestbookNameInput() {
 setupGuestbookNameInput();
 
 function setupHomepageAwarenessStatus() {
-  const statusElement = document.getElementById(
-    "site-console-count",
-  ) as HomepageAwarenessElement | null;
+  const statusElement = document.getElementById("site-console-count");
   const countElement = document.getElementById("site-console-count-number");
   const countLabel = document.querySelector(".site-console__status-label");
   if (!statusElement || !countElement || !countLabel) return;
 
-  statusElement.defaultData = {};
-  statusElement.myDefaultAwareness = { online: true };
-  statusElement.updateElement = () => {};
-  statusElement.updateElementAwareness = ({ awareness }) => {
-    const peopleCount = Math.max(awareness.length, 1);
+  playhtml.register<Record<string, never>, undefined, HomepageAwareness>(
+    "site-console-count",
+    {
+      defaultData: {},
+      myDefaultAwareness: { online: true },
+      updateElement: () => {},
+      updateElementAwareness: ({ awareness }) => {
+        const peopleCount = Math.max(awareness.length, 1);
 
-    if (countElement.textContent === String(peopleCount)) return;
+        if (countElement.textContent === String(peopleCount)) return;
 
-    countElement.textContent = String(peopleCount);
-    countLabel.textContent = ` ${peopleCount === 1 ? "person" : "people"} here`;
-  };
+        countElement.textContent = String(peopleCount);
+        countLabel.textContent = ` ${peopleCount === 1 ? "person" : "people"} here`;
+      },
+    },
+  );
 }
+
+function setupHomepageCandle() {
+  const candle = document.getElementById("customCandle");
+  if (!candle) return;
+
+  playhtml.register(candle, {
+    defaultData: { on: true },
+    onClick: (_event, { data, setData }) => {
+      setData({ on: !data.on });
+    },
+    updateElement: ({ element, data }) => {
+      (element as HTMLImageElement).src = data.on
+        ? "/candle-gif.gif"
+        : "/candle-off.png";
+    },
+    resetShortcut: "shiftKey",
+  });
+}
+
+const isCursorRoom = (
+  value: string | null,
+): value is "page" | "domain" | "section" =>
+  value === "page" || value === "domain" || value === "section";
 
 function getLocalPreviewInitOptions() {
   const localHostnames = new Set(["localhost", "127.0.0.1"]);
@@ -104,26 +126,31 @@ function getLocalPreviewInitOptions() {
   const params = new URLSearchParams(window.location.search);
   const host = params.get("playhtmlHost");
   const room = params.get("playhtmlRoom");
+  const cursorRoom = params.get("playhtmlCursorRoom");
 
   return {
     ...(host ? { host } : {}),
     ...(room ? { room } : {}),
+    ...(isCursorRoom(cursorRoom) ? { cursorRoom } : {}),
   };
 }
 
 setupHomepageAwarenessStatus();
+setupHomepageCandle();
 
 // Render React components
 const reactContentElement = document.getElementById("reactContent");
 if (reactContentElement) {
+  const { cursorRoom, ...localPreviewOptions } = getLocalPreviewInitOptions();
   const root = createRoot(reactContentElement);
   root.render(
     <PlayProvider
       initOptions={{
-        ...getLocalPreviewInitOptions(),
+        ...localPreviewOptions,
         cursors: {
           enableChat: true,
           enabled: true,
+          ...(cursorRoom ? { room: cursorRoom } : {}),
         },
         // an event when someone opens the website?
         extraCapabilities: {

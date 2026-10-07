@@ -163,7 +163,11 @@ for (const { path, skip } of PAGES) {
   });
 }
 
-async function openHomepageAwarenessClient(browser: Browser, room: string) {
+async function openHomepageAwarenessClient(
+  browser: Browser,
+  room: string,
+  extraParams: Record<string, string> = {},
+) {
   const context = await browser.newContext();
   const page = await context.newPage();
   const errors = await collectErrors(page);
@@ -173,6 +177,7 @@ async function openHomepageAwarenessClient(browser: Browser, room: string) {
   const params = new URLSearchParams({
     playhtmlHost: host,
     playhtmlRoom: room,
+    ...extraParams,
   });
 
   const response = await page.goto(`/?${params}`, {
@@ -239,6 +244,45 @@ test("smoke: homepage element awareness syncs across two browser clients", async
     await clientA.context.close();
     if (!clientBClosed) {
       await clientB.context.close();
+    }
+  }
+});
+
+test("smoke: element awareness stays page-scoped when cursors use a domain room", async ({
+  browser,
+}) => {
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const roomX = `/smoke/awareness-domain-x-${suffix}`;
+  const roomY = `/smoke/awareness-domain-y-${suffix}`;
+  const cursorParams = { playhtmlCursorRoom: "domain" };
+
+  const clientA = await openHomepageAwarenessClient(browser, roomX, cursorParams);
+  const clientB = await openHomepageAwarenessClient(browser, roomX, cursorParams);
+  // Same domain cursor room, DIFFERENT page room — must not see A/B's element awareness.
+  const clientC = await openHomepageAwarenessClient(browser, roomY, cursorParams);
+
+  try {
+    await expect
+      .poll(async () => readHomepageAwarenessCount(clientA.page), { timeout: 20_000 })
+      .toBe(2);
+    await expect
+      .poll(async () => readHomepageAwarenessCount(clientB.page), { timeout: 20_000 })
+      .toBe(2);
+    await expect
+      .poll(async () => readHomepageAwarenessCount(clientC.page), { timeout: 20_000 })
+      .toBe(1);
+
+    await clientB.context.close();
+    await expect
+      .poll(async () => readHomepageAwarenessCount(clientA.page), { timeout: 20_000 })
+      .toBe(1);
+    await clientC.context.close();
+    await clientA.context.close();
+  } finally {
+    for (const client of [clientA, clientB, clientC]) {
+      try {
+        await client.context.close();
+      } catch {}
     }
   }
 });

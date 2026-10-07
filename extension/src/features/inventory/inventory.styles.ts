@@ -5,20 +5,27 @@ export const INVENTORY_CSS = `
 :host { all: initial; }
 .wwo-inv { font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; }
 
-/* collapsed edge nub */
-.wwo-nub { position: fixed; z-index: 2147483646; width: 34px; height: 48px;
+/* collapsed edge nub — anchored past the viewport edge so the visible tab
+   never sits flush against it (avoids scrollbar clipping) and hover growth
+   never pulls the tab away from the page edge (the offscreen overhang
+   absorbs the hover translate, so the far end always reads as attached) */
+.wwo-nub { position: fixed; z-index: 2147483646; width: 42px; height: 48px;
   background: linear-gradient(165deg,#fbf2df,#f0e2c6); border: 2px solid #b98a4e;
   border-radius: 12px; display: flex; align-items: center; justify-content: center;
   box-shadow: 0 3px 10px rgba(120,85,40,.32), inset 0 1px 0 rgba(255,255,255,.6);
   cursor: grab; transition: width .12s, transform .12s; pointer-events: auto; }
-.wwo-nub:hover { width: 40px; transform: translateX(-3px); }
-.wwo-nub.edge-r { border-radius: 12px 0 0 12px; border-right: none; }
-.wwo-nub.edge-l { border-radius: 0 12px 12px 0; border-left: none; }
+.wwo-nub:hover { width: 48px; }
+.wwo-nub.edge-r { right: -8px; border-radius: 12px 0 0 12px; border-right: none; }
+.wwo-nub.edge-r:hover { transform: translateX(-3px); }
+.wwo-nub.edge-r .bp { transform: translateX(-4px); }
+.wwo-nub.edge-l { left: -8px; border-radius: 0 12px 12px 0; border-left: none; }
+.wwo-nub.edge-l:hover { transform: translateX(3px); }
+.wwo-nub.edge-l .bp { transform: translateX(4px); }
 .wwo-nub .bp { width: 24px; height: 24px; background-size: contain; background-repeat: no-repeat;
   background-position: center; filter: drop-shadow(0 1px 1px rgba(90,60,20,.3)); }
 
 /* the cozy kit (open) — carved warm frame + worn texture */
-.wwo-kit { position: fixed; z-index: 2147483647; width: 320px; border-radius: 18px; padding: 14px;
+.wwo-kit { position: fixed; z-index: 2147483647; width: 166px; border-radius: 18px; padding: 14px;
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='w'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.43 0 0 0 0 0.31 0 0 0 0 0.14 0 0 0 0.5 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23w)'/%3E%3C/svg%3E"),
     repeating-linear-gradient(48deg,rgba(120,85,40,.035) 0 1px,transparent 1px 4px),
@@ -30,8 +37,11 @@ export const INVENTORY_CSS = `
 .wwo-kit.show { display: block; }
 .wwo-kit-head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 2px 10px; }
 .wwo-kit-head .t { font-family: 'Source Serif 4', serif; font-style: italic; font-weight: 200; font-size: 15px; color: #7a5a2e; }
-.wwo-kit-head .x { cursor: pointer; font-family: 'Martian Mono', monospace; font-size: 11px; color: #a98d5c; }
-.wwo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; padding: 10px; border-radius: 12px;
+.wwo-kit-actions { display: flex; align-items: center; gap: 8px; }
+.wwo-kit-actions button { appearance: none; border: 0; padding: 2px 0; background: none; cursor: pointer;
+  font-family: 'Martian Mono', monospace; font-size: 9px; color: #a98d5c; }
+.wwo-kit-actions button:hover, .wwo-kit-actions button:focus-visible { color: #7a5a2e; text-decoration: underline; text-underline-offset: 3px; }
+.wwo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; padding: 10px; border-radius: 12px;
   background: radial-gradient(circle at 6px 6px, rgba(150,110,55,.10) 1.3px, transparent 1.4px) 0 0/15px 15px,
     linear-gradient(180deg, rgba(120,85,40,.10), rgba(120,85,40,.04));
   box-shadow: inset 0 2px 6px rgba(110,80,40,.28); }
@@ -50,6 +60,29 @@ export const INVENTORY_CSS = `
 .wwo-slot .q.inf { color: #3f998a; }
 .wwo-slot.armed { box-shadow: inset 0 -3px 5px rgba(63,153,138,.25), 0 0 0 3px #4a9a8a, 0 0 12px rgba(74,154,138,.5); }
 .wwo-slot.empty { cursor: default; background: radial-gradient(circle at 50% 40%, #efe5d0, #e6d8bd); box-shadow: inset 0 2px 6px rgba(120,85,40,.3); }
+
+.wwo-hide-prompt { position: fixed; z-index: 2147483647; width: 220px; box-sizing: border-box;
+  padding: 14px; border: 1px solid rgba(61,56,51,.12); border-radius: 10px;
+  background: #f5f0e8; box-shadow: 0 4px 16px rgba(61,56,51,.12);
+  color: #3d3833; pointer-events: auto; }
+.wwo-hide-prompt-brand { position: absolute; top: 10px; right: 12px;
+  font-family: 'Source Serif 4', 'Lora', Georgia, serif; font-size: 11px;
+  font-style: italic; font-weight: 300; line-height: 1; color: rgba(61,56,51,.45); }
+.wwo-hide-prompt-title { max-width: 155px; font-family: 'Lora', Georgia, serif;
+  font-size: 14px; font-weight: 600; line-height: 1.35; color: #3d3833; }
+.wwo-hide-prompt p { margin: 7px 0 0; font-family: 'Atkinson Hyperlegible', system-ui, sans-serif;
+  font-size: 11.5px; line-height: 1.4; color: #8a8279; }
+.wwo-hide-prompt .wwo-hide-prompt-error { color: #9a5a3a; }
+.wwo-hide-prompt-actions { display: flex; flex-direction: column; align-items: stretch; gap: 7px; margin-top: 12px; }
+.wwo-hide-prompt-actions button { appearance: none; padding: 8px 10px; border: 1px solid #4a9a8a;
+  border-radius: 6px; background: #4a9a8a; color: white; cursor: pointer;
+  font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; font-size: 11px;
+  font-weight: 600; line-height: 1.2; text-align: center; }
+.wwo-hide-prompt-actions button:last-child { border-color: rgba(90,78,65,.25);
+  background: #faf7f2; color: #3d3833; }
+.wwo-hide-prompt-actions button:hover, .wwo-hide-prompt-actions button:focus-visible {
+  filter: brightness(.95); }
+.wwo-hide-prompt-actions button:focus-visible { outline: 2px solid rgba(74,154,138,.55); outline-offset: 2px; }
 
 /* wielded item next to cursor */
 .wwo-wield { position: fixed; left: 0; top: 0; width: 30px; height: 30px; pointer-events: none; z-index: 2147483647;

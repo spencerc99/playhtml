@@ -9,13 +9,29 @@ import {
   createInlineDiffLookup,
   type InlineDiffLookup,
 } from "./utils/adminComparison";
-import { deriveRoomId } from "@playhtml/common";
+import {
+  deriveRoomId,
+} from "@playhtml/common";
+import {
+  formatStateLeafValue,
+  isEditableStateLeaf,
+  parseStateLeafValue,
+  replaceStateLeafValue,
+  type EditableStateLeafValue,
+  type StatePathSegment,
+} from "playhtml/leafEditor";
 import { extractRecords, type ModerationRecord } from "@moderation";
 import {
   formatAdminResetSuccess,
   formatAdminResetWarning,
 } from "./adminMessages";
 import { HOSTS, type EnvName } from "./adminHosts";
+import {
+  QuarantinedRoomsOverview,
+  RoomQuarantinePanel,
+  type QuarantineOverviewState,
+  type RoomQuarantineStatus,
+} from "./adminQuarantine";
 
 // Types from the original admin.ts
 interface RoomData {
@@ -33,6 +49,7 @@ interface RoomData {
   timestamp?: string;
   roomId?: string;
   documentSize?: number;
+  quarantine?: RoomQuarantineStatus;
 }
 
 interface DebugLog {
@@ -98,12 +115,98 @@ const EnvironmentDisplay: React.FC<{
   );
 };
 
+const StateLeafValue: React.FC<{
+  value: EditableStateLeafValue;
+  className: string;
+  displayText: string;
+  path: StatePathSegment[];
+  data: any;
+  title?: string;
+  onDataChange?: (data: any) => void;
+}> = ({ value, className, displayText, path, data, title, onDataChange }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(formatStateLeafValue(value));
+  const [error, setError] = useState("");
+  const canEdit = Boolean(onDataChange && path.length > 0);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraft(formatStateLeafValue(value));
+      setError("");
+    }
+  }, [isEditing, value]);
+
+  if (!canEdit) {
+    return (
+      <span className={className} title={title}>
+        {displayText}
+      </span>
+    );
+  }
+
+  const save = () => {
+    const parsed = parseStateLeafValue(draft);
+    if (!parsed.ok) {
+      setError(parsed.error);
+      return;
+    }
+
+    const result = replaceStateLeafValue(data, path, parsed.value);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+
+    onDataChange?.(result.data);
+    setIsEditing(false);
+  };
+
+  if (isEditing) {
+    return (
+      <span className="json-inline-edit">
+        <input
+          aria-label="Edit state value"
+          className="json-inline-edit-input"
+          value={draft}
+          autoFocus
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setError("");
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              save();
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              setIsEditing(false);
+            }
+          }}
+        />
+        {error && <span className="json-inline-edit-error">{error}</span>}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={`${className} json-leaf-button`}
+      title={title}
+      onClick={() => setIsEditing(true)}
+    >
+      {displayText}
+    </button>
+  );
+};
+
 // JSON Viewer Component
-const JSONViewer: React.FC<{
+export const JSONViewer: React.FC<{
   data: any;
   depth?: number;
   inlineDiff?: InlineDiffLookup["admin"];
-}> = ({ data, depth = 0, inlineDiff }) => {
+  onDataChange?: (data: any) => void;
+}> = ({ data, depth = 0, inlineDiff, onDataChange }) => {
   // Track explicitly toggled items: true = collapsed, false = expanded
   const [toggledItems, setToggledItems] = useState<Map<string, boolean>>(
     new Map()
@@ -139,10 +242,20 @@ const JSONViewer: React.FC<{
   const renderValue = (
     obj: any,
     currentDepth: number = 0,
-    path: string = ""
+    path: string = "",
+    statePath: StatePathSegment[] = []
   ): React.ReactNode => {
     if (obj === null) {
-      return <span className="json-null">null</span>;
+      return (
+        <StateLeafValue
+          value={obj}
+          className="json-null"
+          displayText="null"
+          path={statePath}
+          data={data}
+          onDataChange={onDataChange}
+        />
+      );
     }
 
     if (typeof obj === "string") {
@@ -157,18 +270,45 @@ const JSONViewer: React.FC<{
         : obj;
 
       return (
-        <span className={className} title={title}>
-          "{displayText}"
-        </span>
+        <StateLeafValue
+          value={obj}
+          className={className}
+          displayText={`"${displayText}"`}
+          path={statePath}
+          data={data}
+          title={title}
+          onDataChange={onDataChange}
+        />
       );
     }
 
     if (typeof obj === "number") {
-      return <span className="json-number">{obj}</span>;
+      if (!isEditableStateLeaf(obj)) {
+        return <span className="json-number">{obj}</span>;
+      }
+      return (
+        <StateLeafValue
+          value={obj}
+          className="json-number"
+          displayText={String(obj)}
+          path={statePath}
+          data={data}
+          onDataChange={onDataChange}
+        />
+      );
     }
 
     if (typeof obj === "boolean") {
-      return <span className="json-boolean">{obj.toString()}</span>;
+      return (
+        <StateLeafValue
+          value={obj}
+          className="json-boolean"
+          displayText={obj.toString()}
+          path={statePath}
+          data={data}
+          onDataChange={onDataChange}
+        />
+      );
     }
 
     if (Array.isArray(obj)) {
@@ -209,7 +349,10 @@ const JSONViewer: React.FC<{
                     style={{ marginLeft: "20px" }}
                   >
                     <span className="json-index">{index}:</span>{" "}
-                    {renderValue(item, currentDepth + 1, itemPath)}
+                    {renderValue(item, currentDepth + 1, itemPath, [
+                      ...statePath,
+                      index,
+                    ])}
                   </div>
                 );
               })}
@@ -258,7 +401,10 @@ const JSONViewer: React.FC<{
                   >
                     <span className="json-key">"{key}"</span>
                     <span className="json-colon">:</span>{" "}
-                    {renderValue(obj[key], currentDepth + 1, childPath)}
+                    {renderValue(obj[key], currentDepth + 1, childPath, [
+                      ...statePath,
+                      key,
+                    ])}
                   </div>
                 );
               })}
@@ -442,6 +588,12 @@ const LoginScreen: React.FC<{
         <h1 style={{ marginTop: 0, marginBottom: "1.5rem" }}>
           🛠️ PlayHTML Admin
         </h1>
+        <a
+          className="admin-office-link"
+          href="https://wewere.online/admin/"
+        >
+          Open WWO Internal Office ↗
+        </a>
 
         <div style={{ marginBottom: "1.5rem" }}>
           <label
@@ -539,6 +691,8 @@ const AdminConsole: React.FC = () => {
   const [urlInput, setUrlInput] = useState<string>("");
   const [roomData, setRoomData] = useState<RoomData | null>(null);
   const [adminToken, setAdminToken] = useState<string | null>(null);
+  const [quarantineOverview, setQuarantineOverview] =
+    useState<QuarantineOverviewState>({ state: "loading", rooms: [] });
   // Auto-detect environment - cannot be changed
   const hostEnv = detectEnvironment();
   const [roomStatus, setRoomStatus] = useState<{
@@ -761,6 +915,15 @@ const AdminConsole: React.FC = () => {
       return { valid: false, error: msg };
     }
   };
+
+  const editableJsonData = React.useMemo(() => {
+    if (!editableJson.trim()) return null;
+    try {
+      return JSON.parse(editableJson);
+    } catch {
+      return null;
+    }
+  }, [editableJson]);
 
   // Load stored auth on mount and handle browser navigation
   useEffect(() => {
@@ -1065,6 +1228,58 @@ const AdminConsole: React.FC = () => {
 
     return await response.json();
   };
+
+  const loadQuarantinedRooms = useCallback(async () => {
+    if (!adminToken) return;
+
+    setQuarantineOverview((previous) => ({
+      state: "loading",
+      rooms: previous.rooms,
+    }));
+
+    try {
+      const response = await fetch(
+        `${HOSTS[hostEnv]}/admin/quarantines?token=${encodeURIComponent(
+          adminToken
+        )}`
+      );
+      const body = await response.json();
+
+      if (response.status === 401) {
+        setAdminToken(null);
+        localStorage.removeItem("playhtml-admin-token");
+        throw new Error(
+          "Authentication failed. Please re-authenticate with a valid token."
+        );
+      }
+
+      if (!response.ok || body.available !== true) {
+        throw new Error(
+          body.error ||
+            `Failed to read quarantines: ${response.status} ${response.statusText}`
+        );
+      }
+
+      setQuarantineOverview({
+        state: "ready",
+        rooms: body.rooms,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setQuarantineOverview((previous) => ({
+        state: "error",
+        rooms: previous.rooms,
+        message,
+      }));
+      addLog("error", `Failed to list quarantined rooms: ${message}`);
+    }
+  }, [addLog, adminToken, hostEnv]);
+
+  useEffect(() => {
+    if (adminToken) {
+      void loadQuarantinedRooms();
+    }
+  }, [adminToken, loadQuarantinedRooms]);
 
   const exportRoomData = async () => {
     if (!roomData || !currentRoomId) return;
@@ -2124,7 +2339,10 @@ const AdminConsole: React.FC = () => {
   return (
     <div className="admin-container">
       <header className="admin-header">
-        <h1>🛠️ PlayHTML Admin Console</h1>
+        <div className="admin-header-title">
+          <h1>🛠️ PlayHTML Admin Console</h1>
+          <a href="https://wewere.online/admin/">WWO Internal Office ↗</a>
+        </div>
         <div>
           <EnvironmentDisplay currentEnv={hostEnv} />
           <div className="auth-controls">
@@ -2144,6 +2362,15 @@ const AdminConsole: React.FC = () => {
       </header>
 
       <div className="admin-content">
+        <QuarantinedRoomsOverview
+          overview={quarantineOverview}
+          onRefresh={() => void loadQuarantinedRooms()}
+          onSelectRoom={(roomId) => {
+            setCurrentRoomId(roomId);
+            void loadRoom(roomId);
+          }}
+        />
+
         <section className="room-inspector">
           <h2>Room Inspector</h2>
           <div className="input-group">
@@ -2174,6 +2401,10 @@ const AdminConsole: React.FC = () => {
             <div className={`status-display ${roomStatus.type}`}>
               {roomStatus.message}
             </div>
+          )}
+
+          {roomData?.quarantine && (
+            <RoomQuarantinePanel status={roomData.quarantine} />
           )}
 
           {roomData && (
@@ -2856,6 +3087,17 @@ const AdminConsole: React.FC = () => {
                         }}
                       >
                         <strong>JSON Error:</strong> {jsonError}
+                      </div>
+                    )}
+                    {editableJsonData !== null && (
+                      <div className="inline-json-editor-panel">
+                        <JSONViewer
+                          data={editableJsonData}
+                          onDataChange={(nextData) => {
+                            setEditableJson(JSON.stringify(nextData, null, 2));
+                            setJsonError("");
+                          }}
+                        />
                       </div>
                     )}
                     <textarea

@@ -1,5 +1,78 @@
 # Change Log
 
+## 3.0.0
+
+### Major Changes
+
+- 4b3be52: React `defaultData`, `live`, and `myDefaultAwareness` now accept values only. DOM-dependent callbacks are rejected with a migration message, so child render functions receive supplied defaults on their first render. Replace `defaultData={element => ...}` with a value computed from React props, or use `withSharedState(props => ({ defaultData: ... }), render)`. The vanilla element API still supports DOM-dependent default functions.
+
+### Minor Changes
+
+- 35088f1: Add the element `live`, `users`, `setLive`, and `update` APIs so one renderer can combine shared state with current per-user values and identity. Existing awareness and `updateElement` names remain available as deprecated compatibility aliases.
+
+### Patch Changes
+
+- bddcd97: Register newly mounted interactive elements before the browser can receive input so they respond immediately without requiring a refresh.
+- 68aa385: Fix function-form `defaultData`/`myDefaultAwareness` (e.g. `(el) => ({ text: el.id })`) being resolved against `null` during the initial render instead of the real element, crashing on mount. It now resolves once the element is attached.
+- 262d360: Fix `usePresence().myIdentity` freezing at sync completion and never reflecting a later identity change (e.g. the "we were online" extension injecting identity post-sync). It now updates reactively, mirroring `usePlayerIdentity`.
+- ad66821: Page-data channels can now update primitive roots with functional updates that return the next value.
+- 732acd2: Stop cursor-presence updates from re-rendering every playhtml component on the page. PlayProvider no longer stores live cursor positions in context state (the context value is now memoized and the presence map keeps a stable identity; reactive consumers use the useCursorPresences hook, which is unchanged), and usePlayerIdentity only re-renders its consumers when the identity actually changes rather than on every presence tick. On a room with ~3,000 elements this reduced renders during a one-second drag from ~340,000 to just the elements whose data changed.
+- Updated dependencies [35088f1]
+- Updated dependencies [9f3e2c3]
+- Updated dependencies [74e4d35]
+- Updated dependencies [db2f919]
+- Updated dependencies [8301126]
+- Updated dependencies [ad66821]
+- Updated dependencies [23e3b32]
+- Updated dependencies [6c0a07e]
+- Updated dependencies [9c4cbed]
+- Updated dependencies [6c0a07e]
+- Updated dependencies [fb24e9b]
+  - playhtml@2.15.0
+
+## 2.1.0
+
+### Minor Changes
+
+- ee236da: Removes internal dead code and the deprecated `additionalSetup` initializer field. Use `onMount` instead. Runtime behavior is unchanged.
+- d18ccee: Add a `playhtml.users` module for durable user identity (name and color) that works whether or not cursors are enabled. `playhtml.users.me` exposes your own identity (`name`, `color`, `pid`) with setters that persist and publish to the room. `playhtml.users.getAll()` returns an array of everyone currently in the room, and `playhtml.users.onChange(callback)` subscribes to join/leave/identity changes. In React, the new `useUsers()` hook gives a reactive roster, and `usePlayerIdentity()` no longer requires `cursors: { enabled: true }`.
+
+  Identity now lives in one place: `window.cursors.color` and `window.cursors.name` are thin delegates to `playhtml.users.me`, `window.cursors.allColors` is derived from the room's users (its undocumented setter is removed), identity changes republish to peers (previously a name or color change on a page without cursors never reached other visitors), and the browser extension's injected identity is adopted without cursors enabled. `playhtml.elementHandlers` remains available for compatibility but is deprecated; use `playhtml.getHandle(elementId, tag)` to interact with a bound element.
+
+### Patch Changes
+
+- 5cdd890: Prevent React elements from writing through another element's handler. React now rebinds elements when their ID, data source, capability, or shared permission changes.
+- d70d7c3: Mark the packages as ESM-only instead of advertising CommonJS entry points that could not load their exports. The `playhtml/leafEditor` subpath now provides declarations that type-check with NodeNext module resolution.
+- 2548f3d: Keep `usePresenceRoom()` returning `null` instead of throwing when React renders ahead of PlayHTML readiness during navigation or provider remount timing.
+- e458d95: Correct `usePresence` types so the channel name and payload match the returned
+  presence view. Pass the channel literal first and the payload second, such as
+  `usePresence<"status", StatusPresence>("status")`. Channel values are available
+  under their channel key, while `setMyPresence` continues to accept the channel
+  payload.
+- Updated dependencies [ee236da]
+- Updated dependencies [90e703d]
+- Updated dependencies [d70d7c3]
+- Updated dependencies [90e703d]
+- Updated dependencies [d18ccee]
+  - playhtml@2.14.0
+
+## 2.0.2
+
+### Patch Changes
+
+- cd1ebf9: Allow `can-play` elements to render from element awareness alone when `myDefaultAwareness` is paired with `updateElementAwareness`, and report incomplete initializer pairs with specific diagnostics.
+- 5a32af7: Make `CanToggleElement` apply its `readOnly` prop so read-only shared toggles cannot write data, and activate React event callbacks added after rerenders.
+- Updated dependencies [cd1ebf9]
+- Updated dependencies [7c1bdda]
+- Updated dependencies [5a32af7]
+- Updated dependencies [b3f20bb]
+- Updated dependencies [4a1711c]
+- Updated dependencies [dca1704]
+- Updated dependencies [252acd0]
+- Updated dependencies [1f8cf34]
+- Updated dependencies [c5083b7]
+  - playhtml@2.13.2
+
 ## 2.0.1
 
 ### Patch Changes

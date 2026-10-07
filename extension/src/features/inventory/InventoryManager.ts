@@ -4,15 +4,24 @@
 import { InventoryRegistry } from "./registry";
 import { ArmedState } from "./armed-state";
 import { HeldStore } from "./held-store";
+import {
+  hidePageObjectsOnSite,
+  pageObjectsAreHiddenOnSite,
+} from "./siteVisibility";
 import type { ArmedTool, InventoryAPI, Item } from "./types";
 
 export class InventoryManager {
   private registry = new InventoryRegistry();
   private armedState = new ArmedState();
   private held = new HeldStore();
+  private pageObjectsVisible = true;
+  private visibilitySubscribers = new Set<(visible: boolean) => void>();
+
+  constructor(private readonly siteOrigin = window.location.origin) {}
 
   async load(): Promise<void> {
     await this.held.load();
+    this.pageObjectsVisible = !(await pageObjectsAreHiddenOnSite(this.siteOrigin));
   }
 
   private resolveCount(itemId: string): number {
@@ -33,6 +42,26 @@ export class InventoryManager {
     disarm: () => this.armedState.disarm(),
     getArmed: (): ArmedTool | null => this.armedState.get(),
     onArmedChange: (cb) => this.armedState.subscribe(cb),
+    hidePageObjects: () => {
+      if (!this.pageObjectsVisible) return;
+      this.pageObjectsVisible = false;
+      this.armedState.disarm();
+      for (const cb of this.visibilitySubscribers) cb(false);
+    },
+    hidePageObjectsOnSite: async () => {
+      this.api.hidePageObjects();
+      await hidePageObjectsOnSite(this.siteOrigin);
+    },
+    showPageObjects: () => {
+      if (this.pageObjectsVisible) return;
+      this.pageObjectsVisible = true;
+      for (const cb of this.visibilitySubscribers) cb(true);
+    },
+    arePageObjectsVisible: () => this.pageObjectsVisible,
+    onPageObjectsVisibilityChange: (cb) => {
+      this.visibilitySubscribers.add(cb);
+      return () => this.visibilitySubscribers.delete(cb);
+    },
     count: (itemId: string) => this.resolveCount(itemId),
   };
 }

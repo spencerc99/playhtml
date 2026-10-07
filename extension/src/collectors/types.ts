@@ -108,6 +108,98 @@ export interface ViewportEventData {
 }
 
 /**
+ * Where a scrap sat on the page it was taken from. Document coordinates in
+ * pixels, alongside the document's scroll size, so a scrap can be placed back
+ * on a map of the page it came from. Absent on scraps captured before the
+ * extension recorded it.
+ */
+export interface ScrapPosition {
+  pageX: number;
+  pageY: number;
+  pageWidth: number;
+  pageHeight: number;
+}
+
+export interface ImageScrapData {
+  contentHash?: string;
+  kind: "image";
+  src: string;
+  alt?: string;
+  naturalWidth: number;
+  naturalHeight: number;
+  displayWidth: number;
+  displayHeight: number;
+  pageTitle: string;
+  faviconUrl?: string;
+  position?: ScrapPosition;
+}
+
+export interface ButtonScrapData {
+  kind: "button";
+  text: string;
+  styles: Record<string, string>;
+  innerSvg?: string;
+  /** Flat color the element was seen against, when its own does not cover it. */
+  backdropColor?: string;
+  pageTitle: string;
+  faviconUrl?: string;
+  position?: ScrapPosition;
+}
+
+export interface SvgIconScrapData {
+  kind: "svg-icon";
+  markup: string;
+  width: number;
+  height: number;
+  pageTitle: string;
+  faviconUrl?: string;
+  position?: ScrapPosition;
+}
+
+/** The typographic properties a heading keeps; it carries no background. */
+export type HeadingStyleProperty =
+  | "fontFamily"
+  | "fontSize"
+  | "fontWeight"
+  | "fontStyle"
+  | "color"
+  | "letterSpacing"
+  | "textTransform"
+  | "lineHeight";
+
+/**
+ * A heading is words-material: it keeps its type and its own text color, and
+ * saves no background of any kind, so it has no backdrop to record either.
+ */
+export interface HeadingScrapData {
+  kind: "heading";
+  text: string;
+  level: 1 | 2 | 3;
+  styles: Partial<Record<HeadingStyleProperty, string>>;
+  backdropColor?: never;
+  pageTitle: string;
+  faviconUrl?: string;
+  position?: ScrapPosition;
+}
+
+export interface CursorScrapData {
+  kind: "cursor";
+  url: string;
+  hotspotX?: number;
+  hotspotY?: number;
+  pageTitle: string;
+  faviconUrl?: string;
+  position?: ScrapPosition;
+}
+
+export type ScrapEventData =
+  | ImageScrapData
+  | ButtonScrapData
+  | SvgIconScrapData
+  | HeadingScrapData
+  | CursorScrapData;
+
+/**
  * Collector configuration
  */
 export interface CollectorConfig {

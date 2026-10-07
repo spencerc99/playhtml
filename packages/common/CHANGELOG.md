@@ -1,5 +1,39 @@
 # @playhtml/common
 
+## 0.10.0
+
+### Minor Changes
+
+- 35088f1: Add the element `live`, `users`, `setLive`, and `update` APIs so one renderer can combine shared state with current per-user values and identity. Existing awareness and `updateElement` names remain available as deprecated compatibility aliases.
+
+### Patch Changes
+
+- 74e4d35: Make `playhtml.register(elementOrId, initializer)` the recommended vanilla API for custom elements using either `updateElement` or `view`. Callers can pass an existing HTML element or register by id before the element exists. Registered initializers bind through the standard setup path without being copied onto DOM elements, while direct element-property configuration remains supported for compatibility.
+- c549849: Fix a `can-grow` element leaking document-level keydown/keyup listeners when it's removed from the DOM while hovered (e.g. an SPA route change or React unmount that doesn't fire `mouseleave` first). The listeners are now cleaned up on unmount regardless of hover state.
+- ad66821: Page-data channels can now update primitive roots with functional updates that return the next value.
+- 75c1cce: Avoid redundant shared-data writes when incoming object and array values are unchanged, preventing unnecessary collaborative document history growth.
+
+## 0.9.0
+
+### Minor Changes
+
+- ee236da: Removes internal dead code and the deprecated `additionalSetup` initializer field. Use `onMount` instead. Runtime behavior is unchanged.
+- d18ccee: Add a `playhtml.users` module for durable user identity (name and color) that works whether or not cursors are enabled. `playhtml.users.me` exposes your own identity (`name`, `color`, `pid`) with setters that persist and publish to the room. `playhtml.users.getAll()` returns an array of everyone currently in the room, and `playhtml.users.onChange(callback)` subscribes to join/leave/identity changes. In React, the new `useUsers()` hook gives a reactive roster, and `usePlayerIdentity()` no longer requires `cursors: { enabled: true }`.
+
+  Identity now lives in one place: `window.cursors.color` and `window.cursors.name` are thin delegates to `playhtml.users.me`, `window.cursors.allColors` is derived from the room's users (its undocumented setter is removed), identity changes republish to peers (previously a name or color change on a page without cursors never reached other visitors), and the browser extension's injected identity is adopted without cursors enabled. `playhtml.elementHandlers` remains available for compatibility but is deprecated; use `playhtml.getHandle(elementId, tag)` to interact with a bound element.
+
+### Patch Changes
+
+- d70d7c3: Mark the packages as ESM-only instead of advertising CommonJS entry points that could not load their exports. The `playhtml/leafEditor` subpath now provides declarations that type-check with NodeNext module resolution.
+
+## 0.8.2
+
+### Patch Changes
+
+- cd1ebf9: Allow `can-play` elements to render from element awareness alone when `myDefaultAwareness` is paired with `updateElementAwareness`, and report incomplete initializer pairs with specific diagnostics.
+- dca1704: Restrict presence player identities to public fields, strip profile-only fields from generated identities, and allow custom presence values larger than 4 KiB.
+- 252acd0: Apply `can-move-bounds` only while dragging so setup preserves initial CSS layout and persisted positions instead of rewriting them from pre-insertion or client-specific geometry.
+
 ## 0.8.1
 
 ### Patch Changes

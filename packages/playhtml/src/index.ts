@@ -3,6 +3,10 @@
 /// <reference lib="dom"/>
 /// <reference types="vite/client" />
 import YProvider from "y-partyserver/provider";
+import {
+  coalesceProviderUpdates,
+  type UpdateCoalescer,
+} from "./updateCoalescer";
 import "./style.scss";
 import {
   ElementData,
@@ -13,37 +17,38 @@ import {
   PlayEvent,
   EventMessage,
   RegisteredPlayEvent,
-  generatePersistentPlayerIdentity,
   toPublicPlayerIdentity,
   deepReplaceIntoProxy,
   clonePlain,
+  observeElementChanges,
+  type ElementUser,
+  type User,
 } from "@playhtml/common";
-import {
-  listSharedElements as devListSharedElements,
-  teardownDevUI,
-  setupDevUI,
-} from "./development";
+import { listSharedElements as devListSharedElements } from "./shared-elements";
 import {
   createNavigationController,
   attachNavigationListeners,
   dispatchNavigated,
 } from "./navigation";
-import type { PlayerIdentity, CursorPresence } from "@playhtml/common";
-import * as Y from "yjs";
+import type {
+  PlayerIdentity,
+  CursorPresence,
+  CursorPresenceView,
+} from "@playhtml/common";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
+import type { Map as YMap } from "yjs";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
-import {
-  getStableIdForAwareness,
-  getElementAwarenessFingerprint,
-} from "./awareness-utils";
-import { CursorClientAwareness } from "./cursors/cursor-client";
-import { createPresenceAPI, ensureAwarenessIdentity } from "./presence";
+import type { CursorClientAwareness } from "./cursors/cursor-client";
+import { getPresencePage } from "./cursors/presence-page";
+import { createUsersAPI, defaultSeedIdentity } from "./users";
+import type { UsersAPI } from "./users";
 import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
 import {
   findSharedElementsOnPage,
   findSharedReferencesOnPage,
   isSharedReadOnly,
+  setSharedPermission,
 } from "./sharing";
 import { parseDataSource, normalizeHost } from "@playhtml/common";
 import type { PageDataChannel } from "@playhtml/common";
@@ -51,13 +56,30 @@ import {
   createPageDataChannel,
   PAGE_TAG,
   refreshPageDataChannels,
+  rebindPageDataChannels,
 } from "./page-data";
 import { createReadOnlyStore, type ReadOnlyStore } from "./readOnlyStore";
+import { RealtimePresenceTransport } from "./presence-transport";
+import type { PeerStore } from "./peer-store";
 import {
-  canUseRealtimePresenceTransport,
-  RealtimePresenceTransport,
-} from "./presence-transport";
+  ElementAwarenessClient,
+  type ElementAwarenessEntry,
+  type ElementAwarenessMap,
+} from "./element-awareness";
+import { PresenceClient } from "./presence-client";
+import { PresenceFacade } from "./presence-facade";
+import { safeInvoke } from "./presence-utils";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
+import { resolveRoomHost } from "./roomHost";
+
+export {
+  formatStateLeafValue,
+  isEditableStateLeaf,
+  parseStateLeafValue,
+  replaceStateLeafValue,
+  type EditableStateLeafValue,
+  type StatePathSegment,
+} from "./leafEditor";
 
 const DefaultPartykitHost = "api.playhtml.fun";
 const StagingPartykitHost = "api-staging.playhtml.fun";
@@ -105,6 +127,7 @@ type PlayStore = {
 let store: PlayStore = syncedStore<StoreShape>({ play: {} });
 let doc = getYjsDoc(store);
 let publicSyncedStore = createReadOnlyStore(store.play);
+let developmentModule: typeof import("./development") | null = null;
 
 function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
   // TODO: Strip filename extension
@@ -129,7 +152,7 @@ function normalizePathname(pathname: string): string {
  */
 function resolveCursorRoom(room: CursorRoom): string {
   const context = {
-    domain: window.location.host,
+    domain: getCurrentRoomHost(),
     pathname: window.location.pathname,
     search: window.location.search,
   };
@@ -177,13 +200,74 @@ function normalizeRoomId(host: string, roomString: string): string {
   return encodeURIComponent(normalized);
 }
 
+function getCurrentRoomHost(): string {
+  return resolveRoomHost(window.location, document.referrer);
+}
+
 let yprovider: YProvider;
-let cursorProvider: YProvider | null = null;
+let mainUpdateCoalescer: UpdateCoalescer | null = null;
+let flushesUpdatesOnPageHide = false;
 let cursorClient: CursorClientAwareness | null = null;
+// Pages without cursors never download the cursor client. Callers load it
+// before changing any state, so building cursors stays synchronous and a
+// reset cannot land between tearing down and rebuilding.
+let cursorModule: typeof import("./cursors/cursor-client") | null = null;
+
+async function loadCursorModule(): Promise<void> {
+  cursorModule ??= await import("./cursors/cursor-client");
+}
 let currentCursorRoomId = "";
-let presenceAPI: PresenceAPI | null = null;
-// @ts-ignore, will be removed
-let globalData: Y.Map<any> = doc.getMap<Y.Map<any>>("playhtml-global");
+// The stable object returned by playhtml.presence for the instance lifetime.
+// Delegates to the current inner client, which is rebuilt on room change; the
+// facade re-attaches active subscriptions to each new inner so references (and
+// onPresenceChange subscriptions) captured before navigation keep working.
+let presenceFacade: PresenceFacade | null = null;
+let usersAPI: UsersAPI | null = null;
+let usersElementRenderUnsubscribe: (() => void) | null = null;
+let lastElementUsersFingerprint: string | null = null;
+
+// Stable indirection between the page presence client's "cursor" channel and
+// whichever cursor client currently exists. The cursor client is torn down and
+// rebuilt on navigation / server reset, and momentarily null while disabled, so
+// binding a subscription to a cursor-client instance strands it. Instead,
+// subscribers register on this hub (which outlives every cursor client), and
+// the hub resolves the CURRENT cursor client at dispatch time. buildCursors
+// wires the live cursor client to feed the hub; teardownCursors unwires it.
+type CursorPresences = Map<string, CursorPresenceView>;
+const cursorPresenceHub = {
+  subscribers: new Set<(presences: CursorPresences) => void>(),
+  feedUnsub: null as (() => void) | null,
+  getPresences(): CursorPresences {
+    return cursorClient?.getCursorPresences() ?? new Map();
+  },
+  subscribe(callback: (presences: CursorPresences) => void): () => void {
+    this.subscribers.add(callback);
+    return () => {
+      this.subscribers.delete(callback);
+    };
+  },
+  notify(presences: CursorPresences): void {
+    for (const callback of this.subscribers) {
+      safeInvoke(() => callback(presences), "cursor presence subscriber");
+    }
+  },
+  // Point the hub at a freshly built cursor client: drop the previous feed and
+  // forward the new client's presence changes to hub subscribers.
+  connect(client: CursorClientAwareness): void {
+    this.feedUnsub?.();
+    this.feedUnsub = client.onCursorPresencesChange((presences) => {
+      this.notify(presences);
+    });
+  },
+  disconnect(): void {
+    this.feedUnsub?.();
+    this.feedUnsub = null;
+  },
+};
+
+function resolveMyIdentity(): PlayerIdentity {
+  return usersAPI?.getIdentity() ?? defaultSeedIdentity();
+}
 // Internal map for quick access to proxies
 const proxyByTagAndId = new Map<string, Map<string, any>>();
 const yObserverByKey = new Map<string, (...args: unknown[]) => void>();
@@ -197,18 +281,8 @@ const pageDataListeners = new Map<string, Set<(data: any) => void>>();
 const sharedUpdateSeen: Set<string> = new Set();
 const sharedHydrationTimers: Map<string, number> = new Map();
 
-// Shared permissions map for tracking element permissions
-export const sharedPermissions = new Map<string, "read-only" | "read-write">();
 // Track discovered shared references to avoid duplicates
 const discoveredSharedReferences = new Set<string>();
-
-function initializeSharedPermissions(): void {
-  // Initialize if not already done
-  if (sharedPermissions.size === 0) {
-    // Clear any existing entries to ensure clean state
-    sharedPermissions.clear();
-  }
-}
 
 // Handle discovery of a new shared reference element
 function handleNewSharedReference(element: HTMLElement): void {
@@ -272,7 +346,7 @@ function handleNewSharedElement(element: HTMLElement): void {
   }
 
   // Update local permissions
-  sharedPermissions.set(elementId, permissionMode);
+  setSharedPermission(elementId, permissionMode);
 
   // Send to server if connected
   if (yprovider?.wsconnected) {
@@ -319,10 +393,11 @@ function ensureElementProxy<TData = unknown>(
   }
   return tagMap.get(elementId)! as TData;
 }
-let elementHandlers: Map<string, Map<string, ElementHandler>> = new Map<
-  string,
-  Map<string, ElementHandler>
->();
+// Registry of active handlers (tag -> element id -> handler).
+// Retained on the playhtml singleton for compatibility; external code should
+// use getHandle() so it does not depend on handler internals.
+export const elementHandlers: Map<string, Map<string, ElementHandler>> =
+  new Map<string, Map<string, ElementHandler>>();
 const mirrorDescendantElementsByRoot = new WeakMap<
   HTMLElement,
   Map<string, HTMLElement>
@@ -452,10 +527,61 @@ export interface InitOptions<T = unknown> {
    * Cursor tracking and proximity detection configuration
    */
   cursors?: CursorOptions;
+
+  /**
+   * The local user's durable identity (name and color), available via
+   * `playhtml.users` regardless of whether cursors are enabled. Defaults to a
+   * persistent per-browser identity generated on first use.
+   * `cursors.playerIdentity` is still honored and takes precedence over this
+   * option, for back-compat.
+   */
+  playerIdentity?: PlayerIdentity;
 }
 
 let capabilitiesToInitializer: Record<TagType | string, ElementInitializer> =
   TagTypeToElement;
+const elementInitializersById = new Map<string, ElementInitializer>();
+let registeredElementObserver: MutationObserver | null = null;
+
+function observeRegisteredElements(): void {
+  if (
+    registeredElementObserver ||
+    elementInitializersById.size === 0 ||
+    typeof MutationObserver === "undefined"
+  ) {
+    return;
+  }
+
+  registeredElementObserver = observeElementChanges(
+    document.documentElement,
+    (mutations) => {
+      for (const mutation of mutations) {
+        for (const addedNode of mutation.addedNodes) {
+          if (!isHTMLElement(addedNode)) continue;
+
+          if (
+            addedNode.id &&
+            elementInitializersById.has(addedNode.id)
+          ) {
+            setupPlayElement(addedNode);
+          }
+
+          addedNode.querySelectorAll<HTMLElement>("[id]").forEach((element) => {
+            if (elementInitializersById.has(element.id)) {
+              setupPlayElement(element);
+            }
+          });
+        }
+      }
+    },
+    { childList: true, subtree: true },
+  );
+}
+
+function disconnectRegisteredElementObserver(): void {
+  registeredElementObserver?.disconnect();
+  registeredElementObserver = null;
+}
 
 function getTagTypes(): (TagType | string)[] {
   return [TagType.CanPlay, ...Object.keys(capabilitiesToInitializer)];
@@ -486,6 +612,18 @@ function onMessage(data: string) {
     return;
   }
 
+  // Sent when a client joins with an older epoch but no document history, so
+  // it can stay connected and only needs to remember the current epoch.
+  if (message.type === "reset-epoch") {
+    const resetEpoch = Number(message.resetEpoch);
+    if (!Number.isFinite(resetEpoch)) {
+      console.error("[PLAYHTML] Received reset-epoch without a resetEpoch");
+      return;
+    }
+    storeResetEpochForRoom(__currentRoomId, resetEpoch);
+    return;
+  }
+
   // Handle regular PlayHTML events
   const { type, eventPayload } = message as EventMessage;
   const maybeHandlers = eventHandlers.get(type);
@@ -498,7 +636,7 @@ function onMessage(data: string) {
           "read-only" | "read-write"
         >;
         Object.entries(perms).forEach(([elementId, mode]) => {
-          sharedPermissions.set(elementId, mode);
+          setSharedPermission(elementId, mode);
           if (mode === "read-only") {
             // Add not-allowed affordance to any matching referenced element
             const el = document.querySelector(
@@ -543,19 +681,7 @@ function isPromiseLike(value: unknown): value is Promise<void> {
     typeof (value as { then?: unknown }).then === "function"
   );
 }
-/** Last fingerprint of element-awareness only; skip handler updates when unchanged (e.g. cursor-only moves). */
-let lastElementAwarenessFingerprint: string | null = null;
 let trackedElementAwarenessKeys = new Set<string>();
-// NOTE: Potential optimization: allowlist/blocklist collaborative paths
-// In complex nested data scenarios, SyncedStore CRDT proxies on every nested object can add overhead.
-// Idea: expose an opt-in config to restrict which properties are collaborative (proxied) vs. local-only.
-// Example API (future):
-// <CanPlayElement
-//   defaultData={...}
-//   crdtPaths={{ allow: ["lists.todos", "nested.a.b.c.values"], block: ["profile", "counters"] }}
-// >
-// This would proxy only specified paths in synced mode, keeping others as plain local React state.
-// This aligns with the common case where nested arrays need collaboration more than nested objects.
 
 let __currentRoomId = "";
 let __currentHost = "";
@@ -565,35 +691,127 @@ let navigationController: ReturnType<typeof createNavigationController> | null =
 let detachNavListeners: (() => void) | null = null;
 let configureIdentityListener: EventListener | null = null;
 
-// Awareness change listener — must be rebound whenever the element awareness
-// provider is rebuilt during navigation.
-let awarenessChangeHandler: (() => void) | null = null;
-let awarenessChangeTarget: {
-  awareness: { off: (event: string, cb: () => void) => void };
-} | null = null;
-
-// If the first init() receives an explicit `room`, we store it for future
-// navigation checks. A string stays fixed across navigation; a function is
-// re-invoked on each nav so a path-derived room switches correctly. If no
-// explicit room was given, we store the default-room options and re-derive on
-// each nav so pathname-based rooms switch correctly.
-let explicitRoomOption: string | (() => string) | undefined = undefined;
-
 /** Resolve the explicit room option to a string, calling it if it's a function
  * (so a path-derived room recomputes on each nav). undefined if none was set. */
 function resolveExplicitRoom(): string | undefined {
-  return typeof explicitRoomOption === "function"
-    ? explicitRoomOption()
-    : explicitRoomOption;
+  const room = configuredOptions?.room;
+  return typeof room === "function" ? room() : room;
 }
-let cachedDefaultRoomOptions: DefaultRoomOptions = { includeSearch: false };
-let cursorOptionsCache: CursorOptions | undefined = undefined;
-let cachedOnError: (() => void) | undefined = undefined;
+type AcquiredPresenceTransport = {
+  transport: RealtimePresenceTransport;
+  refCount: number;
+  selfChangeUnsub: (() => void) | null;
+};
+// One presence socket per room, shared between the cursor client, element
+// awareness, and page presence when their rooms coincide. Refcounted so a
+// cursor-room change never tears down a socket another consumer still uses.
+// Identity is a transport concern: each socket subscribes ONCE to
+// users.onSelfChange and re-joins on any identity change, so exactly one
+// broadcaster keeps the join identity current for every consumer sharing it.
+const presenceTransportsByRoom = new Map<string, AcquiredPresenceTransport>();
+let cursorPresenceTransportRoom: string | null = null;
+let elementAwarenessClient: ElementAwarenessClient | null = null;
+let elementAwarenessRoom: string | null = null;
+let presenceClient: PresenceClient | null = null;
+let presenceClientRoom: string | null = null;
+let usersPresenceTransportRoom: string | null = null;
+
+const identityPeerHub = {
+  store: null as PeerStore | null,
+  storeUnsubscribe: null as (() => void) | null,
+  subscribers: new Set<() => void>(),
+  getPeers() {
+    return this.store?.getPeers() ?? new Map();
+  },
+  subscribe(callback: () => void): () => void {
+    this.subscribers.add(callback);
+    return () => this.subscribers.delete(callback);
+  },
+  connect(store: PeerStore): void {
+    this.storeUnsubscribe?.();
+    this.store = store;
+    this.storeUnsubscribe = store.subscribe("identity", () => {
+      for (const callback of this.subscribers) {
+        safeInvoke(callback, "users identity subscriber");
+      }
+    });
+  },
+  disconnect(): void {
+    this.storeUnsubscribe?.();
+    this.storeUnsubscribe = null;
+    this.store = null;
+  },
+};
+
+function acquirePresenceTransport(room: string): RealtimePresenceTransport {
+  const existing = presenceTransportsByRoom.get(room);
+  if (existing) {
+    existing.refCount++;
+    return existing.transport;
+  }
+  const transport = new RealtimePresenceTransport({
+    host: __currentHost,
+    room,
+  });
+  // Republish the join identity whenever users.me changes (color/name set,
+  // whole-identity adopt, extension injection via adoptIdentity). Owned here so
+  // no individual consumer wires identity — one broadcaster per socket.
+  const selfChangeUnsub =
+    usersAPI?.onSelfChange(() => {
+      try {
+        transport.join({
+          identity: resolveMyIdentity(),
+          page: getPresencePage(),
+        });
+        if (room === elementAwarenessRoom) {
+          elementAwarenessClient?.refresh();
+        }
+      } catch (error) {
+        // join validates identity and can throw (e.g. an extension-injected
+        // identity edge case). Surface it — the empty catch also let latestJoin
+        // keep replaying a stale identity on reconnect silently.
+        console.warn("[playhtml] Failed to republish identity on change:", error);
+      }
+    }) ?? null;
+  presenceTransportsByRoom.set(room, {
+    transport,
+    refCount: 1,
+    selfChangeUnsub,
+  });
+  return transport;
+}
+
+function connectUsersPresenceTransport(room: string): void {
+  const transport = acquirePresenceTransport(room);
+  usersPresenceTransportRoom = room;
+  identityPeerHub.connect(transport.peers);
+}
+
+function disconnectUsersPresenceTransport(): void {
+  identityPeerHub.disconnect();
+  if (usersPresenceTransportRoom !== null) {
+    releasePresenceTransport(usersPresenceTransportRoom);
+    usersPresenceTransportRoom = null;
+  }
+}
+
+function releasePresenceTransport(room: string): void {
+  const entry = presenceTransportsByRoom.get(room);
+  if (!entry) return;
+  entry.refCount--;
+  if (entry.refCount > 0) return;
+  presenceTransportsByRoom.delete(room);
+  try {
+    entry.selfChangeUnsub?.();
+  } catch {}
+  try {
+    entry.transport.destroy();
+  } catch {}
+}
 let roomResetPromise: Promise<void> | null = null;
 let pendingRoomResetEpoch: number | null = null;
 const SERVER_ROOM_RESET_SYNC_TIMEOUT_MS = 5000;
 const mainProviderSyncWaiters = new Set<(error?: Error) => void>();
-let isDevelopmentMode = false;
 
 // The config declared for this playhtml instance. Captured by the first call
 // that supplies config — whether configure() or a config-bearing init() — and
@@ -634,6 +852,15 @@ function normalizeConfig(value: unknown): unknown {
     return Object.keys(out).length === 0 ? undefined : out;
   }
   return value;
+}
+
+function containsConfiguredFunction(value: unknown): boolean {
+  if (typeof value === "function") return true;
+  if (Array.isArray(value)) return value.some(containsConfiguredFunction);
+  if (value && typeof value === "object") {
+    return Object.values(value).some(containsConfiguredFunction);
+  }
+  return false;
 }
 
 /**
@@ -684,10 +911,13 @@ function configsConflict(locked: InitOptions, incoming: InitOptions): boolean {
 
 /** True if these options declare no config worth locking (an "ensure running"
  * call). Such a call must NOT lock config, so a real configure() can still win
- * before connection. Uses the same normalization as configsConflict, so
- * `{}`, `{ cursors: {} }`, and `{ room: undefined }` all count as empty. */
+ * before connection. `{}`, `{ cursors: {} }`, and `{ room: undefined }` all
+ * count as empty, while function-valued options still declare config. */
 function isEmptyConfig(options: InitOptions): boolean {
-  return normalizeConfig(options) === undefined;
+  return (
+    normalizeConfig(options) === undefined &&
+    !containsConfiguredFunction(options)
+  );
 }
 
 /**
@@ -720,21 +950,26 @@ function applyConfig(options: InitOptions): void {
     return;
   }
 
+  if (options.extraCapabilities) {
+    for (const [tag, tagInfo] of Object.entries(options.extraCapabilities)) {
+      validateCapability(tag, tagInfo);
+    }
+  }
+
   // Shallow-copy so a caller that mutates or reuses its options object after
   // declaring config can't silently change the locked config. cursors is
   // copied too since it's the most commonly nested-and-mutated option.
-  configuredOptions = { ...options };
-  explicitRoomOption = options.room;
-  cachedDefaultRoomOptions = options.defaultRoomOptions
-    ? { ...options.defaultRoomOptions }
-    : { includeSearch: false };
-  cursorOptionsCache = options.cursors ? { ...options.cursors } : {};
-  cachedOnError = options.onError;
-  isDevelopmentMode = options.developmentMode ?? false;
+  configuredOptions = {
+    ...options,
+    ...(options.defaultRoomOptions
+      ? { defaultRoomOptions: { ...options.defaultRoomOptions } }
+      : {}),
+    ...(options.cursors ? { cursors: { ...options.cursors } } : {}),
+  };
 
   if (options.extraCapabilities) {
     for (const [tag, tagInfo] of Object.entries(options.extraCapabilities)) {
-      capabilitiesToInitializer[tag] = tagInfo;
+      registerCapability(tag, tagInfo);
     }
   }
   if (options.events) {
@@ -767,27 +1002,36 @@ function buildMainProvider(args: {
 
   const sharedElements = findSharedElementsOnPage();
   const sharedReferences = findSharedReferencesOnPage();
-  initializeSharedPermissions();
 
   sharedReferences.forEach((ref) => {
     const referenceKey = `${ref.domain}${ref.path}#${ref.elementId}`;
     discoveredSharedReferences.add(referenceKey);
   });
 
-  const storageKey = `playhtml_resetEpoch_${room}`;
-  const storedResetEpoch = localStorage.getItem(storageKey);
-  const clientResetEpoch = storedResetEpoch
-    ? parseInt(storedResetEpoch, 10)
-    : null;
-
-  yprovider = new YProvider(partykitHost, room, doc, {
-    params: {
+  // Resolved before every connect and reconnect, so a reconnect after a
+  // room-reset or reset-epoch notice always carries the latest epoch.
+  const params = () => {
+    const clientResetEpoch = getResetEpochForRoom(room);
+    return {
       sharedElements: JSON.stringify(sharedElements),
       sharedReferences: JSON.stringify(sharedReferences),
       clientResetEpoch:
         clientResetEpoch !== null ? String(clientResetEpoch) : null,
-    },
-  });
+    };
+  };
+
+  yprovider = new YProvider(partykitHost, room, doc, { params });
+  mainUpdateCoalescer = coalesceProviderUpdates(yprovider as any);
+  if (!flushesUpdatesOnPageHide && typeof window !== "undefined") {
+    flushesUpdatesOnPageHide = true;
+    // Send changes still waiting for the next batch before the page goes
+    // away or is hidden; hidden tabs throttle the batch timer for up to a
+    // minute.
+    window.addEventListener("pagehide", () => mainUpdateCoalescer?.flush());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") mainUpdateCoalescer?.flush();
+    });
+  }
   yprovider.on("error", () => {
     onError?.();
   });
@@ -800,17 +1044,21 @@ function buildMainProvider(args: {
   return { sharedReferences };
 }
 
-/** Disconnect and destroy the cursor client + cursor provider. */
+/** Destroy the cursor client and release its presence transport. */
 function teardownCursors(): void {
+  cursorPresenceHub.disconnect();
   try { cursorClient?.destroy?.(); } catch {}
   cursorClient = null;
-  try { cursorProvider?.disconnect?.(); } catch {}
-  try { cursorProvider?.destroy?.(); } catch {}
-  cursorProvider = null;
+  if (cursorPresenceTransportRoom !== null) {
+    releasePresenceTransport(cursorPresenceTransportRoom);
+    cursorPresenceTransportRoom = null;
+  }
 }
 
 /** Disconnect and destroy the main Yjs provider. */
 function teardownMainProvider(): void {
+  try { mainUpdateCoalescer?.flush(); } catch {}
+  mainUpdateCoalescer = null;
   try { yprovider?.disconnect?.(); } catch {}
   try { yprovider?.destroy?.(); } catch {}
 }
@@ -821,8 +1069,8 @@ function teardownMainProvider(): void {
  * room's state, exactly like a page reload, with no tombstone carried into the
  * old room (discard, don't delete). The old doc is destroyed.
  *
- * Everything derived from the doc is rebuilt: globalData, the public read-only
- * store, and the page-data + proxy bookkeeping. Connected element handlers
+ * Everything derived from the doc is rebuilt: the public read-only store and
+ * the page-data + proxy bookkeeping. Connected element handlers
  * re-register against the fresh store via setupElements() (called by the caller
  * after the new provider is built); surviving page-data handles re-bind lazily
  * through their ensureProxy/attachObserver re-acquire path.
@@ -834,7 +1082,6 @@ function recreateStore(): void {
   store = syncedStore<StoreShape>({ play: {} });
   doc = getYjsDoc(store);
   publicSyncedStore = createReadOnlyStore(store.play);
-  globalData = doc.getMap<Y.Map<any>>("playhtml-global");
 
   // Proxies and observers referenced the old doc — drop them so they rebuild
   // against the fresh store. KEEP page-data listener sets + refcounts: a channel
@@ -855,96 +1102,187 @@ function recreateStore(): void {
 }
 
 /**
- * Detach the current awareness "change" listener (if any) and attach a fresh
- * one to the provider that holds element awareness. Safe to call multiple times.
+ * Connects element awareness to the normalized page room over the generic
+ * presence transport. Reuses the cursor presence socket when the cursor room
+ * is the page room; otherwise opens a separate page-scoped socket.
  */
-function bindAwarenessListener(): void {
-  if (awarenessChangeTarget && awarenessChangeHandler) {
-    try {
-      awarenessChangeTarget.awareness.off("change", awarenessChangeHandler);
-    } catch {}
+function buildElementAwarenessClient(): void {
+  const transport = acquirePresenceTransport(__currentRoomId);
+  const room = __currentRoomId;
+  elementAwarenessRoom = room;
+  // Construct AFTER recording the room, then release the acquired ref if the
+  // constructor throws (reachable via synchronous snapshot replay into a user
+  // callback) — otherwise the client stays null, teardown early-returns on the
+  // null client, and the transport ref leaks forever.
+  try {
+    elementAwarenessClient = new ElementAwarenessClient({
+      transport,
+      getIdentity: resolveMyIdentity,
+      getPage: getPresencePage,
+      onAwareness: applyElementAwareness,
+      onAwarenessChange: applyElementAwarenessEntry,
+    });
+  } catch (error) {
+    elementAwarenessRoom = null;
+    releasePresenceTransport(room);
+    console.error("[playhtml] Failed to build element awareness client:", error);
+    return;
   }
-  awarenessChangeTarget = null;
-  awarenessChangeHandler = null;
+  // Identity re-joins are owned by the shared transport (see
+  // acquirePresenceTransport); element awareness re-keys peers from the
+  // transport's identity channel, so it needs no self-change wiring of its own.
+}
 
-  const provider = getElementAwarenessProvider();
-  if (!provider) return;
-  const handler = () => onChangeAwareness();
-  provider.awareness.on("change", handler);
-  awarenessChangeTarget = provider;
-  awarenessChangeHandler = handler;
+function teardownElementAwarenessClient(): void {
+  if (!elementAwarenessClient) return;
+  try {
+    elementAwarenessClient.destroy();
+  } catch {}
+  elementAwarenessClient = null;
+  if (elementAwarenessRoom !== null) {
+    releasePresenceTransport(elementAwarenessRoom);
+    elementAwarenessRoom = null;
+  }
 }
 
 /**
- * Builds the cursor client and optional separate cursor provider for the
- * given main room. Side effects: assigns module-level `cursorProvider` and
- * `cursorClient`, and `currentCursorRoomId`. Returns without awaiting sync.
+ * Reseed a freshly built element awareness client from every retained handler's
+ * current selfAwareness, so still-mounted elements stay visible in the new room
+ * without a user action. Batched into one publish (not one per element) to
+ * avoid an O(N) publish burst against the server's per-connection rate budget.
+ */
+function seedElementAwarenessFromHandlers(): void {
+  if (!elementAwarenessClient) return;
+  const entries: Array<[string, string, unknown]> = [];
+  for (const [tag, handlersById] of elementHandlers) {
+    for (const [elementId, handler] of handlersById) {
+      if (handler.selfAwareness === undefined) continue;
+      entries.push([tag, elementId, handler.selfAwareness]);
+    }
+  }
+  if (entries.length === 0) return;
+  elementAwarenessClient.setLocalAwarenessBatch(entries);
+}
+
+/**
+ * Builds the inner page presence client for the current room over the
+ * generic presence transport on the normalized page room (sharing the
+ * cursor/element-awareness socket via the refcounted registry). The cursor channel
+ * is served from the cursor client's snapshot so cursor rendering
+ * has one source of truth. Wrapped by the stable PresenceFacade — never handed
+ * to consumers directly, since it is torn down and replaced on room change.
+ */
+function buildInnerPresenceAPI(): PresenceAPI {
+  const transport = acquirePresenceTransport(__currentRoomId);
+  const room = __currentRoomId;
+  presenceClientRoom = room;
+  presenceClient = new PresenceClient({
+    transport,
+    getIdentity: resolveMyIdentity,
+    getPage: getPresencePage,
+    getCursorPresences: () => cursorPresenceHub.getPresences(),
+    onCursorPresencesChange: (callback) => cursorPresenceHub.subscribe(callback),
+  });
+  return presenceClient;
+}
+
+function teardownPresenceClient(): void {
+  if (!presenceClient) return;
+  try {
+    presenceClient.destroy();
+  } catch {}
+  presenceClient = null;
+  if (presenceClientRoom !== null) {
+    releasePresenceTransport(presenceClientRoom);
+    presenceClientRoom = null;
+  }
+}
+
+/**
+ * Builds the cursor client for the given main room. Side effects: assigns
+ * module-level `cursorClient` and `currentCursorRoomId`.
+ * Returns without awaiting sync.
  *
- * Safe to call multiple times — assumes prior cursorClient/cursorProvider
- * were already torn down by the caller.
+ * Safe to call multiple times — assumes the prior cursor client
+ * was already torn down by the caller.
  */
 function buildCursors(args: {
   cursors: CursorOptions;
   mainRoom: string;
-  partykitHost: string;
-  onError: (() => void) | undefined;
 }): void {
-  const { cursors, mainRoom, partykitHost, onError } = args;
+  const { cursors, mainRoom } = args;
 
   if (!cursors.enabled) {
     currentCursorRoomId = "";
     return;
   }
 
-  const cursorOptions: CursorOptions = { ...cursors };
-  if (!cursorOptions.playerIdentity) {
-    cursorOptions.playerIdentity = generatePersistentPlayerIdentity();
+  if (!usersAPI) {
+    throw new Error("[playhtml] buildCursors requires the users module to exist first.");
   }
 
-  let providerForCursors: YProvider = yprovider;
+  const cursorOptions: CursorOptions = { ...cursors };
 
   if (cursorOptions.room) {
     const cursorRoomString = resolveCursorRoom(cursorOptions.room);
-    const cursorRoom = normalizeRoomId(window.location.host, cursorRoomString);
-
-    if (cursorRoom !== mainRoom) {
-      const cursorDoc = new Y.Doc();
-      cursorProvider = new YProvider(
-        partykitHost,
-        cursorRoom,
-        cursorDoc,
-      );
-      cursorProvider.on("error", () => {
-        onError?.();
-      });
-      providerForCursors = cursorProvider;
-      currentCursorRoomId = cursorRoom;
-    } else {
-      currentCursorRoomId = mainRoom;
-    }
+    currentCursorRoomId = normalizeRoomId(
+      getCurrentRoomHost(),
+      cursorRoomString,
+    );
   } else {
     currentCursorRoomId = mainRoom;
   }
 
-  const cursorPresenceTransport = canUseRealtimePresenceTransport()
-    ? new RealtimePresenceTransport({
-        host: partykitHost,
-        room: currentCursorRoomId,
-      })
-    : undefined;
-  cursorClient = new CursorClientAwareness(
-    providerForCursors,
+  if (cursorModule === null) {
+    throw new Error(
+      "[playhtml] buildCursors requires the cursor client to be loaded first.",
+    );
+  }
+  const cursorPresenceTransport = acquirePresenceTransport(currentCursorRoomId);
+  cursorPresenceTransportRoom = currentCursorRoomId;
+  cursorClient = new cursorModule.CursorClientAwareness(
     cursorOptions,
     cursorPresenceTransport,
+    usersAPI,
   );
+  // Feed the stable cursor presence hub from this (current) cursor client so
+  // the page presence "cursor" channel keeps firing across cursor rebuilds.
+  cursorPresenceHub.connect(cursorClient);
+}
+
+// The in-memory copy is authoritative for this page. localStorage only carries
+// the epoch across page loads and may be unavailable (blocked storage, quota).
+const resetEpochByRoom = new Map<string, number>();
+
+function getResetEpochStorageKey(room: string): string {
+  return `playhtml_resetEpoch_${room}`;
+}
+
+function getResetEpochForRoom(room: string): number | null {
+  const known = resetEpochByRoom.get(room);
+  if (known !== undefined) return known;
+
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(getResetEpochStorageKey(room));
+  } catch (error) {
+    console.warn("[PLAYHTML] Could not read the stored room reset epoch", error);
+  }
+  const parsed = stored === null ? NaN : Number(stored);
+  if (!Number.isFinite(parsed)) return null;
+  resetEpochByRoom.set(room, parsed);
+  return parsed;
 }
 
 function storeResetEpochForRoom(room: string, resetEpoch: number): void {
-  const storageKey = `playhtml_resetEpoch_${room}`;
-  localStorage.setItem(storageKey, String(resetEpoch));
-  console.log(
-    `[PLAYHTML] Stored resetEpoch=${resetEpoch} in localStorage key=${storageKey}`,
-  );
+  const known = resetEpochByRoom.get(room);
+  if (known !== undefined && known >= resetEpoch) return;
+  resetEpochByRoom.set(room, resetEpoch);
+  try {
+    localStorage.setItem(getResetEpochStorageKey(room), String(resetEpoch));
+  } catch (error) {
+    console.warn("[PLAYHTML] Could not store the room reset epoch", error);
+  }
 }
 
 function waitForMainProviderSync(timeoutMs?: number): Promise<void> {
@@ -1030,34 +1368,37 @@ async function resetCurrentRoomFromServer(): Promise<void> {
     throw new Error("playhtml cannot reset before init()");
   }
 
+  if (configuredOptions?.cursors?.enabled) {
+    await loadCursorModule();
+    // A full reset while the cursor client loaded leaves nothing to rebuild.
+    if (!__currentRoomId || !__currentHost) return;
+  }
   teardownMainProvider();
   teardownCursors();
   hasSynced = false;
-  lastElementAwarenessFingerprint = null;
   trackedElementAwarenessKeys.clear();
   recreateStore();
 
   buildMainProvider({
     room: __currentRoomId,
     partykitHost: __currentHost,
-    onError: cachedOnError,
+    onError: configuredOptions?.onError,
     onMessage,
   });
 
-  if (cursorOptionsCache?.enabled) {
+  const cursors = configuredOptions?.cursors;
+  if (cursors?.enabled) {
     buildCursors({
-      cursors: cursorOptionsCache,
+      cursors,
       mainRoom: __currentRoomId,
-      partykitHost: __currentHost,
-      onError: cachedOnError,
     });
   }
+  usersAPI?.getAll();
 
-  bindAwarenessListener();
   markAllElementsAsLoading();
   await waitForMainProviderSync(SERVER_ROOM_RESET_SYNC_TIMEOUT_MS);
   refreshPageDataChannels(getPageDataDeps());
-  setupElements();
+  reinitializeElements();
   markAllElementsAsReady();
   cursorClient?.refreshContainer?.();
   cursorClient?.refreshCursorStyles?.();
@@ -1073,23 +1414,25 @@ async function resetCurrentRoomFromServer(): Promise<void> {
  * The extension owns the canonical public key and style. The page owns its
  * display name.
  *
- * Idempotent: only attaches once. Safe to call from both the initial
- * cursor-enabled path and the late-enable path.
+ * Idempotent: only attaches once. Safe to call once users exist, regardless
+ * of whether cursor rendering is enabled.
  */
 function setupExtensionIdentityListener(): void {
   if (configureIdentityListener) return;
 
   configureIdentityListener = ((e: CustomEvent) => {
     const incoming = toPublicPlayerIdentity(e.detail?.playerIdentity);
-    if (!incoming?.playerStyle.colorPalette[0] || !cursorClient) return;
+    if (!incoming?.playerStyle.colorPalette[0] || !usersAPI) return;
 
-    const current = cursorClient.getMyPlayerIdentity();
-    cursorClient.configure({
-      playerIdentity: {
-        ...incoming,
-        ...(typeof current.name === "string" ? { name: current.name } : {}),
-      },
-    });
+    const current = resolveMyIdentity();
+    // Start from the sanitized extension identity so page-side non-public
+    // fields die at the boundary; carry over only the page-owned fields.
+    const merged: PlayerIdentity = {
+      ...incoming,
+      ...(typeof current.name === "string" ? { name: current.name } : {}),
+    };
+
+    usersAPI.adoptIdentity(merged);
     console.log("[playhtml] Merged extension identity via CustomEvent");
   }) as EventListener;
   document.addEventListener(
@@ -1104,23 +1447,31 @@ function setupExtensionIdentityListener(): void {
 async function runHandleNavigation(): Promise<void> {
   // firstSetup is true before init and after resetPlayHTML — skip nav in both.
   if (firstSetup) return;
+  if (configuredOptions?.cursors?.enabled) {
+    await loadCursorModule();
+    if (firstSetup) return;
+  }
 
   const nextRoomInput =
-    resolveExplicitRoom() ?? getDefaultRoom(cachedDefaultRoomOptions);
-  const newMainRoom = normalizeRoomId(window.location.host, nextRoomInput);
+    resolveExplicitRoom() ??
+    getDefaultRoom(
+      configuredOptions?.defaultRoomOptions ?? { includeSearch: false },
+    );
+  const newMainRoom = normalizeRoomId(getCurrentRoomHost(), nextRoomInput);
   const mainRoomChanged = newMainRoom !== __currentRoomId;
 
-  const cursorsWanted = Boolean(cursorOptionsCache?.enabled);
+  const cursorOptions = configuredOptions?.cursors;
+  const cursorsWanted = Boolean(cursorOptions?.enabled);
   const cursorsActive = cursorClient !== null;
   // Cursor setup is static after init, but the cursor client can still be
   // rebuilt when navigation changes the cursor room.
   const cursorEnabledChanged = cursorsWanted !== cursorsActive;
 
   let cursorRoomChanged = false;
-  if (cursorOptionsCache?.enabled) {
-    if (cursorOptionsCache.room) {
-      const resolved = resolveCursorRoom(cursorOptionsCache.room);
-      const normalized = normalizeRoomId(window.location.host, resolved);
+  if (cursorOptions?.enabled) {
+    if (cursorOptions.room) {
+      const resolved = resolveCursorRoom(cursorOptions.room);
+      const normalized = normalizeRoomId(getCurrentRoomHost(), resolved);
       cursorRoomChanged = normalized !== currentCursorRoomId;
     } else {
       cursorRoomChanged = mainRoomChanged;
@@ -1134,7 +1485,7 @@ async function runHandleNavigation(): Promise<void> {
   // has no listener cleanup. React-managed elements stay connected across
   // route changes when the same node is reused; React's unmount path already
   // calls removePlayElement for replaced nodes.
-  for (const [, map] of elementHandlers) {
+  for (const [tag, map] of elementHandlers) {
     for (const [id, handler] of [...map.entries()]) {
       const el = (handler as { element?: HTMLElement }).element;
       if (!el || !el.isConnected) {
@@ -1143,15 +1494,22 @@ async function runHandleNavigation(): Promise<void> {
         // view element's clock loop keeps ticking forever after navigation.
         (handler as { destroy?: () => void }).destroy?.();
         map.delete(id);
+        // Drop the element's local awareness too. On a SAME-room DOM swap the
+        // client is not rebuilt, so a stale entry would rebroadcast forever and
+        // eat the shard budget. (On a room change the client is rebuilt empty
+        // and reseeded from surviving handlers, so this is a no-op there.)
+        elementAwarenessClient?.removeLocalAwareness(tag, id);
       }
     }
   }
 
   if (mainRoomChanged) {
     teardownMainProvider();
+    teardownElementAwarenessClient();
+    teardownPresenceClient();
+    disconnectUsersPresenceTransport();
     hasSynced = false;
-    lastElementAwarenessFingerprint = null;
-    trackedElementAwarenessKeys.clear();
+    applyElementAwareness(new Map());
     // Re-init the doc for the new room: page AND element data are room-scoped,
     // and the doc is reused across rooms, so a fresh doc resets both to the new
     // room (like a page reload) without syncing a delete tombstone back to the
@@ -1161,30 +1519,38 @@ async function runHandleNavigation(): Promise<void> {
     buildMainProvider({
       room: newMainRoom,
       partykitHost: __currentHost,
-      onError: cachedOnError,
+      onError: configuredOptions?.onError,
       onMessage,
     });
     __currentRoomId = newMainRoom;
+    connectUsersPresenceTransport(newMainRoom);
+    buildElementAwarenessClient();
+    // Retained handlers (still-mounted SPA/React elements) keep their
+    // selfAwareness across the room change, but the fresh client starts empty —
+    // reseed it so those elements stay visible in the new room without waiting
+    // for the next user action. One batched publish, not one per element.
+    seedElementAwarenessFromHandlers();
   }
 
-  if (cursorEnabledChanged || (cursorRoomChanged && cursorOptionsCache)) {
+  if (cursorEnabledChanged || (cursorRoomChanged && cursorOptions)) {
     // teardownCursors handles the disable case (wanted off, currently on) and
     // clears the way for a rebuild on enable / room change.
     teardownCursors();
-    if (cursorsWanted && cursorOptionsCache) {
+    if (cursorsWanted && cursorOptions) {
       buildCursors({
-        cursors: cursorOptionsCache,
+        cursors: cursorOptions,
         mainRoom: newMainRoom,
-        partykitHost: __currentHost,
-        onError: cachedOnError,
       });
     }
   }
-
-  // Element awareness lives on the page provider, so rebind only when the page
-  // room provider is rebuilt and its awareness object has been replaced.
   if (mainRoomChanged) {
-    bindAwarenessListener();
+    // Rebuild the inner presence client on the new room and swap it into the
+    // stable facade, which re-attaches active subscriptions (replaying the new
+    // room's snapshot). Consumers holding playhtml.presence keep working.
+    presenceFacade?.setInner(buildInnerPresenceAPI());
+  }
+  if (mainRoomChanged || cursorEnabledChanged || cursorRoomChanged) {
+    usersAPI?.getAll();
   }
 
   markAllElementsAsLoading();
@@ -1194,7 +1560,11 @@ async function runHandleNavigation(): Promise<void> {
     refreshPageDataChannels(getPageDataDeps());
   }
 
-  setupElements();
+  if (mainRoomChanged) {
+    reinitializeElements();
+  } else {
+    setupElements();
+  }
   markAllElementsAsReady();
 
   cursorClient?.refreshContainer?.();
@@ -1273,13 +1643,16 @@ async function initPlayHTMLOnce() {
   // Connection is about to read config; freeze it. A later configure() now
   // warns instead of silently no-op'ing — config can't change post-connect.
   lockConfigForBootstrap();
-  // host/onError/developmentMode are not mirrored into long-lived module state
-  // beyond cachedOnError/isDevelopmentMode, so read them from configuredOptions.
   const host = configuredOptions?.host;
-  const cursors = cursorOptionsCache ?? {};
+  const cursors = configuredOptions?.cursors ?? {};
+  // The cursor client downloads while the main socket connects.
+  const cursorModuleLoading = cursors.enabled ? loadCursorModule() : null;
   const inputRoom =
-    resolveExplicitRoom() ?? getDefaultRoom(cachedDefaultRoomOptions);
-  const onError = cachedOnError;
+    resolveExplicitRoom() ??
+    getDefaultRoom(
+      configuredOptions?.defaultRoomOptions ?? { includeSearch: false },
+    );
+  const onError = configuredOptions?.onError;
   // @ts-ignore
   window.playhtml = playhtml;
   // DOM marker visible to browser extension content scripts (which run in an
@@ -1289,7 +1662,7 @@ async function initPlayHTMLOnce() {
 
   // TODO: change to md5 hash if room ID length becomes problem / if some other analytic for telling who is connecting
   // TODO: We want to normalize here but we can't without losing data.
-  const room = normalizeRoomId(window.location.host, inputRoom);
+  const room = normalizeRoomId(getCurrentRoomHost(), inputRoom);
 
   const partykitHost = getPartykitHost(host);
   __currentRoomId = room;
@@ -1311,27 +1684,46 @@ async function initPlayHTMLOnce() {
     onMessage,
   });
 
+  if (cursorModuleLoading) {
+    await cursorModuleLoading;
+    // A reset while the cursor client downloaded tore this connection down.
+    if (__currentRoomId !== room) return yprovider;
+  }
+
+  // Users module owns identity for the lifetime of this playhtml instance —
+  // created unconditionally, before the cursor client, so `playhtml.users`
+  // works whether or not cursors are enabled. `cursors.playerIdentity` is
+  // still honored and takes precedence over the top-level option.
+  const seedIdentity: PlayerIdentity =
+    cursors.playerIdentity ??
+    configuredOptions?.playerIdentity ??
+    resolveMyIdentity();
+  usersAPI = createUsersAPI(seedIdentity, {
+    getIdentityPeers: () => identityPeerHub.getPeers(),
+    onIdentityPeersChange: (callback) => identityPeerHub.subscribe(callback),
+    getCursorPresences: () => cursorPresenceHub.getPresences(),
+    onCursorPresencesChange: (callback) => cursorPresenceHub.subscribe(callback),
+  });
+  connectUsersPresenceTransport(room);
+  lastElementUsersFingerprint = null;
+  usersElementRenderUnsubscribe = usersAPI.onChange(
+    renderElementsWithLiveUsers,
+  );
+
   // Initialize cursor tracking immediately after provider creation
   buildCursors({
     cursors,
     mainRoom: room,
-    partykitHost,
-    onError,
   });
+  usersAPI.getAll();
 
-  if (cursors.enabled) {
-    setupExtensionIdentityListener();
-  }
+  buildElementAwarenessClient();
 
-  // Create presence API — always available, wraps whichever awareness provider exists
-  presenceAPI = createPresenceAPI({
-    getAwareness: () => (cursorClient?.getProvider() ?? yprovider).awareness,
-    getPlayerIdentity: () =>
-      cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
-    getCursorPresences: () => cursorClient?.getCursorPresences() ?? new Map(),
-    onCursorPresencesChange: (callback) =>
-      cursorClient?.onCursorPresencesChange(callback) ?? (() => {}),
-  });
+  setupExtensionIdentityListener();
+
+  // Create presence API over the transport. Wrapped in a stable facade so the
+  // object playhtml.presence returns survives room rebuilds.
+  presenceFacade = new PresenceFacade(buildInnerPresenceAPI());
 
   // extraCapabilities and events were applied by applyConfig when config was
   // declared, so they're available before this connect step runs.
@@ -1342,8 +1734,9 @@ async function initPlayHTMLOnce() {
   playStyles.href = "https://unpkg.com/playhtml@latest/dist/style.css";
   document.head.appendChild(playStyles);
 
-  if (isDevelopmentMode) {
-    setupDevUI(playhtml);
+  if (configuredOptions?.developmentMode) {
+    developmentModule = await import("./development");
+    developmentModule.setupDevUI(playhtml, elementHandlers);
   }
   // TODO: expose a way to activate the dev tools UI on any page at runtime
   // (e.g. window.playhtml.showDevTools()) so it can be triggered from the
@@ -1379,14 +1772,7 @@ async function initPlayHTMLOnce() {
 }
 
 function getElementAwareness(tagType: TagType, elementId: string) {
-  const awarenessProvider = getElementAwarenessProvider();
-  const awareness = awarenessProvider.awareness.getLocalState();
-  const elementAwareness = awareness?.[tagType] ?? {};
-  return elementAwareness[elementId];
-}
-
-function getElementAwarenessProvider(): YProvider {
-  return yprovider;
+  return elementAwarenessClient?.getLocalAwareness(tagType, elementId);
 }
 
 function isHTMLElement(ele: any): ele is HTMLElement {
@@ -1439,28 +1825,42 @@ function markElementAsReady(element: HTMLElement): void {
   element.removeAttribute("aria-live");
 }
 
-function markAllElementsAsLoading(): void {
-  for (const tag of getTagTypes()) {
-    const tagElements: HTMLElement[] = Array.from(
-      document.querySelectorAll(`[${tag}]`),
-    ).filter(isHTMLElement);
-
-    tagElements.forEach((element) => {
-      markElementAsLoading(element);
-    });
+// Finds every capability element with one document scan and groups them by
+// capability attribute, each group in document order. An element with several
+// capabilities appears in each of their groups.
+function getPlayElementsByTag(): Map<TagType | string, HTMLElement[]> {
+  const tags = getTagTypes();
+  const byTag = new Map<TagType | string, HTMLElement[]>(
+    tags.map((tag) => [tag, []]),
+  );
+  const selector = tags.map((tag) => `[${tag}]`).join(",");
+  for (const element of document.querySelectorAll(selector)) {
+    if (!isHTMLElement(element)) continue;
+    for (const tag of tags) {
+      if (element.hasAttribute(tag)) byTag.get(tag)!.push(element);
+    }
   }
+  return byTag;
+}
+
+function getPlayElements(): Set<HTMLElement> {
+  const elements = new Set<HTMLElement>();
+  for (const tagElements of getPlayElementsByTag().values()) {
+    for (const element of tagElements) elements.add(element);
+  }
+  for (const id of elementInitializersById.keys()) {
+    const element = document.getElementById(id);
+    if (element && isHTMLElement(element)) elements.add(element);
+  }
+  return elements;
+}
+
+function markAllElementsAsLoading(): void {
+  getPlayElements().forEach(markElementAsLoading);
 }
 
 function markAllElementsAsReady(): void {
-  for (const tag of getTagTypes()) {
-    const tagElements: HTMLElement[] = Array.from(
-      document.querySelectorAll(`[${tag}]`),
-    ).filter(isHTMLElement);
-
-    tagElements.forEach((element) => {
-      markElementAsReady(element);
-    });
-  }
+  getPlayElements().forEach(markElementAsReady);
 }
 
 function applyElementDataChange<TData>(
@@ -1475,7 +1875,7 @@ function applyElementDataChange<TData>(
     // `d => (d.x = 1)` return a number/boolean as a side effect of a
     // valid in-place mutation — warning on those is just noise.
     if (
-      isDevelopmentMode &&
+      configuredOptions?.developmentMode &&
       returned !== undefined &&
       typeof returned === "object"
     ) {
@@ -1515,23 +1915,22 @@ function createPlayElementData<T extends TagType, TData = any>(
     tagInfo.defaultData === undefined
       ? undefined
       : ensureElementProxy<TData>(tag, elementId, initialData as TData);
-  const initialAwareness = getElementAwareness(tag, elementId);
+  const publishedLive = getElementAwareness(tag, elementId);
+  const configuredLive =
+    tagInfo.live !== undefined ? tagInfo.live : tagInfo.myDefaultAwareness;
+  const initialLive =
+    publishedLive ??
+    (configuredLive instanceof Function
+      ? configuredLive(element)
+      : configuredLive);
 
   const elementData: ElementData = {
     ...tagInfo,
-    myDefaultAwareness:
-      initialAwareness !== undefined
-        ? initialAwareness
-        : tagInfo.myDefaultAwareness,
-    devMode: isDevelopmentMode,
+    live: initialLive,
+    devMode: configuredOptions?.developmentMode ?? false,
     // Always provide a plain snapshot to render paths
     data: clonePlain(dataProxy),
-    awareness:
-      initialAwareness !== undefined
-        ? [initialAwareness]
-        : tagInfo.myDefaultAwareness !== undefined
-          ? [tagInfo.myDefaultAwareness]
-          : undefined,
+    awareness: initialLive !== undefined ? [initialLive] : undefined,
     element,
     onChange: (newData: TData) => {
       if (dataProxy === undefined) {
@@ -1545,37 +1944,69 @@ function createPlayElementData<T extends TagType, TData = any>(
         return;
       }
 
+      // Resolve at write time: a concurrent first registration on another
+      // client can replace this element's record after registration.
+      const currentProxy =
+        (proxyByTagAndId.get(tag)?.get(elementId) as TData | undefined) ??
+        dataProxy;
       doc.transact(() => {
-        applyElementDataChange(elementId, dataProxy, newData);
+        applyElementDataChange(elementId, currentProxy, newData);
       });
     },
     onAwarenessChange: (elementAwarenessData) => {
-      const awarenessProvider = getElementAwarenessProvider();
-      ensureAwarenessIdentity(
-        awarenessProvider.awareness,
-        cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+      elementAwarenessClient?.setLocalAwareness(
+        tag,
+        elementId,
+        elementAwarenessData,
       );
-      const existingAwareness =
-        awarenessProvider.awareness.getLocalState()?.[tag] || {};
-
-      if (existingAwareness[elementId] === elementAwarenessData) {
-        return;
-      }
-
-      // Build a fresh object rather than mutating the existing one in place.
-      // y-protocols' setLocalState detects changes via deep equality against the
-      // previous state; mutating the current state object in place makes that
-      // comparison see no change, which suppresses the "change" event the
-      // provider listens on to broadcast awareness — so peers never receive it.
-      const nextAwareness = { ...existingAwareness, [elementId]: elementAwarenessData };
-      awarenessProvider.awareness.setLocalStateField(tag, nextAwareness);
     },
     triggerAwarenessUpdate: () => {
-      onChangeAwareness();
+      // setLocalAwareness (called by onAwarenessChange immediately before this)
+      // already delivers the element's awareness synchronously.
     },
   };
 
   return elementData;
+}
+
+function getElementUsers<V>(
+  byStableId: Map<string, V>,
+  selfLive: V | undefined,
+): ElementUser<V>[] {
+  if (!usersAPI) return [];
+
+  const liveByUser = new Map(byStableId);
+  if (selfLive !== undefined) {
+    liveByUser.set(usersAPI.me.pid, selfLive);
+  }
+
+  const result: ElementUser<V>[] = [];
+  for (const user of usersAPI.getAll()) {
+    const live = liveByUser.get(user.pid);
+    if (live === undefined) continue;
+    result.push({ user, live });
+  }
+  return result;
+}
+
+function renderElementsWithLiveUsers(users: User[]): void {
+  const fingerprint = JSON.stringify(
+    [...users].sort((a, b) => a.pid.localeCompare(b.pid)),
+  );
+  if (fingerprint === lastElementUsersFingerprint) return;
+  lastElementUsersFingerprint = fingerprint;
+
+  for (const handlers of elementHandlers.values()) {
+    for (const handler of handlers.values()) {
+      if (
+        handler.selfAwareness === undefined &&
+        handler.awarenessByStableId.size === 0
+      ) {
+        continue;
+      }
+      safeInvoke(() => handler.render(), "element users render");
+    }
+  }
 }
 
 function isCorrectElementInitializer(
@@ -1599,43 +2030,62 @@ function getElementInitializerValidationIssues(
     tagInfo.defaultData !== null &&
     (typeof tagInfo.defaultData === "object" ||
       typeof tagInfo.defaultData === "function");
+  const hasUpdate = typeof tagInfo.update === "function";
   const hasUpdateElement = typeof tagInfo.updateElement === "function";
   const hasView = typeof tagInfo.view === "function";
-  const hasDataUpdate = hasUpdateElement || hasView;
+  const hasNormalUpdate = hasUpdate || hasUpdateElement || hasView;
+  const hasLive = tagInfo.live !== undefined;
   const hasMyDefaultAwareness = tagInfo.myDefaultAwareness !== undefined;
   const hasUpdateElementAwareness =
     typeof tagInfo.updateElementAwareness === "function";
-  const hasUpdateFunction = hasDataUpdate || hasUpdateElementAwareness;
+  const hasUpdateFunction = hasNormalUpdate || hasUpdateElementAwareness;
+
+  if (hasUpdate && hasUpdateElement) {
+    issues.push("update and updateElement are mutually exclusive");
+  }
+
+  if (hasLive && hasMyDefaultAwareness) {
+    issues.push("live and myDefaultAwareness are mutually exclusive");
+  }
 
   if (hasDefaultData && !hasValidDefaultData) {
     issues.push("defaultData must be an object or function");
   }
 
-  if (hasDefaultData && !hasDataUpdate) {
-    issues.push("defaultData requires updateElement or view");
-  } else if (!hasDefaultData && hasDataUpdate) {
-    issues.push("updateElement or view requires defaultData");
+  if (hasDefaultData && !hasNormalUpdate) {
+    issues.push("defaultData requires update, updateElement, or view");
+  } else if (!hasDefaultData && !hasLive && !hasMyDefaultAwareness && hasNormalUpdate) {
+    issues.push("update, updateElement, or view requires defaultData or live");
   }
 
-  if (hasMyDefaultAwareness && !hasUpdateElementAwareness) {
-    issues.push("myDefaultAwareness requires updateElementAwareness");
+  if (hasLive && !hasNormalUpdate) {
+    issues.push("live requires update, updateElement, or view");
+  }
+
+  if (hasMyDefaultAwareness && !hasNormalUpdate && !hasUpdateElementAwareness) {
+    issues.push(
+      "myDefaultAwareness requires update, updateElement, view, or updateElementAwareness",
+    );
   }
 
   if (issues.length === 0 && !hasUpdateFunction) {
-    issues.push("updateElement, view, or updateElementAwareness");
+    issues.push("update, updateElement, view, or updateElementAwareness");
   }
 
   return issues;
 }
 
-// Read custom element properties set by CanPlayElement (React) on the DOM node
+// Read initializer properties from React elements and direct can-play
+// configurations that remain supported for compatibility.
 function getCustomElementProps(element: HTMLElement) {
   const el = element as any;
   const props: Partial<ElementInitializer> = {};
   const keys: (keyof ElementInitializer)[] = [
     "defaultData",
     "defaultLocalData",
+    "live",
     "myDefaultAwareness",
+    "update",
     "updateElement",
     "view",
     "updateElementAwareness",
@@ -1652,10 +2102,6 @@ function getCustomElementProps(element: HTMLElement) {
       props[key] = el[key];
     }
   }
-  // Legacy alias
-  if (el.additionalSetup !== undefined && props.onMount === undefined) {
-    props.onMount = el.additionalSetup;
-  }
   return props;
 }
 
@@ -1671,9 +2117,15 @@ function getElementInitializerInfoForElement(
   element: HTMLElement,
 ) {
   if (tag === TagType.CanPlay) {
-    // For can-play, all properties come from the DOM element
+    const registeredInitializer = elementInitializersById.get(element.id);
+    if (registeredInitializer) {
+      return registeredInitializer as Required<ElementInitializer>;
+    }
+
+    // React and the imperative can-play API provide initializer properties on
+    // the DOM element.
     const customProps = getCustomElementProps(element);
-    return customProps as Required<Omit<ElementInitializer, "additionalSetup">>;
+    return customProps as Required<ElementInitializer>;
   }
 
   const builtIn = capabilitiesToInitializer[tag];
@@ -1688,65 +2140,45 @@ function getElementInitializerInfoForElement(
   return { ...builtIn, ...customProps };
 }
 
-function onChangeAwareness() {
-  const awarenessProvider = getElementAwarenessProvider();
-  const states = awarenessProvider.awareness.getStates();
-
-  // Only run when element-awareness data changed. Cursor client writes __playhtml_cursors__
-  // on every mouse move (up to 60fps); skip rebuild and handler updates when only that changed.
-  const fingerprint = getElementAwarenessFingerprint(
-    states as Map<number, Record<string, unknown>>,
-  );
-  if (fingerprint === lastElementAwarenessFingerprint) {
-    return;
-  }
-  lastElementAwarenessFingerprint = fingerprint;
-
-  // Build awareness per element: { array: V[], byStableId: Map<string, V> }
-  const elementAwareness = new Map<
-    string,
-    { array: any[]; byStableId: Map<string, any> }
-  >();
-
-  states.forEach((state, clientId) => {
-    const stableId = getStableIdForAwareness(
-      state as Record<string, unknown>,
-      clientId,
-    );
-
-    // Process each tag type
-    Object.keys(state).forEach((tag) => {
-      if (tag.startsWith("__")) return; // Skip reserved fields like __playhtml_cursors__
-
-      const tagData = state[tag];
-      if (!tagData || typeof tagData !== "object") return;
-
-      Object.keys(tagData).forEach((elementId) => {
-        const awarenessValue = tagData[elementId];
-        const key = `${tag}:${elementId}`;
-
-        if (!elementAwareness.has(key)) {
-          elementAwareness.set(key, { array: [], byStableId: new Map() });
-        }
-
-        const entry = elementAwareness.get(key)!;
-        entry.array.push(awarenessValue);
-        entry.byStableId.set(stableId, awarenessValue);
-      });
-    });
-  });
-
-  // Update all handlers with both array and byStableId
+function applyElementAwareness(elementAwareness: ElementAwarenessMap): void {
+  // Isolate per key so one handler that throws (a view render, say) can't skip
+  // awareness delivery to the other elements sharing this socket.
   elementAwareness.forEach(({ array, byStableId }, key) => {
-    updateHandlerAwarenessForKey(key, array, byStableId);
+    safeInvoke(
+      () => updateHandlerAwarenessForKey(key, array, byStableId),
+      "element awareness handler",
+    );
   });
 
   for (const key of trackedElementAwarenessKeys) {
     if (elementAwareness.has(key)) continue;
-    updateHandlerAwarenessForKey(key, [], new Map());
+    safeInvoke(
+      () => updateHandlerAwarenessForKey(key, [], new Map()),
+      "element awareness handler",
+    );
   }
 
   trackedElementAwarenessKeys = new Set(elementAwareness.keys());
+}
+
+function applyElementAwarenessEntry(
+  key: string,
+  awareness: ElementAwarenessEntry | undefined,
+): void {
+  safeInvoke(
+    () =>
+      updateHandlerAwarenessForKey(
+        key,
+        awareness?.array ?? [],
+        awareness?.byStableId ?? new Map(),
+      ),
+    "element awareness handler",
+  );
+  if (awareness) {
+    trackedElementAwarenessKeys.add(key);
+  } else {
+    trackedElementAwarenessKeys.delete(key);
+  }
 }
 
 function updateHandlerAwarenessForKey(
@@ -1774,25 +2206,32 @@ function updateHandlerAwarenessForKey(
  * on the `playhtml` object on `window`.
  */
 function setupElements(): void {
+  setupElementsFromDocument(false);
+}
+
+function reinitializeElements(): void {
+  setupElementsFromDocument(true);
+}
+
+function setupElementsFromDocument(reinitializeExisting: boolean): void {
   if (!hasSynced) {
     return;
   }
 
-  // Stamp any registrations made before init() onto their elements so the
-  // can-play scan below picks them up.
-  for (const [id, init] of pendingRegistrations) {
-    const el = document.getElementById(id);
-    if (el && isHTMLElement(el)) {
-      stampRegistrationOntoElement(el, init);
+  observeRegisteredElements();
+
+  for (const [tag, elementsForTag] of getPlayElementsByTag()) {
+    const tagElements = new Set<HTMLElement>(elementsForTag);
+    if (tag === TagType.CanPlay) {
+      for (const id of elementInitializersById.keys()) {
+        const element = document.getElementById(id);
+        if (element && isHTMLElement(element)) {
+          tagElements.add(element);
+        }
+      }
     }
-  }
 
-  for (const tag of getTagTypes()) {
-    const tagElements: HTMLElement[] = Array.from(
-      document.querySelectorAll(`[${tag}]`),
-    ).filter(isHTMLElement);
-
-    if (!tagElements.length) {
+    if (tagElements.size === 0) {
       continue;
     }
 
@@ -1800,7 +2239,16 @@ function setupElements(): void {
       console.log(`SET UP ${tag}`);
     }
     void Promise.all(
-      tagElements.map((element) => setupPlayElementForTag(element, tag)),
+      Array.from(tagElements).map((element) => {
+        const elementId = getIdForElement(element);
+        const existingHandler = elementId
+          ? elementHandlers.get(tag)?.get(elementId)
+          : undefined;
+        if (!reinitializeExisting && existingHandler?.element === element) {
+          return;
+        }
+        return setupPlayElementForTag(element, tag);
+      }),
     );
   }
 
@@ -1808,12 +2256,8 @@ function setupElements(): void {
     return;
   }
 
-  // Re-bound on provider rebuild via bindAwarenessListener so nav-time provider
-  // swaps don't leave an orphaned listener.
-  bindAwarenessListener();
-
-  // Trigger initial awareness sync to populate existing states
-  onChangeAwareness();
+  // Seed handlers from any peer state that arrived before elements bound.
+  elementAwarenessClient?.refresh();
 
   navigationController = createNavigationController(async () => {
     await runHandleNavigation();
@@ -1826,7 +2270,6 @@ function setupElements(): void {
 function getPageDataDeps() {
   return {
     ensureProxy: ensureElementProxy,
-    getProxy: (tag: string, id: string) => proxyByTagAndId.get(tag)?.get(id),
     // Getters so a handle held across a room change (which recreates store/doc)
     // reads the current ones, not stale references captured at creation.
     getDoc: () => doc,
@@ -1842,6 +2285,7 @@ function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
   if (!hasSynced) {
     throw new Error("playhtml.createPageData is not available before init()");
   }
+  watchPlayMapReplacement();
   return createPageDataChannel(name, defaultValue, getPageDataDeps());
 }
 
@@ -1850,14 +2294,23 @@ function createPresenceRoom(name: string): PresenceRoom {
     throw new Error("playhtml.createPresenceRoom is not available before init()");
   }
 
-  const roomId = normalizeRoomId(window.location.host, name);
-  const roomDoc = new Y.Doc();
-  const provider = new YProvider(__currentHost, roomId, roomDoc);
+  const roomId = normalizeRoomId(getCurrentRoomHost(), name);
 
-  const presence = createPresenceAPI({
-    getAwareness: () => provider.awareness,
-    getPlayerIdentity: () =>
-      cursorClient?.getMyPlayerIdentity() ?? generatePersistentPlayerIdentity(),
+  // Transport path: an isolated presence socket to the named room. Its traffic
+  // never touches the page room, and reconnects replay join+state on their own.
+  // Not refcounted with the page registry — each named room is its own socket
+  // with its own lifecycle, torn down on destroy().
+  const transport = new RealtimePresenceTransport({
+    host: __currentHost,
+    room: roomId,
+  });
+  const selfChangeUnsub = usersAPI?.onSelfChange(() => {
+    transport.join({ identity: resolveMyIdentity(), page: getPresencePage() });
+  }) ?? null;
+  const presence = new PresenceClient({
+    transport,
+    getIdentity: resolveMyIdentity,
+    getPage: getPresencePage,
   });
 
   let destroyed = false;
@@ -1866,8 +2319,9 @@ function createPresenceRoom(name: string): PresenceRoom {
     destroy: () => {
       if (destroyed) return;
       destroyed = true;
-      provider.destroy();
-      roomDoc.destroy();
+      selfChangeUnsub?.();
+      presence.destroy();
+      transport.destroy();
     },
   };
 }
@@ -1883,20 +2337,21 @@ export interface PlayHTMLComponents {
   removePlayElement: typeof removePlayElement;
   deleteElementData: typeof deleteElementData;
   setupPlayElementForTag: typeof setupPlayElementForTag;
-  /** @experimental View API — register a custom element by id. */
+  /** Register a custom element by id or DOM reference. */
   register: typeof registerPlayElement;
-  /** @experimental View API — register a reusable capability by attribute name. */
+  /** Register a reusable capability by attribute name. */
   define: typeof definePlayCapability;
-  /** @experimental View API — get a handle for a bound element. */
+  /** Get a handle for a bound element. */
   getHandle: (elementId: string, tag?: string) => PlayElementHandle;
   syncedStore: ReadOnlyStore<PlayStore["play"]>;
+  /** @deprecated Use getHandle(elementId, tag) to access a bound element. */
   elementHandlers: Map<string, Map<string, ElementHandler>>;
-  eventHandlers: Map<string, Array<RegisteredPlayEvent>>;
   dispatchPlayEvent: typeof dispatchPlayEvent;
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
   cursorClient: CursorClientAwareness | null;
   presence: PresenceAPI;
+  users: Pick<UsersAPI, "me" | "getAll" | "onChange">;
   createPageData: typeof createPageData;
   createPresenceRoom: typeof createPresenceRoom;
   // Debug / Dev helpers
@@ -1940,17 +2395,6 @@ export async function resetPlayHTML(): Promise<void> {
       configureIdentityListener = null;
     }
 
-    // Detach awareness change listener before destroying providers, so we
-    // cleanly `.off("change", ...)` rather than leaking the subscription on
-    // a soon-to-be-destroyed awareness object.
-    if (awarenessChangeTarget && awarenessChangeHandler) {
-      try {
-        awarenessChangeTarget.awareness.off("change", awarenessChangeHandler);
-      } catch {}
-    }
-    awarenessChangeTarget = null;
-    awarenessChangeHandler = null;
-
     for (const [, map] of elementHandlers) {
       for (const handler of map.values()) {
         try {
@@ -1963,12 +2407,32 @@ export async function resetPlayHTML(): Promise<void> {
     pageDataRefCounts.clear();
     pageDataListeners.clear();
     mainProviderSyncWaiters.clear();
+    disconnectRegisteredElementObserver();
 
+    teardownElementAwarenessClient();
+    teardownPresenceClient();
     teardownCursors();
+    disconnectUsersPresenceTransport();
     teardownMainProvider();
+    usersElementRenderUnsubscribe?.();
+    usersElementRenderUnsubscribe = null;
+    lastElementUsersFingerprint = null;
+    try { usersAPI?.destroy(); } catch {}
+    usersAPI = null;
+
+    for (const [, entry] of presenceTransportsByRoom) {
+      try {
+        entry.selfChangeUnsub?.();
+      } catch {}
+      try {
+        entry.transport.destroy();
+      } catch {}
+    }
+    presenceTransportsByRoom.clear();
+    cursorPresenceTransportRoom = null;
 
     try {
-      teardownDevUI();
+      developmentModule?.teardownDevUI();
     } catch {}
 
     document.head
@@ -1982,7 +2446,6 @@ export async function resetPlayHTML(): Promise<void> {
     delete document.documentElement.dataset.playhtml;
 
     hasSynced = false;
-    lastElementAwarenessFingerprint = null;
     trackedElementAwarenessKeys.clear();
     firstSetup = true;
     isLoading = true;
@@ -1990,14 +2453,14 @@ export async function resetPlayHTML(): Promise<void> {
     readyPromise = createReadyPromise();
     __currentRoomId = "";
     __currentHost = "";
-    presenceAPI = null;
-    explicitRoomOption = undefined;
-    cachedDefaultRoomOptions = { includeSearch: false };
-    cursorOptionsCache = undefined;
-    cachedOnError = undefined;
+    presenceFacade = null;
+    // The facade is discarded here without unsubscribing its cursor-channel
+    // subscriptions (unlike navigation, which re-attaches via setInner), so
+    // clear the hub's subscriber set too — otherwise stale wrappers pointing at
+    // the destroyed presence client survive into the next init.
+    cursorPresenceHub.subscribers.clear();
     roomResetPromise = null;
     pendingRoomResetEpoch = null;
-    isDevelopmentMode = false;
     configuredOptions = null;
     hasBootstrapped = false;
   } finally {
@@ -2032,7 +2495,6 @@ export const playhtml: PlayHTMLComponents = {
     return publicSyncedStore;
   },
   elementHandlers,
-  eventHandlers,
   dispatchPlayEvent,
   registerPlayEventListener,
   removePlayEventListener,
@@ -2040,10 +2502,16 @@ export const playhtml: PlayHTMLComponents = {
     return cursorClient;
   },
   get presence() {
-    if (!presenceAPI) {
+    if (!presenceFacade) {
       throw new Error("playhtml.presence is not available before init()");
     }
-    return presenceAPI;
+    return presenceFacade;
+  },
+  get users() {
+    if (!usersAPI) {
+      throw new Error("playhtml.users is not available before init()");
+    }
+    return usersAPI;
   },
   // Filled after init
   get roomId() {
@@ -2088,6 +2556,14 @@ function isElementValidForTag(
   element: HTMLElement,
   tag: TagType | string,
 ): boolean {
+  const registeredValidator =
+    tag === TagType.CanPlay
+      ? elementInitializersById.get(element.id)?.isValidElementForTag
+      : undefined;
+  if (registeredValidator) {
+    return registeredValidator(element);
+  }
+
   const customValidator = shouldReadElementPropsForTag(tag, element)
     ? (element as any).isValidElementForTag
     : undefined;
@@ -2219,12 +2695,12 @@ async function setupPlayElementForTag<T extends TagType | string>(
     attachSyncedStoreObserver(tag as string, elementId);
     return;
   } else {
-    const handler = new ElementHandler(
-      elementData,
-      tag === TagType.CanMirror
+    const handler = new ElementHandler(elementData, {
+      getUsers: getElementUsers,
+      ...(tag === TagType.CanMirror
         ? { scheduleSetupDataWrite: (write) => canMirrorDataQueue.queue(write) }
-        : undefined,
-    );
+        : {}),
+    });
     tagElementHandlers.set(elementId, handler);
     // View handlers can emit capability descendants (mount points for
     // `define`d capabilities / `register`ed ids). Bind the current children and
@@ -2239,9 +2715,14 @@ async function setupPlayElementForTag<T extends TagType | string>(
     }
   }
 
-  // redo this now that we have set it in the mapping.
-  // TODO: this is inefficient, it tries to do this in the constructor but fails, should clean up the API
-  elementData.triggerAwarenessUpdate?.();
+  const initialAwareness = elementAwarenessClient?.getAwareness(tag, elementId);
+  if (initialAwareness) {
+    tagElementHandlers
+      .get(elementId)
+      ?.updateAwareness(initialAwareness.array, initialAwareness.byStableId);
+  } else {
+    elementData.triggerAwarenessUpdate?.();
+  }
   // Set up the common classes for affected elements.
   element.classList.add(`__playhtml-element`);
   element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
@@ -2273,6 +2754,97 @@ function applySharedElementDataToHandler(
   return true;
 }
 
+type ElementRecordObserver = (() => void) & { target?: unknown };
+
+function detachElementObserver(key: string): void {
+  const existing = yObserverByKey.get(key) as ElementRecordObserver | undefined;
+  if (!existing) return;
+  (existing.target as any)?.unobserveDeep?.(existing);
+  yObserverByKey.delete(key);
+}
+
+// Y.Maps already watched for replaced child records, so each gets one observer.
+const watchedRecordParents = new WeakSet<object>();
+
+/**
+ * When two clients create the same record (a tag map or an element record)
+ * before seeing each other's, the Yjs merge keeps only one. The losing client
+ * still holds a proxy and deep observer on its discarded copy. Watch the parent
+ * maps and re-point affected elements at the surviving record.
+ */
+function watchElementRecordReplacement(tag: string): void {
+  watchPlayMapReplacement();
+  const tagMap = getYjsValue(store.play[tag]) as YMap<unknown> | undefined;
+  if (tagMap && !watchedRecordParents.has(tagMap)) {
+    watchedRecordParents.add(tagMap);
+    tagMap.observe((event) => {
+      // A tag map discarded by a merge can still fire; only the live one counts.
+      if (getYjsValue(store.play[tag]) !== tagMap) return;
+      for (const elementId of event.keysChanged) {
+        rebindElementRecord(tag, elementId);
+      }
+    });
+  }
+}
+
+/** Watches the root `play` map for replaced tag maps (including page data). */
+function watchPlayMapReplacement(): void {
+  const playMap = getYjsValue(store.play) as YMap<unknown> | undefined;
+  if (!playMap || watchedRecordParents.has(playMap)) return;
+  watchedRecordParents.add(playMap);
+  playMap.observe((event) => {
+    for (const changedTag of event.keysChanged) {
+      if (changedTag === PAGE_TAG) {
+        rebindPageDataChannels(getPageDataDeps());
+        continue;
+      }
+      const handlers = elementHandlers.get(changedTag);
+      if (!handlers) continue;
+      for (const elementId of handlers.keys()) {
+        rebindElementRecord(changedTag, elementId, { restoreMissing: true });
+      }
+    }
+  });
+}
+
+/**
+ * Points an element at its live record. With `restoreMissing`, used when the
+ * whole tag map was replaced, an element whose id is absent from the winning
+ * map is written back from its local data: its record was only discarded by
+ * the merge, not deleted by anyone. Not used for single-key changes, where a
+ * missing record means another client deleted it.
+ */
+function rebindElementRecord(
+  tag: string,
+  elementId: string,
+  { restoreMissing = false }: { restoreMissing?: boolean } = {},
+): void {
+  const handler = elementHandlers.get(tag)?.get(elementId);
+  if (!handler) return;
+  const tagRecord = store.play[tag];
+  if (
+    restoreMissing &&
+    tagRecord !== undefined &&
+    tagRecord[elementId] === undefined &&
+    handler.data !== undefined &&
+    canWriteElementData(handler.element)
+  ) {
+    doc.transact(() => {
+      tagRecord[elementId] = clonePlain(handler.data);
+    });
+  }
+  const record = tagRecord?.[elementId];
+  if (record === undefined) return;
+  const key = `${tag}:${elementId}`;
+  const observed = (yObserverByKey.get(key) as ElementRecordObserver | undefined)
+    ?.target;
+  if (observed === getYjsValue(record)) return;
+  if (!proxyByTagAndId.has(tag)) proxyByTagAndId.set(tag, new Map());
+  proxyByTagAndId.get(tag)!.set(elementId, record);
+  attachSyncedStoreObserver(tag, elementId);
+  applySharedElementDataToHandler(tag, elementId, handler);
+}
+
 function attachSyncedStoreObserver(tag: string, elementId: string) {
   const key = `${tag}:${elementId}`;
   const tagHandlers = elementHandlers.get(tag);
@@ -2280,16 +2852,13 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
   const handler = tagHandlers.get(elementId);
   if (!handler) return;
 
-  // Detach previous observer if present
+  watchElementRecordReplacement(tag);
+
   const yVal = getYjsValue(store.play[tag]?.[elementId]);
   if (!yVal || typeof (yVal as any).observeDeep !== "function") return;
-  const existing = yObserverByKey.get(key);
-  if (existing) {
-    // @ts-ignore
-    (yVal as any).unobserveDeep(existing);
-  }
+  detachElementObserver(key);
   let scheduled = false;
-  const observer = () => {
+  const observer: ElementRecordObserver = () => {
     if (scheduled) return;
     scheduled = true;
     queueMicrotask(() => {
@@ -2305,11 +2874,12 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
       }
     });
   };
+  observer.target = yVal;
   // @ts-ignore
   (yVal as any).observeDeep(observer);
   yObserverByKey.set(key, observer);
 
-  if (isDevelopmentMode) {
+  if (configuredOptions?.developmentMode) {
     // Dev hydration warning for shared references
     const el = handler.element;
     if (el && el.hasAttribute && el.hasAttribute("data-source")) {
@@ -2358,12 +2928,6 @@ function setupPlayElement(
     return;
   }
 
-  // If this element was registered via register() before it existed, stamp its
-  // initializer on now so the can-play branch below picks it up.
-  if (element.id && pendingRegistrations.has(element.id)) {
-    stampRegistrationOntoElement(element, pendingRegistrations.get(element.id)!);
-  }
-
   // Check for data-source attribute and handle dynamic discovery
   if (element.hasAttribute("data-source")) {
     handleNewSharedReference(element);
@@ -2375,11 +2939,14 @@ function setupPlayElement(
   }
 
   // Handle loading state for dynamically added elements
-  const hasPlayhtmlAttributes = getTagTypes().some((tag) =>
-    element.hasAttribute(tag),
+  const tags = new Set(
+    getTagTypes().filter((tag) => element.hasAttribute(tag)),
   );
+  if (element.id && elementInitializersById.has(element.id)) {
+    tags.add(TagType.CanPlay);
+  }
 
-  if (hasPlayhtmlAttributes) {
+  if (tags.size > 0) {
     if (hasSynced) {
       // If already synced, element will be ready immediately
       markElementAsReady(element);
@@ -2390,9 +2957,7 @@ function setupPlayElement(
   }
 
   void Promise.all(
-    getTagTypes()
-      .filter((tag) => element.hasAttribute(tag))
-      .map((tag) => setupPlayElementForTag(element, tag)),
+    Array.from(tags).map((tag) => setupPlayElementForTag(element, tag)),
   );
 }
 
@@ -2448,17 +3013,7 @@ function removePlayElement(element: Element | null) {
     }
 
     const key = `${tag}:${elementId}`;
-    const yVal = getYjsValue(store.play[tag]?.[elementId]);
-    const observer = yObserverByKey.get(key);
-    if (
-      yVal &&
-      observer &&
-      typeof (yVal as any).unobserveDeep === "function"
-    ) {
-      // @ts-ignore
-      (yVal as any).unobserveDeep(observer);
-    }
-    yObserverByKey.delete(key);
+    detachElementObserver(key);
     sharedUpdateSeen.delete(key);
     const timerId = sharedHydrationTimers.get(key);
     if (timerId !== undefined) {
@@ -2468,6 +3023,7 @@ function removePlayElement(element: Element | null) {
     // Run onMount cleanup (rAF loops, timers, event listeners) and disconnect
     // the descendant observer so view elements don't leak after removal.
     handler.destroy?.();
+    elementAwarenessClient?.removeLocalAwareness(tag, elementId);
     tagElementHandler.delete(elementId);
   }
 }
@@ -2481,7 +3037,6 @@ function removePlayElement(element: Element | null) {
  * bound element. Reads/writes resolve the live handler lazily, so a handle
  * obtained before the element binds still works once it does.
  *
- * @experimental Part of the new view API; subject to change in a future minor.
  */
 export interface PlayElementHandle<T = any, U = any, V = any> {
   id: string;
@@ -2491,16 +3046,14 @@ export interface PlayElementHandle<T = any, U = any, V = any> {
   getData(): T | undefined;
   setData(next: T | ((draft: T) => void)): void;
   setLocalData(next: U | ((draft: U) => void)): void;
+  setLive(next: V): void;
+  /** @deprecated Use `setLive`. */
   setMyAwareness(next: V): void;
   /** Re-run the view now (for clock-driven views). No-op without a view. */
   requestUpdate(): void;
   /** Detach the handler (shared data is preserved) and drop the registration. */
   unregister(): void;
 }
-
-// elementId -> initializer, pending until both the definition and the DOM
-// element exist (upgrade semantics, like customElements.define).
-const pendingRegistrations = new Map<string, ElementInitializer>();
 
 /**
  * Enforces initializer invariants before register/define stores a capability.
@@ -2509,9 +3062,19 @@ function validateRegisteredInitializer(
   name: string,
   init: ElementInitializer,
 ): void {
-  if (init.view && init.updateElement) {
+  if (init.update && init.updateElement) {
     throw new Error(
-      `[playhtml] "${name}" defines both \`view\` and \`updateElement\`. They are mutually exclusive — pick one.`,
+      `[playhtml] "${name}" defines both \`update\` and \`updateElement\`. Pick one imperative renderer.`,
+    );
+  }
+  if (init.live !== undefined && init.myDefaultAwareness !== undefined) {
+    throw new Error(
+      `[playhtml] "${name}" defines both \`live\` and \`myDefaultAwareness\`. Pick one element live default.`,
+    );
+  }
+  if (init.view && (init.update || init.updateElement)) {
+    throw new Error(
+      `[playhtml] "${name}" defines both \`view\` and an imperative update renderer. They are mutually exclusive. Pick one.`,
     );
   }
   if (init.view && (init.onClick || init.onDrag || init.onDragStart)) {
@@ -2539,28 +3102,6 @@ function validateRegisteredInitializer(
       `[playhtml] "${name}" has an invalid initializer: ${issues.join(", ")}.`,
     );
   }
-}
-
-/** Stamps a registration's initializer fields onto its element as props. */
-function stampRegistrationOntoElement(
-  element: HTMLElement,
-  init: ElementInitializer,
-): void {
-  Object.assign(element, init);
-  if (!element.hasAttribute(TagType.CanPlay)) {
-    element.setAttribute(TagType.CanPlay, "");
-  }
-}
-
-/** Applies a pending registration if its element exists and we've synced. */
-function applyPendingRegistration(elementId: string): void {
-  if (!hasSynced) return;
-  const init = pendingRegistrations.get(elementId);
-  if (!init) return;
-  const element = document.getElementById(elementId);
-  if (!element || !isHTMLElement(element)) return;
-  stampRegistrationOntoElement(element, init);
-  void setupPlayElementForTag(element, TagType.CanPlay);
 }
 
 /**
@@ -2591,7 +3132,7 @@ function findHandlerForElementId(
  * dropped silently otherwise; reads stay quiet.
  */
 function warnUnboundHandleWrite(method: string, elementId: string): void {
-  if (!isDevelopmentMode) return;
+  if (!configuredOptions?.developmentMode) return;
   console.warn(
     `[playhtml] ${method}("${elementId}") — no bound element with that id yet; the write was dropped. ` +
       `Register/add the element first, or check the id.`,
@@ -2616,10 +3157,15 @@ function createPlayElementHandle(
       if (!handler) return warnUnboundHandleWrite("setLocalData", elementId);
       handler.setLocalData(next);
     },
+    setLive: (next) => {
+      const handler = findHandlerForElementId(elementId, tag);
+      if (!handler) return warnUnboundHandleWrite("setLive", elementId);
+      handler.setLive(next);
+    },
     setMyAwareness: (next) => {
       const handler = findHandlerForElementId(elementId, tag);
       if (!handler) return warnUnboundHandleWrite("setMyAwareness", elementId);
-      handler.setMyAwareness(next);
+      handler.setLive(next);
     },
     requestUpdate: () => {
       const handler = findHandlerForElementId(elementId, tag);
@@ -2627,29 +3173,68 @@ function createPlayElementHandle(
       handler.requestUpdate();
     },
     unregister: () => {
-      pendingRegistrations.delete(elementId);
-      const el = document.getElementById(elementId);
-      if (el) removePlayElement(el);
+      const boundElement = findHandlerForElementId(elementId, tag)?.element;
+      elementInitializersById.delete(elementId);
+      if (elementInitializersById.size === 0) {
+        disconnectRegisteredElementObserver();
+      }
+      const element = boundElement ?? document.getElementById(elementId);
+      if (element) removePlayElement(element);
     },
   };
 }
 
 /**
- * Registers a `view`/`updateElement` initializer for a single element by id.
- * Callable before or after `init()` and before or after the element exists;
- * binding happens once both are present. Returns a handle for reads/writes
- * from outside the view (e.g. form submit handlers).
- *
- * @experimental New view API; signature may change in a future minor release.
+ * Registers a `view`/`update` initializer for a single element by id or
+ * DOM reference. Callable before or after `init()`. An id registration binds
+ * once the element exists; an element registration binds the provided node.
+ * Returns a handle for reads/writes from outside the view.
  */
 function registerPlayElement<T = any, U = any, V = any>(
   elementId: string,
   init: ElementInitializer<T, U, V>,
+): PlayElementHandle<T, U, V>;
+function registerPlayElement<T = any, U = any, V = any>(
+  element: HTMLElement,
+  init: ElementInitializer<T, U, V>,
+): PlayElementHandle<T, U, V>;
+function registerPlayElement<T = any, U = any, V = any>(
+  elementOrId: string | Element,
+  init: ElementInitializer<T, U, V>,
 ): PlayElementHandle<T, U, V> {
+  let element: HTMLElement | null;
+  let elementId: string;
+  if (typeof elementOrId === "string") {
+    elementId = elementOrId;
+    element = document.getElementById(elementId);
+  } else {
+    if (!isHTMLElement(elementOrId)) {
+      throw new Error(
+        "[playhtml] register(element, initializer) requires an HTML element.",
+      );
+    }
+    if (!elementOrId.id) {
+      throw new Error(
+        "[playhtml] register(element, initializer) requires an element with a non-empty id.",
+      );
+    }
+    element = elementOrId;
+    elementId = element.id;
+  }
+
   validateRegisteredInitializer(elementId, init as ElementInitializer);
-  pendingRegistrations.set(elementId, init as ElementInitializer);
-  applyPendingRegistration(elementId);
-  if (isDevelopmentMode && hasSynced && !document.getElementById(elementId)) {
+  elementInitializersById.set(elementId, init as ElementInitializer);
+  if (hasSynced) {
+    observeRegisteredElements();
+  }
+  if (element && isHTMLElement(element)) {
+    setupPlayElement(element);
+  }
+  if (
+    configuredOptions?.developmentMode &&
+    hasSynced &&
+    !element
+  ) {
     console.warn(
       `[playhtml] register("${elementId}") — no element with that id is in the DOM yet. ` +
         `It will bind automatically when the element appears.`,
@@ -2664,33 +3249,27 @@ function registerPlayElement<T = any, U = any, V = any>(
 
 /**
  * Registers a reusable capability under an attribute name (e.g. "can-note").
- * Every element carrying that attribute gets the capability — including ones
- * added to the DOM later. The imperative counterpart of
- * `init({ extraCapabilities })`.
+ * Upgrades matching elements already in the DOM. Matching descendants rendered
+ * by a view bind through the view's observer. The imperative counterpart of
+ * `init({ extraCapabilities })`; other elements added later still use
+ * `setupPlayElement`.
  *
  * @param capabilityName - The attribute name elements use to opt in (used in an
  *   attribute selector, e.g. `[can-note]`).
- * @experimental New view API; signature may change in a future minor release.
  */
 function definePlayCapability<T = any, U = any, V = any>(
   capabilityName: string,
   init: ElementInitializer<T, U, V>,
 ): void {
-  if (capabilityName === PAGE_TAG) {
-    throw new Error(`"${PAGE_TAG}" is a reserved tag name for page-level data`);
-  }
-  if (capabilityName === TagType.CanPlay) {
-    throw new Error(
-      `[playhtml] "${TagType.CanPlay}" is reserved — use register(id, init) for single elements.`,
-    );
-  }
-  if (Object.prototype.hasOwnProperty.call(TagTypeToElement, capabilityName)) {
-    throw new Error(
-      `[playhtml] "${capabilityName}" is a built-in capability and cannot be redefined.`,
-    );
-  }
-  validateRegisteredInitializer(capabilityName, init as ElementInitializer);
-  capabilitiesToInitializer[capabilityName] = init as ElementInitializer;
+  registerCapability(capabilityName, init as ElementInitializer);
+}
+
+function registerCapability(
+  capabilityName: string,
+  init: ElementInitializer,
+): void {
+  validateCapability(capabilityName, init);
+  capabilitiesToInitializer[capabilityName] = init;
   // Upgrade any elements already on the page (no-op before init()).
   if (hasSynced) {
     const els = Array.from(
@@ -2700,6 +3279,26 @@ function definePlayCapability<T = any, U = any, V = any>(
       els.map((el) => setupPlayElementForTag(el, capabilityName)),
     );
   }
+}
+
+function validateCapability(
+  capabilityName: string,
+  init: ElementInitializer,
+): void {
+  if (capabilityName === PAGE_TAG) {
+    throw new Error(`"${PAGE_TAG}" is a reserved tag name for page-level data`);
+  }
+  if (capabilityName === TagType.CanPlay) {
+    throw new Error(
+      `[playhtml] "${TagType.CanPlay}" is reserved — use register(elementOrId, init) for single elements.`,
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(TagTypeToElement, capabilityName)) {
+    throw new Error(
+      `[playhtml] "${capabilityName}" is a built-in capability and cannot be redefined.`,
+    );
+  }
+  validateRegisteredInitializer(capabilityName, init);
 }
 
 /**
@@ -2719,18 +3318,21 @@ function definePlayCapability<T = any, U = any, V = any>(
 const viewDescendants = new WeakMap<HTMLElement, Map<string, HTMLElement>>();
 
 function setupViewDescendants(root: HTMLElement): void {
-  // Stamp pending single-element registrations onto matching descendants.
-  for (const [id, init] of pendingRegistrations) {
+  const present = new Map<string, HTMLElement>();
+
+  // Registered elements do not need a can-play attribute, so include matching
+  // descendants by id before scanning capability attributes.
+  for (const id of elementInitializersById.keys()) {
     if (id === root.id) continue;
-    const el = document.getElementById(id);
-    if (el && root.contains(el) && isHTMLElement(el)) {
-      stampRegistrationOntoElement(el, init);
+    const element = document.getElementById(id);
+    if (element && root.contains(element) && isHTMLElement(element)) {
+      present.set(`${TagType.CanPlay}:${id}`, element);
     }
   }
+
   // Capability descendants present in this render, keyed by `tag:id`. The scan
   // is subtree-wide, so each view-root tracks its full descendant set
   // (including nested ones) — teardown below covers every depth.
-  const present = new Map<string, HTMLElement>();
   for (const tag of getTagTypes()) {
     const els = Array.from(root.querySelectorAll(`[${tag}]`)).filter(
       isHTMLElement,
@@ -2738,7 +3340,7 @@ function setupViewDescendants(root: HTMLElement): void {
     for (const el of els) {
       if (el === root) continue;
       if (!el.id) {
-        if (isDevelopmentMode) {
+        if (configuredOptions?.developmentMode) {
           console.warn(
             `[playhtml] a view rendered a "${tag}" element with no id; it won't bind. ` +
               `Give capability children a stable, unique id (key keyed lists by it).`,
@@ -2747,13 +3349,16 @@ function setupViewDescendants(root: HTMLElement): void {
         continue;
       }
       present.set(`${tag}:${el.id}`, el);
-      const existing = elementHandlers.get(tag)?.get(el.id);
-      if (existing) {
-        if (existing.element === el) continue; // already bound to this node
-      }
-      void setupPlayElementForTag(el, tag);
     }
   }
+
+  for (const [key, element] of present) {
+    const tag = key.slice(0, key.indexOf(":"));
+    const existing = elementHandlers.get(tag)?.get(element.id);
+    if (existing?.element === element) continue;
+    void setupPlayElementForTag(element, tag);
+  }
+
   // Tear down descendants this root bound previously that are gone now.
   const previous = viewDescendants.get(root);
   if (previous) {
@@ -2794,18 +3399,10 @@ function deleteElementData(tag: string, elementId: string): void {
   const key = `${tag}:${elementId}`;
 
   // 1. Remove observer
-  const yVal = getYjsValue(store.play[tag]?.[elementId]);
-  if (yVal && typeof (yVal as any).observeDeep === "function") {
-    const observer = yObserverByKey.get(key);
-    if (observer) {
-      try {
-        // @ts-ignore
-        (yVal as any).unobserveDeep(observer);
-      } catch (error) {
-        console.warn(`[PLAYHTML] Failed to remove observer for ${key}:`, error);
-      }
-      yObserverByKey.delete(key);
-    }
+  try {
+    detachElementObserver(key);
+  } catch (error) {
+    console.warn(`[PLAYHTML] Failed to remove observer for ${key}:`, error);
   }
 
   // 2. Remove from SyncedStore
@@ -2876,17 +3473,6 @@ function registerPlayEventListener(
     { type, ...event, id },
   ]);
 
-  // NOTE: bring this back if desired to automatically listen to native DOM events of the same type
-  // document.addEventListener(type, (evt) => {
-  //   const payload: EventMessage = {
-  //     type,
-  //     // @ts-ignore
-  //     eventPayload: evt.detail,
-  //     // @ts-ignore
-  //     // element: evt.target,
-  //   };
-  //   sendPlayEvent(payload);
-  // });
   return id;
 }
 
@@ -2923,7 +3509,9 @@ export {
 export type {
   ElementAwarenessEventHandlerData,
   ElementInitializer,
+  ElementUser,
   PageDataChannel,
+  PageDataSetter,
   PlayerIdentity,
   Cursor,
   CursorPresence,
@@ -2931,6 +3519,7 @@ export type {
   CursorPresenceView,
   PresenceRoom,
   PresenceView,
+  User,
 } from "@playhtml/common";
 
 // Re-export a curated subset of lit-html for `view` authoring, so

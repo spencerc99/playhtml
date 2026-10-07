@@ -72,7 +72,6 @@
             type="text"
             placeholder="your story word..."
             maxlength="20"
-            can-play
           />
           <button class="wordSubmit">📤</button>
           <br />
@@ -131,97 +130,109 @@
               return word.split(/\s+/).length === 1;
             }
 
-            input.defaultData = [];
-            input.myDefaultAwareness = null;
-            input.onMount = ({ setData, getData, setMyAwareness }) => {
-              const onSubmit = () => {
-                submitBtn.disabled = true;
-                if (!isValidWord(input.value)) {
-                  alert("please enter a single word!");
-                  submitBtn.disabled = false;
-                  return;
-                }
-                if (hasExplicitSlur(input.value)) {
-                  alert("please don't troll and be nice");
-                  submitBtn.disabled = false;
-                  return;
-                }
-                // valid length again
-                if (input.value.length > 20) {
-                  alert("too long!");
-                  submitBtn.disabled = false;
-                  return;
-                }
-                const existingStory = getData();
-                const newEntry = {
-                  word: input.value,
-                  color: getUserColor(),
-                  ts: Date.now(),
-                };
-                setData([...existingStory, newEntry]);
-                input.value = "";
-                setMyAwareness(null);
-                submitBtn.disabled = false;
-              };
+            import("https://unpkg.com/playhtml@latest").then(({ playhtml }) => {
+              playhtml.register("wordInput", {
+                defaultData: [],
+                myDefaultAwareness: null,
+                onMount: ({ setData, getData, setMyAwareness }) => {
+                  const onSubmit = () => {
+                    submitBtn.disabled = true;
+                    if (!isValidWord(input.value)) {
+                      alert("please enter a single word!");
+                      submitBtn.disabled = false;
+                      return;
+                    }
+                    if (hasExplicitSlur(input.value)) {
+                      alert("please don't troll and be nice");
+                      submitBtn.disabled = false;
+                      return;
+                    }
+                    // valid length again
+                    if (input.value.length > 20) {
+                      alert("too long!");
+                      submitBtn.disabled = false;
+                      return;
+                    }
+                    const existingStory = getData();
+                    const newEntry = {
+                      word: input.value,
+                      color: getUserColor(),
+                      ts: Date.now(),
+                    };
+                    setData([...existingStory, newEntry]);
+                    input.value = "";
+                    setMyAwareness(null);
+                    submitBtn.disabled = false;
+                  };
 
-              submitBtn.addEventListener("click", onSubmit);
-              input.addEventListener("keydown", (event) => {
-                if (event.key === "Enter") {
-                  onSubmit();
-                }
-              });
-              input.addEventListener("input", (event) => {
-                if (event.target.value === "") {
-                  setMyAwareness(null);
-                } else {
-                  setMyAwareness(getUserColor());
-                }
-              });
-            };
-            input.updateElementAwareness = ({ awareness, myAwareness }) => {
-              // people active on the site but not typing will be set to null
-              const activeUsers = awareness.filter((c) => Boolean(c));
-              const otherActiveUsers = [...activeUsers];
-              const myIndex = otherActiveUsers.findIndex(
-                (c) => c === myAwareness
-              );
+                  submitBtn.addEventListener("click", onSubmit);
+                  input.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter") {
+                      onSubmit();
+                    }
+                  });
+                  input.addEventListener("input", (event) => {
+                    if (event.target.value === "") {
+                      setMyAwareness(null);
+                    } else {
+                      setMyAwareness(getUserColor());
+                    }
+                  });
+                },
+                updateElementAwareness: ({ awareness, myAwareness }) => {
+                  // people active on the site but not typing will be set to null
+                  const activeUsers = awareness.filter((c) => Boolean(c));
+                  const otherActiveUsers = [...activeUsers];
+                  const myIndex = otherActiveUsers.findIndex(
+                    (c) => c === myAwareness
+                  );
 
-              // remove first instance of myAwareness to get everyone else and handle duplicates
-              if (myIndex !== -1) {
-                otherActiveUsers.splice(myIndex, 1);
-              }
-              const typingUsers = [];
-              for (const color of otherActiveUsers) {
-                typingUsers.push(`<div  class="typingIndicator" style="--word-color:${getColorVar(
-                  color
-                )}">
+                  // remove first instance of myAwareness to get everyone else and handle duplicates
+                  if (myIndex !== -1) {
+                    otherActiveUsers.splice(myIndex, 1);
+                  }
+                  const typingUsers = [];
+                  for (const color of otherActiveUsers) {
+                    typingUsers.push(`<div  class="typingIndicator" style="--word-color:${getColorVar(
+                      color
+                    )}">
                     <span></span>
                     <span></span>
                     <span></span>
                   </div>`);
-              }
-              typingIndicators.innerHTML = typingUsers.join("\n");
+                  }
+                  typingIndicators.innerHTML = typingUsers.join("\n");
 
-              activeUsersCount.innerText = awareness.length;
-            };
-            input.updateElement = ({ data }) => {
-              if (data.length > 0) {
-                const lastDate = new Date(data[data.length - 1].ts);
-                lastUpdatedTime.innerText =
-                  lastDate.toLocaleTimeString() +
-                  " on " +
-                  lastDate.toLocaleDateString();
-              }
+                  activeUsersCount.innerText = awareness.length;
+                },
+                updateElement: ({ data }) => {
+                  if (data.length > 0) {
+                    const lastDate = new Date(data[data.length - 1].ts);
+                    lastUpdatedTime.innerText =
+                      lastDate.toLocaleTimeString() +
+                      " on " +
+                      lastDate.toLocaleDateString();
+                  }
 
-              storyContent.innerHTML = data
-                .map(
-                  ({ word, color }) =>
-                    `<span class="word" style="--word-color:${getColorVar(
-                      color
-                    )}">${word}</span>`
-                )
-                .join("\n");
-            };
+                  storyContent.replaceChildren(
+                    ...data.flatMap(({ word, color }, index) => {
+                      const wordElement = document.createElement("span");
+                      wordElement.className = "word";
+                      wordElement.style.setProperty(
+                        "--word-color",
+                        getColorVar(color)
+                      );
+                      wordElement.textContent = String(word);
+
+                      return index === 0
+                        ? [wordElement]
+                        : [document.createTextNode("\n"), wordElement];
+                    })
+                  );
+                },
+              });
+              playhtml.init({ room: window.location.pathname });
+            });
           </script>
         </p>
       </div>
@@ -234,10 +245,6 @@
     </footer>
 
     <script type="module" src="./story.ts"></script>
-    <script type="module">
-      import { playhtml } from "https://unpkg.com/playhtml@latest";
-      playhtml.init({ room: window.location.pathname });
-    </script>
     <!-- import cursor chat -->
     <script src="https://cursor-party.spencerc99.partykit.dev/cursors.js"></script>
   </body>

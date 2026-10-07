@@ -1,7 +1,7 @@
 // ABOUTME: Shared types, interfaces, and capability initializers for the playhtml library.
 // ABOUTME: Exports element capabilities, event handler types, and built-in tag definitions.
 import { canMirrorInitializer, type ElementState } from "./canMirror";
-export type { ElementState } from "./canMirror";
+export { observeElementChanges, type ElementState } from "./canMirror";
 
 export type ModifierKey = "ctrlKey" | "altKey" | "shiftKey" | "metaKey";
 export * from "./presence-protocol";
@@ -18,16 +18,24 @@ export * from "./presence-protocol";
  */
 export type ViewTemplate = unknown;
 
+export interface ElementUser<V = any> {
+  user: User;
+  live: V;
+}
+
 export interface ElementInitializer<T = any, U = any, V = any> {
   defaultData?: T | ((element: HTMLElement) => T);
   defaultLocalData?: U | ((element: HTMLElement) => U);
+  live?: V | ((element: HTMLElement) => V);
+  /** @deprecated Use `live`. */
   myDefaultAwareness?: V | ((element: HTMLElement) => V);
   /**
-   * Imperative update path: receives the current state and mutates the DOM
-   * directly. Pair with `defaultData`; use `view` instead for declarative
-   * rendering.
-   * `view` and `updateElement` are mutually exclusive — providing both is a
-   * registration-time error.
+   * Imperative update path. Receives the current state and mutates the DOM.
+   * Runs when shared data or element live values change.
+   */
+  update?: (data: ElementEventHandlerData<T, U, V>) => void;
+  /**
+   * @deprecated Use `update`.
    */
   updateElement?: (data: ElementEventHandlerData<T, U, V>) => void;
   /**
@@ -44,7 +52,7 @@ export interface ElementInitializer<T = any, U = any, V = any> {
    */
   view?: (data: ElementEventHandlerData<T, U, V>) => ViewTemplate;
   /**
-   * Imperative awareness update path. Required with `myDefaultAwareness`.
+   * @deprecated Use `update`, which also runs when element live values change.
    */
   updateElementAwareness?: (
     data: ElementAwarenessEventHandlerData<T, U, V>,
@@ -65,8 +73,6 @@ export interface ElementInitializer<T = any, U = any, V = any> {
     e: MouseEvent | TouchEvent,
     eventData: ElementEventHandlerData<T, U, V>,
   ) => void;
-  // @deprecated use onMount instead
-  additionalSetup?: (eventData: ElementSetupData<T, U, V>) => void;
   // Used to set up any additional event handlers. May return a cleanup
   // function (to cancel rAF loops, timers, listeners) that runs when the
   // element is removed/unregistered.
@@ -79,10 +85,10 @@ export interface ElementInitializer<T = any, U = any, V = any> {
 }
 
 export interface ElementData<T = any, U = any, V = any>
-  extends ElementInitializer<T> {
+  extends ElementInitializer<T, U, V> {
   data?: T;
   localData?: U;
-  awareness?: V;
+  awareness?: V[];
   element: HTMLElement;
   onChange: (data: T) => void;
   onAwarenessChange: (data: V) => void;
@@ -96,8 +102,14 @@ export interface ElementData<T = any, U = any, V = any>
 export interface ElementEventHandlerData<T = any, U = any, V = any> {
   data: T;
   localData: U;
+  live: V | undefined;
+  users: ElementUser<V>[];
+  /** @deprecated Use `users.map(({ live }) => live)`. */
   awareness: V[];
+  /** @deprecated Use `users`. */
   awarenessByStableId: Map<string, V>;
+  /** @deprecated Use `live`. */
+  myAwareness?: V;
   element: HTMLElement;
   /**
    * Updates the element's shared data.
@@ -117,6 +129,8 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
   setData: (data: T | ((draft: T) => void)) => void;
   // TODO: should probably rename to "setTemporaryData" and use setLocalData to set indexeddb data
   setLocalData: (data: U | ((draft: U) => void)) => void;
+  setLive: (data: V) => void;
+  /** @deprecated Use `setLive`. */
   setMyAwareness: (data: V) => void;
   /**
    * Re-runs the element's `view` and patches the result into the DOM, even
@@ -128,17 +142,20 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
 }
 
 export interface ElementAwarenessEventHandlerData<T = any, U = any, V = any>
-  extends ElementEventHandlerData<T, U, V> {
-  myAwareness?: V;
-}
+  extends ElementEventHandlerData<T, U, V> {}
 
 export interface ElementSetupData<T = any, U = any, V = any> {
   getData: () => T;
   getLocalData: () => U;
+  getLive: () => V | undefined;
+  getUsers: () => ElementUser<V>[];
+  /** @deprecated Use `getUsers`. */
   getAwareness: () => V[];
   getElement: () => HTMLElement;
   setData: (data: T | ((draft: T) => void)) => void;
   setLocalData: (data: U | ((draft: U) => void)) => void;
+  setLive: (data: V) => void;
+  /** @deprecated Use `setLive`. */
   setMyAwareness: (data: V) => void;
   /**
    * Re-runs the element's `view` and patches the result into the DOM. See
@@ -284,11 +301,6 @@ export type MoveData = {
 export type SpinData = {
   rotation: number;
 };
-export type GrowData = {
-  scale: number;
-  maxScale: number;
-  isHovering: boolean;
-};
 /**
  * Optional container for clones: an element id (with or without leading `#`)
  * or any CSS selector. Defaults to inserting clones after the template.
@@ -296,9 +308,9 @@ export type GrowData = {
 export const CanDuplicateTo = "can-duplicate-to";
 /**
  * Optional id (`my-arena`, `#my-arena`) or selector (`.arena`) of a container;
- * `can-move` clamps the element's position inside it. The cursor itself is
- * unconstrained — you can drag past the edge — the element just stops at the
- * bounds.
+ * `can-move` clamps the element's position inside it while dragging. Initial
+ * layout and persisted positions are not rewritten during setup. The cursor
+ * itself is unconstrained — only the dragged element stops at the bounds.
  */
 export const CanMoveBounds = "can-move-bounds";
 /**
@@ -394,11 +406,15 @@ export * from "./sharedElements";
 
 // Export cursor types
 export * from "./cursor-types";
-import type { Cursor, PlayerIdentity } from "./cursor-types";
+import type { Cursor, PlayerIdentity, User } from "./cursor-types";
+
+export type PageDataSetter<T> = [T] extends [object]
+  ? T | ((draft: T) => void)
+  : T | ((value: T) => T);
 
 export interface PageDataChannel<T> {
   getData(): T;
-  setData(data: T | ((draft: T) => void)): void;
+  setData(data: PageDataSetter<T>): void;
   onUpdate(callback: (data: T) => void): () => void;
   destroy(): void;
 }
@@ -498,18 +514,6 @@ export const TagTypeToElement: DefaultTagInitializers = {
     defaultLocalData: { startMouseX: 0, startMouseY: 0 },
     updateElement: ({ element, data }) => {
       element.style.transform = `translate(${data.x}px, ${data.y}px)`;
-    },
-    onMount: ({ getData, getElement, setData }) => {
-      const element = getElement();
-      const boundsRoot = getMoveBoundsRoot(element);
-      if (!boundsRoot) return;
-      const data = getData();
-      const clampedData = roundMoveData(
-        getMoveBoundsClamp(element, boundsRoot, data, data),
-      );
-      if (clampedData.x !== data.x || clampedData.y !== data.y) {
-        setData(clampedData);
-      }
     },
     onDragStart: (
       e: MouseEvent | TouchEvent,
@@ -707,6 +711,17 @@ export const TagTypeToElement: DefaultTagInitializers = {
 
       element.addEventListener("mouseenter", onMouseEnter);
       element.addEventListener("mouseleave", onMouseLeave);
+
+      // The mouseenter/mouseleave listeners die with the element, but the
+      // document-level keydown/keyup listeners don't — if the element is
+      // removed while hovered (SPA navigation, React unmount), mouseleave
+      // never fires and they'd otherwise leak for the life of the page.
+      return () => {
+        element.removeEventListener("mouseenter", onMouseEnter);
+        element.removeEventListener("mouseleave", onMouseLeave);
+        document.removeEventListener("keydown", onKeyDownUp);
+        document.removeEventListener("keyup", onKeyDownUp);
+      };
     },
     resetShortcut: "shiftKey",
   },

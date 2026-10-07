@@ -3,20 +3,8 @@
 
 import { useState, useEffect } from 'react';
 import { WORKER_URL } from '@movement/config';
+import { DOWNLOAD_LINKS } from '@movement/downloadLinks';
 import styles from './DownloadGate.module.scss';
-
-const CHROME_DOWNLOAD_URL =
-  'https://chromewebstore.google.com/detail/we-were-online/bhkdblmogjkgeipehaphdocclmijnkhc?authuser=0&hl=en';
-const FIREFOX_DOWNLOAD_URL =
-  'https://addons.mozilla.org/en-US/firefox/addon/we-were-online/';
-const EDGE_DOWNLOAD_URL =
-  'https://microsoftedge.microsoft.com/addons/detail/we-were-online/kiamoecdnaglmhigmbmdkiodbbphpodl';
-
-const DOWNLOAD_LINKS = [
-  { browser: 'Chrome', url: CHROME_DOWNLOAD_URL },
-  { browser: 'Firefox', url: FIREFOX_DOWNLOAD_URL },
-  { browser: 'Edge', url: EDGE_DOWNLOAD_URL },
-];
 
 const SUBSCRIBED_KEY = 'wewere.subscribed';
 

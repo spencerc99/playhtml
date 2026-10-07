@@ -1,0 +1,333 @@
+// ABOUTME: Styles and keyframes for the coded Wikipedia demo animation.
+// ABOUTME: Cursor drift, link patina glow, selection fade, and chat bubble; all pause under reduced motion.
+
+@use "../styles/variables" as *;
+
+$accent-teal: #4a9a8a;
+$accent-rust: #c4724e;
+$accent-plum: #8b6b7f;
+$font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+.stage {
+  position: relative;
+  height: 200px;
+  padding: 14px 16px;
+  overflow: hidden;
+  font-family: $font-body;
+}
+
+.articleTitle {
+  font-family: $font-wordmark;
+  font-weight: 700;
+  font-size: 1.0625rem;
+  color: $text;
+  margin: 0 0 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(90, 78, 65, 0.18);
+}
+
+.articleBody {
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: $text-muted;
+  margin: 0 0 4px;
+  // Leaves a clear right-hand column for the chat bubble to occupy.
+  max-width: 38ch;
+}
+
+// A link other people have followed enough times that the page remembers it.
+.rememberedLink {
+  color: $accent-plum;
+  border-bottom: 1px solid rgba($accent-plum, 0.6);
+  border-radius: 2px;
+  padding: 0 1px;
+  animation: patina-pulse 3.2s ease-in-out infinite;
+}
+
+.selection {
+  border-radius: 2px;
+  animation: selection-fade 8s ease-in-out infinite;
+}
+
+.cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.cursorArrow {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.cursorName {
+  font-family: $font-mono;
+  font-size: 8px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 3px;
+  color: $bg;
+  white-space: nowrap;
+  margin-top: 8px;
+}
+
+.cursorNameMira {
+  background: $accent-teal;
+}
+
+.cursorNameSol {
+  background: $accent-rust;
+}
+
+.cursorMira {
+  animation: drift-mira 8s ease-in-out infinite;
+}
+
+.cursorSol {
+  animation: drift-sol 8s ease-in-out infinite;
+}
+
+// Sits in the ragged-right gap beside the article text, clear of both cursor
+// paths in the band below.
+.chatBubble {
+  position: absolute;
+  right: 12px;
+  top: 96px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 60%;
+  padding: 6px 9px;
+  background: $bg;
+  border: 1px solid rgba(90, 78, 65, 0.25);
+  border-radius: 6px;
+  box-shadow: 0 2px 5px rgba(90, 78, 65, 0.12);
+  opacity: 0;
+  animation: chat-appear 8s ease-in-out infinite;
+}
+
+.chatName {
+  font-family: $font-mono;
+  font-size: 8px;
+  color: $accent-rust;
+  flex-shrink: 0;
+}
+
+.chatText {
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  color: $text;
+}
+
+.chatHint {
+  position: absolute;
+  left: 16px;
+  bottom: 12px;
+  font-family: $font-mono;
+  font-size: 8.5px;
+  letter-spacing: 0.04em;
+  color: rgba($text-muted, 0.75);
+}
+
+@keyframes patina-pulse {
+  0%,
+  100% {
+    background: rgba($accent-plum, 0.06);
+    box-shadow: 0 0 0 rgba($accent-plum, 0);
+  }
+
+  50% {
+    background: rgba($accent-plum, 0.16);
+    box-shadow: 0 0 8px rgba($accent-plum, 0.35);
+  }
+}
+
+@keyframes selection-fade {
+  0%,
+  25%,
+  100% {
+    background: rgba($accent-teal, 0);
+  }
+
+  45%,
+  75% {
+    background: rgba($accent-teal, 0.22);
+  }
+}
+
+// Both paths stay in the open band below the article text so the name chips
+// never sit on top of a word.
+// The article text ends around y=133 and the chat hint starts at y=175, so both
+// paths stay inside that open band and the name chips never sit on a word.
+@keyframes drift-mira {
+  0% {
+    transform: translate(20px, 140px);
+  }
+
+  30% {
+    transform: translate(78px, 152px);
+  }
+
+  60% {
+    transform: translate(140px, 139px);
+  }
+
+  85% {
+    transform: translate(62px, 156px);
+  }
+
+  100% {
+    transform: translate(20px, 140px);
+  }
+}
+
+@keyframes drift-sol {
+  0% {
+    transform: translate(300px, 154px);
+  }
+
+  25% {
+    transform: translate(238px, 140px);
+  }
+
+  55% {
+    transform: translate(296px, 137px);
+  }
+
+  80% {
+    transform: translate(346px, 152px);
+  }
+
+  100% {
+    transform: translate(300px, 154px);
+  }
+}
+
+// Narrow stages: the ragged-right gap beside the article text disappears, so
+// the bubble docks above the chat hint and sol drifts a shorter, inset path.
+@media (max-width: 520px) {
+  .chatBubble {
+    top: auto;
+    bottom: 34px;
+    right: 12px;
+    max-width: 62%;
+  }
+
+  .cursorMira {
+    animation-name: drift-mira-narrow;
+  }
+
+  .cursorSol {
+    animation-name: drift-sol-narrow;
+  }
+}
+
+@keyframes drift-mira-narrow {
+  0% {
+    transform: translate(14px, 140px);
+  }
+
+  30% {
+    transform: translate(48px, 152px);
+  }
+
+  60% {
+    transform: translate(60px, 139px);
+  }
+
+  85% {
+    transform: translate(30px, 156px);
+  }
+
+  100% {
+    transform: translate(14px, 140px);
+  }
+}
+
+@keyframes drift-sol-narrow {
+  0% {
+    transform: translate(170px, 154px);
+  }
+
+  25% {
+    transform: translate(128px, 140px);
+  }
+
+  55% {
+    transform: translate(186px, 137px);
+  }
+
+  80% {
+    transform: translate(214px, 152px);
+  }
+
+  100% {
+    transform: translate(170px, 154px);
+  }
+}
+
+@keyframes chat-appear {
+  0%,
+  50% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  60%,
+  90% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+// Reduced motion: freeze every element at its composed resting state so the
+// demo still reads as one inhabited page rather than going blank.
+@media (prefers-reduced-motion: reduce) {
+  .rememberedLink,
+  .selection,
+  .cursorMira,
+  .cursorSol,
+  .chatBubble {
+    animation: none;
+  }
+
+  .rememberedLink {
+    background: rgba($accent-plum, 0.16);
+  }
+
+  .selection {
+    background: rgba($accent-teal, 0.22);
+  }
+
+  .cursorMira {
+    transform: translate(78px, 152px);
+  }
+
+  .cursorSol {
+    transform: translate(238px, 140px);
+  }
+
+  .chatBubble {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) and (max-width: 520px) {
+  .cursorMira {
+    transform: translate(48px, 152px);
+  }
+
+  .cursorSol {
+    transform: translate(150px, 140px);
+  }
+}

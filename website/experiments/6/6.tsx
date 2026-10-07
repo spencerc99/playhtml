@@ -216,7 +216,7 @@ const Main = withSharedState(
     id: "screen-symphony-2",
   },
   ({ data, setData, setMyAwareness }) => {
-    const { hasSynced } = usePlayContext();
+    const { isLoading } = usePlayContext();
     const [currentSize, setCurrentSize] = useState({ width: 0, height: 0 });
     const [isResizing, setIsResizing] = useState(false);
     const [zoom, setZoom] = useState(1);
@@ -241,7 +241,7 @@ const Main = withSharedState(
       setMyAwareness({ currentSize: sizeKey });
 
       // Only register this device once after sync is complete
-      if (hasSynced) {
+      if (!isLoading) {
         const localStorageKey = `screen-symphony-${sizeKey}`;
         const hasVisited = localStorage.getItem(localStorageKey);
 
@@ -273,7 +273,7 @@ const Main = withSharedState(
           localStorage.setItem(localStorageKey, timestamp.toString());
         }
       }
-    }, [hasSynced]);
+    }, [isLoading]);
 
     // Handle resize events with debouncing (update current size but don't re-register)
     useEffect(() => {

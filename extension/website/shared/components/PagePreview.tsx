@@ -1,6 +1,6 @@
 // ABOUTME: Renders an abstract preview of a web page inside an SVG foreignObject.
 // ABOUTME: Renders at desktop width then scales down to fit the viewport rect.
-import React, { memo } from "react";
+import { memo } from "react";
 
 interface PagePreviewProps {
   url: string;
@@ -79,7 +79,6 @@ export const PagePreview = memo(
       return (
         <foreignObject x={x} y={y} width={width} height={height}>
           <div
-            xmlns="http://www.w3.org/1999/xhtml"
             style={{
               width: `${width}px`,
               height: `${height}px`,
@@ -117,7 +116,6 @@ export const PagePreview = memo(
     return (
       <foreignObject x={x} y={y} width={width} height={height}>
         <div
-          xmlns="http://www.w3.org/1999/xhtml"
           style={{
             width: `${width}px`,
             height: `${height}px`,

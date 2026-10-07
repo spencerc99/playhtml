@@ -1,0 +1,493 @@
+/* ABOUTME: Styles the examples catalogue with the docs paper-and-ink design system. */
+/* ABOUTME: Defines responsive cards, source filters, loading, and failure states. */
+
+.catalogue {
+  container-type: inline-size;
+  margin-top: 1.75rem;
+  color: var(--ph-ink);
+  font-family: var(--ph-font-body);
+}
+
+.controls {
+  display: grid;
+  gap: 1rem;
+  width: min(36rem, 100%);
+  max-width: 100%;
+  padding: 1rem;
+  background: var(--ph-paper-warm);
+  border: 1px solid var(--ph-hairline);
+  border-radius: 6px;
+  box-shadow: var(--ph-shadow-brick);
+}
+
+.searchLabel {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  color: var(--ph-ink-2);
+  font-family: var(--ph-font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.searchField {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.75rem;
+  padding-inline: 0.8rem;
+  background: var(--ph-paper);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 4px;
+}
+
+.searchField:focus-within {
+  outline: 3px solid var(--ph-ultramarine-wash);
+  border-color: var(--ph-ultramarine-deep);
+}
+
+.searchField svg {
+  width: 1.05rem;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: var(--ph-ink-3);
+  stroke-linecap: round;
+  stroke-width: 1.7;
+}
+
+.searchField input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.65rem 0;
+  color: var(--ph-ink);
+  font: 1rem var(--ph-font-body);
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+
+.searchField input::placeholder {
+  color: var(--ph-ink-3);
+  opacity: 1;
+}
+
+.filters {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.filterLabel {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: var(--ph-ink-2);
+  font-family: var(--ph-font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.filterButtons {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.filterButtons button,
+.sitesError button {
+  box-sizing: border-box;
+  min-height: 2.35rem;
+  margin: 0;
+  padding: 0.45rem 0.8rem;
+  color: var(--ph-ink-2);
+  font: 700 0.88rem var(--ph-font-body);
+  line-height: 1.2;
+  background: var(--ph-paper);
+  border: 1px solid var(--ph-hairline);
+  border-radius: 4px;
+  cursor: pointer;
+  transition:
+    color var(--ph-motion-fast),
+    background var(--ph-motion-fast),
+    border-color var(--ph-motion-fast);
+}
+
+.filterButtons button:hover,
+.sitesError button:hover {
+  color: var(--ph-ink);
+  border-color: var(--ph-ink);
+}
+
+.filterButtons button[aria-pressed="true"] {
+  color: var(--ph-paper);
+  background: var(--ph-ultramarine);
+  border-color: var(--ph-ink);
+  box-shadow: 1px 1px 0 var(--ph-ink);
+}
+
+.filterButtons button:focus-visible,
+.sitesError button:focus-visible,
+.catalogue a:focus-visible {
+  outline: 3px solid var(--ph-mustard);
+  outline-offset: 2px;
+}
+
+.resultsHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.3rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px dashed var(--ph-hairline);
+}
+
+.resultCount,
+.attribution,
+.sitesStatus {
+  margin: 0;
+  color: var(--ph-ink-3);
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.resultCount {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.attribution a,
+.errorActions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.attribution svg,
+.errorActions svg,
+.cardActions svg {
+  width: 0.95rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.sitesStatus {
+  padding: 0.8rem 0;
+}
+
+.sitesError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--ph-mustard-wash);
+  border: 1px solid var(--ph-mustard);
+  border-left: 4px solid var(--ph-mustard);
+  border-radius: 4px;
+}
+
+.sitesError > div:first-child {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.sitesError strong {
+  color: var(--ph-ink);
+  font-family: var(--ph-font-display);
+  font-size: 0.95rem;
+}
+
+.sitesError span {
+  color: var(--ph-ink-2);
+  font-size: 0.86rem;
+}
+
+.errorActions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 0.7rem;
+}
+
+.errorActions a {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.resultGroups {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+}
+
+.resultGroup {
+  min-width: 0;
+}
+
+.groupTitle {
+  margin: 0 0 0.65rem;
+  color: var(--ph-ink-2);
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  align-items: start;
+  gap: 1.25rem;
+}
+
+.card {
+  display: flex;
+  min-width: 0;
+  min-height: 24rem;
+  margin: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ph-paper-warm);
+  border: 1px solid var(--ph-hairline);
+  border-radius: 4px;
+  box-shadow: var(--ph-shadow-brick);
+  transition:
+    box-shadow var(--ph-motion),
+    border-color var(--ph-motion);
+}
+
+.card:hover {
+  border-color: var(--ph-ink);
+  box-shadow: 4px 4px 0 var(--ph-ink);
+}
+
+.card[data-source="example"] {
+  min-height: 0;
+}
+
+.siteMedia {
+  position: relative;
+  display: grid;
+  min-height: 10.5rem;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-bottom: 1px solid var(--ph-hairline);
+}
+
+.siteMedia {
+  place-items: center;
+  color: var(--ph-ink-3);
+  background: var(--ph-paper-deep);
+}
+
+.siteMedia img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--ph-motion-slow);
+}
+
+.card:hover .siteMedia img {
+  transform: scale(1.025);
+}
+
+.sitePlaceholder {
+  max-width: 85%;
+  overflow-wrap: anywhere;
+  font-family: var(--ph-font-mono);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.cardBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 1rem 1rem 0.85rem;
+}
+
+.cardMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-height: 1.4rem;
+}
+
+.sourceBadge {
+  padding: 0.18rem 0.45rem;
+  font-family: var(--ph-font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+}
+
+.exampleBadge {
+  color: var(--ph-ultramarine-deep);
+  background: var(--ph-ultramarine-wash);
+}
+
+.siteBadge {
+  color: var(--ph-sage-deep);
+  background: var(--ph-sage-wash);
+}
+
+.difficulty,
+.hostname {
+  overflow: hidden;
+  color: var(--ph-ink-3);
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.difficulty {
+  text-transform: capitalize;
+}
+
+.cardTitle {
+  margin: 0.75rem 0 0;
+  color: var(--ph-ink);
+  font-family: var(--ph-font-display);
+  font-size: 1.2rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.cardDescription {
+  display: -webkit-box;
+  margin: 0.5rem 0 0;
+  overflow: hidden;
+  color: var(--ph-ink-2);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.author {
+  margin: 0.35rem 0 0;
+  color: var(--ph-ink-3);
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: auto 0 0;
+  padding: 0.9rem 0 0;
+  list-style: none;
+}
+
+.tagList li {
+  margin: 0;
+  padding: 0.15rem 0.4rem;
+  color: var(--ph-ink-3);
+  font-family: var(--ph-font-mono);
+  font-size: 0.68rem;
+  line-height: 1.35;
+  background: var(--ph-paper);
+  border: 1px solid var(--ph-hairline-soft);
+  border-radius: 3px;
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.8rem 1rem 1rem;
+  border-top: 1px solid var(--ph-hairline-soft);
+}
+
+.catalogue .primaryAction,
+.catalogue .secondaryAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  text-decoration: none;
+}
+
+.emptyState {
+  display: grid;
+  place-items: center;
+  gap: 0.25rem;
+  min-height: 12rem;
+  margin-top: 1.25rem;
+  padding: 2rem;
+  color: var(--ph-ink-2);
+  text-align: center;
+  background: var(--ph-paper-warm);
+  border: 1px dashed var(--ph-hairline);
+  border-radius: 4px;
+}
+
+.emptyState strong {
+  color: var(--ph-ink);
+  font-family: var(--ph-font-display);
+  font-size: 1.1rem;
+}
+
+.emptyState span {
+  font-size: 0.9rem;
+}
+
+@container (min-width: 48rem) {
+  .controls {
+    width: fit-content;
+    grid-template-columns: minmax(16rem, 36rem) auto;
+    align-items: end;
+  }
+}
+
+@media (max-width: 35rem) {
+  .resultsHeader,
+  .sitesError {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .errorActions {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .card {
+    min-height: 0;
+  }
+
+  .cardActions {
+    align-items: stretch;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .siteMedia img,
+  .primaryAction,
+  .secondaryAction {
+    transition: none;
+  }
+}

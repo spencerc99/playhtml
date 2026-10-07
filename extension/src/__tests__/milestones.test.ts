@@ -16,7 +16,12 @@ import {
   findNextAllTimeMilestone,
   findNextDomainMilestone,
   checkAllMilestones,
+  detectLongGapReturn,
+  formatGap,
+  LONG_GAP_THRESHOLD_MS,
 } from "../milestones/milestones";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 describe("buildEmptyState", () => {
   it("returns a valid empty state", () => {
@@ -26,6 +31,7 @@ describe("buildEmptyState", () => {
     expect(state.dailyShown.screenTime).toEqual([]);
     expect(state.allTimeShown.sitesExplored).toEqual([]);
     expect(state.allTimeShown.domainVisits).toEqual({});
+    expect(state.allTimeShown.longGapReturn).toEqual({});
     expect(state.lastToastTs).toBe(0);
     expect(state.lastCopyIndex).toEqual({});
   });
@@ -237,5 +243,168 @@ describe("checkAllMilestones", () => {
       [],
     );
     expect(result!.updatedState.dailyShown.cursorDistance).toEqual([1]);
+  });
+});
+
+describe("detectLongGapReturn", () => {
+  const now = new Date("2026-07-16T12:00:00Z").getTime();
+
+  it("returns null when the gap is under 30 days (29 days)", () => {
+    const result = detectLongGapReturn([now, now - 29 * DAY_MS], now);
+    expect(result).toBeNull();
+  });
+
+  it("fires when the gap exceeds 30 days (31 days)", () => {
+    const previousVisitTs = now - 31 * DAY_MS;
+    const result = detectLongGapReturn([now, previousVisitTs], now);
+    expect(result).not.toBeNull();
+    expect(result!.returnTs).toBe(now);
+    expect(result!.previousVisitTs).toBe(previousVisitTs);
+    expect(result!.gapMs).toBeGreaterThan(LONG_GAP_THRESHOLD_MS);
+  });
+
+  it("returns null when the newest visit is stale (not a recent return)", () => {
+    // Newest visit is 2 days ago — outside the 24h recency window.
+    const result = detectLongGapReturn(
+      [now - 2 * DAY_MS, now - 200 * DAY_MS],
+      now,
+    );
+    expect(result).toBeNull();
+  });
+
+  it("finds the long gap after several visits earlier on the return day", () => {
+    const previousVisitTs = now - 120 * DAY_MS;
+    const result = detectLongGapReturn(
+      [
+        now - 60 * 60 * 1000,
+        previousVisitTs - 2 * DAY_MS,
+        now - 3 * 60 * 60 * 1000,
+        previousVisitTs,
+        now - 2 * 60 * 60 * 1000,
+      ],
+      now,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.returnTs).toBe(now - 3 * 60 * 60 * 1000);
+    expect(result!.previousVisitTs).toBe(previousVisitTs);
+    expect(result!.gapMs).toBe(120 * DAY_MS - 3 * 60 * 60 * 1000);
+  });
+
+  it("collects up to 4 distinct previous visit days, newest first, deduped", () => {
+    const ts = (daysAgo: number, hour = 12) =>
+      now - daysAgo * DAY_MS + hour * 60 * 60 * 1000;
+    const events = [
+      now, // the return
+      ts(120), // previous visit before the gap
+      ts(120, 13), // same day as above — should dedupe
+      ts(125),
+      ts(130),
+      ts(140),
+      ts(150), // 5th distinct day — should be dropped
+    ];
+    const result = detectLongGapReturn(events, now);
+    expect(result).not.toBeNull();
+    expect(result!.previousVisits.length).toBe(4);
+    // Newest-first ordering
+    const pv = result!.previousVisits;
+    expect(pv[0]).toBeGreaterThan(pv[1]);
+    expect(pv[1]).toBeGreaterThan(pv[2]);
+    expect(pv[2]).toBeGreaterThan(pv[3]);
+  });
+
+  it("returns null for a single visit (no pair to compare)", () => {
+    expect(detectLongGapReturn([now], now)).toBeNull();
+    expect(detectLongGapReturn([], now)).toBeNull();
+  });
+});
+
+describe("formatGap", () => {
+  it("uses weeks under 60 days", () => {
+    expect(formatGap(31 * DAY_MS)).toBe("4wks");
+    expect(formatGap(45 * DAY_MS)).toBe("6wks");
+  });
+
+  it("uses months from 60 through 729 days", () => {
+    expect(formatGap(97 * DAY_MS)).toBe("3mo");
+    expect(formatGap(465 * DAY_MS)).toBe("15mo");
+  });
+
+  it("uses years at or above 730 days", () => {
+    expect(formatGap(800 * DAY_MS)).toBe("2yr");
+  });
+});
+
+describe("checkAllMilestones — longGapReturn", () => {
+  const now = Date.now();
+  const gap = {
+    domain: "dearkellyfilm.com",
+    faviconUrl: "https://example.com/fav.png",
+    return: {
+      returnTs: now,
+      previousVisitTs: now - 120 * DAY_MS,
+      gapMs: 120 * DAY_MS,
+      previousVisits: [now - 120 * DAY_MS, now - 125 * DAY_MS],
+    },
+  };
+
+  it("fires before other ready milestones", () => {
+    const state = { ...buildEmptyState(), dailyScreenTimeMs: 60 * 60 * 1000 };
+    const result = checkAllMilestones(
+      state,
+      { domainCount: 500, hourBuckets: Array(24).fill(0) },
+      6082560, // cursor distance also crossed
+      [{ domain: "dearkellyfilm.com", visitCount: 100 }],
+      gap,
+    );
+    expect(result).not.toBeNull();
+    expect(result!.milestone.type).toBe("longGapReturn");
+    expect(result!.milestone.domain).toBe("dearkellyfilm.com");
+    expect(result!.milestone.copy).toContain("last");
+    expect(result!.milestone.previousVisits).toEqual(gap.return.previousVisits);
+    expect(
+      result!.updatedState.allTimeShown.longGapReturn["dearkellyfilm.com"],
+    ).toBe(gap.return.previousVisitTs);
+  });
+
+  it("does not fire the same gap twice for a domain", () => {
+    const state = buildEmptyState();
+    state.allTimeShown.longGapReturn["dearkellyfilm.com"] =
+      gap.return.previousVisitTs;
+    const result = checkAllMilestones(
+      state,
+      { domainCount: 0, hourBuckets: Array(24).fill(0) },
+      0,
+      [],
+      gap,
+    );
+    expect(result).toBeNull();
+  });
+
+  it("fires again for a new, later gap on the same domain", () => {
+    const state = buildEmptyState();
+    // Previously shown an older gap.
+    state.allTimeShown.longGapReturn["dearkellyfilm.com"] = now - 400 * DAY_MS;
+    const result = checkAllMilestones(
+      state,
+      { domainCount: 0, hourBuckets: Array(24).fill(0) },
+      0,
+      [],
+      gap,
+    );
+    expect(result).not.toBeNull();
+    expect(result!.milestone.type).toBe("longGapReturn");
+  });
+
+  it("does not fire when no long gap is passed", () => {
+    const state = buildEmptyState();
+    const result = checkAllMilestones(
+      state,
+      { domainCount: 0, hourBuckets: Array(24).fill(0) },
+      0,
+      [],
+      null,
+    );
+    expect(result).toBeNull();
   });
 });

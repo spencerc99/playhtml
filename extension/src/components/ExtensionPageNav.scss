@@ -1,0 +1,56 @@
+// ABOUTME: Styles the shared navigation used across standalone extension pages.
+// ABOUTME: Preserves the WWO wordmark and quiet mono page links over every surface.
+
+@use "../styles/variables" as *;
+
+.extension-page-nav {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
+  color: $text;
+}
+
+.extension-page-nav__wordmark {
+  flex-shrink: 0;
+  font-family: $font-wordmark;
+  font-size: 17px;
+  font-style: italic;
+  font-weight: 200;
+}
+
+.extension-page-nav__links {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 16px;
+  color: $text-muted;
+  font-family: $font-mono;
+  font-size: 10px;
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: $text;
+    text-decoration: underline;
+  }
+
+  [aria-current="page"] {
+    color: $text;
+  }
+}
+
+@media (max-width: 520px) {
+  .extension-page-nav {
+    align-items: flex-start;
+  }
+
+  .extension-page-nav__links {
+    gap: 8px 12px;
+  }
+}

@@ -12,7 +12,8 @@ import { EmoteBroadcaster } from "./EmoteBroadcaster";
 import { EmoteGhostRenderer } from "./EmoteGhostRenderer";
 import { playInteraction } from "./InteractionRenderer";
 import { ReactHint } from "./ReactHint";
-import { ACTIVE_EMOTES, getEmote } from "./emotes";
+import { ACTIVE_EMOTES, getEmote, type EmoteDef } from "./emotes";
+import { matchesEmoteShortcut, type EmoteShortcut } from "./emoteShortcut";
 import {
   nearestPeer,
   detectMutualHighFive,
@@ -48,6 +49,12 @@ interface EmoteCursorClient {
   showCursor(connectionId: string): void;
 }
 
+export interface EmoteInitOptions {
+  emotes?: EmoteDef[];
+  shortcut?: EmoteShortcut;
+  showProximityHint?: boolean;
+}
+
 function injectCursorGestureStyles(): void {
   if (document.getElementById(CURSOR_GESTURE_STYLE_ID)) return;
   const style = document.createElement("style");
@@ -74,11 +81,18 @@ function keyToIndex(key: string): number | null {
   return n >= 1 && n <= 9 ? n - 1 : null;
 }
 
-export function initEmotes(deps: {
-  presence: PresenceAPI;
-  cursorClient: EmoteCursorClient;
-}): () => void {
+export function initEmotes(
+  deps: {
+    presence: PresenceAPI;
+    cursorClient: EmoteCursorClient;
+  },
+  options: EmoteInitOptions = {},
+): () => void {
   injectCursorGestureStyles();
+
+  const emotes = options.emotes ?? ACTIVE_EMOTES;
+  const shortcut = options.shortcut ?? "modifier-e";
+  const showProximityHint = options.showProximityHint ?? true;
 
   const { host, shadow } = injectShadow({
     hostStyle: "position:fixed;inset:0;pointer-events:none;z-index:2147483645;",
@@ -100,11 +114,15 @@ export function initEmotes(deps: {
   const selfColor = () => {
     const myPid = deps.presence.getMyIdentity().publicKey;
     const mine = deps.cursorClient.getCursorPresences().get(myPid);
-    return mine?.playerIdentity?.playerStyle?.colorPalette?.[0] ?? DEFAULT_SELF_COLOR;
+    return (
+      mine?.playerIdentity?.playerStyle?.colorPalette?.[0] ?? DEFAULT_SELF_COLOR
+    );
   };
   const peerColor = (pid: string) => {
     const peer = deps.cursorClient.getCursorPresences().get(pid);
-    return peer?.playerIdentity?.playerStyle?.colorPalette?.[0] ?? DEFAULT_SELF_COLOR;
+    return (
+      peer?.playerIdentity?.playerStyle?.colorPalette?.[0] ?? DEFAULT_SELF_COLOR
+    );
   };
   const renderer = new EmoteGhostRenderer(() => lastCursor, selfColor);
 
@@ -112,23 +130,26 @@ export function initEmotes(deps: {
 
   // Teach the shortcut once per session, the first time another cursor comes
   // within the interaction range. Mirrors spencers-website's "press E" hint.
-  const reactHint = new ReactHint(shadow, isMac);
+  const reactHint = showProximityHint ? new ReactHint(shadow, isMac) : null;
   let hintShownThisSession = false;
-  const proximityInterval = setInterval(() => {
-    if (hintShownThisSession) return;
-    const myPid = deps.presence.getMyIdentity().publicKey;
-    let nearby = false;
-    deps.cursorClient.getCursorPresences().forEach((v, pid) => {
-      if (pid === myPid || !v.cursor) return;
-      const dx = v.cursor.x - lastCursor.x;
-      const dy = v.cursor.y - lastCursor.y;
-      if (Math.sqrt(dx * dx + dy * dy) < DEFAULT_TARGET_RADIUS_PX) nearby = true;
-    });
-    if (nearby) {
-      hintShownThisSession = true;
-      reactHint.showAt(lastCursor);
-    }
-  }, 500);
+  const proximityInterval = showProximityHint
+    ? setInterval(() => {
+        if (hintShownThisSession) return;
+        const myPid = deps.presence.getMyIdentity().publicKey;
+        let nearby = false;
+        deps.cursorClient.getCursorPresences().forEach((v, pid) => {
+          if (pid === myPid || !v.cursor) return;
+          const dx = v.cursor.x - lastCursor.x;
+          const dy = v.cursor.y - lastCursor.y;
+          if (Math.sqrt(dx * dx + dy * dy) < DEFAULT_TARGET_RADIUS_PX)
+            nearby = true;
+        });
+        if (nearby) {
+          hintShownThisSession = true;
+          reactHint?.showAt(lastCursor);
+        }
+      }, 500)
+    : null;
 
   const broadcaster = new EmoteBroadcaster(deps.presence, (pid, e, isMe) => {
     const def = getEmote(e.emoteId);
@@ -137,7 +158,9 @@ export function initEmotes(deps: {
     if (def.kind === "interact") {
       const myPid = deps.presence.getMyIdentity().publicKey;
       const amITarget = e.targetPid === myPid;
-      const senderPos = isMe ? lastCursor : deps.cursorClient.getCursorPresences().get(pid)?.cursor;
+      const senderPos = isMe
+        ? lastCursor
+        : deps.cursorClient.getCursorPresences().get(pid)?.cursor;
       const targetPos = e.targetPid
         ? amITarget
           ? lastCursor
@@ -147,13 +170,15 @@ export function initEmotes(deps: {
       if (senderPos && targetPos) {
         const mutual =
           e.emoteId === "highfive" &&
-          detectMutualHighFive(e.ts, broadcaster.peerHighFiveTs(pid), HIGHFIVE_WINDOW_MS);
+          detectMutualHighFive(
+            e.ts,
+            broadcaster.peerHighFiveTs(pid),
+            HIGHFIVE_WINDOW_MS,
+          );
         // Hide the real cursor nodes of both participants while their ghosts
         // animate, so we don't see the real cursor + the ghost (double cursor).
         // No-op for self / idle peers (no node). Restore after the animation.
-        const involved = [pid, e.targetPid].filter(
-          (p): p is string => !!p,
-        );
+        const involved = [pid, e.targetPid].filter((p): p is string => !!p);
         involved.forEach((p) => deps.cursorClient.hideCursor(p));
         playInteraction(
           e.emoteId,
@@ -197,6 +222,7 @@ export function initEmotes(deps: {
         ? createElement(EmoteWheel, {
             x: wheel.x,
             y: wheel.y,
+            emotes,
             onSelect: (emoteId: string) => {
               closeWheel();
               fire(emoteId);
@@ -221,6 +247,7 @@ export function initEmotes(deps: {
   }
 
   function fire(emoteId: string) {
+    if (!emotes.some((emote) => emote.id === emoteId)) return;
     const def = getEmote(emoteId);
     if (!def) return;
     let targetPid: string | undefined;
@@ -240,10 +267,7 @@ export function initEmotes(deps: {
   }
 
   function onKeyDown(e: KeyboardEvent) {
-    if (isTypingTarget(e.target)) return;
-    const mod = isMac ? e.metaKey : e.ctrlKey;
-    // Cmd/Ctrl+Shift+E toggles the wheel.
-    if (mod && e.shiftKey && (e.key === "e" || e.key === "E")) {
+    if (matchesEmoteShortcut(e, shortcut, isMac, isTypingTarget(e.target))) {
       e.preventDefault();
       wheel.open ? closeWheel() : openWheel();
       return;
@@ -255,9 +279,9 @@ export function initEmotes(deps: {
     // Bare number keys fire directly (no modifier), matching the site.
     if (!e.metaKey && !e.ctrlKey && !e.altKey) {
       const idx = keyToIndex(e.key);
-      if (idx !== null && idx < ACTIVE_EMOTES.length) {
+      if (idx !== null && idx < emotes.length) {
         closeWheel();
-        fire(ACTIVE_EMOTES[idx].id);
+        fire(emotes[idx].id);
       }
     }
   }
@@ -268,8 +292,8 @@ export function initEmotes(deps: {
   return () => {
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("pointermove", trackCursor);
-    clearInterval(proximityInterval);
-    reactHint.destroy();
+    if (proximityInterval !== null) clearInterval(proximityInterval);
+    reactHint?.destroy();
     broadcaster.destroy();
     renderer.destroy();
     root.unmount();

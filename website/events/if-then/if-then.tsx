@@ -1,3 +1,5 @@
+// ABOUTME: Renders the collaborative Neighborhood Internets workshop page.
+// ABOUTME: Stores attendee details and connects the page to playhtml cursors.
 import ReactDOM from "react-dom";
 import { PlayProvider } from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
@@ -9,8 +11,9 @@ function Main() {
     "username",
     null,
     (newName) => {
-      window.cursors?.setName(newName);
-    }
+      // Cursor identity is exposed through settable properties, not methods.
+      if (window.cursors) window.cursors.name = newName ?? "";
+    },
   );
   const [from, setFrom] = useStickyState<string | null>("from", null);
 

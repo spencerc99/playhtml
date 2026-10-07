@@ -1,9 +1,10 @@
 // ABOUTME: URL-hash <-> editor state, lz-string remix encoding, and localStorage
 // ABOUTME: management for editor room ids and source drafts.
 import LZString from "lz-string";
+import type { RunnableRecipe } from "./recipes/types";
 
 export type LoadedRecipe = {
-  /** Base recipe id (e.g. "_starter" or in Phase 2: "toggle-basic"). */
+  /** Base recipe id (e.g. "_starter" or "synchronized-sound"). */
   recipeId: string;
   /** Current source code in the editor. */
   source: string;
@@ -53,16 +54,17 @@ export function getEditorRoomId(recipeId: string): string {
 
 /**
  * Parse the current URL hash and resolve to the recipe to load. Falls back
- * to the starter when no recognized hash is present.
+ * to the provided default when no recognized hash is present.
  *
  * Hash forms:
- *   (empty)            → starter
- *   #id=<recipe>       → canonical recipe (Phase 2; in Phase 1 only "_starter" is recognized)
+ *   (empty)            → fallback recipe
+ *   #id=<recipe>       → canonical recipe
  *   #c=<lz-payload>    → remix payload
  */
 export function parseHash(
   hash: string,
-  starterSource: string,
+  findRecipe: (id: string) => RunnableRecipe | undefined,
+  fallbackRecipe: RunnableRecipe,
 ): LoadedRecipe {
   const stripped = hash.startsWith("#") ? hash.slice(1) : hash;
   const params = new URLSearchParams(stripped);
@@ -78,29 +80,39 @@ export function parseHash(
         fromPayload: true,
       };
     }
-    // Malformed payload — fall through to starter
+    // Malformed payload — fall through to the canonical default.
   }
 
-  const id = params.get("id");
-  if (id === "_starter" || id === null || id === "") {
+  const requestedId = params.get("id") || fallbackRecipe.id;
+  const recipe = findRecipe(requestedId);
+  if (recipe) {
     return {
-      recipeId: "_starter",
-      source: starterSource,
-      roomId: getEditorRoomId("_starter"),
+      recipeId: recipe.id,
+      source: recipe.html,
+      roomId: getRequestedRoomId(params) || getEditorRoomId(recipe.id),
       fromPayload: false,
     };
   }
 
-  // Phase 2 will add canonical-recipe lookup here. In Phase 1, an unknown
-  // id falls back to the starter (with a console warning so the dev
-  // notices).
-  console.warn(`[playground] Unknown recipe id "${id}" — falling back to starter.`);
+  console.warn(
+    `[playground] Unknown recipe id "${requestedId}" — falling back to ${fallbackRecipe.id}.`,
+  );
   return {
-    recipeId: "_starter",
-    source: starterSource,
-    roomId: getEditorRoomId("_starter"),
+    recipeId: fallbackRecipe.id,
+    source: fallbackRecipe.html,
+    roomId: getRequestedRoomId(params) || getEditorRoomId(fallbackRecipe.id),
     fromPayload: false,
   };
+}
+
+function getRequestedRoomId(params: URLSearchParams): string | null {
+  const room = params.get("room");
+  if (!room) return null;
+  return isValidRoomId(room) ? room : null;
+}
+
+export function isValidRoomId(roomId: string): boolean {
+  return /^[a-zA-Z0-9:_-]{1,120}$/.test(roomId);
 }
 
 /**

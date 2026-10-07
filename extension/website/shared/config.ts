@@ -13,10 +13,12 @@ export const WORKER_URL: string =
   (import.meta.env.VITE_WORKER_URL as string | undefined) ?? DEFAULT_WORKER_URL;
 
 export const RECENT_EVENTS_URL = `${WORKER_URL}/events/recent`;
+export const COMMUTE_RECENT_URL = `${WORKER_URL}/commute/recent`;
+export const COMMUTE_TRAIN_BOARD_URL = `${WORKER_URL}/commute/trains/board`;
 export const DAILY_COUNTS_URL = `${WORKER_URL}/events/daily-counts`;
 export const PAGE_META_URL = `${WORKER_URL}/page-meta`;
 
-/** WebSocket endpoint for the live cursor-event stream. Derived from
+/** WebSocket endpoint for the live movement-event stream. Derived from
  * WORKER_URL by swapping the http(s) scheme for ws(s). */
 export const STREAM_URL = `${WORKER_URL.replace(/^http/, "ws")}/stream`;
 
@@ -207,6 +209,36 @@ export function parseTimeOfDayFromUrl(): TimeOfDayFilter | undefined {
   return { centerMinutes, radiusMinutes };
 }
 
+/** `?role=master`/`follower` marks this window as part of the multi-screen
+ * installation. Both roles compute animation time from a shared wall-clock
+ * epoch; `follower` additionally participates in cinematic follow coordination.
+ * Returns null when the param is absent (a standalone window drives its own
+ * clock). */
+export function parseInstallationRoleFromUrl(
+  defaultRole: "master" | "follower" | null = null,
+): "master" | "follower" | null {
+  if (typeof window === "undefined") return defaultRole;
+  const raw = new URLSearchParams(window.location.search).get("role");
+  if (raw === "master") return "master";
+  if (raw === "follower") return "follower";
+  return defaultRole;
+}
+
+/** `?follower=<id>` is the stable id a follower window uses to claim cursors in
+ * the coordinated auto-follow protocol (so no two follower screens ride the same
+ * cursor). Any non-empty string works (e.g. `a`, `b`, `1`, `2`). Returns null
+ * when absent — the coordination hook then falls back to a per-window random id
+ * so it still participates without a URL-set id. */
+export function parseFollowerIdFromUrl(
+  defaultFollowerId: string | null = null,
+): string | null {
+  if (typeof window === "undefined") return defaultFollowerId;
+  const raw = new URLSearchParams(window.location.search).get("follower");
+  if (raw === null) return defaultFollowerId;
+  const trimmed = raw.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
 /** `?cinematic=1`/`follow` enables cursor-follow; `?cinematic=reveal` runs the
  * one-shot scripted pull-back (tight close-up → full canvas). Optional tuning:
  *   ?cinemaZoom=0.25        follow: fraction of screen width visible
@@ -215,13 +247,20 @@ export function parseTimeOfDayFromUrl(): TimeOfDayFilter | undefined {
  *   ?cinemaVelZoom=0        follow: velocity-aware zoom-out (0 = off)
  *   ?cinemaReveal=10        reveal: seconds to pull back to full canvas
  *   ?cinemaStartZoom=0.18   reveal: fraction of screen width at the tightest
+ *   ?follow=5               follow: lock onto trail index 5 (only takes effect
+ *                           in follow mode; ignored by reveal)
  * Returns null when cinematic mode is not requested. */
-export function parseCinematicFromUrl(): CinematicConfig | null {
-  if (typeof window === "undefined") return null;
+export function parseCinematicFromUrl(
+  defaultConfig: CinematicConfig | null = null,
+): CinematicConfig | null {
+  if (typeof window === "undefined") return defaultConfig;
   const params = new URLSearchParams(window.location.search);
   const raw = params.get("cinematic");
+  if (raw === null) return defaultConfig;
   const on = raw !== null && raw !== "" && parseBool(raw) !== false;
   if (!on) return null;
+
+  const baseConfig = defaultConfig ?? DEFAULT_CINEMATIC_CONFIG;
 
   const mode = raw === "reveal" ? "reveal" : "follow";
   const zoom = parseNumber(params.get("cinemaZoom"));
@@ -230,30 +269,36 @@ export function parseCinematicFromUrl(): CinematicConfig | null {
   const velZoom = parseNumber(params.get("cinemaVelZoom"));
   const revealS = parseNumber(params.get("cinemaReveal"));
   const startZoom = parseNumber(params.get("cinemaStartZoom"));
+  const followRaw = parseNumber(params.get("follow"));
+  const forcedSubjectIndex =
+    followRaw !== undefined && Number.isInteger(followRaw) && followRaw >= 0
+      ? followRaw
+      : null;
 
   return {
-    ...DEFAULT_CINEMATIC_CONFIG,
+    ...baseConfig,
     mode,
-    zoom: zoom !== undefined && zoom > 0 ? zoom : DEFAULT_CINEMATIC_CONFIG.zoom,
+    zoom: zoom !== undefined && zoom > 0 ? zoom : baseConfig.zoom,
     transitionMs:
       transitionS !== undefined && transitionS > 0
         ? transitionS * 1000
-        : DEFAULT_CINEMATIC_CONFIG.transitionMs,
+        : baseConfig.transitionMs,
     centerLerp:
       lerp !== undefined && lerp >= 0
         ? lerp
-        : DEFAULT_CINEMATIC_CONFIG.centerLerp,
+        : baseConfig.centerLerp,
     velocityZoomOut:
       velZoom !== undefined && velZoom >= 0
         ? velZoom
-        : DEFAULT_CINEMATIC_CONFIG.velocityZoomOut,
+        : baseConfig.velocityZoomOut,
     revealMs:
       revealS !== undefined && revealS > 0
         ? revealS * 1000
-        : DEFAULT_CINEMATIC_CONFIG.revealMs,
+        : baseConfig.revealMs,
     revealStartZoom:
       startZoom !== undefined && startZoom > 0
         ? startZoom
-        : DEFAULT_CINEMATIC_CONFIG.revealStartZoom,
+        : baseConfig.revealStartZoom,
+    forcedSubjectIndex,
   };
 }

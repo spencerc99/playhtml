@@ -112,49 +112,51 @@ export function Inventory({
         flexDirection: "column",
       }}
     >
-      <header
-        style={{
-          marginBottom: "16px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <button
-            onClick={onBack}
-            style={{
-              background: "none",
-              border: "none",
-              fontSize: "18px",
-              cursor: "pointer",
-              padding: "4px",
-            }}
-          >
-            ←
-          </button>
+      <header style={{ marginBottom: "16px" }}>
+        <button
+          onClick={onBack}
+          style={{
+            display: "block",
+            background: "none",
+            border: "none",
+            fontSize: "12px",
+            color: "#6b7280",
+            cursor: "pointer",
+            padding: 0,
+            marginBottom: "8px",
+          }}
+        >
+          ← back
+        </button>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
           <h1 style={{ margin: 0, fontSize: "18px", color: "#1f2937" }}>
             Inventory ({inventory.totalItems})
           </h1>
-        </div>
 
-        {inventory.items.length > 0 && (
-          <button
-            onClick={onClearInventory}
-            style={{
-              background: "#ef4444",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              fontSize: "10px",
-              padding: "4px 6px",
-              cursor: "pointer",
-            }}
-            title="Clear all items"
-          >
-            Clear All
-          </button>
-        )}
+          {inventory.items.length > 0 && (
+            <button
+              onClick={onClearInventory}
+              style={{
+                background: "#ef4444",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                fontSize: "10px",
+                padding: "4px 6px",
+                cursor: "pointer",
+              }}
+              title="Clear all items"
+            >
+              Clear All
+            </button>
+          )}
+        </div>
       </header>
 
       <main style={{ flex: 1, overflow: "auto" }}>

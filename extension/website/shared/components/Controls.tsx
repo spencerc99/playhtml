@@ -14,7 +14,6 @@ import { CLICK_DEFAULTS } from "./clickDefaults";
 import {
   collectEventCategories,
   computeHotspots,
-  pickStripBucketMs,
   rankSustainedWindows,
 } from "../utils/hotspots";
 import { buildShareUrl } from "../utils/shareUrl";
@@ -26,11 +25,13 @@ import {
   subscribeSavedConfigs,
   type SavedConfig,
 } from "../utils/savedConfigs";
-import { DEFAULT_SETTINGS } from "./settingsDefaults";
+
+const { stateChangeTypes: comboboxStateChangeTypes } = useCombobox;
 
 interface ControlsProps {
   visible: boolean;
   settings: any;
+  settingsDefaults: Record<string, unknown>;
   setSettings: React.Dispatch<React.SetStateAction<any>>;
   loading: boolean;
   error: string | null;
@@ -45,12 +46,20 @@ interface ControlsProps {
   timeRange: { min: number; max: number; duration: number };
   activeVisualizations: string[];
   onSetActiveVisualizations: (vizIds: string[]) => void;
+  availableVisualizations?: readonly string[];
   /** When non-null, the canvas is scoped to this absolute-time window. */
   selectedTimeRange?: { startMs: number; endMs: number } | null;
   /** Set/clear the canvas time-range filter from the Hotspots panel. */
   onSelectTimeRange?: (
     range: { startMs: number; endMs: number } | null,
   ) => void;
+  /**
+   * Replaces the contents of the Sound Settings section. The experimental sound
+   * settings supersede the shipped ones rather than sitting beside them, so
+   * when they are here the shipped controls are not shown — they would be a set
+   * of controls the engine is no longer listening to.
+   */
+  soundSettingsOverride?: React.ReactNode;
 }
 
 const WINDOW_LENGTH_OPTIONS: Array<{ label: string; ms: number }> = [
@@ -76,9 +85,15 @@ const WINDOW_LENGTH_OPTIONS: Array<{ label: string; ms: number }> = [
  * `CollapsibleSection` and `PathFilterInput`). */
 const ShareConfigSection: React.FC<{
   settings: Record<string, unknown>;
+  settingsDefaults: Record<string, unknown>;
   activeVisualizations: string[];
   selectedTimeRange: { startMs: number; endMs: number } | null;
-}> = ({ settings, activeVisualizations, selectedTimeRange }) => {
+}> = ({
+  settings,
+  settingsDefaults,
+  activeVisualizations,
+  selectedTimeRange,
+}) => {
   const [copyFeedback, setCopyFeedback] = useState<"idle" | "ok" | "err">(
     "idle",
   );
@@ -91,6 +106,7 @@ const ShareConfigSection: React.FC<{
   const buildCurrentUrl = () =>
     buildShareUrl({
       settings,
+      settingsDefaults,
       activeVisualizations,
       selectedTimeRange,
       // Preserve whichever clean tier the page is currently in (set via
@@ -136,7 +152,7 @@ const ShareConfigSection: React.FC<{
       trailStyle: settings.trailStyle as string | undefined,
       trailStyleIsDefault:
         (settings.trailStyle as string | undefined) ===
-        DEFAULT_SETTINGS.trailStyle,
+        settingsDefaults.trailStyle,
       selectedTimeRange,
     });
     const name = title || autoName;
@@ -390,13 +406,14 @@ const FilterChipInput: React.FC<{
     inputValue,
     setInputValue,
     closeMenu,
+    openMenu,
   } = useCombobox<string>({
     items,
     initialInputValue: "",
     itemToString: (item) => item ?? "",
-    stateReducer: (state, { type, changes }) => {
-      const t = useCombobox.stateChangeTypes;
-      if (type === t.InputClick || type === t.InputFocus) {
+    stateReducer: (_state, { type, changes }) => {
+      const t = comboboxStateChangeTypes;
+      if (type === t.InputClick) {
         return { ...changes, isOpen: true };
       }
       if (type === t.InputChange) {
@@ -505,11 +522,12 @@ const FilterChipInput: React.FC<{
         }}
       >
         <input
-          id="filter-input"
           {...getInputProps({
+            id: "filter-input",
             placeholder: filters.length
               ? "add another (domain or path)…"
               : "domain.com  /path  or  domain.com/path",
+            onFocus: openMenu,
             onBlur: commitTyped,
             onKeyDown: (e) => {
               if (e.key === "Enter") {
@@ -701,20 +719,27 @@ export const Controls: React.FC<ControlsProps> = memo(
   ({
     visible,
     settings,
+    settingsDefaults,
     setSettings,
     loading,
     error,
     events,
-    filteredEventCount,
-    trails,
     availableDomains,
     fetchEvents,
-    timeRange,
     activeVisualizations,
     onSetActiveVisualizations,
+    availableVisualizations,
     selectedTimeRange,
     onSelectTimeRange,
+    soundSettingsOverride,
   }) => {
+    const clickSettingsDefaults = useMemo(
+      () =>
+        Object.fromEntries(
+          Object.keys(CLICK_DEFAULTS).map((key) => [key, settingsDefaults[key]]),
+        ),
+      [settingsDefaults],
+    );
     // Membership check for viz-specific Controls sections. Each viz-tagged
     // section (Cursor / Click / Keyboard / Scroll / Navigation Settings)
     // only renders when its viz id is in the active list — surfaces stay
@@ -824,9 +849,30 @@ export const Controls: React.FC<ControlsProps> = memo(
       >
         <ShareConfigSection
           settings={settings}
+          settingsDefaults={settingsDefaults}
           activeVisualizations={activeVisualizations}
           selectedTimeRange={selectedTimeRange ?? null}
         />
+
+        <div className="control-group">
+          <label htmlFor="animation-speed">Animation Speed</label>
+          <input
+            id="animation-speed"
+            type="range"
+            min="0.1"
+            max="10"
+            step="0.1"
+            value={settings.animationSpeed}
+            onChange={(e) =>
+              setSettings((s: any) => ({
+                ...s,
+                animationSpeed: parseFloat(e.target.value),
+              }))
+            }
+          />
+          <span>{settings.animationSpeed.toFixed(1)}x</span>
+        </div>
+
 
         {/* Visual Style (color vs monochrome) — top-level since it drives the
             cursors AND the window/typing visualizations, not just trails. */}
@@ -914,7 +960,11 @@ export const Controls: React.FC<ControlsProps> = memo(
                 marginTop: "4px",
               }}
             >
-              {VISUALIZATIONS.map((viz) => {
+              {VISUALIZATIONS.filter(
+                (viz) =>
+                  availableVisualizations === undefined ||
+                  availableVisualizations.includes(viz.id),
+              ).map((viz) => {
                 const isActive = activeVisualizations.includes(viz.id);
                 return (
                   <React.Fragment key={viz.id}>
@@ -1147,26 +1197,6 @@ export const Controls: React.FC<ControlsProps> = memo(
             </div>
           )}
 
-          {/* Animation settings */}
-          <div className="control-group">
-            <label htmlFor="animation-speed">Animation Speed</label>
-            <input
-              id="animation-speed"
-              type="range"
-              min="0.1"
-              max="10"
-              step="0.1"
-              value={settings.animationSpeed}
-              onChange={(e) =>
-                setSettings((s: any) => ({
-                  ...s,
-                  animationSpeed: parseFloat(e.target.value),
-                }))
-              }
-            />
-            <span>{settings.animationSpeed.toFixed(1)}x</span>
-          </div>
-
           <div className="control-group">
             <label htmlFor="max-concurrent">Max Concurrent Trails</label>
             <input
@@ -1260,7 +1290,7 @@ export const Controls: React.FC<ControlsProps> = memo(
             <button
               type="button"
               onClick={() =>
-                setSettings((s: any) => ({ ...s, ...CLICK_DEFAULTS }))
+                setSettings((s: any) => ({ ...s, ...clickSettingsDefaults }))
               }
               style={{
                 fontSize: "11px",
@@ -2239,6 +2269,8 @@ export const Controls: React.FC<ControlsProps> = memo(
           expanded={!!expandedSections["sound"]}
           onToggle={() => toggleSection("sound")}
         >
+          {soundSettingsOverride ?? (
+            <>
           <div className="control-group">
             <label htmlFor="sound-chord-voicing">
               <input
@@ -2278,11 +2310,11 @@ export const Controls: React.FC<ControlsProps> = memo(
               <input
                 id="sound-crossing-dissonance"
                 type="checkbox"
-                checked={settings.soundCrossingDissonance}
+                checked={settings.soundCrossings === "dissonance"}
                 onChange={(e) =>
                   setSettings((s: any) => ({
                     ...s,
-                    soundCrossingDissonance: e.target.checked,
+                    soundCrossings: e.target.checked ? "dissonance" : "off",
                   }))
                 }
                 style={{ marginRight: "8px" }}
@@ -2290,6 +2322,8 @@ export const Controls: React.FC<ControlsProps> = memo(
               Trail Crossing Dissonance
             </label>
           </div>
+            </>
+          )}
         </CollapsibleSection>
 
         <CollapsibleSection

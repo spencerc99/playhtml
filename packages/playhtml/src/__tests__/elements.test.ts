@@ -2,6 +2,7 @@
 // ABOUTME: Verifies handler-level write semantics used by playhtml capabilities.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ElementHandler } from "../elements";
+import { TagType, TagTypeToElement } from "@playhtml/common";
 import type {
   ElementAwarenessEventHandlerData,
   ElementData,
@@ -41,6 +42,208 @@ describe("ElementHandler", () => {
 
     expect(handler.data).toEqual({ a: 1, nested: { b: 2 } });
     expect(updateElement).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes built-in click, drag, and reset listeners on destroy", () => {
+    const onClick = vi.fn();
+    const onDrag = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onClick,
+      onDrag,
+      resetShortcut: "shiftKey",
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+    const reset = vi.spyOn(handler, "reset");
+
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+
+    expect(onClick).toHaveBeenCalledTimes(2);
+    expect(onDrag).toHaveBeenCalledTimes(1);
+    expect(reset).toHaveBeenCalledTimes(1);
+
+    handler.destroy();
+    handler.destroy();
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+
+    expect(onClick).toHaveBeenCalledTimes(2);
+    expect(onDrag).toHaveBeenCalledTimes(1);
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes an active drag's document listeners on destroy", () => {
+    const onDrag = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onDrag,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    expect(element.classList.contains("cursordown")).toBe(true);
+
+    handler.destroy();
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+
+    expect(onDrag).not.toHaveBeenCalled();
+    expect(element.classList.contains("cursordown")).toBe(false);
+  });
+
+  it("removes an active touch drag's document listeners on destroy", () => {
+    const onDrag = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onDrag,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    element.dispatchEvent(new Event("touchstart", { bubbles: true, cancelable: true }));
+    expect(element.classList.contains("cursordown")).toBe(true);
+
+    handler.destroy();
+    document.dispatchEvent(new Event("touchmove", { bubbles: true, cancelable: true }));
+    document.dispatchEvent(new Event("touchend", { bubbles: true }));
+
+    expect(onDrag).not.toHaveBeenCalled();
+    expect(element.classList.contains("cursordown")).toBe(false);
+  });
+
+  it("reinstalls built-in listeners once after destroy and reinitialize", () => {
+    const onClick = vi.fn();
+    const onDrag = vi.fn();
+    const elementData = {
+      element,
+      defaultData: {},
+      onClick,
+      onDrag,
+      resetShortcut: "shiftKey" as const,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData;
+    const handler = new ElementHandler(elementData);
+    const reset = vi.spyOn(handler, "reset");
+
+    handler.destroy();
+    handler.reinitializeElementData(elementData);
+    handler.reinitializeElementData(elementData);
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onDrag).toHaveBeenCalledTimes(1);
+    expect(reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("installs callbacks added after setup without duplicate listeners", () => {
+    const onClick = vi.fn();
+    const onDragStart = vi.fn();
+    const onDrag = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    handler.setEventHandlers({ onClick, onDragStart, onDrag });
+    handler.setEventHandlers({ onClick, onDragStart, onDrag });
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onDragStart).toHaveBeenCalledTimes(1);
+    expect(onDrag).toHaveBeenCalledTimes(1);
+  });
+
+  it("installs onDragStart added after setup without onDrag", () => {
+    const onDragStart = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    handler.setEventHandlers({ onDragStart });
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    element.dispatchEvent(new Event("touchstart", { bubbles: true, cancelable: true }));
+    document.dispatchEvent(new Event("touchend", { bubbles: true }));
+
+    expect(onDragStart).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops drag behavior when callbacks are removed", () => {
+    const onDrag = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      onDrag,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    expect(element.classList.contains("cursordown")).toBe(true);
+
+    handler.setEventHandlers({});
+    expect(element.classList.contains("cursordown")).toBe(false);
+    document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+
+    const mouseDown = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+    });
+    const touchStart = new Event("touchstart", {
+      bubbles: true,
+      cancelable: true,
+    });
+    element.dispatchEvent(mouseDown);
+    element.dispatchEvent(touchStart);
+
+    expect(onDrag).not.toHaveBeenCalled();
+    expect(mouseDown.defaultPrevented).toBe(false);
+    expect(touchStart.defaultPrevented).toBe(false);
+    expect(element.classList.contains("cursordown")).toBe(false);
+  });
+
+  it("keeps imperative callbacks disabled for views", () => {
+    const onClick = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: {},
+      view: () => "" as any,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    handler.setEventHandlers({ onClick });
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(onClick).not.toHaveBeenCalled();
   });
 
   it("setData calls onChange and does not directly mutate internal state", () => {
@@ -172,5 +375,123 @@ describe("ElementHandler", () => {
     handler.setMyAwareness({ me: "X" } as any);
     expect(onAwarenessChange).toHaveBeenCalledWith({ me: "X" });
     expect(triggerAwarenessUpdate).toHaveBeenCalled();
+  });
+
+  it("uses one update path for live changes and exposes live users", () => {
+    const update = vi.fn();
+    const updateElementAwareness = vi.fn();
+    const onAwarenessChange = vi.fn();
+    const remoteUser = {
+      pid: "remote-user",
+      name: "Mina",
+      color: "blue",
+      isMe: false,
+    };
+
+    const handler = new ElementHandler(
+      {
+        element,
+        live: { typing: false },
+        update,
+        updateElementAwareness,
+        onChange: vi.fn(),
+        onAwarenessChange,
+        triggerAwarenessUpdate: vi.fn(),
+      } as any,
+      {
+        getUsers: (byStableId: Map<string, { typing: boolean }>) =>
+          byStableId.has(remoteUser.pid)
+            ? [{ user: remoteUser, live: byStableId.get(remoteUser.pid)! }]
+            : [],
+      } as any,
+    );
+    update.mockClear();
+    updateElementAwareness.mockClear();
+
+    handler.updateAwareness(
+      [{ typing: true }],
+      new Map([[remoteUser.pid, { typing: true }]]),
+    );
+
+    expect(updateElementAwareness).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        live: { typing: false },
+        users: [{ user: remoteUser, live: { typing: true } }],
+        setLive: expect.any(Function),
+        myAwareness: { typing: false },
+        setMyAwareness: expect.any(Function),
+      }),
+    );
+
+    update.mock.calls[0][0].setLive({ typing: true });
+    expect(onAwarenessChange).toHaveBeenCalledWith({ typing: true });
+  });
+});
+
+describe("CanGrow onMount cleanup", () => {
+  let element: HTMLElement;
+
+  beforeEach(() => {
+    element = document.createElement("div");
+    document.body.appendChild(element);
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("removes the document-level keydown/keyup listeners on destroy, even without a preceding mouseleave", () => {
+    const canGrow = TagTypeToElement[TagType.CanGrow];
+    const handler = new ElementHandler({
+      element,
+      defaultData: canGrow.defaultData,
+      defaultLocalData: canGrow.defaultLocalData,
+      updateElement: canGrow.updateElement,
+      onMount: canGrow.onMount,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: () => {},
+    } as unknown as ElementData);
+
+    // Hover without a mouseleave — the failure scenario from a SPA
+    // navigation/React unmount that removes the element mid-hover.
+    element.dispatchEvent(new MouseEvent("mouseenter"));
+
+    const removeSpy = vi.spyOn(document, "removeEventListener");
+    handler.destroy();
+
+    expect(removeSpy).toHaveBeenCalledWith("keydown", expect.any(Function));
+    expect(removeSpy).toHaveBeenCalledWith("keyup", expect.any(Function));
+    removeSpy.mockRestore();
+  });
+
+  it("does not leave a live keydown listener reacting after destroy", () => {
+    const canGrow = TagTypeToElement[TagType.CanGrow];
+    const handler = new ElementHandler({
+      element,
+      defaultData: canGrow.defaultData,
+      defaultLocalData: canGrow.defaultLocalData,
+      updateElement: canGrow.updateElement,
+      onMount: canGrow.onMount,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: () => {},
+    } as unknown as ElementData);
+
+    // mouseenter arms the document keydown/keyup listeners AND sets the
+    // cursor once (no altKey held yet, scale 1 < maxScale 2 -> grow cursor).
+    element.dispatchEvent(new MouseEvent("mouseenter"));
+    const cursorAfterMouseEnter = element.style.cursor;
+    expect(cursorAfterMouseEnter).not.toBe("");
+
+    // No mouseleave — destroy the handler while still "hovering".
+    handler.destroy();
+
+    // A leaked document keydown listener would flip the cursor to the
+    // alt/cut style here; a cleaned-up one leaves it untouched.
+    document.dispatchEvent(new KeyboardEvent("keydown", { altKey: true }));
+    expect(element.style.cursor).toBe(cursorAfterMouseEnter);
   });
 });

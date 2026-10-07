@@ -2,13 +2,14 @@ import "../home.scss";
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 
-const ExperimentNumber = 5;
+const ExperimentNumber = 10;
 
 const Experiments: Record<number, any> = {
   1: {
     slug: "one",
   },
   2: { slug: "two" },
+  10: { slug: "cinderblock", title: "cinderblock yard" },
 };
 
 function padZero(str) {

@@ -192,7 +192,7 @@ describe("can-move bounds clamp", () => {
     expect(state.data.y).toBe(-30);
   });
 
-  it("normalizes persisted out-of-bounds data on mount", () => {
+  it("does not rewrite initial data to satisfy bounds on mount", () => {
     const { element, state, setData } = makeDragHarness({
       elementWidth: 400,
       elementHeight: 400,
@@ -212,7 +212,8 @@ describe("can-move bounds clamp", () => {
       setData,
     } as any);
 
-    expect(setData).toHaveBeenCalledWith({ x: 600, y: 0 });
+    expect(setData).not.toHaveBeenCalled();
+    expect(element.style.transform).toBe("translate(900px, 0px)");
   });
 
   it("respects a custom min-visible fraction (floor disabled)", () => {

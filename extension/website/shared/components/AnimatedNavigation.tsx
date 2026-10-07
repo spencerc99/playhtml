@@ -3,7 +3,7 @@
 // ABOUTME: Nodes appear when visible, edges connect with organic wobbly lines
 
 import React, { useState, useEffect, useRef, memo } from "react";
-import { TimelineState, TimelineNode, TimelineEdge, TimelineSession } from "../types";
+import { TimelineState, TimelineNode, TimelineEdge } from "../types";
 
 interface AnimatedNavigationProps {
   timelineState: TimelineState;
@@ -201,7 +201,7 @@ export const AnimatedNavigation: React.FC<AnimatedNavigationProps> = memo(({
   settings,
 }) => {
   const [scrollOffset, setScrollOffset] = useState(0);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
   const lastTimeRef = useRef<number>(0);
   
   // Settings refs

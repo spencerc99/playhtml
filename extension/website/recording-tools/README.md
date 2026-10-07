@@ -11,7 +11,7 @@ preview tab can't do reliably.
 
 ## Prereqs
 
-- Dev server running: `bun run -C extension/website dev` (serves on `:5174`).
+- Dev server running: `bun run --cwd extension/website dev` (serves on `:5174`).
 - Playwright + a Chromium build installed (`bunx playwright install chromium`).
   The scripts default to a pinned `ms-playwright/chromium-1217` path; override
   with `--chrome <path>` or the `PW_CHROME` env var if yours differs.

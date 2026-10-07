@@ -2,19 +2,36 @@
 // ABOUTME: Registers can-play elements and shared-state helpers for React apps.
 // TODO: idk why but this is not getting registered otherwise??
 import * as React from "react";
-import { useContext, useEffect, useRef, useState } from "react";
-import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, getIdForElement } from "playhtml";
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import {
+  ElementAwarenessEventHandlerData,
+  ElementInitializer,
+  ElementUser,
+  TagType,
+  elementHandlers,
+  getIdForElement,
+} from "playhtml";
 import playhtml from "./playhtml-singleton";
 import {
   cloneThroughFragments,
   getCurrentElementHandler,
   isReactFragment,
+  requireDefaultValue,
 } from "./utils";
 import type {
   ReactElementInitializer,
   ReactElementEventHandlerData,
 } from "./utils";
 import { PlayContext } from "./PlayProvider";
+
+const useElementRegistrationEffect =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 // Structural equality used to decide whether a sync actually changed React
 // state. Capability data can arrive as a fresh object/array reference on every
@@ -95,6 +112,8 @@ type ElementBinding = {
   effectiveId: string;
   domId: string;
   dataSource: string | null;
+  shared: string | null;
+  tags: string;
 };
 
 function getDataSourceElementId(dataSource?: string): string | undefined {
@@ -103,7 +122,10 @@ function getDataSourceElementId(dataSource?: string): string | undefined {
   return elementId || undefined;
 }
 
-function getElementBinding(element: HTMLElement): ElementBinding | undefined {
+function getElementBinding(
+  element: HTMLElement,
+  tags: string[],
+): ElementBinding | undefined {
   const effectiveId = getIdForElement(element);
   if (!effectiveId) return undefined;
 
@@ -111,7 +133,21 @@ function getElementBinding(element: HTMLElement): ElementBinding | undefined {
     effectiveId,
     domId: element.id,
     dataSource: element.getAttribute("data-source"),
+    shared: element.getAttribute("shared"),
+    tags: [...tags].sort().join(" "),
   };
+}
+
+function isSameElementBinding(
+  first: ElementBinding,
+  second: ElementBinding,
+): boolean {
+  return (
+    first.effectiveId === second.effectiveId &&
+    first.dataSource === second.dataSource &&
+    first.shared === second.shared &&
+    first.tags === second.tags
+  );
 }
 
 function withElementBinding(
@@ -121,12 +157,19 @@ function withElementBinding(
 ) {
   const currentId = element.id;
   const currentDataSource = element.getAttribute("data-source");
+  const currentShared = element.getAttribute("shared");
 
-  element.id = binding.domId;
+  // Core can assign the DOM ID after React captures the binding.
+  element.id = binding.domId || currentId;
   if (binding.dataSource === null) {
     element.removeAttribute("data-source");
   } else {
     element.setAttribute("data-source", binding.dataSource);
+  }
+  if (binding.shared === null) {
+    element.removeAttribute("shared");
+  } else {
+    element.setAttribute("shared", binding.shared);
   }
 
   try {
@@ -137,6 +180,11 @@ function withElementBinding(
       element.removeAttribute("data-source");
     } else {
       element.setAttribute("data-source", currentDataSource);
+    }
+    if (currentShared === null) {
+      element.removeAttribute("shared");
+    } else {
+      element.setAttribute("shared", currentShared);
     }
   }
 }
@@ -219,45 +267,31 @@ export function CanPlayElement<T extends object, V = any>({
   const ref = useRef<HTMLElement>(null);
   const registeredBindingRef = useRef<ElementBinding | undefined>(undefined);
   const warningKeysRef = useRef<Set<string>>(new Set());
-  const { defaultData, myDefaultAwareness } = elementProps;
-  const resolveDefaultData = (fnOrValue: T | ((el: HTMLElement) => T)) =>
-    typeof fnOrValue === "function"
-      ? // @ts-ignore
-        (fnOrValue as (el: HTMLElement) => T)(ref.current as HTMLElement)
-      : (fnOrValue as T);
-  const resolveDefaultAwareness = (
-    fnOrValue?: V | ((el: HTMLElement) => V),
-  ): V | undefined =>
-    typeof fnOrValue === "function"
-      ? // @ts-ignore
-        (fnOrValue as (el: HTMLElement) => V)(ref.current as HTMLElement)
-      : fnOrValue;
+  const { defaultData, live: configuredLive, myDefaultAwareness } = elementProps;
+  requireDefaultValue(defaultData, "defaultData");
+  requireDefaultValue(configuredLive, "live");
+  requireDefaultValue(myDefaultAwareness, "myDefaultAwareness");
 
-  const [data, setData] = useState<T | undefined>(
-    defaultData !== undefined
-      ? resolveDefaultData(defaultData as T | ((el: HTMLElement) => T))
-      : undefined,
-  );
-  const initialAwareness = resolveDefaultAwareness(
-    myDefaultAwareness as V | ((el: HTMLElement) => V) | undefined,
-  );
+  const initialLive =
+    configuredLive !== undefined ? configuredLive : myDefaultAwareness;
+  const [data, setData] = useState<T | undefined>(() => defaultData);
   const [awareness, setAwareness] = useState<V[]>(
-    initialAwareness ? [initialAwareness] : [],
+    initialLive === undefined ? [] : [initialLive],
   );
   const [awarenessByStableId, setAwarenessByStableId] = useState<
     Map<string, V>
   >(new Map());
-  const [myAwareness, setMyAwareness] = useState<V | undefined>(
-    initialAwareness,
-  );
+  const [live, setLive] = useState<V | undefined>(() => initialLive);
+  const [users, setUsers] = useState<ElementUser<V>[]>([]);
 
-  // Capture the capability's original updateElement/updateElementAwareness so we can
-  // compose them with the React state updater below. These come from the built-in
+  // Capture the capability's original render callbacks so we can compose them
+  // with the React state updater below. These come from the built-in
   // TagTypeToElement definitions (e.g. CanMove applies element.style.transform).
   // They arrive as extra runtime props via {...TagTypeToElement[TagType.CanMove]} but
   // are omitted from the CanPlayProps type since React components don't normally use them.
-  const capabilityUpdateElement = (elementProps as any).updateElement as
-    | ElementInitializer["updateElement"]
+  const capabilityUpdate = ((elementProps as any).update ??
+    (elementProps as any).updateElement) as
+    | ElementInitializer["update"]
     | undefined;
   const capabilityUpdateElementAwareness = (elementProps as any)
     .updateElementAwareness as
@@ -279,16 +313,21 @@ export function CanPlayElement<T extends object, V = any>({
         ? prev
         : handlerData.awarenessByStableId
     );
-    setMyAwareness((prev) =>
-      isDeepEqual(prev, handlerData.myAwareness)
+    setLive((prev) =>
+      isDeepEqual(prev, handlerData.live)
         ? prev
-        : handlerData.myAwareness
+        : (handlerData.live as V | undefined)
+    );
+    setUsers((prev) =>
+      isDeepEqual(prev, handlerData.users)
+        ? prev
+        : (handlerData.users as ElementUser<V>[])
     );
   };
 
   const updateElement: ElementInitializer["updateElement"] = (handlerData) => {
     syncReactState(handlerData as ElementAwarenessEventHandlerData);
-    capabilityUpdateElement?.(handlerData);
+    capabilityUpdate?.(handlerData);
   };
 
   const updateElementAwareness: ElementInitializer["updateElementAwareness"] = (
@@ -298,48 +337,89 @@ export function CanPlayElement<T extends object, V = any>({
     capabilityUpdateElementAwareness?.(handlerData);
   };
 
-  useEffect(() => {
+  const bindingTags = Object.keys(computedTagInfo);
+  const getRegisteredHandler = () => {
+    const element = ref.current;
+    if (!element) return undefined;
+
+    const currentBinding = getElementBinding(element, bindingTags);
+    if (!currentBinding) return undefined;
+
+    const registeredBinding = registeredBindingRef.current;
+    if (
+      registeredBinding &&
+      !isSameElementBinding(registeredBinding, currentBinding)
+    ) return undefined;
+
+    const currentHandler = getCurrentElementHandler(
+      primaryTag,
+      currentBinding.effectiveId,
+    );
+    if (!currentHandler || currentHandler.element !== element) {
+      return undefined;
+    }
+
+    registeredBindingRef.current = currentBinding;
+    return currentHandler;
+  };
+
+  useElementRegistrationEffect(() => {
     if (ref.current) {
       const element = ref.current;
       for (const [key, value] of Object.entries(elementProps)) {
-        // Skip updateElement/updateElementAwareness — they are set below as
-        // composed versions that include both React state updates and DOM updates.
-        if (key === "updateElement" || key === "updateElementAwareness") continue;
+        // Skip render callbacks. Composed versions below include both React
+        // state updates and built-in DOM updates.
+        if (
+          key === "update" ||
+          key === "updateElement" ||
+          key === "updateElementAwareness"
+        ) continue;
         // @ts-ignore
         element[key] = value;
       }
+      // @ts-ignore
+      delete element.update;
       // @ts-ignore
       element.updateElement = updateElement;
       // @ts-ignore
       element.updateElementAwareness = updateElementAwareness;
 
+      const elementId = getIdForElement(element);
+      const handlers = elementHandlers;
+      if (elementId && handlers instanceof Map) {
+        for (const tag of Object.keys(computedTagInfo) as TagType[]) {
+          const handler = handlers.get(tag)?.get(elementId);
+          if (!handler || handler.element !== element) continue;
+          handler.setEventHandlers({
+            onClick: elementProps.onClick,
+            onDrag: elementProps.onDrag,
+            onDragStart: elementProps.onDragStart,
+          });
+        }
+      }
+
       // Setup the element, which will handle data-source discovery if needed
       try {
-        const currentBinding = getElementBinding(element);
+        const currentBinding = getElementBinding(element, bindingTags);
         const registeredBinding = registeredBindingRef.current;
         if (
           registeredBinding &&
-          currentBinding &&
-          registeredBinding.effectiveId !== currentBinding.effectiveId
+          (!currentBinding ||
+            !isSameElementBinding(registeredBinding, currentBinding))
         ) {
           withElementBinding(element, registeredBinding, () => {
             playhtml.removePlayElement(element);
           });
+          registeredBindingRef.current = undefined;
         }
 
         playhtml.setupPlayElement(element, {
           ignoreIfAlreadySetup: true,
         });
-        registeredBindingRef.current = currentBinding;
+        const bindingAfterSetup = getElementBinding(element, bindingTags);
+        registeredBindingRef.current = bindingAfterSetup;
       } catch (error) {
         console.warn("[@playhtml/react] Failed to setup play element:", error);
-
-        // If playhtml isn't initialized yet, log a helpful message
-        if (!playhtml.elementHandlers) {
-          console.warn(
-            "[@playhtml/react] PlayHTML not initialized yet. Element will be set up when PlayHTML initializes.",
-          );
-        }
       }
     }
   });
@@ -350,13 +430,16 @@ export function CanPlayElement<T extends object, V = any>({
     // console.log("setting up", elementProps.defaultData, ref.current);
 
     return () => {
-      if (!mountedElement || !playhtml.elementHandlers) return;
+      if (!mountedElement) return;
       playhtml.removePlayElement(mountedElement);
+      registeredBindingRef.current = undefined;
     };
   }, []);
   const renderedChildren = children({
     // @ts-ignore
     data,
+    live,
+    users,
     awareness,
     awarenessByStableId,
     setData: (newData: T | ((draft: T) => void)) => {
@@ -375,25 +458,22 @@ export function CanPlayElement<T extends object, V = any>({
         );
         return;
       }
-      const handler = getCurrentElementHandler(primaryTag, effectiveId);
+      const handler = getRegisteredHandler();
       if (!handler) {
         console.warn(
-          `[@playhtml/react] No handler found for element ${effectiveId}`,
+          `[@playhtml/react] No handler registered for this element ${effectiveId}`,
         );
         return;
       }
       handler.setData(newData);
     },
-    setMyAwareness: (newLocalAwareness) => {
-      const effectiveId = ref.current
-        ? getIdForElement(ref.current as unknown as HTMLElement)
-        : undefined;
-      if (!effectiveId) return;
-      getCurrentElementHandler(primaryTag, effectiveId)?.setMyAwareness(
-        newLocalAwareness,
-      );
+    setLive: (newLive) => {
+      getRegisteredHandler()?.setLive(newLive);
     },
-    myAwareness,
+    setMyAwareness: (newLive) => {
+      getRegisteredHandler()?.setLive(newLive);
+    },
+    myAwareness: live,
     ref,
   });
 
@@ -544,113 +624,6 @@ export function withSharedState<T extends object, V = any, P = any>(
   return renderChildren;
 }
 
-// export function useSharedState<T extends object, V = any>({
-//   id,
-//   ...restProps
-// }: WithPlayProps<T, V> & { id: string }): ReactElementEventHandlerData<T, V> {
-//   const { tagInfo = { "can-play": "" }, ...elementProps } = {
-//     defaultData: undefined,
-//     ...restProps,
-//   };
-//   const computedTagInfo = tagInfo
-//     ? Array.isArray(tagInfo)
-//       ? Object.fromEntries(tagInfo.map((t) => [t, ""]))
-//       : tagInfo
-//     : { "can-play": "" };
-//   const ref = useRef<HTMLElement>(null);
-//   const { defaultData, myDefaultAwareness } = elementProps;
-//   const [data, setData] = useState<T | undefined>(defaultData);
-//   const [awareness, setAwareness] = useState<V[]>(
-//     myDefaultAwareness ? [myDefaultAwareness] : []
-//   );
-//   const [myAwareness, setMyAwareness] = useState<V | undefined>(
-//     myDefaultAwareness
-//   );
-//   // TODO: maybe have a separate one for free-form variables?
-//   playhtml.globalData?.get("can-play")?.set(id, data);
-
-//   // TODO: this is kinda a hack but it works for now since it is called whenever we set data.
-//   const updateElement: ElementInitializer["updateElementAwareness"] = ({
-//     data: newData,
-//     awareness: newAwareness,
-//     myAwareness,
-//   }) => {
-//     setData(newData);
-//     setAwareness(newAwareness);
-//     setMyAwareness(myAwareness);
-//   };
-
-//   useEffect(() => {
-//     if (!ref.current) {
-//       let ele = document.getElementById(id);
-//       if (!ele) {
-//         ele = document.createElement("div");
-//         for (const [tag, value] of Object.entries(computedTagInfo)) {
-//           ele.setAttribute(tag, value);
-//         }
-//         document.body.appendChild(ele).id = id;
-//       }
-//       ref.current = ele;
-//     }
-
-//     for (const [key, value] of Object.entries(elementProps)) {
-//       // @ts-ignore
-//       ref.current[key] = value;
-//     }
-//     // @ts-ignore
-//     ref.current.updateElement = updateElement;
-//     // @ts-ignore
-//     ref.current.updateElementAwareness = updateElement;
-//     playhtml.setupPlayElement(ref.current, { ignoreIfAlreadySetup: true });
-//     console.log("setting up", ref.current.id);
-//     const existingData = playhtml.globalData
-//       ?.get("can-play")
-//       ?.get(ref.current.id);
-//     if (existingData) {
-//       setData(existingData);
-//     }
-//     // console.log("setting up", elementProps.defaultData, ref.current);
-
-//     return () => {
-//       if (!ref.current || !playhtml.elementHandlers) return;
-//       playhtml.removePlayElement(ref.current);
-//     };
-//   }, [playConfig, ref.current]);
-
-//   return {
-//     // @ts-ignore
-//     data,
-//     awareness,
-//     setData: (newData) => {
-//       // console.log("settingdata", newData);
-//       // console.log(ref.current?.id);
-//       // console.log(
-//       //   getCurrentElementHandler(TagType.CanPlay, ref.current?.id || "")
-//       // );
-//       if (!ref.current?.id) {
-//         console.warn(`[@playhtml/react] No id set for element ${ref.current}`);
-//         return;
-//       }
-//       const handler = getCurrentElementHandler(TagType.CanPlay, ref.current.id);
-//       if (!handler) {
-//         console.warn(
-//           `[@playhtml/react] No handler found for element ${ref.current?.id}`
-//         );
-//         return;
-//       }
-//       handler.setData(newData);
-//     },
-//     setMyAwareness: (newLocalAwareness) => {
-//       getCurrentElementHandler(
-//         TagType.CanPlay,
-//         ref.current?.id || ""
-//       )?.setMyAwareness(newLocalAwareness);
-//     },
-//     myAwareness,
-//     ref,
-//   };
-// }
-
 export { playhtml };
 export { PlayProvider, PlayContext } from "./PlayProvider";
 export { usePlayContext } from "./usePlayContext";
@@ -661,6 +634,7 @@ export {
   usePageData,
   usePresenceRoom,
   usePlayerIdentity,
+  useUsers,
 } from "./hooks";
 export {
   CanMoveElement,

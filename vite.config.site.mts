@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       "@playhtml/common": path.join(__dirname, "packages/common/src"),
       "@playhtml/react": path.join(__dirname, "packages/react/src"),
+      "playhtml/leafEditor": path.join(__dirname, "packages/playhtml/src/leafEditor.ts"),
       playhtml: path.join(__dirname, "packages/playhtml/src/index.ts"),
       "@extension": path.join(__dirname, "extension/src"),
       "@moderation": path.join(__dirname, "partykit/moderation.ts"),

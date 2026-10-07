@@ -7,8 +7,8 @@ import { useEffect, useState } from "react";
 // (shared/components/MovementCanvas.tsx) — same key and timing window.
 const DOUBLE_TAP_THRESHOLD = 300;
 
-export function useChromeToggle(): boolean {
-  const [chromeHidden, setChromeHidden] = useState(false);
+export function useChromeToggle(initiallyHidden = false): boolean {
+  const [chromeHidden, setChromeHidden] = useState(initiallyHidden);
 
   useEffect(() => {
     let lastDKeyTime = 0;

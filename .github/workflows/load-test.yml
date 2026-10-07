@@ -12,6 +12,7 @@ on:
           - fridge
           - mirror
           - live-chat
+          - walking-together
       users:
         description: "Total users (split across workers)"
         required: true
@@ -80,11 +81,13 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: cd load-test && bun install
+        working-directory: tools/load-test
+        run: bun install --frozen-lockfile
 
       - name: Run load test
+        working-directory: tools/load-test
         run: |
-          bun load-test/src/runner.ts \
+          bun src/runner.ts \
             --scenario ${{ inputs.scenario }} \
             --users ${{ needs.setup.outputs.users_per_worker }} \
             --duration ${{ inputs.duration }} \
@@ -98,8 +101,8 @@ jobs:
         with:
           name: results-worker-${{ matrix.worker_index }}
           path: |
-            results.txt
-            load-test/data/runs.db
+            tools/load-test/results.txt
+            tools/load-test/data/runs.db
 
   summary:
     needs: [setup, worker]

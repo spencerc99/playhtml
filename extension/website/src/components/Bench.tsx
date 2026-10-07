@@ -69,6 +69,10 @@ export const Bench = withSharedState<BenchData, any, BenchProps>(
         <img
           src="/red-park-bench-face-right.png"
           alt="A red park bench"
+          width={386}
+          height={386}
+          loading="lazy"
+          decoding="async"
           className={styles.benchImg}
           draggable={false}
         />

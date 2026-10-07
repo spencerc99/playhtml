@@ -1,8 +1,90 @@
-// ABOUTME: Verifies generic presence server lifecycle diagnostics.
-// ABOUTME: Keeps expected WebSocket closes from polluting Worker logs.
+// ABOUTME: Verifies presence message compatibility and server lifecycle behavior.
+// ABOUTME: Covers public identity projection, state persistence, and close diagnostics.
 import { describe, expect, it } from "bun:test";
-import { getConnectionCloseDiagnostic } from "../connectionDiagnostics";
-import { persistPresenceConnectionState } from "../presenceMessage";
+import { validatePresenceClientMessage } from "@playhtml/common";
+import {
+  getConnectionCloseDiagnostic,
+  PRESENCE_CLOSE_DIAGNOSTIC_POLICY,
+} from "../connectionDiagnostics";
+import {
+  persistPresenceConnectionState,
+  projectPresenceClientIdentity,
+} from "../presenceMessage";
+
+describe("presence message compatibility", () => {
+  it("projects legacy join identities to public fields before validation", () => {
+    const message = validatePresenceClientMessage(
+      projectPresenceClientIdentity({
+        type: "presence-join",
+        identity: {
+          publicKey: "pk_1",
+          name: "Reader",
+          playerStyle: {
+            colorPalette: ["red"],
+            cursorStyle: "default",
+            privateStyle: "secret",
+          },
+          createdAt: 123,
+          discoveredSites: ["example.com"],
+          privateKey: { d: "secret" },
+        },
+      }),
+    );
+
+    expect(message).toEqual({
+      type: "presence-join",
+      identity: {
+        publicKey: "pk_1",
+        name: "Reader",
+        playerStyle: {
+          colorPalette: ["red"],
+          cursorStyle: "default",
+        },
+        createdAt: 123,
+      },
+    });
+  });
+
+  it("projects legacy identity-channel updates to public fields", () => {
+    const message = validatePresenceClientMessage(
+      projectPresenceClientIdentity({
+        type: "presence-update",
+        channel: "identity",
+        value: {
+          publicKey: "pk_1",
+          playerStyle: { colorPalette: ["red"] },
+          discoveredSites: ["example.com"],
+        },
+      }),
+    );
+
+    expect(message).toEqual({
+      type: "presence-update",
+      channel: "identity",
+      value: {
+        publicKey: "pk_1",
+        playerStyle: { colorPalette: ["red"] },
+      },
+    });
+  });
+
+  it("preserves invalid public identity fields for strict validation", () => {
+    expect(() =>
+      validatePresenceClientMessage(
+        projectPresenceClientIdentity({
+          type: "presence-join",
+          identity: {
+            publicKey: "pk_1",
+            playerStyle: { colorPalette: [] },
+            discoveredSites: ["example.com"],
+          },
+        }),
+      ),
+    ).toThrow(
+      "identity.playerStyle.colorPalette[0] must be a non-empty string",
+    );
+  });
+});
 
 describe("presence connection state persistence", () => {
   it("restores the previous state after a rejected attachment write", () => {
@@ -15,25 +97,49 @@ describe("presence connection state persistence", () => {
         stored = state;
         if (state === next) throw new Error("attachment too large");
       }),
-    ).toThrow("Presence state exceeds server storage limit");
+    ).toThrow(
+      "the full connection attachment must fit within 16,384 serialized bytes",
+    );
 
     expect(stored).toBe(previous);
   });
 });
 
 describe("presence server diagnostics", () => {
-  it("treats normal and clean no-code closes as expected", () => {
+  it("treats normal, going-away, no-code, and replaced closes as expected", () => {
     const base = {
       roomName: "presence-room",
       connectionId: "conn-1",
       reason: "",
       wasClean: true,
-      quietCloseCodes: [1000, 1005],
       label: "PresenceServer",
+      ...PRESENCE_CLOSE_DIAGNOSTIC_POLICY,
     };
 
-    expect(getConnectionCloseDiagnostic({ ...base, code: 1000 })).toBe(null);
-    expect(getConnectionCloseDiagnostic({ ...base, code: 1005 })).toBe(null);
+    for (const code of [1000, 1001, 1005, 4000]) {
+      expect(getConnectionCloseDiagnostic({ ...base, code })).toBe(null);
+    }
+  });
+
+  it("reports 1006 only for connections that died within five seconds", () => {
+    const base = {
+      roomName: "presence-room",
+      connectionId: "conn-1",
+      code: 1006,
+      reason: "",
+      wasClean: false,
+      openedAt: 1_000,
+      label: "PresenceServer",
+      ...PRESENCE_CLOSE_DIAGNOSTIC_POLICY,
+    };
+
+    expect(getConnectionCloseDiagnostic({ ...base, now: 5_999 })).toBe(
+      '[PresenceServer] WebSocket closed abnormally: room=presence-room connection=conn-1 code=1006 reason="" wasClean=false durationMs=4999',
+    );
+    expect(getConnectionCloseDiagnostic({ ...base, now: 6_000 })).toBe(null);
+    expect(
+      getConnectionCloseDiagnostic({ ...base, openedAt: undefined, now: 2_000 }),
+    ).toBe(null);
   });
 
   it("keeps unclean and error closes diagnosable", () => {
@@ -46,8 +152,8 @@ describe("presence server diagnostics", () => {
         wasClean: false,
         openedAt: 1_000,
         now: 1_500,
-        quietCloseCodes: [1000, 1005],
         label: "PresenceServer",
+        ...PRESENCE_CLOSE_DIAGNOSTIC_POLICY,
       }),
     ).toBe(
       '[PresenceServer] WebSocket closed abnormally: room=presence-room connection=conn-1 code=1005 reason="" wasClean=false durationMs=500',

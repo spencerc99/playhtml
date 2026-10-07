@@ -5,11 +5,13 @@ import {
   MAX_PLAYER_IDENTITY_COLORS,
   MAX_PLAYER_IDENTITY_STRING_LENGTH,
   type Cursor,
-  type CursorZonePosition,
   type PlayerIdentity,
 } from "./cursor-types";
 
 export const MAX_PRESENCE_PAGE_LENGTH = 512;
+// Cap on a single presence channel value's JSON size. Enforced client-side by
+// publishers of unstructured channels (element awareness) before sending.
+export const MAX_PRESENCE_VALUE_BYTES = 4096;
 
 export type PresenceChannelCadence = "frame" | "interactive" | "event";
 
@@ -30,15 +32,10 @@ export type PresenceClearMessage = {
   channel: string;
 };
 
-export type PresencePingMessage = {
-  type: "presence-ping";
-};
-
 export type PresenceClientMessage =
   | PresenceJoinMessage
   | PresenceUpdateMessage
-  | PresenceClearMessage
-  | PresencePingMessage;
+  | PresenceClearMessage;
 
 export type PresenceSnapshot = Record<string, Record<string, unknown>>;
 
@@ -70,21 +67,6 @@ export type PresenceServerMessage =
   | PresenceRateMessage
   | PresenceErrorMessage;
 
-export type CursorPresenceValue = {
-  cursor: Cursor | null;
-  zone?: CursorZonePosition | null;
-  page?: string;
-  at?: number;
-};
-
-export function getPresenceChannelCadence(
-  channel: string,
-): PresenceChannelCadence {
-  if (channel === "cursor") return "frame";
-  if (channel.startsWith("element:")) return "interactive";
-  return "event";
-}
-
 export function validatePresenceClientMessage(
   value: unknown,
 ): PresenceClientMessage {
@@ -103,8 +85,6 @@ export function validatePresenceClientMessage(
     case "presence-clear":
       validateChannel(value.channel);
       return value as PresenceClearMessage;
-    case "presence-ping":
-      return value as PresencePingMessage;
     default:
       throw new Error("Unsupported presence message type");
   }

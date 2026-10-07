@@ -5,13 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const browserMock = vi.hoisted(() => ({
   storage: {
-      local: {
-        get: vi.fn().mockResolvedValue({}),
-        set: vi.fn().mockResolvedValue(undefined),
-        getBytesInUse: vi.fn().mockResolvedValue(1024),
-      },
+    local: {
+      get: vi.fn().mockResolvedValue({}),
+      set: vi.fn().mockResolvedValue(undefined),
+      getBytesInUse: vi.fn().mockResolvedValue(1024),
+    },
     session: {
-      get: vi.fn().mockResolvedValue({ collection_session_id: "sid_background" }),
+      get: vi
+        .fn()
+        .mockResolvedValue({ collection_session_id: "sid_background" }),
       set: vi.fn().mockResolvedValue(undefined),
     },
   },
@@ -26,6 +28,11 @@ const browserMock = vi.hoisted(() => ({
   },
   tabs: {
     create: vi.fn().mockResolvedValue({}),
+    query: vi.fn().mockResolvedValue([]),
+    sendMessage: vi.fn().mockResolvedValue(undefined),
+  },
+  idle: {
+    queryState: vi.fn().mockResolvedValue("active"),
   },
   alarms: {
     create: vi.fn(),
@@ -43,10 +50,22 @@ const storeMock = vi.hoisted(() => ({
   getStorageStats: vi.fn().mockResolvedValue({
     totalEvents: 2,
     estimatedSizeBytes: 512,
+    estimatedSizeBytesByType: { cursor: 320, keyboard: 192 },
     oldestEvent: 1_000,
     newestEvent: 2_000,
     countsByType: { cursor: 1, keyboard: 1 },
   }),
+  getGlobalStats: vi.fn().mockResolvedValue({
+    hourBuckets: new Array(24).fill(0),
+    milestoneActivity: {
+      localDayKey: "2026-08-10",
+      cursorDistancePx: 0,
+      lastCursorPosition: null,
+      screenTimeMs: 0,
+      pendingFocusTs: null,
+    },
+  }),
+  getAllDomains: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("webextension-polyfill", () => ({
@@ -69,6 +88,7 @@ describe("background local retention", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    browserMock.storage.local.get.mockResolvedValue({});
     Object.defineProperty(globalThis.navigator, "storage", {
       value: {
         estimate: vi.fn().mockResolvedValue({
@@ -106,6 +126,42 @@ describe("background local retention", () => {
     expect(storeMock.pruneUploadedEventsOlderThan).not.toHaveBeenCalled();
   });
 
+  it("checks milestones without reading raw event history", async () => {
+    const background = await import("../entrypoints/background");
+
+    const startBackground = background.default as unknown as () => void;
+    startBackground();
+
+    const alarmListener =
+      browserMock.alarms.onAlarm.addListener.mock.calls[0]?.[0];
+    await alarmListener?.({ name: "checkMilestones" });
+
+    expect(storeMock.getGlobalStats).toHaveBeenCalledOnce();
+    expect(storeMock.getAllDomains).toHaveBeenCalledOnce();
+  });
+
+  it("skips milestone checks when popups are disabled", async () => {
+    browserMock.storage.local.get.mockImplementation(async (key: string) =>
+      key === "milestoneToastsEnabled"
+        ? { milestoneToastsEnabled: false }
+        : {},
+    );
+    const background = await import("../entrypoints/background");
+    const startBackground = background.default as unknown as () => void;
+    startBackground();
+
+    const alarmListener =
+      browserMock.alarms.onAlarm.addListener.mock.calls[0]?.[0];
+    await alarmListener?.({ name: "checkMilestones" });
+
+    expect(storeMock.getGlobalStats).not.toHaveBeenCalled();
+    expect(storeMock.getAllDomains).not.toHaveBeenCalled();
+    expect(browserMock.tabs.sendMessage).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: "SHOW_MILESTONE" }),
+    );
+  });
+
   it("reports extension local storage usage with collection event stats", async () => {
     const background = await import("../entrypoints/background");
 
@@ -116,7 +172,11 @@ describe("background local retention", () => {
       browserMock.runtime.onMessage.addListener.mock.calls[0]?.[0];
     const reply = vi.fn();
 
-    const keepAlive = messageListener?.({ type: "GET_STORAGE_STATS" }, {}, reply);
+    const keepAlive = messageListener?.(
+      { type: "GET_STORAGE_STATS" },
+      {},
+      reply,
+    );
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(keepAlive).toBe(true);
@@ -125,6 +185,7 @@ describe("background local retention", () => {
       stats: {
         totalEvents: 2,
         estimatedSizeBytes: 512,
+        estimatedSizeBytesByType: { cursor: 320, keyboard: 192 },
         localUsageBytes: 5120,
         oldestEvent: 1_000,
         newestEvent: 2_000,

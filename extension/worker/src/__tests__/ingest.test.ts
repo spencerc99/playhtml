@@ -11,11 +11,19 @@ const collectionEvents = {
 
 const metadataHistoryRpc = vi.fn();
 
+const participants = {
+  select: vi.fn(),
+  in: vi.fn(),
+};
+
 vi.mock('../lib/supabase', () => ({
   createSupabaseClient: vi.fn(() => ({
     from: vi.fn((table: string) => {
       if (table === 'collection_events') {
         return collectionEvents;
+      }
+      if (table === 'participants') {
+        return participants;
       }
       throw new Error(`Unexpected table: ${table}`);
     }),
@@ -30,7 +38,18 @@ const ENV: Env = {
   SUPABASE_SECRET_KEY: 'k',
   ADMIN_KEY: 'a',
   RESEND_API_KEY: 'r',
-  LIVE_EVENTS_HUB: {} as DurableObjectNamespace,
+  CODA_API_TOKEN: 'c',
+  LIVE_EVENTS_HUB: {
+    idFromName: () => ({}) as DurableObjectId,
+    get: () => ({
+      fetch: async () => new Response(null, { status: 204 }),
+    }),
+  } as unknown as DurableObjectNamespace,
+  COMMUTE_TRAIN_DISPATCHER: {} as DurableObjectNamespace,
+  COMMUTE_BOARD_RATE_LIMITER: {
+    limit: async () => ({ success: true }),
+  },
+  WWO_ADMIN_DB: {} as D1Database,
 };
 
 const waitUntil = vi.fn();
@@ -80,6 +99,8 @@ describe('handleIngest', () => {
     collectionEvents.upsert.mockReset();
     collectionEvents.select.mockReset();
     metadataHistoryRpc.mockReset();
+    participants.select.mockReset();
+    participants.in.mockReset();
     waitUntil.mockReset();
 
     collectionEvents.upsert.mockReturnValue({
@@ -90,6 +111,8 @@ describe('handleIngest', () => {
     collectionEvents.select.mockResolvedValue({ data: [{ id: 'event-1' }], error: null });
 
     metadataHistoryRpc.mockResolvedValue({ data: true, error: null });
+    participants.select.mockReturnValue(participants);
+    participants.in.mockResolvedValue({ data: [] });
   });
 
   it('accepts event upserts without selecting inserted row ids', async () => {

@@ -1,0 +1,2 @@
+-- ABOUTME: Defines deterministic sample data for local and preview Supabase databases.
+-- ABOUTME: Intentionally copies no browsing or collaboration data from production.

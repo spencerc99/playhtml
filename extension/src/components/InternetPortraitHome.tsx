@@ -5,21 +5,35 @@ import browser from "webextension-polyfill";
 import { PlayerIdentityCard } from "./PlayerIdentityCard";
 import type { PlayerIdentity } from "../types";
 import type { CollectorStatus } from "../collectors/types";
+import {
+  collectionModeStorageKey,
+  normalizeCollectionMode,
+  type CollectionMode,
+} from "../collectors/modes";
 import { TinyMovementPreview } from "./TinyMovementPreview";
 import { PortraitCard } from "./PortraitCard";
-import { CollectorIcon } from "./icons";
+import { CollectorIcon, GearSvg } from "./icons";
 import "./InternetPortraitHome.scss";
-import { FLAGS } from "../flags";
 import { PostcardStack } from "../announcements/PostcardStack";
+import { FeedbackForm } from "./FeedbackForm";
+import { SiteVisibilityNotice } from "./SiteVisibilityNotice";
+import { FeatureGate } from "./FeatureGate";
+import { useFeatureState } from "../features/useFeatureAccess";
+import { PopupNav, WALKING_RECORD_PAGE } from "./PopupNav";
+import { SlowModeSettings } from "./SlowModeSettings";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
   discoveredSites: string[];
-  onViewCollections: () => void;
+  onOpenSettings: () => void;
   onViewHistory: () => void;
-  onViewProfile?: () => void;
-  onViewBagSettings?: () => void;
+  onViewCommute?: () => void;
+  commuteIsOpen?: boolean;
+  onViewBrowsingHistory: () => void;
+  onViewScraps?: () => void;
   onViewChangelog: () => void;
+  hiddenSiteName?: string;
+  onShowSatchel?: () => void;
 }
 
 interface PortraitStats {
@@ -35,19 +49,27 @@ interface PortraitStats {
 export function InternetPortraitHome({
   playerIdentity,
   discoveredSites,
-  onViewCollections,
+  onOpenSettings,
   onViewHistory,
-  onViewProfile,
-  onViewBagSettings,
+  onViewCommute,
+  commuteIsOpen = false,
+  onViewBrowsingHistory,
+  onViewScraps,
   onViewChangelog,
+  hiddenSiteName,
+  onShowSatchel,
 }: Props) {
   const [collectors, setCollectors] = useState<CollectorStatus[] | null>(null);
+  const [collectorModes, setCollectorModes] = useState<
+    Record<string, CollectionMode>
+  >({});
   const [error, setError] = useState<string | null>(null);
   const [presenceCount, setPresenceCount] = useState<number | null>(null);
   const [portraitStats, setPortraitStats] = useState<PortraitStats | null>(
     null,
   );
   const [portraitStatsLoaded, setPortraitStatsLoaded] = useState(false);
+  const copresenceEnabled = useFeatureState("COPRESENCE").enabled;
 
   useEffect(() => {
     const loadStatuses = async () => {
@@ -62,6 +84,21 @@ export function InternetPortraitHome({
         });
         if (response && Array.isArray(response.statuses)) {
           setCollectors(response.statuses);
+          const keys = response.statuses.map((status: CollectorStatus) =>
+            collectionModeStorageKey(status.type),
+          );
+          const stored = await browser.storage.local.get(keys);
+          setCollectorModes(
+            Object.fromEntries(
+              response.statuses.map((status: CollectorStatus) => [
+                status.type,
+                normalizeCollectionMode(
+                  status.type,
+                  stored[collectionModeStorageKey(status.type)],
+                ),
+              ]),
+            ),
+          );
           setError(null);
         } else {
           setCollectors(null);
@@ -89,7 +126,7 @@ export function InternetPortraitHome({
           return;
         }
         const url = new URL(tab.url);
-        const domain = url.hostname.replace(/^www\./, '');
+        const domain = url.hostname.replace(/^www\./, "");
         const response = await browser.runtime.sendMessage({
           type: "GET_DOMAIN_STATS",
           domain,
@@ -103,19 +140,22 @@ export function InternetPortraitHome({
       }
     })();
   }, []);
-
-
   useEffect(() => {
-    if (!FLAGS.COPRESENCE) return;
+    if (!copresenceEnabled) return;
     (async () => {
-      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      const [tab] = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
       if (!tab?.id) return;
       try {
-        const { count } = await browser.tabs.sendMessage(tab.id, { type: "GET_PRESENCE_COUNT" });
+        const { count } = await browser.tabs.sendMessage(tab.id, {
+          type: "GET_PRESENCE_COUNT",
+        });
         setPresenceCount(count);
       } catch {} // content script may not be ready
     })();
-  }, []);
+  }, [copresenceEnabled]);
 
   return (
     <div className="portrait-home">
@@ -128,15 +168,30 @@ export function InternetPortraitHome({
               playerIdentity={playerIdentity}
               discoveredSites={discoveredSites}
               compact
-              onClick={onViewProfile}
+              onClick={onOpenSettings}
             />
           )}
         </div>
-        <div className="portrait-home__subtitle-row">
-          <p className="portrait-home__subtitle">
-            An evolving portrait from your time on the internet
-          </p>
-          {FLAGS.COPRESENCE && presenceCount !== null && presenceCount > 0 && (
+        <div className="portrait-home__nav-row">
+          <PopupNav
+            onNavigate={(path) => {
+              if (path === WALKING_RECORD_PAGE) {
+                onViewBrowsingHistory();
+                return;
+              }
+              if (path === "scraps.html" && onViewScraps) {
+                onViewScraps();
+                return;
+              }
+              void (async () => {
+                await browser.tabs.create({
+                  url: browser.runtime.getURL(path),
+                });
+                window.close();
+              })();
+            }}
+          />
+          {copresenceEnabled && presenceCount !== null && presenceCount > 0 && (
             <span className="portrait-home__presence">
               {presenceCount} {presenceCount === 1 ? "person" : "people"} here
             </span>
@@ -145,41 +200,47 @@ export function InternetPortraitHome({
       </header>
 
       <main className="portrait-home__main">
-        <section className="collection-status">
-          <div className="collection-status__header-row">
-            <h3>Your Collection Status</h3>
-            <button
-              onClick={onViewCollections}
-              title="Data settings"
-              className="collection-status__settings-link"
-            >
-              Settings →
-            </button>
-          </div>
-          {error && <p className="collection-status__error">{error}</p>}
-          {collectors && (
-            <div className="collection-status__grid">
-              {collectors.map((c) => (
-                <div key={c.type} className="collector-pill">
-                  <div className="collector-pill__name-row">
-                    <span aria-hidden className="collector-pill__icon">
-                      <CollectorIcon type={c.type} />
-                    </span>
-                    <span className="collector-pill__name">{c.type}</span>
-                  </div>
-                  <span
-                    className={`collector-pill__state collector-pill__state--${
-                      c.enabled ? "on" : "off"
-                    }`}
-                  >
-                    {c.enabled ? "On" : "Off"}
-                  </span>
-                </div>
-              ))}
-            </div>
+        {hiddenSiteName && onShowSatchel && (
+          <SiteVisibilityNotice
+            siteName={hiddenSiteName}
+            onShowSatchel={onShowSatchel}
+          />
+        )}
+        <FeatureGate feature="COMMUTE">
+          {onViewCommute && (
+            <>
+              <button
+                className="commute-entry"
+                onClick={onViewCommute}
+                aria-label={
+                  commuteIsOpen
+                    ? "Return to the Internet Commute"
+                    : "Board the Internet Commute"
+                }
+              >
+                <span className="commute-entry__route" aria-hidden="true">
+                  <span className="commute-entry__stop commute-entry__stop--blue" />
+                  <span className="commute-entry__stop commute-entry__stop--gold" />
+                  <span className="commute-entry__stop commute-entry__stop--rust" />
+                </span>
+                <span className="commute-entry__copy">
+                  <span className="commute-entry__eyebrow">BOARDING NOW</span>
+                  <strong>
+                    {commuteIsOpen
+                      ? "Return to the internet commute"
+                      : "Board the internet commute"}
+                  </strong>
+                  <span>A slow train through pages people found lately.</span>
+                </span>
+                <span className="commute-entry__door" aria-hidden="true">
+                  <span />
+                  <span />
+                </span>
+              </button>
+              <SlowModeSettings />
+            </>
           )}
-        </section>
-
+        </FeatureGate>
         <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div
             role="button"
@@ -201,7 +262,9 @@ export function InternetPortraitHome({
                 <PortraitCard
                   domain={portraitStats.domain}
                   totalTimeMs={portraitStats.totalTimeMs}
-                  hourBuckets={portraitStats.hourBuckets ?? new Array(24).fill(0)}
+                  hourBuckets={
+                    portraitStats.hourBuckets ?? new Array(24).fill(0)
+                  }
                   cursorDistancePx={portraitStats.cursorDistancePx ?? 0}
                   dateRange={portraitStats.dateRange}
                   uniquePageCount={portraitStats.uniquePageCount}
@@ -216,60 +279,60 @@ export function InternetPortraitHome({
               <div className="preview-card__label">Open Portrait Overlay</div>
             </div>
           </div>
-          <div className="portrait-home__nav-links">
+        </section>
+
+        <section className="collection-status">
+          <div className="collection-status__header-row">
+            <h3>Your Collection Status</h3>
             <button
-              className="portrait-home__nav-link"
-              onClick={async (e) => {
-                e.stopPropagation();
-                const url = browser.runtime.getURL("portrait.html");
-                await browser.tabs.create({ url });
-                window.close();
-              }}
+              onClick={onOpenSettings}
+              title="Data settings"
+              className="collection-status__settings-link"
             >
-              portrait
-            </button>
-            <button
-              className="portrait-home__nav-link"
-              onClick={async (e) => {
-                e.stopPropagation();
-                const url = browser.runtime.getURL("stats.html");
-                await browser.tabs.create({ url });
-                window.close();
-              }}
-            >
-              time
-            </button>
-            <button
-              className="portrait-home__nav-link"
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewChangelog();
-              }}
-            >
-              changelog
+              Settings →
             </button>
           </div>
-          {onViewBagSettings && (
-            <button
-              className="portrait-home__nav-link portrait-home__bag-settings-link"
-              onClick={onViewBagSettings}
-            >
-              bag settings
-            </button>
+          {error && <p className="collection-status__error">{error}</p>}
+          {collectors && (
+            <div className="collection-status__grid">
+              {collectors.map((c) => (
+                <div key={c.type} className="collector-pill">
+                  <div className="collector-pill__name-row">
+                    <span aria-hidden className="collector-pill__icon">
+                      <CollectorIcon type={c.type} />
+                    </span>
+                    <span className="collector-pill__name">{c.type}</span>
+                  </div>
+                  <span
+                    className={`collector-pill__state collector-pill__state--${collectorModes[c.type] ?? "off"}`}
+                  >
+                    {collectorModes[c.type] ?? "off"}
+                  </span>
+                </div>
+              ))}
+            </div>
           )}
         </section>
       </main>
 
       <footer className="portrait-home__footer">
-        <span>Beta</span>
-        <a
-          className="portrait-home__feedback"
-          href="mailto:hi@spencer.place?subject=we%20were%20online%20feedback"
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          aria-label="settings"
+          title="Settings"
+          className="portrait-home__changelog-link portrait-home__settings-link"
+          onClick={onOpenSettings}
         >
-          feedback → hi@spencer.place
-        </a>
+          <GearSvg size={14} />
+        </button>
+        <button
+          type="button"
+          className="portrait-home__changelog-link"
+          onClick={onViewChangelog}
+        >
+          changelog
+        </button>
+        <FeedbackForm />
       </footer>
     </div>
   );

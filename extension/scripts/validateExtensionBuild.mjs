@@ -63,14 +63,17 @@ function resourcePatternToRegExp(resource) {
   return new RegExp(`${source}$`);
 }
 
-export async function validateExtensionBuild(buildDir) {
+export async function validateExtensionBuild(buildDir, browser = "chrome") {
   const manifestPath = path.join(buildDir, "manifest.json");
   const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
   const resources = collectManifestResources(manifest);
   const missingResources = [];
   let buildFiles;
 
-  if (manifest.options_ui?.open_in_tab !== true) {
+  if (typeof manifest.options_ui?.page !== "string") {
+    throw new Error("Extension manifest options_ui.page must be configured");
+  }
+  if (browser !== "safari" && manifest.options_ui.open_in_tab !== true) {
     throw new Error("Extension manifest options_ui.open_in_tab must be true");
   }
 
@@ -103,7 +106,10 @@ export async function validateExtensionBuild(buildDir) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  validateExtensionBuild(process.argv[2] ?? "publish/chrome-mv3").catch((error) => {
+  validateExtensionBuild(
+    process.argv[2] ?? "publish/chrome-mv3",
+    process.argv[3] ?? "chrome",
+  ).catch((error) => {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);
   });

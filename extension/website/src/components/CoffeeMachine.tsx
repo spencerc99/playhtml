@@ -145,6 +145,10 @@ export const CoffeeMachine = withSharedState<CoffeeData, any, CoffeeMachineProps
           <img
             src="/la-marzocco.png"
             alt="Espresso machine"
+            width={943}
+            height={942}
+            loading="lazy"
+            decoding="async"
             className={`${styles.machineImg} ${
               visualState === "ready" || visualState === "drinking"
                 ? styles.machineBackground
@@ -160,6 +164,10 @@ export const CoffeeMachine = withSharedState<CoffeeData, any, CoffeeMachineProps
                 ? "/cortado.png"
                 : "/cortado-empty.png"
             }
+            width={956}
+            height={958}
+            loading="lazy"
+            decoding="async"
             alt={
               visualState === "ready"
                 ? "A cortado ready to drink"

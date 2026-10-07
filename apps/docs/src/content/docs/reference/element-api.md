@@ -1,44 +1,46 @@
 ---
-title: "Element API (can-play)"
-description: "Every property of the ElementInitializer: data defaults, updateElement, view, event handlers, awareness, lifecycle, and callback contexts."
+title: "Element initializer API"
+description: "Configure data defaults, renderers, event handlers, live users, and lifecycle callbacks."
 sidebar:
   order: 3
 ---
 
-The `ElementInitializer` is the config object for a custom collaborative element. Use the same shape in three places:
+The `ElementInitializer` configures a custom collaborative element. Use the same shape in three supported APIs:
 
-1. **DOM properties** on a `can-play` element, set before `playhtml.init()`
-2. **`playhtml.register(id, init)`** / **`playhtml.define(name, init)`** — see [View API](/docs/reference/view-api/)
-3. **`extraCapabilities`** in `playhtml.init()` — see [init options](/docs/reference/init-options/#extracapabilities)
+1. **`playhtml.register(elementOrId, initializer)`** for one element
+2. **`playhtml.define(name, initializer)`** for a reusable capability
+3. **`extraCapabilities`** in `playhtml.init()` for capabilities declared during initialization
 
-The initializer has three state buckets: shared **`data`**, per-user **`localData`**, and ephemeral **`awareness`**.
+The initializer has three state buckets: shared **`data`**, per-tab **`localData`**, and ephemeral per-user **`live`** data.
 
 For usage examples, see [Custom elements](/docs/custom-elements/).
+
+Directly assigning initializer fields to an element remains supported for compatibility, but is deprecated for vanilla code. See [Direct element properties](#direct-element-properties-deprecated).
 
 ## Full shape
 
 ### Callback context (`ctx`)
 
-Passed to `updateElement`, `view`, `onClick`, `onDrag`, and `onDragStart`:
+Passed to `update`, `view`, `onClick`, `onDrag`, and `onDragStart`:
 
 ```js
 {
   data,                // shared synced state (read-only snapshot)
   localData,           // per-user, per-tab; not synced
-  awareness,           // array of every user's awareness value for this element
-  awarenessByStableId, // Map<stableId, awareness value>
+  live,                // your ephemeral value for this element
+  users,               // [{ user: { pid, name, color, isMe }, live }]
   element,             // the HTMLElement
 
   setData,             // (next) mutator fn or replacement object
   setLocalData,        // (next) mutator fn or replacement; re-renders view
-  setMyAwareness,      // (next) your ephemeral awareness value
+  setLive,             // (next) your ephemeral value for this element
   requestUpdate,       // () re-run view now; no-op without view
 }
 ```
 
-`updateElementAwareness` receives the same fields, plus **`myAwareness`** (your own awareness value).
+The deprecated `awareness`, `awarenessByStableId`, `myAwareness`, and `setMyAwareness` fields remain available as compatibility aliases.
 
-Do not call `setData`, `setLocalData`, or `setMyAwareness` during a `view` render — playhtml logs an error and ignores the write. `setData` merge rules: [Data essentials](/docs/data/data-essentials/).
+Do not call `setData`, `setLocalData`, or `setLive` during a `view` render — playhtml logs an error and ignores the write. `setData` merge rules: [Data essentials](/docs/data/data-essentials/).
 
 ### `onMount` context
 
@@ -48,50 +50,46 @@ Do not call `setData`, `setLocalData`, or `setMyAwareness` during a `view` rende
 {
   getData,             // () => current shared data
   getLocalData,        // () => current local data
-  getAwareness,        // () => awareness array
+  getLive,             // () => your current live value
+  getUsers,            // () => current element users
   getElement,          // () => the HTMLElement
 
   setData,             // same setters as ctx
   setLocalData,
-  setMyAwareness,
+  setLive,
   requestUpdate,
 }
 ```
 
 ### Initializer
 
-Everything you can set on `can-play` (same object for `register`, `define`, and `extraCapabilities`):
+Everything you can put in an initializer for `register`, `define`, or `extraCapabilities`:
 
 ```js
 {
   // Starting shared state for elements that render from shared data. Must be
   // an object (or a function that returns one) — not a bare number or string.
-  // Synced across the room. Must be paired with updateElement or view.
+  // Synced across the room. Must be paired with update or view.
   defaultData: { count: 0 },
   // defaultData: (element) => ({ color: element.dataset.color }),
 
   // Per-user, per-tab state. Never synced. Drag anchors, drafts, UI flags.
   defaultLocalData: undefined,
 
-  // Your starting awareness value for this element. Ephemeral — clears on
-  // disconnect. Pair with updateElementAwareness.
-  myDefaultAwareness: undefined,
+  // Your starting live value for this element. Clears when you disconnect.
+  live: undefined,
 
-  // --- data update path: provide updateElement OR view, not both ---
+  // --- render path: provide update OR view, not both ---
 
-  updateElement(ctx) {
-    // ctx — see Callback context above. Write the DOM from ctx.data.
+  update(ctx) {
+    // ctx — see Callback context above. Write the DOM from ctx.data and ctx.users.
     // Do not call ctx.setData here — it loops.
   },
 
   view(ctx) {
     // ctx — see Callback context above. Return a lit-html template.
-    // Mutually exclusive with updateElement, onClick, onDrag, onDragStart.
+    // Mutually exclusive with update, onClick, onDrag, onDragStart.
     // Drive ctx.setData from @click handlers, not during render.
-  },
-
-  updateElementAwareness(ctx) {
-    // ctx — Callback context + myAwareness. Pair with myDefaultAwareness.
   },
 
   // --- event handlers (ignored when using view) ---
@@ -124,10 +122,14 @@ Everything you can set on `can-play` (same object for `register`, `define`, and 
 **Required.** Starting shared state for new elements. Must be an **object** (or a function that returns one), not a bare primitive like `0` or `""`.
 
 ```js
-el.defaultData = { count: 0 };
+const initializer = {
+  defaultData: { count: 0 },
+};
 
 // Or derive from the element:
-el.defaultData = (element) => ({ color: element.dataset.color ?? "yellow" });
+const derivedInitializer = {
+  defaultData: (element) => ({ color: element.dataset.color ?? "yellow" }),
+};
 ```
 
 ---
@@ -137,30 +139,37 @@ el.defaultData = (element) => ({ color: element.dataset.color ?? "yellow" });
 Per-user, per-tab state that is **not** synced. Use for drag anchors, hover flags, or UI that only the local client needs.
 
 ```js
-el.defaultLocalData = { draft: "" };
+const initializer = {
+  defaultLocalData: { draft: "" },
+};
 ```
 
 ---
 
-## `myDefaultAwareness`
+## `live`
 
-Your starting awareness value for this element. Awareness is ephemeral — it clears when you disconnect. Other clients read it through the `awareness` array in callbacks.
+Your starting ephemeral value for this element. It clears when you disconnect. Other clients receive it in `users`, joined with your identity.
 
 ```js
-el.myDefaultAwareness = "#2563eb";
+const initializer = {
+  live: { ready: false },
+};
 ```
 
 ---
 
-## `updateElement`
+## `update`
 
-Imperative update path. playhtml calls it on mount and whenever shared `data`, `localData`, or awareness changes (locally or from another tab). Write the DOM from `ctx.data`.
+Imperative update path. playhtml calls it on mount and whenever shared `data` or an element user's `live` value changes. Write the DOM from `ctx.data`, `ctx.live`, and `ctx.users`.
 
-Mutually exclusive with `view`. Do not call `setData` inside `updateElement` — that creates a write loop. See [Data essentials](/docs/data/data-essentials/) rule 7.
+Mutually exclusive with `view`. Do not call `setData` inside `update` — that creates a write loop. See [Data essentials](/docs/data/data-essentials/) rule 7.
 
 ```js
-el.updateElement = ({ element, data }) => {
-  element.textContent = String(data.count);
+const initializer = {
+  update: ({ element, data, users }) => {
+    element.textContent = String(data.count);
+    element.dataset.users = String(users.length);
+  },
 };
 ```
 
@@ -170,23 +179,15 @@ el.updateElement = ({ element, data }) => {
 
 **Experimental.** Declarative update path. Return a [lit-html](https://lit.dev/) template; playhtml patches the DOM when state changes.
 
-Mutually exclusive with `updateElement`, `onClick`, `onDrag`, and `onDragStart` — put events in the template (`@click`, etc.).
+Mutually exclusive with `update`, `onClick`, `onDrag`, and `onDragStart` — put events in the template (`@click`, etc.).
 
-See [View API](/docs/reference/view-api/) for `register`, `define`, helpers, and handle methods.
+See [Registration API](/docs/reference/view-api/) for `register`, `define`, helpers, and handle methods.
 
 ---
 
-## `updateElementAwareness`
+## Deprecated compatibility names
 
-Called when element awareness changes. Same context as `updateElement`, plus `myAwareness` (your own value).
-
-```js
-el.updateElementAwareness = ({ element, awareness }) => {
-  element.dataset.viewers = String(awareness.length);
-};
-```
-
-If the element also has a `view`, awareness changes re-render the view automatically.
+`updateElement`, `myDefaultAwareness`, `updateElementAwareness`, `awareness`, `awarenessByStableId`, `myAwareness`, `setMyAwareness`, and `getAwareness` remain available for existing elements. New code should use `update`, `live`, `users`, `setLive`, `getLive`, and `getUsers`. Supplying both names from an alias pair, such as `update` and `updateElement`, is an error.
 
 ---
 
@@ -195,8 +196,12 @@ If the element also has a `view`, awareness changes re-render the view automatic
 Fired on click. Ignored when the element uses `view`.
 
 ```js
-el.onClick = (_e, { setData }) => {
-  setData((d) => { d.count += 1; });
+const initializer = {
+  onClick: (_event, { setData }) => {
+    setData((data) => {
+      data.count += 1;
+    });
+  },
 };
 ```
 
@@ -219,31 +224,38 @@ Return a cleanup function when the element is removed.
 **`onMount` vs `playhtml.ready`:** `onMount` fires when this element's handler attaches — that can happen before the room's first sync finishes. `data` may still be `defaultData` until sync lands. Use `onMount` alone for element-scoped setup (listeners, animation loops). Wait on `playhtml.ready` inside `onMount` when you need room-wide state that only exists after sync (presence, `createPageData`, reading final server data):
 
 ```js
-el.onMount = ({ getData, setData }) => {
-  let cancelled = false;
+const initializer = {
+  onMount: ({ getData, setData }) => {
+    let cancelled = false;
 
-  playhtml.ready.then(() => {
-    if (cancelled) return;
-    // Safe to read presence, page data, or fully-hydrated shared state here
-    const presences = playhtml.presence.getPresences();
-    setData((d) => { d.viewerCount = presences.size; });
-  });
+    playhtml.ready.then(() => {
+      if (cancelled) return;
+      const presences = playhtml.presence.getPresences();
+      setData((data) => {
+        data.viewerCount = presences.size;
+      });
+    });
 
-  return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
+  },
 };
 ```
 
 For a clock-driven `view`, `requestAnimationFrame` in `onMount` is enough — you do not need `playhtml.ready`:
 
 ```js
-el.onMount = ({ getData, requestUpdate }) => {
-  let raf;
-  const tick = () => {
-    if (getData().running) requestUpdate();
+const initializer = {
+  onMount: ({ getData, requestUpdate }) => {
+    let raf;
+    const tick = () => {
+      if (getData().running) requestUpdate();
+      raf = requestAnimationFrame(tick);
+    };
     raf = requestAnimationFrame(tick);
-  };
-  raf = requestAnimationFrame(tick);
-  return () => cancelAnimationFrame(raf);
+    return () => cancelAnimationFrame(raf);
+  },
 };
 ```
 
@@ -256,7 +268,9 @@ When set, a click with that modifier held resets the element to `defaultData` fo
 Built-in capabilities use `"shiftKey"`. Custom elements opt in the same way:
 
 ```js
-el.resetShortcut = "shiftKey";
+const initializer = {
+  resetShortcut: "shiftKey",
+};
 ```
 
 ---
@@ -273,30 +287,43 @@ Gate which DOM elements a reusable capability (`define` / `extraCapabilities`) a
 
 ---
 
-## Setting properties on the DOM element
+## Registering an initializer
 
-For `can-play`, set initializer properties on the element before `playhtml.init()`:
+Pass the initializer to `playhtml.register`. The element needs a stable, unique `id`; the `can-play` attribute is optional because `register` supplies the custom capability.
 
 ```html
-<div id="counter" can-play></div>
+<div id="counter"></div>
 
 <script type="module">
   import { playhtml } from "playhtml";
 
-  const el = document.getElementById("counter");
-  el.defaultData = { count: 0 };
-  el.onClick = (_e, { setData }) => setData((d) => { d.count += 1; });
-  el.updateElement = ({ element, data }) => {
-    element.textContent = String(data.count);
-  };
+  playhtml.register("counter", {
+    defaultData: { count: 0 },
+    onClick: (_event, { setData }) => {
+      setData((data) => {
+        data.count += 1;
+      });
+    },
+    update: ({ element, data }) => {
+      element.textContent = String(data.count);
+    },
+  });
 
   playhtml.init();
 </script>
 ```
 
-playhtml reads these keys off the element: `defaultData`, `defaultLocalData`, `myDefaultAwareness`, `updateElement`, `view`, `updateElementAwareness`, `onClick`, `onDrag`, `onDragStart`, `onMount`, `resetShortcut`, `debounceMs`, `isValidElementForTag`.
+`register` can run before or after `playhtml.init()`, and before or after the element exists. It binds when both the registration and element are available.
 
-When an element has both `can-play` and a built-in capability (e.g. `can-move`), built-in tags keep their own initializer; `can-play` properties apply only to the custom slot.
+When the same element also has a built-in capability such as `can-move`, each capability keeps its own data and behavior.
+
+## Direct element properties (deprecated)
+
+Direct assignments such as `element.defaultData = …` and `element.updateElement = …` remain supported so existing sites and React integrations keep working. Do not use them in new vanilla code. Move every initializer field into the object passed to `register`.
+
+The compatibility path reads these keys from the element: `defaultData`, `defaultLocalData`, `myDefaultAwareness`, `updateElement`, `view`, `updateElementAwareness`, `onClick`, `onDrag`, `onDragStart`, `onMount`, `resetShortcut`, `debounceMs`, and `isValidElementForTag`.
+
+If existing code assigns those properties and calls `setupPlayElement(element)`, replace both steps with `register(element, initializer)`. `setupPlayElement` remains supported for dynamically added built-in and defined capabilities.
 
 ---
 
@@ -304,9 +331,9 @@ When an element has both `can-play` and a built-in capability (e.g. `can-move`),
 
 At registration time, playhtml checks:
 
-- `defaultData` and `updateElement` / `view` are provided together
-- `myDefaultAwareness`, when present, is paired with `updateElementAwareness`
-- At least one update function exists: `updateElement`, `view`, or `updateElementAwareness`
-- `register` / `define` throw if both `view` and `updateElement` are set, or if `view` is combined with `onClick` / `onDrag` / `onDragStart`
+- `defaultData` and `update` / `view` are provided together
+- `live`, when present, is paired with `update` / `view`
+- At least one renderer exists: `update` or `view`
+- `register` / `define` throw if both `view` and `update` are set, if both `update` and `updateElement` are set, or if `view` is combined with `onClick` / `onDrag` / `onDragStart`
 
 If validation fails, the element is skipped and a console error lists the missing or invalid pair.

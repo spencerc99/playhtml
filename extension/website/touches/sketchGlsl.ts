@@ -9,14 +9,12 @@ import {
   CursorTouch,
   playToReal,
   realToPlay,
-  positionAt,
   motionAt,
 } from "./detect";
 
 const BURST_LIFE_MS = 2000;
 const BURST_QUAD_PX = 260;
 const REMNANT_QUAD_PX = 56;
-const CURSOR_TAIL_MS = 900;
 
 const VERT = `
 precision highp float;
@@ -195,23 +193,6 @@ export function createTouchesSketchGlsl(
         return;
       }
 
-      // Comet tail tapering from head width to a whisker.
-      const steps = 14;
-      let prev = { x, y };
-      for (let i = 1; i <= steps; i++) {
-        const t = realTs - (CURSOR_TAIL_MS * i) / steps;
-        if (t <= trail.startTime) break;
-        const point = positionAt(trail, Math.max(t, trail.startTime));
-        const px = point.x - p.width / 2;
-        const py = point.y - p.height / 2;
-        const falloff = 1 - i / (steps + 1);
-        color.setAlpha(210 * falloff * falloff);
-        p.stroke(color);
-        p.strokeWeight(0.6 + 7 * falloff);
-        p.line(prev.x, prev.y, px, py);
-        prev = { x: px, y: py };
-      }
-
       // Additive halo rings for glow, then the head with a hot core.
       p.blendMode(p.ADD);
       p.noStroke();
@@ -226,32 +207,6 @@ export function createTouchesSketchGlsl(
       p.circle(x, y, 8.5);
       p.fill(255, 252, 240, 235);
       p.circle(x, y, 3.2);
-    };
-
-    const drawAfterglow = (burst: Burst, realTs: number) => {
-      const { afterglowMs } = settingsRef.current;
-      if (afterglowMs <= 0) return;
-      const age = playElapsed - burst.startPlayMs;
-      if (age > afterglowMs) return;
-      const fade = 1 - age / afterglowMs;
-
-      for (const trailIndex of [burst.touch.trailA, burst.touch.trailB]) {
-        const trail = data.trails[trailIndex];
-        const from = burst.touch.ts;
-        const to = Math.min(realTs, trail.endTime);
-        if (to <= from) continue;
-        const color = p.color(trail.color);
-        color.setAlpha(90 * fade);
-        p.noFill();
-        p.stroke(color);
-        p.strokeWeight(1.5);
-        p.beginShape();
-        for (let ts = from; ts <= to; ts += 120) {
-          const pos = positionAt(trail, ts);
-          p.vertex(pos.x - p.width / 2, pos.y - p.height / 2);
-        }
-        p.endShape();
-      }
     };
 
     const drawBurst = (burst: Burst) => {
@@ -311,12 +266,8 @@ export function createTouchesSketchGlsl(
         nextTouchIndex++;
       }
       bursts = bursts.filter(
-        (burst) =>
-          playElapsed - burst.startPlayMs <=
-          Math.max(BURST_LIFE_MS, settings.afterglowMs),
+        (burst) => playElapsed - burst.startPlayMs <= BURST_LIFE_MS,
       );
-
-      for (const burst of bursts) drawAfterglow(burst, realTs);
 
       if (settings.showCursors) {
         for (const trail of data.trails) {

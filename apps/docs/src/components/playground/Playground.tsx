@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Editor } from "./Editor";
 import { Preview } from "./Preview";
 import { starterRecipe } from "./recipes/_starter";
+import { getPlayableRecipe } from "./recipes";
 import {
   parseHash,
   encodeHashPayload,
@@ -17,7 +18,7 @@ import "./playground.css";
 
 export function Playground() {
   // The "canonical" source for the loaded recipe. We diff against this to
-  // know whether the user has edited away from the starter (controls the
+  // know whether the user has edited away from the canonical recipe (controls the
   // "edited" indicator and the visibility of the Reset button).
   const [recipeId, setRecipeId] = useState<string>("_starter");
   const [canonicalSource, setCanonicalSource] = useState<string>(starterRecipe.html);
@@ -38,55 +39,46 @@ export function Playground() {
 
   // Initial load: parse hash, prune stale drafts, silently restore draft if
   // one exists. No banner — the reader gets back exactly where they were.
-  // The "edited" indicator + Reset to starter button (below) make the
+  // The "edited" indicator + reset button make the
   // edited state legible without being in the way every refresh.
   useEffect(() => {
     pruneStaleDrafts();
 
-    // Determine canonical source for the recipe id (Phase 1: only _starter)
-    const canonicalForId = (id: string): string => {
-      if (id === "_starter") return starterRecipe.html;
-      // Phase 2 will add canonical recipe lookup here.
-      return starterRecipe.html;
-    };
+    function loadRecipeFromHash() {
+      const loaded = parseHash(window.location.hash, getPlayableRecipe, starterRecipe);
+      const canonical = getPlayableRecipe(loaded.recipeId)?.html ?? starterRecipe.html;
+      setRecipeId(loaded.recipeId);
+      setCanonicalSource(canonical);
+      setRoomId(loaded.roomId);
+      fromPayloadRef.current = loaded.fromPayload;
 
-    const loaded = parseHash(window.location.hash, starterRecipe.html);
-    const canon = canonicalForId(loaded.recipeId);
-    setRecipeId(loaded.recipeId);
-    setCanonicalSource(canon);
-    setRoomId(loaded.roomId);
-    fromPayloadRef.current = loaded.fromPayload;
-
-    // Derive sessionId for URL encoding. If loaded from payload, the room
-    // id is `recipe:<base>:<sessionId>`; else it's the localStorage editor
-    // room id and that's also our sessionId.
-    if (loaded.fromPayload) {
-      const parts = loaded.roomId.split(":");
-      sessionIdRef.current = parts[parts.length - 1] ?? "";
-    } else {
-      sessionIdRef.current = loaded.roomId; // edit-<recipe>-<random>
-    }
-
-    // Source-of-truth resolution. Three cases:
-    //   1. URL has a payload (#c=...) — payload wins, never silently mix
-    //      in a local draft (the URL is shareable; honoring it is the
-    //      whole point).
-    //   2. Local draft exists and differs from canonical — restore it
-    //      silently. URL hash already encodes the source on every edit
-    //      (fork-on-first-edit handles the room-id update for us).
-    //   3. Otherwise — load the canonical recipe.
-    if (loaded.fromPayload) {
-      setEditorSource(loaded.source);
-    } else {
-      const draft = loadDraft(loaded.recipeId);
-      if (draft && draft.source !== canon) {
-        setEditorSource(draft.source);
+      // Derive sessionId for URL encoding. If loaded from payload, the room
+      // id is `recipe:<base>:<sessionId>`; else it's the localStorage editor
+      // room id and that's also our sessionId.
+      if (loaded.fromPayload) {
+        const parts = loaded.roomId.split(":");
+        sessionIdRef.current = parts[parts.length - 1] ?? "";
       } else {
-        setEditorSource(loaded.source);
+        sessionIdRef.current = loaded.roomId;
       }
+
+      // A payload is the explicit source of truth. Canonical links may restore
+      // a local draft when it differs from the registered recipe.
+      if (loaded.fromPayload) {
+        setEditorSource(loaded.source);
+      } else {
+        const draft = loadDraft(loaded.recipeId);
+        setEditorSource(
+          draft && draft.source !== canonical ? draft.source : loaded.source,
+        );
+      }
+
+      setSeedNonce((n) => n + 1);
     }
 
-    setSeedNonce((n) => n + 1);
+    loadRecipeFromHash();
+    window.addEventListener("hashchange", loadRecipeFromHash);
+    return () => window.removeEventListener("hashchange", loadRecipeFromHash);
   }, []);
 
   // Listen for the Preview's reload request (the reload button dispatches
@@ -124,13 +116,10 @@ export function Playground() {
       saveDraft(recipeId, source, canonicalSource);
 
       // Update URL hash with payload (or strip if source matches canonical).
-      // Oversize remixes silently keep the previous hash — sharing UI is
-      // hidden in Phase 1 until we have a proper named-remix backend, so
-      // there's no point surfacing the size limit to the reader yet.
+      // Oversize remixes silently keep the previous hash because the editor
+      // does not expose a sharing action for payloads above the URL limit.
       if (source === canonicalSource) {
-        if (window.location.hash) {
-          history.replaceState(null, "", window.location.pathname + window.location.search);
-        }
+        replaceCanonicalHash(recipeId, roomId);
         return;
       }
       const enc = encodeHashPayload({
@@ -141,24 +130,21 @@ export function Playground() {
       if (enc.tooLarge) return; // Skip URL update; payload too large
       history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${enc.hash}`);
     },
-    [recipeId, canonicalSource],
+    [recipeId, canonicalSource, roomId],
   );
 
   // Reset to the canonical recipe. Confirms once before discarding because
   // the action is destructive (any unsaved edits go away).
   const handleResetToStarter = useCallback(() => {
     const ok = window.confirm(
-      "Discard your edits and reset to the starter? This cannot be undone.",
+      "Discard your edits and reset to this example? This cannot be undone.",
     );
     if (!ok) return;
     discardDraft(recipeId);
     setEditorSource(canonicalSource);
     setSeedNonce((n) => n + 1);
-    // Drop the URL hash payload so refreshing lands cleanly on canonical
-    if (window.location.hash) {
-      history.replaceState(null, "", window.location.pathname + window.location.search);
-    }
-  }, [recipeId, canonicalSource]);
+    replaceCanonicalHash(recipeId, roomId);
+  }, [recipeId, canonicalSource, roomId]);
 
   const handleCopySource = useCallback(async () => {
     try {
@@ -239,9 +225,9 @@ export function Playground() {
             type="button"
             className="ph-play-reset-btn"
             onClick={handleResetToStarter}
-            title="Discard your edits and reload the starter"
+            title="Discard your edits and reload this example"
           >
-            Reset to starter
+            Reset example
           </button>
         )}
       </div>
@@ -275,4 +261,15 @@ export function Playground() {
       </div>
     </div>
   );
+}
+
+function replaceCanonicalHash(recipeId: string, roomId: string): void {
+  const baseUrl = window.location.pathname + window.location.search;
+  if (recipeId === "_starter") {
+    history.replaceState(null, "", baseUrl);
+    return;
+  }
+
+  const params = new URLSearchParams({ id: recipeId, room: roomId });
+  history.replaceState(null, "", `${baseUrl}#${params}`);
 }

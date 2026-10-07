@@ -5,10 +5,8 @@ import p5 from "p5";
 import { Trail } from "../shared/types";
 import {
   CursorTouch,
-  TimeSegment,
   playToReal,
   realToPlay,
-  positionAt,
   motionAt,
 } from "./detect";
 
@@ -16,7 +14,6 @@ import { SketchData, SketchSettings } from "./sketch";
 
 const BURST_LIFE_MS = 1600;
 const BURST_MAX_RADIUS = 90;
-const CURSOR_TAIL_MS = 700;
 const MARK_RADIUS = 11;
 
 interface Burst {
@@ -88,29 +85,14 @@ export function createTouchesSketchPinwheel(
       const pos = motionAt(trail, realTs);
       const color = p.color(trail.color);
 
-      // Parked cursors (wide sample bracket) sit dim and still — no tail, no
-      // interpolated drift across idle gaps.
+      // Parked cursors (wide sample bracket) sit dim and still, without
+      // interpolating across idle gaps.
       if (!pos.live) {
         color.setAlpha(80);
         p.noStroke();
         p.fill(color);
         p.circle(pos.x, pos.y, 7);
         return;
-      }
-
-      // Short comet tail so motion reads without drawing whole trails.
-      p.noFill();
-      const steps = 6;
-      for (let i = 1; i <= steps; i++) {
-        const t0 = realTs - (CURSOR_TAIL_MS * i) / steps;
-        const t1 = realTs - (CURSOR_TAIL_MS * (i - 1)) / steps;
-        if (t1 <= trail.startTime) break;
-        const a = positionAt(trail, Math.max(t0, trail.startTime));
-        const b = positionAt(trail, Math.max(t1, trail.startTime));
-        color.setAlpha(140 * (1 - i / (steps + 1)));
-        p.stroke(color);
-        p.strokeWeight(2.5 * (1 - i / (steps + 2)));
-        p.line(a.x, a.y, b.x, b.y);
       }
 
       color.setAlpha(255);
@@ -173,32 +155,6 @@ export function createTouchesSketchPinwheel(
       p.circle(touch.x, touch.y, radius * 2);
     };
 
-    const drawAfterglow = (burst: Burst, realTs: number) => {
-      const { afterglowMs } = settingsRef.current;
-      if (afterglowMs <= 0) return;
-      const age = playElapsed - burst.startPlayMs;
-      if (age > afterglowMs) return;
-      const fade = 1 - age / afterglowMs;
-
-      for (const trailIndex of [burst.touch.trailA, burst.touch.trailB]) {
-        const trail = data.trails[trailIndex];
-        const from = burst.touch.ts;
-        const to = Math.min(realTs, trail.endTime);
-        if (to <= from) continue;
-        const color = p.color(trail.color);
-        color.setAlpha(70 * fade);
-        p.noFill();
-        p.stroke(color);
-        p.strokeWeight(1.5);
-        p.beginShape();
-        for (let ts = from; ts <= to; ts += 120) {
-          const pos = positionAt(trail, ts);
-          p.vertex(pos.x, pos.y);
-        }
-        p.endShape();
-      }
-    };
-
     p.draw = () => {
       const settings = settingsRef.current;
       playElapsed += Math.min(250, p.deltaTime) * settings.speed;
@@ -232,12 +188,8 @@ export function createTouchesSketchPinwheel(
         nextTouchIndex++;
       }
       bursts = bursts.filter(
-        (burst) =>
-          playElapsed - burst.startPlayMs <=
-          Math.max(BURST_LIFE_MS, settings.afterglowMs),
+        (burst) => playElapsed - burst.startPlayMs <= BURST_LIFE_MS,
       );
-
-      for (const burst of bursts) drawAfterglow(burst, realTs);
 
       if (settings.showCursors) {
         for (const trail of data.trails) {

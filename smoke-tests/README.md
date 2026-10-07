@@ -10,7 +10,7 @@ stopped bootstrapping playhtml and every experiment page broke in production.
 ```bash
 # From repo root
 bun build-site
-bun run -C smoke-tests install-browsers   # one-time
+bun run --cwd smoke-tests install-browsers   # one-time
 bun smoke
 ```
 
@@ -34,6 +34,9 @@ They are manual because they take several minutes, wait for real Durable Object
 alarms, and need staging secrets.
 
 ```bash
+# Verifies authenticated source-to-consumer and consumer-to-source bridge sync.
+bun smoke:partykit:bridge
+
 # Verifies bridge observers reattach after Durable Object hibernation.
 bun smoke:partykit:hibernation
 
@@ -50,8 +53,10 @@ SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:stale-compaction
 # Verifies connected-room high-watermark compaction.
 SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:emergency
 
-# Verifies local realtime sync and awareness when Supabase startup load fails.
+# Verifies clients close with 1013 and admin writes stay blocked when Supabase
+# startup load fails.
 SUPABASE_URL=http://127.0.0.1:9 SUPABASE_KEY=bad ADMIN_TOKEN=dev \
+  PARTYKIT_BRIDGE_SECRET=dev \
   bunx wrangler dev --config partykit/wrangler.jsonc --port 1999 \
   --var SUPABASE_LOAD_TIMEOUT_MS:100
 PARTYKIT_HOST=localhost:1999 bun smoke:partykit:transient
@@ -67,6 +72,16 @@ SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:soak
 # PARTYKIT_PRESENCE_SOAK_CURSOR_HZ, PARTYKIT_PRESENCE_SOAK_DURATION_MS,
 # PARTYKIT_PRESENCE_SOAK_SETTLE_MS, PARTYKIT_PRESENCE_SOAK_CONNECT_TIMEOUT_MS.
 PARTYKIT_HOST=api-staging.playhtml.fun \
+  bun smoke:partykit:presence-cursor
+
+# Starts the local presence-only Worker without persistence secrets and verifies
+# its real WebSocket endpoint returns an initial sync.
+bun smoke:partykit:presence-local
+
+# Runs the same presence smoke against the local presence-only server. Start
+# `bun run dev-server:presence` in another terminal first. This local server
+# does not load persisted PartyServer rooms and does not require Supabase secrets.
+PARTYKIT_HOST=localhost:1999 \
   bun smoke:partykit:presence-cursor
 
 # Runs the standard PartyKit checks.

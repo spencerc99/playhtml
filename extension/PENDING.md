@@ -1,13 +1,10 @@
 # Unreleased
 
-- The inventory shortcut moved to Ctrl+Shift+B on Windows/Linux (Cmd+Shift+I on Mac is unchanged), freeing Ctrl+Shift+E for an in-progress emote wheel.
-- Firefox now keeps one reliable browser-session identity without adding warnings to webpage consoles.
+- Internet scraps opens faster with large collections while search and filters still find older scraps.
+- You can now hide scraps from sites you don't want to see in the scraps site filter.
 
 <!--
-Add a bullet here in any PR that changes the extension itself (extension/src/**
-and anything else that ships in the zip). Website (extension/website/**) and
-worker (extension/worker/**) changes deploy on their own and do not get
-bullets. The release-prep workflow
+Add a bullet here in any PR that touches extension/**. The release-prep workflow
 watches this file: when there are bullets, it opens (or updates) a release PR
 that bumps the version, moves these bullets into CHANGELOG.md, and clears this
 file back to just the header. Merge that PR to ship.
@@ -21,4 +18,4 @@ extension/website/public/changelog/media/ and reference them here:
 ![video: Demo title](/changelog/media/file.mp4)
 -->
 
-- Fix Wikipedia presence startup while keeping private identity keys out of page-facing payloads.
+- Notices in the popup now go away once you open them, and on their own after a few views.

@@ -100,6 +100,10 @@ function generateAllTrails(w: number, h: number): TrailState[] {
 
       states.push({
         trail: {
+          id: `hero-${batch}-${i}`,
+          // Synthetic decoration, not anybody's browsing: each hero trail is
+          // its own participant so nothing tries to attribute it to a person.
+          pid: `hero-${batch}-${i}`,
           points: tsPoints,
           color,
           opacity: 0.65,
@@ -141,11 +145,11 @@ export function TrailsHero({ width, height }: Props) {
       windowSize={CURSOR_COUNT}
       settings={{
         strokeWidth: 5,
-        pointSize: 0,
         trailOpacity: 0.2,
         animationSpeed: 0.5,
         clickMinRadius: 6,
         clickMaxRadius: 18,
+        clickCoreRadius: 3,
         clickMinDuration: 300,
         clickMaxDuration: 800,
         clickExpansionDuration: 250,

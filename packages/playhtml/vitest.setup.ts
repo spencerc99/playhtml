@@ -48,23 +48,27 @@ vi.mock("y-partyserver/provider", () => {
       private listeners: Record<string, Function[]> = {};
       private clientId: number = 1;
       private doc: any;
-      private docUpdateListener?: (update: Uint8Array) => void;
+      _updateHandler?: (update: Uint8Array, origin: unknown) => void;
       roomname: string;
-      constructor(_host: string, room: string, doc?: any) {
+      options: any;
+      constructor(_host: string, room: string, doc?: any, options?: any) {
         if ((globalThis as any).PLAYHTML_TEST_PROVIDER_THROW) {
           throw new Error("test provider init failure");
         }
         this.roomname = room;
+        this.options = options;
         this.doc = doc;
         this.ws = {
           send: vi.fn(),
           addEventListener: vi.fn(),
         } as any;
+        // Mirrors y-partyserver's provider: local doc updates are sent through
+        // `_updateHandler`, which skips updates the provider itself applied.
         if (this.doc && typeof this.doc.on === "function") {
-          this.docUpdateListener = (update: Uint8Array) => {
-            this.ws?.send(update as any);
+          this._updateHandler = (update: Uint8Array, origin: unknown) => {
+            if (origin !== this) this.ws?.send(update as any);
           };
-          this.doc.on("update", this.docUpdateListener);
+          this.doc.on("update", this._updateHandler);
         }
         const states = new Map<number, any>();
         const local = { state: {} as any };
@@ -100,15 +104,77 @@ vi.mock("y-partyserver/provider", () => {
       destroy() {
         if (
           this.doc &&
-          this.docUpdateListener &&
+          this._updateHandler &&
           typeof this.doc.off === "function"
         ) {
-          this.doc.off("update", this.docUpdateListener);
+          this.doc.off("update", this._updateHandler);
         }
         this.listeners = {};
       }
     },
   };
+});
+
+vi.mock("partysocket", () => {
+  class FakePresencePartySocket {
+    readyState = 0; // CONNECTING
+    sent: string[] = [];
+    closed = false;
+    options: Record<string, unknown>;
+    private listeners = new Map<string, Set<(event: unknown) => void>>();
+
+    constructor(options: Record<string, unknown>) {
+      this.options = options;
+      ((globalThis as any).PLAYHTML_TEST_PRESENCE_SOCKETS ??= []).push(this);
+      if (!(globalThis as any).PLAYHTML_TEST_PRESENCE_MANUAL_OPEN) {
+        queueMicrotask(() => this.open());
+      }
+    }
+
+    send(message: string): void {
+      if (this.readyState !== 1) return;
+      this.sent.push(message);
+    }
+
+    close(): void {
+      this.closed = true;
+      this.readyState = 3; // CLOSED
+    }
+
+    addEventListener(type: string, callback: (event: unknown) => void): void {
+      const callbacks = this.listeners.get(type) ?? new Set();
+      callbacks.add(callback);
+      this.listeners.set(type, callbacks);
+    }
+
+    removeEventListener(type: string, callback: (event: unknown) => void): void {
+      this.listeners.get(type)?.delete(callback);
+    }
+
+    open(): void {
+      if (this.closed) return;
+      this.readyState = 1; // OPEN
+      this.dispatch("open", {});
+    }
+
+    receive(data: unknown): void {
+      this.dispatch("message", { data: JSON.stringify(data) });
+    }
+
+    private dispatch(type: string, event: unknown): void {
+      for (const callback of this.listeners.get(type) ?? []) {
+        callback(event);
+      }
+    }
+  }
+
+  return { default: FakePresencePartySocket };
+});
+
+import { beforeEach } from "vitest";
+
+beforeEach(() => {
+  (globalThis as any).PLAYHTML_TEST_PRESENCE_SOCKETS = [];
 });
 
 // Silence the noisy multi-line banner during tests while preserving other logs

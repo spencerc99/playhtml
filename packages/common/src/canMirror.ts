@@ -18,6 +18,12 @@ const LOCAL_LOADING_ATTRIBUTE_VALUES: Record<string, string> = {
   "aria-busy": "true",
   "aria-live": "polite",
 };
+const CAN_MIRROR_OBSERVER_OPTIONS: MutationObserverInit = {
+  childList: true,
+  attributes: true,
+  subtree: false,
+  characterData: true,
+};
 
 enum NodeType {
   Text = "Text",
@@ -53,18 +59,22 @@ export const canMirrorInitializer: ElementInitializer<ElementState> = {
 
     const setDataAny = setData as unknown as (data: any) => void;
 
-    const observer = observeElementChanges(element, (mutations) => {
-      // Filter out mutations for ephemeral awareness-managed attributes
-      const persistentMutations = mutations.filter(
-        (m) =>
-          m.type !== "attributes" ||
-          !EPHEMERAL_ATTRS.includes(m.attributeName || "")
-      );
-      if (persistentMutations.length === 0) return;
-      setDataAny((draft: any) => {
-        applyMutationsInPlace(draft, persistentMutations);
-      });
-    });
+    const observer = observeElementChanges(
+      element,
+      (mutations) => {
+        // Filter out mutations for ephemeral awareness-managed attributes
+        const persistentMutations = mutations.filter(
+          (m) =>
+            m.type !== "attributes" ||
+            !EPHEMERAL_ATTRS.includes(m.attributeName || "")
+        );
+        if (persistentMutations.length === 0) return;
+        setDataAny((draft: any) => {
+          applyMutationsInPlace(draft, persistentMutations);
+        });
+      },
+      CAN_MIRROR_OBSERVER_OPTIONS,
+    );
     // Store the observer on the element so updateElement can
     // disconnect it while applying remote state. MutationObserver
     // callbacks are async, so a boolean flag doesn't work.
@@ -148,12 +158,7 @@ export const canMirrorInitializer: ElementInitializer<ElementState> = {
     }
     updateElementFromState(element, data);
     if (obs) {
-      obs.observe(element, {
-        childList: true,
-        attributes: true,
-        subtree: false,
-        characterData: true,
-      });
+      obs.observe(element, CAN_MIRROR_OBSERVER_OPTIONS);
     }
   },
   updateElementAwareness: ({ element, awareness }) => {
@@ -238,61 +243,13 @@ function areStatesEqual(state1: ElementState, state2: ElementState): boolean {
 
 // --- MutationObserver setup ---
 
-function observeElementChanges(
+export function observeElementChanges(
   element: HTMLElement,
   callback: (mutations: MutationRecord[]) => void,
-  options?: {
-    childList?: boolean;
-    attributes?: boolean;
-    characterData?: boolean;
-    attributeFilter?: string[];
-  }
+  options: MutationObserverInit,
 ): MutationObserver {
-  const defaultOptions = {
-    childList: true,
-    attributes: true,
-    subtree: false,
-    characterData: true,
-  };
-
-  const config = { ...defaultOptions, ...options };
-
-  const mutationCallback = (mutationsList: MutationRecord[]) => {
-    const filteredMutations = mutationsList.filter((mutation) => {
-      if (mutation.target !== element) {
-        return false;
-      }
-
-      if (config.childList && mutation.type === "childList") {
-        return true;
-      }
-
-      if (config.attributes && mutation.type === "attributes") {
-        if (config.attributeFilter) {
-          if (config.attributeFilter.includes(mutation.attributeName || "")) {
-            return true;
-          }
-        } else {
-          return true;
-        }
-      }
-
-      if (config.characterData && mutation.type === "characterData") {
-        return true;
-      }
-
-      if (config.subtree && mutation.type === "childList") {
-        return true;
-      }
-
-      return false;
-    });
-
-    callback(filteredMutations);
-  };
-
-  const observer = new MutationObserver(mutationCallback);
-  observer.observe(element, config);
+  const observer = new MutationObserver(callback);
+  observer.observe(element, options);
   return observer;
 }
 

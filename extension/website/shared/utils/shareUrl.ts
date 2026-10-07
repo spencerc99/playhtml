@@ -3,6 +3,7 @@
 
 import { DEFAULT_ACTIVE_VISUALIZATIONS } from "../components/registry";
 import { serializeSpec, SETTINGS_BLOB_PARAM } from "./settingsSpec";
+import { SOUND_DEV_PARAM } from "../sound/soundDevFlag";
 
 /** Two arrays are "equal" for sharing purposes if they hold the same ids
  * regardless of order. Defaults are sorted, so we sort both before
@@ -16,6 +17,8 @@ function sameVizSet(a: string[], b: string[]): boolean {
 
 export interface BuildShareUrlInput {
   settings: Record<string, unknown>;
+  /** Effective defaults for this route. */
+  settingsDefaults?: Record<string, unknown>;
   activeVisualizations: string[];
   selectedTimeRange: { startMs: number; endMs: number } | null;
   /** Optional override; defaults to current `window.location.origin + pathname`. */
@@ -40,6 +43,7 @@ export interface BuildShareUrlInput {
  */
 export function buildShareUrl({
   settings,
+  settingsDefaults,
   activeVisualizations,
   selectedTimeRange,
   baseUrl,
@@ -63,7 +67,7 @@ export function buildShareUrl({
   // viz mode, etc.) get their own readable URL keys; everything else
   // diverging from defaults rides in a single base64 blob (`?s=...`) so
   // URLs stay bounded as the settings tree grows.
-  const { headline, blob } = serializeSpec(settings, vizSet);
+  const { headline, blob } = serializeSpec(settings, vizSet, settingsDefaults);
   for (const [param, value] of Object.entries(headline)) {
     url.searchParams.set(param, value);
   }
@@ -97,6 +101,16 @@ export function buildShareUrl({
       "cinemaVelZoom",
       "cinemaReveal",
       "cinemaStartZoom",
+      "role",
+      "follower",
+      "view",
+      "slot",
+      "slots",
+      "screen",
+      // The sound-dev flag is not settings-shaped either, and dropping it on
+      // the first URL rewrite would take the panel away a second after it
+      // appeared and again on every reload.
+      SOUND_DEV_PARAM,
     ];
     for (const key of PRESERVE) {
       const val = current.get(key);

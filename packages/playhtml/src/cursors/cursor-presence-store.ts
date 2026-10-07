@@ -1,14 +1,13 @@
-// ABOUTME: Converts generic realtime presence channels into cursor presence state.
-// ABOUTME: Collapses per-connection socket state into stable player identities.
+// ABOUTME: Cursor view over the shared PeerStore: decodes folded channels into
+// ABOUTME: cursor presence and collapses multiple tabs of one player.
 
 import type {
   Cursor,
   CursorPresence,
   CursorZonePosition,
   PlayerIdentity,
-  PresenceChangesMessage,
-  PresenceSnapshot,
 } from "@playhtml/common";
+import type { PeerChannels, PeerStore } from "../peer-store";
 import {
   getNullableString,
   getOptionalString,
@@ -17,44 +16,25 @@ import {
   isPresenceCursorChannelValue,
 } from "../presence-utils";
 
-type PeerChannels = Record<string, unknown>;
-
-export const CURSOR_PRESENCE_MAX_AGE_MS = 30_000;
-
 export type StoredCursorPresence = CursorPresence & {
   cursor: Cursor | null;
   playerIdentity: PlayerIdentity;
 };
 
+/**
+ * Reads the shared PeerStore's folded peer map and shapes it into cursor
+ * presence. Owns cursor-specific concerns only: decoding the identity/cursor/
+ * message channels and collapsing multiple tabs of one player (preferring an
+ * active cursor, then the newest frame). Stale-cursor expiry is no longer this
+ * view's job — PeerStore drops any peer channel whose stamped `at` ages out
+ * (shared with element/presence); a swept `cursor` channel simply disappears
+ * from the folded map, leaving the identity-only peer, exactly as before.
+ */
 export class CursorPresenceStore {
-  private peers = new Map<string, PeerChannels>();
+  constructor(private peerStore: PeerStore) {}
 
-  applySync(snapshot: PresenceSnapshot): void {
-    this.peers.clear();
-    for (const [connectionId, channels] of Object.entries(snapshot)) {
-      this.peers.set(connectionId, { ...channels });
-    }
-  }
-
-  applyChanges(message: PresenceChangesMessage): void {
-    for (const [connectionId, channels] of Object.entries(message.updates)) {
-      const peer = this.peers.get(connectionId) ?? {};
-      this.peers.set(connectionId, peer);
-      for (const [channel, value] of Object.entries(channels)) {
-        peer[channel] = value;
-      }
-    }
-
-    for (const [connectionId, channels] of Object.entries(message.removes)) {
-      const peer = this.peers.get(connectionId);
-      if (!peer) continue;
-      for (const channel of channels) {
-        delete peer[channel];
-      }
-      if (Object.keys(peer).length === 0) {
-        this.peers.delete(connectionId);
-      }
-    }
+  private get peers(): Map<string, PeerChannels> {
+    return this.peerStore.getPeers();
   }
 
   getRemotePresences(localPublicKey: string): Map<string, StoredCursorPresence> {
@@ -85,23 +65,6 @@ export class CursorPresenceStore {
       }
     }
     return bestPresence;
-  }
-
-  removeExpiredCursors(now: number, maxAgeMs: number): boolean {
-    let changed = false;
-
-    for (const [connectionId, channels] of this.peers) {
-      if (!("cursor" in channels)) continue;
-      if (isActiveCursorChannel(channels.cursor, now, maxAgeMs)) continue;
-
-      delete channels.cursor;
-      changed = true;
-      if (Object.keys(channels).length === 0) {
-        this.peers.delete(connectionId);
-      }
-    }
-
-    return changed;
   }
 
   private getPresenceForConnection(
@@ -141,6 +104,13 @@ export class CursorPresenceStore {
   }
 }
 
+// Multi-tab winner selection: when one player has several open tabs (same
+// publicKey, different connections), the cursor view keeps the tab with an
+// active cursor, tie-broken by recency (newest `at`). This differs on purpose
+// from the presence and element-awareness views, which collapse by iterating
+// connection ids in sorted order and taking the last publicKey match — recency
+// is meaningless for their non-cursor state, whereas a cursor should follow the
+// tab you're actually moving in.
 function shouldReplacePresence(
   current: StoredCursorPresence,
   candidate: StoredCursorPresence,
@@ -155,16 +125,4 @@ function shouldReplacePresence(
 
 function getFiniteNumber(value: unknown): number {
   return Number.isFinite(value) ? Number(value) : Number.NEGATIVE_INFINITY;
-}
-
-function isActiveCursorChannel(
-  value: unknown,
-  now: number,
-  maxAgeMs: number,
-): boolean {
-  if (!isPresenceCursorChannelValue(value)) return false;
-  if (value.cursor === null) return false;
-  if (!isCursor(value.cursor)) return false;
-  if (!Number.isFinite(value.at)) return false;
-  return now - Number(value.at) <= maxAgeMs;
 }

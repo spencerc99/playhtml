@@ -8,6 +8,7 @@ import type { CollectionEvent } from "../types";
 /** A participant+url group's accumulated events plus its last-active time. */
 export interface AccumulatedGroup {
   events: CollectionEvent[];
+  eventIds: Set<string>;
   lastTs: number;
 }
 
@@ -18,6 +19,35 @@ const MAX_ACCUMULATED = 8000;
 
 function groupKey(e: CollectionEvent): string {
   return `${e.meta.pid}|${e.meta.url || ""}`;
+}
+
+/**
+ * Track events from finished trails only while they remain in the live window.
+ * New event ids for the same participant+url are not included, so they can
+ * start a fresh trail after the prior one has left the screen.
+ */
+export function collectFinishedEventIds(
+  prev: ReadonlySet<string>,
+  groups: AccumulatedGroups,
+  incoming: CollectionEvent[],
+  finishedGroupIds?: Iterable<string>,
+): Set<string> {
+  const incomingIds = new Set(incoming.map((event) => event.id));
+  const next = new Set(
+    Array.from(prev).filter((eventId) => incomingIds.has(eventId)),
+  );
+
+  if (finishedGroupIds) {
+    for (const groupId of finishedGroupIds) {
+      const group = groups.get(groupId);
+      if (!group) continue;
+      for (const event of group.events) {
+        if (incomingIds.has(event.id)) next.add(event.id);
+      }
+    }
+  }
+
+  return next;
 }
 
 /**
@@ -39,6 +69,7 @@ export function accumulateEvents(
   incoming: CollectionEvent[],
   evictIds?: Iterable<string>,
   maxGroups?: number,
+  finishedEventIds?: ReadonlySet<string>,
 ): AccumulatedGroups {
   // Clone the prior map shallowly (group objects are replaced when they change).
   const next: AccumulatedGroups = new Map(prev);
@@ -48,27 +79,55 @@ export function accumulateEvents(
     for (const id of evictIds) next.delete(id);
   }
 
-  // Fold incoming events into their groups.
-  const touched = new Map<string, Set<string>>();
+  // Fold incoming events into their groups. Each touched group is copied once,
+  // then appended to in-place for this accumulation pass.
+  const touched = new Map<
+    string,
+    {
+      events: CollectionEvent[];
+      eventIds: Set<string>;
+      lastTs: number;
+      changed: boolean;
+      needsSort: boolean;
+    }
+  >();
   for (const e of incoming) {
+    if (finishedEventIds?.has(e.id)) continue;
     const key = groupKey(e);
-    const existing = next.get(key);
-    const ids =
-      touched.get(key) ??
-      new Set(existing ? existing.events.map((ev) => ev.id) : []);
-    touched.set(key, ids);
-    if (ids.has(e.id)) continue;
-    ids.add(e.id);
-    const events = existing ? existing.events.concat(e) : [e];
-    next.set(key, { events, lastTs: Math.max(existing?.lastTs ?? 0, e.ts) });
+    let group = touched.get(key);
+    if (!group) {
+      const existing = next.get(key);
+      group = {
+        events: existing ? existing.events.slice() : [],
+        eventIds: new Set(
+          existing?.eventIds ?? existing?.events.map((ev) => ev.id) ?? [],
+        ),
+        lastTs: existing?.lastTs ?? 0,
+        changed: false,
+        needsSort: false,
+      };
+      touched.set(key, group);
+    }
+    if (group.eventIds.has(e.id)) continue;
+    const previous = group.events[group.events.length - 1];
+    if (previous && e.ts < previous.ts) group.needsSort = true;
+    group.eventIds.add(e.id);
+    group.events.push(e);
+    group.lastTs = Math.max(group.lastTs, e.ts);
+    group.changed = true;
   }
 
   // Re-sort only the groups we touched (incoming may arrive out of order).
-  for (const key of touched.keys()) {
-    const group = next.get(key);
-    if (!group) continue;
-    const sorted = group.events.slice().sort((a, b) => a.ts - b.ts);
-    next.set(key, { events: sorted, lastTs: group.lastTs });
+  for (const [key, group] of touched) {
+    if (!group.changed) continue;
+    if (group.needsSort) {
+      group.events.sort((a, b) => a.ts - b.ts);
+    }
+    next.set(key, {
+      events: group.events,
+      eventIds: group.eventIds,
+      lastTs: group.lastTs,
+    });
   }
 
   // Cap to the maxGroups most-recently-active groups, evicting the oldest, so
@@ -134,9 +193,10 @@ export function useAccumulatedEvents(
   const evictIdsRef = options.evictIdsRef;
   const enabled = options.enabled ?? true;
   const groupsRef = useRef<AccumulatedGroups>(new Map());
+  const finishedEventIdsRef = useRef<Set<string>>(new Set());
 
   const flat = useMemo(() => {
-    if (!enabled) return events;
+    if (!enabled) return { events, evictions: new Set<string>() };
 
     // Apply any pending evictions reported by the animator. We READ the set here
     // (and clear it in the effect below) rather than clearing it inside the memo:
@@ -145,34 +205,49 @@ export function useAccumulatedEvents(
     // (deleting an already-deleted group is a no-op).
     const evict =
       evictIdsRef && evictIdsRef.current.size > 0
-        ? evictIdsRef.current
+        ? new Set(evictIdsRef.current)
         : undefined;
+
+    finishedEventIdsRef.current = collectFinishedEventIds(
+      finishedEventIdsRef.current,
+      groupsRef.current,
+      events,
+      evict,
+    );
 
     groupsRef.current = accumulateEvents(
       groupsRef.current,
       events,
       evict,
       maxGroups,
+      finishedEventIdsRef.current,
     );
+
+    // Density-evicted history remains retired while it is in the live window.
+    for (const event of events) {
+      if (!groupsRef.current.has(groupKey(event))) {
+        finishedEventIdsRef.current.add(event.id);
+      }
+    }
 
     // Flatten groups into a single ts-ordered array. The total-event budget is
     // enforced inside accumulateEvents by evicting whole oldest groups, so no
     // mid-trail truncation happens here.
-    let result: CollectionEvent[] = [];
+    const result: CollectionEvent[] = [];
     for (const group of groupsRef.current.values()) {
-      result = result.concat(group.events);
+      result.push(...group.events);
     }
     result.sort((a, b) => a.ts - b.ts);
-    return result;
+    return { events: result, evictions: evict };
   }, [events, maxGroups, enabled, evictIdsRef]);
 
   // Clear the applied evictions after commit (not inside the memo, so a
   // double-invoked memo can't drop them).
   useEffect(() => {
-    if (evictIdsRef && evictIdsRef.current.size > 0) {
-      evictIdsRef.current = new Set();
+    if (evictIdsRef && flat.evictions) {
+      for (const id of flat.evictions) evictIdsRef.current.delete(id);
     }
-  });
+  }, [flat, evictIdsRef]);
 
-  return flat;
+  return flat.events;
 }

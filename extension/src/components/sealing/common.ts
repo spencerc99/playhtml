@@ -1,281 +1,43 @@
-// ABOUTME: Shared bits across all sealing-ceremony variants — texture drawing, Three.js scene setup,
-// ABOUTME: drag-to-commit gesture, slot fissure DOM, and the post-fold finale (travel arc, plunge, fissure close).
+// ABOUTME: Shared bits for the sealing ceremony — the card dimensions, slot fissure DOM (the thin dark
+// ABOUTME: seam that opens then closes as the packet tucks in), the ceremony's prop contract, and eases.
 
-import * as THREE from "three";
+import type { BottleNote } from "../../features/BottleManager";
 
 export interface SealingProps {
   text: string;
   authorColor: string;
   slotX: number;
   slotY: number;
+  /** Segment style preset id — carried through from the stamped letter. */
+  styleId?: string;
+  /** The bottle's existing notes (oldest first). Folded down onto the new note
+   * during the ceremony. */
+  notes?: BottleNote[];
+  /** The newly stamped letter as a note. It is the packet's face — the sheet the
+   * earlier notes fold onto — so the fresh stamp reads through the fold. */
+  newNote?: BottleNote;
+  /** The container the overlay + ceremony portal into. The ceremony renders the
+   * real letter segments within it so fonts + styling match the scroll. */
+  portalContainer?: Element | null;
+  /** Fires once the ceremony has mounted and painted its first frame. The parent
+   * hides the DOM scroll on this signal so the fold strip takes over in place
+   * with no jump. */
+  onFirstFrame?: () => void;
   onComplete: () => void;
 }
 
-// Card target dimensions (matches the on-page mb-capsule visible portion)
+// Card target dimensions (matches the on-page mb-capsule visible portion). The
+// packet shrinks toward this footprint as it tucks into the slot.
 export const CARD_W_PX = 32;
 export const CARD_H_PX = 64;
 
-// Drag-to-commit gesture
-export const COMMIT_FRAC = 0.2; // pull down 20% of viewport to commit
-
-// Finale timing (post-fold)
-export const T_TRAVEL = 1400;
-export const T_PLUNGE = 1100;
+// Fissure close duration — how long the slot seam takes to draw back shut after
+// the packet has sunk through it.
 export const T_FISSURE_CLOSE = 700;
 
 // ============================
-// Fit a folded/rolled mesh to the on-page card.
-// Measures the mesh's current bounding box (in its local space, accounting
-// for child transforms via updateWorldMatrix) and returns the uniform scale
-// + z-rotation that lands it as a CARD_W_PX × CARD_H_PX portrait rectangle.
-// ============================
-export function computeCardFit(mesh: THREE.Object3D): {
-  scaleX: number;
-  scaleY: number;
-  scale: number; // uniform fallback (long axis → card height)
-  rotateZ: number;
-} {
-  mesh.updateWorldMatrix(true, true);
-  const box = new THREE.Box3().setFromObject(mesh);
-  const size = new THREE.Vector3();
-  box.getSize(size);
-  const w = Math.max(size.x, 0.001);
-  const h = Math.max(size.y, 0.001);
-
-  // Land the object as the on-page card's exact proportions: CARD_W_PX wide
-  // × CARD_H_PX tall (1:2 portrait). The object's LONG axis becomes the card
-  // height; its SHORT axis becomes the card width. If currently landscape
-  // (w > h) we rotate 90° so the long axis goes vertical first.
-  const isLandscape = w > h;
-  const longAxis = Math.max(w, h);
-  const shortAxis = Math.min(w, h);
-
-  // After a 90° rotation (when landscape), the object's local x maps to
-  // screen-y and vice versa. We compute scales in the object's LOCAL frame:
-  //   - the axis that ends up vertical (longAxis) → CARD_H_PX
-  //   - the axis that ends up horizontal (shortAxis) → CARD_W_PX
-  const longScale = CARD_H_PX / longAxis;
-  const shortScale = CARD_W_PX / shortAxis;
-
-  // Map back to local x/y. If landscape: local x is the long axis (w),
-  // so scaleX uses longScale; local y (h, short) uses shortScale.
-  // If portrait: local y is the long axis.
-  const scaleX = isLandscape ? longScale : shortScale;
-  const scaleY = isLandscape ? shortScale : longScale;
-
-  return {
-    scaleX,
-    scaleY,
-    scale: longScale,
-    rotateZ: isLandscape ? Math.PI / 2 : 0,
-  };
-}
-
-// ============================
-// Texture: draw the textarea visually onto a 2D canvas
-// ============================
-export const TEX_W = 1024;
-export const TEX_H = 1280;
-
-export function drawTextareaToCanvas(
-  canvas: HTMLCanvasElement,
-  text: string,
-  authorColor: string,
-): void {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  const w = canvas.width;
-  const h = canvas.height;
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, w, h);
-
-  // Paper grain
-  ctx.fillStyle = "rgba(0,0,0,0.012)";
-  for (let i = 0; i < 800; i++) {
-    ctx.fillRect(Math.random() * w, Math.random() * h, 1, 1);
-  }
-
-  // Border
-  ctx.strokeStyle = "#767676";
-  ctx.lineWidth = 6;
-  ctx.strokeRect(3, 3, w - 6, h - 6);
-
-  // Top inset
-  ctx.fillStyle = "rgba(0,0,0,0.06)";
-  ctx.fillRect(6, 6, w - 12, 6);
-
-  // Author stripe
-  ctx.fillStyle = authorColor;
-  ctx.fillRect(0, 0, 12, h);
-
-  // Text
-  ctx.fillStyle = "#111";
-  const padX = 60;
-  const padY = 60;
-  const fontPx = 42;
-  ctx.font = `${fontPx}px system-ui, -apple-system, sans-serif`;
-  ctx.textBaseline = "top";
-
-  const maxWidth = w - padX * 2;
-  const lineHeight = fontPx * 1.45;
-  const words = text.split(/\s+/);
-  let line = "";
-  let y = padY;
-  for (const word of words) {
-    const test = line ? line + " " + word : word;
-    if (ctx.measureText(test).width > maxWidth) {
-      ctx.fillText(line, padX, y);
-      y += lineHeight;
-      line = word;
-      if (y + lineHeight > h - padY) break;
-    } else {
-      line = test;
-    }
-  }
-  if (y + lineHeight <= h - padY) ctx.fillText(line, padX, y);
-}
-
-// ============================
-// Scene setup
-// ============================
-export interface SceneContext {
-  vw: number;
-  vh: number;
-  renderer: THREE.WebGLRenderer;
-  scene: THREE.Scene;
-  camera: THREE.OrthographicCamera;
-  texture: THREE.CanvasTexture;
-  clipPlane: THREE.Plane;
-  dispose: () => void;
-}
-
-export function setupScene(
-  container: HTMLElement,
-  text: string,
-  authorColor: string,
-  slotY: number,
-): SceneContext {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.OrthographicCamera(
-    -vw / 2,
-    vw / 2,
-    vh / 2,
-    -vh / 2,
-    -1000,
-    1000,
-  );
-  camera.position.z = 500;
-
-  const renderer = new THREE.WebGLRenderer({
-    antialias: true,
-    alpha: true,
-    premultipliedAlpha: false,
-  });
-  renderer.setPixelRatio(window.devicePixelRatio || 1);
-  renderer.setSize(vw, vh);
-  renderer.setClearColor(0x000000, 0);
-  renderer.localClippingEnabled = true;
-  container.appendChild(renderer.domElement);
-
-  const texCanvas = document.createElement("canvas");
-  texCanvas.width = TEX_W;
-  texCanvas.height = TEX_H;
-  drawTextareaToCanvas(texCanvas, text, authorColor);
-  const texture = new THREE.CanvasTexture(texCanvas);
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-
-  // Slot clipping plane (used during plunge to cut off below the slot line)
-  const slotSceneY = vh / 2 - slotY;
-  const clipPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -slotSceneY);
-
-  return {
-    vw,
-    vh,
-    renderer,
-    scene,
-    camera,
-    texture,
-    clipPlane,
-    dispose() {
-      renderer.dispose();
-      texture.dispose();
-      if (renderer.domElement.parentNode) {
-        renderer.domElement.parentNode.removeChild(renderer.domElement);
-      }
-    },
-  };
-}
-
-// ============================
-// Drag-to-commit gesture
-// ============================
-export interface DragGesture {
-  /** 0..1 — how far past the commit threshold the user has dragged. */
-  progress: number;
-  /** True once the user has crossed the commit threshold. */
-  committed: boolean;
-  dispose: () => void;
-}
-
-export function attachDragGesture(
-  container: HTMLElement,
-  threshold: number,
-  onProgress: (progress: number) => void,
-  onCommit: () => void,
-): { dispose: () => void } {
-  let dragging = false;
-  let startY = 0;
-  let committed = false;
-
-  const onPointerDown = (e: PointerEvent) => {
-    if (committed) return;
-    dragging = true;
-    startY = e.clientY;
-    try {
-      (e.target as Element).setPointerCapture?.(e.pointerId);
-    } catch {
-      // ignore
-    }
-  };
-  const onPointerMove = (e: PointerEvent) => {
-    if (!dragging || committed) return;
-    const dy = Math.max(0, e.clientY - startY);
-    const progress = Math.min(1, dy / threshold);
-    onProgress(progress);
-    if (progress >= 1) {
-      committed = true;
-      dragging = false;
-      onCommit();
-    }
-  };
-  const onPointerUp = () => {
-    if (!dragging) return;
-    dragging = false;
-    if (!committed) onProgress(0); // snap back
-  };
-
-  container.addEventListener("pointerdown", onPointerDown);
-  window.addEventListener("pointermove", onPointerMove);
-  window.addEventListener("pointerup", onPointerUp);
-  window.addEventListener("pointercancel", onPointerUp);
-
-  return {
-    dispose() {
-      container.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointercancel", onPointerUp);
-    },
-  };
-}
-
-// ============================
-// Slot fissure (CSS — structural, no color)
+// Slot fissure (CSS — structural, no color). A thin dark seam at the slot that
+// opens as the packet arrives and draws shut behind it.
 // ============================
 export function createSlotFissure(
   container: HTMLElement,
@@ -322,122 +84,19 @@ export function createSlotFissure(
 }
 
 // ============================
-// Finale: travel arc + plunge into slot. Identical across variants.
-// Each variant supplies the rolled "card mesh" (a Three.js Object3D),
-// already positioned at scene origin and sized to the final card.
+// Slot clip — clips the ceremony's fixed, world-aligned box so nothing below the
+// slot line paints. As the card plunges, the part that crosses the slot line is
+// cut off, so it disappears THROUGH the existing thin slot (the fissure/crack)
+// with no added pocket or surface — the same effect the old clip-plane gave.
 // ============================
-export interface FinaleHandles {
-  mesh: THREE.Object3D;
-  materialsToClip: THREE.Material[];
-  scene: SceneContext;
-  slotX: number;
-  slotY: number;
-  fissure: ReturnType<typeof createSlotFissure>;
-  onComplete: () => void;
+export function clipBelowSlot(container: HTMLElement, slotY: number): void {
+  // The container is position:fixed; inset:0, so its box is the viewport and the
+  // inset's bottom value is measured from the viewport bottom up to the slot.
+  container.style.clipPath = `inset(0 0 calc(100% - ${slotY}px) 0)`;
 }
 
-export function playFinale(handles: FinaleHandles): { dispose: () => void } {
-  const { mesh, materialsToClip, scene, slotX, slotY, fissure, onComplete } =
-    handles;
-  const { vw, vh, renderer, scene: threeScene, camera, clipPlane } = scene;
-
-  // Slot position in WORLD units. The orthographic camera maps world → screen
-  // as screen = viewportCenter + world * camera.zoom, so converting the slot's
-  // CSS-pixel position into world space must divide by the CURRENT zoom (the
-  // camera has dollied out to ~0.65 by finale time — ignoring it made the card
-  // travel only 65% of the way to the fissure).
-  const zoom = camera.zoom;
-  const slotWorldX = (slotX - vw / 2) / zoom;
-  const slotWorldY = (vh / 2 - slotY) / zoom;
-
-  // The visible coil is NOT centered on the mesh origin (the roll winds around
-  // the paper's top edge, and the card-fit scale/rotation preserves that
-  // offset). Measure the coil's world bounding box and correct every target by
-  // the offset so the BOTTLE — not the mesh origin — lands on the slot.
-  mesh.updateWorldMatrix(true, true);
-  mesh.traverse((o) => {
-    (o as THREE.Mesh).geometry?.computeBoundingBox?.();
-  });
-  const coilBox = new THREE.Box3().setFromObject(mesh);
-  const coilCenter = coilBox.getCenter(new THREE.Vector3());
-  const coilH = Math.max(coilBox.max.y - coilBox.min.y, 1);
-  const corrX = coilCenter.x - mesh.position.x;
-  const corrY = coilCenter.y - mesh.position.y;
-
-  const targetX = slotWorldX - corrX;
-  // Travel ends with the coil's BOTTOM edge sitting at the slot line, so the
-  // whole bottle hovers visibly above the fissure right before plunge.
-  const travelEndY = slotWorldY + coilH / 2 - corrY;
-
-  // Keep the slot clipping plane on the zoom-corrected slot line (it was set
-  // at scene setup assuming zoom = 1).
-  clipPlane.constant = -slotWorldY;
-
-  const startTime = performance.now();
-  let phase: "travel" | "plunge" | "done" = "travel";
-  let plungeStart = 0;
-  let frameId = 0;
-  let fissureOpened = false;
-  let completed = false;
-  let completeTimer: ReturnType<typeof setTimeout> | null = null;
-
-  // Preserve the mesh's existing rotation (computeCardFit may have rotated it
-  // to portrait). The travel wobble is ADDED to this base, never overwrites it.
-  const baseRotZ = mesh.rotation.z;
-
-  const tick = () => {
-    const now = performance.now();
-    if (phase === "travel") {
-      const t = clamp((now - startTime) / T_TRAVEL, 0, 1);
-      const e = easeInOutCubic(t);
-      const baseTx = THREE.MathUtils.lerp(0, targetX, e);
-      const baseTy = THREE.MathUtils.lerp(0, travelEndY, e);
-      const arc = Math.sin(e * Math.PI) * Math.min(160, vh * 0.18);
-      mesh.position.set(baseTx, baseTy + arc, 0);
-      // Gentle wobble added on top of the portrait base rotation
-      mesh.rotation.z = baseRotZ + Math.sin(e * Math.PI) * 0.1 * Math.sign(targetX);
-      if (t >= 1) {
-        phase = "plunge";
-        plungeStart = now;
-        // Activate clipping on materials (cuts off anything below the slot line)
-        for (const m of materialsToClip) {
-          (m as THREE.Material & { clippingPlanes: THREE.Plane[] }).clippingPlanes = [clipPlane];
-          m.needsUpdate = true;
-        }
-        if (!fissureOpened) {
-          fissureOpened = true;
-          fissure.open();
-        }
-      }
-    } else if (phase === "plunge") {
-      const t = clamp((now - plungeStart) / T_PLUNGE, 0, 1);
-      const e = easeInQuad(t);
-      // Descend so the bottle's bottom (currently at slot) sinks fully under
-      // the page (coil height + a screen-space margin, converted to world).
-      const plungeDy = e * (coilH + 24 / zoom);
-      mesh.position.set(targetX, travelEndY - plungeDy, 0);
-      if (t >= 1) {
-        phase = "done";
-        fissure.close();
-        if (!completed) {
-          completed = true;
-          completeTimer = setTimeout(onComplete, T_FISSURE_CLOSE + 100);
-        }
-      }
-    }
-    renderer.render(threeScene, camera);
-    if (phase !== "done") frameId = requestAnimationFrame(tick);
-  };
-  frameId = requestAnimationFrame(tick);
-
-  return {
-    dispose() {
-      cancelAnimationFrame(frameId);
-      // Cancel the deferred onComplete so teardown during the fissure-close
-      // window doesn't call back into an unmounted React tree.
-      if (completeTimer !== null) clearTimeout(completeTimer);
-    },
-  };
+export function clearSlotClip(container: HTMLElement): void {
+  container.style.clipPath = "";
 }
 
 // ============================

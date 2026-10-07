@@ -52,16 +52,20 @@ withSharedState<T, V, P>(
 ```tsx
 interface WithSharedStateConfig<T, V> {
   defaultData: T;
-  myDefaultAwareness?: V;
+  live?: V;
   id?: string;
   tagInfo?: TagType[];
 }
 ```
 
 - **`defaultData`**: required. The initial value of `data`. Survives reload.
-- **`myDefaultAwareness`**: optional. Initial value for this user's element awareness. This is ephemeral per-user presence scoped to the element. Does _not_ persist.
+- **`live`**: optional. Initial ephemeral value for this user on this element. It does _not_ persist.
 - **`id`**: optional. Stable id for the element. If omitted, playhtml derives one from the rendered DOM; see [Dynamic elements](/docs/advanced/dynamic-elements/) for why stable ids matter.
 - **`tagInfo`**: optional. Marks the element as one of the built-in capabilities (e.g. `[TagType.CanToggle]`). See [Capabilities](/docs/capabilities/).
+
+`defaultData`, `live`, and `myDefaultAwareness` accept values, not functions that
+receive DOM elements. They are available on the first render. Derive them from
+React props with a [props-dependent config](#props-dependent-config).
 
 ### Render-function props
 
@@ -69,16 +73,16 @@ interface WithSharedStateConfig<T, V> {
 interface ReactElementEventHandlerData<T, V> {
   data: T;
   setData: (data: T | ((draft: T) => void)) => void;
-  awareness: V[];
-  myAwareness?: V;
-  setMyAwareness: (data: V) => void;
+  live?: V;
+  users: Array<{ user: User; live: V }>;
+  setLive: (data: V) => void;
   ref: React.RefObject<HTMLElement>;
 }
 ```
 
 `setData` accepts either a replacement value or a mutator function. See [Data essentials](/docs/data/data-essentials/) for the merge semantics.
 
-`awareness`, `myAwareness`, and `setMyAwareness` are the element-scoped form of [presence](/docs/data/presence/#element-awareness). Use them for live per-user signals tied to this element, not state that should survive reload.
+`live`, `users`, and `setLive` are element-scoped per-user data. Use them for signals tied to this element that should disappear when the user leaves. Each `users` entry joins the person's identity with their current `live` value.
 
 ### Props-dependent config
 
@@ -86,20 +90,34 @@ Pass a callback instead of a config object when `defaultData` needs to derive fr
 
 ```tsx
 export const Reaction = withSharedState(
-  ({ reaction: { count } }) => ({ defaultData: { count } }),
-  ({ data, setData }, props) => /* … */,
+  ({ initialCount }: { initialCount: number }) => ({
+    defaultData: { count: initialCount },
+  }),
+  ({ data, setData }) => (
+    <button id="reaction" onClick={() => setData((draft) => { draft.count += 1; })}>
+      {data.count} reactions
+    </button>
+  ),
 );
 ```
+
+`<Reaction initialCount={0} />` starts at zero when there is no saved state.
+Defaults seed shared state; changing props does not overwrite saved state.
 
 ## `<CanPlayElement>`
 
 Component form of `withSharedState`. Useful when you want JSX children (render-prop style) instead of wrapping a component, or when you need ref access to a specific element.
 
+Pass computed values directly, such as `defaultData={{ count: initialCount }}`.
+The same value-only rule applies to `live` and `myDefaultAwareness`.
+DOM-dependent default functions belong to the
+[vanilla element API](/docs/reference/element-api/#defaultdata).
+
 ```tsx
 interface CanPlayElementProps<T, V> {
   id?: string;
   defaultData: T;
-  myDefaultAwareness?: V;
+  live?: V;
   tagInfo?: TagType[];
   standalone?: boolean;
   loading?: LoadingOptions;
@@ -111,7 +129,7 @@ interface CanPlayElementProps<T, V> {
 ```
 
 - **`id`**: required if the top-level child is a React Fragment. Otherwise defaults to the child's id, or a hash of the child's content. A stable id matters for cross-browser sync; see [Dynamic elements](/docs/advanced/dynamic-elements/).
-- **`myDefaultAwareness`**: optional. Initial element awareness for this user. Same lifetime as presence; it clears when the user leaves.
+- **`live`**: optional. Initial live value for this user. It clears when the user leaves.
 - **`standalone`**: when `true`, the element initializes playhtml itself if no `PlayProvider` is present. Use it for one-off components mounted outside your provider tree (e.g. an Astro island). A no-op when a provider already exists.
 - **`loading`**: controls the loading affordance shown before the element's first sync. See [Loading options](#loading-options).
 - **`dataSource`**, **`shared`**, **`dataSourceReadOnly`**: wire the element to a shared source across pages or sites. See [Shared data props](#shared-data-props) and the [Shared elements](/docs/advanced/shared-elements/) guide.
@@ -146,9 +164,11 @@ interface CanMoveElementProps {
 }
 ```
 
-- **`bounds`**: id or CSS selector of the container to keep the element inside. `"arena"`, `"#arena"`, and `".grid"` all work.
+- **`bounds`**: id or CSS selector of the container that constrains dragging. `"arena"`, `"#arena"`, and `".grid"` all work.
 - **`boundsMinVisible`**: fraction (`0–1`) of the element that must stay inside `bounds` on every edge. Default `1`, which keeps the full element inside. Lower values allow part of the element to hang over the edge; `0` drops the fraction constraint entirely.
 - **`boundsMinVisiblePx`**: absolute pixel floor on the keep-visible slice. Default `60`; it applies when `boundsMinVisible` allows partial overhang.
+
+Bounds apply only during dragging. Setup does not rewrite the element's initial CSS layout or persisted position.
 
 The effective keep-visible slice on each axis is `max(boundsMinVisible × size, boundsMinVisiblePx)`. Set both knobs to `0` to opt fully out of the keep-visible guarantee. See [`can-move` in the capabilities reference](/docs/capabilities/#can-move) for the interaction details.
 
@@ -320,15 +340,24 @@ All hooks must be used inside a `PlayProvider`. Each is safe to call before play
 Subscribe to a custom [presence](/docs/data/presence/) channel. Returns the live map of everyone's presence, a setter for your own, and your identity.
 
 ```tsx
-function usePresence<T = Record<string, unknown>>(channel: string): {
-  presences: Map<string, PresenceView<T>>;
-  setMyPresence: (data: T) => void;
+function usePresence<
+  Channel extends string,
+  Payload extends Record<string, unknown> = Record<string, unknown>,
+>(channel: Channel): {
+  presences: Map<
+    string,
+    PresenceView<Partial<Record<Channel, Payload>>>
+  >;
+  setMyPresence: (data: Payload) => void;
   myIdentity: PlayerIdentity | null;
 };
 ```
 
 ```tsx
-const { presences, setMyPresence } = usePresence<{ text: string }>("status");
+const { presences, setMyPresence } = usePresence<
+  "status",
+  { text: string }
+>("status");
 setMyPresence({ text: "focused" });
 // presences is keyed by stable id; each value has isMe, playerIdentity, cursor,
 // plus your channel data nested under the channel name:
@@ -338,17 +367,21 @@ for (const [, p] of presences) {
 }
 ```
 
-The type parameter is an assertion about your channel's shape; no runtime validation is performed. Note your data lives under the channel key (`p.status`), not flattened onto the view.
+The type parameters describe the channel name and its payload. No runtime validation is performed. The channel property is optional because a peer may not have published a value. Your data lives under the channel key (`p.status`), not directly on the view.
 
 ### `usePageData`
 
 Subscribe to a [page-level data channel](/docs/data/page-data/), persistent state not tied to any element. The shape mirrors `useState`.
 
 ```tsx
+type PageDataSetter<T> = T extends object
+  ? T | ((draft: T) => void)
+  : T | ((value: T) => T);
+
 function usePageData<T>(
   name: string,
   defaultValue: T,
-): [T, (data: T | ((draft: T) => void)) => void];
+): [T, (data: PageDataSetter<T>) => void];
 ```
 
 ```tsx
@@ -356,7 +389,14 @@ const [counter, setCounter] = usePageData("visits", { count: 0 });
 setCounter((draft) => { draft.count += 1; });
 ```
 
-`defaultValue` is read only on first mount and when `name` changes. `setCounter` accepts a replacement value or a mutator function, with the same merge semantics as element `setData`.
+For primitive channels, a functional update returns the next value:
+
+```tsx
+const [viewCount, setViewCount] = usePageData("viewCount", 0);
+setViewCount((value) => value + 1);
+```
+
+`defaultValue` is read only on first mount and when `name` changes. `setCounter` accepts a replacement value or a mutator function. Object and array mutators edit their draft in place; primitive updaters return the next value.
 
 ### `usePresenceRoom`
 
@@ -398,9 +438,37 @@ useCursorZone(ref);
 return <div ref={ref} id="shared-canvas" />; // the element needs a stable id
 ```
 
+### `useUsers`
+
+Reactive version of `playhtml.users.getAll()`. Returns the live array of everyone in the room and re-renders your component on join/leave/identity changes. Works without `cursors: { enabled: true }`.
+
+```tsx
+function useUsers(): User[];
+```
+
+```tsx
+interface User {
+  pid: string;
+  name?: string;
+  color: string;
+  isMe: boolean;
+}
+```
+
+```tsx
+import { useUsers } from "@playhtml/react";
+
+function OnlineCount() {
+  const users = useUsers();
+  return <div>{users.length} online</div>;
+}
+```
+
+See [Users](/docs/data/presence/users/) for the full identity API.
+
 ### `usePlayerIdentity`
 
-Read the local player's cursor color, participant id, and name. Requires `cursors: { enabled: true }`.
+Read the local player's color, participant id, and name. Backed by `playhtml.users`, so it works without `cursors: { enabled: true }`.
 
 ```tsx
 function usePlayerIdentity(): {
@@ -412,8 +480,8 @@ function usePlayerIdentity(): {
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `color` | `string` | Primary cursor color. |
-| `pid` | `string \| undefined` | Participant id (`publicKey`). `undefined` until cursors sync. |
+| `color` | `string` | Primary color. |
+| `pid` | `string \| undefined` | Participant id (`publicKey`). `undefined` until sync. |
 | `name` | `string \| undefined` | Display name, if set. |
 
 ```tsx
@@ -427,7 +495,7 @@ function Profile() {
 
 Values update reactively. With the "we were online" extension installed, color and `pid` reflect the extension's injected identity.
 
-See [Presence & identity](/docs/reference/presence/) for the underlying `PlayerIdentity` type.
+To set these values or read other players, see [Users](/docs/data/presence/users/). See [Presence & identity](/docs/reference/presence/) for the underlying `PlayerIdentity` type.
 
 ## `TagType`
 
@@ -454,6 +522,4 @@ The repo has a collection of runnable React examples at [`packages/react/example
 
 A few things still in flux in the React package:
 
-- **Per-key persistence config.** Currently persistence is a whole-store choice: `setMyAwareness` for element-scoped presence, `setData` for persistent data, no local-only mode. A future `persistenceOptions` object might let you configure per-key (`none` / `local` / `global`).
-- **`awareness` splitting.** `awareness` currently includes the local user; it may split into `myAwareness` + `othersAwareness` for clarity.
 - **Hook ergonomics.** A pure-hook interface (`useSharedState({ id, defaultData })`) is being evaluated as an alternative to the HOC form. The blocker is that hooks have no natural place to pin a stable `id`.
