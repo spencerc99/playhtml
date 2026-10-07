@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "tsc && eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "capture": "tsx scripts/capture-matrix.ts"
+    "capture": "tsx scripts/capture-matrix.ts",
+    "jev-placement-check": "tsx scripts/jev-placement-check.ts"
   },
   "dependencies": {
     "@playhtml/common": "workspace:*",
