@@ -1,4 +1,4 @@
-// ABOUTME: Filters scraps by where and when they were found, their kind and shape, and an always-visible search field.
+// ABOUTME: Filters scraps by where (kept or hidden sites) and when they were found, their kind and shape, and an always-visible search field.
 // ABOUTME: Lays out as one bar or as two drawer rows; popovers anchor to their chip and return focus.
 
 import {
@@ -15,7 +15,6 @@ import {
   extractDomain,
   formatFilterChip,
   parseFilterChip,
-  type FilterChip,
 } from "../utils/eventUtils";
 import {
   ANY_TIME,
@@ -26,6 +25,7 @@ import {
   scrapLocations,
   scrapShape,
   scrapSightings,
+  type ScrapPlace,
   type ScrapShape,
   type ScrapWhenFilter,
 } from "../utils/scrapFilters";
@@ -34,7 +34,7 @@ import { formatTimeOfDay, localDayKey } from "../utils/timeOfDay";
 import { DAY_GRID_WIDTH, DayGrid } from "./DayGrid";
 import { TimeOfDayInputs } from "./TimeOfDayInputs";
 
-export { ANY_TIME, isAnyTime, type ScrapWhenFilter };
+export { ANY_TIME, isAnyTime, type ScrapPlace, type ScrapWhenFilter };
 
 /** The scrap kinds to show; an empty list shows every kind. */
 export type ScrapKindFilter = ScrapItem["kind"][];
@@ -45,7 +45,12 @@ type KindOption = ScrapItem["kind"] | "all";
 export type ScrapShapeFilter = ScrapShape[];
 
 /** Each shape with the proportions of the rectangle drawn for it, widest first. */
-const shapes: { shape: ScrapShape; label: string; width: number; height: number }[] = [
+const shapes: {
+  shape: ScrapShape;
+  label: string;
+  width: number;
+  height: number;
+}[] = [
   { shape: "very-wide", label: "very wide", width: 16, height: 6 },
   { shape: "wide", label: "wide", width: 15, height: 10 },
   { shape: "square", label: "square", width: 12, height: 12 },
@@ -86,6 +91,30 @@ function ShapeIcon({
   );
 }
 
+/** An eye with a slash through it, for hiding a site's scraps. */
+function HideIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+      <path
+        d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx="8"
+        cy="8"
+        r="2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path d="m2.5 13.5 11-11" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
 const kinds: { kind: KindOption; label: string }[] = [
   { kind: "all", label: "all" },
   { kind: "image", label: "images" },
@@ -108,7 +137,7 @@ export function scrapPassesFilters(
   item: ScrapItem,
   kind: ScrapKindFilter,
   shape: ScrapShapeFilter,
-  places: FilterChip[],
+  places: ScrapPlace[],
   search: string,
   when: ScrapWhenFilter,
 ): boolean {
@@ -149,8 +178,9 @@ export function formatScrapWhen(when: ScrapWhenFilter): string {
 
 interface Props {
   items: readonly ScrapItem[];
-  places: FilterChip[];
-  onPlaces: (places: FilterChip[]) => void;
+  /** Sites to keep scraps from, and sites (marked `exclude`) to hide them from. */
+  places: ScrapPlace[];
+  onPlaces: (places: ScrapPlace[]) => void;
   kind: ScrapKindFilter;
   onKind: (kind: ScrapKindFilter) => void;
   shape: ScrapShapeFilter;
@@ -211,8 +241,8 @@ export function ScrapFilters({
   const whenButton = useRef<HTMLButtonElement>(null);
   const whenPanel = useRef<HTMLElement>(null);
   const placeInput = useRef<HTMLInputElement>(null);
-  /** A site row to hand focus back to once toggling it has moved it. */
-  const refocusPlace = useRef<string | null>(null);
+  /** A site row's button to hand focus back to once toggling it has moved it. */
+  const refocusPlace = useRef<{ label: string; hide: boolean } | null>(null);
   const typeOptions = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const popover = useRef<HTMLElement>(null);
@@ -246,8 +276,7 @@ export function ScrapFilters({
     for (const domain of domains) counts.set(domain, 0);
     const byDomain = new Map<string, ScrapItem[]>();
     for (const item of items) {
-      if (!scrapPassesFilters(item, kind, shape, [], search, when))
-        continue;
+      if (!scrapPassesFilters(item, kind, shape, [], search, when)) continue;
       for (const domain of itemDomains(item)) {
         const group = byDomain.get(domain) ?? [];
         group.push(item);
@@ -283,7 +312,9 @@ export function ScrapFilters({
     for (const option of shapes) {
       counts.set(
         option.shape,
-        countScraps(matching.filter((item) => scrapShape(item) === option.shape)),
+        countScraps(
+          matching.filter((item) => scrapShape(item) === option.shape),
+        ),
       );
     }
     return counts;
@@ -307,18 +338,11 @@ export function ScrapFilters({
     }
     for (const [day, group] of byDay) counts.set(day, countScraps(group));
     return counts;
-  }, [
-    panel,
-    items,
-    kind,
-    shape,
-    places,
-    search,
-    when.timeOfDay,
-    countScraps,
-  ]);
+  }, [panel, items, kind, shape, places, search, when.timeOfDay, countScraps]);
 
-  const selected = places.map(formatFilterChip);
+  const kept = places.filter((place) => !place.exclude).map(formatFilterChip);
+  const hidden = places.filter((place) => place.exclude).map(formatFilterChip);
+  const selected = [...kept, ...hidden];
   const candidate = parseFilterChip(draft);
   candidate.domain = candidate.domain.toLowerCase();
   const candidateLabel = formatFilterChip(candidate);
@@ -329,21 +353,32 @@ export function ScrapFilters({
     (domain) => !selected.includes(domain) && matchesDraft(domain),
   );
   const listed = [...pinned, ...rest];
-  const togglePlace = (label: string) => {
-    if (selected.includes(label))
-      onPlaces(places.filter((place) => formatFilterChip(place) !== label));
-    else onPlaces([...places, parseFilterChip(label)]);
+  /** Keeps, hides, or (with null) forgets a site, replacing whatever it was. */
+  const setPlace = (label: string, state: "keep" | "hide" | null) => {
+    const others = places.filter((place) => formatFilterChip(place) !== label);
+    if (state === null) onPlaces(others);
+    else
+      onPlaces([
+        ...others,
+        state === "hide"
+          ? { ...parseFilterChip(label), exclude: true }
+          : parseFilterChip(label),
+      ]);
   };
   // Toggling a site moves its row between the picked and unpicked groups,
   // which drops focus to the page; put it back so the keyboard stays here.
   useEffect(() => {
-    const label = refocusPlace.current;
-    if (label === null) return;
+    const target = refocusPlace.current;
+    if (target === null) return;
     refocusPlace.current = null;
     Array.from(
-      root.current?.querySelectorAll<HTMLButtonElement>("[data-place]") ?? [],
+      root.current?.querySelectorAll<HTMLButtonElement>(
+        target.hide ? "[data-place-hide]" : "[data-place]",
+      ) ?? [],
     )
-      .find((row) => row.dataset.place === label)
+      .find(
+        (row) => (row.dataset.place ?? row.dataset.placeHide) === target.label,
+      )
       ?.focus();
   });
   const panelButton = {
@@ -412,16 +447,22 @@ export function ScrapFilters({
     const bounds = element.getBoundingClientRect();
     let nudge = 0;
     if (bounds.right > right - margin) nudge = right - margin - bounds.right;
-    if (bounds.left + nudge < left + margin) nudge = left + margin - bounds.left;
+    if (bounds.left + nudge < left + margin)
+      nudge = left + margin - bounds.left;
     element.style.setProperty("--scrap-filters-nudge", `${nudge}px`);
   }, [panel, layout, places, kind, shape, when]);
 
+  const countSites = (labels: string[]) =>
+    labels.length === 1 ? labels[0] : `${labels.length} sites`;
   const siteLabel =
     selected.length === 0
       ? "anywhere"
-      : selected.length === 1
-        ? selected[0]
-        : `${selected.length} sites`;
+      : [
+          kept.length > 0 ? countSites(kept) : null,
+          hidden.length > 0 ? `not ${countSites(hidden)}` : null,
+        ]
+          .filter(Boolean)
+          .join(", ");
   const kindLabel =
     kind.length === 0
       ? "all"
@@ -445,9 +486,7 @@ export function ScrapFilters({
     onKind(next.length === kinds.length - 1 ? [] : next);
   };
 
-  const pickedShapes = shapes.filter((option) =>
-    shape.includes(option.shape),
-  );
+  const pickedShapes = shapes.filter((option) => shape.includes(option.shape));
   const toggleShape = (option: ScrapShape) => {
     const next = shape.includes(option)
       ? shape.filter((value) => value !== option)
@@ -598,19 +637,33 @@ export function ScrapFilters({
                 />
               </label>
               {candidateLabel && !listed.includes(candidateLabel) && (
-                <button type="submit" className="scrap-filters__option">
-                  <span className="scrap-filters__name">
-                    Use {candidateLabel}
-                  </span>
-                </button>
+                <div className="scrap-filters__place">
+                  <button type="submit" className="scrap-filters__option">
+                    <span className="scrap-filters__name">
+                      Use {candidateLabel}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="scrap-filters__hide"
+                    aria-label={`Hide ${candidateLabel}`}
+                    title={`hide scraps from ${candidateLabel}`}
+                    onClick={() => {
+                      setPlace(candidateLabel, "hide");
+                      setDraft("");
+                    }}
+                  >
+                    <HideIcon />
+                  </button>
+                </div>
               )}
             </form>
             <div className="scrap-filters__options">
-              {pinned.map((domain) => placeRow(domain, true))}
+              {pinned.map((domain) => placeRow(domain))}
               {pinned.length > 0 && rest.length > 0 && (
                 <hr className="scrap-filters__separator" />
               )}
-              {rest.map((domain) => placeRow(domain, false))}
+              {rest.map((domain) => placeRow(domain))}
               {listed.length === 0 && (
                 <p className="scrap-filters__empty">no sites match</p>
               )}
@@ -621,28 +674,54 @@ export function ScrapFilters({
     </span>
   );
 
-  function placeRow(domain: string, on: boolean) {
+  function placeRow(domain: string) {
     const count = domainCounts.get(domain);
+    const on = kept.includes(domain);
+    const off = hidden.includes(domain);
     return (
-      <button
-        type="button"
+      <div
+        className="scrap-filters__place"
         key={domain}
-        className="scrap-filters__option"
-        data-place={domain}
-        aria-pressed={on}
-        onClick={() => {
-          refocusPlace.current = domain;
-          togglePlace(domain);
-        }}
+        data-hidden={off || undefined}
       >
-        <span className="scrap-filters__check" aria-hidden="true">
-          {on ? "✓" : ""}
-        </span>
-        <span className="scrap-filters__name">{domain}</span>
-        {count !== undefined && (
-          <span className="scrap-filters__count">{count}</span>
-        )}
-      </button>
+        <button
+          type="button"
+          className="scrap-filters__option"
+          data-place={domain}
+          aria-pressed={on}
+          title={off ? `show scraps from ${domain} again` : undefined}
+          onClick={() => {
+            refocusPlace.current = { label: domain, hide: false };
+            setPlace(domain, on || off ? null : "keep");
+          }}
+        >
+          <span className="scrap-filters__check" aria-hidden="true">
+            {on ? "✓" : ""}
+          </span>
+          <span className="scrap-filters__name">{domain}</span>
+          {count !== undefined && (
+            <span className="scrap-filters__count">{count}</span>
+          )}
+        </button>
+        <button
+          type="button"
+          className="scrap-filters__hide"
+          data-place-hide={domain}
+          aria-pressed={off}
+          aria-label={`Hide ${domain}`}
+          title={
+            off
+              ? `show scraps from ${domain} again`
+              : `hide scraps from ${domain}`
+          }
+          onClick={() => {
+            refocusPlace.current = { label: domain, hide: true };
+            setPlace(domain, off ? null : "hide");
+          }}
+        >
+          <HideIcon />
+        </button>
+      </div>
     );
   }
 
@@ -1020,6 +1099,13 @@ const styles = `
 .scrap-filters__check { display:grid; place-items:center; flex:0 0 auto; box-sizing:border-box; width:12px; height:12px; border:1px solid rgba(61,56,51,.3); border-radius:3px; background:#faf9f6; color:#fff; font-size:8px; line-height:1; }
 .scrap-filters__option[aria-pressed=true] .scrap-filters__check { border-color:#4a9a8a; background:#4a9a8a; }
 .scrap-filters__option[aria-pressed=true] .scrap-filters__name { color:#2f6b60; }
+.scrap-filters__place { display:flex; align-items:center; gap:2px; }
+.scrap-filters .scrap-filters__hide { display:grid; place-items:center; flex:0 0 auto; width:24px; height:24px; padding:0; border:0; border-radius:5px; background:transparent; color:#b3aba1; }
+.scrap-filters .scrap-filters__hide:hover { background:rgba(162,84,47,.1); color:#a2542f; }
+.scrap-filters .scrap-filters__hide:focus-visible { outline:none; box-shadow:inset 0 0 0 1px #4a9a8a; color:#a2542f; }
+.scrap-filters .scrap-filters__hide[aria-pressed=true] { background:rgba(162,84,47,.12); color:#a2542f; }
+.scrap-filters__place[data-hidden] .scrap-filters__name { color:#a2542f; text-decoration:line-through; text-decoration-color:rgba(162,84,47,.6); }
+.scrap-filters__place[data-hidden] .scrap-filters__check { border-style:dashed; }
 .scrap-filters__separator { height:1px; margin:4px 2px; border:0; background:rgba(61,56,51,.14); }
 .scrap-filters__empty { margin:6px; color:#827a72; }
 
@@ -1030,6 +1116,7 @@ const styles = `
 @media (pointer:coarse) {
   .scrap-filters__chip,.scrap-filters__search { height:auto; min-height:40px; }
   .scrap-filters .scrap-filters__option { min-height:40px; }
+  .scrap-filters .scrap-filters__hide { width:40px; height:40px; }
   .scrap-filters input { font-size:16px; }
 }
 `;
