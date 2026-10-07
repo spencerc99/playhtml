@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>The playhtml Machine</title>
+    <style>
+      :root {
+        --ground: #e9eef2;
+        --panel: #dfe7ec;
+        --panel-deep: #d5dfe5;
+        --ink: #20303b;
+        --ink-soft: #4c5e6a;
+        --ink-faint: #8fa1ab;
+        --line: #20303b;
+        --teal: #0e8f86;
+        --cobalt: #3e6fc1;
+        --rust: #c4633e;
+        --gold: #b08a2e;
+        --face-top: #f2f6f8;
+        --face-left: #dde6ea;
+        --face-right: #cdd8de;
+        --hi: #0e8f86;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        background: var(--ground);
+        color: var(--ink);
+        font-family: "SF Mono", "Menlo", "Cascadia Mono", "Consolas", ui-monospace, monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        overflow: hidden;
+      }
+      #app {
+        display: grid;
+        grid-template-columns: 218px 1fr 396px;
+        grid-template-rows: 52px 30px 1fr 30px;
+        height: 100vh;
+      }
+      /* ---------- top stats bar ---------- */
+      #topbar {
+        grid-column: 1 / 4;
+        display: flex;
+        align-items: stretch;
+        border-bottom: 1.5px solid var(--ink);
+        background: var(--ground);
+        overflow: hidden;
+      }
+      .stat {
+        padding: 7px 16px 5px;
+        border-right: 1px solid color-mix(in srgb, var(--ink) 35%, transparent);
+        white-space: nowrap;
+      }
+      .stat .k {
+        font-size: 9.5px;
+        letter-spacing: 0.14em;
+        color: var(--ink-faint);
+        text-transform: uppercase;
+      }
+      .stat .v { font-size: 14px; font-variant-numeric: tabular-nums; }
+      #stats { display: flex; flex: 1; min-width: 0; overflow: hidden; }
+      .ctrl {
+        flex-shrink: 0;
+        align-self: center;
+        margin-right: 10px;
+        padding: 5px 12px;
+        border: 1.5px solid var(--ink);
+        background: var(--ground);
+        color: var(--ink);
+        font: inherit;
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .ctrl:hover { background: var(--ink); color: var(--ground); }
+      .ctrl:focus-visible, .side-item:focus-visible, .tab:focus-visible {
+        outline: 2px solid var(--teal); outline-offset: 2px;
+      }
+      /* ---------- live status cluster ---------- */
+      #livebar {
+        grid-column: 1 / 4;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 16px;
+        border-bottom: 1.5px solid var(--ink);
+        background: var(--ground);
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+      #livebar .chip {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 7px;
+        padding: 3px 9px;
+        border: 1px solid color-mix(in srgb, var(--ink) 45%, transparent);
+        font-size: 10px;
+        letter-spacing: 0.12em;
+      }
+      #livebar .cname { color: var(--ink-soft); }
+      #livebar .cstate { color: var(--ink-faint); }
+      #livebar .ccount {
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0;
+      }
+      #livebar .chip.live { border-color: var(--teal); }
+      #livebar .chip.live .cstate { color: var(--teal); }
+      #livebar .chip.inferred { border-color: var(--gold); }
+      #livebar .chip.inferred .cstate { color: var(--gold); }
+      #livebar .chip.room .cstate { color: var(--ink); letter-spacing: 0; }
+      #livebar .livehint {
+        font-size: 9.5px;
+        letter-spacing: 0.12em;
+        color: var(--ink-faint);
+      }
+      /* ---------- left sidebar ---------- */
+      #sidebar {
+        border-right: 1.5px solid var(--ink);
+        overflow-y: auto;
+        padding: 12px 10px 24px;
+        background: var(--ground);
+      }
+      .side-head {
+        font-size: 9.5px;
+        letter-spacing: 0.18em;
+        color: var(--ink-faint);
+        text-transform: uppercase;
+        margin: 14px 2px 6px;
+      }
+      .side-head:first-child { margin-top: 2px; }
+      .side-item {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        width: 100%;
+        text-align: left;
+        padding: 6px 8px;
+        margin-bottom: 4px;
+        border: 1px solid var(--ink);
+        background: var(--ground);
+        color: var(--ink);
+        font: inherit;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+      }
+      .side-item .code {
+        font-size: 9px;
+        color: var(--ink-faint);
+        min-width: 18px;
+      }
+      .side-item .n {
+        margin-left: auto;
+        font-size: 10px;
+        color: var(--ink-soft);
+        font-variant-numeric: tabular-nums;
+      }
+      .side-item:hover { background: var(--panel-deep); }
+      .side-item.active { background: var(--ink); color: var(--ground); }
+      .side-item.active .code, .side-item.active .n { color: var(--ground); }
+      /* ---------- stage ---------- */
+      #stage-wrap { position: relative; overflow: hidden; background: var(--ground); }
+      #stage { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+      #stage.dragging { cursor: grabbing; }
+      #zoomctrl {
+        position: absolute; top: 12px; right: 12px;
+        display: flex; flex-direction: column; gap: 6px;
+      }
+      #zoomctrl button {
+        width: 28px; height: 28px;
+        border: 1.5px solid var(--ink); background: var(--ground); color: var(--ink);
+        font: inherit; font-size: 15px; cursor: pointer; line-height: 1;
+      }
+      #zoomctrl button:hover { background: var(--ink); color: var(--ground); }
+      #crumb {
+        position: absolute; top: 12px; left: 14px;
+        font-size: 11px; letter-spacing: 0.1em;
+        display: none;
+      }
+      #crumb button {
+        border: 1.5px solid var(--ink); background: var(--ground); color: var(--ink);
+        font: inherit; font-size: 11px; letter-spacing: 0.1em;
+        padding: 5px 12px; cursor: pointer;
+      }
+      #crumb button:hover { background: var(--ink); color: var(--ground); }
+      #crumb .where { margin-left: 10px; color: var(--ink-soft); }
+      /* ---------- bottom hint ---------- */
+      #hintbar {
+        grid-column: 1 / 4;
+        border-top: 1.5px solid var(--ink);
+        display: flex; align-items: center;
+        padding: 0 16px;
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        color: var(--ink-soft);
+        text-transform: uppercase;
+        white-space: nowrap; overflow: hidden;
+      }
+      /* ---------- right panel ---------- */
+      #panel {
+        border-left: 1.5px solid var(--ink);
+        display: flex; flex-direction: column;
+        background: var(--ground);
+        min-height: 0;
+      }
+      #tabs { display: flex; border-bottom: 1.5px solid var(--ink); }
+      .tab {
+        flex: 1;
+        padding: 9px 0 7px;
+        text-align: center;
+        font: inherit;
+        font-size: 10.5px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        background: var(--ground);
+        color: var(--ink-soft);
+        border: none;
+        border-right: 1px solid color-mix(in srgb, var(--ink) 35%, transparent);
+        cursor: pointer;
+      }
+      .tab:last-child { border-right: none; }
+      .tab.active { background: var(--ink); color: var(--ground); }
+      #panel-body { overflow-y: auto; padding: 18px 20px 40px; flex: 1; min-height: 0; }
+      #panel-body .eyebrow {
+        font-size: 9.5px; letter-spacing: 0.2em; text-transform: uppercase;
+        color: var(--ink-faint); margin-bottom: 6px;
+      }
+      #panel-body h1 {
+        font-size: 21px; font-weight: 600; letter-spacing: -0.01em;
+        line-height: 1.2; margin-bottom: 4px; text-wrap: balance;
+      }
+      #panel-body .sub { font-size: 11px; color: var(--ink-soft); margin-bottom: 18px; }
+      #panel-body h2 {
+        font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+        color: var(--ink-soft);
+        border-bottom: 1px solid var(--ink);
+        padding-bottom: 4px;
+        margin: 22px 0 10px;
+        font-weight: 600;
+      }
+      #panel-body p { margin-bottom: 10px; font-size: 12.5px; }
+      #panel-body mark {
+        background: var(--ink); color: var(--ground);
+        padding: 0 4px; border-radius: 0;
+      }
+      #panel-body code {
+        font-family: inherit;
+        background: var(--panel-deep);
+        padding: 0 4px;
+        font-size: 11.5px;
+      }
+      #panel-body ul { list-style: none; margin-bottom: 10px; }
+      #panel-body li { margin-bottom: 6px; font-size: 12px; padding-left: 14px; position: relative; }
+      #panel-body li::before { content: "\2013"; position: absolute; left: 0; color: var(--ink-faint); }
+      .filerow { font-size: 11px; color: var(--ink-soft); margin-bottom: 4px; word-break: break-all; }
+      .filerow b { color: var(--ink); font-weight: 600; }
+      .factgrid { display: grid; grid-template-columns: 1fr auto; gap: 3px 14px; margin-bottom: 10px; }
+      .factgrid .fk { font-size: 11px; color: var(--ink-soft); }
+      .factgrid .fv { font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+      .hoplist { margin-bottom: 12px; }
+      .hop {
+        display: flex; gap: 10px; align-items: baseline;
+        padding: 6px 8px; margin-bottom: 4px;
+        border: 1px solid color-mix(in srgb, var(--ink) 40%, transparent);
+        font-size: 11.5px;
+      }
+      .hop.active { border-color: var(--ink); background: var(--panel-deep); }
+      .hop .idx { color: var(--ink-faint); font-size: 10px; min-width: 14px; }
+      .hop .fn { color: var(--ink); }
+      .hop .note { color: var(--ink-soft); font-size: 10.5px; margin-left: auto; text-align: right; }
+      .payload {
+        background: var(--panel-deep);
+        border-left: 3px solid var(--ink);
+        padding: 8px 10px;
+        font-size: 11px;
+        white-space: pre;
+        overflow-x: auto;
+        margin-bottom: 12px;
+      }
+      .dotchip {
+        display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+        margin-right: 6px; vertical-align: baseline;
+        border: 1px solid var(--ink);
+      }
+      .go-inside {
+        display: inline-block;
+        margin-top: 6px;
+        padding: 6px 14px;
+        border: 1.5px solid var(--ink);
+        background: var(--ground); color: var(--ink);
+        font: inherit; font-size: 11px; letter-spacing: 0.1em;
+        cursor: pointer;
+      }
+      .go-inside:hover { background: var(--ink); color: var(--ground); }
+      .legend { margin: 4px 0 14px; }
+      .legend .row { display: flex; align-items: center; font-size: 11px; margin-bottom: 4px; color: var(--ink-soft); }
+      @media (prefers-reduced-motion: reduce) { .pulse { animation: none !important; } }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="topbar">
+        <div id="stats">
+          <div class="stat"><div class="k">Repository</div><div class="v">playhtml &#183; bun monorepo</div></div>
+          <div class="stat"><div class="k">Capabilities</div><div class="v">8 built-in &#183; ~35 reserved</div></div>
+          <div class="stat"><div class="k">Packages</div><div class="v">4 &#183; 9 workspaces</div></div>
+          <div class="stat"><div class="k">Presence protocol</div><div class="v">7 message types</div></div>
+          <div class="stat"><div class="k">Durable objects</div><div class="v">3</div></div>
+          <div class="stat"><div class="k">Supabase tables</div><div class="v">5</div></div>
+        </div>
+        <button class="ctrl" id="btn-flow">&#9646;&#9646; PAUSE THE FLOW</button>
+        <button class="ctrl" id="btn-trace">TRACE ONE EVENT</button>
+        <button class="ctrl" id="btn-reset">RESET VIEW</button>
+      </div>
+
+      <div id="livebar"></div>
+
+      <div id="sidebar"></div>
+
+      <div id="stage-wrap">
+        <svg id="stage" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="zoomctrl">
+          <button id="zin" aria-label="zoom in">+</button>
+          <button id="zout" aria-label="zoom out">&#8722;</button>
+        </div>
+        <div id="crumb">
+          <button id="btn-out">&#8592; COME BACK OUT</button>
+          <span class="where"></span>
+        </div>
+      </div>
+
+      <div id="panel">
+        <div id="tabs">
+          <button class="tab active" data-tab="what">What it does</button>
+          <button class="tab" data-tab="how">How it's built</button>
+        </div>
+        <div id="panel-body"></div>
+      </div>
+
+      <div id="hintbar">
+        &#8594; go inside &#183; &#8592; come back out &#183; hover to read &#183; click a moving dot to follow it &#183; drag to pan &#183; scroll to zoom
+      </div>
+    </div>
+
+    <script type="module" src="./diagram.ts"></script>
+  </body>
+</html>

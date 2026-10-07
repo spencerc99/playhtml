@@ -5,6 +5,8 @@
 const ALLOWED_ORIGINS = new Set([
   'https://wewere.online',
   'https://www.wewere.online',
+  'https://playhtml.fun',
+  'https://www.playhtml.fun',
 ]);
 
 const WEBSITE_PAGES_HOST = 'we-were-online-website.pages.dev';
