@@ -26,6 +26,12 @@ const mockedPlayhtml = (globalThis as any).MOCKED_PLAYHTML as {
   resolveReady: () => void;
   createPresenceRoom: ReturnType<typeof vi.fn>;
   presence: unknown;
+  setMockPlayerIdentity: (next: {
+    publicKey?: string;
+    name?: string;
+    playerStyle?: { colorPalette: string[]; cursorStyle?: string };
+    createdAt?: number;
+  }) => void;
 };
 
 describe("usePresence", () => {
@@ -103,6 +109,35 @@ describe("usePresence", () => {
     });
     expect(captured!.presences.get("me")).not.toHaveProperty("x");
   });
+
+  it("re-derives myIdentity on a later identity change instead of freezing at sync completion", async () => {
+    let captured: ReturnType<typeof usePresence<"selection">> | null = null;
+
+    function TestComponent() {
+      captured = usePresence("selection");
+      return <div />;
+    }
+
+    render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+
+    await waitFor(() => {
+      expect(captured!.myIdentity).not.toBeNull();
+    });
+    expect(captured!.myIdentity?.publicKey).toBe("me");
+
+    // Simulates the "we were online" extension injecting identity post-sync.
+    act(() => {
+      mockedPlayhtml.setMockPlayerIdentity({ publicKey: "injected-pid" });
+    });
+
+    await waitFor(() => {
+      expect(captured!.myIdentity?.publicKey).toBe("injected-pid");
+    });
+  });
 });
 
 describe("usePageData", () => {
@@ -160,6 +195,29 @@ describe("usePageData", () => {
     });
 
     await waitFor(() => expect(getByText("42")).toBeDefined());
+  });
+
+  it("supports functional updates for primitive page data", async () => {
+    let captured: ReturnType<typeof usePageData<number>> | null = null;
+
+    function TestComponent() {
+      captured = usePageData("view-count", 0);
+      return <div>{captured[0]}</div>;
+    }
+
+    const { getByText } = render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+
+    await waitFor(() => expect(getByText("0")).toBeDefined());
+
+    act(() => {
+      captured![1]((value) => value + 1);
+    });
+
+    await waitFor(() => expect(getByText("1")).toBeDefined());
   });
 });
 

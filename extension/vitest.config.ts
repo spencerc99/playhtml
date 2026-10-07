@@ -37,6 +37,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "jsdom",
+    poolOptions: {
+      forks: { execArgv: ["--no-experimental-webstorage"] },
+      threads: { execArgv: ["--no-experimental-webstorage"] },
+    },
     exclude: ["node_modules/**", "dist/**", ".output/**"],
     setupFiles: [setupFile],
     include: [

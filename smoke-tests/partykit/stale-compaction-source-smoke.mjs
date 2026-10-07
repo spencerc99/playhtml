@@ -21,18 +21,22 @@ const supabaseKey = process.env.SUPABASE_KEY;
 const room = `codex-stale-compaction-source-${Date.now()}`;
 const compactDelayMs = getNumberEnv(
   "PARTYKIT_EMPTY_ROOM_COMPACT_DELAY_MS",
-  5 * 60 * 1000
+  5 * 60 * 1000,
 );
 const settleMs = getNumberEnv("PARTYKIT_STALE_COMPACTION_SETTLE_MS", 20_000);
+const autosaveSettleMs = getNumberEnv(
+  "PARTYKIT_STALE_SOURCE_AUTOSAVE_SETTLE_MS",
+  3_000,
+);
 
 if (!adminToken) {
   throw new Error(
-    "ADMIN_TOKEN is required. Set ADMIN_TOKEN or SMOKE_ENV_FILE to a .dev.vars/.env file."
+    "ADMIN_TOKEN is required. Set ADMIN_TOKEN or SMOKE_ENV_FILE to a .dev.vars/.env file.",
   );
 }
 if (!supabaseUrl || !supabaseKey) {
   throw new Error(
-    "SUPABASE_URL and SUPABASE_KEY are required for direct documents-row setup."
+    "SUPABASE_URL and SUPABASE_KEY are required for direct documents-row setup.",
   );
 }
 
@@ -107,11 +111,11 @@ async function writePersistedDocument(base64Document) {
         Prefer: "return=minimal",
       },
       body: JSON.stringify({ document: base64Document }),
-    }
+    },
   );
   if (!response.ok) {
     throw new Error(
-      `direct documents update failed ${response.status}: ${await response.text()}`
+      `direct documents update failed ${response.status}: ${await response.text()}`,
     );
   }
 }
@@ -135,6 +139,17 @@ try {
   await adminJson("force-save-live", { method: "POST" });
   console.log("saved stale live source as the initial row");
 
+  await sleep(autosaveSettleMs);
+  const settledSource = await adminJson("live-compare");
+  const settledDirectLabel = getAttendanceLabel(
+    settledSource.methods.direct.data,
+  );
+  if (settledDirectLabel !== "stale-live-source") {
+    throw new Error(
+      `expected pending autosave to settle on stale-live-source, got ${settledDirectLabel}`,
+    );
+  }
+
   await writePersistedDocument(buildPersistedGoodDocument());
   console.log("replaced persisted row with newer database data");
 
@@ -152,24 +167,24 @@ try {
   const before = await inspectRoom();
   provider.destroy();
   console.log(
-    `waiting ${compactDelayMs / 1000}s for empty-room compaction alarm`
+    `waiting ${compactDelayMs / 1000}s for empty-room compaction alarm`,
   );
   await sleep(compactDelayMs + settleMs);
 
   const after = await inspectRoom();
   const afterLabel = getAttendanceLabel(after.ydoc.play);
   console.log(
-    `after compaction window: db=${afterLabel}, resetEpoch=${after.resetEpoch}`
+    `after compaction window: db=${afterLabel}, resetEpoch=${after.resetEpoch}`,
   );
 
   if (afterLabel !== "persisted-good") {
     throw new Error(
-      `expected persisted data to survive compaction, got ${afterLabel}`
+      `expected persisted data to survive compaction, got ${afterLabel}`,
     );
   }
   if (after.resetEpoch !== before.resetEpoch) {
     throw new Error(
-      `expected resetEpoch to remain ${before.resetEpoch}, got ${after.resetEpoch}`
+      `expected resetEpoch to remain ${before.resetEpoch}, got ${after.resetEpoch}`,
     );
   }
 

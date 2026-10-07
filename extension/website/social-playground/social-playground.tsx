@@ -1,10 +1,9 @@
 // ABOUTME: Live preview of the extension's social mechanics (inventory satchel + bottles + emotes) on the site.
 // ABOUTME: Runs the REAL initGlobalFeatures + initEmotes (imported from @extension) so this stays in sync with the extension.
 
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { playhtml } from "playhtml";
-import { FLAGS } from "@extension/flags";
 import {
   FEATURE_ACCESS_STORAGE_KEY,
   FEATURE_OVERRIDES_STORAGE_KEY,

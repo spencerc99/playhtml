@@ -1,11 +1,11 @@
 // ABOUTME: Verifies the new-tab internet-scraps launch card states, dismissal, and feature gate.
-// ABOUTME: Covers the example strip, the collected-scraps strip, and the dark-feature no-render case.
+// ABOUTME: Covers the example pile, the reader's pile, the compact pile after dismissal, and the dark-feature case.
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import browser from "webextension-polyfill";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ScrapsLaunchCard } from "./ScrapsLaunchCard";
+import { PILE_CAPACITY, ScrapsLaunchCard } from "./ScrapsLaunchCard";
 import { FLAGS } from "../flags";
 
 function cleanup(root: Root, container: HTMLDivElement) {
@@ -39,6 +39,15 @@ function scrapImage(key: string) {
   };
 }
 
+function mockScraps(scraps: unknown[], total = scraps.length) {
+  vi.mocked(browser.runtime.sendMessage).mockImplementation(
+    async (message: unknown) =>
+      (message as { type: string }).type === "GET_SCRAP_COUNT"
+        ? { total }
+        : { scraps },
+  );
+}
+
 describe("ScrapsLaunchCard", () => {
   beforeEach(() => {
     (
@@ -52,32 +61,34 @@ describe("ScrapsLaunchCard", () => {
       wwoFeatureOverrides: { SCRAPS: true },
     });
     vi.mocked(browser.storage.local.set).mockResolvedValue(undefined);
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     document.body.innerHTML = "";
   });
 
-  it("shows hosted examples when nothing has washed up yet", async () => {
-    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ scraps: [] });
+  it("shows hosted examples when nothing has been collected yet", async () => {
+    mockScraps([]);
     const { container, root } = await renderCard();
 
     try {
       expect(container.textContent).toContain("internet scraps");
-      expect(container.textContent).toContain("wash up on a shore of your own");
+      expect(container.textContent).toContain("WWO now collects images");
+      expect(container.textContent).not.toContain("so far");
+      expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
       expect(
         container.querySelector(".scraps-launch__strip-chip")?.textContent,
       ).toBe("examples");
-      const images = container.querySelectorAll<HTMLImageElement>(
-        ".scraps-launch__piece--image",
-      );
-      expect(images.length).toBeGreaterThan(0);
-      for (const image of images) {
-        expect(image.src).toMatch(
-          /^https:\/\/(playhtml\.fun|wewere\.online)\//,
-        );
-      }
       expect(
         container.querySelector<HTMLAnchorElement>(".scraps-launch__cta")?.href,
       ).toBe("chrome-extension://test/scraps.html");
@@ -86,28 +97,39 @@ describe("ScrapsLaunchCard", () => {
     }
   });
 
-  it("renders the reader's own scraps and caps the strip at eight", async () => {
+  it("asks for the newest scraps and shows the reader's own pile", async () => {
     const scraps = Array.from({ length: 12 }, (_unused, index) =>
       scrapImage(`scrap-${index}`),
     );
-    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ scraps });
+    mockScraps(scraps);
     const { container, root } = await renderCard();
 
     try {
-      expect(container.textContent).toContain("12 scraps have washed up");
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+        type: "GET_SCRAPS",
+        options: { limit: PILE_CAPACITY },
+      });
+      expect(container.textContent).toContain("(12 scraps so far)");
+      expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
       expect(container.querySelector(".scraps-launch__strip-chip")).toBeNull();
-      const images = container.querySelectorAll<HTMLImageElement>(
-        ".scraps-launch__piece--image",
-      );
-      expect(images.length).toBe(8);
-      expect(images[0].src).toBe("https://example.com/scrap-0.png");
     } finally {
       cleanup(root, container);
     }
   });
 
-  it("hides the card once dismissed and records the dismissal", async () => {
-    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ scraps: [] });
+  it("counts every collected scrap, not only the loaded page", async () => {
+    mockScraps([scrapImage("only")], 431);
+    const { container, root } = await renderCard();
+
+    try {
+      expect(container.textContent).toContain("(431 scraps so far)");
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("keeps the pile as a compact window once the text is dismissed", async () => {
+    mockScraps([scrapImage("kept")], 7);
     const { container, root } = await renderCard();
 
     try {
@@ -120,10 +142,32 @@ describe("ScrapsLaunchCard", () => {
         dismiss?.click();
       });
 
-      expect(container.querySelector(".scraps-launch")).toBeNull();
+      expect(container.querySelector(".scraps-launch__title")).toBeNull();
+      expect(container.querySelector(".scraps-launch--compact")).not.toBeNull();
+      expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
+      expect(
+        container.querySelector(".scraps-launch__footer-link")?.textContent,
+      ).toBe("view all 7 →");
       expect(browser.storage.local.set).toHaveBeenCalledWith({
         "announcement_seen_scraps-2026-08-newtab": "dismissed",
       });
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("leaves nothing behind once dismissed with no scraps yet", async () => {
+    mockScraps([]);
+    const { container, root } = await renderCard();
+
+    try {
+      await act(async () => {
+        container
+          .querySelector<HTMLButtonElement>(".scraps-launch__dismiss")
+          ?.click();
+      });
+
+      expect(container.querySelector(".scraps-launch")).toBeNull();
     } finally {
       cleanup(root, container);
     }
@@ -135,7 +179,7 @@ describe("ScrapsLaunchCard", () => {
       wwoFeatureAccess: { features: { SCRAPS: { stage: "beta", available: false } }, checkedAt: 1 },
       wwoFeatureOverrides: { SCRAPS: true },
     });
-    vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ scraps: [] });
+    mockScraps([]);
     const { container, root } = await renderCard();
 
     try {

@@ -1,6 +1,7 @@
 # Unreleased
 
-- Internet Commute now keeps riders, arrivals, and train timing in sync across browsers.
+- Internet scraps opens faster with large collections while search and filters still find older scraps.
+- You can now hide scraps from sites you don't want to see in the scraps site filter.
 
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
@@ -16,3 +17,5 @@ extension/website/public/changelog/media/ and reference them here:
 ![Screenshot title](/changelog/media/file.png)
 ![video: Demo title](/changelog/media/file.mp4)
 -->
+
+- Notices in the popup now go away once you open them, and on their own after a few views.

@@ -11,43 +11,45 @@
   overflow: hidden;
 }
 
-.scraps-launch__strip {
+.scraps-launch__pile {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  height: 120px;
-  padding: 0 22px;
+  height: var(--scraps-pile-height, 300px);
   background: #fdfbf6;
   border-bottom: 1px dashed $border-strong;
   overflow: hidden;
 }
 
-.scraps-launch__piece {
-  flex: 0 0 auto;
-  transform-origin: center;
+.scraps-launch__footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 14px 9px;
 }
 
-.scraps-launch__piece--image {
-  max-height: 76px;
-  object-fit: contain;
-  image-rendering: auto;
+.scraps-launch__footer-label {
+  color: $text-faint;
+  font-family: $font-mono;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
-.scraps-launch__piece--button {
-  padding: 5px 11px;
-  border-radius: 5px;
-  color: #fff;
-  font-family: $font-body;
-  font-size: 11px;
+.scraps-launch__footer-link {
+  color: $accent-rust;
+  font-size: 12px;
   font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-  box-shadow: 0 1px 2px rgba(90, 78, 65, 0.18);
+  text-decoration: underline;
+  text-decoration-color: rgba(196, 114, 78, 0.4);
+  text-underline-offset: 3px;
+
+  &:hover {
+    text-decoration-color: $accent-rust;
+  }
 }
 
 .scraps-launch__strip-chip {
+  z-index: 3;
   position: absolute;
   right: 10px;
   bottom: 8px;

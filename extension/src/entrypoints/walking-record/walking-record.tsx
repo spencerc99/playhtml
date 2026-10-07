@@ -71,6 +71,7 @@ function WalkingRecordEntryPage() {
   const [movementLoadingKey, setMovementLoadingKey] = useState<string | null>(
     null,
   );
+  const [refreshSequence, setRefreshSequence] = useState(0);
   const [loadingProgress, setLoadingProgress] =
     useState<WalkingRecordLoadProgress>({
       completed: 0,
@@ -115,14 +116,10 @@ function WalkingRecordEntryPage() {
     if (!baseColor) return;
 
     const existingRecord = records[recordKey];
-    if (existingRecord) {
-      setLoading(false);
-      return;
-    }
-
     let cancelled = false;
     const visiblePreview =
-      previewRecord?.key === recordKey ? previewRecord.record : null;
+      existingRecord ??
+      (previewRecord?.key === recordKey ? previewRecord.record : null);
     let baseRecordShown = Boolean(visiblePreview);
     const cacheKey = walkingRecordCacheKey(period, range, baseColor);
 
@@ -239,7 +236,24 @@ function WalkingRecordEntryPage() {
     range.endTs,
     range.startTs,
     recordKey,
+    refreshSequence,
   ]);
+
+  useEffect(() => {
+    const refreshCurrentPeriod = () => {
+      if (
+        document.visibilityState === "visible" &&
+        range.endTs > Date.now()
+      ) {
+        setRefreshSequence((current) => current + 1);
+      }
+    };
+
+    document.addEventListener("visibilitychange", refreshCurrentPeriod);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshCurrentPeriod);
+    };
+  }, [range.endTs]);
 
   useEffect(() => {
     const summaries = summarizeWalkingRecordPeriods(
@@ -281,7 +295,7 @@ function WalkingRecordEntryPage() {
     return () => {
       cancelled = true;
     };
-  }, [period]);
+  }, [period, refreshSequence]);
 
   const selectPeriod = (nextPeriod: WalkingRecordPeriod) => {
     const nextRange = getWalkingRecordPeriodRange(nextPeriod);

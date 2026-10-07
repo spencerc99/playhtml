@@ -46,7 +46,7 @@ describe('handleCommute', () => {
       const events =
         type === 'navigation'
           ? [event('navigation', 'https://public.example/article')]
-          : [event('cursor', 'https://private.example/account')];
+          : [event('keyboard', 'https://private.example/account')];
       return new Response(JSON.stringify(events), {
         headers: { 'Content-Type': 'application/json' },
       });
@@ -62,6 +62,9 @@ describe('handleCommute', () => {
 
     expect(response.status).toBe(200);
     expect(handleRecent).toHaveBeenCalledTimes(2);
+    expect(
+      new URL(handleRecent.mock.calls[1][0].url).searchParams.get('type'),
+    ).toBe('all');
     expect(payload.destinations).toEqual([
       expect.objectContaining({
         domain: 'public.example',

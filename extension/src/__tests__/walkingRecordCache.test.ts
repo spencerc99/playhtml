@@ -47,6 +47,28 @@ describe("walking record cache", () => {
     ).resolves.toEqual({ record, fresh: true });
   });
 
+  it("refreshes snapshots captured before their period ended", async () => {
+    const inProgressRecord = {
+      ...record,
+      range: { startTs: 1_000, endTs: 20_000 },
+    };
+    vi.mocked(browser.storage.local.get).mockResolvedValue({
+      walking_record_cache: {
+        entries: [
+          {
+            key: "week:1000:#4a9a8a",
+            cachedAt: 10_000,
+            record: inProgressRecord,
+          },
+        ],
+      },
+    });
+
+    await expect(
+      readWalkingRecordCache("week:1000:#4a9a8a", 10_001),
+    ).resolves.toEqual({ record: inProgressRecord, fresh: false });
+  });
+
   it("returns an older matching snapshot while marking it stale", async () => {
     vi.mocked(browser.storage.local.get).mockResolvedValue({
       walking_record_cache: {

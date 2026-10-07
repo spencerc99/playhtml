@@ -3,9 +3,19 @@
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Miniflare } from 'miniflare';
 import type { Env } from '../lib/supabase';
+
+const mockAddContact = vi.fn();
+const mockSendUpdatesEmail = vi.fn();
+
+vi.mock('../lib/resend', () => ({
+  createResendClient: vi.fn(() => ({
+    addContact: mockAddContact,
+    sendUpdatesEmail: mockSendUpdatesEmail,
+  })),
+}));
 import {
   __resetAccessRequestRateLimitForTests,
   handleAccessRequest,
@@ -71,8 +81,13 @@ beforeEach(async () => {
   );
   workerEnv = {
     ADMIN_KEY: 'admin-secret',
+    RESEND_API_KEY: 'resend-secret',
     WWO_ADMIN_DB: db,
   } as Env;
+  mockAddContact.mockReset();
+  mockAddContact.mockResolvedValue({ created: true });
+  mockSendUpdatesEmail.mockReset();
+  mockSendUpdatesEmail.mockResolvedValue(undefined);
   __resetAccessRequestRateLimitForTests();
 });
 
@@ -104,7 +119,73 @@ describe('feature access control', () => {
     expect(body.features.QUARANTINE_TAPE.available).toBe(true);
   });
 
-  it('limits closed beta members to the cohort feature grants', async () => {
+  it('gives internal members code-defined features without seeded policy rows', async () => {
+    await workerEnv.WWO_ADMIN_DB.prepare(
+      'DELETE FROM features WHERE feature_id = ?',
+    ).bind('QUARANTINE_TAPE').run();
+    expect((await addToCohort([PUBLIC_ID], 'internal')).status).toBe(201);
+
+    const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
+    const body = await response.json() as {
+      features: Record<string, { stage: string; available: boolean }>;
+    };
+
+    expect(body.features.QUARANTINE_TAPE).toEqual({
+      stage: 'internal',
+      available: true,
+    });
+  });
+
+  it('shows code-defined features in the admin overview without policy rows', async () => {
+    await workerEnv.WWO_ADMIN_DB.prepare(
+      'DELETE FROM features WHERE feature_id = ?',
+    ).bind('QUARANTINE_TAPE').run();
+
+    const response = await handleAdminAccessOverview(
+      adminRequest('/admin/access-control'),
+      workerEnv,
+    );
+    const body = await response.json() as {
+      features: Array<{
+        id: string;
+        name: string;
+        description: string;
+        stage: string;
+      }>;
+    };
+
+    expect(body.features).toContainEqual({
+      id: 'QUARANTINE_TAPE',
+      name: 'Quarantine tape',
+      description: 'Mark pages with shared caution tape.',
+      stage: 'internal',
+    });
+  });
+
+  it('creates missing policy rows when a cohort receives a feature grant', async () => {
+    await workerEnv.WWO_ADMIN_DB.prepare(
+      'DELETE FROM features WHERE feature_id = ?',
+    ).bind('QUARANTINE_TAPE').run();
+
+    const cohortUpdate = await handleAdminCohortFeaturesUpdate(
+      adminRequest('/admin/access-control/cohorts/closed-beta', {
+        method: 'PUT',
+        body: JSON.stringify({ featureIds: ['QUARANTINE_TAPE'] }),
+      }),
+      workerEnv,
+      'closed-beta',
+    );
+    expect(cohortUpdate.status).toBe(200);
+    expect((await addToCohort([PUBLIC_ID], 'closed-beta')).status).toBe(201);
+
+    const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
+    const body = await response.json() as {
+      features: Record<string, { available: boolean }>;
+    };
+    expect(body.features.QUARANTINE_TAPE.available).toBe(true);
+  });
+
+  it('gives closed beta members beta-stage features but not internal ones', async () => {
     expect((await addToCohort([PUBLIC_ID], 'closed-beta')).status).toBe(201);
 
     const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
@@ -143,8 +224,62 @@ describe('feature access control', () => {
       features: Record<string, { available: boolean }>;
     };
     expect(memberBody.features.BOTTLES.available).toBe(true);
-    expect(memberBody.features.COMMUTE.available).toBe(false);
+    expect(memberBody.features.COMMUTE.available).toBe(true);
+    expect(publicBody.features.COMMUTE.available).toBe(false);
     expect(publicBody.features.EMOTES.available).toBe(true);
+  });
+
+  it('clears every explicit cohort feature grant while beta-stage access remains', async () => {
+    await addToCohort([PUBLIC_ID], 'closed-beta');
+    const grant = (featureIds: string[]) => handleAdminCohortFeaturesUpdate(
+      adminRequest('/admin/access-control/cohorts/closed-beta', {
+        method: 'PUT',
+        body: JSON.stringify({ featureIds }),
+      }),
+      workerEnv,
+      'closed-beta',
+    );
+    expect((await grant(['BOTTLES'])).status).toBe(200);
+    expect((await grant([])).status).toBe(200);
+
+    const body = await (await handleFeatureAccessCheck(workerEnv, PUBLIC_ID)).json() as {
+      features: Record<string, { available: boolean }>;
+    };
+    expect(body.features.BOTTLES.available).toBe(false);
+    expect(body.features.COMMUTE.available).toBe(true);
+    expect(body.features.SCRAPS.available).toBe(true);
+  });
+
+  it('moves beta access with the feature stage', async () => {
+    await addToCohort([PUBLIC_ID], 'closed-beta');
+    const setStage = (featureId: string, stage: string) => handleAdminFeatureStageUpdate(
+      adminRequest(`/admin/access-control/features/${featureId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ stage }),
+      }),
+      workerEnv,
+      featureId,
+    );
+    expect((await setStage('EMOTES', 'beta')).status).toBe(200);
+    expect((await handleAdminCohortFeaturesUpdate(
+      adminRequest('/admin/access-control/cohorts/closed-beta', {
+        method: 'PUT',
+        body: JSON.stringify({ featureIds: [] }),
+      }),
+      workerEnv,
+      'closed-beta',
+    )).status).toBe(200);
+
+    const betaBody = await (await handleFeatureAccessCheck(workerEnv, PUBLIC_ID)).json() as {
+      features: Record<string, { available: boolean }>;
+    };
+    expect(betaBody.features.EMOTES.available).toBe(true);
+
+    expect((await setStage('EMOTES', 'internal')).status).toBe(200);
+    const internalBody = await (await handleFeatureAccessCheck(workerEnv, PUBLIC_ID)).json() as {
+      features: Record<string, { available: boolean }>;
+    };
+    expect(internalBody.features.EMOTES.available).toBe(false);
   });
 
   it('rejects the removed Labs stage', async () => {
@@ -217,6 +352,11 @@ describe('feature access control', () => {
     );
     expect(request.status).toBe(201);
     const { id } = await request.json() as { id: number };
+    expect(mockAddContact).toHaveBeenCalledWith(
+      'tester@example.com',
+      'extension-setup',
+    );
+    expect(mockSendUpdatesEmail).toHaveBeenCalledWith('tester@example.com');
 
     const approval = await handleAdminAccessRequestReview(
       adminRequest(`/admin/access-control/requests/${id}`, {
@@ -233,6 +373,56 @@ describe('feature access control', () => {
     };
     expect(access.features.COMMUTE.available).toBe(true);
     expect(access.features.BOTTLES.available).toBe(false);
+  });
+
+  it('does not resend the updates email to an existing contact', async () => {
+    mockAddContact.mockResolvedValueOnce({ created: false });
+
+    const response = await handleAccessRequest(
+      new Request('https://worker.example/access-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '192.0.2.2' },
+        body: JSON.stringify({
+          publicId: PUBLIC_ID,
+          email: 'existing@example.com',
+          requestedFeatures: ['COMMUTE'],
+        }),
+      }),
+      workerEnv,
+    );
+
+    expect(response.status).toBe(201);
+    expect(mockAddContact).toHaveBeenCalledWith(
+      'existing@example.com',
+      'extension-setup',
+    );
+    expect(mockSendUpdatesEmail).not.toHaveBeenCalled();
+  });
+
+  it('records the access request when the project-updates signup fails', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockAddContact.mockRejectedValueOnce(new Error('resend down'));
+
+    const response = await handleAccessRequest(
+      new Request('https://worker.example/access-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '192.0.2.3' },
+        body: JSON.stringify({
+          publicId: PUBLIC_ID,
+          email: 'tester@example.com',
+          requestedFeatures: ['COMMUTE'],
+        }),
+      }),
+      workerEnv,
+    );
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ id: 1, status: 'pending' });
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[AccessControl] project updates signup failed:',
+      expect.any(Error),
+    );
+    consoleErrorSpy.mockRestore();
   });
 
   it('requires the admin key for policy reads and mutations', async () => {

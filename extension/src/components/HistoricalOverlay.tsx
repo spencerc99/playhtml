@@ -453,8 +453,8 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
     const oldest = Math.min(...timestamps);
     const newest = Math.max(...timestamps);
     return {
-      oldest: new Date(oldest).toLocaleDateString(),
-      newest: new Date(newest).toLocaleDateString(),
+      oldest: new Date(oldest).toISOString(),
+      newest: new Date(newest).toISOString(),
     };
   }, [events]);
 

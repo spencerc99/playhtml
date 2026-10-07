@@ -3,7 +3,10 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+  pickReconnectionDelay,
   RealtimePresenceTransport,
+  RECONNECT_DELAY_JITTER_MS,
+  RECONNECT_DELAY_MIN_MS,
   type PresenceSocketFactory,
 } from "../presence-transport";
 
@@ -105,6 +108,31 @@ describe("RealtimePresenceTransport", () => {
       room: "room-1",
       party: "presence",
     });
+  });
+
+  it("jitters the base reconnection delay so clients do not retry in lockstep", () => {
+    expect(pickReconnectionDelay(() => 0)).toBe(RECONNECT_DELAY_MIN_MS);
+    expect(pickReconnectionDelay(() => 0.999)).toBeLessThan(
+      RECONNECT_DELAY_MIN_MS + RECONNECT_DELAY_JITTER_MS,
+    );
+
+    const delays: number[] = [];
+    for (let i = 0; i < 2; i++) {
+      new RealtimePresenceTransport({
+        host: "example.com",
+        room: `room-${i}`,
+        socketFactory: (options) => {
+          delays.push(options.minReconnectionDelay ?? Number.NaN);
+          return new FakeSocket();
+        },
+      });
+    }
+    for (const delay of delays) {
+      expect(delay).toBeGreaterThanOrEqual(RECONNECT_DELAY_MIN_MS);
+      expect(delay).toBeLessThan(
+        RECONNECT_DELAY_MIN_MS + RECONNECT_DELAY_JITTER_MS,
+      );
+    }
   });
 
   it("sends validated join and update messages", () => {

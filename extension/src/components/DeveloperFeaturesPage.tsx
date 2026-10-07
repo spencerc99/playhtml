@@ -19,16 +19,17 @@ import {
 import "./DeveloperFeaturesPage.scss";
 
 type Props = {
-  onBack: () => void;
+  onBack?: () => void;
+  embedded?: boolean;
 };
 
-const STAGE_LABELS: Record<FeatureStage, string> = {
-  internal: "Internal",
-  beta: "Early access",
-  released: "Released",
-};
+function stageLabel(stage: FeatureStage): string {
+  if (stage === "internal") return "Internal";
+  if (stage === "released") return "Released";
+  return "Early access";
+}
 
-export function DeveloperFeaturesPage({ onBack }: Props) {
+export function DeveloperFeaturesPage({ onBack, embedded = false }: Props) {
   const [states, setStates] = useState<Record<FeatureId, FeatureState> | null>(
     null,
   );
@@ -47,6 +48,25 @@ export function DeveloperFeaturesPage({ onBack }: Props) {
     load().catch(() => {});
   }, [load]);
 
+  // Choices persist across access changes, so only count the ones for
+  // experiments this page currently shows.
+  const visibleChoiceCount = states
+    ? FEATURE_IDS.filter(
+        (feature) =>
+          overrides[feature] !== undefined &&
+          states[feature].available &&
+          states[feature].stage !== "released" &&
+          !FEATURE_CATALOG[feature].chosenWhereUsed,
+      ).length
+    : 0;
+
+  const intro = (
+    <p>
+      Experiments available to you are on. Turn off any you do not want; your
+      choices only affect this browser.
+    </p>
+  );
+
   const toggleFeature = async (feature: FeatureId) => {
     if (!states) return;
     await setFeatureOverride(feature, !states[feature].enabled);
@@ -55,49 +75,57 @@ export function DeveloperFeaturesPage({ onBack }: Props) {
 
   return (
     <div className="developer-features">
-      <header className="developer-features__header">
-        <button className="developer-features__back" onClick={onBack}>
-          ← back
-        </button>
-        <span className="developer-features__eyebrow">WWO EXPERIMENTS</span>
-        <h1>Experiments</h1>
-        <p>
-          Turn on the experiments available to you. Your choices only affect
-          this browser.
-        </p>
-      </header>
+      {!embedded && (
+        <header className="developer-features__header">
+          {onBack && (
+            <button className="developer-features__back" onClick={onBack}>
+              ← back
+            </button>
+          )}
+          <span className="developer-features__eyebrow">WWO EXPERIMENTS</span>
+          <h1>Experiments</h1>
+          {intro}
+        </header>
+      )}
+      {embedded && <div className="developer-features__intro">{intro}</div>}
 
       <main className="developer-features__list">
-        {states && FEATURE_IDS.filter((feature) =>
-          states[feature].available && states[feature].stage !== "released",
-        ).map((feature) => {
-          const definition = FEATURE_CATALOG[feature];
-          const state = states[feature];
-          return (
-            <label className="developer-features__row" key={feature}>
-              <span className="developer-features__copy">
-                <strong>{definition.name}</strong>
-                <span>{definition.description}</span>
-                <small>
-                  {STAGE_LABELS[state.stage]}
-                  {state.source === "choice" ? " · your choice" : ""}
-                  {definition.requiresReload ? " · reload pages after changing" : ""}
-                </small>
-              </span>
-              <input
-                type="checkbox"
-                checked={state.enabled}
-                onChange={() => toggleFeature(feature)}
-                aria-label={`Enable ${definition.name}`}
-              />
-            </label>
-          );
-        })}
+        {states &&
+          FEATURE_IDS.filter(
+            (feature) =>
+              states[feature].available &&
+              states[feature].stage !== "released" &&
+              !FEATURE_CATALOG[feature].chosenWhereUsed,
+          ).map((feature) => {
+            const definition = FEATURE_CATALOG[feature];
+            const state = states[feature];
+            return (
+              <label className="developer-features__row" key={feature}>
+                <span className="developer-features__copy">
+                  <strong>{definition.name}</strong>
+                  <span>{definition.description}</span>
+                  <small>
+                    {stageLabel(state.stage)}
+                    {state.source === "choice" ? " · your choice" : ""}
+                    {definition.requiresReload
+                      ? " · reload pages after changing"
+                      : ""}
+                  </small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={state.enabled}
+                  onChange={() => toggleFeature(feature)}
+                  aria-label={`Enable ${definition.name}`}
+                />
+              </label>
+            );
+          })}
       </main>
 
       <footer className="developer-features__footer">
         <button
-          disabled={Object.keys(overrides).length === 0}
+          disabled={visibleChoiceCount === 0}
           onClick={async () => {
             await clearFeatureOverrides();
             await load();
@@ -105,8 +133,12 @@ export function DeveloperFeaturesPage({ onBack }: Props) {
         >
           Reset choices
         </button>
-        <span>{Object.keys(overrides).length} choices</span>
+        <span>{visibleChoiceCount} choices</span>
       </footer>
     </div>
   );
+}
+
+export function DeveloperFeaturesSection() {
+  return <DeveloperFeaturesPage embedded />;
 }

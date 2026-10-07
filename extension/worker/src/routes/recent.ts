@@ -4,6 +4,7 @@
 // ABOUTME: this handler re-joins them by page_ref before returning.
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
+import { loadParticipantColors } from '../lib/participantColors';
 import type { CollectionEvent, EventMeta } from '@playhtml/extension-types';
 import { canonicalizeUrl, buildPageRef } from '../../../src/utils/pageMetadata';
 
@@ -77,6 +78,11 @@ export async function loadRecentEventRows(
   return { rows, error: null };
 }
 
+export function getRecentEventTypeFilter(url: URL): string | null {
+  const requestedType = url.searchParams.get('type');
+  return requestedType === 'all' ? null : requestedType || 'cursor';
+}
+
 type PageMeta = { title?: string; favicon_url?: string };
 
 /**
@@ -118,7 +124,7 @@ async function fetchMetaByPageRef(
  * Public endpoint (no auth required)
  *
  * Query parameters:
- * - type: Event type filter (default: 'cursor')
+ * - type: Event type filter (default: 'cursor'; 'all' disables the filter)
  * - limit: Maximum number of events (default: 1000, max: 20000). Pagination is used internally.
  * - domain: Domain filter (optional) - filters events by URL domain
  * - pid: Participant ID filter (optional) - restore-from-server flow uses this
@@ -134,7 +140,7 @@ export async function handleRecent(
 ): Promise<Response> {
   try {
     const url = new URL(request.url);
-    const type = url.searchParams.get('type') || 'cursor';
+    const typeFilter = getRecentEventTypeFilter(url);
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '1000', 10), 20000);
     const domainFilter = url.searchParams.get('domain') || null;
     const pidFilter = url.searchParams.get('pid') || null;
@@ -144,8 +150,11 @@ export async function handleRecent(
     const { rows, error } = await loadRecentEventRows(limit, async (cursor, pageSize) => {
       let query = supabase
         .from('collection_events')
-        .select('*')
-        .eq('type', type);
+        .select('*');
+
+      if (typeFilter !== null) {
+        query = query.eq('type', typeFilter);
+      }
 
       if (domainFilter) {
         query = query.eq('domain', domainFilter);
@@ -208,20 +217,12 @@ export async function handleRecent(
 
     // ── Look up cursor colors ─────────────────────────────────────────────────
     const participantIds = [...new Set(rows.map((row) => row.participant_id as string))];
-    const participantColors = new Map<string, string>();
-
-    if (participantIds.length > 0) {
-      const { data: participants } = await supabase
+    const participantColors = await loadParticipantColors(participantIds, ids =>
+      supabase
         .from('participants')
         .select('pid, cursor_color')
-        .in('pid', participantIds);
-
-      if (participants) {
-        for (const p of participants) {
-          participantColors.set(p.pid, p.cursor_color);
-        }
-      }
-    }
+        .in('pid', ids),
+    );
 
     // ── Build response events ─────────────────────────────────────────────────
     const allEvents: CollectionEvent[] = rows.map((row: Record<string, unknown>) => {

@@ -150,7 +150,7 @@ describe("Room normalization and cursor room matching", () => {
       expect(playhtml.roomId).toBe(expectedRoom);
     });
 
-    it("should create separate provider when cursor room is 'domain'", async () => {
+    it("should normalize a domain cursor room separately from the main room", async () => {
       mockLocation("example.com", "/test/playground");
       const playhtml = await freshPlayhtml();
       await playhtml.init({
@@ -166,12 +166,11 @@ describe("Room normalization and cursor room matching", () => {
       expect(playhtml.roomId).toBe(mainRoom);
 
       // Cursor room for domain would be: encodeURIComponent("example.com")
-      // They should be different, so a separate provider should be created
       const cursorDomainRoom = encodeURIComponent("example.com");
       expect(cursorDomainRoom).not.toBe(mainRoom);
     });
 
-    it("should create separate provider when cursor room is 'section'", async () => {
+    it("should normalize a section cursor room separately from the main room", async () => {
       mockLocation("example.com", "/test/playground/page");
       const playhtml = await freshPlayhtml();
       await playhtml.init({
