@@ -28,6 +28,7 @@ const TRAIL_SETTINGS = {
   ...DEFAULT_SETTINGS,
   strokeWidth: 3,
   trailOpacity: 0.8,
+  clickMaxRadius: 36,
 };
 
 function isEventPage(raw: string): boolean {
@@ -174,7 +175,11 @@ export function WalkStage({ active }: { active: boolean }) {
   return (
     <>
       <div className="walk-layer" aria-hidden="true">
-        <LiveTrails trailStates={trailStates} settings={TRAIL_SETTINGS} />
+        <LiveTrails
+          trailStates={trailStates}
+          settings={TRAIL_SETTINGS}
+          showClickRipples
+        />
         {size.width > 0 &&
           Array.from(stops.values()).map((step) => {
             const p = stopPoint(step.url);

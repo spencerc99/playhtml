@@ -160,10 +160,13 @@ export function walkerTrailState(
     y: p.y * size.height,
   });
   const points: Array<{ x: number; y: number; ts: number }> = [];
+  // Index into `points` where each stop lands, so a click ripple marks it.
+  const stopIndices: number[] = [];
   steps.forEach((step, i) => {
     const here = px(stopPoint(step.url));
     if (i === 0) {
       points.push({ ...here, ts: step.ts });
+      stopIndices.push(0);
       return;
     }
     const prev = steps[i - 1];
@@ -175,9 +178,21 @@ export function walkerTrailState(
         ts: prev.ts + ((step.ts - prev.ts) * (j + 1)) / between.length,
       }),
     );
+    stopIndices.push(points.length - 1);
   });
   const first = points[0];
-  const styled = applyStyleVariations(points, trailStyle, first.x + first.y);
+  const seed = first.x + first.y;
+  const vary = (upTo: number) =>
+    densifyGrowingTrail(
+      applyStyleVariations(points.slice(0, upTo), trailStyle, seed),
+    );
+  const variedPoints = vary(points.length);
+  // LiveTrails maps progress onto the varied points, so each stop's ripple
+  // needs its place in that list. Styling and densifying a prefix yields a
+  // prefix of the full result, which is what keeps a growing trail stable.
+  const variedStopProgress = stopIndices.map(
+    (index) => (vary(index + 1).length - 1) / (variedPoints.length - 1),
+  );
   return {
     trail: {
       id: `walk-${walker.pid}`,
@@ -187,11 +202,22 @@ export function walkerTrailState(
       opacity: 1,
       startTime: points[0].ts,
       endTime: points[points.length - 1].ts,
-      clicks: [],
+      clicks: stopIndices.map((index) => ({
+        x: points[index].x,
+        y: points[index].y,
+        ts: points[index].ts,
+      })),
     },
     startOffsetMs: 0,
     durationMs: Math.max(1, points[points.length - 1].ts - points[0].ts),
-    variedPoints: densifyGrowingTrail(styled),
-    clicksWithProgress: [],
+    variedPoints,
+    // Each site the walker landed on gets a click ripple as the trail reaches
+    // it, the same mark the portrait leaves where someone clicked.
+    clicksWithProgress: stopIndices.map((index, i) => ({
+      x: points[index].x,
+      y: points[index].y,
+      ts: points[index].ts,
+      progress: variedStopProgress[i],
+    })),
   };
 }

@@ -124,6 +124,23 @@ describe("walkerTrailState", () => {
     expect(state.trail.points.at(-1)).toMatchObject({ x: last.x * 1280, y: last.y * 800 });
   });
 
+  it("marks every stop with a click ripple, in order along the trail", () => {
+    const state = walkerTrailState(walkers.maya, steps, size)!;
+    const marks = state.clicksWithProgress;
+    expect(marks).toHaveLength(3);
+    expect(marks[0].progress).toBe(0);
+    expect(marks[2].progress).toBe(1);
+    // The middle mark sits where the drawn line actually passes the stop.
+    const varied = state.variedPoints;
+    const atMiddle = varied[Math.round(marks[1].progress * (varied.length - 1))];
+    const middle = stopPoint("b.example");
+    expect(Math.hypot(atMiddle.x - middle.x * 1280, atMiddle.y - middle.y * 800)).toBeLessThan(20);
+    steps.forEach((step, i) => {
+      const p = stopPoint(step.url);
+      expect(marks[i]).toMatchObject({ x: p.x * 1280, y: p.y * 800, ts: step.ts });
+    });
+  });
+
   it("grows without reshaping what's already drawn", () => {
     const two = walkerTrailState(walkers.maya, steps.slice(0, 2), size)!;
     const three = walkerTrailState(walkers.maya, steps, size)!;
