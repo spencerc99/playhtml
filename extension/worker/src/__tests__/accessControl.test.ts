@@ -157,7 +157,7 @@ describe('feature access control', () => {
     expect(body.features).toContainEqual({
       id: 'QUARANTINE_TAPE',
       name: 'Quarantine tape',
-      description: 'Mark pages with shared caution tape.',
+      description: 'Mark pages and images with shared caution tape.',
       stage: 'internal',
     });
   });
