@@ -29,8 +29,11 @@ export interface SessionScrapCandidate {
 export const SESSION_GAP_MS = 45 * 60_000;
 /** The furthest back a page can ask for, so it can never read a whole history. */
 export const SESSION_LOOKBACK_MS = 12 * 60 * 60_000;
-/** The most scraps one answer carries. */
-export const SESSION_SCRAP_LIMIT = 200;
+/**
+ * The most scraps one answer carries: well above what a busy hour of browsing
+ * collects, so it only guards against a runaway answer.
+ */
+export const SESSION_SCRAP_LIMIT = 2000;
 
 export interface SessionWindow {
   start: number;
