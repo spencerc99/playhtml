@@ -15,6 +15,7 @@
     "@playhtml/react": "workspace:*",
     "downshift": "^9.3.2",
     "p5": "^2.3.0",
+    "p5.brush": "^2.2.3",
     "perfect-freehand": "^1.2.3",
     "playhtml": "workspace:*",
     "profane-words": "^1.5.11",
