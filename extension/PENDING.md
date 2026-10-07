@@ -1,5 +1,6 @@
 # Unreleased
 
+- Partial typing legibility now keeps or hides whole words, and playback shows text as recorded.
 - Internet scraps opens faster with large collections while search and filters still find older scraps.
 - You can now hide scraps from sites you don't want to see in the scraps site filter.
 

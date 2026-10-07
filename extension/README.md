@@ -29,10 +29,13 @@ Cursor positions are normalized to 0-1 viewport coordinates. No screenshots or p
 
 ### Keyboard privacy
 
-Keyboard collection has two modes (configurable during setup):
+Keyboard legibility controls what text is stored, from 0 to 100%:
 
-- **Abstract** (default): All non-whitespace characters are replaced with solid blocks. Preserves typing cadence and rhythm without capturing what you typed.
-- **Full**: Actual text is captured, with automatic redaction of emails, phone numbers, and other PII patterns.
+- **0% (Cadence only)** replaces every non-whitespace character with a block.
+- **Partial** keeps approximately the selected percentage of whole words. Words are separated by whitespace; punctuation stays with its word.
+- **100% (Full text)** keeps text except recognized email, US phone number, and SSN patterns.
+
+Playback shows text as recorded. Changing legibility affects future recordings; it does not change stored events. Visible words can contain sensitive information that pattern filtering does not recognize. Choose Cadence only to hide all typed text, or turn keyboard collection off.
 
 ## How to use
 
