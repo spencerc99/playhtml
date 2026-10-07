@@ -61,6 +61,22 @@ describe("buildArchiveSources", () => {
     expect(marks[0].continuesBelow).toBe(false);
   });
 
+  it("keeps a visit that wraps far right to far left as two named outlines", () => {
+    const items = [
+      ...Array.from({ length: 4 }, (_, index) => scrap(index, "a.example")),
+      ...Array.from({ length: 3 }, (_, index) => scrap(index + 4, "b.example")),
+    ];
+    const marks = buildArchiveSources(items, archiveVisits(items), width, 0, 6, "pile");
+    const wrapped = marks.filter((mark) => mark.labelFor?.domain === "b.example");
+
+    expect(wrapped).toHaveLength(2);
+    expect(wrapped.map((mark) => [mark.continuesAbove, mark.continuesBelow])).toEqual([
+      [false, false],
+      [false, false],
+    ]);
+    expect(wrapped.map((mark) => mark.labelRepeats)).toEqual([false, true]);
+  });
+
   it("inks neighbouring visits differently", () => {
     const items = [scrap(0, "a.example"), scrap(1, "b.example"), scrap(2, "c.example")];
     const marks = buildArchiveSources(items, archiveVisits(items), width, 0, 2, "pile");

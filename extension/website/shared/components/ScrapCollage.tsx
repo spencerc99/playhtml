@@ -863,9 +863,19 @@ export interface ArchiveSourceMark {
   width: number;
   height: number;
   tint: string;
-  /** The visit's first scrap, on the stretch where the visit begins. */
+  /**
+   * The scrap a label names: the visit's first, where the visit begins, or the
+   * stretch's own first where a wrapped visit could not be joined to its row
+   * above and so needs naming again.
+   */
   labelFor: ScrapItem | null;
-  /** The visit carries on from the row above, or onto the row below. */
+  /** The label repeats a visit already named on an earlier row. */
+  labelRepeats: boolean;
+  /**
+   * The stretch joins the one on the row above, or below, edge to edge. Rows
+   * join only where they sit over each other; a visit that ends at the far
+   * right and resumes at the far left keeps two closed outlines instead.
+   */
   continuesAbove: boolean;
   continuesBelow: boolean;
 }
@@ -898,17 +908,35 @@ export function buildArchiveSources(
     const visit = visits[start];
     const begins = start === 0 || visits[start - 1] !== visit;
     const rowStart = row * columnCount;
-    const lastInRow = (row + 1) * columnCount - 1;
+    const lastInRow = rowStart + columnCount - 1;
+    let visitStart = start;
+    while (visitStart > 0 && visits[visitStart - 1] === visit) visitStart -= 1;
+    let visitEnd = end;
+    while (visitEnd + 1 < visits.length && visits[visitEnd + 1] === visit) {
+      visitEnd += 1;
+    }
+    // Columns this stretch spans, and those of its neighbours on the rows
+    // above and below, so rows join only where they overlap.
+    const fromColumn = start - rowStart;
+    const toColumn = end - rowStart;
+    const aboveFromColumn = Math.max(visitStart, rowStart - columnCount) - (rowStart - columnCount);
+    const belowToColumn = Math.min(visitEnd, lastInRow + columnCount) - (lastInRow + 1);
+    const continuesAbove =
+      start === rowStart && !begins && aboveFromColumn <= toColumn;
+    const continuesBelow =
+      end === lastInRow && visitEnd > end && fromColumn <= belowToColumn;
+    const labelRepeats = !begins && !continuesAbove;
     marks.push({
       key: `${visit}-${row}`,
-      x: (start % columnCount) * cellWidth,
+      x: fromColumn * cellWidth,
       y: row * cell.height,
       width: (end - start + 1) * cellWidth,
       height: cell.height,
       tint: SOURCE_TINTS[visit % SOURCE_TINTS.length],
-      labelFor: begins ? items[start] : null,
-      continuesAbove: start === rowStart && !begins,
-      continuesBelow: end === lastInRow && visits[end + 1] === visit,
+      labelFor: begins || labelRepeats ? items[start] : null,
+      labelRepeats,
+      continuesAbove,
+      continuesBelow,
     });
     start = end + 1;
   }
@@ -2739,8 +2767,9 @@ export function ScrapCollage({
                     <span className="scrap-collage__source-text">
                       <span className="scrap-collage__source-domain">
                         {mark.labelFor.domain}
-                      </span>{" "}
-                      · {formatVisitTime(mark.labelFor.ts)}
+                      </span>
+                      {!mark.labelRepeats &&
+                        ` · ${formatVisitTime(mark.labelFor.ts)}`}
                     </span>
                   </span>
                 )}
