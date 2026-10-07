@@ -75,6 +75,16 @@ import {
 } from '../features/slowMode/slowMode'
 import { initSlowModeInterception } from '../features/slowMode/slowModeBackground'
 import { isHostedCommuteUrl } from '../features/slowMode/slowModeHostedBridge'
+import {
+  ALLOW_LOCAL_SESSION_SCRAPS_PAGES,
+  isSessionScrapsPageUrl,
+} from '../features/sessionScraps/sessionScrapsBridge'
+import {
+  SESSION_LOOKBACK_MS,
+  selectSessionScraps,
+  type SessionScrapCandidate,
+  type SessionScrapsAnswer,
+} from '../features/sessionScraps/sessionScraps'
 
 function replyWithWikipediaHandle(
   request: Promise<string>,
@@ -141,6 +151,35 @@ export type ScrapRecord = ScrapRecordBase &
 
 const FEATURE_ACCESS_REFRESH_ALARM = 'refreshFeatureAccess'
 const IMAGE_COPY_BACKFILL_ALARM = 'copyScrapImages'
+
+/**
+ * Image scraps from the lookback window, newest first, narrowed to one
+ * browsing session for a hosted collage page.
+ */
+async function readSessionScraps(
+  since: number | undefined,
+  until: number | undefined,
+): Promise<SessionScrapsAnswer> {
+  const now = Date.now()
+  const floor = now - SESSION_LOOKBACK_MS
+  const candidates: SessionScrapCandidate[] = []
+  let cursor: { ts: number; id: string } | undefined
+  for (;;) {
+    const page = await store.queryEventPage('element', 500, cursor)
+    let reachedFloor = false
+    for (const event of page.events) {
+      if (event.ts < floor) {
+        reachedFloor = true
+        break
+      }
+      const scrap = toScrapRecord(event)
+      if (scrap?.kind === 'image') candidates.push(scrap)
+    }
+    if (reachedFloor || !page.nextCursor) break
+    cursor = page.nextCursor
+  }
+  return selectSessionScraps(candidates, { now, since, until })
+}
 
 function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
   const kind = (event.data as { kind?: unknown } | null)?.kind
@@ -771,6 +810,26 @@ export default defineBackground(() => {
         .catch((e) => {
           console.error('[Background] GET_SCRAPS error:', e)
           reply({ scraps: [], error: String(e) })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_SESSION_SCRAPS') {
+      if (
+        !sender.tab?.url ||
+        !isSessionScrapsPageUrl(sender.tab.url, ALLOW_LOCAL_SESSION_SCRAPS_PAGES)
+      ) {
+        reply(null)
+        return
+      }
+      readSessionScraps(
+        typeof message.since === 'number' ? message.since : undefined,
+        typeof message.until === 'number' ? message.until : undefined,
+      )
+        .then(reply)
+        .catch((e) => {
+          console.error('[Background] GET_SESSION_SCRAPS error:', e)
+          reply(null)
         })
       return true
     }
