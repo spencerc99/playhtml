@@ -63,6 +63,11 @@ export interface CollageRecord {
   /** Which named size the frame is, so the studio can name it back. */
   format: CollageFormatName;
   paper: CollagePaper;
+  /**
+   * What the back lists under each site. Absent on collages stored before the
+   * back could show page titles, which show their pieces as they always did.
+   */
+  backShows?: BackShows;
   pieces: CollagePiece[];
   /**
    * The baked picture of this collage, or an explicit note that it has not
@@ -71,6 +76,13 @@ export interface CollageRecord {
    * out loud rather than left as a missing field.
    */
   preview: CollagePreview;
+}
+
+/** What the back lists under each site: the pieces, or the titles of their pages. */
+export type BackShows = "pieces" | "titles";
+
+export function isBackShows(value: unknown): value is BackShows {
+  return value === "pieces" || value === "titles";
 }
 
 export type CollagePreview =
@@ -143,6 +155,7 @@ export function withFreshIds(record: CollageRecord): CollageRecord {
     frame: { ...record.frame },
     format: record.format,
     paper: { ...record.paper },
+    ...(record.backShows ? { backShows: record.backShows } : {}),
     pieces: record.pieces.map((piece) => ({
       ...piece,
       id: createPieceId(),
@@ -329,9 +342,19 @@ export function parseCollageRecord(value: unknown): CollageRecord {
     },
     format: readFormatName(record.format),
     paper: parsePaper(record.paper),
+    ...(record.backShows === undefined
+      ? {}
+      : { backShows: readBackShows(record.backShows) }),
     pieces: record.pieces.map(parseCollagePiece),
     preview,
   };
+}
+
+function readBackShows(value: unknown): BackShows {
+  if (!isBackShows(value)) {
+    throw new Error(`Collage record has an unknown back: ${String(value)}`);
+  }
+  return value;
 }
 
 function readFormatName(value: unknown): CollageFormatName {

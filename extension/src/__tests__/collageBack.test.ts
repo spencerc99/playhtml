@@ -1,297 +1,330 @@
-// ABOUTME: Tests the back of a collage: its layout math, its source lines, and its markup.
-// ABOUTME: Guards that the writing always fits the frame and that nothing on it is a link.
+// ABOUTME: Tests the back of a collage: its sites, its words, its layout math, and its markup.
+// ABOUTME: Guards that every site is accounted for, that nothing is cut off, and that nothing on it is a link.
 
 import { describe, expect, it } from "vitest";
+import type { ScrapItem } from "@movement/components/ScrapCollage";
 import {
-  SOURCE_HEADER,
-  SOURCE_LINE_HEIGHT,
-  SOURCE_TYPE_STEPS,
-  backDate,
-  backDetailLines,
+  BACK_COLUMN_MIN,
   BACK_LOOK,
+  BACK_PIECE_STEPS,
+  BACK_TITLE_LIMIT,
+  BACK_TITLE_STEPS,
+  backDate,
+  backDetail,
   backInk,
   backLayout,
+  backPageTitle,
+  backPieceWidth,
+  backSites,
+  backTitleSize,
   collageBackDocument,
   collageBackMarkup,
-  GROUP_BY_SITE_AFTER,
-  backList,
-  moreLine,
-  seenRange,
+  collectedRange,
   type BackFavicon,
+  type BackThumbnail,
   type CollageBackContent,
 } from "../entrypoints/scraps/collageBack";
-import type { CollageProvenance } from "../entrypoints/scraps/collageRecord";
+import type { CollagePiece } from "../entrypoints/scraps/collageRecord";
 import { COLLAGE_FORMATS } from "../entrypoints/scraps/collageFormats";
 
 const POSTCARD = COLLAGE_FORMATS.postcard;
+const TALL = COLLAGE_FORMATS["postcard-tall"];
+const SQUARE = COLLAGE_FORMATS.square;
+const WIDE = COLLAGE_FORMATS.wide;
 const PALE = { color: "#fffdf9", grain: true };
 const MARK = "data:image/png;base64,TUFSSw==";
-const TALL = COLLAGE_FORMATS["postcard-tall"];
+const DAY = 24 * 60 * 60 * 1000;
+const START = new Date(2026, 7, 17, 12).getTime();
 
-function source(index: number, overrides: Partial<CollageProvenance> = {}) {
+let made = 0;
+function piece(
+  domain: string,
+  overrides: { page?: string; ts?: number; width?: number; height?: number; favicon?: string } = {},
+): CollagePiece {
+  made += 1;
+  const page = overrides.page ?? "a";
   return {
-    pageUrl: `https://site${index}.test/page`,
-    domain: `site${index}.test`,
-    pageTitle: `Page number ${index}`,
-    firstSeenAt: Date.UTC(2026, 2, 3) + index * 60_000,
-    pieceCount: 1,
-    ...overrides,
-  } satisfies CollageProvenance;
+    id: `piece_${made}`,
+    scrapId: `scrap_${made}`,
+    scrap: {
+      id: `scrap_${made}`,
+      key: `image:${made}`,
+      kind: "image",
+      src: `https://${domain}/${made}.png`,
+      naturalWidth: 100,
+      naturalHeight: 80,
+      pageTitle: `A page on ${domain}`,
+      domain,
+      pageUrl: `https://${domain}/${page}`,
+      ts: overrides.ts ?? START,
+      ...(overrides.favicon ? { faviconUrl: overrides.favicon } : {}),
+    } as ScrapItem,
+    x: 0,
+    y: 0,
+    width: overrides.width ?? 100,
+    height: overrides.height ?? 80,
+    rotation: 0,
+    z: made,
+    crop: { x: 0, y: 0, width: 1, height: 1 },
+    flipX: false,
+    flipY: false,
+  };
+}
+
+function titled(domain: string, page: string, pageTitle: string, ts = START): CollagePiece {
+  const made = piece(domain, { page, ts });
+  return { ...made, scrap: { ...made.scrap, pageTitle } as ScrapItem };
+}
+
+/** A collage with the given number of pieces from each of a run of sites. */
+function sitesOf(counts: number[]): CollagePiece[] {
+  return counts.flatMap((count, index) =>
+    Array.from({ length: count }, (_, n) =>
+      piece(`site${index}.test`, { ts: START + index * DAY + n }),
+    ),
+  );
 }
 
 function content(
-  sources: CollageProvenance[],
+  pieces: CollagePiece[],
   overrides: Partial<CollageBackContent> = {},
 ): CollageBackContent {
   return {
     title: "a walk through march",
-    createdAt: Date.UTC(2026, 2, 3, 12),
-    changedAt: Date.UTC(2026, 2, 9, 12),
-    pieceCount: 7,
-    formatLabel: "postcard · 1500 × 1000",
-    sources,
+    createdAt: START + 30 * DAY,
+    changedAt: START + 34 * DAY,
+    pieces,
+    shows: "pieces",
     ...overrides,
   };
 }
 
-/** Lines one column of a layout can hold at the type size it chose. */
-function rowsAvailable(layout: ReturnType<typeof backLayout>): number {
-  return Math.floor(
-    (layout.sources.height - SOURCE_HEADER) / layout.lineHeight,
-  );
-}
-
-describe("backLayout", () => {
-  it("divides a landscape back left and right and a tall one top and bottom", () => {
-    const across = backLayout(POSTCARD, 3);
-    expect(across.orientation).toBe("across");
-    expect(across.rule.x1).toBe(across.rule.x2);
-    expect(across.sources.x + across.sources.width).toBeLessThan(across.rule.x1);
-    expect(across.details.x).toBeGreaterThan(across.rule.x1);
-
-    const down = backLayout(TALL, 3);
-    expect(down.orientation).toBe("down");
-    expect(down.rule.y1).toBe(down.rule.y2);
-    expect(down.details.y + down.details.height).toBeLessThan(down.rule.y1);
-    expect(down.sources.y).toBeGreaterThan(down.rule.y1);
+describe("backSites", () => {
+  it("gathers pieces by site and counts each site's pages", () => {
+    const sites = backSites([
+      piece("a.test", { page: "one" }),
+      piece("a.test", { page: "two" }),
+      piece("a.test", { page: "two" }),
+      piece("b.test"),
+    ]);
+    expect(sites.map((site) => site.domain)).toEqual(["a.test", "b.test"]);
+    expect(sites[0].pageCount).toBe(2);
+    expect(sites[0].pieces).toHaveLength(3);
+    expect(sites[1].pageCount).toBe(1);
   });
 
-  it("never writes smaller than 12 frame units", () => {
-    expect(Math.min(...SOURCE_TYPE_STEPS)).toBe(12);
-    for (let count = 0; count <= 200; count += 1) {
-      expect(backLayout(POSTCARD, count).fontSize).toBeGreaterThanOrEqual(12);
-    }
+  it("leads with the sites that gave the most pieces, then the one seen first", () => {
+    const sites = backSites([
+      piece("early.test", { ts: START }),
+      piece("busy.test", { ts: START + DAY }),
+      piece("busy.test", { ts: START + DAY }),
+      piece("late.test", { ts: START + 2 * DAY }),
+    ]);
+    expect(sites.map((site) => site.domain)).toEqual([
+      "busy.test",
+      "early.test",
+      "late.test",
+    ]);
   });
 
-  it("writes a short list at the largest type step", () => {
-    const layout = backLayout(POSTCARD, 1);
-    expect(layout.fontSize).toBe(SOURCE_TYPE_STEPS[0]);
-    expect(layout.columns).toBe(1);
-    expect(layout.shown).toBe(1);
-    expect(layout.more).toBe(0);
+  it("keeps each piece's placed shape and orders a site's pieces as collected", () => {
+    const later = piece("a.test", { ts: START + DAY, width: 300, height: 100 });
+    const earlier = piece("a.test", { ts: START, width: 50, height: 100 });
+    const [site] = backSites([later, earlier]);
+    expect(site.pieces.map((each) => each.id)).toEqual([earlier.id, later.id]);
+    expect(site.pieces.map((each) => each.aspect)).toEqual([0.5, 3]);
+    expect(site.firstSeenAt).toBe(START);
   });
 
-  it("steps the type down as the list grows, never getting larger", () => {
-    let previous = Infinity;
-    const seen = new Set<number>();
-    for (let count = 1; count <= 40; count += 1) {
-      const layout = backLayout(POSTCARD, count);
-      expect(layout.fontSize).toBeLessThanOrEqual(previous);
-      previous = layout.fontSize;
-      seen.add(layout.fontSize);
-    }
-    expect(seen.size).toBeGreaterThan(2);
+  it("marks a site with the first of its pages that stored a favicon", () => {
+    const [site] = backSites([
+      piece("a.test", { page: "bare", ts: START }),
+      piece("a.test", { page: "marked", ts: START + 1, favicon: "https://a.test/icon.png" }),
+    ]);
+    expect(site.faviconPage).toBe("https://a.test/marked");
+    const [bare] = backSites([piece("b.test", { page: "only" })]);
+    expect(bare.faviconPage).toBe("https://b.test/only");
   });
 
-  it("keeps every line inside the frame for any count", () => {
-    for (const format of Object.values(COLLAGE_FORMATS)) {
-      for (let count = 0; count <= 200; count += 1) {
-        const layout = backLayout(format, count);
-        const lines = layout.shown + (layout.more > 0 ? 1 : 0);
-        expect(lines).toBeLessThanOrEqual(layout.rows * layout.columns);
-        expect(layout.rows).toBeLessThanOrEqual(rowsAvailable(layout));
-        const listBottom =
-          layout.sources.y + SOURCE_HEADER + layout.rows * layout.lineHeight;
-        expect(listBottom).toBeLessThanOrEqual(format.height);
-        expect(layout.shown + layout.more).toBe(count);
-      }
-    }
+  it("refuses a piece with no area", () => {
+    expect(() => backSites([piece("a.test", { width: 0 })])).toThrow();
+  });
+});
+
+describe("page titles on the back", () => {
+  it("drops the site's own name from either end of a title", () => {
+    expect(backPageTitle("rod stock | McMaster-Carr", "mcmaster.com")).toBe("rod stock");
+    expect(backPageTitle("SerenityOS - Wikipedia", "en.wikipedia.org")).toBe("SerenityOS");
+    expect(backPageTitle("Amazon.com : blue painters tape", "amazon.com")).toBe("blue painters tape");
+    expect(backPageTitle("Home / X", "x.com")).toBe("Home");
   });
 
-  it("continues in a second column at the smallest step once one column is full", () => {
-    const smallest = SOURCE_TYPE_STEPS[SOURCE_TYPE_STEPS.length - 1];
-    const oneColumn = Math.floor(
-      (backLayout(POSTCARD, 0).sources.height - SOURCE_HEADER) /
-        (smallest * SOURCE_LINE_HEIGHT),
-    );
-    const full = backLayout(POSTCARD, oneColumn);
-    expect(full.columns).toBe(1);
-    expect(full.fontSize).toBe(smallest);
-
-    const spilling = backLayout(POSTCARD, oneColumn + 1);
-    expect(spilling.columns).toBe(2);
-    expect(spilling.fontSize).toBe(smallest);
-    expect(spilling.shown).toBe(oneColumn + 1);
-    expect(spilling.more).toBe(0);
+  it("leaves a title that only names the site empty", () => {
+    expect(backPageTitle("Pinterest", "pinterest.com")).toBe("");
+    expect(backPageTitle("1Shows", "1shows.org")).toBe("");
   });
 
-  it("folds what cannot fit into a closing line of its own", () => {
-    const capacity = backLayout(POSTCARD, 0);
-    const smallest = SOURCE_TYPE_STEPS[SOURCE_TYPE_STEPS.length - 1];
-    const rows = Math.floor(
-      (capacity.sources.height - SOURCE_HEADER) /
-        (smallest * SOURCE_LINE_HEIGHT),
-    );
-    const exactlyFull = backLayout(POSTCARD, rows * 2);
-    expect(exactlyFull.more).toBe(0);
-
-    const over = backLayout(POSTCARD, rows * 2 + 5);
-    expect(over.columns).toBe(2);
-    expect(over.shown).toBe(rows * 2 - 1);
-    expect(over.more).toBe(6);
+  it("keeps titles that merely contain a short site name", () => {
+    expect(backPageTitle("Linux on the desktop", "x.com")).toBe("Linux on the desktop");
+    expect(backPageTitle("Ladybird funded : r/linux", "reddit.com")).toBe("Ladybird funded : r/linux");
+    expect(
+      backPageTitle("Thunderbird Is Thriving: Our 2022 Financial Report", "blog.thunderbird.net"),
+    ).toBe("Thunderbird Is Thriving: Our 2022 Financial Report");
+    expect(backPageTitle("Amazon.com", "amazon.com")).toBe("");
   });
 
-  it("refuses a count that is not a whole number of pages", () => {
-    expect(() => backLayout(POSTCARD, -1)).toThrow();
-    expect(() => backLayout(POSTCARD, 1.5)).toThrow();
+  it("lists a site's pages once each, sharing a title counted together, untitled pages left out", () => {
+    const [site] = backSites([
+      titled("mcmaster.com", "a", "rod stock | McMaster-Carr"),
+      titled("mcmaster.com", "b", "rod stock | McMaster-Carr", START + 1),
+      titled("mcmaster.com", "c", "round head screws | McMaster-Carr", START + 2),
+      titled("mcmaster.com", "d", "McMaster-Carr", START + 3),
+    ]);
+    expect(site.pageCount).toBe(4);
+    expect(site.pages).toEqual([
+      { title: "rod stock", pieceCount: 2 },
+      { title: "round head screws", pieceCount: 1 },
+    ]);
   });
 });
 
 describe("the words on the back", () => {
-  it("lists each page with its title and when it was first seen while the list is short", () => {
-    const sources = [
-      source(1, { pieceCount: 3, pageTitle: "  A long read  " }),
-      source(2, { domain: "site1.test" }),
+  it("writes dates as two-digit month, day and year", () => {
+    expect(backDate(new Date(2026, 8, 9, 15).getTime())).toBe("09/09/26");
+    expect(backDate(new Date(2031, 11, 25).getTime())).toBe("12/25/31");
+  });
+
+  it("gives the collected pieces one span, or one date when they share a day", () => {
+    expect(collectedRange([])).toBeNull();
+    expect(collectedRange([piece("a.test"), piece("b.test", { ts: START + 1000 })])).toBe(
+      "08/17/26",
+    );
+    expect(collectedRange([piece("a.test"), piece("b.test", { ts: START + 3 * DAY })])).toBe(
+      "08/17/26-08/20/26",
+    );
+  });
+
+  it("says when it was made, changed and collected, and how much it holds", () => {
+    const pieces = [
+      piece("a.test", { page: "one" }),
+      piece("a.test", { page: "two", ts: START + DAY }),
+      piece("b.test", { ts: START + 2 * DAY }),
     ];
-    const list = backList(sources);
-    expect(list.bySite).toBe(false);
-    expect(list.siteCount).toBe(1);
-    expect(list.lines).toEqual([
-      {
-        faviconPage: sources[0].pageUrl,
-        domain: "site1.test",
-        title: "A long read",
-        meta: `first seen ${backDate(sources[0].firstSeenAt)} · 3 pieces`,
-      },
-      {
-        faviconPage: sources[1].pageUrl,
-        domain: "site1.test",
-        title: "Page number 2",
-        meta: `first seen ${backDate(sources[1].firstSeenAt)} · 1 piece`,
-      },
-    ]);
-    expect(backList(Array.from({ length: GROUP_BY_SITE_AFTER }, (_, i) => source(i))).bySite).toBe(false);
-  });
-
-  it("gathers a long list by site, most pieces first, then by name", () => {
-    const sources: CollageProvenance[] = [];
-    // Nine pages from one shop, twelve pieces between them.
-    for (let page = 0; page < 9; page += 1) {
-      sources.push(
-        source(100 + page, {
-          domain: "homedepot.com",
-          pageUrl: `https://homedepot.com/p/${page}`,
-          pieceCount: page < 3 ? 2 : 1,
-        }),
-      );
-    }
-    sources.push(
-      source(200, { domain: "zeta.test", pageTitle: "Only page", pieceCount: 2 }),
-      source(201, { domain: "alpha.test", pageTitle: "Alpha", pieceCount: 2 }),
-      source(202, { domain: "beta.test", pageTitle: "Beta" }),
-      source(203, {
-        domain: "gamma.test",
-        pageUrl: "https://gamma.test/a",
-        faviconUrl: undefined,
-      }),
-      source(204, {
-        domain: "gamma.test",
-        pageUrl: "https://gamma.test/b",
-        faviconUrl: "https://gamma.test/icon.png",
-      }),
-      source(205, { domain: "delta.test", pageTitle: "Delta" }),
+    expect(backDetail(content(pieces))).toBe(
+      "made 09/16/26 · changed 09/20/26 · collected 08/17/26-08/19/26 · 3 pieces from 3 pages on 2 sites",
     );
-    expect(sources.length).toBeGreaterThan(GROUP_BY_SITE_AFTER);
-
-    const list = backList(sources);
-    expect(list.bySite).toBe(true);
-    expect(list.siteCount).toBe(6);
-    expect(list.lines.map((line) => line.domain)).toEqual([
-      "homedepot.com",
-      "alpha.test",
-      "gamma.test",
-      "zeta.test",
-      "beta.test",
-      "delta.test",
-    ]);
-    const [shop, alpha, gamma] = list.lines;
-    expect(shop).toMatchObject({ title: "", meta: "12 pieces · 9 pages" });
-    expect(alpha).toMatchObject({ title: "Alpha", meta: "2 pieces" });
-    // A site of several pages names none of them, and borrows its mark from
-    // whichever page stored one.
-    expect(gamma).toMatchObject({
-      title: "",
-      meta: "2 pieces · 2 pages",
-      faviconPage: "https://gamma.test/b",
-    });
-    expect(list.lines.some((line) => line.meta.includes("first seen"))).toBe(
-      false,
-    );
-  });
-
-  it("gives the whole collage one span of first-seen dates", () => {
-    expect(seenRange([])).toBeNull();
-    const day = Date.UTC(2026, 7, 20, 12);
-    expect(seenRange([source(1, { firstSeenAt: day })])).toBe(backDate(day));
-    const later = Date.UTC(2026, 8, 22, 12);
-    const range = seenRange([
-      source(1, { firstSeenAt: later }),
-      source(2, { firstSeenAt: day }),
-    ]);
-    expect(range?.endsWith(` to ${backDate(later)}`)).toBe(true);
-    expect(range?.startsWith(backDate(day))).toBe(false);
-    const lastYear = Date.UTC(2025, 11, 30, 12);
-    expect(
-      seenRange([
-        source(1, { firstSeenAt: lastYear }),
-        source(2, { firstSeenAt: later }),
-      ]),
-    ).toBe(`${backDate(lastYear)} to ${backDate(later)}`);
-    expect(
-      backDetailLines(
-        content([source(1, { firstSeenAt: day }), source(2, { firstSeenAt: later })]),
-      ),
-    ).toContain(`pieces first seen ${range}`);
-  });
-
-  it("dates the collage, counts its pieces, and names its format", () => {
-    expect(backDetailLines(content([]))).toEqual([
-      `made ${backDate(Date.UTC(2026, 2, 3, 12))}`,
-      `changed ${backDate(Date.UTC(2026, 2, 9, 12))}`,
-      "7 pieces",
-      "postcard · 1500 × 1000",
-    ]);
   });
 
   it("leaves out the changed date before a save or on the day it was made", () => {
+    expect(backDetail(content([piece("a.test")], { changedAt: null }))).not.toContain("changed");
     expect(
-      backDetailLines(content([], { changedAt: null })).some((line) =>
-        line.startsWith("changed"),
-      ),
-    ).toBe(false);
-    const madeAt = Date.UTC(2026, 2, 3, 12);
-    expect(
-      backDetailLines(
-        content([], { createdAt: madeAt, changedAt: madeAt + 60_000 }),
-      ).some((line) => line.startsWith("changed")),
-    ).toBe(false);
+      backDetail(content([piece("a.test")], { changedAt: START + 30 * DAY + 1000 })),
+    ).not.toContain("changed");
   });
 
-  it("says how many more pages or sites there are", () => {
-    expect(moreLine(1, false)).toBe("and 1 more page");
-    expect(moreLine(12, false)).toBe("and 12 more pages");
-    expect(moreLine(1, true)).toBe("and 1 more site");
-    expect(moreLine(7, true)).toBe("and 7 more sites");
+  it("says when nothing has been placed yet", () => {
+    expect(backDetail(content([], { changedAt: null }))).toBe(
+      "made 09/16/26 · nothing placed yet",
+    );
+  });
+
+  it("steps a long title down in size rather than cutting it", () => {
+    expect(backTitleSize("construction")).toBe(40);
+    expect(backTitleSize("x".repeat(45))).toBe(32);
+    expect(backTitleSize("x".repeat(90))).toBe(26);
+  });
+});
+
+describe("backLayout", () => {
+  const detail = "made 09/16/26 · collected 08/17/26-08/20/26 · 35 pieces from 16 pages on 9 sites";
+
+  it("splits each format into as many columns of the minimum width as fit", () => {
+    const sites = backSites(sitesOf([3, 2]));
+    expect(backLayout(POSTCARD, "t", detail, sites, "pieces").columns).toBe(3);
+    expect(backLayout(WIDE, "t", detail, sites, "pieces").columns).toBe(3);
+    expect(backLayout(SQUARE, "t", detail, sites, "pieces").columns).toBe(2);
+    expect(backLayout(TALL, "t", detail, sites, "pieces").columns).toBe(2);
+    for (const format of [POSTCARD, WIDE, SQUARE, TALL]) {
+      expect(backLayout(format, "t", detail, sites, "pieces").columnWidth).toBeGreaterThanOrEqual(
+        BACK_COLUMN_MIN,
+      );
+    }
+  });
+
+  it("shows a small collage's pieces at the largest size", () => {
+    const layout = backLayout(TALL, "t", detail, backSites(sitesOf([2, 1])), "pieces");
+    expect(layout.itemSize).toBe(BACK_PIECE_STEPS[0]);
+    expect(layout.rest).toHaveLength(0);
+    expect(layout.rows.every((row) => row.kept === row.site.pieces.length)).toBe(true);
+  });
+
+  it("shows pieces smaller as the collage grows, never larger", () => {
+    let previous: number = BACK_PIECE_STEPS[0];
+    for (const sites of [2, 6, 12, 20, 30]) {
+      const layout = backLayout(
+        POSTCARD,
+        "t",
+        detail,
+        backSites(sitesOf(Array.from({ length: sites }, () => 3))),
+        "pieces",
+      );
+      expect(layout.itemSize).toBeLessThanOrEqual(previous);
+      previous = layout.itemSize;
+    }
+  });
+
+  it("caps a site's pieces and counts the rest, rather than letting a row run on", () => {
+    const layout = backLayout(POSTCARD, "t", detail, backSites(sitesOf([60])), "pieces");
+    const [row] = layout.rows;
+    expect(row.kept).toBeGreaterThan(0);
+    expect(row.kept).toBeLessThan(60);
+  });
+
+  it("accounts for every site, naming the ones without a row in the strip", () => {
+    const sites = backSites(sitesOf(Array.from({ length: 80 }, () => 2)));
+    const layout = backLayout(WIDE, "t", detail, sites, "pieces");
+    expect(layout.rows.length + layout.rest.length).toBe(80);
+    expect(layout.rest.length).toBeGreaterThan(0);
+    expect(layout.itemSize).toBe(BACK_PIECE_STEPS[BACK_PIECE_STEPS.length - 1]);
+    // The strip lists the rest in the same order: most pieces first.
+    expect([...layout.rows.map((row) => row.site), ...layout.rest]).toEqual(sites);
+  });
+
+  it("drops the names from the strip once naming every site would run long", () => {
+    const few = backLayout(WIDE, "t", detail, backSites(sitesOf(Array.from({ length: 24 }, () => 2))), "pieces");
+    const many = backLayout(WIDE, "t", detail, backSites(sitesOf(Array.from({ length: 200 }, () => 1))), "pieces");
+    expect(many.rest.length).toBeGreaterThan(few.rest.length);
+    expect(many.restNamed).toBe(false);
+  });
+
+  it("gives a long title less room for the list", () => {
+    const sites = backSites(sitesOf(Array.from({ length: 30 }, () => 2)));
+    const short = backLayout(WIDE, "shed", detail, sites, "pieces");
+    const long = backLayout(WIDE, "everything from the week we started building the shed, plus a few buttons i liked", detail, sites, "pieces");
+    expect(long.rows.length).toBeLessThanOrEqual(short.rows.length);
+  });
+
+  it("writes titles at the larger size when they fit, and caps how many each site lists", () => {
+    const pieces = Array.from({ length: 6 }, (_, n) =>
+      titled("shop.test", `p${n}`, `product number ${n}`, START + n),
+    );
+    const layout = backLayout(POSTCARD, "t", detail, backSites(pieces), "titles");
+    expect(layout.itemSize).toBe(BACK_TITLE_STEPS[0]);
+    expect(layout.rows[0].kept).toBe(BACK_TITLE_LIMIT);
+  });
+
+  it("accounts for every site when titles overflow too", () => {
+    const pieces = Array.from({ length: 90 }, (_, n) =>
+      titled(`site${n}.test`, "a", `a fairly long page title about thing number ${n}`, START + n),
+    );
+    const layout = backLayout(WIDE, "t", detail, backSites(pieces), "titles");
+    expect(layout.rows.length + layout.rest.length).toBe(90);
+    expect(layout.rest.length).toBeGreaterThan(0);
+  });
+
+  it("never draws a piece wider than its column", () => {
+    expect(backPieceWidth(96, 10, 352)).toBe(352);
+    expect(backPieceWidth(48, 1.5, 352)).toBe(72);
   });
 });
 
@@ -312,6 +345,7 @@ describe("backInk", () => {
 
 describe("collageBackMarkup", () => {
   const noFavicons = new Map<string, BackFavicon>();
+  const noThumbnails = new Map<string, BackThumbnail>();
 
   function parse(markup: string): Document {
     const document = new DOMParser().parseFromString(
@@ -322,117 +356,148 @@ describe("collageBackMarkup", () => {
     return document;
   }
 
-  it("writes one line per source page, in order, and no links", () => {
-    const sources = [source(1), source(2, { pieceCount: 4 }), source(3)];
-    const markup = collageBackMarkup({
+  function markup(
+    pieces: CollagePiece[],
+    overrides: Partial<Parameters<typeof collageBackMarkup>[0]> = {},
+  ): string {
+    return collageBackMarkup({
       frame: POSTCARD,
-      content: content(sources),
+      content: content(pieces),
       paper: PALE,
       bleed: null,
       markIcon: MARK,
       look: BACK_LOOK,
       favicons: noFavicons,
+      thumbnails: noThumbnails,
+      ...overrides,
     });
-    const document = parse(markup);
-    const lines = [...document.querySelectorAll(".collage-back__source")];
-    expect(lines).toHaveLength(3);
-    lines.forEach((line, index) => {
-      expect(line.querySelector(".collage-back__domain")?.textContent).toBe(
-        sources[index].domain,
-      );
-      expect(line.querySelector(".collage-back__page")?.textContent).toBe(
-        sources[index].pageTitle,
-      );
-    });
+  }
+
+  it("writes one row per site, most pieces first, and no links", () => {
+    const html = markup([piece("one.test"), piece("two.test"), piece("two.test")]);
+    const document = parse(html);
+    const domains = [...document.querySelectorAll(".collage-back__site .collage-back__domain")].map(
+      (node) => node.textContent?.replace(/​/g, ""),
+    );
+    expect(domains).toEqual(["two.test", "one.test"]);
+    expect(document.querySelector(".collage-back__seen")?.textContent).toBe(
+      "08/17/26 · 1 page · 2 pieces",
+    );
     expect(document.querySelectorAll("a")).toHaveLength(0);
-    expect(markup).not.toMatch(/href=/);
+    expect(html).not.toMatch(/href=/);
   });
 
-  it("escapes page text so stored titles cannot become markup", () => {
-    const markup = collageBackMarkup({
-      frame: POSTCARD,
-      content: content(
-        [source(1, { pageTitle: `<img src=x onerror="alert(1)"> & "more"` })],
-        { title: "<script>" },
-      ),
-      paper: PALE,
-      bleed: null,
-      markIcon: MARK,
-      look: BACK_LOOK,
-      favicons: noFavicons,
-    });
-    const document = parse(markup);
-    expect(document.querySelectorAll("script")).toHaveLength(0);
-    expect(
-      document.querySelectorAll(".collage-back__sources img, .collage-back__title *"),
-    ).toHaveLength(0);
-    expect(document.querySelector(".collage-back__page")?.textContent).toBe(
-      `<img src=x onerror="alert(1)"> & "more"`,
-    );
-    expect(document.querySelector(".collage-back__title")?.textContent).toBe(
-      "<script>",
+  it("lets a long domain wrap only at its dots", () => {
+    const document = parse(markup([piece("blog.thunderbird.net")]));
+    expect(document.querySelector(".collage-back__domain")?.textContent).toBe(
+      "blog.​thunderbird.​net",
     );
   });
 
-  it("ends a list too long for the frame with how many more pages there are", () => {
-    const sources = Array.from({ length: 150 }, (_, index) => source(index));
-    const layout = backLayout(POSTCARD, backList(sources).lines.length);
+  it("escapes stored text so it cannot become markup", () => {
     const document = parse(
-      collageBackMarkup({
-        frame: POSTCARD,
-        content: content(sources),
-        paper: PALE,
-      bleed: null,
-      markIcon: MARK,
-      look: BACK_LOOK,
-        favicons: noFavicons,
+      markup([piece(`<img src=x onerror="alert(1)">.test`)], {
+        content: content([piece(`<b>"&".test`)], { title: "<script>" }),
       }),
     );
-    expect(document.querySelectorAll(".collage-back__source")).toHaveLength(
-      layout.shown,
+    expect(document.querySelectorAll("script, b")).toHaveLength(0);
+    expect(document.querySelector(".collage-back__title")?.textContent).toBe("<script>");
+    expect(document.querySelector(".collage-back__domain")?.textContent).toContain(`<b>"&"`);
+  });
+
+  it("draws each piece once drawn, an outline when it would not load, and a faint box while it draws", () => {
+    const pieces = [piece("a.test"), piece("a.test"), piece("a.test")];
+    const document = parse(
+      markup(pieces, {
+        thumbnails: new Map<string, BackThumbnail>([
+          [pieces[0].id, { data: "data:image/webp;base64,AAAA" }],
+          [pieces[1].id, "missing"],
+        ]),
+      }),
     );
-    expect(document.querySelector(".collage-back__more")?.textContent).toBe(
-      moreLine(layout.more, true),
+    const shown = [...document.querySelectorAll(".collage-back__piece")];
+    expect(shown).toHaveLength(3);
+    expect(shown[0].tagName.toLowerCase()).toBe("img");
+    expect(shown[0].getAttribute("src")).toBe("data:image/webp;base64,AAAA");
+    expect(shown[1].classList.contains("collage-back__piece--missing")).toBe(true);
+    expect(shown[2].classList.contains("collage-back__piece--pending")).toBe(true);
+  });
+
+  it("counts the pieces a site has no room to show", () => {
+    const document = parse(markup(sitesOf([60])));
+    const shown = document.querySelectorAll(".collage-back__piece").length;
+    expect(shown).toBeLessThan(60);
+    expect(document.querySelector(".collage-back__extra")?.textContent).toBe(`+${60 - shown}`);
+  });
+
+  it("names the sites without a row of their own under the list", () => {
+    const pieces = sitesOf(Array.from({ length: 80 }, () => 2));
+    const layout = backLayout(
+      WIDE,
+      "a walk through march",
+      backDetail(content(pieces)),
+      backSites(pieces),
+      "pieces",
     );
+    const document = parse(markup(pieces, { frame: WIDE }));
+    expect(document.querySelectorAll(".collage-back__site")).toHaveLength(layout.rows.length);
+    const strip = document.querySelector(".collage-back__rest");
+    expect(strip?.textContent).toContain(`also from ${layout.rest.length} sites`);
+    expect(strip?.querySelectorAll(".collage-back__also")).toHaveLength(layout.rest.length);
+  });
+
+  it("lists page titles with their piece counts instead of pieces when asked", () => {
+    const pieces = [
+      ...Array.from({ length: 5 }, (_, n) =>
+        titled("mcmaster.com", `p${n}`, `part ${n} | McMaster-Carr`, START + n),
+      ),
+      titled("pinterest.com", "board", "Pinterest", START + 10),
+    ];
+    const document = parse(markup(pieces, { content: content(pieces, { shows: "titles" }) }));
+    expect(document.querySelectorAll(".collage-back__piece")).toHaveLength(0);
+    const titles = [...document.querySelectorAll(".collage-back__page")].map((node) => node.textContent);
+    expect(titles).toEqual(["part 0 \u00b7 1", "part 1 \u00b7 1", "part 2 \u00b7 1"]);
+    expect(document.querySelector(".collage-back__extra")?.textContent).toBe("+2 more pages");
+    // A site whose only title is its own name lists nothing under it.
+    const sites = [...document.querySelectorAll(".collage-back__site")];
+    expect(sites[1].querySelector(".collage-back__pages")).toBeNull();
+  });
+
+  it("escapes page titles", () => {
+    const pieces = [titled("a.test", "x", `<img src=x onerror="alert(1)">`)];
+    const document = parse(markup(pieces, { content: content(pieces, { shows: "titles" }) }));
+    expect(document.querySelectorAll(".collage-back__page img")).toHaveLength(0);
+    expect(document.querySelector(".collage-back__page")?.textContent).toContain(`<img src=x`);
+  });
+
+  it("leaves the strip out when every site has a row", () => {
+    expect(parse(markup([piece("a.test")])).querySelector(".collage-back__rest")).toBeNull();
   });
 
   it("draws a fetched favicon, an empty ring for a missing one, and a gap while one loads", () => {
-    const sources = [source(1), source(2), source(3)];
-    const favicons = new Map<string, BackFavicon>([
-      [sources[0].pageUrl, { data: "data:image/png;base64,AAAA" }],
-      [sources[1].pageUrl, "missing"],
-    ]);
+    const pieces = [
+      piece("one.test", { ts: START }),
+      piece("two.test", { ts: START + 1 }),
+      piece("three.test", { ts: START + 2 }),
+    ];
     const document = parse(
-      collageBackMarkup({
-        frame: POSTCARD,
-        content: content(sources),
-        paper: PALE,
-      bleed: null,
-      markIcon: MARK,
-      look: BACK_LOOK,
-        favicons,
+      markup(pieces, {
+        favicons: new Map<string, BackFavicon>([
+          [pieces[0].scrap.pageUrl, { data: "data:image/png;base64,AAAA" }],
+          [pieces[1].scrap.pageUrl, "missing"],
+        ]),
       }),
     );
-    const marks = [...document.querySelectorAll(".collage-back__mark")];
+    const marks = [...document.querySelectorAll(".collage-back__site .collage-back__favicon")];
     expect(marks[0].tagName.toLowerCase()).toBe("img");
     expect(marks[0].getAttribute("src")).toBe("data:image/png;base64,AAAA");
-    expect(marks[1].classList.contains("collage-back__mark--none")).toBe(true);
+    expect(marks[1].classList.contains("collage-back__favicon--none")).toBe(true);
     expect(marks[2].tagName.toLowerCase()).toBe("span");
-    expect(marks[2].classList.contains("collage-back__mark--none")).toBe(false);
+    expect(marks[2].classList.contains("collage-back__favicon--none")).toBe(false);
   });
 
   it("lays the front through the paper mirrored and faint, and only when there is one", () => {
-    const withFront = parse(
-      collageBackMarkup({
-        frame: POSTCARD,
-        paper: PALE,
-        content: content([source(1)]),
-        favicons: noFavicons,
-        bleed: "data:image/jpeg;base64,RlJPTlQ=",
-        markIcon: MARK,
-        look: BACK_LOOK,
-      }),
-    );
+    const withFront = parse(markup([piece("a.test")], { bleed: "data:image/jpeg;base64,RlJPTlQ=" }));
     const bleed = withFront.querySelector(".collage-back__bleed");
     expect(bleed?.getAttribute("src")).toBe("data:image/jpeg;base64,RlJPTlQ=");
     const declared = bleed?.getAttribute("style") ?? "";
@@ -442,53 +507,25 @@ describe("collageBackMarkup", () => {
     expect(declared).toContain("mix-blend-mode:multiply");
 
     const onDark = parse(
-      collageBackMarkup({
-        frame: POSTCARD,
+      markup([piece("a.test")], {
         paper: { color: "#2b2724", grain: false },
-        content: content([source(1)]),
-        favicons: noFavicons,
         bleed: "data:image/jpeg;base64,RlJPTlQ=",
-        markIcon: MARK,
-        look: BACK_LOOK,
       }),
     );
     // The paper color stays on the front; the back is always the plain card.
-    expect(
-      onDark.querySelector(".collage-back__bleed")?.getAttribute("style"),
-    ).toContain("mix-blend-mode:multiply");
-    expect(
-      onDark.querySelector(".collage-back__paper")?.getAttribute("style"),
-    ).toContain(BACK_LOOK.cardColor);
-
-    const withoutFront = parse(
-      collageBackMarkup({
-        frame: POSTCARD,
-        paper: PALE,
-        content: content([]),
-        favicons: noFavicons,
-        bleed: null,
-        markIcon: MARK,
-        look: BACK_LOOK,
-      }),
+    expect(onDark.querySelector(".collage-back__bleed")?.getAttribute("style")).toContain(
+      "mix-blend-mode:multiply",
     );
-    expect(withoutFront.querySelector(".collage-back__bleed")).toBeNull();
+    expect(onDark.querySelector(".collage-back__paper")?.getAttribute("style")).toContain(
+      BACK_LOOK.cardColor,
+    );
+
+    expect(parse(markup([])).querySelector(".collage-back__bleed")).toBeNull();
   });
 
-  it("presses the maker's mark into the title side, each half faint on its own", () => {
-    const document = parse(
-      collageBackMarkup({
-        frame: POSTCARD,
-        paper: PALE,
-        content: content([source(1)]),
-        favicons: noFavicons,
-        bleed: null,
-        markIcon: MARK,
-        look: BACK_LOOK,
-      }),
-    );
-    const maker = document.querySelector(
-      ".collage-back__details .collage-back__maker",
-    );
+  it("presses the maker's mark into the paper, each half faint on its own", () => {
+    const document = parse(markup([piece("a.test")]));
+    const maker = document.querySelector(".collage-back__maker");
     expect(maker).not.toBeNull();
     const icon = maker?.querySelector("img");
     expect(icon?.getAttribute("src")).toBe(MARK);
@@ -502,19 +539,17 @@ describe("collageBackMarkup", () => {
 
   it("names an untitled collage as untitled", () => {
     const document = parse(
-      collageBackMarkup({
-        frame: TALL,
-        content: content([], { title: "   " }),
-        paper: PALE,
-      bleed: null,
-      markIcon: MARK,
-      look: BACK_LOOK,
-        favicons: noFavicons,
-      }),
+      markup([], { frame: TALL, content: content([], { title: "   " }) }),
     );
     expect(document.querySelector(".collage-back__title")?.textContent).toBe(
       "untitled collage",
     );
+  });
+
+  it("never cuts its words off with an ellipsis", () => {
+    const html = markup(sitesOf(Array.from({ length: 40 }, () => 3)));
+    expect(html).not.toContain("ellipsis");
+    expect(html).not.toContain("…");
   });
 });
 

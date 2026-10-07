@@ -54,7 +54,11 @@ import {
   type DrawerPreference,
 } from "../drawerPreference";
 import { CollageBakeError, bakeCollage } from "../bakeCollage";
-import { bakeCollageBack, resolveBackFavicons } from "../bakeCollageBack";
+import {
+  bakeCollageBack,
+  resolveBackFavicons,
+  resolveBackThumbnails,
+} from "../bakeCollageBack";
 import { BACK_LOOK, type CollageBackContent } from "../collageBack";
 import { videoExportSupport } from "../imageAnimation";
 import { useCollageAnimates } from "../useCollageAnimates";
@@ -619,11 +623,11 @@ export default function TldrawCollageStudio({
       title,
       createdAt: createdAtRef.current,
       changedAt: editing?.updatedAt ?? null,
-      pieceCount: pieces.length,
-      formatLabel: `${frame.label} · ${frame.width} × ${frame.height}`,
-      sources: collageProvenance(normalizeStack(pieces)),
+      pieces: normalizeStack(pieces),
+      // This editor does not turn over, so the back stays as the collage last chose.
+      shows: editing?.backShows ?? "pieces",
     }),
-    [editing, frame, pieces, title],
+    [editing, pieces, title],
   );
 
   const saveFile = (file: Blob, name: string) => {
@@ -655,7 +659,8 @@ export default function TldrawCollageStudio({
         paper,
         content: backContent,
         front,
-        favicons: await resolveBackFavicons(backContent.sources),
+        favicons: await resolveBackFavicons(collageProvenance(backContent.pieces)),
+        thumbnails: await resolveBackThumbnails(backContent.pieces),
         look: BACK_LOOK,
       });
       saveFile(front, `${name} front.png`);
