@@ -7,12 +7,12 @@ import {
   PlayerIdentity,
   Cursor,
   type PresenceServerMessage,
-  MAX_PRESENCE_PAGE_LENGTH,
   PROXIMITY_THRESHOLD,
   CursorEvents,
   type User,
 } from "@playhtml/common";
 import { SpatialGrid } from "./spatial-grid";
+import { getPresencePage } from "./presence-page";
 import type { CursorOptions, CursorZoneOptions } from "..";
 import { selectAllColors, type UsersAPI } from "../users";
 import { CursorChat } from "./chat";
@@ -346,10 +346,6 @@ function extractUrlFromCursorStyle(cursorStyle: string): string | undefined {
   return cursorStyle.slice(5, closeQuote);
 }
 
-export function getPresencePage(): string | undefined {
-  const page = window.location.pathname;
-  return page.length <= MAX_PRESENCE_PAGE_LENGTH ? page : undefined;
-}
 
 function isSafeCursorImageUrl(pointer: string): boolean {
   if (
@@ -1919,7 +1915,7 @@ export class CursorClientAwareness {
     // Update options object
     Object.assign(this.options, options);
 
-    if (options.shouldRenderCursor !== undefined) {
+    if ("shouldRenderCursor" in options) {
       for (const [stableId, presence] of this.activeCursorPresenceEntries()) {
         this.updateCursor(stableId, presence);
       }

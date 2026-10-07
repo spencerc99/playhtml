@@ -2,11 +2,27 @@
 // ABOUTME: Warm paper chrome that stays quiet behind the collaged material.
 
 export const COLLAGE_STUDIO_STYLES = `
+  /* The collage studio's palette: WWO's linen nudged a hair cooler. Every
+     surface, rule and ink in the studio and the history reads from these. */
+  .collage-studio,
+  .collage-history {
+    --c-ground: #f6f5f1;
+    --c-surface: #efede7;
+    --c-frame: #fdfcfa;
+    --c-mat: #e6e3dc;
+    --c-ink: #3a3734;
+    --c-muted: #86807a;
+    --c-accent: #4a9a8a;
+    --c-accent-ink: #2f6b60;
+    --c-rule: #dcd8cf;
+  }
+
   .collage-studio {
     position: absolute;
     inset: 0;
     display: flex;
-    color: #3d3833;
+    background: var(--c-ground);
+    color: var(--c-ink);
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
   }
 
@@ -15,7 +31,7 @@ export const COLLAGE_STUDIO_STYLES = `
     font-size: 9px;
     letter-spacing: 0.06em;
     text-transform: lowercase;
-    color: #827a72;
+    color: var(--c-muted);
   }
 
   .collage-tray {
@@ -24,9 +40,12 @@ export const COLLAGE_STUDIO_STYLES = `
     display: flex;
     flex-direction: column;
     min-height: 0;
+    margin: 10px 0 10px 10px;
     padding: 10px 8px 8px;
     gap: 6px;
-    border-right: 1px solid rgba(61, 56, 51, 0.12);
+    background: var(--c-surface);
+    border: 1px solid var(--c-rule);
+    border-radius: 2px;
   }
 
   .collage-tray__count {
@@ -37,7 +56,7 @@ export const COLLAGE_STUDIO_STYLES = `
     padding: 0;
     border: 0;
     background: transparent;
-    color: #33796d;
+    color: var(--c-accent-ink);
     font: inherit;
     letter-spacing: inherit;
     text-decoration: underline;
@@ -46,35 +65,9 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-tray__reset:focus-visible {
-    outline: 2px solid rgba(74, 154, 138, 0.45);
+    outline: 2px solid color-mix(in srgb, var(--c-accent) 45%, transparent);
     outline-offset: 2px;
     border-radius: 2px;
-  }
-
-  .collage-tray__sizes {
-    display: flex;
-    flex: 0 0 auto;
-    gap: 2px;
-  }
-
-  .collage-tray__size {
-    width: 17px;
-    height: 17px;
-    padding: 0;
-    border: 1px solid rgba(61, 56, 51, 0.18);
-    border-radius: 3px;
-    background: transparent;
-    color: #827a72;
-    font-family: "Martian Mono", monospace;
-    font-size: 8px;
-    text-transform: uppercase;
-    cursor: pointer;
-  }
-
-  .collage-tray__size--on {
-    border-color: rgba(74, 154, 138, 0.7);
-    background: rgba(74, 154, 138, 0.12);
-    color: #2f6b60;
   }
 
   .collage-tray__tuck {
@@ -85,10 +78,10 @@ export const COLLAGE_STUDIO_STYLES = `
     width: 28px;
     height: 28px;
     padding: 0;
-    border: 1px solid rgba(61, 56, 51, 0.18);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 18%, transparent);
     border-radius: 999px;
     background: transparent;
-    color: #827a72;
+    color: var(--c-muted);
     font-family: "Martian Mono", monospace;
     font-size: 12px;
     line-height: 1;
@@ -97,22 +90,22 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-tray__tuck:hover {
-    border-color: rgba(61, 56, 51, 0.38);
-    color: #3d3833;
+    border-color: color-mix(in srgb, var(--c-ink) 38%, transparent);
+    color: var(--c-ink);
   }
 
   .collage-tray__tuck:focus-visible {
     outline: none;
-    border-color: #4a9a8a;
-    box-shadow: 0 0 0 3px rgba(74, 154, 138, 0.16);
+    border-color: var(--c-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 16%, transparent);
   }
 
   .collage-tray__rail {
     flex: 0 0 auto;
-    border: 1px solid rgba(61, 56, 51, 0.18);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 18%, transparent);
     border-radius: 3px;
     background: transparent;
-    color: #827a72;
+    color: var(--c-muted);
     font-family: "Martian Mono", monospace;
     font-size: 10px;
     line-height: 1;
@@ -145,7 +138,7 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-tray__grip:hover {
-    background: rgba(74, 154, 138, 0.25);
+    background: color-mix(in srgb, var(--c-accent) 25%, transparent);
   }
 
   .collage-tray__scroll {
@@ -172,8 +165,8 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-tray__slot:hover,
   .collage-tray__slot:focus-visible {
-    border-color: rgba(61, 56, 51, 0.28);
-    background: rgba(61, 56, 51, 0.05);
+    border-color: color-mix(in srgb, var(--c-ink) 28%, transparent);
+    background: color-mix(in srgb, var(--c-ink) 5%, transparent);
     outline: none;
   }
 
@@ -194,19 +187,19 @@ export const COLLAGE_STUDIO_STYLES = `
    * out to be see-through. Everything else sits on the paper.
    */
   .collage-tray__thumb--checker {
-    background-color: #f3efe8;
+    background-color: var(--c-surface);
     background-image:
-      linear-gradient(45deg, rgba(61, 56, 51, 0.07) 25%, transparent 25%),
-      linear-gradient(-45deg, rgba(61, 56, 51, 0.07) 25%, transparent 25%),
-      linear-gradient(45deg, transparent 75%, rgba(61, 56, 51, 0.07) 75%),
-      linear-gradient(-45deg, transparent 75%, rgba(61, 56, 51, 0.07) 75%);
+      linear-gradient(45deg, color-mix(in srgb, var(--c-ink) 7%, transparent) 25%, transparent 25%),
+      linear-gradient(-45deg, color-mix(in srgb, var(--c-ink) 7%, transparent) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, color-mix(in srgb, var(--c-ink) 7%, transparent) 75%),
+      linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--c-ink) 7%, transparent) 75%);
     background-size: 12px 12px;
     background-position: 0 0, 0 6px, 6px -6px, -6px 0;
   }
 
   /* A small thing gets a plain box so it is legible without being blown up. */
   .collage-tray__thumb--small {
-    border: 1px solid rgba(61, 56, 51, 0.16);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 16%, transparent);
   }
 
   /*
@@ -215,7 +208,7 @@ export const COLLAGE_STUDIO_STYLES = `
    * drawer even though it is really there.
    */
   .collage-tray__thumb--paper {
-    border: 1px solid rgba(61, 56, 51, 0.1);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 10%, transparent);
   }
 
   /*
@@ -315,10 +308,10 @@ export const COLLAGE_STUDIO_STYLES = `
     gap: 2px;
     padding: 3px 4px;
     transform-origin: left top;
-    border: 1px solid rgba(61, 56, 51, 0.2);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 20%, transparent);
     border-radius: 4px;
-    background: #f5f0e8;
-    box-shadow: 0 4px 14px rgba(61, 56, 51, 0.18);
+    background: var(--c-surface);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--c-ink) 18%, transparent);
     /* Only the buttons take the pointer; the gaps belong to the frame. */
     pointer-events: none;
   }
@@ -331,7 +324,7 @@ export const COLLAGE_STUDIO_STYLES = `
     width: 1px;
     height: 15px;
     margin: 0 3px;
-    background: rgba(61, 56, 51, 0.2);
+    background: color-mix(in srgb, var(--c-ink) 20%, transparent);
   }
 
   /* Undo, redo and the shortcut list, in the stage's top-left corner. */
@@ -350,7 +343,7 @@ export const COLLAGE_STUDIO_STYLES = `
     padding: 4px 2px;
     border: none;
     background: none;
-    color: #827a72;
+    color: var(--c-muted);
     font-family: "Martian Mono", monospace;
     font-size: 10px;
     letter-spacing: 0.02em;
@@ -359,7 +352,7 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-leave:hover,
   .collage-leave:focus-visible {
-    color: #3d3833;
+    color: var(--c-ink);
   }
 
   .collage-tools {
@@ -367,9 +360,9 @@ export const COLLAGE_STUDIO_STYLES = `
     align-items: center;
     gap: 2px;
     padding: 3px 4px;
-    border: 1px solid rgba(61, 56, 51, 0.16);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 16%, transparent);
     border-radius: 4px;
-    background: rgba(245, 240, 232, 0.94);
+    background: color-mix(in srgb, var(--c-surface) 94%, transparent);
   }
 
   .collage-glyph {
@@ -382,24 +375,24 @@ export const COLLAGE_STUDIO_STYLES = `
     border: 1px solid transparent;
     border-radius: 3px;
     background: transparent;
-    color: #3d3833;
+    color: var(--c-ink);
     cursor: pointer;
   }
 
   .collage-glyph:hover:not(:disabled) {
-    border-color: rgba(61, 56, 51, 0.24);
-    background: rgba(61, 56, 51, 0.07);
+    border-color: color-mix(in srgb, var(--c-ink) 24%, transparent);
+    background: color-mix(in srgb, var(--c-ink) 7%, transparent);
   }
 
   .collage-glyph:disabled {
-    color: rgba(130, 122, 114, 0.45);
+    color: color-mix(in srgb, var(--c-muted) 45%, transparent);
     cursor: default;
   }
 
   .collage-glyph--on {
-    border-color: rgba(74, 154, 138, 0.7);
-    background: rgba(74, 154, 138, 0.12);
-    color: #2f6b60;
+    border-color: color-mix(in srgb, var(--c-accent) 70%, transparent);
+    background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+    color: var(--c-accent-ink);
   }
 
   .collage-glyph--danger:hover:not(:disabled) {
@@ -410,17 +403,10 @@ export const COLLAGE_STUDIO_STYLES = `
 
   /* The document's own settings, opposite the studio tools. */
   .collage-format {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    z-index: 10001;
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px 6px;
-    border: 1px solid rgba(61, 56, 51, 0.16);
-    border-radius: 4px;
-    background: rgba(245, 240, 232, 0.94);
+    gap: 6px;
   }
 
   .collage-paper-button {
@@ -432,24 +418,24 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-paper-button__swatch {
     width: 10px;
     height: 10px;
-    border: 1px solid rgba(61, 56, 51, 0.35);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 35%, transparent);
     border-radius: 2px;
   }
 
   .collage-paper-popover {
     position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
+    bottom: calc(100% + 8px);
+    left: 0;
     z-index: 10002;
     display: flex;
     flex-direction: column;
     gap: 5px;
     width: 232px;
     padding: 9px 10px;
-    border: 1px solid rgba(61, 56, 51, 0.2);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 20%, transparent);
     border-radius: 4px;
-    background: #f5f0e8;
-    box-shadow: 0 10px 28px rgba(61, 56, 51, 0.2);
+    background: var(--c-surface);
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--c-ink) 20%, transparent);
   }
 
   .collage-paper-popover p.collage-studio__label {
@@ -467,18 +453,57 @@ export const COLLAGE_STUDIO_STYLES = `
     width: 18px;
     height: 18px;
     padding: 0;
-    border: 1px solid rgba(61, 56, 51, 0.28);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 28%, transparent);
     border-radius: 3px;
     cursor: pointer;
   }
 
   .collage-swatch--on {
-    outline: 1px solid #2f6b60;
+    outline: 1px solid var(--c-accent-ink);
     outline-offset: 1px;
   }
 
-  .collage-swatch--custom {
-    background: transparent;
+  /* The custom color: a rainbow swatch, so it reads as a picker. */
+  .collage-color-picker {
+    position: relative;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    background: linear-gradient(
+      135deg,
+      #e94b4b,
+      #f0b03c,
+      #e7e046,
+      #5cc96b,
+      #4bb8e9,
+      #6a6ae9,
+      #c45ce0
+    );
+  }
+
+  .collage-color-picker:focus-within {
+    outline: 1px solid var(--c-accent-ink);
+    outline-offset: 1px;
+  }
+
+  .collage-color-picker__chosen {
+    width: 8px;
+    height: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 2px;
+  }
+
+  /* The real input covers the swatch so a click anywhere opens the picker. */
+  .collage-color-picker input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    cursor: pointer;
   }
 
   /* The paper's grain, beside the tones it lies over. */
@@ -491,7 +516,7 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-grain input {
-    accent-color: #4a9a8a;
+    accent-color: var(--c-accent);
     margin: 0;
   }
 
@@ -515,6 +540,7 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-frame-area {
     position: relative;
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -560,7 +586,7 @@ export const COLLAGE_STUDIO_STYLES = `
   /* The frame's paper comes from the record, so the studio shows what bakes. */
   .collage-frame {
     position: relative;
-    box-shadow: 0 10px 34px rgba(61, 56, 51, 0.16);
+    box-shadow: 0 10px 34px color-mix(in srgb, var(--c-ink) 16%, transparent);
     touch-action: none;
     backface-visibility: hidden;
   }
@@ -577,7 +603,7 @@ export const COLLAGE_STUDIO_STYLES = `
     position: absolute;
     inset: 0;
     overflow: hidden;
-    box-shadow: 0 10px 34px rgba(61, 56, 51, 0.16);
+    box-shadow: 0 10px 34px color-mix(in srgb, var(--c-ink) 16%, transparent);
     backface-visibility: hidden;
     transform: rotateY(180deg);
     user-select: text;
@@ -647,11 +673,11 @@ export const COLLAGE_STUDIO_STYLES = `
     position: absolute;
     inset: 0;
     pointer-events: none;
-    box-shadow: inset 0 0 0 1px rgba(61, 56, 51, 0.16);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-ink) 16%, transparent);
   }
 
   .collage-frame--drop-target {
-    box-shadow: 0 10px 34px rgba(61, 56, 51, 0.16), inset 0 0 0 2px rgba(74, 154, 138, 0.5);
+    box-shadow: 0 10px 34px color-mix(in srgb, var(--c-ink) 16%, transparent), inset 0 0 0 2px color-mix(in srgb, var(--c-accent) 50%, transparent);
   }
 
   .collage-piece {
@@ -730,7 +756,7 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-selection-edge {
     position: absolute;
     inset: 0;
-    box-shadow: inset 0 0 0 calc(2px / var(--collage-zoom)) #4a9a8a;
+    box-shadow: inset 0 0 0 calc(2px / var(--collage-zoom)) var(--c-accent);
     pointer-events: none;
   }
 
@@ -739,9 +765,9 @@ export const COLLAGE_STUDIO_STYLES = `
     width: 13px;
     height: 13px;
     margin: -7px 0 0 -7px;
-    border: 2px solid #4a9a8a;
+    border: 2px solid var(--c-accent);
     border-radius: 2px;
-    background: #fffdf9;
+    background: var(--c-frame);
     padding: 0;
     cursor: grab;
   }
@@ -783,13 +809,13 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-crop__shade {
     position: absolute;
     inset: 0;
-    background: rgba(61, 56, 51, 0.62);
+    background: color-mix(in srgb, var(--c-ink) 62%, transparent);
     pointer-events: none;
   }
 
   .collage-crop__kept {
     position: absolute;
-    box-shadow: 0 0 0 1px #fffdf9;
+    box-shadow: 0 0 0 1px var(--c-frame);
     cursor: move;
   }
 
@@ -817,10 +843,10 @@ export const COLLAGE_STUDIO_STYLES = `
     padding: 2px 6px;
     z-index: 10002;
     transform-origin: center bottom;
-    border: 1px solid rgba(61, 56, 51, 0.2);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 20%, transparent);
     border-radius: 3px;
-    background: #f5f0e8;
-    color: #3d3833;
+    background: var(--c-surface);
+    color: var(--c-ink);
     font-family: "Martian Mono", monospace;
     font-size: 9px;
     letter-spacing: 0.04em;
@@ -833,7 +859,7 @@ export const COLLAGE_STUDIO_STYLES = `
     position: absolute;
     z-index: 9998;
     border-style: solid;
-    border-color: rgba(61, 56, 51, 0.32);
+    border-color: color-mix(in srgb, var(--c-ink) 32%, transparent);
     transform-origin: center;
     pointer-events: none;
   }
@@ -844,7 +870,7 @@ export const COLLAGE_STUDIO_STYLES = `
     position: absolute;
     z-index: 9999;
     border-style: solid;
-    border-color: rgba(74, 154, 138, 0.85);
+    border-color: color-mix(in srgb, var(--c-accent) 85%, transparent);
     transform-origin: center;
     pointer-events: none;
   }
@@ -854,8 +880,8 @@ export const COLLAGE_STUDIO_STYLES = `
     position: absolute;
     z-index: 10003;
     border-style: solid;
-    border-color: #4a9a8a;
-    background: rgba(74, 154, 138, 0.08);
+    border-color: var(--c-accent);
+    background: color-mix(in srgb, var(--c-accent) 8%, transparent);
     pointer-events: none;
   }
 
@@ -872,10 +898,10 @@ export const COLLAGE_STUDIO_STYLES = `
     overflow-y: auto;
     padding: 5px;
     transform-origin: left top;
-    border: 1px solid rgba(61, 56, 51, 0.2);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 20%, transparent);
     border-radius: 4px;
-    background: #f5f0e8;
-    box-shadow: 0 10px 28px rgba(61, 56, 51, 0.22);
+    background: var(--c-surface);
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--c-ink) 22%, transparent);
   }
 
   .collage-here__head {
@@ -929,13 +955,13 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-here__row:hover {
-    border-color: rgba(61, 56, 51, 0.2);
-    background: rgba(61, 56, 51, 0.06);
+    border-color: color-mix(in srgb, var(--c-ink) 20%, transparent);
+    background: color-mix(in srgb, var(--c-ink) 6%, transparent);
   }
 
   .collage-here__row--on {
-    border-color: rgba(74, 154, 138, 0.7);
-    background: rgba(74, 154, 138, 0.1);
+    border-color: color-mix(in srgb, var(--c-accent) 70%, transparent);
+    background: color-mix(in srgb, var(--c-accent) 10%, transparent);
   }
 
   .collage-here__thumb {
@@ -947,9 +973,9 @@ export const COLLAGE_STUDIO_STYLES = `
     width: 30px;
     height: 30px;
     overflow: hidden;
-    border: 1px solid rgba(61, 56, 51, 0.16);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 16%, transparent);
     border-radius: 2px;
-    background: #fffdf9;
+    background: var(--c-frame);
   }
 
   .collage-here__thumb > * {
@@ -977,14 +1003,14 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-here__kind {
-    color: #3d3833;
+    color: var(--c-ink);
   }
 
   .collage-here__where {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #827a72;
+    color: var(--c-muted);
   }
 
   /* The peeked piece's own edge, so its label has something to belong to. */
@@ -994,7 +1020,7 @@ export const COLLAGE_STUDIO_STYLES = `
     position: absolute;
     z-index: 10004;
     border-style: dotted;
-    border-color: var(--peek-tint, #827a72);
+    border-color: var(--peek-tint, var(--c-muted));
     transform-origin: center;
     pointer-events: none;
   }
@@ -1013,12 +1039,12 @@ export const COLLAGE_STUDIO_STYLES = `
     max-width: 230px;
     padding: 2px 5px;
     transform-origin: left top;
-    border: 1px solid var(--peek-tint, rgba(61, 56, 51, 0.5));
+    border: 1px solid var(--peek-tint, color-mix(in srgb, var(--c-ink) 50%, transparent));
     border-left-width: 3px;
     border-radius: 2px;
-    background: #f5f0e8;
-    color: #3d3833;
-    box-shadow: 0 2px 8px rgba(61, 56, 51, 0.18);
+    background: var(--c-surface);
+    color: var(--c-ink);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--c-ink) 18%, transparent);
     font-family: "Martian Mono", monospace;
     font-size: 8px;
     line-height: 1.5;
@@ -1053,8 +1079,8 @@ export const COLLAGE_STUDIO_STYLES = `
     display: flex;
     flex-direction: column;
     padding-top: 1px;
-    border-top: 1px solid rgba(61, 56, 51, 0.14);
-    color: #827a72;
+    border-top: 1px solid color-mix(in srgb, var(--c-ink) 14%, transparent);
+    color: var(--c-muted);
   }
 
   .collage-peek__line {
@@ -1071,7 +1097,7 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Martian Mono", monospace;
     font-size: 9px;
     letter-spacing: 0.03em;
-    color: #827a72;
+    color: var(--c-muted);
     white-space: nowrap;
   }
 
@@ -1089,16 +1115,16 @@ export const COLLAGE_STUDIO_STYLES = `
     gap: 6px;
     padding: 4px 6px 4px 8px;
     transform-origin: left top;
-    border: 1px solid rgba(61, 56, 51, 0.2);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 20%, transparent);
     border-radius: 4px;
-    background: #f5f0e8;
-    box-shadow: 0 4px 14px rgba(61, 56, 51, 0.18);
+    background: var(--c-surface);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--c-ink) 18%, transparent);
     white-space: nowrap;
   }
 
   .collage-tolerance input {
     width: 96px;
-    accent-color: #4a9a8a;
+    accent-color: var(--c-accent);
   }
 
   .collage-tolerance__button {
@@ -1108,12 +1134,12 @@ export const COLLAGE_STUDIO_STYLES = `
     background: transparent;
     font-family: "Martian Mono", monospace;
     font-size: 9px;
-    color: #3d3833;
+    color: var(--c-ink);
     cursor: pointer;
   }
 
   .collage-tolerance__button:hover {
-    border-color: rgba(61, 56, 51, 0.2);
+    border-color: color-mix(in srgb, var(--c-ink) 20%, transparent);
   }
 
   .collage-tolerance__button:disabled {
@@ -1126,8 +1152,8 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-tolerance__button--done {
-    border-color: rgba(74, 154, 138, 0.5);
-    color: #2f6f62;
+    border-color: color-mix(in srgb, var(--c-accent) 50%, transparent);
+    color: var(--c-accent-ink);
   }
 
   .collage-piece__cut {
@@ -1145,8 +1171,8 @@ export const COLLAGE_STUDIO_STYLES = `
     inset: 0;
     background: repeating-linear-gradient(
       45deg,
-      rgba(61, 56, 51, 0.06),
-      rgba(61, 56, 51, 0.06) 4px,
+      color-mix(in srgb, var(--c-ink) 6%, transparent),
+      color-mix(in srgb, var(--c-ink) 6%, transparent) 4px,
       transparent 4px,
       transparent 8px
     );
@@ -1168,10 +1194,10 @@ export const COLLAGE_STUDIO_STYLES = `
     max-height: calc(100% - 32px);
     overflow-y: auto;
     padding: 10px 12px;
-    border: 1px solid rgba(61, 56, 51, 0.2);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 20%, transparent);
     border-radius: 4px;
-    background: #f5f0e8;
-    box-shadow: 0 10px 28px rgba(61, 56, 51, 0.2);
+    background: var(--c-surface);
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--c-ink) 20%, transparent);
   }
 
   .collage-keys__head {
@@ -1184,7 +1210,7 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-keys__close {
     border: none;
     background: transparent;
-    color: #827a72;
+    color: var(--c-muted);
     font-size: 15px;
     line-height: 1;
     cursor: pointer;
@@ -1200,7 +1226,7 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Martian Mono", monospace;
     font-size: 8px;
     letter-spacing: 0.08em;
-    color: #827a72;
+    color: var(--c-muted);
   }
 
   .collage-keys__row {
@@ -1218,11 +1244,11 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Martian Mono", monospace;
     font-size: 8px;
     letter-spacing: 0.02em;
-    color: #3d3833;
+    color: var(--c-ink);
   }
 
   .collage-keys__what {
-    color: #827a72;
+    color: var(--c-muted);
   }
 
   .collage-bar {
@@ -1231,7 +1257,7 @@ export const COLLAGE_STUDIO_STYLES = `
     align-items: center;
     gap: 8px;
     padding: 8px 14px;
-    border-top: 1px solid rgba(61, 56, 51, 0.12);
+    border-top: 3px double var(--c-rule);
   }
 
   .collage-bar__spacer {
@@ -1239,13 +1265,13 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-title-input {
-    flex: 0 1 260px;
+    flex: 0 1 300px;
     min-width: 120px;
-    padding: 4px 6px;
+    padding: 2px 0;
     border: none;
-    border-bottom: 1px solid rgba(61, 56, 51, 0.28);
+    border-bottom: 1px dotted var(--c-muted);
     background: transparent;
-    color: #3d3833;
+    color: var(--c-ink);
     font-family: "Lora", Georgia, serif;
     font-size: 15px;
   }
@@ -1260,19 +1286,19 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-title-input:focus {
     outline: none;
-    border-bottom-color: rgba(74, 154, 138, 0.8);
+    border-bottom-color: color-mix(in srgb, var(--c-accent) 80%, transparent);
   }
 
   .collage-title-input::placeholder {
-    color: rgba(130, 122, 114, 0.7);
+    color: color-mix(in srgb, var(--c-muted) 70%, transparent);
   }
 
   .collage-action {
     padding: 4px 9px;
-    border: 1px solid rgba(61, 56, 51, 0.22);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 22%, transparent);
     border-radius: 3px;
     background: transparent;
-    color: #3d3833;
+    color: var(--c-ink);
     font-family: "Martian Mono", monospace;
     font-size: 9px;
     letter-spacing: 0.04em;
@@ -1280,18 +1306,18 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-action:hover:not(:disabled) {
-    background: rgba(61, 56, 51, 0.07);
+    background: color-mix(in srgb, var(--c-ink) 7%, transparent);
   }
 
   .collage-action:disabled {
-    color: rgba(130, 122, 114, 0.6);
-    border-color: rgba(61, 56, 51, 0.12);
+    color: color-mix(in srgb, var(--c-muted) 60%, transparent);
+    border-color: color-mix(in srgb, var(--c-ink) 12%, transparent);
     cursor: default;
   }
 
   .collage-action--primary {
-    border-color: rgba(74, 154, 138, 0.7);
-    color: #2f6b60;
+    border-color: color-mix(in srgb, var(--c-accent) 70%, transparent);
+    color: var(--c-accent-ink);
   }
 
   .collage-action--danger:hover:not(:disabled) {
@@ -1311,18 +1337,47 @@ export const COLLAGE_STUDIO_STYLES = `
     letter-spacing: 0.02em;
   }
 
+  .collage-editor-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .collage-editor-switch .collage-studio__label {
+    margin-right: 3px;
+  }
+
+  .collage-editor-switch .collage-chip:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  /* Why the regular editor opened when the tldraw one was chosen. */
+  .collage-engine-notice {
+    position: absolute;
+    left: 50%;
+    bottom: 52px;
+    z-index: 10002;
+    margin: 0;
+    transform: translateX(-50%);
+    border: 1px solid rgba(61, 56, 51, 0.12);
+    border-radius: 4px;
+    pointer-events: none;
+  }
+
   .collage-notice--quiet {
-    border-top-color: rgba(61, 56, 51, 0.12);
-    background: rgba(74, 154, 138, 0.08);
-    color: #2f6b60;
+    border-top-color: color-mix(in srgb, var(--c-ink) 12%, transparent);
+    background: color-mix(in srgb, var(--c-accent) 8%, transparent);
+    color: var(--c-accent-ink);
   }
 
   .collage-history {
+    background: var(--c-ground);
     position: absolute;
     inset: 0;
     overflow-y: auto;
     padding: 18px 22px 40px;
-    color: #3d3833;
+    color: var(--c-ink);
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
   }
 
@@ -1349,7 +1404,7 @@ export const COLLAGE_STUDIO_STYLES = `
     width: 46px;
     height: 38px;
     transform: rotate(-6deg);
-    filter: drop-shadow(0 2px 3px rgba(61, 56, 51, 0.22));
+    filter: drop-shadow(0 2px 3px color-mix(in srgb, var(--c-ink) 22%, transparent));
   }
 
   .collage-history__scrap-paper {
@@ -1377,7 +1432,7 @@ export const COLLAGE_STUDIO_STYLES = `
     font-size: 26px;
     font-weight: 600;
     line-height: 1.15;
-    color: #3d3833;
+    color: var(--c-ink);
   }
 
   .collage-history__summary {
@@ -1385,7 +1440,7 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Martian Mono", monospace;
     font-size: 10px;
     letter-spacing: 0.02em;
-    color: #827a72;
+    color: var(--c-muted);
   }
 
   .collage-history__start {
@@ -1402,19 +1457,19 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Martian Mono", monospace;
     font-size: 10px;
     font-weight: 400;
-    color: #827a72;
+    color: var(--c-muted);
     cursor: pointer;
   }
 
   .collage-history__import:hover {
-    color: #3d3833;
+    color: var(--c-ink);
     text-decoration: underline;
     text-underline-offset: 2px;
   }
 
   .collage-history__import:focus-visible {
-    color: #3d3833;
-    outline: 2px solid rgba(74, 154, 138, 0.45);
+    color: var(--c-ink);
+    outline: 2px solid color-mix(in srgb, var(--c-accent) 45%, transparent);
     outline-offset: 2px;
     border-radius: 2px;
   }
@@ -1424,7 +1479,7 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Lora", Georgia, serif;
     font-size: 11px;
     font-style: italic;
-    color: #827a72;
+    color: var(--c-muted);
   }
 
   .collage-history__grid {
@@ -1438,17 +1493,17 @@ export const COLLAGE_STUDIO_STYLES = `
     flex-direction: column;
     gap: 6px;
     padding: 9px;
-    border: 1px solid rgba(61, 56, 51, 0.14);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 14%, transparent);
     border-radius: 3px;
-    background: #fffdf9;
-    box-shadow: 0 4px 14px rgba(61, 56, 51, 0.08);
+    background: var(--c-frame);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--c-ink) 8%, transparent);
     transition: box-shadow 140ms ease, border-color 140ms ease;
   }
 
   .collage-card:hover,
   .collage-card:focus-within {
-    border-color: rgba(61, 56, 51, 0.26);
-    box-shadow: 0 6px 18px rgba(61, 56, 51, 0.13);
+    border-color: color-mix(in srgb, var(--c-ink) 26%, transparent);
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--c-ink) 13%, transparent);
   }
 
   /* The whole card face is one button that opens the collage. */
@@ -1468,7 +1523,7 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-card__open:focus-visible {
-    outline: 2px solid rgba(74, 154, 138, 0.8);
+    outline: 2px solid color-mix(in srgb, var(--c-accent) 80%, transparent);
     outline-offset: 3px;
   }
 
@@ -1486,7 +1541,7 @@ export const COLLAGE_STUDIO_STYLES = `
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    border: 1px dashed rgba(61, 56, 51, 0.2);
+    border: 1px dashed color-mix(in srgb, var(--c-ink) 20%, transparent);
   }
 
   .collage-card__title {
@@ -1503,7 +1558,7 @@ export const COLLAGE_STUDIO_STYLES = `
     font-size: 9px;
     line-height: 1.7;
     letter-spacing: 0.02em;
-    color: #827a72;
+    color: var(--c-muted);
   }
 
   /* The card's tools: a quiet row of the studio's glyphs, clearer on hover
@@ -1514,7 +1569,7 @@ export const COLLAGE_STUDIO_STYLES = `
     align-items: center;
     gap: 4px;
     min-height: 26px;
-    color: #827a72;
+    color: var(--c-muted);
     opacity: 0.7;
     transition: opacity 140ms ease;
   }
@@ -1530,5 +1585,129 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-card__actions-gap {
     flex: 1 1 auto;
+  }
+
+  /* The mat: a board the frame is mounted on, with the collage's caption
+     written along its bottom edge. Its size is set in pixels from the zoom,
+     so the caption stays one size however the frame is fitted. */
+  .collage-mat {
+    position: relative;
+    flex: none;
+    background: var(--c-mat);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, #fff 70%, transparent) inset,
+      0 0 0 1px var(--c-rule),
+      0 10px 24px color-mix(in srgb, var(--c-ink) 8%, transparent);
+  }
+  .collage-mat__window {
+    position: absolute;
+  }
+  .collage-mat .collage-sheet {
+    transform-origin: 0 0;
+  }
+  .collage-mat .collage-frame {
+    box-shadow:
+      inset 1px 1px 0 color-mix(in srgb, var(--c-ink) 14%, transparent),
+      0 0 0 1px color-mix(in srgb, #fff 80%, transparent);
+  }
+  .collage-mat__caption {
+    position: absolute;
+    bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 24px;
+  }
+
+  /* Views sit at the top-right: the back, and where the pieces came from. */
+  .collage-views {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--c-rule);
+    border-radius: 4px;
+    background: var(--c-surface);
+  }
+  .collage-view {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--c-ink);
+    font-family: "Martian Mono", monospace;
+    font-size: 9.5px;
+    cursor: pointer;
+  }
+  .collage-view:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--c-ink) 24%, transparent);
+    background: color-mix(in srgb, var(--c-ink) 7%, transparent);
+  }
+  .collage-view:disabled {
+    color: color-mix(in srgb, var(--c-muted) 55%, transparent);
+    cursor: default;
+  }
+  .collage-view--on {
+    border-color: color-mix(in srgb, var(--c-accent) 70%, transparent);
+    background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+    color: var(--c-accent-ink);
+  }
+  .collage-view:focus-visible,
+  .collage-setting:focus-visible,
+  .collage-keys-button:focus-visible {
+    outline: 2px solid var(--c-accent);
+    outline-offset: 1px;
+  }
+
+  /* Size and paper, quiet in the bottom bar. */
+  .collage-setting {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 8px;
+    border: 1px solid var(--c-rule);
+    border-radius: 3px;
+    background: var(--c-frame);
+    color: var(--c-ink);
+    font-family: "Martian Mono", monospace;
+    font-size: 9.5px;
+    cursor: pointer;
+  }
+  .collage-setting:hover,
+  .collage-setting--open {
+    border-color: var(--c-muted);
+  }
+  .collage-setting__caret {
+    color: var(--c-muted);
+    font-size: 8px;
+  }
+
+  .collage-keys-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--c-ink);
+    font-family: "Martian Mono", monospace;
+    font-size: 9.5px;
+    cursor: pointer;
+  }
+  .collage-keys-button:hover,
+  .collage-keys-button--on {
+    border-color: var(--c-rule);
+    background: var(--c-surface);
   }
 `;

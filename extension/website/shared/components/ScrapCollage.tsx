@@ -10,10 +10,18 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  backingFor,
+  hasOwnFill,
+  inkNeedsBacking,
+  lightIconInk,
+} from "../utils/scrapLegibility";
+import {
   ANY_TIME,
+  isAnyTime,
   ScrapFilters,
   scrapPassesFilters,
   type ScrapKindFilter,
+  type ScrapShapeFilter,
   type ScrapWhenFilter,
 } from "./ScrapFilters";
 import type { FilterChip } from "../utils/eventUtils";
@@ -111,26 +119,25 @@ interface ScrapCollageProps {
   targetCount?: number;
   perDomainCap?: number;
   showKindFilter?: boolean;
+  /** Which view the collage opens in; the drifting tide unless told otherwise. */
+  initialView?: ScrapView;
+  /**
+   * Permanently removes these scraps. When given, the examine view offers to
+   * delete a scrap and the controls offer to delete whatever the filters show.
+   */
+  onDeleteScraps?: (items: ScrapItem[]) => Promise<void>;
 }
 
-type ScrapView = "drift" | "archive";
-type ScrapDisplay = "pile" | "grid";
-const DISPLAY_STORAGE_KEY = "scraps-display";
+export type ScrapView = "drift" | "archive";
+export type ScrapDisplay = "pile" | "grid";
+/** The collage always piles its scraps; the layout helpers still accept "grid". */
+const COLLAGE_DISPLAY: ScrapDisplay = "pile";
 const SOURCES_STORAGE_KEY = "scraps-archive-sources";
 function readShowSources(): boolean {
   try {
     return localStorage.getItem(SOURCES_STORAGE_KEY) === "on";
   } catch {
     return false;
-  }
-}
-function readScrapDisplay(): ScrapDisplay {
-  try {
-    return localStorage.getItem(DISPLAY_STORAGE_KEY) === "grid"
-      ? "grid"
-      : "pile";
-  } catch {
-    return "pile";
   }
 }
 function archiveCell(display: ScrapDisplay) {
@@ -550,7 +557,11 @@ function estimateButtonWidth(text: string): number {
  * typeface still fits the tile measured for it.
  */
 const HEADING_CHARACTER_ADVANCE = 0.68;
-const HEADING_TILE_PADDING = 16;
+/**
+ * Horizontal room a heading's words lose inside its tile: the heading's own
+ * 4px sides plus the 8px sides of the patch it sits on.
+ */
+const HEADING_TILE_PADDING = 24;
 const MAX_HEADING_TILE_WIDTH = 340;
 
 /**
@@ -1006,7 +1017,7 @@ export const COLLAGE_STYLES = `
     align-items: stretch;
     gap: 8px;
     box-sizing: border-box;
-    width: 560px;
+    width: 620px;
     max-width: calc(100% - 24px);
     padding: 8px;
     border: 1px solid rgba(61, 56, 51, 0.2);
@@ -1081,19 +1092,21 @@ export const COLLAGE_STYLES = `
     color: #3d3833;
   }
 
-  /* A lone on/off option, so it wears the switch's edge itself. Pressed, its
-     edge turns dotted, echoing the outlines it draws. */
+  /* A lone on/off option, so it wears the switch's edge itself. It matches
+     the collage studio's sources button: a chain mark, and teal when on. */
   .scrap-collage__sources-toggle {
     box-sizing: border-box;
+    gap: 6px;
     height: 28px;
     border: 1px solid rgba(61, 56, 51, 0.18);
     background: rgba(61, 56, 51, 0.05);
   }
 
   .scrap-collage__sources-toggle[aria-pressed="true"] {
-    border-style: dotted;
-    border-color: rgba(61, 56, 51, 0.45);
+    border-color: rgba(74, 154, 138, 0.7);
+    background: rgba(74, 154, 138, 0.12);
     box-shadow: none;
+    color: #2f6b60;
   }
 
   .scrap-collage__view-option:focus-visible {
@@ -1150,6 +1163,50 @@ export const COLLAGE_STYLES = `
     outline: none;
     border-color: #4a9a8a;
     box-shadow: 0 0 0 3px rgba(74, 154, 138, 0.16);
+  }
+
+  .scrap-collage__bulk-delete {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: -4px;
+    color: #a39b92;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+  }
+
+  .scrap-collage__text-action {
+    appearance: none;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #a39b92;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .scrap-collage__text-action:hover,
+  .scrap-collage__text-action:focus-visible {
+    color: #3d3833;
+    text-decoration: underline;
+    outline: none;
+  }
+
+  .scrap-collage__text-action--danger {
+    color: #a8553f;
+  }
+
+  .scrap-collage__text-action--danger:hover,
+  .scrap-collage__text-action--danger:focus-visible {
+    color: #91462f;
+  }
+
+  .scrap-collage__text-action:disabled {
+    cursor: default;
+    opacity: 0.6;
+    text-decoration: none;
   }
 
   @media (max-width: 619px) {
@@ -1378,6 +1435,34 @@ export const COLLAGE_STYLES = `
     pointer-events: none;
   }
 
+  .scrap-collage__backdrop--ink {
+    /* A faint checkerboard: the backing is ours, not the page's. */
+    background-image: conic-gradient(
+      rgba(255, 255, 255, 0.08) 25%,
+      transparent 0 50%,
+      rgba(255, 255, 255, 0.08) 0 75%,
+      transparent 0
+    );
+    background-size: 8px 8px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    box-shadow: 0 1px 2px rgba(40, 30, 20, 0.25);
+  }
+
+  /* The light counterpart of the ink chequer, for dark lettering. */
+  .scrap-collage__backdrop--checker {
+    background-image: conic-gradient(
+      rgba(61, 56, 51, 0.07) 25%,
+      transparent 0 50%,
+      rgba(61, 56, 51, 0.07) 0 75%,
+      transparent 0
+    );
+    background-size: 8px 8px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px rgba(61, 56, 51, 0.1);
+  }
+
   .scrap-collage__heading {
     box-sizing: border-box;
     display: flex;
@@ -1508,6 +1593,11 @@ export interface ScrapContentProps {
   onLoad: () => void;
   /** Laid-out tile width, so text-bearing scraps can size themselves to it. */
   tileWidth?: number;
+  /**
+   * Whether dark lettering sits on a light chequer. Browsed and drawer tiles
+   * show it; a piece placed in a collage sits directly on the collage.
+   */
+  letteringChecker?: boolean;
 }
 
 /**
@@ -1541,17 +1631,76 @@ function ScrapSwatch({
  */
 export function ScrapBackdrop({
   color,
+  ink = false,
+  checker = false,
   children,
 }: {
   color?: string;
+  /** The backing is ours, added so light ink reads, not the page's own. */
+  ink?: boolean;
+  /**
+   * With no color to paint, still give the scrap a faint light chequer, the
+   * counterpart of the dark one behind light ink.
+   */
+  checker?: boolean;
   children: React.ReactNode;
 }) {
-  if (!color) return <>{children}</>;
+  if (!color) {
+    if (!checker) return <>{children}</>;
+    return (
+      <span className="scrap-collage__backdrop scrap-collage__backdrop--checker">
+        {children}
+      </span>
+    );
+  }
   return (
-    <span className="scrap-collage__backdrop" style={{ background: color }}>
+    <span
+      className={`scrap-collage__backdrop${ink ? " scrap-collage__backdrop--ink" : ""}`}
+      style={ink ? { backgroundColor: color } : { background: color }}
+    >
       {children}
     </span>
   );
+}
+
+const BUTTON_LENGTH_PROPERTIES = [
+  "fontSize",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+] as const;
+
+/**
+ * A button's captured styles shrunk to the tile it was laid out in. A tile
+ * narrower than the button's measured width would otherwise leave its
+ * lettering spilling past its own face.
+ */
+function buttonStylesAtWidth(
+  styles: Record<string, string>,
+  text: string,
+  tileWidth: number | undefined,
+): Record<string, string> {
+  if (tileWidth === undefined) return styles;
+  const shrink = tileWidth / estimateButtonWidth(text);
+  if (shrink >= 1) return styles;
+  const scaled = { ...styles };
+  for (const property of BUTTON_LENGTH_PROPERTIES) {
+    const pixels = Number.parseFloat(styles[property] ?? "");
+    if (Number.isFinite(pixels) && styles[property]!.trim().endsWith("px")) {
+      scaled[property] = `${pixels * shrink}px`;
+    }
+  }
+  return scaled;
+}
+
+/**
+ * A dark backing for lettering too light to read on the collage paper, when
+ * the scrap has no fill of its own to carry it.
+ */
+function inkBackingFor(styles: Record<string, string>): string | undefined {
+  if (hasOwnFill(styles.backgroundColor)) return undefined;
+  return inkNeedsBacking(styles.color) ? backingFor(styles.color!) : undefined;
 }
 
 export function ScrapContent({
@@ -1560,6 +1709,7 @@ export function ScrapContent({
   onError,
   onLoad,
   tileWidth,
+  letteringChecker = true,
 }: ScrapContentProps) {
   const imageSrc = useScrapImageSrc(
     item.kind === "image" ? item.src : undefined,
@@ -1584,11 +1734,18 @@ export function ScrapContent({
       );
     case "button":
       return (
-        <ScrapBackdrop color={item.backdropColor}>
+        <ScrapBackdrop
+          color={item.backdropColor ?? inkBackingFor(item.styles)}
+          ink={!item.backdropColor}
+        >
           <span
             className="scrap-collage__button"
             style={{
-              ...(item.styles as React.CSSProperties),
+              ...(buttonStylesAtWidth(
+                item.styles,
+                item.text,
+                tileWidth,
+              ) as React.CSSProperties),
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
@@ -1606,28 +1763,47 @@ export function ScrapContent({
           </span>
         </ScrapBackdrop>
       );
-    case "svg-icon":
-      return (
+    case "svg-icon": {
+      const lightInk = lightIconInk(item.markup);
+      const icon = (
         <div
           className="scrap-collage__svg"
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: item.markup }}
         />
       );
+      return lightInk ? (
+        <ScrapBackdrop color={backingFor(lightInk)} ink>
+          {icon}
+        </ScrapBackdrop>
+      ) : (
+        icon
+      );
+    }
     case "heading":
       return (
-        <span
-          className="scrap-collage__heading"
-          style={{
-            ...(item.styles as React.CSSProperties),
-            fontSize: headingDisplayFontSize(item.styles, item.text, tileWidth),
-            // The captured line height belongs to the captured font size; at
-            // display size it would space wrapped lines far too far apart.
-            lineHeight: HEADING_LINE_HEIGHT,
-          }}
+        <ScrapBackdrop
+          color={inkBackingFor(item.styles)}
+          ink
+          checker={letteringChecker && !hasOwnFill(item.styles.backgroundColor)}
         >
-          {item.text}
-        </span>
+          <span
+            className="scrap-collage__heading"
+            style={{
+              ...(item.styles as React.CSSProperties),
+              fontSize: headingDisplayFontSize(
+                item.styles,
+                item.text,
+                tileWidth,
+              ),
+              // The captured line height belongs to the captured font size; at
+              // display size it would space wrapped lines far too far apart.
+              lineHeight: HEADING_LINE_HEIGHT,
+            }}
+          >
+            {item.text}
+          </span>
+        </ScrapBackdrop>
       );
     case "cursor":
       return (
@@ -1696,21 +1872,23 @@ export function ScrapCollage({
   targetCount,
   perDomainCap,
   showKindFilter = false,
+  initialView = "drift",
+  onDeleteScraps,
 }: ScrapCollageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const archiveScrollRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const [selectedKind, setSelectedKind] = useState<ScrapKindFilter>("all");
+  const [selectedKind, setSelectedKind] = useState<ScrapKindFilter>([]);
+  const [shape, setShape] = useState<ScrapShapeFilter>([]);
   const [places, setPlaces] = useState<FilterChip[]>([]);
   const [search, setSearch] = useState("");
   const [when, setWhen] = useState<ScrapWhenFilter>(ANY_TIME);
   const [controlsFocused, setControlsFocused] = useState(false);
-  const [view, setView] = useState<ScrapView>("drift");
-  const [display, setDisplay] = useState<ScrapDisplay>(readScrapDisplay);
+  const [view, setView] = useState<ScrapView>(initialView);
+  const display = COLLAGE_DISPLAY;
   const [showSources, setShowSources] = useState(readShowSources);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
-  const pendingScrollRef = useRef<number | null>(null);
   const shufflePreviousKeysRef = useRef(new Set<string>());
   const [archiveScrollTop, setArchiveScrollTop] = useState(0);
   const [controlsExpanded, setControlsExpanded] = useState(true);
@@ -1755,34 +1933,6 @@ export function ScrapCollage({
   const selectedTargetCount =
     targetCount ??
     responsiveTargetCount(containerSize.width, containerSize.height);
-  const changeDisplay = (next: ScrapDisplay) => {
-    if (next === display) return;
-    setWashingOut([]);
-    if (archiveMode) {
-      const oldCell = archiveCell(display),
-        nextCell = archiveCell(next);
-      const index =
-        Math.floor(archiveScrollTop / oldCell.height) *
-        Math.max(1, Math.floor(containerSize.width / oldCell.width));
-      pendingScrollRef.current =
-        Math.floor(
-          index / Math.max(1, Math.floor(containerSize.width / nextCell.width)),
-        ) * nextCell.height;
-    }
-    setDisplay(next);
-    try {
-      localStorage.setItem(DISPLAY_STORAGE_KEY, next);
-    } catch {
-      /* Layout still changes when storage is unavailable. */
-    }
-  };
-  useLayoutEffect(() => {
-    if (pendingScrollRef.current === null) return;
-    const top = pendingScrollRef.current;
-    pendingScrollRef.current = null;
-    if (archiveScrollRef.current) archiveScrollRef.current.scrollTop = top;
-    setArchiveScrollTop(top);
-  }, [display]);
 
   const groupedItems = useMemo(() => groupPhotoEncounters(items), [items]);
   const uniqueItems = useMemo(
@@ -1792,9 +1942,9 @@ export function ScrapCollage({
   const filteredItems = useMemo(
     () =>
       groupedItems.filter((item) =>
-        scrapPassesFilters(item, selectedKind, places, search, when),
+        scrapPassesFilters(item, selectedKind, shape, places, search, when),
       ),
-    [groupedItems, selectedKind, places, search, when],
+    [groupedItems, selectedKind, shape, places, search, when],
   );
   const archiveScraps = useMemo(
     () =>
@@ -1804,6 +1954,29 @@ export function ScrapCollage({
       ),
     [filteredItems],
   );
+  const filtersActive =
+    selectedKind.length > 0 ||
+    shape.length > 0 ||
+    places.length > 0 ||
+    search.trim() !== "" ||
+    !isAnyTime(when);
+  const [bulkDeleteStep, setBulkDeleteStep] = useState<
+    "idle" | "confirm" | "deleting" | "failed"
+  >("idle");
+  // A confirmation names a count for one set of filters; changing them asks again.
+  useEffect(() => {
+    setBulkDeleteStep("idle");
+  }, [selectedKind, shape, places, search, when]);
+  const deleteFiltered = () => {
+    if (!onDeleteScraps) return;
+    setBulkDeleteStep("deleting");
+    onDeleteScraps(archiveScraps)
+      .then(() => setBulkDeleteStep("idle"))
+      .catch((error: unknown) => {
+        console.error("Could not delete the filtered scraps:", error);
+        setBulkDeleteStep("failed");
+      });
+  };
   const archiveSizeBounds = useMemo(
     () => tierBounds(archiveScraps),
     [archiveScraps],
@@ -1959,7 +2132,7 @@ export function ScrapCollage({
     setHovered(false);
     setFocused(false);
     setWashingOut([]);
-  }, [archiveMode, selectedKind, places, search, when]);
+  }, [archiveMode, selectedKind, shape, places, search, when]);
 
   /**
    * Drives the tide as a chain of self-scheduling events rather than a metronome:
@@ -2352,31 +2525,38 @@ export function ScrapCollage({
                     archive
                   </button>
                 </div>
-                <div
-                  className="scrap-collage__view-switch"
-                  role="group"
-                  aria-label="Scrap layout"
-                >
-                  {(["pile", "grid"] as const).map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      className="scrap-collage__view-option"
-                      aria-pressed={display === option}
-                      onClick={() => changeDisplay(option)}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
                 {archiveMode && (
                   <button
                     type="button"
                     className="scrap-collage__view-option scrap-collage__sources-toggle"
                     aria-pressed={showSources}
-                    title="Outline the scraps that came from each page"
+                    title="Outline the scraps that came from each site"
                     onClick={toggleSources}
                   >
+                    {/* Two links of a chain, the collage studio's sources mark. */}
+                    <svg
+                      viewBox="0 0 16 16"
+                      width="12"
+                      height="12"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M7 9a3 3 0 0 0 4.2 0l2.3-2.3a3 3 0 0 0-4.2-4.2L8.2 3.6"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M9 7a3 3 0 0 0-4.2 0L2.5 9.3a3 3 0 0 0 4.2 4.2l1.1-1.1"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
                     sources
                   </button>
                 )}
@@ -2425,6 +2605,8 @@ export function ScrapCollage({
                   onPlaces={setPlaces}
                   kind={selectedKind}
                   onKind={setSelectedKind}
+                  shape={shape}
+                  onShape={setShape}
                   search={search}
                   onSearch={setSearch}
                   when={when}
@@ -2433,6 +2615,47 @@ export function ScrapCollage({
                   countScraps={countUniqueScraps}
                 />
               </div>
+              {onDeleteScraps && filtersActive && archiveScraps.length > 0 && (
+                <div className="scrap-collage__bulk-delete" role="group">
+                  {bulkDeleteStep === "idle" || bulkDeleteStep === "failed" ? (
+                    <>
+                      {bulkDeleteStep === "failed" && (
+                        <span role="alert">could not delete them</span>
+                      )}
+                      <button
+                        type="button"
+                        className="scrap-collage__text-action"
+                        onClick={() => setBulkDeleteStep("confirm")}
+                      >
+                        delete {archiveScraps.length === 1 ? "this scrap" : `these ${archiveScraps.length}`}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span>
+                        delete {archiveScraps.length}{" "}
+                        {archiveScraps.length === 1 ? "scrap" : "scraps"} for good?
+                      </span>
+                      <button
+                        type="button"
+                        className="scrap-collage__text-action scrap-collage__text-action--danger"
+                        disabled={bulkDeleteStep === "deleting"}
+                        onClick={deleteFiltered}
+                      >
+                        {bulkDeleteStep === "deleting" ? "deleting..." : "delete"}
+                      </button>
+                      <button
+                        type="button"
+                        className="scrap-collage__text-action"
+                        disabled={bulkDeleteStep === "deleting"}
+                        onClick={() => setBulkDeleteStep("idle")}
+                      >
+                        keep
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <button
@@ -2566,6 +2789,11 @@ export function ScrapCollage({
             onClose={closeExamine}
             onPrevious={() => stepExamine(-1)}
             onNext={() => stepExamine(1)}
+            onDelete={
+              onDeleteScraps
+                ? () => onDeleteScraps([examinedItem])
+                : undefined
+            }
           />,
           document.body,
         )}

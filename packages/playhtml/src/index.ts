@@ -3,6 +3,10 @@
 /// <reference lib="dom"/>
 /// <reference types="vite/client" />
 import YProvider from "y-partyserver/provider";
+import {
+  coalesceProviderUpdates,
+  type UpdateCoalescer,
+} from "./updateCoalescer";
 import "./style.scss";
 import {
   ElementData,
@@ -32,12 +36,11 @@ import type {
   CursorPresenceView,
 } from "@playhtml/common";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
+import type { Map as YMap } from "yjs";
 import { ElementHandler } from "./elements";
 import { hashElement } from "./utils";
-import {
-  CursorClientAwareness,
-  getPresencePage,
-} from "./cursors/cursor-client";
+import type { CursorClientAwareness } from "./cursors/cursor-client";
+import { getPresencePage } from "./cursors/presence-page";
 import { createUsersAPI, defaultSeedIdentity } from "./users";
 import type { UsersAPI } from "./users";
 import type { PresenceAPI, PresenceRoom } from "@playhtml/common";
@@ -53,6 +56,7 @@ import {
   createPageDataChannel,
   PAGE_TAG,
   refreshPageDataChannels,
+  rebindPageDataChannels,
 } from "./page-data";
 import { createReadOnlyStore, type ReadOnlyStore } from "./readOnlyStore";
 import { RealtimePresenceTransport } from "./presence-transport";
@@ -201,7 +205,17 @@ function getCurrentRoomHost(): string {
 }
 
 let yprovider: YProvider;
+let mainUpdateCoalescer: UpdateCoalescer | null = null;
+let flushesUpdatesOnPageHide = false;
 let cursorClient: CursorClientAwareness | null = null;
+// Pages without cursors never download the cursor client. Callers load it
+// before changing any state, so building cursors stays synchronous and a
+// reset cannot land between tearing down and rebuilding.
+let cursorModule: typeof import("./cursors/cursor-client") | null = null;
+
+async function loadCursorModule(): Promise<void> {
+  cursorModule ??= await import("./cursors/cursor-client");
+}
 let currentCursorRoomId = "";
 // The stable object returned by playhtml.presence for the instance lifetime.
 // Delegates to the current inner client, which is rebuilt on room change; the
@@ -598,6 +612,18 @@ function onMessage(data: string) {
     return;
   }
 
+  // Sent when a client joins with an older epoch but no document history, so
+  // it can stay connected and only needs to remember the current epoch.
+  if (message.type === "reset-epoch") {
+    const resetEpoch = Number(message.resetEpoch);
+    if (!Number.isFinite(resetEpoch)) {
+      console.error("[PLAYHTML] Received reset-epoch without a resetEpoch");
+      return;
+    }
+    storeResetEpochForRoom(__currentRoomId, resetEpoch);
+    return;
+  }
+
   // Handle regular PlayHTML events
   const { type, eventPayload } = message as EventMessage;
   const maybeHandlers = eventHandlers.get(type);
@@ -982,20 +1008,30 @@ function buildMainProvider(args: {
     discoveredSharedReferences.add(referenceKey);
   });
 
-  const storageKey = `playhtml_resetEpoch_${room}`;
-  const storedResetEpoch = localStorage.getItem(storageKey);
-  const clientResetEpoch = storedResetEpoch
-    ? parseInt(storedResetEpoch, 10)
-    : null;
-
-  yprovider = new YProvider(partykitHost, room, doc, {
-    params: {
+  // Resolved before every connect and reconnect, so a reconnect after a
+  // room-reset or reset-epoch notice always carries the latest epoch.
+  const params = () => {
+    const clientResetEpoch = getResetEpochForRoom(room);
+    return {
       sharedElements: JSON.stringify(sharedElements),
       sharedReferences: JSON.stringify(sharedReferences),
       clientResetEpoch:
         clientResetEpoch !== null ? String(clientResetEpoch) : null,
-    },
-  });
+    };
+  };
+
+  yprovider = new YProvider(partykitHost, room, doc, { params });
+  mainUpdateCoalescer = coalesceProviderUpdates(yprovider as any);
+  if (!flushesUpdatesOnPageHide && typeof window !== "undefined") {
+    flushesUpdatesOnPageHide = true;
+    // Send changes still waiting for the next batch before the page goes
+    // away or is hidden; hidden tabs throttle the batch timer for up to a
+    // minute.
+    window.addEventListener("pagehide", () => mainUpdateCoalescer?.flush());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") mainUpdateCoalescer?.flush();
+    });
+  }
   yprovider.on("error", () => {
     onError?.();
   });
@@ -1021,6 +1057,8 @@ function teardownCursors(): void {
 
 /** Disconnect and destroy the main Yjs provider. */
 function teardownMainProvider(): void {
+  try { mainUpdateCoalescer?.flush(); } catch {}
+  mainUpdateCoalescer = null;
   try { yprovider?.disconnect?.(); } catch {}
   try { yprovider?.destroy?.(); } catch {}
 }
@@ -1195,9 +1233,14 @@ function buildCursors(args: {
     currentCursorRoomId = mainRoom;
   }
 
+  if (cursorModule === null) {
+    throw new Error(
+      "[playhtml] buildCursors requires the cursor client to be loaded first.",
+    );
+  }
   const cursorPresenceTransport = acquirePresenceTransport(currentCursorRoomId);
   cursorPresenceTransportRoom = currentCursorRoomId;
-  cursorClient = new CursorClientAwareness(
+  cursorClient = new cursorModule.CursorClientAwareness(
     cursorOptions,
     cursorPresenceTransport,
     usersAPI,
@@ -1207,12 +1250,39 @@ function buildCursors(args: {
   cursorPresenceHub.connect(cursorClient);
 }
 
+// The in-memory copy is authoritative for this page. localStorage only carries
+// the epoch across page loads and may be unavailable (blocked storage, quota).
+const resetEpochByRoom = new Map<string, number>();
+
+function getResetEpochStorageKey(room: string): string {
+  return `playhtml_resetEpoch_${room}`;
+}
+
+function getResetEpochForRoom(room: string): number | null {
+  const known = resetEpochByRoom.get(room);
+  if (known !== undefined) return known;
+
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(getResetEpochStorageKey(room));
+  } catch (error) {
+    console.warn("[PLAYHTML] Could not read the stored room reset epoch", error);
+  }
+  const parsed = stored === null ? NaN : Number(stored);
+  if (!Number.isFinite(parsed)) return null;
+  resetEpochByRoom.set(room, parsed);
+  return parsed;
+}
+
 function storeResetEpochForRoom(room: string, resetEpoch: number): void {
-  const storageKey = `playhtml_resetEpoch_${room}`;
-  localStorage.setItem(storageKey, String(resetEpoch));
-  console.log(
-    `[PLAYHTML] Stored resetEpoch=${resetEpoch} in localStorage key=${storageKey}`,
-  );
+  const known = resetEpochByRoom.get(room);
+  if (known !== undefined && known >= resetEpoch) return;
+  resetEpochByRoom.set(room, resetEpoch);
+  try {
+    localStorage.setItem(getResetEpochStorageKey(room), String(resetEpoch));
+  } catch (error) {
+    console.warn("[PLAYHTML] Could not store the room reset epoch", error);
+  }
 }
 
 function waitForMainProviderSync(timeoutMs?: number): Promise<void> {
@@ -1298,6 +1368,11 @@ async function resetCurrentRoomFromServer(): Promise<void> {
     throw new Error("playhtml cannot reset before init()");
   }
 
+  if (configuredOptions?.cursors?.enabled) {
+    await loadCursorModule();
+    // A full reset while the cursor client loaded leaves nothing to rebuild.
+    if (!__currentRoomId || !__currentHost) return;
+  }
   teardownMainProvider();
   teardownCursors();
   hasSynced = false;
@@ -1372,6 +1447,10 @@ function setupExtensionIdentityListener(): void {
 async function runHandleNavigation(): Promise<void> {
   // firstSetup is true before init and after resetPlayHTML — skip nav in both.
   if (firstSetup) return;
+  if (configuredOptions?.cursors?.enabled) {
+    await loadCursorModule();
+    if (firstSetup) return;
+  }
 
   const nextRoomInput =
     resolveExplicitRoom() ??
@@ -1566,6 +1645,8 @@ async function initPlayHTMLOnce() {
   lockConfigForBootstrap();
   const host = configuredOptions?.host;
   const cursors = configuredOptions?.cursors ?? {};
+  // The cursor client downloads while the main socket connects.
+  const cursorModuleLoading = cursors.enabled ? loadCursorModule() : null;
   const inputRoom =
     resolveExplicitRoom() ??
     getDefaultRoom(
@@ -1602,6 +1683,12 @@ async function initPlayHTMLOnce() {
     onError,
     onMessage,
   });
+
+  if (cursorModuleLoading) {
+    await cursorModuleLoading;
+    // A reset while the cursor client downloaded tore this connection down.
+    if (__currentRoomId !== room) return yprovider;
+  }
 
   // Users module owns identity for the lifetime of this playhtml instance —
   // created unconditionally, before the cursor client, so `playhtml.users`
@@ -1738,12 +1825,28 @@ function markElementAsReady(element: HTMLElement): void {
   element.removeAttribute("aria-live");
 }
 
+// Finds every capability element with one document scan and groups them by
+// capability attribute, each group in document order. An element with several
+// capabilities appears in each of their groups.
+function getPlayElementsByTag(): Map<TagType | string, HTMLElement[]> {
+  const tags = getTagTypes();
+  const byTag = new Map<TagType | string, HTMLElement[]>(
+    tags.map((tag) => [tag, []]),
+  );
+  const selector = tags.map((tag) => `[${tag}]`).join(",");
+  for (const element of document.querySelectorAll(selector)) {
+    if (!isHTMLElement(element)) continue;
+    for (const tag of tags) {
+      if (element.hasAttribute(tag)) byTag.get(tag)!.push(element);
+    }
+  }
+  return byTag;
+}
+
 function getPlayElements(): Set<HTMLElement> {
   const elements = new Set<HTMLElement>();
-  for (const tag of getTagTypes()) {
-    for (const element of document.querySelectorAll(`[${tag}]`)) {
-      if (isHTMLElement(element)) elements.add(element);
-    }
+  for (const tagElements of getPlayElementsByTag().values()) {
+    for (const element of tagElements) elements.add(element);
   }
   for (const id of elementInitializersById.keys()) {
     const element = document.getElementById(id);
@@ -1841,8 +1944,13 @@ function createPlayElementData<T extends TagType, TData = any>(
         return;
       }
 
+      // Resolve at write time: a concurrent first registration on another
+      // client can replace this element's record after registration.
+      const currentProxy =
+        (proxyByTagAndId.get(tag)?.get(elementId) as TData | undefined) ??
+        dataProxy;
       doc.transact(() => {
-        applyElementDataChange(elementId, dataProxy, newData);
+        applyElementDataChange(elementId, currentProxy, newData);
       });
     },
     onAwarenessChange: (elementAwarenessData) => {
@@ -2112,10 +2220,8 @@ function setupElementsFromDocument(reinitializeExisting: boolean): void {
 
   observeRegisteredElements();
 
-  for (const tag of getTagTypes()) {
-    const tagElements = new Set<HTMLElement>(
-      Array.from(document.querySelectorAll(`[${tag}]`)).filter(isHTMLElement),
-    );
+  for (const [tag, elementsForTag] of getPlayElementsByTag()) {
+    const tagElements = new Set<HTMLElement>(elementsForTag);
     if (tag === TagType.CanPlay) {
       for (const id of elementInitializersById.keys()) {
         const element = document.getElementById(id);
@@ -2164,7 +2270,6 @@ function setupElementsFromDocument(reinitializeExisting: boolean): void {
 function getPageDataDeps() {
   return {
     ensureProxy: ensureElementProxy,
-    getProxy: (tag: string, id: string) => proxyByTagAndId.get(tag)?.get(id),
     // Getters so a handle held across a room change (which recreates store/doc)
     // reads the current ones, not stale references captured at creation.
     getDoc: () => doc,
@@ -2180,6 +2285,7 @@ function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
   if (!hasSynced) {
     throw new Error("playhtml.createPageData is not available before init()");
   }
+  watchPlayMapReplacement();
   return createPageDataChannel(name, defaultValue, getPageDataDeps());
 }
 
@@ -2648,6 +2754,97 @@ function applySharedElementDataToHandler(
   return true;
 }
 
+type ElementRecordObserver = (() => void) & { target?: unknown };
+
+function detachElementObserver(key: string): void {
+  const existing = yObserverByKey.get(key) as ElementRecordObserver | undefined;
+  if (!existing) return;
+  (existing.target as any)?.unobserveDeep?.(existing);
+  yObserverByKey.delete(key);
+}
+
+// Y.Maps already watched for replaced child records, so each gets one observer.
+const watchedRecordParents = new WeakSet<object>();
+
+/**
+ * When two clients create the same record (a tag map or an element record)
+ * before seeing each other's, the Yjs merge keeps only one. The losing client
+ * still holds a proxy and deep observer on its discarded copy. Watch the parent
+ * maps and re-point affected elements at the surviving record.
+ */
+function watchElementRecordReplacement(tag: string): void {
+  watchPlayMapReplacement();
+  const tagMap = getYjsValue(store.play[tag]) as YMap<unknown> | undefined;
+  if (tagMap && !watchedRecordParents.has(tagMap)) {
+    watchedRecordParents.add(tagMap);
+    tagMap.observe((event) => {
+      // A tag map discarded by a merge can still fire; only the live one counts.
+      if (getYjsValue(store.play[tag]) !== tagMap) return;
+      for (const elementId of event.keysChanged) {
+        rebindElementRecord(tag, elementId);
+      }
+    });
+  }
+}
+
+/** Watches the root `play` map for replaced tag maps (including page data). */
+function watchPlayMapReplacement(): void {
+  const playMap = getYjsValue(store.play) as YMap<unknown> | undefined;
+  if (!playMap || watchedRecordParents.has(playMap)) return;
+  watchedRecordParents.add(playMap);
+  playMap.observe((event) => {
+    for (const changedTag of event.keysChanged) {
+      if (changedTag === PAGE_TAG) {
+        rebindPageDataChannels(getPageDataDeps());
+        continue;
+      }
+      const handlers = elementHandlers.get(changedTag);
+      if (!handlers) continue;
+      for (const elementId of handlers.keys()) {
+        rebindElementRecord(changedTag, elementId, { restoreMissing: true });
+      }
+    }
+  });
+}
+
+/**
+ * Points an element at its live record. With `restoreMissing`, used when the
+ * whole tag map was replaced, an element whose id is absent from the winning
+ * map is written back from its local data: its record was only discarded by
+ * the merge, not deleted by anyone. Not used for single-key changes, where a
+ * missing record means another client deleted it.
+ */
+function rebindElementRecord(
+  tag: string,
+  elementId: string,
+  { restoreMissing = false }: { restoreMissing?: boolean } = {},
+): void {
+  const handler = elementHandlers.get(tag)?.get(elementId);
+  if (!handler) return;
+  const tagRecord = store.play[tag];
+  if (
+    restoreMissing &&
+    tagRecord !== undefined &&
+    tagRecord[elementId] === undefined &&
+    handler.data !== undefined &&
+    canWriteElementData(handler.element)
+  ) {
+    doc.transact(() => {
+      tagRecord[elementId] = clonePlain(handler.data);
+    });
+  }
+  const record = tagRecord?.[elementId];
+  if (record === undefined) return;
+  const key = `${tag}:${elementId}`;
+  const observed = (yObserverByKey.get(key) as ElementRecordObserver | undefined)
+    ?.target;
+  if (observed === getYjsValue(record)) return;
+  if (!proxyByTagAndId.has(tag)) proxyByTagAndId.set(tag, new Map());
+  proxyByTagAndId.get(tag)!.set(elementId, record);
+  attachSyncedStoreObserver(tag, elementId);
+  applySharedElementDataToHandler(tag, elementId, handler);
+}
+
 function attachSyncedStoreObserver(tag: string, elementId: string) {
   const key = `${tag}:${elementId}`;
   const tagHandlers = elementHandlers.get(tag);
@@ -2655,16 +2852,13 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
   const handler = tagHandlers.get(elementId);
   if (!handler) return;
 
-  // Detach previous observer if present
+  watchElementRecordReplacement(tag);
+
   const yVal = getYjsValue(store.play[tag]?.[elementId]);
   if (!yVal || typeof (yVal as any).observeDeep !== "function") return;
-  const existing = yObserverByKey.get(key);
-  if (existing) {
-    // @ts-ignore
-    (yVal as any).unobserveDeep(existing);
-  }
+  detachElementObserver(key);
   let scheduled = false;
-  const observer = () => {
+  const observer: ElementRecordObserver = () => {
     if (scheduled) return;
     scheduled = true;
     queueMicrotask(() => {
@@ -2680,6 +2874,7 @@ function attachSyncedStoreObserver(tag: string, elementId: string) {
       }
     });
   };
+  observer.target = yVal;
   // @ts-ignore
   (yVal as any).observeDeep(observer);
   yObserverByKey.set(key, observer);
@@ -2818,17 +3013,7 @@ function removePlayElement(element: Element | null) {
     }
 
     const key = `${tag}:${elementId}`;
-    const yVal = getYjsValue(store.play[tag]?.[elementId]);
-    const observer = yObserverByKey.get(key);
-    if (
-      yVal &&
-      observer &&
-      typeof (yVal as any).unobserveDeep === "function"
-    ) {
-      // @ts-ignore
-      (yVal as any).unobserveDeep(observer);
-    }
-    yObserverByKey.delete(key);
+    detachElementObserver(key);
     sharedUpdateSeen.delete(key);
     const timerId = sharedHydrationTimers.get(key);
     if (timerId !== undefined) {
@@ -3214,18 +3399,10 @@ function deleteElementData(tag: string, elementId: string): void {
   const key = `${tag}:${elementId}`;
 
   // 1. Remove observer
-  const yVal = getYjsValue(store.play[tag]?.[elementId]);
-  if (yVal && typeof (yVal as any).observeDeep === "function") {
-    const observer = yObserverByKey.get(key);
-    if (observer) {
-      try {
-        // @ts-ignore
-        (yVal as any).unobserveDeep(observer);
-      } catch (error) {
-        console.warn(`[PLAYHTML] Failed to remove observer for ${key}:`, error);
-      }
-      yObserverByKey.delete(key);
-    }
+  try {
+    detachElementObserver(key);
+  } catch (error) {
+    console.warn(`[PLAYHTML] Failed to remove observer for ${key}:`, error);
   }
 
   // 2. Remove from SyncedStore

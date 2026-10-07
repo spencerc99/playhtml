@@ -22,7 +22,7 @@ import {
   encodeCollageFile,
   importCollageFile,
 } from "./collageFile";
-import { paperBackground } from "./paperGrain";
+import { THUMBNAIL_GRAIN_STRENGTH, paperBackground } from "./paperGrain";
 import { GLYPHS } from "./PieceActions";
 import {
   inBackground,
@@ -196,7 +196,20 @@ export function CollageHistory({
           {/* A torn scrap of the newest collage, or bare kraft before one. */}
           <span className="collage-history__scrap" aria-hidden="true">
             <span className="collage-history__scrap-paper">
-              {newestPreview && <img src={newestPreview} alt="" />}
+              {newest && newestPreview && (
+                <img
+                  src={newestPreview}
+                  alt=""
+                  // The preview holds only the pieces; its paper goes behind.
+                  style={paperBackground(
+                    newest.paper.color,
+                    newest.paper.grain,
+                    46,
+                    38,
+                    THUMBNAIL_GRAIN_STRENGTH,
+                  )}
+                />
+              )}
             </span>
           </span>
           <div>
@@ -299,6 +312,7 @@ export function CollageHistory({
             summary.paper.grain,
             240,
             160,
+            THUMBNAIL_GRAIN_STRENGTH,
           );
           return (
             <article key={summary.id} className="collage-card">

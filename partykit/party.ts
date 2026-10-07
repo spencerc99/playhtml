@@ -83,10 +83,12 @@ import {
   shouldSetAlarm,
   shouldCheckEmergencyCompaction,
   shouldUseEmergencyCompactedDocument,
-  shouldStoreCompactedDocument,
+  shouldCommitEmptyRoomCompaction,
 } from "./compactionPolicy";
 import {
   getAutosaveResetEpochDecision,
+  getHeldConnectionMessageDecision,
+  getResetEpochNoticeMessage,
   isResetEpochStale,
   parseClientResetEpoch,
 } from "./resetEpochPolicy";
@@ -112,9 +114,17 @@ export { PresenceServer } from "./presenceServer";
 const ACCEPTED_RESET_EPOCH_STATE_KEY = "__playhtmlAcceptedResetEpoch";
 const MESSAGE_LIMIT_STATE_KEY = "__playhtmlMessageLimit";
 const CONNECTION_OPENED_AT_STATE_KEY = "__playhtmlConnectionOpenedAt";
+const CONNECTION_ADMISSION_STATE_KEY = "__playhtmlAdmission";
+
+// "pending": opened with a stale reset epoch, waiting for its first sync
+// message to show whether it carries document history.
+// "held": carries stale history; kept open and silent so it cannot merge into
+// the room and does not fall into a reconnect loop.
+type ConnectionAdmission = "pending" | "held";
 
 type PartyServerConnectionState = Record<string, unknown> & {
   [ACCEPTED_RESET_EPOCH_STATE_KEY]?: number | null;
+  [CONNECTION_ADMISSION_STATE_KEY]?: ConnectionAdmission;
   [MESSAGE_LIMIT_STATE_KEY]?: MessageLimitState;
   [CONNECTION_OPENED_AT_STATE_KEY]?: number;
 };
@@ -218,6 +228,9 @@ export class PartyServer extends YServer {
   private emptyRoomCompactionPromise: Promise<void> | null = null;
   private compactionAutosaveSnapshot: string | null = null;
   private cachedResetEpoch: number | null | undefined;
+  // Request URLs of pending connections, needed to finish admitting them. Lost
+  // on hibernation, which only drops the URL-declared sharing parameters.
+  private pendingConnectionUrls = new Map<string, string>();
   private lastKnownDocumentBytes = 0;
   private hasWarnedDocumentSize = false;
 
@@ -395,6 +408,23 @@ export class PartyServer extends YServer {
 
   private getOpenConnectionCount(): number {
     return Array.from(this.getConnections()).length;
+  }
+
+  // Pending and held connections never joined the room, so they are excluded
+  // from every broadcast, connection count, and reset fan-out.
+  override getConnections<TState = unknown>(
+    tag?: string
+  ): Iterable<Party.Connection<TState>> {
+    const connections = super.getConnections<TState>(tag);
+    const getAdmission = (connection: Party.Connection) =>
+      this.getConnectionAdmission(connection);
+    return {
+      *[Symbol.iterator]() {
+        for (const connection of connections) {
+          if (getAdmission(connection) === null) yield connection;
+        }
+      },
+    };
   }
 
   markDocumentPersisted(documentBase64: string): void {
@@ -999,6 +1029,41 @@ export class PartyServer extends YServer {
     });
   }
 
+  private getConnectionAdmission(
+    connection: Party.Connection
+  ): ConnectionAdmission | null {
+    const state = (connection as Party.Connection<PartyServerConnectionState>)
+      .state;
+    const value = state?.[CONNECTION_ADMISSION_STATE_KEY];
+    return value === "pending" || value === "held" ? value : null;
+  }
+
+  private setConnectionAdmission(
+    connection: Party.Connection,
+    admission: ConnectionAdmission | null
+  ): void {
+    const admissionConnection =
+      connection as Party.Connection<PartyServerConnectionState>;
+    admissionConnection.setState((previousState) => {
+      const state =
+        previousState && typeof previousState === "object" ? previousState : {};
+      const { [CONNECTION_ADMISSION_STATE_KEY]: _previous, ...rest } =
+        state as PartyServerConnectionState;
+      return admission === null
+        ? rest
+        : { ...rest, [CONNECTION_ADMISSION_STATE_KEY]: admission };
+    });
+  }
+
+  private holdConnection(
+    connection: Party.Connection,
+    resetEpoch: number
+  ): void {
+    this.pendingConnectionUrls.delete(connection.id);
+    this.setConnectionAdmission(connection, "held");
+    this.sendCustomMessage(connection, this.getRoomResetMessage(resetEpoch));
+  }
+
   private getConnectionAcceptedResetEpoch(
     connection: Party.Connection
   ): number | null {
@@ -1057,15 +1122,6 @@ export class PartyServer extends YServer {
       timestamp: resetEpoch,
       resetEpoch,
     });
-  }
-
-  private sendRoomResetAndClose(
-    connection: Party.Connection,
-    resetEpoch: number,
-    reason: string
-  ): void {
-    this.sendCustomMessage(connection, this.getRoomResetMessage(resetEpoch));
-    connection.close(4000, reason);
   }
 
   private closeConnections(reason: string, code = 4000): number {
@@ -1374,7 +1430,13 @@ export class PartyServer extends YServer {
     if (this.getOpenConnectionCount() !== 0) return;
     if ((await this.circuitBreaker.getCompactionDisabledAt()) !== null) return;
 
-    const compactAfter = Date.now() + DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS;
+    // Admitting a connection clears the deadline, so an existing future
+    // deadline means the room has stayed empty since it was set.
+    const now = Date.now();
+    const existingCompactAfter = await this.getEmptyRoomCompactAfter();
+    if (existingCompactAfter !== null && existingCompactAfter > now) return;
+
+    const compactAfter = now + DEFAULT_EMPTY_ROOM_COMPACT_DELAY_MS;
     await this.setEmptyRoomCompactAfter(compactAfter);
     await this.scheduleNextAlarm();
 
@@ -1747,19 +1809,67 @@ export class PartyServer extends YServer {
       serverResetEpoch !== null &&
       this.isEpochStale(clientResetEpoch, serverResetEpoch)
     ) {
-      console.log(
-        `[PartyServer] Rejecting stale client connection (connectionId=${connectionId}), sending room-reset message with epoch=${serverResetEpoch}`
-      );
-      // The WebSocket has already been accepted by PartyServer, so closing it
-      // is part of enforcing the reset boundary.
-      this.sendRoomResetAndClose(connection, serverResetEpoch, "Room Reset");
-      console.log(
-        `[PartyServer] Sent room-reset message to connectionId=${connectionId} and closed stale connection. Client will reload and reconnect.`
-      );
-      // Don't proceed with normal Y.js connection setup
+      // The socket stays open; its first sync message decides whether it is
+      // admitted or held (see getHeldConnectionMessageDecision).
+      this.setConnectionAdmission(connection, "pending");
+      this.pendingConnectionUrls.set(connectionId, ctx.request.url);
       return;
     }
 
+    await this.admitConnection(connection, ctx, serverResetEpoch);
+  }
+
+  // Resolves a pending connection from its first message. Returns true when
+  // the message was consumed here and must not reach the Yjs handler.
+  private async resolvePendingConnection(
+    connection: Party.Connection,
+    message: Party.WSMessage
+  ): Promise<boolean> {
+    const decision = getHeldConnectionMessageDecision(message);
+    if (decision === "wait") return true;
+
+    const serverResetEpoch = await this.getResetEpoch();
+    if (decision === "reject") {
+      if (serverResetEpoch === null) {
+        throw new Error(
+          `[PartyServer] Pending connection ${connection.id} has no room reset epoch to hold it against`
+        );
+      }
+      console.log(
+        `[PartyServer] Holding stale client with document history: room=${this.name}, connectionId=${connection.id}, epoch=${serverResetEpoch}`
+      );
+      this.holdConnection(connection, serverResetEpoch);
+      return true;
+    }
+
+    const requestUrl = this.pendingConnectionUrls.get(connection.id);
+    this.pendingConnectionUrls.delete(connection.id);
+    if (requestUrl === undefined) {
+      console.warn(
+        `[PartyServer] Admitting pending connection without its request URL (lost to hibernation): room=${this.name}, connectionId=${connection.id}`
+      );
+    }
+    this.setConnectionAdmission(connection, null);
+    const admissionUrl = requestUrl ?? `https://playhtml.invalid/parties/main/${this.name}`;
+    await this.admitConnection(
+      connection,
+      { request: new Request(admissionUrl) },
+      serverResetEpoch
+    );
+    if (serverResetEpoch !== null) {
+      this.sendCustomMessage(
+        connection,
+        getResetEpochNoticeMessage(serverResetEpoch)
+      );
+    }
+    return false;
+  }
+
+  private async admitConnection(
+    connection: Party.Connection,
+    ctx: Party.ConnectionContext,
+    serverResetEpoch: number | null
+  ): Promise<void> {
     this.setConnectionAcceptedResetEpoch(connection, serverResetEpoch);
 
     await this.clearEmptyRoomCompactAfter();
@@ -1805,6 +1915,15 @@ export class PartyServer extends YServer {
   ): Promise<void> {
     if (await this.closeConnectionWhileLoadDeferred(connection)) return;
 
+    const admission = this.getConnectionAdmission(connection);
+    if (admission === "held") return;
+    if (
+      admission === "pending" &&
+      (await this.resolvePendingConnection(connection, message))
+    ) {
+      return;
+    }
+
     const limitResult = this.checkConnectionMessageRate(connection);
     if (limitResult.violation) {
       console.warn(
@@ -1831,9 +1950,9 @@ export class PartyServer extends YServer {
       this.isEpochStale(connectionResetEpoch, serverResetEpoch)
     ) {
       console.warn(
-        `[PartyServer] Closing stale socket message: connectionId=${connection.id}, client=${connectionResetEpoch}, server=${serverResetEpoch}`
+        `[PartyServer] Holding socket accepted before a reset: connectionId=${connection.id}, accepted=${connectionResetEpoch}, server=${serverResetEpoch}`
       );
-      this.sendRoomResetAndClose(connection, serverResetEpoch, "Room Reset");
+      this.holdConnection(connection, serverResetEpoch);
       return;
     }
 
@@ -1867,6 +1986,13 @@ export class PartyServer extends YServer {
         error
       );
       throw error;
+    }
+
+    // Pending and held connections never joined the room, so their close
+    // cannot empty it.
+    if (this.getConnectionAdmission(connection) !== null) {
+      this.pendingConnectionUrls.delete(connection.id);
+      return;
     }
 
     try {
@@ -2990,7 +3116,7 @@ export class PartyServer extends YServer {
     }
 
     if (
-      !shouldStoreCompactedDocument(
+      !shouldCommitEmptyRoomCompaction(
         compactedDocument.beforeSize,
         compactedDocument.afterSize
       )

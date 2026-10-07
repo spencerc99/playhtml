@@ -334,6 +334,34 @@ export function collageCanvas(
  * could not be drawn, rather than leaving a hole in the saved image.
  */
 export async function bakeCollage(options: BakeOptions): Promise<Blob> {
+  return drawCollage(options, (context) =>
+    paintPaper(context, options.frame, options.paper, options.grain ?? false),
+  );
+}
+
+export interface PreviewBakeOptions {
+  frame: CollageFrame;
+  pieces: readonly CollagePiece[];
+  /** Pixel density of the baked PNG relative to the frame's logical size. */
+  scale?: number;
+}
+
+/**
+ * Draws only the pieces, on a clear canvas, as the preview a collage stores.
+ * Whatever shows the preview paints the collage's paper behind it, grain and
+ * all. Baked in, the grain's per-pixel noise defeats PNG's compression and
+ * every preview runs to megabytes. Throws `CollageBakeError` like `bakeCollage`.
+ */
+export async function bakeCollagePreview(
+  options: PreviewBakeOptions,
+): Promise<Blob> {
+  return drawCollage(options, async () => {});
+}
+
+async function drawCollage(
+  options: PreviewBakeOptions,
+  paint: (context: CanvasRenderingContext2D) => Promise<void>,
+): Promise<Blob> {
   const { frame } = options;
   const scale = options.scale ?? 2;
   const prepared = await prepareCollagePieces(options.pieces);
@@ -342,7 +370,7 @@ export async function bakeCollage(options: BakeOptions): Promise<Blob> {
     Math.round(frame.width * scale),
     Math.round(frame.height * scale),
   );
-  await paintPaper(context, frame, options.paper, options.grain ?? false);
+  await paint(context);
   for (const { piece, source, still } of prepared) {
     drawPiece(context, piece, source, still);
   }

@@ -115,11 +115,14 @@ export interface PieceActionsProps {
   /** The frame's size, so the strip can be kept inside it. */
   frame: { width: number; height: number };
   onOrder: (to: "forward" | "backward" | "front" | "back") => void;
-  onFlip: (axis: "x" | "y") => void;
+  /** Flipping, when this editor offers it from the strip. */
+  onFlip?: (axis: "x" | "y") => void;
   onCrop: () => void;
   onCutOut: () => void;
   /** Holds what is in hand in place; each piece is let go again from the pieces-here list. */
   onLock: () => void;
+  /** How a locked piece is let go again in this editor, shown with the lock. */
+  lockHint?: string;
   onDuplicate: () => void;
   onRemove: () => void;
 }
@@ -191,6 +194,7 @@ export function PieceActions({
   onCrop,
   onCutOut,
   onLock,
+  lockHint = "right-click the spot to unlock",
   onDuplicate,
   onRemove,
 }: PieceActionsProps) {
@@ -212,22 +216,26 @@ export function PieceActions({
       run: () => onOrder("forward"),
     },
     { separator: true, key: "after-order" },
-    {
-      key: "flip-x",
-      label: "Flip across",
-      hint: "H",
-      glyph: GLYPHS.flipX,
-      run: () => onFlip("x"),
-      ...(piece ? { on: piece.flipX } : {}),
-    },
-    {
-      key: "flip-y",
-      label: "Flip down",
-      hint: "V",
-      glyph: GLYPHS.flipY,
-      run: () => onFlip("y"),
-      ...(piece ? { on: piece.flipY } : {}),
-    },
+    ...(onFlip
+      ? [
+          {
+            key: "flip-x",
+            label: "Flip across",
+            hint: "H",
+            glyph: GLYPHS.flipX,
+            run: () => onFlip("x"),
+            ...(piece ? { on: piece.flipX } : {}),
+          },
+          {
+            key: "flip-y",
+            label: "Flip down",
+            hint: "V",
+            glyph: GLYPHS.flipY,
+            run: () => onFlip("y"),
+            ...(piece ? { on: piece.flipY } : {}),
+          },
+        ]
+      : []),
     ...(piece
       ? [
           {
@@ -258,7 +266,7 @@ export function PieceActions({
     {
       key: "lock",
       label: piece ? "Lock in place" : "Lock these in place",
-      hint: "right-click the spot to unlock",
+      hint: lockHint,
       glyph: GLYPHS.lock,
       run: onLock,
     },

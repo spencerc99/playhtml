@@ -12,16 +12,15 @@ import {
   isAnyTime,
   scrapPassesFilters,
   type ScrapKindFilter,
+  type ScrapShapeFilter,
   type ScrapWhenFilter,
 } from "@movement/components/ScrapFilters";
 import type { FilterChip } from "@movement/utils/eventUtils";
 import {
   DRAWER_RAIL_WIDTH,
-  SLOT_SIZE_NAMES,
   clampDrawerWidth,
   defaultDrawerWidth,
   drawerColumns,
-  type DrawerSlotSize,
 } from "./drawerPreference";
 import { cellLeft, layOutDrawer } from "./drawerLayout";
 import { ProvenanceLines } from "./ProvenancePeek";
@@ -43,10 +42,8 @@ interface ScrapTrayProps {
   items: readonly ScrapItem[];
   width: number;
   collapsed: boolean;
-  slotSize: DrawerSlotSize;
   onWidth: (width: number) => void;
   onCollapsed: (collapsed: boolean) => void;
-  onSlotSize: (slotSize: DrawerSlotSize) => void;
   onPlace: (item: ScrapItem) => void;
   onDragStart: (item: ScrapItem, event: React.DragEvent) => void;
 }
@@ -55,14 +52,13 @@ export function ScrapTray({
   items,
   width,
   collapsed,
-  slotSize,
   onWidth,
   onCollapsed,
-  onSlotSize,
   onPlace,
   onDragStart,
 }: ScrapTrayProps) {
-  const [kind, setKind] = useState<ScrapKindFilter>("all");
+  const [kind, setKind] = useState<ScrapKindFilter>([]);
+  const [shape, setShape] = useState<ScrapShapeFilter>([]);
   const [places, setPlaces] = useState<FilterChip[]>([]);
   const [search, setSearch] = useState("");
   const [when, setWhen] = useState<ScrapWhenFilter>(ANY_TIME);
@@ -78,16 +74,17 @@ export function ScrapTray({
   const filtered = useMemo(() => {
     const sorted = [...items].sort((a, b) => b.ts - a.ts);
     return sorted.filter((item) =>
-      scrapPassesFilters(item, kind, places, search, when),
+      scrapPassesFilters(item, kind, shape, places, search, when),
     );
-  }, [items, kind, places, search, when]);
+  }, [items, kind, shape, places, search, when]);
   const filtering =
-    kind !== "all" ||
+    kind.length > 0 ||
+    shape.length > 0 ||
     places.length > 0 ||
     search.trim() !== "" ||
     !isAnyTime(when);
 
-  const columns = drawerColumns(width, slotSize);
+  const columns = drawerColumns(width);
   // Every thumbnail keeps its own proportions, so the placement is worked out
   // once and the visible range is then a lookup rather than a measurement.
   const layout = useMemo(
@@ -176,6 +173,8 @@ export function ScrapTray({
         onPlaces={setPlaces}
         kind={kind}
         onKind={setKind}
+        shape={shape}
+        onShape={setShape}
         search={search}
         onSearch={setSearch}
         when={when}
@@ -195,25 +194,6 @@ export function ScrapTray({
             &#8249;
           </button>
         }
-        chipsAccessory={
-          <div className="collage-tray__sizes">
-            {SLOT_SIZE_NAMES.map((name) => (
-              <button
-                key={name}
-                type="button"
-                className={`collage-tray__size${
-                  name === slotSize ? " collage-tray__size--on" : ""
-                }`}
-                title={`Show scraps ${name}`}
-                aria-label={`Show scraps ${name}`}
-                aria-pressed={name === slotSize}
-                onClick={() => onSlotSize(name)}
-              >
-                {name[0]}
-              </button>
-            ))}
-          </div>
-        }
       />
       <p className="collage-studio__label collage-tray__count">
         {filtering ? (
@@ -225,7 +205,8 @@ export function ScrapTray({
               onClick={() => {
                 setSearch("");
                 setPlaces([]);
-                setKind("all");
+                setKind([]);
+                setShape([]);
                 setWhen(ANY_TIME);
               }}
             >
@@ -307,6 +288,7 @@ export function ScrapTray({
                     loaded={true}
                     onLoad={() => {}}
                     onError={() => {}}
+                    tileWidth={layout.columnWidth}
                   />
                 </span>
               </button>
@@ -344,7 +326,7 @@ export function ScrapTray({
         }}
         onPointerMove={(event) => {
           if (!resizingRef.current) return;
-          onWidth(clampDrawerWidth(event.clientX, window.innerWidth, slotSize));
+          onWidth(clampDrawerWidth(event.clientX, window.innerWidth));
         }}
         onPointerUp={() => {
           resizingRef.current = false;
@@ -352,7 +334,7 @@ export function ScrapTray({
         onPointerCancel={() => {
           resizingRef.current = false;
         }}
-        onDoubleClick={() => onWidth(defaultDrawerWidth(slotSize))}
+        onDoubleClick={() => onWidth(defaultDrawerWidth())}
       />
     </aside>
   );

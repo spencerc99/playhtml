@@ -103,6 +103,7 @@ export function PiecesHereMenu({
                 loaded={true}
                 onLoad={() => {}}
                 onError={() => {}}
+                letteringChecker={false}
               />
             </span>
             <span className="collage-here__what">

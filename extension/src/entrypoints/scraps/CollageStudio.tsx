@@ -45,6 +45,7 @@ import {
   normalizeStack,
   flipPiece,
   pieceMaterialTransform,
+  type BackShows,
   type CollagePiece,
   type CollageRecord,
 } from "./collageRecord";
@@ -75,16 +76,28 @@ import {
   type CollagePaper,
 } from "./collageFormats";
 import {
-  defaultDrawerWidth,
   readDrawerPreference,
   writeDrawerPreference,
   type DrawerPreference,
 } from "./drawerPreference";
 import { PieceActions } from "./PieceActions";
-import { StudioTools } from "./StudioTools";
+import {
+  EditorSwitch,
+  collageToHandOver,
+  type EditorSwitchChoice,
+} from "./EditorSwitch";
+import { KeysButton, StudioTools, StudioViews } from "./StudioTools";
 import { FormatControl } from "./FormatControl";
-import { CollageBakeError, bakeCollage } from "./bakeCollage";
-import { bakeCollageBack, resolveBackFavicons } from "./bakeCollageBack";
+import {
+  CollageBakeError,
+  bakeCollage,
+  bakeCollagePreview,
+} from "./bakeCollage";
+import {
+  bakeCollageBack,
+  resolveBackFavicons,
+  resolveBackThumbnails,
+} from "./bakeCollageBack";
 import { videoExportSupport } from "./imageAnimation";
 import { useCollageAnimates } from "./useCollageAnimates";
 import { CollageBackFace } from "./CollageBackFace";
@@ -162,6 +175,7 @@ import {
   type CollageDraft,
 } from "./useCollageAutosave";
 import type { SaveStanding } from "./autosaveSchedule";
+import { collageExportName } from "./collageFile";
 
 /** Longest side a freshly placed piece takes, in frame units. */
 const PLACED_MAX_SIDE = 220;
@@ -175,6 +189,9 @@ const STAGE_PADDING = 12;
  * float there, so a frame fitted to a tall stage never slides under them.
  */
 const STAGE_TOP_BAND = 52;
+/** The mat around the frame, in screen pixels, and the band under it that carries the caption. */
+const MAT = 26;
+const MAT_CAPTION = 44;
 /** How far inside the stage's edge a pinned handle stays, in screen pixels. */
 const HANDLE_INSET = 10;
 /** Frame units the pointer must travel before an alt-drag pulls out a copy. */
@@ -273,6 +290,8 @@ interface CollageStudioProps {
   onLeave: () => void;
   /** Timers the autosave runs on, so a test can drive the schedule directly. */
   autosaveTimers?: AutosaveTimers;
+  /** The choice of editor, offered to people with experiment access. */
+  editorSwitch?: EditorSwitchChoice;
 }
 
 /** What the toolbar says about where the work stands. */
@@ -313,12 +332,22 @@ function placedPiece(item: ScrapItem, at: Point, z: number): CollagePiece {
   };
 }
 
+/** The day a collage was started, the way the history cards write it. */
+function madeOn(timestamp: number): string {
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).toLowerCase();
+}
+
 export function CollageStudio({
   scraps,
   editing,
   onSaved,
   onLeave,
   autosaveTimers,
+  editorSwitch,
 }: CollageStudioProps) {
   const initial = useMemo<readonly CollagePiece[]>(
     () => editing?.pieces.map((piece) => ({ ...piece })) ?? [],
@@ -338,6 +367,10 @@ export function CollageStudio({
   );
   const [paper, setPaper] = useState<CollagePaper>(
     editing?.paper ?? DEFAULT_PAPER,
+  );
+  // A collage stored before the back could list titles has always shown pieces.
+  const [backShows, setBackShows] = useState<BackShows>(
+    editing?.backShows ?? "pieces",
   );
   const frame = formatOf(format);
   const [drawer, setDrawer] = useState(() => readDrawerPreference());
@@ -388,6 +421,8 @@ export function CollageStudio({
   >(null);
   const [dropActive, setDropActive] = useState(false);
   const [peek, setPeek] = useState(createPeekState);
+  /** The sources view left on from its toggle; holding i shows it too. */
+  const [sourcesOn, setSourcesOn] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   /** The pile the "pieces here" menu is listing, and where it opened. */
   const [hereMenu, setHereMenu] = useState<{
@@ -440,6 +475,7 @@ export function CollageStudio({
       frame: { width: frame.width, height: frame.height },
       format,
       paper,
+      backShows,
       pieces: normalizeStack(pieces),
     },
     hasContent: pieces.length > 0 || title.trim().length > 0,
@@ -451,11 +487,9 @@ export function CollageStudio({
       record: { ...draftRef.current.record, updatedAt: Date.now() },
     }),
     bake: () =>
-      bakeCollage({
+      bakeCollagePreview({
         frame: formatOf(draftRef.current.record.format),
         pieces: draftRef.current.record.pieces,
-        paper: draftRef.current.record.paper.color,
-        grain: draftRef.current.record.paper.grain,
       }),
     store: saveCollage,
     onStored: (record) => {
@@ -477,8 +511,9 @@ export function CollageStudio({
       paper: paper.color,
       grain: paper.grain,
       format,
+      backShows,
     }),
-    [pieces, title, paper.color, paper.grain, format],
+    [pieces, title, paper.color, paper.grain, format, backShows],
   );
   const firstChangeRef = useRef(true);
   useEffect(() => {
@@ -578,7 +613,7 @@ export function CollageStudio({
     cuttingOut: cutoutSession !== null,
     piecesHereOpen: hereStack.length > 0,
     gestureRunning: gesture.kind !== "idle",
-    peekHeld: peek.held,
+    peekHeld: (peek.held || sourcesOn) && !over,
     hasSelection: selectedPieces.length > 0,
   };
   const panel = visiblePanel(panelState);
@@ -640,8 +675,9 @@ export function CollageStudio({
     const update = () => {
       setScale(
         frameScale(frame, {
-          width: stage.clientWidth - STAGE_PADDING * 2,
-          height: stage.clientHeight - STAGE_TOP_BAND - STAGE_PADDING,
+          width: stage.clientWidth - STAGE_PADDING * 2 - MAT * 2,
+          height:
+            stage.clientHeight - STAGE_TOP_BAND - STAGE_PADDING - MAT - MAT_CAPTION,
         }),
       );
     };
@@ -787,6 +823,16 @@ export function CollageStudio({
 
   const cancelCrop = useCallback(() => setCrop(null), []);
 
+  /**
+   * Whether the running crop has changed the piece. The crop lives outside
+   * the history until it is committed, so this is an edit undo can take back.
+   */
+  const cropPending = useMemo(() => {
+    if (!crop) return false;
+    const target = pieces.find((piece) => piece.id === crop.pieceId);
+    return Boolean(target && !sameCrop(target.crop, crop.crop));
+  }, [crop, pieces]);
+
   const beginTransform = useCallback(
     (kind: "rotate" | "scale") => {
       if (!selectionBox) return;
@@ -906,11 +952,10 @@ export function CollageStudio({
       title,
       createdAt: createdAtRef.current,
       changedAt,
-      pieceCount: pieces.length,
-      formatLabel: `${frame.label} \u00b7 ${frame.width} \u00d7 ${frame.height}`,
-      sources: collageProvenance(normalizeStack(pieces)),
+      pieces: normalizeStack(pieces),
+      shows: backShows,
     }),
-    [changedAt, frame, pieces, title],
+    [backShows, changedAt, pieces, title],
   );
 
   // The back shows the front through the paper. The last picture that drew is
@@ -928,12 +973,7 @@ export function CollageStudio({
     if (lastPreview && standingKind === "saved") return;
     if (standingKind === "saving") return;
     let cancelled = false;
-    bakeCollage({
-      frame,
-      pieces,
-      paper: paper.color,
-      grain: paper.grain,
-    })
+    bakeCollagePreview({ frame, pieces })
       .then((baked) => {
         if (!cancelled) setBleed(baked);
       })
@@ -953,7 +993,7 @@ export function CollageStudio({
     return () => {
       cancelled = true;
     };
-  }, [frame, lastPreview, over, paper.color, paper.grain, pieces, standingKind]);
+  }, [frame, lastPreview, over, pieces, standingKind]);
 
   const stepSelection = useCallback(
     (direction: 1 | -1) => {
@@ -1033,6 +1073,49 @@ export function CollageStudio({
     return () => window.removeEventListener("keydown", onSaveNow);
   }, [flush]);
 
+  /**
+   * Ends a run so the next edit becomes its own undo step. A press that never
+   * travelled was a click, which settles on what its plan chose: the frontmost
+   * piece under the pointer, the deeper one a cmd-click reached, the one piece
+   * a click narrows a group to, or nothing for a click on bare paper.
+   */
+  const endGesture = useCallback((event?: React.PointerEvent) => {
+    const press = pressRef.current;
+    pressRef.current = null;
+    if (
+      event &&
+      press &&
+      !press.moved &&
+      performance.now() - press.downAt <= CLICK_MAX_MS
+    ) {
+      setSelection(press.selectOnClick);
+    }
+    setGesture({ kind: "idle" });
+    setGestureReadout(null);
+    setHistory((current) => endRun(current));
+  }, []);
+
+  /**
+   * Finishes whatever is running so undo and redo step from a settled
+   * arrangement: a crop, cutout or modal transform is kept as it stands, and
+   * a drag stops where it is and no longer follows the pointer.
+   */
+  const finishRunning = useCallback(() => {
+    if (crop) commitCrop();
+    else if (cutoutSession) confirmCutout();
+    else if (transform) confirmTransform();
+    if (gesture.kind !== "idle") endGesture();
+  }, [
+    commitCrop,
+    confirmCutout,
+    confirmTransform,
+    crop,
+    cutoutSession,
+    endGesture,
+    gesture.kind,
+    transform,
+  ]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const command = studioCommandFor(
@@ -1069,10 +1152,14 @@ export function CollageStudio({
           if (clipboard) duplicatePieces(clipboard);
           break;
         case "undo":
+          finishRunning();
           setHistory((current) => undo(current));
           break;
         case "redo":
+          finishRunning();
           setHistory((current) => redo(current));
+          break;
+        case "withhold":
           break;
         case "enterCrop":
           enterCrop();
@@ -1165,6 +1252,7 @@ export function CollageStudio({
     duplicatePieces,
     editPieces,
     enterCrop,
+    finishRunning,
     flipSelection,
     mode,
     multiple,
@@ -1179,28 +1267,6 @@ export function CollageStudio({
     stepSelection,
     turnOver,
   ]);
-
-  /**
-   * Ends a run so the next edit becomes its own undo step. A press that never
-   * travelled was a click, which settles on what its plan chose: the frontmost
-   * piece under the pointer, the deeper one a cmd-click reached, the one piece
-   * a click narrows a group to, or nothing for a click on bare paper.
-   */
-  const endGesture = useCallback((event?: React.PointerEvent) => {
-    const press = pressRef.current;
-    pressRef.current = null;
-    if (
-      event &&
-      press &&
-      !press.moved &&
-      performance.now() - press.downAt <= CLICK_MAX_MS
-    ) {
-      setSelection(press.selectOnClick);
-    }
-    setGesture({ kind: "idle" });
-    setGestureReadout(null);
-    setHistory((current) => endRun(current));
-  }, []);
 
   /**
    * Carries the pieces a move gesture holds to follow the pointer. Shift keeps
@@ -1653,7 +1719,7 @@ export function CollageStudio({
     if (pieces.length === 0) return;
     setExporting(true);
     setNotice(null);
-    const name = title.trim() || "collage";
+    const name = collageExportName(title);
     try {
       const front = await bakeCollage({
         frame,
@@ -1666,7 +1732,8 @@ export function CollageStudio({
         paper,
         content: backContent,
         front,
-        favicons: await resolveBackFavicons(backContent.sources),
+        favicons: await resolveBackFavicons(collageProvenance(backContent.pieces)),
+        thumbnails: await resolveBackThumbnails(backContent.pieces),
         look: backLook,
       });
       saveFile(front, `${name} front.png`);
@@ -1712,7 +1779,7 @@ export function CollageStudio({
         grain: paper.grain,
         onProgress: (done, total) => setVideoProgress(done / total),
       });
-      saveFile(video, `${title.trim() || "untitled collage"}.mp4`);
+      saveFile(video, `${collageExportName(title)}.mp4`);
     } catch (error) {
       const text =
         error instanceof CollageBakeError
@@ -1766,13 +1833,8 @@ export function CollageStudio({
         items={scraps}
         width={drawer.width}
         collapsed={drawer.collapsed}
-        slotSize={drawer.slotSize}
         onWidth={(width) => updateDrawer({ width })}
         onCollapsed={(collapsed) => updateDrawer({ collapsed })}
-        onSlotSize={(slotSize) =>
-          // The drawer follows the new slot size so three still fit across.
-          updateDrawer({ slotSize, width: defaultDrawerWidth(slotSize) })
-        }
         onPlace={(item) => {
           // Placing a scrap is an edit, so the collage turns face up for it.
           if (over) turnOver();
@@ -1800,6 +1862,26 @@ export function CollageStudio({
         >
           {/* The sheet holds both sides of the collage in one place and turns
               over about its vertical axis; only the side facing up is live. */}
+          {/* The frame sits on a mat, and the mat carries the collage's name,
+              count and date under it, so a screenshot of the mat says what it is. */}
+          <div
+            className="collage-mat"
+            data-marquee-ground=""
+            style={{
+              width: frame.width * scale + MAT * 2,
+              height: frame.height * scale + MAT + MAT_CAPTION,
+            }}
+          >
+          <div
+            className="collage-mat__window"
+            data-marquee-ground=""
+            style={{
+              left: MAT,
+              top: MAT,
+              width: frame.width * scale,
+              height: frame.height * scale,
+            }}
+          >
           <div
             className={`collage-sheet${over ? " collage-sheet--over" : ""}`}
             data-marquee-ground=""
@@ -1995,7 +2077,7 @@ export function CollageStudio({
                 {hovered &&
                   !isSelected(selection, hovered.id) &&
                   gesture.kind !== "marquee" &&
-                  !peek.held &&
+                  !(peek.held || sourcesOn) &&
                   !toolActive && (
                   <div
                     className="collage-piece-hover"
@@ -2011,7 +2093,7 @@ export function CollageStudio({
                   />
                 )}
 
-                {peek.held && (
+                {(peek.held || sourcesOn) && !over && (
                   <ProvenancePeek
                     pieces={ordered}
                     hoveredId={hoveredId}
@@ -2100,26 +2182,53 @@ export function CollageStudio({
               />
             </div>
           </div>
+          </div>
+            <div className="collage-mat__caption" style={{ left: MAT, right: MAT }}>
+              {over ? (
+                <span className="collage-studio__label">
+                  turned over · T or esc to turn back
+                </span>
+              ) : (
+                <>
+                  <input
+                    className="collage-title-input"
+                    value={title}
+                    placeholder="untitled collage"
+                    onChange={(event) => setTitle(event.target.value)}
+                    aria-label="Collage title"
+                  />
+                  <span className="collage-bar__spacer" />
+                  <span className="collage-studio__label">
+                    {pieces.length} piece{pieces.length === 1 ? "" : "s"} · made{" "}
+                    {madeOn(createdAtRef.current)}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
 
           <StudioTools
-            canUndo={!over && canUndo(history)}
+            canUndo={!over && (canUndo(history) || cropPending)}
             canRedo={!over && canRedo(history)}
-            keysOpen={showKeys}
-            turnedOver={over}
-            onUndo={() => setHistory((current) => undo(current))}
-            onRedo={() => setHistory((current) => redo(current))}
-            onKeys={() => setShowKeys((value) => !value)}
-            onTurnOver={turnOver}
+            onUndo={() => {
+              finishRunning();
+              setHistory((current) => undo(current));
+            }}
+            onRedo={() => {
+              finishRunning();
+              setHistory((current) => redo(current));
+            }}
             onBack={leave}
           />
 
-          <FormatControl
-            format={format}
-            paper={paper}
-            zoom={scale}
-            pieceCount={pieces.length}
-            onFormat={setFormat}
-            onPaper={setPaper}
+          <StudioViews
+            turnedOver={over}
+            sourcesOn={sourcesOn}
+            canShowSources={!over && pieces.length > 0}
+            onTurnOver={turnOver}
+            onSources={() => setSourcesOn((value) => !value)}
+            backShows={backShows}
+            onBackShows={setBackShows}
           />
 
           {showKeys && <KeysPopover onClose={() => setShowKeys(false)} />}
@@ -2130,29 +2239,29 @@ export function CollageStudio({
         )}
 
         <div className="collage-bar">
-          {/* The back already carries the title and the count, so while it
-              is being read the bar only says how to turn it face up. */}
-          {over ? (
-            <span className="collage-studio__label collage-bar__turned">
-              turned over · T or esc to turn back
-            </span>
-          ) : (
-            <>
-              <input
-                className="collage-title-input"
-                value={title}
-                placeholder="untitled collage"
-                onChange={(event) => setTitle(event.target.value)}
-                aria-label="Collage title"
-              />
-              <span className="collage-bar__spacer" />
-              <span className="collage-studio__label">
-                {pieces.length} piece{pieces.length === 1 ? "" : "s"}
-                {pieces.length > 0 && " · hold i for sources"}
-              </span>
-            </>
-          )}
+          <FormatControl
+            format={format}
+            paper={paper}
+            zoom={scale}
+            pieceCount={pieces.length}
+            onFormat={setFormat}
+            onPaper={setPaper}
+          />
           <span className="collage-bar__spacer" />
+          {editorSwitch && (
+            <EditorSwitch
+              choice={editorSwitch}
+              handOver={() => {
+                flush();
+                return collageToHandOver({
+                  draft: draftRef.current,
+                  standing: autosave.standing,
+                  opened: editing,
+                  preview: autosave.preview,
+                });
+              }}
+            />
+          )}
           {standing.text && (
             <p
               className={`collage-standing${
@@ -2163,6 +2272,10 @@ export function CollageStudio({
               {standing.text}
             </p>
           )}
+          <KeysButton
+            open={showKeys}
+            onToggle={() => setShowKeys((value) => !value)}
+          />
           <button
             type="button"
             className="collage-action"

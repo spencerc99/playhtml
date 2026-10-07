@@ -168,6 +168,8 @@ jobs:
         if: env.SKIP_CHROME != 'true' || env.SKIP_EDGE != 'true'
         continue-on-error: true
         working-directory: extension
+        env:
+          WXT_TLDRAW_LICENSE_KEY: ${{ secrets.TLDRAW_LICENSE_KEY }}
         run: |
           WXT_OUT_DIR=publish bun run zip
           node scripts/validateExtensionBuild.mjs publish/chrome-mv3
@@ -177,6 +179,8 @@ jobs:
         if: env.SKIP_FIREFOX != 'true'
         continue-on-error: true
         working-directory: extension
+        env:
+          WXT_TLDRAW_LICENSE_KEY: ${{ secrets.TLDRAW_LICENSE_KEY }}
         run: WXT_OUT_DIR=publish bun run zip:firefox
 
       - name: Build Safari zip
@@ -184,6 +188,8 @@ jobs:
         if: env.SKIP_SAFARI != 'true'
         continue-on-error: true
         working-directory: extension
+        env:
+          WXT_TLDRAW_LICENSE_KEY: ${{ secrets.TLDRAW_LICENSE_KEY }}
         run: |
           WXT_OUT_DIR=publish bun run zip:safari
           node scripts/validateExtensionBuild.mjs publish/safari-mv3 safari

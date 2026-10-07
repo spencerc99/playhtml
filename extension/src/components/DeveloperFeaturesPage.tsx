@@ -55,7 +55,8 @@ export function DeveloperFeaturesPage({ onBack, embedded = false }: Props) {
         (feature) =>
           overrides[feature] !== undefined &&
           states[feature].available &&
-          states[feature].stage !== "released",
+          states[feature].stage !== "released" &&
+          !FEATURE_CATALOG[feature].chosenWhereUsed,
       ).length
     : 0;
 
@@ -92,7 +93,9 @@ export function DeveloperFeaturesPage({ onBack, embedded = false }: Props) {
         {states &&
           FEATURE_IDS.filter(
             (feature) =>
-              states[feature].available && states[feature].stage !== "released",
+              states[feature].available &&
+              states[feature].stage !== "released" &&
+              !FEATURE_CATALOG[feature].chosenWhereUsed,
           ).map((feature) => {
             const definition = FEATURE_CATALOG[feature];
             const state = states[feature];

@@ -255,3 +255,20 @@ input {
     cursor: pointer;
   }
 }
+
+// Admin-only stage switch, as discreet as the portrait trigger.
+.stage-switch {
+  position: fixed;
+  bottom: 1em;
+  right: 3em;
+  z-index: 20;
+  padding: 2px 6px;
+  font-family: $mono-font;
+  font-size: 10px;
+  opacity: 0.35;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 0.8;
+  }
+}

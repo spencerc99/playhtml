@@ -2,10 +2,7 @@
 // ABOUTME: coordinates event writes, uploads, and data reads for all extension surfaces
 import browser from 'webextension-polyfill'
 import { scrapEncounterDay } from '@movement/utils/scrapEncounterDay'
-import {
-  groupPhotoEncounters,
-  type ScrapSource,
-} from '@movement/utils/scrapPhotoGroups'
+import type { ScrapSource } from '@movement/utils/scrapPhotoGroups'
 import { LocalEventStore } from '../storage/LocalEventStore'
 import { ImageFingerprints } from '../storage/imageFingerprints'
 import { ImageCopier } from '../storage/ImageCopier'
@@ -78,6 +75,16 @@ import {
 } from '../features/slowMode/slowMode'
 import { initSlowModeInterception } from '../features/slowMode/slowModeBackground'
 import { isHostedCommuteUrl } from '../features/slowMode/slowModeHostedBridge'
+import {
+  ALLOW_LOCAL_SESSION_SCRAPS_PAGES,
+  isSessionScrapsPageUrl,
+} from '../features/sessionScraps/sessionScrapsBridge'
+import {
+  SESSION_LOOKBACK_MS,
+  selectSessionScraps,
+  type SessionScrapCandidate,
+  type SessionScrapsAnswer,
+} from '../features/sessionScraps/sessionScraps'
 
 function replyWithWikipediaHandle(
   request: Promise<string>,
@@ -144,6 +151,35 @@ export type ScrapRecord = ScrapRecordBase &
 
 const FEATURE_ACCESS_REFRESH_ALARM = 'refreshFeatureAccess'
 const IMAGE_COPY_BACKFILL_ALARM = 'copyScrapImages'
+
+/**
+ * Image scraps from the lookback window, newest first, narrowed to one
+ * browsing session for a hosted collage page.
+ */
+async function readSessionScraps(
+  since: number | undefined,
+  until: number | undefined,
+): Promise<SessionScrapsAnswer> {
+  const now = Date.now()
+  const floor = now - SESSION_LOOKBACK_MS
+  const candidates: SessionScrapCandidate[] = []
+  let cursor: { ts: number; id: string } | undefined
+  for (;;) {
+    const page = await store.queryEventPage('element', 500, cursor)
+    let reachedFloor = false
+    for (const event of page.events) {
+      if (event.ts < floor) {
+        reachedFloor = true
+        break
+      }
+      const scrap = toScrapRecord(event)
+      if (scrap?.kind === 'image') candidates.push(scrap)
+    }
+    if (reachedFloor || !page.nextCursor) break
+    cursor = page.nextCursor
+  }
+  return selectSessionScraps(candidates, { now, since, until })
+}
 
 function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
   const kind = (event.data as { kind?: unknown } | null)?.kind
@@ -758,28 +794,75 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'GET_SCRAPS') {
-      // No limit returns every scrap; the scraps page filters the full set.
-      const limit = message.options?.limit as number | undefined
+      const limit = message.options?.limit ?? 200
+      const cursor = message.options?.cursor
       store
-        .queryByType('element')
-        .then((events) =>
-          events
-            .sort((first, second) => second.ts - first.ts)
-            .flatMap((event): ScrapRecord[] => {
+        .queryEventPage('element', limit, cursor)
+        .then(({ events, nextCursor }) =>
+          reply({
+            scraps: events.flatMap((event): ScrapRecord[] => {
               const scrap = toScrapRecord(event)
               return scrap ? [scrap] : []
             }),
-        )
-        .then((scraps) =>
-          reply({
-            scraps: groupPhotoEncounters(scraps)
-              .sort((a, b) => b.ts - a.ts)
-              .slice(0, limit ?? Infinity),
+            nextCursor,
           }),
         )
         .catch((e) => {
           console.error('[Background] GET_SCRAPS error:', e)
-          reply({ scraps: [] })
+          reply({ scraps: [], error: String(e) })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_SESSION_SCRAPS') {
+      if (
+        !sender.tab?.url ||
+        !isSessionScrapsPageUrl(sender.tab.url, ALLOW_LOCAL_SESSION_SCRAPS_PAGES)
+      ) {
+        reply(null)
+        return
+      }
+      readSessionScraps(
+        typeof message.since === 'number' ? message.since : undefined,
+        typeof message.until === 'number' ? message.until : undefined,
+      )
+        .then(reply)
+        .catch((e) => {
+          console.error('[Background] GET_SESSION_SCRAPS error:', e)
+          reply(null)
+        })
+      return true
+    }
+
+    if (message.type === 'DELETE_SCRAPS') {
+      // Only the extension's own pages may delete; a content script runs
+      // beside arbitrary sites and has no reason to.
+      if (!sender.url?.startsWith(browser.runtime.getURL('/'))) {
+        reply({ error: 'DELETE_SCRAPS is only accepted from extension pages' })
+        return true
+      }
+      const ids: unknown = message.ids
+      if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
+        reply({ error: 'DELETE_SCRAPS needs a list of scrap ids' })
+        return true
+      }
+      store
+        .deleteScrapEvents(ids)
+        .then((deleted) => reply({ deleted }))
+        .catch((e) => {
+          console.error('[Background] DELETE_SCRAPS error:', e)
+          reply({ error: String(e) })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_SCRAP_COUNT') {
+      store
+        .countEventsOfType('element')
+        .then((total) => reply({ total }))
+        .catch((e) => {
+          console.error('[Background] GET_SCRAP_COUNT error:', e)
+          reply({ error: String(e) })
         })
       return true
     }

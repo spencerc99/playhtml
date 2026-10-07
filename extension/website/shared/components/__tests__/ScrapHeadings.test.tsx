@@ -214,7 +214,8 @@ describe("heading scraps in the collage", () => {
     expect(rendered?.style.fontFamily).toBe("Georgia, serif");
     expect(rendered?.style.fontWeight).toBe("700");
     expect(rendered?.style.color).toBe("rgb(61, 56, 51)");
-    expect(rendered?.style.fontSize).toBe("22px");
+    // Sized to fit its tile inside the patch the heading sits on.
+    expect(rendered?.style.fontSize).toBe("21px");
   });
 
   it("renders heading text as text rather than markup", () => {
@@ -233,7 +234,7 @@ describe("heading scraps in the collage", () => {
     expect(container.querySelector("img[src='x']")).toBeNull();
   });
 
-  it("renders a heading as bare text, with its own color and no patch", () => {
+  it("backs a heading too pale for the paper in a dark shade, keeping its color", () => {
     act(() => {
       root.render(
         <ScrapCollage
@@ -246,13 +247,16 @@ describe("heading scraps in the collage", () => {
         />,
       );
     });
-    expect(container.querySelector(".scrap-collage__backdrop")).toBeNull();
+    const backing = container.querySelector<HTMLElement>(
+      ".scrap-collage__backdrop--ink",
+    );
+    expect(backing).not.toBeNull();
+    expect(backing?.style.background).not.toBe("");
     const rendered = container.querySelector<HTMLElement>(
       ".scrap-collage__heading",
     );
     expect(rendered?.textContent).toBe("Pale type from a dark page");
     expect(rendered?.style.color).toBe("rgb(245, 240, 232)");
-    expect(rendered?.style.background).toBe("");
   });
 
   it("offers a headings type filter that narrows the collage to headings", () => {

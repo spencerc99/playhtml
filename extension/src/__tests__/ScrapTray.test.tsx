@@ -68,10 +68,8 @@ describe("ScrapTray filters", () => {
           items={items}
           width={384}
           collapsed={false}
-          slotSize="medium"
           onWidth={vi.fn()}
           onCollapsed={vi.fn()}
-          onSlotSize={vi.fn()}
           onPlace={vi.fn()}
           onDragStart={vi.fn()}
         />,
@@ -241,10 +239,8 @@ describe("ScrapTray day and time-of-day filters", () => {
           items={dated}
           width={384}
           collapsed={false}
-          slotSize="medium"
           onWidth={vi.fn()}
           onCollapsed={vi.fn()}
-          onSlotSize={vi.fn()}
           onPlace={vi.fn()}
           onDragStart={vi.fn()}
         />,

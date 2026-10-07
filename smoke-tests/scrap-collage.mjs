@@ -21,6 +21,11 @@ const profile = await mkdtemp(resolve(tmpdir(), "wwo-scrap-collage-"));
 const exportPath = process.env.SCRAPS_EXPORT || null;
 /** How long the studio waits for an arrangement to settle before writing. */
 const SETTLE_MS = 1200;
+/**
+ * The most a five-piece stored preview may weigh. With the paper's grain baked
+ * in, previews ran to about 13 MB; the pieces alone are a small fraction.
+ */
+const PREVIEW_MAX_BYTES = 600_000;
 
 const photo = (fill) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400"><rect width="600" height="400" fill="${fill}"/><circle cx="300" cy="200" r="120" fill="#b76841"/></svg>`;
@@ -116,9 +121,9 @@ const SOLID_JPEG_BASE64 =
   "/9k=";
 
 /**
- * Each page carries one of every scrap kind: a photo, a styled button with an
- * inner icon, a standalone inline svg icon, a heading, and an element with a
- * custom cursor. The button's background is a gradient and its font-family is
+ * Each page carries one of every collected scrap kind: a photo, a styled
+ * button with an inner icon, a heading, and an element with a custom cursor.
+ * Its standalone inline svg icon checks that icons are no longer collected. The button's background is a gradient and its font-family is
  * quoted, so the bake's XML escaping is exercised with real captured styles.
  *
  * A second button is light text outlined on a dark section, carrying no
@@ -176,11 +181,20 @@ const SOLID_JPEG = Buffer.from(SOLID_JPEG_BASE64, "base64");
 
 /** Flipped on to make a photo that browsed fine vanish at bake time. */
 let missingPhotoGone = false;
-/** Flipped on to make every photo fetch fail, so a re-bake cannot succeed. */
-let photosBlocked = false;
+/**
+ * Flipped on to take the image host away: every photo and the cursor image
+ * fail to load. Photos have local copies the bake falls back on, but a cursor
+ * piece always draws from its URL, so a collage holding one cannot re-bake.
+ */
+let imageHostDown = false;
 
 const server = createServer((request, response) => {
   const path = request.url.split("?")[0];
+  if (imageHostDown && (path === "/cursor.svg" || path.startsWith("/photo/"))) {
+    response.writeHead(404);
+    response.end("gone");
+    return;
+  }
   if (path === "/cursor.svg") {
     response.setHeader("content-type", "image/svg+xml");
     response.end(cursorImage);
@@ -192,7 +206,7 @@ const server = createServer((request, response) => {
     return;
   }
   if (path.startsWith("/photo/")) {
-    if (photosBlocked || (path.includes("missing") && missingPhotoGone)) {
+    if (path.includes("missing") && missingPhotoGone) {
       response.writeHead(404);
       response.end("gone");
       return;
@@ -424,9 +438,55 @@ try {
     }
   });
   console.log("scraps collected by kind:", byKind);
-  for (const kind of ["image", "button", "svg-icon", "heading", "cursor"]) {
+  for (const kind of ["image", "button", "heading", "cursor"]) {
     assert.ok(byKind[kind] > 0, `expected at least one ${kind} scrap`);
   }
+  assert.equal(byKind["svg-icon"], undefined, "standalone icons are no longer collected");
+
+  // Icons collected before collection stopped still live in people's
+  // archives, so one is stored the way the old collector wrote it.
+  await worker.evaluate(async () => {
+    const db = await new Promise((ok, bad) => {
+      const r = indexedDB.open("collection_events_db");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => bad(r.error);
+    });
+    try {
+      const store = db.transaction("events", "readwrite").objectStore("events");
+      const button = await new Promise((ok, bad) => {
+        const rows = [];
+        const r = store.index("type").openCursor("element");
+        r.onsuccess = () => {
+          const cursor = r.result;
+          if (!cursor) return ok(rows.find((row) => row.data?.kind === "button"));
+          rows.push(cursor.value);
+          cursor.continue();
+        };
+        r.onerror = () => bad(r.error);
+      });
+      const { canonicalScrapKey: _unused, ...base } = button;
+      const markup =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" fill="rgb(74, 154, 138)"/></svg>';
+      await new Promise((ok, bad) => {
+        const r = store.put({
+          ...base,
+          id: `${button.id}-legacy-icon`,
+          data: {
+            kind: "svg-icon",
+            markup,
+            width: 40,
+            height: 40,
+            pageTitle: button.data.pageTitle,
+            ...(button.data.faviconUrl ? { faviconUrl: button.data.faviconUrl } : {}),
+          },
+        });
+        r.onsuccess = () => ok();
+        r.onerror = () => bad(r.error);
+      });
+    } finally {
+      db.close();
+    }
+  });
 
   const page = await context.newPage();
   await page.goto(`${extensionOrigin}/scraps.html`, { waitUntil: "load" });
@@ -486,13 +546,19 @@ try {
     curs: "cursor",
   };
 
-  /** Narrows the drawer to one kind through its type popover. */
+  /**
+   * Narrows the drawer to one kind through its type popover. Types are a
+   * multi-select, so "all" clears earlier picks first.
+   */
   async function pickTrayKind(filter) {
     const tray = page.locator(".collage-tray");
-    await tray.locator(".scrap-filters__chip", { hasText: "type" }).click();
+    if (!(await tray.locator(".scrap-filters__popover--type").count()))
+      await tray.locator(".scrap-filters__chip", { hasText: "type" }).click();
+    await tray.locator('[data-scrap-kind="all"]').click();
     await tray
       .locator(`[data-scrap-kind="${TRAY_KINDS[filter]}"]`)
       .click();
+    await page.keyboard.press("Escape");
   }
 
   async function placeFromTray(filter, index = 0) {
@@ -599,14 +665,14 @@ try {
       0,
       `${how}: the back should be live while turned over`,
     );
-    // The back carries the title and the count, so the bar gives them up.
+    // The back carries the title and the count, so the mat's caption gives them up.
     assert.equal(
       await page.locator(".collage-title-input").count(),
       0,
       `${how}: the title field should be put away while turned over`,
     );
     const hint = (
-      await page.locator(".collage-bar__turned").textContent()
+      await page.locator(".collage-mat__caption .collage-studio__label").textContent()
     ).trim();
     assert.equal(hint, "turned over · T or esc to turn back");
     assert.equal(
@@ -629,7 +695,10 @@ try {
       1,
       `${how}: the title field should be back`,
     );
-    assert.equal(await page.locator(".collage-bar__turned").count(), 0);
+    assert.ok(
+      !(await page.locator(".collage-mat__caption").textContent()).includes("turned over"),
+      `${how}: the caption should say the count and date again`,
+    );
   }
 
   /**
@@ -833,6 +902,19 @@ try {
         };
         const f = await decode(front);
         const b = await decode(back);
+        // A run of the front's corner pixels, so grain can be told from a flat
+        // fill: grain makes neighbouring paper pixels differ.
+        const frontCorner = [];
+        for (let step = 0; step < 24; step += 1) {
+          const i = (4 * f.width + 4 + step) * 4;
+          frontCorner.push([f.data[i], f.data[i + 1], f.data[i + 2]]);
+        }
+        const frontCornerVaries = frontCorner.some(
+          (pixel) =>
+            pixel[0] !== frontCorner[0][0] ||
+            pixel[1] !== frontCorner[0][1] ||
+            pixel[2] !== frontCorner[0][2],
+        );
         const lum = (data, i) =>
           0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
         let dark = 0;
@@ -918,6 +1000,7 @@ try {
           markCornerShift: Math.max(
             ...corners.map((value) => Math.abs(value - paperLum)),
           ),
+          frontCornerVaries,
         };
       },
       {
@@ -1052,8 +1135,15 @@ try {
   );
   assert.equal(afterReload.length, 1, "autosaving must not multiply records");
 
-  // Reopen it and change something, then leave before the debounce fires.
-  await page.getByRole("button", { name: "create", exact: true }).click();
+  // A reload lands back inside the collage (its place is in the URL), so
+  // step out to the list, reopen it, change something, and leave before the
+  // debounce fires.
+  assert.equal(
+    await page.locator(".collage-mat").count(),
+    1,
+    "a reload should land back inside the collage",
+  );
+  await page.getByRole("button", { name: "back to collages" }).click();
   await page.waitForTimeout(600);
   await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(2500);
@@ -1117,6 +1207,26 @@ try {
     "saved by the key",
     "cmd+S should write right away",
   );
+
+  // A photo bakes from its local copy, so only a piece that draws from its
+  // URL can fail to bake. A cursor is one: add it while the host is up so the
+  // collage carries a good preview of both.
+  await placeFromTray("curs", 0);
+  await page.locator(".collage-frame").click({ position: { x: 6, y: 6 } });
+  stored = await waitForStored(
+    "the cursor piece to be saved with a fresh preview",
+    (rows) => {
+      const row = rows.find((candidate) => candidate.id === collageId);
+      return row?.pieces === 2 && row.drawn;
+    },
+  );
+  await page.waitForTimeout(SETTLE_MS + 3000);
+  stored = await storedCollages();
+  assert.equal(
+    await standing(),
+    "saved",
+    "a collage holding a cursor should save cleanly while its host is up",
+  );
   const previewBeforeBlock = stored.find(
     (row) => row.id === collageId,
   ).previewBytes;
@@ -1124,7 +1234,7 @@ try {
 
   // A bake that fails is not a save failure: the arrangement lands, the last
   // good preview is kept, and the status says the picture is behind.
-  photosBlocked = true;
+  imageHostDown = true;
   await selectByTab();
   for (let step = 0; step < 3; step += 1) {
     await page.keyboard.press("Shift+ArrowDown");
@@ -1167,19 +1277,20 @@ try {
     `an export must fail loudly, got "${exportNotice}"`,
   );
 
-  photosBlocked = false;
+  imageHostDown = false;
   await backToHistory();
 
   // ======================= a reopened collage keeps the picture it was loaded with
   // Reopening starts a fresh studio, so the picture the collage already has is
-  // the only one it holds. Editing with the image host away must write the new
-  // arrangement without blanking that picture on the way past.
+  // the only one it holds. Editing with the image host away, so the cursor
+  // piece cannot be redrawn, must write the new arrangement without blanking
+  // that picture on the way past.
   const beforeReopen = (await storedCollages()).find(
     (row) => row.id === collageId,
   );
   await page.locator(".collage-card__open").first().click();
   await page.waitForTimeout(1200);
-  photosBlocked = true;
+  imageHostDown = true;
   await selectByTab();
   for (let step = 0; step < 3; step += 1) {
     await page.keyboard.press("Shift+ArrowRight");
@@ -1206,7 +1317,7 @@ try {
     beforeReopen.previewBytes,
     "the loaded preview must survive an edit whose re-bake cannot run",
   );
-  photosBlocked = false;
+  imageHostDown = false;
   await backToHistory();
 
   // =============================================== every kind through the bake
@@ -1270,9 +1381,9 @@ try {
     context.drawImage(bitmap, 0, 0);
     const scaleX = bitmap.width / record.frame.width;
     const scaleY = bitmap.height / record.frame.height;
-    const background = [...context.getImageData(4, 4, 1, 1).data].slice(0, 3);
     const samples = record.pieces.map((piece) => {
-      // A piece that baked draws pixels away from the frame background.
+      // The preview holds only the pieces on a clear canvas, so a piece that
+      // baked is wherever the pixels are not see-through.
       let painted = 0;
       let total = 0;
       for (let sx = 0.2; sx <= 0.8; sx += 0.1) {
@@ -1282,22 +1393,18 @@ try {
           if (x < 0 || y < 0 || x >= bitmap.width || y >= bitmap.height) {
             continue;
           }
-          const [r, g, b] = context.getImageData(x, y, 1, 1).data;
+          const alpha = context.getImageData(x, y, 1, 1).data[3];
           total += 1;
-          const distance =
-            Math.abs(r - background[0]) +
-            Math.abs(g - background[1]) +
-            Math.abs(b - background[2]);
-          if (distance > 24) painted += 1;
+          if (alpha > 0) painted += 1;
         }
       }
       return { kind: piece.scrap.kind, painted, total };
     });
-    // A run of corner pixels, so grain can be told from a flat fill: grain
-    // makes neighbouring paper pixels differ, a flat tone makes them equal.
+    // A run of corner pixels, where no piece sits: the paper is left out of
+    // the preview, so they should all be see-through.
     const corner = [];
     for (let step = 0; step < 24; step += 1) {
-      corner.push([...context.getImageData(4 + step, 4, 1, 1).data].slice(0, 3));
+      corner.push(context.getImageData(4 + step, 4, 1, 1).data[3]);
     }
     return {
       pieceCount: record.pieces.length,
@@ -1325,33 +1432,46 @@ try {
   for (const sample of baked.samples) {
     assert.ok(
       sample.painted > 0,
-      `the baked ${sample.kind} drew nothing but frame background`,
+      `the baked ${sample.kind} drew nothing onto the clear preview`,
     );
   }
-  // The bake must show the same paper the studio did: grained paper varies
-  // pixel to pixel where a flat tone is uniform.
-  const cornerVaries = baked.corner.some(
-    (pixel) =>
-      pixel[0] !== baked.corner[0][0] ||
-      pixel[1] !== baked.corner[0][1] ||
-      pixel[2] !== baked.corner[0][2],
+  // The stored preview leaves the paper out: whatever shows it paints the
+  // paper behind it. Baked in, grain's per-pixel noise made every preview a
+  // PNG of many megabytes. The exported front still carries the paper; the
+  // export below checks that.
+  console.log("baked paper:", baked.paper, "corner alpha:", baked.corner);
+  assert.ok(
+    baked.corner.every((alpha) => alpha === 0),
+    "the stored preview should be see-through where no piece sits",
   );
-  console.log(
-    "baked paper:",
-    baked.paper,
-    "corner varies:",
-    cornerVaries,
-    baked.corner.slice(0, 4),
-  );
-  assert.equal(
-    cornerVaries,
-    baked.paper.grain,
-    baked.paper.grain
-      ? "grained paper should bake as grain, not a flat tone"
-      : "ungrained paper should bake flat",
+  assert.ok(
+    baked.previewBytes < PREVIEW_MAX_BYTES,
+    `a five-piece preview should stay small, got ${baked.previewBytes} bytes`,
   );
 
   await backToHistory();
+  // The history paints each card's paper, grain and all, behind its preview.
+  const cardThumb = page
+    .locator(".collage-card")
+    .filter({ hasText: "one of each" })
+    .first()
+    .locator(".collage-card__thumb");
+  const cardPaint = await cardThumb.evaluate((node) => ({
+    color: getComputedStyle(node).backgroundColor,
+    image: getComputedStyle(node).backgroundImage,
+  }));
+  console.log("history card paper:", cardPaint);
+  assert.notEqual(
+    cardPaint.color,
+    "rgba(0, 0, 0, 0)",
+    "the card should paint the collage's paper tone behind the preview",
+  );
+  assert.equal(
+    cardPaint.image !== "none",
+    baked.paper.grain,
+    "the card should carry the grain exactly when the collage's paper does",
+  );
+  await cardThumb.screenshot({ path: `${evidence}/11-history-card-paper.png` });
 
   // ==================================== a button that brought its own backdrop
   // The outlined button is light text with no background of its own, read
@@ -1399,24 +1519,25 @@ try {
     context.drawImage(bitmap, 0, 0);
     const scaleX = bitmap.width / record.frame.width;
     const scaleY = bitmap.height / record.frame.height;
-    // Sample across the piece and keep the darkest pixel found: the patch is
-    // dark even where the light glyphs and border are not.
+    // Sample across the piece and keep the darkest solid pixel found: the
+    // patch is dark even where the light glyphs and border are not. A clear
+    // pixel reads as black, so only what the piece actually drew counts.
     let darkest = 255;
     for (let sx = 0.1; sx <= 0.9; sx += 0.05) {
       for (let sy = 0.2; sy <= 0.8; sy += 0.05) {
         const x = Math.round((piece.x + piece.width * sx) * scaleX);
         const y = Math.round((piece.y + piece.height * sy) * scaleY);
         if (x < 0 || y < 0 || x >= bitmap.width || y >= bitmap.height) continue;
-        const [r, g, b] = context.getImageData(x, y, 1, 1).data;
+        const [r, g, b, a] = context.getImageData(x, y, 1, 1).data;
+        if (a < 250) continue;
         darkest = Math.min(darkest, (r + g + b) / 3);
       }
     }
-    const [pr, pg, pb] = context.getImageData(4, 4, 1, 1).data;
     return {
       kind: piece.scrap.kind,
       backdropColor: piece.scrap.backdropColor ?? null,
       darkest,
-      paperLuma: (pr + pg + pb) / 3,
+      cornerAlpha: context.getImageData(4, 4, 1, 1).data[3],
     };
   });
   console.log("backdrop bake:", backdropBake);
@@ -1429,9 +1550,10 @@ try {
     backdropBake.darkest < 90,
     `the backdrop should bake as dark pixels behind the text, darkest was ${backdropBake.darkest}`,
   );
-  assert.ok(
-    backdropBake.paperLuma > 200,
-    "the surrounding paper should still be pale, so the patch is the piece's own",
+  assert.equal(
+    backdropBake.cornerAlpha,
+    0,
+    "the preview around the piece should be clear, so the dark patch is the piece's own",
   );
   // ============================================================== the drawer
   // A chequer means "this has holes in it", so only material that really does
@@ -1466,8 +1588,10 @@ try {
     });
   });
   console.log("thumbnail backings:", backings);
-  const jpeg = backings.find((row) => row.src.includes("/photo/solid"));
-  const holes = backings.find((row) => row.src.includes("/photo/holes"));
+  // The drawer shows each picture from its local copy, a blob URL, so the
+  // pictures are found by the alt text they were collected with.
+  const jpeg = backings.find((row) => row.alt.startsWith("Solid jpeg"));
+  const holes = backings.find((row) => row.alt.startsWith("See-through png"));
   assert.ok(jpeg, "the solid jpeg should be in the drawer");
   assert.ok(holes, "the see-through png should be in the drawer");
   assert.equal(
@@ -1662,26 +1786,42 @@ try {
   }
   await page.waitForTimeout(400);
 
-  // The studio tools sit in the stage's top-left, beside the canvas.
+  // History sits at the stage's top-left, the views at its top-right.
   const toolLabels = await page
     .locator(".collage-tools button")
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")));
   console.log("studio tools:", toolLabels);
-  assert.deepEqual(toolLabels, [
-    "Undo",
-    "Redo",
-    "Turn the collage over",
-    "Keyboard shortcuts",
-  ]);
-
-  // The paper popover holds the document settings.
-  const paperReadout = (
-    await page.locator(".collage-format .collage-studio__label").first().textContent()
-  ).trim();
-  console.log("paper readout:", paperReadout);
+  assert.deepEqual(toolLabels, ["Undo", "Redo"]);
+  const viewLabels = await page
+    .locator(".collage-views button")
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")));
+  console.log("studio views:", viewLabels);
+  assert.deepEqual(viewLabels, ["Turn the collage over", "Show sources"]);
+  const viewsBox = await page.locator(".collage-views").boundingBox();
+  const viewsStage = await page.locator(".collage-frame-area__stage").boundingBox();
   assert.ok(
-    /^postcard · 1500 × 1000 · \d+%$/.test(paperReadout),
-    `the readout should name size and zoom, got "${paperReadout}"`,
+    viewsBox.x + viewsBox.width > viewsStage.x + viewsStage.width - 40 &&
+      viewsBox.y < viewsStage.y + 40,
+    "the views should sit at the stage's top-right",
+  );
+  // The mat carries the collage's caption: its name, piece count and date.
+  const caption = (await page.locator(".collage-mat__caption").textContent()).trim();
+  console.log("mat caption:", caption);
+  assert.ok(
+    /\d+ pieces? · made /.test(caption),
+    `the mat should say the count and when it was made, got "${caption}"`,
+  );
+
+  // Size and paper live at the bottom bar's left, beside the zoom.
+  const zoomReadout = (
+    await page.locator(".collage-bar .collage-format .collage-studio__label").first().textContent()
+  ).trim();
+  console.log("zoom readout:", zoomReadout);
+  assert.ok(/^\d+%$/.test(zoomReadout), `the bar should show the zoom, got "${zoomReadout}"`);
+  assert.equal(
+    await page.getByRole("button", { name: "Size: postcard" }).count(),
+    1,
+    "the size button should name the format",
   );
   assert.equal(
     await page.locator(".collage-paper-popover").count(),
@@ -1748,7 +1888,7 @@ try {
     "escape should close the popover",
   );
 
-  // The bottom bar is status only.
+  // The bottom bar: size and paper at its left, keys and export at its right.
   const barButtons = await page
     .locator(".collage-bar button")
     .evaluateAll((nodes) =>
@@ -1757,8 +1897,8 @@ try {
   console.log("bottom bar buttons:", barButtons);
   assert.deepEqual(
     barButtons,
-    ["export png"],
-    "the bottom bar should carry nothing but export",
+    ["postcard▾", "paper▾", "keys", "export png"],
+    "the bottom bar should carry size, paper, keys and export",
   );
   assert.equal(
     await page.locator(".collage-bar .collage-glyph").count(),
@@ -1806,7 +1946,7 @@ try {
   await page.keyboard.down("i");
   await page.waitForTimeout(500);
   const tags = await page.locator(".collage-peek").count();
-  const fuller = await page.locator(".collage-peek--full").count();
+  const fuller = await page.locator(".collage-peek-edge--on").count();
   console.log(`peek tags: ${tags} for ${pieceCount} pieces, ${fuller} fuller`);
   assert.equal(tags, pieceCount, "every piece should get a tag");
   assert.equal(fuller, 1, "only the hovered piece gets the fuller tag");
@@ -1822,7 +1962,7 @@ try {
     "the hover hint should stand aside during a peek too",
   );
   const peekText = (
-    await page.locator(".collage-peek--full").textContent()
+    await page.locator(".collage-peek").first().textContent()
   ).trim();
   console.log("the fuller tag says:", peekText);
   assert.ok(
@@ -1852,6 +1992,23 @@ try {
     await page.locator(".collage-peek").count(),
     0,
     "releasing the key should put the tags away",
+  );
+  // The sources view can also be left on from its toggle, and put away the same way.
+  const sourcesToggle = page.getByRole("button", { name: "Show sources" });
+  await sourcesToggle.click();
+  await page.waitForTimeout(300);
+  assert.equal(await sourcesToggle.getAttribute("aria-pressed"), "true");
+  assert.ok(
+    (await page.locator(".collage-peek").count()) > 0,
+    "the sources toggle should show the tags without holding a key",
+  );
+  await page.screenshot({ path: `${evidence}/09c-sources-toggle.png` });
+  await sourcesToggle.click();
+  await page.waitForTimeout(300);
+  assert.equal(
+    await page.locator(".collage-peek").count(),
+    0,
+    "turning the sources toggle off should put the tags away",
   );
   if (selectedDuringPeek > 0) {
     assert.equal(
@@ -2025,6 +2182,9 @@ try {
     0,
     "no strip or handles while turned over",
   );
+  // A click on the back can land in its editable title; leave the field so
+  // the keys below reach the studio instead of the text.
+  await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.down("i");
   await page.waitForTimeout(300);
   assert.equal(
@@ -2040,6 +2200,9 @@ try {
   );
 
   // Escape turns it face up; T turns it over again, mid-swing on the way.
+  // The back's title is editable, so leave that field first: Escape inside
+  // it belongs to the text, not the studio.
+  await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.press("Escape");
   await page.waitForTimeout(900);
   await assertFaceUp("escape");
@@ -2129,8 +2292,10 @@ try {
       .backgroundColor,
   }));
   console.log("the back on soft black paper:", darkInk);
-  assert.equal(darkInk.domain, "rgb(245, 240, 232)");
-  assert.equal(darkInk.title, "rgb(245, 240, 232)");
+  // The back is printed on its own plain card, not on the front's paper, so
+  // even with soft black paper it keeps the page's dark ink.
+  assert.equal(darkInk.domain, "rgb(61, 56, 51)");
+  assert.equal(darkInk.title, "rgb(61, 56, 51)");
   await page.screenshot({ path: `${evidence}/25-back-dark-paper.png` });
   await page.keyboard.press("t");
   await page.waitForTimeout(900);
@@ -2140,6 +2305,32 @@ try {
   // the writing and the front showing through.
   const exported = await exportBothSides("one of each");
   console.log("exported sides:", exported);
+  // The export shows the same paper the studio did: grained paper varies
+  // pixel to pixel where a flat tone is uniform.
+  const exportedPaper = await page.evaluate(async () => {
+    const db = await new Promise((ok, bad) => {
+      const r = indexedDB.open("scrap_collages_db");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => bad(r.error);
+    });
+    try {
+      const rows = await new Promise((ok, bad) => {
+        const r = db.transaction("collages").objectStore("collages").getAll();
+        r.onsuccess = () => ok(r.result);
+        r.onerror = () => bad(r.error);
+      });
+      return rows.find((row) => row.title === "one of each").paper;
+    } finally {
+      db.close();
+    }
+  });
+  assert.equal(
+    exported.frontCornerVaries,
+    exportedPaper.grain,
+    exportedPaper.grain
+      ? "grained paper should export as grain, not a flat tone"
+      : "ungrained paper should export flat",
+  );
 
   // The back is derived; turning over and exporting stores nothing new.
   const afterBack = (await storedCollages()).find(
@@ -2669,8 +2860,46 @@ try {
 
   // ====================================== a collage whose picture never drew
   // A first-ever bake that fails stores the arrangement with no preview, and
-  // the history draws a quiet face rather than breaking.
+  // the history draws a quiet face rather than breaking. A photo only fails
+  // to bake when both its host and its local copy are gone, as when an
+  // unpinned copy was let go to stay under budget and the site later went
+  // away. The copy is dropped through the page's own copy store, and the page
+  // is reloaded so it holds no answer from before.
   missingPhotoGone = true;
+  const droppedCopies = await page.evaluate(async () => {
+    const db = await new Promise((ok, bad) => {
+      const r = indexedDB.open("scrap_image_copies_db");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => bad(r.error);
+    });
+    try {
+      const transaction = db.transaction("sources", "readwrite");
+      const sources = transaction.objectStore("sources");
+      const keys = await new Promise((ok, bad) => {
+        const r = sources.getAllKeys();
+        r.onsuccess = () => ok(r.result);
+        r.onerror = () => bad(r.error);
+      });
+      const gone = keys.filter((src) => src.includes("/photo/missing"));
+      for (const src of gone) sources.delete(src);
+      await new Promise((ok, bad) => {
+        transaction.oncomplete = ok;
+        transaction.onerror = () => bad(transaction.error);
+      });
+      return gone;
+    } finally {
+      db.close();
+    }
+  });
+  console.log("local copies dropped for the vanishing photo:", droppedCopies);
+  assert.equal(
+    droppedCopies.length,
+    1,
+    "the vanishing photo should have had a local copy to drop",
+  );
+  await page.reload({ waitUntil: "load" });
+  await page.waitForTimeout(1500);
+  await backToHistory();
   await openStudio();
   await pickTrayKind("pics");
   await page.waitForTimeout(400);

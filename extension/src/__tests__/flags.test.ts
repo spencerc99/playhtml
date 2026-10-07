@@ -63,6 +63,19 @@ describe("feature flags", () => {
     });
   });
 
+  it("keeps an experiment that starts off off until the tester picks it", () => {
+    expect(FEATURE_CATALOG.TLDRAW_COLLAGES.startsOff).toBe(true);
+    expect(
+      resolveFeatureState("TLDRAW_COLLAGES", { access: access(["TLDRAW_COLLAGES"]) }),
+    ).toEqual({ enabled: false, available: true, stage: "internal", source: "available" });
+    expect(
+      resolveFeatureState("TLDRAW_COLLAGES", {
+        access: access(["TLDRAW_COLLAGES"]),
+        overrides: { TLDRAW_COLLAGES: true },
+      }),
+    ).toEqual({ enabled: true, available: true, stage: "internal", source: "choice" });
+  });
+
   it("applies local choices only to available experiments", () => {
     expect(resolveFeatureState("COMMUTE", {
       access: access(["COMMUTE"]),

@@ -1,4 +1,4 @@
-// ABOUTME: Matches scraps against saved source locations, searchable text, and when they were seen.
+// ABOUTME: Matches scraps against saved source locations, searchable text, when they were seen, and shape.
 // ABOUTME: Retains complete photo provenance when any encounter matches a filter.
 
 import type { ScrapItem } from "../components/ScrapCollage";
@@ -12,10 +12,55 @@ export interface ScrapWhenFilter {
   timeOfDay: TimeOfDayFilter | null;
 }
 
+/** A site or page in the "found on" filter: kept, or hidden when `exclude` is set. */
+export interface ScrapPlace extends FilterChip {
+  exclude?: boolean;
+}
+
 export const ANY_TIME: ScrapWhenFilter = { day: null, timeOfDay: null };
 
 export function isAnyTime(when: ScrapWhenFilter): boolean {
   return when.day === null && when.timeOfDay === null;
+}
+
+/** The outline a scrap has in the collage, read roughly from its own proportions. */
+export type ScrapShape = "very-wide" | "wide" | "square" | "tall" | "very-tall";
+
+/** Width-to-height ratios past which a scrap leans wide (or, inverted, tall). */
+const LEANS = 1.25;
+/** Width-to-height ratios past which a scrap is very wide (or, inverted, very tall). */
+const STRETCHED = 2;
+/** Headings and buttons longer than this many characters read as very wide strips. */
+const SHORT_WORDING = 8;
+
+/**
+ * Photos and icons take the shape of their own pixels. Buttons and headings
+ * are runs of words, so they sit wide, or very wide once the wording is long.
+ * Cursors are drawn in a square tile. A scrap whose size was never measured
+ * has no shape.
+ */
+export function scrapShape(item: ScrapItem): ScrapShape | null {
+  switch (item.kind) {
+    case "image":
+      return shapeOf(item.naturalWidth, item.naturalHeight);
+    case "svg-icon":
+      return shapeOf(item.width, item.height);
+    case "button":
+    case "heading":
+      return item.text.trim().length > SHORT_WORDING ? "very-wide" : "wide";
+    case "cursor":
+      return "square";
+  }
+}
+
+function shapeOf(width: number, height: number): ScrapShape | null {
+  if (!(width > 0) || !(height > 0)) return null;
+  const ratio = width / height;
+  if (ratio >= STRETCHED) return "very-wide";
+  if (ratio > LEANS) return "wide";
+  if (ratio <= 1 / STRETCHED) return "very-tall";
+  if (ratio < 1 / LEANS) return "tall";
+  return "square";
 }
 
 export function scrapLocations(item: ScrapItem) {
@@ -27,12 +72,20 @@ export function scrapLocations(item: ScrapItem) {
 
 export function matchesScrapFilters(
   item: ScrapItem,
-  places: FilterChip[],
+  places: ScrapPlace[],
   search: string,
 ): boolean {
   const locations = scrapLocations(item);
+  const kept = places.filter((place) => !place.exclude);
+  const hidden = places.filter((place) => place.exclude);
+  // A scrap stays while some place it was seen is kept and not hidden, so
+  // hiding a site drops only what was never found anywhere else.
   if (
-    !locations.some((source) => eventMatchesAnyFilter(source.pageUrl, places))
+    !locations.some(
+      (source) =>
+        eventMatchesAnyFilter(source.pageUrl, kept) &&
+        (hidden.length === 0 || !eventMatchesAnyFilter(source.pageUrl, hidden)),
+    )
   )
     return false;
   const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -44,7 +97,7 @@ export function matchesScrapFilters(
     ]),
     item.kind === "image"
       ? (item.alt ?? "")
-      : item.kind === "button"
+      : item.kind === "button" || item.kind === "heading"
         ? item.text
         : "",
   ]

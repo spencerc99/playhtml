@@ -9,14 +9,15 @@ import "@fontsource/atkinson-hyperlegible/latin-700.css";
 import "@fontsource/lora/latin-400-italic.css";
 import "@fontsource/lora/latin-600.css";
 import "@fontsource/lora/latin-700.css";
-import type { ScrapSource } from "@movement/utils/scrapPhotoGroups";
+import { groupPhotoEncounters } from "@movement/utils/scrapPhotoGroups";
 import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import {
+  canonicalScrapKey,
   COLLAGE_STYLES,
   ScrapCollage,
   type ScrapItem,
-  type ScrapPosition,
 } from "@movement/components/ScrapCollage";
+import { toScrapItem, type ScrapRecord } from "./scrapItems";
 import { useSettledFeatureState } from "../../features/useFeatureAccess";
 import { parsePlaceHash, placeHash, type ScrapsPlace } from "./scrapsPlace";
 import type { CollageRecord } from "./collageRecord";
@@ -28,126 +29,23 @@ import {
 
 serveLocalScrapImages();
 
-interface ScrapRecordBase {
-  sources?: ScrapSource[];
-  encounterCount?: number;
-  encounterDay?: string;
-  id: string;
-  key: string;
-  pageTitle: string;
-  faviconUrl?: string;
-  domain: string;
-  pageUrl: string;
-  ts: number;
-  position?: ScrapPosition;
-}
-
-type ScrapRecord = ScrapRecordBase &
-  (
-    | {
-        kind: "image";
-        src: string;
-        contentHash?: string;
-        alt?: string;
-        naturalWidth: number;
-        naturalHeight: number;
-      }
-    | {
-        kind: "button";
-        text: string;
-        styles: Record<string, string>;
-        innerSvg?: string;
-        backdropColor?: string;
-      }
-    | {
-        kind: "svg-icon";
-        markup: string;
-        width: number;
-        height: number;
-      }
-    | {
-        kind: "heading";
-        text: string;
-        level: 1 | 2 | 3;
-        styles: Record<string, string>;
-        backdropColor?: never;
-      }
-    | {
-        kind: "cursor";
-        url: string;
-        hotspotX?: number;
-        hotspotY?: number;
-      }
-  );
-
 interface ScrapsResponse {
   scraps: ScrapRecord[];
+  nextCursor: { ts: number; id: string } | null;
+  error?: string;
 }
 
-function toScrapItem(record: ScrapRecord): ScrapItem {
-  const base = {
-    id: record.id,
-    encounterCount: record.encounterCount,
-    encounterDay: record.encounterDay,
-    ...(record.sources ? { sources: record.sources } : {}),
-    key: record.key,
-    pageTitle: record.pageTitle,
-    ...(record.faviconUrl !== undefined
-      ? { faviconUrl: record.faviconUrl }
-      : {}),
-    domain: record.domain,
-    pageUrl: record.pageUrl,
-    ts: record.ts,
-    ...(record.position ? { position: record.position } : {}),
-  };
-
-  switch (record.kind) {
-    case "image":
-      return {
-        ...base,
-        kind: record.kind,
-        src: record.src,
-        ...(record.contentHash ? { contentHash: record.contentHash } : {}),
-        ...(record.alt !== undefined ? { alt: record.alt } : {}),
-        naturalWidth: record.naturalWidth,
-        naturalHeight: record.naturalHeight,
-      };
-    case "button":
-      return {
-        ...base,
-        kind: record.kind,
-        text: record.text,
-        styles: record.styles,
-        ...(record.innerSvg !== undefined ? { innerSvg: record.innerSvg } : {}),
-        ...(record.backdropColor !== undefined
-          ? { backdropColor: record.backdropColor }
-          : {}),
-      };
-    case "svg-icon":
-      return {
-        ...base,
-        kind: record.kind,
-        markup: record.markup,
-        width: record.width,
-        height: record.height,
-      };
-    case "heading":
-      return {
-        ...base,
-        kind: record.kind,
-        text: record.text,
-        level: record.level,
-        styles: record.styles,
-      };
-    case "cursor":
-      return {
-        ...base,
-        kind: record.kind,
-        url: record.url,
-        ...(record.hotspotX !== undefined ? { hotspotX: record.hotspotX } : {}),
-        ...(record.hotspotY !== undefined ? { hotspotY: record.hotspotY } : {}),
-      };
-  }
+function isScrapsResponse(
+  response: ScrapsResponse | undefined,
+): response is ScrapsResponse {
+  return (
+    !!response &&
+    Array.isArray(response.scraps) &&
+    !response.error &&
+    (response.nextCursor === null ||
+      (Number.isFinite(response.nextCursor?.ts) &&
+        typeof response.nextCursor.id === "string"))
+  );
 }
 
 const centeredMessageStyle: React.CSSProperties = {
@@ -166,9 +64,13 @@ const centeredMessageStyle: React.CSSProperties = {
 };
 
 type ScrapsMode = "browse" | "create";
+const SCRAPS_PAGE_SIZE = 500;
+const HISTORY_PAGE_SIZE = 1_000;
 
 export function ScrapsPage() {
-  const [items, setItems] = useState<ScrapItem[]>([]);
+  const [records, setRecords] = useState<ScrapRecord[]>([]);
+  const [nextCursor, setNextCursor] = useState<ScrapsResponse["nextCursor"]>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
@@ -178,6 +80,48 @@ export function ScrapsPage() {
   /** Bumped when a studio is opened, so each editing session starts fresh. */
   const [studioSession, setStudioSession] = useState(0);
   const [savedRevision, setSavedRevision] = useState(0);
+  const requestGeneration = useRef(0);
+  const items = useMemo(
+    () =>
+      groupPhotoEncounters(records)
+        .sort((a, b) => b.ts - a.ts)
+        .map(toScrapItem),
+    [records],
+  );
+  /**
+   * Deletes every stored encounter of these scraps. The collage folds repeat
+   * encounters into one scrap, so each is matched back to all of its records.
+   */
+  const deleteScraps = useCallback(
+    async (doomed: ScrapItem[]) => {
+      const canonicalKeys = new Set(doomed.map(canonicalScrapKey));
+      const itemKeys = new Set(doomed.map((item) => item.key));
+      const ids = records
+        .filter((record) => {
+          const item = toScrapItem(record);
+          return (
+            canonicalKeys.has(canonicalScrapKey(item)) || itemKeys.has(item.key)
+          );
+        })
+        .map((record) => record.id);
+      if (ids.length === 0) return;
+      const response = (await browser.runtime.sendMessage({
+        type: "DELETE_SCRAPS",
+        ids,
+      })) as { deleted?: number; error?: string } | undefined;
+      if (!response || response.error || typeof response.deleted !== "number") {
+        throw new Error(response?.error ?? "DELETE_SCRAPS returned no response");
+      }
+      const removed = new Set(ids);
+      setRecords((current) =>
+        current.filter((record) => !removed.has(record.id)),
+      );
+    },
+    [records],
+  );
+  // Deleting before the whole archive has loaded would miss older encounters
+  // of the same scrap, which would then reappear once they arrive.
+  const archiveComplete = !loading && !error && nextCursor === null && !historyError;
   const [createMode, setCreateMode] = useState<
     typeof import("./CreateMode") | null
   >(null);
@@ -326,16 +270,23 @@ export function ScrapsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    requestGeneration.current += 1;
+    setLoading(true);
+    setHistoryError(null);
+    setRecords([]);
+    setNextCursor(null);
     const loadScraps = async () => {
       try {
         const response = (await browser.runtime.sendMessage({
           type: "GET_SCRAPS",
+          options: { limit: SCRAPS_PAGE_SIZE },
         })) as ScrapsResponse;
-        if (!response || !Array.isArray(response.scraps)) {
+        if (!isScrapsResponse(response)) {
           throw new Error("GET_SCRAPS returned an invalid response");
         }
         if (!cancelled) {
-          setItems(response.scraps.map(toScrapItem));
+          setRecords(response.scraps);
+          setNextCursor(response.nextCursor);
           setError(null);
         }
       } catch (loadError) {
@@ -354,6 +305,48 @@ export function ScrapsPage() {
     };
   }, [revision]);
 
+  // The first page paints quickly; the rest of the archive follows in the
+  // background so the count, collage, search, and filters cover everything.
+  useEffect(() => {
+    if (!nextCursor || loading || historyError) return;
+    let cancelled = false;
+    const generation = requestGeneration.current;
+
+    const loadHistory = async () => {
+      const olderRecords: ScrapRecord[] = [];
+      let cursor: ScrapsResponse["nextCursor"] = nextCursor;
+      try {
+        while (cursor && !cancelled && generation === requestGeneration.current) {
+          const response = (await browser.runtime.sendMessage({
+            type: "GET_SCRAPS",
+            options: { limit: HISTORY_PAGE_SIZE, cursor },
+          })) as ScrapsResponse;
+          if (!isScrapsResponse(response)) {
+            throw new Error("GET_SCRAPS returned an invalid response");
+          }
+          olderRecords.push(...response.scraps);
+          cursor = response.nextCursor;
+        }
+        if (!cancelled && generation === requestGeneration.current) {
+          setRecords((current) => [...current, ...olderRecords]);
+          setNextCursor(cursor);
+          setHistoryError(null);
+        }
+      } catch (loadError) {
+        if (!cancelled && generation === requestGeneration.current) {
+          setHistoryError(
+            loadError instanceof Error ? loadError.message : String(loadError),
+          );
+        }
+      }
+    };
+
+    void loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [nextCursor, loading, historyError]);
+
   return (
     <main
       style={{
@@ -366,54 +359,6 @@ export function ScrapsPage() {
       }}
     >
       {canCreate && <style>{COLLAGE_STYLES}</style>}
-      <svg
-        width="100%"
-        height="100%"
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: 1,
-          opacity: 0.7,
-          pointerEvents: "none",
-          mixBlendMode: "multiply",
-        }}
-      >
-        <defs>
-          <filter id="scraps-paper-noise">
-            <feTurbulence
-              type="fractalNoise"
-              baseFrequency="0.9"
-              numOctaves="3"
-              stitchTiles="stitch"
-            />
-            <feColorMatrix
-              type="matrix"
-              values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 2 -1"
-            />
-          </filter>
-          <filter id="scraps-paper-grain">
-            <feTurbulence
-              type="turbulence"
-              baseFrequency="0.5"
-              numOctaves="2"
-              stitchTiles="stitch"
-            />
-            <feColorMatrix type="saturate" values="0" />
-            <feComponentTransfer>
-              <feFuncA type="discrete" tableValues="0 0.2 0.3 0.4" />
-            </feComponentTransfer>
-          </filter>
-        </defs>
-        <rect width="100%" height="100%" filter="url(#scraps-paper-noise)" />
-        <rect
-          width="100%"
-          height="100%"
-          filter="url(#scraps-paper-grain)"
-          style={{ opacity: 0.3 }}
-        />
-      </svg>
-
       <div
         style={{
           position: "absolute",
@@ -458,9 +403,11 @@ export function ScrapsPage() {
         }
         .scraps-heading { top: 14px; width: min(520px, calc(100vw - 320px)); }
         .scraps-stage { inset: 64px 0 0; }
+        .scraps-history-error { position: absolute; top: 80px; right: 16px; z-index: 5; color: #827a72; font-size: 11px; }
         @media (max-width: 620px) {
           .scraps-heading { top: 48px; width: calc(100vw - 32px); }
           .scraps-stage { inset: 104px 0 0; }
+          .scraps-history-error { top: 120px; }
         }
       `}</style>
       <header
@@ -528,7 +475,18 @@ export function ScrapsPage() {
             zIndex: 2,
           }}
         >
-          <ScrapCollage items={items} seed={seed} showKindFilter={true} />
+          <ScrapCollage
+            items={items}
+            seed={seed}
+            showKindFilter={true}
+            onDeleteScraps={archiveComplete ? deleteScraps : undefined}
+          />
+        </div>
+      )}
+
+      {historyError && (
+        <div role="alert" className="scraps-history-error">
+          older scraps could not be gathered
         </div>
       )}
 

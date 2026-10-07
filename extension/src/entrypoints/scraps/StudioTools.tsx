@@ -1,6 +1,7 @@
-// ABOUTME: The stage's top-left row: the way back to the collages, then the studio-wide tools.
-// ABOUTME: Undo, redo, turning the collage over, and the shortcut list, beside the canvas.
+// ABOUTME: The studio's controls around the canvas: the way back and undo/redo at the top-left,
+// ABOUTME: the views (front/back, sources) at the top-right, and the shortcut list's button.
 
+import type { BackShows } from "./collageRecord";
 import React from "react";
 
 const STROKE = {
@@ -40,6 +41,14 @@ const KEYS = (
   </Glyph>
 );
 
+/** Two links of a chain: each piece has a page behind it. */
+const SOURCES = (
+  <Glyph>
+    <path d="M7 9a3 3 0 0 0 4.2 0l2.3-2.3a3 3 0 0 0-4.2-4.2L8.2 3.6" {...STROKE} />
+    <path d="M9 7a3 3 0 0 0-4.2 0L2.5 9.3a3 3 0 0 0 4.2 4.2l1.1-1.1" {...STROKE} />
+  </Glyph>
+);
+
 /** A card with an arrow swinging around it: turn the collage over. */
 const TURN_OVER = (
   <Glyph>
@@ -52,13 +61,8 @@ const TURN_OVER = (
 interface StudioToolsProps {
   canUndo: boolean;
   canRedo: boolean;
-  keysOpen: boolean;
-  /** Whether the collage is showing its back. */
-  turnedOver: boolean;
   onUndo: () => void;
   onRedo: () => void;
-  onKeys: () => void;
-  onTurnOver: () => void;
   /** Leaves the studio for the history, writing pending work first. */
   onBack: () => void;
 }
@@ -66,12 +70,8 @@ interface StudioToolsProps {
 export function StudioTools({
   canUndo,
   canRedo,
-  keysOpen,
-  turnedOver,
   onUndo,
   onRedo,
-  onKeys,
-  onTurnOver,
   onBack,
 }: StudioToolsProps) {
   return (
@@ -84,7 +84,7 @@ export function StudioTools({
       >
         &#8592; collages
       </button>
-      <div className="collage-tools" role="toolbar" aria-label="Studio">
+      <div className="collage-tools" role="toolbar" aria-label="History">
         <button
           type="button"
           className="collage-glyph"
@@ -105,28 +105,106 @@ export function StudioTools({
         >
           {REDO}
         </button>
-        <span className="collage-piece-actions__rule" aria-hidden="true" />
-        <button
-          type="button"
-          className={`collage-glyph${turnedOver ? " collage-glyph--on" : ""}`}
-          title={turnedOver ? "Turn face up (T or esc)" : "Turn over to read the sources (T)"}
-          aria-label="Turn the collage over"
-          aria-pressed={turnedOver}
-          onClick={onTurnOver}
-        >
-          {TURN_OVER}
-        </button>
-        <button
-          type="button"
-          className={`collage-glyph${keysOpen ? " collage-glyph--on" : ""}`}
-          title="Keyboard shortcuts (?)"
-          aria-label="Keyboard shortcuts"
-          aria-pressed={keysOpen}
-          onClick={onKeys}
-        >
-          {KEYS}
-        </button>
       </div>
     </div>
+  );
+}
+
+interface StudioViewsProps {
+  /** Whether the collage is showing its back. */
+  turnedOver: boolean;
+  /** Whether the sources view is left on. */
+  sourcesOn: boolean;
+  canShowSources: boolean;
+  onTurnOver: () => void;
+  onSources: () => void;
+  /**
+   * What the back lists under each site, and how to change it. Offered only
+   * while the back is showing, where the choice can be seen taking effect.
+   */
+  backShows?: BackShows;
+  onBackShows?: (shows: BackShows) => void;
+}
+
+const BACK_CHOICES: { shows: BackShows; label: string; title: string }[] = [
+  { shows: "pieces", label: "pieces", title: "List each site's pieces on the back" },
+  { shows: "titles", label: "titles", title: "List each site's page titles on the back" },
+];
+
+/**
+ * Ways of looking at the collage: its back, and where each piece came from.
+ * While the back is showing, the second place holds what the back lists.
+ */
+export function StudioViews({
+  turnedOver,
+  sourcesOn,
+  canShowSources,
+  onTurnOver,
+  onSources,
+  backShows,
+  onBackShows,
+}: StudioViewsProps) {
+  const choosingBack = turnedOver && backShows !== undefined && onBackShows !== undefined;
+  return (
+    <div className="collage-views" role="toolbar" aria-label="Views">
+      <button
+        type="button"
+        className={`collage-view${turnedOver ? " collage-view--on" : ""}`}
+        title={turnedOver ? "Turn face up (T or esc)" : "Turn over to read the sources (T)"}
+        aria-label="Turn the collage over"
+        aria-pressed={turnedOver}
+        onClick={onTurnOver}
+      >
+        {TURN_OVER}
+        <span>front / back</span>
+      </button>
+      <span className="collage-piece-actions__rule" aria-hidden="true" />
+      {choosingBack ? (
+        <div role="group" aria-label="The back lists" style={{ display: "contents" }}>
+          {BACK_CHOICES.map((choice) => (
+            <button
+              key={choice.shows}
+              type="button"
+              className={`collage-view${backShows === choice.shows ? " collage-view--on" : ""}`}
+              title={choice.title}
+              aria-pressed={backShows === choice.shows}
+              onClick={() => onBackShows(choice.shows)}
+            >
+              <span>{choice.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <button
+          type="button"
+          className={`collage-view${sourcesOn && canShowSources ? " collage-view--on" : ""}`}
+          title="Show where each piece came from (or hold i)"
+          aria-label="Show sources"
+          aria-pressed={sourcesOn && canShowSources}
+          disabled={!canShowSources}
+          onClick={onSources}
+        >
+          {SOURCES}
+          <span>sources</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Opens the list of keyboard shortcuts; it sits with saving and export. */
+export function KeysButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`collage-keys-button${open ? " collage-keys-button--on" : ""}`}
+      title="Keyboard shortcuts (?)"
+      aria-label="Keyboard shortcuts"
+      aria-pressed={open}
+      onClick={onToggle}
+    >
+      {KEYS}
+      <span>keys</span>
+    </button>
   );
 }

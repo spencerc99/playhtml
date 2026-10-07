@@ -246,43 +246,14 @@ describe("ScrapCollage controls", () => {
     ).toBeNull();
   });
 
-  it("switches pile and grid independently of browsing mode and remembers the layout", () => {
+  it("always piles scraps, with no pile or grid switch", () => {
+    localStorage.setItem("scraps-display", "grid");
     render();
-    const layout = container.querySelector('[aria-label="Scrap layout"]');
-    const grid = layout?.querySelector<HTMLButtonElement>("button:last-child");
-    act(() => grid?.click());
-    expect(grid?.getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelector('[aria-label="Scrap layout"]')).toBeNull();
     expect(
-      Array.from(tiles()).every(
-        (tile) => tile.style.getPropertyValue("--scrap-rotation") === "0deg",
+      Array.from(tiles()).some(
+        (tile) => tile.style.getPropertyValue("--scrap-rotation") !== "0deg",
       ),
-    ).toBe(true);
-    expect(localStorage.getItem("scraps-display")).toBe("grid");
-    expect(container.querySelector(".scrap-collage__filter--cycle")).toBeNull();
-    act(() =>
-      container
-        .querySelector<HTMLButtonElement>(
-          '[aria-label="Scrap view"] button:last-child',
-        )
-        ?.click(),
-    );
-    expect(grid?.getAttribute("aria-pressed")).toBe("true");
-    const scroller = container.querySelector<HTMLDivElement>(
-      ".scrap-collage__scroll",
-    )!;
-    act(() => {
-      scroller.scrollTop = 1120;
-      scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
-    });
-    const beforeKeys = new Set(
-      Array.from(tiles(), (tile) => tile.dataset.scrapKey),
-    );
-    act(() =>
-      layout?.querySelector<HTMLButtonElement>("button:first-child")?.click(),
-    );
-    expect(scroller.scrollTop).toBeGreaterThan(0);
-    expect(
-      Array.from(tiles()).some((tile) => beforeKeys.has(tile.dataset.scrapKey)),
     ).toBe(true);
   });
 
@@ -464,14 +435,24 @@ describe("ScrapCollage controls", () => {
     expect(kindCount("cursor")).toBe("0");
 
     const typeChip = chip("type");
-    act(() =>
-      container
-        .querySelector<HTMLButtonElement>('[data-scrap-kind="image"]')!
-        .click(),
-    );
-    expect(container.querySelector(".scrap-filters__popover")).toBeNull();
-    expect(document.activeElement).toBe(typeChip);
+    const kindOption = (kind: string) =>
+      container.querySelector<HTMLButtonElement>(
+        `[data-scrap-kind="${kind}"]`,
+      )!;
+    act(() => kindOption("image").click());
+    // Types are a multi-select, so the popover stays open for more picks.
+    expect(
+      container.querySelector(".scrap-filters__popover--type"),
+    ).not.toBeNull();
+    expect(kindOption("image").getAttribute("aria-pressed")).toBe("true");
+    expect(kindOption("all").getAttribute("aria-pressed")).toBe("false");
     expect(typeChip.hasAttribute("data-on")).toBe(true);
+    act(() => kindOption("button").click());
+    expect(kindOption("image").getAttribute("aria-pressed")).toBe("true");
+    expect(kindOption("button").getAttribute("aria-pressed")).toBe("true");
+    expect(typeChip.textContent).toContain("images, buttons");
+    act(() => kindOption("button").click());
+    expect(kindOption("button").getAttribute("aria-pressed")).toBe("false");
 
     act(() => chip("from").click());
     expect(count("are.na")).toBe("1");
