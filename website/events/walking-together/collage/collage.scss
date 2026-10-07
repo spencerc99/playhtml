@@ -276,64 +276,78 @@ $grain: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/20
   }
 }
 
-// Scraps the extension collected on this walk, ready to place.
+// Scraps the extension collected on this walk, ready to place: a film strip
+// along the bottom edge so the table keeps its full width.
+$strip-height: 92px;
+
 .scraps-panel {
   position: fixed;
-  top: 1em;
   left: 1em;
-  bottom: 5em;
+  right: 1em;
+  bottom: 1em;
   z-index: 100000;
-  width: 132px;
   display: flex;
   flex-direction: column;
-  gap: 0.4em;
+  align-items: flex-start;
+  gap: 0.35em;
   font-size: 11px;
   pointer-events: none;
 
   > * {
     pointer-events: auto;
   }
+}
 
-  &--closed {
-    bottom: auto;
+// The link and count controls ride just above the strip.
+.collage-table:has(.scraps-panel--open) {
+  .collage-toolbar,
+  .collage-admin {
+    bottom: calc(1em + #{$strip-height} + 2.6em);
   }
 }
 
-.scraps-panel__header {
-  display: flex;
-  gap: 0.35em;
-
-  button {
-    padding: 4px 6px;
-    font-family: $mono-font;
-    font-size: 11px;
-    text-align: left;
-    background: rgba(255, 253, 248, 0.92);
-    border: 1px solid rgba(61, 56, 51, 0.2);
-    color: $ink;
-    cursor: pointer;
+.collage-table:has(.scraps-panel--closed) {
+  .collage-toolbar,
+  .collage-admin {
+    bottom: 3.4em;
   }
+}
+
+.scraps-panel__tab {
+  padding: 4px 8px;
+  font-family: $mono-font;
+  font-size: 11px;
+  white-space: nowrap;
+  background: rgba(255, 253, 248, 0.92);
+  border: 1px solid rgba(61, 56, 51, 0.2);
+  color: $ink;
+  cursor: pointer;
 }
 
 .scraps-panel__list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  box-sizing: border-box;
+  max-width: 100%;
+  height: $strip-height;
+  overflow-x: auto;
+  overflow-y: hidden;
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
   padding: 6px;
   background: rgba(255, 253, 248, 0.7);
   border: 1px solid rgba(61, 56, 51, 0.12);
+  overscroll-behavior-x: contain;
 }
 
 .scraps-panel__empty {
-  margin: 0;
+  margin: 0 0.5em;
   color: $ink-muted;
+  white-space: nowrap;
 }
 
 .scraps-panel__scrap {
-  display: block;
+  flex: 0 0 auto;
+  height: 100%;
   padding: 0;
   border: none;
   background: none;
@@ -342,8 +356,10 @@ $grain: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/20
 
   img {
     display: block;
-    width: 100%;
-    height: auto;
+    height: 100%;
+    width: auto;
+    max-width: 160px;
+    object-fit: cover;
     pointer-events: none;
   }
 

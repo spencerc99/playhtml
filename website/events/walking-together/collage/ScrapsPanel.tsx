@@ -1,6 +1,6 @@
-// ABOUTME: Side panel of the scraps the extension collected during this browsing session.
+// ABOUTME: Film strip of the scraps the extension collected during this browsing session.
 // ABOUTME: Click a scrap to drop it on the table, or drag it to a spot; hidden without the extension.
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { requestSessionScraps, type SessionScrap } from "./scrapsBridge";
 import type { ScrapInput } from "./scrapInput";
 
@@ -35,20 +35,39 @@ function dragHtml(scrap: SessionScrap): string {
   return a.outerHTML;
 }
 
+/** Newest first, so what someone just saved on the walk is at hand. */
+export function newestFirst(scraps: SessionScrap[]): SessionScrap[] {
+  return [...scraps].sort((a, b) => b.capturedAt - a.capturedAt);
+}
+
 export function ScrapsPanel({ placedSrcs, disabled, onPick }: Props) {
   const [scraps, setScraps] = useState<SessionScrap[] | null>(null);
   const [open, setOpen] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const inFlight = useRef(false);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
+    if (inFlight.current) return;
+    inFlight.current = true;
     const result = await requestSessionScraps();
-    setScraps(result);
-    setLoading(false);
+    inFlight.current = false;
+    // A missed answer on a later refresh keeps what we already have.
+    if (result) setScraps(newestFirst(result));
   }, []);
 
+  // People come back to this tab from walking, so fetch again whenever it
+  // regains focus rather than asking them to refresh.
   useEffect(() => {
     void refresh();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    const onFocus = () => void refresh();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [refresh]);
 
   // No extension answered: the table's drag, paste, and link inputs remain.
@@ -56,19 +75,16 @@ export function ScrapsPanel({ placedSrcs, disabled, onPick }: Props) {
 
   return (
     <aside
-      className={`scraps-panel ${open ? "" : "scraps-panel--closed"}`}
+      className={`scraps-panel ${open ? "scraps-panel--open" : "scraps-panel--closed"}`}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <header className="scraps-panel__header">
-        <button onClick={() => setOpen((o) => !o)}>
-          {open ? "‹" : "›"} your scraps from this walk ({scraps.length})
-        </button>
-        {open && (
-          <button onClick={refresh} disabled={loading} title="Fetch new scraps">
-            {loading ? "…" : "↻"}
-          </button>
-        )}
-      </header>
+      <button
+        className="scraps-panel__tab"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        {open ? "▾" : "▸"} your walk · {scraps.length}
+      </button>
       {open && (
         <div className="scraps-panel__list">
           {scraps.length === 0 && (

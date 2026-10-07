@@ -10,7 +10,7 @@ import {
   SESSION_SCRAPS_RESPONSE,
   SESSION_SCRAPS_SOURCE,
 } from "../collage/scrapsBridge";
-import { toScrapInput } from "../collage/ScrapsPanel";
+import { newestFirst, toScrapInput } from "../collage/ScrapsPanel";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -108,5 +108,17 @@ describe("toScrapInput", () => {
       naturalWidth: 400,
       naturalHeight: 300,
     });
+  });
+});
+
+describe("newestFirst", () => {
+  it("puts the latest saved scrap first without touching the original", () => {
+    const scraps = [
+      { id: "a", src: "https://a.example/a.png", capturedAt: 1 },
+      { id: "c", src: "https://a.example/c.png", capturedAt: 3 },
+      { id: "b", src: "https://a.example/b.png", capturedAt: 2 },
+    ];
+    expect(newestFirst(scraps).map((s) => s.id)).toEqual(["c", "b", "a"]);
+    expect(scraps[0].id).toBe("a");
   });
 });
