@@ -1,14 +1,13 @@
-// ABOUTME: Tests how dropped and pasted payloads become scrap inputs for the table collage.
-// ABOUTME: Covers HTML image drags, uri-lists, plain links, and rejected non-web URLs.
+// ABOUTME: Tests the film strip drag payload the table collage accepts.
+// ABOUTME: Covers round trips, rejected outside drags, and non-web URLs.
 
 import { describe, it, expect } from "vitest";
 import {
-  dragMayCarryScrap,
-  imageFromHtml,
+  isScrapDrag,
   isWebUrl,
-  scrapInputFromDataTransfer,
-  scrapInputFromText,
-  urisFromList,
+  SCRAP_DRAG_TYPE,
+  scrapDragPayload,
+  scrapInputFromDrag,
 } from "../collage/scrapInput";
 
 const transfer = (payload: Record<string, string>) => ({
@@ -25,58 +24,42 @@ describe("scrap input", () => {
     expect(isWebUrl("x.png")).toBe(false);
   });
 
-  it("reads the image, its alt, and its surrounding link from dragged HTML", () => {
-    const html =
-      '<a href="https://blog.test/post"><img src="https://cdn.test/cat.jpg" alt="a cat"></a>';
-    expect(imageFromHtml(html)).toEqual({
+  it("round-trips a strip scrap through a drag", () => {
+    const input = {
       src: "https://cdn.test/cat.jpg",
-      alt: "a cat",
-      href: "https://blog.test/post",
-    });
-    expect(
-      scrapInputFromDataTransfer(
-        transfer({
-          "text/html": html,
-          "text/uri-list": "https://blog.test/post",
-        }),
-      ),
-    ).toEqual({
-      src: "https://cdn.test/cat.jpg",
-      alt: "a cat",
       pageUrl: "https://blog.test/post",
-    });
+      alt: "a cat",
+      naturalWidth: 400,
+      naturalHeight: 300,
+    };
+    expect(
+      scrapInputFromDrag(transfer({ [SCRAP_DRAG_TYPE]: scrapDragPayload(input) })),
+    ).toEqual(input);
   });
 
-  it("ignores HTML without a usable image and falls back to the uri-list", () => {
-    expect(imageFromHtml("<p>hello</p>")).toBeNull();
-    expect(imageFromHtml('<img src="/relative.png">')).toBeNull();
+  it("ignores images and links dragged in from other tabs", () => {
+    const outside = transfer({
+      "text/html": '<img src="https://cdn.test/cat.jpg">',
+      "text/uri-list": "https://cdn.test/cat.jpg",
+      "text/plain": "https://cdn.test/cat.jpg",
+    });
+    expect(isScrapDrag(outside.types)).toBe(false);
+    expect(scrapInputFromDrag(outside)).toBeNull();
+  });
+
+  it("rejects malformed or non-web payloads", () => {
+    expect(scrapInputFromDrag(transfer({ [SCRAP_DRAG_TYPE]: "not json" }))).toBeNull();
     expect(
-      scrapInputFromDataTransfer(
+      scrapInputFromDrag(
+        transfer({ [SCRAP_DRAG_TYPE]: JSON.stringify({ src: "data:image/png;base64,AA" }) }),
+      ),
+    ).toBeNull();
+    expect(
+      scrapInputFromDrag(
         transfer({
-          "text/html": "<p>hi</p>",
-          "text/uri-list": "# comment\nhttps://cdn.test/a.png\nhttps://cdn.test/b.png",
+          [SCRAP_DRAG_TYPE]: JSON.stringify({ src: "https://a.test/x.png", pageUrl: "javascript:1" }),
         }),
       ),
-    ).toEqual({ src: "https://cdn.test/a.png" });
-  });
-
-  it("parses uri-lists, skipping comments and non-web lines", () => {
-    expect(urisFromList("#c\r\nhttps://a.test/1\r\nfile:///x\r\n")).toEqual([
-      "https://a.test/1",
-    ]);
-  });
-
-  it("takes a plain-text link and rejects plain text", () => {
-    expect(
-      scrapInputFromDataTransfer(transfer({ "text/plain": " https://a.test/x.gif " })),
-    ).toEqual({ src: "https://a.test/x.gif" });
-    expect(scrapInputFromDataTransfer(transfer({ "text/plain": "hello" }))).toBeNull();
-    expect(scrapInputFromDataTransfer(transfer({ Files: "" }))).toBeNull();
-    expect(scrapInputFromText("nope")).toBeNull();
-  });
-
-  it("lights up the drop target for text-ish drags only", () => {
-    expect(dragMayCarryScrap(["text/uri-list"])).toBe(true);
-    expect(dragMayCarryScrap(["Files"])).toBe(false);
+    ).toEqual({ src: "https://a.test/x.png" });
   });
 });

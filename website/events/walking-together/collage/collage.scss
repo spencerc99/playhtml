@@ -230,26 +230,6 @@ $grain: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/20
   align-items: flex-start;
   gap: 0.35em;
   font-size: 11px;
-
-  form {
-    display: flex;
-    gap: 0.35em;
-  }
-
-  input {
-    width: 16em;
-    padding: 4px 6px;
-    font-family: $mono-font;
-    font-size: 11px;
-    background: rgba(255, 253, 248, 0.9);
-    border: 1px solid rgba(61, 56, 51, 0.2);
-  }
-
-  button {
-    padding: 4px 8px;
-    font-family: $mono-font;
-    font-size: 11px;
-  }
 }
 
 .collage-toolbar__note {

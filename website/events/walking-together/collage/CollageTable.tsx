@@ -1,6 +1,6 @@
 // ABOUTME: The shared table where a small group drops, moves, turns, and sizes scraps together.
 // ABOUTME: Gestures stay local (plus a live preview) and commit to shared data on release.
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { playhtml, usePlayerIdentity } from "@playhtml/react";
 import { isAdmin } from "../admin";
 import {
@@ -28,10 +28,9 @@ import {
   type Pieces,
 } from "./pieces";
 import {
-  dragMayCarryScrap,
+  isScrapDrag,
   measureImage,
-  scrapInputFromDataTransfer,
-  scrapInputFromText,
+  scrapInputFromDrag,
   type ScrapInput,
 } from "./scrapInput";
 import { downloadBlob, renderCollagePng } from "./exportPng";
@@ -84,12 +83,6 @@ function newPieceId(pid: string): string {
     .slice(2, 7)}`;
 }
 
-function isTextField(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
-  );
-}
-
 export function CollageTable({ data, setData, peers, setLive }: Props) {
   const { pid, name, color } = usePlayerIdentity();
   const admin = isAdmin(name, color);
@@ -116,7 +109,6 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
   const [failedSrcs, setFailedSrcs] = useState<Record<string, true>>({});
   const [dropActive, setDropActive] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [linkText, setLinkText] = useState("");
   const [exporting, setExporting] = useState(false);
 
   const myCount = pid ? countPlacedBy(pieces, pid) : 0;
@@ -184,22 +176,6 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
     },
     [pid, name, color, setData, flashNotice],
   );
-
-  const addScrapRef = useRef(addScrap);
-  addScrapRef.current = addScrap;
-
-  // Pasting an image or an image link anywhere on the page places it.
-  useEffect(() => {
-    const onPaste = (e: ClipboardEvent) => {
-      if (isTextField(e.target) || !e.clipboardData) return;
-      const input = scrapInputFromDataTransfer(e.clipboardData);
-      if (!input) return;
-      e.preventDefault();
-      void addScrapRef.current(input);
-    };
-    document.addEventListener("paste", onPaste);
-    return () => document.removeEventListener("paste", onPaste);
-  }, []);
 
   // ---- Gestures: move and turn ------------------------------------------
 
@@ -300,10 +276,10 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
     });
   };
 
-  // ---- Drop and link input ----------------------------------------------
+  // ---- Drop from the film strip ------------------------------------------
 
   const onDragOver = (e: React.DragEvent) => {
-    if (locked || !dragMayCarryScrap(Array.from(e.dataTransfer.types))) return;
+    if (locked || !isScrapDrag(Array.from(e.dataTransfer.types))) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     if (!dropActive) setDropActive(true);
@@ -313,11 +289,8 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
     setDropActive(false);
     if (locked) return;
     e.preventDefault();
-    const input = scrapInputFromDataTransfer(e.dataTransfer);
-    if (!input) {
-      flashNotice("that didn't look like an image, try dragging the image itself");
-      return;
-    }
+    const input = scrapInputFromDrag(e.dataTransfer);
+    if (!input) return;
     const p = tablePoint(e.clientX, e.clientY);
     void addScrap(
       input,
@@ -325,17 +298,6 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
         ? { x: p.x / size.width, y: p.y / size.height }
         : undefined,
     );
-  };
-
-  const onSubmitLink = (e: React.FormEvent) => {
-    e.preventDefault();
-    const input = scrapInputFromText(linkText);
-    if (!input) {
-      flashNotice("paste a full image link, starting with https://");
-      return;
-    }
-    setLinkText("");
-    void addScrap(input);
   };
 
   // ---- Admin ------------------------------------------------------------
@@ -598,7 +560,7 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
 
       {ordered.length === 0 && !locked && (
         <p className="collage-empty">
-          drag images here from any tab, or paste an image link
+          scraps from the walk land here
         </p>
       )}
 
@@ -606,26 +568,12 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
         {locked ? (
           <span className="collage-toolbar__note">the table is set</span>
         ) : (
-          <>
-            <form onSubmit={onSubmitLink}>
-              <input
-                type="url"
-                value={linkText}
-                onChange={(e) => setLinkText(e.target.value)}
-                placeholder="paste an image link"
-                disabled={atLimit}
-              />
-              <button type="submit" disabled={atLimit || !linkText.trim()}>
-                place
-              </button>
-            </form>
-            <span className="collage-toolbar__note">
-              {notice ??
-                (atLimit
-                  ? `that's your ${MAX_PIECES_PER_PERSON}, remove one to add another`
-                  : `${myCount} / ${MAX_PIECES_PER_PERSON} scraps placed`)}
-            </span>
-          </>
+          <span className="collage-toolbar__note">
+            {notice ??
+              (atLimit
+                ? `that's your ${MAX_PIECES_PER_PERSON}, remove one to add another`
+                : `${myCount} / ${MAX_PIECES_PER_PERSON} scraps placed`)}
+          </span>
         )}
       </div>
 

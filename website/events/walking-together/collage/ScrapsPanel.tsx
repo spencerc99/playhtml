@@ -2,7 +2,11 @@
 // ABOUTME: Click a scrap to drop it on the table, or drag it to a spot; hidden without the extension.
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { requestSessionScraps, type SessionScrap } from "./scrapsBridge";
-import type { ScrapInput } from "./scrapInput";
+import {
+  SCRAP_DRAG_TYPE,
+  scrapDragPayload,
+  type ScrapInput,
+} from "./scrapInput";
 
 interface Props {
   /** Image sources already on the table, dimmed in the panel. */
@@ -20,19 +24,6 @@ export function toScrapInput(scrap: SessionScrap): ScrapInput {
       ? { naturalWidth: scrap.width, naturalHeight: scrap.height }
       : {}),
   };
-}
-
-/** The HTML flavor the table's drop handler already reads: the image, wrapped
- * in a link to the page it came from. */
-function dragHtml(scrap: SessionScrap): string {
-  const img = document.createElement("img");
-  img.src = scrap.src;
-  if (scrap.alt) img.alt = scrap.alt;
-  if (!scrap.pageUrl) return img.outerHTML;
-  const a = document.createElement("a");
-  a.href = scrap.pageUrl;
-  a.appendChild(img);
-  return a.outerHTML;
 }
 
 /** Newest first, so what someone just saved on the walk is at hand. */
@@ -70,7 +61,7 @@ export function ScrapsPanel({ placedSrcs, disabled, onPick }: Props) {
     };
   }, [refresh]);
 
-  // No extension answered: the table's drag, paste, and link inputs remain.
+  // No extension answered: there is nothing to place, so this person watches.
   if (scraps === null) return null;
 
   return (
@@ -104,8 +95,10 @@ export function ScrapsPanel({ placedSrcs, disabled, onPick }: Props) {
                 title={placed ? "already on the table" : "place on the table"}
                 draggable={!disabled}
                 onDragStart={(e) => {
-                  e.dataTransfer.setData("text/html", dragHtml(scrap));
-                  e.dataTransfer.setData("text/uri-list", scrap.src);
+                  e.dataTransfer.setData(
+                    SCRAP_DRAG_TYPE,
+                    scrapDragPayload(toScrapInput(scrap)),
+                  );
                   e.dataTransfer.effectAllowed = "copy";
                 }}
                 onClick={() => onPick(toScrapInput(scrap))}
