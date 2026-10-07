@@ -5,11 +5,8 @@ import { playhtml, usePlayerIdentity } from "@playhtml/react";
 import { isAdmin } from "../admin";
 import {
   arrangeIntoShape,
-  countPlacedBy,
-  hasReachedLimit,
   isOnTop,
   makePiece,
-  MAX_PIECES_PER_PERSON,
   movedTransform,
   orderAroundCentroid,
   piecesOf,
@@ -111,8 +108,6 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
-  const myCount = pid ? countPlacedBy(pieces, pid) : 0;
-  const atLimit = myCount >= MAX_PIECES_PER_PERSON;
   const remote = remoteDragTransforms(peers);
 
   const flashNotice = useCallback((message: string) => {
@@ -131,12 +126,6 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
       if (lockedRef.current) return;
       if (!pid) {
         flashNotice("still connecting, try again in a moment");
-        return;
-      }
-      if (hasReachedLimit(piecesRef.current, pid)) {
-        flashNotice(
-          `you have ${MAX_PIECES_PER_PERSON} scraps on the table, remove one to add another`,
-        );
         return;
       }
       const measured =
@@ -568,19 +557,13 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
         {locked ? (
           <span className="collage-toolbar__note">the table is set</span>
         ) : (
-          <span className="collage-toolbar__note">
-            {notice ??
-              (atLimit
-                ? `that's your ${MAX_PIECES_PER_PERSON}, remove one to add another`
-                : `${myCount} / ${MAX_PIECES_PER_PERSON} scraps placed`)}
-          </span>
+          notice && <span className="collage-toolbar__note">{notice}</span>
         )}
       </div>
 
       {!locked && (
         <ScrapsPanel
           placedSrcs={new Set(ordered.map((p) => p.src))}
-          disabled={atLimit}
           onPick={(input) => void addScrap(input)}
         />
       )}

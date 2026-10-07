@@ -47,9 +47,6 @@ export interface CollageData {
   arrangedAt?: number;
 }
 
-/** Soft cap on how many scraps one person can have on the table at once. */
-export const MAX_PIECES_PER_PERSON = 12;
-
 /** Default width of a newly placed scrap, as a fraction of the table width. */
 export const DEFAULT_PIECE_WIDTH = 0.16;
 /** Smallest and largest width a scrap can be resized to. */
@@ -88,14 +85,6 @@ export function isOnTop(pieces: Pieces, id: string): boolean {
   return Object.values(pieces).every(
     (other) => other.id === id || other.z < piece.z,
   );
-}
-
-export function countPlacedBy(pieces: Pieces, pid: string): number {
-  return Object.values(pieces).filter((p) => p.placedByPid === pid).length;
-}
-
-export function hasReachedLimit(pieces: Pieces, pid: string): boolean {
-  return countPlacedBy(pieces, pid) >= MAX_PIECES_PER_PERSON;
 }
 
 export function clamp(value: number, min: number, max: number): number {

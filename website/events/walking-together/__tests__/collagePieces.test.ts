@@ -1,15 +1,12 @@
-// ABOUTME: Tests the table collage piece helpers: ordering, limits, placement, and gesture math.
+// ABOUTME: Tests the table collage piece helpers: ordering, placement, and gesture math.
 // ABOUTME: Also covers the shape-template conversion from cursor positions.
 
 import { describe, it, expect } from "vitest";
 import {
-  countPlacedBy,
   domainOf,
-  hasReachedLimit,
   initialWidth,
   isOnTop,
   makePiece,
-  MAX_PIECES_PER_PERSON,
   MAX_PIECE_WIDTH,
   MIN_PIECE_WIDTH,
   movedTransform,
@@ -75,16 +72,6 @@ describe("piece ordering and limits", () => {
       true,
     );
     expect(isOnTop(pieces, "missing")).toBe(false);
-  });
-
-  it("counts a person's pieces and flags the soft limit", () => {
-    const mine = Array.from({ length: MAX_PIECES_PER_PERSON }, (_, i) =>
-      piece(`m${i}`),
-    );
-    const pieces = map(...mine, piece("other", { placedByPid: "pk_b" }));
-    expect(countPlacedBy(pieces, "pk_a")).toBe(MAX_PIECES_PER_PERSON);
-    expect(hasReachedLimit(pieces, "pk_a")).toBe(true);
-    expect(hasReachedLimit(pieces, "pk_b")).toBe(false);
   });
 });
 

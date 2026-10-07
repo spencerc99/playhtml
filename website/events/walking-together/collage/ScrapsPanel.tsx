@@ -11,7 +11,6 @@ import {
 interface Props {
   /** Image sources already on the table, dimmed in the panel. */
   placedSrcs: Set<string>;
-  disabled: boolean;
   onPick: (input: ScrapInput) => void;
 }
 
@@ -31,7 +30,7 @@ export function newestFirst(scraps: SessionScrap[]): SessionScrap[] {
   return [...scraps].sort((a, b) => b.capturedAt - a.capturedAt);
 }
 
-export function ScrapsPanel({ placedSrcs, disabled, onPick }: Props) {
+export function ScrapsPanel({ placedSrcs, onPick }: Props) {
   const [scraps, setScraps] = useState<SessionScrap[] | null>(null);
   const [open, setOpen] = useState(true);
   const inFlight = useRef(false);
@@ -91,9 +90,8 @@ export function ScrapsPanel({ placedSrcs, disabled, onPick }: Props) {
                 className={`scraps-panel__scrap ${
                   placed ? "scraps-panel__scrap--placed" : ""
                 }`}
-                disabled={disabled}
                 title={placed ? "already on the table" : "place on the table"}
-                draggable={!disabled}
+                draggable
                 onDragStart={(e) => {
                   e.dataTransfer.setData(
                     SCRAP_DRAG_TYPE,
