@@ -132,6 +132,8 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
         input.naturalWidth && input.naturalHeight
           ? { width: input.naturalWidth, height: input.naturalHeight }
           : await measureImage(input.src);
+      // The table may have been set while the image was measuring.
+      if (lockedRef.current) return;
       const table = tableRef.current;
       const tableAspect =
         table && table.clientHeight > 0
@@ -155,6 +157,7 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
         { id: newPieceId(pid), now: Date.now(), random: Math.random },
       );
       setData((draft) => {
+        if (draft.locked) return;
         // A room whose collage data predates a field has no map to key into.
         if (!draft.pieces) {
           draft.pieces = { [piece.id]: piece };

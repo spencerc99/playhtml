@@ -12,6 +12,7 @@ import {
   movedTransform,
   normalizeDegrees,
   orderAroundCentroid,
+  pageOrigin,
   piecesOf,
   remoteDragTransforms,
   rotateResizeTransform,
@@ -78,6 +79,25 @@ describe("piece ordering and limits", () => {
 describe("makePiece", () => {
   const placer = { pid: "pk_a", name: "alice", color: "#0a0" };
   const options = { id: "new", now: 42, random: () => 0.5 };
+
+  it("keeps only the origin of the page a scrap came from", () => {
+    const p = makePiece(
+      {
+        src: "https://x.test/a.png",
+        pageUrl: "https://docs.example.com/d/secret-id/edit?token=abc#heading",
+        aspect: 0.5,
+      },
+      placer,
+      { x: 0.5, y: 0.5 },
+      {},
+      16 / 9,
+      options,
+    );
+    expect(p.pageUrl).toBe("https://docs.example.com");
+    expect(sourceDomain(p)).toBe("docs.example.com");
+    expect(pageOrigin("javascript:alert(1)")).toBe("");
+    expect(pageOrigin(undefined)).toBe("");
+  });
 
   it("lands on top, at the point, with the placer attached", () => {
     const p = makePiece(
