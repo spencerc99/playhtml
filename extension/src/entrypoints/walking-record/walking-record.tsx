@@ -37,6 +37,7 @@ import {
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
 import { getPublicPlayerIdentity } from "../../storage/playerIdentity";
 import { NEWTAB_TAKEOVER_KEY } from "../../features/newtab/takeover";
+import { isSafariExtensionPageUrl } from "../../utils/extensionPage";
 import {
   createMovementLoadingPreview,
   isMovementLoadingPreview,
@@ -70,6 +71,7 @@ function WalkingRecordEntryPage() {
   const [movementLoadingKey, setMovementLoadingKey] = useState<string | null>(
     null,
   );
+  const [refreshSequence, setRefreshSequence] = useState(0);
   const [loadingProgress, setLoadingProgress] =
     useState<WalkingRecordLoadProgress>({
       completed: 0,
@@ -114,14 +116,10 @@ function WalkingRecordEntryPage() {
     if (!baseColor) return;
 
     const existingRecord = records[recordKey];
-    if (existingRecord) {
-      setLoading(false);
-      return;
-    }
-
     let cancelled = false;
     const visiblePreview =
-      previewRecord?.key === recordKey ? previewRecord.record : null;
+      existingRecord ??
+      (previewRecord?.key === recordKey ? previewRecord.record : null);
     let baseRecordShown = Boolean(visiblePreview);
     const cacheKey = walkingRecordCacheKey(period, range, baseColor);
 
@@ -238,7 +236,24 @@ function WalkingRecordEntryPage() {
     range.endTs,
     range.startTs,
     recordKey,
+    refreshSequence,
   ]);
+
+  useEffect(() => {
+    const refreshCurrentPeriod = () => {
+      if (
+        document.visibilityState === "visible" &&
+        range.endTs > Date.now()
+      ) {
+        setRefreshSequence((current) => current + 1);
+      }
+    };
+
+    document.addEventListener("visibilitychange", refreshCurrentPeriod);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshCurrentPeriod);
+    };
+  }, [range.endTs]);
 
   useEffect(() => {
     const summaries = summarizeWalkingRecordPeriods(
@@ -280,7 +295,7 @@ function WalkingRecordEntryPage() {
     return () => {
       cancelled = true;
     };
-  }, [period]);
+  }, [period, refreshSequence]);
 
   const selectPeriod = (nextPeriod: WalkingRecordPeriod) => {
     const nextRange = getWalkingRecordPeriodRange(nextPeriod);
@@ -342,42 +357,53 @@ function WalkingRecordEntryPage() {
   );
 }
 
+const NEWTAB_CONTROL_STYLE = {
+  position: "fixed",
+  right: "16px",
+  bottom: "16px",
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  padding: "8px 12px",
+  borderRadius: "8px",
+  background: "rgba(250, 247, 242, 0.92)",
+  border: "1px solid rgba(90, 78, 65, 0.25)",
+  fontFamily: "'Martian Mono', monospace",
+  fontSize: "11px",
+  color: "#3d3833",
+  zIndex: 50,
+} as const;
+
 /** Controls whether new browser tabs open this walking record. */
 function NewTabTakeoverToggle() {
   const [enabled, setEnabled] = useState(false);
+  // Safari has no new tab override, so there is no preference to offer.
+  const isSafari = isSafariExtensionPageUrl(window.location.href);
 
   useEffect(() => {
+    if (isSafari) return;
     browser.storage.local
       .get([NEWTAB_TAKEOVER_KEY])
       .then((result) => setEnabled(Boolean(result[NEWTAB_TAKEOVER_KEY])))
       .catch(() => setEnabled(false));
-  }, []);
+  }, [isSafari]);
 
   const toggle = (next: boolean) => {
     setEnabled(next);
     browser.storage.local.set({ [NEWTAB_TAKEOVER_KEY]: next }).catch(() => {});
   };
 
+  if (isSafari) {
+    return (
+      <p style={{ ...NEWTAB_CONTROL_STYLE, maxWidth: "320px", margin: 0 }}>
+        Safari doesn't let extensions change the new tab — bookmark or pin this
+        page to keep it a click away.
+      </p>
+    );
+  }
+
   return (
-    <label
-      style={{
-        position: "fixed",
-        right: "16px",
-        bottom: "16px",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        padding: "8px 12px",
-        borderRadius: "8px",
-        background: "rgba(250, 247, 242, 0.92)",
-        border: "1px solid rgba(90, 78, 65, 0.25)",
-        fontFamily: "'Martian Mono', monospace",
-        fontSize: "11px",
-        color: "#3d3833",
-        cursor: "pointer",
-        zIndex: 50,
-      }}
-    >
+    <label style={{ ...NEWTAB_CONTROL_STYLE, cursor: "pointer" }}>
       <input
         type="checkbox"
         checked={enabled}

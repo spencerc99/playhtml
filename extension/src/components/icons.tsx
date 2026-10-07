@@ -1,8 +1,6 @@
 // ABOUTME: Shared SVG icon components for collector types and cursor preview
 // ABOUTME: All icons parameterize size; cursor also accepts a color prop
 
-import React from "react";
-
 const TEXT_COLOR = "#3d3833";
 const SURFACE_COLOR = "#efe9df";
 const SCROLLBAR_TRACK = "#b5aea5";
@@ -16,6 +14,25 @@ export function CursorSvg({ size = 14, color = TEXT_COLOR }: SizeProps & { color
     <svg width={size} height={size} viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
       <path d="m12 24.4219v-16.015l11.591 11.619h-6.781l-.411.124z" fill={color} />
       <path d="m21.0845 25.0962-3.605 1.535-4.682-11.089 3.686-1.553z" fill={color} />
+    </svg>
+  );
+}
+
+export function GearSvg({ size = 14 }: SizeProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
     </svg>
   );
 }

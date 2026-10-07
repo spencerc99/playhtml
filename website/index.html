@@ -229,19 +229,6 @@
           src="/candle-gif.gif"
           class="candle"
         />
-        <!-- Set data for custom (can-play) playhtml elements -->
-        <!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
-        <script>
-          const candle = document.getElementById("customCandle");
-          candle.defaultData = { on: true };
-          candle.onClick = (_e, { data, setData }) => {
-            setData({ on: !data.on });
-          };
-          candle.updateElement = ({ element, data }) => {
-            element.src = data.on ? "/candle-gif.gif" : "/candle-off.png";
-          };
-          candle.resetShortcut = "shiftKey";
-        </script>
 
         <p>
           I'd love for you to try this out and make your websites

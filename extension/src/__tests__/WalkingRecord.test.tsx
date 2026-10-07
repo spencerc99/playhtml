@@ -106,6 +106,7 @@ function trailState(
   return {
     trail: {
       id,
+      pid: id,
       points: [
         { x: 10, y: 10, ts: 1_000 },
         { x: 20, y: 20, ts: 2_000 },
@@ -178,7 +179,7 @@ describe("WalkingRecordPage calendar navigation", () => {
       getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
     });
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      internalDevFeaturesEnabled: false,
+      wwoFeatureAccess: { features: {}, checkedAt: 1 },
     });
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
       fillStyle: "",

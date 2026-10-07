@@ -40,22 +40,6 @@
           src="/candle-gif.gif"
           class="candle"
         />
-
-        <!-- Set data for custom (can-play) playhtml elements -->
-        <!-- IMPORTANT: this data must be set _before_ importing the playhtml library. -->
-        <script>
-          const candle = document.getElementById("customCandle");
-          candle.defaultData = { on: true };
-          candle.onClick = (_e, { data, setData }) => {
-            const on = typeof data === "object" ? data.on : data;
-            setData(!on);
-          };
-          candle.updateElement = ({ element, data }) => {
-            const on = typeof data === "object" ? data.on : data;
-            element.src = on ? "/candle-gif.gif" : "/candle-off.png";
-          };
-          candle.resetShortcut = "shiftKey";
-        </script>
       </div>
     </div>
     <footer>
@@ -68,6 +52,20 @@
     <script type="module" src="./story.ts"></script>
     <script type="module">
       import { playhtml } from "https://unpkg.com/playhtml@latest";
+
+      playhtml.register("customCandle", {
+        defaultData: { on: true },
+        onClick: (_event, { data, setData }) => {
+          const on = typeof data === "object" ? data.on : data;
+          setData(!on);
+        },
+        updateElement: ({ element, data }) => {
+          const on = typeof data === "object" ? data.on : data;
+          element.src = on ? "/candle-gif.gif" : "/candle-off.png";
+        },
+        resetShortcut: "shiftKey",
+      });
+
       playhtml.init({
         room: window.location.pathname,
         cursors: { enabled: true },

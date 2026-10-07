@@ -92,6 +92,7 @@ export async function readWalkingRecordCache(
   return {
     record: entry.record,
     fresh:
+      entry.cachedAt >= entry.record.range.endTs &&
       now - entry.cachedAt >= 0 &&
       now - entry.cachedAt <= WALKING_RECORD_CACHE_MAX_AGE_MS,
   };

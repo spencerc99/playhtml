@@ -1,10 +1,15 @@
 // ABOUTME: Tests React hooks and element bindings against the real playhtml core.
 // ABOUTME: Verifies binding cleanup and presence-room readiness across navigation.
 import React from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { elementHandlers, playhtml, resetPlayHTML, TagType } from "playhtml";
-import { PlayProvider, usePresenceRoom, withSharedState } from "../index";
+import {
+  CanMoveElement,
+  PlayProvider,
+  usePresenceRoom,
+  withSharedState,
+} from "../index";
 
 describe("CanPlayElement binding lifecycle", () => {
   beforeEach(async () => {
@@ -58,6 +63,92 @@ describe("CanPlayElement binding lifecycle", () => {
     ).toBe(false);
 
     unmount();
+  });
+
+  it("lets a newly mounted movable element respond during the same commit", async () => {
+    const MovableWord = withSharedState<
+      { x: number; y: number },
+      { startMouseX: number; startMouseY: number }
+    >(
+      {
+        id: "new-word",
+        standalone: true,
+        tagInfo: [TagType.CanMove],
+        defaultData: { x: 0, y: 0 },
+        defaultLocalData: { startMouseX: 0, startMouseY: 0 },
+        onDragStart: (event, { setLocalData }) => {
+          const mouseEvent = event as MouseEvent;
+          setLocalData({
+            startMouseX: mouseEvent.clientX,
+            startMouseY: mouseEvent.clientY,
+          });
+        },
+        onDrag: (event, { data, localData, setData }) => {
+          const mouseEvent = event as MouseEvent;
+          setData({
+            x: data.x + mouseEvent.clientX - localData.startMouseX,
+            y: data.y + mouseEvent.clientY - localData.startMouseY,
+          });
+        },
+      },
+      ({ data }) => (
+        <div
+          data-testid="new-word"
+          style={{ transform: `translate(${data.x}px, ${data.y}px)` }}
+        />
+      ),
+    );
+
+    function FridgeWordCommit() {
+      React.useLayoutEffect(() => {
+        const word = document.querySelector(
+          '[data-testid="new-word"]',
+        ) as HTMLElement;
+        word.dispatchEvent(
+          new MouseEvent("mousedown", {
+            bubbles: true,
+            clientX: 20,
+            clientY: 30,
+          }),
+        );
+        document.dispatchEvent(
+          new MouseEvent("mousemove", {
+            bubbles: true,
+            clientX: 70,
+            clientY: 80,
+          }),
+        );
+        document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      }, []);
+
+      return <MovableWord />;
+    }
+
+    const rendered = render(<FridgeWordCommit />);
+
+    await waitFor(() => {
+      expect(rendered.getByTestId("new-word").style.transform).toBe(
+        "translate(50px, 50px)",
+      );
+    });
+  });
+
+  it("registers built-in capabilities with one renderer name", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <CanMoveElement standalone>
+        <div id="moving-card">move me</div>
+      </CanMoveElement>,
+    );
+
+    await waitFor(() => {
+      expect(
+        elementHandlers.get(TagType.CanMove)?.get("moving-card"),
+      ).toBeDefined();
+    });
+    expect(errorSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("update and updateElement are mutually exclusive"),
+    );
   });
 });
 

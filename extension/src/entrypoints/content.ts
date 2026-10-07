@@ -25,23 +25,19 @@ import {
 } from "../collectors/modes";
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
-import { FLAGS } from "../flags";
-import { shouldStartExtensionPresence } from "./content/presencePolicy";
+import { isFeatureEnabled } from "../features/featureAccess";
+import {
+  shouldInitializeCopresence,
+  shouldStartExtensionPresence,
+} from "./content/presencePolicy";
 import { markExtensionInstalled } from "../utils/extensionInstallMarker";
 import { isExtensionPageUrl } from "../utils/extensionPage";
+import { initHostedSlowModeContentBridge } from "../features/slowMode/slowModeHostedContentBridge";
+import { watchInstallationContent } from "./content/installationContent";
+import { MILESTONE_TOASTS_ENABLED_KEY } from "../milestones/state";
 
-async function internalDevFeaturesEnabled(): Promise<boolean> {
-  try {
-    const result = await browser.storage.local.get("internalDevFeaturesEnabled");
-    return Boolean(result.internalDevFeaturesEnabled);
-  } catch {
-    return false;
-  }
-}
-
-// Scraps default to local and never support sharing, so a stored mode the
-// collector doesn't support (an "element" mode saved as "shared" before sharing
-// was removed) is repaired here before the collector starts.
+// Scraps are local-only, so normalize any unsupported stored mode before the
+// collector starts.
 async function ensureScrapCollectionMode(): Promise<void> {
   const key = collectionModeStorageKey("element");
   const result = await browser.storage.local.get(key);
@@ -65,6 +61,10 @@ export default defineContentScript({
     }
 
     markExtensionInstalled(document.documentElement);
+    const removeSlowModeBridge = initHostedSlowModeContentBridge();
+    ctx?.onInvalidated(removeSlowModeBridge);
+    const removeInstallationContent = watchInstallationContent();
+    ctx?.onInvalidated(removeInstallationContent);
 
     let currentPresenceCount = 0;
 
@@ -78,6 +78,9 @@ export default defineContentScript({
       // The extension's own playhtml instance, lazily inited. Shared between the
       // cursor-site path and the headless every-page path for social experiments.
       private playhtmlInstance: typeof import("playhtml").playhtml | null = null;
+      // Whether the page runs its own playhtml, resolved once per page so the
+      // presence path and the social-experiment path share one detection wait.
+      private nativePlayhtmlDetection: Promise<boolean> | null = null;
 
       async init() {
         if (this.isInitialized) return;
@@ -106,7 +109,7 @@ export default defineContentScript({
           this.setupElementPicker();
           this.setupPresenceDetection();
 
-          if (await this.areInternalDevFeaturesEnabled()) {
+          if (await isFeatureEnabled("PAGE_COLLECTION")) {
             // Check if this is a new site discovery
             await this.checkSiteDiscovery();
 
@@ -117,17 +120,6 @@ export default defineContentScript({
           this.isInitialized = true;
         } catch (error) {
           console.error("Failed to initialize PlayHTML Extension:", error);
-        }
-      }
-
-      private async areInternalDevFeaturesEnabled(): Promise<boolean> {
-        try {
-          const result = await browser.storage.local.get([
-            "internalDevFeaturesEnabled",
-          ]);
-          return result.internalDevFeaturesEnabled === true;
-        } catch {
-          return false;
         }
       }
 
@@ -950,6 +942,17 @@ export default defineContentScript({
         );
       }
 
+      // Checks for the page's own playhtml, waiting briefly because on dev
+      // servers (Vite) page scripts may load after our content script.
+      // Memoized: must run before the extension inits its own playhtml, which
+      // sets the same DOM marker.
+      private detectNativePlayhtml(): Promise<boolean> {
+        this.nativePlayhtmlDetection ??= this.hasNativePlayhtml()
+          ? Promise.resolve(true)
+          : this.waitForNativePlayhtml(1500);
+        return this.nativePlayhtmlDetection;
+      }
+
       private waitForNativePlayhtml(timeoutMs: number): Promise<boolean> {
         return new Promise((resolve) => {
           const observer = new MutationObserver(() => {
@@ -1019,7 +1022,7 @@ export default defineContentScript({
 
       /**
        * Initialize social experiments (bottles, …) on this page. They run on
-       * every page, independent of cursor support and native playhtml. When no
+       * every page without its own playhtml, independent of cursor support. When no
        * experiment is active we open no connection at all. If the extension
        * hasn't already inited playhtml (cursor-site path), spin up a headless
        * instance (cursors off) so experiments have a createPageData handle.
@@ -1033,7 +1036,14 @@ export default defineContentScript({
         if (!(await anyGlobalFeatureActive())) return;
 
         if (!this.playhtmlInstance) {
-          // No instance yet (normal or native-playhtml page): stand up our own,
+          // Skip pages that run their own playhtml. A second playhtml instance
+          // shares the page DOM even from the isolated world: init() adopts
+          // every capability element (can-move, can-toggle, …) into our room
+          // and resets them to that room's empty data, so the site's elements
+          // jump to their defaults.
+          if (await this.detectNativePlayhtml()) return;
+
+          // No instance yet on a page without playhtml: stand up our own,
           // in an extension-owned room isolated from any site's playhtml room so
           // WWO data can't be read/written by the host site. The room is
           // auto-prefixed with the page host; we add a `wwo` segment; the room
@@ -1091,32 +1101,32 @@ export default defineContentScript({
       }
 
       private async setupPresence() {
+        const { getCustomSiteSettings, initCustomSite } = await import(
+          "../custom-sites"
+        );
+        const customSiteSettings = getCustomSiteSettings();
+        if (
+          !shouldInitializeCopresence({
+            featureEnabled: await isFeatureEnabled("COPRESENCE"),
+            customSiteCursorsEnabled:
+              customSiteSettings?.cursorsEnabled ?? false,
+          })
+        ) {
+          return;
+        }
+
         // On pages that already run playhtml, defer presence/cursors to the
         // page's instance (we only inject our identity). We don't stand up our
         // own cursor instance here — but bottles still get one later via
         // ensureGlobalFeatures, in their own extension-owned room.
-        if (this.hasNativePlayhtml()) {
-          console.log("[we-were-online] Native playhtml detected at startup");
-          this.injectIdentityIntoMainWorld();
-          this.listenForPresenceCount();
-          return;
-        }
-
-        // Race condition: on dev servers (Vite), page scripts may load after
-        // our content script. Wait briefly for the data-playhtml marker or
-        // cursor styles to appear before initializing our own instance.
-        if (await this.waitForNativePlayhtml(1500)) {
-          console.log("[we-were-online] Native playhtml detected after waiting");
+        if (await this.detectNativePlayhtml()) {
+          console.log("[we-were-online] Native playhtml detected");
           this.injectIdentityIntoMainWorld();
           this.listenForPresenceCount();
           return;
         }
 
         // Initialize PlayHTML only for sites with explicit extension cursor support.
-        const { getCustomSiteSettings, initCustomSite } = await import(
-          "../custom-sites"
-        );
-        const customSiteSettings = getCustomSiteSettings();
         const enableCursors = customSiteSettings?.cursorsEnabled ?? false;
         if (
           !shouldStartExtensionPresence({
@@ -1159,10 +1169,9 @@ export default defineContentScript({
           }
           // Emote wheel rides the same cursor layer; peers are only present
           // where cursors are enabled, so it lives inside this block. Gated
-          // behind internal-dev mode (Cmd+Shift+. in the popup) while it's still
-          // in progress — not shipped to all users yet.
+          // behind its feature gate while it is still in progress.
           const cursorClient = playhtml.cursorClient;
-          if (cursorClient && (await this.areInternalDevFeaturesEnabled())) {
+          if (cursorClient && (await isFeatureEnabled("EMOTES"))) {
             try {
               const { initEmotes } = await import("../features/emotes");
               this.emoteCleanup = initEmotes({
@@ -1217,9 +1226,12 @@ export default defineContentScript({
     let collectorManager: CollectorManager | null = null;
     let overlayUI: InjectedReactUI | null = null;
     let milestoneToastUI: InjectedReactUI | null = null;
+    let milestoneToastsEnabled = true;
     let overlayVisible = false;
+    let overlayRevision = 0;
 
     const toggleHistoricalOverlay = async () => {
+      const currentRevision = ++overlayRevision;
       try {
         overlayVisible = !overlayVisible;
 
@@ -1230,21 +1242,28 @@ export default defineContentScript({
           // interacting with the overlay UI shouldn't pollute the data.
           collectorManager?.pauseAll();
 
-          const { HistoricalOverlay } = await import("../components/HistoricalOverlay");
-
-          overlayUI = injectShadowReact(
-            HistoricalOverlay,
-            {
-              visible: true,
-              currentUrl: window.location.href,
-              onClose: () => toggleHistoricalOverlay(),
-            },
-            {
-              hostId: "playhtml-historical-overlay-root",
-              fontUrl:
-                "https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;400&family=Lora:ital,wght@1,600&display=swap",
-            },
+          await import(
+            /* @vite-ignore */ browser.runtime.getURL("historical-overlay.js")
           );
+          if (currentRevision !== overlayRevision || !overlayVisible) return;
+          const mountHistoricalOverlay = (
+            globalThis as typeof globalThis & {
+              wwoHistoricalOverlay?: (props: {
+                visible: boolean;
+                currentUrl: string;
+                onClose: () => void;
+              }) => InjectedReactUI;
+            }
+          ).wwoHistoricalOverlay;
+          if (!mountHistoricalOverlay) {
+            throw new Error("Historical overlay did not register");
+          }
+
+          overlayUI = mountHistoricalOverlay({
+            visible: true,
+            currentUrl: window.location.href,
+            onClose: () => toggleHistoricalOverlay(),
+          });
 
           if (VERBOSE) console.log("[HistoricalOverlay] Overlay activated");
         } else {
@@ -1257,8 +1276,12 @@ export default defineContentScript({
           if (VERBOSE) console.log("[HistoricalOverlay] Overlay deactivated");
         }
       } catch (error) {
+        if (currentRevision !== overlayRevision) return;
         console.error("[HistoricalOverlay] Failed to toggle overlay:", error);
         overlayVisible = false;
+        overlayUI?.destroy();
+        overlayUI = null;
+        collectorManager?.resumeAll();
       }
     };
 
@@ -1307,7 +1330,7 @@ export default defineContentScript({
         const keyboardCollector = new KeyboardCollector();
         collectorManager.registerCollector(keyboardCollector);
 
-        if (FLAGS.SCRAPS || (await internalDevFeaturesEnabled())) {
+        if (await isFeatureEnabled("SCRAPS")) {
           await ensureScrapCollectionMode();
           const scrapCollector = new ScrapCollector();
           collectorManager.registerCollector(scrapCollector);
@@ -1360,18 +1383,14 @@ export default defineContentScript({
 
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", () => {
-        if (FLAGS.COPRESENCE) {
-          extensionInstance = new PlayHTMLExtension();
-          extensionInstance.init();
-        }
+        extensionInstance = new PlayHTMLExtension();
+        extensionInstance.init();
         initializeCollectors().catch(console.error);
         setupModeChangeListener();
       });
     } else {
-      if (FLAGS.COPRESENCE) {
-        extensionInstance = new PlayHTMLExtension();
-        extensionInstance.init();
-      }
+      extensionInstance = new PlayHTMLExtension();
+      extensionInstance.init();
       initializeCollectors().catch(console.error);
       setupModeChangeListener();
     }
@@ -1416,6 +1435,7 @@ export default defineContentScript({
     });
 
     const showMilestoneToast = (milestone: MilestoneToastData): void => {
+      if (!milestoneToastsEnabled) return;
       milestoneToastUI?.destroy();
 
       let ui: InjectedReactUI | null = null;
@@ -1456,6 +1476,15 @@ export default defineContentScript({
       );
       milestoneToastUI = ui;
     };
+
+    browser.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local" || !changes[MILESTONE_TOASTS_ENABLED_KEY]) return;
+      milestoneToastsEnabled = changes[MILESTONE_TOASTS_ENABLED_KEY].newValue !== false;
+      if (!milestoneToastsEnabled) {
+        milestoneToastUI?.destroy();
+        milestoneToastUI = null;
+      }
+    });
 
     // Listen for messages from popup/devtools
     browser.runtime.onMessage.addListener(

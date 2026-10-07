@@ -72,6 +72,130 @@ describe("element awareness sync", () => {
     expect(byStableIdSnapshots.at(-1)?.size).toBe(0);
   });
 
+  it("clears remote element awareness when navigating to an empty room", async () => {
+    const originalPath = window.location.pathname;
+    const snapshots: string[][] = [];
+    const el = document.createElement("div");
+    el.id = "navigation-presence";
+    document.body.appendChild(el);
+    const handle = playhtml.register(el, {
+      defaultData: {},
+      updateElement: ({ element }) => {
+        element.textContent = "Presence";
+      },
+      updateElementAwareness: ({ awarenessByStableId }) => {
+        snapshots.push([...awarenessByStableId.keys()]);
+      },
+    });
+    await flushPresencePublishes();
+    getPresenceSocketForRoom(playhtml.roomId).receive({
+      type: "presence-sync",
+      peers: {
+        remote: {
+          identity: {
+            publicKey: "remote",
+            playerStyle: { colorPalette: ["blue"] },
+          },
+          "element:can-play": { "navigation-presence": { active: true } },
+        },
+      },
+    });
+    expect(snapshots.at(-1)).toEqual(["remote"]);
+    try {
+      history.replaceState(null, "", "/empty-presence-room");
+      await playhtml.handleNavigation();
+      expect(snapshots.at(-1)).toEqual([]);
+    } finally {
+      history.replaceState(null, "", originalPath);
+      handle.unregister();
+    }
+  });
+
+  it("joins identity with element live values and rerenders on identity changes", async () => {
+    const updates: any[] = [];
+    const el = document.createElement("div");
+    el.id = "live-users-card";
+    document.body.appendChild(el);
+
+    playhtml.register(el, {
+      live: { active: true },
+      update: (context: any) => updates.push(context),
+    } as any);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const socket = getPresenceSocketForRoom(playhtml.roomId);
+    socket.receive({
+      type: "presence-sync",
+      peers: {
+        "conn-remote": {
+          "element:shard:0": {
+            v: 1,
+            entries: [["can-play", "live-users-card", { active: false }]],
+          },
+        },
+      },
+    });
+
+    expect(updates.at(-1).live).toEqual({ active: true });
+    expect(updates.at(-1).users).not.toContainEqual(
+      expect.objectContaining({
+        user: expect.objectContaining({ pid: "pk_remote_user" }),
+      }),
+    );
+
+    const updateCountBeforeIdentity = updates.length;
+    socket.receive({
+      type: "presence-changes",
+      updates: {
+        "conn-remote": {
+          identity: {
+            publicKey: "pk_remote_user",
+            name: "Mina",
+            playerStyle: { colorPalette: ["blue"] },
+          },
+        },
+      },
+      removes: {},
+    });
+
+    expect(updates.length).toBeGreaterThan(updateCountBeforeIdentity);
+    expect(updates.at(-1).users).toContainEqual({
+      user: {
+        pid: "pk_remote_user",
+        name: "Mina",
+        color: "blue",
+        isMe: false,
+      },
+      live: { active: false },
+    });
+
+    const updateCount = updates.length;
+    socket.receive({
+      type: "presence-changes",
+      updates: {
+        "conn-remote": {
+          identity: {
+            publicKey: "pk_remote_user",
+            name: "Jo",
+            playerStyle: { colorPalette: ["purple"] },
+          },
+        },
+      },
+      removes: {},
+    });
+
+    expect(updates.length).toBeGreaterThan(updateCount);
+    expect(updates.at(-1).users).toContainEqual({
+      user: {
+        pid: "pk_remote_user",
+        name: "Jo",
+        color: "purple",
+        isMe: false,
+      },
+      live: { active: false },
+    });
+  });
+
   it("publishes element awareness through the page room when cursors use another room", async () => {
     document.body.innerHTML = "";
     (globalThis as any).PLAYHTML_TEST_PROVIDERS = [];
@@ -107,57 +231,6 @@ describe("element awareness sync", () => {
     expect(sentChannelUpdates(cursorSocket, "element:shard:0")).toEqual([]);
   });
 
-  it("does not mutate the previous awareness state object when updating", async () => {
-    vi.stubGlobal("WebSocket", undefined);
-    document.body.innerHTML = "";
-    (globalThis as any).PLAYHTML_TEST_PROVIDERS = [];
-    await resetPlayHTML();
-    await playhtml.init({
-      cursors: { enabled: false },
-    });
-
-    function getCurrentProvider(): any {
-      const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as any[];
-      const provider = providers?.[providers.length - 1];
-      if (!provider) throw new Error("Expected test provider");
-      return provider;
-    }
-
-    const provider = getCurrentProvider();
-
-    const el = document.createElement("div");
-    el.id = "toggle-presence";
-    el.setAttribute("can-play", "");
-    (el as any).defaultData = {};
-    (el as any).myDefaultAwareness = { hovering: false };
-    (el as any).updateElement = vi.fn();
-    (el as any).updateElementAwareness = vi.fn();
-    document.body.appendChild(el);
-    await playhtml.setupPlayElementForTag(el, "can-play");
-
-    const handler = elementHandlers.get("can-play")!
-      .get("toggle-presence")!;
-
-    // The provider only broadcasts an awareness update when y-protocols'
-    // setLocalState sees a change via deep equality against the PREVIOUS state.
-    // If the update mutates the previous state object in place, that comparison
-    // sees no change and the broadcast is dropped — peers never see the update.
-    // Capture the sub-object the handler will read, then update, and assert the
-    // captured snapshot was left untouched (i.e. a fresh object was written).
-    const beforeSub = provider.awareness.getLocalState()?.["can-play"] as Record<
-      string,
-      unknown
-    >;
-    const beforeSnapshot = JSON.stringify(beforeSub);
-
-    handler.setMyAwareness({ hovering: true } as any);
-
-    expect(JSON.stringify(beforeSub)).toBe(beforeSnapshot);
-    expect(
-      provider.awareness.getLocalState()?.["can-play"]?.["toggle-presence"],
-    ).toEqual({ hovering: true });
-    expect(provider.awareness.getLocalState()?.["can-play"]).not.toBe(beforeSub);
-  });
 
   it("invokes updateElementAwareness once per local setMyAwareness", async () => {
     const calls: unknown[] = [];
@@ -181,6 +254,47 @@ describe("element awareness sync", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ myAwareness: { active: true } });
+  });
+
+  it("preserves remote awareness during a targeted local update", async () => {
+    const calls: any[] = [];
+    const el = document.createElement("div");
+    el.id = "mixed-presence";
+    el.setAttribute("can-play", "");
+    (el as any).defaultData = {};
+    (el as any).updateElement = () => {};
+    (el as any).updateElementAwareness = (data: any) => calls.push(data);
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
+
+    const socket = getPresenceSocketForRoom(playhtml.roomId);
+    socket.receive({
+      type: "presence-sync",
+      peers: {
+        "conn-remote": {
+          identity: {
+            publicKey: "pk_remote",
+            playerStyle: { colorPalette: ["blue"] },
+          },
+          "element:shard:0": {
+            v: 1,
+            entries: [["can-play", "mixed-presence", { active: "remote" }]],
+          },
+        },
+      },
+    });
+    calls.length = 0;
+
+    elementHandlers.get("can-play")!.get("mixed-presence")!
+      .setMyAwareness({ active: "local" } as any);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].awarenessByStableId.get("pk_remote")).toEqual({
+      active: "remote",
+    });
+    expect(calls[0].awarenessByStableId.get(playhtml.users.me.pid)).toEqual({
+      active: "local",
+    });
   });
 
   it("keeps existing local awareness when a handler is recreated", async () => {
@@ -233,5 +347,35 @@ describe("element awareness sync", () => {
     const finalShard = JSON.stringify(updates.at(-1));
     expect(finalShard).toContain("burst-0");
     expect(finalShard).toContain("burst-99");
+  });
+
+  it("updates only the element whose local awareness changed", async () => {
+    const updateCounts = new Map<string, number>();
+    for (let i = 0; i < 100; i += 1) {
+      const elementId = `targeted-${i}`;
+      const el = document.createElement("div");
+      el.id = elementId;
+      el.setAttribute("can-play", "");
+      (el as any).defaultData = {};
+      (el as any).myDefaultAwareness = { active: false };
+      (el as any).updateElement = () => {};
+      (el as any).updateElementAwareness = () => {
+        updateCounts.set(elementId, (updateCounts.get(elementId) ?? 0) + 1);
+      };
+      document.body.appendChild(el);
+    }
+    playhtml.setupPlayElements();
+    await flushPresencePublishes();
+    expect(updateCounts.size).toBe(100);
+    expect(Array.from(updateCounts.values()).every((count) => count === 1)).toBe(
+      true,
+    );
+    updateCounts.clear();
+
+    playhtml
+      .getHandle("targeted-50", "can-play")
+      .setMyAwareness({ active: true });
+
+    expect(updateCounts).toEqual(new Map([["targeted-50", 1]]));
   });
 });

@@ -1,8 +1,7 @@
 // ABOUTME: Page navigation for the extension popup header.
 // ABOUTME: Bare mono links that open the standalone extension pages in a new tab.
 
-import React from "react";
-import { ReleasedFeature } from "./ReleasedFeature";
+import { FeatureGate } from "./FeatureGate";
 import "./PopupNav.scss";
 
 export const WALKING_RECORD_PAGE = "walking-record.html";
@@ -46,9 +45,9 @@ export function PopupNav({ onNavigate }: Props) {
         path={WALKING_RECORD_PAGE}
         onNavigate={onNavigate}
       />
-      <ReleasedFeature feature="SCRAPS">
+      <FeatureGate feature="SCRAPS">
         <NavItem label="scraps" path="scraps.html" onNavigate={onNavigate} />
-      </ReleasedFeature>
+      </FeatureGate>
     </nav>
   );
 }

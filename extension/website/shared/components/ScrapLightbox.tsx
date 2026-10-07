@@ -1,8 +1,15 @@
 // ABOUTME: Examine view that lifts a clicked scrap out of the collage into a centered detail view.
 // ABOUTME: Shows a specimen-label side panel of provenance and supports arrow navigation between scraps.
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ScrapItem } from "./ScrapCollage";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { headingDisplayFontSize, type ScrapItem } from "./ScrapCollage";
+import { useScrapImageSrc } from "../utils/scrapImageSource";
 
 /** Fraction of the viewport's smaller dimension the lifted scrap fills. */
 const LIFTED_VIEWPORT_FRACTION = 0.55;
@@ -14,6 +21,12 @@ const SETTLE_ROTATION_RANGE_DEG = 2;
  * for examination while keeping its radius, padding, and shadow in proportion.
  */
 const BUTTON_LIFT_SCALE = 3;
+
+/**
+ * Headings are likewise captured at page size and enlarged for examination,
+ * by less than a button because their wording is already much wider.
+ */
+const HEADING_LIFT_SCALE = 1.5;
 
 /** Elements Tab may reach while the examine dialog holds focus. */
 const FOCUSABLE_SELECTOR =
@@ -61,8 +74,17 @@ export function kindDetailRows(item: ScrapItem): ProvenanceRow[] {
     }
     case "svg-icon":
       return [
-        { label: "dimensions", value: formatDimensions(item.width, item.height) },
+        {
+          label: "dimensions",
+          value: formatDimensions(item.width, item.height),
+        },
       ];
+    case "heading": {
+      const rows: ProvenanceRow[] = [{ label: "level", value: `h${item.level}` }];
+      const text = item.text.trim();
+      if (text) rows.push({ label: "text", value: text });
+      return rows;
+    }
     case "cursor": {
       const rows: ProvenanceRow[] = [];
       if (item.hotspotX !== undefined && item.hotspotY !== undefined) {
@@ -99,7 +121,8 @@ export function liftedSize(
   origin: { width: number; height: number },
   viewport: { width: number; height: number },
 ): { width: number; height: number } {
-  const target = Math.min(viewport.width, viewport.height) * LIFTED_VIEWPORT_FRACTION;
+  const target =
+    Math.min(viewport.width, viewport.height) * LIFTED_VIEWPORT_FRACTION;
   if (origin.width <= 0 || origin.height <= 0) {
     return { width: target, height: target };
   }
@@ -162,7 +185,19 @@ const LIGHTBOX_STYLES = `
     opacity: 1;
   }
 
+  .scrap-lightbox::before {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 1;
+    height: 68px;
+    border-bottom: 1px solid rgba(61, 56, 51, 0.08);
+    background: #faf7f2;
+    content: "";
+  }
+
   .scrap-lightbox__layout {
+    position: relative;
+    z-index: 2;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -267,6 +302,38 @@ const LIGHTBOX_STYLES = `
     white-space: nowrap;
   }
 
+  .scrap-lightbox__places {
+    margin-top: 16px;
+    font: 10px/1.6 "Martian Mono", monospace;
+    overflow-wrap: anywhere;
+  }
+  .scrap-lightbox__places h3 { font: inherit; margin: 0; }
+  .scrap-lightbox__places p { color: #827a72; font-size: 9px; margin: 4px 0 8px; }
+  .scrap-lightbox__timeline {
+    max-height: 220px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    border-top: 1px solid rgba(61, 56, 51, 0.14);
+  }
+  .scrap-lightbox__timeline ol { list-style: none; padding: 0; margin: 0; }
+  .scrap-lightbox__timeline li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 8px 0;
+  }
+  .scrap-lightbox__timeline li + li { border-top: 1px solid rgba(61, 56, 51, 0.08); }
+  .scrap-lightbox__timeline h4 { margin: 0; padding: 10px 0 4px; font: inherit; color: #827a72; }
+  .scrap-lightbox__timeline time { color: #827a72; font-size: 9px; white-space: nowrap; padding-top: 1px; }
+  .scrap-lightbox__timeline a { color: #3d3833; min-width: 0; text-decoration: none; }
+  .scrap-lightbox__timeline a:hover { text-decoration: underline; }
+  .scrap-lightbox__encounter-url { display: none !important; }
+  .scrap-lightbox__timeline a:focus .scrap-lightbox__encounter-url { display: block !important; }
+  .scrap-lightbox__timeline strong { display: block; font-weight: 500; }
+  .scrap-lightbox__timeline span { display: block; color: #827a72; font-size: 9px; overflow-wrap: anywhere; }
+  .scrap-lightbox__timeline:focus-visible { outline: 2px solid #5b8db8; outline-offset: 2px; }
+
   .scrap-lightbox__rows {
     margin: 16px 0 0;
     padding-top: 14px;
@@ -343,6 +410,49 @@ const LIGHTBOX_STYLES = `
     box-shadow: 0 5px 12px rgba(61, 56, 51, 0.18);
   }
 
+  .scrap-lightbox__delete {
+    appearance: none;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #a39b92;
+    font-family: "Martian Mono", monospace;
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  .scrap-lightbox__delete:hover,
+  .scrap-lightbox__delete:focus-visible {
+    color: #3d3833;
+    text-decoration: underline;
+    outline: none;
+  }
+
+  .scrap-lightbox__delete--confirm {
+    color: #a8553f;
+  }
+
+  .scrap-lightbox__delete--confirm:hover,
+  .scrap-lightbox__delete--confirm:focus-visible {
+    color: #91462f;
+  }
+
+  .scrap-lightbox__delete:disabled {
+    cursor: default;
+    opacity: 0.6;
+    text-decoration: none;
+  }
+
+  .scrap-lightbox__delete-confirm {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+    color: #827a72;
+    font-family: "Martian Mono", monospace;
+    font-size: 10px;
+  }
+
   .scrap-lightbox__close {
     position: absolute;
     top: 16px;
@@ -352,7 +462,9 @@ const LIGHTBOX_STYLES = `
     padding: 0;
     border: 1px solid rgba(61, 56, 51, 0.2);
     border-radius: 50%;
-    background: #f5f0e8;
+    z-index: 3;
+    background: #faf7f2;
+    box-shadow: 0 3px 10px rgba(61, 56, 51, 0.12);
     color: #3d3833;
     cursor: pointer;
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
@@ -368,6 +480,7 @@ const LIGHTBOX_STYLES = `
 
   .scrap-lightbox__step {
     position: absolute;
+    z-index: 3;
     top: 50%;
     width: 34px;
     height: 34px;
@@ -437,14 +550,19 @@ interface ScrapLightboxProps {
   onClose: () => void;
   onPrevious: () => void;
   onNext: () => void;
+  /** Permanently removes this scrap; when absent, the scrap cannot be deleted here. */
+  onDelete?: () => Promise<void>;
 }
 
 function ScrapMedia({ item }: { item: ScrapItem }) {
+  const imageSrc = useScrapImageSrc(
+    item.kind === "image" ? item.src : undefined,
+  );
   switch (item.kind) {
     case "image":
       return (
         <div className="scrap-lightbox__scrap-media">
-          <img src={item.src} alt={item.alt ?? ""} draggable={false} />
+          <img src={imageSrc ?? undefined} alt={item.alt ?? ""} draggable={false} />
         </div>
       );
     case "button":
@@ -455,6 +573,7 @@ function ScrapMedia({ item }: { item: ScrapItem }) {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            ...(item.backdropColor ? { background: item.backdropColor } : {}),
           }}
         >
           <span
@@ -494,6 +613,33 @@ function ScrapMedia({ item }: { item: ScrapItem }) {
           dangerouslySetInnerHTML={{ __html: item.markup }}
         />
       );
+    case "heading":
+      return (
+        <div
+          className="scrap-lightbox__scrap-media"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "0 16px",
+          }}
+        >
+          <span
+            style={{
+              ...(item.styles as React.CSSProperties),
+              fontSize:
+                headingDisplayFontSize(item.styles, item.text) *
+                HEADING_LIFT_SCALE,
+              lineHeight: 1.15,
+              maxWidth: "100%",
+              textAlign: "center",
+              overflowWrap: "anywhere",
+            }}
+          >
+            {item.text}
+          </span>
+        </div>
+      );
     case "cursor":
       return (
         <div className="scrap-lightbox__scrap-media">
@@ -528,8 +674,20 @@ export function ScrapLightbox({
   onClose,
   onPrevious,
   onNext,
+  onDelete,
 }: ScrapLightboxProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const [deleteStep, setDeleteStep] = useState<
+    "idle" | "confirm" | "deleting" | "failed"
+  >("idle");
+  const confirmDelete = () => {
+    if (!onDelete) return;
+    setDeleteStep("deleting");
+    onDelete().catch((error: unknown) => {
+      console.error("Could not delete the scrap:", error);
+      setDeleteStep("failed");
+    });
+  };
   const dialogRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [lifted, setLifted] = useState(prefersReducedMotion);
@@ -673,6 +831,23 @@ export function ScrapLightbox({
     ...kindDetailRows(item),
   ];
 
+  const encounterDates = new Map<
+    string,
+    NonNullable<ScrapItem["sources"]>[number]["encounters"]
+  >();
+  for (const encounter of (item.sources ?? [])
+    .flatMap((source) => source.encounters)
+    .sort((a, b) => b.ts - a.ts)) {
+    const date = new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }).format(encounter.ts);
+    const entries = encounterDates.get(date) ?? [];
+    entries.push(encounter);
+    encounterDates.set(date, entries);
+  }
+
   return (
     <div
       ref={overlayRef}
@@ -738,16 +913,101 @@ export function ScrapLightbox({
               </div>
             )}
           </div>
-          {item.pageUrl && (
-            <div className="scrap-lightbox__actions">
-              <a
-                className="scrap-lightbox__action"
-                href={item.pageUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+          {item.kind === "image" && item.sources && item.sources.length > 0 && (
+            <section
+              className="scrap-lightbox__places"
+              aria-label="Places this photo was found"
+            >
+              <h3>Encounter history</h3>
+              <p>Newest first · one saved visit per place per day</p>
+              <div
+                className="scrap-lightbox__timeline"
+                tabIndex={0}
+                role="region"
+                aria-label="Scrollable encounter history"
               >
-                visit page →
-              </a>
+                {[...encounterDates].map(([date, encounters]) => (
+                  <section key={date} aria-label={date}>
+                    <h4>{date}</h4>
+                    <ol>
+                      {encounters.map((encounter) => (
+                        <li
+                          key={JSON.stringify([
+                            encounter.pageUrl,
+                            encounter.day,
+                          ])}
+                        >
+                          <a
+                            href={encounter.pageUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={encounter.pageUrl}
+                          >
+                            <strong>{encounter.domain}</strong>
+                            <span>
+                              {encounter.pageTitle.trim() ||
+                                new URL(encounter.pageUrl).pathname}
+                            </span>
+                            <span className="scrap-lightbox__encounter-url">
+                              {encounter.pageUrl}
+                            </span>
+                          </a>
+                          <time dateTime={new Date(encounter.ts).toISOString()}>
+                            {new Intl.DateTimeFormat("en-US", {
+                              hour: "numeric",
+                              minute: "2-digit",
+                            }).format(encounter.ts)}
+                          </time>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                ))}
+              </div>
+            </section>
+          )}
+          {(item.pageUrl || onDelete) && (
+            <div className="scrap-lightbox__actions">
+              {item.pageUrl && (
+                <a
+                  className="scrap-lightbox__action"
+                  href={item.pageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  visit page →
+                </a>
+              )}
+              {onDelete && (deleteStep === "idle" || deleteStep === "failed") && (
+                <button
+                  type="button"
+                  className="scrap-lightbox__delete"
+                  onClick={() => setDeleteStep("confirm")}
+                >
+                  {deleteStep === "failed" ? "could not delete, try again" : "delete"}
+                </button>
+              )}
+              {onDelete && (deleteStep === "confirm" || deleteStep === "deleting") && (
+                <span className="scrap-lightbox__delete-confirm" role="group">
+                  <span>delete for good?</span>
+                  <button
+                    type="button"
+                    className="scrap-lightbox__delete scrap-lightbox__delete--confirm"
+                    disabled={deleteStep === "deleting"}
+                    onClick={confirmDelete}
+                  >
+                    {deleteStep === "deleting" ? "deleting..." : "delete"}
+                  </button>
+                  <button
+                    type="button"
+                    className="scrap-lightbox__delete"
+                    disabled={deleteStep === "deleting"}
+                    onClick={() => setDeleteStep("idle")}
+                  >
+                    keep
+                  </button>
+                </span>
+              )}
             </div>
           )}
         </aside>

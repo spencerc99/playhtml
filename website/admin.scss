@@ -25,6 +25,35 @@
   }
 }
 
+.admin-header-title {
+  display: grid;
+  gap: 5px;
+
+  a {
+    color: #3182ce;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+.admin-office-link {
+  display: inline-block;
+  margin: -0.75rem 0 1.5rem;
+  color: #3182ce;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
 .auth-controls {
   display: flex;
   align-items: center;

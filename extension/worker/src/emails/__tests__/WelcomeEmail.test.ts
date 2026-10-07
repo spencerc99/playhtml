@@ -6,6 +6,8 @@ import { WELCOME_EMAIL_TEXT, renderWelcomeEmail } from '../WelcomeEmail';
 
 const EDGE_DOWNLOAD_URL =
   'https://microsoftedge.microsoft.com/addons/detail/we-were-online/kiamoecdnaglmhigmbmdkiodbbphpodl';
+const SAFARI_DOWNLOAD_URL =
+  'https://apps.apple.com/us/app/we-were-online/id6798847358?mt=12';
 
 describe('WelcomeEmail', () => {
   it('includes an Edge install link in the plaintext welcome email', () => {
@@ -17,5 +19,16 @@ describe('WelcomeEmail', () => {
 
     expect(html).toContain('Download on Edge');
     expect(html).toContain(`href="${EDGE_DOWNLOAD_URL}"`);
+  });
+
+  it('includes a Safari install link in the plaintext welcome email', () => {
+    expect(WELCOME_EMAIL_TEXT).toContain(`- Download on Safari: ${SAFARI_DOWNLOAD_URL}`);
+  });
+
+  it('includes a Safari install link in the HTML welcome email', async () => {
+    const html = await renderWelcomeEmail();
+
+    expect(html).toContain('Download on Safari');
+    expect(html).toContain(`href="${SAFARI_DOWNLOAD_URL}"`);
   });
 });

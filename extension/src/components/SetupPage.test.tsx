@@ -18,9 +18,6 @@ vi.mock("./Collections", () => ({
 vi.mock("./MilestoneToastPreview", () => ({
   MilestoneToastPreview: () => <div>milestone preview</div>,
 }));
-vi.mock("./PortraitCard", () => ({
-  PortraitCard: () => <div>browsing portrait preview</div>,
-}));
 vi.mock("@movement/config", () => ({
   WORKER_URL: "https://worker.example",
 }));
@@ -100,6 +97,15 @@ describe("SetupPage", () => {
     window.history.replaceState({}, "", "/");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null)));
     vi.mocked(browser.storage.local.get).mockResolvedValue({});
+    vi.mocked(browser.tabs.getCurrent).mockResolvedValue({
+      id: 1,
+      index: 0,
+      highlighted: true,
+      active: true,
+      pinned: false,
+      incognito: false,
+    });
+    vi.mocked(browser.tabs.remove).mockResolvedValue(undefined);
     vi.spyOn(window, "close").mockImplementation(() => {});
   });
 
@@ -120,12 +126,19 @@ describe("SetupPage", () => {
         "Email for project updates (optional)",
       );
       expect(container.textContent).toContain(
-        "Get occasional updates about we were online and have the opportunity to beta test new features",
+        "Get occasional updates about we were online and opportunities to help shape new features",
       );
+      expect(container.textContent).toContain("Help shape WWO");
+      expect(container.textContent).toContain("takes about a minute");
+      expect(container.textContent).not.toContain(
+        "The Discord is always open",
+      );
+      expect(
+        container.querySelector(".setup-step__discord-card svg"),
+      ).toBeNull();
       expect(container.querySelector('input[type="email"]')).not.toBeNull();
 
       await click(container, "Get started");
-      await click(container, "Continue");
       await click(container, "Continue");
 
       expect(container.textContent).toContain("All set!");
@@ -133,21 +146,32 @@ describe("SetupPage", () => {
         container.querySelector(".setup-page__inner--complete"),
       ).not.toBeNull();
       expect(container.querySelector(".setup-step--complete")).not.toBeNull();
-      expect(container.textContent).toContain("1. See your trail, anywhere");
+      expect(container.textContent).toContain("See your trail, anywhere");
+      expect(container.querySelector(".setup-step__trail-preview")).not.toBeNull();
+      expect(
+        container
+          .querySelector(".setup-step__trail-preview svg")
+          ?.getAttribute("aria-hidden"),
+      ).toBe("true");
+      expect(container.textContent).toContain("See your progress");
       expect(container.textContent).toContain(
-        "in your browser toolbar anytime",
+        "in your browser toolbar anytime to see your current portrait. Pin it to keep it one click away.",
       );
-      const toolbarIcon = container.querySelector<HTMLImageElement>(
-        'img[alt="we were online extension icon"]',
+      const toolbarIcon = container.querySelector(
+        ".setup-step__progress-note .setup-step__toolbar-icon img",
       );
-      expect(toolbarIcon?.src).toBe("chrome-extension://test/icon/32.png");
-      expect(container.textContent).toContain("browsing portrait preview");
-      expect(container.textContent).toContain("2. Review your browsing");
+      expect(toolbarIcon?.getAttribute("src")).toContain("icon/32.png");
+      expect(toolbarIcon?.getAttribute("alt")).toBe(
+        "we were online extension icon",
+      );
+      expect(container.textContent).not.toContain("See your current portrait");
+      expect(container.querySelector(".setup-step__portrait-preview")).toBeNull();
+      expect(container.textContent).toContain("Review your browsing");
       expect(container.textContent).toContain("milestone preview");
       expect(container.textContent).toContain(
         "We'll share some of your progress as you browse.",
       );
-      expect(container.textContent).toContain("3. Wikipedia feels inhabited");
+      expect(container.textContent).toContain("Wikipedia feels inhabited");
       expect(container.querySelector('input[type="email"]')).toBeNull();
       expect(browser.storage.local.set).toHaveBeenCalled();
       expect(browser.storage.local.set).not.toHaveBeenCalledWith(
@@ -173,7 +197,6 @@ describe("SetupPage", () => {
       await fillEmail(container, "person@example.com");
       await click(container, "Get started");
       await click(container, "Continue");
-      await click(container, "Continue");
       await click(container, "Finish setup");
 
       await vi.waitFor(() => {
@@ -190,6 +213,7 @@ describe("SetupPage", () => {
       });
       expect(browser.storage.local.set).toHaveBeenCalledWith({
         onboarding_complete: "true",
+        newtab_takeover_enabled: true,
         setup_email: "person@example.com",
       });
     } finally {
@@ -197,7 +221,7 @@ describe("SetupPage", () => {
     }
   });
 
-  it("keeps setup open when the subscription request fails", async () => {
+  it("completes setup when the optional subscription request fails", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 503 }));
     const { container, root } = await renderSetup();
 
@@ -205,18 +229,27 @@ describe("SetupPage", () => {
       await fillEmail(container, "person@example.com");
       await click(container, "Get started");
       await click(container, "Continue");
-      await click(container, "Continue");
       await click(container, "Finish setup");
 
       await vi.waitFor(() => {
-        expect(container.querySelector('[role="alert"]')?.textContent).toContain(
-          "couldn’t sign you up for updates",
+        expect(container.querySelector('[role="status"]')?.textContent).toContain(
+          "Setup is complete, but we couldn’t sign you up for updates",
         );
       });
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
+        onboarding_complete: "true",
+        newtab_takeover_enabled: true,
+      });
       expect(browser.storage.local.set).not.toHaveBeenCalledWith(
-        expect.objectContaining({ onboarding_complete: "true" }),
+        expect.objectContaining({ setup_email: "person@example.com" }),
       );
       expect(browser.tabs.remove).not.toHaveBeenCalled();
+      expect(button(container, "Close setup")).toBeDefined();
+
+      await click(container, "Close setup");
+      await vi.waitFor(() => {
+        expect(browser.tabs.remove).toHaveBeenCalledWith(1);
+      });
     } finally {
       cleanup(root, container);
     }
