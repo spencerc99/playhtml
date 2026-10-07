@@ -2,6 +2,7 @@
 
 - At a walking together event, the scraps you collected on the walk now show up in a panel on the shared collage table, ready to place.
 - Internet scraps opens faster with large collections while search and filters still find older scraps.
+- You can now hide scraps from sites you don't want to see in the scraps site filter.
 
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow

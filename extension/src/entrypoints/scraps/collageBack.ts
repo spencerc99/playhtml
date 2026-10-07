@@ -1,7 +1,7 @@
-// ABOUTME: The back of a collage: where its sources are written, laid out like a postcard.
-// ABOUTME: One markup the studio shows and the bake rasterizes, plus the layout math behind it.
+// ABOUTME: The back of a collage: its title, when it was made and collected, and the sites its pieces came from.
+// ABOUTME: One markup the studio shows and the bake rasterizes, plus the layout math that keeps it inside the frame.
 
-import type { CollageFrame, CollageProvenance } from "./collageRecord";
+import type { BackShows, CollageFrame, CollagePiece } from "./collageRecord";
 import type { CollagePaper } from "./collageFormats";
 import { paperBackground } from "./paperGrain";
 import { escapeXml } from "./svgDocument";
@@ -12,147 +12,495 @@ export interface CollageBackContent {
   createdAt: number;
   /** When the stored collage last changed, or null before it has been stored. */
   changedAt: number | null;
+  pieces: readonly CollagePiece[];
+  /** Whether each site lists its pieces or the titles of its pages. */
+  shows: BackShows;
+}
+
+/** One piece as the back shows it: which piece, and the shape it was placed at. */
+export interface BackSitePiece {
+  id: string;
+  /** Width over height of the piece as it sits on the front, after its crop. */
+  aspect: number;
+}
+
+/** A page title as the back lists it, with how many pieces came from it. */
+export interface BackSitePage {
+  title: string;
   pieceCount: number;
-  formatLabel: string;
-  sources: readonly CollageProvenance[];
 }
 
-export interface BackRegion {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-export interface BackLayout {
+/** A site the collage drew from, with every piece taken from it. */
+export interface BackSite {
+  domain: string;
+  /** The page whose favicon stands for the site. */
+  faviconPage: string;
+  firstSeenAt: number;
+  pageCount: number;
+  /** In the order they were collected. */
+  pieces: BackSitePiece[];
   /**
-   * "across" divides a landscape or square back left and right, like a
-   * postcard; "down" divides a tall one top and bottom, where a side column
-   * would be too narrow to read.
+   * The site's pages that have a title of their own, in the order they were
+   * first collected. Pages whose title only names the site are left out, and
+   * pages sharing a title are listed once with their pieces counted together.
    */
-  orientation: "across" | "down";
-  /** The hairline dividing the two halves. */
-  rule: { x1: number; y1: number; x2: number; y2: number };
-  details: BackRegion;
-  sources: BackRegion;
-  /** The type size the source lines are written at, in frame units. */
-  fontSize: number;
-  lineHeight: number;
-  columns: 1 | 2;
-  /** How many lines each column holds. */
-  rows: number;
-  /** How many entries get a line of their own. */
-  shown: number;
-  /** How many entries are folded into the closing "and N more" line. */
-  more: number;
+  pages: BackSitePage[];
+}
+
+function slug(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 /**
- * Source line sizes, largest first; the list steps down until it fits. The
- * smallest is still easy to read at the frame's own size.
+ * A page title without the site's own name, which the domain beside it
+ * already says: "rod stock | McMaster-Carr" is "rod stock", and a title that is
+ * only the site's name is empty.
  */
-export const SOURCE_TYPE_STEPS = [18, 16, 14, 13, 12] as const;
-/**
- * Past this many pages the back lists sites rather than pages, so a long
- * collage reads as a short ledger instead of a wall of cut-off titles.
- */
-export const GROUP_BY_SITE_AFTER = 14;
-/** Line spacing of a source line, as a multiple of its type size. */
-export const SOURCE_LINE_HEIGHT = 1.9;
-/** Frame units the "sources" label takes above the list. */
-export const SOURCE_HEADER = 44;
+export function backPageTitle(title: string, domain: string): string {
+  const site = slug(
+    domain
+      .replace(/^(www|en|m|blog)\./, "")
+      .replace(/\.[a-z]+$/, ""),
+  );
+  // A short name only matches whole, so "x" does not swallow "Linux".
+  const isSite = (part: string) => {
+    const words = slug(part);
+    if (words === "" || site === "") return false;
+    return (
+      words === site ||
+      (site.length >= 3 && words.includes(site)) ||
+      (words.length >= 4 && site.includes(words))
+    );
+  };
+  let text = title.trim();
+  const tail = /^(.*\S)\s+[|:/\u2013\u2014-]\s+([^|:\u2013\u2014]+)$/.exec(text);
+  if (tail && isSite(tail[2])) text = tail[1];
+  const head = /^([^|:\u2013\u2014]+?)\s+[|:\u2013\u2014-]\s+(.*)$/.exec(text);
+  if (head && isSite(head[1])) text = head[2];
+  // The whole title is dropped only when it is no more than the site's name,
+  // perhaps with its ending ("Amazon.com"); a title that mentions the site stays.
+  const whole = slug(text);
+  const onlySite =
+    whole === site ||
+    (whole.length >= 4 && site.includes(whole)) ||
+    (site.length >= 3 && whole.startsWith(site) && whole.length - site.length <= 4);
+  return onlySite ? "" : text;
+}
 
+/**
+ * The collage's pieces gathered by site. The sites that gave the most pieces
+ * lead, so what the collage is mostly made of is read first; ties go to the
+ * site seen first.
+ */
+export function backSites(pieces: readonly CollagePiece[]): BackSite[] {
+  const sites = new Map<
+    string,
+    {
+      pages: Map<string, { title: string; count: number }>;
+      faviconPage: string | null;
+      firstPage: string;
+      firstSeenAt: number;
+      pieces: { id: string; aspect: number; ts: number }[];
+    }
+  >();
+  const byTime = [...pieces].sort((a, b) => a.scrap.ts - b.scrap.ts);
+  for (const piece of byTime) {
+    const { domain, pageUrl, pageTitle, ts, faviconUrl } = piece.scrap;
+    if (!(piece.width > 0) || !(piece.height > 0)) {
+      throw new Error(`Piece ${piece.id} has no area to show on the back`);
+    }
+    let site = sites.get(domain);
+    if (!site) {
+      site = {
+        pages: new Map(),
+        faviconPage: null,
+        firstPage: pageUrl,
+        firstSeenAt: ts,
+        pieces: [],
+      };
+      sites.set(domain, site);
+    }
+    const page = site.pages.get(pageUrl);
+    if (page) {
+      page.count += 1;
+      if (!page.title && pageTitle) page.title = pageTitle;
+    } else {
+      site.pages.set(pageUrl, { title: pageTitle, count: 1 });
+    }
+    if (!site.faviconPage && faviconUrl) site.faviconPage = pageUrl;
+    site.pieces.push({ id: piece.id, aspect: piece.width / piece.height, ts });
+  }
+  return [...sites.entries()]
+    .map(([domain, site]) => {
+      const titled = new Map<string, number>();
+      for (const page of site.pages.values()) {
+        const title = backPageTitle(page.title, domain);
+        if (title) titled.set(title, (titled.get(title) ?? 0) + page.count);
+      }
+      return {
+        domain,
+        faviconPage: site.faviconPage ?? site.firstPage,
+        firstSeenAt: site.firstSeenAt,
+        pageCount: site.pages.size,
+        pieces: site.pieces.map(({ id, aspect }) => ({ id, aspect })),
+        pages: [...titled.entries()].map(([title, pieceCount]) => ({
+          title,
+          pieceCount,
+        })),
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.pieces.length - a.pieces.length ||
+        a.firstSeenAt - b.firstSeenAt ||
+        a.domain.localeCompare(b.domain),
+    );
+}
+
+/** A date as the back writes it: month, day and year in two digits each. */
+export function backDate(ts: number): string {
+  const date = new Date(ts);
+  const two = (value: number) => String(value).padStart(2, "0");
+  return `${two(date.getMonth() + 1)}/${two(date.getDate())}/${two(date.getFullYear() % 100)}`;
+}
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+/**
+ * When the collage's material was collected, as one span, or a single date
+ * when it all came from one day. Null with no pieces.
+ */
+export function collectedRange(pieces: readonly CollagePiece[]): string | null {
+  if (pieces.length === 0) return null;
+  const times = pieces.map((piece) => piece.scrap.ts);
+  const first = backDate(Math.min(...times));
+  const last = backDate(Math.max(...times));
+  return first === last ? first : `${first}-${last}`;
+}
+
+/** The line under the title: when it was made and collected, and how much it holds. */
+export function backDetail(content: CollageBackContent): string {
+  const parts = [`made ${backDate(content.createdAt)}`];
+  if (
+    content.changedAt !== null &&
+    backDate(content.changedAt) !== backDate(content.createdAt)
+  ) {
+    parts.push(`changed ${backDate(content.changedAt)}`);
+  }
+  const range = collectedRange(content.pieces);
+  if (!range) {
+    parts.push("nothing placed yet");
+    return parts.join(" · ");
+  }
+  const pages = new Set(content.pieces.map((piece) => piece.scrap.pageUrl));
+  const sites = new Set(content.pieces.map((piece) => piece.scrap.domain));
+  parts.push(`collected ${range}`);
+  parts.push(
+    `${plural(content.pieces.length, "piece", "pieces")} from ${plural(pages.size, "page", "pages")} on ${plural(sites.size, "site", "sites")}`,
+  );
+  return parts.join(" · ");
+}
+
+/**
+ * Heights a site's pieces are shown at, largest first. They are kept small, so
+ * the pieces give the feel of where the collage came from without crowding
+ * the writing; the back takes the largest that fits while tucking few away.
+ */
+export const BACK_PIECE_STEPS = [48, 40, 32, 28, 24] as const;
+/** A column is never narrower than this, so a row of pieces stays short. */
+export const BACK_COLUMN_MIN = 380;
+const BACK_COLUMN_MAX = 4;
+export const BACK_COLUMN_GAP = 48;
+/**
+ * How many rows of pieces a site may take, fewest first. A back with room to
+ * spare lets a busy site run to more rows instead of counting pieces as "+N".
+ */
+export const BACK_PIECE_ROWS = [2, 3] as const;
+const PIECE_GAP = 5;
+/** Sizes page titles are written at, largest first, when the back lists titles. */
+export const BACK_TITLE_STEPS = [13, 12] as const;
+/** A site lists at most this many page titles; the rest are counted. */
+export const BACK_TITLE_LIMIT = 3;
+const TITLE_LINE = 1.45;
+const TITLE_GAP = 4;
+/** Room kept at the end of a site's last row for its "+N". */
+const EXTRA_ROOM = 44;
+/** The favicon's width and the gap after it, which the name and pieces sit past. */
+const SITE_INDENT = 28;
+/**
+ * The share of the pieces that may be tucked into "+N" so the rest show
+ * larger. Past that, smaller pieces that show more are preferred.
+ */
+const TUCK_ALLOWANCE = 0.15;
 /** The margin around everything written on the back, relative to the short side. */
 const MARGIN = 0.07;
 
+/** Average advance of a character, as a share of its type size, per face. */
+const MONO_ADVANCE = 0.62;
+const DETAIL_ADVANCE = 0.65;
+const SERIF_ADVANCE = 0.5;
+const DOMAIN_SIZE = 14;
+const DOMAIN_LINE = DOMAIN_SIZE * 1.4;
+const SITE_META_LINE = 12 * 1.4;
+const DETAIL_SIZE = 14;
+const DETAIL_LINE = DETAIL_SIZE * 1.5;
+const SITE_PADDING = 12;
+const TAG_SIZE = 12;
+const TAG_LINE = 24;
+const STRIP_LABEL_WIDTH = 120;
+/** The engraving the maker's mark is drawn at, and the room above it. */
+const MARK_ROOM = 44 + 16;
+
+/** A long title steps down in size, then wraps; it is never cut off. */
+export function backTitleSize(title: string): number {
+  if (title.length <= 28) return 40;
+  if (title.length <= 60) return 32;
+  return 26;
+}
+
+/** A site in the list, and how many of its pieces, or page titles, get shown. */
+export interface BackRow {
+  site: BackSite;
+  kept: number;
+}
+
+/** One way to size the list: the item size, and how many rows or titles a site may take. */
+interface BackOption {
+  size: number;
+  limit: number;
+}
+
+export interface BackLayout {
+  pad: number;
+  columns: number;
+  columnWidth: number;
+  titleSize: number;
+  shows: BackShows;
+  /** The height pieces are drawn at, or the size page titles are written at. */
+  itemSize: number;
+  rows: BackRow[];
+  /** Sites with no row of their own, named in one strip under the list. */
+  rest: BackSite[];
+  /** Whether the strip names each site or, when that runs long, only marks it. */
+  restNamed: boolean;
+}
+
+function textLines(chars: number, advance: number, room: number): number {
+  return Math.max(1, Math.ceil((chars * advance) / room));
+}
+
+/** How wide a piece is drawn at a given height, never wider than its column. */
+export function backPieceWidth(
+  height: number,
+  aspect: number,
+  room: number,
+): number {
+  return Math.min(height * aspect, room);
+}
+
 /**
- * Where everything on the back goes. The list takes the largest type step
- * that fits it in one column, then the smallest step across two columns, and
- * past that the last line becomes "and N more", so the writing never runs off
- * the frame.
+ * Where everything on the back goes: how many columns, how big the pieces,
+ * which sites get a row and which are only named in the strip. The sizes are
+ * estimates from the type's average advance, kept on the generous side.
  */
 export function backLayout(
   frame: CollageFrame,
-  sourceCount: number,
+  title: string,
+  detail: string,
+  sites: readonly BackSite[],
+  shows: BackShows,
 ): BackLayout {
-  if (!Number.isInteger(sourceCount) || sourceCount < 0) {
-    throw new Error(`A collage back cannot list ${sourceCount} lines`);
-  }
-  const across = frame.width >= frame.height;
   const pad = Math.round(Math.min(frame.width, frame.height) * MARGIN);
-  const gutter = Math.round(pad * 0.7);
+  const inner = frame.width - pad * 2;
+  const columns = Math.max(
+    1,
+    Math.min(
+      BACK_COLUMN_MAX,
+      Math.floor((inner + BACK_COLUMN_GAP) / (BACK_COLUMN_MIN + BACK_COLUMN_GAP)),
+    ),
+  );
+  const columnWidth = (inner - BACK_COLUMN_GAP * (columns - 1)) / columns;
+  const piecesRoom = columnWidth - SITE_INDENT;
+  const titleSize = backTitleSize(title);
+  const header =
+    textLines(title.length, titleSize * SERIF_ADVANCE, inner) * titleSize * 1.25 +
+    10 +
+    textLines(detail.length, DETAIL_SIZE * DETAIL_ADVANCE, inner) * DETAIL_LINE +
+    21;
+  const room = frame.height - pad * 2 - header - MARK_ROOM;
 
-  let details: BackRegion;
-  let sources: BackRegion;
-  let rule: BackLayout["rule"];
-  if (across) {
-    const divider = Math.round(frame.width * 0.62);
-    sources = {
-      x: pad,
-      y: pad,
-      width: divider - gutter - pad,
-      height: frame.height - pad * 2,
-    };
-    details = {
-      x: divider + gutter,
-      y: pad,
-      width: frame.width - pad - divider - gutter,
-      height: frame.height - pad * 2,
-    };
-    rule = { x1: divider, y1: pad, x2: divider, y2: frame.height - pad };
-  } else {
-    const divider = Math.round(pad + (frame.height - pad * 2) * 0.28);
-    details = {
-      x: pad,
-      y: pad,
-      width: frame.width - pad * 2,
-      height: divider - gutter - pad,
-    };
-    sources = {
-      x: pad,
-      y: divider + gutter,
-      width: frame.width - pad * 2,
-      height: frame.height - pad - divider - gutter,
-    };
-    rule = { x1: pad, y1: divider, x2: frame.width - pad, y2: divider };
-  }
-
-  const listHeight = sources.height - SOURCE_HEADER;
-  const rowsAt = (size: number) =>
-    Math.max(1, Math.floor(listHeight / (size * SOURCE_LINE_HEIGHT)));
-  const base = {
-    orientation: across ? ("across" as const) : ("down" as const),
-    rule,
-    details,
-    sources,
+  const place = (
+    height: number,
+    pieces: readonly BackSitePiece[],
+    maxRows: number,
+  ) => {
+    let row = 1;
+    let x = 0;
+    let kept = 0;
+    for (const piece of pieces) {
+      const width = backPieceWidth(height, piece.aspect, piecesRoom) + PIECE_GAP;
+      const leftover = kept + 1 < pieces.length;
+      const limit =
+        row === maxRows && leftover ? piecesRoom - EXTRA_ROOM : piecesRoom;
+      if (x > 0 && x + width > limit) {
+        if (row === maxRows) break;
+        row += 1;
+        x = 0;
+      }
+      x += width;
+      kept += 1;
+    }
+    return { rows: row, kept };
   };
-
-  for (const size of SOURCE_TYPE_STEPS) {
-    if (sourceCount <= rowsAt(size)) {
+  // A domain wraps only at its dots.
+  const domainLines = (domain: string) => {
+    let count = 1;
+    let x = 0;
+    for (const part of domain.split(/(?<=\.)/)) {
+      const width = part.length * DOMAIN_SIZE * MONO_ADVANCE;
+      if (x > 0 && x + width > piecesRoom) {
+        count += 1;
+        x = 0;
+      }
+      x += width;
+    }
+    return count;
+  };
+  // Page titles wrap within the column; each ends with its piece count.
+  const titleLines = (page: BackSitePage, size: number) =>
+    textLines(
+      page.title.length + 3 + String(page.pieceCount).length,
+      size * MONO_ADVANCE,
+      piecesRoom,
+    );
+  /** How tall a site's list of pieces or titles is, and how much of it shows. */
+  const block = (option: BackOption, site: BackSite) => {
+    if (shows === "pieces") {
+      const placed = place(option.size, site.pieces, option.limit);
       return {
-        ...base,
-        fontSize: size,
-        lineHeight: size * SOURCE_LINE_HEIGHT,
-        columns: 1,
-        rows: Math.max(1, sourceCount),
-        shown: sourceCount,
-        more: 0,
+        height: placed.rows * (option.size + PIECE_GAP) - PIECE_GAP,
+        kept: placed.kept,
       };
     }
-  }
+    const kept = Math.min(site.pages.length, option.limit);
+    if (kept === 0) return { height: 0, kept };
+    const line = option.size * TITLE_LINE;
+    const lines = site.pages
+      .slice(0, kept)
+      .reduce((count, page) => count + titleLines(page, option.size), 0);
+    const more = site.pages.length > kept ? 1 : 0;
+    return {
+      height: (lines + more) * line + (kept + more - 1) * TITLE_GAP,
+      kept,
+    };
+  };
+  const siteHeight = (option: BackOption, site: BackSite) => {
+    const below = block(option, site).height;
+    return (
+      SITE_PADDING * 2 +
+      1 +
+      domainLines(site.domain) * DOMAIN_LINE +
+      2 +
+      SITE_META_LINE +
+      (below > 0 ? 8 + below : 0)
+    );
+  };
+  // Fills columns in order, as the page does; it fits when every site lands.
+  const fits = (option: BackOption, list: readonly BackSite[], space: number) => {
+    let column = 1;
+    let used = 0;
+    for (const site of list) {
+      const each = siteHeight(option, site);
+      if (each > space) return false;
+      if (used > 0 && used + each > space) {
+        column += 1;
+        used = 0;
+      }
+      used += each;
+    }
+    return column <= columns;
+  };
+  const tagWidth = (site: BackSite, named: boolean) =>
+    16 +
+    5 +
+    (named ? site.domain.length * TAG_SIZE * MONO_ADVANCE + 6 : 0) +
+    String(site.pieces.length).length * TAG_SIZE * MONO_ADVANCE +
+    16;
+  const tagLines = (list: readonly BackSite[], named: boolean) => {
+    let count = 1;
+    let x = STRIP_LABEL_WIDTH;
+    for (const site of list) {
+      const width = tagWidth(site, named);
+      if (x + width > inner) {
+        count += 1;
+        x = 0;
+      }
+      x += width;
+    }
+    return count;
+  };
+  const strip = (list: readonly BackSite[]) => {
+    if (list.length === 0) return { height: 0, named: true };
+    const named = tagLines(list, true) <= 2;
+    return { height: 14 + 1 + tagLines(list, named) * TAG_LINE, named };
+  };
 
-  const smallest = SOURCE_TYPE_STEPS[SOURCE_TYPE_STEPS.length - 1];
-  const rows = rowsAt(smallest);
-  const capacity = rows * 2;
-  const shown = sourceCount <= capacity ? sourceCount : capacity - 1;
+  // Every size and cap that fits, largest first, tightest cap first.
+  const options: BackOption[] =
+    shows === "pieces"
+      ? BACK_PIECE_STEPS.flatMap((size) =>
+          BACK_PIECE_ROWS.map((limit) => ({ size, limit })),
+        )
+      : BACK_TITLE_STEPS.map((size) => ({ size, limit: BACK_TITLE_LIMIT }));
+  const tucked = (option: BackOption) =>
+    shows === "pieces"
+      ? sites.reduce(
+          (count, site) => count + site.pieces.length - block(option, site).kept,
+          0,
+        )
+      : 0;
+  const fitting = options
+    .filter((option) => fits(option, sites, room))
+    .map((option) => ({ option, tucked: tucked(option) }));
+  const pieceCount = sites.reduce((count, site) => count + site.pieces.length, 0);
+  const allowance = Math.max(2, Math.round(pieceCount * TUCK_ALLOWANCE));
+  // The largest that tucks few pieces away; failing that, whatever tucks fewest.
+  const best =
+    fitting.find((entry) => entry.tucked <= allowance) ??
+    fitting.reduce<(typeof fitting)[number] | undefined>(
+      (found, entry) => (found === undefined || entry.tucked < found.tucked ? entry : found),
+      undefined,
+    );
+  let shown = sites.length;
+  let chosen: BackOption;
+  if (best) {
+    chosen = best.option;
+  } else {
+    chosen = options[options.length - 1];
+    // The tightest cap at the smallest size, so as many sites as can get a row.
+    if (shows === "pieces") chosen = { size: chosen.size, limit: BACK_PIECE_ROWS[0] };
+    while (
+      shown > 1 &&
+      !fits(chosen, sites.slice(0, shown), room - strip(sites.slice(shown)).height)
+    ) {
+      shown -= 1;
+    }
+  }
+  const rest = sites.slice(shown);
   return {
-    ...base,
-    fontSize: smallest,
-    lineHeight: smallest * SOURCE_LINE_HEIGHT,
-    columns: 2,
-    rows,
-    shown,
-    more: sourceCount - shown,
+    pad,
+    columns,
+    columnWidth,
+    titleSize,
+    shows,
+    itemSize: chosen.size,
+    rows: sites
+      .slice(0, shown)
+      .map((site) => ({ site, kept: block(chosen, site).kept })),
+    rest,
+    restNamed: strip(rest).named,
   };
 }
 
@@ -242,154 +590,18 @@ export function backPaper(paper: CollagePaper, look: BackLook): CollagePaper {
   return { color: look.cardColor, grain: paper.grain };
 }
 
-
-export function backDate(ts: number): string {
-  return new Date(ts).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function plural(count: number, one: string, many: string): string {
-  return `${count} ${count === 1 ? one : many}`;
-}
-
-/** One line of the source list, in the order its words are written. */
-export interface BackLine {
-  /** The page whose favicon marks the line. */
-  faviconPage: string;
-  domain: string;
-  /** The page title, or empty when the line stands for several pages. */
-  title: string;
-  /** When and how much: the words at the line's end. */
-  meta: string;
-}
-
-export interface BackList {
-  /** Whether the list names sites, each gathering its pages, or single pages. */
-  bySite: boolean;
-  lines: BackLine[];
-  /** Distinct sites across every source page. */
-  siteCount: number;
-}
-
-/**
- * The source list as written on the back. A short collage lists each page
- * with its title and when it was first seen; a long one lists each site once,
- * most pieces first, with a title only where the site gave a single page.
- */
-export function backList(sources: readonly CollageProvenance[]): BackList {
-  const sites = new Map<
-    string,
-    { pages: CollageProvenance[]; pieceCount: number }
-  >();
-  for (const source of sources) {
-    const site = sites.get(source.domain);
-    if (site) {
-      site.pages.push(source);
-      site.pieceCount += source.pieceCount;
-    } else {
-      sites.set(source.domain, {
-        pages: [source],
-        pieceCount: source.pieceCount,
-      });
-    }
-  }
-
-  if (sources.length <= GROUP_BY_SITE_AFTER) {
-    return {
-      bySite: false,
-      siteCount: sites.size,
-      lines: sources.map((source) => ({
-        faviconPage: source.pageUrl,
-        domain: source.domain,
-        title: source.pageTitle.trim(),
-        meta: `first seen ${backDate(source.firstSeenAt)} · ${plural(
-          source.pieceCount,
-          "piece",
-          "pieces",
-        )}`,
-      })),
-    };
-  }
-
-  const lines = [...sites.entries()]
-    .sort(
-      ([domainA, a], [domainB, b]) =>
-        b.pieceCount - a.pieceCount || domainA.localeCompare(domainB),
-    )
-    .map(([domain, site]) => {
-      const single = site.pages.length === 1;
-      // The favicon comes from whichever of the site's pages stored one.
-      const marked =
-        site.pages.find((page) => page.faviconUrl) ?? site.pages[0];
-      const pieces = plural(site.pieceCount, "piece", "pieces");
-      return {
-        faviconPage: marked.pageUrl,
-        domain,
-        title: single ? site.pages[0].pageTitle.trim() : "",
-        meta: single
-          ? pieces
-          : `${pieces} · ${plural(site.pages.length, "page", "pages")}`,
-      };
-    });
-  return { bySite: true, siteCount: sites.size, lines };
-}
-
-/**
- * When the collage's material was first seen, as one span: "Aug 20 to Sep 22,
- * 2026", or a single date when it all came from one day. Null with no sources.
- */
-export function seenRange(
-  sources: readonly CollageProvenance[],
-): string | null {
-  if (sources.length === 0) return null;
-  const times = sources.map((source) => source.firstSeenAt);
-  const first = new Date(Math.min(...times));
-  const last = new Date(Math.max(...times));
-  const firstDay = backDate(first.getTime());
-  const lastDay = backDate(last.getTime());
-  if (firstDay === lastDay) return firstDay;
-  if (first.getFullYear() === last.getFullYear()) {
-    const opening = first.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-    });
-    return `${opening} to ${lastDay}`;
-  }
-  return `${firstDay} to ${lastDay}`;
-}
-
-/** The lines written under the title, like the address on a postcard. */
-export function backDetailLines(content: CollageBackContent): string[] {
-  const lines = [`made ${backDate(content.createdAt)}`];
-  if (
-    content.changedAt !== null &&
-    backDate(content.changedAt) !== backDate(content.createdAt)
-  ) {
-    lines.push(`changed ${backDate(content.changedAt)}`);
-  }
-  const range = seenRange(content.sources);
-  if (range) lines.push(`pieces first seen ${range}`);
-  lines.push(plural(content.pieceCount, "piece", "pieces"));
-  lines.push(content.formatLabel);
-  return lines;
-}
-
-/** The closing line for what did not fit, counted in what the list names. */
-export function moreLine(count: number, bySite: boolean): string {
-  return bySite
-    ? `and ${plural(count, "more site", "more sites")}`
-    : `and ${plural(count, "more page", "more pages")}`;
-}
-
 /**
  * A page's favicon as the back can show it: a data URL once it has been
  * fetched, "missing" when the page had none or it could not be fetched, and
  * "pending" while it is still on its way.
  */
 export type BackFavicon = { data: string } | "missing" | "pending";
+
+/**
+ * A piece drawn small for the back: a data URL once drawn, "missing" when its
+ * picture could not be loaded, "pending" while it is still being drawn.
+ */
+export type BackThumbnail = { data: string } | "missing" | "pending";
 
 /**
  * The faces the back is written in. They carry names of their own, and both
@@ -410,46 +622,54 @@ function style(declarations: string[]): string {
   return escapeXml(declarations.join(";"));
 }
 
-function box(region: BackRegion): string[] {
-  return [
-    "position:absolute",
-    `left:${region.x}px`,
-    `top:${region.y}px`,
-    `width:${region.width}px`,
-    `height:${region.height}px`,
-    "box-sizing:border-box",
-  ];
-}
-
-function faviconMarkup(favicon: BackFavicon, ink: BackInk): string {
-  const size = ["width:1em", "height:1em", "flex:none"];
+function faviconMarkup(favicon: BackFavicon, ink: BackInk, size: number): string {
+  const box = [`width:${size}px`, `height:${size}px`, "flex:none", "display:block"];
   if (favicon === "pending") {
-    return `<span class="collage-back__mark" style="${style(size)}"></span>`;
+    return `<span class="collage-back__favicon" style="${style(box)}"></span>`;
   }
   if (favicon === "missing") {
-    // A page with no favicon of its own gets an empty ring, so the column
+    // A site with no favicon of its own gets an empty ring, so the column
     // still lines up and the absence reads as an absence.
-    return `<span class="collage-back__mark collage-back__mark--none" style="${style([
-      ...size,
+    return `<span class="collage-back__favicon collage-back__favicon--none" style="${style([
+      ...box,
       "box-sizing:border-box",
       `border:1px solid ${ink.muted}`,
       "border-radius:50%",
-      "transform:scale(0.7)",
+      "transform:scale(0.75)",
     ])}"></span>`;
   }
-  return `<img class="collage-back__mark" alt="" src="${escapeXml(favicon.data)}" style="${style([
-    ...size,
+  return `<img class="collage-back__favicon" alt="" src="${escapeXml(favicon.data)}" style="${style([
+    ...box,
     "object-fit:contain",
   ])}"/>`;
 }
 
-function ellipsized(extra: string[]): string {
-  return style([
-    "overflow:hidden",
-    "text-overflow:ellipsis",
-    "white-space:nowrap",
-    ...extra,
-  ]);
+function thumbnailMarkup(
+  thumbnail: BackThumbnail,
+  width: number,
+  height: number,
+  ink: BackInk,
+): string {
+  const box = [`width:${Math.round(width)}px`, `height:${Math.round(height)}px`, "flex:none", "display:block"];
+  if (thumbnail === "pending") {
+    return `<span class="collage-back__piece collage-back__piece--pending" style="${style([
+      ...box,
+      `background:${ink.rule}`,
+      "opacity:0.4",
+    ])}"></span>`;
+  }
+  if (thumbnail === "missing") {
+    // A piece whose picture cannot be loaded keeps its place as an outline.
+    return `<span class="collage-back__piece collage-back__piece--missing" style="${style([
+      ...box,
+      "box-sizing:border-box",
+      `border:1px dashed ${ink.muted}`,
+    ])}"></span>`;
+  }
+  return `<img class="collage-back__piece" alt="" src="${escapeXml(thumbnail.data)}" style="${style([
+    ...box,
+    "object-fit:contain",
+  ])}"/>`;
 }
 
 /** The paper, grained as the front is, as declarations for the back's base layer. */
@@ -475,7 +695,10 @@ export interface CollageBackMarkupOptions {
   frame: CollageFrame;
   paper: CollagePaper;
   content: CollageBackContent;
+  /** Each source page's favicon, by page address. */
   favicons: ReadonlyMap<string, BackFavicon>;
+  /** Each piece drawn small, by piece id. */
+  thumbnails: ReadonlyMap<string, BackThumbnail>;
   /** The front as a data URL, shown mirrored and faint, or null with no front. */
   bleed: string | null;
   /** The extension's engraved icon as a data URL, for the maker's mark. */
@@ -484,22 +707,22 @@ export interface CollageBackMarkupOptions {
 }
 
 /**
- * The whole back as XHTML: paper, the front showing through, the writing and
- * the maker's mark. The same string is set into the studio's back face and
- * wrapped in an SVG foreignObject for the bake, so what the studio shows is
- * what exports. Every value is escaped for XML, and nothing on it is a link.
+ * The whole back as XHTML: paper, the front showing through, the writing, the
+ * pieces by site and the maker's mark. The same string is set into the
+ * studio's back face and wrapped in an SVG foreignObject for the bake, so what
+ * the studio shows is what exports. Every value is escaped for XML, and
+ * nothing on it is a link.
  */
 export function collageBackMarkup(options: CollageBackMarkupOptions): string {
-  const { frame, content, favicons, bleed, markIcon, look } = options;
+  const { frame, content, favicons, thumbnails, bleed, markIcon, look } = options;
   const paper = backPaper(options.paper, look);
   const ink = backInk(paper.color);
-  const list = backList(content.sources);
-  const layout = backLayout(frame, list.lines.length);
-  const across = layout.orientation === "across";
-  const titleSize = Math.round(
-    Math.min(frame.width, frame.height) * (across ? 0.034 : 0.04),
-  );
-  const detailSize = Math.max(12, Math.round(titleSize * 0.4));
+  const title = content.title.trim();
+  const shownTitle = title || "untitled collage";
+  const detail = backDetail(content);
+  const sites = backSites(content.pieces);
+  const layout = backLayout(frame, shownTitle, detail, sites, content.shows);
+  const piecesRoom = layout.columnWidth - SITE_INDENT;
 
   const paperLayer = `<div class="collage-back__paper" style="${style([
     "position:absolute",
@@ -525,34 +748,170 @@ export function collageBackMarkup(options: CollageBackMarkupOptions): string {
       ])}"/>`
     : "";
 
-  const title = content.title.trim();
-  const detailLines = backDetailLines(content)
-    .map(
-      (line) =>
-        `<p class="collage-back__detail" style="${style([
-          // The span of dates is the longest line; on a tall back it takes
-          // the full width rather than one of the two short columns.
-          ...(line.startsWith("pieces first seen")
-            ? ["grid-column:1 / -1"]
-            : []),
-          "margin:0",
-          `padding-bottom:${Math.round(detailSize * 0.5)}px`,
-          `border-bottom:1px solid ${ink.rule}`,
-          `font:400 ${detailSize}px/1.4 ${MONO}`,
-          "letter-spacing:0.03em",
+  const header = `<div class="collage-back__header" style="${style([
+    "position:relative",
+    "flex:none",
+    "display:flex",
+    "flex-direction:column",
+    "gap:10px",
+    "padding-bottom:20px",
+    `border-bottom:1px solid ${ink.rule}`,
+  ])}"><p class="collage-back__title" style="${style([
+    "margin:0",
+    `font:600 ${layout.titleSize}px/1.25 ${SERIF}`,
+    `color:${title ? ink.ink : ink.muted}`,
+    "overflow-wrap:anywhere",
+  ])}">${escapeXml(shownTitle)}</p><p class="collage-back__detail" style="${style([
+    "margin:0",
+    `font:400 ${DETAIL_SIZE}px/1.5 ${MONO}`,
+    "letter-spacing:0.03em",
+    `color:${ink.muted}`,
+  ])}">${escapeXml(detail)}</p></div>`;
+
+  const piecesMarkup = (site: BackSite, kept: number) => {
+    const extra = site.pieces.length - kept;
+    const pieces = site.pieces
+      .slice(0, kept)
+      .map((piece) => {
+        const width = backPieceWidth(layout.itemSize, piece.aspect, piecesRoom);
+        return thumbnailMarkup(
+          thumbnails.get(piece.id) ?? "pending",
+          width,
+          width / piece.aspect,
+          ink,
+        );
+      })
+      .join("");
+    const more =
+      extra > 0
+        ? `<span class="collage-back__extra" style="${style([
+            `font:400 12px/1 ${MONO}`,
+            `color:${ink.muted}`,
+            "padding-left:3px",
+          ])}">+${extra}</span>`
+        : "";
+    return `<div class="collage-back__pieces" style="${style([
+      "grid-column:2",
+      "display:flex",
+      "flex-wrap:wrap",
+      "align-items:center",
+      `gap:${PIECE_GAP}px`,
+    ])}">${pieces}${more}</div>`;
+  };
+
+  // A site whose pages only carry the site's own name lists nothing below it.
+  const titlesMarkup = (site: BackSite, kept: number) => {
+    if (kept === 0) return "";
+    const size = layout.itemSize;
+    const extra = site.pages.length - kept;
+    const pages = site.pages
+      .slice(0, kept)
+      .map(
+        (page) =>
+          `<span class="collage-back__page" style="${style([
+            `font:400 ${size}px/${TITLE_LINE} ${MONO}`,
+            `color:${ink.ink}`,
+            "overflow-wrap:anywhere",
+          ])}">${escapeXml(page.title)}<span style="${style([
+            `color:${ink.muted}`,
+          ])}"> \u00b7 ${page.pieceCount}</span></span>`,
+      )
+      .join("");
+    const more =
+      extra > 0
+        ? `<span class="collage-back__extra" style="${style([
+            `font:400 ${size}px/${TITLE_LINE} ${MONO}`,
+            `color:${ink.muted}`,
+          ])}">${escapeXml(`+${plural(extra, "more page", "more pages")}`)}</span>`
+        : "";
+    return `<div class="collage-back__pages" style="${style([
+      "grid-column:2",
+      "display:flex",
+      "flex-direction:column",
+      `gap:${TITLE_GAP}px`,
+    ])}">${pages}${more}</div>`;
+  };
+
+  const rows = layout.rows.map(({ site, kept }) => {
+    const favicon = favicons.get(site.faviconPage) ?? "pending";
+    const below =
+      layout.shows === "pieces"
+        ? piecesMarkup(site, kept)
+        : titlesMarkup(site, kept);
+    const meta = `${backDate(site.firstSeenAt)} · ${plural(site.pageCount, "page", "pages")} · ${plural(site.pieces.length, "piece", "pieces")}`;
+    return `<div class="collage-back__site" style="${style([
+      "break-inside:avoid",
+      "display:grid",
+      "grid-template-columns:16px minmax(0, 1fr)",
+      "column-gap:12px",
+      "row-gap:8px",
+      "align-items:start",
+      `padding:${SITE_PADDING}px 0`,
+      `border-bottom:1px solid ${ink.rule}`,
+    ])}"><span style="${style(["padding-top:3px"])}">${faviconMarkup(favicon, ink, 16)}</span><div style="${style([
+      "display:flex",
+      "flex-direction:column",
+      "gap:2px",
+      "min-width:0",
+    ])}"><span class="collage-back__domain" style="${style([
+      `font:400 ${DOMAIN_SIZE}px/1.4 ${MONO}`,
+      `color:${ink.ink}`,
+    ])}">${
+      // A zero-width space after each dot lets a long domain wrap only there.
+      escapeXml(site.domain).replace(/\./g, ".​")
+    }</span><span class="collage-back__seen" style="${style([
+      `font:400 12px/1.4 ${MONO}`,
+      `color:${ink.muted}`,
+    ])}">${escapeXml(meta)}</span></div>${below}</div>`;
+  });
+
+  const list = `<div class="collage-back__list" style="${style([
+    "position:relative",
+    "flex:1 1 auto",
+    "min-height:0",
+    `column-count:${layout.columns}`,
+    `column-gap:${BACK_COLUMN_GAP}px`,
+    "column-fill:balance",
+  ])}">${rows.join("")}</div>`;
+
+  const strip =
+    layout.rest.length > 0
+      ? `<div class="collage-back__rest" style="${style([
+          "position:relative",
+          "flex:none",
+          "display:flex",
+          "flex-wrap:wrap",
+          "align-items:center",
+          "column-gap:16px",
+          "row-gap:6px",
+          "padding-top:14px",
+          `border-top:1px solid ${ink.rule}`,
+          `font:400 ${TAG_SIZE}px/18px ${MONO}`,
+        ])}"><span style="${style([
+          "letter-spacing:0.06em",
           `color:${ink.muted}`,
-          "white-space:nowrap",
-          "overflow:hidden",
-          "text-overflow:ellipsis",
-        ])}">${escapeXml(line)}</p>`,
-    )
-    .join("");
+        ])}">${escapeXml(`also from ${plural(layout.rest.length, "site", "sites")}`)}</span>${layout.rest
+          .map(
+            (site) =>
+              `<span class="collage-back__also" style="${style([
+                "display:inline-flex",
+                "align-items:center",
+                "gap:5px",
+              ])}">${faviconMarkup(favicons.get(site.faviconPage) ?? "pending", ink, 16)}${
+                layout.restNamed
+                  ? `<span style="${style([`color:${ink.ink}`])}">${escapeXml(site.domain)}</span>`
+                  : ""
+              }<span style="${style([`color:${ink.muted}`])}">${site.pieces.length}</span></span>`,
+          )
+          .join("")}</div>`
+      : "";
 
   // Each half of the mark carries its own opacity: an opacity on a shared
   // wrapper would isolate the engraving from the paper it multiplies into.
-  // The mark sits at the foot of the title side, away from the words above.
   const mark = `<div class="collage-back__maker" style="${style([
-    "margin-top:auto",
+    "position:relative",
+    "flex:none",
+    "margin-top:16px",
     "display:flex",
     "align-items:center",
     "justify-content:flex-end",
@@ -570,96 +929,17 @@ export function collageBackMarkup(options: CollageBackMarkupOptions): string {
     "white-space:nowrap",
   ])}">we were online</span></div>`;
 
-  const details = `<div class="collage-back__details" style="${style([
-    ...box(layout.details),
+  const writing = `<div class="collage-back__writing" style="${style([
+    "position:absolute",
+    "left:0",
+    "top:0",
+    `width:${frame.width}px`,
+    `height:${frame.height}px`,
+    "box-sizing:border-box",
+    `padding:${layout.pad}px`,
     "display:flex",
     "flex-direction:column",
-    `gap:${detailSize}px`,
-  ])}"><p class="collage-back__title" style="${style([
-    "margin:0",
-    `font:600 ${titleSize}px/1.25 ${SERIF}`,
-    `color:${title ? ink.ink : ink.muted}`,
-    "overflow-wrap:anywhere",
-    "display:-webkit-box",
-    "-webkit-box-orient:vertical",
-    `-webkit-line-clamp:${across ? 5 : 2}`,
-    "overflow:hidden",
-  ])}">${escapeXml(title || "untitled collage")}</p><div style="${style([
-    "display:grid",
-    // A tall back's title side is short, so its lines sit two abreast.
-    `grid-template-columns:${across ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))"}`,
-    `column-gap:${Math.round(detailSize * 2)}px`,
-    `row-gap:${Math.round(detailSize * 0.9)}px`,
-  ])}">${detailLines}</div>${mark}</div>`;
-
-  const lines = list.lines.slice(0, layout.shown).map((line) => {
-    const favicon = favicons.get(line.faviconPage) ?? "pending";
-    return `<div class="collage-back__source" style="${style([
-      "display:flex",
-      "align-items:center",
-      "gap:0.7em",
-      "min-width:0",
-      "white-space:nowrap",
-    ])}">${faviconMarkup(favicon, ink)}<span class="collage-back__domain" style="${ellipsized([
-      // The page title gives way first; a long domain only once it is gone,
-      // so the words at the end never run into the next column.
-      "flex:0 1 auto",
-      "min-width:0",
-      "max-width:45%",
-      `color:${ink.ink}`,
-    ])}">${escapeXml(line.domain)}</span><span class="collage-back__page" style="${ellipsized([
-      "flex:1 1000 0",
-      "min-width:0",
-      `color:${ink.muted}`,
-    ])}">${escapeXml(line.title)}</span><span class="collage-back__seen" style="${style([
-      "flex:none",
-      `color:${ink.muted}`,
-    ])}">${escapeXml(line.meta)}</span></div>`;
-  });
-  if (layout.more > 0) {
-    lines.push(
-      `<div class="collage-back__more" style="${style([
-        "display:flex",
-        "align-items:center",
-        `color:${ink.muted}`,
-      ])}">${escapeXml(moreLine(layout.more, list.bySite))}</div>`,
-    );
-  }
-
-  const pages = plural(content.sources.length, "page", "pages");
-  const heading =
-    content.sources.length === 0
-      ? "sources · nothing placed yet"
-      : list.bySite
-        ? `sources · ${pages} from ${plural(list.siteCount, "site", "sites")}`
-        : `sources · ${pages}`;
-  const sourcesBlock = `<div class="collage-back__sources" style="${style(
-    box(layout.sources),
-  )}"><p style="${style([
-    "margin:0",
-    `height:${SOURCE_HEADER}px`,
-    `font:400 12px/1 ${MONO}`,
-    "letter-spacing:0.08em",
-    `color:${ink.muted}`,
-  ])}">${escapeXml(heading)}</p><div class="collage-back__list" style="${style([
-    "display:grid",
-    `grid-template-columns:repeat(${layout.columns}, minmax(0, 1fr))`,
-    `grid-template-rows:repeat(${layout.rows}, ${layout.lineHeight}px)`,
-    "grid-auto-flow:column",
-    `column-gap:${Math.round(layout.fontSize * 2.4)}px`,
-    `font:400 ${layout.fontSize}px/1 ${MONO}`,
-    "letter-spacing:0.01em",
-  ])}">${lines.join("")}</div></div>`;
-
-  const { rule } = layout;
-  const hairline = `<div style="${style([
-    "position:absolute",
-    `left:${rule.x1}px`,
-    `top:${rule.y1}px`,
-    `width:${Math.max(1, rule.x2 - rule.x1)}px`,
-    `height:${Math.max(1, rule.y2 - rule.y1)}px`,
-    `background:${ink.rule}`,
-  ])}"></div>`;
+  ])}">${header}<div style="${style(["height:22px", "flex:none"])}"></div>${list}${strip}${mark}</div>`;
 
   return `<div class="collage-back__sheet" style="${style([
     "position:absolute",
@@ -670,7 +950,7 @@ export function collageBackMarkup(options: CollageBackMarkupOptions): string {
     "overflow:hidden",
     `color:${ink.ink}`,
     "text-align:left",
-  ])}">${paperLayer}${bleedLayer}${sourcesBlock}${hairline}${details}</div>`;
+  ])}">${paperLayer}${bleedLayer}${writing}</div>`;
 }
 
 /**

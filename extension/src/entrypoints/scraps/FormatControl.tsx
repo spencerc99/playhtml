@@ -35,6 +35,7 @@ export function FormatControl({
   const holderRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const current = COLLAGE_FORMATS[format];
+  const customColor = !PAPER_TONES.some((tone) => tone.color === paper.color);
 
   const close = () => {
     setOpen(false);
@@ -85,7 +86,9 @@ export function FormatControl({
         onClick={() => (open ? close() : setOpen(true))}
       >
         {current.label}
-        <span className="collage-setting__caret" aria-hidden="true">&#9662;</span>
+        <span className="collage-setting__caret" aria-hidden="true">
+          &#9662;
+        </span>
       </button>
       <button
         ref={buttonRef}
@@ -102,7 +105,9 @@ export function FormatControl({
           aria-hidden="true"
         />
         paper
-        <span className="collage-setting__caret" aria-hidden="true">&#9662;</span>
+        <span className="collage-setting__caret" aria-hidden="true">
+          &#9662;
+        </span>
       </button>
       <span
         className="collage-studio__label"
@@ -173,18 +178,33 @@ export function FormatControl({
                 onClick={() => onPaper({ ...paper, color: tone.color })}
               />
             ))}
-            <input
-              className="collage-swatch collage-swatch--custom"
-              type="color"
-              value={paper.color}
-              aria-label="Custom paper color"
-              onChange={(event) => {
-                const next = event.target.value;
-                if (isPaperColor(next)) {
-                  onPaper({ ...paper, color: next.toLowerCase() });
-                }
-              }}
-            />
+            {/* A rainbow swatch reads as "pick any color", unlike a plain
+                swatch of the current paper that looks like one more tone. */}
+            <label
+              className={`collage-swatch collage-color-picker${
+                customColor ? " collage-swatch--on" : ""
+              }`}
+              title="pick any color"
+            >
+              {customColor && (
+                <span
+                  className="collage-color-picker__chosen"
+                  style={{ background: paper.color }}
+                  aria-hidden="true"
+                />
+              )}
+              <input
+                type="color"
+                value={toColorInputValue(paper.color)}
+                aria-label="Pick any paper color"
+                onChange={(event) => {
+                  const next = event.target.value;
+                  if (isPaperColor(next)) {
+                    onPaper({ ...paper, color: next.toLowerCase() });
+                  }
+                }}
+              />
+            </label>
           </div>
 
           <label className="collage-grain">
@@ -201,4 +221,12 @@ export function FormatControl({
       )}
     </div>
   );
+}
+
+/** A color input only takes six-digit hex, so a short "#abc" is spelled out. */
+function toColorInputValue(color: string): string {
+  const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(color);
+  return short
+    ? `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`
+    : color;
 }

@@ -12,6 +12,7 @@ import "@fontsource/lora/latin-700.css";
 import { groupPhotoEncounters } from "@movement/utils/scrapPhotoGroups";
 import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import {
+  canonicalScrapKey,
   COLLAGE_STYLES,
   ScrapCollage,
   type ScrapItem,
@@ -87,6 +88,40 @@ export function ScrapsPage() {
         .map(toScrapItem),
     [records],
   );
+  /**
+   * Deletes every stored encounter of these scraps. The collage folds repeat
+   * encounters into one scrap, so each is matched back to all of its records.
+   */
+  const deleteScraps = useCallback(
+    async (doomed: ScrapItem[]) => {
+      const canonicalKeys = new Set(doomed.map(canonicalScrapKey));
+      const itemKeys = new Set(doomed.map((item) => item.key));
+      const ids = records
+        .filter((record) => {
+          const item = toScrapItem(record);
+          return (
+            canonicalKeys.has(canonicalScrapKey(item)) || itemKeys.has(item.key)
+          );
+        })
+        .map((record) => record.id);
+      if (ids.length === 0) return;
+      const response = (await browser.runtime.sendMessage({
+        type: "DELETE_SCRAPS",
+        ids,
+      })) as { deleted?: number; error?: string } | undefined;
+      if (!response || response.error || typeof response.deleted !== "number") {
+        throw new Error(response?.error ?? "DELETE_SCRAPS returned no response");
+      }
+      const removed = new Set(ids);
+      setRecords((current) =>
+        current.filter((record) => !removed.has(record.id)),
+      );
+    },
+    [records],
+  );
+  // Deleting before the whole archive has loaded would miss older encounters
+  // of the same scrap, which would then reappear once they arrive.
+  const archiveComplete = !loading && !error && nextCursor === null && !historyError;
   const [createMode, setCreateMode] = useState<
     typeof import("./CreateMode") | null
   >(null);
@@ -444,6 +479,7 @@ export function ScrapsPage() {
             items={items}
             seed={seed}
             showKindFilter={true}
+            onDeleteScraps={archiveComplete ? deleteScraps : undefined}
           />
         </div>
       )}

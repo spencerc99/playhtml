@@ -70,32 +70,6 @@ export const COLLAGE_STUDIO_STYLES = `
     border-radius: 2px;
   }
 
-  .collage-tray__sizes {
-    display: flex;
-    flex: 0 0 auto;
-    gap: 2px;
-  }
-
-  .collage-tray__size {
-    width: 17px;
-    height: 17px;
-    padding: 0;
-    border: 1px solid color-mix(in srgb, var(--c-ink) 18%, transparent);
-    border-radius: 3px;
-    background: transparent;
-    color: var(--c-muted);
-    font-family: "Martian Mono", monospace;
-    font-size: 8px;
-    text-transform: uppercase;
-    cursor: pointer;
-  }
-
-  .collage-tray__size--on {
-    border-color: color-mix(in srgb, var(--c-accent) 70%, transparent);
-    background: color-mix(in srgb, var(--c-accent) 12%, transparent);
-    color: var(--c-accent-ink);
-  }
-
   .collage-tray__tuck {
     display: grid;
     place-items: center;
@@ -489,8 +463,47 @@ export const COLLAGE_STUDIO_STYLES = `
     outline-offset: 1px;
   }
 
-  .collage-swatch--custom {
-    background: transparent;
+  /* The custom color: a rainbow swatch, so it reads as a picker. */
+  .collage-color-picker {
+    position: relative;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    background: linear-gradient(
+      135deg,
+      #e94b4b,
+      #f0b03c,
+      #e7e046,
+      #5cc96b,
+      #4bb8e9,
+      #6a6ae9,
+      #c45ce0
+    );
+  }
+
+  .collage-color-picker:focus-within {
+    outline: 1px solid var(--c-accent-ink);
+    outline-offset: 1px;
+  }
+
+  .collage-color-picker__chosen {
+    width: 8px;
+    height: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 2px;
+  }
+
+  /* The real input covers the swatch so a click anywhere opens the picker. */
+  .collage-color-picker input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    cursor: pointer;
   }
 
   /* The paper's grain, beside the tones it lies over. */

@@ -1411,6 +1411,28 @@ describe("LocalEventStore pending uploads", () => {
     ).toBe(5);
   });
 
+  it("deletes scrap events by id and leaves other events alone", async () => {
+    const store = createStore();
+    await store.addEvents([
+      scrapEvent("keep", "https://assets.example/keep.png"),
+      scrapEvent("drop", "https://assets.example/drop.png"),
+      buttonScrapEvent("drop-button"),
+      event("cursor", "cursor"),
+    ]);
+
+    const deleted = await store.deleteScrapEvents([
+      "drop",
+      "drop-button",
+      "cursor",
+      "missing",
+    ]);
+
+    expect(deleted).toBe(2);
+    const remaining = await store.queryEventPage("element", 10);
+    expect(remaining.events.map(({ id }) => id)).toEqual(["keep"]);
+    expect(await store.countEventsOfType("cursor")).toBe(1);
+  });
+
   it("counts one event type without reading the others", async () => {
     const store = createStore();
     await store.addEvents([
