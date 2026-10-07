@@ -12,6 +12,11 @@ export interface ScrapWhenFilter {
   timeOfDay: TimeOfDayFilter | null;
 }
 
+/** A site or page in the "found on" filter: kept, or hidden when `exclude` is set. */
+export interface ScrapPlace extends FilterChip {
+  exclude?: boolean;
+}
+
 export const ANY_TIME: ScrapWhenFilter = { day: null, timeOfDay: null };
 
 export function isAnyTime(when: ScrapWhenFilter): boolean {
@@ -67,12 +72,20 @@ export function scrapLocations(item: ScrapItem) {
 
 export function matchesScrapFilters(
   item: ScrapItem,
-  places: FilterChip[],
+  places: ScrapPlace[],
   search: string,
 ): boolean {
   const locations = scrapLocations(item);
+  const kept = places.filter((place) => !place.exclude);
+  const hidden = places.filter((place) => place.exclude);
+  // A scrap stays while some place it was seen is kept and not hidden, so
+  // hiding a site drops only what was never found anywhere else.
   if (
-    !locations.some((source) => eventMatchesAnyFilter(source.pageUrl, places))
+    !locations.some(
+      (source) =>
+        eventMatchesAnyFilter(source.pageUrl, kept) &&
+        (hidden.length === 0 || !eventMatchesAnyFilter(source.pageUrl, hidden)),
+    )
   )
     return false;
   const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
