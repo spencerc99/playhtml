@@ -184,7 +184,7 @@ describe('feature access control', () => {
     expect(body.features.QUARANTINE_TAPE.available).toBe(true);
   });
 
-  it('limits closed beta members to the cohort feature grants', async () => {
+  it('gives closed beta members beta-stage features but not internal ones', async () => {
     expect((await addToCohort([PUBLIC_ID], 'closed-beta')).status).toBe(201);
 
     const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
@@ -223,27 +223,62 @@ describe('feature access control', () => {
       features: Record<string, { available: boolean }>;
     };
     expect(memberBody.features.BOTTLES.available).toBe(true);
-    expect(memberBody.features.COMMUTE.available).toBe(false);
+    expect(memberBody.features.COMMUTE.available).toBe(true);
+    expect(publicBody.features.COMMUTE.available).toBe(false);
     expect(publicBody.features.EMOTES.available).toBe(true);
   });
 
-  it('clears every explicit cohort feature grant', async () => {
+  it('clears every explicit cohort feature grant while beta-stage access remains', async () => {
     await addToCohort([PUBLIC_ID], 'closed-beta');
-    const cohortUpdate = await handleAdminCohortFeaturesUpdate(
+    const grant = (featureIds: string[]) => handleAdminCohortFeaturesUpdate(
+      adminRequest('/admin/access-control/cohorts/closed-beta', {
+        method: 'PUT',
+        body: JSON.stringify({ featureIds }),
+      }),
+      workerEnv,
+      'closed-beta',
+    );
+    expect((await grant(['BOTTLES'])).status).toBe(200);
+    expect((await grant([])).status).toBe(200);
+
+    const body = await (await handleFeatureAccessCheck(workerEnv, PUBLIC_ID)).json() as {
+      features: Record<string, { available: boolean }>;
+    };
+    expect(body.features.BOTTLES.available).toBe(false);
+    expect(body.features.COMMUTE.available).toBe(true);
+    expect(body.features.SCRAPS.available).toBe(true);
+  });
+
+  it('moves beta access with the feature stage', async () => {
+    await addToCohort([PUBLIC_ID], 'closed-beta');
+    const setStage = (featureId: string, stage: string) => handleAdminFeatureStageUpdate(
+      adminRequest(`/admin/access-control/features/${featureId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ stage }),
+      }),
+      workerEnv,
+      featureId,
+    );
+    expect((await setStage('EMOTES', 'beta')).status).toBe(200);
+    expect((await handleAdminCohortFeaturesUpdate(
       adminRequest('/admin/access-control/cohorts/closed-beta', {
         method: 'PUT',
         body: JSON.stringify({ featureIds: [] }),
       }),
       workerEnv,
       'closed-beta',
-    );
-    expect(cohortUpdate.status).toBe(200);
+    )).status).toBe(200);
 
-    const body = await (await handleFeatureAccessCheck(workerEnv, PUBLIC_ID)).json() as {
+    const betaBody = await (await handleFeatureAccessCheck(workerEnv, PUBLIC_ID)).json() as {
       features: Record<string, { available: boolean }>;
     };
-    expect(body.features.COMMUTE.available).toBe(false);
-    expect(body.features.SCRAPS.available).toBe(false);
+    expect(betaBody.features.EMOTES.available).toBe(true);
+
+    expect((await setStage('EMOTES', 'internal')).status).toBe(200);
+    const internalBody = await (await handleFeatureAccessCheck(workerEnv, PUBLIC_ID)).json() as {
+      features: Record<string, { available: boolean }>;
+    };
+    expect(internalBody.features.EMOTES.available).toBe(false);
   });
 
   it('rejects the removed Labs stage', async () => {

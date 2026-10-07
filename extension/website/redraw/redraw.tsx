@@ -203,6 +203,7 @@ const CursorRedraw = () => {
           points: chunk.map((p) => ({ x: p.x, y: p.y })),
           color: state.trail.color,
           id: `${state.trail.id}-${start}`,
+          pid: state.trail.pid,
         });
         if (items.length >= LIBRARY_MAX_ITEMS) return items;
       }
@@ -249,6 +250,7 @@ const CursorRedraw = () => {
         points: state.trail.points.map((p) => ({ x: p.x, y: p.y })),
         color: state.trail.color,
         id: state.trail.id,
+        pid: state.trail.pid,
       })),
     [trailStates],
   );

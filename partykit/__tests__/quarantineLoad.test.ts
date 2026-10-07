@@ -1,6 +1,7 @@
 // ABOUTME: Drives the real PartyServer load and alarm paths to verify breaker behavior.
 // ABOUTME: Asserts rooms stay available while failed work backs off or is disabled.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
 import * as awarenessProtocol from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
@@ -1231,10 +1232,10 @@ describe("automatic compaction breaker", () => {
     // skipped, so the churn here has to be real.
     const doc = new Y.Doc();
     const map = doc.getMap("play");
-    for (let i = 0; i < 400; i += 1) {
+    for (let i = 0; i < 4000; i += 1) {
       map.set(`key-${i}`, "value-".repeat(40) + i);
     }
-    for (let i = 0; i < 399; i += 1) {
+    for (let i = 0; i < 3999; i += 1) {
       map.delete(`key-${i}`);
     }
     persistedRow.document = encodeDoc(doc);
@@ -3167,5 +3168,184 @@ describe("quarantine data safety", () => {
 
     expect(upsertCalls.length).toBe(1);
     expect(persistedRow.document).not.toBe(COMPACT_LETHAL_DOCUMENT);
+  });
+});
+
+describe("stale reset-epoch connections", () => {
+  const SERVER_EPOCH = 1_700_000_000_000;
+
+  function createConnection(id: string) {
+    const state: Record<string, unknown> = {};
+    const sent: unknown[] = [];
+    const closes: Array<{ code: number; reason: string }> = [];
+    return {
+      sent,
+      closes,
+      connection: {
+        id,
+        readyState: 1,
+        send: (message: unknown) => sent.push(message),
+        close: (code: number, reason: string) => closes.push({ code, reason }),
+        get state() {
+          return state;
+        },
+        setState: (next: unknown) => {
+          const resolved = typeof next === "function" ? next(state) : next;
+          for (const key of Object.keys(state)) delete state[key];
+          Object.assign(state, resolved);
+        },
+      },
+    };
+  }
+
+  function syncStep1(doc: Y.Doc): Uint8Array {
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, 0);
+    syncProtocol.writeSyncStep1(encoder, doc);
+    return encoding.toUint8Array(encoder);
+  }
+
+  function customMessages(sent: unknown[]): Array<Record<string, unknown>> {
+    return sent
+      .filter(
+        (message): message is string =>
+          typeof message === "string" && message.startsWith("__YPS:")
+      )
+      .map((message) => JSON.parse(message.slice(6)));
+  }
+
+  function createStaleRoom() {
+    const doc = new Y.Doc();
+    doc.getMap("play").set("shared", "server-value");
+    const { room, storage } = createRoom();
+    room.document = doc;
+    room.document.awareness = new awarenessProtocol.Awareness(doc);
+    room.documentLoadCompleted = true;
+    room.pendingConnectionUrls = new Map();
+    storage.values.set("resetEpoch", SERVER_EPOCH);
+    return { room, storage };
+  }
+
+  async function connectStale(room: any, id: string) {
+    const client = createConnection(id);
+    await room.onConnect(client.connection, {
+      request: new Request(
+        `https://example.com/parties/main/example-room?_pk=${id}`
+      ),
+    });
+    return client;
+  }
+
+  test("a stale connection stays open and pending without joining", async () => {
+    const { room } = createStaleRoom();
+    const client = await connectStale(room, "legacy");
+
+    expect(client.closes).toEqual([]);
+    expect(client.sent).toEqual([]);
+    expect(client.connection.state.__playhtmlAdmission).toBe("pending");
+  });
+
+  test("a client without document history is admitted and told the epoch", async () => {
+    const { room } = createStaleRoom();
+    const client = await connectStale(room, "fresh");
+
+    await room.onMessage(client.connection, syncStep1(new Y.Doc()));
+
+    expect(client.closes).toEqual([]);
+    expect(client.connection.state.__playhtmlAdmission).toBeUndefined();
+    expect(client.connection.state.__playhtmlAcceptedResetEpoch).toBe(
+      SERVER_EPOCH
+    );
+    expect(customMessages(client.sent)).toContainEqual({
+      type: "reset-epoch",
+      resetEpoch: SERVER_EPOCH,
+    });
+    // The server answered the sync step with its document state.
+    const binaryReplies = client.sent.filter(
+      (message) => message instanceof Uint8Array
+    );
+    const replica = new Y.Doc();
+    for (const reply of binaryReplies as Uint8Array[]) {
+      const decoder = decoding.createDecoder(reply);
+      if (decoding.readVarUint(decoder) !== 0) continue;
+      syncProtocol.readSyncMessage(
+        decoder,
+        encoding.createEncoder(),
+        replica,
+        null
+      );
+    }
+    expect(replica.getMap("play").get("shared")).toBe("server-value");
+  });
+
+  test("a client with stale history is held, told to reset, and never merges", async () => {
+    const { room } = createStaleRoom();
+    const client = await connectStale(room, "stale-tab");
+    const staleDoc = new Y.Doc();
+    staleDoc.getMap("play").set("shared", "pre-reset-value");
+    const originalLog = console.log;
+    console.log = () => {};
+
+    try {
+      await room.onMessage(client.connection, syncStep1(staleDoc));
+      const update = encoding.createEncoder();
+      encoding.writeVarUint(update, 0);
+      syncProtocol.writeUpdate(update, Y.encodeStateAsUpdate(staleDoc));
+      await room.onMessage(client.connection, encoding.toUint8Array(update));
+    } finally {
+      console.log = originalLog;
+    }
+
+    expect(client.closes).toEqual([]);
+    expect(client.connection.state.__playhtmlAdmission).toBe("held");
+    expect(customMessages(client.sent)).toEqual([
+      { type: "room-reset", timestamp: SERVER_EPOCH, resetEpoch: SERVER_EPOCH },
+    ]);
+    expect(room.document.getMap("play").get("shared")).toBe("server-value");
+  });
+
+  test("awareness before the first sync step keeps the connection pending", async () => {
+    const { room } = createStaleRoom();
+    const client = await connectStale(room, "awareness-first");
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, 1);
+    encoding.writeVarUint8Array(encoder, new Uint8Array([0]));
+
+    await room.onMessage(client.connection, encoding.toUint8Array(encoder));
+
+    expect(client.connection.state.__playhtmlAdmission).toBe("pending");
+    expect(client.sent).toEqual([]);
+  });
+
+  test("closing a held connection does not schedule empty-room compaction", async () => {
+    const { room, storage } = createStaleRoom();
+    const client = await connectStale(room, "legacy-close");
+
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (message: string) => warnings.push(message);
+
+    try {
+      await room.onClose(client.connection, 1006, "", false);
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("connection=legacy-close code=1006");
+    expect(storage.values.get("emptyRoomCompactAfter")).toBeUndefined();
+  });
+
+  test("repeated empty-room closes keep the first compaction deadline", async () => {
+    const { room, storage } = createStaleRoom();
+    const deadline = Date.now() + 60_000;
+    storage.values.set("emptyRoomCompactAfter", deadline);
+    const writesBefore = storage.writeLog.length;
+
+    await room.scheduleEmptyRoomCompaction();
+    await room.scheduleEmptyRoomCompaction();
+
+    expect(storage.values.get("emptyRoomCompactAfter")).toBe(deadline);
+    expect(storage.writeLog.length).toBe(writesBefore);
   });
 });

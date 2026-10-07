@@ -337,7 +337,7 @@ export async function handleIngest(
       console.log(`[Ingest] Inserted ${inserted} new events, ${duplicates} duplicates ignored`);
     }
     
-    // Fan out renderable movement events to the live stream. Fire-and-forget
+    // Fan out renderable movement and navigation events to the live stream. Fire-and-forget
     // must never affect the ingest result. Live consumers tolerate optional
     // metadata fields being absent.
     ctx.waitUntil(

@@ -180,3 +180,20 @@ export function getPrunedBridgeLeases<Lease extends BridgeLease>({
     isBridgeLeaseWithinWindow(lease, now, leaseMs)
   );
 }
+
+// Empty-room compaction starts a new reset boundary, so it only runs when the
+// rewrite reclaims a meaningful share of the document. Small savings are not
+// worth the full rewrite and the reset every returning client has to observe.
+export const EMPTY_ROOM_COMPACTION_MIN_SAVED_RATIO = 0.25;
+export const EMPTY_ROOM_COMPACTION_MIN_SAVED_BYTES = 32 * 1024;
+
+export function shouldCommitEmptyRoomCompaction(
+  beforeSize: number,
+  afterSize: number
+): boolean {
+  const savedBytes = beforeSize - afterSize;
+  return (
+    savedBytes >= EMPTY_ROOM_COMPACTION_MIN_SAVED_BYTES &&
+    savedBytes >= beforeSize * EMPTY_ROOM_COMPACTION_MIN_SAVED_RATIO
+  );
+}

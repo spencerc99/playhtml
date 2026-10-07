@@ -1,6 +1,5 @@
 // ABOUTME: Displays the user's identity with name, cursor preview, palette, and site count
 // ABOUTME: Shown in the main popup home view
-import React from "react";
 import { PlayerIdentity } from "../types";
 import { CursorSvg } from "./icons";
 import "./PlayerIdentityCard.scss";

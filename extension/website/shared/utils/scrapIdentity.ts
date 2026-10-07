@@ -1,5 +1,5 @@
-// ABOUTME: Canonical identity for internet scraps, shared between render-time collage
-// ABOUTME: dedup and extension storage-time dedup so near-duplicates never persist.
+// ABOUTME: Builds canonical identities for scrap artwork and source pages.
+// ABOUTME: Shares URL and content-hash validation across collection, storage, and display.
 
 /**
  * Canonical identity for near-duplicate detection: two scraps with the same
@@ -64,10 +64,30 @@ export function canonicalButtonKey(
   return `${domain}|button|${normalizedText}|${backgroundColor ?? ""}`;
 }
 
+/** Level-insensitive, so the same wording is one heading however it is ranked. */
+export function canonicalHeadingKey(domain: string, text: string): string {
+  return `${domain}|heading|${normalizeWhitespace(text.toLowerCase())}`;
+}
+
 export function canonicalSvgIconKey(domain: string, markup: string): string {
   return `${domain}|svg|${svgGeometryHash(markup)}`;
 }
 
 export function canonicalCursorKey(url: string): string {
   return url;
+}
+
+/** Keeps query-based pages distinct while ignoring in-page anchors. */
+export function canonicalScrapPageUrl(src: string): string {
+  try {
+    const url = new URL(src);
+    url.hash = "";
+    return url.href;
+  } catch {
+    return src;
+  }
+}
+
+export function isImageContentHash(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 }

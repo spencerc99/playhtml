@@ -130,6 +130,8 @@ describe("advanceSettlingState", () => {
     const draw = {
       seenAt: 0,
       total: 20,
+      variedTotal: 20,
+      drawProgress: 1,
       grewAt: 0,
       caughtUpAt: null,
       settled: false,
@@ -156,6 +158,8 @@ describe("advanceSettlingState", () => {
     const draw = {
       seenAt: 0,
       total: 4,
+      variedTotal: 4,
+      drawProgress: 1,
       grewAt: 0,
       caughtUpAt: 10_000,
       settled: false,
@@ -225,6 +229,7 @@ function trailState(): TrailState {
   return {
     trail: {
       id: "participant|https://example.com",
+      pid: "participant",
       points: [
         { x: 0, y: 0, ts: 0 },
         { x: 100, y: 100, ts: 1000 },
@@ -357,6 +362,9 @@ describe("createLiveSoundFrame", () => {
       progress: 1,
       color: "#123456",
       isNewlyActive: false,
+      // Participant + url, so the sound engine can give this trail a voice
+      // that survives the array being renumbered around it.
+      identityKey: "participant|https://example.com",
     });
   });
 });
@@ -461,7 +469,7 @@ describe("LiveTrails camera", () => {
       await render(true);
       act(() => frames.shift()?.(1000));
       act(() => frames.shift()?.(1500));
-      const svg = container.querySelector("svg.trails-svg")!;
+      const svg = container.querySelector<SVGSVGElement>("svg.trails-svg")!;
       const box = () => svg.getAttribute("viewBox")!.split(" ").map(Number);
       expect(box()[2]).toBeCloseTo(window.innerWidth * 0.1);
       const initial = box();

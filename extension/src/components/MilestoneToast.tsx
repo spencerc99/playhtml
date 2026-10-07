@@ -1,7 +1,7 @@
 // ABOUTME: React component for the milestone toast rendered inside a shadow root.
 // ABOUTME: Used by the content script (injected), the setup page, and the preview page.
 
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type MilestoneToastType =
   | "longGapReturn"

@@ -74,6 +74,16 @@ SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit:soak
 PARTYKIT_HOST=api-staging.playhtml.fun \
   bun smoke:partykit:presence-cursor
 
+# Starts the local presence-only Worker without persistence secrets and verifies
+# its real WebSocket endpoint returns an initial sync.
+bun smoke:partykit:presence-local
+
+# Runs the same presence smoke against the local presence-only server. Start
+# `bun run dev-server:presence` in another terminal first. This local server
+# does not load persisted PartyServer rooms and does not require Supabase secrets.
+PARTYKIT_HOST=localhost:1999 \
+  bun smoke:partykit:presence-cursor
+
 # Runs the standard PartyKit checks.
 SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit
 ```
