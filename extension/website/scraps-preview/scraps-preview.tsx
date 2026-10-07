@@ -1,12 +1,14 @@
 // ABOUTME: Renders ScrapCollage with synthetic image, button, svg-icon, and cursor scraps.
-// ABOUTME: Network-free demo data for visually checking mixed-media collage rendering.
+// ABOUTME: Network-free demo data by default; a picked "Internet Scraps.json" export swaps in real scraps.
 
+import { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ScrapCollage } from "@movement/components/ScrapCollage";
+import { ScrapCollage, type ScrapItem } from "@movement/components/ScrapCollage";
 import { buildItems, DAY_MS, NOW } from "./demoScraps";
 
 function PreviewPage() {
   const seed = Math.floor(NOW / DAY_MS);
+  const [exported, setExported] = useState<ScrapItem[] | null>(null);
 
   return (
     <main
@@ -64,16 +66,34 @@ function PreviewPage() {
             fontSize: 9,
           }}
         >
-          synthetic scraps: images, buttons, icons, cursors
+          {exported
+            ? `${exported.length} scraps from an export`
+            : "synthetic scraps: images, buttons, icons, cursors"}
         </p>
+        <label style={{ pointerEvents: "auto", fontFamily: '"Martian Mono", monospace', fontSize: 9 }}>
+          load export{" "}
+          <input
+            type="file"
+            accept="application/json,.json"
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              const parsed = JSON.parse(await file.text()) as { scraps?: ScrapItem[] };
+              if (!Array.isArray(parsed.scraps)) {
+                throw new Error("This file has no `scraps` list");
+              }
+              setExported(parsed.scraps);
+            }}
+          />
+        </label>
       </header>
       <div style={{ position: "absolute", inset: "74px 20px 18px", zIndex: 2 }}>
         {/* Small target count so the preview pool exceeds what fits ashore and
             the tide rotation is exercisable here. */}
         <ScrapCollage
-          items={buildItems()}
+          items={exported ?? buildItems()}
           seed={seed}
-          targetCount={14}
+          targetCount={exported ? undefined : 14}
           showKindFilter={true}
         />
       </div>

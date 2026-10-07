@@ -116,6 +116,14 @@ interface ScrapCollageProps {
 type ScrapView = "drift" | "archive";
 type ScrapDisplay = "pile" | "grid";
 const DISPLAY_STORAGE_KEY = "scraps-display";
+const SOURCES_STORAGE_KEY = "scraps-archive-sources";
+function readShowSources(): boolean {
+  try {
+    return localStorage.getItem(SOURCES_STORAGE_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
 function readScrapDisplay(): ScrapDisplay {
   try {
     return localStorage.getItem(DISPLAY_STORAGE_KEY) === "grid"
@@ -809,6 +817,103 @@ export function buildArchiveWindow(
 }
 
 /**
+ * The quiet inks a visit's outline and label are drawn in, from the site's
+ * accent palette. Neighbouring visits take different inks so their edges read
+ * apart where they meet.
+ */
+const SOURCE_TINTS = [
+  "#4a9a8a",
+  "#c4724e",
+  "#5b8db8",
+  "#d4b85c",
+  "#827a72",
+] as const;
+
+/**
+ * Which visit each archive scrap belongs to: a visit is a run of consecutive
+ * scraps, newest first, taken from the same site. Hopping between pages of
+ * one site stays one visit, so a site is named once per stretch of browsing.
+ */
+export function archiveVisits(items: readonly ScrapItem[]): number[] {
+  const visits: number[] = [];
+  let visit = -1;
+  items.forEach((item, index) => {
+    if (index === 0 || items[index - 1].domain !== item.domain) visit += 1;
+    visits.push(visit);
+  });
+  return visits;
+}
+
+/** One row's stretch of a visit in the archive, outlined in its ink. */
+export interface ArchiveSourceMark {
+  key: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  tint: string;
+  /** The visit's first scrap, on the stretch where the visit begins. */
+  labelFor: ScrapItem | null;
+  /** The visit carries on from the row above, or onto the row below. */
+  continuesAbove: boolean;
+  continuesBelow: boolean;
+}
+
+/**
+ * Outlines the visits in the archive's visible rows. A visit that wraps onto
+ * the next row gets a stretch on each row, and only its first stretch is
+ * labelled. Stretches follow the archive's cells, so outlines never overlap.
+ */
+export function buildArchiveSources(
+  items: readonly ScrapItem[],
+  visits: readonly number[],
+  width: number,
+  firstIndex: number,
+  lastIndex: number,
+  display: ScrapDisplay,
+): ArchiveSourceMark[] {
+  if (items.length === 0 || width <= 0 || lastIndex < firstIndex) return [];
+  const cell = archiveCell(display);
+  const columnCount = Math.max(1, Math.floor(width / cell.width));
+  const cellWidth = width / columnCount;
+  const marks: ArchiveSourceMark[] = [];
+
+  let start = firstIndex;
+  while (start <= lastIndex) {
+    const row = Math.floor(start / columnCount);
+    const rowEnd = Math.min(lastIndex, (row + 1) * columnCount - 1);
+    let end = start;
+    while (end < rowEnd && visits[end + 1] === visits[start]) end += 1;
+    const visit = visits[start];
+    const begins = start === 0 || visits[start - 1] !== visit;
+    const rowStart = row * columnCount;
+    const lastInRow = (row + 1) * columnCount - 1;
+    marks.push({
+      key: `${visit}-${row}`,
+      x: (start % columnCount) * cellWidth,
+      y: row * cell.height,
+      width: (end - start + 1) * cellWidth,
+      height: cell.height,
+      tint: SOURCE_TINTS[visit % SOURCE_TINTS.length],
+      labelFor: begins ? items[start] : null,
+      continuesAbove: start === rowStart && !begins,
+      continuesBelow: end === lastInRow && visits[end + 1] === visit,
+    });
+    start = end + 1;
+  }
+  return marks;
+}
+
+function formatVisitTime(timestamp: number): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(timestamp);
+}
+
+/**
  * Lays out one scrap per slot. Slots are positional, so passing `null` for a
  * bare slot keeps every other scrap exactly where it was -- the grid is sized
  * from the slot count, not from how many slots currently hold a scrap, and bare
@@ -976,6 +1081,21 @@ export const COLLAGE_STYLES = `
     color: #3d3833;
   }
 
+  /* A lone on/off option, so it wears the switch's edge itself. Pressed, its
+     edge turns dotted, echoing the outlines it draws. */
+  .scrap-collage__sources-toggle {
+    box-sizing: border-box;
+    height: 28px;
+    border: 1px solid rgba(61, 56, 51, 0.18);
+    background: rgba(61, 56, 51, 0.05);
+  }
+
+  .scrap-collage__sources-toggle[aria-pressed="true"] {
+    border-style: dotted;
+    border-color: rgba(61, 56, 51, 0.45);
+    box-shadow: none;
+  }
+
   .scrap-collage__view-option:focus-visible {
     outline: 2px solid rgba(74, 154, 138, 0.45);
     outline-offset: 1px;
@@ -1049,6 +1169,64 @@ export const COLLAGE_STYLES = `
   .scrap-collage__field {
     position: relative;
     width: 100%;
+  }
+
+  /* A visit's stretch of the archive: a dotted edge in its ink, under the
+     scraps, with the page it came from written on the top edge like a
+     fieldset legend. It is a note on the archive, never a control. */
+  .scrap-collage__source {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px dotted var(--source-tint);
+    border-radius: 4px;
+    pointer-events: none;
+  }
+
+  .scrap-collage__source--from-above {
+    border-top-color: transparent;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+
+  .scrap-collage__source--onto-below {
+    border-bottom-color: transparent;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .scrap-collage__source-label {
+    position: absolute;
+    left: 6px;
+    top: -6px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    max-width: calc(100% - 12px);
+    padding: 0 3px;
+    background: #faf9f6;
+    color: #827a72;
+    font-family: "Martian Mono", monospace;
+    font-size: 8px;
+    line-height: 11px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .scrap-collage__source-mark {
+    display: block;
+    flex: 0 0 auto;
+    width: 9px;
+    height: 9px;
+    object-fit: contain;
+  }
+
+  .scrap-collage__source-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .scrap-collage__source-domain {
+    color: var(--source-tint);
   }
 
   .scrap-collage__tile {
@@ -1529,6 +1707,7 @@ export function ScrapCollage({
   const [controlsFocused, setControlsFocused] = useState(false);
   const [view, setView] = useState<ScrapView>("drift");
   const [display, setDisplay] = useState<ScrapDisplay>(readScrapDisplay);
+  const [showSources, setShowSources] = useState(readShowSources);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const pendingScrollRef = useRef<number | null>(null);
@@ -1734,6 +1913,39 @@ export function ScrapCollage({
       display,
     ],
   );
+
+  const visits = useMemo(() => archiveVisits(archiveScraps), [archiveScraps]);
+  const sourceMarks = useMemo(() => {
+    if (!archiveMode || !showSources || archiveWindow.layout.length === 0) {
+      return [];
+    }
+    const indexes = archiveWindow.layout.map((scrap) => scrap.slotIndex);
+    return buildArchiveSources(
+      archiveScraps,
+      visits,
+      containerSize.width,
+      Math.min(...indexes),
+      Math.max(...indexes),
+      display,
+    );
+  }, [
+    archiveMode,
+    showSources,
+    archiveWindow.layout,
+    archiveScraps,
+    visits,
+    containerSize.width,
+    display,
+  ]);
+  const toggleSources = () => {
+    const next = !showSources;
+    setShowSources(next);
+    try {
+      localStorage.setItem(SOURCES_STORAGE_KEY, next ? "on" : "off");
+    } catch {
+      /* The outlines still toggle when storage is unavailable. */
+    }
+  };
 
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
@@ -2157,6 +2369,17 @@ export function ScrapCollage({
                     </button>
                   ))}
                 </div>
+                {archiveMode && (
+                  <button
+                    type="button"
+                    className="scrap-collage__view-option scrap-collage__sources-toggle"
+                    aria-pressed={showSources}
+                    title="Outline the scraps that came from each page"
+                    onClick={toggleSources}
+                  >
+                    sources
+                  </button>
+                )}
                 <span className="scrap-collage__controls-spacer" />
                 {archiveMode ? (
                   <span className="scrap-collage__archive-summary">
@@ -2252,6 +2475,54 @@ export function ScrapCollage({
           }
         >
           <div className="scrap-collage__field" style={{ height: fieldHeight }}>
+            {sourceMarks.map((mark) => (
+              <div
+                key={mark.key}
+                className={`scrap-collage__source${
+                  mark.continuesAbove ? " scrap-collage__source--from-above" : ""
+                }${
+                  mark.continuesBelow ? " scrap-collage__source--onto-below" : ""
+                }`}
+                style={
+                  {
+                    left: mark.x + 3,
+                    // A visit that wraps rows runs edge to edge between them,
+                    // so its stretches read as one shape.
+                    top: mark.y + (mark.continuesAbove ? 0 : 3),
+                    width: mark.width - 6,
+                    height:
+                      mark.height -
+                      (mark.continuesAbove ? 0 : 3) -
+                      (mark.continuesBelow ? 0 : 3),
+                    "--source-tint": mark.tint,
+                  } as React.CSSProperties & { "--source-tint": string }
+                }
+              >
+                {mark.labelFor && (
+                  <span className="scrap-collage__source-label">
+                    {!failedFavicons.has(mark.labelFor.domain) && (
+                      <img
+                        className="scrap-collage__source-mark"
+                        src={
+                          mark.labelFor.faviconUrl ||
+                          `https://www.google.com/s2/favicons?domain=${encodeURIComponent(
+                            mark.labelFor.domain,
+                          )}&sz=32`
+                        }
+                        alt=""
+                        onError={() => markFaviconFailed(mark.labelFor!.domain)}
+                      />
+                    )}
+                    <span className="scrap-collage__source-text">
+                      <span className="scrap-collage__source-domain">
+                        {mark.labelFor.domain}
+                      </span>{" "}
+                      · {formatVisitTime(mark.labelFor.ts)}
+                    </span>
+                  </span>
+                )}
+              </div>
+            ))}
             {tiles}
           </div>
         </div>
