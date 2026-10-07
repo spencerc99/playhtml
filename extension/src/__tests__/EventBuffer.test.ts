@@ -66,7 +66,11 @@ describe("EventBuffer", () => {
 
     expect(browser.runtime.sendMessage).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(250);
+    await vi.advanceTimersByTimeAsync(999);
+
+    expect(browser.runtime.sendMessage).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
 
     expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(1);
     expect(browser.runtime.sendMessage).toHaveBeenCalledWith({

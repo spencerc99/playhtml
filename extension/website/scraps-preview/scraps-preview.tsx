@@ -1,7 +1,6 @@
 // ABOUTME: Renders ScrapCollage with synthetic image, button, svg-icon, and cursor scraps.
 // ABOUTME: Network-free demo data for visually checking mixed-media collage rendering.
 
-import React from "react";
 import { createRoot } from "react-dom/client";
 import { ScrapCollage } from "@movement/components/ScrapCollage";
 import { buildItems, DAY_MS, NOW } from "./demoScraps";
@@ -69,9 +68,12 @@ function PreviewPage() {
         </p>
       </header>
       <div style={{ position: "absolute", inset: "74px 20px 18px", zIndex: 2 }}>
+        {/* Small target count so the preview pool exceeds what fits ashore and
+            the tide rotation is exercisable here. */}
         <ScrapCollage
           items={buildItems()}
           seed={seed}
+          targetCount={14}
           showKindFilter={true}
         />
       </div>

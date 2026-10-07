@@ -43,7 +43,6 @@ interface OverlaySettings {
   trailOpacity: number;
   animationSpeed: number;
   strokeWidth: number;
-  pointSize: number;
 
   // Animation settings
   trailStyle: "straight" | "smooth" | "organic" | "chaotic";
@@ -62,7 +61,6 @@ export const defaultSettings: OverlaySettings = {
   trailOpacity: 0.7,
   animationSpeed: 1.0,
   strokeWidth: 5,
-  pointSize: 4,
   trailStyle: "chaotic",
   maxConcurrentTrails: 15,
   randomizeColors: false,
@@ -417,6 +415,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
       keyboardRandomizeOrder: false,
       maxConcurrentTyping: 15,
       keyboardSizeCap: 0.5,
+      keyboardMaxAspect: 2.2,
     }),
     [filters],
   );
@@ -454,8 +453,8 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
     const oldest = Math.min(...timestamps);
     const newest = Math.max(...timestamps);
     return {
-      oldest: new Date(oldest).toLocaleDateString(),
-      newest: new Date(newest).toLocaleDateString(),
+      oldest: new Date(oldest).toISOString(),
+      newest: new Date(newest).toISOString(),
     };
   }, [events]);
 
@@ -909,11 +908,11 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               soundEngine={soundEnabled ? soundEngineRef.current : null}
               settings={{
                 strokeWidth: settings.strokeWidth,
-                pointSize: settings.pointSize,
                 trailOpacity: settings.trailOpacity,
                 animationSpeed: settings.animationSpeed,
                 clickMinRadius: 10,
                 clickMaxRadius: 80,
+                clickCoreRadius: 3,
                 clickMinDuration: 500,
                 clickMaxDuration: 2500,
                 clickExpansionDuration: 12300,
@@ -934,6 +933,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
                 animationSpeed: settings.animationSpeed,
                 clickMinRadius: 10,
                 clickMaxRadius: 80,
+                clickCoreRadius: 3,
                 clickMinDuration: 500,
                 clickMaxDuration: 2500,
                 clickExpansionDuration: 12300,

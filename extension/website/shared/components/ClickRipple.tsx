@@ -1,7 +1,8 @@
 // ABOUTME: Shared ripple effect for click/hold visualization
 // ABOUTME: Used by AnimatedTrails and AnimatedClicks so ripple logic stays DRY
-import { useState, useEffect, useMemo, useRef, memo } from "react";
+import { useEffect, useRef, memo, useMemo } from "react";
 import { ClickEffect } from "../types";
+import { subscribeRippleFrame } from "./rippleFrames";
 
 export interface RippleSettings {
   clickMinRadius: number;
@@ -20,6 +21,96 @@ export interface RippleSettings {
   clickAnimationStopPoint: number;
 }
 
+const MAX_HOLD_MULTIPLIER = 3;
+
+export function getRippleLifecycle(
+  effect: ClickEffect,
+  rippleSettings: RippleSettings,
+  now: number,
+) {
+  const holdMultiplier = effect.holdDuration
+    ? Math.min(MAX_HOLD_MULTIPLIER, 1 + effect.holdDuration / 1000)
+    : 1;
+  const baseTotalDuration =
+    rippleSettings.clickMinDuration +
+    effect.durationFactor *
+      (rippleSettings.clickMaxDuration - rippleSettings.clickMinDuration);
+  const effectTotalDuration = baseTotalDuration * holdMultiplier;
+  const expansionDuration =
+    rippleSettings.clickExpansionDuration * holdMultiplier;
+  const outerRingStartDelay =
+    Math.max(0, rippleSettings.clickNumRings - 1) *
+    rippleSettings.clickRingDelayMs;
+  const completedAt =
+    effect.startTime +
+    Math.max(effectTotalDuration, outerRingStartDelay + expansionDuration);
+
+  return {
+    holdMultiplier,
+    effectTotalDuration,
+    expansionDuration,
+    opacity: rippleSettings.clickOpacity,
+    completedAt,
+    complete: now >= completedAt,
+  };
+}
+
+export function getRippleGeometry(
+  effect: ClickEffect,
+  rippleSettings: RippleSettings,
+) {
+  const lifecycle = getRippleLifecycle(
+    effect,
+    rippleSettings,
+    effect.startTime,
+  );
+  const { holdMultiplier, expansionDuration } = lifecycle;
+
+  const baseMaxRadius =
+    rippleSettings.clickMinRadius +
+    effect.radiusFactor *
+      (rippleSettings.clickMaxRadius - rippleSettings.clickMinRadius);
+  const effectMaxRadius = baseMaxRadius * holdMultiplier;
+
+  // Honor the configured ring delay directly — staggering is when each ring
+  // BEGINS expanding. The visual density comes from each ring freezing at
+  // a different target radius (see ring rendering below), not time stagger.
+  const ringStaggerMs = rippleSettings.clickRingDelayMs;
+  const numRings = Math.max(1, rippleSettings.clickNumRings);
+
+  // Each ring freezes at its own target radius — spaced from a small fixed
+  // core out to (effectMaxRadius * clickAnimationStopPoint). Rings expand
+  // from 0 → their target at constant velocity, so the outermost ring
+  // takes the full expansionDuration and inner rings finish sooner.
+  // Pinning the innermost ring to clickCoreRadius (with ±2px jitter via
+  // radiusFactor) guarantees every ripple has a visible "core" mark where
+  // the click landed, regardless of size.
+  const outerTargetRadius =
+    effectMaxRadius * rippleSettings.clickAnimationStopPoint;
+  const coreJitterPx = (effect.radiusFactor - 0.5) * 4;
+  const coreRadius = Math.max(
+    1,
+    Math.min(rippleSettings.clickCoreRadius + coreJitterPx, outerTargetRadius),
+  );
+  const expansionVelocity = outerTargetRadius / expansionDuration;
+
+  const rings = Array.from({ length: numRings }, (_, i) => {
+    const ringStartTime = effect.startTime + i * ringStaggerMs;
+
+    // Innermost ring sits at the core mark; outer rings interpolate
+    // linearly from core out to outerTargetRadius. With numRings === 1
+    // the lone ring goes all the way out (otherwise it'd be a tiny dot).
+    const ringTargetRadius =
+      numRings === 1
+        ? outerTargetRadius
+        : coreRadius + (outerTargetRadius - coreRadius) * (i / (numRings - 1));
+
+    const ringDuration = Math.max(1, ringTargetRadius / expansionVelocity);
+    return { ringStartTime, ringTargetRadius, ringDuration };
+  });
+  return { rings, lifecycle };
+}
+
 export const RippleEffect = memo(
   ({
     effect,
@@ -30,142 +121,88 @@ export const RippleEffect = memo(
     settings: RippleSettings;
     onComplete?: (id: string) => void;
   }) => {
-    const [now, setNow] = useState(Date.now());
-    const [isAnimating, setIsAnimating] = useState(true);
-    /** Ensures onComplete runs once — render-phase callbacks can run twice in Strict Mode. */
-    const completionFiredRef = useRef(false);
-
-    // Scale by hold duration if present.
-    // 250ms = 1.25x, 1000ms = 2x, 2000ms = 3x
-    const holdMultiplier = effect.holdDuration
-      ? 1 + effect.holdDuration / 1000
-      : 1;
-
-    const baseMaxRadius =
-      rippleSettings.clickMinRadius +
-      effect.radiusFactor *
-        (rippleSettings.clickMaxRadius - rippleSettings.clickMinRadius);
-    const effectMaxRadius = baseMaxRadius * holdMultiplier;
-
-    const baseTotalDuration =
-      rippleSettings.clickMinDuration +
-      effect.durationFactor *
-        (rippleSettings.clickMaxDuration - rippleSettings.clickMinDuration);
-    const effectTotalDuration = baseTotalDuration * holdMultiplier;
-
-    const expansionDuration =
-      rippleSettings.clickExpansionDuration * holdMultiplier;
-
-    // Honor the configured ring delay directly — staggering is when each ring
-    // BEGINS expanding. The visual density comes from each ring freezing at
-    // a different target radius (see ring rendering below), not time stagger.
-    const ringStaggerMs = rippleSettings.clickRingDelayMs;
-    const numRings = Math.max(1, rippleSettings.clickNumRings);
-
-    // The outermost ring travels the farthest, so it dictates when the whole
-    // ripple has finished animating.
-    const allRingsComplete = useMemo(() => {
-      const totalElapsed = now - effect.startTime;
-      if (totalElapsed >= effectTotalDuration) return true;
-
-      const outerIndex = numRings - 1;
-      const outerStartTime = effect.startTime + outerIndex * ringStaggerMs;
-      const outerElapsed = now - outerStartTime;
-      return outerElapsed >= expansionDuration;
-    }, [
-      now,
-      effect.startTime,
-      effectTotalDuration,
-      expansionDuration,
-      numRings,
-      ringStaggerMs,
-    ]);
-
+    const circlesRef = useRef<Array<SVGCircleElement | null>>([]);
+    /** Tracks completion across repeated effect setup in Strict Mode. */
+    const completedIdRef = useRef<string | null>(null);
+    const onCompleteRef = useRef(onComplete);
     useEffect(() => {
-      let animationFrameId: number;
+      onCompleteRef.current = onComplete;
+    }, [onComplete]);
 
-      const animate = () => {
-        setNow(Date.now());
-        animationFrameId = requestAnimationFrame(animate);
-      };
-
-      if (isAnimating) {
-        animationFrameId = requestAnimationFrame(animate);
-      }
-
-      return () => {
-        if (animationFrameId) {
-          cancelAnimationFrame(animationFrameId);
-        }
-      };
-    }, [isAnimating]);
-
-    useEffect(() => {
-      completionFiredRef.current = false;
-    }, [effect.id]);
-
-    useEffect(() => {
-      if (!allRingsComplete || completionFiredRef.current) return;
-      completionFiredRef.current = true;
-      onComplete?.(effect.id);
-      setIsAnimating(false);
-    }, [allRingsComplete, effect.id, onComplete]);
-
-    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-
-    // Each ring freezes at its own target radius — spaced from a small fixed
-    // core out to (effectMaxRadius * clickAnimationStopPoint). Rings expand
-    // from 0 → their target at constant velocity, so the outermost ring
-    // takes the full expansionDuration and inner rings finish sooner.
-    // Pinning the innermost ring to clickCoreRadius (with ±2px jitter via
-    // radiusFactor) guarantees every ripple has a visible "core" mark where
-    // the click landed, regardless of size.
-    const outerTargetRadius =
-      effectMaxRadius * rippleSettings.clickAnimationStopPoint;
-    const coreJitterPx = (effect.radiusFactor - 0.5) * 4;
-    const coreRadius = Math.max(
-      1,
-      Math.min(
-        rippleSettings.clickCoreRadius + coreJitterPx,
-        outerTargetRadius,
-      ),
+    const geometry = useMemo(
+      () => getRippleGeometry(effect, rippleSettings),
+      [effect, rippleSettings],
     );
-    const expansionVelocity = outerTargetRadius / expansionDuration;
 
-    const rings = Array.from({ length: numRings }, (_, i) => {
-      const ringStartTime = effect.startTime + i * ringStaggerMs;
-      const elapsed = now - ringStartTime;
+    useEffect(() => {
+      const previousRadii = new Array<number>(geometry.rings.length);
+      const previousVisibility = new Array<boolean>(geometry.rings.length);
+      const update = (now: number) => {
+        geometry.rings.forEach((ring, index) => {
+          const elapsed = now - ring.ringStartTime;
+          const visible = elapsed >= 0;
+          const circle = circlesRef.current[index];
+          if (circle && previousVisibility[index] !== visible) {
+            circle.style.display = visible ? "" : "none";
+            previousVisibility[index] = visible;
+          }
+          const progress = Math.max(
+            0,
+            Math.min(1, elapsed / ring.ringDuration),
+          );
+          const radius =
+            ring.ringTargetRadius * (1 - Math.pow(1 - progress, 3));
+          if (previousRadii[index] !== radius) {
+            circlesRef.current[index]?.setAttribute("r", String(radius));
+            previousRadii[index] = radius;
+          }
+        });
+        const complete = now >= geometry.lifecycle.completedAt;
+        if (complete && completedIdRef.current !== effect.id) {
+          completedIdRef.current = effect.id;
+          onCompleteRef.current?.(effect.id);
+        }
+        return !complete;
+      };
+      if (!update(Date.now())) return;
+      return subscribeRippleFrame(update);
+    }, [effect, rippleSettings, geometry]);
 
-      if (elapsed < 0) return null;
-
-      // Innermost ring sits at the core mark; outer rings interpolate
-      // linearly from core out to outerTargetRadius. With numRings === 1
-      // the lone ring goes all the way out (otherwise it'd be a tiny dot).
-      const ringTargetRadius =
-        numRings === 1
-          ? outerTargetRadius
-          : coreRadius +
-            (outerTargetRadius - coreRadius) * (i / (numRings - 1));
-
-      const ringDuration = Math.max(1, ringTargetRadius / expansionVelocity);
-      const rawProgress = Math.min(1, elapsed / ringDuration);
-      const ringRadius = ringTargetRadius * easeOutCubic(rawProgress);
-
+    const rings = geometry.rings.map((_, i) => {
       return (
         <circle
           key={i}
+          ref={(circle) => {
+            circlesRef.current[i] = circle;
+          }}
           cx={effect.x}
           cy={effect.y}
-          r={ringRadius}
+          r={0}
           fill="none"
           stroke={effect.color}
           strokeWidth={rippleSettings.clickStrokeWidth}
-          opacity={Math.max(0, rippleSettings.clickOpacity)}
-          style={{ mixBlendMode: "multiply" }}
+          opacity={Math.max(0, geometry.lifecycle.opacity)}
+          style={{ mixBlendMode: "multiply", display: "none" }}
         />
       );
     });
 
     return <g>{rings}</g>;
   },
+  (previous, next) =>
+    previous.effect === next.effect &&
+    previous.onComplete === next.onComplete &&
+    previous.settings.clickMinRadius === next.settings.clickMinRadius &&
+    previous.settings.clickMaxRadius === next.settings.clickMaxRadius &&
+    previous.settings.clickCoreRadius === next.settings.clickCoreRadius &&
+    previous.settings.clickMinDuration === next.settings.clickMinDuration &&
+    previous.settings.clickMaxDuration === next.settings.clickMaxDuration &&
+    previous.settings.clickExpansionDuration ===
+      next.settings.clickExpansionDuration &&
+    previous.settings.clickStrokeWidth === next.settings.clickStrokeWidth &&
+    previous.settings.clickOpacity === next.settings.clickOpacity &&
+    previous.settings.clickNumRings === next.settings.clickNumRings &&
+    previous.settings.clickRingDelayMs === next.settings.clickRingDelayMs &&
+    previous.settings.clickAnimationStopPoint ===
+      next.settings.clickAnimationStopPoint,
 );

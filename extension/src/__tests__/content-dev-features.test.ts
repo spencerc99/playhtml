@@ -6,6 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const storageGet = vi.hoisted(() => vi.fn());
 const storageSet = vi.hoisted(() => vi.fn());
 const runtimeSendMessage = vi.hoisted(() => vi.fn());
+const maybeInjectAnnouncementToast = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined),
+);
 const publicIdentityResponse = vi.hoisted(() => ({
   value: {
     publicKey: "pk_test",
@@ -32,10 +35,6 @@ vi.mock("webextension-polyfill", () => ({
       },
     },
   },
-}));
-
-vi.mock("../flags", () => ({
-  FLAGS: { COPRESENCE: true },
 }));
 
 vi.mock("../collectors/CollectorManager", () => ({
@@ -65,6 +64,19 @@ vi.mock("../collectors/KeyboardCollector", () => ({
   KeyboardCollector: class {},
 }));
 
+vi.mock("../announcements/inject-toast", () => ({
+  maybeInjectAnnouncementToast,
+}));
+
+async function waitForContentInitialization(): Promise<void> {
+  await vi.waitFor(() => {
+    expect(maybeInjectAnnouncementToast).toHaveBeenCalledOnce();
+    expect(storageGet).toHaveBeenCalledWith([
+      `migration_v1_done_${window.location.hostname}`,
+    ]);
+  });
+}
+
 describe("content internal development features", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -80,9 +92,6 @@ describe("content internal development features", () => {
     storageGet.mockReset();
     storageGet.mockImplementation((keys: string | string[]) => {
       if (!Array.isArray(keys)) return Promise.resolve({});
-      if (keys.includes("internalDevFeaturesEnabled")) {
-        return Promise.resolve({ internalDevFeaturesEnabled: false });
-      }
       if (keys.includes("gameInventory")) {
         return Promise.resolve({
           gameInventory: { items: [], totalItems: 0, lastUpdated: 0 },
@@ -100,6 +109,7 @@ describe("content internal development features", () => {
 
     storageSet.mockReset();
     storageSet.mockResolvedValue(undefined);
+    maybeInjectAnnouncementToast.mockClear();
 
     runtimeSendMessage.mockReset();
     runtimeSendMessage.mockImplementation((message: { type?: string }) => {
@@ -133,15 +143,35 @@ describe("content internal development features", () => {
         domain: window.location.hostname,
       });
     });
-    await Promise.resolve();
-    await Promise.resolve();
+    await waitForContentInitialization();
 
-    expect(storageGet).toHaveBeenCalledWith(["internalDevFeaturesEnabled"]);
+    expect(storageGet).toHaveBeenCalledWith("wwoFeatureAccess");
     expect(storageGet).not.toHaveBeenCalledWith(["gameInventory"]);
     expect(mutationObserver).not.toHaveBeenCalled();
   });
 
   it("bounds public identity fields before injecting them", async () => {
+    storageGet.mockImplementation((keys: string | string[]) => {
+      if (keys === "wwoFeatureAccess") {
+        return Promise.resolve({
+          wwoFeatureAccess: {
+            features: { COPRESENCE: { stage: "internal", available: true } },
+            checkedAt: 1,
+          },
+        });
+      }
+      if (keys === "wwoFeatureOverrides") {
+        return Promise.resolve({ wwoFeatureOverrides: { COPRESENCE: true } });
+      }
+      if (!Array.isArray(keys)) return Promise.resolve({});
+      return Promise.resolve(
+        Object.fromEntries(
+          keys
+            .filter((key) => key.startsWith("migration_v1_done_"))
+            .map((key) => [key, true]),
+        ),
+      );
+    });
     publicIdentityResponse.value = {
       publicKey: "pk_test",
       name: "x".repeat(5000),
@@ -157,13 +187,8 @@ describe("content internal development features", () => {
 
       contentScript.main();
 
-      await vi.waitFor(() => {
-        expect(storageGet).toHaveBeenCalledWith([
-          "internalDevFeaturesEnabled",
-        ]);
-      });
-      await Promise.resolve();
-
+      await vi.waitFor(() => expect(injected).toHaveBeenCalledOnce());
+      await waitForContentInitialization();
       expect(injected).toHaveBeenCalledOnce();
       const event = injected.mock.calls[0][0] as CustomEvent;
       expect(event.detail).toEqual({

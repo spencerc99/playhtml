@@ -5,11 +5,17 @@ import path from "path";
 
 export default defineConfig({
   srcDir: "src",
-  manifest: {
+  manifest: ({ browser }) => ({
     name: "we were online",
     description:
-      "A quiet portrait of your time online. See who else is here, chat on Wikipedia, and collect traces of where you've been.",
-    permissions: ["storage", "tabs", "alarms", "idle", "unlimitedStorage"],
+      "A quiet portrait of your time online. See who else is here, chat, and collect traces of where you've been.",
+    permissions: [
+      "storage",
+      "tabs",
+      "alarms",
+      ...(browser === "safari" ? [] : ["idle", "webNavigation"]),
+      "unlimitedStorage",
+    ],
     host_permissions: ["http://*/*", "https://*/*"],
     action: {
       default_title: "we were online",
@@ -25,7 +31,12 @@ export default defineConfig({
     },
     web_accessible_resources: [
       {
-        resources: ["content-scripts/content.css", "inventory/*"],
+        resources: [
+          "content-scripts/content.css",
+          "installation.js",
+          "historical-overlay.js",
+          "inventory/*",
+        ],
         matches: ["<all_urls>"],
       },
     ],
@@ -38,6 +49,13 @@ export default defineConfig({
         },
       },
     },
+  }),
+  hooks: {
+    "build:manifestGenerated": (wxt, manifest) => {
+      if (wxt.config.browser === "safari" && manifest.options_ui) {
+        delete manifest.options_ui.open_in_tab;
+      }
+    },
   },
   modules: ["@wxt-dev/module-react"],
   outDir: process.env.WXT_OUT_DIR || "dist",
@@ -47,6 +65,12 @@ export default defineConfig({
   vite: () => ({
     esbuild: {
       charset: "ascii",
+    },
+    // tldraw's asset list imports each font and icon with `?url`. The dev
+    // server's dependency pre-bundling drops those imports, which leaves the
+    // list with undefined entries, so the package is served as-is instead.
+    optimizeDeps: {
+      exclude: ["@tldraw/assets"],
     },
     resolve: {
       alias: {

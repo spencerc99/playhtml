@@ -108,6 +108,17 @@ test("throws when the options page is missing from the manifest", async () => {
   });
 
   await expect(validateExtensionBuild(dir)).rejects.toThrow(
-    /options_ui\.open_in_tab must be true/,
+    /options_ui\.page must be configured/,
   );
+});
+
+test("allows Safari to omit the unsupported options tab setting", async () => {
+  const dir = await makeBuildDir({
+    manifest_version: 3,
+    options_ui: {
+      page: "options.html",
+    },
+  });
+
+  await expect(validateExtensionBuild(dir, "safari")).resolves.toBeUndefined();
 });

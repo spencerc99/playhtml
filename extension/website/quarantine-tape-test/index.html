@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>quarantine tape — prototype</title>
+    <style>
+      :root {
+        --slop-bg: #f4f1ec;
+        --slop-card: #ffffff;
+        --slop-text: #2b2b2b;
+        --slop-muted: #8a8279;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
+      body {
+        background: var(--slop-bg);
+        color: var(--slop-text);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        line-height: 1.6;
+      }
+
+      /* --- fake "slop" page content, so we can feel tape over real content --- */
+      .slop {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 48px 24px 200px;
+      }
+      .slop h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.01em; margin: 0 0 6px; }
+      .slop .byline { color: var(--slop-muted); font-size: 13px; margin: 0 0 28px; }
+      .slop h2 { font-size: 21px; margin: 36px 0 10px; }
+      .slop p { margin: 0 0 16px; }
+      .slop .ad {
+        background: repeating-linear-gradient(45deg, #fbe9c8, #fbe9c8 12px, #f6dfb4 12px, #f6dfb4 24px);
+        border: 1px dashed #d8b878;
+        color: #9a7b3a;
+        text-align: center;
+        padding: 22px;
+        margin: 24px 0;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .slop img.hero {
+        width: 100%; height: 220px; object-fit: cover; border-radius: 6px;
+        margin: 8px 0 24px; display: block;
+        background: linear-gradient(135deg, #cdb6a0, #a89274);
+      }
+      .slop .cta {
+        display: inline-block; background: #d24b3e; color: #fff;
+        padding: 10px 18px; border-radius: 5px; text-decoration: none;
+        font-weight: 600; margin: 8px 0;
+      }
+      .slop .thumbs {
+        display: grid; grid-template-columns: repeat(3, 1fr);
+        gap: 12px; margin: 20px 0;
+      }
+      .slop .thumb {
+        width: 100%; height: auto; display: block; border-radius: 4px;
+      }
+
+      /* an image the armed tape gun is hovering — outlined as a target */
+      .qt-target-hover {
+        outline: 3px dashed var(--qt-target-color, #f0a92b) !important;
+        outline-offset: 3px;
+      }
+
+      /* --- toolbar / inventory --- */
+      .toolbar {
+        position: fixed; top: 0; left: 0; right: 0; z-index: 30;
+        display: flex; align-items: center; gap: 14px;
+        padding: 10px 16px;
+        background: rgba(28, 26, 24, 0.92);
+        color: #f4f1ec;
+        backdrop-filter: blur(6px);
+        font-size: 13px;
+        user-select: none;
+      }
+      .toolbar .title { font-weight: 700; letter-spacing: 0.02em; }
+      .toolbar .spacer { flex: 1; }
+      .roll {
+        display: inline-flex; align-items: center; gap: 7px;
+        padding: 6px 11px; border-radius: 999px;
+        border: 1.5px solid transparent;
+        background: rgba(255,255,255,0.07);
+        cursor: pointer; transition: all 0.12s;
+      }
+      .roll:hover { background: rgba(255,255,255,0.14); }
+      .roll[data-armed="true"] {
+        border-color: currentColor;
+        background: rgba(255,255,255,0.16);
+        box-shadow: 0 0 0 1px currentColor inset;
+      }
+      .roll .swatch {
+        width: 26px; height: 13px; border-radius: 2px;
+        box-shadow: 0 0 5px rgba(0,0,0,0.4);
+      }
+      .roll[data-type="slop"] .swatch {
+        background: repeating-linear-gradient(-45deg, #f0a92b 0 5px, #161616 5px 10px);
+      }
+      .roll[data-type="spam"] .swatch {
+        background: repeating-linear-gradient(-45deg, #f6f1ea 0 5px, #d62828 5px 10px);
+      }
+      .roll .lbl { color: #f4f1ec; font-size: 12px; letter-spacing: 0.04em; }
+      .hint { color: #b8b0a5; font-size: 12px; min-width: 240px; }
+      .count { color: #b8b0a5; font-size: 12px; font-variant-numeric: tabular-nums; }
+
+      /* tape-gun cursor armed state */
+      body.armed, body.armed * { cursor: crosshair !important; }
+    </style>
+  </head>
+  <body>
+    <div class="toolbar">
+      <span class="title">⚠ QUARANTINE</span>
+      <span class="roll" data-type="slop"  style="--c:#f0a92b"><span class="swatch"></span><span class="lbl">AI SLOP</span></span>
+      <span class="roll" data-type="spam"  style="--c:#d62828"><span class="swatch"></span><span class="lbl">SEO SPAM</span></span>
+      <span class="spacer"></span>
+      <span class="hint" id="hint">Pick a tape roll to equip the gun.</span>
+      <span class="count" id="count">0 strips</span>
+    </div>
+
+    <article class="slop">
+      <h1>10 Unbelievable Productivity Hacks That Will Change Your Life Forever</h1>
+      <p class="byline">By Content Team · 14 min read · Updated just now</p>
+      <img class="hero" alt="" src="data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='760' height='220'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23cdb6a0'/%3E%3Cstop offset='1' stop-color='%23a89274'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='760' height='220' fill='url(%23g)'/%3E%3Ctext x='380' y='115' font-family='sans-serif' font-size='15' fill='%23fff' fill-opacity='.75' text-anchor='middle'%3EAI-generated hero image%3C/text%3E%3C/svg%3E" />
+      <p>In today's fast-paced digital landscape, productivity is more important than ever. Whether you're a busy professional, a student, or a stay-at-home parent, these revolutionary tips will transform the way you work and live. Let's dive right in!</p>
+      <div class="thumbs">
+        <img class="thumb" alt="" src="data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='150'%3E%3Crect width='240' height='150' fill='%23b9a68f'/%3E%3Ctext x='120' y='80' font-family='sans-serif' font-size='12' fill='%23fff' fill-opacity='.8' text-anchor='middle'%3Estock photo 1%3C/text%3E%3C/svg%3E" />
+        <img class="thumb" alt="" src="data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='150'%3E%3Crect width='240' height='150' fill='%23a8b39a'/%3E%3Ctext x='120' y='80' font-family='sans-serif' font-size='12' fill='%23fff' fill-opacity='.8' text-anchor='middle'%3Estock photo 2%3C/text%3E%3C/svg%3E" />
+        <img class="thumb" alt="" src="data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='150'%3E%3Crect width='240' height='150' fill='%23c0a5a5'/%3E%3Ctext x='120' y='80' font-family='sans-serif' font-size='12' fill='%23fff' fill-opacity='.8' text-anchor='middle'%3Estock photo 3%3C/text%3E%3C/svg%3E" />
+      </div>
+      <div class="ad">Advertisement — You won't believe #7</div>
+      <h2>1. Wake Up Earlier (But Not Too Early)</h2>
+      <p>Studies have shown that waking up earlier can dramatically improve your focus and energy levels throughout the day. By adjusting your sleep schedule, you can unlock a whole new level of performance. Many successful people swear by this simple yet effective technique.</p>
+      <p>But here's the secret nobody tells you: it's not about how early you wake up, it's about consistency. Try setting your alarm for the same time every single day, even on weekends.</p>
+      <a class="cta" href="#">Click here to learn the #1 trick →</a>
+      <h2>2. The Pomodoro Technique, Reimagined</h2>
+      <p>You've probably heard of the Pomodoro Technique, but did you know there's a better way? Our exclusive method takes the classic 25-minute work sprints and supercharges them with science-backed micro-breaks.</p>
+      <div class="ad">Sponsored Content</div>
+      <p>The results speak for themselves. Users report a 200% increase in output, less burnout, and a renewed sense of purpose. It's time to work smarter, not harder.</p>
+      <h2>3. Declutter Your Digital Workspace</h2>
+      <p>A cluttered desktop leads to a cluttered mind. Take ten minutes today to organize your files, close those 47 browser tabs, and silence non-essential notifications. You'll be amazed at the difference.</p>
+      <p>Pro tip: use folders, color-coding, and a consistent naming convention to keep everything findable. Future you will thank present you.</p>
+      <a class="cta" href="#">Download our free productivity template →</a>
+      <h2>4. Hydrate Like Your Life Depends On It</h2>
+      <p>Dehydration is the silent killer of productivity. Keep a water bottle at your desk and aim for at least eight glasses a day. Your brain is 75% water — treat it accordingly.</p>
+      <div class="ad">Advertisement</div>
+      <p>And there you have it — a few of the game-changing strategies that top performers use every single day. Which one will you try first? Let us know in the comments below, and don't forget to subscribe for more life-changing content!</p>
+    </article>
+
+    <script type="module" src="./quarantine-tape-test.ts"></script>
+  </body>
+</html>

@@ -3,6 +3,7 @@
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
+    "noEmit": true,
     "paths": {
       "@": ["./src"],
       "@/*": ["./src/*"],
@@ -17,5 +18,5 @@
       "@movement/*": ["./website/shared/*"]
     }
   },
-  "exclude": ["dist", "website"]
+  "exclude": ["dist", "website", "worker"]
 }

@@ -1,5 +1,79 @@
 // ABOUTME: Shared helpers for driving fake presence PartySockets in tests.
-// ABOUTME: Finds sockets by room and parses sent presence protocol messages.
+// ABOUTME: Builds presence transports, flushes publishes, and parses protocol messages.
+
+import type { PlayerIdentity, PresenceServerMessage } from "@playhtml/common";
+import type { CursorOptions } from "../index";
+import { CursorClientAwareness } from "../cursors/cursor-client";
+import { createUsersAPI } from "../users";
+import { PeerStore } from "../peer-store";
+import type { PresenceJoinInput } from "../presence-transport";
+
+export const cursorTestModes = [
+  { cursorMode: "disabled", cursors: { enabled: false } },
+  { cursorMode: "enabled", cursors: { enabled: true } },
+] as const;
+
+export type FakePresenceTransport = {
+  updates: Array<{ channel: string; value: unknown }>;
+  clears: string[];
+  joins: PresenceJoinInput[];
+  peers: PeerStore;
+  join(input: PresenceJoinInput): void;
+  update(channel: string, value: unknown): void;
+  clear(channel: string): void;
+  subscribe(listener: (message: PresenceServerMessage) => void): () => void;
+  emit(message: PresenceServerMessage): void;
+  destroy(): void;
+};
+
+export function createFakePresenceTransport(): FakePresenceTransport {
+  const listeners = new Set<(message: PresenceServerMessage) => void>();
+  const transport = {
+    updates: [] as Array<{ channel: string; value: unknown }>,
+    clears: [] as string[],
+    joins: [] as PresenceJoinInput[],
+    join(input: PresenceJoinInput) {
+      this.joins.push(input);
+    },
+    update(channel: string, value: unknown) {
+      this.updates.push({ channel, value });
+    },
+    clear(channel: string) {
+      this.clears.push(channel);
+    },
+    subscribe(listener: (message: PresenceServerMessage) => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    emit(message: PresenceServerMessage) {
+      for (const listener of listeners) listener(message);
+    },
+    destroy() {
+      transport.peers.destroy();
+      listeners.clear();
+    },
+  } as FakePresenceTransport;
+  transport.peers = new PeerStore(transport);
+  return transport;
+}
+
+export function createTransportCursorClient(
+  options: CursorOptions,
+  transport = createFakePresenceTransport(),
+) {
+  const identity = options.playerIdentity as PlayerIdentity;
+  let client: CursorClientAwareness;
+  const users = createUsersAPI(identity, {
+    getIdentityPeers: () => transport.peers.getPeers(),
+    onIdentityPeersChange: (callback) =>
+      transport.peers.subscribe("identity", callback),
+    getCursorPresences: () => client?.getCursorPresences() ?? new Map(),
+    onCursorPresencesChange: (callback) =>
+      client?.onCursorPresencesChange(callback),
+  });
+  client = new CursorClientAwareness(options, transport as any, users);
+  return { client, transport, users };
+}
 
 export type FakePresenceSocket = {
   options: Record<string, unknown>;
@@ -52,6 +126,6 @@ export function sentPresenceValues(
   );
 }
 
-export function flushMicrotasks(): Promise<void> {
+export function flushPresencePublishes(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }

@@ -18,6 +18,22 @@ import {
 } from "../index";
 import type { PlayerIdentity } from "playhtml";
 
+const mockedPlayhtml = (globalThis as any).MOCKED_PLAYHTML as {
+  isLoading: boolean;
+  init: ReturnType<typeof vi.fn>;
+  ready: Promise<void>;
+  resetReady: () => void;
+  resolveReady: () => void;
+  createPresenceRoom: ReturnType<typeof vi.fn>;
+  presence: unknown;
+  setMockPlayerIdentity: (next: {
+    publicKey?: string;
+    name?: string;
+    playerStyle?: { colorPalette: string[]; cursorStyle?: string };
+    createdAt?: number;
+  }) => void;
+};
+
 describe("usePresence", () => {
   beforeEach(() => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -49,10 +65,12 @@ describe("usePresence", () => {
 
   it("setMyPresence is a no-op pre-sync, works post-sync", async () => {
     const warnSpy = vi.spyOn(console, "warn");
-    let captured: ReturnType<typeof usePresence> | null = null;
+    let captured:
+      | ReturnType<typeof usePresence<"selection", { x: number }>>
+      | null = null;
 
     function TestComponent() {
-      captured = usePresence("selection");
+      captured = usePresence<"selection", { x: number }>("selection");
       return <div />;
     }
 
@@ -78,9 +96,46 @@ describe("usePresence", () => {
     act(() => {
       captured!.setMyPresence({ x: 2 });
     });
+    expect(playhtml.presence.setMyPresence).toHaveBeenLastCalledWith("selection", {
+      x: 2,
+    });
 
     await waitFor(() => {
       expect(captured!.presences.size).toBeGreaterThan(0);
+      expect(captured!.presences.get("me")).toMatchObject({
+        selection: { x: 2 },
+        isMe: true,
+      });
+    });
+    expect(captured!.presences.get("me")).not.toHaveProperty("x");
+  });
+
+  it("re-derives myIdentity on a later identity change instead of freezing at sync completion", async () => {
+    let captured: ReturnType<typeof usePresence<"selection">> | null = null;
+
+    function TestComponent() {
+      captured = usePresence("selection");
+      return <div />;
+    }
+
+    render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+
+    await waitFor(() => {
+      expect(captured!.myIdentity).not.toBeNull();
+    });
+    expect(captured!.myIdentity?.publicKey).toBe("me");
+
+    // Simulates the "we were online" extension injecting identity post-sync.
+    act(() => {
+      mockedPlayhtml.setMockPlayerIdentity({ publicKey: "injected-pid" });
+    });
+
+    await waitFor(() => {
+      expect(captured!.myIdentity?.publicKey).toBe("injected-pid");
     });
   });
 });
@@ -141,6 +196,29 @@ describe("usePageData", () => {
 
     await waitFor(() => expect(getByText("42")).toBeDefined());
   });
+
+  it("supports functional updates for primitive page data", async () => {
+    let captured: ReturnType<typeof usePageData<number>> | null = null;
+
+    function TestComponent() {
+      captured = usePageData("view-count", 0);
+      return <div>{captured[0]}</div>;
+    }
+
+    const { getByText } = render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+
+    await waitFor(() => expect(getByText("0")).toBeDefined());
+
+    act(() => {
+      captured![1]((value) => value + 1);
+    });
+
+    await waitFor(() => expect(getByText("1")).toBeDefined());
+  });
 });
 
 describe("usePresenceRoom", () => {
@@ -161,6 +239,92 @@ describe("usePresenceRoom", () => {
 
     expect(seen[0]).toBe(false);
     await waitFor(() => expect(seen.at(-1)).toBe(true));
+  });
+
+  it("keeps returning null when the provider is briefly ahead of core readiness", async () => {
+    mockedPlayhtml.resetReady();
+    mockedPlayhtml.isLoading = false;
+    mockedPlayhtml.init.mockImplementation(() => mockedPlayhtml.ready);
+    mockedPlayhtml.createPresenceRoom.mockClear();
+
+    const room = {
+      presence: mockedPlayhtml.presence,
+      destroy: vi.fn(),
+    };
+    mockedPlayhtml.createPresenceRoom
+      .mockImplementationOnce(() => {
+        throw new Error("playhtml.createPresenceRoom is not available before init()");
+      })
+      .mockImplementation(() => room);
+
+    function TestComponent() {
+      const room = usePresenceRoom("voice");
+      return <div data-testid="room">{room ? "ready" : "loading"}</div>;
+    }
+
+    const { getByTestId } = render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+
+    expect(getByTestId("room")).toHaveTextContent("loading");
+    await waitFor(() => {
+      expect(mockedPlayhtml.createPresenceRoom).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      document.dispatchEvent(new CustomEvent("playhtml:navigated"));
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("room")).toHaveTextContent("ready");
+    });
+  });
+
+  it("retries the current room name when readiness resolves", async () => {
+    mockedPlayhtml.resetReady();
+    mockedPlayhtml.isLoading = false;
+    mockedPlayhtml.init.mockImplementation(() => mockedPlayhtml.ready);
+    mockedPlayhtml.createPresenceRoom.mockClear();
+
+    let coreReady = false;
+    mockedPlayhtml.createPresenceRoom.mockImplementation((name: string) => {
+      if (!coreReady) {
+        throw new Error("playhtml.createPresenceRoom is not available before init()");
+      }
+      return {
+        name,
+        presence: mockedPlayhtml.presence,
+        destroy: vi.fn(),
+      };
+    });
+
+    function TestComponent({ name }: { name: string }) {
+      const room = usePresenceRoom(name) as { name: string } | null;
+      return <div data-testid="room">{room?.name ?? "loading"}</div>;
+    }
+
+    const { getByTestId, rerender } = render(
+      <PlayProvider>
+        <TestComponent name="first" />
+      </PlayProvider>,
+    );
+    expect(getByTestId("room")).toHaveTextContent("loading");
+
+    rerender(
+      <PlayProvider>
+        <TestComponent name="second" />
+      </PlayProvider>,
+    );
+    coreReady = true;
+    act(() => {
+      mockedPlayhtml.resolveReady();
+    });
+
+    await waitFor(() => {
+      expect(getByTestId("room")).toHaveTextContent("second");
+    });
   });
 });
 

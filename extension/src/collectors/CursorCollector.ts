@@ -8,26 +8,32 @@ import { VERBOSE } from '../config';
 
 /**
  * CursorCollector captures cursor movement with dual-layer approach:
- * 
+ *
  * 1. Real-time streaming (60fps) to PartyKit for live visualization
- * 2. Sparse sampling (100ms) to EventBuffer for archival
+ * 2. Sparse sampling (250ms) to EventBuffer for archival
  */
 export class CursorCollector extends BaseCollector<CursorEventData> {
   readonly type = 'cursor' as const;
   readonly description = 'Captures cursor movement, clicks, holds, and cursor style changes';
-  
+
   private mouseMoveHandler?: (e: MouseEvent) => void;
+  private mouseOverHandler?: (e: MouseEvent) => void;
   private animationFrameId?: number;
   private sampleTimer: number | null = null;
   protected sampleRate = 250; // ms between samples for archival
   private realTimeRate = 16; // ~60fps for real-time (16ms)
   private lastRealTimeTime = 0;
   private minMovementThreshold = 15; // pixels - minimum movement to trigger a sample
+  /** Collector default, restored when installation pace turns off. */
+  private readonly defaultSampleRate = 250;
+  private readonly defaultMovementThreshold = 15;
 
   // Current cursor state
   private currentX = 0;
   private currentY = 0;
+  private currentTargetElement: HTMLElement | null = null;
   private currentTarget: string | undefined;
+  private targetSelectorDirty = false;
   private currentCursorStyle: string | undefined;
   private lastCursorStyle: string | undefined;
   private cursorChangeTimer: number | null = null;
@@ -38,11 +44,11 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   // Last sampled position (for movement threshold)
   private lastSampledX = 0;
   private lastSampledY = 0;
-  
+
   // Mouse event handlers
   private mouseDownHandler?: (e: MouseEvent) => void;
   private mouseUpHandler?: (e: MouseEvent) => void;
-  
+
   // Click vs hold tracking
   private mouseDownTime: number = 0;
   private mouseDownButton: number = -1;
@@ -51,7 +57,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   private mouseDownScrollX: number = 0;
   private mouseDownScrollY: number = 0;
   private holdThreshold = 250; // ms to distinguish click vs hold
-  
+
   start(): void {
     // Note: enable() already checks if enabled, so we don't need to check here
     if (VERBOSE) {
@@ -61,63 +67,75 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
 
     this.lastSampledX = this.currentX;
     this.lastSampledY = this.currentY;
-    
+
     // Set up mouse move handler
     this.mouseMoveHandler = (e: MouseEvent) => {
       this.currentX = e.clientX;
       this.currentY = e.clientY;
-      
-      // Try to capture target element
+
       const target = e.target as HTMLElement;
-      if (target instanceof HTMLElement) {
-        // Create a simple selector (tag + id/class if available)
-        this.currentTarget = getElementSelector(target);
-
-        if (target !== this.lastCursorStyleTarget) {
-          this.lastCursorStyleTarget = target;
-
-          // Detect cursor style changes (debounced)
-          const computedStyle = window.getComputedStyle(target);
-          const cursorStyle = computedStyle.cursor || 'auto';
-          this.currentCursorStyle = cursorStyle;
-
-          if (this.lastCursorStyle === undefined) {
-            this.lastCursorStyle = cursorStyle;
-          } else if (this.lastCursorStyle !== cursorStyle) {
-            this.pendingCursorStyle = cursorStyle;
-            if (this.cursorChangeTimer === null) {
-              this.cursorChangeTimer = window.setTimeout(() => {
-                this.cursorChangeTimer = null;
-                // Only emit if cursor actually settled on a different style
-                if (this.pendingCursorStyle !== undefined && this.pendingCursorStyle !== this.lastCursorStyle) {
-                  this.lastCursorStyle = this.pendingCursorStyle;
-                  this.emitCursorChangeEvent();
-                }
-              }, this.cursorChangeDebounce);
-            }
-          }
-        }
+      if (target instanceof HTMLElement && target !== this.currentTargetElement) {
+        this.currentTargetElement = target;
+        this.targetSelectorDirty = true;
       }
-      
+      if (target instanceof HTMLElement && this.lastCursorStyleTarget === null) {
+        this.mouseOverHandler?.(e);
+      }
+
       if (this.hasRealTimeCallback()) {
         this.scheduleRealTimeUpdate();
       }
 
       // Schedule archival sample if movement is significant enough
-      const dx = Math.abs(this.currentX - this.lastSampledX);
-      const dy = Math.abs(this.currentY - this.lastSampledY);
-      const distance = Math.sqrt(dx * dx + dy * dy);
+      const dx = this.currentX - this.lastSampledX;
+      const dy = this.currentY - this.lastSampledY;
 
-      if (distance >= this.minMovementThreshold) {
+      if (dx * dx + dy * dy >= this.minMovementThreshold ** 2) {
         this.scheduleArchivalSample();
       }
     };
-    
+
+    this.mouseOverHandler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!(target instanceof HTMLElement)) return;
+
+      if (target !== this.currentTargetElement) {
+        this.currentTargetElement = target;
+        this.targetSelectorDirty = true;
+      }
+      if (target === this.lastCursorStyleTarget) return;
+
+      this.lastCursorStyleTarget = target;
+      const cursorStyle = window.getComputedStyle(target).cursor || 'auto';
+      this.currentCursorStyle = cursorStyle;
+
+      if (this.lastCursorStyle === undefined) {
+        this.lastCursorStyle = cursorStyle;
+        return;
+      }
+      if (this.lastCursorStyle === cursorStyle) {
+        this.pendingCursorStyle = undefined;
+        return;
+      }
+
+      this.pendingCursorStyle = cursorStyle;
+      if (this.cursorChangeTimer !== null) return;
+
+      this.cursorChangeTimer = window.setTimeout(() => {
+        this.cursorChangeTimer = null;
+        if (this.pendingCursorStyle !== undefined && this.pendingCursorStyle !== this.lastCursorStyle) {
+          this.lastCursorStyle = this.pendingCursorStyle;
+          this.emitCursorChangeEvent();
+        }
+      }, this.cursorChangeDebounce);
+    };
+
     document.addEventListener('mousemove', this.mouseMoveHandler, { passive: true });
+    document.addEventListener('mouseover', this.mouseOverHandler, { passive: true });
     if (VERBOSE) {
       console.log('[CursorCollector] Mouse move listener attached');
     }
-    
+
     // Set up mouse down handler (for click/hold detection)
     this.mouseDownHandler = (e: MouseEvent) => {
       this.mouseDownTime = Date.now();
@@ -127,7 +145,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       this.mouseDownScrollX = window.scrollX;
       this.mouseDownScrollY = window.scrollY;
     };
-    
+
     // Set up mouse up handler (for click/hold detection)
     this.mouseUpHandler = (e: MouseEvent) => {
       // Skip if no mousedown was captured (e.g., mouse was already held when collector started)
@@ -142,7 +160,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
 
       const target = e.target as HTMLElement;
       const targetSelector = target ? getElementSelector(target) : undefined;
-      
+
       if (duration >= this.holdThreshold) {
         // Hold events are emitted immediately (not debounced)
         this.emitDiscreteEvent({
@@ -164,15 +182,15 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
           button: this.mouseDownButton,
         });
       }
-      
+
       this.mouseDownTime = 0;
       this.mouseDownButton = -1;
     };
-    
+
     // Attach event listeners
     document.addEventListener('mousedown', this.mouseDownHandler, { passive: true });
     document.addEventListener('mouseup', this.mouseUpHandler, { passive: true });
-    
+
     if (this.hasRealTimeCallback()) {
       this.startRealTimeLoop();
     }
@@ -180,11 +198,16 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       console.log('[CursorCollector] Started successfully');
     }
   }
-  
+
   stop(): void {
     if (this.mouseMoveHandler) {
       document.removeEventListener('mousemove', this.mouseMoveHandler);
       this.mouseMoveHandler = undefined;
+    }
+
+    if (this.mouseOverHandler) {
+      document.removeEventListener('mouseover', this.mouseOverHandler);
+      this.mouseOverHandler = undefined;
     }
 
     if (this.mouseDownHandler) {
@@ -213,10 +236,20 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       this.cursorChangeTimer = null;
     }
   }
-  
+
   /**
    * Schedule a real-time update (throttled to ~60fps)
    */
+  /**
+   * Applies (or clears) installation pace. Faster sampling with a smaller
+   * movement threshold makes a browsing machine's marks arrive close to live.
+   */
+  setPace(pace: { sampleRateMs: number; movementThresholdPx: number } | null): void {
+    this.setSampleRate(pace?.sampleRateMs ?? this.defaultSampleRate);
+    this.minMovementThreshold =
+      pace?.movementThresholdPx ?? this.defaultMovementThreshold;
+  }
+
   private scheduleRealTimeUpdate(): void {
     const now = Date.now();
     if (now - this.lastRealTimeTime >= this.realTimeRate) {
@@ -242,27 +275,27 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       }
     }, this.sampleRate);
   }
-  
+
   /**
    * Start animation frame loop for real-time streaming
    */
   private startRealTimeLoop(): void {
     const loop = () => {
       if (!this.enabled) return;
-      
+
       // Emit real-time data if enough time has passed
       const now = Date.now();
       if (now - this.lastRealTimeTime >= this.realTimeRate) {
         this.emitRealTimeData();
         this.lastRealTimeTime = now;
       }
-      
+
       this.animationFrameId = requestAnimationFrame(loop);
     };
-    
+
     this.animationFrameId = requestAnimationFrame(loop);
   }
-  
+
   /**
    * Emit real-time cursor data (for PartyKit streaming)
    */
@@ -273,45 +306,45 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       window.innerWidth,
       window.innerHeight
     );
-    
+
     const data: CursorEventData = {
       x: normalized.x,
       y: normalized.y,
-      t: this.currentTarget,
+      t: this.getCurrentTarget(),
       cursor: this.currentCursorStyle,
       event: 'move',
     };
-    
+
     // Emit to real-time stream (PartyKit)
     if (!this.hasRealTimeCallback()) return;
     this.emitRealTime(data);
   }
-  
+
   /**
    * Emit a discrete event (click, hold, cursor_change)
    * These are emitted immediately to the buffer (not throttled)
    */
   private emitDiscreteEvent(data: CursorEventData): void {
     if (!this.enabled) return;
-    
+
     if (VERBOSE) {
       console.log('[CursorCollector] Emitting discrete event:', data);
     }
-    
+
     // Emit to buffer for archival
     this.emit(data);
-    
+
     // Also emit to real-time stream for live visualization
     this.emitRealTime(data);
   }
-  
+
   private handleClick(clickData: CursorEventData): void {
     this.emitDiscreteEvent({
       ...clickData,
       quantity: 1,
     });
   }
-  
+
   /**
    * Emit cursor style change event
    */
@@ -322,15 +355,15 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       window.innerWidth,
       window.innerHeight
     );
-    
+
     this.emitDiscreteEvent({
       ...normalized,
-      t: this.currentTarget,
+      t: this.getCurrentTarget(),
       cursor: this.currentCursorStyle,
       event: 'cursor_change',
     });
   }
-  
+
   /**
    * Sample current cursor state for archival
    */
@@ -352,7 +385,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       y: normalized.y,
       scrollX: window.scrollX,
       scrollY: window.scrollY,
-      t: this.currentTarget,
+      t: this.getCurrentTarget(),
       cursor: this.currentCursorStyle,
       event: 'move',
     };
@@ -364,5 +397,13 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     this.emit(data);
 
     return data;
+  }
+
+  private getCurrentTarget(): string | undefined {
+    if (this.targetSelectorDirty && this.currentTargetElement) {
+      this.currentTarget = getElementSelector(this.currentTargetElement);
+      this.targetSelectorDirty = false;
+    }
+    return this.currentTarget;
   }
 }

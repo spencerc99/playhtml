@@ -8,7 +8,7 @@ import { requestSessionId, getTimezone } from './participant';
 import { VERBOSE } from '../config';
 
 const BATCH_INTERVAL_MS = 3000; // 3 seconds
-const STORE_BATCH_INTERVAL_MS = 250;
+const STORE_BATCH_INTERVAL_MS = 1000;
 const STORE_BATCH_MAX_EVENTS = 25;
 const STORE_RETRY_INITIAL_MS = 1000;
 const STORE_RETRY_MAX_MS = 30_000;
@@ -53,6 +53,8 @@ async function getEventParticipantPublicKey(): Promise<string> {
  * - Batches flush triggers for upload efficiency
  */
 export class EventBuffer {
+  private storeIntervalMs = STORE_BATCH_INTERVAL_MS;
+  private batchIntervalMs = BATCH_INTERVAL_MS;
   private batchTimer: number | null = null;
   private storeTimer: number | null = null;
   private storeRetryDelayMs = STORE_RETRY_INITIAL_MS;
@@ -79,13 +81,25 @@ export class EventBuffer {
     this.scheduleBatch();
   }
 
+  /**
+   * Sets how long events wait before each hop. Installation machines shorten
+   * both so marks reach the screens close to live; `null` restores the
+   * batching that keeps ordinary browsing cheap.
+   */
+  setPace(
+    pace: { storeIntervalMs: number; batchIntervalMs: number } | null,
+  ): void {
+    this.storeIntervalMs = pace?.storeIntervalMs ?? STORE_BATCH_INTERVAL_MS;
+    this.batchIntervalMs = pace?.batchIntervalMs ?? BATCH_INTERVAL_MS;
+  }
+
   private scheduleStoreFlush(): void {
     if (this.storeTimer !== null) return;
 
     this.storeTimer = window.setTimeout(() => {
       this.storeTimer = null;
       void this.flushStoredEvents();
-    }, STORE_BATCH_INTERVAL_MS);
+    }, this.storeIntervalMs);
   }
 
   private scheduleStoreRetry(): void {
@@ -162,10 +176,10 @@ export class EventBuffer {
     this.batchTimer = window.setTimeout(() => {
       this.batchTimer = null;
       if (VERBOSE) {
-        console.log(`[EventBuffer] Batch timer fired (${BATCH_INTERVAL_MS}ms)`);
+        console.log(`[EventBuffer] Batch timer fired (${this.batchIntervalMs}ms)`);
       }
       void this.flushBatch();
-    }, BATCH_INTERVAL_MS);
+    }, this.batchIntervalMs);
   }
 
   /**

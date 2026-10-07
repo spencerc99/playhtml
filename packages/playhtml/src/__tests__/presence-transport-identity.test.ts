@@ -1,7 +1,7 @@
 // ABOUTME: Verifies identity broadcasting is a transport concern: one re-join
 // ABOUTME: per socket on users.me change, no per-consumer identity wiring.
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toPublicPlayerIdentity } from "@playhtml/common";
 import { playhtml, resetPlayHTML } from "../index";
 import { getPresenceSocketForRoom, sentMessages } from "./presence-test-utils";
@@ -49,6 +49,7 @@ describe("identity broadcasting on the shared transport", () => {
   });
 
   it("re-joins after the extension injects an identity via CustomEvent", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const socket = getPresenceSocketForRoom(playhtml.roomId);
     const before = sentMessages(socket).filter(
       (m) => m.type === "presence-join",
@@ -67,6 +68,10 @@ describe("identity broadcasting on the shared transport", () => {
     const joins = sentMessages(socket).filter((m) => m.type === "presence-join");
     expect(joins.length).toBeGreaterThan(before);
     expect(joins.at(-1)!.identity.publicKey).toBe("pk_extension");
+    expect(log).toHaveBeenCalledWith(
+      "[playhtml] Merged extension identity via CustomEvent",
+    );
+    log.mockRestore();
   });
 
   it("keeps element awareness re-keyed under the new identity after a change", async () => {

@@ -2,6 +2,7 @@
 // ABOUTME: Canvas-textured card with vertical strokes mapped to 24h activity rhythm
 
 import React, { useEffect, useRef } from "react";
+import { risoInkColor } from "../utils/risoInk";
 
 // ── PortraitCard data contract ───────────────────────────────────────────────
 //
@@ -27,6 +28,8 @@ import React, { useEffect, useRef } from "react";
 //
 export interface PortraitCardProps {
   domain: string;
+  /** Optional label for portraits whose scope is broader than one domain. */
+  scopeLabel?: string;
   /** Total screen time in ms. null = still loading; 0 = no sessions recorded. */
   totalTimeMs: number | null;
   /** Pre-computed total ms per hour-of-day (index 0 = midnight, 23 = 11pm) */
@@ -34,6 +37,10 @@ export interface PortraitCardProps {
   /** Total cursor distance in pixels (sum of Euclidean distances between samples) */
   cursorDistancePx: number;
   dateRange: { oldest: string; newest: string } | null;
+  /** Exact period copy for contexts that use a completed calendar range. */
+  dateLabel?: string;
+  /** Person-owned anchor color for signatures and portrait details. */
+  accentColor?: string;
   /** Omit for page-level stats where the count is always 1 */
   uniquePageCount?: number;
   eventCounts?: { cursor: number; keyboard: number; viewport: number };
@@ -42,6 +49,7 @@ export interface PortraitCardProps {
 // ── Formatters ────────────────────────────────────────────────────────────────
 
 export function formatDuration(ms: number): string {
+  if (ms <= 0) return "0 min";
   const totalMinutes = Math.floor(ms / 60_000);
   if (totalMinutes < 1) return "< 1 min";
   if (totalMinutes < 60) return `${totalMinutes} min`;
@@ -99,33 +107,37 @@ function normalizeHourBuckets(buckets: number[]): number[] {
   return buckets.map((v) => v / max);
 }
 
+export function getPortraitStrokeCount(
+  totalTimeMs: number,
+  width: number,
+  height: number,
+): number {
+  const totalMinutes = totalTimeMs / 60_000;
+  const areaScale = Math.max(1, (width * height) / (300 * 180));
+  return Math.min(
+    Math.round(2_000 * areaScale),
+    Math.round(totalMinutes * 15 * areaScale),
+  );
+}
+
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
 const ACCENT_TEAL = "#4a9a8a";
 
-// Trail palette as [r,g,b] for canvas rendering — matches RISO_COLORS in eventUtils
-const CANVAS_PALETTE: [number, number, number][] = [
-  [0, 120, 191], // Blue
-  [255, 102, 94], // Bright Red
-  [0, 169, 92], // Green
-  [255, 123, 75], // Orange
-  [146, 55, 141], // Purple
-  [255, 232, 0], // Yellow
-  [255, 72, 176], // Fluorescent Pink
-  [0, 131, 138], // Teal
-];
-
 // ── Component ─────────────────────────────────────────────────────────────────
 // Vertical strokes mapped to the 24h timeline fill the card as a canvas texture.
-// Stroke density scales with total time spent; colors use the RISO palette.
+// Stroke density scales with browsing time and uses varied muted RISO inks.
 // Text floats over a semi-transparent paper overlay. Fills available space.
 
 export function PortraitCard({
   domain,
+  scopeLabel,
   totalTimeMs,
   hourBuckets,
   cursorDistancePx,
   dateRange,
+  dateLabel: suppliedDateLabel,
+  accentColor = ACCENT_TEAL,
   uniquePageCount,
 }: PortraitCardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -133,9 +145,9 @@ export function PortraitCard({
   const isLoading = totalTimeMs === null;
   const weights = normalizeHourBuckets(hourBuckets);
   const heroText = formatDuration(totalTimeMs ?? 0);
-  const dateLabel = dateRange
-    ? formatDateRange(dateRange.oldest, dateRange.newest)
-    : null;
+  const dateLabel =
+    suppliedDateLabel ??
+    (dateRange ? formatDateRange(dateRange.oldest, dateRange.newest) : null);
   const distanceLabel =
     cursorDistancePx > 0 ? formatDistance(cursorDistancePx) : null;
 
@@ -158,10 +170,10 @@ export function PortraitCard({
       return (seed >>> 0) / 0xffffffff;
     };
 
-    // Scale stroke count with total time: ~15 strokes per minute, max 2000
-    // No minimum floor — a nearly empty portrait should look nearly empty
-    const totalMinutes = totalTimeMs ? totalTimeMs / 60_000 : 0;
-    const strokeCount = Math.min(2000, Math.round(totalMinutes * 15));
+    // Scale stroke count with both total time and canvas area so the same
+    // portrait retains its visual density in compact overlays and wide cards.
+    // No minimum floor — a nearly empty portrait should look nearly empty.
+    const strokeCount = getPortraitStrokeCount(totalTimeMs ?? 0, W, H);
 
     if (strokeCount === 0) return;
 
@@ -188,15 +200,17 @@ export function PortraitCard({
     for (let i = 0; i < strokeCount; i++) {
       const hour = sampleHour();
       const w = weights[hour];
-      const [cr, cg, cb] = CANVAS_PALETTE[(hour + i) % CANVAS_PALETTE.length];
+      const color = risoInkColor(hour * 131 + i);
       const cx = ((hour + 0.5) / 24) * W + (rand() - 0.5) * jitterW;
       const sw = 0.5 + rand() * (W / 24) * 0.4;
       const sh = H * (0.3 + rand() * 0.7);
       // Base opacity is low; scales gently with hour weight
       const opacity = 0.015 + w * 0.06 + rand() * 0.02;
-      ctx.fillStyle = `rgba(${cr},${cg},${cb},${opacity.toFixed(3)})`;
+      ctx.globalAlpha = opacity;
+      ctx.fillStyle = color;
       ctx.fillRect(cx - sw / 2, 0, sw, sh);
     }
+    ctx.globalAlpha = 1;
   }, [weights.join(","), totalTimeMs]);
 
   const TEXT = "#3d3833";
@@ -225,7 +239,14 @@ export function PortraitCard({
   }
 
   return (
-    <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        overflow: "hidden",
+        containerType: "inline-size",
+      }}
+    >
       <canvas
         ref={canvasRef}
         style={{
@@ -246,7 +267,7 @@ export function PortraitCard({
       <div
         style={{
           position: "relative",
-          padding: "14px 14px 12px",
+          padding: "clamp(14px, 4cqw, 28px)",
           height: "100%",
           display: "flex",
           flexDirection: "column",
@@ -255,20 +276,21 @@ export function PortraitCard({
           color: TEXT,
         }}
       >
-        {domain && (
+        {(scopeLabel || domain) && (
           <div
             style={{
-              fontSize: "9px",
-              letterSpacing: "0.1em",
+              fontSize: "clamp(10px, 1.65cqw, 12px)",
+              fontWeight: 500,
+              letterSpacing: "0.09em",
               textTransform: "uppercase",
               color: TEXT_MUTED,
-              marginBottom: "8px",
+              marginBottom: "10px",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}
           >
-            {domain}
+            {scopeLabel || domain}
           </div>
         )}
         <div
@@ -282,7 +304,7 @@ export function PortraitCard({
           <div
             style={{
               fontFamily: "'Lora', Georgia, serif",
-              fontSize: "32px",
+              fontSize: "clamp(32px, 8cqw, 56px)",
               fontWeight: 700,
               lineHeight: 1,
               letterSpacing: "-0.02em",
@@ -293,13 +315,14 @@ export function PortraitCard({
           </div>
           <div
             style={{
-              fontSize: "9px",
-              letterSpacing: "0.1em",
+              fontSize: "clamp(10px, 1.8cqw, 13px)",
+              fontWeight: 500,
+              letterSpacing: "0.09em",
               textTransform: "uppercase",
               color: TEXT_MUTED,
             }}
           >
-            spent
+            browsing
           </div>
         </div>
         <div
@@ -361,7 +384,7 @@ export function PortraitCard({
               </div>
             </div>
           )}
-          {dateLabel && (
+          {(dateLabel || scopeLabel) && (
             <div style={{ marginLeft: "auto", textAlign: "right" }}>
               <div
                 style={{
@@ -369,21 +392,23 @@ export function PortraitCard({
                   fontStyle: "italic",
                   fontWeight: 400,
                   fontSize: "11px",
-                  color: ACCENT_TEAL,
+                  color: accentColor,
                 }}
               >
                 we were online
               </div>
-              <div
-                style={{
-                  fontFamily: "'Martian Mono', monospace",
-                  fontSize: "8px",
-                  color: TEXT_FAINT,
-                  marginTop: "2px",
-                }}
-              >
-                {dateLabel}
-              </div>
+              {dateLabel && (
+                <div
+                  style={{
+                    fontFamily: "'Martian Mono', monospace",
+                    fontSize: "8px",
+                    color: TEXT_FAINT,
+                    marginTop: "2px",
+                  }}
+                >
+                  {dateLabel}
+                </div>
+              )}
             </div>
           )}
         </div>

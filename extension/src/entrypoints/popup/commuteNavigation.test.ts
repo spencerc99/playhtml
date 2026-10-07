@@ -27,7 +27,16 @@ describe("commute navigation", () => {
 
   it("reports an existing commute tab", async () => {
     vi.mocked(browser.tabs.query).mockResolvedValue([
-      { id: 12, windowId: 4, url: PUBLIC_COMMUTE_URL },
+      {
+        id: 12,
+        windowId: 4,
+        url: PUBLIC_COMMUTE_URL,
+        index: 0,
+        highlighted: true,
+        active: true,
+        pinned: false,
+        incognito: false,
+      },
     ]);
 
     await expect(findOpenCommuteTab()).resolves.toEqual(
@@ -37,7 +46,16 @@ describe("commute navigation", () => {
 
   it("focuses an existing commute tab and window", async () => {
     vi.mocked(browser.tabs.query).mockResolvedValue([
-      { id: 12, windowId: 4, url: PUBLIC_COMMUTE_URL },
+      {
+        id: 12,
+        windowId: 4,
+        url: PUBLIC_COMMUTE_URL,
+        index: 0,
+        highlighted: true,
+        active: true,
+        pinned: false,
+        incognito: false,
+      },
     ]);
 
     await openOrFocusCommute();

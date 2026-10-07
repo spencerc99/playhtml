@@ -1,19 +1,29 @@
 // ABOUTME: Custom React hooks for playhtml functionality
 // ABOUTME: Cursor, presence, page-data, and presence-room hooks that safely no-op pre-sync
 
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import type * as React from "react";
 import { PlayContext } from "./PlayProvider";
 import playhtml from "./playhtml-singleton";
 import {
   CursorPresenceView,
   PageDataChannel,
+  PageDataSetter,
   PlayerIdentity,
   PresenceRoom,
   PresenceView,
   User,
 } from "playhtml";
 import type { CursorZoneOptions } from "playhtml";
+
+type SelectedPresenceView<
+  Channel extends string,
+  Payload extends Record<string, unknown>,
+> = PresenceView<Partial<Record<Channel, Payload>>>;
+type SelectedPresences<
+  Channel extends string,
+  Payload extends Record<string, unknown>,
+> = Map<string, SelectedPresenceView<Channel, Payload>>;
 
 function warnPreInit(call: string): void {
   console.warn(`[@playhtml/react] ${call} called before init — ignored.`);
@@ -34,6 +44,31 @@ function usePlayhtmlSubscription<T>(
   }, [isLoading, ...dependencies]);
 
   return value;
+}
+
+function identityEquals(
+  a: PlayerIdentity | null,
+  b: PlayerIdentity | null,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.publicKey === b.publicKey &&
+    a.name === b.name &&
+    a.createdAt === b.createdAt &&
+    a.playerStyle.cursorStyle === b.playerStyle.cursorStyle &&
+    a.playerStyle.colorPalette.length === b.playerStyle.colorPalette.length &&
+    a.playerStyle.colorPalette.every(
+      (color, i) => color === b.playerStyle.colorPalette[i],
+    )
+  );
+}
+
+function isPresenceRoomNotReadyError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message === "playhtml.createPresenceRoom is not available before init()"
+  );
 }
 
 /**
@@ -84,31 +119,36 @@ export function useCursorZone(
  * returns an empty map, a setter that warns and no-ops, and `null` identity
  * until sync completes — then wires up automatically.
  *
- * Type parameter `T` is an assertion about the shape of presence values; no
- * runtime validation is performed.
+ * Type parameters describe the selected channel and its payload. No runtime
+ * validation is performed.
  */
-export function usePresence<T extends Record<string, unknown> = Record<string, unknown>>(
-  channel: string,
+export function usePresence<
+  Channel extends string,
+  Payload extends Record<string, unknown> = Record<string, unknown>,
+>(
+  channel: Channel,
 ): {
-  presences: Map<string, PresenceView<T>>;
-  setMyPresence: (data: T) => void;
+  presences: SelectedPresences<Channel, Payload>;
+  setMyPresence: (data: Payload) => void;
   myIdentity: PlayerIdentity | null;
 } {
   const { isLoading } = useContext(PlayContext);
   const presences = usePlayhtmlSubscription(
     isLoading,
-    () => new Map<string, PresenceView<T>>(),
+    () => new Map() as SelectedPresences<Channel, Payload>,
     (setPresences) => {
-      setPresences(playhtml.presence.getPresences() as Map<string, PresenceView<T>>);
+      setPresences(
+        playhtml.presence.getPresences() as SelectedPresences<Channel, Payload>,
+      );
       return playhtml.presence.onPresenceChange(channel, (next) => {
-        setPresences(new Map(next) as Map<string, PresenceView<T>>);
+        setPresences(new Map(next) as SelectedPresences<Channel, Payload>);
       });
     },
     [channel],
   );
 
   const setMyPresence = useCallback(
-    (data: T) => {
+    (data: Payload) => {
       if (isLoading) {
         warnPreInit(`usePresence("${channel}").setMyPresence`);
         return;
@@ -118,10 +158,24 @@ export function usePresence<T extends Record<string, unknown> = Record<string, u
     [isLoading, channel],
   );
 
-  const myIdentity = useMemo(
-    () => (isLoading ? null : playhtml.presence.getMyIdentity()),
-    [isLoading],
-  );
+  // Re-derived on every identity change (not just once at sync completion) —
+  // e.g. the "we were online" extension can inject identity post-sync via the
+  // `playhtml:configure-identity` event. `users.onChange` fires on every
+  // presence tick, so dedupe by value to avoid re-rendering consumers when the
+  // identity itself hasn't changed.
+  const [myIdentity, setMyIdentity] = useState<PlayerIdentity | null>(null);
+  useEffect(() => {
+    if (isLoading) {
+      setMyIdentity(null);
+      return;
+    }
+    const readIdentity = () => {
+      const next = playhtml.presence.getMyIdentity();
+      setMyIdentity((prev) => (identityEquals(prev, next) ? prev : next));
+    };
+    readIdentity();
+    return playhtml.users.onChange(readIdentity);
+  }, [isLoading]);
 
   return { presences, setMyPresence, myIdentity };
 }
@@ -138,7 +192,7 @@ export function usePresence<T extends Record<string, unknown> = Record<string, u
 export function usePageData<T>(
   name: string,
   defaultValue: T,
-): [T, (data: T | ((draft: T) => void)) => void] {
+): [T, (data: PageDataSetter<T>) => void] {
   const { isLoading } = useContext(PlayContext);
   const channelRef = useRef<PageDataChannel<T> | null>(null);
   const data = usePlayhtmlSubscription(
@@ -159,7 +213,7 @@ export function usePageData<T>(
   );
 
   const setData = useCallback(
-    (next: T | ((draft: T) => void)) => {
+    (next: PageDataSetter<T>) => {
       const channel = channelRef.current;
       if (isLoading || !channel) {
         warnPreInit(`usePageData("${name}").setData`);
@@ -180,16 +234,55 @@ export function usePageData<T>(
  */
 export function usePresenceRoom(name: string): PresenceRoom | null {
   const { isLoading } = useContext(PlayContext);
-  return usePlayhtmlSubscription<PresenceRoom | null>(
-    isLoading,
-    () => null,
-    (setRoom) => {
-      const room = playhtml.createPresenceRoom(name);
-      setRoom(room);
-      return () => room.destroy();
-    },
-    [name],
-  );
+  const [room, setRoom] = useState<PresenceRoom | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const readyRetryRef = useRef<{
+    name: string;
+    ready: Promise<void>;
+  } | null>(null);
+
+  useEffect(() => {
+    if (isLoading) {
+      setRoom(null);
+      return;
+    }
+
+    let r: PresenceRoom;
+    try {
+      r = playhtml.createPresenceRoom(name);
+    } catch (error) {
+      if (!isPresenceRoomNotReadyError(error)) {
+        throw error;
+      }
+
+      let cancelled = false;
+      const retry = () => {
+        if (!cancelled) {
+          setRetryCount((count) => count + 1);
+        }
+      };
+      const ready = playhtml.ready;
+      const readyRetry = readyRetryRef.current;
+      if (readyRetry?.ready !== ready || readyRetry.name !== name) {
+        readyRetryRef.current = { name, ready };
+        void ready.then(retry, () => {});
+      }
+      document.addEventListener("playhtml:navigated", retry, { once: true });
+      setRoom(null);
+      return () => {
+        cancelled = true;
+        document.removeEventListener("playhtml:navigated", retry);
+      };
+    }
+
+    setRoom(r);
+    return () => {
+      r.destroy();
+      setRoom(null);
+    };
+  }, [isLoading, name, retryCount]);
+
+  return room;
 }
 
 const EMPTY_PLAYER_IDENTITY = {
@@ -223,7 +316,13 @@ export function usePlayerIdentity(): {
     }
     const readIdentity = () => {
       const me = playhtml.users.me;
-      setIdentity({ color: me.color, pid: me.pid, name: me.name });
+      // users.onChange fires on every presence tick; only re-render consumers
+      // when the identity itself changed.
+      setIdentity((prev) =>
+        prev.color === me.color && prev.pid === me.pid && prev.name === me.name
+          ? prev
+          : { color: me.color, pid: me.pid, name: me.name },
+      );
     };
     readIdentity();
     return playhtml.users.onChange(readIdentity);

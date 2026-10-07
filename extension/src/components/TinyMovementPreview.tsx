@@ -99,11 +99,11 @@ export function TinyMovementPreview() {
           showClickRipples={false}
           settings={{
             strokeWidth: 1,
-            pointSize: 0,
             trailOpacity: 0.7,
             animationSpeed: 1.0,
             clickMinRadius: 6,
             clickMaxRadius: 18,
+            clickCoreRadius: 3,
             clickMinDuration: 300,
             clickMaxDuration: 800,
             clickExpansionDuration: 250,

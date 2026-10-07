@@ -48,6 +48,8 @@ test("dry run validates Edge inputs without calling the API", async () => {
 
 test("uploads, polls, publishes, and polls an Edge submission", async () => {
   const requests = [];
+  const logs = [];
+  vi.spyOn(console, "log").mockImplementation((message) => logs.push(String(message)));
 
   await submitEdge({
     env: {
@@ -105,6 +107,11 @@ test("uploads, polls, publishes, and polls an Edge submission", async () => {
   });
 
   expect(requests).toHaveLength(4);
+  expect(logs).toContain("Edge upload succeeded.");
+  expect(logs).toContain("Edge publish succeeded.");
+  expect(logs).toContain(
+    "Edge will update the live store package after Add-ons review approval.",
+  );
   expect(requests[0].url).toBe(
     "https://api.addons.microsoftedge.microsoft.com/v1/products/edge-product-id/submissions/draft/package",
   );

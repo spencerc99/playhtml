@@ -19,6 +19,23 @@ export interface CommuteStop {
   source: "live" | "sample";
 }
 
+const PASSING_SCENERY_COUNT = 4;
+
+export function getPassingSceneryStops(
+  stops: CommuteStop[],
+  currentDomain: string,
+  stopIndex: number,
+): CommuteStop[] {
+  const candidates = stops.filter((stop) => stop.domain !== currentDomain);
+  if (candidates.length <= PASSING_SCENERY_COUNT) return candidates;
+
+  const start = (stopIndex * PASSING_SCENERY_COUNT) % candidates.length;
+  return [...candidates, ...candidates].slice(
+    start,
+    start + PASSING_SCENERY_COUNT,
+  );
+}
+
 export const SAMPLE_STOPS: CommuteStop[] = [
   {
     id: "html-energy",
@@ -237,7 +254,7 @@ export function curateCommuteStops(
 }
 
 export function getFaviconUrl(
-  stop: Pick<CommuteStop, "domain" | "faviconUrl" | "source" | "url">,
+  stop: Pick<CommuteStop, "domain" | "faviconUrl">,
 ): string {
   if (stop.faviconUrl) {
     try {
@@ -250,11 +267,7 @@ export function getFaviconUrl(
     }
   }
 
-  if (stop.source === "sample") {
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(stop.domain)}&sz=64`;
-  }
-
-  return new URL("/favicon.ico", stop.url).toString();
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(stop.domain)}&sz=64`;
 }
 
 export function formatStopAge(stop: CommuteStop, now = Date.now()): string {
@@ -428,6 +441,7 @@ function destinationToStop(
 
 export function parseCommuteResponse(payload: unknown): {
   activePeople: number;
+  generatedAt: number;
   sceneryStops: CommuteStop[];
   stops: CommuteStop[];
 } {
@@ -445,6 +459,7 @@ export function parseCommuteResponse(payload: unknown): {
 
   return {
     activePeople: payload.activePeople,
+    generatedAt: payload.generatedAt,
     sceneryStops: payload.scenery.map(sceneryItemToStop),
     stops: payload.destinations.map(destinationToStop),
   };

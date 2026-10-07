@@ -3,7 +3,10 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+  pickReconnectionDelay,
   RealtimePresenceTransport,
+  RECONNECT_DELAY_JITTER_MS,
+  RECONNECT_DELAY_MIN_MS,
   type PresenceSocketFactory,
 } from "../presence-transport";
 
@@ -61,6 +64,31 @@ class FakeSocket {
   }
 }
 
+class PropertyHandlerSocket extends FakeSocket {
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onopen: ((event: Event) => void) | null = null;
+  onclose: ((event: Event) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+
+  override receive(data: unknown): void {
+    this.onmessage?.({ data: JSON.stringify(data) } as MessageEvent);
+  }
+
+  override open(): void {
+    this.readyState = WebSocket.OPEN;
+    this.onopen?.(new Event("open"));
+  }
+
+  override disconnect(): void {
+    this.readyState = WebSocket.CLOSED;
+    this.onclose?.(new Event("close"));
+  }
+
+  fail(): void {
+    this.onerror?.(new Event("error"));
+  }
+}
+
 describe("RealtimePresenceTransport", () => {
   it("connects to the generic presence party", () => {
     let createdOptions: Parameters<PresenceSocketFactory>[0] | null = null;
@@ -80,6 +108,31 @@ describe("RealtimePresenceTransport", () => {
       room: "room-1",
       party: "presence",
     });
+  });
+
+  it("jitters the base reconnection delay so clients do not retry in lockstep", () => {
+    expect(pickReconnectionDelay(() => 0)).toBe(RECONNECT_DELAY_MIN_MS);
+    expect(pickReconnectionDelay(() => 0.999)).toBeLessThan(
+      RECONNECT_DELAY_MIN_MS + RECONNECT_DELAY_JITTER_MS,
+    );
+
+    const delays: number[] = [];
+    for (let i = 0; i < 2; i++) {
+      new RealtimePresenceTransport({
+        host: "example.com",
+        room: `room-${i}`,
+        socketFactory: (options) => {
+          delays.push(options.minReconnectionDelay ?? Number.NaN);
+          return new FakeSocket();
+        },
+      });
+    }
+    for (const delay of delays) {
+      expect(delay).toBeGreaterThanOrEqual(RECONNECT_DELAY_MIN_MS);
+      expect(delay).toBeLessThan(
+        RECONNECT_DELAY_MIN_MS + RECONNECT_DELAY_JITTER_MS,
+      );
+    }
   });
 
   it("sends validated join and update messages", () => {
@@ -318,6 +371,43 @@ describe("RealtimePresenceTransport", () => {
       { type: "presence-sync", peers: {} },
       { type: "presence-changes", updates: {}, removes: {} },
     ]);
+  });
+
+  it("uses socket handler properties when available", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const socket = new PropertyHandlerSocket();
+    const transport = new RealtimePresenceTransport({
+      host: "example.com",
+      room: "room-1",
+      socketFactory: () => socket,
+    });
+    const received: unknown[] = [];
+    transport.subscribe((message) => received.push(message));
+
+    expect(
+      ["message", "open", "close", "error"].every(
+        (event) => !socket.listeners.has(event),
+      ),
+    ).toBe(true);
+
+    socket.open();
+    expect(transport.connectionState).toBe("open");
+    socket.receive({ type: "presence-sync", peers: {} });
+    expect(received).toEqual([{ type: "presence-sync", peers: {} }]);
+
+    socket.disconnect();
+    expect(transport.connectionState).toBe("connecting");
+    socket.fail();
+    socket.fail();
+    socket.fail();
+    expect(transport.connectionState).toBe("unreachable");
+
+    transport.destroy();
+    expect(socket.onmessage).toBeNull();
+    expect(socket.onopen).toBeNull();
+    expect(socket.onclose).toBeNull();
+    expect(socket.onerror).toBeNull();
+    errorSpy.mockRestore();
   });
 
   it("ignores malformed nested server change messages", () => {

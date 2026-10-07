@@ -8,6 +8,7 @@ import {
   deriveRecentStops,
   formatStopAge,
   getFaviconUrl,
+  getPassingSceneryStops,
   getStopDisplayDetail,
   getStopDisplayName,
   parseCommuteResponse,
@@ -54,6 +55,38 @@ function commuteStop(
     ...overrides,
   };
 }
+
+describe("getPassingSceneryStops", () => {
+  it("rotates the visible domains for each stop and omits the current domain", () => {
+    const stops = [
+      commuteStop("current.example"),
+      ...Array.from({ length: 9 }, (_, index) =>
+        commuteStop(`scenery-${index}.example`),
+      ),
+    ];
+
+    expect(
+      getPassingSceneryStops(stops, "current.example", 0).map(
+        (stop) => stop.domain,
+      ),
+    ).toEqual([
+      "scenery-0.example",
+      "scenery-1.example",
+      "scenery-2.example",
+      "scenery-3.example",
+    ]);
+    expect(
+      getPassingSceneryStops(stops, "current.example", 1).map(
+        (stop) => stop.domain,
+      ),
+    ).toEqual([
+      "scenery-4.example",
+      "scenery-5.example",
+      "scenery-6.example",
+      "scenery-7.example",
+    ]);
+  });
+});
 
 describe("deriveRecentStops", () => {
   it("returns the newest unique web pages without query strings or hashes", () => {
@@ -152,15 +185,13 @@ describe("deriveRecentStops", () => {
 });
 
 describe("getFaviconUrl", () => {
-  it("uses the first-party origin for live destinations", () => {
+  it("uses the public favicon service for live destinations without metadata", () => {
     expect(
       getFaviconUrl({
         domain: "neal.fun",
         faviconUrl: null,
-        source: "live",
-        url: "https://neal.fun/deep-sea/",
       }),
-    ).toBe("https://neal.fun/favicon.ico");
+    ).toBe("https://www.google.com/s2/favicons?domain=neal.fun&sz=64");
   });
 
   it("uses known favicon images for the public sample route", () => {
@@ -174,8 +205,6 @@ describe("getFaviconUrl", () => {
       getFaviconUrl({
         domain: "neal.fun",
         faviconUrl: "https://neal.fun/icon.png",
-        source: "live",
-        url: "https://neal.fun/deep-sea/",
       }),
     ).toBe("https://neal.fun/icon.png");
   });
@@ -245,6 +274,7 @@ describe("parseCommuteResponse", () => {
       }),
     ).toEqual({
       activePeople: 4,
+      generatedAt: 1_000,
       sceneryStops: [
         expect.objectContaining({
           domain: "docs.google.com",

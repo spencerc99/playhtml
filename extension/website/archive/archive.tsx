@@ -1,7 +1,7 @@
 // ABOUTME: Historical browsing-portrait page (the archive view) at wewere.online/archive
 // ABOUTME: Fetches events from /events/recent and passes them to MovementCanvas for rendering
 import "../shared/portrait-styles.scss";
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { MovementCanvas } from "../shared/components/MovementCanvas";
 import { DEFAULT_ACTIVE_VISUALIZATIONS } from "../shared/components/registry";
@@ -65,11 +65,21 @@ const InternetMovement = () => {
     localStorage.setItem("movement_active_viz", JSON.stringify(activeVisualizations));
   }, [activeVisualizations]);
 
-  const { events, loading, error, dayCounts, refresh } = useArchiveEvents({
+  const {
+    events,
+    loading,
+    error,
+    dayCounts,
+    refresh,
+    advanceBatch,
+    batchKey,
+    batchContextKey,
+  } = useArchiveEvents({
     selectedDay,
     timeOfDay,
     serverDomain,
     activeVisualizations,
+    batchPlayback: true,
   });
 
   return (
@@ -105,6 +115,9 @@ const InternetMovement = () => {
         onSetFilters={setFilters}
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={setActiveVisualizations}
+        playbackKey={batchKey}
+        playbackContextKey={batchContextKey}
+        onPlaybackCycleComplete={advanceBatch}
       />
     </>
   );

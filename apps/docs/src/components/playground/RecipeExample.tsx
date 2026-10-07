@@ -1,6 +1,12 @@
 // ABOUTME: Renders a canonical docs recipe in a shared-room iframe with testing controls.
 // ABOUTME: Reuses the same recipe source that powers catalogue cards and the playground.
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { buildIframeSrcdoc } from "./iframe-template";
 import { makePlayhtmlModuleUrl } from "./playhtml-module";
 import { isValidRoomId } from "./recipe-loader";
@@ -9,31 +15,29 @@ import "./recipe-example.css";
 
 type RecipeExampleProps = {
   recipe: ExampleRecipe;
+  compact?: boolean;
+  frameHeight?: string;
 };
 
-function makeRoomId(recipeId: string): string {
-  return `example-${recipeId}-${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
+export function resolveExampleRoomId(url: URL): string {
+  const existingRoom = url.searchParams.get("room");
+  return existingRoom && isValidRoomId(existingRoom)
+    ? existingRoom
+    : url.pathname;
 }
 
-export function RecipeExample({ recipe }: RecipeExampleProps) {
+export function RecipeExample({
+  recipe,
+  compact = false,
+  frameHeight,
+}: RecipeExampleProps) {
   const iframeHostRef = useRef<HTMLDivElement | null>(null);
   const [roomId, setRoomId] = useState("");
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    const existingRoom = url.searchParams.get("room");
-    const nextRoom =
-      existingRoom && isValidRoomId(existingRoom)
-        ? existingRoom
-        : makeRoomId(recipe.id);
-
-    if (existingRoom !== nextRoom) {
-      url.searchParams.set("room", nextRoom);
-      history.replaceState(null, "", url);
-    }
-
-    setRoomId(nextRoom);
+    setRoomId(resolveExampleRoomId(url));
   }, [recipe.id]);
 
   useEffect(() => {
@@ -69,33 +73,64 @@ export function RecipeExample({ recipe }: RecipeExampleProps) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
-      window.prompt("Copy this URL, then paste it into a private window:", window.location.href);
+      window.prompt(
+        "Copy this URL, then paste it into a private window:",
+        window.location.href,
+      );
     }
   }
 
   return (
-    <section className="ph-recipe-example" aria-label={`${recipe.title} interactive example`}>
-      <div className="ph-recipe-example__bar">
-        <span>Live example</span>
-        <span className="ph-recipe-example__room">Room {roomId || "connecting…"}</span>
-      </div>
+    <section
+      className={`ph-recipe-example${compact ? " ph-recipe-example--compact" : ""}`}
+      style={
+        frameHeight
+          ? ({ "--ph-recipe-frame-height": frameHeight } as CSSProperties)
+          : undefined
+      }
+      aria-label={`${recipe.title} interactive example`}
+    >
+      {!compact && (
+        <div className="ph-recipe-example__bar">
+          <span>Live example</span>
+          <span className="ph-recipe-example__room">
+            Room {roomId || "connecting…"}
+          </span>
+        </div>
+      )}
       <div className="ph-recipe-example__frame" ref={iframeHostRef} />
-      <div className="ph-recipe-example__actions">
-        <a className="ph-recipe-example__button" href={playgroundHref} target="_blank" rel="noreferrer">
-          Remix
-        </a>
-        <button className="ph-recipe-example__button ph-recipe-example__button--quiet" type="button" onClick={copyTestLink}>
-          {copied ? "Copied test link" : "Copy private-window link"}
-        </button>
-      </div>
-      <div className="ph-recipe-example__test">
-        <strong>Test it with another person</strong>
-        <ol>
-          <li>Keep this page open in your normal window.</li>
-          <li>Copy the private-window link, then paste it into a private or incognito window.</li>
-          <li>Interact in either window and watch the other one update.</li>
-        </ol>
-      </div>
+      {!compact && (
+        <>
+          <div className="ph-recipe-example__actions">
+            <a
+              className="ph-recipe-example__button"
+              href={playgroundHref}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Remix
+            </a>
+            <button
+              className="ph-recipe-example__button ph-recipe-example__button--quiet"
+              type="button"
+              onClick={copyTestLink}
+            >
+              {copied ? "Copied test link" : "Copy private-window link"}
+            </button>
+          </div>
+          <div className="ph-recipe-example__test">
+            <strong>Test it with another person</strong>
+            <ol>
+              <li>Keep this page open in your normal window.</li>
+              <li>
+                Copy the private-window link, then paste it into a private or
+                incognito window.
+              </li>
+              <li>Interact in either window and watch the other one update.</li>
+            </ol>
+          </div>
+        </>
+      )}
     </section>
   );
 }

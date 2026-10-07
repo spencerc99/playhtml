@@ -3,7 +3,7 @@
 
 import type { PresenceAPI, PresenceView } from "@playhtml/common";
 import { containsProfanity } from "@movement/profanity";
-import { getOrCreateHandle, rerollHandle, setHandle } from "./chat-handle";
+import { getOrCreateHandle, onHandleChange, rerollHandle, setHandle } from "./chat-handle";
 
 const CHAT_CHANNEL = "chat";
 const MAX_MESSAGE_LENGTH = 400;
@@ -57,6 +57,7 @@ export class ChatManager {
   private state: ChatManagerState;
   private listeners = new Set<Listener>();
   private unsubPresence: (() => void) | null = null;
+  private unsubHandle: (() => void) | null = null;
   private lastSendAt = 0;
   private seenIds = new Set<string>();
   // onPresenceChange replays the current snapshot on subscribe. We intentionally
@@ -87,8 +88,13 @@ export class ChatManager {
   }
 
   async init(): Promise<void> {
+    let handleChanged = false;
+    this.unsubHandle = onHandleChange((nextHandle) => {
+      handleChanged = true;
+      if (nextHandle !== this.state.handle) this.setState({ handle: nextHandle });
+    });
     const handle = await getOrCreateHandle();
-    this.setState({ handle });
+    if (!handleChanged) this.setState({ handle });
     this.unsubPresence = this.presence.onPresenceChange(CHAT_CHANNEL, (presences) => {
       this.onPresences(presences);
     });
@@ -97,6 +103,8 @@ export class ChatManager {
   destroy(): void {
     this.unsubPresence?.();
     this.unsubPresence = null;
+    this.unsubHandle?.();
+    this.unsubHandle = null;
     this.listeners.clear();
   }
 

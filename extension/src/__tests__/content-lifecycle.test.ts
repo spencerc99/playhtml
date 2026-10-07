@@ -2,6 +2,7 @@
 // ABOUTME: Verifies bfcache pageshow restores collaboration and listeners are not one-shot.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EXTENSION_INSTALL_ATTRIBUTE } from "../utils/extensionInstallMarker";
 
 const storageGet = vi.hoisted(() => vi.fn());
 const storageSet = vi.hoisted(() => vi.fn());
@@ -26,10 +27,6 @@ vi.mock("webextension-polyfill", () => ({
       },
     },
   },
-}));
-
-vi.mock("../flags", () => ({
-  FLAGS: { COPRESENCE: true },
 }));
 
 vi.mock("../collectors/CollectorManager", () => ({
@@ -64,6 +61,7 @@ describe("content page-lifecycle wiring", () => {
     vi.stubGlobal("defineContentScript", (definition: unknown) => definition);
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     document.body.innerHTML = "";
+    document.documentElement.removeAttribute(EXTENSION_INSTALL_ATTRIBUTE);
     // Present native playhtml so setupPresence takes the identity-injection
     // branch, which re-dispatches "playhtml:configure-identity" every time
     // presence setup runs — the observable signal we assert on.
@@ -71,10 +69,18 @@ describe("content page-lifecycle wiring", () => {
 
     storageGet.mockReset();
     storageGet.mockImplementation((keys: string | string[]) => {
-      if (!Array.isArray(keys)) return Promise.resolve({});
-      if (keys.includes("internalDevFeaturesEnabled")) {
-        return Promise.resolve({ internalDevFeaturesEnabled: false });
+      if (keys === "wwoFeatureAccess") {
+        return Promise.resolve({
+          wwoFeatureAccess: {
+            features: { COPRESENCE: { stage: "internal", available: true } },
+            checkedAt: 1,
+          },
+        });
       }
+      if (keys === "wwoFeatureOverrides") {
+        return Promise.resolve({ wwoFeatureOverrides: { COPRESENCE: true } });
+      }
+      if (!Array.isArray(keys)) return Promise.resolve({});
       return Promise.resolve(
         Object.fromEntries(
           keys
@@ -108,6 +114,9 @@ describe("content page-lifecycle wiring", () => {
         .default as { main: () => void };
 
       contentScript.main();
+      expect(
+        document.documentElement.getAttribute(EXTENSION_INSTALL_ATTRIBUTE),
+      ).toBe("installed");
 
       // Initial presence setup dispatches identity once.
       await vi.waitFor(() => {

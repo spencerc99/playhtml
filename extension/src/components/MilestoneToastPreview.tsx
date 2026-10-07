@@ -1,5 +1,5 @@
 // ABOUTME: Cycling milestone-toast preview for the setup page.
-// ABOUTME: Rotates through all four milestone types to show what users can expect.
+// ABOUTME: Rotates through milestone types to show what users can expect.
 
 import React, { useEffect, useState } from "react";
 import {
@@ -65,12 +65,7 @@ const SAMPLES: MilestoneToastData[] = [
 
 const STYLE_ID = "wwo-milestone-toast-preview-styles";
 
-// Inject styles synchronously at module load — before React renders — so the
-// toast markup never flashes at its natural (unstyled) size on first paint.
-if (
-  typeof document !== "undefined" &&
-  !document.getElementById(STYLE_ID)
-) {
+if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
   const style = document.createElement("style");
   style.id = STYLE_ID;
   style.textContent = MILESTONE_TOAST_CSS;
@@ -84,10 +79,10 @@ export function MilestoneToastPreview() {
   const [mountKey, setMountKey] = useState(0);
 
   useEffect(() => {
-    const t = setInterval(() => {
-      setIndex((i) => (i + 1) % SAMPLES.length);
+    const timer = setInterval(() => {
+      setIndex((current) => (current + 1) % SAMPLES.length);
     }, CYCLE_MS);
-    return () => clearInterval(t);
+    return () => clearInterval(timer);
   }, []);
 
   return (
@@ -96,7 +91,7 @@ export function MilestoneToastPreview() {
         key={`${index}-${mountKey}`}
         milestone={SAMPLES[index]}
         static={false}
-        onDismiss={() => setMountKey((k) => k + 1)}
+        onDismiss={() => setMountKey((current) => current + 1)}
       />
     </div>
   );

@@ -1,0 +1,10 @@
+Balloon inflation
+
+"Balloon_Inflate_1.wav" by Terhen
+https://freesound.org/people/Terhen/sounds/234220/
+
+Licensed under Creative Commons Attribution 4.0:
+https://creativecommons.org/licenses/by/4.0/
+
+The party version trims silence, shortens the recording, adds fades, reduces
+the volume, and converts the source to MP3.
