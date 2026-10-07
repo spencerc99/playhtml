@@ -581,25 +581,20 @@ describe("ScrapCollector", () => {
     expect(buttonScrap.innerSvg).toBeUndefined();
   });
 
-  it("skips SVG icons with unresolvable use references or oversized markup", () => {
-    const unresolved = createSvg();
-    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
-    use.setAttribute("href", "#missing");
-    unresolved.appendChild(use);
-    const oversized = createSvg();
-    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    text.textContent = "x".repeat(21 * 1024);
-    oversized.appendChild(text);
-    const tooSmall = createSvg({ width: 11, height: 24 });
-    const tooLarge = createSvg({ width: 401, height: 24 });
+  it("does not capture standalone SVG icons", () => {
+    const svg = createSvg();
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M0 0h8v8z");
+    svg.appendChild(path);
 
     collector.enable();
-    showForCapture([unresolved, oversized, tooSmall, tooLarge]);
+    expect(observer().observed.has(svg)).toBe(false);
+    showForCapture([svg]);
 
     expect(emitted("svg-icon")).toHaveLength(0);
   });
 
-  it("embeds in-document references used by captured SVG icons", () => {
+  it("embeds in-document references used by a button's inline SVG", () => {
     const definitions = createSvg({ width: 0, height: 0 });
     const symbol = document.createElementNS(
       "http://www.w3.org/2000/svg",
@@ -611,24 +606,29 @@ describe("ScrapCollector", () => {
     symbol.appendChild(path);
     definitions.appendChild(symbol);
 
-    const svg = createSvg();
+    const button = createButton({ text: "" });
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
     use.setAttribute("href", "#saved-shape");
     svg.appendChild(use);
+    setRenderedSize(svg, { width: 24, height: 24 });
+    button.appendChild(svg);
 
     collector.enable();
-    showForCapture([svg]);
+    showForCapture([button]);
 
-    const scraps = emitted("svg-icon");
+    const scraps = emitted("button");
     expect(scraps).toHaveLength(1);
-    const markup = scraps[0].kind === "svg-icon" ? scraps[0].markup : "";
+    const markup = scraps[0].kind === "button" ? scraps[0].innerSvg ?? "" : "";
     expect(markup).toContain('id="saved-shape"');
     expect(markup).toContain('d="M0 0h8v8z"');
     expect(markup).toContain('href="#saved-shape"');
   });
 
-  it("sanitizes SVG icons and bakes currentColor into their markup", () => {
-    const svg = createSvg({ width: 32, height: 36 });
+  it("sanitizes a button's inline SVG and bakes currentColor into it", () => {
+    const button = createButton({ text: "" });
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    setRenderedSize(svg, { width: 32, height: 36 });
     svg.setAttribute("data-color", "rgb(12, 34, 56)");
     svg.setAttribute("onload", "alert(1)");
     const script = document.createElementNS("http://www.w3.org/2000/svg", "script");
@@ -645,13 +645,14 @@ describe("ScrapCollector", () => {
     const image = document.createElementNS("http://www.w3.org/2000/svg", "image");
     image.setAttribute("href", "https://example.com/tracker.png");
     svg.append(script, foreignObject, path, image);
+    button.appendChild(svg);
 
     collector.enable();
-    showForCapture([svg]);
+    showForCapture([button]);
 
-    const scraps = emitted("svg-icon");
+    const scraps = emitted("button");
     expect(scraps).toHaveLength(1);
-    const markup = scraps[0].kind === "svg-icon" ? scraps[0].markup : "";
+    const markup = scraps[0].kind === "button" ? scraps[0].innerSvg ?? "" : "";
     expect(markup).toContain('width="32"');
     expect(markup).toContain('height="36"');
     expect(markup).toContain('viewBox="0 0 32 36"');
@@ -660,56 +661,6 @@ describe("ScrapCollector", () => {
     expect(markup).not.toMatch(
       /currentColor|script|foreignObject|onload|onclick|tracker\.png/i,
     );
-  });
-
-  it("deduplicates serialized SVG icons and caps them at twenty", () => {
-    const duplicateOne = createSvg();
-    const duplicateTwo = createSvg();
-    for (const svg of [duplicateOne, duplicateTwo]) {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", "M0 0h1v1z");
-      svg.appendChild(path);
-    }
-    const uniqueIcons = Array.from({ length: 20 }, (_, index) => {
-      const svg = createSvg();
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", `M${index + 1} 0h1v1z`);
-      svg.appendChild(path);
-      return svg;
-    });
-
-    collector.enable();
-    showForCapture([duplicateOne, duplicateTwo, ...uniqueIcons]);
-
-    expect(emitted("svg-icon")).toHaveLength(20);
-    const duplicateMarkup = emitted("svg-icon").filter(
-      (data) =>
-        data.kind === "svg-icon" && data.markup.includes("M0 0h1v1z"),
-    );
-    expect(duplicateMarkup).toHaveLength(1);
-    expect(observer().observed.has(uniqueIcons[19])).toBe(false);
-  });
-
-  it("captures a same-geometry icon rendered at different sizes once per page", () => {
-    const small = createSvg({ width: 24, height: 24 });
-    small.setAttribute("viewBox", "0 0 24 24");
-    const large = createSvg({ width: 40, height: 40 });
-    large.setAttribute("viewBox", "0 0 24 24");
-    for (const svg of [small, large]) {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", "M2 2h20v20z");
-      svg.appendChild(path);
-    }
-
-    collector.enable();
-    showForCapture([small, large]);
-
-    expect(emitted("svg-icon")).toHaveLength(1);
-    expect(emitted("svg-icon")[0]).toMatchObject({
-      kind: "svg-icon",
-      width: 24,
-      height: 24,
-    });
   });
 
   it("captures h1 through h3 with their level and normalized text", () => {
@@ -1330,16 +1281,8 @@ describe("ScrapCollector", () => {
         left: 12,
         top: 30,
       });
-      const svg = createSvg({ width: 24, height: 24, left: 8, top: 4 });
-      const path = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "path",
-      );
-      path.setAttribute("d", "M0 0h4v4z");
-      svg.appendChild(path);
-
       collector.enable();
-      showForCapture([image, button, heading, svg]);
+      showForCapture([image, button, heading]);
 
       expect(emitted("image")[0].position).toEqual({
         pageX: 290,
@@ -1356,12 +1299,6 @@ describe("ScrapCollector", () => {
       expect(emitted("heading")[0].position).toEqual({
         pageX: 252,
         pageY: 660,
-        pageWidth: 1024,
-        pageHeight: 2000,
-      });
-      expect(emitted("svg-icon")[0].position).toEqual({
-        pageX: 60,
-        pageY: 616,
         pageWidth: 1024,
         pageHeight: 2000,
       });

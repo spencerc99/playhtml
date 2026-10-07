@@ -775,6 +775,28 @@ export default defineBackground(() => {
       return true
     }
 
+    if (message.type === 'DELETE_SCRAPS') {
+      // Only the extension's own pages may delete; a content script runs
+      // beside arbitrary sites and has no reason to.
+      if (!sender.url?.startsWith(browser.runtime.getURL('/'))) {
+        reply({ error: 'DELETE_SCRAPS is only accepted from extension pages' })
+        return true
+      }
+      const ids: unknown = message.ids
+      if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
+        reply({ error: 'DELETE_SCRAPS needs a list of scrap ids' })
+        return true
+      }
+      store
+        .deleteScrapEvents(ids)
+        .then((deleted) => reply({ deleted }))
+        .catch((e) => {
+          console.error('[Background] DELETE_SCRAPS error:', e)
+          reply({ error: String(e) })
+        })
+      return true
+    }
+
     if (message.type === 'GET_SCRAP_COUNT') {
       store
         .countEventsOfType('element')

@@ -17,6 +17,7 @@ import {
 } from "../utils/scrapLegibility";
 import {
   ANY_TIME,
+  isAnyTime,
   ScrapFilters,
   scrapPassesFilters,
   type ScrapKindFilter,
@@ -120,6 +121,11 @@ interface ScrapCollageProps {
   showKindFilter?: boolean;
   /** Which view the collage opens in; the drifting tide unless told otherwise. */
   initialView?: ScrapView;
+  /**
+   * Permanently removes these scraps. When given, the examine view offers to
+   * delete a scrap and the controls offer to delete whatever the filters show.
+   */
+  onDeleteScraps?: (items: ScrapItem[]) => Promise<void>;
 }
 
 export type ScrapView = "drift" | "archive";
@@ -1037,6 +1043,50 @@ export const COLLAGE_STYLES = `
     box-shadow: 0 0 0 3px rgba(74, 154, 138, 0.16);
   }
 
+  .scrap-collage__bulk-delete {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: -4px;
+    color: #a39b92;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+  }
+
+  .scrap-collage__text-action {
+    appearance: none;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #a39b92;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .scrap-collage__text-action:hover,
+  .scrap-collage__text-action:focus-visible {
+    color: #3d3833;
+    text-decoration: underline;
+    outline: none;
+  }
+
+  .scrap-collage__text-action--danger {
+    color: #a8553f;
+  }
+
+  .scrap-collage__text-action--danger:hover,
+  .scrap-collage__text-action--danger:focus-visible {
+    color: #91462f;
+  }
+
+  .scrap-collage__text-action:disabled {
+    cursor: default;
+    opacity: 0.6;
+    text-decoration: none;
+  }
+
   @media (max-width: 619px) {
     .scrap-collage__view-option {
       padding: 0 9px;
@@ -1643,6 +1693,7 @@ export function ScrapCollage({
   perDomainCap,
   showKindFilter = false,
   initialView = "drift",
+  onDeleteScraps,
 }: ScrapCollageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const archiveScrollRef = useRef<HTMLDivElement>(null);
@@ -1722,6 +1773,29 @@ export function ScrapCollage({
       ),
     [filteredItems],
   );
+  const filtersActive =
+    selectedKind.length > 0 ||
+    shape.length > 0 ||
+    places.length > 0 ||
+    search.trim() !== "" ||
+    !isAnyTime(when);
+  const [bulkDeleteStep, setBulkDeleteStep] = useState<
+    "idle" | "confirm" | "deleting" | "failed"
+  >("idle");
+  // A confirmation names a count for one set of filters; changing them asks again.
+  useEffect(() => {
+    setBulkDeleteStep("idle");
+  }, [selectedKind, shape, places, search, when]);
+  const deleteFiltered = () => {
+    if (!onDeleteScraps) return;
+    setBulkDeleteStep("deleting");
+    onDeleteScraps(archiveScraps)
+      .then(() => setBulkDeleteStep("idle"))
+      .catch((error: unknown) => {
+        console.error("Could not delete the filtered scraps:", error);
+        setBulkDeleteStep("failed");
+      });
+  };
   const archiveSizeBounds = useMemo(
     () => tierBounds(archiveScraps),
     [archiveScraps],
@@ -2292,6 +2366,47 @@ export function ScrapCollage({
                   countScraps={countUniqueScraps}
                 />
               </div>
+              {onDeleteScraps && filtersActive && archiveScraps.length > 0 && (
+                <div className="scrap-collage__bulk-delete" role="group">
+                  {bulkDeleteStep === "idle" || bulkDeleteStep === "failed" ? (
+                    <>
+                      {bulkDeleteStep === "failed" && (
+                        <span role="alert">could not delete them</span>
+                      )}
+                      <button
+                        type="button"
+                        className="scrap-collage__text-action"
+                        onClick={() => setBulkDeleteStep("confirm")}
+                      >
+                        delete {archiveScraps.length === 1 ? "this scrap" : `these ${archiveScraps.length}`}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span>
+                        delete {archiveScraps.length}{" "}
+                        {archiveScraps.length === 1 ? "scrap" : "scraps"} for good?
+                      </span>
+                      <button
+                        type="button"
+                        className="scrap-collage__text-action scrap-collage__text-action--danger"
+                        disabled={bulkDeleteStep === "deleting"}
+                        onClick={deleteFiltered}
+                      >
+                        {bulkDeleteStep === "deleting" ? "deleting..." : "delete"}
+                      </button>
+                      <button
+                        type="button"
+                        className="scrap-collage__text-action"
+                        disabled={bulkDeleteStep === "deleting"}
+                        onClick={() => setBulkDeleteStep("idle")}
+                      >
+                        keep
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <button
@@ -2377,6 +2492,11 @@ export function ScrapCollage({
             onClose={closeExamine}
             onPrevious={() => stepExamine(-1)}
             onNext={() => stepExamine(1)}
+            onDelete={
+              onDeleteScraps
+                ? () => onDeleteScraps([examinedItem])
+                : undefined
+            }
           />,
           document.body,
         )}
