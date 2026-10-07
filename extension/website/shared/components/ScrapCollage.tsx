@@ -122,11 +122,6 @@ interface ScrapCollageProps {
   /** Which view the collage opens in; the drifting tide unless told otherwise. */
   initialView?: ScrapView;
   /**
-   * A display this collage always uses, ignoring the reader's remembered
-   * choice from the scraps page.
-   */
-  fixedDisplay?: ScrapDisplay;
-  /**
    * Permanently removes these scraps. When given, the examine view offers to
    * delete a scrap and the controls offer to delete whatever the filters show.
    */
@@ -135,16 +130,8 @@ interface ScrapCollageProps {
 
 export type ScrapView = "drift" | "archive";
 export type ScrapDisplay = "pile" | "grid";
-const DISPLAY_STORAGE_KEY = "scraps-display";
-function readScrapDisplay(): ScrapDisplay {
-  try {
-    return localStorage.getItem(DISPLAY_STORAGE_KEY) === "grid"
-      ? "grid"
-      : "pile";
-  } catch {
-    return "pile";
-  }
-}
+/** The collage always piles its scraps; the layout helpers still accept "grid". */
+const COLLAGE_DISPLAY: ScrapDisplay = "pile";
 function archiveCell(display: ScrapDisplay) {
   return display === "pile"
     ? { width: 76, height: 74 }
@@ -1706,7 +1693,6 @@ export function ScrapCollage({
   perDomainCap,
   showKindFilter = false,
   initialView = "drift",
-  fixedDisplay,
   onDeleteScraps,
 }: ScrapCollageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1719,12 +1705,9 @@ export function ScrapCollage({
   const [when, setWhen] = useState<ScrapWhenFilter>(ANY_TIME);
   const [controlsFocused, setControlsFocused] = useState(false);
   const [view, setView] = useState<ScrapView>(initialView);
-  const [display, setDisplay] = useState<ScrapDisplay>(
-    () => fixedDisplay ?? readScrapDisplay(),
-  );
+  const display = COLLAGE_DISPLAY;
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
-  const pendingScrollRef = useRef<number | null>(null);
   const shufflePreviousKeysRef = useRef(new Set<string>());
   const [archiveScrollTop, setArchiveScrollTop] = useState(0);
   const [controlsExpanded, setControlsExpanded] = useState(true);
@@ -1769,34 +1752,6 @@ export function ScrapCollage({
   const selectedTargetCount =
     targetCount ??
     responsiveTargetCount(containerSize.width, containerSize.height);
-  const changeDisplay = (next: ScrapDisplay) => {
-    if (next === display) return;
-    setWashingOut([]);
-    if (archiveMode) {
-      const oldCell = archiveCell(display),
-        nextCell = archiveCell(next);
-      const index =
-        Math.floor(archiveScrollTop / oldCell.height) *
-        Math.max(1, Math.floor(containerSize.width / oldCell.width));
-      pendingScrollRef.current =
-        Math.floor(
-          index / Math.max(1, Math.floor(containerSize.width / nextCell.width)),
-        ) * nextCell.height;
-    }
-    setDisplay(next);
-    try {
-      localStorage.setItem(DISPLAY_STORAGE_KEY, next);
-    } catch {
-      /* Layout still changes when storage is unavailable. */
-    }
-  };
-  useLayoutEffect(() => {
-    if (pendingScrollRef.current === null) return;
-    const top = pendingScrollRef.current;
-    pendingScrollRef.current = null;
-    if (archiveScrollRef.current) archiveScrollRef.current.scrollTop = top;
-    setArchiveScrollTop(top);
-  }, [display]);
 
   const groupedItems = useMemo(() => groupPhotoEncounters(items), [items]);
   const uniqueItems = useMemo(
@@ -2355,23 +2310,6 @@ export function ScrapCollage({
                   >
                     archive
                   </button>
-                </div>
-                <div
-                  className="scrap-collage__view-switch"
-                  role="group"
-                  aria-label="Scrap layout"
-                >
-                  {(["pile", "grid"] as const).map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      className="scrap-collage__view-option"
-                      aria-pressed={display === option}
-                      onClick={() => changeDisplay(option)}
-                    >
-                      {option}
-                    </button>
-                  ))}
                 </div>
                 <span className="scrap-collage__controls-spacer" />
                 {archiveMode ? (

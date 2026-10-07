@@ -45,6 +45,7 @@ import {
   normalizeStack,
   flipPiece,
   pieceMaterialTransform,
+  type BackShows,
   type CollagePiece,
   type CollageRecord,
 } from "./collageRecord";
@@ -75,7 +76,6 @@ import {
   type CollagePaper,
 } from "./collageFormats";
 import {
-  defaultDrawerWidth,
   readDrawerPreference,
   writeDrawerPreference,
   type DrawerPreference,
@@ -93,7 +93,11 @@ import {
   bakeCollage,
   bakeCollagePreview,
 } from "./bakeCollage";
-import { bakeCollageBack, resolveBackFavicons } from "./bakeCollageBack";
+import {
+  bakeCollageBack,
+  resolveBackFavicons,
+  resolveBackThumbnails,
+} from "./bakeCollageBack";
 import { videoExportSupport } from "./imageAnimation";
 import { useCollageAnimates } from "./useCollageAnimates";
 import { CollageBackFace } from "./CollageBackFace";
@@ -364,6 +368,10 @@ export function CollageStudio({
   const [paper, setPaper] = useState<CollagePaper>(
     editing?.paper ?? DEFAULT_PAPER,
   );
+  // A collage stored before the back could list titles has always shown pieces.
+  const [backShows, setBackShows] = useState<BackShows>(
+    editing?.backShows ?? "pieces",
+  );
   const frame = formatOf(format);
   const [drawer, setDrawer] = useState(() => readDrawerPreference());
   /** Whether the collage is turned over to its back, where the sources are. */
@@ -467,6 +475,7 @@ export function CollageStudio({
       frame: { width: frame.width, height: frame.height },
       format,
       paper,
+      backShows,
       pieces: normalizeStack(pieces),
     },
     hasContent: pieces.length > 0 || title.trim().length > 0,
@@ -502,8 +511,9 @@ export function CollageStudio({
       paper: paper.color,
       grain: paper.grain,
       format,
+      backShows,
     }),
-    [pieces, title, paper.color, paper.grain, format],
+    [pieces, title, paper.color, paper.grain, format, backShows],
   );
   const firstChangeRef = useRef(true);
   useEffect(() => {
@@ -942,11 +952,10 @@ export function CollageStudio({
       title,
       createdAt: createdAtRef.current,
       changedAt,
-      pieceCount: pieces.length,
-      formatLabel: `${frame.label} \u00b7 ${frame.width} \u00d7 ${frame.height}`,
-      sources: collageProvenance(normalizeStack(pieces)),
+      pieces: normalizeStack(pieces),
+      shows: backShows,
     }),
-    [changedAt, frame, pieces, title],
+    [backShows, changedAt, pieces, title],
   );
 
   // The back shows the front through the paper. The last picture that drew is
@@ -1723,7 +1732,8 @@ export function CollageStudio({
         paper,
         content: backContent,
         front,
-        favicons: await resolveBackFavicons(backContent.sources),
+        favicons: await resolveBackFavicons(collageProvenance(backContent.pieces)),
+        thumbnails: await resolveBackThumbnails(backContent.pieces),
         look: backLook,
       });
       saveFile(front, `${name} front.png`);
@@ -1823,13 +1833,8 @@ export function CollageStudio({
         items={scraps}
         width={drawer.width}
         collapsed={drawer.collapsed}
-        slotSize={drawer.slotSize}
         onWidth={(width) => updateDrawer({ width })}
         onCollapsed={(collapsed) => updateDrawer({ collapsed })}
-        onSlotSize={(slotSize) =>
-          // The drawer follows the new slot size so three still fit across.
-          updateDrawer({ slotSize, width: defaultDrawerWidth(slotSize) })
-        }
         onPlace={(item) => {
           // Placing a scrap is an edit, so the collage turns face up for it.
           if (over) turnOver();
@@ -2222,6 +2227,8 @@ export function CollageStudio({
             canShowSources={!over && pieces.length > 0}
             onTurnOver={turnOver}
             onSources={() => setSourcesOn((value) => !value)}
+            backShows={backShows}
+            onBackShows={setBackShows}
           />
 
           {showKeys && <KeysPopover onClose={() => setShowKeys(false)} />}

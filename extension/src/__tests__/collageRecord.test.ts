@@ -136,6 +136,19 @@ describe("parseCollageRecord", () => {
     expect(parsed).toEqual(original);
   });
 
+  it("keeps what the back lists, and leaves it absent on collages stored before it", () => {
+    const titled = { ...record([piece()]), backShows: "titles" as const };
+    expect(parseCollageRecord(titled).backShows).toBe("titles");
+    expect(parseCollageRecord(record([piece()]))).not.toHaveProperty("backShows");
+    expect(duplicateCollage(titled).backShows).toBe("titles");
+  });
+
+  it("refuses a back it does not know", () => {
+    expect(() =>
+      parseCollageRecord({ ...record([piece()]), backShows: "photos" }),
+    ).toThrow(/unknown back/);
+  });
+
   it("refuses a record with no preview at all", () => {
     const { preview: _dropped, ...withoutPreview } = record([piece()]);
     expect(() => parseCollageRecord(withoutPreview)).toThrow(/missing its preview/);

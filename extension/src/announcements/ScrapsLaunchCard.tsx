@@ -16,7 +16,10 @@ import "./ScrapsLaunchCard.scss";
 export const SCRAPS_LAUNCH_CARD_ID = "scraps-2026-08-newtab";
 
 /** How many of the newest scraps the pile draws from. */
-export const PILE_CAPACITY = 32;
+export const PILE_CAPACITY = 50;
+
+/** How many scraps sit ashore in the card at once while the rest drift in. */
+const PILE_ASHORE_COUNT = 30;
 
 interface ScrapsResponse {
   scraps?: ScrapRecord[];
@@ -223,9 +226,7 @@ export function ScrapsLaunchCardView({
       <ScrapCollage
         items={items}
         seed={seed}
-        targetCount={items.length}
-        initialView="archive"
-        fixedDisplay="pile"
+        targetCount={Math.min(items.length, PILE_ASHORE_COUNT)}
       />
       {hasScraps ? null : (
         <span className="scraps-launch__strip-chip">examples</span>

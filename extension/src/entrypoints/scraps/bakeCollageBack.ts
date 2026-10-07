@@ -1,10 +1,14 @@
 // ABOUTME: Bakes the back of a collage to a PNG by rasterizing the markup the studio shows.
-// ABOUTME: Also inlines what that markup needs: the fonts, the maker's mark, favicons, the front.
+// ABOUTME: Also inlines what that markup needs: the fonts, the maker's mark, favicons, pieces, the front.
 
 import loraSemibold from "@fontsource/lora/files/lora-latin-600-normal.woff2?url";
 import martianRegular from "@fontsource/martian-mono/files/martian-mono-latin-400-normal.woff2?url";
 import sourceSerifLightItalic from "@fontsource/source-serif-4/files/source-serif-4-latin-200-italic.woff2?url";
-import type { CollageFrame, CollageProvenance } from "./collageRecord";
+import type {
+  CollageFrame,
+  CollagePiece,
+  CollageProvenance,
+} from "./collageRecord";
 import type { CollagePaper } from "./collageFormats";
 import {
   BACK_FONTS,
@@ -12,17 +16,21 @@ import {
   collageBackMarkup,
   type BackFavicon,
   type BackLook,
+  type BackThumbnail,
   type CollageBackContent,
 } from "./collageBack";
 import { webPageHref } from "./scrapLinks";
 import {
   canvasPng,
   collageCanvas,
+  drawPiece,
   loadImage,
   paintPaper,
+  prepareCollagePieces,
 } from "./bakeCollage";
 import { cutoutCanvas } from "./cutoutImages";
-import { FULL_CROP } from "./collageGeometry";
+import { FULL_CROP, sourceBoxForCrop } from "./collageGeometry";
+import { BACK_PIECE_STEPS } from "./collageBack";
 
 /** How long a favicon may take before the back is written without it. */
 const FAVICON_TIMEOUT_MS = 5000;
@@ -118,12 +126,18 @@ async function fetchFavicon(href: string): Promise<BackFavicon> {
     const response = await fetch(href, {
       signal: AbortSignal.timeout(FAVICON_TIMEOUT_MS),
     });
-    if (!response.ok) return "missing";
+    if (!response.ok) {
+      console.warn(`[collage back] favicon ${href} answered ${response.status}`);
+      return "missing";
+    }
     const blob = await response.blob();
     if (blob.size === 0) return "missing";
     return { data: await asDataUrl(blob) };
-  } catch {
+  } catch (error) {
     // An unreachable favicon is drawn as the empty ring, which says so.
+    console.warn(
+      `[collage back] favicon ${href} could not load: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return "missing";
   }
 }
@@ -149,6 +163,71 @@ export async function resolveBackFavicons(
     }),
   );
   return new Map<string, BackFavicon>(entries);
+}
+
+/**
+ * The height a piece is drawn at for the back, in pixels: twice the largest
+ * size the back shows it at, so it stays sharp in a 2x export.
+ */
+const THUMBNAIL_HEIGHT = BACK_PIECE_STEPS[0] * 2;
+
+/** What changes how a piece looks, so a redrawn thumbnail is only made when needed. */
+function thumbnailKey(piece: CollagePiece): string {
+  return JSON.stringify([
+    piece.id,
+    piece.scrap.id,
+    Math.round(piece.width),
+    Math.round(piece.height),
+    piece.crop,
+    piece.flipX,
+    piece.flipY,
+    piece.cutout ?? null,
+  ]);
+}
+
+const thumbnailCache = new Map<string, Promise<BackThumbnail>>();
+
+/**
+ * One piece as the front shows it, with its crop, cutout and mirror, but
+ * upright, drawn by the same code the front bake uses.
+ */
+async function drawThumbnail(piece: CollagePiece): Promise<BackThumbnail> {
+  try {
+    const upright: CollagePiece = { ...piece, x: 0, y: 0, rotation: 0 };
+    const [prepared] = await prepareCollagePieces([upright]);
+    const frame = { width: upright.width, height: upright.height };
+    const height = THUMBNAIL_HEIGHT;
+    const width = Math.max(1, Math.round((height * upright.width) / upright.height));
+    const { canvas, context } = collageCanvas(frame, width, height);
+    drawPiece(context, upright, sourceBoxForCrop(upright, upright.crop), prepared.still);
+    // WebP keeps a cut-out's transparency at a fraction of a PNG's size; a
+    // browser that cannot write it hands back a PNG, which also keeps it.
+    return { data: canvas.toDataURL("image/webp", 0.86) };
+  } catch {
+    // A picture that will not load is drawn as an outline, which says so.
+    return "missing";
+  }
+}
+
+/**
+ * Every piece drawn small, by piece id, for the sites listed on the back. A
+ * piece only redraws when something about how it looks has changed.
+ */
+export async function resolveBackThumbnails(
+  pieces: readonly CollagePiece[],
+): Promise<Map<string, BackThumbnail>> {
+  const entries = await Promise.all(
+    pieces.map(async (piece) => {
+      const key = thumbnailKey(piece);
+      let pending = thumbnailCache.get(key);
+      if (!pending) {
+        pending = drawThumbnail(piece);
+        thumbnailCache.set(key, pending);
+      }
+      return [piece.id, await pending] as const;
+    }),
+  );
+  return new Map<string, BackThumbnail>(entries);
 }
 
 /**
@@ -185,6 +264,7 @@ export interface BackBakeOptions {
   /** The baked front, shown mirrored and faint as if through the paper. */
   front: Blob | null;
   favicons: ReadonlyMap<string, BackFavicon>;
+  thumbnails: ReadonlyMap<string, BackThumbnail>;
   /** Pixel density relative to the frame's logical size, matching the front. */
   scale?: number;
   look: BackLook;
@@ -209,6 +289,7 @@ export async function bakeCollageBack(options: BackBakeOptions): Promise<Blob> {
         paper: options.paper,
         content: options.content,
         favicons: options.favicons,
+        thumbnails: options.thumbnails,
         bleed,
         markIcon,
         look: options.look,

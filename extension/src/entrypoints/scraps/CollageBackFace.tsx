@@ -16,12 +16,15 @@ import {
   type BackLook,
   collageBackMarkup,
   type BackFavicon,
+  type BackThumbnail,
   type CollageBackContent,
 } from "./collageBack";
+import { collageProvenance } from "./collageRecord";
 import {
   backAssets,
   bleedDataUrl,
   resolveBackFavicons,
+  resolveBackThumbnails,
   type BackAssets,
 } from "./bakeCollageBack";
 import { paperBackground } from "./paperGrain";
@@ -94,6 +97,9 @@ export function CollageBackFace({
   const [favicons, setFavicons] = useState<ReadonlyMap<string, BackFavicon>>(
     () => new Map(),
   );
+  const [thumbnails, setThumbnails] = useState<
+    ReadonlyMap<string, BackThumbnail>
+  >(() => new Map());
   const [bleed, setBleed] = useState<string | null>(null);
 
   // Nothing is fetched until the back is actually being read.
@@ -118,19 +124,33 @@ export function CollageBackFace({
 
   // The key stands for the list of pages and their favicons, so moving pieces
   // around fetches nothing.
-  const sourcesKey = content.sources
+  const sources = useMemo(() => collageProvenance(content.pieces), [content.pieces]);
+  const sourcesKey = sources
     .map((source) => `${source.pageUrl}\n${source.faviconUrl ?? ""}`)
     .join("\n");
   useEffect(() => {
     if (!showing) return;
     let cancelled = false;
-    void resolveBackFavicons(content.sources).then((resolved) => {
+    void resolveBackFavicons(sources).then((resolved) => {
       if (!cancelled) setFavicons(resolved);
     });
     return () => {
       cancelled = true;
     };
   }, [showing, sourcesKey]);
+
+  // Pieces are drawn small once each and kept, so turning the collage over
+  // again, or moving a piece, redraws nothing.
+  useEffect(() => {
+    if (!showing) return;
+    let cancelled = false;
+    void resolveBackThumbnails(content.pieces).then((resolved) => {
+      if (!cancelled) setThumbnails(resolved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [showing, content.pieces]);
 
   useEffect(() => {
     if (!front) {
@@ -162,12 +182,13 @@ export function CollageBackFace({
             paper,
             content,
             favicons,
+            thumbnails,
             bleed,
             markIcon: assets.markIcon,
             look,
           })
         : null,
-    [assets, bleed, content, favicons, frame, look, paper],
+    [assets, bleed, content, favicons, frame, look, paper, thumbnails],
   );
 
   // The written title is overlaid with a field set in the same place and type,

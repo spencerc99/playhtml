@@ -1,6 +1,7 @@
 // ABOUTME: The studio's controls around the canvas: the way back and undo/redo at the top-left,
 // ABOUTME: the views (front/back, sources) at the top-right, and the shortcut list's button.
 
+import type { BackShows } from "./collageRecord";
 import React from "react";
 
 const STROKE = {
@@ -117,16 +118,33 @@ interface StudioViewsProps {
   canShowSources: boolean;
   onTurnOver: () => void;
   onSources: () => void;
+  /**
+   * What the back lists under each site, and how to change it. Offered only
+   * while the back is showing, where the choice can be seen taking effect.
+   */
+  backShows?: BackShows;
+  onBackShows?: (shows: BackShows) => void;
 }
 
-/** Ways of looking at the collage: its back, and where each piece came from. */
+const BACK_CHOICES: { shows: BackShows; label: string; title: string }[] = [
+  { shows: "pieces", label: "pieces", title: "List each site's pieces on the back" },
+  { shows: "titles", label: "titles", title: "List each site's page titles on the back" },
+];
+
+/**
+ * Ways of looking at the collage: its back, and where each piece came from.
+ * While the back is showing, the second place holds what the back lists.
+ */
 export function StudioViews({
   turnedOver,
   sourcesOn,
   canShowSources,
   onTurnOver,
   onSources,
+  backShows,
+  onBackShows,
 }: StudioViewsProps) {
+  const choosingBack = turnedOver && backShows !== undefined && onBackShows !== undefined;
   return (
     <div className="collage-views" role="toolbar" aria-label="Views">
       <button
@@ -141,18 +159,35 @@ export function StudioViews({
         <span>front / back</span>
       </button>
       <span className="collage-piece-actions__rule" aria-hidden="true" />
-      <button
-        type="button"
-        className={`collage-view${sourcesOn && canShowSources ? " collage-view--on" : ""}`}
-        title="Show where each piece came from (or hold i)"
-        aria-label="Show sources"
-        aria-pressed={sourcesOn && canShowSources}
-        disabled={!canShowSources}
-        onClick={onSources}
-      >
-        {SOURCES}
-        <span>sources</span>
-      </button>
+      {choosingBack ? (
+        <div role="group" aria-label="The back lists" style={{ display: "contents" }}>
+          {BACK_CHOICES.map((choice) => (
+            <button
+              key={choice.shows}
+              type="button"
+              className={`collage-view${backShows === choice.shows ? " collage-view--on" : ""}`}
+              title={choice.title}
+              aria-pressed={backShows === choice.shows}
+              onClick={() => onBackShows(choice.shows)}
+            >
+              <span>{choice.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <button
+          type="button"
+          className={`collage-view${sourcesOn && canShowSources ? " collage-view--on" : ""}`}
+          title="Show where each piece came from (or hold i)"
+          aria-label="Show sources"
+          aria-pressed={sourcesOn && canShowSources}
+          disabled={!canShowSources}
+          onClick={onSources}
+        >
+          {SOURCES}
+          <span>sources</span>
+        </button>
+      )}
     </div>
   );
 }

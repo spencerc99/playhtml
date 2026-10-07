@@ -70,32 +70,6 @@ export const COLLAGE_STUDIO_STYLES = `
     border-radius: 2px;
   }
 
-  .collage-tray__sizes {
-    display: flex;
-    flex: 0 0 auto;
-    gap: 2px;
-  }
-
-  .collage-tray__size {
-    width: 17px;
-    height: 17px;
-    padding: 0;
-    border: 1px solid color-mix(in srgb, var(--c-ink) 18%, transparent);
-    border-radius: 3px;
-    background: transparent;
-    color: var(--c-muted);
-    font-family: "Martian Mono", monospace;
-    font-size: 8px;
-    text-transform: uppercase;
-    cursor: pointer;
-  }
-
-  .collage-tray__size--on {
-    border-color: color-mix(in srgb, var(--c-accent) 70%, transparent);
-    background: color-mix(in srgb, var(--c-accent) 12%, transparent);
-    color: var(--c-accent-ink);
-  }
-
   .collage-tray__tuck {
     display: grid;
     place-items: center;
