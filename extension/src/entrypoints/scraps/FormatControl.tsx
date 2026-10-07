@@ -86,7 +86,9 @@ export function FormatControl({
         onClick={() => (open ? close() : setOpen(true))}
       >
         {current.label}
-        <span className="collage-setting__caret" aria-hidden="true">&#9662;</span>
+        <span className="collage-setting__caret" aria-hidden="true">
+          &#9662;
+        </span>
       </button>
       <button
         ref={buttonRef}
@@ -103,7 +105,9 @@ export function FormatControl({
           aria-hidden="true"
         />
         paper
-        <span className="collage-setting__caret" aria-hidden="true">&#9662;</span>
+        <span className="collage-setting__caret" aria-hidden="true">
+          &#9662;
+        </span>
       </button>
       <span
         className="collage-studio__label"
@@ -174,23 +178,21 @@ export function FormatControl({
                 onClick={() => onPaper({ ...paper, color: tone.color })}
               />
             ))}
-            {/* A rainbow wheel reads as "pick any color", unlike a plain
+            {/* A rainbow swatch reads as "pick any color", unlike a plain
                 swatch of the current paper that looks like one more tone. */}
             <label
-              className={`collage-color-picker${
-                customColor ? " collage-color-picker--on" : ""
+              className={`collage-swatch collage-color-picker${
+                customColor ? " collage-swatch--on" : ""
               }`}
               title="pick any color"
             >
-              <span className="collage-color-picker__wheel" aria-hidden="true">
-                {customColor && (
-                  <span
-                    className="collage-color-picker__chosen"
-                    style={{ background: paper.color }}
-                  />
-                )}
-              </span>
-              any color
+              {customColor && (
+                <span
+                  className="collage-color-picker__chosen"
+                  style={{ background: paper.color }}
+                  aria-hidden="true"
+                />
+              )}
               <input
                 type="color"
                 value={toColorInputValue(paper.color)}

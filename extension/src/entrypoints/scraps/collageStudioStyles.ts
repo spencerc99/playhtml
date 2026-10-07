@@ -489,66 +489,37 @@ export const COLLAGE_STUDIO_STYLES = `
     outline-offset: 1px;
   }
 
-  /* The custom color: a hue wheel and words, so it reads as a picker. */
+  /* The custom color: a rainbow swatch, so it reads as a picker. */
   .collage-color-picker {
     position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    height: 22px;
-    margin-left: 2px;
-    padding: 0 7px 0 3px;
-    border: 1px solid color-mix(in srgb, var(--c-ink) 22%, transparent);
-    border-radius: 999px;
-    color: var(--c-ink);
-    font-family: "Martian Mono", monospace;
-    font-size: 9px;
-    letter-spacing: 0.04em;
-    white-space: nowrap;
-    cursor: pointer;
-  }
-
-  .collage-color-picker:hover {
-    border-color: color-mix(in srgb, var(--c-ink) 42%, transparent);
-  }
-
-  .collage-color-picker:focus-within,
-  .collage-color-picker--on {
-    outline: 1px solid var(--c-accent-ink);
-    outline-offset: 1px;
-  }
-
-  .collage-color-picker:hover .collage-color-picker__wheel {
-    transform: rotate(40deg);
-  }
-
-  .collage-color-picker__wheel {
     display: grid;
     place-items: center;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    transition: transform 200ms ease;
-    background: conic-gradient(
+    box-sizing: border-box;
+    background: linear-gradient(
+      135deg,
       #e94b4b,
       #f0b03c,
       #e7e046,
       #5cc96b,
       #4bb8e9,
       #6a6ae9,
-      #c45ce0,
-      #e94b4b
+      #c45ce0
     );
+  }
+
+  .collage-color-picker:focus-within {
+    outline: 1px solid var(--c-accent-ink);
+    outline-offset: 1px;
   }
 
   .collage-color-picker__chosen {
     width: 8px;
     height: 8px;
     border: 1px solid rgba(255, 255, 255, 0.9);
-    border-radius: 50%;
+    border-radius: 2px;
   }
 
-  /* The real input covers the pill so a click anywhere opens the picker. */
+  /* The real input covers the swatch so a click anywhere opens the picker. */
   .collage-color-picker input {
     position: absolute;
     inset: 0;
