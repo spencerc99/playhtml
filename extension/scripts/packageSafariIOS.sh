@@ -5,8 +5,8 @@
 set -euo pipefail
 
 # Usage: scripts/packageSafariIOS.sh [--simulator] [--skip-build]
-#   --simulator   Build the generated project for the iOS Simulator without
-#                 signing, to check that it compiles. Without it, the script
+#   --simulator   Build the generated project for the iOS Simulator with an
+#                 ad-hoc signature (no Apple account). Without it, the script
 #                 opens the project in Xcode so you can run it on an iPhone.
 #   --skip-build  Reuse an existing Safari build in publish/safari-mv3.
 #
@@ -71,13 +71,19 @@ if [ -n "${APPLE_TEAM_ID:-}" ]; then
 fi
 
 if [ "$SIMULATOR" -eq 1 ]; then
+  # Ad-hoc sign instead of skipping signing: Safari in the Simulator refuses
+  # to enable an extension whose appex carries no signature, and the switch
+  # in Manage Extensions flips straight back off.
   xcodebuild \
     -quiet \
     -project "$PROJECT_PATH" \
     -scheme "$APP_NAME" \
     -configuration Debug \
     -destination "generic/platform=iOS Simulator" \
-    CODE_SIGNING_ALLOWED=NO \
+    CODE_SIGN_IDENTITY=- \
+    CODE_SIGN_STYLE=Manual \
+    DEVELOPMENT_TEAM= \
+    PROVISIONING_PROFILE_SPECIFIER= \
     build
   echo "iOS Simulator build succeeded."
   exit 0
