@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import browser from "webextension-polyfill";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PILE_CAPACITY, ScrapsLaunchCard } from "./ScrapsLaunchCard";
+import { PILE_CAPACITY, ScrapsLaunchCard, scrapSites } from "./ScrapsLaunchCard";
 import { FLAGS } from "../flags";
 
 function cleanup(root: Root, container: HTMLDivElement) {
@@ -82,7 +82,7 @@ describe("ScrapsLaunchCard", () => {
     const { container, root } = await renderCard();
 
     try {
-      expect(container.textContent).toContain("internet scraps");
+      expect(container.textContent).toContain("things you came across");
       expect(container.textContent).toContain("WWO now collects images");
       expect(container.textContent).not.toContain("so far");
       expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
@@ -142,8 +142,12 @@ describe("ScrapsLaunchCard", () => {
         dismiss?.click();
       });
 
-      expect(container.querySelector(".scraps-launch__title")).toBeNull();
+      expect(container.querySelector(".scraps-launch__text")).toBeNull();
+      expect(container.querySelector("h2")?.textContent).toBe("things you came across");
       expect(container.querySelector(".scraps-launch--compact")).not.toBeNull();
+      expect(
+        container.querySelector(".scraps-launch__sites")?.textContent,
+      ).toBe("from 1 siteexample.com1");
       expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
       expect(
         container.querySelector(".scraps-launch__footer-link")?.textContent,
@@ -188,5 +192,27 @@ describe("ScrapsLaunchCard", () => {
     } finally {
       cleanup(root, container);
     }
+  });
+
+  it("lists the pile's sites with the most scraps first", () => {
+    const at = (domain: string, ts: number, faviconUrl?: string) => ({
+      ...scrapImage(`${domain}-${ts}`),
+      domain,
+      ts,
+      faviconUrl,
+    });
+    expect(
+      scrapSites([
+        at("a.com", 1),
+        at("b.com", 5),
+        at("b.com", 2, "https://b.com/icon.png"),
+        at("c.com", 9),
+        at("a.com", 3),
+      ]),
+    ).toEqual([
+      { domain: "b.com", count: 2, faviconUrl: "https://b.com/icon.png" },
+      { domain: "a.com", count: 2, faviconUrl: undefined },
+      { domain: "c.com", count: 1, faviconUrl: undefined },
+    ]);
   });
 });
