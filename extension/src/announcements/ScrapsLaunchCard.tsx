@@ -199,6 +199,78 @@ export function ScrapsLaunchCard() {
   );
 }
 
+/** A site the pile's scraps came from, as the bar lists it. */
+export interface ScrapSite {
+  domain: string;
+  count: number;
+  faviconUrl?: string;
+}
+
+/** How many sites the bar names before folding the rest into "+N". */
+const BAR_SITE_LIMIT = 6;
+
+/** The sites behind `scraps`, most scraps first, then most recently seen. */
+export function scrapSites(scraps: ScrapRecord[]): ScrapSite[] {
+  const sites = new Map<string, ScrapSite & { latest: number }>();
+  for (const scrap of scraps) {
+    const site = sites.get(scrap.domain);
+    if (site) {
+      site.count += 1;
+      site.latest = Math.max(site.latest, scrap.ts);
+      site.faviconUrl ??= scrap.faviconUrl;
+    } else {
+      sites.set(scrap.domain, {
+        domain: scrap.domain,
+        count: 1,
+        faviconUrl: scrap.faviconUrl,
+        latest: scrap.ts,
+      });
+    }
+  }
+  return [...sites.values()]
+    .sort((a, b) => b.count - a.count || b.latest - a.latest)
+    .map(({ latest: _latest, ...site }) => site);
+}
+
+/** A site's favicon, or the empty ring the postcard back draws without one. */
+function SiteMark({ faviconUrl }: { faviconUrl?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!faviconUrl || failed) {
+    return <span className="scraps-launch__site-favicon scraps-launch__site-favicon--none" />;
+  }
+  return (
+    <img
+      className="scraps-launch__site-favicon"
+      src={faviconUrl}
+      alt=""
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+/** The sites strip, set like the "also from" line on a collage's back. */
+function ScrapSitesStrip({ sites }: { sites: ScrapSite[] }) {
+  const shown = sites.slice(0, BAR_SITE_LIMIT);
+  const hidden = sites.length - shown.length;
+  return (
+    <div className="scraps-launch__sites">
+      <span className="scraps-launch__sites-label">
+        from {sites.length} {sites.length === 1 ? "site" : "sites"}
+      </span>
+      {shown.map((site) => (
+        <span className="scraps-launch__site" key={site.domain} title={site.domain}>
+          <SiteMark faviconUrl={site.faviconUrl} />
+          <span className="scraps-launch__site-name">{site.domain}</span>
+          <span className="scraps-launch__site-count">{site.count}</span>
+        </span>
+      ))}
+      {hidden > 0 ? (
+        <span className="scraps-launch__sites-more">+{hidden} more</span>
+      ) : null}
+    </div>
+  );
+}
+
 /** The card itself, given the reader's scraps; the dev page renders it too. */
 export function ScrapsLaunchCardView({
   scraps,
@@ -218,6 +290,7 @@ export function ScrapsLaunchCardView({
     () => (hasScraps ? scraps.map(toScrapItem) : EXAMPLE_ITEMS),
     [hasScraps, scraps],
   );
+  const sites = useMemo(() => scrapSites(scraps), [scraps]);
   // One arrangement per day, like the scraps page.
   const seed = useMemo(() => Math.floor(Date.now() / 86_400_000), []);
 
@@ -234,18 +307,27 @@ export function ScrapsLaunchCardView({
     </div>
   );
 
+  const heading = (
+    <div className="walking-record__section-heading">
+      <h2 id="scraps-launch-title">internet scraps</h2>
+    </div>
+  );
+
   if (textDismissed) {
     return (
       <section
-        className="scraps-launch scraps-launch--compact"
-        aria-label="recent internet scraps"
+        className="walking-record__section scraps-section"
+        aria-labelledby="scraps-launch-title"
       >
-        {pile}
-        <div className="scraps-launch__footer">
-          <span className="scraps-launch__footer-label">recent scraps</span>
-          <a className="scraps-launch__footer-link" href={scrapsHref}>
-            view all {total} →
-          </a>
+        {heading}
+        <div className="scraps-launch scraps-launch--compact">
+          {pile}
+          <div className="scraps-launch__footer">
+            <ScrapSitesStrip sites={sites} />
+            <a className="scraps-launch__footer-link" href={scrapsHref}>
+              view all {total} →
+            </a>
+          </div>
         </div>
       </section>
     );
@@ -260,30 +342,38 @@ export function ScrapsLaunchCardView({
     : "examples from playhtml.fun + wewere.online · collected locally only";
 
   return (
-    <section className="scraps-launch" aria-labelledby="scraps-launch-title">
-      {pile}
+    <section
+      className="walking-record__section scraps-section"
+      aria-labelledby="scraps-launch-title"
+    >
+      {heading}
+      <div className="scraps-launch">
+        {pile}
+        {hasScraps ? (
+          <div className="scraps-launch__footer scraps-launch__footer--ruled">
+            <ScrapSitesStrip sites={sites} />
+          </div>
+        ) : null}
 
-      <div className="scraps-launch__body">
-        <div className="scraps-launch__copy">
-          <span className="scraps-launch__tag">new</span>
-          <h2 className="scraps-launch__title" id="scraps-launch-title">
-            internet scraps
-          </h2>
-          <p className="scraps-launch__text">{body}</p>
-          <p className="scraps-launch__fine-print">{finePrint}</p>
-        </div>
+        <div className="scraps-launch__body">
+          <div className="scraps-launch__copy">
+            <span className="scraps-launch__tag">new</span>
+            <p className="scraps-launch__text">{body}</p>
+            <p className="scraps-launch__fine-print">{finePrint}</p>
+          </div>
 
-        <div className="scraps-launch__actions">
-          <a className="scraps-launch__cta" href={scrapsHref}>
-            view your scraps →
-          </a>
-          <button
-            type="button"
-            className="scraps-launch__dismiss"
-            onClick={onDismiss}
-          >
-            dismiss ×
-          </button>
+          <div className="scraps-launch__actions">
+            <a className="scraps-launch__cta" href={scrapsHref}>
+              view your scraps →
+            </a>
+            <button
+              type="button"
+              className="scraps-launch__dismiss"
+              onClick={onDismiss}
+            >
+              dismiss ×
+            </button>
+          </div>
         </div>
       </div>
     </section>
