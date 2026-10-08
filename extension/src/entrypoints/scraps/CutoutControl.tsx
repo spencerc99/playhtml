@@ -9,9 +9,13 @@ interface CutoutControlProps {
   piece: CollagePiece;
   /** How much of the edge color is cut away, from 0 to 1. */
   tolerance: number;
+  /** Whether the cut keeps the backdrop and drops the subject. */
+  inverted: boolean;
   scale: number;
   frame: { width: number; height: number };
   onTolerance: (tolerance: number) => void;
+  /** Swaps which side of the cut stays. */
+  onInvert: () => void;
   /** Takes the cutout off and puts the background back. */
   onKeepBackground: () => void;
   onDone: () => void;
@@ -20,9 +24,11 @@ interface CutoutControlProps {
 export function CutoutControl({
   piece,
   tolerance,
+  inverted,
   scale,
   frame,
   onTolerance,
+  onInvert,
   onKeepBackground,
   onDone,
 }: CutoutControlProps) {
@@ -46,6 +52,15 @@ export function CutoutControl({
         aria-label="Background cutout tolerance"
         onChange={(event) => onTolerance(Number(event.target.value) / 100)}
       />
+      <button
+        type="button"
+        className="collage-tolerance__button"
+        aria-pressed={inverted}
+        title={inverted ? "keep the subject instead" : "keep only the background"}
+        onClick={onInvert}
+      >
+        invert
+      </button>
       <button
         type="button"
         className="collage-tolerance__button"

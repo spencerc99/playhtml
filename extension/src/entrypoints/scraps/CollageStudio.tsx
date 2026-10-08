@@ -51,6 +51,8 @@ import {
 } from "./collageRecord";
 import {
   DEFAULT_CUTOUT_TOLERANCE,
+  cutoutKeeps,
+  invertedCutout,
   type PieceCutout,
 } from "./backgroundCutout";
 import {
@@ -893,17 +895,27 @@ export function CollageStudio({
     }
   }, [editPiece, selected]);
 
-  const tuneCutout = useCallback(
-    (tolerance: number) => {
+  const reshapeCutout = useCallback(
+    (change: (cutout: PieceCutout) => PieceCutout) => {
       if (!cutoutSession) return;
-      const cutout: PieceCutout = { method: "edge-color", tolerance };
       editPiece(
         cutoutSession.pieceId,
-        (piece) => ({ ...piece, cutout }),
+        (piece) =>
+          piece.cutout ? { ...piece, cutout: change(piece.cutout) } : piece,
         `cutout:${cutoutSession.pieceId}`,
       );
     },
     [cutoutSession, editPiece],
+  );
+
+  const tuneCutout = useCallback(
+    (tolerance: number) => reshapeCutout((cutout) => ({ ...cutout, tolerance })),
+    [reshapeCutout],
+  );
+
+  const invertCutout = useCallback(
+    () => reshapeCutout(invertedCutout),
+    [reshapeCutout],
   );
 
   const confirmCutout = useCallback(() => {
@@ -2140,9 +2152,11 @@ export function CollageStudio({
                   <CutoutControl
                     piece={selected}
                     tolerance={selected.cutout.tolerance}
+                    inverted={cutoutKeeps(selected.cutout) === "background"}
                     scale={scale}
                     frame={frame}
                     onTolerance={tuneCutout}
+                    onInvert={invertCutout}
                     onKeepBackground={keepBackground}
                     onDone={confirmCutout}
                   />

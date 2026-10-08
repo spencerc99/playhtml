@@ -1142,6 +1142,12 @@ export const COLLAGE_STUDIO_STYLES = `
     border-color: color-mix(in srgb, var(--c-ink) 20%, transparent);
   }
 
+  /* The invert toggle reads as held down while the backdrop is what stays. */
+  .collage-tolerance__button[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--c-ink) 35%, transparent);
+    background: color-mix(in srgb, var(--c-ink) 10%, transparent);
+  }
+
   .collage-tolerance__button:disabled {
     opacity: 0.4;
     cursor: default;
