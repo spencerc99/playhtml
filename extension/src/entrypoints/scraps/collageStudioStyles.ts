@@ -26,6 +26,56 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
   }
 
+  /* On a phone the drawer docks under the collage, so the collage and the
+     scraps to add to it are on screen together. */
+  .collage-studio--phone {
+    flex-direction: column;
+  }
+
+  .collage-studio--phone .collage-frame-area {
+    order: 0;
+  }
+
+  /* Every touch on the stage is the studio's: a drag moves a piece or draws
+     a marquee, and two fingers pinch, so the page must not scroll or zoom. */
+  .collage-studio--phone .collage-frame-area__stage {
+    touch-action: none;
+  }
+
+  .collage-tray--bottom {
+    order: 1;
+    flex: 0 0 40%;
+    margin: 0 8px 8px;
+  }
+
+  /* While the drawer is open on a phone the collage is being filled, so the
+     format and export bar steps aside for it; tucking the drawer brings it back. */
+  .collage-studio--picking .collage-bar {
+    display: none;
+  }
+
+  /* No keyboard, so no list of keys. */
+  .collage-studio--phone .collage-keys-button {
+    display: none;
+  }
+
+  .collage-studio--phone .collage-mat__caption {
+    bottom: 4px;
+  }
+
+  .collage-tray--bottom.collage-tray--tucked {
+    flex: 0 0 auto;
+    padding: 6px;
+  }
+
+  .collage-tray--bottom .collage-tray__rail {
+    width: 100%;
+    height: auto;
+    padding: 10px;
+    font-size: 10px;
+    writing-mode: horizontal-tb;
+  }
+
   .collage-studio__label {
     font-family: "Martian Mono", monospace;
     font-size: 9px;
@@ -770,6 +820,22 @@ export const COLLAGE_STUDIO_STYLES = `
     background: var(--c-frame);
     padding: 0;
     cursor: grab;
+  }
+
+  /* A finger needs far more room than a cursor: the handle grows a little and
+     takes presses from well around it, with nothing drawn there. */
+  @media (pointer: coarse) {
+    .collage-handle {
+      width: 18px;
+      height: 18px;
+      margin: -9px 0 0 -9px;
+    }
+
+    .collage-handle::after {
+      content: "";
+      position: absolute;
+      inset: -16px;
+    }
   }
 
   /* A corner handle held at the edge of the view because its corner is out
