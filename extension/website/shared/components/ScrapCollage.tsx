@@ -187,6 +187,10 @@ const TIDE_WAVE_STAGGER_MAX_MS = 300;
 const TIDE_BAND_BELOW = 0.15;
 const TIDE_BAND_ABOVE = 0.05;
 const LONG_EDGE_BY_TIER = [96, 152, 208] as const;
+/** The most a piled scrap grows toward filling its cell on the shore. */
+const PILE_MAX_GROWTH = 1.5;
+/** How far a piled scrap strays from its cell's center, as a share of the cell. */
+const PILE_JITTER = 0.35;
 const CURSOR_TILE_SIZE = 48;
 /** Captured font sizes range from hairline to billboard; display needs a narrower band. */
 const MIN_HEADING_DISPLAY_FONT_SIZE = 11;
@@ -953,6 +957,44 @@ function formatVisitTime(timestamp: number): string {
 }
 
 /**
+ * Where each slot sits on the shore: the slots are dealt into rows as evenly
+ * as the shape allows, and each row spreads its slots across the full width.
+ * Unlike a plain grid, no cells are left over at the end of the last row, so
+ * the pile covers the whole field instead of leaving a bare corner.
+ */
+export function shoreCells(
+  slotCount: number,
+  width: number,
+  height: number,
+): { x: number; y: number; cellWidth: number; cellHeight: number }[] {
+  if (slotCount === 0 || width === 0 || height === 0) return [];
+  const rowCount = clamp(
+    1,
+    slotCount,
+    Math.round(Math.sqrt((slotCount * height) / width)),
+  );
+  const cellHeight = height / rowCount;
+  const cells: { x: number; y: number; cellWidth: number; cellHeight: number }[] =
+    [];
+  for (let row = 0; row < rowCount; row += 1) {
+    // Rows differ by at most one slot, with the longer rows spread out.
+    const start = Math.round((row * slotCount) / rowCount);
+    const end = Math.round(((row + 1) * slotCount) / rowCount);
+    const inRow = end - start;
+    const cellWidth = width / inRow;
+    for (let column = 0; column < inRow; column += 1) {
+      cells.push({
+        x: (column + 0.5) * cellWidth,
+        y: (row + 0.5) * cellHeight,
+        cellWidth,
+        cellHeight,
+      });
+    }
+  }
+  return cells;
+}
+
+/**
  * Lays out one scrap per slot. Slots are positional, so passing `null` for a
  * bare slot keeps every other scrap exactly where it was -- the grid is sized
  * from the slot count, not from how many slots currently hold a scrap, and bare
@@ -977,14 +1019,34 @@ function buildLayout(
     Math.ceil(Math.sqrt(slots.length * aspectRatio)),
   );
   const rowCount = Math.ceil(slots.length / columnCount);
-  const cellWidth = width / columnCount;
-  const cellHeight = height / rowCount;
+  const gridCellWidth = width / columnCount;
+  const gridCellHeight = height / rowCount;
+  const pileCells =
+    display === "pile" ? shoreCells(slots.length, width, height) : [];
 
   return slots.flatMap((item, index) => {
     if (item === null) return [];
     const tier = tierForItem(item, lowerArea, upperArea);
     const itemSeed = seed + hashString(item.key);
     const itemDimensions = itemSize(item, tier, itemSeed);
+    const pileCell = pileCells[index];
+    const cellWidth = pileCell?.cellWidth ?? gridCellWidth;
+    const cellHeight = pileCell?.cellHeight ?? gridCellHeight;
+    if (pileCell && item.kind === "image") {
+      // An image smaller than its cell grows a little toward covering it, so
+      // small scraps do not leave bare paper between their neighbours. Text
+      // pieces keep the size their lettering was fitted to.
+      const grow = clamp(
+        1,
+        PILE_MAX_GROWTH,
+        Math.min(
+          cellWidth / itemDimensions.width,
+          cellHeight / itemDimensions.height,
+        ),
+      );
+      itemDimensions.width *= grow;
+      itemDimensions.height *= grow;
+    }
     if (display === "grid") {
       const scale = Math.min(
         1,
@@ -996,18 +1058,20 @@ function buildLayout(
     }
     const column = index % columnCount;
     const row = Math.floor(index / columnCount);
+    const centerX = pileCell?.x ?? (column + 0.5) * cellWidth;
+    const centerY = pileCell?.y ?? (row + 0.5) * cellHeight;
+    // Pieces wander within their own cell rather than into a neighbour's, so
+    // the pile stays loose without opening gaps.
     const jitterX =
       (display === "pile" ? seededRandom(itemSeed, 2) - 0.5 : 0) *
       cellWidth *
-      0.6;
+      PILE_JITTER;
     const jitterY =
       (display === "pile" ? seededRandom(itemSeed, 3) - 0.5 : 0) *
       cellHeight *
-      0.6;
-    const unclampedX =
-      (column + 0.5) * cellWidth + jitterX - itemDimensions.width / 2;
-    const unclampedY =
-      (row + 0.5) * cellHeight + jitterY - itemDimensions.height / 2;
+      PILE_JITTER;
+    const unclampedX = centerX + jitterX - itemDimensions.width / 2;
+    const unclampedY = centerY + jitterY - itemDimensions.height / 2;
     const x = Math.max(
       4,
       Math.min(width - itemDimensions.width - 4, unclampedX),
