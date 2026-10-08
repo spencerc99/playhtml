@@ -413,6 +413,39 @@ export const GroupActivityDisplay = withSharedState(
   },
 );
 
+/** Keeps the walk's link chat reachable once the room moves on to the
+ * collage. During the walk the chat sits in the middle of the page as before;
+ * during the collage it docks into a side pane each person can fold away. The
+ * wrapper renders the same way in both stages so the chat never remounts. */
+function WalkChatDock({
+  stage,
+  children,
+}: {
+  stage: SessionStage;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  const docked = stage === "collage";
+  const modifier = docked ? (open ? "open" : "closed") : "walk";
+
+  return (
+    <div className={`walk-chat-dock walk-chat-dock--${modifier}`}>
+      {docked && (
+        <button
+          className="walk-chat-dock__tab"
+          onClick={() => setOpen((wasOpen) => !wasOpen)}
+          aria-expanded={open}
+        >
+          {open ? "◂" : "▸"} walk chat
+        </button>
+      )}
+      <div className="walk-chat-dock__body" hidden={docked && !open}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 /** Holds which stage the whole room is on. The stage belongs to the page, not
  * to any one element, so it lives in page data. Everyone follows it; only the
  * admin sees the switch. The walk stage stays mounted (just hidden) during the
@@ -445,9 +478,11 @@ function StageSwitch({ session }: { session: WorkshopSession }) {
       )}
       <div className="walk-stage" hidden={stage !== "walk"}>
         <UserSetup />
-        <URLChat />
         <GroupActivityDisplay />
       </div>
+      <WalkChatDock stage={stage}>
+        <URLChat />
+      </WalkChatDock>
       {session.hasCollageStage && (
         <CollageStage active={stage === "collage"} />
       )}
