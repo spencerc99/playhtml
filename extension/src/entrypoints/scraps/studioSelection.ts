@@ -128,18 +128,20 @@ export interface SelectionPressPlan {
 /**
  * Decides a press on the pieces.
  *
- * Shift adds the frontmost piece under the pointer, or, when that piece is
- * already held, a click puts it down while a drag still moves the whole hand.
+ * Shift adds the frontmost piece under the pointer. When a held piece is
+ * under the pointer, even beneath an unheld one, the press keeps the hand: a
+ * drag moves it, and a click adds or puts down the frontmost piece.
  *
  * With several pieces held, a press anywhere inside the box around them keeps
  * the hand so a drag moves them all: on a held piece, on an unheld piece lying
  * over one, or on an unheld piece that only sits inside the box. A click there
- * without a drag takes the frontmost piece at that spot alone, the one the eye
- * sees clicked. A press outside the box takes the frontmost piece alone.
+ * without a drag keeps just the held piece at that spot, or the frontmost
+ * piece when none is held there. A press outside the box takes the frontmost
+ * piece alone.
  *
  * With one piece or none held, the single-piece rules apply (see planPress):
- * clicking the held piece again steps down the pile, and cmd or ctrl reaches
- * the next piece down straight away.
+ * a press on the held piece keeps it, and cmd or ctrl reaches the next piece
+ * down straight away.
  */
 export function planSelectionPress(
   pieces: readonly CollagePiece[],
@@ -152,9 +154,15 @@ export function planSelectionPress(
   const stack = piecesUnder(pieces, point);
   if (stack.length === 0) return null;
 
+  const heldHere = stack.find((piece) => isSelected(selection, piece.id));
+
   if (modifiers.additive) {
     const front = stack[0].id;
-    if (isSelected(selection, front)) {
+    // Over a held piece, even one buried under an unheld piece, a shift press
+    // may be the start of a drag, so the hand is kept until release shows
+    // which it was: a drag moves the hand, a click adds or takes away the
+    // piece on top.
+    if (heldHere) {
       return {
         selectOnDown: selection,
         dragIds: selection.ids,
@@ -166,14 +174,11 @@ export function planSelectionPress(
   }
 
   if (selection.ids.length > 1 && !modifiers.deep) {
-    if (
-      stack.some((piece) => isSelected(selection, piece.id)) ||
-      (groupBox !== null && boxHolds(groupBox, point))
-    ) {
+    if (heldHere || (groupBox !== null && boxHolds(groupBox, point))) {
       return {
         selectOnDown: selection,
         dragIds: selection.ids,
-        selectOnClick: selectOnly(stack[0].id),
+        selectOnClick: selectOnly((heldHere ?? stack[0]).id),
       };
     }
   }
