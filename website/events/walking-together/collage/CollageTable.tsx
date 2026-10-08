@@ -82,7 +82,7 @@ function newPieceId(pid: string): string {
 
 export function CollageTable({ data, setData, peers, setLive }: Props) {
   const { pid, name, color } = usePlayerIdentity();
-  const admin = isAdmin(name, color);
+  const admin = isAdmin(pid);
   const pieces = piecesOf(data);
   const locked = data?.locked ?? false;
   const templatePoints = Object.values(data?.templatePoints ?? {});

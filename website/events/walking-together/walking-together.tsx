@@ -162,7 +162,7 @@ const RosterAdmin = withSharedState(
       });
     }, [pid, name, color, setData]);
 
-    const admin = isAdmin(name, color);
+    const admin = isAdmin(pid);
     const pids = rosterPids(data.participants);
 
     return (
@@ -308,8 +308,8 @@ export const GroupActivityDisplay = withSharedState(
     },
   },
   ({ data, setData }) => {
-    const { name, color } = usePlayerIdentity();
-    const admin = isAdmin(name, color);
+    const { pid } = usePlayerIdentity();
+    const admin = isAdmin(pid);
 
     // The countdown animates LOCALLY for everyone, derived from the shared
     // `lastChangeTime` — no per-tick writes. The shared state is the source of
@@ -392,7 +392,7 @@ export const GroupActivityDisplay = withSharedState(
             {minutes}:{seconds.toString().padStart(2, "0")}
           </p>
         </div>
-        {!IS_ARCHIVED && isAdmin(name, color) && (
+        {!IS_ARCHIVED && admin && (
           <button
             onClick={handleSkip}
             style={{
@@ -422,8 +422,8 @@ function StageSwitch({ session }: { session: WorkshopSession }) {
     STAGE_DATA_NAME,
     { stage: "walk" },
   );
-  const { name, color } = usePlayerIdentity();
-  const admin = isAdmin(name, color);
+  const { pid } = usePlayerIdentity();
+  const admin = isAdmin(pid);
   const stage: SessionStage = session.hasCollageStage
     ? stageData.stage
     : "walk";
