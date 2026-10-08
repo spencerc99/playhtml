@@ -89,6 +89,32 @@ export type CollagePreview =
   | { drawn: true; image: Blob }
   | { drawn: false; reason: string };
 
+/**
+ * A preview read out of IndexedDB, copied into memory so it can be written
+ * back. The Blob IndexedDB hands out is backed by the stored row's file, and a
+ * reopened collage carries it into every save until a re-bake replaces it.
+ * In Firefox the first save back succeeds, but it lets go of the file behind
+ * that Blob, so every later save carrying it fails with an UnknownError ("The
+ * operation failed for reasons unrelated to the database itself...") and the
+ * collage can no longer be saved. An in-memory copy has no tie to the row it
+ * came from. A picture whose bytes can no longer be read is dropped, so the
+ * arrangement still saves and a re-bake draws it again.
+ */
+export async function detachPreview(
+  preview: CollagePreview,
+): Promise<CollagePreview> {
+  if (!preview.drawn) return preview;
+  try {
+    const bytes = await preview.image.arrayBuffer();
+    return {
+      drawn: true,
+      image: new Blob([bytes], { type: preview.image.type }),
+    };
+  } catch {
+    return { drawn: false, reason: "the saved picture could not be read" };
+  }
+}
+
 /** A stored row that could not be read, listed so it can still be deleted. */
 export interface UnreadableCollage {
   unreadable: true;
