@@ -4,6 +4,7 @@
 - Internet scraps opens faster with large collections while search and filters still find older scraps.
 - You can now hide scraps from sites you don't want to see in the scraps site filter.
 - Turn on sources in the scraps archive to see which site each run of scraps came from.
+- Drag across the scraps archive to select a group of scraps and delete them together.
 
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
