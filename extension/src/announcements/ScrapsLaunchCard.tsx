@@ -309,7 +309,7 @@ export function ScrapsLaunchCardView({
 
   const heading = (
     <div className="walking-record__section-heading">
-      <h2 id="scraps-launch-title">internet scraps</h2>
+      <h2 id="scraps-launch-title">things you came across</h2>
     </div>
   );
 

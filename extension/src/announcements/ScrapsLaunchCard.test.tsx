@@ -82,7 +82,7 @@ describe("ScrapsLaunchCard", () => {
     const { container, root } = await renderCard();
 
     try {
-      expect(container.textContent).toContain("internet scraps");
+      expect(container.textContent).toContain("things you came across");
       expect(container.textContent).toContain("WWO now collects images");
       expect(container.textContent).not.toContain("so far");
       expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
@@ -143,7 +143,7 @@ describe("ScrapsLaunchCard", () => {
       });
 
       expect(container.querySelector(".scraps-launch__text")).toBeNull();
-      expect(container.querySelector("h2")?.textContent).toBe("internet scraps");
+      expect(container.querySelector("h2")?.textContent).toBe("things you came across");
       expect(container.querySelector(".scraps-launch--compact")).not.toBeNull();
       expect(
         container.querySelector(".scraps-launch__sites")?.textContent,
