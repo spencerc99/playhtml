@@ -65,6 +65,7 @@ import {
 } from "./arrangementHistory";
 import {
   leavesKeysAlone,
+  releaseTypingFocus,
   studioCommandFor,
   type StudioMode,
 } from "./studioKeymap";
@@ -1838,6 +1839,7 @@ export function CollageStudio({
         onPlace={(item) => {
           // Placing a scrap is an edit, so the collage turns face up for it.
           if (over) turnOver();
+          releaseTypingFocus(document.activeElement);
           // Clicked scraps fan out from the middle so each one stays grabbable.
           addPiece(item, fanOutPlacement(pieces.length, frame));
         }}
@@ -1854,6 +1856,14 @@ export function CollageStudio({
           ref={stageRef}
           style={{ padding: STAGE_PADDING, paddingTop: STAGE_TOP_BAND }}
           data-marquee-ground=""
+          // Any press here, on a piece, a grip or bare paper, turns from a
+          // text field to the collage, so undo reaches the collage.
+          onPointerDownCapture={(event) =>
+            releaseTypingFocus(
+              document.activeElement,
+              event.target as HTMLElement,
+            )
+          }
           onPointerDown={onStagePointerDown}
           onPointerMove={onStagePointerMove}
           onPointerUp={endGesture}
@@ -1936,6 +1946,7 @@ export function CollageStudio({
                   setDropActive(false);
                   const item = draggingScrapRef.current;
                   draggingScrapRef.current = null;
+                  releaseTypingFocus(document.activeElement);
                   if (item) addPiece(item, framePoint(event));
                 }}
               >

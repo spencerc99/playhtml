@@ -754,7 +754,12 @@ export default function TldrawCollageStudio({
         collapsed={drawer.collapsed}
         onWidth={(width) => updateDrawer({ width })}
         onCollapsed={(collapsed) => updateDrawer({ collapsed })}
-        onPlace={(item) => addPiece(item, fanOutPlacement(pieces.length, frame))}
+        onPlace={(item) => {
+          addPiece(item, fanOutPlacement(pieces.length, frame));
+          // The editor's keys, undo among them, only reach it while it has
+          // focus, which a click in the drawer can leave in the search.
+          editor?.focus();
+        }}
         onDragStart={(item, event) => {
           draggingScrapRef.current = item;
           event.dataTransfer.effectAllowed = "copy";
@@ -780,6 +785,7 @@ export default function TldrawCollageStudio({
             event.preventDefault();
             event.stopPropagation();
             addPiece(item, editor.screenToPage({ x: event.clientX, y: event.clientY }));
+            editor.focus();
           }}
         >
           <div style={{ position: "absolute", inset: 0 }}>
