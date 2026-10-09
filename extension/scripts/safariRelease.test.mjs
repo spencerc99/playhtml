@@ -2,7 +2,7 @@
 // ABOUTME: Keeps uploads on editable versions and blocks uploads while review is active.
 
 import { expect, test } from "vitest";
-import { selectSafariVersion } from "./safariRelease.mjs";
+import { reviewSubmissionAccepted, selectSafariVersion } from "./safariRelease.mjs";
 
 function version(number, state) {
   return { id: number, attributes: { platform: "MAC_OS", versionString: number, appVersionState: state } };
@@ -36,4 +36,12 @@ test("compares numeric version components", () => {
 
 test("requires an existing macOS App Store record", () => {
   expect(() => selectSafariVersion([])).toThrow("No macOS App Store version exists");
+});
+
+test("reads an accepted review submission from its state or submitted date", () => {
+  expect(reviewSubmissionAccepted({ attributes: { state: "WAITING_FOR_REVIEW" } })).toBe(true);
+  expect(reviewSubmissionAccepted({ attributes: { submittedDate: "2026-10-09T06:47:21Z" } })).toBe(true);
+  expect(reviewSubmissionAccepted({ attributes: { submitted: true } })).toBe(true);
+  expect(reviewSubmissionAccepted({ attributes: { state: "READY_FOR_REVIEW" } })).toBe(false);
+  expect(reviewSubmissionAccepted({ attributes: {} })).toBe(false);
 });
