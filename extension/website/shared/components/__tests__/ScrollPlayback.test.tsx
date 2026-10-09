@@ -6,8 +6,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnimatedScrollViewports } from "../AnimatedScrollViewports";
 import type { ScrollAnimation } from "../../types";
+import {
+  INSTALLATION_ARRIVAL_MS,
+  INSTALLATION_FADE_MS,
+  INSTALLATION_SCROLL_HOLD_MS,
+} from "../../utils/installationPlaybackQueue";
 
 const animation: ScrollAnimation = {
+  eventId: "recording",
   participantId: "person",
   sessionId: "session",
   pageUrl: "https://example.com",
@@ -72,16 +78,18 @@ describe("scroll playback", () => {
     now += milliseconds;
     await act(async () => frame(now));
   }
+  // Installation recordings play continuously; default playback has no live ids.
+  const noLiveEvents: ReadonlySet<string> = new Set();
   async function render(
     speed: number,
     animations = [animation],
     complete = () => true,
-    recordedTiming = true,
+    installation = true,
   ) {
     await act(async () =>
       root.render(
         <AnimatedScrollViewports
-          recordedTiming={recordedTiming}
+          installationLiveEventIds={installation ? noLiveEvents : undefined}
           animations={animations}
           canvasSize={{ width: 1200, height: 800 }}
           repeatAnimations={false}
@@ -106,43 +114,52 @@ describe("scroll playback", () => {
     );
   }
 
+  function removals() {
+    return logs.mock.calls.filter(([message]) =>
+      String(message).startsWith("[Scroll Dynamic] Removed viewport"),
+    ).length;
+  }
+  function recording(eventId: string): ScrollAnimation {
+    return { ...animation, eventId };
+  }
+
   it.each([0.5, 1, 4, 10])(
-    "plays all recorded motion and completes at %sx",
+    "plays all recorded motion, holds, and fades out at %sx",
     async (speed) => {
-      let completions = 0;
-      await render(speed, [animation], () => {
-        completions++;
-        return true;
-      });
+      await render(speed);
       await tick(0);
-      await tick(300 / speed);
-      await tick(400 / speed);
+      await tick(INSTALLATION_ARRIVAL_MS / speed);
+      expect(windows()).toHaveLength(1);
+      await tick(INSTALLATION_FADE_MS / speed);
       await tick(10000 / speed);
       expect(scrollPosition()).toBeCloseTo(0.25);
-      expect(completions).toBe(0);
       await tick(30000 / speed);
-      expect(windows()).toHaveLength(1);
       expect(scrollPosition()).toBeCloseTo(1);
-      await tick(300 / speed);
-      await tick(600 / speed);
-      expect(windows()).toHaveLength(0);
-      await tick(300 / speed);
-      expect(completions).toBe(1);
+      await tick((INSTALLATION_SCROLL_HOLD_MS - 100) / speed);
+      expect(windows()).toHaveLength(1);
+      expect(removals()).toBe(0);
+      await tick(100 / speed);
+      await tick((INSTALLATION_FADE_MS - 100) / speed);
+      expect(removals()).toBe(0);
+      await tick(100 / speed);
+      expect(removals()).toBe(1);
     },
   );
 
   it.each([0.5, 1, 4, 10])(
     "scales introduction cadence at %sx while respecting Max Windows",
     async (speed) => {
-      await render(speed, [animation, animation, animation]);
+      await render(speed, ["a", "b", "c"].map(recording));
       await tick(0);
-      await tick(299 / speed);
+      await tick((INSTALLATION_ARRIVAL_MS - 100) / speed);
       expect(windows()).toHaveLength(0);
-      await tick(1 / speed);
+      await tick(200 / speed);
       expect(windows()).toHaveLength(1);
-      await tick(300 / speed);
+      await tick((INSTALLATION_ARRIVAL_MS - 200) / speed);
+      expect(windows()).toHaveLength(1);
+      await tick(200 / speed);
       expect(windows()).toHaveLength(2);
-      await tick(300 / speed);
+      await tick(INSTALLATION_ARRIVAL_MS / speed);
       expect(windows()).toHaveLength(2);
     },
   );
@@ -166,8 +183,8 @@ describe("scroll playback", () => {
     const animations = [animation];
     await render(1, animations);
     await tick(0);
-    await tick(300);
-    await tick(400);
+    await tick(INSTALLATION_ARRIVAL_MS);
+    await tick(INSTALLATION_FADE_MS);
     await tick(10000);
     expect(scrollPosition()).toBeCloseTo(0.25);
     await render(4, animations);

@@ -10,6 +10,9 @@ import {
   type FeatureStage,
 } from '../../../shared/featureCatalog';
 
+// Members of this cohort receive every feature at the beta stage.
+export const BETA_COHORT_ID = 'closed-beta';
+
 export function resolveFeatureStage(
   featureId: FeatureId,
   storedStages: ReadonlyMap<string, string>,
@@ -23,6 +26,7 @@ export function resolveFeatureStage(
 export function resolveFeaturePolicies(options: {
   storedStages: ReadonlyMap<string, string>;
   grantsAllUnreleased: boolean;
+  inBetaCohort: boolean;
   grantedFeatureIds: ReadonlySet<string>;
 }): FeatureAccessSnapshot['features'] {
   return Object.fromEntries(
@@ -35,6 +39,7 @@ export function resolveFeaturePolicies(options: {
           available:
             stage === 'released' ||
             options.grantsAllUnreleased ||
+            (stage === 'beta' && options.inBetaCohort) ||
             options.grantedFeatureIds.has(featureId),
         },
       ];

@@ -10,11 +10,11 @@ import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicat
 
 Presence is used for anything that is real-time and ephemeral (meaning it doesn't stick around after you leave). For example, cursors only matter when you are actually on the page. When you leave, they are gone and there's no record of them.
 
-For the full API surface (`PlayerIdentity`, `PresenceAPI`, element awareness, cursor types), see the [Presence & identity reference](/docs/reference/presence/).
+For the full API surface (`PlayerIdentity`, `PresenceAPI`, element users, cursor types), see the [Presence & identity reference](/docs/reference/presence/).
 
 When you want things to stay after refreshing, use [persistent data](/docs/data/data-essentials/) and use [events](/docs/data/events/) for real-time events that don't rely on updating data. 
 
-Element APIs use the word **awareness** for presence scoped to one element. `myDefaultAwareness`, `awareness`, and `setMyAwareness` are still ephemeral per-user state; they just belong to a specific element instead of the page-level `playhtml.presence` object.
+Element APIs call presence scoped to one element **live user data**. Configure your value with `live`, change it with `setLive`, and render everyone from `users`. It belongs to one element instead of the page-level `playhtml.presence` object.
 
 ## The unified API
 
@@ -118,11 +118,13 @@ setMyPresence(null);
 
 There's no partial/merge update for a channel. When you call `setMyPresence`, you overwrite that channel's value for your user.
 
-## Element awareness
+## Element users
 
-Use page-level presence when the signal belongs to the room: online status, cursor position, lobby readiness, or a typing indicator that several parts of the page may read. Use element awareness when the signal only matters for one playhtml element, like "who has joined this widget" or "which color is this reader contributing here".
+Use page-level presence when the signal belongs to the room: online status, cursor position, lobby readiness, or a typing indicator that several parts of the page may read. Use element `live` values when the signal only matters for one playhtml element, like "who has joined this widget" or "which choice is this reader previewing here."
 
-In vanilla HTML, put element awareness in the initializer passed to `register`:
+Each item in `users` has two parts: `user` is the person's identity (`pid`, `name`, `color`, and `isMe`), while `live` is the value they published for this element.
+
+In vanilla HTML, add `live` to the initializer passed to `register`:
 
 ```html
 <button id="presence-count">0 readers here</button>
@@ -131,13 +133,13 @@ In vanilla HTML, put element awareness in the initializer passed to `register`:
   import { playhtml } from "playhtml";
 
   playhtml.register("presence-count", {
-    myDefaultAwareness: { color: "#3b82f6" },
-    onClick: (_event, { setMyAwareness }) => {
-      setMyAwareness({ color: "#f97316" });
+    live: { ready: false },
+    onClick: (_event, { live, setLive }) => {
+      setLive({ ready: !live.ready });
     },
-    updateElementAwareness: ({ element, awareness }) => {
-      const label = awareness.length === 1 ? "reader" : "readers";
-      element.textContent = `${awareness.length} ${label} here`;
+    update: ({ element, users }) => {
+      const ready = users.filter(({ live }) => live.ready).length;
+      element.textContent = `${ready} of ${users.length} ready`;
     },
   });
 
@@ -148,19 +150,21 @@ In vanilla HTML, put element awareness in the initializer passed to `register`:
 In React, the same fields are available from `withSharedState` and `<CanPlayElement>` render props:
 
 ```tsx
-<CanPlayElement id="presence-count" defaultData={{}} myDefaultAwareness="#3b82f6">
-  {({ awareness, setMyAwareness }) => {
-    const label = awareness.length === 1 ? "reader" : "readers";
+<CanPlayElement id="presence-count" defaultData={{}} live={{ ready: false }}>
+  {({ live, users, setLive }) => {
+    const ready = users.filter((entry) => entry.live.ready).length;
     return (
-      <button onClick={() => setMyAwareness("#f97316")}>
-        {awareness.length} {label} here
+      <button onClick={() => setLive({ ready: !live.ready })}>
+        {ready} of {users.length} ready
       </button>
     );
   }}
 </CanPlayElement>
 ```
 
-Awareness has the same lifetime as presence: it clears when the user leaves, and a late visitor does not replay it.
+Element live data has the same lifetime as presence: it clears when the user leaves, and a late visitor does not replay it.
+
+Tabs in the same browser share one identity and appear as one user. To test with two people, open the second copy in an incognito window or another browser profile.
 
 ## Isolated presence rooms
 
@@ -210,4 +214,4 @@ Each dot is one reader; the yellow-glowing dot is **you**. Pick a color and watc
 
 Presence is for the live sense of other people on the page. If you find yourself reaching for `localStorage` or a refresh-survivor, you want data, not presence.
 
-Not sure which primitive fits? The full decision table, covering element data, page data, presence, element awareness, cursors, and events, is on [data essentials](/docs/data/data-essentials/#when-to-use-which-primitive).
+Not sure which primitive fits? The full decision table, covering element data, page data, presence, element users, cursors, and events, is on [data essentials](/docs/data/data-essentials/#when-to-use-which-primitive).

@@ -155,46 +155,38 @@ describe("playhtml basic setup with SyncedStore", () => {
       {
         id: "empty-widget",
         props: {},
-        message: "updateElement, view, or updateElementAwareness",
+        message: "update, updateElement, view, or updateElementAwareness",
       },
       {
         id: "data-without-render",
         props: { defaultData: {} },
-        message: "defaultData requires updateElement or view",
+        message: "defaultData requires update, updateElement, or view",
       },
       {
         id: "data-with-awareness-render-only",
         props: { defaultData: {}, updateElementAwareness: vi.fn() },
-        message: "defaultData requires updateElement or view",
+        message: "defaultData requires update, updateElement, or view",
       },
       {
         id: "render-without-data",
         props: { updateElement: vi.fn() },
-        message: "updateElement or view requires defaultData",
+        message: "update, updateElement, or view requires defaultData or live",
       },
       {
         id: "view-without-data",
         props: { view: vi.fn() },
-        message: "updateElement or view requires defaultData",
+        message: "update, updateElement, or view requires defaultData or live",
       },
       {
         id: "render-with-awareness-render-without-data",
         props: { updateElement: vi.fn(), updateElementAwareness: vi.fn() },
-        message: "updateElement or view requires defaultData",
+        message: "update, updateElement, or view requires defaultData or live",
       },
       {
         id: "awareness-without-render",
         props: { myDefaultAwareness: { seated: false } },
-        message: "myDefaultAwareness requires updateElementAwareness",
-      },
-      {
-        id: "awareness-with-data-render-only",
-        props: {
-          defaultData: {},
-          updateElement: vi.fn(),
-          myDefaultAwareness: { seated: false },
-        },
-        message: "myDefaultAwareness requires updateElementAwareness",
+        message:
+          "myDefaultAwareness requires update, updateElement, view, or updateElementAwareness",
       },
       {
         id: "primitive-default-data",

@@ -3,6 +3,7 @@
 import React, {
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   memo,
   useCallback,
@@ -17,6 +18,12 @@ import {
   colorizeLuminosity,
 } from "../utils/colorStyle";
 import { getViewportTitleText } from "../utils/titleText";
+import {
+  InstallationPlaybackQueue,
+  INSTALLATION_ARRIVAL_MS,
+  INSTALLATION_FADE_MS,
+  INSTALLATION_SCROLL_HOLD_MS,
+} from "../utils/installationPlaybackQueue";
 import { PagePreview } from "./PagePreview";
 import { useDebugHover } from "./DebugHover";
 
@@ -33,9 +40,9 @@ const VIEWPORT_MARGIN = 8; // Gap between viewports
 interface AnimatedScrollViewportsProps {
   animations: ScrollAnimation[];
   canvasSize: { width: number; height: number };
-  recordedTiming?: boolean;
   repeatAnimations?: boolean;
   onAnimationsComplete?: () => boolean;
+  installationLiveEventIds?: ReadonlySet<string>;
   settings: {
     scrollSpeed: number;
     backgroundOpacity: number;
@@ -55,6 +62,11 @@ interface AnimatedScrollViewportsProps {
   // navigation events stream in, even for viewports that were added before
   // the metadata for their URL arrived.
   urlMetadata?: Map<string, { title?: string; favicon?: string }>;
+}
+
+interface ViewportClock {
+  currentTime: number;
+  listeners: Set<(currentTime: number) => void>;
 }
 
 // Generate unique ID for viewports
@@ -223,20 +235,38 @@ const calculateViewportSize = (
   return { width, height };
 };
 
+/**
+ * Identifies how much footage a scroll recording holds. A live recording keeps
+ * growing while the person is still scrolling, and it keeps the same eventId
+ * throughout (the id of its first event), so this is what distinguishes the
+ * version already on screen from a longer one that has since arrived.
+ */
+export function scrollAnimationVersion(animation: ScrollAnimation): string {
+  return [
+    animation.endTime,
+    animation.scrollEvents.length,
+    animation.resizeEvents?.length ?? 0,
+    animation.zoomEvents?.length ?? 0,
+  ].join(":");
+}
+
 export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
   memo(({
     animations,
     canvasSize,
-    recordedTiming = false,
     repeatAnimations = true,
     onAnimationsComplete,
+    installationLiveEventIds,
     settings,
     urlMetadata,
   }) => {
     const [activeViewports, setActiveViewports] = useState<ActiveViewport[]>(
       [],
     );
-    const [frameTime, setFrameTime] = useState(0);
+    const clock = useRef<ViewportClock>({
+      currentTime: 0,
+      listeners: new Set(),
+    }).current;
     const activeViewportsRef = useRef<ActiveViewport[]>([]);
     const animationQueueRef = useRef<ScrollAnimation[]>([]);
     const queueIndexRef = useRef(0);
@@ -246,6 +276,10 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
     const lastTimestampRef = useRef<number | null>(null);
     const playbackTimeRef = useRef(0);
     const completionSignaledRef = useRef(false);
+    const continuous = installationLiveEventIds !== undefined;
+    const continuousQueue = useRef(new InstallationPlaybackQueue<ScrollAnimation>()).current;
+    const fadeInMs = continuous ? INSTALLATION_FADE_MS : FADE_IN_DURATION;
+    const fadeOutMs = continuous ? INSTALLATION_FADE_MS : FADE_OUT_DURATION;
 
     // Settings ref to avoid re-renders
     const settingsRef = useRef(settings);
@@ -268,8 +302,56 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       activeViewportsRef.current = activeViewports;
     }, [activeViewports]);
 
+    /**
+     * Swap longer footage into windows that are already on screen. A live
+     * recording is still being written while it plays, so rather than letting
+     * it end at whatever it held when it was admitted, it keeps scrolling as
+     * new events arrive. The playhead stays continuous because the animation's
+     * duration and its timeline grow by the same amount (see getViewportFrame).
+     */
+    const extendActiveViewports = useCallback(() => {
+      if (!continuous) return;
+      commitActiveViewports((previous) => {
+        let changed = false;
+        const next = previous.map((viewport) => {
+          // A window already fading out has had its run; extending it would
+          // resurrect footage the viewer has visibly finished with.
+          if (viewport.phase === "fade-out") return viewport;
+          const id = viewport.animation.eventId;
+          if (!id) return viewport;
+          const latest = continuousQueue.current(id);
+          if (
+            !latest ||
+            latest.version === scrollAnimationVersion(viewport.animation)
+          ) {
+            return viewport;
+          }
+          changed = true;
+          return {
+            ...viewport,
+            animation: latest.value,
+            durationMs: latest.value.endTime - latest.value.startTime,
+          };
+        });
+        return changed ? next : previous;
+      });
+    }, [commitActiveViewports, continuous, continuousQueue]);
+
     // Initialize animation queue when animations change
     useEffect(() => {
+      if (continuous) {
+        continuousQueue.update(animations.map((animation) => {
+          if (!animation.eventId) throw new Error("Installation scroll recording requires an event id");
+          return {
+            id: animation.eventId,
+            live: installationLiveEventIds.has(animation.eventId),
+            value: animation,
+            version: scrollAnimationVersion(animation),
+          };
+        }));
+        extendActiveViewports();
+        return;
+      }
       if (animations.length > 0) {
         // Shuffle the animations for variety
         const shuffled = [...animations];
@@ -284,10 +366,19 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           `[Scroll Dynamic] Initialized queue with ${shuffled.length} animations`,
         );
       }
-    }, [animations]);
+    }, [
+      animations,
+      continuous,
+      continuousQueue,
+      extendActiveViewports,
+      installationLiveEventIds,
+    ]);
 
     // Get the next animation from the queue
     const getNextAnimation = useCallback((): ScrollAnimation | null => {
+      if (continuous) {
+        return continuousQueue.take(new Set(activeViewportsRef.current.map((viewport) => viewport.animation.eventId!)));
+      }
       const queue = animationQueueRef.current;
       const nextIndex = getScrollQueueIndex(
         queueIndexRef.current,
@@ -299,7 +390,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       const animation = queue[nextIndex];
       queueIndexRef.current = nextIndex + 1;
       return animation;
-    }, [repeatAnimations]);
+    }, [repeatAnimations, continuous, continuousQueue]);
 
     // Try to add a new viewport to an available space
     const tryAddViewport = useCallback(
@@ -309,10 +400,10 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           (v) => v.phase !== "fade-out",
         );
 
-        // Count non-fading-out viewports
-        const activeCount = visibleViewports.length;
+        // Every visible window counts toward the installation cap.
+        const activeCount = continuous ? activeViewportsRef.current.length : visibleViewports.length;
 
-        if (activeCount >= maxConcurrentScrolls) {
+        if (activeCount >= (continuous ? Math.min(30, maxConcurrentScrolls) : maxConcurrentScrolls)) {
           return; // At capacity
         }
 
@@ -424,7 +515,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           rect: { ...position, width: size.width, height: size.height },
           phase: "fade-in",
           phaseStartTime: currentTime,
-          animationStartTime: currentTime + FADE_IN_DURATION,
+          animationStartTime: currentTime + fadeInMs,
           durationMs: animation.endTime - animation.startTime,
           backgroundSeed: seed,
         };
@@ -436,7 +527,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           } active`,
         );
       },
-      [canvasSize, commitActiveViewports, getNextAnimation],
+      [canvasSize, commitActiveViewports, getNextAnimation, continuous, fadeInMs],
     );
 
     // Update viewport phases based on time
@@ -450,7 +541,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           // Check phase transitions
           if (viewport.phase === "fade-in") {
             const fadeInElapsed = currentTime - viewport.phaseStartTime;
-            if (fadeInElapsed >= FADE_IN_DURATION) {
+            if (fadeInElapsed >= fadeInMs) {
               changed = true;
               return {
                 ...viewport,
@@ -460,7 +551,10 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
             }
           } else if (viewport.phase === "animating") {
             const animElapsed = currentTime - viewport.animationStartTime;
-            if (animElapsed >= viewport.durationMs + FADE_OUT_DELAY) {
+            // Installation playback already runs its clock at Timeline Speed.
+            if (animElapsed >= (continuous
+              ? viewport.durationMs + INSTALLATION_SCROLL_HOLD_MS
+              : viewport.durationMs + FADE_OUT_DELAY)) {
               changed = true;
               return {
                 ...viewport,
@@ -476,7 +570,7 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         const filtered = updated.filter((viewport) => {
           if (viewport.phase === "fade-out") {
             const fadeOutElapsed = currentTime - viewport.phaseStartTime;
-            if (fadeOutElapsed >= FADE_OUT_DURATION) {
+            if (fadeOutElapsed >= fadeOutMs) {
               changed = true;
               console.log(`[Scroll Dynamic] Removed viewport ${viewport.id}`);
               return false;
@@ -489,27 +583,30 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           commitActiveViewports(() => filtered);
         }
       },
-      [commitActiveViewports],
+      [commitActiveViewports, continuous, fadeInMs, fadeOutMs],
     );
 
     // Main animation loop
     useEffect(() => {
-      if (animations.length === 0 || canvasSize.width === 0) return;
+      if ((!continuous && animations.length === 0) || canvasSize.width === 0) return;
 
       const animate = (timestamp: number) => {
         const elapsed = timestamp - (lastTimestampRef.current ?? timestamp);
         lastTimestampRef.current = timestamp;
-        playbackTimeRef.current += elapsed * (recordedTiming ? settingsRef.current.scrollSpeed : 1);
+        // Installation recordings scale the whole timeline: arrivals, fades,
+        // motion, and holds. Other playback scales only scroll motion.
+        playbackTimeRef.current += elapsed * (continuous ? settingsRef.current.scrollSpeed : 1);
         const currentTime = playbackTimeRef.current;
 
         // Update viewport phases
         updateViewports(currentTime);
 
         // Periodically try to fill empty spaces
-        if (currentTime - lastFillCheckRef.current >= FILL_CHECK_INTERVAL) {
+        if (currentTime - lastFillCheckRef.current >= (continuous ? INSTALLATION_ARRIVAL_MS : FILL_CHECK_INTERVAL)) {
           lastFillCheckRef.current = currentTime;
           tryAddViewport(currentTime);
           if (
+            !continuous &&
             !repeatAnimations &&
             queueIndexRef.current >= animationQueueRef.current.length &&
             activeViewportsRef.current.length === 0 &&
@@ -520,9 +617,11 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
           }
         }
 
+        // Throttle on wall time so slow and fast timelines repaint evenly.
         if (timestamp - lastFrameUpdateRef.current >= FRAME_INTERVAL_MS) {
           lastFrameUpdateRef.current = timestamp;
-          setFrameTime(currentTime);
+          clock.currentTime = currentTime;
+          for (const update of clock.listeners) update(currentTime);
         }
 
         animationFrameRef.current = requestAnimationFrame(animate);
@@ -536,8 +635,9 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         }
       };
     }, [
-      recordedTiming,
       animations.length,
+      continuous,
+      clock,
       canvasSize.width,
       onAnimationsComplete,
       repeatAnimations,
@@ -545,11 +645,9 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
       tryAddViewport,
     ]);
 
-    if (animations.length === 0) {
+    if (!continuous && animations.length === 0) {
       return null;
     }
-
-    const currentTime = frameTime;
 
     return (
       <svg
@@ -609,9 +707,8 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
             <DynamicViewportRect
               key={viewport.id}
               viewport={viewport}
-              currentTime={currentTime}
-              settings={settingsRef.current}
-              recordedTiming={recordedTiming}
+              clock={clock}
+              settings={{ ...settings, installationPlayback: continuous }}
               livePageTitle={live?.title}
               liveFaviconUrl={live?.favicon}
             />
@@ -793,21 +890,162 @@ export function getZoomLevelAtTime(
   return start.zoom + (end.zoom - start.zoom) * progress;
 }
 
+export function getViewportFrame(
+  viewport: ActiveViewport,
+  timeline: ViewportAnimationTimeline,
+  currentTime: number,
+  scrollSpeed: number,
+  installationPlayback = false,
+) {
+  const {
+    animation,
+    rect,
+    phase,
+    phaseStartTime,
+    animationStartTime,
+    durationMs,
+  } = viewport;
+  // Calculate opacity based on phase
+  let opacity = 1;
+  if (phase === "fade-in") {
+    const fadeProgress = Math.min(
+      1,
+      (currentTime - phaseStartTime) / (installationPlayback ? INSTALLATION_FADE_MS : FADE_IN_DURATION),
+    );
+    opacity = fadeProgress;
+  } else if (phase === "fade-out") {
+    const fadeProgress = Math.min(
+      1,
+      (currentTime - phaseStartTime) / (installationPlayback ? INSTALLATION_FADE_MS : FADE_OUT_DURATION),
+    );
+    opacity = 1 - fadeProgress;
+  }
+
+  // Calculate animation progress
+  const animElapsed = Math.max(
+    0,
+    (currentTime - animationStartTime) * scrollSpeed,
+  );
+  const animProgress =
+    durationMs <= 0 ? 1 : Math.min(1, animElapsed / durationMs);
+  const currentAnimTime = timeline.minTime + animProgress * timeline.timeRange;
+  const scrollRange = timeline.scrollRange;
+
+  // Calculate scroll position
+  let scrollY = 0;
+  if (animation.scrollEvents.length > 0) {
+    const scrollResult = getScrollPositionAtTime(
+      animation.scrollEvents,
+      currentAnimTime,
+    );
+    scrollY = scrollResult.scrollY;
+  }
+
+  // Calculate resize and check if actively resizing
+  let viewportWidth = rect.width;
+  let viewportHeight = rect.height;
+  let isActivelyResizing = false;
+
+  if (animation.resizeEvents && animation.resizeEvents.length > 0) {
+    const resizeData = getResizeDimensionsAtTime(
+      animation.resizeEvents,
+      currentAnimTime,
+      animation.startViewportWidth,
+      animation.startViewportHeight,
+    );
+    const widthScale = rect.width / Math.max(1, animation.startViewportWidth);
+    const heightScale =
+      rect.height / Math.max(1, animation.startViewportHeight);
+    viewportWidth = resizeData.width * widthScale;
+    viewportHeight = resizeData.height * heightScale;
+
+    // Check if actively resizing
+    const prevTime = Math.max(timeline.minTime, currentAnimTime - 50);
+    const prevResize = getResizeDimensionsAtTime(
+      animation.resizeEvents,
+      prevTime,
+      animation.startViewportWidth,
+      animation.startViewportHeight,
+    );
+    isActivelyResizing =
+      Math.abs(resizeData.width - prevResize.width) > 1 ||
+      Math.abs(resizeData.height - prevResize.height) > 1;
+  }
+
+  // Calculate zoom and check if actively zooming
+  let zoomLevel = 1.0;
+  let isActivelyZooming = false;
+  if (animation.zoomEvents && animation.zoomEvents.length > 0) {
+    zoomLevel = getZoomLevelAtTime(animation.zoomEvents, currentAnimTime);
+
+    // Check if actively zooming
+    const prevTime = Math.max(timeline.minTime, currentAnimTime - 50);
+    const prevZoom = getZoomLevelAtTime(animation.zoomEvents, prevTime);
+    isActivelyZooming = Math.abs(zoomLevel - prevZoom) > 0.005;
+  }
+
+  // Visual calculations
+  const visualWidth = viewportWidth;
+  const visualHeight = viewportHeight;
+  const visualX = rect.x + (rect.width - visualWidth) / 2;
+  const visualY = rect.y + (rect.height - visualHeight) / 2;
+
+  // Page height based on scroll range (bigger range = taller page)
+  // Range of 0.1 (10%) = 2x viewport, range of 1.0 (100%) = 6x viewport
+  const pageMultiplier = 2 + scrollRange * 4;
+  const bgHeight = Math.max(0, Math.min(10000, visualHeight * pageMultiplier));
+  const scrollableHeight = bgHeight - visualHeight;
+  const bgOffsetY = scrollY * scrollableHeight;
+
+  const viewportCenterX = visualX + visualWidth / 2;
+  const viewportCenterY = visualY + visualHeight / 2;
+  const scrolledContentTransform =
+    bgOffsetY === 0 ? undefined : `translate(0 ${-bgOffsetY})`;
+  const zoomTransform =
+    isActivelyZooming && zoomLevel !== 1.0
+      ? `translate(${viewportCenterX}, ${viewportCenterY}) scale(${zoomLevel}) translate(${-viewportCenterX}, ${-viewportCenterY})`
+      : undefined;
+
+  // Scrollbar thumb size based on page length (smaller thumb = longer page)
+  // Direct mapping: scrollRange 0.1 (short scroll) → 36px, scrollRange 1.0 (full page) → 6px
+  const trackHeight = visualHeight - 8;
+  // Normalize scrollRange from 0.1-1.0 to 0-1 for interpolation
+  const normalizedRange = Math.min(1, (scrollRange - 0.1) / 0.9);
+  // Lerp from 36px (short page) to 6px (long page)
+  const thumbHeight = Math.round(36 - normalizedRange * 30);
+  const thumbTravel = trackHeight - thumbHeight;
+  return {
+    opacity,
+    scrollY,
+    scrollRange,
+    visualWidth,
+    visualHeight,
+    visualX,
+    visualY,
+    bgHeight,
+    scrolledContentTransform,
+    zoomTransform,
+    isActivelyResizing,
+    trackHeight,
+    thumbHeight,
+    thumbY: visualY + 4 + scrollY * thumbTravel,
+  };
+}
+
 // Dynamic viewport renderer
 const DynamicViewportRect = memo(
   ({
     viewport,
-    recordedTiming,
-    currentTime,
+    clock,
     settings,
     livePageTitle,
     liveFaviconUrl,
   }: {
     viewport: ActiveViewport;
-    recordedTiming: boolean;
-    currentTime: number;
+    clock: ViewportClock;
     settings: {
       scrollSpeed: number;
+      installationPlayback?: boolean;
       backgroundOpacity: number;
       randomizeColors?: boolean;
       showPagePreview?: boolean;
@@ -821,124 +1059,106 @@ const DynamicViewportRect = memo(
     livePageTitle?: string;
     liveFaviconUrl?: string;
   }) => {
-    const {
-      animation,
-      rect,
-      phase,
-      phaseStartTime,
-      animationStartTime,
-      durationMs,
-      backgroundSeed,
-    } = viewport;
+    const { animation, backgroundSeed } = viewport;
     const timeline = useMemo(
       () => buildViewportAnimationTimeline(animation),
       [animation],
     );
 
-    // Calculate opacity based on phase
-    let opacity = 1;
-    if (phase === "fade-in") {
-      const fadeProgress = Math.min(
-        1,
-        (currentTime - phaseStartTime) / FADE_IN_DURATION,
-      );
-      opacity = fadeProgress;
-    } else if (phase === "fade-out") {
-      const fadeProgress = Math.min(
-        1,
-        (currentTime - phaseStartTime) / FADE_OUT_DURATION,
-      );
-      opacity = 1 - fadeProgress;
-    }
-
-    // Calculate animation progress
-    const animElapsed = Math.max(
-      0,
-      (currentTime - animationStartTime) * (recordedTiming ? 1 : settings.scrollSpeed),
+    // Installation playback applies Timeline Speed to the clock itself.
+    const motionSpeed = settings.installationPlayback ? 1 : settings.scrollSpeed;
+    const [frameTime, setFrameTime] = useState(clock.currentTime);
+    const frame = getViewportFrame(
+      viewport,
+      timeline,
+      clock.currentTime,
+      motionSpeed,
+      settings.installationPlayback,
     );
-    const animProgress =
-      durationMs <= 0 ? 1 : Math.min(1, animElapsed / durationMs);
-    const currentAnimTime =
-      timeline.minTime + animProgress * timeline.timeRange;
-    const scrollRange = timeline.scrollRange;
+    const {
+      opacity,
+      scrollY,
+      scrollRange,
+      visualWidth,
+      visualHeight,
+      visualX,
+      visualY,
+      bgHeight,
+      scrolledContentTransform,
+      zoomTransform,
+      isActivelyResizing,
+      trackHeight,
+      thumbHeight,
+      thumbY,
+    } = frame;
+    const groupRef = useRef<SVGGElement>(null);
+    const scrollRef = useRef<SVGGElement>(null);
+    const zoomRef = useRef<SVGGElement>(null);
+    const thumbRef = useRef<SVGRectElement>(null);
+    const borderRef = useRef<SVGRectElement>(null);
 
-    // Calculate scroll position
-    let scrollY = 0;
-    if (animation.scrollEvents.length > 0) {
-      const scrollResult = getScrollPositionAtTime(
-        animation.scrollEvents,
-        currentAnimTime,
-      );
-      scrollY = scrollResult.scrollY;
-    }
-
-    // Calculate resize and check if actively resizing
-    let viewportWidth = rect.width;
-    let viewportHeight = rect.height;
-    let isActivelyResizing = false;
-
-    if (animation.resizeEvents && animation.resizeEvents.length > 0) {
-      const resizeData = getResizeDimensionsAtTime(
-        animation.resizeEvents,
-        currentAnimTime,
-        animation.startViewportWidth,
-        animation.startViewportHeight,
-      );
-      const widthScale = rect.width / Math.max(1, animation.startViewportWidth);
-      const heightScale =
-        rect.height / Math.max(1, animation.startViewportHeight);
-      viewportWidth = resizeData.width * widthScale;
-      viewportHeight = resizeData.height * heightScale;
-
-      // Check if actively resizing
-      const prevTime = Math.max(timeline.minTime, currentAnimTime - 50);
-      const prevResize = getResizeDimensionsAtTime(
-        animation.resizeEvents,
-        prevTime,
-        animation.startViewportWidth,
-        animation.startViewportHeight,
-      );
-      isActivelyResizing =
-        Math.abs(resizeData.width - prevResize.width) > 1 ||
-        Math.abs(resizeData.height - prevResize.height) > 1;
-    }
-
-    // Calculate zoom and check if actively zooming
-    let zoomLevel = 1.0;
-    let isActivelyZooming = false;
-    if (animation.zoomEvents && animation.zoomEvents.length > 0) {
-      zoomLevel = getZoomLevelAtTime(animation.zoomEvents, currentAnimTime);
-
-      // Check if actively zooming
-      const prevTime = Math.max(timeline.minTime, currentAnimTime - 50);
-      const prevZoom = getZoomLevelAtTime(animation.zoomEvents, prevTime);
-      isActivelyZooming = Math.abs(zoomLevel - prevZoom) > 0.005;
-    }
-
-    // Visual calculations
-    const visualWidth = viewportWidth;
-    const visualHeight = viewportHeight;
-    const visualX = rect.x + (rect.width - visualWidth) / 2;
-    const visualY = rect.y + (rect.height - visualHeight) / 2;
-
-    // Page height based on scroll range (bigger range = taller page)
-    // Range of 0.1 (10%) = 2x viewport, range of 1.0 (100%) = 6x viewport
-    const pageMultiplier = 2 + scrollRange * 4;
-    const bgHeight = Math.max(
-      0,
-      Math.min(10000, visualHeight * pageMultiplier),
-    );
-    const scrollableHeight = bgHeight - visualHeight;
-    const bgOffsetY = scrollY * scrollableHeight;
-
-    const viewportCenterX = visualX + visualWidth / 2;
-    const viewportCenterY = visualY + visualHeight / 2;
-    const scrolledContentTransform =
-      bgOffsetY === 0 ? undefined : `translate(0 ${-bgOffsetY})`;
-    const zoomTransform =
-      isActivelyZooming && zoomLevel !== 1.0
-        ? `translate(${viewportCenterX}, ${viewportCenterY}) scale(${zoomLevel}) translate(${-viewportCenterX}, ${-viewportCenterY})`
-        : undefined;
+    useLayoutEffect(() => {
+      let previous: ReturnType<typeof getViewportFrame> | undefined;
+      const update = (currentTime: number) => {
+        const next = getViewportFrame(
+          viewport,
+          timeline,
+          currentTime,
+          motionSpeed,
+          settings.installationPlayback,
+        );
+        // Geometry and iframe previews need React; scroll and fade only change SVG attributes.
+        if (
+          next.visualWidth !== visualWidth ||
+          next.visualHeight !== visualHeight ||
+          (settings.showPagePreview &&
+            previous &&
+            next.scrollY !== previous.scrollY)
+        ) {
+          setFrameTime(currentTime);
+        }
+        if (!previous || next.opacity !== previous.opacity)
+          groupRef.current?.setAttribute("opacity", String(next.opacity));
+        if (
+          !previous ||
+          next.scrolledContentTransform !== previous.scrolledContentTransform
+        ) {
+          scrollRef.current?.setAttribute(
+            "transform",
+            next.scrolledContentTransform ?? "",
+          );
+        }
+        if (!previous || next.zoomTransform !== previous.zoomTransform) {
+          zoomRef.current?.setAttribute("transform", next.zoomTransform ?? "");
+        }
+        if (!previous || next.thumbY !== previous.thumbY)
+          thumbRef.current?.setAttribute("y", String(next.thumbY));
+        if (
+          !previous ||
+          next.isActivelyResizing !== previous.isActivelyResizing
+        ) {
+          borderRef.current?.setAttribute(
+            "stroke-dasharray",
+            next.isActivelyResizing ? "2 2" : "none",
+          );
+        }
+        previous = next;
+      };
+      update(clock.currentTime);
+      clock.listeners.add(update);
+      return () => {
+        clock.listeners.delete(update);
+      };
+    }, [
+      clock,
+      viewport,
+      timeline,
+      settings,
+      motionSpeed,
+      visualWidth,
+      visualHeight,
+      frameTime,
+    ]);
 
     // Seeded random for visual variety
     const localSeededRandom = useCallback(
@@ -1443,15 +1663,6 @@ const DynamicViewportRect = memo(
       contentFill,
     ]);
 
-    // Scrollbar thumb size based on page length (smaller thumb = longer page)
-    // Direct mapping: scrollRange 0.1 (short scroll) → 36px, scrollRange 1.0 (full page) → 6px
-    const trackHeight = visualHeight - 8;
-    // Normalize scrollRange from 0.1-1.0 to 0-1 for interpolation
-    const normalizedRange = Math.min(1, (scrollRange - 0.1) / 0.9);
-    // Lerp from 36px (short page) to 6px (long page)
-    const thumbHeight = Math.round(36 - normalizedRange * 30);
-    const thumbTravel = trackHeight - thumbHeight;
-
     // Scrollbar colors — tinted to the window hue in color mode.
     const scrollbarTrackColor = mono
       ? `rgb(200, 200, 200)`
@@ -1500,6 +1711,9 @@ const DynamicViewportRect = memo(
 
     return (
       <g
+        ref={groupRef}
+        data-scroll-recording={animation.eventId}
+        data-scroll-phase={viewport.phase}
         opacity={opacity}
         style={{
           transition: "opacity 0.1s ease-out",
@@ -1705,8 +1919,8 @@ const DynamicViewportRect = memo(
         </defs>
 
         <g clipPath={`url(#viewport-clip-${viewport.id})`}>
-          <g transform={zoomTransform || undefined}>
-            <g transform={scrolledContentTransform}>
+          <g ref={zoomRef} transform={zoomTransform || undefined}>
+            <g ref={scrollRef} transform={scrolledContentTransform}>
               {/* Background — near-opaque + full-saturation hue in color mode so
                   the paper doesn't bleach the color. */}
               <rect
@@ -1878,6 +2092,7 @@ const DynamicViewportRect = memo(
 
         {/* Viewport border */}
         <rect
+          ref={borderRef}
           x={visualX}
           y={visualY}
           width={visualWidth}
@@ -1903,7 +2118,8 @@ const DynamicViewportRect = memo(
             />
             <rect
               x={visualX + visualWidth - 8}
-              y={visualY + 4 + scrollY * thumbTravel}
+              ref={thumbRef}
+              y={thumbY}
               width={4}
               height={thumbHeight}
               fill={scrollbarThumbColor}

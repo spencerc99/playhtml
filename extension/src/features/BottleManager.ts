@@ -66,7 +66,6 @@ export interface BottleRenderRequest {
 }
 
 const STORAGE_LAST_SEEN = "bottle:lastSeen:v1";
-const ALWAYS_VISIBLE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 const MAX_VISIBLE_BOTTLES = 3;
 const EMPTY_BOTTLE_PROBABILITY = 0.3;
 

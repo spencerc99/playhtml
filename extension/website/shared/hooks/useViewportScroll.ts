@@ -339,6 +339,7 @@ export function useViewportScroll(
           const animUrl = mergedSessionEvents[0].meta.url;
           const metadata = urlMetadata.get(animUrl);
           const anim = {
+            eventId: mergedSessionEvents[0].id,
             participantId: mergedSessionEvents[0].meta.pid,
             sessionId: mergedSessionEvents[0].meta.sid,
             pageUrl: animUrl,

@@ -3,7 +3,7 @@
 // ABOUTME: as they enter the viewport, typing at natural speed with backspace replay.
 // ABOUTME: Visual variety comes from typography (font, weight, shade) not color.
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useCombobox } from "downshift";
 import { CollectionEvent, KeyboardEventData, TypingAction } from "../types";
 import { extractDomain } from "../utils/eventUtils";
@@ -381,14 +381,14 @@ const DomainFilterInput: React.FC<{
     initialInputValue: value,
     itemToString: (item) => item ?? "",
     // Two behavior overrides:
-    // 1. Open the menu on input click and focus (downshift's default is to
-    //    only open while the user types).
+    // 1. Open the menu on input click (downshift's default is to only open
+    //    while the user types).
     // 2. Auto-highlight the first match while the user is typing, so Enter
     //    commits the obvious top choice instead of silently dropping the
     //    typed value when nothing is explicitly highlighted.
-    stateReducer: (state, { type, changes }) => {
+    stateReducer: (_state, { type, changes }) => {
       const t = comboboxStateChangeTypes;
-      if (type === t.InputClick || type === t.InputFocus) {
+      if (type === t.InputClick) {
         return { ...changes, isOpen: true };
       }
       if (type === t.InputChange) {
@@ -552,7 +552,7 @@ export const KeypressesGrid: React.FC<Props> = ({ events, loading, error, onRefr
   // finished typing, or while it's outside the activation window).
   const sessionLastTextRef = useRef<Map<number, string>>(new Map());
 
-  const animRef = useRef<number>();
+  const animRef = useRef<number | undefined>(undefined);
 
   // Cache filter options — accumulate domains across fetches so filtering
   // to a single domain doesn't lose the full domain list

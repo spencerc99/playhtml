@@ -14,6 +14,7 @@ import { createClickEffect } from "./clickEffects";
 import { useDebugHover } from "./DebugHover";
 import type { SoundEngine } from "../sound/SoundEngine";
 import type { TrailSoundFrame } from "../sound/types";
+import { articulationBreath } from "../sound/tuning";
 import { getTrailRenderer } from "../styles/trailRenderers";
 import {
   buildStraightPathSegment,
@@ -29,6 +30,7 @@ import {
   type ImperativeTrailCursorHandle,
 } from "./trailPrimitives";
 import { CinematicCamera, type CinematicConfig } from "../utils/cinematicCamera";
+import { TrailPositions } from "./trailPositions";
 
 // Hidden tabs heavily throttle rAF; 100ms (~10fps) keeps audio/time progression
 // alive without spending too much background CPU.
@@ -58,6 +60,21 @@ interface AnimatedTrailsProps {
   // state changes don't re-run the animation-loop effect.
   getInstallationElapsedMs?: (animationSpeed: number) => number | null;
   soundEngine?: SoundEngine | null;
+  /**
+   * Where each drawn trail's head is, written every frame. Given by a caller
+   * that needs to place something on a trail it does not itself draw — the
+   * navigation accent and the gestures a sound notice asks for.
+   */
+  trailPositions?: TrailPositions | null;
+  /**
+   * Where playback currently is in its cycle, written every frame. Anything
+   * that must stay in step with the drawn trails reads this rather than
+   * deriving its own elapsed time: the trail clock clamps long frame gaps and
+   * switches to a timer when the tab is hidden, so a second clock built from
+   * raw wall time drifts a little further apart on every stall and never
+   * re-converges.
+   */
+  playbackClock?: { loopedMs: number } | null;
   settings: {
     strokeWidth: number;
     trailOpacity: number;
@@ -89,6 +106,8 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     cinematicNextSignal = 0,
     getInstallationElapsedMs,
     soundEngine = null,
+    trailPositions = null,
+    playbackClock = null,
     settings,
   }) => {
     const [activeClickEffects, setActiveClickEffects] = useState<ClickEffect[]>(
@@ -179,6 +198,8 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     const showClickRipplesRef = useRef(showClickRipples);
     const documentSpaceRef = useRef(documentSpace);
     const soundEngineRef = useRef(soundEngine);
+    const trailPositionsRef = useRef(trailPositions);
+    const playbackClockRef = useRef(playbackClock);
 
     const cinematicRef = useRef(cinematic);
     useEffect(() => {
@@ -224,6 +245,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     useEffect(() => {
       soundEngineRef.current = soundEngine;
     }, [soundEngine]);
+
+    useEffect(() => {
+      trailPositionsRef.current = trailPositions;
+      playbackClockRef.current = playbackClock;
+    }, [trailPositions, playbackClock]);
     useEffect(() => {
       trailStatesRef.current = trailStates;
     }, [trailStates]);
@@ -322,6 +348,9 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       nextStartOrderIndexRef.current = 0;
       setActiveClickEffects([]);
       soundEngineRef.current?.reset();
+      // Each pass through the data is a fresh performance, so nothing a
+      // previous pass published is still standing when this one starts.
+      trailPositionsRef.current?.clear();
 
       let startTime: number | null = null;
       // Accumulate scaled time per-frame (delta * currentSpeed) instead of
@@ -409,6 +438,11 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           scaledElapsed = accumulatedScaled;
         }
         const loopedElapsed = scaledElapsed % timeRange.duration;
+        // Published before anything else reads it, so a listener driven by this
+        // frame sees this frame's time rather than the previous one's.
+        if (playbackClockRef.current) {
+          playbackClockRef.current.loopedMs = loopedElapsed;
+        }
 
         // Detect loop wrap
         if (didPlaybackCycleWrap(prevElapsedRef.current, loopedElapsed)) {
@@ -416,6 +450,10 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           setActiveClickEffects([]);
           soundEngineRef.current?.reset();
           cameraRef.current?.reset();
+          // The same fresh start the first pass gets. Without this a
+          // participant's stale position steers the first gongs of the new
+          // pass to where they were rather than where they are.
+          trailPositionsRef.current?.clear();
         }
         prevElapsedRef.current = loopedElapsed;
 
@@ -512,10 +550,20 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           );
           if (fade <= 0) continue;
 
+          // The drawing breathes with the sound: a phrased voice swells on
+          // every note and then relaxes, and the same value scales this
+          // trail's opacity and stroke so a fresh gesture is drawn as brightly
+          // as it is heard. Read from the previous frame's tick, which is the
+          // only articulation that exists when the paths are drawn — a frame
+          // of lag at ~60fps is well under what an eye resolves.
+          const articulation = soundEnabled
+            ? soundEngine?.getArticulation(idx)
+            : null;
+          const breath = articulationBreath(articulation);
           const result = handle.update(
             loopedElapsed,
-            trailOpacity,
-            strokeWidth,
+            trailOpacity * breath.opacityScale,
+            strokeWidth * breath.widthScale,
             fade,
           );
 
@@ -536,6 +584,25 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
 
           // Update cursor icon in the separate cursor layer
           const ts = currentTrailStates[idx];
+
+          // Publish where this trail's head is, so anything placing a sound or
+          // a gesture on it has somewhere to look. A trail that has finished
+          // keeps its last position rather than being forgotten: a navigation
+          // is scheduled off the data's clock and can land a frame after the
+          // trail stops drawing, and it still belongs on that line.
+          const positions = trailPositionsRef.current;
+          if (positions && result && fade > 0 && result.trailProgress < 1) {
+            positions.set(
+              {
+                trailIndex: idx,
+                x: result.cursorPosition.x,
+                y: result.cursorPosition.y,
+                color: ts.trail.color,
+                strokeWidth,
+              },
+              ts.trail.pid,
+            );
+          }
           const cursorHandle = cursorHandles.current[idx];
           if (cursorHandle) {
             if (result && fade > 0) {
@@ -575,6 +642,9 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
               progress: result.trailProgress,
               color: rendererRef.current.getClickColor(ts.trail.color),
               isNewlyActive: false,
+              // Participant + url, so a trail's sonic fingerprint survives the
+              // array renumbering that comes with every re-derivation.
+              identityKey: ts.trail.id,
             });
           }
 
@@ -858,6 +928,7 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
       prevProps.cinematic === nextProps.cinematic &&
       prevProps.cinematicNextSignal === nextProps.cinematicNextSignal &&
       prevProps.soundEngine === nextProps.soundEngine &&
+      prevProps.trailPositions === nextProps.trailPositions &&
       prevProps.settings.strokeWidth === nextProps.settings.strokeWidth &&
       prevProps.settings.trailOpacity === nextProps.settings.trailOpacity &&
       prevProps.settings.animationSpeed ===

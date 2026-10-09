@@ -1,4 +1,4 @@
-// ABOUTME: WWO admin office for feature stages, access cohorts, and beta testers.
+// ABOUTME: WWO admin office for feature stages and beta tester membership.
 // ABOUTME: Supports direct and bulk membership plus pending access approvals.
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -23,6 +23,18 @@ const STAGE_LABELS: Record<FeatureStage, string> = {
   internal: "Internal",
   beta: "Closed beta",
   released: "Released",
+};
+
+const STAGE_SHORT_LABELS: Record<FeatureStage, string> = {
+  internal: "Internal",
+  beta: "Beta",
+  released: "Released",
+};
+
+const STAGE_AUDIENCE: Record<FeatureStage, string> = {
+  internal: "Internal cohort only",
+  beta: "Internal and closed beta testers",
+  released: "Everyone with the extension",
 };
 
 function shortPublicId(publicId: string): string {
@@ -106,7 +118,7 @@ function InternalOffice() {
       return;
     }
     await mutate(async () => {
-      const cohort = overview.cohorts.find((candidate) => candidate.id === cohortId);
+      const cohort = overview?.cohorts.find((candidate) => candidate.id === cohortId);
       if (!cohort) throw new Error("Selected cohort is unavailable");
       await addPeople(token, cohortId, [person]);
       setPublicId("");
@@ -132,9 +144,8 @@ function InternalOffice() {
       <main className="office-main">
         <section className="office-intro">
           <div>
-            <span className="office-section-number">ACCESS CONTROL</span>
-            <h2>Experiments</h2>
-            <p>Choose who can discover each experiment. Access makes a feature available; testers still turn it on for themselves.</p>
+            <h2>Access control</h2>
+            <p>A feature's stage decides who can discover it. Testers still turn it on for themselves.</p>
           </div>
           <div className="office-count"><strong>{overview?.people.length ?? 0}</strong><span>approved people</span></div>
         </section>
@@ -143,55 +154,65 @@ function InternalOffice() {
         {loading && !overview ? <p className="office-empty">Loading access policy…</p> : null}
 
         {overview && <>
-          <section className="office-panel office-features">
+          <section className="office-panel office-stages">
             <div className="office-list-header">
-              <div><span className="office-section-number">DESK 01</span><h3>Feature stages</h3></div>
+              <h3>Feature stages</h3>
               <button onClick={() => loadOverview()} disabled={loading || saving}>{loading ? "Refreshing…" : "Refresh"}</button>
             </div>
-            <div className="office-card-grid">
-              {overview.features.map((feature) => (
-                <label className="office-feature-card" key={feature.id}>
-                  <span><strong>{feature.name}</strong><small>{feature.description}</small></span>
-                  <select aria-label={`${feature.name} stage`} value={feature.stage} disabled={saving}
-                    onChange={(event) => mutate(() => updateFeatureStage(token, feature.id, event.target.value as FeatureStage))}>
-                    {FEATURE_STAGES.map((stage) => <option key={stage} value={stage}>{STAGE_LABELS[stage]}</option>)}
-                  </select>
-                </label>
-              ))}
-            </div>
-          </section>
-
-          <section className="office-panel office-cohorts">
-            <div className="office-list-header"><div><span className="office-section-number">DESK 02</span><h3>Cohort grants</h3></div></div>
-            <div className="office-card-grid">
-              {overview.cohorts.map((cohort) => (
-                <article className="office-cohort-card" key={cohort.id}>
-                  <header><strong>{cohort.name}</strong><code>{cohort.id}</code></header>
-                  {cohort.grantsAllUnreleased ? (
-                    <p>Receives every unreleased feature, including features added later.</p>
-                  ) : (
-                    <div className="office-check-list">
-                      {overview.features.filter((feature) => feature.stage !== "released").map((feature) => (
-                        <label key={feature.id}>
-                          <input type="checkbox" checked={cohort.featureIds.includes(feature.id)} disabled={saving}
-                            onChange={() => {
-                              const featureIds = cohort.featureIds.includes(feature.id)
-                                ? cohort.featureIds.filter((id) => id !== feature.id)
-                                : [...cohort.featureIds, feature.id];
-                              mutate(() => updateCohortFeatures(token, cohort.id, featureIds));
-                            }} />
-                          <span>{feature.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </article>
-              ))}
+            <div className="office-stage-board">
+              {FEATURE_STAGES.map((stage) => {
+                const features = overview.features.filter((feature) => feature.stage === stage);
+                return (
+                  <div className={`office-stage-column office-stage-column--${stage}`} key={stage}>
+                    <header>
+                      <span className="office-stage-tag">{STAGE_LABELS[stage]}</span>
+                      <span className="office-stage-count">{features.length}</span>
+                      <p>{STAGE_AUDIENCE[stage]}</p>
+                    </header>
+                    {features.length === 0 ? <p className="office-stage-empty">Nothing here</p> : (
+                      <ul>
+                        {features.map((feature) => {
+                          const extraCohorts = stage === "internal"
+                            ? overview.cohorts.filter((cohort) => !cohort.grantsAllUnreleased && cohort.featureIds.includes(feature.id))
+                            : [];
+                          return (
+                            <li className="office-feature" key={feature.id}>
+                              <strong>{feature.name}</strong>
+                              <small>{feature.description}</small>
+                              <div className="office-stage-picker" role="radiogroup" aria-label={`${feature.name} stage`}>
+                                {FEATURE_STAGES.map((option) => (
+                                  <button key={option} type="button" role="radio" aria-checked={option === stage}
+                                    className={`office-stage-picker__option office-stage-picker__option--${option}`}
+                                    disabled={saving}
+                                    onClick={() => {
+                                      if (option !== stage) mutate(() => updateFeatureStage(token, feature.id, option));
+                                    }}>
+                                    {STAGE_SHORT_LABELS[option]}
+                                  </button>
+                                ))}
+                              </div>
+                              {extraCohorts.map((cohort) => (
+                                <p className="office-feature__grant" key={cohort.id}>
+                                  Also shared with {cohort.name}
+                                  <button type="button" disabled={saving}
+                                    onClick={() => mutate(() => updateCohortFeatures(token, cohort.id, cohort.featureIds.filter((id) => id !== feature.id)))}>
+                                    Remove
+                                  </button>
+                                </p>
+                              ))}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </section>
 
           <section className="office-panel">
-            <div className="office-list-header"><div><span className="office-section-number">DESK 03</span><h3>Add person</h3></div></div>
+            <div className="office-list-header"><h3>Add person</h3></div>
             <form className="office-add office-add--person" onSubmit={submitPerson}>
               <label><span>Public ID</span><input aria-label="Public ID" value={publicId}
                 aria-invalid={addPersonError?.field === "publicId"}
@@ -234,7 +255,7 @@ function InternalOffice() {
 
           {overview.requests.length > 0 && <section className="office-panel">
             <div className="office-list-header">
-              <div><span className="office-section-number">INBOX</span><h3>Pending requests</h3></div>
+              <h3>Pending requests</h3>
               <select value={approvalCohortId} onChange={(event) => setApprovalCohortId(event.target.value)}>
                 {overview.cohorts.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name}</option>)}
               </select>
@@ -252,7 +273,7 @@ function InternalOffice() {
 
           <section className="office-panel">
             <div className="office-list-header">
-              <div><span className="office-section-number">DIRECTORY</span><h3>Approved people</h3></div>
+              <h3>Approved people</h3>
               <input aria-label="Search approved people" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ID or email" />
             </div>
             {filteredPeople.length === 0 ? <p className="office-empty">{overview.people.length === 0 ? "No people have access yet." : "No people match that search."}</p> : (
@@ -278,7 +299,7 @@ function InternalOffice() {
         </>}
 
         <aside className="office-roadmap">
-          <span className="office-section-number">NEXT DESK</span>
+          <span className="office-section-number">COMING LATER</span>
           <h2>Commute curation</h2>
           <p>The commute stop review tool can use this same D1-backed office and navigation.</p>
         </aside>

@@ -255,3 +255,69 @@ input {
     cursor: pointer;
   }
 }
+
+// Admin-only stage switch, as discreet as the portrait trigger.
+.stage-switch {
+  position: fixed;
+  bottom: 1em;
+  right: 3em;
+  z-index: 20;
+  padding: 2px 6px;
+  font-family: $mono-font;
+  font-size: 10px;
+  opacity: 0.35;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 0.8;
+  }
+}
+
+// The walk's link chat, docked as a foldable side pane during the collage.
+// It floats over the table instead of shrinking it, so every scrap stays where
+// everyone else sees it.
+.walk-chat-dock--open,
+.walk-chat-dock--closed {
+  position: fixed;
+  top: 1em;
+  left: 1em;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35em;
+  width: min(340px, calc(100vw - 2em));
+  pointer-events: none;
+
+  > * {
+    pointer-events: auto;
+  }
+
+  .walk-chat-dock__body {
+    width: 100%;
+    height: min(55vh, 460px);
+  }
+
+  .url-chat {
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+    width: 100%;
+    height: 100%;
+    font-size: 12px;
+    box-shadow: 0 6px 18px rgba(61, 56, 51, 0.14);
+  }
+}
+
+.walk-chat-dock__tab {
+  padding: 4px 8px;
+  font-family: $mono-font;
+  font-size: 11px;
+  background: rgba(255, 253, 248, 0.92);
+}
+
+// Alt+A hides every admin control for a clean screen share (adminControls.ts).
+[data-admin-hidden] [data-admin-control] {
+  display: none !important;
+}

@@ -12,6 +12,7 @@ import {
   retainClickEffectsForActiveTrails,
   type LiveClickEffect,
 } from "./clickEffects";
+import { CinematicCamera, type CinematicConfig, type CameraFrame } from "../utils/cinematicCamera";
 import { pathLength } from "../utils/trailSequence";
 import {
   TrailPath,
@@ -192,6 +193,9 @@ export function createLiveSoundFrame(
     progress: trailProgress,
     color: trailState.trail.color,
     isNewlyActive: false,
+    // Trail.id is participant + url, so a person keeps one sonic fingerprint
+    // even as the sliding window renumbers the trail array underneath them.
+    identityKey: trailState.trail.id,
   };
 }
 
@@ -214,8 +218,14 @@ interface KeptTrail {
 interface LiveTrailsProps {
   trailStates: TrailState[];
   frozen?: boolean;
+  visible?: boolean;
+  cinematic?: CinematicConfig | null;
+  cinematicNextSignal?: number;
   showClickRipples?: boolean;
   soundEngine?: SoundEngine | null;
+  /** Keep settled trails on screen for as long as they are in `trailStates`,
+   * instead of fading them out a minute after they stop growing. */
+  keepSettled?: boolean;
   /** Called with trail ids once they have fully faded out and been removed, so
    * the owner can free their accumulated events. */
   onTrailsRemoved?: (ids: string[]) => void;
@@ -231,8 +241,12 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
   ({
     trailStates,
     frozen = false,
+    visible = true,
+    cinematic = null,
+    cinematicNextSignal = 0,
     showClickRipples = false,
     soundEngine = null,
+    keepSettled = false,
     onTrailsRemoved,
     settings,
   }) => {
@@ -244,6 +258,21 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
       activeClickEffectsRef.current = activeClickEffects;
     }, [activeClickEffects]);
     const svgRef = useRef<SVGSVGElement>(null);
+    const cameraRef = useRef<CinematicCamera | null>(null);
+    const cameraIndicesRef = useRef(new Map<string, number>());
+    const nextCameraIndexRef = useRef(0);
+    useEffect(() => {
+      if (cinematic) {
+        if (cameraRef.current) cameraRef.current.setConfig(cinematic);
+        else cameraRef.current = new CinematicCamera(cinematic);
+      } else {
+        cameraRef.current = null;
+        svgRef.current?.removeAttribute("viewBox");
+      }
+    }, [cinematic]);
+    useEffect(() => {
+      if (cinematicNextSignal > 0) cameraRef.current?.requestNext();
+    }, [cinematicNextSignal]);
     const pathLayerRef = useRef<SVGGElement>(null);
     const animationRef = useRef<number | undefined>(undefined);
     const consecutiveErrorsRef = useRef(0);
@@ -263,6 +292,8 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     }, [settings.strokeWidth, settings.trailOpacity]);
 
     const frozenRef = useRef(frozen);
+    const keepSettledRef = useRef(keepSettled);
+    keepSettledRef.current = keepSettled;
     useEffect(() => {
       frozenRef.current = frozen;
     }, [frozen]);
@@ -362,7 +393,8 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             live !== undefined &&
             d !== undefined &&
             live.trail.points.length > d.total;
-          const dimExpired = shouldDepartTrail(d, now, resumed);
+          const dimExpired =
+            !keepSettledRef.current && shouldDepartTrail(d, now, resumed);
           if (live && !dimExpired) {
             // Still live — refresh geometry and ease back if it was departing.
             const visibility =
@@ -417,7 +449,8 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           for (const entry of prev) {
             const tid = entry.trail.trail.id;
             const d = draws.get(tid);
-            const dimExpired = shouldDepartTrail(d, now);
+            const dimExpired =
+              !keepSettledRef.current && shouldDepartTrail(d, now);
             const departing = entry.visibility?.toOpacity === 0;
             if (dimExpired && !departing) {
               next.push({
@@ -558,6 +591,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         const visibilityByTrail = new Map<string, number>();
 
         const present = new Set<string>();
+        const cameraTrails: CameraFrame["activeTrails"] = [];
 
         for (const entry of entries) {
           const ts = entry.trail;
@@ -645,6 +679,18 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             !caughtUp &&
             !draw.settled &&
             entry.visibility?.toOpacity !== 0;
+          if (cameraRef.current && activelyTracing) {
+            let index = cameraIndicesRef.current.get(key);
+            if (index === undefined) {
+              index = nextCameraIndexRef.current++;
+              cameraIndicesRef.current.set(key, index);
+            }
+            cameraTrails.push({
+              index,
+              ...result.cursorPosition,
+              progress: result.trailProgress,
+            });
+          }
           if (soundEngine && activelyTracing) {
             let soundTrailIndex = soundTrailIndicesRef.current.get(key);
             if (soundTrailIndex === undefined) {
@@ -725,6 +771,21 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           }
         }
 
+        const viewBox = cameraRef.current?.tick({
+          screenW: window.innerWidth,
+          screenH: window.innerHeight,
+          nowMs: clockMs,
+          activeTrails: cameraTrails,
+        });
+        if (viewBox) {
+          svgRef.current?.setAttribute(
+            "viewBox",
+            `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`,
+          );
+        }
+        for (const key of cameraIndicesRef.current.keys()) {
+          if (!present.has(key)) cameraIndicesRef.current.delete(key);
+        }
         soundEngine?.tick(clockMs, soundFrames);
 
         // Prune draw tracking for trails that left so the map can't grow.
@@ -752,7 +813,13 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
         width="100%"
         height="100%"
         preserveAspectRatio="none"
-        style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          pointerEvents: "none",
+          visibility: visible ? "visible" : "hidden",
+        }}
       >
         {showClickRipples &&
           activeClickEffects.map((effect) => (
