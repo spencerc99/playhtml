@@ -1,0 +1,49 @@
+name: Feedback
+description: Share feedback, report a problem, or suggest an improvement for playhtml.
+title: "[Feedback]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share as much context as you can. Do not include secrets.
+  - type: dropdown
+    id: feedback-type
+    attributes:
+      label: Feedback type
+      options:
+        - Something is not working
+        - Installation or setup problem
+        - Documentation feedback
+        - Feature idea
+        - General feedback
+    validations:
+      required: true
+  - type: textarea
+    id: feedback
+    attributes:
+      label: What would you like to share?
+      description: Describe what happened, what you expected, or what you would like to see.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Include the project stack, playhtml version, and coding agent if they are relevant.
+    validations:
+      required: false
+  - type: textarea
+    id: commands-and-output
+    attributes:
+      label: Commands and error output
+      description: For setup or runtime problems, paste the exact command and complete error output with secrets removed.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: changes-tried
+    attributes:
+      label: Changes already tried
+      description: For a problem report, list the relevant package, configuration, or source changes already attempted.
+    validations:
+      required: false
