@@ -71,6 +71,7 @@ import { PresenceFacade } from "./presence-facade";
 import { safeInvoke } from "./presence-utils";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
 import { resolveRoomHost } from "./roomHost";
+import { definePrebuiltTags } from "./prebuilt";
 
 export {
   formatStateLeafValue,
@@ -1750,6 +1751,8 @@ async function initPlayHTMLOnce() {
   console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
 
   setupElements();
+  // Built-in <play-*> tags; their code loads only when a page uses one.
+  definePrebuiltTags(playhtml);
 
   // Mark all elements as ready after sync completes and elements are set up
   markAllElementsAsReady();

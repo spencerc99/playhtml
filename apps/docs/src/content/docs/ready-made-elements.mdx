@@ -1,0 +1,131 @@
+---
+title: "Ready-made elements"
+description: "Drop-in <play-*> tags for a lamp, reactions, a live visitor count, and a guestbook."
+sidebar:
+  order: 5
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Ready-made elements are complete collaborative objects you add with a single tag. Once playhtml is initialized on the page, every `<play-*>` tag works with no extra imports or scripts. Each one stores its state in your page's room, like any other playhtml element.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```html
+<script type="module">
+  import { playhtml } from "https://unpkg.com/playhtml@latest";
+  playhtml.init();
+</script>
+
+<play-lamp id="desk-lamp"></play-lamp>
+<play-reaction id="star">&#9733;</play-reaction>
+<play-online-count></play-online-count>
+<play-guestbook id="guestbook"></play-guestbook>
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { PlayProvider } from "@playhtml/react";
+
+export function App() {
+  return (
+    <PlayProvider>
+      <play-lamp id="desk-lamp" />
+      <play-reaction id="star">{"★"}</play-reaction>
+      <play-online-count />
+      <play-guestbook id="guestbook" />
+    </PlayProvider>
+  );
+}
+```
+
+In TypeScript, declare the tags once so JSX accepts them:
+
+```ts
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      "play-lamp": React.HTMLAttributes<HTMLElement> & { src?: string; "src-on"?: string; label?: string };
+      "play-reaction": React.HTMLAttributes<HTMLElement>;
+      "play-online-count": React.HTMLAttributes<HTMLElement> & { label?: string };
+      "play-guestbook": React.HTMLAttributes<HTMLElement> & { limit?: number };
+    }
+  }
+}
+```
+  </TabItem>
+</Tabs>
+
+Give each tag a unique `id`, the same way you would for any playhtml element. A tag that appears once on a page can skip the `id`: it uses its tag name instead.
+
+## `<play-lamp>`
+
+A lamp anyone can switch on or off. Click it to toggle the light for everyone on the page.
+
+<play-lamp id="docs-ready-lamp"></play-lamp>
+
+```html
+<!-- The default paper lantern -->
+<play-lamp id="desk-lamp"></play-lamp>
+
+<!-- Your own lamp images: one for off, one for on -->
+<play-lamp id="akari" src="/lamps/akari-off.png" src-on="/lamps/akari-on.png"></play-lamp>
+```
+
+| Attribute | What it does |
+| --- | --- |
+| `src` | Image to show instead of the default lantern |
+| `src-on` | Image to show while the lamp is on. Without it, `src` stays and glows |
+| `on` | Start the lamp switched on for brand-new pages |
+| `label` | Accessible name for the button (defaults to "lamp") |
+
+Style it with `--play-lamp-size` (width), `--play-lamp-glow` (glow color), `--play-lamp-paper`, and `--play-lamp-paper-on` (lantern fill).
+
+## `<play-reaction>`
+
+A reaction button with a shared count. Each person counts once: clicking again takes the reaction back. Whatever you put inside the tag becomes the button's label.
+
+<play-reaction id="docs-ready-reaction">&#9733;</play-reaction>
+
+```html
+<play-reaction id="star">&#9733;</play-reaction>
+<play-reaction id="thanks">thank you</play-reaction>
+```
+
+Use one tag per reaction, each with its own `id`. Style the reacted state with `--play-reaction-active` or the `[aria-pressed="true"]` selector.
+
+## `<play-online-count>`
+
+How many people are on the page right now. It updates live as people arrive and leave.
+
+<play-online-count id="docs-ready-online"></play-online-count>
+
+```html
+<play-online-count></play-online-count>
+<play-online-count label="friends reading along"></play-online-count>
+```
+
+The `label` attribute changes the text after the number (defaults to "here now").
+
+## `<play-guestbook>`
+
+A guestbook where visitors leave a name and a short note. Notes appear for everyone, newest first.
+
+<play-guestbook id="docs-ready-guestbook"></play-guestbook>
+
+```html
+<play-guestbook id="guestbook"></play-guestbook>
+<play-guestbook id="recent-notes" limit="20"></play-guestbook>
+```
+
+Names are capped at 40 characters and notes at 280. `limit` sets how many notes are shown (defaults to 100). Visitors can't delete notes, so treat it like a real guestbook: anyone who visits can sign it.
+
+## Styling
+
+Every ready-made element renders plain HTML inside the tag, with no shadow DOM, so your site's CSS applies directly. The built-in styles load before your stylesheet and use single class selectors, so any class rule you write wins. Each part has a class you can target, such as `.play-lamp__button`, `.play-reaction__count`, `.play-online-count__label`, and `.play-guestbook__entry`.
+
+## Using your own tag names
+
+The ready-made elements claim the `play-lamp`, `play-reaction`, `play-online-count`, and `play-guestbook` names. If your page already defines one of these custom elements before playhtml initializes, playhtml leaves yours alone.
+
+To build your own reusable element, see [Custom elements](/docs/custom-elements/).
