@@ -52,8 +52,49 @@ async function withStore<T>(
   }
 }
 
+/**
+ * Stores a collage. When the write fails while it carries a picture, it is
+ * tried again with a fresh in-memory copy of the picture, and then without the
+ * picture at all, so the arrangement itself is never lost to a picture that
+ * IndexedDB refuses. Firefox can refuse a stored Blob with an UnknownError
+ * ("The operation failed for reasons unrelated to the database itself...").
+ * A collage stored without its picture is drawn again by the next bake.
+ */
 export async function saveCollage(record: CollageRecord): Promise<void> {
+  try {
+    await putCollage(record);
+    return;
+  } catch (error) {
+    if (!record.preview.drawn) throw error;
+    const copied = await detachPreview(record.preview);
+    if (copied.drawn) {
+      try {
+        await putCollage({ ...record, preview: copied });
+        return;
+      } catch {
+        // Fall through to storing the arrangement without its picture.
+      }
+    }
+    try {
+      await putCollage({
+        ...record,
+        preview: {
+          drawn: false,
+          reason: `the picture could not be stored: ${describe(error)}`,
+        },
+      });
+    } catch {
+      throw error;
+    }
+  }
+}
+
+async function putCollage(record: CollageRecord): Promise<void> {
   await withStore("readwrite", (store) => store.put(record));
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export async function loadCollage(id: string): Promise<CollageRecord | null> {

@@ -176,6 +176,52 @@ describe("collageStore", () => {
     ).toBe("fake png bytes");
   });
 
+  /**
+   * A picture IndexedDB refuses to store, the way Firefox can refuse a Blob.
+   * The function on it makes the structured clone throw; its bytes can still
+   * be read unless `unreadable` says otherwise.
+   */
+  function refusedPicture(unreadable = false): Blob {
+    return {
+      type: "image/png",
+      size: 14,
+      refuse: () => {},
+      arrayBuffer: () =>
+        unreadable
+          ? Promise.reject(new DOMException("file is gone", "NotFoundError"))
+          : Promise.resolve(new TextEncoder().encode("fresh png bytes").buffer),
+    } as unknown as Blob;
+  }
+
+  it("stores a fresh copy of a picture IndexedDB refused", async () => {
+    await saveCollage(
+      record({ title: "Added pictures", preview: { drawn: true, image: refusedPicture() } }),
+    );
+    const loaded = await loadCollage("collage_1");
+    expect(loaded?.title).toBe("Added pictures");
+    expect(
+      await (loaded?.preview.drawn ? loaded.preview.image.text() : undefined),
+    ).toBe("fresh png bytes");
+  });
+
+  it("keeps the arrangement when the refused picture cannot be read either", async () => {
+    await saveCollage(
+      record({
+        pieces: [piece(), piece({ id: "piece_2", x: 300 })],
+        preview: { drawn: true, image: refusedPicture(true) },
+      }),
+    );
+    const loaded = await loadCollage("collage_1");
+    expect(loaded?.pieces.map((stored) => stored.id)).toEqual(["piece_1", "piece_2"]);
+    expect(loaded?.preview.drawn).toBe(false);
+  });
+
+  it("still fails a write that has nothing to do with the picture", async () => {
+    const broken = { ...record(), pieces: [{ ...piece(), refuse: () => {} }] };
+    await expect(saveCollage(broken as CollageRecord)).rejects.toThrow();
+    expect(await loadCollage("collage_1")).toBeNull();
+  });
+
   it("reports a collage that was never saved as absent", async () => {
     expect(await loadCollage("collage_missing")).toBeNull();
   });
