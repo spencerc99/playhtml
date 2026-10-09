@@ -80,6 +80,20 @@ describe("stepsByWalker", () => {
     expect(steps.maya).toHaveLength(2);
   });
 
+  it("stops counting pages once the walk has ended", () => {
+    const steps = stepsByWalker(
+      [
+        nav("maya", "https://a.example", 2000),
+        nav("maya", "https://b.example", 3000),
+        nav("maya", "https://after.example", 5000),
+      ],
+      walkers,
+      isEventPage,
+      4000,
+    );
+    expect(steps.maya.map((s) => s.url)).toEqual(["a.example", "b.example"]);
+  });
+
   it("keeps only the latest stops on a long walk", () => {
     const events = Array.from({ length: MAX_STEPS_PER_WALKER + 5 }, (_, i) =>
       nav("maya", `https://site${i}.example`, 2000 + i),

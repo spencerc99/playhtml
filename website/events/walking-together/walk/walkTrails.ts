@@ -18,6 +18,9 @@ export type Walkers = Record<string, Walker>;
 
 export interface WalkersData {
   walkers: Walkers;
+  /** When the admin ended the walk. Trails keep only the pages visited before
+   * this, so the walk stays as it was instead of growing afterward. */
+  endedAt?: number;
 }
 
 /** One page a walker landed on. `url` is origin + path, no query or hash. */
@@ -58,12 +61,14 @@ function eventTs(ts: number | string): number {
  * Each walker's pages since they joined, oldest first. Only "the page came into
  * view" navigation events count (focus, popstate), repeats of the page they're
  * already on collapse, and the event page itself is skipped so going back to
- * check the chat doesn't read as a stop.
+ * check the chat doesn't read as a stop. Once the walk has ended, pages after
+ * `endedAt` don't count.
  */
 export function stepsByWalker(
   events: CollectionEvent[],
   walkers: Walkers,
   isEventPage: (url: string) => boolean,
+  endedAt?: number,
 ): Record<string, WalkStep[]> {
   const sorted = events
     .filter(
@@ -73,7 +78,12 @@ export function stepsByWalker(
         !!walkers[e.meta?.pid],
     )
     .map((e) => ({ e, ts: eventTs(e.ts) }))
-    .filter(({ e, ts }) => Number.isFinite(ts) && ts >= walkers[e.meta.pid].joinedAt)
+    .filter(
+      ({ e, ts }) =>
+        Number.isFinite(ts) &&
+        ts >= walkers[e.meta.pid].joinedAt &&
+        (endedAt === undefined || ts <= endedAt),
+    )
     .sort((a, b) => a.ts - b.ts);
 
   const seen = new Set<string>();

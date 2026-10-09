@@ -212,6 +212,8 @@ export const URLChat = withSharedState(
   },
   ({ data, setData }) => {
     const [inputUrl, setInputUrl] = React.useState("");
+    const { name, color } = usePlayerIdentity();
+    const admin = isAdmin(name, color);
     const urlListRef = React.useRef<HTMLDivElement>(null);
     const urls: SharedURL[] = Array.isArray(data.urls) ? data.urls : [];
 
@@ -266,6 +268,20 @@ export const URLChat = withSharedState(
               onClick={copyToClipboard}
             >
               COPY
+            </button>
+          )}
+          {admin && urls.length > 0 && (
+            <button
+              style={{
+                fontSize: "10px",
+                fontFamily: "monospace",
+              }}
+              onClick={() => {
+                if (window.confirm("Clear every link from the chat for everyone?"))
+                  setData({ urls: [] });
+              }}
+            >
+              CLEAR
             </button>
           )}
         </div>
