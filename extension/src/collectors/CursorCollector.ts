@@ -17,6 +17,7 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   readonly description = 'Captures cursor movement, clicks, holds, and cursor style changes';
 
   private mouseMoveHandler?: (e: MouseEvent) => void;
+  private touchMoveHandler?: (e: TouchEvent) => void;
   private mouseOverHandler?: (e: MouseEvent) => void;
   private animationFrameId?: number;
   private sampleTimer: number | null = null;
@@ -132,6 +133,20 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
 
     document.addEventListener('mousemove', this.mouseMoveHandler, { passive: true });
     document.addEventListener('mouseover', this.mouseOverHandler, { passive: true });
+
+    // Touch screens fire no mousemove while a finger drags, so a drag feeds the
+    // same move path. Taps need nothing here: mobile browsers follow a tap with
+    // compatibility mousedown/mouseup events, which the click handlers below see.
+    this.touchMoveHandler = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      if (!touch) return;
+      this.mouseMoveHandler?.({
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        target: touch.target,
+      } as MouseEvent);
+    };
+    document.addEventListener('touchmove', this.touchMoveHandler, { passive: true });
     if (VERBOSE) {
       console.log('[CursorCollector] Mouse move listener attached');
     }
@@ -203,6 +218,11 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     if (this.mouseMoveHandler) {
       document.removeEventListener('mousemove', this.mouseMoveHandler);
       this.mouseMoveHandler = undefined;
+    }
+
+    if (this.touchMoveHandler) {
+      document.removeEventListener('touchmove', this.touchMoveHandler);
+      this.touchMoveHandler = undefined;
     }
 
     if (this.mouseOverHandler) {
