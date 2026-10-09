@@ -496,6 +496,90 @@ describe("ScrapCollector", () => {
       expect(emitted("image")).toHaveLength(1);
     });
 
+    /** Restyles an element the way a lazy loader would, via its class. */
+    async function restyle(
+      element: Element,
+      backgroundImage: string,
+      className: string,
+    ): Promise<void> {
+      element.setAttribute("data-background-image", backgroundImage);
+      element.setAttribute("class", className);
+      await Promise.resolve();
+      vi.advanceTimersByTime(100);
+    }
+
+    it("enrolls an existing element once a class change gives it a background", async () => {
+      sizes.set("https://example.com/lazy.jpg", { width: 600, height: 400 });
+      const lazy = createBackground("none");
+
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      expect(observer().observed.has(lazy)).toBe(false);
+
+      await restyle(lazy, 'url("https://example.com/lazy.jpg")', "loaded");
+      expect(observer().observed.has(lazy)).toBe(true);
+      await scanAndCapture([lazy]);
+      expect(emitted("image").map((data) => (data as { src: string }).src)).toEqual([
+        "https://example.com/lazy.jpg",
+      ]);
+    });
+
+    it("rescans descendants when an ancestor's class decides their background", async () => {
+      sizes.set("https://example.com/slide.jpg", { width: 600, height: 400 });
+      const carousel = document.createElement("div");
+      const slide = createBackground("none");
+      carousel.appendChild(slide);
+      document.body.appendChild(carousel);
+
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      slide.setAttribute("data-background-image", 'url("https://example.com/slide.jpg")');
+      carousel.setAttribute("class", "is-ready");
+      await Promise.resolve();
+      vi.advanceTimersByTime(100);
+
+      expect(observer().observed.has(slide)).toBe(true);
+    });
+
+    it("keeps the picture on screen at capture, not the one first scanned", async () => {
+      sizes.set("https://example.com/placeholder.jpg", { width: 600, height: 400 });
+      sizes.set("https://example.com/real.jpg", { width: 600, height: 400 });
+      const swapped = createBackground('url("https://example.com/placeholder.jpg")');
+
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      // Swapped without a class or style change the observer would see.
+      swapped.setAttribute("data-background-image", 'url("https://example.com/real.jpg")');
+      await scanAndCapture([swapped]);
+
+      expect(emitted("image").map((data) => (data as { src: string }).src)).toEqual([
+        "https://example.com/real.jpg",
+      ]);
+    });
+
+    it("stops watching an element whose background is removed", async () => {
+      const fading = createBackground('url("https://example.com/gone.jpg")');
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      expect(observer().observed.has(fading)).toBe(true);
+
+      await restyle(fading, "none", "plain");
+      expect(observer().observed.has(fading)).toBe(false);
+    });
+
+    it("skips the image load for a picture already kept on the page", async () => {
+      sizes.set("https://example.com/twice.jpg", { width: 600, height: 400 });
+      const first = createBackground('url("https://example.com/twice.jpg")');
+      const second = createBackground('url("https://example.com/twice.jpg")');
+
+      collector.enable();
+      await scanAndCapture([first]);
+      await scanAndCapture([second]);
+
+      expect(measureImage).toHaveBeenCalledTimes(1);
+      expect(emitted("image")).toHaveLength(1);
+    });
+
     it("stops reading backgrounds once the collector is disabled", () => {
       createBackground('url("https://example.com/off.jpg")');
       collector.enable();

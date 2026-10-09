@@ -39,6 +39,15 @@ const MAX_BACKGROUND_CANDIDATES_PER_PAGE = 200;
 const BACKGROUND_SCAN_CHUNK = 400;
 /** Elements whose computed background is read per page, across all scans. */
 const MAX_BACKGROUND_SCANNED_ELEMENTS = 8000;
+/**
+ * Elements re-read per page after a `class` or `style` change, kept apart from
+ * the first pass so a page that restyles constantly cannot starve it.
+ */
+const MAX_BACKGROUND_RESCANNED_ELEMENTS = 4000;
+/** Times one element's own restyling may trigger a re-read. */
+const MAX_BACKGROUND_RESCANS_PER_ELEMENT = 20;
+/** Attributes whose change can swap the background an element paints. */
+const BACKGROUND_ATTRIBUTES = ["class", "style"];
 /** Elements whose background never holds a photo worth keeping. */
 const BACKGROUND_SKIP_TAGS = new Set([
   "HEAD",
@@ -136,6 +145,12 @@ export interface ScrapCollectorOptions {
   measureImage?: ImageMeasurer;
 }
 
+interface BackgroundScanItem {
+  element: Element;
+  /** Re-read even if already scanned, because its styling changed. */
+  rescan: boolean;
+}
+
 interface CursorImage {
   url: string;
   hotspotX?: number;
@@ -155,7 +170,10 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   /** Elements painting a background image, with the image they paint. */
   private observedBackgrounds = new Map<Element, string>();
   private scannedBackgroundElements = new WeakSet<Element>();
-  private backgroundScanQueue: Element[] = [];
+  private backgroundScanQueue: BackgroundScanItem[] = [];
+  private pendingBackgroundRescans = new Set<Element>();
+  private backgroundRescanCounts = new WeakMap<Element, number>();
+  private backgroundRescannedCount = 0;
   private backgroundScanHandle?: number;
   private backgroundScannedCount = 0;
   private backgroundCandidateCount = 0;
@@ -195,6 +213,12 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
 
     this.mutationObserver = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
+        if (mutation.type === "attributes") {
+          if (mutation.target instanceof Element) {
+            this.queueBackgroundRescan(mutation.target);
+          }
+          continue;
+        }
         for (const node of mutation.addedNodes) {
           if (!(node instanceof Element)) continue;
           this.discoverCandidates(node);
@@ -206,6 +230,10 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       this.mutationObserver.observe(document.body, {
         childList: true,
         subtree: true,
+        // A lazy loader or carousel often swaps a background by changing an
+        // existing element's class or style rather than adding a node.
+        attributes: true,
+        attributeFilter: BACKGROUND_ATTRIBUTES,
       });
     }
 
@@ -237,6 +265,8 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     this.observedBackgrounds.clear();
     this.scannedBackgroundElements = new WeakSet();
     this.backgroundScannedCount = 0;
+    this.backgroundRescannedCount = 0;
+    this.backgroundRescanCounts = new WeakMap();
     this.backgroundCandidateCount = 0;
     this.seenCanonicalImageKeys.clear();
     this.seenCanonicalButtonKeys.clear();
@@ -278,7 +308,27 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
    */
   private queueBackgroundScan(root: Element): void {
     if (!this.backgroundScanEnabled()) return;
-    this.backgroundScanQueue.push(root);
+    this.backgroundScanQueue.push({ element: root, rescan: false });
+    this.scheduleBackgroundScan();
+  }
+
+  /**
+   * Re-reads an element whose `class` or `style` changed, and its subtree,
+   * since an ancestor's class can decide its descendants' backgrounds.
+   */
+  private queueBackgroundRescan(element: Element): void {
+    if (
+      !this.backgroundScanEnabled() ||
+      this.backgroundRescannedCount >= MAX_BACKGROUND_RESCANNED_ELEMENTS ||
+      this.pendingBackgroundRescans.has(element)
+    ) {
+      return;
+    }
+    const rescans = this.backgroundRescanCounts.get(element) ?? 0;
+    if (rescans >= MAX_BACKGROUND_RESCANS_PER_ELEMENT) return;
+    this.backgroundRescanCounts.set(element, rescans + 1);
+    this.pendingBackgroundRescans.add(element);
+    this.backgroundScanQueue.push({ element, rescan: true });
     this.scheduleBackgroundScan();
   }
 
@@ -312,21 +362,31 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       this.backgroundScanHandle = undefined;
     }
     this.backgroundScanQueue = [];
+    this.pendingBackgroundRescans.clear();
   }
 
   private runBackgroundScan(): void {
     if (!this.enabled) {
       this.backgroundScanQueue = [];
+      this.pendingBackgroundRescans.clear();
       return;
     }
     let budget = BACKGROUND_SCAN_CHUNK;
     while (budget > 0 && this.backgroundScanQueue.length > 0) {
       if (!this.backgroundScanEnabled()) {
         this.backgroundScanQueue = [];
+        this.pendingBackgroundRescans.clear();
         return;
       }
-      const element = this.backgroundScanQueue.pop()!;
-      if (this.scannedBackgroundElements.has(element)) continue;
+      const { element, rescan } = this.backgroundScanQueue.pop()!;
+      if (rescan) {
+        this.pendingBackgroundRescans.delete(element);
+        if (this.backgroundRescannedCount >= MAX_BACKGROUND_RESCANNED_ELEMENTS) {
+          continue;
+        }
+      } else if (this.scannedBackgroundElements.has(element)) {
+        continue;
+      }
       this.scannedBackgroundElements.add(element);
       if (!element.isConnected || BACKGROUND_SKIP_TAGS.has(element.tagName)) {
         continue;
@@ -336,23 +396,47 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       if (element instanceof SVGElement) continue;
 
       budget--;
-      this.backgroundScannedCount++;
+      if (rescan) {
+        this.backgroundRescannedCount++;
+      } else {
+        this.backgroundScannedCount++;
+      }
       this.observeBackgroundCandidate(element);
 
       for (let index = element.children.length - 1; index >= 0; index--) {
-        this.backgroundScanQueue.push(element.children[index]);
+        this.backgroundScanQueue.push({ element: element.children[index], rescan });
       }
     }
     if (this.backgroundScanQueue.length > 0) this.scheduleBackgroundScan();
   }
 
   private observeBackgroundCandidate(element: Element): void {
-    if (this.observedBackgrounds.has(element)) return;
     const url = backgroundImageUrl(getComputedStyle(element).backgroundImage);
-    if (!url) return;
+    if (!url) {
+      if (this.observedBackgrounds.delete(element)) this.releaseBackground(element);
+      return;
+    }
+    if (this.observedBackgrounds.has(element)) {
+      this.observedBackgrounds.set(element, url);
+      return;
+    }
+    if (this.backgroundCandidateCount >= MAX_BACKGROUND_CANDIDATES_PER_PAGE) return;
     this.observedBackgrounds.set(element, url);
     this.backgroundCandidateCount++;
     this.intersectionObserver?.observe(element);
+  }
+
+  /** Stops watching an element that no longer paints a background, unless it is also another kind of candidate. */
+  private releaseBackground(element: Element): void {
+    if (
+      this.observedImages.has(element as HTMLImageElement) ||
+      this.observedButtons.has(element) ||
+      this.observedHeadings.has(element)
+    ) {
+      return;
+    }
+    this.clearVisibilityTimer(element);
+    this.intersectionObserver?.unobserve(element);
   }
 
   private observeImageCandidate(image: HTMLImageElement): void {
@@ -438,8 +522,9 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
 
   private captureCandidate(candidate: Element): void {
     // A button or heading can also paint a background image; both are kept.
-    const backgroundUrl = this.observedBackgrounds.get(candidate);
-    if (backgroundUrl) void this.captureBackgroundImage(candidate, backgroundUrl);
+    if (this.observedBackgrounds.has(candidate)) {
+      void this.captureBackgroundImage(candidate);
+    }
 
     if (this.observedImages.has(candidate as HTMLImageElement)) {
       this.captureImage(candidate as HTMLImageElement);
@@ -552,8 +637,14 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
    * scrap. Its intrinsic size is not on the element, so the image is loaded
    * (normally from cache) to learn it.
    */
-  private async captureBackgroundImage(element: Element, url: string): Promise<void> {
+  private async captureBackgroundImage(element: Element): Promise<void> {
     if (!this.enabled || this.imageCaptureCount >= MAX_IMAGES_PER_PAGE) return;
+
+    // Read now rather than trusting the scan, so the scrap is the picture that
+    // was actually on screen if the page swapped it in the meantime.
+    const computedStyle = getComputedStyle(element);
+    const url = backgroundImageUrl(computedStyle.backgroundImage);
+    if (!url) return;
 
     const bounds = element.getBoundingClientRect();
     if (
@@ -562,7 +653,28 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     ) {
       return;
     }
-    if (!isEffectivelyVisible(element, getComputedStyle(element))) return;
+    if (!isEffectivelyVisible(element, computedStyle)) return;
+
+    // Identity rests on the source alone, so a picture already kept on this
+    // page skips the load.
+    const encounterKey = (data: ScrapEventData) =>
+      getScrapEncounterKey(
+        this.pageDomain(),
+        data,
+        window.location.href,
+        Date.now(),
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+      )!;
+    const sourceOnly: ScrapEventData = {
+      kind: "image",
+      src: url,
+      naturalWidth: 0,
+      naturalHeight: 0,
+      displayWidth: 0,
+      displayHeight: 0,
+      pageTitle: "",
+    };
+    if (this.seenCanonicalImageKeys.has(encounterKey(sourceOnly))) return;
 
     const size = await this.measureImage(url);
     if (
@@ -586,13 +698,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       pageTitle: document.title,
       position: this.elementPosition(bounds),
     };
-    const canonicalKey = getScrapEncounterKey(
-      this.pageDomain(),
-      data,
-      window.location.href,
-      Date.now(),
-      Intl.DateTimeFormat().resolvedOptions().timeZone,
-    )!;
+    const canonicalKey = encounterKey(data);
     if (this.seenCanonicalImageKeys.has(canonicalKey)) return;
 
     const faviconUrl = getFaviconUrl();
