@@ -1,7 +1,7 @@
 // ABOUTME: Resizable drawer of collected scraps to pick material from, newest first.
 // ABOUTME: Renders only the rows in view so thousands of scraps stay responsive.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ScrapContent,
   type ScrapItem,
@@ -38,15 +38,8 @@ const LABEL_ROOM = 56;
 /** The widest a label gets, from the peek label's own max-width. */
 const LABEL_WIDTH = 240;
 
-/**
- * Where the drawer sits: beside the collage, at the width it was dragged to,
- * or along the bottom of a phone screen, as wide as the screen.
- */
-export type TrayDock = "side" | "bottom";
-
 interface ScrapTrayProps {
   items: readonly ScrapItem[];
-  dock: TrayDock;
   width: number;
   collapsed: boolean;
   onWidth: (width: number) => void;
@@ -57,7 +50,6 @@ interface ScrapTrayProps {
 
 export function ScrapTray({
   items,
-  dock,
   width,
   collapsed,
   onWidth,
@@ -92,26 +84,12 @@ export function ScrapTray({
     search.trim() !== "" ||
     !isAnyTime(when);
 
-  // Docked along the bottom, the drawer is as wide as the screen, so its
-  // columns are laid out across the width it actually has.
-  const [bottomWidth, setBottomWidth] = useState(0);
-  const trayRef = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    const tray = trayRef.current;
-    if (dock !== "bottom" || !tray) return;
-    const measure = () => setBottomWidth(tray.clientWidth);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(tray);
-    return () => observer.disconnect();
-  }, [dock, collapsed]);
-  const layoutWidth = dock === "bottom" ? bottomWidth : width;
-  const columns = drawerColumns(layoutWidth);
+  const columns = drawerColumns(width);
   // Every thumbnail keeps its own proportions, so the placement is worked out
   // once and the visible range is then a lookup rather than a measurement.
   const layout = useMemo(
-    () => layOutDrawer(filtered, layoutWidth, columns),
-    [filtered, layoutWidth, columns],
+    () => layOutDrawer(filtered, width, columns),
+    [filtered, width, columns],
   );
   const visible = useMemo(
     () =>
@@ -170,8 +148,8 @@ export function ScrapTray({
   if (collapsed) {
     return (
       <aside
-        className={`collage-tray collage-tray--tucked collage-tray--${dock}`}
-        style={dock === "side" ? { width: DRAWER_RAIL_WIDTH } : undefined}
+        className="collage-tray collage-tray--tucked"
+        style={{ width: DRAWER_RAIL_WIDTH }}
       >
         <button
           type="button"
@@ -188,11 +166,7 @@ export function ScrapTray({
   }
 
   return (
-    <aside
-      ref={trayRef}
-      className={`collage-tray collage-tray--${dock}`}
-      style={dock === "side" ? { width } : undefined}
-    >
+    <aside className="collage-tray" style={{ width }}>
       <ScrapFilters
         items={items}
         places={places}
@@ -207,7 +181,7 @@ export function ScrapTray({
         onWhen={setWhen}
         matchCount={filtered.length}
         layout="drawer"
-        placement={dock === "bottom" ? "above" : "below"}
+        placement="below"
         searchAccessory={
           <button
             type="button"
@@ -217,7 +191,7 @@ export function ScrapTray({
             aria-expanded={true}
             onClick={() => onCollapsed(true)}
           >
-            {dock === "bottom" ? "\u2304" : "\u2039"}
+            &#8249;
           </button>
         }
       />
@@ -281,15 +255,12 @@ export function ScrapTray({
                   onDragStart(item, event);
                 }}
                 onClick={() => onPlace(item)}
-                onPointerEnter={(event) => {
-                  // A finger has no hover, and a label left behind by a tap
-                  // would cover the drawer.
-                  if (event.pointerType === "touch") return;
+                onPointerEnter={(event) =>
                   setPointed({
                     item,
                     box: event.currentTarget.getBoundingClientRect(),
-                  });
-                }}
+                  })
+                }
                 onPointerLeave={() => setPointed(null)}
                 onFocus={(event) =>
                   setPointed({
@@ -344,7 +315,6 @@ export function ScrapTray({
           <ProvenanceLines scrap={pointed.item} />
         </div>
       )}
-      {dock === "side" && (
       <div
         className="collage-tray__grip"
         role="separator"
@@ -366,7 +336,6 @@ export function ScrapTray({
         }}
         onDoubleClick={() => onWidth(defaultDrawerWidth())}
       />
-      )}
     </aside>
   );
 }

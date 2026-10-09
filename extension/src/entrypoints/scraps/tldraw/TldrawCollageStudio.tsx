@@ -750,7 +750,6 @@ export default function TldrawCollageStudio({
       `}</style>
       <ScrapTray
         items={scraps}
-        dock="side"
         width={drawer.width}
         collapsed={drawer.collapsed}
         onWidth={(width) => updateDrawer({ width })}

@@ -66,7 +66,6 @@ describe("ScrapTray filters", () => {
       root.render(
         <ScrapTray
           items={items}
-          dock="side"
           width={384}
           collapsed={false}
           onWidth={vi.fn()}
@@ -238,7 +237,6 @@ describe("ScrapTray day and time-of-day filters", () => {
       root.render(
         <ScrapTray
           items={dated}
-          dock="side"
           width={384}
           collapsed={false}
           onWidth={vi.fn()}
