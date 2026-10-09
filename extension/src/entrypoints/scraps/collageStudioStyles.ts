@@ -42,10 +42,16 @@ export const COLLAGE_STUDIO_STYLES = `
     touch-action: none;
   }
 
-  .collage-tray--bottom {
+  /* Two classes, so this outranks the drawer's own side-docked size and
+     margin, which come later; otherwise the drawer grows with its scraps
+     and buries the collage. */
+  .collage-tray.collage-tray--bottom {
     order: 1;
     flex: 0 0 40%;
     margin: 0 8px 8px;
+    /* Its filter menus open upward over the collage, so they sit above the
+       bars floating at the top of the stage. */
+    z-index: 10020;
   }
 
   /* While the drawer is open on a phone the collage is being filled, so the
@@ -61,11 +67,26 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-studio--phone .collage-mat__caption {
     bottom: 4px;
+    min-width: 0;
   }
 
-  /* Raised, the drawer covers most of the collage for a longer browse. */
-  .collage-tray--bottom.collage-tray--tall {
-    flex-basis: 72%;
+  /* When the drawer is raised the frame gets small, so the caption keeps to
+     one line inside the mat and trims its end rather than spilling out. */
+  .collage-studio--phone .collage-mat__caption .collage-studio__label {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .collage-studio--phone .collage-title-input {
+    min-width: 0;
+  }
+
+  /* Raised, the drawer covers most of the collage for a longer browse,
+     leaving the collage a strip above it. */
+  .collage-tray.collage-tray--bottom.collage-tray--tall {
+    flex-basis: 58%;
   }
 
   /* The grab bar at the top of a docked drawer: flick it up or down, or tap
@@ -97,7 +118,7 @@ export const COLLAGE_STUDIO_STYLES = `
     touch-action: none;
   }
 
-  .collage-tray--bottom.collage-tray--tucked {
+  .collage-tray.collage-tray--bottom.collage-tray--tucked {
     flex: 0 0 auto;
     padding: 6px;
   }
