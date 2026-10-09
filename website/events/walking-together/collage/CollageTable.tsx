@@ -1,17 +1,19 @@
 // ABOUTME: The shared table where a small group drops, moves, turns, and sizes scraps together.
 // ABOUTME: Gestures stay local (plus a live preview) and commit to shared data on release.
 import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
-import { usePlayerIdentity } from "@playhtml/react";
+import { playhtml, usePlayerIdentity } from "@playhtml/react";
 import { isAdmin } from "../admin";
 import {
   isOnTop,
   makePiece,
   movedTransform,
+  orderAroundCentroid,
   piecesOf,
   remoteDragTransforms,
   rotateResizeTransform,
   sortedPieces,
   sourceDomain,
+  templatePointsFromCursors,
   topZ,
   transformChanged,
   transformOf,
@@ -75,6 +77,7 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
   const { pid, name, color } = usePlayerIdentity();
   const admin = isAdmin(name, color);
   const pieces = piecesOf(data);
+  const templatePoints = Object.values(data?.templatePoints ?? {});
 
   const tableRef = useRef<HTMLDivElement>(null);
   const size = useElementSize(tableRef);
@@ -276,6 +279,49 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
 
   // ---- Admin ------------------------------------------------------------
 
+  const captureShape = () => {
+    const table = tableRef.current;
+    const client = playhtml.cursorClient;
+    if (!table || !client) {
+      flashNotice("cursors are not connected yet");
+      return;
+    }
+    const cursors = Array.from(client.getCursorPresences().entries()).flatMap(
+      ([key, presence]) =>
+        presence.cursor
+          ? [
+              {
+                key,
+                x: presence.cursor.x,
+                y: presence.cursor.y,
+                color:
+                  presence.playerIdentity?.playerStyle.colorPalette[0] ??
+                  "#888888",
+              },
+            ]
+          : [],
+    );
+    // The admin's own cursor is on this button, not in the shape.
+    const points = templatePointsFromCursors(
+      cursors,
+      table.getBoundingClientRect(),
+      pid,
+    );
+    if (Object.keys(points).length === 0) {
+      flashNotice("no cursors on the table to capture");
+      return;
+    }
+    setData((draft) => {
+      draft.templatePoints = points;
+    });
+  };
+
+  const clearShape = () => {
+    setData((draft) => {
+      draft.templatePoints = {};
+    });
+  };
+
   /** Clears every scrap off the table, for a fresh start between runs. */
   const clearTable = () => {
     if (!window.confirm("Clear every scrap off the table for everyone?")) return;
@@ -303,6 +349,8 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
 
   const ordered = sortedPieces(pieces);
   const frontZ = topZ(pieces) + 1;
+  const tableAspect = size.height > 0 ? size.width / size.height : 1;
+  const outline = orderAroundCentroid(templatePoints, tableAspect);
 
   return (
     <div
@@ -318,6 +366,40 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
       }}
       onDrop={onDrop}
     >
+      {templatePoints.length > 0 && size.width > 0 && (
+        <svg
+          className="collage-template"
+          width={size.width}
+          height={size.height}
+          aria-hidden="true"
+        >
+          {outline.length >= 3 && (
+            <polygon
+              points={outline
+                .map((p) => `${p.x * size.width},${p.y * size.height}`)
+                .join(" ")}
+            />
+          )}
+          {outline.length === 2 && (
+            <line
+              x1={outline[0].x * size.width}
+              y1={outline[0].y * size.height}
+              x2={outline[1].x * size.width}
+              y2={outline[1].y * size.height}
+            />
+          )}
+          {templatePoints.map((p, i) => (
+            <circle
+              key={i}
+              cx={p.x * size.width}
+              cy={p.y * size.height}
+              r={4}
+              style={{ fill: p.color }}
+            />
+          ))}
+        </svg>
+      )}
+
       {size.width > 0 &&
         ordered.map((piece) => {
           const mine = gesture?.id === piece.id;
@@ -444,6 +526,15 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
           data-admin-control
           onPointerDown={(e) => e.stopPropagation()}
         >
+          <button
+            onClick={captureShape}
+            title="Snapshot everyone's cursors as a shape guide"
+          >
+            capture shape
+          </button>
+          {templatePoints.length > 0 && (
+            <button onClick={clearShape}>clear shape</button>
+          )}
           <button onClick={clearTable}>clear table</button>
           <button onClick={exportPng} disabled={exporting}>
             {exporting ? "exporting" : "export png"}

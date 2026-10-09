@@ -33,6 +33,26 @@ $grain: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/20
   }
 }
 
+.collage-template {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+
+  polygon,
+  line {
+    fill: rgba(61, 56, 51, 0.03);
+    stroke: rgba(61, 56, 51, 0.35);
+    stroke-width: 1.5;
+    stroke-dasharray: 2 7;
+    stroke-linecap: round;
+  }
+
+  circle {
+    opacity: 0.45;
+  }
+}
+
 .collage-empty {
   position: absolute;
   top: 50%;

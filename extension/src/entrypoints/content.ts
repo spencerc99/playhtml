@@ -9,6 +9,7 @@ import {
   MILESTONE_TOAST_FONT_URL,
 } from "./content/milestone-toast-styles";
 import { injectShadow, injectShadowReact, type InjectedReactUI } from "./content/inject-ui";
+import { detailForPage } from "./content/pageDetail";
 import {
   MilestoneToast,
   type MilestoneToastData,
@@ -999,7 +1000,9 @@ export default defineContentScript({
         const dispatch = () => {
           document.dispatchEvent(
             new CustomEvent("playhtml:configure-identity", {
-              detail: { playerIdentity: this.presencePlayerIdentity },
+              detail: detailForPage({
+                playerIdentity: this.presencePlayerIdentity,
+              }),
             }),
           );
         };
