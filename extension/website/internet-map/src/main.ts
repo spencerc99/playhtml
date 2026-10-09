@@ -29,7 +29,7 @@ const q = new URLSearchParams(location.search);
 // private R2 bucket behind the Worker's admin key; the local dev server reads
 // them from the gitignored public/internet-map/data/ instead.
 // VITE_DATA picks one at build time; ?data= still overrides at runtime.
-const DEFAULT_DATA = (import.meta.env.VITE_DATA as string) || "data-small";
+const DEFAULT_DATA = (import.meta.env.VITE_DATA as string) || "may-map";
 const BUNDLE = (q.get("data") || DEFAULT_DATA).replace(/[^A-Za-z0-9._-]/g, "");
 const LOCAL_BUNDLES = import.meta.env.DEV && q.get("source") !== "worker";
 const DATA = LOCAL_BUNDLES
