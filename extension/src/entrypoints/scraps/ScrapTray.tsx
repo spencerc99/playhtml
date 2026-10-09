@@ -6,6 +6,7 @@ import {
   ScrapContent,
   type ScrapItem,
 } from "@movement/components/ScrapCollage";
+import { useSwipe } from "@movement/hooks/useSwipe";
 import {
   ANY_TIME,
   ScrapFilters,
@@ -167,6 +168,19 @@ export function ScrapTray({
     setViewportHeight(node.clientHeight);
   }, []);
 
+  // Docked along the bottom of a phone, the drawer answers a flick on its
+  // handle: up raises it over more of the collage, down lowers it, and down
+  // again tucks it away. Up on the tucked drawer opens it.
+  const [tall, setTall] = useState(false);
+  const traySwipe = useSwipe(
+    collapsed
+      ? { up: () => onCollapsed(false) }
+      : {
+          up: () => setTall(true),
+          down: () => (tall ? setTall(false) : onCollapsed(true)),
+        },
+  );
+
   if (collapsed) {
     return (
       <aside
@@ -179,6 +193,7 @@ export function ScrapTray({
           title="Open the scrap drawer (\\)"
           aria-label="Open the scrap drawer"
           aria-expanded={false}
+          {...(dock === "bottom" ? traySwipe : {})}
           onClick={() => onCollapsed(false)}
         >
           scraps
@@ -190,9 +205,22 @@ export function ScrapTray({
   return (
     <aside
       ref={trayRef}
-      className={`collage-tray collage-tray--${dock}`}
+      className={`collage-tray collage-tray--${dock}${
+        dock === "bottom" && tall ? " collage-tray--tall" : ""
+      }`}
       style={dock === "side" ? { width } : undefined}
     >
+      {dock === "bottom" && (
+        <button
+          type="button"
+          className="collage-tray__handle"
+          aria-label={
+            tall ? "Lower the scrap drawer" : "Raise the scrap drawer"
+          }
+          {...traySwipe}
+          onClick={() => setTall(!tall)}
+        />
+      )}
       <ScrapFilters
         items={items}
         places={places}

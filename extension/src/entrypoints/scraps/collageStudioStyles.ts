@@ -63,6 +63,40 @@ export const COLLAGE_STUDIO_STYLES = `
     bottom: 4px;
   }
 
+  /* Raised, the drawer covers most of the collage for a longer browse. */
+  .collage-tray--bottom.collage-tray--tall {
+    flex-basis: 72%;
+  }
+
+  /* The grab bar at the top of a docked drawer: flick it up or down, or tap
+     it to raise and lower the drawer. */
+  .collage-tray__handle {
+    flex: 0 0 auto;
+    align-self: center;
+    width: 64px;
+    height: 18px;
+    margin: -4px 0 2px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .collage-tray__handle::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 0 auto;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--c-ink) 22%, transparent);
+  }
+
+  .collage-tray--bottom .collage-tray__rail {
+    touch-action: none;
+  }
+
   .collage-tray--bottom.collage-tray--tucked {
     flex: 0 0 auto;
     padding: 6px;
