@@ -23,7 +23,11 @@ import {
   type WalkersData,
   type WalkStep,
 } from "./walkTrails";
-import { hasExtension, onExtensionDetected } from "./extensionSignal";
+import {
+  hasExtension,
+  hasExtensionWithoutIdentity,
+  onExtensionDetected,
+} from "./extensionSignal";
 import { isAdmin } from "../admin";
 import "./walk.scss";
 
@@ -114,6 +118,10 @@ export function WalkStage({ active }: { active: boolean }) {
   const ended = data?.endedAt !== undefined;
   const { pid, name, color } = usePlayerIdentity();
   const extension = useSyncExternalStore(onExtensionDetected, hasExtension);
+  const needsUpdate = useSyncExternalStore(
+    onExtensionDetected,
+    hasExtensionWithoutIdentity,
+  );
   const [watching, setWatching] = useStickyState<boolean>(
     "walk-just-watching",
     false,
@@ -338,7 +346,9 @@ export function WalkStage({ active }: { active: boolean }) {
                 target="_blank"
                 rel="noreferrer"
               >
-                get we were online to join
+                {needsUpdate
+                  ? "update we were online to join"
+                  : "get we were online to join"}
               </a>
             )}
             <button onClick={() => setWatching(true)}>just watch</button>
