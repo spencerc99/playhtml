@@ -179,6 +179,9 @@ export function WalkStage({ active }: { active: boolean }) {
           trailStates={trailStates}
           settings={TRAIL_SETTINGS}
           showClickRipples
+          // A walker who lingers on one page still walked here; keep their
+          // trail until they leave the walk.
+          keepSettled
         />
         {size.width > 0 &&
           Array.from(stops.values()).map((step) => {
