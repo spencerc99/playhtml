@@ -9,6 +9,7 @@ import {
   MILESTONE_TOAST_FONT_URL,
 } from "./content/milestone-toast-styles";
 import { injectShadow, injectShadowReact, type InjectedReactUI } from "./content/inject-ui";
+import { detailForPage } from "./content/pageDetail";
 import {
   MilestoneToast,
   type MilestoneToastData,
@@ -34,6 +35,10 @@ import { markExtensionInstalled } from "../utils/extensionInstallMarker";
 import { isExtensionPageUrl } from "../utils/extensionPage";
 import { initHostedSlowModeContentBridge } from "../features/slowMode/slowModeHostedContentBridge";
 import { initSessionScrapsContentBridge } from "../features/sessionScraps/sessionScrapsContentBridge";
+import {
+  ALLOW_LOCAL_SESSION_SCRAPS_PAGES,
+  isSessionScrapsPageUrl,
+} from "../features/sessionScraps/sessionScrapsBridge";
 import { watchInstallationContent } from "./content/installationContent";
 import { MILESTONE_TOASTS_ENABLED_KEY } from "../milestones/state";
 
@@ -999,7 +1004,9 @@ export default defineContentScript({
         const dispatch = () => {
           document.dispatchEvent(
             new CustomEvent("playhtml:configure-identity", {
-              detail: { playerIdentity: this.presencePlayerIdentity },
+              detail: detailForPage({
+                playerIdentity: this.presencePlayerIdentity,
+              }),
             }),
           );
         };
@@ -1115,6 +1122,17 @@ export default defineContentScript({
               customSiteSettings?.cursorsEnabled ?? false,
           })
         ) {
+          // Event pages (the Internet Walk) match walkers to their browsing by
+          // the extension's identity, so they get it even without shared cursors.
+          if (
+            isSessionScrapsPageUrl(
+              window.location.href,
+              ALLOW_LOCAL_SESSION_SCRAPS_PAGES,
+            ) &&
+            (await this.detectNativePlayhtml())
+          ) {
+            this.injectIdentityIntoMainWorld();
+          }
           return;
         }
 
