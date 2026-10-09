@@ -36,7 +36,12 @@ import {
   type CollagePaper,
 } from "../collageFormats";
 import { fanOutPlacement, type PieceBox, type Point } from "../collageGeometry";
-import { DEFAULT_CUTOUT_TOLERANCE, type PieceCutout } from "../backgroundCutout";
+import {
+  DEFAULT_CUTOUT_TOLERANCE,
+  cutoutKeeps,
+  invertedCutout,
+  type PieceCutout,
+} from "../backgroundCutout";
 import { paperBackground } from "../paperGrain";
 import { ScrapTray } from "../ScrapTray";
 import { KeysButton, StudioTools, StudioViews } from "../StudioTools";
@@ -429,16 +434,28 @@ export default function TldrawCollageStudio({
     });
   }, [editor, only]);
 
-  const tuneCutout = useCallback(
-    (tolerance: number) => {
+  const reshapeCutout = useCallback(
+    (change: (cutout: PieceCutout) => PieceCutout) => {
       if (!editor || !only || only.type !== SCRAP_PIECE_TYPE) return;
+      const { cutout } = pieceForDrawing(only);
+      if (!cutout) return;
       editor.updateShape({
         id: asShapeId(only.id),
         type: SCRAP_PIECE_TYPE,
-        props: { cutout: { method: "edge-color", tolerance } },
+        props: { cutout: change(cutout) },
       } as TLShapePartial);
     },
     [editor, only],
+  );
+
+  const tuneCutout = useCallback(
+    (tolerance: number) => reshapeCutout((cutout) => ({ ...cutout, tolerance })),
+    [reshapeCutout],
+  );
+
+  const invertCutout = useCallback(
+    () => reshapeCutout(invertedCutout),
+    [reshapeCutout],
   );
 
   const keepBackground = useCallback(() => {
@@ -837,9 +854,11 @@ export default function TldrawCollageStudio({
                 <CutoutControl
                   piece={onlyPiece}
                   tolerance={onlyPiece.cutout.tolerance}
+                  inverted={cutoutKeeps(onlyPiece.cutout) === "background"}
                   scale={scale}
                   frame={frame}
                   onTolerance={tuneCutout}
+                  onInvert={invertCutout}
                   onKeepBackground={keepBackground}
                   onDone={() => {
                     setCutoutSession(null);
