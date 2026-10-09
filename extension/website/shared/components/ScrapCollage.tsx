@@ -748,7 +748,6 @@ export function buildArchiveWindow(
   const columnCount = Math.max(1, Math.floor(width / cell.width));
   const rowCount = Math.ceil(items.length / columnCount);
   const fieldHeight = Math.max(viewportHeight, rowCount * cell.height);
-  const cellWidth = width / columnCount;
   const overscan = viewportHeight * ARCHIVE_OVERSCAN_VIEWPORTS;
   const firstRow = Math.max(
     0,
@@ -758,7 +757,41 @@ export function buildArchiveWindow(
     rowCount - 1,
     Math.ceil((scrollTop + viewportHeight + overscan) / cell.height),
   );
-  const firstIndex = firstRow * columnCount;
+  const layout = layoutArchiveRows(
+    items,
+    width,
+    viewportHeight,
+    scrollTop,
+    seed,
+    sizeBounds,
+    display,
+    firstRow,
+    lastRow,
+  );
+  return { fieldHeight, layout };
+}
+
+/**
+ * Lays out the archive scraps in rows `firstRow` through `lastRow`, exactly
+ * where the archive window places them.
+ */
+function layoutArchiveRows(
+  items: ScrapItem[],
+  width: number,
+  viewportHeight: number,
+  scrollTop: number,
+  seed: number,
+  sizeBounds: ReturnType<typeof tierBounds>,
+  display: ScrapDisplay,
+  firstRow: number,
+  lastRow: number,
+): ScrapLayout[] {
+  const cell = archiveCell(display);
+  const columnCount = Math.max(1, Math.floor(width / cell.width));
+  const rowCount = Math.ceil(items.length / columnCount);
+  const fieldHeight = Math.max(viewportHeight, rowCount * cell.height);
+  const cellWidth = width / columnCount;
+  const firstIndex = Math.max(0, firstRow) * columnCount;
   const lastIndex = Math.min(items.length, (lastRow + 1) * columnCount);
   const layout: ScrapLayout[] = [];
 
@@ -828,7 +861,55 @@ export function buildArchiveWindow(
     });
   }
 
-  return { fieldHeight, layout };
+  return layout;
+}
+
+/** A rectangle in archive field coordinates. */
+export interface ArchiveRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The keys of archive scraps whose tiles touch `rect`, wherever the archive
+ * has scrolled: rows outside the rendered window are laid out on demand, so a
+ * drag that runs past the window still catches everything under it.
+ */
+export function archiveKeysInRect(
+  items: ScrapItem[],
+  width: number,
+  viewportHeight: number,
+  rect: ArchiveRect,
+  seed: number,
+  sizeBounds = tierBounds(items),
+  display: ScrapDisplay = "grid",
+): string[] {
+  if (items.length === 0 || width <= 0 || viewportHeight <= 0) return [];
+  const cell = archiveCell(display);
+  // Jitter and clamping can push a tile a row past its own cell.
+  const firstRow = Math.floor(rect.y / cell.height) - 1;
+  const lastRow = Math.ceil((rect.y + rect.height) / cell.height) + 1;
+  return layoutArchiveRows(
+    items,
+    width,
+    viewportHeight,
+    0,
+    seed,
+    sizeBounds,
+    display,
+    firstRow,
+    lastRow,
+  )
+    .filter(
+      (scrap) =>
+        scrap.x < rect.x + rect.width &&
+        scrap.x + scrap.width > rect.x &&
+        scrap.y < rect.y + rect.height &&
+        scrap.y + scrap.height > rect.y,
+    )
+    .map((scrap) => scrap.item.key);
 }
 
 /**
@@ -1395,6 +1476,41 @@ export const COLLAGE_STYLES = `
     transform: rotate(var(--scrap-rotation)) scale(1.06) translateY(-4px);
     filter: drop-shadow(0 12px 12px rgba(61, 56, 51, 0.2));
     outline: none;
+  }
+
+  .scrap-collage__tile--selected,
+  .scrap-collage__tile--selected:hover,
+  .scrap-collage__tile--selected:focus-visible {
+    outline: 2px solid #4a9a8a;
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  /* A drag across a selectable archive draws a selection, never a text one. */
+  .scrap-collage__scroll--selectable {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* While a selection is being dragged out, tiles stop answering the pointer
+     so their hover lift and provenance cards stay out of the way. */
+
+  .scrap-collage__scroll--selecting .scrap-collage__tile {
+    pointer-events: none;
+  }
+
+  .scrap-collage__marquee {
+    position: absolute;
+    z-index: 250;
+    box-sizing: border-box;
+    border: 1px dashed #4a9a8a;
+    border-radius: 2px;
+    background: rgba(74, 154, 138, 0.1);
+    pointer-events: none;
+  }
+
+  .scrap-collage__selection-hint {
+    margin-right: auto;
   }
 
   .scrap-collage__image {
@@ -2056,20 +2172,58 @@ export function ScrapCollage({
   const [bulkDeleteStep, setBulkDeleteStep] = useState<
     "idle" | "confirm" | "deleting" | "failed"
   >("idle");
-  // A confirmation names a count for one set of filters; changing them asks again.
+  /**
+   * Scraps picked out of the archive by dragging across them or shift-clicking.
+   * Only offered where scraps can be deleted, since deleting is all a
+   * selection is for.
+   */
+  const selectable = archiveMode && !!onDeleteScraps;
+  const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const selectedScraps = useMemo(
+    () => archiveScraps.filter((item) => selectedKeys.has(item.key)),
+    [archiveScraps, selectedKeys],
+  );
+  const bulkTargets = selectedScraps.length > 0 ? selectedScraps : archiveScraps;
+  // A selection belongs to one view of the archive; changing what it shows lets go.
+  useEffect(() => {
+    setSelectedKeys(new Set());
+  }, [archiveMode, selectedKind, shape, places, search, when]);
+  // A confirmation names a count for one set of scraps; changing them asks again.
   useEffect(() => {
     setBulkDeleteStep("idle");
-  }, [selectedKind, shape, places, search, when]);
+  }, [selectedKind, shape, places, search, when, selectedKeys]);
   const deleteFiltered = () => {
     if (!onDeleteScraps) return;
     setBulkDeleteStep("deleting");
-    onDeleteScraps(archiveScraps)
-      .then(() => setBulkDeleteStep("idle"))
+    onDeleteScraps(bulkTargets)
+      .then(() => {
+        setBulkDeleteStep("idle");
+        setSelectedKeys(new Set());
+      })
       .catch((error: unknown) => {
-        console.error("Could not delete the filtered scraps:", error);
+        console.error("Could not delete the scraps:", error);
         setBulkDeleteStep("failed");
       });
   };
+  const toggleSelected = (key: string) => {
+    setSelectedKeys((current) => {
+      const next = new Set(current);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  };
+  useEffect(() => {
+    if (selectedKeys.size === 0) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) {
+        setSelectedKeys(new Set());
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedKeys]);
   const archiveSizeBounds = useMemo(
     () => tierBounds(archiveScraps),
     [archiveScraps],
@@ -2455,6 +2609,175 @@ export function ScrapCollage({
     });
   };
 
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const [marquee, setMarquee] = useState<ArchiveRect | null>(null);
+  /** The drag in progress over the archive, before and after it becomes a marquee. */
+  const dragRef = useRef<{
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    /** Where the drag began, in field coordinates, so it holds while scrolling. */
+    originX: number;
+    originY: number;
+    clientX: number;
+    clientY: number;
+    additive: boolean;
+    base: ReadonlySet<string>;
+    active: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
+  const autoScrollRef = useRef<number | null>(null);
+
+  /** Redraws the marquee from the pointer and selects whatever it touches. */
+  const updateMarquee = () => {
+    const drag = dragRef.current;
+    const field = fieldRef.current;
+    if (!drag?.active || !field) return;
+    const bounds = field.getBoundingClientRect();
+    const pointerX = Math.max(
+      0,
+      Math.min(bounds.width, drag.clientX - bounds.left),
+    );
+    const pointerY = Math.max(
+      0,
+      Math.min(bounds.height, drag.clientY - bounds.top),
+    );
+    const rect = {
+      x: Math.min(drag.originX, pointerX),
+      y: Math.min(drag.originY, pointerY),
+      width: Math.abs(pointerX - drag.originX),
+      height: Math.abs(pointerY - drag.originY),
+    };
+    setMarquee(rect);
+    const touched = archiveKeysInRect(
+      archiveScraps,
+      containerSize.width,
+      containerSize.height,
+      rect,
+      layoutSeed,
+      archiveSizeBounds,
+      display,
+    ).filter(
+      (key) => !failedScraps.has(key),
+    );
+    const next = new Set(drag.base);
+    for (const key of touched) next.add(key);
+    setSelectedKeys(next);
+  };
+  const updateMarqueeRef = useRef(updateMarquee);
+  updateMarqueeRef.current = updateMarquee;
+
+  const stopAutoScroll = () => {
+    if (autoScrollRef.current !== null) {
+      window.cancelAnimationFrame(autoScrollRef.current);
+      autoScrollRef.current = null;
+    }
+  };
+
+  /** Scrolls the archive while a marquee is held against its top or bottom edge. */
+  const autoScroll = () => {
+    autoScrollRef.current = null;
+    const drag = dragRef.current;
+    const scroller = archiveScrollRef.current;
+    if (!drag?.active || !scroller) return;
+    const bounds = scroller.getBoundingClientRect();
+    const edge = 48;
+    const above = bounds.top + edge - drag.clientY;
+    const below = drag.clientY - (bounds.bottom - edge);
+    const speed =
+      above > 0
+        ? -Math.min(edge, above) / 2
+        : below > 0
+          ? Math.min(edge, below) / 2
+          : 0;
+    if (speed === 0) return;
+    scroller.scrollTop += speed;
+    updateMarqueeRef.current();
+    autoScrollRef.current = window.requestAnimationFrame(autoScroll);
+  };
+
+  const endDrag = () => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    stopAutoScroll();
+    if (!drag?.active) return;
+    setMarquee(null);
+    // The click that ends a drag is not a click on whatever it ended over.
+    suppressClickRef.current = true;
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+  };
+
+  useEffect(() => stopAutoScroll, []);
+
+  const selectionHandlers: React.HTMLAttributes<HTMLDivElement> = selectable
+    ? {
+        onPointerDown: (event) => {
+          // Touch drags scroll the archive; a marquee is for a pointer.
+          if (event.button !== 0 || event.pointerType === "touch") return;
+          const field = fieldRef.current;
+          if (!field) return;
+          const bounds = field.getBoundingClientRect();
+          dragRef.current = {
+            pointerId: event.pointerId,
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            originX: event.clientX - bounds.left,
+            originY: event.clientY - bounds.top,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            additive: event.shiftKey || event.metaKey || event.ctrlKey,
+            base: new Set(),
+            active: false,
+          };
+        },
+        onPointerMove: (event) => {
+          const drag = dragRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          drag.clientX = event.clientX;
+          drag.clientY = event.clientY;
+          if (!drag.active) {
+            if (
+              Math.hypot(
+                event.clientX - drag.startClientX,
+                event.clientY - drag.startClientY,
+              ) < 5
+            ) {
+              return;
+            }
+            drag.active = true;
+            drag.base = drag.additive ? selectedKeys : new Set();
+            setControlsExpanded(true);
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+          updateMarquee();
+          if (autoScrollRef.current === null) autoScroll();
+        },
+        onPointerUp: endDrag,
+        onPointerCancel: endDrag,
+        onLostPointerCapture: endDrag,
+        // Tiles are links and pictures; dragging them would carry them off
+        // the page instead of drawing a selection.
+        onDragStart: (event) => event.preventDefault(),
+        onClickCapture: (event) => {
+          if (!suppressClickRef.current) return;
+          suppressClickRef.current = false;
+          event.preventDefault();
+          event.stopPropagation();
+        },
+        onClick: (event) => {
+          // A click on the archive's open ground lets go of the selection.
+          if (
+            selectedKeys.size > 0 &&
+            !(event.target as Element).closest("[data-scrap-key]")
+          ) {
+            setSelectedKeys(new Set());
+          }
+        },
+      }
+    : {};
+
   const renderTile = (scrap: ScrapLayout, modifier: string) => {
     if (failedScraps.has(scrap.item.key) || !isRenderableScrap(scrap.item)) {
       return null;
@@ -2477,7 +2800,11 @@ export function ScrapCollage({
     return (
       <a
         key={scrap.item.key}
-        className={`scrap-collage__tile${modifier}`}
+        className={`scrap-collage__tile${modifier}${
+          selectable && selectedKeys.has(scrap.item.key)
+            ? " scrap-collage__tile--selected"
+            : ""
+        }`}
         href={scrap.item.pageUrl}
         data-scrap-key={scrap.item.key}
         ref={(element) => {
@@ -2490,14 +2817,33 @@ export function ScrapCollage({
             tileElementsRef.current.delete(scrap.item.key);
           }
         }}
-        aria-label={`Examine ${title}`}
-        aria-haspopup="dialog"
+        aria-label={
+          selectable && selectedKeys.size > 0
+            ? `${selectedKeys.has(scrap.item.key) ? "Deselect" : "Select"} ${title}`
+            : `Examine ${title}`
+        }
+        aria-haspopup={
+          selectable && selectedKeys.size > 0 ? undefined : "dialog"
+        }
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={tileStyle}
         onClick={(event) => {
+          // While scraps are selected, a click adds or removes one; shift-click
+          // starts a selection.
+          if (
+            selectable &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.altKey &&
+            (event.shiftKey || selectedKeys.size > 0)
+          ) {
+            event.preventDefault();
+            toggleSelected(scrap.item.key);
+            return;
+          }
           // Plain clicks open the examine view; modifier clicks keep the
           // anchor's normal "open the source page" behaviour.
           if (
@@ -2713,26 +3059,55 @@ export function ScrapCollage({
                   countScraps={countUniqueScraps}
                 />
               </div>
-              {onDeleteScraps && filtersActive && archiveScraps.length > 0 && (
+              {onDeleteScraps &&
+                (selectedScraps.length > 0 ||
+                  selectable ||
+                  (filtersActive && archiveScraps.length > 0)) && (
                 <div className="scrap-collage__bulk-delete" role="group">
                   {bulkDeleteStep === "idle" || bulkDeleteStep === "failed" ? (
                     <>
+                      {selectedScraps.length > 0 ? (
+                        <>
+                          <span className="scrap-collage__selection-hint">
+                            {selectedScraps.length} selected
+                          </span>
+                          <button
+                            type="button"
+                            className="scrap-collage__text-action"
+                            onClick={() => setSelectedKeys(new Set())}
+                          >
+                            clear
+                          </button>
+                        </>
+                      ) : (
+                        selectable && (
+                          <span className="scrap-collage__selection-hint">
+                            drag across scraps to select
+                          </span>
+                        )
+                      )}
                       {bulkDeleteStep === "failed" && (
                         <span role="alert">could not delete them</span>
                       )}
-                      <button
-                        type="button"
-                        className="scrap-collage__text-action"
-                        onClick={() => setBulkDeleteStep("confirm")}
-                      >
-                        delete {archiveScraps.length === 1 ? "this scrap" : `these ${archiveScraps.length}`}
-                      </button>
+                      {(selectedScraps.length > 0 ||
+                        (filtersActive && archiveScraps.length > 0)) && (
+                        <button
+                          type="button"
+                          className="scrap-collage__text-action"
+                          onClick={() => setBulkDeleteStep("confirm")}
+                        >
+                          delete{" "}
+                          {bulkTargets.length === 1
+                            ? "this scrap"
+                            : `these ${bulkTargets.length}`}
+                        </button>
+                      )}
                     </>
                   ) : (
                     <>
                       <span>
-                        delete {archiveScraps.length}{" "}
-                        {archiveScraps.length === 1 ? "scrap" : "scraps"} for good?
+                        delete {bulkTargets.length}{" "}
+                        {bulkTargets.length === 1 ? "scrap" : "scraps"} for good?
                       </span>
                       <button
                         type="button"
@@ -2790,12 +3165,30 @@ export function ScrapCollage({
       {archiveMode ? (
         <div
           ref={archiveScrollRef}
-          className="scrap-collage__scroll"
+          className={`scrap-collage__scroll${
+            selectable ? " scrap-collage__scroll--selectable" : ""
+          }${marquee ? " scrap-collage__scroll--selecting" : ""}`}
           onScroll={(event) =>
             setArchiveScrollTop(event.currentTarget.scrollTop)
           }
+          {...selectionHandlers}
         >
-          <div className="scrap-collage__field" style={{ height: fieldHeight }}>
+          <div
+            ref={fieldRef}
+            className="scrap-collage__field"
+            style={{ height: fieldHeight }}
+          >
+            {marquee && (
+              <div
+                className="scrap-collage__marquee"
+                style={{
+                  left: marquee.x,
+                  top: marquee.y,
+                  width: marquee.width,
+                  height: marquee.height,
+                }}
+              />
+            )}
             {sourceMarks.map((mark) => (
               <div
                 key={mark.key}

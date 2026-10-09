@@ -1,5 +1,7 @@
 # Unreleased
 
+- Drag across the scraps archive to select a group of scraps and delete them together.
+
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
 watches this file: when there are bullets, it opens (or updates) a release PR
