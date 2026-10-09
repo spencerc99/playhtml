@@ -137,6 +137,7 @@ export default defineConfig({
           label: "Capabilities",
           items: [
             { label: "All capabilities", slug: "capabilities" },
+            { label: "Ready-made elements", slug: "ready-made-elements" },
             { label: "Custom elements", slug: "custom-elements" },
           ],
         },

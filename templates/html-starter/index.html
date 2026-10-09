@@ -201,6 +201,13 @@
           <p>Here's a page-level visit counter!</p>
           <button id="visitCounter">0 visits</button>
         </div>
+        <div>
+          <p>Ready-made tags need no script at all. Swap in your own lamp images with src and src-on.</p>
+          <play-lamp id="starterLamp"></play-lamp>
+          <play-reaction id="starterReaction">&#9733;</play-reaction>
+          <play-online-count></play-online-count>
+          <play-guestbook id="starterGuestbook"></play-guestbook>
+        </div>
     </div>
 
         <!-- Option 1 (simplest, no customization) -->
@@ -231,8 +238,11 @@
         );
       }
 
-      playhtml.users.onChange(renderUsers);
-      renderUsers(playhtml.users.getAll());
+      // playhtml.users exists once init has connected.
+      playhtml.ready.then(() => {
+        playhtml.users.onChange(renderUsers);
+        renderUsers(playhtml.users.getAll());
+      });
 
       // Reaction button — a custom collaborative element built with the `view`
       // API: register a render function and playhtml re-renders it whenever the

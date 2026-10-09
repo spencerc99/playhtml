@@ -161,6 +161,10 @@ Only applies to **already-live / persisted** data — brand-new features have no
 
 Use instead of `can-play` when they fit: `can-move`, `can-toggle`, `can-spin`, `can-grow`, `can-duplicate`, `can-mirror`. See `packages/common/src/index.ts` for implementations.
 
+## Ready-made Elements
+
+Before building a lamp, reaction button, live visitor count, or guestbook, check whether a ready-made tag fits: `<play-lamp>` (`src`/`src-on` for custom images), `<play-reaction>`, `<play-online-count>`, `<play-guestbook>`. They work anywhere once `playhtml.init()` has run, with no imports. See https://playhtml.fun/docs/ready-made-elements/.
+
 ## Cursors (optional)
 
 ```javascript
