@@ -1,4 +1,4 @@
-// ABOUTME: Captures visible images, controls, headings, and cursor artwork as internet scraps.
+// ABOUTME: Captures visible images (including CSS background images), controls, headings, and cursor artwork as internet scraps.
 // ABOUTME: Applies per-kind filtering, visibility timing, sanitization, and page-session limits.
 
 import { BaseCollector } from "./BaseCollector";
@@ -33,6 +33,31 @@ const MAX_HEADING_TEXT_LENGTH = 120;
 const VISIBILITY_DELAY_MS = 1000;
 const CURSOR_CHECK_INTERVAL_MS = 500;
 const MAX_IMAGES_PER_PAGE = 50;
+/** How many elements painting a background image are watched per page. */
+const MAX_BACKGROUND_CANDIDATES_PER_PAGE = 200;
+/** Elements whose computed background is read per idle slice. */
+const BACKGROUND_SCAN_CHUNK = 400;
+/** Elements whose computed background is read per page, across all scans. */
+const MAX_BACKGROUND_SCANNED_ELEMENTS = 8000;
+/** Elements whose background never holds a photo worth keeping. */
+const BACKGROUND_SKIP_TAGS = new Set([
+  "HEAD",
+  "SCRIPT",
+  "STYLE",
+  "NOSCRIPT",
+  "TEMPLATE",
+  "LINK",
+  "META",
+  "IMG",
+  "PICTURE",
+  "SOURCE",
+  "VIDEO",
+  "AUDIO",
+  "IFRAME",
+  "CANVAS",
+  "BR",
+  "WBR",
+]);
 const MAX_BUTTONS_PER_PAGE = 20;
 const MAX_HEADINGS_PER_PAGE = 20;
 const MAX_BUTTON_SVG_BYTES = 8 * 1024;
@@ -52,6 +77,7 @@ const COLLAPSED_CLIP_PATTERN = /^rect\(\s*0(?:px)?[\s,]+0(?:px)?[\s,]+0(?:px)?[\
 const CANVAS_BACKDROP_COLOR = "rgb(255, 255, 255)";
 const GRADIENT_PATTERN =
   /^(?:repeating-)?(?:linear|radial|conic)-gradient\(/i;
+const BACKGROUND_URL_PATTERN = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi;
 const CURSOR_URL_PATTERN =
   /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)\s*(?:([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s+([+-]?(?:\d+(?:\.\d*)?|\.\d+)))?/i;
 
@@ -98,6 +124,18 @@ const HEADING_STYLE_PROPERTIES: readonly HeadingStyleProperty[] = [
   "lineHeight",
 ];
 
+export interface ImageSize {
+  width: number;
+  height: number;
+}
+
+/** Loads an image URL just to learn its intrinsic size, or undefined if it fails. */
+export type ImageMeasurer = (url: string) => Promise<ImageSize | undefined>;
+
+export interface ScrapCollectorOptions {
+  measureImage?: ImageMeasurer;
+}
+
 interface CursorImage {
   url: string;
   hotspotX?: number;
@@ -114,6 +152,13 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   private observedImages = new Set<HTMLImageElement>();
   private observedButtons = new Set<Element>();
   private observedHeadings = new Set<Element>();
+  /** Elements painting a background image, with the image they paint. */
+  private observedBackgrounds = new Map<Element, string>();
+  private scannedBackgroundElements = new WeakSet<Element>();
+  private backgroundScanQueue: Element[] = [];
+  private backgroundScanHandle?: number;
+  private backgroundScannedCount = 0;
+  private backgroundCandidateCount = 0;
   private loadHandlers = new Map<HTMLImageElement, () => void>();
   private seenCanonicalImageKeys = new Set<string>();
   private seenCanonicalButtonKeys = new Set<string>();
@@ -123,6 +168,12 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   private buttonCaptureCount = 0;
   private headingCaptureCount = 0;
   private lastCursorCheckAt = Number.NEGATIVE_INFINITY;
+  private readonly measureImage: ImageMeasurer;
+
+  constructor(options: ScrapCollectorOptions = {}) {
+    super();
+    this.measureImage = options.measureImage ?? measureImageUrl;
+  }
 
   start(): void {
     this.intersectionObserver = new IntersectionObserver(
@@ -139,6 +190,8 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     document.querySelectorAll(HEADING_SELECTOR).forEach((heading) => {
       this.observeHeadingCandidate(heading);
     });
+
+    if (document.body) this.queueBackgroundScan(document.body);
 
     this.mutationObserver = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
@@ -172,6 +225,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       clearTimeout(timer);
     }
     this.visibilityTimers.clear();
+    this.cancelBackgroundScan();
 
     for (const [image, handler] of this.loadHandlers) {
       image.removeEventListener("load", handler);
@@ -180,6 +234,10 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     this.observedImages.clear();
     this.observedButtons.clear();
     this.observedHeadings.clear();
+    this.observedBackgrounds.clear();
+    this.scannedBackgroundElements = new WeakSet();
+    this.backgroundScannedCount = 0;
+    this.backgroundCandidateCount = 0;
     this.seenCanonicalImageKeys.clear();
     this.seenCanonicalButtonKeys.clear();
     this.seenCanonicalHeadingKeys.clear();
@@ -210,6 +268,91 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     node.querySelectorAll(HEADING_SELECTOR).forEach((heading) => {
       this.observeHeadingCandidate(heading);
     });
+    this.queueBackgroundScan(node);
+  }
+
+  /**
+   * CSS background images cannot be found with a selector, so each element's
+   * computed `background-image` is read in idle slices, bounded per page so a
+   * huge document costs a fixed number of style reads.
+   */
+  private queueBackgroundScan(root: Element): void {
+    if (!this.backgroundScanEnabled()) return;
+    this.backgroundScanQueue.push(root);
+    this.scheduleBackgroundScan();
+  }
+
+  private backgroundScanEnabled(): boolean {
+    return (
+      this.imageCaptureCount < MAX_IMAGES_PER_PAGE &&
+      this.backgroundCandidateCount < MAX_BACKGROUND_CANDIDATES_PER_PAGE &&
+      this.backgroundScannedCount < MAX_BACKGROUND_SCANNED_ELEMENTS
+    );
+  }
+
+  private scheduleBackgroundScan(): void {
+    if (this.backgroundScanHandle !== undefined) return;
+    const run = () => {
+      this.backgroundScanHandle = undefined;
+      this.runBackgroundScan();
+    };
+    this.backgroundScanHandle =
+      typeof window.requestIdleCallback === "function"
+        ? window.requestIdleCallback(run, { timeout: 2000 })
+        : window.setTimeout(run, 50);
+  }
+
+  private cancelBackgroundScan(): void {
+    if (this.backgroundScanHandle !== undefined) {
+      if (typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(this.backgroundScanHandle);
+      } else {
+        clearTimeout(this.backgroundScanHandle);
+      }
+      this.backgroundScanHandle = undefined;
+    }
+    this.backgroundScanQueue = [];
+  }
+
+  private runBackgroundScan(): void {
+    if (!this.enabled) {
+      this.backgroundScanQueue = [];
+      return;
+    }
+    let budget = BACKGROUND_SCAN_CHUNK;
+    while (budget > 0 && this.backgroundScanQueue.length > 0) {
+      if (!this.backgroundScanEnabled()) {
+        this.backgroundScanQueue = [];
+        return;
+      }
+      const element = this.backgroundScanQueue.pop()!;
+      if (this.scannedBackgroundElements.has(element)) continue;
+      this.scannedBackgroundElements.add(element);
+      if (!element.isConnected || BACKGROUND_SKIP_TAGS.has(element.tagName)) {
+        continue;
+      }
+      if (element.matches(EXTENSION_UI_SELECTOR)) continue;
+      // An SVG paints its own pictures, which the icon path handles.
+      if (element instanceof SVGElement) continue;
+
+      budget--;
+      this.backgroundScannedCount++;
+      this.observeBackgroundCandidate(element);
+
+      for (let index = element.children.length - 1; index >= 0; index--) {
+        this.backgroundScanQueue.push(element.children[index]);
+      }
+    }
+    if (this.backgroundScanQueue.length > 0) this.scheduleBackgroundScan();
+  }
+
+  private observeBackgroundCandidate(element: Element): void {
+    if (this.observedBackgrounds.has(element)) return;
+    const url = backgroundImageUrl(getComputedStyle(element).backgroundImage);
+    if (!url) return;
+    this.observedBackgrounds.set(element, url);
+    this.backgroundCandidateCount++;
+    this.intersectionObserver?.observe(element);
   }
 
   private observeImageCandidate(image: HTMLImageElement): void {
@@ -263,7 +406,9 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   private handleIntersections(entries: IntersectionObserverEntry[]): void {
     for (const entry of entries) {
       const candidate = entry.target;
-      const isVisible = entry.isIntersecting && entry.intersectionRatio >= 0.5;
+      const isVisible =
+        entry.isIntersecting &&
+        (entry.intersectionRatio >= 0.5 || fillsHalfTheViewport(entry));
 
       if (!isVisible) {
         this.clearVisibilityTimer(candidate);
@@ -278,6 +423,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
         this.observedImages.delete(candidate as HTMLImageElement);
         this.observedButtons.delete(candidate);
         this.observedHeadings.delete(candidate);
+        this.observedBackgrounds.delete(candidate);
       }, VISIBILITY_DELAY_MS);
       this.visibilityTimers.set(candidate, timer);
     }
@@ -291,6 +437,10 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   }
 
   private captureCandidate(candidate: Element): void {
+    // A button or heading can also paint a background image; both are kept.
+    const backgroundUrl = this.observedBackgrounds.get(candidate);
+    if (backgroundUrl) void this.captureBackgroundImage(candidate, backgroundUrl);
+
     if (this.observedImages.has(candidate as HTMLImageElement)) {
       this.captureImage(candidate as HTMLImageElement);
       return;
@@ -369,6 +519,68 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       ...(image.alt ? { alt: image.alt } : {}),
       naturalWidth: image.naturalWidth,
       naturalHeight: image.naturalHeight,
+      displayWidth: bounds.width,
+      displayHeight: bounds.height,
+      pageTitle: document.title,
+      position: this.elementPosition(bounds),
+    };
+    const canonicalKey = getScrapEncounterKey(
+      this.pageDomain(),
+      data,
+      window.location.href,
+      Date.now(),
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    )!;
+    if (this.seenCanonicalImageKeys.has(canonicalKey)) return;
+
+    const faviconUrl = getFaviconUrl();
+    this.seenCanonicalImageKeys.add(canonicalKey);
+    this.imageCaptureCount++;
+    this.emit({
+      ...data,
+      ...(faviconUrl ? { faviconUrl } : {}),
+    });
+
+    if (this.imageCaptureCount >= MAX_IMAGES_PER_PAGE) {
+      this.stopObservingImages();
+    }
+  }
+
+  /**
+   * A CSS background image kept as an image scrap, under the same size, visibility
+   * and identity rules as an `<img>`, so the same picture seen both ways is one
+   * scrap. Its intrinsic size is not on the element, so the image is loaded
+   * (normally from cache) to learn it.
+   */
+  private async captureBackgroundImage(element: Element, url: string): Promise<void> {
+    if (!this.enabled || this.imageCaptureCount >= MAX_IMAGES_PER_PAGE) return;
+
+    const bounds = element.getBoundingClientRect();
+    if (
+      bounds.width < MIN_IMAGE_DISPLAY_SIZE ||
+      bounds.height < MIN_IMAGE_DISPLAY_SIZE
+    ) {
+      return;
+    }
+    if (!isEffectivelyVisible(element, getComputedStyle(element))) return;
+
+    const size = await this.measureImage(url);
+    if (
+      !size ||
+      size.width < MIN_IMAGE_NATURAL_SIZE ||
+      size.height < MIN_IMAGE_NATURAL_SIZE
+    ) {
+      return;
+    }
+    if (!this.enabled || this.imageCaptureCount >= MAX_IMAGES_PER_PAGE) return;
+
+    const alt = backgroundAlt(element);
+    const data: ScrapEventData = {
+      kind: "image",
+      src: url,
+      ...(alt ? { alt } : {}),
+      naturalWidth: size.width,
+      naturalHeight: size.height,
       displayWidth: bounds.width,
       displayHeight: bounds.height,
       pageTitle: document.title,
@@ -621,6 +833,16 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     }
     this.loadHandlers.clear();
     this.observedImages.clear();
+    for (const element of this.observedBackgrounds.keys()) {
+      // A button or heading painting a background keeps its own observation.
+      if (this.observedButtons.has(element) || this.observedHeadings.has(element)) {
+        continue;
+      }
+      this.clearVisibilityTimer(element);
+      this.intersectionObserver?.unobserve(element);
+    }
+    this.observedBackgrounds.clear();
+    this.cancelBackgroundScan();
   }
 
   private stopObservingButtons(): void {
@@ -638,6 +860,59 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     }
     this.observedHeadings.clear();
   }
+}
+
+/**
+ * The topmost image layer of a computed `background-image`, or undefined when
+ * it paints only gradients or an inline data/blob image, which `<img>` capture
+ * skips too.
+ */
+export function backgroundImageUrl(backgroundImage: string): string | undefined {
+  if (!backgroundImage || !backgroundImage.includes("url(")) return undefined;
+  BACKGROUND_URL_PATTERN.lastIndex = 0;
+  const match = BACKGROUND_URL_PATTERN.exec(backgroundImage);
+  BACKGROUND_URL_PATTERN.lastIndex = 0;
+  if (!match) return undefined;
+  const url = (match[1] ?? match[2] ?? match[3] ?? "").trim();
+  if (!url || url.startsWith("data:") || url.startsWith("blob:")) return undefined;
+  return url;
+}
+
+/** The label a site gave an element standing in for a picture, if any. */
+function backgroundAlt(element: Element): string | undefined {
+  const label = element.getAttribute("aria-label") ?? element.getAttribute("title");
+  const trimmed = label?.replace(/\s+/g, " ").trim();
+  return trimmed || undefined;
+}
+
+/**
+ * Whether a visible element covers at least half the viewport. A hero or page
+ * background taller than the screen can never be half on screen, but filling
+ * the screen is plainly seen.
+ */
+function fillsHalfTheViewport(entry: IntersectionObserverEntry): boolean {
+  const visible = entry.intersectionRect;
+  if (!visible) return false;
+  const root = entry.rootBounds;
+  const viewportArea =
+    (root?.width ?? window.innerWidth) * (root?.height ?? window.innerHeight);
+  return viewportArea > 0 && visible.width * visible.height >= viewportArea * 0.5;
+}
+
+/** Loads an image off-page to read its intrinsic size; the cache usually has it. */
+function measureImageUrl(url: string): Promise<ImageSize | undefined> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    const finish = (size: ImageSize | undefined) => {
+      image.onload = null;
+      image.onerror = null;
+      resolve(size);
+    };
+    image.onload = () =>
+      finish({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => finish(undefined);
+    image.src = url;
+  });
 }
 
 /** A heading keeps its type and text color only; it saves no background. */

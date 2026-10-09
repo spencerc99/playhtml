@@ -342,6 +342,169 @@ describe("ScrapCollector", () => {
     expect(emitted("image")).toHaveLength(1);
   });
 
+  describe("background images", () => {
+    const sizes = new Map<string, { width: number; height: number }>();
+    const measureImage = vi.fn(async (url: string) => sizes.get(url));
+
+    beforeEach(() => {
+      sizes.clear();
+      measureImage.mockClear();
+      collector = new ScrapCollector({ measureImage });
+      collector.setEmitCallback(emitCallback);
+    });
+
+    function createBackground(
+      backgroundImage: string,
+      size: ElementSize = {},
+      tag = "div",
+    ): HTMLElement {
+      const element = document.createElement(tag);
+      element.setAttribute("data-background-image", backgroundImage);
+      setRenderedSize(element, size);
+      document.body.appendChild(element);
+      return element;
+    }
+
+    async function scanAndCapture(elements: Element[]): Promise<void> {
+      vi.advanceTimersByTime(100);
+      showForCapture(elements);
+      await vi.runAllTimersAsync();
+    }
+
+    it("keeps a CSS background image as an image scrap", async () => {
+      sizes.set("https://example.com/hero.jpg", { width: 1600, height: 900 });
+      const hero = createBackground('url("https://example.com/hero.jpg")', {
+        width: 400,
+        height: 225,
+      });
+      hero.setAttribute("aria-label", "A field at dusk");
+
+      collector.enable();
+      await scanAndCapture([hero]);
+
+      expect(measureImage).toHaveBeenCalledWith("https://example.com/hero.jpg");
+      expect(emitted("image")).toEqual([
+        expect.objectContaining({
+          kind: "image",
+          src: "https://example.com/hero.jpg",
+          alt: "A field at dusk",
+          naturalWidth: 1600,
+          naturalHeight: 900,
+          displayWidth: 400,
+          displayHeight: 225,
+        }),
+      ]);
+    });
+
+    it("uses the topmost image layer and ignores gradients and inline images", async () => {
+      sizes.set("https://example.com/top.png", { width: 300, height: 300 });
+      const layered = createBackground(
+        'linear-gradient(red, blue), url("https://example.com/top.png"), url("https://example.com/under.png")',
+      );
+      const gradient = createBackground("linear-gradient(red, blue)");
+      const inline = createBackground('url("data:image/png;base64,abc")');
+
+      collector.enable();
+      expect(observer().observed.has(gradient)).toBe(false);
+      vi.advanceTimersByTime(100);
+      expect(observer().observed.has(gradient)).toBe(false);
+      expect(observer().observed.has(inline)).toBe(false);
+      await scanAndCapture([layered]);
+
+      expect(emitted("image").map((data) => (data as { src: string }).src)).toEqual([
+        "https://example.com/top.png",
+      ]);
+    });
+
+    it("applies the image size filters to backgrounds", async () => {
+      sizes.set("https://example.com/tiny-natural.png", { width: 16, height: 16 });
+      sizes.set("https://example.com/small-box.png", { width: 400, height: 400 });
+      const tinyNatural = createBackground('url("https://example.com/tiny-natural.png")');
+      const smallBox = createBackground('url("https://example.com/small-box.png")', {
+        width: 40,
+        height: 40,
+      });
+      const broken = createBackground('url("https://example.com/missing.png")');
+
+      collector.enable();
+      await scanAndCapture([tinyNatural, smallBox, broken]);
+
+      expect(emitted("image")).toEqual([]);
+      expect(measureImage).not.toHaveBeenCalledWith("https://example.com/small-box.png");
+    });
+
+    it("treats a background and an img of the same picture as one scrap", async () => {
+      sizes.set("https://example.com/same.jpg", { width: 800, height: 600 });
+      const image = createImage({ src: "https://example.com/same.jpg" });
+      const background = createBackground('url("https://example.com/same.jpg?w=800")');
+
+      collector.enable();
+      await scanAndCapture([image, background]);
+
+      expect(emitted("image")).toHaveLength(1);
+    });
+
+    it("finds backgrounds on elements added after collection starts", async () => {
+      sizes.set("https://example.com/late.jpg", { width: 500, height: 500 });
+      collector.enable();
+      vi.advanceTimersByTime(100);
+
+      const wrapper = document.createElement("section");
+      const late = createBackground('url("https://example.com/late.jpg")');
+      wrapper.appendChild(late);
+      document.body.appendChild(wrapper);
+      await Promise.resolve();
+      vi.advanceTimersByTime(100);
+
+      expect(observer().observed.has(late)).toBe(true);
+      await scanAndCapture([late]);
+      expect(emitted("image")).toHaveLength(1);
+    });
+
+    it("captures a page-filling background that is never half on screen", async () => {
+      sizes.set("https://example.com/page.jpg", { width: 1200, height: 1200 });
+      const page = createBackground('url("https://example.com/page.jpg")', {
+        width: 1024,
+        height: 5000,
+      });
+
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      observer().trigger([page], 0.15);
+      // The mock entry carries no intersection rect, so it is not yet visible.
+      vi.advanceTimersByTime(1000);
+      await vi.runAllTimersAsync();
+      expect(emitted("image")).toEqual([]);
+
+      const callback = (observer() as unknown as {
+        callback: IntersectionObserverCallback;
+      }).callback;
+      callback(
+        [
+          {
+            target: page,
+            isIntersecting: true,
+            intersectionRatio: 0.15,
+            intersectionRect: { width: 1024, height: 768 },
+            rootBounds: { width: 1024, height: 768 },
+          } as unknown as IntersectionObserverEntry,
+        ],
+        observer() as unknown as IntersectionObserver,
+      );
+      vi.advanceTimersByTime(1000);
+      await vi.runAllTimersAsync();
+      expect(emitted("image")).toHaveLength(1);
+    });
+
+    it("stops reading backgrounds once the collector is disabled", () => {
+      createBackground('url("https://example.com/off.jpg")');
+      collector.enable();
+      collector.disable();
+      vi.advanceTimersByTime(100);
+      expect(measureImage).not.toHaveBeenCalled();
+    });
+  });
+
   it("filters button text and displayed-size bounds", () => {
     const noText = createButton({ text: "" });
     const tooLong = createButton({ text: "x".repeat(61) });
