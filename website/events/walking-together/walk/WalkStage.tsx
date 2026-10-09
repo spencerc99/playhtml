@@ -318,8 +318,7 @@ export function WalkStage({ active }: { active: boolean }) {
         <div className="walk-join" role="dialog" aria-labelledby="walk-join-title">
           <h2 id="walk-join-title">join the walk</h2>
           <p>
-            Your cursor is already here. Join, and every page you visit draws
-            your trail onto this page for everyone else to watch.
+            Every page you visit draws your trail onto this page.
           </p>
           <ul>
             <li>shows the site and path you're on, like html.energy/zines</li>

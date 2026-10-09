@@ -306,7 +306,6 @@ input {
     width: 100%;
     height: 100%;
     font-size: 12px;
-    box-shadow: 0 6px 18px rgba(61, 56, 51, 0.14);
   }
 }
 
@@ -314,7 +313,6 @@ input {
   padding: 4px 8px;
   font-family: $mono-font;
   font-size: 11px;
-  background: rgba(255, 253, 248, 0.92);
 }
 
 // Alt+A hides every admin control for a clean screen share (adminControls.ts).
