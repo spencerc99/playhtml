@@ -121,14 +121,14 @@ describe("groupScrollEvents", () => {
     expect(scrollEventGroupHasVisibleActivity(oneResize)).toBe(false);
   });
 
-  it("evaluates visibility after timeline compression and the 30-second cap", () => {
-    const capped = groupScrollEvents([
+  it("includes visible activity throughout long recordings", () => {
+    const recording = groupScrollEvents([
       viewportEvent("early", 0, { scrollY: 0.1 }),
       viewportEvent("late", 6 * 60_000, { scrollY: 0.4 }),
     ])[0];
 
-    expect(scrollEventGroupHasActivity(capped)).toBe(true);
-    expect(scrollEventGroupHasVisibleActivity(capped)).toBe(false);
+    expect(scrollEventGroupHasActivity(recording)).toBe(true);
+    expect(scrollEventGroupHasVisibleActivity(recording)).toBe(true);
   });
 
   it("omits non-viewport and unidentified events", () => {
