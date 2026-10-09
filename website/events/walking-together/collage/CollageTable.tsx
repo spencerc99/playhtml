@@ -441,6 +441,7 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
       {admin && (
         <div
           className="collage-admin"
+          data-admin-control
           onPointerDown={(e) => e.stopPropagation()}
         >
           <button onClick={clearTable}>clear table</button>

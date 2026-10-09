@@ -263,18 +263,30 @@ export function WalkStage({ active }: { active: boolean }) {
         {ended && <span className="walk-pill">the walk has ended</span>}
         {admin &&
           (ended ? (
-            <button className="walk-pill walk-pill--button" onClick={reopenWalk}>
+            <button
+              className="walk-pill walk-pill--button"
+              data-admin-control
+              onClick={reopenWalk}
+            >
               reopen walk
             </button>
           ) : (
             walkingCount > 0 && (
-              <button className="walk-pill walk-pill--button" onClick={endWalk}>
+              <button
+                className="walk-pill walk-pill--button"
+                data-admin-control
+                onClick={endWalk}
+              >
                 end walk
               </button>
             )
           ))}
         {admin && (walkingCount > 0 || ended) && (
-          <button className="walk-pill walk-pill--button" onClick={resetWalk}>
+          <button
+            className="walk-pill walk-pill--button"
+            data-admin-control
+            onClick={resetWalk}
+          >
             reset walk
           </button>
         )}
