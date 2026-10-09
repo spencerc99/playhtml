@@ -1,6 +1,12 @@
 // ABOUTME: "Join the walk": people opt in, and their pages draw as trails behind the walk stage.
 // ABOUTME: Trails reuse the portrait's live cursor-trail drawing, with URL stops as the path.
-import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { usePageData, usePlayerIdentity } from "@playhtml/react";
 import { LiveTrails } from "@movement/components/LiveTrails";
 import { DEFAULT_SETTINGS } from "@movement/components/settingsDefaults";
@@ -9,9 +15,11 @@ import { RECENT_EVENTS_URL } from "@movement/config";
 import type { CollectionEvent } from "@movement/types";
 import { useStickyState } from "../../../hooks/useStickyState";
 import {
+  freezeSteps,
   stepsByWalker,
   stopPoint,
   walkerTrailState,
+  walkSteps,
   type WalkersData,
   type WalkStep,
 } from "./walkTrails";
@@ -58,13 +66,9 @@ function useViewportSize() {
   return size;
 }
 
-/** Each walker's stored pages since they joined (and before the walk ended,
- * once it has), refreshed now and then. */
-function useBackfill(
-  walkerKey: string,
-  walkers: WalkersData["walkers"],
-  endedAt: number | undefined,
-) {
+/** Each walker's stored pages since they joined, refreshed now and then.
+ * Pass no walkers to skip fetching (an ended walk draws from its snapshot). */
+function useBackfill(walkerKey: string, walkers: WalkersData["walkers"]) {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   useEffect(() => {
     const list = Object.values(walkers);
@@ -82,8 +86,6 @@ function useBackfill(
             from: new Date(w.joinedAt).toISOString(),
             limit: "500",
           });
-          if (endedAt !== undefined)
-            params.set("to", new Date(endedAt).toISOString());
           return fetch(`${RECENT_EVENTS_URL}?${params}`)
             .then((r) => (r.ok ? (r.json() as Promise<CollectionEvent[]>) : []))
             .catch(() => [] as CollectionEvent[]);
@@ -99,7 +101,7 @@ function useBackfill(
     };
     // walkerKey captures who joined and when; the object itself changes identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [walkerKey, endedAt]);
+  }, [walkerKey]);
   return events;
 }
 
@@ -109,8 +111,7 @@ export function WalkStage({ active }: { active: boolean }) {
     EMPTY_WALKERS,
   );
   const walkers = data?.walkers ?? {};
-  const endedAt = data?.endedAt;
-  const ended = endedAt !== undefined;
+  const ended = data?.endedAt !== undefined;
   const { pid, name, color } = usePlayerIdentity();
   const extension = useSyncExternalStore(onExtensionDetected, hasExtension);
   const [watching, setWatching] = useStickyState<boolean>(
@@ -123,19 +124,21 @@ export function WalkStage({ active }: { active: boolean }) {
     .map((w) => `${w.pid}:${w.joinedAt}`)
     .sort()
     .join(",");
-  const backfill = useBackfill(walkerKey, walkers, endedAt);
+  const backfill = useBackfill(ended ? "" : walkerKey, ended ? {} : walkers);
   const { events: live } = useLiveEvents({
     types: ["navigation"],
     maxEvents: 2000,
   });
 
-  const steps = useMemo(
-    () =>
-      stepsByWalker([...backfill, ...live], walkers, isEventPage, endedAt),
+  const liveSteps = useMemo(
+    () => stepsByWalker([...backfill, ...live], walkers, isEventPage),
     // walkerKey stands in for walkers.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [backfill, live, walkerKey, endedAt],
+    [backfill, live, walkerKey],
   );
+  const liveStepsRef = useRef(liveSteps);
+  liveStepsRef.current = liveSteps;
+  const steps = walkSteps(data ?? EMPTY_WALKERS, liveSteps);
 
   const trailStates = useMemo(
     () =>
@@ -182,12 +185,16 @@ export function WalkStage({ active }: { active: boolean }) {
     if (!window.confirm("End the walk? Trails stay as they are now.")) return;
     setData((draft) => {
       draft.endedAt = Date.now();
+      // Freeze what this screen shows now, so every viewer keeps the same
+      // trails no matter what their (or the walkers') clocks say.
+      draft.frozen = freezeSteps(liveStepsRef.current);
     });
   };
 
   const reopenWalk = () => {
     setData((draft) => {
       delete draft.endedAt;
+      delete draft.frozen;
     });
   };
 
@@ -198,6 +205,7 @@ export function WalkStage({ active }: { active: boolean }) {
       for (const key of Object.keys(draft.walkers ?? {}))
         delete draft.walkers[key];
       delete draft.endedAt;
+      delete draft.frozen;
     });
   };
 

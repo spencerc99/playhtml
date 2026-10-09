@@ -18,9 +18,33 @@ export type Walkers = Record<string, Walker>;
 
 export interface WalkersData {
   walkers: Walkers;
-  /** When the admin ended the walk. Trails keep only the pages visited before
-   * this, so the walk stays as it was instead of growing afterward. */
+  /** When the admin ended the walk. */
   endedAt?: number;
+  /** Each walker's stops as the admin saw them when the walk ended. Once
+   * ended, trails draw from this snapshot instead of from events, so they
+   * stay exactly as they were. (Comparing event timestamps to `endedAt`
+   * would mix different browsers' clocks.) */
+  frozen?: Record<string, WalkStep[]>;
+}
+
+/** A plain copy of the current stops, to store as the ended walk. */
+export function freezeSteps(
+  steps: Record<string, WalkStep[]>,
+): Record<string, WalkStep[]> {
+  const frozen: Record<string, WalkStep[]> = {};
+  for (const [pid, list] of Object.entries(steps)) {
+    frozen[pid] = list.map(({ url, label, ts }) => ({ url, label, ts }));
+  }
+  return frozen;
+}
+
+/** The stops to draw: the frozen snapshot once the walk has ended, otherwise
+ * the live ones. */
+export function walkSteps(
+  data: Pick<WalkersData, "endedAt" | "frozen">,
+  live: Record<string, WalkStep[]>,
+): Record<string, WalkStep[]> {
+  return data.endedAt !== undefined ? data.frozen ?? {} : live;
 }
 
 /** One page a walker landed on. `url` is origin + path, no query or hash. */
@@ -61,14 +85,12 @@ function eventTs(ts: number | string): number {
  * Each walker's pages since they joined, oldest first. Only "the page came into
  * view" navigation events count (focus, popstate), repeats of the page they're
  * already on collapse, and the event page itself is skipped so going back to
- * check the chat doesn't read as a stop. Once the walk has ended, pages after
- * `endedAt` don't count.
+ * check the chat doesn't read as a stop.
  */
 export function stepsByWalker(
   events: CollectionEvent[],
   walkers: Walkers,
   isEventPage: (url: string) => boolean,
-  endedAt?: number,
 ): Record<string, WalkStep[]> {
   const sorted = events
     .filter(
@@ -78,12 +100,7 @@ export function stepsByWalker(
         !!walkers[e.meta?.pid],
     )
     .map((e) => ({ e, ts: eventTs(e.ts) }))
-    .filter(
-      ({ e, ts }) =>
-        Number.isFinite(ts) &&
-        ts >= walkers[e.meta.pid].joinedAt &&
-        (endedAt === undefined || ts <= endedAt),
-    )
+    .filter(({ e, ts }) => Number.isFinite(ts) && ts >= walkers[e.meta.pid].joinedAt)
     .sort((a, b) => a.ts - b.ts);
 
   const seen = new Set<string>();
