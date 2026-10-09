@@ -133,5 +133,16 @@ $paper: #fffdf8;
     background: $ink;
     color: $paper;
     border-color: $ink;
+
+    &:disabled {
+      cursor: progress;
+      animation: walk-join-checking 1.4s ease-in-out infinite;
+    }
+  }
+}
+
+@keyframes walk-join-checking {
+  50% {
+    opacity: 0.55;
   }
 }
