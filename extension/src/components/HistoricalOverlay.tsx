@@ -100,6 +100,9 @@ export function HistoricalOverlay({
   const [loadedSource, setLoadedSource] = useState<TrailSource | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Hides the overlay controls while the tab is captured so the saved image
+  // shows only the page, the trails, and the portrait card.
+  const [capturing, setCapturing] = useState(false);
   const [settings, setSettings] = useState<OverlaySettings>(defaultSettings);
   const [viewportSize, setViewportSize] = useState({
     width: window.innerWidth,
@@ -564,8 +567,19 @@ export function HistoricalOverlay({
 
   async function handleCapturePagePortrait() {
     try {
-      const response: { dataUrl?: string; error?: string } =
-        await browser.runtime.sendMessage({ type: "CAPTURE_PAGE_PORTRAIT" });
+      setCapturing(true);
+      // Two frames: one for React to commit, one for the browser to paint.
+      await new Promise((r) =>
+        requestAnimationFrame(() => requestAnimationFrame(r)),
+      );
+      let response: { dataUrl?: string; error?: string };
+      try {
+        response = await browser.runtime.sendMessage({
+          type: "CAPTURE_PAGE_PORTRAIT",
+        });
+      } finally {
+        setCapturing(false);
+      }
       if (response.error || !response.dataUrl) {
         console.error("[HistoricalOverlay] Capture failed:", response.error);
         return;
@@ -647,11 +661,11 @@ export function HistoricalOverlay({
           style={{
             position: "relative",
             height: "160px",
-            borderRadius: "10px 10px 0 0",
+            borderRadius: capturing ? "10px" : "10px 10px 0 0",
             overflow: "hidden",
             boxShadow: "0 4px 24px rgba(0,0,0,0.22)",
             border: "1px solid rgba(61,56,51,0.12)",
-            borderBottom: "none",
+            borderBottom: capturing ? undefined : "none",
           }}
         >
           {portraitStats ? (
@@ -689,6 +703,7 @@ export function HistoricalOverlay({
         {/* Action strip — two rows */}
         <div
           style={{
+            display: capturing ? "none" : undefined,
             background: forceServerBackfill
               ? "rgba(212,184,92,0.95)"
               : "rgba(250,247,242,0.97)",
@@ -890,7 +905,7 @@ export function HistoricalOverlay({
       </div>
 
       {/* Dev mode bottom bar — event type toggles and status */}
-      {devMode && !uiHidden && (
+      {devMode && !uiHidden && !capturing && (
         <div
           style={{
             position: "fixed",

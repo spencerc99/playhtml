@@ -3315,12 +3315,7 @@ export class SoundEngine {
     osc.type = instrument.oscillatorType;
 
     const bellScale = this.currentBellScale();
-    const pitchRatio = 1 - (click.y / (window.innerHeight || 800));
-    const scaleIndex = Math.min(
-      bellScale.length - 1,
-      Math.floor(pitchRatio * bellScale.length),
-    );
-    const baseFreq = bellScale[scaleIndex];
+    const baseFreq = bellScale[this.clickPitchIndex(click.y, bellScale.length)];
     osc.frequency.value = baseFreq;
 
     const osc2 = this.ctx.createOscillator();
@@ -6289,7 +6284,11 @@ export class SoundEngine {
    * `triggerClick` so a pizzicato lands on the same note the bell would have.
    */
   private clickPitchIndex(y: number, paletteLength: number): number {
-    const pitchRatio = 1 - y / (window.innerHeight || 800);
+    // Page-mode trails are in document space, so a click far down a long
+    // page sits well below the window. Clamp so it rings the lowest note
+    // instead of indexing past the palette into a non-finite frequency.
+    const ratio = 1 - y / (window.innerHeight || 800);
+    const pitchRatio = Number.isFinite(ratio) ? ratio : 0.5;
     return Math.min(
       paletteLength - 1,
       Math.max(0, Math.floor(pitchRatio * paletteLength)),
