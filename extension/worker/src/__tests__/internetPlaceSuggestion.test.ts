@@ -206,6 +206,26 @@ describe('Internet place suggestions', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it('still asks Clef when only a password field suggested a login', async () => {
+    const run = vi.fn(async () => ({
+      answers: {
+        placement: { choice: 'regular', confidence: 0.6, probabilities: {} },
+        scope: { choice: 'site', confidence: 0.6, probabilities: {} },
+        reason: { choice: 'human-community', confidence: 0.5, probabilities: {} },
+      },
+    }));
+    env.AI = { run } as unknown as Env['AI'];
+    const response = await handleInternetPlaceSuggestion(suggestionRequest({
+      candidate: {
+        url: 'https://neocities.example/',
+        inspection: { verdict: 'gated', reason: 'authentication_required' },
+      },
+    }), env);
+    expect(((await response.json()) as { suggestion: { placement: string } }).suggestion.placement)
+      .toBe('regular');
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects page context with unexpected fields', async () => {
     const response = await handleInternetPlaceSuggestion(suggestionRequest({
       candidate: { url: 'https://example.com/essay', page: { headings: [], text: '', cookies: 'x' } },

@@ -214,4 +214,16 @@ describe('handleCommute', () => {
     expect(run).toHaveBeenCalledTimes(1);
     expect(await destinations()).toHaveLength(1);
   });
+
+  it('judges from the URL and title alone when the logged-out fetch is blocked', async () => {
+    fetchPublicPageContext.mockResolvedValue({
+      inspection: { verdict: 'unknown', reason: 'access_restricted', finalUrl: 'https://public.example/article' },
+      context: { headings: ['Access denied'], text: '403 Forbidden' },
+    });
+    const run = useClef('regular');
+    expect(await suggestCommuteDestinations(env)).toBe(1);
+    const state = (run.mock.calls[0] as unknown[])[1] as { state: { candidate: Record<string, unknown> } };
+    expect(state.state.candidate.page).toBeUndefined();
+    expect(state.state.candidate.inspection).toMatchObject({ verdict: 'unknown' });
+  });
 });
