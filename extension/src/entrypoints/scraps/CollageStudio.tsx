@@ -164,6 +164,8 @@ import {
   replacePieces,
 } from "./pieceGroup";
 import { handleZones, type HandleZone } from "./handleZones";
+import { pinchChange, pinchedPieces, type FingerPair } from "./pinchGesture";
+import { usePhoneLayout } from "./phoneLayout";
 import {
   toolSessionActive,
   visiblePanel,
@@ -182,6 +184,13 @@ import { collageExportName } from "./collageFile";
 
 /** Longest side a freshly placed piece takes, in frame units. */
 const PLACED_MAX_SIDE = 220;
+/**
+ * On a phone the frame is zoomed far out, so a fresh piece is brought up to
+ * at least this share of the frame's shorter side, to be seen and held with a
+ * finger. It is a share of the frame, not of the screen, so a scrap comes in
+ * the same size whether the drawer is lowered or raised into a sheet.
+ */
+const PHONE_PLACED_FRAME_SHARE = 0.4;
 const ROTATION_SNAP_DEGREES = 15;
 /** How far a pasted or duplicated piece lands from its original. */
 const COPY_OFFSET = 24;
@@ -195,6 +204,9 @@ const STAGE_TOP_BAND = 52;
 /** The mat around the frame, in screen pixels, and the band under it that carries the caption. */
 const MAT = 26;
 const MAT_CAPTION = 44;
+/** On a phone every pixel goes to the collage, so the mat is narrower. */
+const PHONE_MAT = 12;
+const PHONE_MAT_CAPTION = 32;
 /** How far inside the stage's edge a pinned handle stays, in screen pixels. */
 const HANDLE_INSET = 10;
 /** Frame units the pointer must travel before an alt-drag pulls out a copy. */
@@ -265,6 +277,13 @@ type Gesture =
       /** What was held when the marquee began, kept under a shift marquee. */
       base: Selection;
       additive: boolean;
+    }
+  | {
+      kind: "pinch";
+      /** The pieces in hand as they were when the second finger landed. */
+      before: readonly CollagePiece[];
+      /** Where both fingers were then, in frame units. */
+      start: FingerPair;
     };
 
 /** A rotate or scale driven by pointer movement with no button held. */
@@ -316,9 +335,12 @@ function standingWords(standing: SaveStanding): {
   }
 }
 
-function placedPiece(item: ScrapItem, at: Point, z: number): CollagePiece {
-  const natural = naturalScrapSize(item);
-  const size = fitWithin(natural.width, natural.height, PLACED_MAX_SIDE);
+function placedPiece(
+  item: ScrapItem,
+  at: Point,
+  z: number,
+  size: { width: number; height: number },
+): CollagePiece {
   return {
     id: createPieceId(),
     scrapId: item.id,
@@ -377,6 +399,17 @@ export function CollageStudio({
   );
   const frame = formatOf(format);
   const [drawer, setDrawer] = useState(() => readDrawerPreference());
+  const phone = usePhoneLayout();
+  /**
+   * On a phone the drawer can be raised into a sheet for a long look through
+   * the scraps. The collage then shrinks to a bare miniature above it, with
+   * no mat, caption or bars, so each scrap tapped can be seen landing.
+   */
+  const [raised, setRaised] = useState(false);
+  const sheet = phone && raised && !drawer.collapsed;
+  const mat = sheet ? 0 : phone ? PHONE_MAT : MAT;
+  const matCaption = sheet ? 0 : phone ? PHONE_MAT_CAPTION : MAT_CAPTION;
+  const topBand = sheet ? STAGE_PADDING : STAGE_TOP_BAND;
   /** Whether the collage is turned over to its back, where the sources are. */
   const [over, setOver] = useState(false);
   const [backLook, setBackLook] = useState<BackLook>(BACK_LOOK);
@@ -678,9 +711,9 @@ export function CollageStudio({
     const update = () => {
       setScale(
         frameScale(frame, {
-          width: stage.clientWidth - STAGE_PADDING * 2 - MAT * 2,
+          width: stage.clientWidth - STAGE_PADDING * 2 - mat * 2,
           height:
-            stage.clientHeight - STAGE_TOP_BAND - STAGE_PADDING - MAT - MAT_CAPTION,
+            stage.clientHeight - topBand - STAGE_PADDING - mat - matCaption,
         }),
       );
     };
@@ -690,7 +723,7 @@ export function CollageStudio({
     return () => observer.disconnect();
     // The fit is recomputed when the format changes, so a new size is shown
     // at its own zoom rather than the one the previous format was fitted at.
-  }, [frame]);
+  }, [frame, mat, matCaption, topBand]);
 
   /**
    * The part of the stage in view, in frame units, kept clear of the bars
@@ -708,16 +741,16 @@ export function CollageStudio({
       const inset = HANDLE_INSET;
       setInView({
         x: (area.left + inset - origin.left) / scale,
-        y: (area.top + STAGE_TOP_BAND - origin.top) / scale,
+        y: (area.top + topBand - origin.top) / scale,
         width: (area.width - inset * 2) / scale,
-        height: (area.height - STAGE_TOP_BAND - inset) / scale,
+        height: (area.height - topBand - inset) / scale,
       });
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(stage);
     return () => observer.disconnect();
-  }, [scale, frame]);
+  }, [scale, frame, topBand]);
 
   /** Converts a pointer event into frame coordinates. */
   const framePoint = useCallback(
@@ -735,12 +768,23 @@ export function CollageStudio({
 
   const addPiece = useCallback(
     (item: ScrapItem, at: Point) => {
-      const piece = placedPiece(item, at, pieces.length);
+      const natural = naturalScrapSize(item);
+      let size = fitWithin(natural.width, natural.height, PLACED_MAX_SIDE);
+      if (phone) {
+        const longest = Math.max(size.width, size.height);
+        const wanted =
+          Math.min(frame.width, frame.height) * PHONE_PLACED_FRAME_SHARE;
+        if (longest < wanted) {
+          const grow = wanted / longest;
+          size = { width: size.width * grow, height: size.height * grow };
+        }
+      }
+      const piece = placedPiece(item, at, pieces.length, size);
       commit([...pieces, piece]);
       selectPiece(piece.id);
       setNotice(null);
     },
-    [commit, pieces, selectPiece],
+    [commit, frame, phone, pieces, selectPiece],
   );
 
   const removeSelected = useCallback(() => {
@@ -1327,7 +1371,8 @@ export function CollageStudio({
 
       // What a click would take, shown faintly so a buried piece can be seen
       // before it is reached for. A rotated-rect test per piece, no pixels.
-      if (gesture.kind === "idle" && !toolActive) {
+      // A finger has no hover, so nothing is outlined ahead of a tap.
+      if (gesture.kind === "idle" && !toolActive && event.pointerType !== "touch") {
         const under = topPieceUnder(reachable, point);
         setHoveredId(under?.id ?? null);
       }
@@ -1651,6 +1696,70 @@ export function CollageStudio({
   };
 
   /**
+   * Fingers on the stage, by pointer, where each last was on screen. They are
+   * followed as the events pass down to whatever each finger landed on, so a
+   * second finger can turn a one-finger drag into a pinch.
+   */
+  const touchesRef = useRef(new Map<number, { clientX: number; clientY: number }>());
+  const fingerPair = (): FingerPair | null => {
+    const [first, second] = [...touchesRef.current.values()];
+    if (!first || !second) return null;
+    return { a: framePoint(first), b: framePoint(second) };
+  };
+
+  /**
+   * A second finger landing while pieces are in hand starts a pinch: from
+   * then on the two fingers grow, turn and carry what is held, and the press
+   * the first finger began no longer counts as a drag or a tap.
+   */
+  const onStageTouchDown = (event: React.PointerEvent) => {
+    if (event.pointerType !== "touch") return;
+    // A new first finger starts a new touch, whatever was left over.
+    if (event.isPrimary) touchesRef.current.clear();
+    touchesRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+    if (touchesRef.current.size !== 2) return;
+    if (over || toolActive || transform || selectedPieces.length === 0) return;
+    const start = fingerPair();
+    if (!start) return;
+    // The second finger belongs to the pinch, not to the piece under it.
+    event.stopPropagation();
+    pressRef.current = null;
+    setHereMenu(null);
+    setGesture({ kind: "pinch", before: selectedPieces, start });
+  };
+
+  const onStageTouchMove = (event: React.PointerEvent) => {
+    if (event.pointerType !== "touch") return;
+    if (!touchesRef.current.has(event.pointerId)) return;
+    touchesRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+    if (gesture.kind !== "pinch") return;
+    event.stopPropagation();
+    const now = fingerPair();
+    if (!now) return;
+    editPieces(pinchedPieces(gesture.before, gesture.start, now), "pinch");
+    const { factor, degrees } = pinchChange(gesture.start, now);
+    setGestureReadout(
+      `scale ${Math.round(factor * 100)}% · rotate ${Math.round(((normalizeDegrees(degrees) + 180) % 360) - 180)} deg`,
+    );
+  };
+
+  const onStageTouchEnd = (event: React.PointerEvent) => {
+    if (event.pointerType !== "touch") return;
+    touchesRef.current.delete(event.pointerId);
+    if (gesture.kind !== "pinch") return;
+    // Lifting either finger settles the pinch; the finger left down does
+    // nothing until it is lifted too.
+    event.stopPropagation();
+    endGesture();
+  };
+
+  /**
    * Starts a drag from one of the grips around the selection: a corner or an
    * edge scales it, and the squares just past the corners turn it about its
    * middle. One piece and several work the same way.
@@ -1841,13 +1950,23 @@ export function CollageStudio({
       : null;
 
   return (
-    <div className="collage-studio">
+    <div
+      className={`collage-studio${phone ? " collage-studio--phone" : ""}${
+        phone && !drawer.collapsed ? " collage-studio--picking" : ""
+      }${sheet ? " collage-studio--sheet" : ""}`}
+    >
       <ScrapTray
         items={scraps}
+        dock={phone ? "bottom" : "side"}
         width={drawer.width}
         collapsed={drawer.collapsed}
         onWidth={(width) => updateDrawer({ width })}
-        onCollapsed={(collapsed) => updateDrawer({ collapsed })}
+        onCollapsed={(collapsed) => {
+          if (collapsed) setRaised(false);
+          updateDrawer({ collapsed });
+        }}
+        raised={raised}
+        onRaised={setRaised}
         onPlace={(item) => {
           // Placing a scrap is an edit, so the collage turns face up for it.
           if (over) turnOver();
@@ -1866,16 +1985,20 @@ export function CollageStudio({
         <div
           className="collage-frame-area__stage"
           ref={stageRef}
-          style={{ padding: STAGE_PADDING, paddingTop: STAGE_TOP_BAND }}
+          style={{ padding: STAGE_PADDING, paddingTop: topBand }}
           data-marquee-ground=""
           // Any press here, on a piece, a grip or bare paper, turns from a
           // text field to the collage, so undo reaches the collage.
-          onPointerDownCapture={(event) =>
+          onPointerDownCapture={(event) => {
             releaseTypingFocus(
               document.activeElement,
               event.target as HTMLElement,
-            )
-          }
+            );
+            onStageTouchDown(event);
+          }}
+          onPointerMoveCapture={onStageTouchMove}
+          onPointerUpCapture={onStageTouchEnd}
+          onPointerCancelCapture={onStageTouchEnd}
           onPointerDown={onStagePointerDown}
           onPointerMove={onStagePointerMove}
           onPointerUp={endGesture}
@@ -1890,16 +2013,16 @@ export function CollageStudio({
             className="collage-mat"
             data-marquee-ground=""
             style={{
-              width: frame.width * scale + MAT * 2,
-              height: frame.height * scale + MAT + MAT_CAPTION,
+              width: frame.width * scale + mat * 2,
+              height: frame.height * scale + mat + matCaption,
             }}
           >
           <div
             className="collage-mat__window"
             data-marquee-ground=""
             style={{
-              left: MAT,
-              top: MAT,
+              left: mat,
+              top: mat,
               width: frame.width * scale,
               height: frame.height * scale,
             }}
@@ -2208,7 +2331,7 @@ export function CollageStudio({
             </div>
           </div>
           </div>
-            <div className="collage-mat__caption" style={{ left: MAT, right: MAT }}>
+            <div className="collage-mat__caption" style={{ left: mat, right: mat }}>
               {over ? (
                 <span className="collage-studio__label">
                   turned over · T or esc to turn back
@@ -2257,6 +2380,21 @@ export function CollageStudio({
           />
 
           {showKeys && <KeysPopover onClose={() => setShowKeys(false)} />}
+
+          {/* While the sheet is up the miniature only shows what is being
+              added; a tap on it lowers the sheet to work on the collage. */}
+          {sheet && (
+            <button
+              type="button"
+              className="collage-sheet-peek"
+              onClick={() => setRaised(false)}
+            >
+              <span className="collage-sheet-peek__label">
+                {pieces.length} piece{pieces.length === 1 ? "" : "s"} · tap to
+                arrange
+              </span>
+            </button>
+          )}
         </div>
 
         {import.meta.env.DEV && over && (

@@ -206,6 +206,30 @@ interface Props {
 
 type Panel = "places" | "type" | "shape" | "when";
 
+/**
+ * A phone: a finger on a screen too narrow for the chips to sit beside the
+ * search field. There the chips fold behind one "filters" chip, so the search
+ * and the scraps under it keep the room.
+ */
+const PHONE_QUERY = "(pointer: coarse) and (max-width: 619px)";
+
+function usePhoneFilters(): boolean {
+  const matches = () =>
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(PHONE_QUERY).matches;
+  const [phone, setPhone] = useState(matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(PHONE_QUERY);
+    const update = () => setPhone(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return phone;
+}
+
 const countEach = (group: ScrapItem[]) => group.length;
 
 export function ScrapFilters({
@@ -229,6 +253,8 @@ export function ScrapFilters({
 }: Props) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [draft, setDraft] = useState("");
+  const phone = usePhoneFilters();
+  const [chipsOpen, setChipsOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const placeAnchor = useRef<HTMLSpanElement>(null);
   const typeAnchor = useRef<HTMLSpanElement>(null);
@@ -978,6 +1004,32 @@ export function ScrapFilters({
     </span>
   );
 
+  const activeFilters =
+    (places.length > 0 ? 1 : 0) +
+    (kind.length > 0 ? 1 : 0) +
+    (shape.length > 0 ? 1 : 0) +
+    (isAnyTime(when) ? 0 : 1);
+  const filtersToggle = (
+    <button
+      type="button"
+      className="scrap-filters__chip scrap-filters__toggle"
+      aria-expanded={chipsOpen}
+      aria-pressed={activeFilters > 0}
+      onClick={() => {
+        if (chipsOpen) close();
+        setChipsOpen(!chipsOpen);
+      }}
+    >
+      <span className="scrap-filters__key">filters</span>
+      {activeFilters > 0 && (
+        <span className="scrap-filters__value">{activeFilters}</span>
+      )}
+      <span className="scrap-filters__more" aria-hidden="true">
+        {chipsOpen ? "\u25B4" : "\u25BE"}
+      </span>
+    </button>
+  );
+
   return (
     <div
       className={`scrap-filters scrap-filters--${layout}`}
@@ -993,7 +1045,25 @@ export function ScrapFilters({
       }}
     >
       <style>{styles}</style>
-      {layout === "drawer" ? (
+      {phone ? (
+        <>
+          <div className="scrap-filters__row">
+            {searchField}
+            {filtersToggle}
+            {searchAccessory}
+          </div>
+          {chipsOpen && (
+            <div className="scrap-filters__row">
+              {placesChip}
+              {typeChip}
+              {shapeChip}
+              {whenChip}
+              <span className="scrap-filters__spacer" />
+              {chipsAccessory}
+            </div>
+          )}
+        </>
+      ) : layout === "drawer" ? (
         <>
           <div className="scrap-filters__row">
             {searchField}
@@ -1119,4 +1189,18 @@ const styles = `
   .scrap-filters .scrap-filters__hide { width:40px; height:40px; }
   .scrap-filters input { font-size:16px; }
 }
+/* On a phone the bar sits under a thumb on a small screen, so it is compact:
+   one search line, with the chips behind the filters chip. The input keeps
+   16px text so Safari does not zoom the page to type, and the hint under it
+   stays small. */
+@media (pointer:coarse) and (max-width:619px) {
+  .scrap-filters { gap:6px; }
+  .scrap-filters__row { flex-wrap:wrap; gap:5px; }
+  .scrap-filters__chip { min-height:32px; padding:0 10px; }
+  .scrap-filters__search, .scrap-filters--bar .scrap-filters__search { min-height:34px; flex:1 1 0; min-width:0; }
+  .scrap-filters input::placeholder { font-size:11px; }
+  .scrap-filters .scrap-filters__option { min-height:36px; }
+  .scrap-filters .scrap-filters__hide { width:36px; height:36px; }
+}
+.scrap-filters__toggle[aria-pressed=true] { border-color:rgba(74,154,138,.55); background:rgba(74,154,138,.1); color:#2f6b60; }
 `;

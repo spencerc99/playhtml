@@ -26,6 +26,163 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
   }
 
+  /* On a phone the drawer docks under the collage, so the collage and the
+     scraps to add to it are on screen together. */
+  .collage-studio--phone {
+    flex-direction: column;
+  }
+
+  .collage-studio--phone .collage-frame-area {
+    order: 0;
+  }
+
+  /* Every touch on the stage is the studio's: a drag moves a piece or draws
+     a marquee, and two fingers pinch, so the page must not scroll or zoom. */
+  .collage-studio--phone .collage-frame-area__stage {
+    touch-action: none;
+  }
+
+  /* Two classes, so this outranks the drawer's own side-docked size and
+     margin, which come later; otherwise the drawer grows with its scraps
+     and buries the collage. */
+  .collage-tray.collage-tray--bottom {
+    order: 1;
+    flex: 0 0 40%;
+    margin: 0 8px 8px;
+    /* Its filter menus open upward over the collage, so they sit above the
+       bars floating at the top of the stage. */
+    z-index: 10020;
+  }
+
+  /* While the drawer is open on a phone the collage is being filled, so the
+     format and export bar steps aside for it; tucking the drawer brings it back. */
+  .collage-studio--picking .collage-bar {
+    display: none;
+  }
+
+  /* No keyboard, so no list of keys. */
+  .collage-studio--phone .collage-keys-button {
+    display: none;
+  }
+
+  .collage-studio--phone .collage-mat__caption {
+    bottom: 4px;
+    min-width: 0;
+  }
+
+  /* When the drawer is raised the frame gets small, so the caption keeps to
+     one line inside the mat and trims its end rather than spilling out. */
+  .collage-studio--phone .collage-mat__caption .collage-studio__label {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .collage-studio--phone .collage-title-input {
+    min-width: 0;
+  }
+
+  /* Raised, the drawer becomes a sheet: it lifts off the page with rounded
+     shoulders and takes most of the screen, and the collage above it shrinks
+     to a bare miniature that shows each scrap landing as it is tapped. */
+  .collage-tray.collage-tray--bottom.collage-tray--tall {
+    flex-basis: 68%;
+    margin: 0;
+    padding-top: 6px;
+    border-width: 1px 0 0;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -10px 30px color-mix(in srgb, var(--c-ink) 18%, transparent);
+  }
+
+  /* Everything around the miniature steps back: the bars, the mat, the
+     selection and its tools. */
+  .collage-studio--sheet .collage-frame-area__stage {
+    background: color-mix(in srgb, var(--c-ink) 6%, var(--c-ground));
+  }
+
+  .collage-studio--sheet .collage-stage-top,
+  .collage-studio--sheet .collage-views,
+  .collage-studio--sheet .collage-piece-actions,
+  .collage-studio--sheet .collage-mat__caption,
+  .collage-studio--sheet .collage-selection-edge,
+  .collage-studio--sheet .collage-handle,
+  .collage-studio--sheet .collage-grip {
+    visibility: hidden;
+  }
+
+  .collage-studio--sheet .collage-mat {
+    background: transparent;
+    box-shadow: none;
+  }
+
+  /* Laid over the whole miniature, so a tap there lowers the sheet rather
+     than moving a piece it cannot see the handles of. */
+  .collage-sheet-peek {
+    position: absolute;
+    inset: 0;
+    z-index: 10010;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0 0 4px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .collage-sheet-peek__label {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--c-ground) 85%, transparent);
+    color: var(--c-muted);
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+  }
+
+  /* The grab bar at the top of a docked drawer: flick it up or down, or tap
+     it to raise and lower the drawer. */
+  .collage-tray__handle {
+    flex: 0 0 auto;
+    align-self: center;
+    width: 64px;
+    height: 18px;
+    margin: -4px 0 2px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .collage-tray__handle::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 0 auto;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--c-ink) 22%, transparent);
+  }
+
+  .collage-tray--bottom .collage-tray__rail {
+    touch-action: none;
+  }
+
+  .collage-tray.collage-tray--bottom.collage-tray--tucked {
+    flex: 0 0 auto;
+    padding: 6px;
+  }
+
+  .collage-tray--bottom .collage-tray__rail {
+    width: 100%;
+    height: auto;
+    padding: 10px;
+    font-size: 10px;
+    writing-mode: horizontal-tb;
+  }
+
   .collage-studio__label {
     font-family: "Martian Mono", monospace;
     font-size: 9px;
@@ -770,6 +927,22 @@ export const COLLAGE_STUDIO_STYLES = `
     background: var(--c-frame);
     padding: 0;
     cursor: grab;
+  }
+
+  /* A finger needs far more room than a cursor: the handle grows a little and
+     takes presses from well around it, with nothing drawn there. */
+  @media (pointer: coarse) {
+    .collage-handle {
+      width: 18px;
+      height: 18px;
+      margin: -9px 0 0 -9px;
+    }
+
+    .collage-handle::after {
+      content: "";
+      position: absolute;
+      inset: -16px;
+    }
   }
 
   /* A corner handle held at the edge of the view because its corner is out
