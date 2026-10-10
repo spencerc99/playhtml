@@ -27,6 +27,7 @@ import {
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { isFeatureEnabled } from "../features/featureAccess";
+import { parseTrailsLaunch, type TrailsLaunch } from "../utils/trailsLaunch";
 import {
   shouldInitializeCopresence,
   shouldStartExtensionPresence,
@@ -1251,7 +1252,7 @@ export default defineContentScript({
     let overlayVisible = false;
     let overlayRevision = 0;
 
-    const toggleHistoricalOverlay = async () => {
+    const toggleHistoricalOverlay = async (launch?: TrailsLaunch) => {
       const currentRevision = ++overlayRevision;
       try {
         overlayVisible = !overlayVisible;
@@ -1273,6 +1274,8 @@ export default defineContentScript({
                 visible: boolean;
                 currentUrl: string;
                 onClose: () => void;
+                initialSource?: TrailsLaunch["source"];
+                initialUiHidden?: boolean;
               }) => InjectedReactUI;
             }
           ).wwoHistoricalOverlay;
@@ -1284,6 +1287,8 @@ export default defineContentScript({
             visible: true,
             currentUrl: window.location.href,
             onClose: () => toggleHistoricalOverlay(),
+            initialSource: launch?.source,
+            initialUiHidden: launch?.uiHidden,
           });
 
           if (VERBOSE) console.log("[HistoricalOverlay] Overlay activated");
@@ -1318,6 +1323,19 @@ export default defineContentScript({
     };
 
     window.addEventListener("popstate", handleNavigation);
+
+    // `#wwo-trails=everyone` opens the overlay on load (or when the hash
+    // changes) so an agent can drive a recording of everyone's trails. Only
+    // people with the internal EVERYONE_TRAILS feature get this switch.
+    const openTrailsFromHash = async () => {
+      const launch = parseTrailsLaunch(window.location.hash);
+      if (!launch || !(await isFeatureEnabled("EVERYONE_TRAILS"))) return;
+      if (overlayVisible) await toggleHistoricalOverlay();
+      await toggleHistoricalOverlay(launch);
+    };
+    window.addEventListener("hashchange", () => {
+      void openTrailsFromHash();
+    });
 
     // Intercept pushState/replaceState for SPA frameworks
     const origPushState = history.pushState.bind(history);
@@ -1406,13 +1424,17 @@ export default defineContentScript({
       document.addEventListener("DOMContentLoaded", () => {
         extensionInstance = new PlayHTMLExtension();
         extensionInstance.init();
-        initializeCollectors().catch(console.error);
+        initializeCollectors()
+          .catch(console.error)
+          .then(openTrailsFromHash);
         setupModeChangeListener();
       });
     } else {
       extensionInstance = new PlayHTMLExtension();
       extensionInstance.init();
-      initializeCollectors().catch(console.error);
+      initializeCollectors()
+        .catch(console.error)
+        .then(openTrailsFromHash);
       setupModeChangeListener();
     }
 

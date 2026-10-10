@@ -3,7 +3,13 @@
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import browser from "webextension-polyfill";
-import { loadHistoricalData, type FilterMode } from "../storage/historyLoader";
+import {
+  EVERYONE_TRAILS_LIMIT,
+  loadHistoricalData,
+  type FilterMode,
+  type TrailSource,
+} from "../storage/historyLoader";
+import { isFeatureEnabled } from "../features/featureAccess";
 import { VERBOSE } from "../config";
 import type { CollectionEvent, CollectionEventType } from "../collectors/types";
 import type { CollectionEvent as MovementCollectionEvent } from "@movement/types";
@@ -71,9 +77,21 @@ interface Props {
   visible: boolean;
   currentUrl: string;
   onClose: () => void;
+  /** Whose trails to open with. 'everyone' needs the EVERYONE_TRAILS feature. */
+  initialSource?: TrailSource;
+  /** Open with the controls hidden, for clean recordings and stills. */
+  initialUiHidden?: boolean;
 }
 
-export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
+export type OverlayLoadState = "loading" | "ready" | "empty" | "error";
+
+export function HistoricalOverlay({
+  visible,
+  currentUrl,
+  onClose,
+  initialSource = "mine",
+  initialUiHidden = false,
+}: Props) {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +105,14 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
   const [filterMode, setFilterMode] = useState<FilterMode>("auto");
   const [forceServerBackfill, setForceServerBackfill] = useState(false);
   const [devMode, setDevMode] = useState(false);
+  const [requestedSource, setRequestedSource] =
+    useState<TrailSource>(initialSource);
+  // null until the feature check resolves, so an "everyone" launch doesn't
+  // flash this browser's own trails first.
+  const [everyoneAvailable, setEveryoneAvailable] = useState<boolean | null>(
+    null,
+  );
+  const [uiHidden, setUiHidden] = useState(initialUiHidden);
   const [portraitStats, setPortraitStats] = useState<PortraitCardProps | null>(
     null,
   );
@@ -106,6 +132,17 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
       })
       .catch(() => {});
   }, []);
+
+  // Everyone's trails are an internal feature; the switch only shows for
+  // people who have it.
+  useEffect(() => {
+    isFeatureEnabled("EVERYONE_TRAILS")
+      .then(setEveryoneAvailable)
+      .catch(() => setEveryoneAvailable(false));
+  }, []);
+
+  const source: TrailSource =
+    requestedSource === "everyone" && everyoneAvailable ? "everyone" : "mine";
 
   // When URL changes, reset filterMode only if the domain changed
   useEffect(() => {
@@ -159,13 +196,14 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
 
   // Load events when overlay becomes visible or when enabled event types change
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || everyoneAvailable === null) return;
 
     if (VERBOSE)
       console.log(
-        `[HistoricalOverlay] Loading data - forceServerBackfill: ${forceServerBackfill}`,
+        `[HistoricalOverlay] Loading ${source} data - forceServerBackfill: ${forceServerBackfill}`,
       );
 
+    let cancelled = false;
     const loadData = async () => {
       setLoading(true);
       setError(null);
@@ -175,11 +213,13 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
           currentUrl,
           filterMode,
           {
-            limit: 1000,
+            limit: source === "everyone" ? EVERYONE_TRAILS_LIMIT : 1000,
             types: requestedTypes,
             forceServerBackfill,
+            source,
           },
         );
+        if (cancelled) return;
 
         if (VERBOSE)
           console.log(
@@ -188,6 +228,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
         setEvents(historicalEvents);
         setLoading(false);
       } catch (err) {
+        if (cancelled) return;
         console.error("[HistoricalOverlay] Failed to load data:", err);
         setError(
           err instanceof Error ? err.message : "Failed to load historical data",
@@ -197,7 +238,51 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
     };
 
     loadData();
-  }, [visible, currentUrl, filterMode, requestedTypes, forceServerBackfill]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    visible,
+    currentUrl,
+    filterMode,
+    requestedTypes,
+    forceServerBackfill,
+    source,
+    everyoneAvailable,
+  ]);
+
+  // Cmd/Ctrl+Shift+0 hides and shows the controls, so a recording or still
+  // shows only the trails over the page.
+  useEffect(() => {
+    if (!visible) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === "Digit0") {
+        e.preventDefault();
+        setUiHidden((hidden) => !hidden);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [visible]);
+
+  // Mirror the overlay's state onto its shadow host so automation (an agent
+  // driving a recording) can wait for trails without opening the shadow root.
+  const loadState: OverlayLoadState = loading
+    ? "loading"
+    : error
+      ? "error"
+      : events.length > 0
+        ? "ready"
+        : "empty";
+  useEffect(() => {
+    const root = containerRef.current?.getRootNode();
+    const host = root instanceof ShadowRoot ? root.host : null;
+    if (!host) return;
+    host.setAttribute("data-wwo-trails-source", source);
+    host.setAttribute("data-wwo-trails-state", loadState);
+    host.setAttribute("data-wwo-trails-count", String(events.length));
+    host.setAttribute("data-wwo-trails-ui", uiHidden ? "hidden" : "shown");
+  }, [source, loadState, events.length, uiHidden, visible]);
 
   // Obscure keyboard shortcut for forced server backfill
   // Mac: Cmd+Shift+9
@@ -527,12 +612,12 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
       {/* Floating portrait card + action strip — bottom-right corner */}
       <div
         style={{
+          display: uiHidden ? "none" : "flex",
           position: "fixed",
           bottom: "20px",
           right: "20px",
           zIndex: 2147483647,
           pointerEvents: "auto",
-          display: "flex",
           flexDirection: "column",
           gap: "0",
           width: "280px",
@@ -733,11 +818,60 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
               close ✕
             </button>
           </div>
+
+          {/* Row 3 (internal): whose trails + hide controls */}
+          {everyoneAvailable && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "0 10px",
+                height: "30px",
+                borderTop: "1px solid rgba(61,56,51,0.07)",
+                gap: "2px",
+              }}
+            >
+              <button
+                style={scopeBtnStyle(source === "mine")}
+                onClick={() => setRequestedSource("mine")}
+                title="Show only your trails"
+              >
+                ◌ mine
+              </button>
+              <span style={{ color: "rgba(61,56,51,0.18)", fontSize: "10px" }}>
+                |
+              </span>
+              <button
+                style={scopeBtnStyle(source === "everyone")}
+                onClick={() => setRequestedSource("everyone")}
+                title="Show everyone's trails (internal)"
+              >
+                ◍ everyone
+              </button>
+              <button
+                style={{
+                  ...actionBtnBase,
+                  marginLeft: "auto",
+                  fontSize: "10px",
+                }}
+                onClick={() => setUiHidden(true)}
+                title="Hide controls for recording (Cmd/Ctrl+Shift+0 brings them back)"
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "#3d3833";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "rgba(61,56,51,0.6)";
+                }}
+              >
+                hide ui
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Dev mode bottom bar — event type toggles and status */}
-      {devMode && (
+      {devMode && !uiHidden && (
         <div
           style={{
             position: "fixed",
@@ -877,7 +1011,7 @@ export function HistoricalOverlay({ visible, currentUrl, onClose }: Props) {
       </svg>
 
       {/* Loading / empty state for canvas area */}
-      {(loading || events.length === 0) && (
+      {!uiHidden && (loading || events.length === 0) && (
         <div
           style={{
             position: "absolute",
