@@ -83,10 +83,62 @@ export const COLLAGE_STUDIO_STYLES = `
     min-width: 0;
   }
 
-  /* Raised, the drawer covers most of the collage for a longer browse,
-     leaving the collage a strip above it. */
+  /* Raised, the drawer becomes a sheet: it lifts off the page with rounded
+     shoulders and takes most of the screen, and the collage above it shrinks
+     to a bare miniature that shows each scrap landing as it is tapped. */
   .collage-tray.collage-tray--bottom.collage-tray--tall {
-    flex-basis: 58%;
+    flex-basis: 68%;
+    margin: 0;
+    padding-top: 6px;
+    border-width: 1px 0 0;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -10px 30px color-mix(in srgb, var(--c-ink) 18%, transparent);
+  }
+
+  /* Everything around the miniature steps back: the bars, the mat, the
+     selection and its tools. */
+  .collage-studio--sheet .collage-frame-area__stage {
+    background: color-mix(in srgb, var(--c-ink) 6%, var(--c-ground));
+  }
+
+  .collage-studio--sheet .collage-stage-top,
+  .collage-studio--sheet .collage-views,
+  .collage-studio--sheet .collage-piece-actions,
+  .collage-studio--sheet .collage-mat__caption,
+  .collage-studio--sheet .collage-selection-edge,
+  .collage-studio--sheet .collage-handle,
+  .collage-studio--sheet .collage-grip {
+    visibility: hidden;
+  }
+
+  .collage-studio--sheet .collage-mat {
+    background: transparent;
+    box-shadow: none;
+  }
+
+  /* Laid over the whole miniature, so a tap there lowers the sheet rather
+     than moving a piece it cannot see the handles of. */
+  .collage-sheet-peek {
+    position: absolute;
+    inset: 0;
+    z-index: 10010;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0 0 4px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .collage-sheet-peek__label {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--c-ground) 85%, transparent);
+    color: var(--c-muted);
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.04em;
   }
 
   /* The grab bar at the top of a docked drawer: flick it up or down, or tap

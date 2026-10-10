@@ -52,6 +52,9 @@ interface ScrapTrayProps {
   collapsed: boolean;
   onWidth: (width: number) => void;
   onCollapsed: (collapsed: boolean) => void;
+  /** Whether the bottom drawer is raised into a sheet over the collage. */
+  raised?: boolean;
+  onRaised?: (raised: boolean) => void;
   onPlace: (item: ScrapItem) => void;
   onDragStart: (item: ScrapItem, event: React.DragEvent) => void;
 }
@@ -63,6 +66,8 @@ export function ScrapTray({
   collapsed,
   onWidth,
   onCollapsed,
+  raised = false,
+  onRaised = () => {},
   onPlace,
   onDragStart,
 }: ScrapTrayProps) {
@@ -171,7 +176,8 @@ export function ScrapTray({
   // Docked along the bottom of a phone, the drawer answers a flick on its
   // handle: up raises it over more of the collage, down lowers it, and down
   // again tucks it away. Up on the tucked drawer opens it.
-  const [tall, setTall] = useState(false);
+  const tall = raised;
+  const setTall = onRaised;
   const traySwipe = useSwipe(
     collapsed
       ? { up: () => onCollapsed(false) }

@@ -186,11 +186,11 @@ import { collageExportName } from "./collageFile";
 const PLACED_MAX_SIDE = 220;
 /**
  * On a phone the frame is zoomed far out, so a fresh piece is brought up to
- * at least this long on screen, in pixels, to be seen and held with a finger.
+ * at least this share of the frame's shorter side, to be seen and held with a
+ * finger. It is a share of the frame, not of the screen, so a scrap comes in
+ * the same size whether the drawer is lowered or raised into a sheet.
  */
-const PHONE_PLACED_SCREEN_SIDE = 110;
-/** A piece brought up on a phone never takes more than this share of the frame's shorter side. */
-const PHONE_PLACED_FRAME_SHARE = 0.6;
+const PHONE_PLACED_FRAME_SHARE = 0.4;
 const ROTATION_SNAP_DEGREES = 15;
 /** How far a pasted or duplicated piece lands from its original. */
 const COPY_OFFSET = 24;
@@ -400,8 +400,16 @@ export function CollageStudio({
   const frame = formatOf(format);
   const [drawer, setDrawer] = useState(() => readDrawerPreference());
   const phone = usePhoneLayout();
-  const mat = phone ? PHONE_MAT : MAT;
-  const matCaption = phone ? PHONE_MAT_CAPTION : MAT_CAPTION;
+  /**
+   * On a phone the drawer can be raised into a sheet for a long look through
+   * the scraps. The collage then shrinks to a bare miniature above it, with
+   * no mat, caption or bars, so each scrap tapped can be seen landing.
+   */
+  const [raised, setRaised] = useState(false);
+  const sheet = phone && raised && !drawer.collapsed;
+  const mat = sheet ? 0 : phone ? PHONE_MAT : MAT;
+  const matCaption = sheet ? 0 : phone ? PHONE_MAT_CAPTION : MAT_CAPTION;
+  const topBand = sheet ? STAGE_PADDING : STAGE_TOP_BAND;
   /** Whether the collage is turned over to its back, where the sources are. */
   const [over, setOver] = useState(false);
   const [backLook, setBackLook] = useState<BackLook>(BACK_LOOK);
@@ -705,7 +713,7 @@ export function CollageStudio({
         frameScale(frame, {
           width: stage.clientWidth - STAGE_PADDING * 2 - mat * 2,
           height:
-            stage.clientHeight - STAGE_TOP_BAND - STAGE_PADDING - mat - matCaption,
+            stage.clientHeight - topBand - STAGE_PADDING - mat - matCaption,
         }),
       );
     };
@@ -715,7 +723,7 @@ export function CollageStudio({
     return () => observer.disconnect();
     // The fit is recomputed when the format changes, so a new size is shown
     // at its own zoom rather than the one the previous format was fitted at.
-  }, [frame, mat, matCaption]);
+  }, [frame, mat, matCaption, topBand]);
 
   /**
    * The part of the stage in view, in frame units, kept clear of the bars
@@ -733,16 +741,16 @@ export function CollageStudio({
       const inset = HANDLE_INSET;
       setInView({
         x: (area.left + inset - origin.left) / scale,
-        y: (area.top + STAGE_TOP_BAND - origin.top) / scale,
+        y: (area.top + topBand - origin.top) / scale,
         width: (area.width - inset * 2) / scale,
-        height: (area.height - STAGE_TOP_BAND - inset) / scale,
+        height: (area.height - topBand - inset) / scale,
       });
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(stage);
     return () => observer.disconnect();
-  }, [scale, frame]);
+  }, [scale, frame, topBand]);
 
   /** Converts a pointer event into frame coordinates. */
   const framePoint = useCallback(
@@ -764,10 +772,8 @@ export function CollageStudio({
       let size = fitWithin(natural.width, natural.height, PLACED_MAX_SIDE);
       if (phone) {
         const longest = Math.max(size.width, size.height);
-        const wanted = Math.min(
-          PHONE_PLACED_SCREEN_SIDE / scale,
-          Math.min(frame.width, frame.height) * PHONE_PLACED_FRAME_SHARE,
-        );
+        const wanted =
+          Math.min(frame.width, frame.height) * PHONE_PLACED_FRAME_SHARE;
         if (longest < wanted) {
           const grow = wanted / longest;
           size = { width: size.width * grow, height: size.height * grow };
@@ -778,7 +784,7 @@ export function CollageStudio({
       selectPiece(piece.id);
       setNotice(null);
     },
-    [commit, frame, phone, pieces, scale, selectPiece],
+    [commit, frame, phone, pieces, selectPiece],
   );
 
   const removeSelected = useCallback(() => {
@@ -1947,7 +1953,7 @@ export function CollageStudio({
     <div
       className={`collage-studio${phone ? " collage-studio--phone" : ""}${
         phone && !drawer.collapsed ? " collage-studio--picking" : ""
-      }`}
+      }${sheet ? " collage-studio--sheet" : ""}`}
     >
       <ScrapTray
         items={scraps}
@@ -1955,7 +1961,12 @@ export function CollageStudio({
         width={drawer.width}
         collapsed={drawer.collapsed}
         onWidth={(width) => updateDrawer({ width })}
-        onCollapsed={(collapsed) => updateDrawer({ collapsed })}
+        onCollapsed={(collapsed) => {
+          if (collapsed) setRaised(false);
+          updateDrawer({ collapsed });
+        }}
+        raised={raised}
+        onRaised={setRaised}
         onPlace={(item) => {
           // Placing a scrap is an edit, so the collage turns face up for it.
           if (over) turnOver();
@@ -1974,7 +1985,7 @@ export function CollageStudio({
         <div
           className="collage-frame-area__stage"
           ref={stageRef}
-          style={{ padding: STAGE_PADDING, paddingTop: STAGE_TOP_BAND }}
+          style={{ padding: STAGE_PADDING, paddingTop: topBand }}
           data-marquee-ground=""
           // Any press here, on a piece, a grip or bare paper, turns from a
           // text field to the collage, so undo reaches the collage.
@@ -2369,6 +2380,21 @@ export function CollageStudio({
           />
 
           {showKeys && <KeysPopover onClose={() => setShowKeys(false)} />}
+
+          {/* While the sheet is up the miniature only shows what is being
+              added; a tap on it lowers the sheet to work on the collage. */}
+          {sheet && (
+            <button
+              type="button"
+              className="collage-sheet-peek"
+              onClick={() => setRaised(false)}
+            >
+              <span className="collage-sheet-peek__label">
+                {pieces.length} piece{pieces.length === 1 ? "" : "s"} · tap to
+                arrange
+              </span>
+            </button>
+          )}
         </div>
 
         {import.meta.env.DEV && over && (
