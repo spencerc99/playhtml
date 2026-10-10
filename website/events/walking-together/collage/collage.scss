@@ -248,21 +248,6 @@ $rule: #ccc;
   color: $ink-muted;
 }
 
-.collage-toolbar__toggle {
-  padding: 3px 8px;
-  font-family: $mono-font;
-  font-size: 11px;
-  background: $box;
-  border: 1px solid $rule;
-  color: $ink;
-  cursor: pointer;
-
-  &[aria-pressed="true"] {
-    border-color: $ink;
-    font-weight: bold;
-  }
-}
-
 .collage-admin {
   position: fixed;
   right: 1em;
@@ -430,6 +415,7 @@ $strip-height: 92px;
 }
 
 .collage-piece-actions,
-.collage-tolerance {
+.collage-tolerance,
+.collage-view {
   font-family: $mono-font;
 }

@@ -23,6 +23,7 @@ import {
 } from "@extension/entrypoints/scraps/backgroundCutout";
 import type { CropFraction } from "@extension/entrypoints/scraps/collageGeometry";
 import { COLLAGE_PIECE_TOOL_STYLES } from "@extension/entrypoints/scraps/collagePieceToolStyles";
+import { COLLAGE_VIEW_STYLES } from "@extension/entrypoints/scraps/collageViewStyles";
 import { isAdmin } from "../admin";
 import {
   makePiece,
@@ -95,6 +96,28 @@ function useElementSize(ref: React.RefObject<HTMLElement | null>) {
   return size;
 }
 
+/** A head and shoulders: who put each scrap down. Drawn like the studio's
+ * view glyphs so the toggle reads as one of them. */
+const WHO_GLYPH = (
+  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+    <circle
+      cx="8"
+      cy="5.5"
+      r="2.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.3}
+    />
+    <path
+      d="M3 13.5a5 5 0 0 1 10 0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.3}
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
 function newPieceId(pid: string): string {
   return `${pid.slice(0, 8)}-${Date.now().toString(36)}-${Math.random()
     .toString(36)
@@ -125,7 +148,11 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
   const [dropActive, setDropActive] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [showWho, setShowWho] = useState(false);
+  const [whoOn, setWhoOn] = useState(false);
+  // Holding i shows who added what while it's held, as holding i shows
+  // sources in the studio.
+  const [whoHeld, setWhoHeld] = useState(false);
+  const showWho = whoOn || whoHeld;
   // Editing state is local to this viewer: the piece in hand, and a crop or
   // cutout being tuned. Only the finished edit is written to shared data.
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -425,6 +452,29 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
     setSelectedId(null);
   };
 
+  useEffect(() => {
+    const typing = (e: KeyboardEvent) =>
+      !!(e.target as HTMLElement | null)?.closest(
+        "input, textarea, [contenteditable]",
+      );
+    const down = (e: KeyboardEvent) => {
+      if (e.key === "i" && !e.metaKey && !e.ctrlKey && !e.altKey && !typing(e))
+        setWhoHeld(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key === "i") setWhoHeld(false);
+    };
+    const release = () => setWhoHeld(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", release);
+    };
+  }, []);
+
   // Enter or Escape ends a crop; Escape alone puts the piece down.
   useEffect(() => {
     if (!selectedId) return;
@@ -580,6 +630,7 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
       onDrop={onDrop}
     >
       <style>{COLLAGE_PIECE_TOOL_STYLES}</style>
+      <style>{COLLAGE_VIEW_STYLES}</style>
       {templatePoints.length > 0 && size.width > 0 && (
         <svg
           className="collage-template"
@@ -817,15 +868,21 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
 
       <div className="collage-toolbar" onPointerDown={(e) => e.stopPropagation()}>
         {notice && <span className="collage-toolbar__note">{notice}</span>}
-        {ordered.length > 0 && (
-          <button
-            className="collage-toolbar__toggle"
-            onClick={() => setShowWho((on) => !on)}
-            aria-pressed={showWho}
-          >
-            {showWho ? "hide who added what" : "show who added what"}
-          </button>
-        )}
+      </div>
+
+      <div className="collage-views" onPointerDown={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          className={`collage-view${showWho && ordered.length > 0 ? " collage-view--on" : ""}`}
+          title="Show who added each scrap (or hold i)"
+          aria-label="Show who added what"
+          aria-pressed={showWho && ordered.length > 0}
+          disabled={ordered.length === 0}
+          onClick={() => setWhoOn((on) => !on)}
+        >
+          {WHO_GLYPH}
+          <span>who added</span>
+        </button>
       </div>
 
       <ScrapsPanel
