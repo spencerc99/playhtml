@@ -465,7 +465,7 @@ export function applyInternetPlacePolicies(
 ): CommuteResponse {
   const runtimePolicies = policies.filter((policy) => policy.placement);
   const domainPolicies = runtimePolicies.filter(
-    (policy) => policy.scope !== 'page',
+    (policy) => policy.scope === 'hostname' || policy.scope === 'site',
   );
   const reserve: CommuteResponse['destinations'] = [];
   const featured: CommuteResponse['destinations'] = [];

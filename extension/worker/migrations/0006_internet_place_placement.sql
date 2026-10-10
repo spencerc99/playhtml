@@ -4,7 +4,7 @@
 ALTER TABLE place_policies RENAME TO place_policies_verdicts;
 
 CREATE TABLE place_policies (
-  scope TEXT NOT NULL CHECK (scope IN ('page', 'hostname', 'site')),
+  scope TEXT NOT NULL CHECK (scope IN ('page', 'path', 'hostname', 'site')),
   place_key TEXT NOT NULL,
   placement TEXT CHECK (placement IN ('hidden', 'scenery', 'regular', 'featured', 'reserve')),
   reason TEXT,

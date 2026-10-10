@@ -2,7 +2,7 @@
 -- ABOUTME: Keeps machine suggestions separate from the policies used by Internet Commute.
 
 CREATE TABLE place_policies (
-  scope TEXT NOT NULL CHECK (scope IN ('page', 'hostname', 'site')),
+  scope TEXT NOT NULL CHECK (scope IN ('page', 'path', 'hostname', 'site')),
   place_key TEXT NOT NULL,
   verdict TEXT CHECK (verdict IN ('promoted', 'scenery-only', 'blocked')),
   reason TEXT,

@@ -1,10 +1,11 @@
 // ABOUTME: Defines normalized identities and human policy types for Internet places.
-// ABOUTME: Keeps page, hostname, and site keys identical across the Worker and curation desk.
+// ABOUTME: Keeps page, path, hostname, and site keys identical across the Worker and curation desk.
 
 import { canonicalizeUrl } from '@playhtml/extension-types';
 import { getDomain } from 'tldts';
 
-export const INTERNET_PLACE_SCOPES = ['page', 'hostname', 'site'] as const;
+/** Ordered most specific first; `path` matches a hostname plus leading path segments. */
+export const INTERNET_PLACE_SCOPES = ['page', 'path', 'hostname', 'site'] as const;
 export const INTERNET_PLACE_PLACEMENTS = [
   'hidden',
   'scenery',
@@ -67,6 +68,13 @@ export function normalizeInternetPlace(
     throw new Error('Internet places require a complete public hostname.');
   }
   if (scope === 'page') return canonicalizeUrl(url.toString());
+  if (scope === 'path') {
+    const segments = getPathSegments(url);
+    if (segments.length === 0) {
+      throw new Error('A path rule needs at least one path segment.');
+    }
+    return `${url.hostname}/${segments.join('/')}`;
+  }
   if (scope === 'hostname') return url.hostname;
 
   const site = getDomain(url.hostname, { allowPrivateDomains: true });
@@ -74,14 +82,30 @@ export function normalizeInternetPlace(
   return site;
 }
 
+function getPathSegments(url: URL): string[] {
+  return url.pathname.split('/').filter(Boolean);
+}
+
+/**
+ * Every key a URL can match, most specific first: the page, each path prefix
+ * from longest to shortest (whole segments only), the hostname, then the site.
+ */
 export function getInternetPlaceLookupKeys(value: string): Array<{
   scope: InternetPlaceScope;
   placeKey: string;
 }> {
-  return INTERNET_PLACE_SCOPES.map((scope) => ({
-    scope,
-    placeKey: normalizeInternetPlace(value, scope),
+  const url = parsePublicUrl(value);
+  const segments = getPathSegments(url);
+  const pathKeys = segments.map((_, index) => ({
+    scope: 'path' as const,
+    placeKey: `${url.hostname}/${segments.slice(0, segments.length - index).join('/')}`,
   }));
+  return [
+    { scope: 'page', placeKey: normalizeInternetPlace(value, 'page') },
+    ...pathKeys,
+    { scope: 'hostname', placeKey: normalizeInternetPlace(value, 'hostname') },
+    { scope: 'site', placeKey: normalizeInternetPlace(value, 'site') },
+  ];
 }
 
 export function getInternetPlacePolicyKey(

@@ -6,6 +6,7 @@ import {
   canPrefillSuggestion,
   createCuratedPlace,
   getDecisionForReviewItem,
+  getDefaultPathTarget,
   getReviewTarget,
   getScopedPlace,
   mergeCatalogEvidence,
@@ -271,6 +272,27 @@ describe("getReviewTarget", () => {
         currentDisposition: "scenery",
       }),
     ).toEqual(decision);
+  });
+
+  it("finds a path decision for pages beneath it and defaults paths to the first segment", () => {
+    const decision = createCuratedPlace({
+      id: "path",
+      input: "github.com/settings",
+      scope: "path",
+      placement: "scenery",
+      comment: "",
+      updatedAt: "2026-10-10T12:00:00.000Z",
+    });
+    const item = {
+      id: "profile",
+      domain: "github.com",
+      url: "https://github.com/settings/profile",
+      currentDisposition: "stop" as const,
+    };
+    expect(decision.place).toBe("github.com/settings");
+    expect(getDecisionForReviewItem([decision], item)).toEqual(decision);
+    expect(getDefaultPathTarget(item)).toBe("github.com/settings");
+    expect(getDefaultPathTarget({ ...item, url: "https://github.com/" })).toBeNull();
   });
 });
 

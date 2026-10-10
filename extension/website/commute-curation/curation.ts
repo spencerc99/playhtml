@@ -4,6 +4,7 @@
 import {
   INTERNET_PLACE_PLACEMENTS,
   INTERNET_PLACE_REASONS,
+  getInternetPlaceLookupKeys,
   normalizeInternetPlace,
   type InternetPlacePlacement,
   type InternetPlaceScope,
@@ -192,10 +193,24 @@ export function mergeCatalogEvidence(
   return [...mergedLive, ...historical];
 }
 
+/** A path rule defaults to the page's first segment; the desk can widen or narrow it. */
+export function getDefaultPathTarget(item: CommuteReviewItem): string | null {
+  if (!item.url) return null;
+  const keys = getInternetPlaceLookupKeys(item.url).filter(
+    (key) => key.scope === "path",
+  );
+  return keys.at(-1)?.placeKey ?? null;
+}
+
 export function getReviewTarget(
   item: CommuteReviewItem,
   scope: CurationScope,
 ): string {
+  if (scope === "path") {
+    const target = getDefaultPathTarget(item);
+    if (!target) throw new Error("This page has no path to match.");
+    return target;
+  }
   return getScopedPlace(item.url ?? item.domain, scope).place;
 }
 
@@ -257,15 +272,17 @@ export function getDecisionForReviewItem(
   places: CuratedPlace[],
   item: CommuteReviewItem,
 ): CuratedPlace | undefined {
-  const scopes: CurationScope[] = item.url
-    ? ["page", "hostname", "site"]
-    : ["hostname", "site"];
-  for (const scope of scopes) {
-    const target = getReviewTarget(item, scope);
+  const lookups: Array<{ scope: CurationScope; placeKey: string }> = item.url
+    ? getInternetPlaceLookupKeys(item.url)
+    : (["hostname", "site"] as const).map((scope) => ({
+        scope,
+        placeKey: getReviewTarget(item, scope),
+      }));
+  for (const lookup of lookups) {
     const decision = places.find(
       (place) =>
         getDecisionKey(place.scope, place.place) ===
-        getDecisionKey(scope, target),
+        getDecisionKey(lookup.scope, lookup.placeKey),
     );
     if (decision) return decision;
   }
@@ -412,6 +429,7 @@ function migrateCuratedPlace(value: unknown): CuratedPlace[] {
 
   const scope: CurationScope =
     candidate.scope === "page" ||
+    candidate.scope === "path" ||
     candidate.scope === "hostname" ||
     candidate.scope === "site"
       ? candidate.scope

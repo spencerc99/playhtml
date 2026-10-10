@@ -26,6 +26,7 @@ import {
   type CurationScope,
   type CurationPlacement,
   getDecisionForReviewItem,
+  getDefaultPathTarget,
   getReviewTarget,
   mergeCatalogEvidence,
   parseCommuteReviewResponse,
@@ -59,10 +60,11 @@ const PLACEMENT_LABELS: Record<CurationPlacement, string> = {
 
 const SCOPE_LABELS: Record<CurationScope, string> = {
   page: "Exact page",
+  path: "Pages under a path",
   hostname: "This hostname",
   site: "Entire site",
 };
-const CURATION_SCOPES: CurationScope[] = ["page", "hostname", "site"];
+const CURATION_SCOPES: CurationScope[] = ["page", "path", "hostname", "site"];
 const TOKEN_STORAGE_KEY = "wwo-admin-token";
 const RESERVE_CATALOG_URL = "/internet-commute-reserve-catalog.json";
 
@@ -270,6 +272,7 @@ export function App({
     "loading" | "ready" | "error"
   >("loading");
   const [scope, setScope] = useState<CurationScope>("hostname");
+  const [pathTarget, setPathTarget] = useState("");
   const [placement, setPlacement] = useState<CurationPlacement | undefined>();
   const [reason, setReason] = useState("");
   const [comment, setComment] = useState("");
@@ -431,6 +434,11 @@ export function App({
     const cachedSuggestion = suggestionById.current.get(selectedItem.id);
     formEdited.current = false;
     setScope(priorDecision?.scope ?? cachedSuggestion?.scope ?? "hostname");
+    setPathTarget(
+      priorDecision?.scope === "path"
+        ? priorDecision.place
+        : getDefaultPathTarget(selectedItem) ?? "",
+    );
     setPlacement(priorDecision?.placement ?? cachedSuggestion?.placement);
     setReason(
       priorDecision?.reason ??
@@ -546,7 +554,10 @@ export function App({
     event.preventDefault();
     if (!selectedItem) return;
     if (!placement && !comment.trim()) return;
-    const target = getReviewTarget(selectedItem, scope);
+    if (scope === "path" && !pathTarget.trim()) return;
+    const target = scope === "path"
+      ? pathTarget.trim()
+      : getReviewTarget(selectedItem, scope);
     const priorDecision = getDecisionForReviewItem(places, selectedItem);
     const decision = createCuratedPlace({
       id: priorDecision?.id ?? crypto.randomUUID(),
@@ -936,7 +947,9 @@ export function App({
                 <legend>Decision scope</legend>
                 <div className="scope-options">
                   {CURATION_SCOPES.map((value) => {
-                    const disabled = value === "page" && !selectedItem.url;
+                    const disabled =
+                      (value === "page" && !selectedItem.url) ||
+                      (value === "path" && !getDefaultPathTarget(selectedItem));
                     return (
                       <label
                         className={`scope-option${disabled ? " scope-option--disabled" : ""}`}
@@ -953,11 +966,25 @@ export function App({
                           }}
                         />
                         <span>{SCOPE_LABELS[value]}</span>
-                        <small>
-                          {disabled
-                            ? "No page path exposed"
-                            : getReviewTarget(selectedItem, value)}
-                        </small>
+                        {value === "path" && !disabled && scope === "path" ? (
+                          <input
+                            className="scope-option__path"
+                            aria-label="Path prefix"
+                            value={pathTarget}
+                            onChange={(event) => {
+                              markFormEdited();
+                              setPathTarget(event.target.value);
+                            }}
+                          />
+                        ) : (
+                          <small>
+                            {disabled
+                              ? "No page path exposed"
+                              : value === "path"
+                                ? pathTarget || getReviewTarget(selectedItem, value)
+                                : getReviewTarget(selectedItem, value)}
+                          </small>
+                        )}
                       </label>
                     );
                   })}

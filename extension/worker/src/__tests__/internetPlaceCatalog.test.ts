@@ -396,6 +396,36 @@ describe('Internet place catalog', () => {
     ]);
   });
 
+  it('matches path rules by whole leading segments, below page and above hostname', async () => {
+    const response = commuteResponse();
+    response.destinations = [
+      { id: 'inbox', url: 'https://example.com/message/inbox', domain: 'example.com', title: 'Inbox', visitedAt: 1, hue: '#000' },
+      { id: 'messages', url: 'https://example.com/messages', domain: 'example.com', title: 'Messages', visitedAt: 1, hue: '#000' },
+      { id: 'kept', url: 'https://example.com/message/public-letter', domain: 'example.com', title: 'Letter', visitedAt: 1, hue: '#000' },
+    ];
+    for (const policy of [
+      { scope: 'hostname', placeKey: 'example.com', placement: 'regular' },
+      { scope: 'path', placeKey: 'https://www.example.com/message/', placement: 'scenery' },
+      { scope: 'page', placeKey: 'https://example.com/message/public-letter', placement: 'regular' },
+    ]) {
+      expect((await handleInternetPlacePolicyPut(
+        adminRequest('/admin/internet-places/policy', { method: 'PUT', body: JSON.stringify(policy) }),
+        env,
+      )).status).toBe(200);
+    }
+    const loaded = await loadInternetPlacePolicies(env.WWO_ADMIN_DB, response);
+    expect(loaded.find((policy) => policy.scope === 'path')?.placeKey).toBe('example.com/message');
+    expect(applyInternetPlacePolicies(response, loaded, 50).destinations.map((item) => item.id))
+      .toEqual(['messages', 'kept']);
+    expect((await handleInternetPlacePolicyPut(
+      adminRequest('/admin/internet-places/policy', {
+        method: 'PUT',
+        body: JSON.stringify({ scope: 'path', placeKey: 'example.com/', placement: 'hidden' }),
+      }),
+      env,
+    )).status).toBe(400);
+  });
+
   it('orders reserve and featured stops while preserving explicit regular stops', async () => {
     for (const policy of [
       {
