@@ -229,7 +229,8 @@ try {
   console.log(`ok everyone: ${everyonePixels} trail pixels, controls shown`);
 
   // 3. Hiding the controls leaves only the trails.
-  await page.keyboard.press("Control+Shift+Digit0");
+  await page.keyboard.press("d");
+  await page.keyboard.press("d");
   await page.waitForFunction(
     () =>
       document
@@ -240,7 +241,7 @@ try {
     await page.screenshot({
       path: resolve(evidence, "2-everyone-ui-hidden.png"),
     });
-  console.log("ok hide ui: Ctrl+Shift+0");
+  console.log("ok hide ui: double-tap d");
 
   // 4. The hash can ask for hidden controls up front, and switching back to "mine" works.
   const clean = await context.newPage();
@@ -252,7 +253,8 @@ try {
       el.getAttribute("data-wwo-trails-ui") === "hidden"
     );
   });
-  await clean.keyboard.press("Control+Shift+Digit0");
+  await clean.keyboard.press("d");
+  await clean.keyboard.press("d");
   // The overlay lives in a closed shadow root, so click "mine" by position:
   // the first button of the panel's last row, bottom-right of the viewport.
   await clean.waitForTimeout(500);

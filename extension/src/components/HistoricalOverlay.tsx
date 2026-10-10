@@ -83,6 +83,8 @@ interface Props {
   initialUiHidden?: boolean;
 }
 
+const DOUBLE_TAP_THRESHOLD_MS = 300;
+
 export type OverlayLoadState = "loading" | "ready" | "empty" | "error";
 
 export function HistoricalOverlay({
@@ -251,14 +253,26 @@ export function HistoricalOverlay({
     everyoneAvailable,
   ]);
 
-  // Cmd/Ctrl+Shift+0 hides and shows the controls, so a recording or still
-  // shows only the trails over the page.
+  // Double-tap "d" hides and shows the controls, so a recording or still
+  // shows only the trails over the page. Same key and window as the
+  // wewere.online pages (shared/hooks/useChromeToggle.ts).
   useEffect(() => {
     if (!visible) return;
+    let lastDKeyTime = 0;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === "Digit0") {
-        e.preventDefault();
+      if (e.key !== "d" && e.key !== "D") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.composedPath()[0] as HTMLElement | undefined;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || target?.isContentEditable) {
+        return;
+      }
+      const now = Date.now();
+      if (now - lastDKeyTime < DOUBLE_TAP_THRESHOLD_MS) {
         setUiHidden((hidden) => !hidden);
+        lastDKeyTime = 0;
+      } else {
+        lastDKeyTime = now;
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -855,7 +869,7 @@ export function HistoricalOverlay({
                   fontSize: "10px",
                 }}
                 onClick={() => setUiHidden(true)}
-                title="Hide controls for recording (Cmd/Ctrl+Shift+0 brings them back)"
+                title="Hide controls for recording (double-tap d brings them back)"
                 onMouseEnter={(e) => {
                   e.currentTarget.style.color = "#3d3833";
                 }}
