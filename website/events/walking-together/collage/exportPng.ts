@@ -80,7 +80,21 @@ export async function renderCollagePng(
     ctx.shadowBlur = 8;
     ctx.shadowOffsetY = 3;
     if (img) {
-      ctx.drawImage(img, -w / 2, -h / 2, w, h);
+      // The crop picks the part of the source the piece shows; the flip
+      // mirrors it inside the piece's box. Cutouts export uncut.
+      const crop = piece.crop ?? { x: 0, y: 0, width: 1, height: 1 };
+      ctx.scale(piece.flipX ? -1 : 1, piece.flipY ? -1 : 1);
+      ctx.drawImage(
+        img,
+        crop.x * img.naturalWidth,
+        crop.y * img.naturalHeight,
+        crop.width * img.naturalWidth,
+        crop.height * img.naturalHeight,
+        -w / 2,
+        -h / 2,
+        w,
+        h,
+      );
     } else {
       tornRectPath(ctx, w, h, seedOf(piece));
       ctx.fillStyle = PLACEHOLDER;

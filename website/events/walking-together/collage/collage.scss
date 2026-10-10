@@ -28,6 +28,17 @@ $rule: #ccc;
   &--drop {
     box-shadow: inset 0 0 0 3px $rule;
   }
+
+  // The palette the scraps studio's piece tools read, in this page's plain look.
+  --c-ground: #{$table};
+  --c-surface: #{$box};
+  --c-frame: #{$box};
+  --c-mat: #e6e6e6;
+  --c-ink: #{$ink};
+  --c-muted: #{$ink-muted};
+  --c-accent: #{$ink};
+  --c-accent-ink: #{$ink};
+  --c-rule: #{$rule};
 }
 
 .collage-template {
@@ -362,4 +373,63 @@ $strip-height: 92px;
   &--placed {
     opacity: 0.4;
   }
+}
+
+// ---- Piece editing (tools reused from the scraps studio) -----------------
+
+// The piece's box clips its source image to the crop; the source holds the
+// whole image and carries the flip.
+.collage-piece__window {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.collage-piece__source {
+  position: absolute;
+  transform-origin: center;
+}
+
+.collage-piece--selected .collage-piece__paper {
+  outline: 1px solid $ink;
+  outline-offset: 3px;
+}
+
+.collage-piece--locked .collage-piece__paper {
+  cursor: default;
+}
+
+// While a piece is cropped, the crop session draws it instead.
+.collage-piece--cropping {
+  visibility: hidden;
+}
+
+.collage-crop-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+
+  .collage-crop {
+    pointer-events: auto;
+  }
+
+  // The crop session draws the source with the studio's scrap markup.
+  .scrap-collage__image {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    user-select: none;
+  }
+
+  .scrap-collage__swatch {
+    display: none;
+  }
+}
+
+.collage-piece-actions,
+.collage-tolerance {
+  font-family: $mono-font;
 }
