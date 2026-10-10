@@ -2,9 +2,8 @@
 
 ## 0.1.27 (2026-10-10)
 
-- Drag across the scraps archive to select a group of scraps and delete them together.
-- "Save image" on a page portrait works again instead of failing silently.
-- Watching trails in page mode with sound on no longer freezes the trails and audio on long pages like Wikipedia.
+- Fix bug with "Save image" on a page portrait on some browsers
+- Fix bug with page portrait trails playing on some long pages
 
 
 ## 0.1.26 (2026-10-08)
