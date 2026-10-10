@@ -12,7 +12,7 @@ import {
   moveGroupToBack,
   moveGroupToFront,
 } from "@extension/entrypoints/scraps/pieceGroup";
-import { sourceDomain, type Piece, type PieceTransform, type Pieces, type Placer } from "./pieces";
+import { sortedPieces, sourceDomain, type Piece, type PieceTransform, type Pieces, type Placer } from "./pieces";
 
 export interface TableSize {
   width: number;
@@ -75,14 +75,17 @@ export function placementFromStudio(
   };
 }
 
-/** The new stacking for a layer move, as only the z values that change.
- * The studio renumbers the whole stack, so this keeps shared writes small. */
+/** The new stacking for a layer move, as only the z values that change. The
+ * studio renumbers the stack to 0..n-1, so the first move on a table writes
+ * most pieces once; later moves write only the pieces that swap. */
 export function reorderedZ(
   pieces: Pieces,
   id: string,
   to: OrderMove,
 ): Record<string, number> {
-  const stack = Object.values(pieces).map((piece) => ({ id: piece.id, z: piece.z }));
+  // Start from the table's own paint order, so pieces tied on z keep the
+  // order they are drawn in.
+  const stack = sortedPieces(pieces).map((piece) => ({ id: piece.id, z: piece.z }));
   const move = {
     forward: moveGroupForward,
     backward: moveGroupBackward,

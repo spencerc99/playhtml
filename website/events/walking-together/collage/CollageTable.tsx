@@ -303,8 +303,8 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
     if (!g.moved) return;
     setData((draft) => {
       const piece = draft.pieces?.[g.id];
-      // Someone may have removed it mid-gesture.
-      if (!piece) return;
+      // Someone may have removed or locked it mid-gesture.
+      if (!piece || piece.locked) return;
       piece.x = final.x;
       piece.y = final.y;
       piece.width = final.width;
@@ -458,11 +458,11 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
         "input, textarea, [contenteditable]",
       );
     const down = (e: KeyboardEvent) => {
-      if (e.key === "i" && !e.metaKey && !e.ctrlKey && !e.altKey && !typing(e))
+      if (e.code === "KeyI" && !e.metaKey && !e.ctrlKey && !e.altKey && !typing(e))
         setWhoHeld(true);
     };
     const up = (e: KeyboardEvent) => {
-      if (e.key === "i") setWhoHeld(false);
+      if (e.code === "KeyI") setWhoHeld(false);
     };
     const release = () => setWhoHeld(false);
     window.addEventListener("keydown", down);

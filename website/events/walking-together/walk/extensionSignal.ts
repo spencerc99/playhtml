@@ -34,10 +34,6 @@ if (typeof document !== "undefined") {
   }, CHECK_MS);
 }
 
-export function hasExtension(): boolean {
-  return detected;
-}
-
 export function onExtensionDetected(fn: () => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
@@ -53,6 +49,7 @@ export type ExtensionStatus = "checking" | "ready" | "update" | "missing";
 export function extensionStatus(): ExtensionStatus {
   if (detected) return "ready";
   if (checking) return "checking";
+  if (typeof document === "undefined") return "missing";
   return document.documentElement.getAttribute(INSTALL_ATTRIBUTE) === "installed"
     ? "update"
     : "missing";

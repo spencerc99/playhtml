@@ -3,9 +3,9 @@
 
 import { sortedPieces, sourceDomain, type Pieces, type Piece } from "./pieces";
 
-const PAPER = "#f4efe6";
-const PLACEHOLDER = "#e9e1d2";
-const INK = "#6f665c";
+const PAPER = "#f0f0f0";
+const PLACEHOLDER = "#e4e4e4";
+const INK = "#666666";
 
 /** Loads an image for drawing into a canvas. Pieces on the table load without
  * CORS so any image shows; the export needs CORS so the canvas stays readable,
@@ -76,20 +76,25 @@ export async function renderCollagePng(
     ctx.save();
     ctx.translate(piece.x * size.width, piece.y * size.height);
     ctx.rotate((piece.rotation * Math.PI) / 180);
-    ctx.shadowColor = "rgba(61, 56, 51, 0.22)";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.18)";
     ctx.shadowBlur = 8;
     ctx.shadowOffsetY = 3;
     if (img) {
-      // The crop picks the part of the source the piece shows; the flip
-      // mirrors it inside the piece's box. Cutouts export uncut.
+      // The table mirrors the whole source and then shows the crop window,
+      // so a flipped piece shows the mirrored side of the source. Cutouts
+      // export uncut.
       const crop = piece.crop ?? { x: 0, y: 0, width: 1, height: 1 };
+      const sx = piece.flipX ? 1 - crop.x - crop.width : crop.x;
+      const sy = piece.flipY ? 1 - crop.y - crop.height : crop.y;
+      const iw = img.naturalWidth || img.width;
+      const ih = img.naturalHeight || img.height;
       ctx.scale(piece.flipX ? -1 : 1, piece.flipY ? -1 : 1);
       ctx.drawImage(
         img,
-        crop.x * img.naturalWidth,
-        crop.y * img.naturalHeight,
-        crop.width * img.naturalWidth,
-        crop.height * img.naturalHeight,
+        sx * iw,
+        sy * ih,
+        crop.width * iw,
+        crop.height * ih,
         -w / 2,
         -h / 2,
         w,

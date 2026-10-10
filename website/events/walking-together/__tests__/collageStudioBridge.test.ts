@@ -95,6 +95,20 @@ describe("reorderedZ", () => {
     expect(reorderedZ(pieces, "a", "forward")).toEqual({ a: 1, b: 0, c: 2 });
   });
 
+  it("keeps tied pieces in the order the table paints them", () => {
+    // Tied on z: the table paints the earlier-placed piece first.
+    const tied: Pieces = {
+      later: piece("later", { z: 1, placedAt: 20 }),
+      earlier: piece("earlier", { z: 1, placedAt: 10 }),
+      other: piece("other", { z: 0 }),
+    };
+    // "later" keeps z 1, so only the other two are written.
+    expect(reorderedZ(tied, "other", "front")).toEqual({
+      earlier: 0,
+      other: 2,
+    });
+  });
+
   it("writes nothing when the piece is already in front", () => {
     const stacked: Pieces = {
       a: piece("a", { z: 0 }),
