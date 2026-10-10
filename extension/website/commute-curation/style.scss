@@ -894,16 +894,30 @@ fieldset {
   white-space: nowrap;
 }
 
-.scope-option__path {
-  width: 100%;
-  min-width: 0;
-  margin-top: 4px;
-  padding: 2px 4px;
+.scope-path {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-top: -1px;
+  padding: 8px 9px;
   border: 1px solid $line;
-  background: transparent;
-  color: $ink;
+}
+
+.scope-path span {
+  color: rgba($ink, 0.6);
   font-family: $mono;
   font-size: 9px;
+  text-transform: uppercase;
+}
+
+.scope-path input {
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid $line;
+  background: transparent;
+  font-family: $mono;
+  font-size: 11px;
 }
 
 .scope-option:has(input:checked) {

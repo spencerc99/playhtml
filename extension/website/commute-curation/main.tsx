@@ -966,29 +966,30 @@ export function App({
                           }}
                         />
                         <span>{SCOPE_LABELS[value]}</span>
-                        {value === "path" && !disabled && scope === "path" ? (
-                          <input
-                            className="scope-option__path"
-                            aria-label="Path prefix"
-                            value={pathTarget}
-                            onChange={(event) => {
-                              markFormEdited();
-                              setPathTarget(event.target.value);
-                            }}
-                          />
-                        ) : (
-                          <small>
-                            {disabled
-                              ? "No page path exposed"
-                              : value === "path"
-                                ? pathTarget || getReviewTarget(selectedItem, value)
-                                : getReviewTarget(selectedItem, value)}
-                          </small>
-                        )}
+                        <small>
+                          {disabled
+                            ? "No page path exposed"
+                            : value === "path"
+                              ? pathTarget || getReviewTarget(selectedItem, value)
+                              : getReviewTarget(selectedItem, value)}
+                        </small>
                       </label>
                     );
                   })}
                 </div>
+                {scope === "path" && (
+                  <label className="scope-path">
+                    <span>Path prefix</span>
+                    <input
+                      type="text"
+                      value={pathTarget}
+                      onChange={(event) => {
+                        markFormEdited();
+                        setPathTarget(event.target.value);
+                      }}
+                    />
+                  </label>
+                )}
               </fieldset>
 
               <fieldset>
