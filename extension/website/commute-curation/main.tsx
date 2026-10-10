@@ -72,7 +72,7 @@ type ReviewItem = CommuteReviewItem | ReserveReviewItem;
 const REASON_LABELS = Object.fromEntries(
   CURATION_REASONS.map((reason) => [
     reason,
-    reason.replaceAll("-", " "),
+    reason.replace(/-/g, " "),
   ]),
 ) as Record<(typeof CURATION_REASONS)[number], string>;
 
@@ -901,10 +901,7 @@ export function App({
                         ]}
                       </strong>
                       <span>
-                        {selectedInspection.inspection.reason.replaceAll(
-                          "_",
-                          " ",
-                        )}
+                        {selectedInspection.inspection.reason.replace(/_/g, " ")}
                       </span>
                     </div>
                   </div>

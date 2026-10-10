@@ -35,7 +35,7 @@ let env: Env;
 beforeEach(async () => {
   runtime = new Miniflare({ modules: true, script: 'export default { fetch() { return new Response("ok") } }', d1Databases: ['WWO_ADMIN_DB'] });
   const db = await runtime.getD1Database('WWO_ADMIN_DB');
-  for (const name of ['0003_internet_place_catalog.sql', '0004_internet_place_placement.sql']) {
+  for (const name of ['0005_internet_place_catalog.sql', '0006_internet_place_placement.sql', '0007_internet_place_suggestions.sql', '0008_internet_place_suggestion_evidence.sql']) {
     const sql = readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8');
     for (const statement of sql.replace(/^--.*$/gm, '').split(';').filter((part) => part.trim())) await db.prepare(statement).run();
   }

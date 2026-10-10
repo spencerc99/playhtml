@@ -18,7 +18,15 @@ vi.mock('../routes/recent', () => ({
   handleRecent,
 }));
 
-import { handleCommute, handleCommuteReview } from '../routes/commute';
+import {
+  handleCommute,
+  handleCommuteReview,
+  suggestCommuteDestinations,
+} from '../routes/commute';
+import {
+  INTERNET_PLACE_SUGGESTION_MODEL,
+  INTERNET_PLACE_SUGGESTION_PROMPT_VERSION,
+} from '../routes/internetPlaceSuggestion';
 
 let env: Env;
 let miniflare: Miniflare;
@@ -49,7 +57,7 @@ describe('handleCommute', () => {
       d1Databases: ['WWO_ADMIN_DB'],
     });
     const db = await miniflare.getD1Database('WWO_ADMIN_DB');
-    for (const name of ['0003_internet_place_catalog.sql', '0004_internet_place_placement.sql']) {
+    for (const name of ['0005_internet_place_catalog.sql', '0006_internet_place_placement.sql', '0007_internet_place_suggestions.sql', '0008_internet_place_suggestion_evidence.sql']) {
       const sql = readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8');
       for (const statement of sql.replace(/^--.*$/gm, '').split(';').filter((part) => part.trim())) {
         await db.prepare(statement).run();
@@ -124,5 +132,59 @@ describe('handleCommute', () => {
       headers: { Authorization: 'Bearer test-admin-key' },
     }), env);
     expect(authenticated.status).toBe(200);
+  });
+
+  async function saveClefSuggestion(placement: string) {
+    await env.WWO_ADMIN_DB.prepare(
+      `INSERT INTO place_suggestions (page_key, model, prompt_version, suggestion_json, evidence_hash)
+       VALUES (?, ?, ?, ?, 'hash')`,
+    ).bind(
+      'https://public.example/article',
+      INTERNET_PLACE_SUGGESTION_MODEL,
+      INTERNET_PLACE_SUGGESTION_PROMPT_VERSION,
+      JSON.stringify({ placement, scope: 'site', confidence: 0.4, rationale: 'Clef', uncertainties: [] }),
+    ).run();
+  }
+
+  it('lets a Clef scenery suggestion keep an unreviewed page off the route', async () => {
+    await saveClefSuggestion('scenery');
+    const response = await handleCommute(new Request('https://worker.example/commute/recent'), env);
+    const payload = (await response.json()) as CommuteResponse;
+    expect(payload.destinations).toEqual([]);
+    expect(payload.scenery.map((item) => item.domain)).toEqual(['public.example']);
+  });
+
+  it('keeps Clef promotions advisory and lets human policies win', async () => {
+    await saveClefSuggestion('featured');
+    const advisory = await handleCommute(new Request('https://worker.example/commute/recent'), env);
+    expect(((await advisory.json()) as CommuteResponse).destinations).toHaveLength(1);
+
+    await env.WWO_ADMIN_DB.prepare('DELETE FROM place_suggestions').run();
+    await saveClefSuggestion('hidden');
+    await env.WWO_ADMIN_DB.prepare(
+      "INSERT INTO place_policies (scope, place_key, placement, note) VALUES ('site', 'public.example', 'regular', '')",
+    ).run();
+    const reviewed = await handleCommute(new Request('https://worker.example/commute/recent'), env);
+    expect(((await reviewed.json()) as CommuteResponse).destinations).toHaveLength(1);
+  });
+
+  it('asks Clef only about destinations nobody has reviewed or suggested', async () => {
+    const run = vi.fn(async () => ({
+      answers: {
+        placement: { choice: 'scenery', confidence: 0.5, probabilities: {} },
+        scope: { choice: 'page', confidence: 0.7, probabilities: {} },
+        reason: { choice: 'none', confidence: 0.5, probabilities: {} },
+      },
+    }));
+    env.AI = { run } as unknown as Env['AI'];
+    expect(await suggestCommuteDestinations(env)).toBe(1);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(await suggestCommuteDestinations(env)).toBe(0);
+    expect(run).toHaveBeenCalledTimes(1);
+    const payload = (await (await handleCommute(
+      new Request('https://worker.example/commute/recent'),
+      env,
+    )).json()) as CommuteResponse;
+    expect(payload.destinations).toEqual([]);
   });
 });

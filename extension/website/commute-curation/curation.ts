@@ -416,7 +416,7 @@ function migrateCuratedPlace(value: unknown): CuratedPlace[] {
     candidate.scope === "site"
       ? candidate.scope
       : "hostname";
-  const normalized = getScopedPlace(candidate.place, scope);
+  const normalized = getScopedPlace(candidate.place as string, scope);
   return [
     {
       id: candidate.id as string,

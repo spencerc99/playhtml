@@ -11,13 +11,13 @@ import {
   hashSuggestionCandidate,
   INTERNET_PLACE_SUGGESTION_MODEL,
   INTERNET_PLACE_SUGGESTION_PROMPT_VERSION,
-  parseInternetPlaceSuggestionModelOutput,
+  parseClefSuggestion,
 } from '../routes/internetPlaceSuggestion';
 
 const schema = [
-  '../../migrations/0003_internet_place_catalog.sql',
-  '../../migrations/0005_internet_place_suggestions.sql',
-  '../../migrations/0006_internet_place_suggestion_evidence.sql',
+  '../../migrations/0005_internet_place_catalog.sql',
+  '../../migrations/0007_internet_place_suggestions.sql',
+  '../../migrations/0008_internet_place_suggestion_evidence.sql',
 ].map((path) => readFileSync(
   fileURLToPath(new URL(path, import.meta.url)),
   'utf8',
@@ -93,23 +93,76 @@ describe('Internet place suggestions', () => {
     })).toBe(await hashSuggestionCandidate({ ...candidate, inspection: { finalUrl: candidate.url } }));
   });
 
-  it('parses structured and chat-completion model output', () => {
-    expect(parseInternetPlaceSuggestionModelOutput(suggestion)).toEqual(suggestion);
-    expect(parseInternetPlaceSuggestionModelOutput({
-      choices: [{ message: { content: JSON.stringify(suggestion) } }],
-    })).toEqual(suggestion);
-    expect(parseInternetPlaceSuggestionModelOutput({
-      ...suggestion,
-      placement: 'promoted',
+  it('turns Clef answers into an advisory suggestion', () => {
+    const answers = {
+      placement: {
+        type: 'choice',
+        choice: 'featured',
+        confidence: 0.64,
+        probabilities: { featured: 0.64, regular: 0.3, scenery: 0.06 },
+      },
+      scope: { type: 'choice', choice: 'hostname', confidence: 0.4, probabilities: {} },
+      reason: { type: 'choice', choice: 'human-community', confidence: 0.7, probabilities: {} },
+    };
+    expect(parseClefSuggestion({ answers })).toEqual({
+      placement: 'featured',
+      scope: 'hostname',
+      reason: 'human-community',
+      confidence: 0.64,
+      rationale: 'Clef chose featured at hostname scope with 64% confidence.',
+      uncertainties: [
+        'Clef also weighed regular at 30%.',
+        'The hostname scope is uncertain (40%).',
+      ],
+    });
+    expect(parseClefSuggestion({ result: { answers } })?.placement).toBe('featured');
+    expect(parseClefSuggestion({
+      answers: { ...answers, reason: { choice: 'none', confidence: 0.5 } },
+    })?.reason).toBeUndefined();
+    expect(parseClefSuggestion({
+      answers: { ...answers, placement: { choice: 'promoted', confidence: 0.9 } },
     })).toBeNull();
-    expect(parseInternetPlaceSuggestionModelOutput({
-      ...suggestion,
-      confidence: 2,
+    expect(parseClefSuggestion({
+      answers: { ...answers, reason: { choice: 'A persuasive explanation', confidence: 0.9 } },
     })).toBeNull();
-    expect(parseInternetPlaceSuggestionModelOutput({
-      ...suggestion,
-      reason: 'A persuasive explanation rather than a reusable reason',
-    })).toBeNull();
+    expect(parseClefSuggestion({ response: JSON.stringify(suggestion) })).toBeNull();
+  });
+
+  it('asks Clef about sanitized evidence and caches its suggestion', async () => {
+    const calls: Array<{ model: string; input: Record<string, unknown> }> = [];
+    env.AI = {
+      async run(model: string, input: Record<string, unknown>) {
+        calls.push({ model, input });
+        return {
+          answers: {
+            placement: { choice: 'regular', confidence: 0.55, probabilities: { regular: 0.55 } },
+            scope: { choice: 'page', confidence: 0.8, probabilities: {} },
+            reason: { choice: 'editorial-or-cultural', confidence: 0.6, probabilities: {} },
+          },
+        };
+      },
+    } as unknown as Env['AI'];
+    const candidate = {
+      url: 'https://www.example.com/essay/?utm_source=private-tracker',
+      title: 'An essay',
+    };
+    const response = await handleInternetPlaceSuggestion(suggestionRequest({ candidate }), env);
+    expect(response.status).toBe(200);
+    const body = await response.json() as { source: string; suggestion: { placement: string } };
+    expect(body.source).toBe('model');
+    expect(body.suggestion.placement).toBe('regular');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].model).toBe(INTERNET_PLACE_SUGGESTION_MODEL);
+    expect(calls[0].input.state).toEqual({
+      candidate: { url: 'https://example.com/essay', title: 'An essay' },
+    });
+    expect(Object.keys(calls[0].input.questions as object)).toEqual(['placement', 'scope', 'reason']);
+    expect(await countRows('place_suggestions')).toBe(1);
+    expect(await countRows('place_policies')).toBe(0);
+
+    const cached = await handleInternetPlaceSuggestion(suggestionRequest({ candidate }), env);
+    expect((await cached.json() as { source: string }).source).toBe('cache');
+    expect(calls).toHaveLength(1);
   });
 
   it('requires admin authentication before reading the cache', async () => {

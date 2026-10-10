@@ -11,6 +11,14 @@ import {
   applyInternetPlacePolicies,
   loadInternetPlacePolicies,
 } from './internetPlaceCatalog';
+import {
+  loadSuggestedRestrictions,
+  suggestUnreviewedPlaces,
+} from './internetPlaceSuggestion';
+import {
+  resolveInternetPlacePolicy,
+  type InternetPlacePolicy,
+} from '../../../shared/internetPlaceCatalog';
 import { handleRecent } from './recent';
 import { getAdminAuthError } from '../lib/adminAuth';
 
@@ -21,6 +29,7 @@ const REVIEW_DESTINATION_LIMIT = 200;
 const REVIEW_SCENERY_LIMIT = 200;
 const CATALOG_CANDIDATE_LIMIT = 200;
 const COMMUTE_DESTINATION_LIMIT = 50;
+const SWEEP_SUGGESTION_LIMIT = 25;
 
 async function fetchRecentEvents(
   request: Request,
@@ -132,5 +141,50 @@ export async function getCommuteResponse(
     destinations: CATALOG_CANDIDATE_LIMIT,
   });
   const policies = await loadInternetPlacePolicies(env.WWO_ADMIN_DB, candidates);
-  return applyInternetPlacePolicies(candidates, policies, COMMUTE_DESTINATION_LIMIT);
+  const restrictions = await loadSuggestedRestrictions(
+    env.WWO_ADMIN_DB,
+    unreviewedDestinations(candidates, policies).map(({ url }) => url),
+  );
+  return applyInternetPlacePolicies(
+    candidates,
+    [...policies, ...restrictions],
+    COMMUTE_DESTINATION_LIMIT,
+  );
+}
+
+/** Destinations no human policy covers at any scope. */
+function unreviewedDestinations(
+  response: CommuteResponse,
+  policies: InternetPlacePolicy[],
+): CommuteResponse['destinations'] {
+  const decided = policies.filter((policy) => policy.placement);
+  return response.destinations.filter(
+    (destination) => !resolveInternetPlacePolicy(decided, destination.url),
+  );
+}
+
+/**
+ * Scheduled sweep: asks Clef about the newest live destinations nobody has
+ * reviewed, so restrictions and desk suggestions exist before anyone looks.
+ */
+export async function suggestCommuteDestinations(
+  env: Env,
+  now = Date.now(),
+): Promise<number> {
+  const request = new Request('https://commute.internal/');
+  const navigationEvents = await fetchRecentEvents(
+    request,
+    env,
+    'navigation',
+    NAVIGATION_LIMIT,
+  );
+  const candidates = buildCommuteResponse(navigationEvents, [], now, {
+    destinations: CATALOG_CANDIDATE_LIMIT,
+  });
+  const policies = await loadInternetPlacePolicies(env.WWO_ADMIN_DB, candidates);
+  return suggestUnreviewedPlaces(
+    env,
+    unreviewedDestinations(candidates, policies),
+    SWEEP_SUGGESTION_LIMIT,
+  );
 }

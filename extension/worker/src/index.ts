@@ -16,7 +16,11 @@ import {
   handleQuarantineStrip,
   handleQuarantineRip,
 } from './routes/quarantine';
-import { handleCommute, handleCommuteReview } from './routes/commute';
+import {
+  handleCommute,
+  handleCommuteReview,
+  suggestCommuteDestinations,
+} from './routes/commute';
 import { handleCommuteTrainBoard } from './routes/commuteTrains';
 import {
   handleAccessRequest,
@@ -249,5 +253,14 @@ export default {
     
     // 404 for unknown routes
     return new Response('Not Found', { status: 404 });
+  },
+
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      suggestCommuteDestinations(env).then(
+        (saved) => console.log(`[internet-places] Clef suggested ${saved} new destinations`),
+        (error) => console.error('[internet-places] suggestion sweep failed:', error),
+      ),
+    );
   },
 };

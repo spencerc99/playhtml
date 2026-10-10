@@ -17,13 +17,13 @@ import {
 
 const verdictSchema = readFileSync(
   fileURLToPath(
-    new URL('../../migrations/0003_internet_place_catalog.sql', import.meta.url),
+    new URL('../../migrations/0005_internet_place_catalog.sql', import.meta.url),
   ),
   'utf8',
 ).replace(/^--.*$/gm, '').trim();
 const placementMigration = readFileSync(
   fileURLToPath(
-    new URL('../../migrations/0004_internet_place_placement.sql', import.meta.url),
+    new URL('../../migrations/0006_internet_place_placement.sql', import.meta.url),
   ),
   'utf8',
 ).replace(/^--.*$/gm, '').trim();

@@ -69,6 +69,10 @@ migrations_dir = "migrations"
 [ai]
 binding = "AI"
 
+# Asks Clef about new unreviewed commute destinations.
+[triggers]
+crons = ["*/30 * * * *"]
+
 # Private internet map bundles. They hold participants' full page URLs and
 # titles, so they are served only through the admin-authenticated
 # /internet-map/<bundle>/<file> route, never as public site files.
