@@ -1,6 +1,12 @@
 // ABOUTME: "Join the walk": people opt in, and their pages draw as trails behind the walk stage.
 // ABOUTME: Trails reuse the portrait's live cursor-trail drawing, with URL stops as the path.
-import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { usePageData, usePlayerIdentity } from "@playhtml/react";
 import { LiveTrails } from "@movement/components/LiveTrails";
 import { DEFAULT_SETTINGS } from "@movement/components/settingsDefaults";
@@ -9,13 +15,20 @@ import { RECENT_EVENTS_URL } from "@movement/config";
 import type { CollectionEvent } from "@movement/types";
 import { useStickyState } from "../../../hooks/useStickyState";
 import {
+  freezeSteps,
   stepsByWalker,
   stopPoint,
   walkerTrailState,
+  walkSteps,
   type WalkersData,
   type WalkStep,
 } from "./walkTrails";
-import { hasExtension, onExtensionDetected } from "./extensionSignal";
+import {
+  hasExtension,
+  hasExtensionWithoutIdentity,
+  onExtensionDetected,
+} from "./extensionSignal";
+import { isAdmin } from "../admin";
 import "./walk.scss";
 
 const WALKERS_DATA_NAME = "walking-together-walkers";
@@ -57,7 +70,8 @@ function useViewportSize() {
   return size;
 }
 
-/** Each walker's stored pages since they joined, refreshed now and then. */
+/** Each walker's stored pages since they joined, refreshed now and then.
+ * Pass no walkers to skip fetching (an ended walk draws from its snapshot). */
 function useBackfill(walkerKey: string, walkers: WalkersData["walkers"]) {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   useEffect(() => {
@@ -101,8 +115,13 @@ export function WalkStage({ active }: { active: boolean }) {
     EMPTY_WALKERS,
   );
   const walkers = data?.walkers ?? {};
+  const ended = data?.endedAt !== undefined;
   const { pid, name, color } = usePlayerIdentity();
   const extension = useSyncExternalStore(onExtensionDetected, hasExtension);
+  const needsUpdate = useSyncExternalStore(
+    onExtensionDetected,
+    hasExtensionWithoutIdentity,
+  );
   const [watching, setWatching] = useStickyState<boolean>(
     "walk-just-watching",
     false,
@@ -113,18 +132,21 @@ export function WalkStage({ active }: { active: boolean }) {
     .map((w) => `${w.pid}:${w.joinedAt}`)
     .sort()
     .join(",");
-  const backfill = useBackfill(walkerKey, walkers);
+  const backfill = useBackfill(ended ? "" : walkerKey, ended ? {} : walkers);
   const { events: live } = useLiveEvents({
     types: ["navigation"],
     maxEvents: 2000,
   });
 
-  const steps = useMemo(
+  const liveSteps = useMemo(
     () => stepsByWalker([...backfill, ...live], walkers, isEventPage),
     // walkerKey stands in for walkers.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [backfill, live, walkerKey],
   );
+  const liveStepsRef = useRef(liveSteps);
+  liveStepsRef.current = liveSteps;
+  const steps = walkSteps(data ?? EMPTY_WALKERS, liveSteps);
 
   const trailStates = useMemo(
     () =>
@@ -146,7 +168,7 @@ export function WalkStage({ active }: { active: boolean }) {
   }
 
   const join = () => {
-    if (!pid) return;
+    if (!pid || ended) return;
     setData((draft) => {
       const me = {
         pid,
@@ -160,6 +182,38 @@ export function WalkStage({ active }: { active: boolean }) {
         return;
       }
       draft.walkers[pid] = me;
+    });
+  };
+
+  const admin = isAdmin(name, color);
+
+  /** Admin only: freeze every trail as it is now. Pages visited afterward
+   * never join the walk, and nobody new can join. */
+  const endWalk = () => {
+    if (!window.confirm("End the walk? Trails stay as they are now.")) return;
+    setData((draft) => {
+      draft.endedAt = Date.now();
+      // Freeze what this screen shows now, so every viewer keeps the same
+      // trails no matter what their (or the walkers') clocks say.
+      draft.frozen = freezeSteps(liveStepsRef.current);
+    });
+  };
+
+  const reopenWalk = () => {
+    setData((draft) => {
+      delete draft.endedAt;
+      delete draft.frozen;
+    });
+  };
+
+  /** Admin only: everyone off the walk and the walk reopened, for testing. */
+  const resetWalk = () => {
+    if (!window.confirm("Reset the walk? This clears everyone's trails.")) return;
+    setData((draft) => {
+      for (const key of Object.keys(draft.walkers ?? {}))
+        delete draft.walkers[key];
+      delete draft.endedAt;
+      delete draft.frozen;
     });
   };
 
@@ -179,6 +233,9 @@ export function WalkStage({ active }: { active: boolean }) {
           trailStates={trailStates}
           settings={TRAIL_SETTINGS}
           showClickRipples
+          // A walker who lingers on one page still walked here; keep their
+          // trail until they leave the walk.
+          keepSettled
         />
         {size.width > 0 &&
           Array.from(stops.values()).map((step) => {
@@ -216,10 +273,40 @@ export function WalkStage({ active }: { active: boolean }) {
       <div className="walk-status">
         {walkingCount > 0 && (
           <span className="walk-pill">
-            {walkingCount} walking
+            {walkingCount} {ended ? "walked" : "walking"}
           </span>
         )}
-        {joined ? (
+        {ended && <span className="walk-pill">the walk has ended</span>}
+        {admin &&
+          (ended ? (
+            <button
+              className="walk-pill walk-pill--button"
+              data-admin-control
+              onClick={reopenWalk}
+            >
+              reopen walk
+            </button>
+          ) : (
+            walkingCount > 0 && (
+              <button
+                className="walk-pill walk-pill--button"
+                data-admin-control
+                onClick={endWalk}
+              >
+                end walk
+              </button>
+            )
+          ))}
+        {admin && (walkingCount > 0 || ended) && (
+          <button
+            className="walk-pill walk-pill--button"
+            data-admin-control
+            onClick={resetWalk}
+          >
+            reset walk
+          </button>
+        )}
+        {ended ? null : joined ? (
           <button className="walk-pill walk-pill--button" onClick={leave}>
             leave the walk
           </button>
@@ -235,7 +322,7 @@ export function WalkStage({ active }: { active: boolean }) {
         )}
       </div>
 
-      {!joined && !watching && (
+      {!joined && !watching && !ended && (
         <div className="walk-join" role="dialog" aria-labelledby="walk-join-title">
           <h2 id="walk-join-title">join the walk</h2>
           <p>
@@ -259,7 +346,9 @@ export function WalkStage({ active }: { active: boolean }) {
                 target="_blank"
                 rel="noreferrer"
               >
-                get we were online to join
+                {needsUpdate
+                  ? "update we were online to join"
+                  : "get we were online to join"}
               </a>
             )}
             <button onClick={() => setWatching(true)}>just watch</button>

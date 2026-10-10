@@ -316,3 +316,8 @@ input {
   font-size: 11px;
   background: rgba(255, 253, 248, 0.92);
 }
+
+// Alt+A hides every admin control for a clean screen share (adminControls.ts).
+[data-admin-hidden] [data-admin-control] {
+  display: none !important;
+}

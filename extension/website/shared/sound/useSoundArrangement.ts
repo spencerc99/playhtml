@@ -52,6 +52,7 @@ export const engineConfigFor = (
   swells: globals.swells,
   choralTimbre: globals.choralTimbre,
   cursorInstruments: globals.cursorInstruments,
+  phrasing: globals.phrasing,
   soloistVoice: globals.soloistVoice,
   traceability: globals.traceability,
   bassPedal: layers.bassPedal,

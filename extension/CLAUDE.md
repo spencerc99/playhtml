@@ -395,7 +395,7 @@ Playwright `chromium` channel.
 
 - `src/config.ts`: `VERBOSE` debug logging flag
 - `src/flags.ts`: Feature flags (`COPRESENCE: true`)
-- `wxt.config.ts`: Manifest v3, permissions (storage, tabs, http/https host access), React module, ASCII charset output for Chrome compliance
+- `wxt.config.ts`: Manifest v3, permissions (storage, tabs, `<all_urls>` host access; http/https on Safari), React module, ASCII charset output for Chrome compliance
 
 ## Testing
 

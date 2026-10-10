@@ -18,6 +18,33 @@ export type Walkers = Record<string, Walker>;
 
 export interface WalkersData {
   walkers: Walkers;
+  /** When the admin ended the walk. */
+  endedAt?: number;
+  /** Each walker's stops as the admin saw them when the walk ended. Once
+   * ended, trails draw from this snapshot instead of from events, so they
+   * stay exactly as they were. (Comparing event timestamps to `endedAt`
+   * would mix different browsers' clocks.) */
+  frozen?: Record<string, WalkStep[]>;
+}
+
+/** A plain copy of the current stops, to store as the ended walk. */
+export function freezeSteps(
+  steps: Record<string, WalkStep[]>,
+): Record<string, WalkStep[]> {
+  const frozen: Record<string, WalkStep[]> = {};
+  for (const [pid, list] of Object.entries(steps)) {
+    frozen[pid] = list.map(({ url, label, ts }) => ({ url, label, ts }));
+  }
+  return frozen;
+}
+
+/** The stops to draw: the frozen snapshot once the walk has ended, otherwise
+ * the live ones. */
+export function walkSteps(
+  data: Pick<WalkersData, "endedAt" | "frozen">,
+  live: Record<string, WalkStep[]>,
+): Record<string, WalkStep[]> {
+  return data.endedAt !== undefined ? data.frozen ?? {} : live;
 }
 
 /** One page a walker landed on. `url` is origin + path, no query or hash. */
