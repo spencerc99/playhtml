@@ -41,6 +41,9 @@ extension/src/**/*.js.map
 /.dev.vars.supabase
 
 .claude
+!/.claude/
+/.claude/*
+!/.claude/settings.json
 .codex/
 
 
