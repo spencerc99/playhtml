@@ -21,7 +21,9 @@ def local_connection(dsn):
         or options.get('port') != '54322' or 'service' in options
         or options.get('hostaddr', options['host']) not in ('127.0.0.1', 'localhost', '::1')):
         raise ValueError('Parity requires the local Supabase endpoint on port 54322')
-    return psycopg.connect(dsn, connect_timeout=3)
+    # Override inherited PGHOSTADDR/PGSERVICE routing as well as the URL hostname.
+    address = '::1' if options['host'] == '::1' else '127.0.0.1'
+    return psycopg.connect(dsn, hostaddr=address, port=54322, connect_timeout=3)
 
 
 def run_stage(python, scripts, name, *args, env=None):
