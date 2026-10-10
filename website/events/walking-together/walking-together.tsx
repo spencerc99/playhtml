@@ -1,21 +1,26 @@
 // ABOUTME: Runs the walking-together workshop session page.
-// ABOUTME: Coordinates shared URL posting, cursor activity prompts, roster state, and portraits.
+// ABOUTME: Coordinates the walk/collage stages, URL posting, cursor prompts, roster, and portraits.
 import ReactDOM from "react-dom";
 import React, { useState } from "react";
 import {
   PlayProvider,
   withSharedState,
+  usePageData,
   usePlayerIdentity,
 } from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
 import {
   resolveSession,
   roomForCurrentPage,
+  type SessionStage,
   type SubtitleSegment,
   type WorkshopSession,
 } from "./sessions";
 import { isAdmin } from "./admin";
+import { installAdminControlsToggle } from "./adminControls";
 import { PortraitOverlay } from "./PortraitOverlay";
+import { CollageStage } from "./CollageStage";
+import { WalkStage } from "./walk/WalkStage";
 import {
   rosterPids,
   rosterEntryIsCurrent,
@@ -23,6 +28,8 @@ import {
   type RosterEntry,
 } from "./roster";
 import "./walking-together.scss";
+
+installAdminControlsToggle();
 
 // playhtml exposes `window.cursors` with `name`/`color` as settable
 // properties (getters + setters), not setName/setColor methods. Assigning an
@@ -58,15 +65,10 @@ const IS_ARCHIVED = SESSION?.archived ?? false;
 // outerHTML (which varies per render and would break cross-client sync).
 const ROSTER_ID = "walking-together-roster";
 
-const CURSOR_INSTRUCTIONS = [
-  "Make a circle together",
-  "Play tag with each other",
-  "Stack all cursors in the center",
-  "Make a zigzag together",
-  "Coordinate by colors",
-  "Split into your preferred corner",
-  "Imagine your cursor as a falling rain drop",
-];
+// Page data channel holding which stage (walk vs collage) the room is on.
+const STAGE_DATA_NAME = "walking-together-stage";
+
+const CURSOR_PROMPTS = SESSION?.prompts ?? [];
 
 /** How long each group activity runs before advancing, in seconds. */
 const ACTIVITY_DURATION_S = 30;
@@ -174,6 +176,7 @@ const RosterAdmin = withSharedState(
              * shares. Hover title still shows the participant count. */}
             <button
               className="portrait-trigger"
+              data-admin-control
               onClick={() => setShowPortrait(true)}
               disabled={pids.length === 0}
               title={`Show portrait (${pids.length})`}
@@ -213,6 +216,8 @@ export const URLChat = withSharedState(
   },
   ({ data, setData }) => {
     const [inputUrl, setInputUrl] = React.useState("");
+    const { name, color } = usePlayerIdentity();
+    const admin = isAdmin(name, color);
     const urlListRef = React.useRef<HTMLDivElement>(null);
     const urls: SharedURL[] = Array.isArray(data.urls) ? data.urls : [];
 
@@ -267,6 +272,21 @@ export const URLChat = withSharedState(
               onClick={copyToClipboard}
             >
               COPY
+            </button>
+          )}
+          {admin && urls.length > 0 && (
+            <button
+              data-admin-control
+              style={{
+                fontSize: "10px",
+                fontFamily: "monospace",
+              }}
+              onClick={() => {
+                if (window.confirm("Clear every link from the chat for everyone?"))
+                  setData({ urls: [] });
+              }}
+            >
+              CLEAR
             </button>
           )}
         </div>
@@ -352,7 +372,7 @@ export const GroupActivityDisplay = withSharedState(
           advancedFromRef.current = d.lastChangeTime;
           setData({
             currentInstructionIndex:
-              (d.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
+              (d.currentInstructionIndex + 1) % CURSOR_PROMPTS.length,
             lastChangeTime: Date.now(),
           });
         }
@@ -370,7 +390,7 @@ export const GroupActivityDisplay = withSharedState(
     const handleSkip = () => {
       setData({
         currentInstructionIndex:
-          (data.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
+          (data.currentInstructionIndex + 1) % CURSOR_PROMPTS.length,
         lastChangeTime: Date.now(),
       });
     };
@@ -379,7 +399,7 @@ export const GroupActivityDisplay = withSharedState(
       <div className="group-activity" id="group-activity">
         <h3>Current Activity:</h3>
         <p className="instruction">
-          {CURSOR_INSTRUCTIONS[data.currentInstructionIndex]}
+          {CURSOR_PROMPTS[data.currentInstructionIndex % CURSOR_PROMPTS.length]}
         </p>
         <div
           style={{
@@ -395,6 +415,7 @@ export const GroupActivityDisplay = withSharedState(
         </div>
         {!IS_ARCHIVED && isAdmin(name, color) && (
           <button
+            data-admin-control
             onClick={handleSkip}
             style={{
               fontSize: "10px",
@@ -414,6 +435,85 @@ export const GroupActivityDisplay = withSharedState(
   },
 );
 
+/** Keeps the walk's link chat reachable once the room moves on to the
+ * collage. During the walk the chat sits in the middle of the page as before;
+ * during the collage it docks into a side pane each person can fold away. The
+ * wrapper renders the same way in both stages so the chat never remounts. */
+function WalkChatDock({
+  stage,
+  children,
+}: {
+  stage: SessionStage;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  const docked = stage === "collage";
+  const modifier = docked ? (open ? "open" : "closed") : "walk";
+
+  return (
+    <div className={`walk-chat-dock walk-chat-dock--${modifier}`}>
+      {docked && (
+        <button
+          className="walk-chat-dock__tab"
+          onClick={() => setOpen((wasOpen) => !wasOpen)}
+          aria-expanded={open}
+        >
+          {open ? "◂" : "▸"} walk chat
+        </button>
+      )}
+      <div className="walk-chat-dock__body" hidden={docked && !open}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Holds which stage the whole room is on. The stage belongs to the page, not
+ * to any one element, so it lives in page data. Everyone follows it; only the
+ * admin sees the switch. The walk stage stays mounted (just hidden) during the
+ * collage so its elements keep their registrations. */
+function StageSwitch({ session }: { session: WorkshopSession }) {
+  const [stageData, setStageData] = usePageData<{ stage: SessionStage }>(
+    STAGE_DATA_NAME,
+    { stage: "walk" },
+  );
+  const { name, color } = usePlayerIdentity();
+  const admin = isAdmin(name, color);
+  const stage: SessionStage = session.hasCollageStage
+    ? stageData.stage
+    : "walk";
+  const nextStage: SessionStage = stage === "walk" ? "collage" : "walk";
+
+  return (
+    <div className="walking-together" data-stage={stage}>
+      {admin && session.hasCollageStage && !session.archived && (
+        <button
+          className="stage-switch"
+          data-admin-control
+          onClick={() => setStageData({ stage: nextStage })}
+          title={`Switch everyone to the ${nextStage} stage`}
+        >
+          {stage === "walk" ? "→ collage" : "← walk"}
+        </button>
+      )}
+      {session.hasJoinWalk && !session.archived && (
+        <WalkStage active={stage === "walk"} />
+      )}
+      <div className="walk-stage" hidden={stage !== "walk"}>
+        <UserSetup />
+        <GroupActivityDisplay />
+      </div>
+      <WalkChatDock stage={stage}>
+        <URLChat />
+      </WalkChatDock>
+      {session.hasCollageStage && (
+        <CollageStage active={stage === "collage"} />
+      )}
+      <RosterAdmin />
+    </div>
+  );
+}
+
 function Main({ session }: { session: WorkshopSession }) {
   return (
     <PlayProvider
@@ -422,12 +522,7 @@ function Main({ session }: { session: WorkshopSession }) {
         cursors: { enabled: true, coordinateMode: "relative" },
       }}
     >
-      <div className="walking-together">
-        <UserSetup />
-        <URLChat />
-        <GroupActivityDisplay />
-        <RosterAdmin />
-      </div>
+      <StageSwitch session={session} />
     </PlayProvider>
   );
 }

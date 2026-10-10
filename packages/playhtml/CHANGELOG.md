@@ -1,5 +1,30 @@
 # Change Log
 
+## 2.15.0
+
+### Minor Changes
+
+- 35088f1: Add the element `live`, `users`, `setLive`, and `update` APIs so one renderer can combine shared state with current per-user values and identity. Existing awareness and `updateElement` names remain available as deprecated compatibility aliases.
+
+### Patch Changes
+
+- 9f3e2c3: Avoid opening a redundant collaborative-document connection when cursors use a dedicated presence room, preventing repeated reconnections and unnecessary request load.
+- 74e4d35: Make `playhtml.register(elementOrId, initializer)` the recommended vanilla API for custom elements using either `updateElement` or `view`. Callers can pass an existing HTML element or register by id before the element exists. Registered initializers bind through the standard setup path without being copied onto DOM elements, while direct element-property configuration remains supported for compatibility.
+- db2f919: Allow nullable page data to be cleared with `setData(null)` or an updater returning `null` after holding an object or array. Subscribers receive the cleared value, and the channel can be populated again.
+- 8301126: Switch shared rooms after client-side navigation commits the destination URL, so pushState and replaceState updates use the destination page's data.
+- ad66821: Page-data channels can now update primitive roots with functional updates that return the next value.
+- 23e3b32: Avoid reinitializing bound elements during repeated page scans and limit local awareness updates to the element that changed, reducing navigation and presence overhead on pages with many PlayHTML elements.
+- 6c0a07e: Use the realtime presence transport for user discovery across cursor settings, tabs, and reconnects. Prevent a previous self identity appearing as another visitor after an identity change, and keep multi-tab identity selection consistent. Presence subscriptions refresh when participants change identity, existing user-list subscribers receive room changes when another subscriber joins, and element presence clears departed-room participants after navigation.
+- 9c4cbed: Coalesce synchronous primitive page-data notifications and skip user-list updates when only cursor position changes, reducing repeated work for data and presence subscribers.
+- 6c0a07e: Clear loading indicators on elements registered before initialization so they become interactive when shared data is ready.
+- fb24e9b: Preserve the embedding page's room namespace for `srcdoc` examples so stable element IDs reconnect to their existing shared data.
+- Updated dependencies [35088f1]
+- Updated dependencies [74e4d35]
+- Updated dependencies [c549849]
+- Updated dependencies [ad66821]
+- Updated dependencies [75c1cce]
+  - @playhtml/common@0.10.0
+
 ## 2.14.1
 
 ### Patch Changes

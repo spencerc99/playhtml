@@ -39,6 +39,7 @@ import {
   handleAdminInstallationReload,
   handleInstallationControl,
 } from './routes/installationControl';
+import { handleInternetMapFile } from './routes/internetMap';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
@@ -169,6 +170,11 @@ export default {
 
     if (path === '/access-requests' && request.method === 'POST') {
       return handleAccessRequest(request, env);
+    }
+
+    // Admin-only: map bundles carry participants' full browsing URLs.
+    if (path.startsWith('/internet-map/') && request.method === 'GET') {
+      return handleInternetMapFile(request, env, path);
     }
 
     if (path === '/admin/access-control' && request.method === 'GET') {

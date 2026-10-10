@@ -1,24 +1,24 @@
-// ABOUTME: Shares session-scoped authentication and navigation across WWO admin pages.
-// ABOUTME: Keeps the Worker admin token out of URLs and persistent browser storage.
+// ABOUTME: Shares authentication and navigation across WWO admin pages.
+// ABOUTME: Keeps the Worker admin token out of URLs; remembers it in this browser for 30 days of inactivity.
 
 import { useState } from "react";
+import { clearAdminToken, loadAdminToken, saveAdminToken } from "./adminToken";
 
-const TOKEN_STORAGE_KEY = "wwo-admin-token";
 const PLAYHTML_ADMIN_URL = "https://playhtml.fun/admin.html";
 
 export type AdminPage = "access" | "installation";
 
 export function useAdminToken() {
-  const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
+  const [token, setToken] = useState(loadAdminToken);
 
   return {
     token,
     login(nextToken: string) {
-      sessionStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
+      saveAdminToken(nextToken);
       setToken(nextToken);
     },
     logout() {
-      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      clearAdminToken();
       setToken("");
     },
   };
@@ -61,6 +61,7 @@ export function AdminHeader({
         <a aria-current={currentPage === "access" ? "page" : undefined} href="/admin/">Access control</a>
         <a aria-current={currentPage === "installation" ? "page" : undefined}
           href="/admin/installation/">Installation</a>
+        <a href="/internet-map/">Internet map</a>
         <a href="/commute-curation/">Commute curation</a>
         <a href={PLAYHTML_ADMIN_URL}>PlayHTML rooms ↗</a>
       </nav>

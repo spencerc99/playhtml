@@ -1,0 +1,137 @@
+// ABOUTME: Styles for "join the walk": the opt-in card, status pills, and the trails layer.
+// ABOUTME: The trails sit behind the walk stage; the card and pills sit above it.
+
+$mono-font: "Cousine", "Courier", monospace;
+$ink: #1d1b19;
+$ink-muted: #5b554e;
+$paper: #fffdf8;
+
+.walk-layer {
+  position: fixed;
+  inset: 0;
+  // Behind the chat and prompts, which aren't positioned, but above the page.
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.walk-stop {
+  position: absolute;
+  transform: translate(8px, -50%);
+  font-family: $mono-font;
+  font-size: 10px;
+  color: $ink-muted;
+  white-space: nowrap;
+}
+
+.walk-head {
+  position: absolute;
+  transform: translate(10px, 10px);
+  display: inline-flex;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-family: $mono-font;
+  font-size: 11px;
+  color: #fff;
+  white-space: nowrap;
+  // Names and URLs sit on any walker color; a dark scrim keeps them legible.
+  box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.28);
+}
+
+.walk-status {
+  position: fixed;
+  top: 64px;
+  right: 1em;
+  z-index: 30;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.walk-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  font-family: $mono-font;
+  font-size: 11px;
+  background: $paper;
+  border: 1px solid #c9c4bb;
+  border-radius: 999px;
+  color: $ink;
+
+  &--button {
+    cursor: pointer;
+  }
+
+  &--dark {
+    background: $ink;
+    color: $paper;
+    border-color: $ink;
+  }
+}
+
+.walk-join {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 40;
+  width: min(480px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 32px;
+  background: $paper;
+  border: 1px solid #b9b2a7;
+  box-shadow:
+    0 2px 2px rgba(61, 56, 51, 0.12),
+    0 14px 32px rgba(61, 56, 51, 0.14);
+  color: $ink;
+
+  h2 {
+    margin: 0 0 12px;
+    font-size: 30px;
+  }
+
+  p {
+    margin: 0 0 16px;
+    font-size: 17px;
+    line-height: 1.45;
+  }
+
+  ul {
+    margin: 0 0 20px;
+    padding-left: 1.1em;
+    font-family: $mono-font;
+    font-size: 12px;
+    color: #4f4a44;
+    line-height: 1.8;
+  }
+}
+
+.walk-join__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+
+  button,
+  a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 16px;
+    font-family: $mono-font;
+    font-size: 14px;
+    background: transparent;
+    color: $ink;
+    border: 1px solid #b9b2a7;
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  .walk-join__primary {
+    background: $ink;
+    color: $paper;
+    border-color: $ink;
+  }
+}

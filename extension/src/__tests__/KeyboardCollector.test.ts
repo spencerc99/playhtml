@@ -134,6 +134,62 @@ describe("KeyboardCollector", () => {
     collector.disable();
   });
 
+  it("records each typing burst while the same field stays focused", async () => {
+    const collector = new KeyboardCollector();
+    const emitted: KeyboardEventData[] = [];
+    collector.setEmitCallback((event) => {
+      emitted.push(event);
+    });
+    const input = appendInput();
+    collector.enable();
+    input.focus();
+
+    insertText(input, "one", "one");
+    await vi.advanceTimersByTimeAsync(5_000);
+    insertText(input, "onetwo", "two");
+    await vi.advanceTimersByTimeAsync(5_000);
+    insertText(input, "onetwothree", "three");
+    collector.disable();
+
+    expect(emitted).toHaveLength(3);
+    expect(emitted.map((event) => event.t)).toEqual([
+      "#message", "#message", "#message",
+    ]);
+    expect(emitted.map((event) => event.sequence?.[0].text)).toEqual([
+      "███", "███", "█████",
+    ]);
+  });
+
+  it("keeps typing associated with its field after an idle flush", async () => {
+    const collector = new KeyboardCollector();
+    const emitted: KeyboardEventData[] = [];
+    collector.setEmitCallback((event) => {
+      emitted.push(event);
+    });
+    const first = appendInput();
+    const second = appendInput();
+    second.id = "reply";
+    collector.enable();
+    first.focus();
+
+    insertText(first, "one", "one");
+    await vi.advanceTimersByTimeAsync(5_000);
+    insertText(first, "onetwo", "two");
+    second.focus();
+    insertText(second, "reply", "reply");
+    second.blur();
+    await vi.advanceTimersByTimeAsync(5_000);
+    collector.disable();
+
+    expect(emitted).toHaveLength(3);
+    expect(emitted.map((event) => event.t)).toEqual([
+      "#message", "#message", "#reply",
+    ]);
+    expect(emitted.map((event) => event.sequence?.[0].text)).toEqual([
+      "███", "███", "█████",
+    ]);
+  });
+
   it("removes storage change listeners when disabled", () => {
     const collector = new KeyboardCollector();
 

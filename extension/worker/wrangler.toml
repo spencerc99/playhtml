@@ -35,6 +35,7 @@ compatibility_flags = ["global_fetch_strictly_public"]
 # - GET /events/stats: ADMIN_KEY required
 # - POST /events/export: ADMIN_KEY required
 # - POST /feedback: Public (validated + rate limited)
+# - GET /internet-map/<bundle>/<file>: ADMIN_KEY required (private R2 bundles)
 #
 # TODO: Consider adding CORS restrictions to admin endpoints
 
@@ -67,6 +68,14 @@ migrations_dir = "migrations"
 
 [ai]
 binding = "AI"
+
+# Private internet map bundles. They hold participants' full page URLs and
+# titles, so they are served only through the admin-authenticated
+# /internet-map/<bundle>/<file> route, never as public site files.
+# Create once: bunx wrangler r2 bucket create wwo-internet-map
+[[r2_buckets]]
+binding = "INTERNET_MAP_BUNDLES"
+bucket_name = "wwo-internet-map"
 
 [[migrations]]
 tag = "v1"

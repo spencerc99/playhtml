@@ -193,6 +193,9 @@ export function createLiveSoundFrame(
     progress: trailProgress,
     color: trailState.trail.color,
     isNewlyActive: false,
+    // Trail.id is participant + url, so a person keeps one sonic fingerprint
+    // even as the sliding window renumbers the trail array underneath them.
+    identityKey: trailState.trail.id,
   };
 }
 
@@ -220,6 +223,9 @@ interface LiveTrailsProps {
   cinematicNextSignal?: number;
   showClickRipples?: boolean;
   soundEngine?: SoundEngine | null;
+  /** Keep settled trails on screen for as long as they are in `trailStates`,
+   * instead of fading them out a minute after they stop growing. */
+  keepSettled?: boolean;
   /** Called with trail ids once they have fully faded out and been removed, so
    * the owner can free their accumulated events. */
   onTrailsRemoved?: (ids: string[]) => void;
@@ -240,6 +246,7 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     cinematicNextSignal = 0,
     showClickRipples = false,
     soundEngine = null,
+    keepSettled = false,
     onTrailsRemoved,
     settings,
   }) => {
@@ -285,6 +292,8 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     }, [settings.strokeWidth, settings.trailOpacity]);
 
     const frozenRef = useRef(frozen);
+    const keepSettledRef = useRef(keepSettled);
+    keepSettledRef.current = keepSettled;
     useEffect(() => {
       frozenRef.current = frozen;
     }, [frozen]);
@@ -384,7 +393,8 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             live !== undefined &&
             d !== undefined &&
             live.trail.points.length > d.total;
-          const dimExpired = shouldDepartTrail(d, now, resumed);
+          const dimExpired =
+            !keepSettledRef.current && shouldDepartTrail(d, now, resumed);
           if (live && !dimExpired) {
             // Still live — refresh geometry and ease back if it was departing.
             const visibility =
@@ -439,7 +449,8 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           for (const entry of prev) {
             const tid = entry.trail.trail.id;
             const d = draws.get(tid);
-            const dimExpired = shouldDepartTrail(d, now);
+            const dimExpired =
+              !keepSettledRef.current && shouldDepartTrail(d, now);
             const departing = entry.visibility?.toOpacity === 0;
             if (dimExpired && !departing) {
               next.push({

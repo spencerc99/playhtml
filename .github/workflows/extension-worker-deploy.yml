@@ -51,13 +51,13 @@ jobs:
       - name: Bundle extension Worker
         run: bun run smoke:extension-worker
 
-      - name: Apply extension catalog migrations
+      - name: Apply pending D1 migrations
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: bun
-          command: d1 migrations apply WWO_ADMIN_DB --remote --config extension/worker/wrangler.toml
+          command: d1 migrations apply wwo-admin --remote --config extension/worker/wrangler.toml
 
       - name: Deploy extension Worker
         uses: cloudflare/wrangler-action@v4

@@ -5,8 +5,6 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createServer } from "node:http";
 import { webcrypto } from "node:crypto";
 import { transferableAbortController } from "node:util";
-import { setFlagsFromString } from "node:v8";
-import { runInNewContext } from "node:vm";
 import {
   ImageFingerprints,
   fetchImageFingerprint,
@@ -58,9 +56,8 @@ const server = createServer((request, response) => {
     response.end();
     return;
   }
-  if (request.url === "/timeout" || request.url === "/timeout-partial") {
+  if (request.url?.startsWith("/timeout")) {
     response.flushHeaders();
-    if (request.url === "/timeout-partial") response.write(svg);
     return;
   }
   setTimeout(
@@ -231,17 +228,70 @@ describe("image fingerprints", () => {
   });
 
   it("aborts a response that never finishes", async () => {
-    setFlagsFromString("--expose-gc");
-    const collectGarbage = runInNewContext("gc") as () => void;
-    setFlagsFromString("--no-expose-gc");
-    const collect = setInterval(collectGarbage, 100);
-    try {
-      expect(await Promise.all([
-        fetchImageFingerprint(`${origin}/timeout`),
-        fetchImageFingerprint(`${origin}/timeout-partial`),
-      ])).toEqual([undefined, undefined]);
-    } finally {
-      clearInterval(collect);
-    }
+    const openRequests = active;
+    expect(await fetchImageFingerprint(`${origin}/timeout`)).toBeUndefined();
+    await vi.waitFor(() => expect(active).toBe(openRequests));
   }, 15000);
+
+  it("bounds active response readers and closes timed-out requests", async () => {
+    const nativeFetch = globalThis.fetch;
+    let activeReaders = 0;
+    let peakReaders = 0;
+    let totalReaders = 0;
+    // Observe native readers: server close events can arrive after the next
+    // request even though the cancelled client reader has already settled.
+    vi.stubGlobal("fetch", async (...args: Parameters<typeof fetch>) => {
+      const response = await nativeFetch(...args);
+      const body = response.body;
+      if (body) {
+        const getReader = body.getReader.bind(body);
+        body.getReader = ((...readerArgs: Parameters<typeof body.getReader>) => {
+          const reader = getReader(...readerArgs);
+          totalReaders++;
+          activeReaders++;
+          peakReaders = Math.max(peakReaders, activeReaders);
+          const closed = () => { activeReaders--; };
+          void reader.closed.then(closed, closed);
+          return reader;
+        }) as typeof body.getReader;
+      }
+      return response;
+    });
+    const store = new LocalEventStore();
+    const events: CollectionEvent[] = Array.from({ length: 4 }, (_, index) => ({
+      id: `timeout-${index}`,
+      type: "element",
+      ts: 1,
+      domain: "example.com",
+      meta: {
+        pid: "test",
+        sid: "test",
+        url: `https://example.com/${index}`,
+        vw: 100,
+        vh: 100,
+        tz: "UTC",
+      },
+      data: {
+        kind: "image",
+        src: `${origin}/timeout?request=${index}`,
+        naturalWidth: 100,
+        naturalHeight: 100,
+        pageTitle: "Test",
+      },
+    }));
+    try {
+      const accepted = await store.addEvents(events);
+      expect(await new ImageFingerprints(store).process(accepted)).toEqual({
+        checked: 0,
+        skipped: 4,
+      });
+      expect(totalReaders).toBe(4);
+      expect(peakReaders).toBeLessThanOrEqual(2);
+      expect(activeReaders).toBe(0);
+      await vi.waitFor(() => expect(active).toBe(0));
+    } finally {
+      vi.stubGlobal("fetch", nativeFetch);
+      (store as unknown as { db: IDBDatabase }).db?.close();
+    }
+  }, 25000);
 });

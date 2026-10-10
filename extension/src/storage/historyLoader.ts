@@ -15,7 +15,17 @@ export interface LoadOptions {
   limit?: number;
   types?: CollectionEventType[];
   forceServerBackfill?: boolean;
+  /**
+   * Whose trails to load. 'mine' reads this browser's local history;
+   * 'everyone' reads every participant's shared events from the server.
+   */
+  source?: TrailSource;
 }
+
+export type TrailSource = 'mine' | 'everyone';
+
+/** Server events to request per type when showing everyone's trails. */
+export const EVERYONE_TRAILS_LIMIT = 5000;
 
 export type FilterMode = 'domain' | 'url' | 'auto';
 
@@ -32,7 +42,12 @@ export async function loadHistoricalData(
   mode: FilterMode = 'auto',
   options: LoadOptions = {},
 ): Promise<CollectionEvent[]> {
-  const { limit = 1000, types = ["cursor", "keyboard", "viewport", "navigation"], forceServerBackfill = false } = options;
+  const {
+    limit = 1000,
+    types = ["cursor", "keyboard", "viewport", "navigation"],
+    forceServerBackfill = false,
+    source = 'mine',
+  } = options;
 
   // Determine filter scope
   const scope = determineFilterScope(currentUrl);
@@ -42,6 +57,17 @@ export async function loadHistoricalData(
 
   if (VERBOSE) console.log(`[HistoryLoader] Loading data in ${actualMode} mode`);
   if (VERBOSE) console.log(`[HistoryLoader] Domain: ${domain}, URL: ${normalizedCurrentUrl}`);
+
+  if (source === 'everyone') {
+    const serverEvents = await fetchServerEvents(
+      domain,
+      normalizedCurrentUrl,
+      actualMode,
+      limit,
+      types,
+    );
+    return sortEventsByTimestamp(deduplicateEvents(serverEvents));
+  }
 
   const allEvents: CollectionEvent[] = [];
 

@@ -51,9 +51,8 @@ const PRESENCE_REPUBLISH_DELAY_MS = 1_100;
 /**
  * Page-presence client over the generic presence transport. Mirrors the public
  * PresenceAPI (setMyPresence/getPresences/onPresenceChange/getMyIdentity) but
- * publishes to presence channels instead of Yjs awareness. The cursor channel
- * is served from the shared cursor snapshot (getCursorPresences) exactly like
- * the Yjs-awareness fallback, so cursor rendering keeps one source of truth.
+ * publishes to presence channels. The cursor channel is served from the shared
+ * cursor snapshot (getCursorPresences), so cursor rendering has one source of truth.
  */
 export class PresenceClient implements PresenceAPI {
   private transport: RealtimePresenceTransport;
@@ -256,20 +255,21 @@ export class PresenceClient implements PresenceAPI {
     }
   }
 
-  /** Fingerprint of one channel across self + all remote peers, so a listener
-   * only fires when its channel actually changed. Fingerprints the UNWRAPPED
+  /** Fingerprint of one channel and its participants' identities, so a listener
+   * follows identity changes as well as channel values. Fingerprints the UNWRAPPED
    * payload so a keepalive re-stamp (which only bumps the envelope `at`) does
    * not count as a change and re-fire subscribers. */
   private channelFingerprint(channel: string): string {
-    const parts: string[] = [];
+    const parts: string[] = [`self-identity:${safeStringify(this.getIdentity())}`];
     if (this.localChannels.has(channel)) {
       parts.push(`self:${safeStringify(this.localChannels.get(channel))}`);
     }
     const wireChannel = toPagePresenceChannel(channel);
     for (const connectionId of Array.from(this.peers.keys()).sort()) {
-      const folded = this.peers.get(connectionId)?.[wireChannel];
+      const channels = this.peers.get(connectionId)!;
+      const folded = channels[wireChannel];
       if (folded === undefined) continue;
-      parts.push(`${connectionId}:${safeStringify(unwrapPagePresenceValue(folded))}`);
+      parts.push(`${connectionId}:${safeStringify(channels.identity)}:${safeStringify(unwrapPagePresenceValue(folded))}`);
     }
     return parts.join("|");
   }

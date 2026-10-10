@@ -8,7 +8,8 @@ import React, {
   useRef,
   useState,
 } from "react";
-import type { ScrapItem } from "./ScrapCollage";
+import { headingDisplayFontSize, type ScrapItem } from "./ScrapCollage";
+import { useScrapImageSrc } from "../utils/scrapImageSource";
 
 /** Fraction of the viewport's smaller dimension the lifted scrap fills. */
 const LIFTED_VIEWPORT_FRACTION = 0.55;
@@ -20,6 +21,12 @@ const SETTLE_ROTATION_RANGE_DEG = 2;
  * for examination while keeping its radius, padding, and shadow in proportion.
  */
 const BUTTON_LIFT_SCALE = 3;
+
+/**
+ * Headings are likewise captured at page size and enlarged for examination,
+ * by less than a button because their wording is already much wider.
+ */
+const HEADING_LIFT_SCALE = 1.5;
 
 /** Elements Tab may reach while the examine dialog holds focus. */
 const FOCUSABLE_SELECTOR =
@@ -72,6 +79,12 @@ export function kindDetailRows(item: ScrapItem): ProvenanceRow[] {
           value: formatDimensions(item.width, item.height),
         },
       ];
+    case "heading": {
+      const rows: ProvenanceRow[] = [{ label: "level", value: `h${item.level}` }];
+      const text = item.text.trim();
+      if (text) rows.push({ label: "text", value: text });
+      return rows;
+    }
     case "cursor": {
       const rows: ProvenanceRow[] = [];
       if (item.hotspotX !== undefined && item.hotspotY !== undefined) {
@@ -301,7 +314,7 @@ const LIGHTBOX_STYLES = `
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
-    border-block: 1px solid rgba(61, 56, 51, 0.14);
+    border-top: 1px solid rgba(61, 56, 51, 0.14);
   }
   .scrap-lightbox__timeline ol { list-style: none; padding: 0; margin: 0; }
   .scrap-lightbox__timeline li {
@@ -309,8 +322,8 @@ const LIGHTBOX_STYLES = `
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px;
     padding: 8px 0;
-    border-bottom: 1px solid rgba(61, 56, 51, 0.08);
   }
+  .scrap-lightbox__timeline li + li { border-top: 1px solid rgba(61, 56, 51, 0.08); }
   .scrap-lightbox__timeline h4 { margin: 0; padding: 10px 0 4px; font: inherit; color: #827a72; }
   .scrap-lightbox__timeline time { color: #827a72; font-size: 9px; white-space: nowrap; padding-top: 1px; }
   .scrap-lightbox__timeline a { color: #3d3833; min-width: 0; text-decoration: none; }
@@ -395,6 +408,49 @@ const LIGHTBOX_STYLES = `
   .scrap-lightbox__action:focus-visible {
     background: #3d8375;
     box-shadow: 0 5px 12px rgba(61, 56, 51, 0.18);
+  }
+
+  .scrap-lightbox__delete {
+    appearance: none;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #a39b92;
+    font-family: "Martian Mono", monospace;
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  .scrap-lightbox__delete:hover,
+  .scrap-lightbox__delete:focus-visible {
+    color: #3d3833;
+    text-decoration: underline;
+    outline: none;
+  }
+
+  .scrap-lightbox__delete--confirm {
+    color: #a8553f;
+  }
+
+  .scrap-lightbox__delete--confirm:hover,
+  .scrap-lightbox__delete--confirm:focus-visible {
+    color: #91462f;
+  }
+
+  .scrap-lightbox__delete:disabled {
+    cursor: default;
+    opacity: 0.6;
+    text-decoration: none;
+  }
+
+  .scrap-lightbox__delete-confirm {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+    color: #827a72;
+    font-family: "Martian Mono", monospace;
+    font-size: 10px;
   }
 
   .scrap-lightbox__close {
@@ -494,14 +550,19 @@ interface ScrapLightboxProps {
   onClose: () => void;
   onPrevious: () => void;
   onNext: () => void;
+  /** Permanently removes this scrap; when absent, the scrap cannot be deleted here. */
+  onDelete?: () => Promise<void>;
 }
 
 function ScrapMedia({ item }: { item: ScrapItem }) {
+  const imageSrc = useScrapImageSrc(
+    item.kind === "image" ? item.src : undefined,
+  );
   switch (item.kind) {
     case "image":
       return (
         <div className="scrap-lightbox__scrap-media">
-          <img src={item.src} alt={item.alt ?? ""} draggable={false} />
+          <img src={imageSrc ?? undefined} alt={item.alt ?? ""} draggable={false} />
         </div>
       );
     case "button":
@@ -512,6 +573,7 @@ function ScrapMedia({ item }: { item: ScrapItem }) {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            ...(item.backdropColor ? { background: item.backdropColor } : {}),
           }}
         >
           <span
@@ -551,6 +613,33 @@ function ScrapMedia({ item }: { item: ScrapItem }) {
           dangerouslySetInnerHTML={{ __html: item.markup }}
         />
       );
+    case "heading":
+      return (
+        <div
+          className="scrap-lightbox__scrap-media"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "0 16px",
+          }}
+        >
+          <span
+            style={{
+              ...(item.styles as React.CSSProperties),
+              fontSize:
+                headingDisplayFontSize(item.styles, item.text) *
+                HEADING_LIFT_SCALE,
+              lineHeight: 1.15,
+              maxWidth: "100%",
+              textAlign: "center",
+              overflowWrap: "anywhere",
+            }}
+          >
+            {item.text}
+          </span>
+        </div>
+      );
     case "cursor":
       return (
         <div className="scrap-lightbox__scrap-media">
@@ -585,8 +674,20 @@ export function ScrapLightbox({
   onClose,
   onPrevious,
   onNext,
+  onDelete,
 }: ScrapLightboxProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const [deleteStep, setDeleteStep] = useState<
+    "idle" | "confirm" | "deleting" | "failed"
+  >("idle");
+  const confirmDelete = () => {
+    if (!onDelete) return;
+    setDeleteStep("deleting");
+    onDelete().catch((error: unknown) => {
+      console.error("Could not delete the scrap:", error);
+      setDeleteStep("failed");
+    });
+  };
   const dialogRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [lifted, setLifted] = useState(prefersReducedMotion);
@@ -865,16 +966,48 @@ export function ScrapLightbox({
               </div>
             </section>
           )}
-          {item.pageUrl && (
+          {(item.pageUrl || onDelete) && (
             <div className="scrap-lightbox__actions">
-              <a
-                className="scrap-lightbox__action"
-                href={item.pageUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                visit page →
-              </a>
+              {item.pageUrl && (
+                <a
+                  className="scrap-lightbox__action"
+                  href={item.pageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  visit page →
+                </a>
+              )}
+              {onDelete && (deleteStep === "idle" || deleteStep === "failed") && (
+                <button
+                  type="button"
+                  className="scrap-lightbox__delete"
+                  onClick={() => setDeleteStep("confirm")}
+                >
+                  {deleteStep === "failed" ? "could not delete, try again" : "delete"}
+                </button>
+              )}
+              {onDelete && (deleteStep === "confirm" || deleteStep === "deleting") && (
+                <span className="scrap-lightbox__delete-confirm" role="group">
+                  <span>delete for good?</span>
+                  <button
+                    type="button"
+                    className="scrap-lightbox__delete scrap-lightbox__delete--confirm"
+                    disabled={deleteStep === "deleting"}
+                    onClick={confirmDelete}
+                  >
+                    {deleteStep === "deleting" ? "deleting..." : "delete"}
+                  </button>
+                  <button
+                    type="button"
+                    className="scrap-lightbox__delete"
+                    disabled={deleteStep === "deleting"}
+                    onClick={() => setDeleteStep("idle")}
+                  >
+                    keep
+                  </button>
+                </span>
+              )}
             </div>
           )}
         </aside>

@@ -1,5 +1,5 @@
 // ABOUTME: Tests internet scrap capture rules, visibility timing, sanitization, and limits.
-// ABOUTME: Exercises image, button, SVG icon, and cursor pipelines against real DOM nodes.
+// ABOUTME: Exercises image, button, SVG icon, heading, and cursor pipelines against real DOM nodes.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ScrapCollector } from "../ScrapCollector";
@@ -40,6 +40,8 @@ class IntersectionObserverMock {
 interface ElementSize {
   width?: number;
   height?: number;
+  left?: number;
+  top?: number;
 }
 
 interface ImageOptions extends ElementSize {
@@ -52,12 +54,37 @@ interface ImageOptions extends ElementSize {
 
 function setRenderedSize(
   element: Element,
-  { width = 160, height = 120 }: ElementSize = {},
+  { width = 160, height = 120, left = 0, top = 0 }: ElementSize = {},
 ): void {
   vi.spyOn(element, "getBoundingClientRect").mockReturnValue({
     width,
     height,
+    left,
+    top,
   } as DOMRect);
+}
+
+interface HeadingOptions extends ElementSize {
+  text?: string;
+  level?: 1 | 2 | 3;
+  styles?: Record<string, string>;
+}
+
+function createHeading({
+  text = "What the tide left behind",
+  level = 2,
+  styles,
+  width = 320,
+  height = 44,
+  left = 0,
+  top = 0,
+}: HeadingOptions = {}): HTMLElement {
+  const heading = document.createElement(`h${level}`);
+  heading.textContent = text;
+  if (styles) heading.setAttribute("data-styles", JSON.stringify(styles));
+  setRenderedSize(heading, { width, height, left, top });
+  document.body.appendChild(heading);
+  return heading;
 }
 
 function createImage({
@@ -67,6 +94,8 @@ function createImage({
   naturalHeight = 150,
   width = 160,
   height = 120,
+  left = 0,
+  top = 0,
   complete = true,
 }: ImageOptions): HTMLImageElement {
   const image = document.createElement("img");
@@ -77,7 +106,7 @@ function createImage({
     naturalWidth: { value: naturalWidth, configurable: true },
     naturalHeight: { value: naturalHeight, configurable: true },
   });
-  setRenderedSize(image, { width, height });
+  setRenderedSize(image, { width, height, left, top });
   document.body.appendChild(image);
   return image;
 }
@@ -94,6 +123,8 @@ function createButton({
   role = false,
   width = 160,
   height = 40,
+  left = 0,
+  top = 0,
 }: ButtonOptions = {}): HTMLElement {
   const element = value === undefined
     ? document.createElement(role ? "div" : "button")
@@ -105,16 +136,16 @@ function createButton({
     element.textContent = text;
   }
   if (role) element.setAttribute("role", "button");
-  setRenderedSize(element, { width, height });
+  setRenderedSize(element, { width, height, left, top });
   document.body.appendChild(element);
   return element;
 }
 
 function createSvg(
-  { width = 24, height = 24 }: ElementSize = {},
+  { width = 24, height = 24, left = 0, top = 0 }: ElementSize = {},
 ): SVGSVGElement {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  setRenderedSize(svg, { width, height });
+  setRenderedSize(svg, { width, height, left, top });
   document.body.appendChild(svg);
   return svg;
 }
@@ -130,25 +161,38 @@ describe("ScrapCollector", () => {
     document.head.innerHTML = "";
     document.body.innerHTML = "";
     document.title = "A page worth keeping";
-    vi.stubGlobal("getComputedStyle", (element: Element) => ({
-      backgroundColor: element.getAttribute("data-background") ?? "rgb(20, 30, 40)",
-      backgroundImage: element.getAttribute("data-background-image") ?? "none",
-      color: element.getAttribute("data-color") ?? "rgb(10, 20, 30)",
-      border: "1px solid rgb(1, 2, 3)",
-      borderRadius: "4px",
-      paddingTop: "4px",
-      paddingRight: "8px",
-      paddingBottom: "4px",
-      paddingLeft: "8px",
-      fontFamily: "sans-serif",
-      fontSize: "14px",
-      fontWeight: "400",
-      fontStyle: "normal",
-      letterSpacing: "normal",
-      textTransform: "none",
-      boxShadow: "none",
-      cursor: element.getAttribute("data-cursor") ?? "auto",
-    } as CSSStyleDeclaration));
+    vi.stubGlobal("getComputedStyle", (element: Element) => {
+      const overrides = JSON.parse(
+        element.getAttribute("data-styles") ?? "{}",
+      ) as Record<string, string>;
+      return {
+        backgroundColor:
+          element.getAttribute("data-background") ?? "rgb(20, 30, 40)",
+        backgroundImage: element.getAttribute("data-background-image") ?? "none",
+        color: element.getAttribute("data-color") ?? "rgb(10, 20, 30)",
+        border: "1px solid rgb(1, 2, 3)",
+        borderRadius: "4px",
+        paddingTop: "4px",
+        paddingRight: "8px",
+        paddingBottom: "4px",
+        paddingLeft: "8px",
+        fontFamily: "sans-serif",
+        fontSize: "14px",
+        fontWeight: "400",
+        fontStyle: "normal",
+        letterSpacing: "normal",
+        textTransform: "none",
+        lineHeight: "20px",
+        display: "block",
+        visibility: "visible",
+        opacity: "1",
+        clip: "auto",
+        clipPath: "none",
+        boxShadow: "none",
+        cursor: element.getAttribute("data-cursor") ?? "auto",
+        ...overrides,
+      } as CSSStyleDeclaration;
+    });
     emitCallback = vi.fn();
     collector = new ScrapCollector();
     collector.setEmitCallback(emitCallback);
@@ -266,6 +310,12 @@ describe("ScrapCollector", () => {
       displayHeight: 200,
       pageTitle: "A page worth keeping",
       faviconUrl: "https://example.com/favicon.png",
+      position: {
+        pageX: 150,
+        pageY: 100,
+        pageWidth: 1024,
+        pageHeight: 2000,
+      },
     });
   });
 
@@ -290,6 +340,253 @@ describe("ScrapCollector", () => {
 
     showForCapture([image]);
     expect(emitted("image")).toHaveLength(1);
+  });
+
+  describe("background images", () => {
+    const sizes = new Map<string, { width: number; height: number }>();
+    const measureImage = vi.fn(async (url: string) => sizes.get(url));
+
+    beforeEach(() => {
+      sizes.clear();
+      measureImage.mockClear();
+      collector = new ScrapCollector({ measureImage });
+      collector.setEmitCallback(emitCallback);
+    });
+
+    function createBackground(
+      backgroundImage: string,
+      size: ElementSize = {},
+      tag = "div",
+    ): HTMLElement {
+      const element = document.createElement(tag);
+      element.setAttribute("data-background-image", backgroundImage);
+      setRenderedSize(element, size);
+      document.body.appendChild(element);
+      return element;
+    }
+
+    async function scanAndCapture(elements: Element[]): Promise<void> {
+      vi.advanceTimersByTime(100);
+      showForCapture(elements);
+      await vi.runAllTimersAsync();
+    }
+
+    it("keeps a CSS background image as an image scrap", async () => {
+      sizes.set("https://example.com/hero.jpg", { width: 1600, height: 900 });
+      const hero = createBackground('url("https://example.com/hero.jpg")', {
+        width: 400,
+        height: 225,
+      });
+      hero.setAttribute("aria-label", "A field at dusk");
+
+      collector.enable();
+      await scanAndCapture([hero]);
+
+      expect(measureImage).toHaveBeenCalledWith("https://example.com/hero.jpg");
+      expect(emitted("image")).toEqual([
+        expect.objectContaining({
+          kind: "image",
+          src: "https://example.com/hero.jpg",
+          alt: "A field at dusk",
+          naturalWidth: 1600,
+          naturalHeight: 900,
+          displayWidth: 400,
+          displayHeight: 225,
+        }),
+      ]);
+    });
+
+    it("uses the topmost image layer and ignores gradients and inline images", async () => {
+      sizes.set("https://example.com/top.png", { width: 300, height: 300 });
+      const layered = createBackground(
+        'linear-gradient(red, blue), url("https://example.com/top.png"), url("https://example.com/under.png")',
+      );
+      const gradient = createBackground("linear-gradient(red, blue)");
+      const inline = createBackground('url("data:image/png;base64,abc")');
+
+      collector.enable();
+      expect(observer().observed.has(gradient)).toBe(false);
+      vi.advanceTimersByTime(100);
+      expect(observer().observed.has(gradient)).toBe(false);
+      expect(observer().observed.has(inline)).toBe(false);
+      await scanAndCapture([layered]);
+
+      expect(emitted("image").map((data) => (data as { src: string }).src)).toEqual([
+        "https://example.com/top.png",
+      ]);
+    });
+
+    it("applies the image size filters to backgrounds", async () => {
+      sizes.set("https://example.com/tiny-natural.png", { width: 16, height: 16 });
+      sizes.set("https://example.com/small-box.png", { width: 400, height: 400 });
+      const tinyNatural = createBackground('url("https://example.com/tiny-natural.png")');
+      const smallBox = createBackground('url("https://example.com/small-box.png")', {
+        width: 40,
+        height: 40,
+      });
+      const broken = createBackground('url("https://example.com/missing.png")');
+
+      collector.enable();
+      await scanAndCapture([tinyNatural, smallBox, broken]);
+
+      expect(emitted("image")).toEqual([]);
+      expect(measureImage).not.toHaveBeenCalledWith("https://example.com/small-box.png");
+    });
+
+    it("treats a background and an img of the same picture as one scrap", async () => {
+      sizes.set("https://example.com/same.jpg", { width: 800, height: 600 });
+      const image = createImage({ src: "https://example.com/same.jpg" });
+      const background = createBackground('url("https://example.com/same.jpg?w=800")');
+
+      collector.enable();
+      await scanAndCapture([image, background]);
+
+      expect(emitted("image")).toHaveLength(1);
+    });
+
+    it("finds backgrounds on elements added after collection starts", async () => {
+      sizes.set("https://example.com/late.jpg", { width: 500, height: 500 });
+      collector.enable();
+      vi.advanceTimersByTime(100);
+
+      const wrapper = document.createElement("section");
+      const late = createBackground('url("https://example.com/late.jpg")');
+      wrapper.appendChild(late);
+      document.body.appendChild(wrapper);
+      await Promise.resolve();
+      vi.advanceTimersByTime(100);
+
+      expect(observer().observed.has(late)).toBe(true);
+      await scanAndCapture([late]);
+      expect(emitted("image")).toHaveLength(1);
+    });
+
+    it("captures a page-filling background that is never half on screen", async () => {
+      sizes.set("https://example.com/page.jpg", { width: 1200, height: 1200 });
+      const page = createBackground('url("https://example.com/page.jpg")', {
+        width: 1024,
+        height: 5000,
+      });
+
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      observer().trigger([page], 0.15);
+      // The mock entry carries no intersection rect, so it is not yet visible.
+      vi.advanceTimersByTime(1000);
+      await vi.runAllTimersAsync();
+      expect(emitted("image")).toEqual([]);
+
+      const callback = (observer() as unknown as {
+        callback: IntersectionObserverCallback;
+      }).callback;
+      callback(
+        [
+          {
+            target: page,
+            isIntersecting: true,
+            intersectionRatio: 0.15,
+            intersectionRect: { width: 1024, height: 768 },
+            rootBounds: { width: 1024, height: 768 },
+          } as unknown as IntersectionObserverEntry,
+        ],
+        observer() as unknown as IntersectionObserver,
+      );
+      vi.advanceTimersByTime(1000);
+      await vi.runAllTimersAsync();
+      expect(emitted("image")).toHaveLength(1);
+    });
+
+    /** Restyles an element the way a lazy loader would, via its class. */
+    async function restyle(
+      element: Element,
+      backgroundImage: string,
+      className: string,
+    ): Promise<void> {
+      element.setAttribute("data-background-image", backgroundImage);
+      element.setAttribute("class", className);
+      await Promise.resolve();
+      vi.advanceTimersByTime(100);
+    }
+
+    it("enrolls an existing element once a class change gives it a background", async () => {
+      sizes.set("https://example.com/lazy.jpg", { width: 600, height: 400 });
+      const lazy = createBackground("none");
+
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      expect(observer().observed.has(lazy)).toBe(false);
+
+      await restyle(lazy, 'url("https://example.com/lazy.jpg")', "loaded");
+      expect(observer().observed.has(lazy)).toBe(true);
+      await scanAndCapture([lazy]);
+      expect(emitted("image").map((data) => (data as { src: string }).src)).toEqual([
+        "https://example.com/lazy.jpg",
+      ]);
+    });
+
+    it("rescans descendants when an ancestor's class decides their background", async () => {
+      sizes.set("https://example.com/slide.jpg", { width: 600, height: 400 });
+      const carousel = document.createElement("div");
+      const slide = createBackground("none");
+      carousel.appendChild(slide);
+      document.body.appendChild(carousel);
+
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      slide.setAttribute("data-background-image", 'url("https://example.com/slide.jpg")');
+      carousel.setAttribute("class", "is-ready");
+      await Promise.resolve();
+      vi.advanceTimersByTime(100);
+
+      expect(observer().observed.has(slide)).toBe(true);
+    });
+
+    it("keeps the picture on screen at capture, not the one first scanned", async () => {
+      sizes.set("https://example.com/placeholder.jpg", { width: 600, height: 400 });
+      sizes.set("https://example.com/real.jpg", { width: 600, height: 400 });
+      const swapped = createBackground('url("https://example.com/placeholder.jpg")');
+
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      // Swapped without a class or style change the observer would see.
+      swapped.setAttribute("data-background-image", 'url("https://example.com/real.jpg")');
+      await scanAndCapture([swapped]);
+
+      expect(emitted("image").map((data) => (data as { src: string }).src)).toEqual([
+        "https://example.com/real.jpg",
+      ]);
+    });
+
+    it("stops watching an element whose background is removed", async () => {
+      const fading = createBackground('url("https://example.com/gone.jpg")');
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      expect(observer().observed.has(fading)).toBe(true);
+
+      await restyle(fading, "none", "plain");
+      expect(observer().observed.has(fading)).toBe(false);
+    });
+
+    it("skips the image load for a picture already kept on the page", async () => {
+      sizes.set("https://example.com/twice.jpg", { width: 600, height: 400 });
+      const first = createBackground('url("https://example.com/twice.jpg")');
+      const second = createBackground('url("https://example.com/twice.jpg")');
+
+      collector.enable();
+      await scanAndCapture([first]);
+      await scanAndCapture([second]);
+
+      expect(measureImage).toHaveBeenCalledTimes(1);
+      expect(emitted("image")).toHaveLength(1);
+    });
+
+    it("stops reading backgrounds once the collector is disabled", () => {
+      createBackground('url("https://example.com/off.jpg")');
+      collector.enable();
+      collector.disable();
+      vi.advanceTimersByTime(100);
+      expect(measureImage).not.toHaveBeenCalled();
+    });
   });
 
   it("filters button text and displayed-size bounds", () => {
@@ -376,6 +673,93 @@ describe("ScrapCollector", () => {
     expect(observer().observed.has(uniqueButtons[19])).toBe(false);
   });
 
+  describe("bare text buttons", () => {
+    /** The computed style a plain text control tagged `role="button"` reports. */
+    const BARE = JSON.stringify({
+      backgroundColor: "rgba(0, 0, 0, 0)",
+      backgroundImage: "none",
+      border: "0px none rgb(6, 6, 6)",
+      boxShadow: "none",
+    });
+
+    it("skips prose a site merely tagged as a button", () => {
+      const bare = createButton({
+        text: "willhess17 4 years ago (edited)",
+        role: true,
+      });
+      bare.setAttribute("data-styles", BARE);
+
+      collector.enable();
+      showForCapture([bare]);
+
+      expect(emitted("button")).toHaveLength(0);
+    });
+
+    it("keeps a bordered control that paints nothing else", () => {
+      const bordered = createButton({ text: "Learn more", role: true });
+      bordered.setAttribute(
+        "data-styles",
+        JSON.stringify({
+          backgroundColor: "rgba(0, 0, 0, 0)",
+          backgroundImage: "none",
+          border: "1.5px solid rgb(91, 141, 184)",
+          boxShadow: "none",
+        }),
+      );
+
+      collector.enable();
+      showForCapture([bordered]);
+
+      expect(
+        emitted("button").map((data) => data.kind === "button" && data.text),
+      ).toEqual(["Learn more"]);
+    });
+
+    it("keeps an icon-only control that paints nothing else", () => {
+      const iconOnly = createButton({ text: "" });
+      iconOnly.setAttribute("data-styles", BARE);
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      const path = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path",
+      );
+      path.setAttribute("d", "M0 0h10v10z");
+      svg.appendChild(path);
+      setRenderedSize(svg, { width: 20, height: 20 });
+      iconOnly.appendChild(svg);
+
+      collector.enable();
+      showForCapture([iconOnly]);
+
+      const scraps = emitted("button");
+      expect(scraps).toHaveLength(1);
+      expect(scraps[0].kind === "button" && scraps[0].innerSvg).toContain(
+        "<svg",
+      );
+    });
+
+    it("does not let skipped prose consume the per-page button cap", () => {
+      const prose = Array.from({ length: 30 }, (_, index) => {
+        const bare = createButton({ text: `Commenter ${index}`, role: true });
+        bare.setAttribute("data-styles", BARE);
+        return bare;
+      });
+      const real = Array.from({ length: 20 }, (_, index) =>
+        createButton({ text: `Real button ${index}` }),
+      );
+
+      collector.enable();
+      showForCapture([...prose, ...real]);
+
+      expect(emitted("button")).toHaveLength(20);
+      expect(
+        emitted("button").every(
+          (data) => data.kind === "button" && data.text.startsWith("Real"),
+        ),
+      ).toBe(true);
+    });
+  });
+
   it("discovers added submit and role buttons through DOM mutations", async () => {
     collector.enable();
     const submit = document.createElement("input");
@@ -444,25 +828,20 @@ describe("ScrapCollector", () => {
     expect(buttonScrap.innerSvg).toBeUndefined();
   });
 
-  it("skips SVG icons with unresolvable use references or oversized markup", () => {
-    const unresolved = createSvg();
-    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
-    use.setAttribute("href", "#missing");
-    unresolved.appendChild(use);
-    const oversized = createSvg();
-    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    text.textContent = "x".repeat(21 * 1024);
-    oversized.appendChild(text);
-    const tooSmall = createSvg({ width: 11, height: 24 });
-    const tooLarge = createSvg({ width: 401, height: 24 });
+  it("does not capture standalone SVG icons", () => {
+    const svg = createSvg();
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M0 0h8v8z");
+    svg.appendChild(path);
 
     collector.enable();
-    showForCapture([unresolved, oversized, tooSmall, tooLarge]);
+    expect(observer().observed.has(svg)).toBe(false);
+    showForCapture([svg]);
 
     expect(emitted("svg-icon")).toHaveLength(0);
   });
 
-  it("embeds in-document references used by captured SVG icons", () => {
+  it("embeds in-document references used by a button's inline SVG", () => {
     const definitions = createSvg({ width: 0, height: 0 });
     const symbol = document.createElementNS(
       "http://www.w3.org/2000/svg",
@@ -474,24 +853,29 @@ describe("ScrapCollector", () => {
     symbol.appendChild(path);
     definitions.appendChild(symbol);
 
-    const svg = createSvg();
+    const button = createButton({ text: "" });
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
     use.setAttribute("href", "#saved-shape");
     svg.appendChild(use);
+    setRenderedSize(svg, { width: 24, height: 24 });
+    button.appendChild(svg);
 
     collector.enable();
-    showForCapture([svg]);
+    showForCapture([button]);
 
-    const scraps = emitted("svg-icon");
+    const scraps = emitted("button");
     expect(scraps).toHaveLength(1);
-    const markup = scraps[0].kind === "svg-icon" ? scraps[0].markup : "";
+    const markup = scraps[0].kind === "button" ? scraps[0].innerSvg ?? "" : "";
     expect(markup).toContain('id="saved-shape"');
     expect(markup).toContain('d="M0 0h8v8z"');
     expect(markup).toContain('href="#saved-shape"');
   });
 
-  it("sanitizes SVG icons and bakes currentColor into their markup", () => {
-    const svg = createSvg({ width: 32, height: 36 });
+  it("sanitizes a button's inline SVG and bakes currentColor into it", () => {
+    const button = createButton({ text: "" });
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    setRenderedSize(svg, { width: 32, height: 36 });
     svg.setAttribute("data-color", "rgb(12, 34, 56)");
     svg.setAttribute("onload", "alert(1)");
     const script = document.createElementNS("http://www.w3.org/2000/svg", "script");
@@ -508,13 +892,14 @@ describe("ScrapCollector", () => {
     const image = document.createElementNS("http://www.w3.org/2000/svg", "image");
     image.setAttribute("href", "https://example.com/tracker.png");
     svg.append(script, foreignObject, path, image);
+    button.appendChild(svg);
 
     collector.enable();
-    showForCapture([svg]);
+    showForCapture([button]);
 
-    const scraps = emitted("svg-icon");
+    const scraps = emitted("button");
     expect(scraps).toHaveLength(1);
-    const markup = scraps[0].kind === "svg-icon" ? scraps[0].markup : "";
+    const markup = scraps[0].kind === "button" ? scraps[0].innerSvg ?? "" : "";
     expect(markup).toContain('width="32"');
     expect(markup).toContain('height="36"');
     expect(markup).toContain('viewBox="0 0 32 36"');
@@ -525,53 +910,535 @@ describe("ScrapCollector", () => {
     );
   });
 
-  it("deduplicates serialized SVG icons and caps them at twenty", () => {
-    const duplicateOne = createSvg();
-    const duplicateTwo = createSvg();
-    for (const svg of [duplicateOne, duplicateTwo]) {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", "M0 0h1v1z");
-      svg.appendChild(path);
-    }
-    const uniqueIcons = Array.from({ length: 20 }, (_, index) => {
-      const svg = createSvg();
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", `M${index + 1} 0h1v1z`);
-      svg.appendChild(path);
-      return svg;
+  it("captures h1 through h3 with their level and normalized text", () => {
+    const headings = ([1, 2, 3] as const).map((level) =>
+      createHeading({ level, text: `  Level\n\n ${level}  heading ` }),
+    );
+    const notAHeading = document.createElement("h4");
+    notAHeading.textContent = "Fourth level";
+    setRenderedSize(notAHeading);
+    document.body.appendChild(notAHeading);
+
+    collector.enable();
+    expect(observer().observed.has(notAHeading)).toBe(false);
+    showForCapture([...headings, notAHeading]);
+
+    expect(
+      emitted("heading").map((data) =>
+        data.kind === "heading" ? [data.level, data.text] : undefined,
+      ),
+    ).toEqual([
+      [1, "Level 1 heading"],
+      [2, "Level 2 heading"],
+      [3, "Level 3 heading"],
+    ]);
+  });
+
+  it("stores the heading's own wording, leaving text-transform to the renderer", () => {
+    const shouting = createHeading({
+      text: "Enter the guildhall",
+      styles: { textTransform: "uppercase" },
     });
 
     collector.enable();
-    showForCapture([duplicateOne, duplicateTwo, ...uniqueIcons]);
+    showForCapture([shouting]);
 
-    expect(emitted("svg-icon")).toHaveLength(20);
-    const duplicateMarkup = emitted("svg-icon").filter(
-      (data) =>
-        data.kind === "svg-icon" && data.markup.includes("M0 0h1v1z"),
+    const scraps = emitted("heading");
+    expect(scraps).toHaveLength(1);
+    expect(scraps[0].kind === "heading" && scraps[0].text).toBe(
+      "Enter the guildhall",
     );
-    expect(duplicateMarkup).toHaveLength(1);
-    expect(observer().observed.has(uniqueIcons[19])).toBe(false);
+    expect(scraps[0].kind === "heading" && scraps[0].styles.textTransform).toBe(
+      "uppercase",
+    );
   });
 
-  it("captures a same-geometry icon rendered at different sizes once per page", () => {
-    const small = createSvg({ width: 24, height: 24 });
-    small.setAttribute("viewBox", "0 0 24 24");
-    const large = createSvg({ width: 40, height: 40 });
-    large.setAttribute("viewBox", "0 0 24 24");
-    for (const svg of [small, large]) {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", "M2 2h20v20z");
-      svg.appendChild(path);
-    }
+  it("skips empty, too-short, too-long, and invisible headings", () => {
+    const empty = createHeading({ text: "   " });
+    const tooShort = createHeading({ text: "a" });
+    const tooLong = createHeading({ text: "x".repeat(121) });
+    const zeroSized = createHeading({ text: "No box at all", width: 0 });
+    const invisible = createHeading({
+      text: "Visibility hidden",
+      styles: { visibility: "hidden" },
+    });
+    const transparent = createHeading({
+      text: "Fully transparent",
+      styles: { opacity: "0" },
+    });
+    const shortestKept = createHeading({ text: "Hi" });
+    const longestKept = createHeading({ text: "y".repeat(120) });
 
     collector.enable();
-    showForCapture([small, large]);
+    showForCapture([
+      empty,
+      tooShort,
+      tooLong,
+      zeroSized,
+      invisible,
+      transparent,
+      shortestKept,
+      longestKept,
+    ]);
 
-    expect(emitted("svg-icon")).toHaveLength(1);
-    expect(emitted("svg-icon")[0]).toMatchObject({
-      kind: "svg-icon",
-      width: 24,
-      height: 24,
+    expect(
+      emitted("heading").map((data) => (data.kind === "heading" ? data.text : "")),
+    ).toEqual(["Hi", "y".repeat(120)]);
+  });
+
+  /** Puts the element inside a wrapper carrying the given computed styles. */
+  function wrapIn(
+    element: Element,
+    styles: Record<string, string>,
+  ): HTMLElement {
+    const wrapper = document.createElement("div");
+    wrapper.setAttribute("data-styles", JSON.stringify(styles));
+    element.replaceWith(wrapper);
+    wrapper.appendChild(element);
+    document.body.appendChild(wrapper);
+    return wrapper;
+  }
+
+  it("skips a heading hidden by an ancestor rather than by its own style", () => {
+    const behindTransparent = createHeading({ text: "Behind a faded wrapper" });
+    wrapIn(behindTransparent, { opacity: "0" });
+    const behindUndisplayed = createHeading({ text: "Behind display none" });
+    wrapIn(behindUndisplayed, { display: "none" });
+    const behindClipped = createHeading({ text: "Behind a collapsed clip" });
+    wrapIn(behindClipped, { clip: "rect(0px, 0px, 0px, 0px)" });
+    const behindClipPath = createHeading({ text: "Behind an inset clip path" });
+    wrapIn(behindClipPath, { clipPath: "inset(100%)" });
+    const kept = createHeading({ text: "Out in the open" });
+
+    collector.enable();
+    showForCapture([
+      behindTransparent,
+      behindUndisplayed,
+      behindClipped,
+      behindClipPath,
+      kept,
+    ]);
+
+    expect(
+      emitted("heading").map((data) => (data.kind === "heading" ? data.text : "")),
+    ).toEqual(["Out in the open"]);
+  });
+
+  it("skips a heading faded by an ancestor several levels up", () => {
+    const heading = createHeading({ text: "Deep inside a faded section" });
+    let node: Element = heading;
+    for (let depth = 0; depth < 4; depth++) {
+      node = wrapIn(node, {});
+    }
+    wrapIn(node, { opacity: "0" });
+
+    collector.enable();
+    showForCapture([heading]);
+
+    expect(emitted("heading")).toHaveLength(0);
+  });
+
+  it("keeps a heading under a merely faded ancestor", () => {
+    const heading = createHeading({ text: "Under a light veil" });
+    wrapIn(heading, { opacity: "0.4" });
+
+    collector.enable();
+    showForCapture([heading]);
+
+    expect(
+      emitted("heading").map((data) => (data.kind === "heading" ? data.text : "")),
+    ).toEqual(["Under a light veil"]);
+  });
+
+  it("skips a button, image and icon hidden by an ancestor", () => {
+    const button = createButton({ text: "Buy the thing" });
+    wrapIn(button, { opacity: "0" });
+    const image = createImage({ src: "https://cdn.example/hidden.jpg" });
+    wrapIn(image, { display: "none" });
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M0 0h10v10z");
+    icon.appendChild(path);
+    setRenderedSize(icon, { width: 24, height: 24 });
+    document.body.appendChild(icon);
+    wrapIn(icon, { clipPath: "inset(100%)" });
+
+    collector.enable();
+    showForCapture([button, image, icon]);
+
+    expect(emitted("button")).toHaveLength(0);
+    expect(emitted("image")).toHaveLength(0);
+    expect(emitted("svg-icon")).toHaveLength(0);
+  });
+
+  it("ignores headings inside the extension's own injected UI", () => {
+    const extensionHost = document.createElement("div");
+    extensionHost.id = "wewere-announcement-toast-host";
+    document.body.appendChild(extensionHost);
+    const ourHeading = document.createElement("h2");
+    ourHeading.textContent = "Internet scraps are here";
+    setRenderedSize(ourHeading);
+    extensionHost.appendChild(ourHeading);
+    const pageHeading = createHeading({ text: "The page's own heading" });
+
+    collector.enable();
+    expect(observer().observed.has(ourHeading)).toBe(false);
+    showForCapture([ourHeading, pageHeading]);
+
+    expect(
+      emitted("heading").map((data) => (data.kind === "heading" ? data.text : "")),
+    ).toEqual(["The page's own heading"]);
+  });
+
+  it("reconstructs only allowlisted typographic styles for a heading", () => {
+    const heading = createHeading({
+      text: "Typeset heading",
+      styles: {
+        fontFamily: "Georgia, serif",
+        fontSize: "42px",
+        fontWeight: "700",
+        fontStyle: "italic",
+        color: "rgb(61, 56, 51)",
+        letterSpacing: "-0.01em",
+        textTransform: "uppercase",
+        lineHeight: "48px",
+        backgroundColor: "rgba(0, 0, 0, 0)",
+        boxShadow: "0 2px 4px rgb(0, 0, 0)",
+        borderRadius: "12px",
+      },
+    });
+
+    collector.enable();
+    showForCapture([heading]);
+
+    const scraps = emitted("heading");
+    expect(scraps).toHaveLength(1);
+    expect(scraps[0].kind === "heading" && scraps[0].styles).toEqual({
+      fontFamily: "Georgia, serif",
+      fontSize: "42px",
+      fontWeight: "700",
+      fontStyle: "italic",
+      color: "rgb(61, 56, 51)",
+      letterSpacing: "-0.01em",
+      textTransform: "uppercase",
+      lineHeight: "48px",
+    });
+  });
+
+  it("saves no background for a heading, however its page painted one", () => {
+    const opaque = createHeading({
+      text: "Banner heading",
+      styles: { backgroundColor: "rgb(34, 51, 59)" },
+    });
+    const keyword = createHeading({
+      text: "Keyword transparent",
+      styles: { backgroundColor: "transparent" },
+    });
+    const tinted = createHeading({
+      text: "Tinted background",
+      styles: { backgroundColor: "rgba(12, 34, 56, 0.4)" },
+    });
+
+    collector.enable();
+    showForCapture([opaque, keyword, tinted]);
+
+    const scraps = emitted("heading");
+    expect(scraps).toHaveLength(3);
+    for (const scrap of scraps) {
+      expect(Object.keys(scrap.kind === "heading" ? scrap.styles : {})).not.toContain(
+        "backgroundColor",
+      );
+      expect(scrap.kind === "heading" && scrap.backdropColor).toBeUndefined();
+    }
+  });
+
+  it("keeps a heading's own text color", () => {
+    const heading = createHeading({
+      text: "Pale type on a dark bar",
+      styles: { color: "rgb(245, 240, 232)" },
+    });
+
+    collector.enable();
+    showForCapture([heading]);
+
+    const colored = emitted("heading")[0];
+    expect(colored.kind === "heading" && colored.styles.color).toBe(
+      "rgb(245, 240, 232)",
+    );
+  });
+
+  it("deduplicates headings by wording regardless of level and caps them at twenty", () => {
+    const asH1 = createHeading({ level: 1, text: "Same Wording" });
+    const asH3 = createHeading({ level: 3, text: "same wording" });
+    const uniqueHeadings = Array.from({ length: 20 }, (_, index) =>
+      createHeading({ text: `Heading number ${index}` }),
+    );
+
+    collector.enable();
+    showForCapture([asH1, asH3, ...uniqueHeadings]);
+
+    expect(emitted("heading")).toHaveLength(20);
+    expect(
+      emitted("heading").filter(
+        (data) =>
+          data.kind === "heading" &&
+          data.text.toLowerCase() === "same wording",
+      ),
+    ).toHaveLength(1);
+    expect(observer().observed.has(uniqueHeadings[19])).toBe(false);
+  });
+
+  it("discovers headings added to the page after collection starts", async () => {
+    collector.enable();
+    const container = document.createElement("section");
+    const heading = document.createElement("h2");
+    heading.textContent = "Loaded in later";
+    setRenderedSize(heading, { width: 240, height: 40 });
+    container.appendChild(heading);
+    document.body.appendChild(container);
+
+    await Promise.resolve();
+    expect(observer().observed.has(heading)).toBe(true);
+
+    showForCapture([heading]);
+    expect(
+      emitted("heading").map((data) => (data.kind === "heading" ? data.text : "")),
+    ).toEqual(["Loaded in later"]);
+  });
+
+  describe("backdrop color", () => {
+    /** An outlined control: see-through, but chromed enough to still be a button. */
+    const OUTLINED = JSON.stringify({
+      backgroundColor: "rgba(0, 0, 0, 0)",
+      backgroundImage: "none",
+      border: "1px solid rgb(245, 240, 232)",
+      boxShadow: "none",
+    });
+
+    /** Wraps the element in ancestors painting the given backgrounds, innermost first. */
+    function nest(element: Element, ancestorBackgrounds: string[]): void {
+      const anchor = element.parentElement;
+      let child: Element = element;
+      element.remove();
+      for (const backgroundColor of ancestorBackgrounds) {
+        const parent = document.createElement("div");
+        parent.setAttribute(
+          "data-styles",
+          JSON.stringify({ backgroundColor }),
+        );
+        parent.appendChild(child);
+        child = parent;
+      }
+      (anchor ?? document.body).appendChild(child);
+    }
+
+    function outlinedButton(text: string, ancestors: string[]): HTMLElement {
+      const button = createButton({ text });
+      button.setAttribute("data-styles", OUTLINED);
+      nest(button, ancestors);
+      return button;
+    }
+
+    it("records the nearest painted ancestor for a see-through control", () => {
+      const button = outlinedButton("Sign in", [
+        "rgba(0, 0, 0, 0)",
+        "rgb(28, 32, 38)",
+      ]);
+
+      collector.enable();
+      showForCapture([button]);
+
+      const scraps = emitted("button");
+      expect(scraps).toHaveLength(1);
+      expect(scraps[0].kind === "button" && scraps[0].backdropColor).toBe(
+        "rgb(28, 32, 38)",
+      );
+    });
+
+    it("records a backdrop for a semi-transparent background too", () => {
+      const button = createButton({ text: "Tinted over a dark bar" });
+      button.setAttribute(
+        "data-styles",
+        JSON.stringify({
+          backgroundColor: "rgba(255, 255, 255, 0.2)",
+          backgroundImage: "none",
+          border: "0px none",
+          boxShadow: "none",
+        }),
+      );
+      nest(button, ["rgb(28, 32, 38)"]);
+
+      collector.enable();
+      showForCapture([button]);
+
+      const scrap = emitted("button")[0];
+      expect(scrap.kind === "button" && scrap.backdropColor).toBe(
+        "rgb(28, 32, 38)",
+      );
+      expect(scrap.kind === "button" && scrap.styles.backgroundColor).toBe(
+        "rgba(255, 255, 255, 0.2)",
+      );
+    });
+
+    it("records a backdrop for a modern-syntax see-through background", () => {
+      const button = createButton({ text: "Tinted in modern syntax" });
+      button.setAttribute(
+        "data-styles",
+        JSON.stringify({
+          backgroundColor: "oklch(0.7 0.1 250 / 0.2)",
+          backgroundImage: "none",
+          border: "0px none",
+          boxShadow: "none",
+        }),
+      );
+      nest(button, ["rgb(28, 32, 38)"]);
+
+      collector.enable();
+      showForCapture([button]);
+
+      const scrap = emitted("button")[0];
+      expect(scrap.kind === "button" && scrap.backdropColor).toBe(
+        "rgb(28, 32, 38)",
+      );
+    });
+
+    it("walks past an ancestor whose modern-syntax background is see-through", () => {
+      const button = outlinedButton("Sign in", [
+        "color(display-p3 0.1 0.2 0.3 / 0)",
+        "rgb(28, 32, 38)",
+      ]);
+
+      collector.enable();
+      showForCapture([button]);
+
+      const scrap = emitted("button")[0];
+      expect(scrap.kind === "button" && scrap.backdropColor).toBe(
+        "rgb(28, 32, 38)",
+      );
+    });
+
+    it("keeps walking past an ancestor whose background cannot be read", () => {
+      const button = outlinedButton("Sign in", [
+        "var(--panel-surface)",
+        "rgb(28, 32, 38)",
+      ]);
+
+      collector.enable();
+      showForCapture([button]);
+
+      const scrap = emitted("button")[0];
+      expect(scrap.kind === "button" && scrap.backdropColor).toBe(
+        "rgb(28, 32, 38)",
+      );
+    });
+
+    it("records no backdrop when the control paints its own background", () => {
+      const button = createButton({ text: "Opaque of its own" });
+      button.setAttribute("data-background", "rgb(34, 51, 59)");
+      nest(button, ["rgb(200, 0, 0)"]);
+
+      collector.enable();
+      showForCapture([button]);
+
+      const scrap = emitted("button")[0];
+      expect(scrap.kind === "button" && scrap.backdropColor).toBeUndefined();
+      expect(scrap.kind === "button" && scrap.styles.backgroundColor).toBe(
+        "rgb(34, 51, 59)",
+      );
+    });
+
+    it("falls back to the page canvas when nothing up the tree paints", () => {
+      const clear = JSON.stringify({ backgroundColor: "rgba(0, 0, 0, 0)" });
+      document.body.setAttribute("data-styles", clear);
+      document.documentElement.setAttribute("data-styles", clear);
+      const button = outlinedButton("Nothing painted behind", [
+        "rgba(0, 0, 0, 0)",
+      ]);
+
+      collector.enable();
+      showForCapture([button]);
+
+      const canvasScrap = emitted("button")[0];
+      expect(canvasScrap.kind === "button" && canvasScrap.backdropColor).toBe(
+        "rgb(255, 255, 255)",
+      );
+      document.body.removeAttribute("data-styles");
+      document.documentElement.removeAttribute("data-styles");
+    });
+
+    it("stops climbing after a bounded number of ancestors", () => {
+      const clear = JSON.stringify({ backgroundColor: "rgba(0, 0, 0, 0)" });
+      document.body.setAttribute("data-styles", clear);
+      document.documentElement.setAttribute("data-styles", clear);
+      // 11 clear ancestors, then the painted one: the 12th step still sees it.
+      const nearby = outlinedButton("Painted just within reach", [
+        ...Array.from({ length: 11 }, () => "rgba(0, 0, 0, 0)"),
+        "rgb(10, 20, 30)",
+      ]);
+      const tooFar = outlinedButton("Painted beyond the cap", [
+        ...Array.from({ length: 12 }, () => "rgba(0, 0, 0, 0)"),
+        "rgb(10, 20, 30)",
+      ]);
+
+      collector.enable();
+      showForCapture([nearby, tooFar]);
+
+      const backdrops = emitted("button").map((data) =>
+        data.kind === "button" ? data.backdropColor : undefined,
+      );
+      // Past the cap the walk gives up rather than reporting a guess.
+      expect(backdrops).toEqual(["rgb(10, 20, 30)", undefined]);
+      document.body.removeAttribute("data-styles");
+      document.documentElement.removeAttribute("data-styles");
+    });
+
+    it("never records a backdrop for a heading, whatever it sits on", () => {
+      const heading = createHeading({
+        text: "Pale type on a dark bar",
+        styles: { color: "rgb(245, 240, 232)" },
+      });
+      nest(heading, ["rgb(28, 32, 38)"]);
+
+      collector.enable();
+      showForCapture([heading]);
+
+      const scrap = emitted("heading")[0];
+      expect(scrap.kind === "heading" && scrap.backdropColor).toBeUndefined();
+      expect(
+        Object.keys(scrap.kind === "heading" ? scrap.styles : {}),
+      ).not.toContain("backgroundColor");
+    });
+
+    it("leaves a gradient button to its own background", () => {
+      const button = createButton({ text: "Gradient" });
+      button.setAttribute("data-background", "rgba(0, 0, 0, 0)");
+      button.setAttribute(
+        "data-background-image",
+        "linear-gradient(rgb(1, 2, 3), rgb(4, 5, 6))",
+      );
+      nest(button, ["rgb(28, 32, 38)"]);
+
+      collector.enable();
+      showForCapture([button]);
+
+      const gradientButton = emitted("button")[0];
+      expect(
+        gradientButton.kind === "button" && gradientButton.backdropColor,
+      ).toBeUndefined();
+    });
+
+    it("does not let the backdrop change a scrap's identity", () => {
+      const onDark = outlinedButton("Same label either way", [
+        "rgb(28, 32, 38)",
+      ]);
+      const onLight = outlinedButton("Same label either way", [
+        "rgb(250, 249, 246)",
+      ]);
+
+      collector.enable();
+      showForCapture([onDark, onLight]);
+
+      expect(emitted("button")).toHaveLength(1);
     });
   });
 
@@ -629,6 +1496,109 @@ describe("ScrapCollector", () => {
       hotspotX: 3,
       hotspotY: 5,
     })]);
+  });
+
+  describe("page position", () => {
+    afterEach(() => {
+      (window as { scrollX: number }).scrollX = 0;
+      (window as { scrollY: number }).scrollY = 0;
+    });
+
+    it("records each element scrap's centre in document coordinates", () => {
+      (window as { scrollX: number }).scrollX = 40;
+      (window as { scrollY: number }).scrollY = 600;
+      const image = createImage({
+        src: "https://example.com/placed.jpg",
+        width: 300,
+        height: 200,
+        left: 100,
+        top: 50,
+      });
+      const button = createButton({
+        text: "Placed button",
+        width: 120,
+        height: 40,
+        left: 20,
+        top: 10,
+      });
+      const heading = createHeading({
+        text: "Placed heading",
+        width: 400,
+        height: 60,
+        left: 12,
+        top: 30,
+      });
+      collector.enable();
+      showForCapture([image, button, heading]);
+
+      expect(emitted("image")[0].position).toEqual({
+        pageX: 290,
+        pageY: 750,
+        pageWidth: 1024,
+        pageHeight: 2000,
+      });
+      expect(emitted("button")[0].position).toEqual({
+        pageX: 120,
+        pageY: 630,
+        pageWidth: 1024,
+        pageHeight: 2000,
+      });
+      expect(emitted("heading")[0].position).toEqual({
+        pageX: 252,
+        pageY: 660,
+        pageWidth: 1024,
+        pageHeight: 2000,
+      });
+    });
+
+    it("records a cursor scrap's position from the pointer event", () => {
+      const target = document.createElement("div");
+      target.setAttribute(
+        "data-cursor",
+        'url("https://example.com/placed.cur") 1 1, auto',
+      );
+      document.body.appendChild(target);
+
+      collector.enable();
+      const event = new MouseEvent("mouseover", { bubbles: true });
+      Object.defineProperties(event, {
+        pageX: { value: 317, configurable: true },
+        pageY: { value: 1284, configurable: true },
+      });
+      target.dispatchEvent(event);
+
+      expect(emitted("cursor")[0].position).toEqual({
+        pageX: 317,
+        pageY: 1284,
+        pageWidth: 1024,
+        pageHeight: 2000,
+      });
+    });
+
+    it("does not let position distinguish two captures of the same scrap", () => {
+      const first = createHeading({
+        text: "Repeated wording",
+        left: 0,
+        top: 0,
+      });
+      const second = createHeading({
+        text: "Repeated wording",
+        left: 500,
+        top: 900,
+      });
+
+      collector.enable();
+      showForCapture([first, second]);
+
+      const scraps = emitted("heading");
+      expect(scraps).toHaveLength(1);
+      expect(scraps[0].position).toEqual({
+        pageX: 160,
+        pageY: 22,
+        pageWidth: 1024,
+        pageHeight: 2000,
+      });
+    });
   });
 
   it("throttles cursor style checks to one every five hundred milliseconds", () => {
