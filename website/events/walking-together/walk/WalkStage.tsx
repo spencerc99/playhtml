@@ -23,11 +23,7 @@ import {
   type WalkersData,
   type WalkStep,
 } from "./walkTrails";
-import {
-  hasExtension,
-  hasExtensionWithoutIdentity,
-  onExtensionDetected,
-} from "./extensionSignal";
+import { extensionStatus, onExtensionDetected } from "./extensionSignal";
 import { isAdmin } from "../admin";
 import "./walk.scss";
 
@@ -117,11 +113,7 @@ export function WalkStage({ active }: { active: boolean }) {
   const walkers = data?.walkers ?? {};
   const ended = data?.endedAt !== undefined;
   const { pid, name, color } = usePlayerIdentity();
-  const extension = useSyncExternalStore(onExtensionDetected, hasExtension);
-  const needsUpdate = useSyncExternalStore(
-    onExtensionDetected,
-    hasExtensionWithoutIdentity,
-  );
+  const extension = useSyncExternalStore(onExtensionDetected, extensionStatus);
   const [watching, setWatching] = useStickyState<boolean>(
     "walk-just-watching",
     false,
@@ -326,8 +318,7 @@ export function WalkStage({ active }: { active: boolean }) {
         <div className="walk-join" role="dialog" aria-labelledby="walk-join-title">
           <h2 id="walk-join-title">join the walk</h2>
           <p>
-            Your cursor is already here. Join, and every page you visit draws
-            your trail onto this page for everyone else to watch.
+            Every page you visit draws your trail onto this page.
           </p>
           <ul>
             <li>shows the site and path you're on, like html.energy/zines</li>
@@ -335,9 +326,13 @@ export function WalkStage({ active }: { active: boolean }) {
             <li>leave the walk anytime from this page</li>
           </ul>
           <div className="walk-join__actions">
-            {extension ? (
+            {extension === "ready" ? (
               <button className="walk-join__primary" onClick={join}>
                 join the walk
+              </button>
+            ) : extension === "checking" ? (
+              <button className="walk-join__primary" disabled>
+                looking for we were online…
               </button>
             ) : (
               <a
@@ -346,7 +341,7 @@ export function WalkStage({ active }: { active: boolean }) {
                 target="_blank"
                 rel="noreferrer"
               >
-                {needsUpdate
+                {extension === "update"
                   ? "update we were online to join"
                   : "get we were online to join"}
               </a>

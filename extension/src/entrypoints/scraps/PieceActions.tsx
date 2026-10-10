@@ -123,6 +123,11 @@ export interface PieceActionsProps {
   onLock: () => void;
   /** How a locked piece is let go again in this editor, shown with the lock. */
   lockHint?: string;
+  /**
+   * Whether the piece in hand is already locked, for an editor that lets a
+   * locked piece be selected; the lock then offers to unlock it.
+   */
+  locked?: boolean;
   onDuplicate: () => void;
   onRemove: () => void;
 }
@@ -195,6 +200,7 @@ export function PieceActions({
   onCutOut,
   onLock,
   lockHint = "right-click the spot to unlock",
+  locked = false,
   onDuplicate,
   onRemove,
 }: PieceActionsProps) {
@@ -265,10 +271,11 @@ export function PieceActions({
     { separator: true, key: "after-shape" },
     {
       key: "lock",
-      label: piece ? "Lock in place" : "Lock these in place",
+      label: locked ? "Unlock" : piece ? "Lock in place" : "Lock these in place",
       hint: lockHint,
-      glyph: GLYPHS.lock,
+      glyph: locked ? GLYPHS.unlock : GLYPHS.lock,
       run: onLock,
+      ...(locked ? { on: true } : {}),
     },
     {
       key: "duplicate",
