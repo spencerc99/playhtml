@@ -1,5 +1,11 @@
 # @playhtml/extension
 
+## 0.1.27 (2026-10-10)
+
+- Fix bug with "Save image" on a page portrait on some browsers
+- Fix bug with page portrait trails playing on some long pages
+
+
 ## 0.1.26 (2026-10-08)
 
 - At a walking together event, the scraps you collected on the walk now show up in a panel on the shared collage table, ready to place.
