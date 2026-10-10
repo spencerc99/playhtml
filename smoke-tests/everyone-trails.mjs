@@ -255,6 +255,19 @@ try {
   });
   await clean.keyboard.press("d");
   await clean.keyboard.press("d");
+  // Record every state the host advertises, so a transient "mine" frame that
+  // still holds everyone's events can't slip past the final check.
+  await clean.evaluate(() => {
+    const el = document.querySelector("#playhtml-historical-overlay-root");
+    window.__trailStates = [];
+    new MutationObserver(() => {
+      window.__trailStates.push({
+        source: el.getAttribute("data-wwo-trails-source"),
+        state: el.getAttribute("data-wwo-trails-state"),
+        count: el.getAttribute("data-wwo-trails-count"),
+      });
+    }).observe(el, { attributes: true });
+  });
   // The overlay lives in a closed shadow root, so click "mine" by position:
   // the first button of the panel's last row, bottom-right of the viewport.
   await clean.waitForTimeout(500);
@@ -266,6 +279,19 @@ try {
       el.getAttribute("data-wwo-trails-state") !== "loading"
     );
   });
+  // This profile has no local history, so a finished "mine" load is empty.
+  assert.equal(
+    await host(clean).getAttribute("data-wwo-trails-state"),
+    "empty",
+  );
+  assert.equal(await host(clean).getAttribute("data-wwo-trails-count"), "0");
+  const staleMine = (await clean.evaluate(() => window.__trailStates)).filter(
+    (snapshot) =>
+      snapshot.source === "mine" &&
+      snapshot.state !== "loading" &&
+      snapshot.count !== "0",
+  );
+  assert.deepEqual(staleMine, [], "everyone's events were advertised as mine");
   if (evidence)
     await clean.screenshot({
       path: resolve(evidence, "3-mine-after-switch.png"),

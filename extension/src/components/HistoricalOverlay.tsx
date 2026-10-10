@@ -95,6 +95,9 @@ export function HistoricalOverlay({
   initialUiHidden = false,
 }: Props) {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
+  // Whose trails `events` holds, so a source switch never reports the old
+  // source's events as the new one's.
+  const [loadedSource, setLoadedSource] = useState<TrailSource | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<OverlaySettings>(defaultSettings);
@@ -228,6 +231,7 @@ export function HistoricalOverlay({
             `[HistoricalOverlay] Loaded ${historicalEvents.length} total events`,
           );
         setEvents(historicalEvents);
+        setLoadedSource(source);
         setLoading(false);
       } catch (err) {
         if (cancelled) return;
@@ -281,13 +285,14 @@ export function HistoricalOverlay({
 
   // Mirror the overlay's state onto its shadow host so automation (an agent
   // driving a recording) can wait for trails without opening the shadow root.
-  const loadState: OverlayLoadState = loading
-    ? "loading"
-    : error
-      ? "error"
-      : events.length > 0
-        ? "ready"
-        : "empty";
+  const loadState: OverlayLoadState =
+    loading || loadedSource !== source
+      ? "loading"
+      : error
+        ? "error"
+        : events.length > 0
+          ? "ready"
+          : "empty";
   useEffect(() => {
     const root = containerRef.current?.getRootNode();
     const host = root instanceof ShadowRoot ? root.host : null;
