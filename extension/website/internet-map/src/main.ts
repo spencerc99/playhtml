@@ -35,7 +35,9 @@ const LOCAL_BUNDLES = import.meta.env.DEV && q.get("source") !== "worker";
 const DATA = LOCAL_BUNDLES
   ? "/internet-map/data/" + BUNDLE
   : `${WORKER_URL}/internet-map/${BUNDLE}`;
-const ADMIN_TOKEN = LOCAL_BUNDLES ? "" : loadAdminToken();
+// ?k= is a share link: the Worker's share key, which opens map bundles only.
+// It wins over a stored admin key so a shared link behaves the same for everyone.
+const ADMIN_TOKEN = LOCAL_BUNDLES ? "" : q.get("k") || loadAdminToken();
 
 // The theme owns the building palette and alpha ramp, and the bake reads the
 // ramp's LENGTH to pick a shade per cell — so it has to be installed before
