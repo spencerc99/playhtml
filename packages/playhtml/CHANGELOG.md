@@ -1,5 +1,16 @@
 # Change Log
 
+## 2.15.1
+
+### Patch Changes
+
+- bd63ccf: Elements and page data keep syncing when several people create them at the same moment. Before, if a shared element first appeared on multiple pages at once (for example, a React `withSharedState` component that mounts after shared state changes), some pages would stop seeing updates and their own changes would not reach anyone else. The same could happen to a `createPageData` channel opened on several pages at once. Those pages now switch to the shared copy and stay in sync.
+- 1ab8866: Less network traffic and a smaller download. `setData` on a list now sends only the items that changed, so editing one entry in a long list no longer resends the whole list or grows the room's saved history by a full copy each time. Rapid `setData` calls, such as updates on every pointer move, are batched into at most 20 messages a second; the first change still goes out right away. The build is minified with source maps, and the cursor code only downloads on pages that enable cursors, which cuts the default download from 110 KB to 65 KB gzipped.
+- d294c84: Clearing a cursor render filter with `configure({ shouldRenderCursor: undefined })` now shows previously hidden remote cursors right away instead of waiting for their next movement.
+- bfe0120: Reconnects are steadier. After a room is reset, a reconnecting page now always sends the room's latest reset marker, even when the browser blocks localStorage, and a fresh page that joins with an older marker stays connected instead of reloading its room. Presence reconnects are spread out over a few seconds after a server restart, and other people's cursors stay put through a brief reconnect instead of fading out and back in.
+- Updated dependencies [1ab8866]
+  - @playhtml/common@0.10.1
+
 ## 2.15.0
 
 ### Minor Changes
