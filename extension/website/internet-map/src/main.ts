@@ -12,7 +12,7 @@ import { LANDMARKS, LM_TREE, LM_WTREE } from "./ascii/tileset";
 import { buildRoadGraph, findRoute, stopsAlong, MODES, Mode, Route } from "./route";
 import { roadPath, pathCells, GRIDDED } from "./ascii/roadgeom";
 import { setRoadGlyphs, ROAD, PALETTE, BUILD_ALPHA, setPalette } from "./ascii/glyphs";
-import { LabelLayer } from "./ascii/labels";
+import { LabelLayer, prominentHosts } from "./ascii/labels";
 import { buildChrome, fmt } from "./ui/chrome";
 import { MapSearch, SearchPlace } from "./ui/search";
 import { Theme, applyChrome, paletteOf } from "./theme";
@@ -267,6 +267,13 @@ const TIER_SUB = 0.4;
 const kAt = ([a, b]: [number, number], medianR: number, t: number) =>
   (a + t * (b - a)) / medianR;
 
+// Aggregate once at load; path/chunk rows should not repeat a host label.
+const hostLabels = prominentHosts({
+  x: anchors.subX, y: anchors.subY, r: A.sub_r as Float32Array,
+  visits: A.sub_visits as Uint32Array, name: i => labels.subs[i],
+}, labels.subs, labels.doms, SUB_DOM, A.sub_pages as Uint32Array,
+  A.dom_visits as Uint32Array);
+
 // ------------------------------------------------------------------ render
 function resize() {
   const dpr = Math.min(devicePixelRatio || 1, 2);
@@ -305,7 +312,7 @@ function paint() {
   // Not while dragging: the candidate sort and the collision test are per
   // frame, and this is the same reason the map itself blits from cache here.
   if (showLabels && !interacting) {
-    // whichever tier is big enough to carry a name at this zoom
+    // Detail tiers take over; prominent hosts accompany domain labels.
     const { tPage, tSub } = lod();
     const src = tPage > TIER_PAGE
       ? { x: A.page_x as Float32Array, y: A.page_y as Float32Array,
@@ -320,7 +327,8 @@ function paint() {
       : { x: anchors.domX, y: anchors.domY,
           r: A.dom_r as Float32Array, visits: A.dom_visits as Uint32Array,
           name: (i: number) => labels.doms[i] };
-    labelLayer.draw(ctx, cam, src, ren.theme.label, ren.theme.labelHalo,
+    labelLayer.draw(ctx, cam, tPage <= TIER_PAGE && tSub <= TIER_SUB
+                    ? [src, hostLabels] : [src], ren.theme.label, ren.theme.labelHalo,
                     ren.cellPx, ren.theme.labelScale);
   }
 
