@@ -35,9 +35,13 @@ const LOCAL_BUNDLES = import.meta.env.DEV && q.get("source") !== "worker";
 const DATA = LOCAL_BUNDLES
   ? "/internet-map/data/" + BUNDLE
   : `${WORKER_URL}/internet-map/${BUNDLE}`;
-// ?k= is a share link: the Worker's share key, which opens map bundles only.
-// It wins over a stored admin key so a shared link behaves the same for everyone.
-const ADMIN_TOKEN = LOCAL_BUNDLES ? "" : q.get("k") || loadAdminToken();
+// The map password (a Worker secret that opens map bundles only) is asked for
+// on this page and remembered; a signed-in admin key works too.
+const PASSWORD_KEY = "wwo-internet-map-password";
+const storedPassword = () => {
+  try { return localStorage.getItem(PASSWORD_KEY) || ""; } catch { return ""; }
+};
+const ADMIN_TOKEN = LOCAL_BUNDLES ? "" : storedPassword() || loadAdminToken();
 
 // The theme owns the building palette and alpha ramp, and the bake reads the
 // ramp's LENGTH to pick a shade per cell — so it has to be installed before
@@ -71,21 +75,35 @@ await Promise.all([
   (document as any).fonts.load('15px "MEKDings"'),
 ]).catch(() => {});
 
-const bootFail = (msg: string, signIn = false) => {
+const bootFail = (msg: string, askPassword = false) => {
   const el = $("#bootmsg");
   el.textContent = msg;
-  if (signIn) {
-    const link = document.createElement("a");
-    link.href = "/admin/";
-    link.textContent = "sign in at the office";
-    el.append(" — ", link);
-  }
   ($("#bootbar").parentElement as HTMLElement).style.display = "none";
+  if (!askPassword) return;
+  const form = document.createElement("form");
+  form.id = "bootpw";
+  const input = document.createElement("input");
+  input.type = "password";
+  input.placeholder = "password";
+  input.autocomplete = "current-password";
+  input.setAttribute("aria-label", "map password");
+  const go = document.createElement("button");
+  go.type = "submit";
+  go.textContent = "enter";
+  form.append(input, go);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!input.value) return;
+    try { localStorage.setItem(PASSWORD_KEY, input.value); } catch {}
+    location.reload();
+  });
+  el.after(form);
+  input.focus();
 };
 
 let data: MapData;
 try {
-  if (!LOCAL_BUNDLES && !ADMIN_TOKEN) throw new MapUnauthorizedError("no admin key");
+  if (!LOCAL_BUNDLES && !ADMIN_TOKEN) throw new MapUnauthorizedError("no password");
   data = await loadMap(
     DATA,
     boot,
@@ -93,7 +111,17 @@ try {
   );
 } catch (err) {
   if (err instanceof MapUnauthorizedError) {
-    bootFail("this map holds real browsing traces, so it's private for now", true);
+    // Forget a wrong remembered password so the prompt can take a new one.
+    const triedPassword = storedPassword() !== "";
+    if (triedPassword) {
+      try { localStorage.removeItem(PASSWORD_KEY); } catch {}
+    }
+    bootFail(
+      triedPassword
+        ? "that password didn't work"
+        : "this map holds real browsing traces, so it needs a password",
+      true,
+    );
   } else {
     bootFail(`no map bundle named "${BUNDLE}" is uploaded yet`);
   }

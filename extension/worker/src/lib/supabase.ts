@@ -46,5 +46,5 @@ export interface Env {
   COMMUTE_BOARD_RATE_LIMITER: RateLimit; // Public train boarding request limiter
   WWO_ADMIN_DB: D1Database;     // Feature policy, beta cohorts, and operator workflows
   INTERNET_MAP_BUNDLES: R2Bucket;
-  INTERNET_MAP_SHARE_KEY?: string; // Optional: opens map bundles only, for share links // Private internet map bundles (real browsing URLs)
+  INTERNET_MAP_PASSWORD?: string; // Optional: shared password that opens map bundles only // Private internet map bundles (real browsing URLs)
 }

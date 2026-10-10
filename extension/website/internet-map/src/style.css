@@ -172,3 +172,6 @@ button:hover { background: var(--panel-ink); color: var(--panel); }
 #r-legs .leg.end { color: var(--panel-ink); }
 #r-legs::-webkit-scrollbar { width: 6px; }
 #r-legs::-webkit-scrollbar-thumb { background: rgba(222,216,189,.25); }
+#bootpw { display: flex; gap: 6px; justify-content: center; margin-top: 12px; }
+#bootpw input, #bootpw button { font: inherit; color: inherit; background: transparent; border: 2px solid var(--line); padding: 4px 8px; }
+#bootpw button { cursor: pointer; }

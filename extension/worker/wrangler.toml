@@ -17,7 +17,7 @@ compatibility_date = "2024-01-01"
 #   Set secrets via: wrangler secret put RESEND_API_KEY
 #   Set secrets via: wrangler secret put CODA_API_TOKEN
 #   Optional:        wrangler secret put RESEND_SEGMENT_ID
-#   Optional:        wrangler secret put INTERNET_MAP_SHARE_KEY
+#   Optional:        wrangler secret put INTERNET_MAP_PASSWORD
 #
 # Required variables:
 # - SUPABASE_URL - Your Supabase project URL
@@ -35,8 +35,8 @@ compatibility_date = "2024-01-01"
 # - GET /events/stats: ADMIN_KEY required
 # - POST /events/export: ADMIN_KEY required
 # - POST /feedback: Public (validated + rate limited)
-# - GET /internet-map/<bundle>/<file>: ADMIN_KEY or INTERNET_MAP_SHARE_KEY (private R2 bundles;
-#   the share key is optional and only opens map bundles, for ?k= share links)
+# - GET /internet-map/<bundle>/<file>: ADMIN_KEY or INTERNET_MAP_PASSWORD (private R2 bundles;
+#   the password is optional and only opens map bundles)
 #
 # TODO: Consider adding CORS restrictions to admin endpoints
 

@@ -1,4 +1,4 @@
-// ABOUTME: Serves internet map bundles from a private R2 bucket to the admin or a share-link key.
+// ABOUTME: Serves internet map bundles from a private R2 bucket to the admin or the map password.
 // ABOUTME: Bundles carry participants' full page URLs and titles, so they never ship as public files.
 
 import { getAdminAuthError } from '../lib/adminAuth';
@@ -18,14 +18,13 @@ const CORS_HEADERS = {
 };
 
 /**
- * The admin key always works. INTERNET_MAP_SHARE_KEY, when set, is a second
- * key that only opens map bundles, so it can go out in a link
- * (wewere.online/internet-map/?k=...) without exposing the admin routes.
- * Rotate the secret to cut off every shared link at once.
+ * The admin key always works. INTERNET_MAP_PASSWORD, when set, is a shared
+ * password that only opens map bundles, so it can be handed to people without
+ * exposing the admin routes. Change the secret to lock everyone out again.
  */
 function getMapAuthError(request: Request, env: Env): Response | null {
-  const shareKey = env.INTERNET_MAP_SHARE_KEY;
-  if (shareKey && request.headers.get('Authorization') === `Bearer ${shareKey}`) return null;
+  const password = env.INTERNET_MAP_PASSWORD;
+  if (password && request.headers.get('Authorization') === `Bearer ${password}`) return null;
   return getAdminAuthError(request, env.ADMIN_KEY);
 }
 
