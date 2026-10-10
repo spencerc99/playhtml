@@ -1,6 +1,7 @@
 # Unreleased
 
 - Drag across the scraps archive to select a group of scraps and delete them together.
+- "Save image" on a page portrait works again instead of failing silently.
 - Watching trails in page mode with sound on no longer freezes the trails and audio on long pages like Wikipedia.
 
 <!--
