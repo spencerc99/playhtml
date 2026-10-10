@@ -34,6 +34,19 @@ function formatBody(body) {
   return JSON.stringify(body);
 }
 
+// Failed operations carry errorCode, message, and errors[] explaining why
+// (for example, InProgressSubmission when an earlier version is still in review).
+function formatOperationFailure(body) {
+  if (!body || typeof body !== "object") return "";
+  const lines = [];
+  if (body.errorCode) lines.push(`errorCode: ${body.errorCode}`);
+  if (body.message) lines.push(`message: ${body.message}`);
+  for (const error of body.errors ?? []) {
+    lines.push(`error: ${typeof error === "string" ? error : error?.message ?? JSON.stringify(error)}`);
+  }
+  return lines.length ? `\n${lines.join("\n")}` : "";
+}
+
 function edgeHeaders(env, extra = {}) {
   return {
     authorization: `ApiKey ${requireEnv(env, "EDGE_API_KEY")}`,
@@ -103,7 +116,7 @@ async function waitForEdgeOperation({
     }
 
     if (status && status !== "InProgress") {
-      throw new Error(`Edge ${action} failed with status: ${status}`);
+      throw new Error(`Edge ${action} failed with status: ${status}${formatOperationFailure(body)}`);
     }
 
     if (attempt < pollLimit) await sleepImpl(pollIntervalMs);
