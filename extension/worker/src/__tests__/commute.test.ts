@@ -18,6 +18,15 @@ vi.mock('../routes/recent', () => ({
   handleRecent,
 }));
 
+const { fetchPublicPageContext } = vi.hoisted(() => ({
+  fetchPublicPageContext: vi.fn(),
+}));
+
+vi.mock('../routes/pageMeta', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../routes/pageMeta')>()),
+  fetchPublicPageContext,
+}));
+
 import {
   handleCommute,
   handleCommuteReview,
@@ -186,10 +195,21 @@ describe('handleCommute', () => {
   });
 
   it('asks Clef only about destinations nobody has reviewed or suggested', async () => {
+    fetchPublicPageContext.mockResolvedValue({
+      title: 'An article',
+      inspection: { verdict: 'public', reason: 'public_html', finalUrl: 'https://public.example/article' },
+      context: { description: 'A public essay', headings: ['An article'], text: 'Hello there.' },
+    });
     const run = useClef('regular');
     expect(await destinations()).toEqual([]);
     expect(await suggestCommuteDestinations(env)).toBe(1);
     expect(run).toHaveBeenCalledTimes(1);
+    const state = (run.mock.calls[0] as unknown[])[1] as { state: { candidate: Record<string, unknown> } };
+    expect(state.state.candidate).toMatchObject({
+      url: 'https://public.example/article',
+      inspection: { verdict: 'public' },
+      page: { description: 'A public essay', headings: ['An article'] },
+    });
     expect(await suggestCommuteDestinations(env)).toBe(0);
     expect(run).toHaveBeenCalledTimes(1);
     expect(await destinations()).toHaveLength(1);

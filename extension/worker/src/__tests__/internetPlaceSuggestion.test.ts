@@ -3,7 +3,7 @@
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Miniflare } from 'miniflare';
 import type { Env } from '../lib/supabase';
 import {
@@ -16,6 +16,7 @@ import {
 
 const schema = [
   '../../migrations/0005_internet_place_catalog.sql',
+  '../../migrations/0006_internet_place_placement.sql',
   '../../migrations/0007_internet_place_suggestions.sql',
   '../../migrations/0008_internet_place_suggestion_evidence.sql',
 ].map((path) => readFileSync(
@@ -142,6 +143,17 @@ describe('Internet place suggestions', () => {
         };
       },
     } as unknown as Env['AI'];
+    await env.WWO_ADMIN_DB.batch([
+      env.WWO_ADMIN_DB.prepare(
+        "INSERT INTO place_policies (scope, place_key, placement, note) VALUES ('site', 'example.com', 'regular', '')",
+      ),
+      env.WWO_ADMIN_DB.prepare(
+        "INSERT INTO place_policies (scope, place_key, placement, note) VALUES ('hostname', 'other.example', 'scenery', '')",
+      ),
+      env.WWO_ADMIN_DB.prepare(
+        "INSERT INTO place_policies (scope, place_key, note) VALUES ('hostname', 'note.example', 'Only a note')",
+      ),
+    ]);
     const candidate = {
       url: 'https://www.example.com/essay/?utm_source=private-tracker',
       title: 'An essay',
@@ -155,10 +167,14 @@ describe('Internet place suggestions', () => {
     expect(calls[0].model).toBe(INTERNET_PLACE_SUGGESTION_MODEL);
     expect(calls[0].input.state).toEqual({
       candidate: { url: 'https://example.com/essay', title: 'An essay' },
+      curatedExamples: [
+        { place: 'example.com', scope: 'site', placement: 'regular' },
+        { place: 'other.example', scope: 'hostname', placement: 'scenery' },
+      ],
     });
     expect(Object.keys(calls[0].input.questions as object)).toEqual(['placement', 'scope', 'reason']);
     expect(await countRows('place_suggestions')).toBe(1);
-    expect(await countRows('place_policies')).toBe(0);
+    expect(await countRows('place_policies')).toBe(3);
 
     const cached = await handleInternetPlaceSuggestion(suggestionRequest({ candidate }), env);
     expect((await cached.json() as { source: string }).source).toBe('cache');
@@ -172,6 +188,29 @@ describe('Internet place suggestions', () => {
     );
     expect(response.status).toBe(401);
     expect(await countRows('place_suggestions')).toBe(0);
+  });
+
+  it('marks a page scenery without asking Clef when a logged-out visit hits a login wall', async () => {
+    const run = vi.fn();
+    env.AI = { run } as unknown as Env['AI'];
+    const response = await handleInternetPlaceSuggestion(suggestionRequest({
+      candidate: {
+        url: 'https://example.com/dashboard-overview',
+        inspection: { verdict: 'gated', reason: 'login_redirect' },
+        page: { headings: ['Sign in'], text: 'Sign in to continue' },
+      },
+    }), env);
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { suggestion: { placement: string; reason: string } }).suggestion)
+      .toMatchObject({ placement: 'scenery', reason: 'authentication-required' });
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('rejects page context with unexpected fields', async () => {
+    const response = await handleInternetPlaceSuggestion(suggestionRequest({
+      candidate: { url: 'https://example.com/essay', page: { headings: [], text: '', cookies: 'x' } },
+    }), env);
+    expect(response.status).toBe(400);
   });
 
   it('returns a canonical-page cache hit without an AI binding', async () => {

@@ -215,6 +215,23 @@ interface PageMeta {
   favicon?: string;
   source: 'oembed' | 'html' | 'none';
   inspection: PublicPageInspection;
+  context?: PublicPageContext;
+}
+
+/** What a logged-out stranger sees on a page, trimmed for a classifier. */
+export interface PublicPageContext {
+  description?: string;
+  siteName?: string;
+  headings: string[];
+  text: string;
+}
+
+const CONTEXT_TEXT_LIMIT = 1_500;
+const CONTEXT_HEADING_LIMIT = 6;
+const CONTEXT_FIELD_LIMIT = 300;
+
+function collapseWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
 }
 
 // Titles that look like a generic anonymous shell of the app rather than a
@@ -432,6 +449,12 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
   const formActions: string[] = [];
   const metaRefreshes: string[] = [];
   const robotsDirectives: string[] = [];
+  let description: string | undefined;
+  let siteName: string | undefined;
+  const headings: string[] = [];
+  let headingBuf = '';
+  let bodyText = '';
+  let skipDepth = 0;
   try {
     const fetched = await fetchPublicPage(url);
     if ('inspection' in fetched) {
@@ -521,9 +544,20 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
             const content = el.getAttribute('content');
             if (content) metaRefreshes.push(content);
           }
+          const property = (el.getAttribute('property') || '').toLowerCase();
+          const metaContent = el.getAttribute('content');
+          if (
+            metaContent &&
+            !description &&
+            (name === 'description' || property === 'og:description')
+          ) {
+            description = collapseWhitespace(metaContent).slice(0, CONTEXT_FIELD_LIMIT);
+          }
+          if (metaContent && !siteName && property === 'og:site_name') {
+            siteName = collapseWhitespace(metaContent).slice(0, CONTEXT_FIELD_LIMIT);
+          }
           // og:title is often nicer (cleaner trailing branding) than <title>.
           if (title) return;
-          const property = (el.getAttribute('property') || '').toLowerCase();
           if (property !== 'og:title') return;
           const content = el.getAttribute('content');
           if (content) title = content.trim();
@@ -540,6 +574,32 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
         element(el) {
           const action = el.getAttribute('action');
           if (action) formActions.push(action);
+        },
+      })
+      .on('h1, h2', {
+        element(el) {
+          headingBuf = '';
+          el.onEndTag(() => {
+            const heading = collapseWhitespace(headingBuf).slice(0, CONTEXT_FIELD_LIMIT);
+            if (heading && headings.length < CONTEXT_HEADING_LIMIT) headings.push(heading);
+          });
+        },
+        text(t) {
+          headingBuf += t.text;
+        },
+      })
+      .on('script, style, noscript, template, svg', {
+        element(el) {
+          skipDepth += 1;
+          el.onEndTag(() => {
+            skipDepth = Math.max(0, skipDepth - 1);
+          });
+        },
+      })
+      .on('body', {
+        text(t) {
+          if (skipDepth > 0 || bodyText.length >= CONTEXT_TEXT_LIMIT * 2) return;
+          bodyText += `${t.text} `;
         },
       });
 
@@ -589,6 +649,12 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
       favicon,
       source: title ? 'html' : 'none',
       inspection,
+      context: {
+        ...(description ? { description } : {}),
+        ...(siteName ? { siteName } : {}),
+        headings,
+        text: collapseWhitespace(bodyText).slice(0, CONTEXT_TEXT_LIMIT),
+      },
     };
   } catch {
     return {
@@ -596,6 +662,26 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
       inspection: unknownInspection('network_error', url),
     };
   }
+}
+
+/**
+ * Fetches a page the way a logged-out stranger would and returns its
+ * inspection verdict, title, and trimmed context for classification.
+ */
+export async function fetchPublicPageContext(raw: string): Promise<{
+  title?: string;
+  inspection: PublicPageInspection;
+  context?: PublicPageContext;
+} | null> {
+  const validated = isPublicHttpUrl(raw);
+  if (!validated) return null;
+  const meta = await tryHtmlScrape(canonicalizeUrl(validated));
+  if (!meta) return null;
+  return {
+    ...(meta.title ? { title: meta.title } : {}),
+    inspection: meta.inspection,
+    ...(meta.context ? { context: meta.context } : {}),
+  };
 }
 
 export async function handlePageMeta(request: Request, _env: Env): Promise<Response> {
@@ -636,7 +722,10 @@ export async function handlePageMeta(request: Request, _env: Env): Promise<Respo
     };
   }
 
-  const body = JSON.stringify(meta);
+  // Page context only feeds the curation classifier; the public route keeps
+  // its existing shape.
+  const { context: _context, ...publicMeta } = meta;
+  const body = JSON.stringify(publicMeta);
   const resp = new Response(body, {
     status: 200,
     headers: {
