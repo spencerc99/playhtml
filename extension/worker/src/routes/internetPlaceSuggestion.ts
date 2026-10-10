@@ -24,6 +24,7 @@ const PLACEMENTS = [
 ] as const;
 const SCOPES = ['page', 'hostname', 'site'] as const;
 const MAX_REQUEST_BYTES = 24_000;
+const SWEEP_CONCURRENCY = 5;
 const MAX_METADATA_DEPTH = 4;
 const MAX_METADATA_KEYS = 40;
 const MAX_ARRAY_ITEMS = 30;
@@ -430,32 +431,41 @@ export async function suggestUnreviewedPlaces(
   ).all<{ page_key: string }>();
   for (const row of existing.results ?? []) parsed.delete(row.page_key);
 
+  const ai = env.AI;
+  const pending = [...parsed.values()].slice(0, limit);
   let saved = 0;
-  for (const candidate of [...parsed.values()].slice(0, limit)) {
-    let suggestion: InternetPlaceSuggestion | null = null;
-    try {
-      suggestion = await askClef(env.AI, candidate);
-    } catch (error) {
-      console.error('[internet-places] Clef suggestion failed:', error);
-    }
-    if (!suggestion) continue;
-    await saveSuggestion(
-      env.WWO_ADMIN_DB,
-      candidate.url,
-      suggestion,
-      await hashSuggestionCandidate(candidate),
+  for (let start = 0; start < pending.length; start += SWEEP_CONCURRENCY) {
+    const results = await Promise.all(
+      pending.slice(start, start + SWEEP_CONCURRENCY).map(async (candidate) => {
+        try {
+          const suggestion = await askClef(ai, candidate);
+          if (!suggestion) return 0;
+          await saveSuggestion(
+            env.WWO_ADMIN_DB,
+            candidate.url,
+            suggestion,
+            await hashSuggestionCandidate(candidate),
+          );
+          return 1;
+        } catch (error) {
+          console.error('[internet-places] Clef suggestion failed:', error);
+          return 0;
+        }
+      }),
     );
-    saved += 1;
+    saved += results.reduce<number>((total, count) => total + count, 0);
   }
   return saved;
 }
 
+const CLEF_APPROVED_PLACEMENTS = new Set<Placement>(['regular', 'featured', 'reserve']);
+
 /**
- * Clef may only take pages away from the commute on its own: a suggested
- * hidden or scenery placement applies to that exact page until a human decides.
- * Promotions stay advisory.
+ * Gates destinations no human has reviewed: a page stays scenery until Clef
+ * has approved it as at least regular. Clef never promotes on its own, so an
+ * approved page rides as an ordinary stop until someone features it.
  */
-export async function loadSuggestedRestrictions(
+export async function loadClefGate(
   db: D1Database,
   pageUrls: string[],
 ): Promise<InternetPlacePolicy[]> {
@@ -469,33 +479,34 @@ export async function loadSuggestedRestrictions(
   }
   if (keys.size === 0) return [];
   const rows = await db.prepare(
-    `SELECT page_key, suggestion_json, created_at FROM place_suggestions
+    `SELECT page_key, suggestion_json FROM place_suggestions
      WHERE model = ? AND prompt_version = ?
        AND page_key IN (SELECT value FROM json_each(?))`,
   ).bind(
     INTERNET_PLACE_SUGGESTION_MODEL,
     INTERNET_PLACE_SUGGESTION_PROMPT_VERSION,
     JSON.stringify([...keys]),
-  ).all<{ page_key: string; suggestion_json: string; created_at: string }>();
-  const restrictions: InternetPlacePolicy[] = [];
+  ).all<{ page_key: string; suggestion_json: string }>();
+  const approved = new Set<string>();
   for (const row of rows.results ?? []) {
-    let suggestion: InternetPlaceSuggestion | null = null;
     try {
-      suggestion = parseInternetPlaceSuggestion(JSON.parse(row.suggestion_json));
+      const suggestion = parseInternetPlaceSuggestion(JSON.parse(row.suggestion_json));
+      if (suggestion && CLEF_APPROVED_PLACEMENTS.has(suggestion.placement)) {
+        approved.add(row.page_key);
+      }
     } catch {
-      continue;
+      // A corrupt cache row counts as not yet approved.
     }
-    if (suggestion?.placement !== 'hidden' && suggestion?.placement !== 'scenery') continue;
-    restrictions.push({
-      scope: 'page',
-      placeKey: row.page_key,
-      placement: suggestion.placement,
-      ...(suggestion.reason ? { reason: suggestion.reason } : {}),
-      note: 'Suggested by Clef; awaiting review',
-      updatedAt: row.created_at,
-    });
   }
-  return restrictions;
+  return [...keys]
+    .filter((key) => !approved.has(key))
+    .map((placeKey) => ({
+      scope: 'page' as const,
+      placeKey,
+      placement: 'scenery' as const,
+      note: 'Waiting for Clef or a human to approve this page',
+      updatedAt: '',
+    }));
 }
 
 export async function handleInternetPlaceSuggestion(

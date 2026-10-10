@@ -69,9 +69,10 @@ migrations_dir = "migrations"
 [ai]
 binding = "AI"
 
-# Asks Clef about new unreviewed commute destinations.
+# Asks Clef about new unreviewed commute destinations; the commute only
+# shows an unreviewed page once Clef approves it.
 [triggers]
-crons = ["*/30 * * * *"]
+crons = ["*/10 * * * *"]
 
 # Private internet map bundles. They hold participants' full page URLs and
 # titles, so they are served only through the admin-authenticated

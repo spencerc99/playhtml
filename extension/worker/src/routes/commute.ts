@@ -12,7 +12,7 @@ import {
   loadInternetPlacePolicies,
 } from './internetPlaceCatalog';
 import {
-  loadSuggestedRestrictions,
+  loadClefGate,
   suggestUnreviewedPlaces,
 } from './internetPlaceSuggestion';
 import {
@@ -29,7 +29,7 @@ const REVIEW_DESTINATION_LIMIT = 200;
 const REVIEW_SCENERY_LIMIT = 200;
 const CATALOG_CANDIDATE_LIMIT = 200;
 const COMMUTE_DESTINATION_LIMIT = 50;
-const SWEEP_SUGGESTION_LIMIT = 25;
+const SWEEP_SUGGESTION_LIMIT = 50;
 
 async function fetchRecentEvents(
   request: Request,
@@ -141,13 +141,17 @@ export async function getCommuteResponse(
     destinations: CATALOG_CANDIDATE_LIMIT,
   });
   const policies = await loadInternetPlacePolicies(env.WWO_ADMIN_DB, candidates);
-  const restrictions = await loadSuggestedRestrictions(
-    env.WWO_ADMIN_DB,
-    unreviewedDestinations(candidates, policies).map(({ url }) => url),
-  );
+  // Without the AI binding (local dev) nothing could ever approve a page, so
+  // the gate only applies where Clef runs.
+  const gate = env.AI
+    ? await loadClefGate(
+        env.WWO_ADMIN_DB,
+        unreviewedDestinations(candidates, policies).map(({ url }) => url),
+      )
+    : [];
   return applyInternetPlacePolicies(
     candidates,
-    [...policies, ...restrictions],
+    [...policies, ...gate],
     COMMUTE_DESTINATION_LIMIT,
   );
 }
@@ -165,7 +169,8 @@ function unreviewedDestinations(
 
 /**
  * Scheduled sweep: asks Clef about the newest live destinations nobody has
- * reviewed, so restrictions and desk suggestions exist before anyone looks.
+ * reviewed, so the gate can let approved pages through and the desk has
+ * suggestions waiting.
  */
 export async function suggestCommuteDestinations(
   env: Env,

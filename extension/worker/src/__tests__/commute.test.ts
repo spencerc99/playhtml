@@ -146,45 +146,52 @@ describe('handleCommute', () => {
     ).run();
   }
 
-  it('lets a Clef scenery suggestion keep an unreviewed page off the route', async () => {
-    await saveClefSuggestion('scenery');
-    const response = await handleCommute(new Request('https://worker.example/commute/recent'), env);
-    const payload = (await response.json()) as CommuteResponse;
-    expect(payload.destinations).toEqual([]);
-    expect(payload.scenery.map((item) => item.domain)).toEqual(['public.example']);
-  });
-
-  it('keeps Clef promotions advisory and lets human policies win', async () => {
-    await saveClefSuggestion('featured');
-    const advisory = await handleCommute(new Request('https://worker.example/commute/recent'), env);
-    expect(((await advisory.json()) as CommuteResponse).destinations).toHaveLength(1);
-
-    await env.WWO_ADMIN_DB.prepare('DELETE FROM place_suggestions').run();
-    await saveClefSuggestion('hidden');
-    await env.WWO_ADMIN_DB.prepare(
-      "INSERT INTO place_policies (scope, place_key, placement, note) VALUES ('site', 'public.example', 'regular', '')",
-    ).run();
-    const reviewed = await handleCommute(new Request('https://worker.example/commute/recent'), env);
-    expect(((await reviewed.json()) as CommuteResponse).destinations).toHaveLength(1);
-  });
-
-  it('asks Clef only about destinations nobody has reviewed or suggested', async () => {
+  function useClef(placement = 'regular') {
     const run = vi.fn(async () => ({
       answers: {
-        placement: { choice: 'scenery', confidence: 0.5, probabilities: {} },
+        placement: { choice: placement, confidence: 0.5, probabilities: {} },
         scope: { choice: 'page', confidence: 0.7, probabilities: {} },
         reason: { choice: 'none', confidence: 0.5, probabilities: {} },
       },
     }));
     env.AI = { run } as unknown as Env['AI'];
+    return run;
+  }
+
+  async function destinations(): Promise<CommuteResponse['destinations']> {
+    const response = await handleCommute(new Request('https://worker.example/commute/recent'), env);
+    return ((await response.json()) as CommuteResponse).destinations;
+  }
+
+  it('holds an unreviewed page as scenery until Clef approves it', async () => {
+    useClef();
+    expect(await destinations()).toEqual([]);
+    await saveClefSuggestion('scenery');
+    expect(await destinations()).toEqual([]);
+    await env.WWO_ADMIN_DB.prepare('DELETE FROM place_suggestions').run();
+    await saveClefSuggestion('regular');
+    expect(await destinations()).toHaveLength(1);
+  });
+
+  it('lets human policies override the gate and keeps Clef promotions ordinary', async () => {
+    useClef();
+    await env.WWO_ADMIN_DB.prepare(
+      "INSERT INTO place_policies (scope, place_key, placement, note) VALUES ('site', 'public.example', 'regular', '')",
+    ).run();
+    expect(await destinations()).toHaveLength(1);
+
+    await env.WWO_ADMIN_DB.prepare('DELETE FROM place_policies').run();
+    await saveClefSuggestion('featured');
+    expect(await destinations()).toHaveLength(1);
+  });
+
+  it('asks Clef only about destinations nobody has reviewed or suggested', async () => {
+    const run = useClef('regular');
+    expect(await destinations()).toEqual([]);
     expect(await suggestCommuteDestinations(env)).toBe(1);
     expect(run).toHaveBeenCalledTimes(1);
     expect(await suggestCommuteDestinations(env)).toBe(0);
     expect(run).toHaveBeenCalledTimes(1);
-    const payload = (await (await handleCommute(
-      new Request('https://worker.example/commute/recent'),
-      env,
-    )).json()) as CommuteResponse;
-    expect(payload.destinations).toEqual([]);
+    expect(await destinations()).toHaveLength(1);
   });
 });
