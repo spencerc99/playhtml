@@ -1,5 +1,12 @@
 # @playhtml/extension
 
+## 0.1.27 (2026-10-10)
+
+- Drag across the scraps archive to select a group of scraps and delete them together.
+- "Save image" on a page portrait works again instead of failing silently.
+- Watching trails in page mode with sound on no longer freezes the trails and audio on long pages like Wikipedia.
+
+
 ## 0.1.26 (2026-10-08)
 
 - At a walking together event, the scraps you collected on the walk now show up in a panel on the shared collage table, ready to place.
