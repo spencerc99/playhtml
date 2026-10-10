@@ -3348,6 +3348,22 @@ describe("SoundEngine layer mixer", () => {
     expect(feederCount(master)).toBe(masterBefore);
   });
 
+  it("rings a finite bell for clicks outside the window", async () => {
+    const engine = new SoundEngine();
+    await engine.init();
+    engine.setCanvasWidth(800);
+
+    // Page-mode trails use document coordinates, so a click far down a long
+    // article lands below the window (and above it after scrolling back).
+    for (const y of [window.innerHeight * 40, -500, Number.NaN]) {
+      context.oscillators.length = 0;
+      engine.triggerClick({ x: 100, y, holdDuration: undefined });
+      for (const osc of context.oscillators) {
+        expect(Number.isFinite(osc.frequency.value)).toBe(true);
+      }
+    }
+  });
+
   it("routes the navigation note to the navigation bus, not the bell bus", async () => {
     const engine = new SoundEngine();
     await engine.init();
