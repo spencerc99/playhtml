@@ -232,6 +232,76 @@ describe('buildCommuteResponse', () => {
     ).toEqual(['garden.example']);
   });
 
+  it('applies reusable utility rules without excluding content communities', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'support-subdomain',
+          'navigation',
+          'https://support.smalltool.example/guides/shortcuts',
+          700,
+          'support-rider',
+          'Keyboard shortcuts',
+        ),
+        event(
+          'support-title',
+          'navigation',
+          'https://affinity.studio/learn',
+          600,
+          'affinity-rider',
+          'Affinity Support & Learning | Help for Existing Users',
+        ),
+        event(
+          'hosted-job',
+          'navigation',
+          'https://capitalone.wd12.myworkdayjobs.com/Capital_One/job/example',
+          500,
+          'job-rider',
+          'A job listing',
+        ),
+        event(
+          'generic-platform-home',
+          'navigation',
+          'https://threads.com/',
+          400,
+          'threads-rider',
+          'Threads',
+        ),
+        event(
+          'community-forum',
+          'navigation',
+          'https://forum.frutigeraeroarchive.org/t/community-thread/42',
+          300,
+          'forum-rider',
+          'A community thread',
+        ),
+        event(
+          'museum',
+          'navigation',
+          'https://themorgan.org/exhibitions/example',
+          200,
+          'museum-rider',
+          'A museum exhibition',
+        ),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.destinations).toEqual([
+      expect.objectContaining({ domain: 'forum.frutigeraeroarchive.org' }),
+      expect.objectContaining({ domain: 'themorgan.org' }),
+    ]);
+    expect(response.scenery.map((item) => item.domain)).toEqual(
+      expect.arrayContaining([
+        'support.smalltool.example',
+        'affinity.studio',
+        'capitalone.wd12.myworkdayjobs.com',
+        'threads.com',
+      ]),
+    );
+  });
+
   it('keeps IMDb entity pages while removing tracking queries', () => {
     const response = buildCommuteResponse(
       [
@@ -408,6 +478,14 @@ describe('buildCommuteResponse', () => {
           100,
           'dictionary-rider',
           'Old Icelandic Dictionary - Þyrnir',
+        ),
+        event(
+          'untitled-hosted-project',
+          'navigation',
+          'https://generic-workshop.vercel.app/',
+          50,
+          'untitled-rider',
+          undefined,
         ),
       ],
       [],
@@ -1102,6 +1180,258 @@ describe('buildCommuteResponse', () => {
     ]);
   });
 
+  it('keeps student systems domain-only without excluding public university pages', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'ellucian-portal',
+          'navigation',
+          'https://experience.elluciancloud.com/example-university',
+          600,
+          'ellucian-rider',
+          'Home - Student Portal',
+        ),
+        event(
+          'gradescope-course',
+          'navigation',
+          'https://www.gradescope.com/courses/1234567',
+          500,
+          'gradescope-rider',
+          'Example Course Dashboard | Gradescope',
+        ),
+        event(
+          'registration-history',
+          'navigation',
+          'https://banner.apps.example.edu/StudentRegistrationSSB/ssb/registrationHistory/registrationHistory',
+          400,
+          'registration-rider',
+          'View Registration Information',
+        ),
+        event(
+          'private-quiz',
+          'navigation',
+          'https://www.zipgrade.com/quiz/opaque-quiz-id/all',
+          300,
+          'quiz-rider',
+          'ZipGrade Quiz',
+        ),
+        event(
+          'university-museum',
+          'navigation',
+          'https://museum.example.edu/exhibitions/handmade-web',
+          200,
+          'museum-rider',
+          'Handmade Web Exhibition',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'museum.example.edu',
+    ]);
+    expect(response.scenery.map((item) => item.domain)).toEqual(
+      expect.arrayContaining([
+        'experience.elluciancloud.com',
+        'gradescope.com',
+        'banner.apps.example.edu',
+        'zipgrade.com',
+      ]),
+    );
+  });
+
+  it('keeps course systems, private documents, profiles, downloads, and utility pages domain-only', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'university-sign-on',
+          'navigation',
+          'https://beartracks.ualberta.ca/uahebprd/signon.html',
+          900,
+          'sign-on-rider',
+          'University sign on',
+        ),
+        event(
+          'schoology-course',
+          'navigation',
+          'https://d211.schoology.com/course/8476652559/materials',
+          800,
+          'schoology-rider',
+          'Private course materials',
+        ),
+        event(
+          'd2l-course',
+          'navigation',
+          'https://pilot.wright.edu/d2l/le/content/805933/viewContent/5941198/View',
+          700,
+          'd2l-rider',
+          'Fall 2026 course reading',
+        ),
+        event(
+          'notion-document',
+          'navigation',
+          'https://app.notion.com/p/person/private-page-21bce1226ca580209bdadd8e5e1d7a43',
+          600,
+          'notion-rider',
+          'Private notes',
+        ),
+        event(
+          'file-host-download',
+          'navigation',
+          'https://1cloudfile.com/49yR0',
+          500,
+          'download-rider',
+          'Archive.Build.16349391.rar - 1Cloud File',
+        ),
+        event(
+          'goodreads-profile',
+          'navigation',
+          'https://www.goodreads.com/user/show/84023-person',
+          450,
+          'goodreads-rider',
+          'A reader profile',
+        ),
+        event(
+          'fragrantica-profile',
+          'navigation',
+          'https://www.fragrantica.pl/@person',
+          400,
+          'fragrantica-rider',
+          'A fragrance profile',
+        ),
+        event(
+          'social-profile',
+          'navigation',
+          'https://social.lol/@person@example.org',
+          350,
+          'social-rider',
+          'A social profile',
+        ),
+        event(
+          'streaming-page',
+          'navigation',
+          'https://voir-anime.to/anime/example/example-10-vostfr',
+          300,
+          'streaming-rider',
+          'Watch an episode',
+        ),
+        event(
+          'legal-page',
+          'navigation',
+          'https://www.spotify.com/us/legal/end-user-agreement',
+          250,
+          'legal-rider',
+          'Terms and Conditions of Use',
+        ),
+        event(
+          'university-museum',
+          'navigation',
+          'https://museum.example.edu/exhibitions/handmade-web',
+          200,
+          'museum-rider',
+          'Handmade Web Exhibition',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'museum.example.edu',
+    ]);
+    expect(response.scenery.map((item) => item.domain)).toEqual(
+      expect.arrayContaining([
+        'd211.schoology.com',
+        'pilot.wright.edu',
+        'app.notion.com',
+        '1cloudfile.com',
+        'goodreads.com',
+        'fragrantica.pl',
+        'social.lol',
+        'voir-anime.to',
+        'spotify.com',
+      ]),
+    );
+  });
+
+  it('omits hosting control panels and their session URLs from scenery', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'control-panel',
+          'navigation',
+          'https://server.truehost.cloud:2083/cpsess1234567890/frontend/jupiter/filemanager/index.html',
+          300,
+          'control-panel-rider',
+          'cPanel File Manager',
+        ),
+        event(
+          'control-panel-session',
+          'navigation',
+          'https://hosting.example/cpsess9876543210/frontend/jupiter/filemanager/index.html',
+          250,
+          'control-panel-session-rider',
+          'cPanel File Manager',
+        ),
+        event(
+          'public-article',
+          'navigation',
+          'https://garden.example/essays/moss',
+          200,
+          'article-rider',
+          'Notes on moss',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.scenery.map((item) => item.domain)).toEqual([
+      'garden.example',
+    ]);
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'garden.example',
+    ]);
+  });
+
+  it('keeps private chat channels and person-bound Steam profiles domain-only', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'fluxer-channel',
+          'navigation',
+          'https://web.canary.fluxer.app/channels/123456789/987654321',
+          400,
+          'fluxer-rider',
+          'Private channel',
+        ),
+        event(
+          'steam-friend-action',
+          'navigation',
+          'https://steamcommunity.com/id/example-person/friends/add',
+          300,
+          'steam-rider',
+          'Example Person',
+        ),
+        event(
+          'public-article',
+          'navigation',
+          'https://garden.example/essays/moss',
+          200,
+          'article-rider',
+          'Notes on moss',
+        ),
+      ],
+      [],
+      2_000,
+    );
+
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'garden.example',
+    ]);
+  });
+
   it('keeps short-form video and movie streaming services as scenery only', () => {
     const response = buildCommuteResponse(
       [
@@ -1138,6 +1468,22 @@ describe('buildCommuteResponse', () => {
           'A film on Criterion Channel',
         ),
         event(
+          'f1-stream',
+          'navigation',
+          'https://f1tv.formula1.com/',
+          175,
+          'f1-rider',
+          'F1 TV | Home',
+        ),
+        event(
+          'unlicensed-stream',
+          'navigation',
+          'https://nepu.to/show/example/season/1/episode/9',
+          150,
+          'stream-rider',
+          'Watch a show free in HD',
+        ),
+        event(
           'article',
           'navigation',
           'https://garden.example/essays/moss',
@@ -1155,6 +1501,8 @@ describe('buildCommuteResponse', () => {
       'peacocktv.com',
       'disneyplus.com',
       'criterionchannel.com',
+      'f1tv.formula1.com',
+      'nepu.to',
       'garden.example',
     ]);
     expect(response.destinations.map((item) => item.domain)).toEqual([
@@ -1344,5 +1692,109 @@ describe('buildCommuteResponse', () => {
     expect(response.activePeople).toBe(2);
     expect(JSON.stringify(response)).not.toContain('person-one');
     expect(JSON.stringify(response)).not.toContain('private.example/one');
+  });
+});
+
+describe('review candidate generation', () => {
+  it('uses the rider limit as a diversity preference instead of an exclusion', () => {
+    const navigationEvents = Array.from({ length: 8 }, (_, index) =>
+      event(
+        `navigation-${index}`,
+        'navigation',
+        `https://one-rider-${index}.com/essay`,
+        900 - index,
+        'one-rider',
+        `Essay ${index}`,
+      ),
+    );
+
+    const response = buildCommuteResponse(navigationEvents, [], 1_000);
+
+    expect(response.destinations).toHaveLength(8);
+  });
+
+  it('prioritizes another rider before filling from a frequent contributor', () => {
+    const response = buildCommuteResponse(
+      [
+        event('a-one', 'navigation', 'https://a-one.com/', 500, 'rider-a', 'A1'),
+        event('a-two', 'navigation', 'https://a-two.com/', 490, 'rider-a', 'A2'),
+        event(
+          'a-three',
+          'navigation',
+          'https://a-three.com/',
+          480,
+          'rider-a',
+          'A3',
+        ),
+        event('b-one', 'navigation', 'https://b-one.com/', 470, 'rider-b', 'B1'),
+      ],
+      [],
+      1_000,
+    );
+
+    expect(response.destinations.map((item) => item.domain)).toEqual([
+      'a-one.com',
+      'a-two.com',
+      'b-one.com',
+      'a-three.com',
+    ]);
+  });
+
+  it('can apply larger limits without changing the live defaults', () => {
+    const navigationEvents = Array.from({ length: 80 }, (_, index) =>
+      event(
+        `navigation-${index}`,
+        'navigation',
+        `https://small-site-${index}.com/essay`,
+        900 - index,
+        `rider-${index}`,
+        `Essay ${index}`,
+      ),
+    );
+    const live = buildCommuteResponse(navigationEvents, [], 1_000);
+    const review = buildCommuteResponse(navigationEvents, [], 1_000, {
+      destinations: 80,
+      scenery: 80,
+    });
+
+    expect(live.destinations).toHaveLength(50);
+    expect(review.destinations).toHaveLength(80);
+    expect(review.scenery).toHaveLength(80);
+  });
+
+  it('uses the same privacy policy for a larger candidate set', () => {
+    const response = buildCommuteResponse(
+      [
+        event(
+          'public',
+          'navigation',
+          'https://garden.example/essay?utm_source=feed',
+          500,
+          'rider-one',
+          'A garden essay',
+        ),
+        event(
+          'private-query',
+          'navigation',
+          'https://private.example/draft?token=secret',
+          400,
+          'rider-two',
+          'Private draft',
+        ),
+      ],
+      [],
+      1_000,
+      { destinations: 200, scenery: 200 },
+    );
+
+    expect(response.destinations).toMatchObject([
+      {
+        domain: 'garden.example',
+        url: 'https://garden.example/essay',
+        title: 'A garden essay',
+      },
+    ]);
+    expect(JSON.stringify(response)).not.toContain('token=secret');
+    expect(JSON.stringify(response)).not.toContain('Private draft');
   });
 });
