@@ -123,9 +123,10 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
     [pid],
   );
 
-  const pieceNote = useCallback((piece: CollagePiece) => {
+  const pieceOwner = useCallback((piece: CollagePiece) => {
     const owner = storedRef.current[piece.id];
-    return owner?.placedByName ? `added by ${owner.placedByName}` : null;
+    if (!owner?.placedByName) return null;
+    return { name: owner.placedByName, color: owner.placedByColor || "#888888" };
   }, []);
 
   const flash = (text: string) => {
@@ -245,12 +246,12 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
     onChange,
     onDraft,
     removalRefusal,
-    pieceNote,
+    pieceOwner,
     overlay,
     toolbar,
     caption: (
       <span className="collage-studio__label">
-        {pieces.length} scrap{pieces.length === 1 ? "" : "s"} on the table · hold i to see who added
+        {pieces.length} scrap{pieces.length === 1 ? "" : "s"} on the table · point at one or hold i to see who added
         each
       </span>
     ),
