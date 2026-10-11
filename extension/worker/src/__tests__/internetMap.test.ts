@@ -56,6 +56,17 @@ describe('handleInternetMapFile', () => {
     expect(await res.text()).toBe('{"counts":{}}');
   });
 
+  it('opens bundles with the map password, and not when none is set', async () => {
+    const { env } = makeEnv({ 'data-small/map.json': '{}' });
+    const path = '/internet-map/data-small/map.json';
+    const locked = await handleInternetMapFile(request(path, 'share'), env, path);
+    expect(locked.status).toBe(401);
+    env.INTERNET_MAP_PASSWORD = 'share';
+    const res = await handleInternetMapFile(request(path, 'share'), env, path);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('X-Robots-Tag')).toBe('noindex');
+  });
+
   it('returns 404 for a missing bundle', async () => {
     const { env } = makeEnv({});
     const path = '/internet-map/nope/map.bin';

@@ -47,4 +47,5 @@ export interface Env {
   WWO_ADMIN_DB: D1Database;     // Feature policy, beta cohorts, and operator workflows
   AI?: Ai;                      // Advisory Internet place classifications
   INTERNET_MAP_BUNDLES: R2Bucket; // Private internet map bundles (real browsing URLs)
+  INTERNET_MAP_PASSWORD?: string; // Optional: shared password that opens map bundles only
 }

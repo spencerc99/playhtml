@@ -42,6 +42,9 @@ extension/src/**/*.js.map
 /private-data/
 
 .claude
+!/.claude/
+/.claude/*
+!/.claude/settings.json
 .codex/
 
 

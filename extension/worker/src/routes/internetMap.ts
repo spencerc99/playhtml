@@ -1,4 +1,4 @@
-// ABOUTME: Serves internet map bundles from a private R2 bucket to the admin only.
+// ABOUTME: Serves internet map bundles from a private R2 bucket to the admin or the map password.
 // ABOUTME: Bundles carry participants' full page URLs and titles, so they never ship as public files.
 
 import { getAdminAuthError } from '../lib/adminAuth';
@@ -17,6 +17,17 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
 };
 
+/**
+ * The admin key always works. INTERNET_MAP_PASSWORD, when set, is a shared
+ * password that only opens map bundles, so it can be handed to people without
+ * exposing the admin routes. Change the secret to lock everyone out again.
+ */
+function getMapAuthError(request: Request, env: Env): Response | null {
+  const password = env.INTERNET_MAP_PASSWORD;
+  if (password && request.headers.get('Authorization') === `Bearer ${password}`) return null;
+  return getAdminAuthError(request, env.ADMIN_KEY);
+}
+
 /** Parses `/internet-map/<bundle>/<file>` into an R2 key, or null when it isn't one. */
 export function internetMapObjectKey(path: string): string | null {
   const match = path.match(/^\/internet-map\/([^/]+)\/([^/]+)$/);
@@ -32,7 +43,7 @@ export async function handleInternetMapFile(
   env: Env,
   path: string,
 ): Promise<Response> {
-  const authError = getAdminAuthError(request, env.ADMIN_KEY);
+  const authError = getMapAuthError(request, env);
   if (authError) return authError;
 
   const key = internetMapObjectKey(path);
@@ -52,6 +63,7 @@ export async function handleInternetMapFile(
       'Content-Type': BUNDLE_FILES[file],
       // Private data: browsers and shared caches must not keep a copy.
       'Cache-Control': 'private, no-store',
+      'X-Robots-Tag': 'noindex',
     },
   });
 }

@@ -15,6 +15,9 @@ export default defineConfig({
       "@moderation": path.join(__dirname, "partykit/moderation.ts"),
       "@movement": path.join(__dirname, "extension/website/shared"),
     },
+    // Code reached through @extension and @movement sits next to the
+    // extension's own React; one copy keeps hooks working across both.
+    dedupe: ["react", "react-dom"],
   },
   optimizeDeps: {
     exclude: ["@playhtml/common", "@playhtml/react", "playhtml", "@extension"],

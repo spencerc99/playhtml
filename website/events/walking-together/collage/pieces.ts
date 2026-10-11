@@ -24,6 +24,16 @@ export interface Piece {
   rotation: number;
   z: number;
   placedAt: number;
+  /** The part of the source image the piece shows, as fractions of it.
+   * Absent means the whole image. The fields below are all optional so rooms
+   * from before the editing tools load unchanged. */
+  crop?: { x: number; y: number; width: number; height: number };
+  flipX?: boolean;
+  flipY?: boolean;
+  /** A background cutout, computed in each viewer's browser. */
+  cutout?: { method: "edge-color"; tolerance: number; keep?: "subject" | "background" };
+  /** A locked piece can't be moved, turned, or sized until it's unlocked. */
+  locked?: boolean;
 }
 
 export type Pieces = Record<string, Piece>;
