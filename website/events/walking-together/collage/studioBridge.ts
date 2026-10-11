@@ -143,6 +143,12 @@ function isWholeCrop(crop: { x: number; y: number; width: number; height: number
   return crop.x === 0 && crop.y === 0 && crop.width === 1 && crop.height === 1;
 }
 
+/** The fields of a table piece one edit set, and the ones it took away. */
+export interface PiecePatch {
+  set: Partial<Piece>;
+  unset: string[];
+}
+
 /** One person's studio edit, as the table pieces to write and the ids to drop. */
 export function tableChange(
   change: PiecesChange,
@@ -156,6 +162,29 @@ export function tableChange(
       .map((studio) => tablePiece(studio, pieces[studio.id], placer, now)),
     remove: change.removedIds.filter((id) => id in pieces),
   };
+}
+
+/**
+ * What an edit changed on one table piece, found by laying out the piece as
+ * it stood before the edit the same way as after it. A field the edit left
+ * alone stays out of the patch, so writing the patch keeps whatever someone
+ * else did to that field meanwhile.
+ */
+export function piecePatch(
+  before: CollagePiece,
+  after: CollagePiece,
+  existing: Piece,
+  placer: Placer,
+  now: number,
+): PiecePatch {
+  const was = tablePiece(before, existing, placer, now) as unknown as Record<string, unknown>;
+  const is = tablePiece(after, existing, placer, now) as unknown as Record<string, unknown>;
+  const set: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(is)) {
+    if (JSON.stringify(was[key]) !== JSON.stringify(value)) set[key] = value;
+  }
+  const unset = Object.keys(was).filter((key) => !(key in is));
+  return { set: set as Partial<Piece>, unset };
 }
 
 /**

@@ -180,20 +180,49 @@ export function orderAroundCentroid(
  * live before the gesture is committed to shared data. */
 /** What one person is part way through changing, shared live so everyone
  * can watch a drag, turn or resize as it happens. Never persisted. */
-export interface CollageLive {
-  draft: Piece[] | null;
+/**
+ * One piece someone is part way through changing: just the fields they have
+ * changed so far, or the whole piece when it is new to the table.
+ */
+export interface DraftPatch {
+  id: string;
+  set: Partial<Piece>;
+  unset?: string[];
 }
 
-/** Other people's in-progress pieces, keyed by piece id. Presence from an
- * older page (or anything malformed) is skipped. */
+export interface CollageLive {
+  draft: DraftPatch[] | null;
+}
+
+function isWholePiece(value: Partial<Piece>): value is Piece {
+  return typeof value.src === "string" && typeof value.x === "number";
+}
+
+/**
+ * Other people's in-progress pieces laid over the stored ones, keyed by piece
+ * id. Each draft only overrides the fields its author is changing, so a field
+ * someone else changed meanwhile still shows. Presence from an older page (or
+ * anything malformed) is skipped.
+ */
 export function remoteDrafts(
   users: Array<{ user: { isMe: boolean }; live: Partial<CollageLive> | undefined }>,
+  stored: Pieces,
 ): Record<string, Piece> {
   const byPiece: Record<string, Piece> = {};
   for (const { user, live } of users) {
     if (user.isMe || !Array.isArray(live?.draft)) continue;
-    for (const piece of live.draft) {
-      if (piece && typeof piece.id === "string") byPiece[piece.id] = piece;
+    for (const patch of live.draft) {
+      if (!patch || typeof patch.id !== "string") continue;
+      if (!patch.set || typeof patch.set !== "object") continue;
+      const base = byPiece[patch.id] ?? stored[patch.id];
+      if (!base) {
+        if (isWholePiece(patch.set)) byPiece[patch.id] = patch.set;
+        continue;
+      }
+      const next = { ...base } as unknown as Record<string, unknown>;
+      for (const key of Array.isArray(patch.unset) ? patch.unset : []) delete next[key];
+      Object.assign(next, patch.set);
+      byPiece[patch.id] = next as unknown as Piece;
     }
   }
   return byPiece;

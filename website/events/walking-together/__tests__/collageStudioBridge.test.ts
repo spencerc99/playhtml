@@ -7,6 +7,7 @@ import {
   TABLE_FRAME,
   placementFromStudio,
   studioPieces,
+  piecePatch,
   tableChange,
   tablePiece,
   toStudioPiece,
@@ -143,6 +144,27 @@ describe("tableChange", () => {
     );
     expect(change.write.map((p) => p.id)).toEqual(["a"]);
     expect(change.remove).toEqual(["b"]);
+  });
+
+  it("patches only the fields an edit changed", () => {
+    const stored = piece("a");
+    const [before] = studioPieces({ a: stored });
+    const placer = { pid: "pk_b", name: "b", color: "#00f" };
+    // Turning a scrap writes its rotation and nothing else.
+    const turned = piecePatch(before, { ...before, rotation: 75 }, stored, placer, 9);
+    expect(turned).toEqual({ set: { rotation: 75 }, unset: [] });
+    // Moving it writes its position, leaving a rotation someone else just set.
+    const moved = piecePatch(before, { ...before, x: before.x + 160 }, stored, placer, 9);
+    expect(Object.keys(moved.set)).toEqual(["x"]);
+    expect(moved.unset).toEqual([]);
+  });
+
+  it("takes away a field the edit removed", () => {
+    const stored = piece("a", { locked: true });
+    const [before] = studioPieces({ a: stored });
+    const { locked: _locked, ...unlocked } = before;
+    const patch = piecePatch(before, unlocked, stored, { pid: "pk_a", name: "a", color: "#f00" }, 9);
+    expect(patch).toEqual({ set: {}, unset: ["locked"] });
   });
 
   it("lays the table out at one shared frame", () => {

@@ -130,20 +130,43 @@ describe("shape template", () => {
 });
 
 describe("remote drafts", () => {
-  it("collects other people's in-progress pieces and skips mine", () => {
-    const moving = piece("p1", { x: 0.1 });
+  it("lays other people's changes over the stored pieces and skips mine", () => {
+    const stored = { p1: piece("p1", { x: 0.5, y: 0.5 }) };
     expect(
-      remoteDrafts([
-        { user: { isMe: false }, live: { draft: [moving] } },
-        { user: { isMe: true }, live: { draft: [piece("p2")] } },
-        { user: { isMe: false }, live: { draft: null } },
-        { user: { isMe: false }, live: undefined },
-      ]),
-    ).toEqual({ p1: moving });
+      remoteDrafts(
+        [
+          { user: { isMe: false }, live: { draft: [{ id: "p1", set: { x: 0.1 } }] } },
+          { user: { isMe: true }, live: { draft: [{ id: "p1", set: { y: 0.9 } }] } },
+          { user: { isMe: false }, live: { draft: null } },
+          { user: { isMe: false }, live: undefined },
+        ],
+        stored,
+      ),
+    ).toEqual({ p1: { ...stored.p1, x: 0.1 } });
+  });
+
+  it("keeps a field someone else changed while the drag is going", () => {
+    // The stored piece already has another person's new turn.
+    const stored = { p1: piece("p1", { rotation: 45 }) };
+    const drafts = remoteDrafts(
+      [{ user: { isMe: false }, live: { draft: [{ id: "p1", set: { x: 0.2 }, unset: ["crop"] }] } }],
+      stored,
+    );
+    expect(drafts.p1.rotation).toBe(45);
+    expect(drafts.p1.x).toBe(0.2);
+  });
+
+  it("shows a piece new to the table whole", () => {
+    const fresh = piece("p9");
+    expect(
+      remoteDrafts([{ user: { isMe: false }, live: { draft: [{ id: "p9", set: fresh }] } }], {}),
+    ).toEqual({ p9: fresh });
   });
 
   it("skips presence from an older page", () => {
-    const old = { drag: { id: "p1" } } as unknown as { draft: Piece[] };
-    expect(remoteDrafts([{ user: { isMe: false }, live: old }])).toEqual({});
+    const old = { drag: { id: "p1" } } as unknown as { draft: null };
+    const wholePieces = { draft: [piece("p1")] } as unknown as { draft: null };
+    expect(remoteDrafts([{ user: { isMe: false }, live: old }], {})).toEqual({});
+    expect(remoteDrafts([{ user: { isMe: false }, live: wholePieces }], {})).toEqual({});
   });
 });

@@ -20,11 +20,19 @@ import {
   templatePointsFromCursors,
   type CollageData,
   type CollageLive,
+  type DraftPatch,
   type Piece,
   type Placer,
 } from "./pieces";
 import { useSessionScraps } from "./sessionScraps";
-import { TABLE_FRAME, studioPieces, tableChange } from "./studioBridge";
+import {
+  TABLE_FRAME,
+  piecePatch,
+  studioPieces,
+  tableChange,
+  tablePiece,
+  type PiecePatch,
+} from "./studioBridge";
 import "./collage.scss";
 
 interface Props {
@@ -49,6 +57,13 @@ function writePiece(target: Piece, next: Piece) {
   }
 }
 
+/** Writes just the fields an edit set, and deletes the ones it took away. */
+function applyPatch(target: Piece, patch: PiecePatch) {
+  const record = target as unknown as Record<string, unknown>;
+  for (const key of patch.unset) delete record[key];
+  for (const [key, value] of Object.entries(patch.set)) record[key] = value;
+}
+
 export function CollageTable({ data, setData, peers, setLive }: Props) {
   const { pid, name, color } = usePlayerIdentity();
   const admin = isAdmin(name, color);
@@ -60,7 +75,7 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
   const [notice, setNotice] = React.useState<string | null>(null);
 
   // Other people's drags show as they happen, laid over what is stored.
-  const drafts = remoteDrafts(peers);
+  const drafts = remoteDrafts(peers, stored);
   const draftKey = JSON.stringify(drafts);
   const pieces = useMemo(
     () => studioPieces({ ...stored, ...drafts }),
@@ -77,15 +92,28 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
 
   const onChange = useCallback(
     (change: PiecesChange) => {
-      const { write, remove } = tableChange(change, storedRef.current, placer(), Date.now());
+      const now = Date.now();
+      const { write, remove } = tableChange(change, storedRef.current, placer(), now);
       if (write.length === 0 && remove.length === 0) return;
+      const edits = change.upserts.filter((studio) => studio.scrap.kind === "image");
       setData((draft) => {
         if (!draft.pieces) draft.pieces = {};
-        for (const piece of write) {
+        write.forEach((piece, i) => {
           const target = draft.pieces[piece.id];
-          if (target) writePiece(target, piece);
-          else draft.pieces[piece.id] = piece;
-        }
+          if (!target) {
+            draft.pieces[piece.id] = piece;
+            return;
+          }
+          const before = change.before?.get(piece.id);
+          if (!before) {
+            writePiece(target, piece);
+            return;
+          }
+          // Only what this edit changed, so someone else's edit to another
+          // part of the same scrap survives.
+          const existing = storedRef.current[piece.id] ?? piece;
+          applyPatch(target, piecePatch(before, edits[i], existing, placer(), now));
+        });
         for (const id of remove) delete draft.pieces[id];
       });
     },
@@ -94,22 +122,28 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
 
   const lastDraftAt = useRef(0);
   const onDraft = useCallback(
-    (draft: readonly CollagePiece[] | null) => {
+    (draft: PiecesChange | null) => {
       if (draft === null) {
         setLive({ draft: null });
         return;
       }
       // Live previews ride presence; a few a second is enough to follow.
-      const now = performance.now();
-      if (now - lastDraftAt.current < 50) return;
-      lastDraftAt.current = now;
-      const { write } = tableChange(
-        { upserts: [...draft], removedIds: [] },
-        storedRef.current,
-        placer(),
-        Date.now(),
-      );
-      setLive({ draft: write });
+      const at = performance.now();
+      if (at - lastDraftAt.current < 50) return;
+      lastDraftAt.current = at;
+      const now = Date.now();
+      const stored = storedRef.current;
+      const patches: DraftPatch[] = draft.upserts
+        .filter((studio) => studio.scrap.kind === "image")
+        .map((studio) => {
+          const existing = stored[studio.id];
+          const before = draft.before?.get(studio.id);
+          if (!existing || !before) {
+            return { id: studio.id, set: tablePiece(studio, existing, placer(), now) };
+          }
+          return { id: studio.id, ...piecePatch(before, studio, existing, placer(), now) };
+        });
+      setLive({ draft: patches });
     },
     [placer, setLive],
   );
