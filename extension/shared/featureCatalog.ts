@@ -93,6 +93,14 @@ const FEATURE_DEFINITIONS = {
     defaultStage: "internal",
     requiresReload: true,
   },
+  EVERYONE_TRAILS: {
+    name: "Everyone's trails",
+    description: "Show everyone's cursor trails, not just yours, in the page portrait overlay.",
+    defaultStage: "internal",
+    requiresReload: false,
+    // Picked from the overlay's own mine/everyone switch.
+    chosenWhereUsed: true,
+  },
 } as const satisfies Record<string, FeatureDefinition>;
 
 export type FeatureId = keyof typeof FEATURE_DEFINITIONS;

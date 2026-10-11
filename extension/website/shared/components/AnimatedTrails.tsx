@@ -14,6 +14,7 @@ import { createClickEffect } from "./clickEffects";
 import { useDebugHover } from "./DebugHover";
 import type { SoundEngine } from "../sound/SoundEngine";
 import type { TrailSoundFrame } from "../sound/types";
+import { articulationBreath } from "../sound/tuning";
 import { getTrailRenderer } from "../styles/trailRenderers";
 import {
   buildStraightPathSegment,
@@ -549,10 +550,20 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           );
           if (fade <= 0) continue;
 
+          // The drawing breathes with the sound: a phrased voice swells on
+          // every note and then relaxes, and the same value scales this
+          // trail's opacity and stroke so a fresh gesture is drawn as brightly
+          // as it is heard. Read from the previous frame's tick, which is the
+          // only articulation that exists when the paths are drawn — a frame
+          // of lag at ~60fps is well under what an eye resolves.
+          const articulation = soundEnabled
+            ? soundEngine?.getArticulation(idx)
+            : null;
+          const breath = articulationBreath(articulation);
           const result = handle.update(
             loopedElapsed,
-            trailOpacity,
-            strokeWidth,
+            trailOpacity * breath.opacityScale,
+            strokeWidth * breath.widthScale,
             fade,
           );
 

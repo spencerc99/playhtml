@@ -4,12 +4,14 @@
 import { describe, it, expect } from "vitest";
 import type { CollectionEvent } from "@movement/types";
 import {
+  freezeSteps,
   MAX_STEPS_PER_WALKER,
   stepLabel,
   stepsByWalker,
   stepUrl,
   stopPoint,
   walkerTrailState,
+  walkSteps,
   type Walkers,
 } from "../walk/walkTrails";
 
@@ -87,6 +89,39 @@ describe("stepsByWalker", () => {
     const steps = stepsByWalker(events, walkers, isEventPage);
     expect(steps.maya).toHaveLength(MAX_STEPS_PER_WALKER);
     expect(steps.maya.at(-1)?.url).toBe(`site${MAX_STEPS_PER_WALKER + 4}.example`);
+  });
+});
+
+describe("ending the walk", () => {
+  it("draws the frozen snapshot once ended, whatever arrives later", () => {
+    const before = stepsByWalker(
+      [nav("maya", "https://a.example", 2000), nav("maya", "https://b.example", 3000)],
+      walkers,
+      isEventPage,
+    );
+    const frozen = freezeSteps(before);
+    // A later page, even one stamped earlier by a walker's slow clock.
+    const after = stepsByWalker(
+      [
+        nav("maya", "https://a.example", 2000),
+        nav("maya", "https://b.example", 3000),
+        nav("maya", "https://after.example", 2500),
+      ],
+      walkers,
+      isEventPage,
+    );
+    expect(walkSteps({ endedAt: 4000, frozen }, after).maya.map((s) => s.url)).toEqual([
+      "a.example",
+      "b.example",
+    ]);
+    expect(walkSteps({}, after)).toBe(after);
+  });
+
+  it("freezes a plain copy of each walker's stops", () => {
+    const steps = { maya: [{ url: "a.example", label: "a.example", ts: 1 }] };
+    const frozen = freezeSteps(steps);
+    expect(frozen).toEqual(steps);
+    expect(frozen.maya).not.toBe(steps.maya);
   });
 });
 

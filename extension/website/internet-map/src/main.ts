@@ -2,7 +2,9 @@
 // ABOUTME: Vendored from jackyzha0/internet-map; theme and dev panel are our additions.
 import "./style.css";
 import "./devpanel.css";
-import { loadMap, MapData } from "./data";
+import { loadMap, MapData, MapUnauthorizedError } from "./data";
+import { WORKER_URL } from "@movement/config";
+import { loadAdminToken } from "../../admin/adminToken";
 import { Camera, attachControls } from "./camera";
 import { AsciiRenderer } from "./ascii/renderer";
 import { bakeMap, ROAD_LEVELS } from "./ascii/bake";
@@ -22,12 +24,24 @@ const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySele
 buildChrome($("#ui"));
 
 const q = new URLSearchParams(location.search);
-// Which map to load. Bundles carry real browsing URLs and are not committed,
-// so they live under the site's public dir and are supplied out of band.
+// Which map to load. Bundles carry real browsing URLs and titles, so they are
+// never committed or deployed as public files. In production they live in a
+// private R2 bucket behind the Worker's admin key; the local dev server reads
+// them from the gitignored public/internet-map/data/ instead.
 // VITE_DATA picks one at build time; ?data= still overrides at runtime.
-const DEFAULT_DATA = (import.meta.env.VITE_DATA as string) || "data-small";
-const DATA = "/internet-map/data/" +
-  (q.get("data") || DEFAULT_DATA).replace(/[^A-Za-z0-9._-]/g, "");
+const DEFAULT_DATA = (import.meta.env.VITE_DATA as string) || "may-map";
+const BUNDLE = (q.get("data") || DEFAULT_DATA).replace(/[^A-Za-z0-9._-]/g, "");
+const LOCAL_BUNDLES = import.meta.env.DEV && q.get("source") !== "worker";
+const DATA = LOCAL_BUNDLES
+  ? "/internet-map/data/" + BUNDLE
+  : `${WORKER_URL}/internet-map/${BUNDLE}`;
+// The map password (a Worker secret that opens map bundles only) is asked for
+// on this page and remembered; a signed-in admin key works too.
+const PASSWORD_KEY = "wwo-internet-map-password";
+const storedPassword = () => {
+  try { return localStorage.getItem(PASSWORD_KEY) || ""; } catch { return ""; }
+};
+const ADMIN_TOKEN = LOCAL_BUNDLES ? "" : storedPassword() || loadAdminToken();
 
 // The theme owns the building palette and alpha ramp, and the bake reads the
 // ramp's LENGTH to pick a shade per cell — so it has to be installed before
@@ -61,13 +75,56 @@ await Promise.all([
   (document as any).fonts.load('15px "MEKDings"'),
 ]).catch(() => {});
 
+const bootFail = (msg: string, askPassword = false) => {
+  const el = $("#bootmsg");
+  el.textContent = msg;
+  ($("#bootbar").parentElement as HTMLElement).style.display = "none";
+  if (!askPassword) return;
+  const form = document.createElement("form");
+  form.id = "bootpw";
+  const input = document.createElement("input");
+  input.type = "password";
+  input.placeholder = "password";
+  input.autocomplete = "current-password";
+  input.setAttribute("aria-label", "map password");
+  const go = document.createElement("button");
+  go.type = "submit";
+  go.textContent = "enter";
+  form.append(input, go);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!input.value) return;
+    try { localStorage.setItem(PASSWORD_KEY, input.value); } catch {}
+    location.reload();
+  });
+  el.after(form);
+  input.focus();
+};
+
 let data: MapData;
 try {
-  data = await loadMap(DATA, boot);
+  if (!LOCAL_BUNDLES && !ADMIN_TOKEN) throw new MapUnauthorizedError("no password");
+  data = await loadMap(
+    DATA,
+    boot,
+    ADMIN_TOKEN ? { headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } } : {},
+  );
 } catch (err) {
-  $("#bootmsg").textContent =
-    "this deployment has no map data — bundles carry real browsing traces and ship separately";
-  ($("#bootbar").parentElement as HTMLElement).style.display = "none";
+  if (err instanceof MapUnauthorizedError) {
+    // Forget a wrong remembered password so the prompt can take a new one.
+    const triedPassword = storedPassword() !== "";
+    if (triedPassword) {
+      try { localStorage.removeItem(PASSWORD_KEY); } catch {}
+    }
+    bootFail(
+      triedPassword
+        ? "that password didn't work"
+        : "this map holds real browsing traces, so it needs a password",
+      true,
+    );
+  } else {
+    bootFail(`no map bundle named "${BUNDLE}" is uploaded yet`);
+  }
   throw err;
 }
 const { A, labels, head } = data;
