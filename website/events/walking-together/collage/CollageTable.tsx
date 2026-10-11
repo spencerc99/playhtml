@@ -368,6 +368,11 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
   const startCrop = (id: string) => {
     const piece = piecesRef.current[id];
     if (!piece || size.width <= 0) return;
+    // Cropping resizes and moves the piece, which a lock forbids.
+    if (piece.locked) {
+      flashNotice("unlock this scrap to crop it");
+      return;
+    }
     setCutting(null);
     setCropping({ id, crop: cropSessionStart(toStudioPiece(piece, size)) });
   };
@@ -380,13 +385,18 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
     if (!session) return;
     const piece = piecesRef.current[session.id];
     if (!piece || size.width <= 0) return;
+    if (piece.locked) {
+      flashNotice("someone locked this scrap, so the crop wasn't kept");
+      return;
+    }
     const before = toStudioPiece(piece, size);
     const after = commitCropSession(before, session.crop);
     if (after === before) return;
     const placement = placementFromStudio(after, size);
     setData((draft) => {
       const target = draft.pieces?.[session.id];
-      if (!target) return;
+      // Someone may have locked it since the crop began.
+      if (!target || target.locked) return;
       target.x = placement.x;
       target.y = placement.y;
       target.width = placement.width;
@@ -475,7 +485,8 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
     };
   }, []);
 
-  // Enter or Escape ends a crop; Escape alone puts the piece down.
+  // Enter or Escape ends a crop; Escape alone puts the piece down. The other
+  // keys are the ones the tool strip lists beside each tool.
   useEffect(() => {
     if (!selectedId) return;
     const onKey = (e: KeyboardEvent) => {
@@ -483,13 +494,50 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
       if (target?.closest("input, textarea, [contenteditable]")) return;
       if (e.key === "Enter" && cropping) commitCrop();
       if (e.key === "Escape") deselect();
+      // A crop or cutout in progress keeps its own keys.
+      if (cropping || cutting) return;
+      const piece = piecesRef.current[selectedId];
+      if (!piece) return;
+      const command = e.metaKey || e.ctrlKey;
+      if (command && !e.altKey && e.code === "KeyD") {
+        e.preventDefault();
+        duplicate(piece.id);
+        return;
+      }
+      if (command || e.altKey) return;
+      const run = (action: () => void) => {
+        e.preventDefault();
+        action();
+      };
+      switch (e.code) {
+        case "BracketLeft":
+          return run(() => orderPiece(piece.id, e.shiftKey ? "back" : "backward"));
+        case "BracketRight":
+          return run(() => orderPiece(piece.id, e.shiftKey ? "front" : "forward"));
+        case "KeyH":
+          return run(() => flipPiece(piece.id, "x"));
+        case "KeyV":
+          return run(() => flipPiece(piece.id, "y"));
+        case "KeyC":
+          return run(() => startCrop(piece.id));
+        case "KeyB":
+          return run(() => startCutout(piece.id));
+        case "Delete":
+        case "Backspace":
+          return run(() => removePiece(piece));
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
 
   // A piece someone else removed can't stay in hand.
-  const selectedGone = !!selectedId && !pieces[selectedId];
+  // A fresh duplicate is selected before its write comes back, so a piece
+  // only counts as gone once it has been on the table.
+  const seenSelectedRef = useRef<string | null>(null);
+  if (selectedId && pieces[selectedId]) seenSelectedRef.current = selectedId;
+  const selectedGone =
+    !!selectedId && !pieces[selectedId] && seenSelectedRef.current === selectedId;
   useEffect(() => {
     if (!selectedGone) return;
     setSelectedId(null);
