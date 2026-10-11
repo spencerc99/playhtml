@@ -1,18 +1,25 @@
-// ABOUTME: Pure helpers for the shared-collage viewer: fetching, picture URLs, lightbox items, labels and fit.
-// ABOUTME: Kept apart from the React page so the mapping from the shared format can be unit tested.
+// ABOUTME: Helpers for the published-collage viewer: fetching, picture URLs, studio pieces, labels and fit.
+// ABOUTME: Kept apart from the React page so the mapping from the published format can be unit tested.
 
 import type { ScrapItem } from "@movement/components/ScrapCollage";
+import type { CollagePiece } from "@extension/entrypoints/scraps/collageRecord";
 import {
-  isSharedCollageId,
-  parseSharedCollage,
+  isPublishedCollageId,
+  parsePublishedCollage,
   webUrl,
-  type SharedCollage,
-  type SharedCollagePiece,
-} from "../../shared/sharedCollage";
+  type PublishedCollage,
+  type PublishedCollagePiece,
+  type PublishedPieceContent,
+} from "../../shared/publishedCollage";
+import {
+  sanitizeColor,
+  sanitizeStyles,
+  sanitizeSvgMarkup,
+} from "./sanitizeMarkup";
 
 /** What fetching a shared collage came to. */
-export type SharedCollageLoad =
-  | { kind: "ok"; collage: SharedCollage }
+export type PublishedCollageLoad =
+  | { kind: "ok"; collage: PublishedCollage }
   /** No such link, or the sharer took it down. */
   | { kind: "missing" }
   | { kind: "error"; message: string };
@@ -23,32 +30,32 @@ export type SourcesMode = "off" | "site" | "title";
 export const SOURCES_MODES: readonly SourcesMode[] = ["off", "site", "title"];
 
 /** The share id a viewer URL names, or null when it names none. */
-export function sharedCollageIdFrom(search: string): string | null {
+export function publishedCollageIdFrom(search: string): string | null {
   const id = new URLSearchParams(search).get("id");
-  return id && isSharedCollageId(id) ? id : null;
+  return id && isPublishedCollageId(id) ? id : null;
 }
 
-export function sharedCollageUrl(workerUrl: string, id: string): string {
+export function publishedCollageUrl(workerUrl: string, id: string): string {
   return `${workerUrl}/collages/${encodeURIComponent(id)}`;
 }
 
 /** Where a piece's picture is served, from its `img/<n>` name. */
-export function sharedImageUrl(
+export function publishedImageUrl(
   workerUrl: string,
   id: string,
   ref: string,
 ): string {
-  return `${sharedCollageUrl(workerUrl, id)}/${ref}`;
+  return `${publishedCollageUrl(workerUrl, id)}/${ref}`;
 }
 
-export async function loadSharedCollage(
+export async function loadPublishedCollage(
   workerUrl: string,
   id: string,
   fetcher: typeof fetch = fetch,
-): Promise<SharedCollageLoad> {
+): Promise<PublishedCollageLoad> {
   let response: Response;
   try {
-    response = await fetcher(sharedCollageUrl(workerUrl, id));
+    response = await fetcher(publishedCollageUrl(workerUrl, id));
   } catch {
     return { kind: "error", message: "the collage could not be reached" };
   }
@@ -60,7 +67,10 @@ export async function loadSharedCollage(
     };
   }
   try {
-    return { kind: "ok", collage: parseSharedCollage(await response.json()) };
+    return {
+      kind: "ok",
+      collage: parsePublishedCollage(await response.json()),
+    };
   } catch (error) {
     return {
       kind: "error",
@@ -74,7 +84,7 @@ export async function loadSharedCollage(
  * the way a page is read, rather than in the stack order nobody can see.
  */
 export function readingOrder(
-  pieces: readonly SharedCollagePiece[],
+  pieces: readonly PublishedCollagePiece[],
   frameHeight: number,
 ): number[] {
   const band = Math.max(1, frameHeight / 6);
@@ -88,27 +98,22 @@ export function readingOrder(
     .map((entry) => entry.index);
 }
 
-/** A piece as the scraps lightbox examines it: always a picture, served by the Worker. */
-export function pieceScrapItem(
-  piece: SharedCollagePiece,
-  index: number,
-  imageUrl: string,
-): ScrapItem {
+/**
+ * A published piece ready to show: as a studio piece, which the studio's own
+ * material and bake draw, and as the scrap the lightbox examines.
+ */
+export interface ViewerPiece {
+  piece: CollagePiece;
+  item: ScrapItem;
+}
+
+/** The fields every scrap carries, from where the piece came from. */
+function scrapBase(piece: PublishedCollagePiece, index: number) {
   const { source } = piece;
-  // Without a recorded size the source box stands in, which keeps the shape.
-  const naturalWidth =
-    source.naturalWidth ?? Math.round(piece.width / piece.crop.width);
-  const naturalHeight =
-    source.naturalHeight ?? Math.round(piece.height / piece.crop.height);
   const favicon = source.faviconUrl ? webUrl(source.faviconUrl) : null;
   return {
     id: `piece-${index}`,
     key: `piece-${index}`,
-    kind: "image",
-    src: imageUrl,
-    naturalWidth,
-    naturalHeight,
-    ...(source.alt ? { alt: source.alt } : {}),
     pageTitle: source.pageTitle,
     domain: source.domain,
     // Only a plain web address becomes the lightbox's "visit page" link.
@@ -118,9 +123,121 @@ export function pieceScrapItem(
   };
 }
 
+/**
+ * The scrap a content piece is set from, its markup sanitized again here, at
+ * render time, whatever the stored copy says.
+ */
+function contentScrap(
+  content: PublishedPieceContent,
+  base: ReturnType<typeof scrapBase>,
+): ScrapItem {
+  switch (content.kind) {
+    case "button": {
+      const innerSvg = content.innerSvg
+        ? sanitizeSvgMarkup(content.innerSvg)
+        : "";
+      const backdropColor = sanitizeColor(content.backdropColor);
+      return {
+        ...base,
+        kind: "button",
+        text: content.text,
+        styles: sanitizeStyles(content.styles),
+        ...(innerSvg ? { innerSvg } : {}),
+        ...(backdropColor ? { backdropColor } : {}),
+      };
+    }
+    case "heading":
+      return {
+        ...base,
+        kind: "heading",
+        text: content.text,
+        level: content.level,
+        styles: sanitizeStyles(content.styles),
+      };
+    case "svg-icon":
+      return {
+        ...base,
+        kind: "svg-icon",
+        markup: sanitizeSvgMarkup(content.markup),
+        width: content.width,
+        height: content.height,
+      };
+  }
+}
+
+/**
+ * The crop of a picture that covers only part of its piece's source box, as
+ * a baked cutout does, re-expressed against the picture itself, so the picture
+ * becomes the whole source and the visible box stays exactly where it was.
+ */
+export function cropWithinPicture(
+  piece: PublishedCollagePiece,
+): PublishedCollagePiece["crop"] {
+  const place = piece.placement;
+  if (!place) return { ...piece.crop };
+  return {
+    x: (piece.crop.x - place.x) / place.width,
+    y: (piece.crop.y - place.y) / place.height,
+    width: piece.crop.width / place.width,
+    height: piece.crop.height / place.height,
+  };
+}
+
+/**
+ * Every published piece as the viewer shows it, in stack order. A picture is
+ * drawn as an image filling its source box; the lightbox still names it by
+ * the kind of scrap it was, so a cursor reads as a cursor.
+ */
+export function viewerPieces(
+  collage: PublishedCollage,
+  imageUrlFor: (ref: string) => string,
+): ViewerPiece[] {
+  return collage.pieces.map((published, index) => {
+    const base = scrapBase(published, index);
+    const geometry = {
+      id: base.id,
+      scrapId: base.id,
+      x: published.x,
+      y: published.y,
+      width: published.width,
+      height: published.height,
+      rotation: published.rotation,
+      z: published.z,
+      flipX: published.flipX,
+      flipY: published.flipY,
+    };
+    if (published.content) {
+      const scrap = contentScrap(published.content, base);
+      return {
+        piece: { ...geometry, crop: { ...published.crop }, scrap },
+        item: scrap,
+      };
+    }
+    const src = imageUrlFor(published.image ?? "");
+    const crop = cropWithinPicture(published);
+    const { source } = published;
+    // Without a recorded size, the picture's box on the collage stands in.
+    const naturalWidth =
+      source.naturalWidth ?? Math.round(published.width / crop.width);
+    const naturalHeight =
+      source.naturalHeight ?? Math.round(published.height / crop.height);
+    const image: ScrapItem = {
+      ...base,
+      kind: "image",
+      src,
+      naturalWidth,
+      naturalHeight,
+      ...(source.alt ? { alt: source.alt } : {}),
+    };
+    const item: ScrapItem =
+      source.kind === "cursor" ? { ...base, kind: "cursor", url: src } : image;
+    return { piece: { ...geometry, crop, scrap: image }, item };
+  });
+}
+
 /** What a source tag says in a given mode. */
 export function sourceLabel(
-  piece: SharedCollagePiece,
+  piece: PublishedCollagePiece,
   mode: Exclude<SourcesMode, "off">,
 ): string {
   const domain = piece.source.domain || "an unknown site";
@@ -129,7 +246,7 @@ export function sourceLabel(
 }
 
 /** A page's favicon, or the public favicon service when the scrap kept none. */
-export function faviconFor(piece: SharedCollagePiece): string | null {
+export function faviconFor(piece: PublishedCollagePiece): string | null {
   const own = piece.source.faviconUrl ? webUrl(piece.source.faviconUrl) : null;
   if (own) return own;
   if (!piece.source.domain) return null;
@@ -154,20 +271,4 @@ export function fitScale(
     1,
   );
   return Math.max(0.05, scale);
-}
-
-/** How a picture lies inside its piece's source box, as CSS percentages. */
-export function placementStyle(piece: SharedCollagePiece): {
-  left: string;
-  top: string;
-  width: string;
-  height: string;
-} {
-  const place = piece.placement ?? { x: 0, y: 0, width: 1, height: 1 };
-  return {
-    left: `${place.x * 100}%`,
-    top: `${place.y * 100}%`,
-    width: `${place.width * 100}%`,
-    height: `${place.height * 100}%`,
-  };
 }

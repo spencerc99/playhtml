@@ -1,29 +1,30 @@
-// ABOUTME: Tests the shared-collage viewer's mapping: ids, fetch outcomes, lightbox items, labels and order.
+// ABOUTME: Tests the published-collage viewer's mapping: ids, fetch outcomes, studio pieces, labels and order.
 // ABOUTME: Pure functions only; the page itself is exercised in a real browser.
 
 import { describe, expect, it, vi } from "vitest";
 import {
-  SHARED_COLLAGE_FORMAT,
-  SHARED_COLLAGE_VERSION,
-  type SharedCollagePiece,
-} from "../../../shared/sharedCollage";
+  PUBLISHED_COLLAGE_FORMAT,
+  PUBLISHED_COLLAGE_VERSION,
+  parsePublishedCollage,
+  type PublishedCollagePiece,
+} from "../../../shared/publishedCollage";
 import {
   faviconFor,
+  cropWithinPicture,
   fitScale,
-  loadSharedCollage,
-  pieceScrapItem,
-  placementStyle,
+  loadPublishedCollage,
   readingOrder,
-  sharedCollageIdFrom,
-  sharedImageUrl,
+  viewerPieces,
+  publishedCollageIdFrom,
+  publishedImageUrl,
   sourceLabel,
-} from "../sharedCollageView";
+} from "../publishedCollageView";
 
 const ID = "AbCdEfGhIjKlMnOpQrStU_";
 
 function piece(
-  overrides: Partial<SharedCollagePiece> = {},
-): SharedCollagePiece {
+  overrides: Partial<PublishedCollagePiece> = {},
+): PublishedCollagePiece {
   return {
     x: 100,
     y: 100,
@@ -49,8 +50,8 @@ function piece(
 
 function collageJson(pieces = [piece()]) {
   return {
-    format: SHARED_COLLAGE_FORMAT,
-    version: SHARED_COLLAGE_VERSION,
+    format: PUBLISHED_COLLAGE_FORMAT,
+    version: PUBLISHED_COLLAGE_VERSION,
     title: "t",
     frame: { width: 1500, height: 1000 },
     paper: { color: "#fffdf9", grain: true },
@@ -59,18 +60,18 @@ function collageJson(pieces = [piece()]) {
   };
 }
 
-describe("sharedCollageIdFrom", () => {
+describe("publishedCollageIdFrom", () => {
   it("reads a well-formed id and ignores anything else", () => {
-    expect(sharedCollageIdFrom(`?id=${ID}`)).toBe(ID);
-    expect(sharedCollageIdFrom("?id=../../etc")).toBeNull();
-    expect(sharedCollageIdFrom("")).toBeNull();
+    expect(publishedCollageIdFrom(`?id=${ID}`)).toBe(ID);
+    expect(publishedCollageIdFrom("?id=../../etc")).toBeNull();
+    expect(publishedCollageIdFrom("")).toBeNull();
   });
 });
 
-describe("loadSharedCollage", () => {
+describe("loadPublishedCollage", () => {
   it("parses a collage, and tells a deleted one from a failure", async () => {
     const ok = vi.fn(async () => new Response(JSON.stringify(collageJson())));
-    const loaded = await loadSharedCollage(
+    const loaded = await loadPublishedCollage(
       "https://w",
       ID,
       ok as unknown as typeof fetch,
@@ -80,7 +81,11 @@ describe("loadSharedCollage", () => {
 
     const gone = vi.fn(async () => new Response("{}", { status: 404 }));
     expect(
-      await loadSharedCollage("https://w", ID, gone as unknown as typeof fetch),
+      await loadPublishedCollage(
+        "https://w",
+        ID,
+        gone as unknown as typeof fetch,
+      ),
     ).toEqual({
       kind: "missing",
     });
@@ -90,7 +95,7 @@ describe("loadSharedCollage", () => {
     );
     expect(
       (
-        await loadSharedCollage(
+        await loadPublishedCollage(
           "https://w",
           ID,
           broken as unknown as typeof fetch,
@@ -103,7 +108,7 @@ describe("loadSharedCollage", () => {
     });
     expect(
       (
-        await loadSharedCollage(
+        await loadPublishedCollage(
           "https://w",
           ID,
           down as unknown as typeof fetch,
@@ -113,16 +118,24 @@ describe("loadSharedCollage", () => {
   });
 });
 
-describe("pieceScrapItem", () => {
-  it("maps a piece onto the lightbox's image item with the full page URL", () => {
-    const url = sharedImageUrl("https://w", ID, "img/0");
-    expect(url).toBe(`https://w/collages/${ID}/img/0`);
-    const item = pieceScrapItem(piece(), 3, url);
-    expect(item).toMatchObject({
-      id: "piece-3",
-      key: "piece-3",
+describe("viewerPieces", () => {
+  const imageUrl = (ref: string) => publishedImageUrl("https://w", ID, ref);
+
+  it("draws a picture as an image filling its source, with the full page URL", () => {
+    expect(imageUrl("img/0")).toBe(`https://w/collages/${ID}/img/0`);
+    const collage = parsePublishedCollage(collageJson([piece(), piece()]));
+    const [, shown] = viewerPieces(collage, imageUrl);
+    expect(shown.piece).toMatchObject({
+      id: "piece-1",
+      x: 100,
+      width: 200,
+      crop: { x: 0, y: 0, width: 0.5, height: 1 },
+    });
+    expect(shown.item).toBe(shown.piece.scrap);
+    expect(shown.item).toMatchObject({
+      id: "piece-1",
       kind: "image",
-      src: url,
+      src: imageUrl("img/0"),
       alt: "a fern",
       pageUrl: "https://example.com/full/path?x=1#frag",
       domain: "example.com",
@@ -134,22 +147,67 @@ describe("pieceScrapItem", () => {
   });
 
   it("prefers the recorded picture size and leaves out a missing page", () => {
-    const item = pieceScrapItem(
-      piece({
-        source: {
-          ...piece().source,
-          pageUrl: "",
-          naturalWidth: 640,
-          naturalHeight: 480,
-        },
-      }),
-      0,
-      "u",
+    const collage = parsePublishedCollage(
+      collageJson([
+        piece({
+          source: {
+            ...piece().source,
+            pageUrl: "",
+            naturalWidth: 640,
+            naturalHeight: 480,
+          },
+        }),
+      ]),
     );
+    const [{ item }] = viewerPieces(collage, imageUrl);
     expect(item.pageUrl).toBe("");
     expect(
       item.kind === "image" && [item.naturalWidth, item.naturalHeight],
     ).toEqual([640, 480]);
+  });
+
+  it("names a cursor picture as a cursor in the lightbox", () => {
+    const collage = parsePublishedCollage(
+      collageJson([piece({ source: { ...piece().source, kind: "cursor" } })]),
+    );
+    const [{ piece: shown, item }] = viewerPieces(collage, imageUrl);
+    expect(shown.scrap.kind).toBe("image");
+    expect(item).toMatchObject({ kind: "cursor", url: imageUrl("img/0") });
+  });
+
+  it("sets content pieces from their words, keeping their own kind", () => {
+    const collage = parsePublishedCollage(
+      collageJson([
+        piece({
+          image: undefined,
+          content: {
+            kind: "heading",
+            text: "the internet is a place",
+            level: 1,
+            styles: { fontFamily: "Georgia" },
+          },
+          source: { ...piece().source, kind: "heading" },
+        }),
+      ]),
+    );
+    const [{ piece: shown, item }] = viewerPieces(collage, imageUrl);
+    expect(item).toBe(shown.scrap);
+    expect(item).toMatchObject({
+      kind: "heading",
+      text: "the internet is a place",
+      level: 1,
+      styles: { fontFamily: "Georgia" },
+    });
+  });
+
+  it("re-expresses a baked cutout's crop against its own picture", () => {
+    const cut = piece({
+      crop: { x: 0.25, y: 0, width: 0.5, height: 1 },
+      placement: { x: 0.25, y: 0, width: 0.5, height: 1 },
+      cutout: true,
+    });
+    expect(cropWithinPicture(cut)).toEqual({ x: 0, y: 0, width: 1, height: 1 });
+    expect(cropWithinPicture(piece())).toEqual(piece().crop);
   });
 });
 
@@ -196,19 +254,5 @@ describe("layout", () => {
       piece({ x: 50, y: 60 }),
     ];
     expect(readingOrder(pieces, 1000)).toEqual([2, 0, 1]);
-  });
-
-  it("places a baked cutout inside its source box", () => {
-    expect(
-      placementStyle(
-        piece({ placement: { x: 0.25, y: 0, width: 0.5, height: 1 } }),
-      ),
-    ).toEqual({
-      left: "25%",
-      top: "0%",
-      width: "50%",
-      height: "100%",
-    });
-    expect(placementStyle(piece()).width).toBe("100%");
   });
 });

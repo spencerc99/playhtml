@@ -1,5 +1,5 @@
-// ABOUTME: View-only page for a collage shared from the scraps studio, fetched from the Worker by ?id=.
-// ABOUTME: Hover a piece to see it, click to examine it in the scraps lightbox, toggle or hold i for sources.
+// ABOUTME: View-only page for a collage published from the scraps studio, fetched from the Worker by ?id=.
+// ABOUTME: The framed front draws pieces as the studio does; turn it over for the studio's real back face.
 
 import React, {
   useCallback,
@@ -17,8 +17,24 @@ import {
   type ScrapOrigin,
 } from "@movement/components/ScrapLightbox";
 import { useChromeToggle } from "@movement/hooks/useChromeToggle";
+import { COLLAGE_STYLES } from "@movement/components/ScrapCollage";
 import { paperBackground } from "@extension/entrypoints/scraps/paperGrain";
 import { sourceBoxForCrop } from "@extension/entrypoints/scraps/collageGeometry";
+import { PieceMaterial } from "@extension/entrypoints/scraps/PieceMaterial";
+import { CollageBackFace } from "@extension/entrypoints/scraps/CollageBackFace";
+import {
+  BACK_LOOK,
+  type CollageBackContent,
+} from "@extension/entrypoints/scraps/collageBack";
+import { bakeCollage } from "@extension/entrypoints/scraps/bakeCollage";
+import {
+  pieceMaterialTransform,
+  type CollagePiece,
+} from "@extension/entrypoints/scraps/collageRecord";
+import {
+  COLLAGE_SHEET_STYLES,
+  PIECE_MATERIAL_STYLES,
+} from "@extension/entrypoints/scraps/collageSheetStyles";
 import {
   pieceBounds,
   placeTags,
@@ -31,29 +47,29 @@ import {
 } from "@extension/entrypoints/scraps/peekHold";
 import { COLLAGE_VIEW_STYLES } from "@extension/entrypoints/scraps/collageViewStyles";
 import type {
-  SharedCollage,
-  SharedCollagePiece,
-} from "../../shared/sharedCollage";
+  PublishedCollage,
+  PublishedCollagePiece,
+} from "../../shared/publishedCollage";
 import {
   SOURCES_MODES,
   faviconFor,
   fitScale,
-  loadSharedCollage,
-  pieceScrapItem,
+  loadPublishedCollage,
   placeholderColor,
-  placementStyle,
   readingOrder,
-  sharedCollageIdFrom,
-  sharedImageUrl,
+  viewerPieces,
+  publishedCollageIdFrom,
+  publishedImageUrl,
   sourceLabel,
-  type SharedCollageLoad,
+  type PublishedCollageLoad,
   type SourcesMode,
-} from "./sharedCollageView";
+} from "./publishedCollageView";
 import { VIEWER_STYLES } from "./collageViewerStyles";
 
-/** Room above the frame for the title and the toggle, and below it for the hint. */
-const CHROME_TOP = 64;
-const CHROME_BOTTOM = 44;
+/** Room above the frame for the mark and the toggle, and below it for the caption. */
+const CHROME_TOP = 56;
+const CAPTION = 68;
+const CAPTION_NARROW = 84;
 /** A tag's size before it has been measured, in screen pixels. */
 const ASSUMED_TAG = { width: 120, height: 18 };
 const NEAR_ON_SCREEN = 48;
@@ -132,13 +148,19 @@ function usePeekHeld(): boolean {
   return peek.held;
 }
 
-function Favicon({ piece, size }: { piece: SharedCollagePiece; size: number }) {
+function Favicon({
+  piece,
+  size,
+}: {
+  piece: PublishedCollagePiece;
+  size: number;
+}) {
   const src = faviconFor(piece);
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
     return (
       <span
-        className="shared-collage__favicon"
+        className="published-collage__favicon"
         style={{
           width: size,
           height: size,
@@ -150,7 +172,7 @@ function Favicon({ piece, size }: { piece: SharedCollagePiece; size: number }) {
   }
   return (
     <img
-      className="shared-collage__favicon"
+      className="published-collage__favicon"
       src={src}
       alt=""
       width={size}
@@ -168,7 +190,7 @@ function SourceTags({
   frame,
   hovered,
 }: {
-  pieces: readonly SharedCollagePiece[];
+  pieces: readonly PublishedCollagePiece[];
   mode: Exclude<SourcesMode, "off">;
   scale: number;
   frame: { width: number; height: number };
@@ -228,7 +250,7 @@ function SourceTags({
   );
 
   return (
-    <div ref={holderRef} className="shared-collage__tags" aria-hidden="true">
+    <div ref={holderRef} className="published-collage__tags" aria-hidden="true">
       {pieces.map((piece, index) => {
         const id = String(index);
         const tag = placed.get(id);
@@ -236,7 +258,7 @@ function SourceTags({
         return (
           <React.Fragment key={id}>
             <div
-              className={`shared-collage__edge${hovered === index ? " shared-collage__edge--on" : ""}`}
+              className={`published-collage__edge${hovered === index ? " published-collage__edge--on" : ""}`}
               style={{
                 left: piece.x,
                 top: piece.y,
@@ -249,7 +271,7 @@ function SourceTags({
             />
             <div
               data-tag={id}
-              className="shared-collage__tag"
+              className="published-collage__tag"
               style={{
                 left: tag?.x ?? piece.x,
                 top: tag?.y ?? piece.y,
@@ -258,7 +280,7 @@ function SourceTags({
               }}
             >
               <Favicon piece={piece} size={10} />
-              <span className="shared-collage__tag-text">
+              <span className="published-collage__tag-text">
                 {sourceLabel(piece, mode)}
               </span>
             </div>
@@ -274,7 +296,7 @@ function HoverLabel({
   piece,
   rect,
 }: {
-  piece: SharedCollagePiece;
+  piece: PublishedCollagePiece;
   rect: DOMRect;
 }) {
   const width = Math.min(260, window.innerWidth - 32);
@@ -291,15 +313,15 @@ function HoverLabel({
   const title = piece.source.pageTitle.trim();
   return (
     <div
-      className="shared-collage__hover"
+      className="published-collage__hover"
       role="status"
       style={{ left, top, width }}
     >
-      <span className="shared-collage__hover-where">
+      <span className="published-collage__hover-where">
         <Favicon piece={piece} size={12} />
         {piece.source.domain || "an unknown site"}
       </span>
-      {title && <span className="shared-collage__hover-title">{title}</span>}
+      {title && <span className="published-collage__hover-title">{title}</span>}
     </div>
   );
 }
@@ -313,7 +335,7 @@ function SourcesToggle({
 }) {
   return (
     <div className="collage-views" role="toolbar" aria-label="Sources">
-      <span className="shared-collage__views-label">sources</span>
+      <span className="published-collage__views-label">sources</span>
       {SOURCES_MODES.map((choice) => (
         <button
           key={choice}
@@ -336,7 +358,7 @@ function SourcesToggle({
   );
 }
 
-function formatShared(ts: number | undefined): string | null {
+function formatDay(ts: number | undefined): string | null {
   if (!ts) return null;
   return new Date(ts).toLocaleDateString(undefined, {
     year: "numeric",
@@ -345,13 +367,59 @@ function formatShared(ts: number | undefined): string | null {
   });
 }
 
-function Viewer({ collage, id }: { collage: SharedCollage; id: string }) {
+/** The line under the title: how much the collage holds, and when it was shared. */
+function captionMeta(collage: PublishedCollage): string {
+  const count = collage.pieces.length;
+  const sites = new Set(collage.pieces.map((piece) => piece.source.domain))
+    .size;
+  const parts = [
+    `${count} ${count === 1 ? "piece" : "pieces"}`,
+    `${sites} ${sites === 1 ? "site" : "sites"}`,
+  ];
+  const shared = formatDay(collage.sharedAt);
+  if (shared) parts.push(`shared ${shared}`);
+  return parts.join(" · ");
+}
+
+/**
+ * The baked front, for the back to show faintly through, drawn only once the
+ * collage is first turned over. Without it the back is plain paper.
+ */
+function useBakedFront(
+  wanted: boolean,
+  collage: PublishedCollage,
+  pieces: readonly CollagePiece[],
+): Blob | null {
+  const [front, setFront] = useState<Blob | null>(null);
+  const started = useRef(false);
+  useEffect(() => {
+    if (!wanted || started.current) return;
+    started.current = true;
+    bakeCollage({
+      frame: collage.frame,
+      pieces,
+      paper: collage.paper.color,
+      grain: collage.paper.grain,
+    })
+      .then(setFront)
+      .catch((error: unknown) => {
+        console.warn(
+          "[published collage] the front could not be baked:",
+          error,
+        );
+      });
+  }, [collage, pieces, wanted]);
+  return front;
+}
+
+function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
   const { frame, paper, pieces } = collage;
   const windowSize = useWindowSize();
   const chromeHidden = useChromeToggle();
   const peekHeld = usePeekHeld();
   const prefersReducedMotion = usePrefersReducedMotion();
   const [mode, setMode] = useState<SourcesMode>("off");
+  const [over, setOver] = useState(false);
   const [hovered, setHovered] = useState<{
     index: number;
     rect: DOMRect;
@@ -363,35 +431,53 @@ function Viewer({ collage, id }: { collage: SharedCollage; id: string }) {
   const [failedFavicons, setFailedFavicons] = useState<ReadonlySet<string>>(
     new Set(),
   );
+  const [problem, setProblem] = useState<string | null>(null);
   const pieceRefs = useRef(new Map<number, HTMLDivElement>());
 
   const narrow = windowSize.width < 600;
   const gutter = narrow ? 16 : 32;
-  // On a phone the sources toggle sits under the collage, above the footer.
-  const chromeBottom = narrow ? 84 : CHROME_BOTTOM;
+  const caption = narrow ? CAPTION_NARROW : CAPTION;
   const scale = fitScale(frame, {
     width: windowSize.width - gutter * 2,
     height:
-      windowSize.height -
-      (chromeHidden ? gutter * 2 : CHROME_TOP + chromeBottom),
+      windowSize.height - (chromeHidden ? gutter * 2 : CHROME_TOP + caption),
   });
-  const shownMode: SourcesMode = mode === "off" && peekHeld ? "title" : mode;
+  const shownMode: SourcesMode = over
+    ? "off"
+    : mode === "off" && peekHeld
+      ? "title"
+      : mode;
 
   const order = useMemo(
     () => readingOrder(pieces, frame.height),
     [pieces, frame.height],
   );
-  const items = useMemo(
+  // Markup is sanitized here, every time the collage is shown.
+  const shown = useMemo(
     () =>
-      pieces.map((piece, index) =>
-        pieceScrapItem(
-          piece,
-          index,
-          sharedImageUrl(WORKER_URL, id, piece.image),
-        ),
-      ),
-    [id, pieces],
+      viewerPieces(collage, (ref) => publishedImageUrl(WORKER_URL, id, ref)),
+    [collage, id],
   );
+  const studioPieces = useMemo(
+    () => shown.map((entry) => entry.piece),
+    [shown],
+  );
+
+  const front = useBakedFront(over, collage, studioPieces);
+  const backContent = useMemo<CollageBackContent>(
+    () => ({
+      title: collage.title,
+      createdAt:
+        collage.createdAt ??
+        collage.sharedAt ??
+        Math.min(...pieces.map((piece) => piece.source.ts)),
+      changedAt: null,
+      pieces: studioPieces,
+      shows: collage.backShows ?? "pieces",
+    }),
+    [collage, pieces, studioPieces],
+  );
+  const onBackProblem = useCallback((text: string) => setProblem(text), []);
 
   const originOf = useCallback(
     (index: number): ScrapOrigin | null => {
@@ -425,150 +511,183 @@ function Viewer({ collage, id }: { collage: SharedCollage; id: string }) {
     });
   };
 
+  const turn = () => {
+    setHovered(null);
+    setOver((value) => !value);
+  };
+
   const examinedIndex = examining ? order[examining.at] : null;
-  const examinedItem = examinedIndex === null ? null : items[examinedIndex];
+  const examinedItem =
+    examinedIndex === null ? null : shown[examinedIndex].item;
   const examinedPiece = examinedIndex === null ? null : pieces[examinedIndex];
-  const sharedOn = formatShared(collage.sharedAt);
+  const title = collage.title.trim() || "untitled collage";
+  const fitWidth = frame.width * scale;
 
   return (
     <div
-      className={`shared-collage${chromeHidden ? " shared-collage--bare" : ""}`}
+      className={`published-collage${chromeHidden ? " published-collage--bare" : ""}`}
     >
       {!chromeHidden && (
-        <header className="shared-collage__head">
-          <a className="shared-collage__mark" href="/">
+        <header className="published-collage__head">
+          <a className="published-collage__mark" href="/">
             we were online
           </a>
-          <h1 className="shared-collage__title">
-            {collage.title || "untitled collage"}
-          </h1>
         </header>
       )}
-      {!chromeHidden && <SourcesToggle mode={mode} onMode={setMode} />}
+      {!chromeHidden && !over && <SourcesToggle mode={mode} onMode={setMode} />}
 
       <div
-        className="shared-collage__stage"
+        className="published-collage__stage"
         style={{
           top: chromeHidden ? gutter : CHROME_TOP,
-          bottom: chromeHidden ? gutter : chromeBottom,
+          bottom: chromeHidden ? gutter : 0,
         }}
       >
         <div
-          className="shared-collage__fit"
-          style={{ width: frame.width * scale, height: frame.height * scale }}
+          className="published-collage__fit"
+          style={{ width: fitWidth, height: frame.height * scale }}
         >
           <div
-            className={`shared-collage__frame${hovered ? " shared-collage__frame--looking" : ""}`}
-            data-testid="shared-collage-frame"
+            className={`collage-sheet published-collage__sheet${over ? " collage-sheet--over" : ""}`}
             style={{
               width: frame.width,
               height: frame.height,
               transform: `scale(${scale})`,
-              ...paperBackground(
-                paper.color,
-                paper.grain,
-                frame.width,
-                frame.height,
-              ),
             }}
           >
-            <div className="shared-collage__pieces">
-              {pieces.map((piece, index) => {
-                const source = sourceBoxForCrop(piece, piece.crop);
-                const lifted = hovered?.index === index;
-                const flip = `scale(${piece.flipX ? -1 : 1}, ${piece.flipY ? -1 : 1})`;
-                return (
-                  <div
-                    key={index}
-                    ref={(element) => {
-                      if (element) pieceRefs.current.set(index, element);
-                      else pieceRefs.current.delete(index);
-                    }}
-                    className={`shared-collage__piece${lifted ? " shared-collage__piece--lifted" : ""}`}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`${piece.source.alt || piece.source.kind} from ${piece.source.domain}`}
-                    data-piece={index}
-                    style={
-                      {
-                        left: piece.x,
-                        top: piece.y,
-                        width: piece.width,
-                        height: piece.height,
-                        zIndex: lifted ? pieces.length + 1 : piece.z + 1,
-                        "--piece-rotation": `${piece.rotation}deg`,
-                      } as React.CSSProperties
-                    }
-                    onPointerEnter={(event) => {
-                      if (event.pointerType === "touch") return;
-                      setHovered({
-                        index,
-                        rect: event.currentTarget.getBoundingClientRect(),
-                      });
-                    }}
-                    onPointerLeave={() =>
-                      setHovered((current) =>
-                        current?.index === index ? null : current,
-                      )
-                    }
-                    onClick={() => examine(index)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        examine(index);
-                      }
-                    }}
-                  >
-                    <div
-                      className="shared-collage__source"
-                      style={{
-                        left: source.x - piece.x,
-                        top: source.y - piece.y,
-                        width: source.width,
-                        height: source.height,
-                        transform: flip === "scale(1, 1)" ? "none" : flip,
-                      }}
-                    >
-                      <img
-                        className="shared-collage__image"
-                        src={
-                          items[index].kind === "image"
-                            ? items[index].src
-                            : undefined
+            <div className="collage-sheet__leaf">
+              <div
+                className={`collage-frame published-collage__frame${hovered ? " published-collage__frame--looking" : ""}`}
+                data-testid="published-collage-frame"
+                inert={over}
+                aria-label={`The front of ${title}`}
+                style={{
+                  width: frame.width,
+                  height: frame.height,
+                  ...paperBackground(
+                    paper.color,
+                    paper.grain,
+                    frame.width,
+                    frame.height,
+                  ),
+                }}
+              >
+                <div className="collage-frame__pieces">
+                  {shown.map(({ piece }, index) => {
+                    const source = sourceBoxForCrop(piece, piece.crop);
+                    const lifted = hovered?.index === index;
+                    const published = pieces[index];
+                    return (
+                      <div
+                        key={piece.id}
+                        ref={(element) => {
+                          if (element) pieceRefs.current.set(index, element);
+                          else pieceRefs.current.delete(index);
+                        }}
+                        className={`collage-piece published-collage__piece${lifted ? " published-collage__piece--lifted" : ""}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`${published.source.alt || published.source.kind} from ${published.source.domain || "an unknown site"}`}
+                        data-piece={index}
+                        data-kind={published.source.kind}
+                        style={
+                          {
+                            left: piece.x,
+                            top: piece.y,
+                            width: piece.width,
+                            height: piece.height,
+                            zIndex: lifted ? pieces.length + 1 : piece.z + 1,
+                            "--piece-rotation": `${piece.rotation}deg`,
+                          } as React.CSSProperties
                         }
-                        alt=""
-                        draggable={false}
-                        style={placementStyle(piece)}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {shownMode !== "off" && (
-              <SourceTags
-                pieces={pieces}
-                mode={shownMode}
-                scale={scale}
+                        onPointerEnter={(event) => {
+                          if (event.pointerType === "touch") return;
+                          setHovered({
+                            index,
+                            rect: event.currentTarget.getBoundingClientRect(),
+                          });
+                        }}
+                        onPointerLeave={() =>
+                          setHovered((current) =>
+                            current?.index === index ? null : current,
+                          )
+                        }
+                        onClick={() => examine(index)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            examine(index);
+                          }
+                        }}
+                      >
+                        <div
+                          className="collage-piece__source"
+                          style={{
+                            left: source.x - piece.x,
+                            top: source.y - piece.y,
+                            width: source.width,
+                            height: source.height,
+                            transform: pieceMaterialTransform(piece),
+                            transformOrigin: "center",
+                            pointerEvents: "none",
+                          }}
+                        >
+                          <PieceMaterial piece={piece} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {shownMode !== "off" && (
+                  <SourceTags
+                    pieces={pieces}
+                    mode={shownMode}
+                    scale={scale}
+                    frame={frame}
+                    hovered={hovered?.index ?? null}
+                  />
+                )}
+                <div className="collage-frame__edge" />
+              </div>
+              <CollageBackFace
                 frame={frame}
-                hovered={hovered?.index ?? null}
+                paper={paper}
+                content={backContent}
+                look={BACK_LOOK}
+                front={front}
+                showing={over}
+                onProblem={onBackProblem}
               />
-            )}
+            </div>
           </div>
         </div>
-      </div>
 
-      {!chromeHidden && (
-        <footer className="shared-collage__foot">
-          <span>
-            {pieces.length} {pieces.length === 1 ? "piece" : "pieces"}
-            {sharedOn ? ` · shared ${sharedOn}` : ""}
-          </span>
-          <span className="shared-collage__hint">
-            hover to look · click to examine · hold i for sources
-          </span>
-        </footer>
-      )}
+        {!chromeHidden && (
+          <div
+            className="published-collage__caption"
+            style={{ width: Math.max(fitWidth, narrow ? 0 : 320) }}
+          >
+            <div className="published-collage__about">
+              <h1 className="published-collage__title">{title}</h1>
+              <p className="published-collage__meta">{captionMeta(collage)}</p>
+              {problem && (
+                <p className="published-collage__problem" role="status">
+                  {problem}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              className="published-collage__turn"
+              aria-pressed={over}
+              onClick={turn}
+            >
+              <span aria-hidden="true">&#8635;</span>{" "}
+              {over ? "front" : "turn over"}
+            </button>
+          </div>
+        )}
+      </div>
 
       {hovered && !examining && shownMode === "off" && (
         <HoverLabel piece={pieces[hovered.index]} rect={hovered.rect} />
@@ -617,13 +736,13 @@ function Notice({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="shared-collage shared-collage--notice">
-      <header className="shared-collage__head">
-        <a className="shared-collage__mark" href="/">
+    <div className="published-collage published-collage--notice">
+      <header className="published-collage__head">
+        <a className="published-collage__mark" href="/">
           we were online
         </a>
       </header>
-      <div className="shared-collage__notice" role="status">
+      <div className="published-collage__notice" role="status">
         <h1>{title}</h1>
         {children}
       </div>
@@ -631,14 +750,14 @@ function Notice({
   );
 }
 
-function SharedCollagePage() {
-  const id = useMemo(() => sharedCollageIdFrom(window.location.search), []);
-  const [load, setLoad] = useState<SharedCollageLoad | null>(null);
+function PublishedCollagePage() {
+  const id = useMemo(() => publishedCollageIdFrom(window.location.search), []);
+  const [load, setLoad] = useState<PublishedCollageLoad | null>(null);
 
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
-    void loadSharedCollage(WORKER_URL, id).then((result) => {
+    void loadPublishedCollage(WORKER_URL, id).then((result) => {
       if (!cancelled) setLoad(result);
     });
     return () => {
@@ -656,13 +775,13 @@ function SharedCollagePage() {
   if (!id) {
     body = (
       <Notice title="no collage here">
-        <p>This link does not name a shared collage.</p>
+        <p>This link does not name a published collage.</p>
       </Notice>
     );
   } else if (!load) {
     body = (
       <Notice title="unfolding the collage…">
-        <p className="shared-collage__loading" aria-hidden="true" />
+        <p className="published-collage__loading" aria-hidden="true" />
       </Notice>
     );
   } else if (load.kind === "missing") {
@@ -677,7 +796,7 @@ function SharedCollagePage() {
         <p>{load.message}</p>
         <button
           type="button"
-          className="shared-collage__retry"
+          className="published-collage__retry"
           onClick={() => window.location.reload()}
         >
           try again
@@ -690,12 +809,15 @@ function SharedCollagePage() {
 
   return (
     <>
-      <style>{VIEWER_STYLES}</style>
+      <style>{COLLAGE_STYLES}</style>
+      <style>{COLLAGE_SHEET_STYLES}</style>
+      <style>{PIECE_MATERIAL_STYLES}</style>
       <style>{COLLAGE_VIEW_STYLES}</style>
+      <style>{VIEWER_STYLES}</style>
       {body}
     </>
   );
 }
 
 const container = document.getElementById("reactContent");
-if (container) createRoot(container).render(<SharedCollagePage />);
+if (container) createRoot(container).render(<PublishedCollagePage />);

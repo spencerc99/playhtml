@@ -1,8 +1,8 @@
-// ABOUTME: Styles for the shared-collage viewer: the fitted frame, hover lift and label, source tags and states.
-// ABOUTME: Uses the studio's --c-* palette so the sources toggle and tags match the scraps studio.
+// ABOUTME: Styles for the published-collage viewer: the framed sheet and caption, hover lift, source tags and states.
+// ABOUTME: Layered over the studio's sheet and piece rules, in its --c-* palette, so the collage reads the same.
 
 export const VIEWER_STYLES = `
-  .shared-collage {
+  .published-collage {
     --c-ground: #f6f5f1;
     --c-surface: #efede7;
     --c-ink: #3a3734;
@@ -18,9 +18,9 @@ export const VIEWER_STYLES = `
     font-family: "Martian Mono", ui-monospace, monospace;
   }
 
-  .shared-collage__head {
+  .published-collage__head {
     position: absolute;
-    top: 12px;
+    top: 16px;
     left: 16px;
     right: 260px;
     z-index: 10001;
@@ -30,7 +30,7 @@ export const VIEWER_STYLES = `
     min-width: 0;
   }
 
-  .shared-collage__mark {
+  .published-collage__mark {
     flex: 0 0 auto;
     color: var(--c-muted);
     font-size: 10px;
@@ -38,99 +38,143 @@ export const VIEWER_STYLES = `
     text-decoration: none;
   }
 
-  .shared-collage__mark:hover {
+  .published-collage__mark:hover {
     color: var(--c-ink);
   }
 
-  .shared-collage__title {
+  .published-collage__title {
     margin: 0;
     overflow: hidden;
-    font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
-    font-size: 17px;
-    font-weight: 400;
+    font-family: "Lora", Georgia, serif;
+    font-size: 19px;
+    font-weight: 600;
+    line-height: 1.3;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
 
-  .shared-collage__views-label {
+  .published-collage__views-label {
     padding: 0 6px 0 4px;
     color: var(--c-muted);
     font-size: 9.5px;
   }
 
-  .shared-collage__stage {
+  .published-collage__stage {
     position: absolute;
     left: 0;
     right: 0;
-    display: grid;
-    place-items: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
   }
 
-  .shared-collage__fit {
+  .published-collage__fit {
     position: relative;
+    flex: none;
   }
 
-  .shared-collage__frame {
+  /* The studio's sheet, zoomed from its corner to fit the page. */
+  .published-collage__sheet {
     position: absolute;
     left: 0;
     top: 0;
     transform-origin: 0 0;
-    box-shadow: 0 10px 34px color-mix(in srgb, var(--c-ink) 16%, transparent);
   }
 
-  /* What shows stops at the frame's edge, as it does in the studio and the bake. */
-  .shared-collage__pieces {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
+  /* The caption sits under the frame like a label on a mount. */
+  .published-collage__caption {
+    flex: none;
+    box-sizing: border-box;
+    max-width: calc(100vw - 32px);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding-top: 14px;
   }
 
-  .shared-collage__piece {
-    position: absolute;
-    overflow: hidden;
+  .published-collage__about {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .published-collage__meta {
+    margin: 0;
+    color: var(--c-muted);
+    font-size: 9.5px;
+    letter-spacing: 0.03em;
+  }
+
+  .published-collage__problem {
+    margin: 0;
+    color: #b0452c;
+    font-size: 9.5px;
+  }
+
+  .published-collage__turn {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--c-rule);
+    border-radius: 4px;
+    background: var(--c-surface);
+    color: var(--c-ink);
+    font-family: "Martian Mono", monospace;
+    font-size: 9.5px;
+    cursor: pointer;
+  }
+
+  .published-collage__turn:hover {
+    border-color: color-mix(in srgb, var(--c-ink) 24%, transparent);
+  }
+
+  .published-collage__turn[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--c-accent) 70%, transparent);
+    background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+    color: var(--c-accent-ink);
+  }
+
+  .published-collage__turn:focus-visible {
+    outline: 2px solid var(--c-accent);
+    outline-offset: 1px;
+  }
+
+  .published-collage__piece {
     transform: rotate(var(--piece-rotation));
-    transform-origin: center;
     cursor: zoom-in;
-    user-select: none;
     outline: none;
     transition: transform 160ms ease, opacity 160ms ease, filter 160ms ease;
   }
 
-  .shared-collage__frame--looking .shared-collage__piece:not(.shared-collage__piece--lifted) {
+  .published-collage__frame--looking .published-collage__piece:not(.published-collage__piece--lifted) {
     opacity: 0.42;
     filter: saturate(0.7);
   }
 
-  .shared-collage__piece--lifted,
-  .shared-collage__piece:focus-visible {
+  .published-collage__piece--lifted,
+  .published-collage__piece:focus-visible {
     transform: rotate(var(--piece-rotation)) scale(1.035);
     filter: drop-shadow(0 8px 14px rgba(40, 34, 28, 0.28));
   }
 
-  .shared-collage__piece:focus-visible {
+  .published-collage__piece:focus-visible {
     outline: 3px solid var(--c-accent);
   }
 
-  .shared-collage__source {
-    position: absolute;
-    transform-origin: center;
-    pointer-events: none;
-  }
-
-  .shared-collage__image {
-    position: absolute;
-    display: block;
-    max-width: none;
-  }
-
-  .shared-collage__favicon {
+  .published-collage__favicon {
     display: inline-block;
     flex: 0 0 auto;
     border-radius: 2px;
     object-fit: contain;
   }
 
-  .shared-collage__hover {
+  .published-collage__hover {
     position: fixed;
     z-index: 10010;
     display: flex;
@@ -147,27 +191,27 @@ export const VIEWER_STYLES = `
     pointer-events: none;
   }
 
-  .shared-collage__hover-where {
+  .published-collage__hover-where {
     display: flex;
     align-items: center;
     gap: 6px;
     font-weight: 500;
   }
 
-  .shared-collage__hover-title {
+  .published-collage__hover-title {
     overflow: hidden;
     color: var(--c-muted);
     white-space: nowrap;
     text-overflow: ellipsis;
   }
 
-  .shared-collage__tags {
+  .published-collage__tags {
     position: absolute;
     inset: 0;
     pointer-events: none;
   }
 
-  .shared-collage__edge {
+  .published-collage__edge {
     position: absolute;
     z-index: 10004;
     box-sizing: border-box;
@@ -176,11 +220,11 @@ export const VIEWER_STYLES = `
     transform-origin: center;
   }
 
-  .shared-collage__edge--on {
+  .published-collage__edge--on {
     border-style: solid;
   }
 
-  .shared-collage__tag {
+  .published-collage__tag {
     position: absolute;
     z-index: 10005;
     display: flex;
@@ -199,88 +243,69 @@ export const VIEWER_STYLES = `
     white-space: nowrap;
   }
 
-  .shared-collage__tag-text {
+  .published-collage__tag-text {
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .shared-collage__foot {
-    position: absolute;
-    left: 16px;
-    right: 16px;
-    bottom: 12px;
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
-    color: var(--c-muted);
-    font-size: 9.5px;
-  }
-
-  @media (hover: none), (max-width: 600px) {
-    .shared-collage__hint {
-      display: none;
-    }
-  }
-
   @media (max-width: 600px) {
-    .shared-collage__head {
+    .published-collage__head {
       right: 16px;
       flex-direction: column;
       gap: 2px;
     }
 
-    .shared-collage__title {
-      font-size: 15px;
+    .published-collage__title {
+      font-size: 16px;
+      white-space: normal;
     }
 
-    .shared-collage .collage-views {
-      top: auto;
-      bottom: 34px;
-      right: 50%;
-      transform: translateX(50%);
+    .published-collage .collage-views {
+      top: 10px;
+      right: 10px;
     }
   }
 
-  .shared-collage--notice {
+  .published-collage--notice {
     display: grid;
     place-items: center;
   }
 
-  .shared-collage__notice {
+  .published-collage__notice {
     max-width: 420px;
     padding: 0 16px;
     text-align: center;
   }
 
-  .shared-collage__notice h1 {
+  .published-collage__notice h1 {
     margin: 0 0 8px;
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
     font-size: 20px;
     font-weight: 400;
   }
 
-  .shared-collage__notice p {
+  .published-collage__notice p {
     margin: 0;
     color: var(--c-muted);
     font-size: 11px;
     line-height: 1.6;
   }
 
-  .shared-collage__loading {
+  .published-collage__loading {
     width: 120px;
     height: 2px;
     margin: 14px auto 0 !important;
     background: linear-gradient(90deg, transparent, var(--c-accent), transparent);
     background-size: 200% 100%;
-    animation: shared-collage-loading 1.2s linear infinite;
+    animation: published-collage-loading 1.2s linear infinite;
   }
 
-  @keyframes shared-collage-loading {
+  @keyframes published-collage-loading {
     from { background-position: 100% 0; }
     to { background-position: -100% 0; }
   }
 
-  .shared-collage__retry {
+  .published-collage__retry {
     margin-top: 14px;
     padding: 4px 10px;
     border: 1px solid color-mix(in srgb, var(--c-ink) 24%, transparent);
@@ -293,7 +318,7 @@ export const VIEWER_STYLES = `
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .shared-collage__piece {
+    .published-collage__piece {
       transition: none;
     }
   }
