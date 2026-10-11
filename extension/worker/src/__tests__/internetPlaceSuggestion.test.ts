@@ -20,6 +20,7 @@ const schema = [
   '../../migrations/0006_internet_place_placement.sql',
   '../../migrations/0007_internet_place_suggestions.sql',
   '../../migrations/0008_internet_place_suggestion_evidence.sql',
+  '../../migrations/0009_internet_place_clef_log.sql',
 ].map((path) => readFileSync(
   fileURLToPath(new URL(path, import.meta.url)),
   'utf8',
@@ -171,12 +172,12 @@ describe('Internet place suggestions', () => {
       candidate: { url: 'https://example.com/essay', title: 'An essay' },
       curatedExamples: [
         { place: 'example.com', scope: 'site', placement: 'regular' },
-        { place: 'other.example', scope: 'hostname', placement: 'scenery' },
       ],
     });
     expect(Object.keys(calls[0].input.questions as object)).toEqual(['placement', 'scope', 'reason']);
     expect(await countRows('place_suggestions')).toBe(1);
     expect(await countRows('place_policies')).toBe(3);
+    expect(await countRows('place_clef_log')).toBe(1);
 
     const cached = await handleInternetPlaceSuggestion(suggestionRequest({ candidate }), env);
     expect((await cached.json() as { source: string }).source).toBe('cache');

@@ -2,6 +2,7 @@
 // ABOUTME: Routes HTTP requests to event, participant, subscribe, and feedback handlers.
 
 import { handleIngest } from './routes/ingest';
+import { handleClefLog } from './routes/clefLog';
 import { handleRecent } from './routes/recent';
 import { handleDailyCounts } from './routes/dailyCounts';
 import { handleStats } from './routes/stats';
@@ -105,6 +106,10 @@ export default {
       request.method === 'POST'
     ) {
       return handleInternetPlaceEvidenceImport(request, env);
+    }
+
+    if (path === '/admin/internet-places/clef-log' && request.method === 'GET') {
+      return handleClefLog(request, env);
     }
 
     if (path === '/admin/internet-places/policy' && request.method === 'PUT') {

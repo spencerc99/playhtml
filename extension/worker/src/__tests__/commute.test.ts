@@ -33,6 +33,7 @@ import {
   suggestCommuteDestinations,
   suggestIngestedDestinations,
 } from '../routes/commute';
+import { handleClefLog } from '../routes/clefLog';
 import {
   INTERNET_PLACE_SUGGESTION_MODEL,
   INTERNET_PLACE_SUGGESTION_PROMPT_VERSION,
@@ -67,7 +68,7 @@ describe('handleCommute', () => {
       d1Databases: ['WWO_ADMIN_DB'],
     });
     const db = await miniflare.getD1Database('WWO_ADMIN_DB');
-    for (const name of ['0005_internet_place_catalog.sql', '0006_internet_place_placement.sql', '0007_internet_place_suggestions.sql', '0008_internet_place_suggestion_evidence.sql']) {
+    for (const name of ['0005_internet_place_catalog.sql', '0006_internet_place_placement.sql', '0007_internet_place_suggestions.sql', '0008_internet_place_suggestion_evidence.sql', '0009_internet_place_clef_log.sql']) {
       const sql = readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8');
       for (const statement of sql.replace(/^--.*$/gm, '').split(';').filter((part) => part.trim())) {
         await db.prepare(statement).run();
@@ -156,16 +157,22 @@ describe('handleCommute', () => {
     ).run();
   }
 
-  function useClef(placement = 'regular') {
-    const run = vi.fn(async () => ({
+  /** Answers page questions with `placement` and name checks with `name`; returns the page-question spy. */
+  function useClef(placement = 'regular', name = 'scenery') {
+    const pageRun = vi.fn(async (_model: string, _input: unknown) => ({
       answers: {
         placement: { choice: placement, confidence: 0.5, probabilities: {} },
         scope: { choice: 'page', confidence: 0.7, probabilities: {} },
         reason: { choice: 'none', confidence: 0.5, probabilities: {} },
       },
     }));
+    const nameRun = vi.fn(async () => ({
+      answers: { placement: { choice: name, confidence: 0.8, probabilities: {} } },
+    }));
+    const run = vi.fn(async (model: string, input: { questions: Record<string, unknown> }) =>
+      'scope' in input.questions ? pageRun(model, input) : nameRun());
     env.AI = { run } as unknown as Env['AI'];
-    return run;
+    return Object.assign(pageRun, { names: nameRun });
   }
 
   async function destinations(): Promise<CommuteResponse['destinations']> {
@@ -203,7 +210,7 @@ describe('handleCommute', () => {
     });
     const run = useClef('regular');
     expect(await destinations()).toEqual([]);
-    expect(await suggestCommuteDestinations(env)).toBe(1);
+    expect(await suggestCommuteDestinations(env)).toBe(2);
     expect(run).toHaveBeenCalledTimes(1);
     const state = (run.mock.calls[0] as unknown[])[1] as { state: { candidate: Record<string, unknown> } };
     expect(state.state.candidate).toMatchObject({
@@ -222,7 +229,7 @@ describe('handleCommute', () => {
       context: { headings: ['Access denied'], text: '403 Forbidden' },
     });
     const run = useClef('regular');
-    expect(await suggestCommuteDestinations(env)).toBe(1);
+    expect(await suggestCommuteDestinations(env)).toBe(2);
     const state = (run.mock.calls[0] as unknown[])[1] as { state: { candidate: Record<string, unknown> } };
     expect(state.state.candidate.page).toBeUndefined();
     expect(state.state.candidate.inspection).toMatchObject({ verdict: 'unknown' });
@@ -235,7 +242,7 @@ describe('handleCommute', () => {
     });
     const run = useClef('regular');
     const batch = [event('navigation', 'https://fresh.example/post'), event('keyboard', 'https://fresh.example/post')];
-    expect(await suggestIngestedDestinations(env, batch)).toBe(1);
+    expect(await suggestIngestedDestinations(env, batch)).toBe(2);
     expect(run).toHaveBeenCalledTimes(1);
     expect(await suggestIngestedDestinations(env, batch)).toBe(0);
     expect(await suggestIngestedDestinations(env, [event('keyboard', 'https://other.example/')])).toBe(0);
@@ -275,5 +282,52 @@ describe('handleCommute', () => {
       "INSERT INTO place_policies (scope, place_key, placement, note) VALUES ('site', 'public.example', 'regular', '')",
     ).run();
     expect((await review())[0].review.need).toBeNull();
+  });
+
+  it('hides a scenery name Clef calls sensitive and flags it for review', async () => {
+    const run = useClef('regular', 'hidden');
+    expect(await suggestCommuteDestinations(env)).toBe(2);
+    expect(run.names).toHaveBeenCalledTimes(1);
+    const response = await handleCommute(new Request('https://worker.example/commute/recent'), env);
+    const payload = (await response.json()) as CommuteResponse;
+    expect(JSON.stringify(payload)).not.toContain('public.example');
+
+    env.ADMIN_KEY = 'test-admin-key';
+    const review = await handleCommuteReview(new Request('https://worker.example/commute/review', {
+      headers: { Authorization: 'Bearer test-admin-key' },
+    }), env);
+    const body = (await review.json()) as { scenery: Array<{ domain: string; review: { need: string | null } }> };
+    expect(body.scenery.find((item) => item.domain === 'public.example')?.review.need).toBe('hidden');
+    const log = await env.WWO_ADMIN_DB.prepare('SELECT kind FROM place_clef_log ORDER BY id').all<{ kind: string }>();
+    expect(log.results?.map((row) => row.kind).sort()).toEqual(['name', 'page']);
+  });
+
+  it('logs each Clef answer with what it saw and whether the curator agreed', async () => {
+    fetchPublicPageContext.mockResolvedValue({
+      inspection: { verdict: 'public', reason: 'public_html', finalUrl: 'https://public.example/article' },
+      context: { description: 'A public essay', headings: ['An article'], text: 'Hello there.' },
+    });
+    useClef('regular');
+    await suggestCommuteDestinations(env);
+    env.ADMIN_KEY = 'test-admin-key';
+    const readLog = async () => {
+      const response = await handleClefLog(new Request('https://worker.example/admin/internet-places/clef-log', {
+        headers: { Authorization: 'Bearer test-admin-key' },
+      }), env);
+      return (await response.json()) as {
+        entries: Array<{ kind: string; input: Record<string, unknown>; agreed: boolean | null }>;
+        summary: { decided: number; agreed: number };
+      };
+    };
+    const before = await readLog();
+    const pageEntry = before.entries.find((entry) => entry.kind === 'page');
+    expect(pageEntry?.input).toMatchObject({ page: { description: 'A public essay' } });
+    expect(pageEntry?.agreed).toBeNull();
+    await env.WWO_ADMIN_DB.prepare(
+      "INSERT INTO place_policies (scope, place_key, placement, note) VALUES ('site', 'public.example', 'scenery', '')",
+    ).run();
+    const after = await readLog();
+    expect(after.entries.find((entry) => entry.kind === 'page')?.agreed).toBe(false);
+    expect(after.summary).toEqual({ decided: 2, agreed: 1 });
   });
 });

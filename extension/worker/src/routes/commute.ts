@@ -12,9 +12,13 @@ import {
   loadInternetPlacePolicies,
 } from './internetPlaceCatalog';
 import {
+  checkSceneryNames,
   getReviewNeed,
+  hostnameKey,
   loadClefGate,
   loadClefSuggestions,
+  loadNameGate,
+  loadNameVerdicts,
   suggestUnreviewedPlaces,
   type ReviewNeed,
 } from './internetPlaceSuggestion';
@@ -150,16 +154,30 @@ export async function getCommuteResponse(
   // Without the AI binding (local dev) nothing could ever approve a page, so
   // the gate only applies where Clef runs.
   const gate = env.AI
-    ? await loadClefGate(
-        env.WWO_ADMIN_DB,
-        unreviewedDestinations(candidates, policies).map(({ url }) => url),
-      )
+    ? [
+        ...(await loadClefGate(
+          env.WWO_ADMIN_DB,
+          unreviewedDestinations(candidates, policies).map(({ url }) => url),
+        )),
+        ...(await loadNameGate(env.WWO_ADMIN_DB, unreviewedSceneryNames(candidates, policies))),
+      ]
     : [];
   return applyInternetPlacePolicies(
     candidates,
     [...policies, ...gate],
     COMMUTE_DESTINATION_LIMIT,
   );
+}
+
+/** Scenery hostnames no human policy covers. */
+function unreviewedSceneryNames(
+  response: CommuteResponse,
+  policies: InternetPlacePolicy[],
+): string[] {
+  const decided = policies.filter((policy) => policy.placement);
+  return response.scenery
+    .map(({ domain }) => domain)
+    .filter((domain) => !resolveInternetPlacePolicy(decided, `https://${domain}/`));
 }
 
 /** Destinations no human policy covers at any scope. */
@@ -192,11 +210,15 @@ export async function suggestCommuteDestinations(
     destinations: CATALOG_CANDIDATE_LIMIT,
   });
   const policies = await loadInternetPlacePolicies(env.WWO_ADMIN_DB, candidates);
-  return suggestUnreviewedPlaces(
-    env,
-    unreviewedDestinations(candidates, policies),
-    SWEEP_SUGGESTION_LIMIT,
-  );
+  const [pages, names] = await Promise.all([
+    suggestUnreviewedPlaces(
+      env,
+      unreviewedDestinations(candidates, policies),
+      SWEEP_SUGGESTION_LIMIT,
+    ),
+    checkSceneryNames(env, unreviewedSceneryNames(candidates, policies), SWEEP_SUGGESTION_LIMIT),
+  ]);
+  return pages + names;
 }
 
 /**
@@ -215,14 +237,24 @@ export async function suggestIngestedDestinations(
   const candidates = buildCommuteResponse(navigationEvents, [], now, {
     destinations: CATALOG_CANDIDATE_LIMIT,
   });
-  if (candidates.destinations.length === 0) return 0;
+  if (candidates.destinations.length === 0 && candidates.scenery.length === 0) return 0;
   const policies = await loadInternetPlacePolicies(env.WWO_ADMIN_DB, candidates);
-  return suggestUnreviewedPlaces(
-    env,
-    unreviewedDestinations(candidates, policies),
-    INGEST_SUGGESTION_LIMIT,
-  );
+  const [pages, names] = await Promise.all([
+    suggestUnreviewedPlaces(
+      env,
+      unreviewedDestinations(candidates, policies),
+      INGEST_SUGGESTION_LIMIT,
+    ),
+    checkSceneryNames(env, unreviewedSceneryNames(candidates, policies), INGEST_SUGGESTION_LIMIT),
+  ]);
+  return pages + names;
 }
+
+type ReviewAnnotation = {
+  need: ReviewNeed | null;
+  visits: number;
+  clef?: { placement: string; confidence: number };
+};
 
 function pageKeyOf(url: string): string | null {
   try {
@@ -242,8 +274,9 @@ async function annotateReviewQueue(
   navigationEvents: CollectionEvent[],
 ): Promise<CommuteResponse & {
   destinations: Array<CommuteResponse['destinations'][number] & {
-    review: { need: ReviewNeed | null; visits: number; clef?: { placement: string; confidence: number } };
+    review: ReviewAnnotation;
   }>;
+  scenery: Array<CommuteResponse['scenery'][number] & { review: ReviewAnnotation }>;
 }> {
   const visits = new Map<string, number>();
   for (const event of navigationEvents) {
@@ -273,5 +306,23 @@ async function annotateReviewQueue(
     };
   });
   destinations.sort((first, second) => second.review.visits - first.review.visits);
-  return { ...response, destinations };
+  const undecidedNames = new Set(unreviewedSceneryNames(response, policies));
+  const nameVerdicts = await loadNameVerdicts(
+    env.WWO_ADMIN_DB,
+    response.scenery.map(({ domain }) => domain),
+  );
+  const scenery = response.scenery.map((item) => {
+    const key = hostnameKey(item.domain);
+    const verdict = key ? nameVerdicts.get(key) : undefined;
+    const hidden = undecidedNames.has(item.domain) && verdict?.placement === 'hidden';
+    return {
+      ...item,
+      review: {
+        need: hidden ? ('hidden' as const) : null,
+        visits: 1,
+        ...(verdict ? { clef: { placement: verdict.placement, confidence: verdict.confidence } } : {}),
+      },
+    };
+  });
+  return { ...response, destinations, scenery };
 }
