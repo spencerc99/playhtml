@@ -40,16 +40,20 @@ import {
   deleteCatalogPolicy,
   getCatalogSuggestion,
   getCatalog,
+  getClefLog,
   importEvaluationArtifact,
   isCatalogUnauthorized,
   saveCatalogPolicy,
   type CatalogSuggestion,
+  type ClefLog,
+  type ClefLogEntry,
 } from "./catalogApi";
 import {
   parseReserveCatalog,
   type ReserveReviewItem,
   type ReserveSourceMode,
 } from "./reserveCatalog";
+import { normalizeInternetPlace } from "../../shared/internetPlaceCatalog";
 import "./style.scss";
 
 const PLACEMENT_LABELS: Record<CurationPlacement, string> = {
@@ -286,6 +290,13 @@ export function App({
   const [copyState, setCopyState] = useState("Copy artifact");
   const [showReviewed, setShowReviewed] = useState(false);
   const [showAllRecent, setShowAllRecent] = useState(false);
+  const [clefLog, setClefLog] = useState<ClefLog | null>(null);
+  const [clefLogDisagreementsOnly, setClefLogDisagreementsOnly] = useState(false);
+  const [clefSeenById, setClefSeenById] = useState(
+    () => new Map<string, ClefLogEntry | null>(),
+  );
+  const [selectedSuggestion, setSelectedSuggestion] = useState<CatalogSuggestion | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [catalogError, setCatalogError] = useState("");
   const [saving, setSaving] = useState(false);
   const [importStatus, setImportStatus] = useState("Import audit JSON");
@@ -424,11 +435,104 @@ export function App({
     }
   }, [handleCatalogError, token]);
 
+  const loadClefLog = useCallback(async () => {
+    try {
+      setClefLog(await getClefLog(token, { limit: 300 }));
+    } catch (error) {
+      if (isCatalogUnauthorized(error)) onUnauthorized();
+    }
+  }, [onUnauthorized, token]);
+
   useEffect(() => {
     void loadQueue();
     void loadReserveCatalog();
     void loadCatalog();
-  }, [loadCatalog, loadQueue, loadReserveCatalog]);
+    void loadClefLog();
+  }, [loadCatalog, loadClefLog, loadQueue, loadReserveCatalog]);
+
+  useEffect(() => {
+    const url = selectedItem?.url;
+    if (!url || clefSeenById.has(selectedItem.id)) return;
+    let pageKey: string;
+    try {
+      pageKey = normalizeInternetPlace(url, "page");
+    } catch {
+      return;
+    }
+    const id = selectedItem.id;
+    void getClefLog(token, { page: pageKey, limit: 1 })
+      .then((log) => {
+        setClefSeenById((current) => new Map(current).set(id, log.entries[0] ?? null));
+      })
+      .catch(() => {
+        setClefSeenById((current) => new Map(current).set(id, null));
+      });
+  }, [clefSeenById, selectedItem, token]);
+
+  const moveSelection = useCallback((step: number) => {
+    if (visibleItems.length === 0) return;
+    const index = visibleItems.findIndex((item) => item.id === selectedItemId.current);
+    const next = (index + step + visibleItems.length) % visibleItems.length;
+    setSelectedId(visibleItems[next].id);
+  }, [visibleItems]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target instanceof HTMLButtonElement ||
+        (target instanceof HTMLInputElement && target.type !== "radio" && target.type !== "checkbox")
+      ) {
+        return;
+      }
+      const placementIndex = Number(event.key) - 1;
+      if (placementIndex >= 0 && placementIndex < CURATION_PLACEMENTS.length) {
+        event.preventDefault();
+        formEdited.current = true;
+        setPlacement(CURATION_PLACEMENTS[placementIndex]);
+      } else if (event.key === "j") {
+        event.preventDefault();
+        moveSelection(1);
+      } else if (event.key === "k") {
+        event.preventDefault();
+        moveSelection(-1);
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        formRef.current?.requestSubmit();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [moveSelection]);
+
+  async function askClefAgain() {
+    if (!selectedItem?.url) return;
+    const item = selectedItem;
+    setSuggestionStatus("loading");
+    try {
+      const { suggestion } = await getCatalogSuggestion({ token, item, refresh: true });
+      suggestionById.current.set(item.id, suggestion);
+      setClefSeenById((current) => {
+        const next = new Map(current);
+        next.delete(item.id);
+        return next;
+      });
+      if (selectedItemId.current !== item.id) return;
+      setSelectedSuggestion(suggestion);
+      if (!formEdited.current && !getDecisionForReviewItem(places, item)) {
+        setScope(suggestion.scope);
+        setPlacement(suggestion.placement);
+      }
+      setSuggestionStatus("prefilled");
+      void loadClefLog();
+    } catch (error) {
+      if (isCatalogUnauthorized(error)) onUnauthorized();
+      else setSuggestionStatus("unavailable");
+    }
+  }
 
   useEffect(() => {
     setSelectedId(null);
@@ -459,6 +563,7 @@ export function App({
           : ""),
     );
     setComment(priorDecision?.comment ?? "");
+    setSelectedSuggestion(cachedSuggestion ?? null);
     setSuggestionStatus(
       priorDecision || !selectedItem.url
         ? "idle"
@@ -535,6 +640,9 @@ export function App({
       })
         .then(({ suggestion }) => {
           suggestionById.current.set(selectedItem.id, suggestion);
+          if (selectedItemId.current === selectedItem.id) {
+            setSelectedSuggestion(suggestion);
+          }
           if (!canPrefillSuggestion({
             hasDecision: Boolean(getDecisionForReviewItem(places, selectedItem)),
             formEdited: formEdited.current,
@@ -592,6 +700,7 @@ export function App({
       return;
     }
     setSaving(false);
+    void loadClefLog();
 
     const currentIndex = visibleItems.findIndex(
       (item) => item.id === selectedItem.id,
@@ -765,7 +874,7 @@ export function App({
           )}
 
           {selectedItem && (
-            <form className="review-form" onSubmit={fileDecision}>
+            <form className="review-form" onSubmit={fileDecision} ref={formRef}>
               <div className="candidate-card">
                 <div
                   className={`route-summary route-summary--${selectedItem.currentDisposition}`}
@@ -1012,10 +1121,16 @@ export function App({
                 {suggestionStatus === "loading" && (
                   <p className="decision-help">Drafting a suggestion…</p>
                 )}
-                {suggestionStatus === "prefilled" && (
-                  <p className="decision-help">
-                    Suggested fields are prefilled. Change anything before saving.
-                  </p>
+                {selectedSuggestion && (
+                  <ClefCard
+                    suggestion={selectedSuggestion}
+                    seen={clefSeenById.get(selectedItem.id) ?? null}
+                    onAskAgain={() => void askClefAgain()}
+                    busy={suggestionStatus === "loading"}
+                  />
+                )}
+                {suggestionStatus === "unavailable" && (
+                  <p className="decision-help">Clef could not answer for this page.</p>
                 )}
                 <div className="verdict-options">
                   {CURATION_PLACEMENTS.map((value) => (
@@ -1113,6 +1228,10 @@ export function App({
                   </button>
                 )}
               </div>
+              <p className="shortcut-hint">
+                <kbd>1</kbd>–<kbd>5</kbd> placement · <kbd>Enter</kbd> file ·{" "}
+                <kbd>J</kbd>/<kbd>K</kbd> next / previous
+              </p>
             </form>
           )}
         </section>
@@ -1292,6 +1411,66 @@ export function App({
         </section>
       </div>
 
+      <section className="clef-log panel">
+        <div className="panel__heading panel__heading--queue">
+          <div>
+            <span>CLEF LOG 03</span>
+            <h2>Clef decisions</h2>
+          </div>
+          <div className="queue-controls">
+            <button
+              type="button"
+              onClick={() => setClefLogDisagreementsOnly((value) => !value)}
+            >
+              {clefLogDisagreementsOnly ? "Show all" : "Disagreements only"}
+            </button>
+            <button type="button" onClick={() => void loadClefLog()}>
+              Refresh
+            </button>
+          </div>
+        </div>
+        <p className="clef-log__summary">
+          {clefLog && clefLog.summary.decided > 0
+            ? `You agreed with Clef on ${clefLog.summary.agreed} of ${clefLog.summary.decided} places you have decided (${Math.round((clefLog.summary.agreed / clefLog.summary.decided) * 100)}%).`
+            : "No decided places to compare with Clef yet."}
+        </p>
+        <ol className="clef-log__list">
+          {(clefLog?.entries ?? [])
+            .filter((entry) => !clefLogDisagreementsOnly || entry.agreed === false)
+            .map((entry) => (
+              <li className="clef-log__entry" key={entry.id}>
+                <time>{entry.createdAt.replace("T", " ").slice(0, 16)}</time>
+                <span className="clef-log__place">
+                  <strong>{entry.input.title ?? entry.pageKey}</strong>
+                  <small>
+                    {entry.kind === "name" ? "Site name · " : ""}
+                    {entry.pageKey}
+                  </small>
+                </span>
+                <span className="clef-log__answer">
+                  {entry.suggestion?.placement
+                    ? PLACEMENT_LABELS[entry.suggestion.placement]
+                    : "No answer"}
+                  {typeof entry.suggestion?.confidence === "number"
+                    ? ` · ${Math.round(entry.suggestion.confidence * 100)}%`
+                    : ""}
+                </span>
+                <span
+                  className={`clef-log__outcome clef-log__outcome--${
+                    entry.agreed === null ? "open" : entry.agreed ? "agreed" : "changed"
+                  }`}
+                >
+                  {entry.human?.placement
+                    ? entry.agreed
+                      ? `You agreed (${SCOPE_LABELS[entry.human.scope].toLowerCase()})`
+                      : `You chose ${PLACEMENT_LABELS[entry.human.placement]}`
+                    : "Not decided"}
+                </span>
+              </li>
+            ))}
+        </ol>
+      </section>
+
       <section className="export-panel panel">
         <div className="panel__heading">
           <span>OUTPUT 03</span>
@@ -1352,6 +1531,67 @@ function CurationDesk() {
         logout();
       }}
     />
+  );
+}
+
+
+function ClefCard({
+  suggestion,
+  seen,
+  onAskAgain,
+  busy,
+}: {
+  suggestion: CatalogSuggestion;
+  seen: ClefLogEntry | null;
+  onAskAgain: () => void;
+  busy: boolean;
+}) {
+  const page = seen?.input.page;
+  const examples = seen?.input.curatedExamples ?? [];
+  return (
+    <div className="clef-card">
+      <div className="clef-card__verdict">
+        <small>CLEF SUGGESTS</small>
+        <strong>
+          {PLACEMENT_LABELS[suggestion.placement]} ·{" "}
+          {SCOPE_LABELS[suggestion.scope].toLowerCase()} ·{" "}
+          {Math.round(suggestion.confidence * 100)}%
+        </strong>
+        <button type="button" className="text-action" onClick={onAskAgain} disabled={busy}>
+          {busy ? "Asking…" : "Ask again"}
+        </button>
+      </div>
+      {suggestion.uncertainties.length > 0 && (
+        <ul className="clef-card__uncertain">
+          {suggestion.uncertainties.map((line) => <li key={line}>{line}</li>)}
+        </ul>
+      )}
+      <div className="clef-card__seen">
+        <small>WHAT CLEF SAW</small>
+        {seen?.input.inspection?.reason === "login_redirect" ? (
+          <p>A logged-out visit was sent to a sign-in page, so Clef wasn't asked.</p>
+        ) : page ? (
+          <>
+            {page.description && <p>{page.description}</p>}
+            {page.headings.length > 0 && (
+              <p className="clef-card__headings">{page.headings.join(" · ")}</p>
+            )}
+            {page.text && (
+              <p className="clef-card__text">
+                {page.text.length > 280 ? `${page.text.slice(0, 280)}…` : page.text}
+              </p>
+            )}
+          </>
+        ) : (
+          <p>Only the address and title; the page did not load publicly.</p>
+        )}
+        <p className="clef-card__examples">
+          {examples.length > 0
+            ? `${examples.length} of your decisions on this site were shown as examples.`
+            : "No decisions on this site to learn from yet."}
+        </p>
+      </div>
+    </div>
   );
 }
 

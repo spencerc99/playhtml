@@ -1413,3 +1413,157 @@ footer {
   border-color: $green;
   color: $green;
 }
+
+.shortcut-hint {
+  margin: 10px 0 0;
+  color: rgba($ink, 0.55);
+  font-family: $mono;
+  font-size: 9px;
+}
+
+.shortcut-hint kbd {
+  padding: 0 4px;
+  border: 1px solid $line;
+  font-family: $mono;
+  font-size: 9px;
+}
+
+.clef-card {
+  margin-bottom: 12px;
+  border: 1px solid $line;
+  background: rgba($blue, 0.05);
+}
+
+.clef-card small {
+  color: rgba($ink, 0.55);
+  font-family: $mono;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+}
+
+.clef-card__verdict {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 10px;
+  border-bottom: 1px solid $line;
+}
+
+.clef-card__verdict small {
+  grid-column: 1 / -1;
+}
+
+.clef-card__verdict strong {
+  font-family: $body;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.clef-card__uncertain {
+  margin: 0;
+  padding: 8px 10px 8px 26px;
+  border-bottom: 1px solid $line;
+  color: rgba($ink, 0.75);
+  font-size: 12px;
+}
+
+.clef-card__seen {
+  padding: 10px;
+}
+
+.clef-card__seen p {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.clef-card__headings {
+  font-weight: 600;
+}
+
+.clef-card__text,
+.clef-card__examples {
+  color: rgba($ink, 0.6);
+}
+
+.clef-log {
+  margin-top: 24px;
+}
+
+.clef-log__summary {
+  margin: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid $line;
+  font-size: 13px;
+}
+
+.clef-log__list {
+  max-height: 420px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.clef-log__entry {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) 170px 190px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid $line;
+  font-size: 12px;
+}
+
+.clef-log__entry time {
+  color: rgba($ink, 0.55);
+  font-family: $mono;
+  font-size: 9px;
+}
+
+.clef-log__place {
+  display: grid;
+  min-width: 0;
+}
+
+.clef-log__place strong,
+.clef-log__place small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clef-log__place small {
+  color: rgba($ink, 0.55);
+  font-family: $mono;
+  font-size: 9px;
+}
+
+.clef-log__outcome {
+  font-family: $mono;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.clef-log__outcome--agreed {
+  color: $green;
+}
+
+.clef-log__outcome--changed {
+  color: $orange;
+}
+
+.clef-log__outcome--open {
+  color: rgba($ink, 0.5);
+}
+
+@media (max-width: 760px) {
+  .clef-log__entry {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .clef-log__entry time {
+    grid-column: 1 / -1;
+  }
+}

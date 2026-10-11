@@ -234,3 +234,36 @@ export async function importEvaluationArtifact(
     body: JSON.stringify(artifact),
   }));
 }
+
+export type ClefLogEntry = {
+  id: number;
+  kind: "page" | "name";
+  pageKey: string;
+  promptVersion: string;
+  createdAt: string;
+  input: {
+    title?: string;
+    hostname?: string;
+    inspection?: { verdict?: string; reason?: string };
+    page?: { description?: string; siteName?: string; headings: string[]; text: string };
+    curatedExamples?: Array<{ place: string; scope: string; placement: string }>;
+  };
+  suggestion: (Partial<CatalogSuggestion> & { stopProbability?: number }) | null;
+  human: { scope: CurationScope; placeKey: string; placement?: CurationPlacement } | null;
+  agreed: boolean | null;
+};
+
+export type ClefLog = {
+  entries: ClefLogEntry[];
+  summary: { decided: number; agreed: number };
+};
+
+export async function getClefLog(
+  token: string,
+  options: { page?: string; limit?: number } = {},
+): Promise<ClefLog> {
+  const url = new URL(`${catalogWorkerUrl()}/admin/internet-places/clef-log`);
+  if (options.page) url.searchParams.set("page", options.page);
+  if (options.limit) url.searchParams.set("limit", String(options.limit));
+  return readCatalogResponse(await fetch(url, { headers: headers(token) }));
+}
