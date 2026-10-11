@@ -33,6 +33,7 @@ import {
   handleInstallationControl,
 } from './routes/installationControl';
 import { handleInternetMapFile } from './routes/internetMap';
+import { handleSharedCollages, matchSharedCollageRoute } from './routes/sharedCollages';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
@@ -197,6 +198,12 @@ export default {
     const participantMatch = path.match(/^\/participants\/(.+)$/);
     if (participantMatch && request.method === 'PUT') {
       return handleParticipantUpsert(request, env, decodeURIComponent(participantMatch[1]));
+    }
+
+    // Shared collages: public, view-only links made from the scraps studio.
+    const sharedCollageRoute = matchSharedCollageRoute(path);
+    if (sharedCollageRoute) {
+      return handleSharedCollages(request, env, sharedCollageRoute);
     }
 
     // Health check

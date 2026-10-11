@@ -59,6 +59,12 @@ const FEATURE_DEFINITIONS = {
     defaultStage: "internal",
     requiresReload: false,
   },
+  COLLAGE_SHARE_LINKS: {
+    name: "Collage share links",
+    description: "Share a scrap collage as a view-only link anyone can open.",
+    defaultStage: "internal",
+    requiresReload: false,
+  },
   TLDRAW_COLLAGES: {
     name: "tldraw collage editor",
     description: "Arrange scrap collages in an editor built on tldraw instead of the regular one.",
