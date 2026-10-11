@@ -21,6 +21,8 @@ interface ProvenancePeekProps {
   scale: number;
   /** The part of the frame that shows, in frame units; every label stays in it. */
   bounds: Rect;
+  /** An extra line for a piece's label, such as who put it down. */
+  noteFor?: (piece: CollagePiece) => string | null;
 }
 
 /** What a tag is assumed to take up before it has been measured. */
@@ -62,7 +64,14 @@ function shortened(title: string, limit = 42): string {
  * What a label says about a scrap: where it came from, the page's title, what
  * kind of thing it is and when it was first seen.
  */
-export function ProvenanceLines({ scrap }: { scrap: ScrapItem }) {
+export function ProvenanceLines({
+  scrap,
+  note,
+}: {
+  scrap: ScrapItem;
+  /** One more line under the rest, when the place showing the label has one. */
+  note?: string | null;
+}) {
   // Favicons are stored data like any other URL, so only a plain web address
   // is ever loaded.
   const favicon = scrap.faviconUrl ? webPageHref(scrap.faviconUrl) : null;
@@ -86,6 +95,7 @@ export function ProvenanceLines({ scrap }: { scrap: ScrapItem }) {
         <span className="collage-peek__line">
           {scrapKindName(scrap)} &#183; first seen {seenOn(scrap.ts)}
         </span>
+        {note && <span className="collage-peek__line">{note}</span>}
       </span>
     </>
   );
@@ -96,6 +106,7 @@ export function ProvenancePeek({
   hoveredId,
   scale,
   bounds,
+  noteFor,
 }: ProvenancePeekProps) {
   const holderRef = useRef<HTMLDivElement>(null);
   /** Tints given so far, kept for as long as the peek is held. */
@@ -184,7 +195,7 @@ export function ProvenancePeek({
                 ...tint,
               }}
             >
-              <ProvenanceLines scrap={scrap} />
+              <ProvenanceLines scrap={scrap} note={noteFor?.(piece)} />
             </div>
           </React.Fragment>
         );
