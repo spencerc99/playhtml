@@ -35,6 +35,7 @@ import {
 } from '../routes/commute';
 import { handleClefLog } from '../routes/clefLog';
 import {
+  handleInternetPlaceSuggestion,
   INTERNET_PLACE_SUGGESTION_MODEL,
   INTERNET_PLACE_SUGGESTION_PROMPT_VERSION,
 } from '../routes/internetPlaceSuggestion';
@@ -329,5 +330,22 @@ describe('handleCommute', () => {
     const after = await readLog();
     expect(after.entries.find((entry) => entry.kind === 'page')?.agreed).toBe(false);
     expect(after.summary).toEqual({ decided: 2, agreed: 1 });
+  });
+
+  it('shows the desk the answer the gate already used', async () => {
+    fetchPublicPageContext.mockResolvedValue({
+      inspection: { verdict: 'public', reason: 'public_html', finalUrl: 'https://public.example/article' },
+      context: { description: 'A public essay', headings: ['An article'], text: 'Hello there.' },
+    });
+    const run = useClef('regular');
+    await suggestCommuteDestinations(env);
+    env.ADMIN_KEY = 'test-admin-key';
+    const response = await handleInternetPlaceSuggestion(new Request('https://worker.example/admin/internet-places/suggestion', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test-admin-key', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidate: { url: 'https://public.example/article', title: 'A public page' } }),
+    }), env);
+    expect(((await response.json()) as { source: string }).source).toBe('cache');
+    expect(run).toHaveBeenCalledTimes(1);
   });
 });

@@ -6,6 +6,16 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Miniflare } from 'miniflare';
 import type { Env } from '../lib/supabase';
+
+const { fetchPublicPageContext } = vi.hoisted(() => ({
+  fetchPublicPageContext: vi.fn(async () => null),
+}));
+
+vi.mock('../routes/pageMeta', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../routes/pageMeta')>()),
+  fetchPublicPageContext,
+}));
+
 import {
   handleInternetPlaceSuggestion,
   hashSuggestionCandidate,

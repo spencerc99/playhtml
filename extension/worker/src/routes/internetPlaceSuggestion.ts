@@ -402,19 +402,22 @@ export function parseClefSuggestion(
   });
 }
 
+/** The cached answer for a page; with a null hash, whatever answer is cached. */
 async function getCachedSuggestion(
   db: D1Database,
   pageKey: string,
-  evidenceHash: string,
+  evidenceHash: string | null,
 ): Promise<{ suggestion: InternetPlaceSuggestion; createdAt: string } | null> {
   const row = await db.prepare(
     `SELECT suggestion_json, created_at
      FROM place_suggestions
-     WHERE page_key = ? AND model = ? AND prompt_version = ? AND evidence_hash = ?`,
+     WHERE page_key = ? AND model = ? AND prompt_version = ?
+       AND (? IS NULL OR evidence_hash = ?)`,
   ).bind(
     pageKey,
     INTERNET_PLACE_SUGGESTION_MODEL,
     INTERNET_PLACE_SUGGESTION_PROMPT_VERSION,
+    evidenceHash,
     evidenceHash,
   ).first<SuggestionRow>();
   if (!row) return null;
@@ -910,13 +913,16 @@ export async function handleInternetPlaceSuggestion(
   if (!isRecord(body) || (body.refresh !== undefined && typeof body.refresh !== 'boolean')) {
     return jsonResponse(400, { error: 'Invalid suggestion request' });
   }
-  const candidate = parseCandidate(body.candidate);
-  if (!candidate) return jsonResponse(400, { error: 'Invalid suggestion candidate' });
-  const evidenceHash = await hashSuggestionCandidate(candidate);
-
+  const requested = parseCandidate(body.candidate);
+  if (!requested) return jsonResponse(400, { error: 'Invalid suggestion candidate' });
+  // A plain live page is judged exactly as the gate judges it, so the desk
+  // reuses the gate's answer instead of replacing it with a thinner one.
+  const plainPage = !requested.audit && !requested.reserve;
   const refresh = body.refresh === true;
   if (!refresh) {
-    const cached = await getCachedSuggestion(env.WWO_ADMIN_DB, candidate.url, evidenceHash);
+    const cached =
+      (await getCachedSuggestion(env.WWO_ADMIN_DB, requested.url, await hashSuggestionCandidate(requested))) ??
+      (plainPage ? await getCachedSuggestion(env.WWO_ADMIN_DB, requested.url, null) : null);
     if (cached) {
       return jsonResponse(200, {
         available: true,
@@ -936,6 +942,15 @@ export async function handleInternetPlaceSuggestion(
     });
   }
 
+  let candidate = requested;
+  if (plainPage && !requested.page) {
+    const enriched = await withPageContext({ url: requested.url, title: requested.title });
+    candidate = parseCandidate({
+      ...enriched,
+      ...(requested.inspection ? { inspection: requested.inspection } : {}),
+    }) ?? requested;
+  }
+  const evidenceHash = await hashSuggestionCandidate(candidate);
   let suggestion: InternetPlaceSuggestion | null;
   try {
     suggestion = await askClef(env, candidate);
