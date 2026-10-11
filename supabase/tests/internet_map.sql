@@ -70,6 +70,7 @@ do $$ begin
   assert not internet_map.opaque('١٢٣٤٥ + ٦٧٨٩٠.'), 'Unicode digits are not letters';
   assert (select page_key = U&'i\0307.example/path' from internet_map.normalise('https://İ.example/path')), 'Expanded host preserves path';
   assert internet_map.clean_title(U&' A\00a0title\202fwith spaces ') = 'A title with spaces', 'Unicode title whitespace';
+  assert internet_map.redact_host('0123456789abcdef.example') = repeat('█',16) || '.example', 'Opaque host labels';
   assert internet_map.domain_of('docs.example.co.uk:443') = 'example.co.uk';
   assert internet_map.redact_url('localhost:3000/private') = 'private-network';
   assert internet_map.redact_title('private subject','mail.google.com/inbox') = '';

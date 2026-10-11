@@ -267,7 +267,7 @@ end $$;
 
 create function internet_map.redact_host(host text) returns text
 language sql immutable strict set search_path = pg_catalog as $$
- select case when internet_map.private_host(host) then 'private-network' else host end
+ select internet_map.redact_url(host)
 $$;
 
 create function internet_map.clean_title(title text) returns text
