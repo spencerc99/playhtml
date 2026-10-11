@@ -114,7 +114,7 @@ begin
     v := internet_map.unquote(substr(pair, pos + 1), true);
     if v = '' then continue; end if;
     if search_page then
-      if k = sp and v ~ '[^[:space:]]' then
+      if k = sp and v collate "und-x-icu" ~ '[^[:space:]]' then
         q := '?' || sp || '=' || lower(left(btrim(regexp_replace(v collate "und-x-icu", '[[:space:]]+', ' ', 'g')), 120) collate "und-x-icu"); exit;
       end if;
     elsif not (k = any(array['__cft__[0]','__tn__','_ga','_gl','_nc_hash','ab_channel','app','aqs','at_campaign','at_medium','authuser','bih','biw','cad','campaign_id','cd','chainedPosts','checksum','cid','client','cmpid','comment_tracking','context','correlationId','csui','cvid','dclid','dpr','ei','eid','enter_from','esrc','fbclid','feature','form','from_page','fromsearch','fs','gbv','gclid','ghpvc','ghsrc','gid','gl','gs_lcrp','gs_lp','gs_ssp','guccounter','guce_referrer','guce_referrer_sig','hl','icid','ie','iflsig','igshid','index','is_from_webapp','language','licu','lipi','list_index','log_pb','mc_cid','mc_eid','mibextid','midSig','midToken','msclkid','ncid','nfpr','notif_id','notif_t','oe','oq','originTrackingId','otpToken','pc','pjf','pp','prmd','pws','rct','rdt','ref','refId','ref_src','ref_url','referer','referrer','rlz','s_kwcid','sa','safe','sca_esv','sclient','scm','screen_name','sei','sender_device','sessionId','session_id','share_id','share_source','shareid','showsuggestions','si','soc_src','soc_trk','source','sourceid','spm','src','sstk','start_radio','sxsrf','t','tab','taid','tbo','trackingId','trk','twclid','uact','udm','usg','usp','utm_brand','utm_campaign','utm_cid','utm_content','utm_id','utm_medium','utm_name','utm_reader','utm_referrer','utm_social','utm_source','utm_term','uule','ved','web_id','yclid']::text[])) and left(k, 4) <> 'utm_' and left(k, 4) <> '__cf' and length(v) <= 80 then
@@ -273,7 +273,7 @@ $$;
 create function internet_map.clean_title(title text) returns text
 language plpgsql immutable strict set search_path = pg_catalog as $$
 begin
-  title := btrim(regexp_replace(title, '[[:space:]]+', ' ', 'g'));
+  title := btrim(regexp_replace(title collate "und-x-icu", '[[:space:]]+', ' ', 'g'));
   while left(title, 1) = '(' and strpos(left(title, 8), ')') > 0 loop
     title := btrim(substr(title, strpos(title, ')') + 1));
   end loop;

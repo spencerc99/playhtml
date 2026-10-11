@@ -186,7 +186,7 @@ begin
       insert into internet_map.titles values (normalized.page_key, title_value, 1, metadata.valid_from_ts, metadata.id)
       on conflict (page_key, title) do update set votes = titles.votes + 1;
     end if;
-    favicon_value := btrim(regexp_replace(metadata.favicon_url, '[[:space:]]+', ' ', 'g'));
+    favicon_value := btrim(regexp_replace(metadata.favicon_url collate "und-x-icu", '[[:space:]]+', ' ', 'g'));
     if favicon_value <> '' and length(favicon_value) < 400 and left(favicon_value, 5) <> 'data:' then
       insert into internet_map.host_favicons values (normalized.host, favicon_value, 1, metadata.valid_from_ts, metadata.id)
       on conflict (host, favicon) do update set votes = host_favicons.votes + 1;
