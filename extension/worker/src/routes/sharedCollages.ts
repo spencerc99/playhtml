@@ -312,8 +312,9 @@ async function handleRead(env: Env, id: string): Promise<Response> {
     headers: {
       ...CORS_HEADERS,
       "Content-Type": "application/json",
-      // Short, because the sharer can take the collage down at any time.
-      "Cache-Control": "public, max-age=60",
+      // Asked for afresh every time, so a link that was taken down stops
+      // showing at once rather than lingering in a browser cache.
+      "Cache-Control": "no-cache",
       "X-Content-Type-Options": "nosniff",
     },
   });

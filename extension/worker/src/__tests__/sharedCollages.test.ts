@@ -379,6 +379,7 @@ describe("GET /collages/<id>", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
     expect(res.headers.get("Content-Type")).toBe("application/json");
+    expect(res.headers.get("Cache-Control")).toBe("no-cache");
     const body = (await res.json()) as { title: string; pieces: unknown[] };
     expect(body.title).toBe("my collage");
     expect(body.pieces).toHaveLength(2);
