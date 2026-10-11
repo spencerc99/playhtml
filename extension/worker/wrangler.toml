@@ -69,10 +69,10 @@ migrations_dir = "migrations"
 [ai]
 binding = "AI"
 
-# Asks Clef about new unreviewed commute destinations; the commute only
-# shows an unreviewed page once Clef approves it.
+# Ingest asks Clef about new commute destinations as they arrive; this hourly
+# sweep retries any that ingest missed or that failed.
 [triggers]
-crons = ["*/10 * * * *"]
+crons = ["0 * * * *"]
 
 # Private internet map bundles. They hold participants' full page URLs and
 # titles, so they are served only through the admin-authenticated
