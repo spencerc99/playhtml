@@ -92,10 +92,10 @@ bucket_name = "wwo-internet-map"
 # collages/<id>/img/<n>. Anyone holding a link can read its collage, so only
 # what the sharer chose to publish is stored here.
 # Must be created once before deploying:
-#   bunx wrangler r2 bucket create wwo-shared-collages
+#   bunx wrangler r2 bucket create wwo-published-collages
 [[r2_buckets]]
 binding = "SHARED_COLLAGES"
-bucket_name = "wwo-shared-collages"
+bucket_name = "wwo-published-collages"
 
 [[migrations]]
 tag = "v1"

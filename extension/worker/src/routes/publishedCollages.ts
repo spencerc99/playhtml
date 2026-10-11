@@ -2,22 +2,22 @@
 // ABOUTME: Uploads are validated strictly and rate limited; each share carries its own delete token.
 
 import {
-  SHARED_COLLAGE_LIMITS,
-  SharedCollageError,
-  isSharedCollageId,
-  parseSharedCollage,
-  sharedCollageViewerUrl,
-  sharedImageIndex,
-  sharedImageIndexes,
-  sniffSharedImageType,
-  type SharedCollage,
-  type SharedCollageCreated,
-} from "../../../shared/sharedCollage";
+  PUBLISHED_COLLAGE_LIMITS,
+  PublishedCollageError,
+  isPublishedCollageId,
+  parsePublishedCollage,
+  publishedCollageViewerUrl,
+  publishedImageIndex,
+  publishedImageIndexes,
+  sniffPublishedImageType,
+  type PublishedCollage,
+  type PublishedCollageCreated,
+} from "../../../shared/publishedCollage";
 import type { Env } from "../lib/supabase";
 
 /*
  * Upload format: one multipart/form-data body. The `collage` part is the
- * shared-collage JSON, and each picture is its own file part named `img/<n>`.
+ * published-collage JSON, and each picture is its own file part named `img/<n>`.
  * Multipart keeps the pictures as raw bytes (base64 in a JSON envelope would
  * add a third to every upload and force one huge JSON parse), lets the Worker
  * check each part's size on its own, and is what a browser's FormData sends
@@ -28,8 +28,8 @@ const RATE_LIMIT_RETRY_SECONDS = 60;
 /** Room for the multipart boundaries and headers around the parts. */
 const MULTIPART_OVERHEAD_BYTES = 1024 * 1024;
 const MAX_BODY_BYTES =
-  SHARED_COLLAGE_LIMITS.maxTotalImageBytes +
-  SHARED_COLLAGE_LIMITS.maxCollageJsonBytes +
+  PUBLISHED_COLLAGE_LIMITS.maxTotalImageBytes +
+  PUBLISHED_COLLAGE_LIMITS.maxCollageJsonBytes +
   MULTIPART_OVERHEAD_BYTES;
 
 const CORS_HEADERS = {
@@ -77,7 +77,7 @@ function base64Url(bytes: Uint8Array): string {
 }
 
 /** 128 random bits: unguessable, so a link is only found by being given it. */
-export function createSharedCollageId(): string {
+export function createPublishedCollageId(): string {
   return base64Url(crypto.getRandomValues(new Uint8Array(16)));
 }
 
@@ -106,15 +106,15 @@ function sameHash(a: string, b: string): boolean {
   return difference === 0;
 }
 
-/** What a request asks of the shared-collage routes, or null when it is not theirs. */
-export type SharedCollageRoute =
+/** What a request asks of the published-collage routes, or null when it is not theirs. */
+export type PublishedCollageRoute =
   | { kind: "create" }
   | { kind: "collage"; id: string }
   | { kind: "image"; id: string; ref: string };
 
-export function matchSharedCollageRoute(
+export function matchPublishedCollageRoute(
   path: string,
-): SharedCollageRoute | null {
+): PublishedCollageRoute | null {
   if (path === "/collages") return { kind: "create" };
   const image = IMAGE_PATH.exec(path);
   if (image) return { kind: "image", id: image[1], ref: image[2] };
@@ -123,17 +123,17 @@ export function matchSharedCollageRoute(
   return null;
 }
 
-export async function handleSharedCollages(
+export async function handlePublishedCollages(
   request: Request,
   env: Env,
-  route: SharedCollageRoute,
+  route: PublishedCollageRoute,
 ): Promise<Response> {
   if (route.kind === "create") {
     if (request.method !== "POST")
       return jsonResponse(405, { error: "Method not allowed" });
     return handleCreate(request, env);
   }
-  if (!isSharedCollageId(route.id))
+  if (!isPublishedCollageId(route.id))
     return jsonResponse(404, { error: "Not found" });
   if (route.kind === "image") {
     if (request.method !== "GET")
@@ -146,51 +146,51 @@ export async function handleSharedCollages(
 }
 
 interface ParsedUpload {
-  collage: SharedCollage;
+  collage: PublishedCollage;
   images: { ref: string; bytes: Uint8Array; type: string }[];
 }
 
 /** Reads and checks an upload, or says exactly what is wrong with it. */
-export async function readSharedCollageUpload(
+export async function readPublishedCollageUpload(
   request: Request,
 ): Promise<ParsedUpload> {
   const contentType = request.headers.get("Content-Type") ?? "";
   if (!contentType.toLowerCase().startsWith("multipart/form-data")) {
-    throw new SharedCollageError("the upload must be multipart/form-data");
+    throw new PublishedCollageError("the upload must be multipart/form-data");
   }
   let form: FormData;
   try {
     form = await request.formData();
   } catch {
-    throw new SharedCollageError(
+    throw new PublishedCollageError(
       "the upload is not readable multipart form data",
     );
   }
 
   const collagePart = form.get("collage");
   if (collagePart === null)
-    throw new SharedCollageError("the upload has no collage part");
+    throw new PublishedCollageError("the upload has no collage part");
   const collageText =
     typeof collagePart === "string"
       ? collagePart
       : await (collagePart as File).text();
   if (
     new TextEncoder().encode(collageText).length >
-    SHARED_COLLAGE_LIMITS.maxCollageJsonBytes
+    PUBLISHED_COLLAGE_LIMITS.maxCollageJsonBytes
   ) {
-    throw new SharedCollageError("the collage description is too large");
+    throw new PublishedCollageError("the collage description is too large");
   }
   let raw: unknown;
   try {
     raw = JSON.parse(collageText);
   } catch {
-    throw new SharedCollageError("the collage part is not JSON");
+    throw new PublishedCollageError("the collage part is not JSON");
   }
-  const collage = parseSharedCollage(raw);
-  const indexes = sharedImageIndexes(collage);
-  if (indexes.length > SHARED_COLLAGE_LIMITS.maxImages) {
-    throw new SharedCollageError(
-      `the collage has more than ${SHARED_COLLAGE_LIMITS.maxImages} pictures`,
+  const collage = parsePublishedCollage(raw);
+  const indexes = publishedImageIndexes(collage);
+  if (indexes.length > PUBLISHED_COLLAGE_LIMITS.maxImages) {
+    throw new PublishedCollageError(
+      `the collage has more than ${PUBLISHED_COLLAGE_LIMITS.maxImages} pictures`,
     );
   }
 
@@ -199,11 +199,11 @@ export async function readSharedCollageUpload(
   for (const name of new Set(form.keys())) {
     if (name === "collage") continue;
     if (!expected.has(name))
-      throw new SharedCollageError(
+      throw new PublishedCollageError(
         `the upload has an unexpected part: ${name}`,
       );
     if (form.getAll(name).length !== 1)
-      throw new SharedCollageError(`the upload repeats ${name}`);
+      throw new PublishedCollageError(`the upload repeats ${name}`);
   }
 
   let total = 0;
@@ -211,22 +211,24 @@ export async function readSharedCollageUpload(
   for (const ref of expected) {
     const part = form.get(ref);
     if (part === null || typeof part === "string") {
-      throw new SharedCollageError(`the upload is missing the picture ${ref}`);
+      throw new PublishedCollageError(
+        `the upload is missing the picture ${ref}`,
+      );
     }
     const file = part as File;
     if (file.size === 0)
-      throw new SharedCollageError(`the picture ${ref} is empty`);
-    if (file.size > SHARED_COLLAGE_LIMITS.maxImageBytes) {
-      throw new SharedCollageError(`the picture ${ref} is larger than 5 MB`);
+      throw new PublishedCollageError(`the picture ${ref} is empty`);
+    if (file.size > PUBLISHED_COLLAGE_LIMITS.maxImageBytes) {
+      throw new PublishedCollageError(`the picture ${ref} is larger than 5 MB`);
     }
     total += file.size;
-    if (total > SHARED_COLLAGE_LIMITS.maxTotalImageBytes) {
-      throw new SharedCollageError("the pictures add up to more than 40 MB");
+    if (total > PUBLISHED_COLLAGE_LIMITS.maxTotalImageBytes) {
+      throw new PublishedCollageError("the pictures add up to more than 40 MB");
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const type = sniffSharedImageType(bytes);
+    const type = sniffPublishedImageType(bytes);
     if (type === null) {
-      throw new SharedCollageError(
+      throw new PublishedCollageError(
         `the picture ${ref} is not a PNG, JPEG, GIF, WebP or AVIF image`,
       );
     }
@@ -243,7 +245,7 @@ async function handleCreate(request: Request, env: Env): Promise<Response> {
     });
     allowed = outcome.success;
   } catch (error) {
-    console.error("[shared collages] rate limiter unavailable:", error);
+    console.error("[published collages] rate limiter unavailable:", error);
     return jsonResponse(503, { error: "Sharing is temporarily unavailable" });
   }
   if (!allowed) {
@@ -261,9 +263,9 @@ async function handleCreate(request: Request, env: Env): Promise<Response> {
 
   let upload: ParsedUpload;
   try {
-    upload = await readSharedCollageUpload(request);
+    upload = await readPublishedCollageUpload(request);
   } catch (error) {
-    if (error instanceof SharedCollageError) {
+    if (error instanceof PublishedCollageError) {
       return jsonResponse(400, {
         error: `Cannot share this collage: ${error.message}`,
       });
@@ -271,10 +273,10 @@ async function handleCreate(request: Request, env: Env): Promise<Response> {
     throw error;
   }
 
-  const id = createSharedCollageId();
+  const id = createPublishedCollageId();
   const deleteToken = createDeleteToken();
   const sharedAt = Date.now();
-  const stored: SharedCollage = { ...upload.collage, sharedAt };
+  const stored: PublishedCollage = { ...upload.collage, sharedAt };
   try {
     // The pictures land first, so a collage that can be read can always be drawn.
     await Promise.all(
@@ -289,15 +291,15 @@ async function handleCreate(request: Request, env: Env): Promise<Response> {
       customMetadata: { deleteTokenHash: await hashDeleteToken(deleteToken) },
     });
   } catch (error) {
-    console.error("[shared collages] store failed:", error);
+    console.error("[published collages] store failed:", error);
     await removeCollage(env, id).catch(() => {});
     return jsonResponse(503, { error: "The collage could not be stored" });
   }
 
-  const created: SharedCollageCreated = {
+  const created: PublishedCollageCreated = {
     id,
     deleteToken,
-    url: sharedCollageViewerUrl(id, env.COLLAGE_VIEWER_ORIGIN),
+    url: publishedCollageViewerUrl(id, env.COLLAGE_VIEWER_ORIGIN),
   };
   return jsonResponse(201, created);
 }
@@ -325,7 +327,7 @@ async function handleImage(
   id: string,
   ref: string,
 ): Promise<Response> {
-  if (sharedImageIndex(ref) === null)
+  if (publishedImageIndex(ref) === null)
     return jsonResponse(404, { error: "Not found" });
   const object = await env.SHARED_COLLAGES.get(imageKey(id, ref));
   if (!object) return jsonResponse(404, { error: "Not found" });

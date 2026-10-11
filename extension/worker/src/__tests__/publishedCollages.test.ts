@@ -1,18 +1,18 @@
-// ABOUTME: Tests the shared-collage routes: strict upload checks, storage layout, serving and token deletes.
+// ABOUTME: Tests the published-collage routes: strict upload checks, storage layout, serving and token deletes.
 // ABOUTME: Runs the handlers against an in-memory stand-in for the R2 bucket and the rate limiter.
 
 import { describe, expect, it, vi } from "vitest";
 import worker from "../index";
 import {
   hashDeleteToken,
-  matchSharedCollageRoute,
-} from "../routes/sharedCollages";
+  matchPublishedCollageRoute,
+} from "../routes/publishedCollages";
 import type { Env } from "../lib/supabase";
 import {
-  SHARED_COLLAGE_FORMAT,
-  SHARED_COLLAGE_LIMITS,
-  SHARED_COLLAGE_VERSION,
-} from "../../../shared/sharedCollage";
+  PUBLISHED_COLLAGE_FORMAT,
+  PUBLISHED_COLLAGE_LIMITS,
+  PUBLISHED_COLLAGE_VERSION,
+} from "../../../shared/publishedCollage";
 
 const PNG = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13,
@@ -112,12 +112,22 @@ function piece(image: string, extra: Record<string, unknown> = {}) {
   };
 }
 
+/** A piece set from an icon's markup rather than a picture. */
+function iconPiece(markup: string) {
+  const { image: _image, ...rest } = piece("img/0");
+  return {
+    ...rest,
+    content: { kind: "svg-icon", markup, width: 24, height: 24 },
+    source: { ...rest.source, kind: "svg-icon" },
+  };
+}
+
 function collage(
   pieces: unknown[] = [piece("img/0"), piece("img/1", { z: 1 })],
 ) {
   return {
-    format: SHARED_COLLAGE_FORMAT,
-    version: SHARED_COLLAGE_VERSION,
+    format: PUBLISHED_COLLAGE_FORMAT,
+    version: PUBLISHED_COLLAGE_VERSION,
     title: "my collage",
     frame: { width: 1500, height: 1000 },
     paper: { color: "#FFFDF9", grain: true },
@@ -152,20 +162,20 @@ async function share(
   return worker.fetch(uploadRequest(body, images), env, ctx);
 }
 
-describe("matchSharedCollageRoute", () => {
+describe("matchPublishedCollageRoute", () => {
   it("names the create, collage and picture routes", () => {
-    expect(matchSharedCollageRoute("/collages")).toEqual({ kind: "create" });
-    expect(matchSharedCollageRoute("/collages/abc")).toEqual({
+    expect(matchPublishedCollageRoute("/collages")).toEqual({ kind: "create" });
+    expect(matchPublishedCollageRoute("/collages/abc")).toEqual({
       kind: "collage",
       id: "abc",
     });
-    expect(matchSharedCollageRoute("/collages/abc/img/3")).toEqual({
+    expect(matchPublishedCollageRoute("/collages/abc/img/3")).toEqual({
       kind: "image",
       id: "abc",
       ref: "img/3",
     });
-    expect(matchSharedCollageRoute("/collages/abc/other/3")).toBeNull();
-    expect(matchSharedCollageRoute("/collage")).toBeNull();
+    expect(matchPublishedCollageRoute("/collages/abc/other/3")).toBeNull();
+    expect(matchPublishedCollageRoute("/collage")).toBeNull();
   });
 });
 
@@ -306,11 +316,42 @@ describe("POST /collages", () => {
     ],
     ["no pieces", () => uploadRequest(collage([]), {})],
     [
+      "a piece's markup over 64 KB",
+      () =>
+        uploadRequest(
+          collage([
+            iconPiece(
+              `<svg>${"<g/>".repeat(PUBLISHED_COLLAGE_LIMITS.maxContentBytes / 4)}</svg>`,
+            ),
+          ]),
+          {},
+        ),
+    ],
+    [
+      "a style value that loads from elsewhere",
+      () =>
+        uploadRequest(
+          collage([
+            {
+              ...iconPiece("<svg/>"),
+              content: {
+                kind: "heading",
+                text: "hi",
+                level: 1,
+                styles: { color: "url(https://tracker.example/p)" },
+              },
+              source: { ...piece("img/0").source, kind: "heading" },
+            },
+          ]),
+          {},
+        ),
+    ],
+    [
       "too many pieces",
       () =>
         uploadRequest(
           collage(
-            Array.from({ length: SHARED_COLLAGE_LIMITS.maxPieces + 1 }, () =>
+            Array.from({ length: PUBLISHED_COLLAGE_LIMITS.maxPieces + 1 }, () =>
               piece("img/0"),
             ),
           ),
@@ -321,7 +362,7 @@ describe("POST /collages", () => {
       "a picture over 5 MB",
       () =>
         uploadRequest(collage([piece("img/0")]), {
-          "img/0": new Uint8Array(SHARED_COLLAGE_LIMITS.maxImageBytes + 1)
+          "img/0": new Uint8Array(PUBLISHED_COLLAGE_LIMITS.maxImageBytes + 1)
             .fill(0)
             .map((_, i) => (i < PNG.length ? PNG[i] : 0)),
         }),
@@ -340,6 +381,23 @@ describe("POST /collages", () => {
     });
   }
 
+  it("stores a collage of markup pieces that carries no pictures", async () => {
+    const { env, bucket } = makeEnv();
+    const markup = '<svg viewBox="0 0 1 1"><path d="M0 0h1v1z"/></svg>';
+    const res = await worker.fetch(
+      uploadRequest(collage([iconPiece(markup)]), {}),
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(201);
+    expect(bucket.objects.size).toBe(1);
+    const [stored] = [...bucket.objects.values()];
+    const body = JSON.parse(new TextDecoder().decode(stored.bytes)) as {
+      pieces: { content: { markup: string } }[];
+    };
+    expect(body.pieces[0].content.markup).toBe(markup);
+  });
+
   it("refuses a declared body over the total cap", async () => {
     const { env, bucket } = makeEnv();
     const request = uploadRequest(collage(), { "img/0": PNG, "img/1": GIF });
@@ -356,7 +414,7 @@ describe("POST /collages", () => {
 
   it("rejects pictures adding up to more than 40 MB", async () => {
     const { env } = makeEnv();
-    const big = new Uint8Array(SHARED_COLLAGE_LIMITS.maxImageBytes - 16);
+    const big = new Uint8Array(PUBLISHED_COLLAGE_LIMITS.maxImageBytes - 16);
     big.set(PNG);
     const pieces = Array.from({ length: 9 }, (_, i) => piece(`img/${i}`));
     const images = Object.fromEntries(pieces.map((_, i) => [`img/${i}`, big]));
