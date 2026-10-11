@@ -24,6 +24,7 @@ export type CatalogSuggestion = {
   confidence: number;
   rationale: string;
   uncertainties: string[];
+  probabilities?: Partial<Record<CurationPlacement, number>>;
 };
 
 export type CatalogSuggestionResponse = {

@@ -47,6 +47,8 @@ export interface InternetPlaceSuggestion {
   uncertainties: string[];
   /** Clef's combined probability that the page is any kind of stop. */
   stopProbability?: number;
+  /** Clef's probability for each placement it weighed. */
+  probabilities?: Partial<Record<Placement, number>>;
 }
 
 type SuggestionRow = {
@@ -248,6 +250,23 @@ export function parseInternetPlaceSuggestion(
     }
     stopProbability = value.stopProbability;
   }
+  let probabilities: Partial<Record<Placement, number>> | undefined;
+  if (value.probabilities !== undefined) {
+    if (!isRecord(value.probabilities)) return null;
+    probabilities = {};
+    for (const [option, probability] of Object.entries(value.probabilities)) {
+      if (
+        !PLACEMENTS.includes(option as Placement) ||
+        typeof probability !== 'number' ||
+        !Number.isFinite(probability) ||
+        probability < 0 ||
+        probability > 1
+      ) {
+        return null;
+      }
+      probabilities[option as Placement] = probability;
+    }
+  }
   return {
     placement: value.placement as Placement,
     scope: value.scope as SuggestionScope,
@@ -256,6 +275,7 @@ export function parseInternetPlaceSuggestion(
     rationale,
     uncertainties: value.uncertainties.map((item) => String(item).trim()),
     ...(stopProbability !== undefined ? { stopProbability } : {}),
+    ...(probabilities ? { probabilities } : {}),
   };
 }
 
@@ -390,6 +410,7 @@ export function parseClefSuggestion(
     uncertainties: uncertainties.slice(0, 8),
     ...(Object.keys(placement.probabilities).length > 0
       ? {
+          probabilities: placement.probabilities,
           stopProbability: Math.min(
             1,
             ['regular', 'featured', 'reserve'].reduce(
@@ -837,6 +858,9 @@ export async function checkSceneryNames(
             confidence: choice.confidence,
             rationale: `Clef judged the name ${choice.choice} with ${percent(choice.confidence)} confidence.`,
             uncertainties: [],
+            ...(Object.keys(choice.probabilities).length > 0
+              ? { probabilities: choice.probabilities as Partial<Record<Placement, number>> }
+              : {}),
           };
           await env.WWO_ADMIN_DB.prepare(
             `INSERT INTO place_suggestions (

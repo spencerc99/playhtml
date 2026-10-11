@@ -1448,12 +1448,21 @@ export function App({
                   </small>
                 </span>
                 <span className="clef-log__answer">
-                  {entry.suggestion?.placement
-                    ? PLACEMENT_LABELS[entry.suggestion.placement]
-                    : "No answer"}
-                  {typeof entry.suggestion?.confidence === "number"
-                    ? ` · ${Math.round(entry.suggestion.confidence * 100)}%`
-                    : ""}
+                  <span>
+                    {entry.suggestion?.placement
+                      ? PLACEMENT_LABELS[entry.suggestion.placement]
+                      : "No answer"}
+                    {typeof entry.suggestion?.confidence === "number"
+                      ? ` · ${Math.round(entry.suggestion.confidence * 100)}%`
+                      : ""}
+                  </span>
+                  {entry.suggestion?.probabilities && (
+                    <ProbabilityBar
+                      probabilities={entry.suggestion.probabilities}
+                      chosen={entry.human?.placement}
+                      compact
+                    />
+                  )}
                 </span>
                 <span
                   className={`clef-log__outcome clef-log__outcome--${
@@ -1535,6 +1544,74 @@ function CurationDesk() {
 }
 
 
+/**
+ * Clef's split across placements, from most private to most public. The line
+ * marks where a page stops being held back and starts riding as a stop.
+ */
+function ProbabilityBar({
+  probabilities,
+  chosen,
+  compact = false,
+}: {
+  probabilities: Partial<Record<CurationPlacement, number>>;
+  chosen?: CurationPlacement;
+  compact?: boolean;
+}) {
+  const total = CURATION_PLACEMENTS.reduce(
+    (sum, value) => sum + (probabilities[value] ?? 0),
+    0,
+  ) || 1;
+  const heldBack = ((probabilities.hidden ?? 0) + (probabilities.scenery ?? 0)) / total;
+  return (
+    <div
+      className={`probability-bar${compact ? " probability-bar--compact" : ""}`}
+      role="img"
+      aria-label={CURATION_PLACEMENTS
+        .filter((value) => (probabilities[value] ?? 0) > 0)
+        .map((value) => `${PLACEMENT_LABELS[value]} ${Math.round(((probabilities[value] ?? 0) / total) * 100)}%`)
+        .join(", ")}
+    >
+      <div className="probability-bar__track">
+        {CURATION_PLACEMENTS.map((value) => {
+          const share = (probabilities[value] ?? 0) / total;
+          if (share <= 0) return null;
+          return (
+            <span
+              className={`probability-bar__segment probability--${value}${chosen === value ? " probability-bar__segment--chosen" : ""}`}
+              key={value}
+              style={{ width: `${share * 100}%` }}
+              title={`${PLACEMENT_LABELS[value]}: ${Math.round(share * 100)}%`}
+            >
+              {!compact && share >= 0.12 ? `${Math.round(share * 100)}%` : ""}
+            </span>
+          );
+        })}
+        <i className="probability-bar__boundary" style={{ left: `${heldBack * 100}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function ProbabilityLegend({
+  probabilities,
+}: {
+  probabilities: Partial<Record<CurationPlacement, number>>;
+}) {
+  return (
+    <ul className="probability-legend">
+      {CURATION_PLACEMENTS.filter((value) => (probabilities[value] ?? 0) > 0).map((value) => (
+        <li key={value}>
+          <i className={`probability--${value}`} />
+          {PLACEMENT_LABELS[value]} {Math.round((probabilities[value] ?? 0) * 100)}%
+        </li>
+      ))}
+      <li className="probability-legend__boundary">
+        <i /> held back | rides as a stop
+      </li>
+    </ul>
+  );
+}
+
 function ClefCard({
   suggestion,
   seen,
@@ -1561,7 +1638,12 @@ function ClefCard({
           {busy ? "Asking…" : "Ask again"}
         </button>
       </div>
-      {suggestion.uncertainties.length > 0 && (
+      {suggestion.probabilities && Object.keys(suggestion.probabilities).length > 0 ? (
+        <div className="clef-card__bar">
+          <ProbabilityBar probabilities={suggestion.probabilities} />
+          <ProbabilityLegend probabilities={suggestion.probabilities} />
+        </div>
+      ) : suggestion.uncertainties.length > 0 && (
         <ul className="clef-card__uncertain">
           {suggestion.uncertainties.map((line) => <li key={line}>{line}</li>)}
         </ul>

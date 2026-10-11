@@ -128,6 +128,7 @@ describe('Internet place suggestions', () => {
         'The hostname scope is uncertain (40%).',
       ],
       stopProbability: expect.closeTo(0.94, 5),
+      probabilities: { featured: 0.64, regular: 0.3, scenery: 0.06 },
     });
     expect(parseClefSuggestion({ result: { answers } })?.placement).toBe('featured');
     expect(parseClefSuggestion({
