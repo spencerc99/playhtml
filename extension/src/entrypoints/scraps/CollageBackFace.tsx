@@ -40,8 +40,11 @@ interface CollageBackFaceProps {
   showing: boolean;
   /** Told when something the back needs could not be read. */
   onProblem: (text: string) => void;
-  /** Told as the title written on the back is edited. */
-  onTitle: (title: string) => void;
+  /**
+   * Told as the title written on the back is edited. Without it the title is
+   * only read, as on a published collage.
+   */
+  onTitle?: (title: string) => void;
 }
 
 /** Where the written title sits on the back, and the type it is set in. */
@@ -193,10 +196,11 @@ export function CollageBackFace({
 
   // The written title is overlaid with a field set in the same place and type,
   // so it is edited where it is read. The markup stays the one the bake draws.
+  const editable = onTitle !== undefined;
   useLayoutEffect(() => {
     const container = textRef.current;
-    setPlace(container && markup ? titlePlace(container) : null);
-  }, [markup]);
+    setPlace(container && markup && editable ? titlePlace(container) : null);
+  }, [editable, markup]);
 
   const card = backPaper(paper, look);
   const ink = backInk(card.color);
@@ -221,7 +225,7 @@ export function CollageBackFace({
             className={`collage-back__text${place ? " collage-back__text--titled" : ""}`}
             dangerouslySetInnerHTML={{ __html: markup }}
           />
-          {place && (
+          {place && onTitle && (
             <textarea
               className="collage-back__title-field"
               value={content.title}

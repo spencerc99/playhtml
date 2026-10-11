@@ -29,7 +29,7 @@ import {
   keepCollageImages,
   releaseCollageImages,
 } from "./localScrapImages";
-import { deleteSharedCollage } from "./shareCollage";
+import { deletePublishedCollage } from "./publishCollage";
 import { WORKER_URL } from "@movement/config";
 
 interface CollageHistoryProps {
@@ -185,13 +185,13 @@ export function CollageHistory({
   const remove = async (id: string) => {
     // A deleted collage takes its shared link down with it, since the token
     // that could do so later is deleted along with the collage.
-    const share = await loadCollage(id)
-      .then((record) => record?.share)
+    const publication = await loadCollage(id)
+      .then((record) => record?.publication)
       .catch(() => undefined);
     await deleteCollage(id);
-    if (share) {
-      deleteSharedCollage(WORKER_URL, share).catch((error: unknown) =>
-        console.warn("[collage share] could not take the link down:", error),
+    if (publication) {
+      deletePublishedCollage(WORKER_URL, publication).catch((error: unknown) =>
+        console.warn("[collage publish] could not take the link down:", error),
       );
     }
     inBackground(releaseCollageImages(id));

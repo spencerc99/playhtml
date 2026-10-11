@@ -1,18 +1,18 @@
-// ABOUTME: Finds the picture each collage piece shares: an image's own bytes, or a baked raster of anything else.
-// ABOUTME: Reads local image copies first, and bakes cutouts, words and icons the way the PNG export draws them.
+// ABOUTME: Finds the picture an image or cursor piece publishes: an image's own bytes, or a baked raster.
+// ABOUTME: Reads local image copies first, and bakes cutouts and cursors the way the PNG export draws them.
 
 import {
-  SHARED_COLLAGE_LIMITS,
-  sniffSharedImageType,
-} from "../../../shared/sharedCollage";
+  PUBLISHED_COLLAGE_LIMITS,
+  sniffPublishedImageType,
+} from "../../../shared/publishedCollage";
 import { resolveScrapImageSrc } from "@movement/utils/scrapImageSource";
 import { canvasPng, loadImage, prepareCollagePieces } from "./bakeCollage";
 import type { CollagePiece } from "./collageRecord";
-import type { SharedPieceMaterial } from "./shareCollage";
+import type { PublishedPieceMaterial } from "./publishCollage";
 
 /** The longest side a baked or shrunk picture is given. */
 const MAX_RASTER_SIDE = 2048;
-/** Words and icons are baked at twice their size on the collage, for sharpness. */
+/** Cursors are baked at twice their size on the collage, for sharpness. */
 const RASTER_DENSITY = 2;
 
 function fitWithin(width: number, height: number, longest: number) {
@@ -61,8 +61,8 @@ async function imageBytes(src: string): Promise<Blob> {
   if (!response.ok) throw new Error(`the picture answered ${response.status}`);
   const blob = await response.blob();
   const head = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
-  const type = sniffSharedImageType(head);
-  if (type && blob.size <= SHARED_COLLAGE_LIMITS.maxImageBytes) {
+  const type = sniffPublishedImageType(head);
+  if (type && blob.size <= PUBLISHED_COLLAGE_LIMITS.maxImageBytes) {
     return blob.type === type ? blob : new Blob([blob], { type });
   }
   const url = URL.createObjectURL(blob);
@@ -83,13 +83,13 @@ async function imageBytes(src: string): Promise<Blob> {
 }
 
 /**
- * The picture a piece shares. Uncut images send their own bytes; cut images,
- * buttons, headings, icons and cursors are baked by the same drawing the PNG
- * export uses, so the public page never renders markup from other sites.
+ * The picture a piece publishes. Uncut images send their own bytes; cut images
+ * and cursors are baked by the same drawing the PNG export uses. Buttons,
+ * headings and icons never come here: they publish their markup instead.
  */
-export async function sharePieceMaterial(
+export async function publishPieceMaterial(
   piece: CollagePiece,
-): Promise<SharedPieceMaterial> {
+): Promise<PublishedPieceMaterial> {
   const { scrap } = piece;
   if (scrap.kind === "image" && !piece.cutout) {
     return { key: `src:${scrap.src}`, blob: await imageBytes(scrap.src) };

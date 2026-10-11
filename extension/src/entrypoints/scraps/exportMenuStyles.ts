@@ -1,33 +1,56 @@
-// ABOUTME: Styles for the studio's share-link action and its popover with the link and take-down.
+// ABOUTME: Styles for the studio's export menu and its link section with the shared link and take-down.
 // ABOUTME: Folded into the studio stylesheet, so it uses the studio's --c-* palette.
 
-export const SHARE_CONTROL_STYLES = `
-  .collage-share {
+export const EXPORT_MENU_STYLES = `
+  .collage-export {
     position: relative;
     display: inline-flex;
   }
 
-  .collage-share-popover {
+  .collage-export__menu {
     position: absolute;
     right: 0;
     bottom: calc(100% + 8px);
     z-index: 10002;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    width: 280px;
-    padding: 9px 10px;
+    width: 290px;
+    padding: 4px 10px;
     border: 1px solid color-mix(in srgb, var(--c-ink) 20%, transparent);
     border-radius: 4px;
     background: var(--c-surface);
     box-shadow: 0 10px 28px color-mix(in srgb, var(--c-ink) 20%, transparent);
   }
 
-  .collage-share-popover p.collage-studio__label {
+  .collage-export__section {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 7px 0;
+  }
+
+  .collage-export__section + .collage-export__section {
+    border-top: 1px solid color-mix(in srgb, var(--c-ink) 12%, transparent);
+  }
+
+  .collage-export__section p.collage-studio__label {
     margin: 0;
   }
 
-  .collage-share-popover__url {
+  .collage-export__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .collage-share {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .collage-share__url {
     box-sizing: border-box;
     width: 100%;
     padding: 4px 6px;
@@ -39,7 +62,7 @@ export const SHARE_CONTROL_STYLES = `
     font-size: 9px;
   }
 
-  .collage-share-popover a.collage-action {
+  .collage-export a.collage-action {
     text-decoration: none;
   }
 `;

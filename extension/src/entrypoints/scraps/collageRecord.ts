@@ -75,7 +75,7 @@ export interface CollageRecord {
    * token is the only way to take the link down, so it never leaves this
    * device: copies and collage files are made without it.
    */
-  share?: CollageShare;
+  publication?: CollagePublication;
   /**
    * The baked picture of this collage, or an explicit note that it has not
    * been drawn yet. A collage is stored the moment its arrangement changes,
@@ -86,7 +86,7 @@ export interface CollageRecord {
 }
 
 /** A shared link to a collage, and the token that takes it down. */
-export interface CollageShare {
+export interface CollagePublication {
   /** The shared collage's id on the Worker. */
   id: string;
   deleteToken: string;
@@ -389,35 +389,37 @@ export function parseCollageRecord(value: unknown): CollageRecord {
       ? {}
       : { backShows: readBackShows(record.backShows) }),
     pieces: record.pieces.map(parseCollagePiece),
-    ...(record.share === undefined ? {} : { share: readShare(record.share) }),
+    ...(record.publication === undefined
+      ? {}
+      : { publication: readPublication(record.publication) }),
     preview,
   };
 }
 
-function readShare(value: unknown): CollageShare {
+function readPublication(value: unknown): CollagePublication {
   if (!value || typeof value !== "object") {
-    throw new Error("Collage share is not an object");
+    throw new Error("Collage publication is not an object");
   }
-  const share = value as Record<string, unknown>;
+  const publication = value as Record<string, unknown>;
   return {
-    id: readShareString(share, "id"),
-    deleteToken: readShareString(share, "deleteToken"),
-    sharedAt: readNumber(share, "sharedAt"),
-    url: readShareString(share, "url"),
+    id: readPublicationString(publication, "id"),
+    deleteToken: readPublicationString(publication, "deleteToken"),
+    sharedAt: readNumber(publication, "sharedAt"),
+    url: readPublicationString(publication, "url"),
   };
 }
 
-function readShareString(source: Record<string, unknown>, key: string): string {
+function readPublicationString(source: Record<string, unknown>, key: string): string {
   const value = source[key];
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Collage share is missing ${key}`);
+    throw new Error(`Collage publication is missing ${key}`);
   }
   return value;
 }
 
-/** The collage without its share, for anything that leaves this device. */
-export function withoutShare(record: CollageRecord): CollageRecord {
-  const { share: _share, ...rest } = record;
+/** The collage without its publication, for anything that leaves this device. */
+export function withoutPublication(record: CollageRecord): CollageRecord {
+  const { publication: _publication, ...rest } = record;
   return rest;
 }
 

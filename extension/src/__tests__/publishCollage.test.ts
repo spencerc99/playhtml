@@ -4,14 +4,14 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import {
-  CollageShareError,
-  buildSharedCollage,
-  deleteSharedCollage,
-  sharedSource,
-  shareFormData,
-  uploadSharedCollage,
-  type SharedPieceMaterial,
-} from "../entrypoints/scraps/shareCollage";
+  CollagePublishError,
+  buildPublishedCollage,
+  deletePublishedCollage,
+  publishedSource,
+  publishFormData,
+  uploadPublishedCollage,
+  type PublishedPieceMaterial,
+} from "../entrypoints/scraps/publishCollage";
 import {
   duplicateCollage,
   parseCollageRecord,
@@ -23,9 +23,9 @@ import {
   readCollageFile,
 } from "../entrypoints/scraps/collageFile";
 import {
-  SHARED_COLLAGE_LIMITS,
-  parseSharedCollage,
-} from "../../shared/sharedCollage";
+  PUBLISHED_COLLAGE_LIMITS,
+  parsePublishedCollage,
+} from "../../shared/publishedCollage";
 
 function scrap(overrides: Partial<ScrapItem> = {}): ScrapItem {
   return {
@@ -80,9 +80,9 @@ function record(pieces: CollagePiece[]): CollageRecord {
 const blob = (size = 4) =>
   new Blob([new Uint8Array(size)], { type: "image/png" });
 
-function resolver(overrides: Partial<SharedPieceMaterial> = {}) {
+function resolver(overrides: Partial<PublishedPieceMaterial> = {}) {
   return vi.fn(
-    async (p: CollagePiece): Promise<SharedPieceMaterial> => ({
+    async (p: CollagePiece): Promise<PublishedPieceMaterial> => ({
       key:
         p.scrap.kind === "image" && !p.cutout
           ? `src:${p.scrap.src}`
@@ -93,7 +93,7 @@ function resolver(overrides: Partial<SharedPieceMaterial> = {}) {
   );
 }
 
-describe("buildSharedCollage", () => {
+describe("buildPublishedCollage", () => {
   it("keeps geometry, orders by stack, and dedupes shared pictures", async () => {
     const pieces = [
       piece({
@@ -113,17 +113,26 @@ describe("buildSharedCollage", () => {
         } as Partial<ScrapItem>),
       }),
     ];
-    const built = await buildSharedCollage(record(pieces), resolver());
-    expect(() => parseSharedCollage(built.collage)).not.toThrow();
+    const materialFor = resolver();
+    const built = await buildPublishedCollage(record(pieces), materialFor);
+    expect(() => parsePublishedCollage(built.collage)).not.toThrow();
     expect(built.collage.title).toBe("a collage");
+    expect(built.collage.createdAt).toBe(1);
     expect(built.collage.pieces.map((p) => p.z)).toEqual([0, 1, 2]);
-    // The two uncut images share one source, so they upload one picture.
-    expect(built.images).toHaveLength(2);
+    // The two uncut images share one source, so they upload one picture, and
+    // the button travels as its words rather than as a picture.
+    expect(built.images).toHaveLength(1);
+    expect(materialFor).toHaveBeenCalledTimes(2);
     expect(built.collage.pieces.map((p) => p.image)).toEqual([
       "img/0",
-      "img/1",
+      undefined,
       "img/0",
     ]);
+    expect(built.collage.pieces[1].content).toEqual({
+      kind: "button",
+      text: "Buy now",
+      styles: {},
+    });
     const top = built.collage.pieces[2];
     expect(top).toMatchObject({
       x: 10,
@@ -140,9 +149,95 @@ describe("buildSharedCollage", () => {
     });
   });
 
+  it("publishes buttons, headings and icons as their captured markup", async () => {
+    const pieces = [
+      piece({
+        id: "button",
+        z: 0,
+        scrap: scrap({
+          kind: "button",
+          text: "Subscribe",
+          styles: {
+            backgroundColor: "rgb(0, 0, 255)",
+            backgroundImage: "url(https://tracker.example/pixel.png)",
+            position: "fixed",
+            fontSize: "16px",
+          },
+          innerSvg: '<svg viewBox="0 0 1 1"><path d="M0 0h1v1z"/></svg>',
+          backdropColor: "rgb(255, 255, 255)",
+        } as Partial<ScrapItem>),
+      }),
+      piece({
+        id: "heading",
+        z: 1,
+        scrap: scrap({
+          kind: "heading",
+          text: "the internet is a place",
+          level: 2,
+          styles: { fontFamily: "Georgia", lineHeight: "1.2" },
+        } as Partial<ScrapItem>),
+      }),
+      piece({
+        id: "icon",
+        z: 2,
+        scrap: scrap({
+          kind: "svg-icon",
+          markup: '<svg viewBox="0 0 2 2"><circle r="1"/></svg>',
+          width: 24,
+          height: 24,
+        } as Partial<ScrapItem>),
+      }),
+    ];
+    const materialFor = resolver();
+    const built = await buildPublishedCollage(
+      { ...record(pieces), backShows: "titles" },
+      materialFor,
+    );
+    expect(materialFor).not.toHaveBeenCalled();
+    expect(built.images).toEqual([]);
+    expect(built.collage.backShows).toBe("titles");
+    const [button, heading, icon] = built.collage.pieces;
+    // Only captured properties with values that cannot fetch are kept.
+    expect(button.content).toEqual({
+      kind: "button",
+      text: "Subscribe",
+      styles: { backgroundColor: "rgb(0, 0, 255)", fontSize: "16px" },
+      innerSvg: '<svg viewBox="0 0 1 1"><path d="M0 0h1v1z"/></svg>',
+      backdropColor: "rgb(255, 255, 255)",
+    });
+    expect(heading.content).toEqual({
+      kind: "heading",
+      text: "the internet is a place",
+      level: 2,
+      styles: { fontFamily: "Georgia", lineHeight: "1.2" },
+    });
+    expect(icon.content).toMatchObject({ kind: "svg-icon", width: 24 });
+    expect(icon.source.kind).toBe("svg-icon");
+    expect(() => parsePublishedCollage(built.collage)).not.toThrow();
+  });
+
+  it("refuses a piece whose markup is over the per-piece limit", async () => {
+    const huge = `<svg>${"<g/>".repeat(PUBLISHED_COLLAGE_LIMITS.maxContentBytes / 4)}</svg>`;
+    await expect(
+      buildPublishedCollage(
+        record([
+          piece({
+            scrap: scrap({
+              kind: "svg-icon",
+              markup: huge,
+              width: 1,
+              height: 1,
+            } as Partial<ScrapItem>),
+          }),
+        ]),
+        resolver(),
+      ),
+    ).rejects.toThrow(/too large to publish/);
+  });
+
   it("carries a baked cutout's placement and marks it", async () => {
     const placement = { x: 0.25, y: 0, width: 0.5, height: 1 };
-    const built = await buildSharedCollage(
+    const built = await buildPublishedCollage(
       record([
         piece({
           cutout: { method: "edge-color", tolerance: 0.1 },
@@ -155,13 +250,13 @@ describe("buildSharedCollage", () => {
   });
 
   it("refuses an empty collage, and pictures over the limits", async () => {
-    await expect(buildSharedCollage(record([]), resolver())).rejects.toThrow(
-      CollageShareError,
+    await expect(buildPublishedCollage(record([]), resolver())).rejects.toThrow(
+      CollagePublishError,
     );
     await expect(
-      buildSharedCollage(
+      buildPublishedCollage(
         record([piece()]),
-        resolver({ blob: blob(SHARED_COLLAGE_LIMITS.maxImageBytes + 1) }),
+        resolver({ blob: blob(PUBLISHED_COLLAGE_LIMITS.maxImageBytes + 1) }),
       ),
     ).rejects.toThrow(/over the 5 MB/);
     const many = Array.from({ length: 9 }, (_, i) =>
@@ -174,9 +269,9 @@ describe("buildSharedCollage", () => {
       }),
     );
     await expect(
-      buildSharedCollage(
+      buildPublishedCollage(
         record(many),
-        resolver({ blob: blob(SHARED_COLLAGE_LIMITS.maxImageBytes - 1) }),
+        resolver({ blob: blob(PUBLISHED_COLLAGE_LIMITS.maxImageBytes - 1) }),
       ),
     ).rejects.toThrow(/40 MB/);
   });
@@ -186,16 +281,16 @@ describe("buildSharedCollage", () => {
       throw new Error("fetch returned 404");
     });
     await expect(
-      buildSharedCollage(record([piece()]), failing),
+      buildPublishedCollage(record([piece()]), failing),
     ).rejects.toThrow(
       "a piece from example.test could not be read: fetch returned 404",
     );
   });
 });
 
-describe("sharedSource", () => {
+describe("publishedSource", () => {
   it("keeps only what the shared page shows, and only web addresses", () => {
-    const source = sharedSource(
+    const source = publishedSource(
       scrap({
         pageUrl: "javascript:alert(1)",
         faviconUrl: "data:image/png;base64,AA",
@@ -214,16 +309,16 @@ describe("sharedSource", () => {
   });
 
   it("clips an overlong page title", () => {
-    const source = sharedSource(scrap({ pageTitle: "t".repeat(900) }));
+    const source = publishedSource(scrap({ pageTitle: "t".repeat(900) }));
     expect(source.pageTitle).toHaveLength(
-      SHARED_COLLAGE_LIMITS.maxPageTitleLength,
+      PUBLISHED_COLLAGE_LIMITS.maxPageTitleLength,
     );
   });
 });
 
 describe("upload and take-down", () => {
   it("posts the collage and its pictures as multipart and keeps the token", async () => {
-    const built = await buildSharedCollage(record([piece()]), resolver());
+    const built = await buildPublishedCollage(record([piece()]), resolver());
     const fetcher = vi.fn(
       async () =>
         new Response(
@@ -235,7 +330,7 @@ describe("upload and take-down", () => {
           { status: 201 },
         ),
     );
-    const share = await uploadSharedCollage(
+    const share = await uploadPublishedCollage(
       "https://worker.example",
       built,
       () => 42,
@@ -259,13 +354,13 @@ describe("upload and take-down", () => {
   });
 
   it("says what the server refused", async () => {
-    const built = await buildSharedCollage(record([piece()]), resolver());
+    const built = await buildPublishedCollage(record([piece()]), resolver());
     const fetcher = vi.fn(
       async () =>
         new Response(JSON.stringify({ error: "Too many" }), { status: 429 }),
     );
     await expect(
-      uploadSharedCollage(
+      uploadPublishedCollage(
         "https://w",
         built,
         Date.now,
@@ -277,7 +372,7 @@ describe("upload and take-down", () => {
   it("deletes with the token and treats an already-gone link as gone", async () => {
     for (const status of [204, 404]) {
       const fetcher = vi.fn(async () => new Response(null, { status }));
-      await deleteSharedCollage(
+      await deletePublishedCollage(
         "https://w",
         { id: "abc", deleteToken: "tok" },
         fetcher as unknown as typeof fetch,
@@ -294,7 +389,7 @@ describe("upload and take-down", () => {
         new Response(JSON.stringify({ error: "nope" }), { status: 403 }),
     );
     await expect(
-      deleteSharedCollage(
+      deletePublishedCollage(
         "https://w",
         { id: "abc", deleteToken: "x" },
         refused as unknown as typeof fetch,
@@ -303,8 +398,8 @@ describe("upload and take-down", () => {
   });
 
   it("builds a form with one part per picture", async () => {
-    const form = shareFormData({
-      collage: (await buildSharedCollage(record([piece()]), resolver()))
+    const form = publishFormData({
+      collage: (await buildPublishedCollage(record([piece()]), resolver()))
         .collage,
       images: [blob(), blob()],
     });
@@ -321,18 +416,21 @@ describe("the stored share", () => {
   };
 
   it("round-trips on the collage record", () => {
-    const parsed = parseCollageRecord({ ...record([piece()]), share });
-    expect(parsed.share).toEqual(share);
+    const parsed = parseCollageRecord({
+      ...record([piece()]),
+      publication: share,
+    });
+    expect(parsed.publication).toEqual(share);
     expect(() =>
-      parseCollageRecord({ ...record([piece()]), share: { id: "x" } }),
+      parseCollageRecord({ ...record([piece()]), publication: { id: "x" } }),
     ).toThrow();
   });
 
   it("is never copied into a duplicate or a collage file", async () => {
-    const shared = { ...record([piece()]), share };
-    expect(duplicateCollage(shared).share).toBeUndefined();
+    const shared = { ...record([piece()]), publication: share };
+    expect(duplicateCollage(shared).publication).toBeUndefined();
     const file = await encodeCollageFile(shared);
     expect(file).not.toContain("tok");
-    expect(readCollageFile(file).share).toBeUndefined();
+    expect(readCollageFile(file).publication).toBeUndefined();
   });
 });

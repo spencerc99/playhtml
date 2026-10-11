@@ -4,7 +4,7 @@
 import {
   parseCollageRecord,
   withFreshIds,
-  withoutShare,
+  withoutPublication,
   type CollageRecord,
 } from "./collageRecord";
 import { upgradeToCurrentShape } from "./upgradeCollageRecord";
@@ -21,7 +21,7 @@ export interface CollageFileEnvelope {
   format: typeof COLLAGE_FILE_FORMAT;
   version: typeof COLLAGE_FILE_VERSION;
   exportedAt: number;
-  collage: Omit<CollageRecord, "preview" | "share"> & { preview: EncodedPreview };
+  collage: Omit<CollageRecord, "preview" | "publication"> & { preview: EncodedPreview };
 }
 
 /** A file that cannot be opened as a collage, with the reason it names. */
@@ -91,7 +91,7 @@ export async function encodeCollageFile(
     version: COLLAGE_FILE_VERSION,
     exportedAt: now,
     // The share's delete token stays on this device, never in a file.
-    collage: { ...withoutShare(record), preview },
+    collage: { ...withoutPublication(record), preview },
   };
   return JSON.stringify(envelope);
 }

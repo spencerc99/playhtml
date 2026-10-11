@@ -48,7 +48,7 @@ import {
   type BackShows,
   type CollagePiece,
   type CollageRecord,
-  type CollageShare,
+  type CollagePublication,
 } from "./collageRecord";
 import {
   DEFAULT_CUTOUT_TOLERANCE,
@@ -114,8 +114,8 @@ import {
 import { saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
-import { ShareControl } from "./ShareControl";
-import { sharePieceMaterial } from "./sharePieceImages";
+import { ExportMenu } from "./ExportMenu";
+import { publishPieceMaterial } from "./publishPieceImages";
 import { useSettledFeatureState } from "../../features/useFeatureAccess";
 import { WORKER_URL } from "@movement/config";
 import { naturalScrapSize } from "./pieceLettering";
@@ -183,7 +183,11 @@ import {
   type CollageDraft,
 } from "./useCollageAutosave";
 import type { SaveStanding } from "./autosaveSchedule";
-import { collageExportName } from "./collageFile";
+import {
+  collageExportName,
+  collageFileName,
+  encodeCollageFile,
+} from "./collageFile";
 
 /** Longest side a freshly placed piece takes, in frame units. */
 const PLACED_MAX_SIDE = 220;
@@ -381,7 +385,9 @@ export function CollageStudio({
     editing?.backShows ?? "pieces",
   );
   /** The view-only link this collage is shared as, kept so it can be taken down. */
-  const [share, setShare] = useState<CollageShare | undefined>(editing?.share);
+  const [publication, setPublication] = useState<
+    CollagePublication | undefined
+  >(editing?.publication);
   const shareFeature = useSettledFeatureState("COLLAGE_SHARE_LINKS");
   const frame = formatOf(format);
   const [drawer, setDrawer] = useState(() => readDrawerPreference());
@@ -488,7 +494,7 @@ export function CollageStudio({
       paper,
       backShows,
       pieces: normalizeStack(pieces),
-      ...(share ? { share } : {}),
+      ...(publication ? { publication } : {}),
     },
     hasContent: pieces.length > 0 || title.trim().length > 0,
   };
@@ -524,9 +530,9 @@ export function CollageStudio({
       grain: paper.grain,
       format,
       backShows,
-      share: share?.id ?? null,
+      publication: publication?.id ?? null,
     }),
-    [pieces, title, paper.color, paper.grain, format, backShows, share?.id],
+    [pieces, title, paper.color, paper.grain, format, backShows, publication?.id],
   );
   const firstChangeRef = useRef(true);
   useEffect(() => {
@@ -547,7 +553,7 @@ export function CollageStudio({
       return;
     }
     flush();
-  }, [share?.id, flush]);
+  }, [publication?.id, flush]);
 
   const mode: StudioMode = over
     ? "back"
@@ -1827,6 +1833,30 @@ export function CollageStudio({
     }
   };
 
+  /** Saves the collage as a file that opens it again in another browser. */
+  const downloadFile = async () => {
+    flush();
+    const record = collageToHandOver({
+      draft: draftRef.current,
+      standing: autosave.standing,
+      opened: editing,
+      preview: autosave.preview,
+    });
+    if (!record) return;
+    try {
+      const text = await encodeCollageFile(record);
+      saveFile(
+        new Blob([text], { type: "application/json" }),
+        collageFileName(record.title),
+      );
+    } catch (error) {
+      setNotice({
+        tone: "problem",
+        text: `could not save the file — ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  };
+
   const onBackProblem = useCallback((text: string) => {
     setNotice({ tone: "problem", text });
   }, []);
@@ -2322,44 +2352,38 @@ export function CollageStudio({
             open={showKeys}
             onToggle={() => setShowKeys((value) => !value)}
           />
-          <button
-            type="button"
-            className="collage-action"
-            disabled={exporting || videoProgress !== null || pieces.length === 0}
-            onClick={() => void download()}
-          >
-            export png
-          </button>
-          {animates && (
-            <button
-              type="button"
-              className="collage-action"
-              disabled={exporting || videoProgress !== null}
-              title={videoSupport.ok ? undefined : videoSupport.reason}
-              onClick={() => void downloadVideo()}
-            >
-              {videoProgress === null
-                ? "export mp4"
-                : // No wider than "export mp4" in the monospace face, so
-                  // the bar does not reflow while the video encodes.
-                  `mp4 · ${Math.round(videoProgress * 100)}%`}
-            </button>
-          )}
-          {shareFeature?.enabled && (
-            <ShareControl
-              share={share}
-              canShare={pieces.length > 0 && !exporting && videoProgress === null}
-              record={() => draftRef.current.record}
-              workerUrl={WORKER_URL}
-              materialFor={sharePieceMaterial}
-              onShared={(next) => {
-                setNotice(null);
-                setShare(next);
-              }}
-              onUnshared={() => setShare(undefined)}
-              onProblem={(text) => setNotice({ tone: "problem", text })}
-            />
-          )}
+          <ExportMenu
+            hasPieces={pieces.length > 0}
+            running={
+              exporting
+                ? "exporting…"
+                : videoProgress !== null
+                ? // No wider than "export ▾" in the monospace face, so the bar
+                  // does not reflow while the video encodes.
+                  `mp4 · ${Math.round(videoProgress * 100)}%`
+                : null
+            }
+            onPicture={() => void download()}
+            video={animates ? videoSupport : undefined}
+            onVideo={() => void downloadVideo()}
+            onFile={() => void downloadFile()}
+            link={
+              shareFeature?.enabled
+                ? {
+                    share: publication,
+                    record: () => draftRef.current.record,
+                    workerUrl: WORKER_URL,
+                    materialFor: publishPieceMaterial,
+                    onShared: (next) => {
+                      setNotice(null);
+                      setPublication(next);
+                    },
+                    onUnshared: () => setPublication(undefined),
+                    onProblem: (text) => setNotice({ tone: "problem", text }),
+                  }
+                : undefined
+            }
+          />
           {confirmingLeave ? (
             <>
               <button
