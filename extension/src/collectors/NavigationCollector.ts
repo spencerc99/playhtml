@@ -13,6 +13,13 @@ import { buildMetadataHash, getCurrentPageMetadata } from '../utils/pageMetadata
  */
 export const IDLE_TIMEOUT_MS = 5 * 60_000;
 
+/**
+ * Input and media inside an embedded frame (a YouTube embed, an embedded app)
+ * never reach this top-frame collector. While focus sits inside a frame, the
+ * tab gets this longer allowance instead, which still ends an overnight stretch.
+ */
+export const FRAME_FOCUS_IDLE_TIMEOUT_MS = 30 * 60_000;
+
 const ACTIVITY_EVENTS = [
   'pointermove',
   'pointerdown',
@@ -30,7 +37,8 @@ const ACTIVITY_EVENTS = [
  * - Page unload (beforeunload)
  * - Idle: a visible tab with no input for IDLE_TIMEOUT_MS emits a blur, and the
  *   next input emits a focus, so idle stretches don't count as screen time.
- *   Playing media keeps the tab active.
+ *   Playing media keeps the tab active, and focus inside an embedded frame
+ *   extends the timeout to FRAME_FOCUS_IDLE_TIMEOUT_MS.
  */
 export class NavigationCollector extends BaseCollector<NavigationEventData> {
   readonly type = 'navigation' as const;
@@ -40,6 +48,7 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
   private popstateHandler?: (e: PopStateEvent) => void;
   private beforeunloadHandler?: (e: BeforeUnloadEvent) => void;
   private activityHandler?: () => void;
+  private windowBlurHandler?: () => void;
 
   // Idle detection: the clock stops after IDLE_TIMEOUT_MS without input
   private idle = false;
@@ -140,6 +149,13 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
     for (const type of ACTIVITY_EVENTS) {
       window.addEventListener(type, this.activityHandler, { capture: true, passive: true });
     }
+    // Clicking into an embedded frame blurs this window; that click is input too
+    this.windowBlurHandler = () => {
+      setTimeout(() => {
+        if (isFrameFocused()) this.activityHandler?.();
+      }, 0);
+    };
+    window.addEventListener('blur', this.windowBlurHandler);
 
     // Emit synthetic focus if the page is already visible when collection starts.
     // Without this, a session that begins mid-visit has no focus anchor and the
@@ -168,6 +184,11 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
         window.removeEventListener(type, this.activityHandler, { capture: true });
       }
       this.activityHandler = undefined;
+    }
+
+    if (this.windowBlurHandler) {
+      window.removeEventListener('blur', this.windowBlurHandler);
+      this.windowBlurHandler = undefined;
     }
 
     if (this.visibilityChangeHandler) {
@@ -214,7 +235,10 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
   private checkIdle(): void {
     if (this.idle || document.visibilityState !== 'visible') return;
 
-    const remaining = this.lastActivityTs + IDLE_TIMEOUT_MS - Date.now();
+    const timeoutMs = isFrameFocused()
+      ? FRAME_FOCUS_IDLE_TIMEOUT_MS
+      : IDLE_TIMEOUT_MS;
+    const remaining = this.lastActivityTs + timeoutMs - Date.now();
     if (remaining > 0) {
       this.scheduleIdleCheck(remaining);
       return;
@@ -300,6 +324,11 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
       metadata_hash: buildMetadataHash(metadata.title, metadata.favicon_url),
     };
   }
+}
+
+function isFrameFocused(): boolean {
+  const tag = document.activeElement?.tagName;
+  return tag === 'IFRAME' || tag === 'FRAME';
 }
 
 function isMediaPlaying(): boolean {

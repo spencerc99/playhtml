@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
+  FRAME_FOCUS_IDLE_TIMEOUT_MS,
   IDLE_TIMEOUT_MS,
   NavigationCollector,
 } from "../collectors/NavigationCollector";
@@ -359,6 +360,35 @@ describe("NavigationCollector", () => {
       (video as { paused: boolean }).paused = true;
       vi.advanceTimersByTime(IDLE_TIMEOUT_MS);
       expect(events()).toEqual(["blur"]);
+    });
+
+    it("gives a focused embedded frame the longer timeout", () => {
+      const frame = document.createElement("iframe");
+      document.body.appendChild(frame);
+      frame.focus();
+      expect(document.activeElement).toBe(frame);
+
+      collector.enable();
+      emitCallback.mockClear();
+      vi.advanceTimersByTime(IDLE_TIMEOUT_MS * 2);
+      expect(emitCallback).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(FRAME_FOCUS_IDLE_TIMEOUT_MS - IDLE_TIMEOUT_MS * 2);
+      expect(events()).toEqual(["blur"]);
+    });
+
+    it("resumes when focus moves into an embedded frame", () => {
+      const frame = document.createElement("iframe");
+      document.body.appendChild(frame);
+
+      collector.enable();
+      vi.advanceTimersByTime(IDLE_TIMEOUT_MS);
+      emitCallback.mockClear();
+
+      frame.focus();
+      window.dispatchEvent(new Event("blur"));
+      vi.advanceTimersByTime(0);
+      expect(events()).toEqual(["focus"]);
     });
 
     it("stops the idle timer when disabled", () => {
