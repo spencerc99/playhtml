@@ -15,6 +15,12 @@ export interface PieceOwner {
 export interface PiecesChange {
   upserts: CollagePiece[];
   removedIds: string[];
+  /**
+   * Each edited piece as it stood before this person's edit, so a shared
+   * store can write only the parts that changed and keep someone else's
+   * concurrent edit to the rest of that piece.
+   */
+  before?: ReadonlyMap<string, CollagePiece>;
 }
 
 /**
@@ -33,7 +39,7 @@ export interface SharedCollage {
    * The pieces this person is part way through changing, so others can watch
    * a drag as it happens; null once nothing is in progress.
    */
-  onDraft?: (pieces: readonly CollagePiece[] | null) => void;
+  onDraft?: (draft: PiecesChange | null) => void;
   /** Why this person may not remove a piece, or null when they may. */
   removalRefusal?: (piece: CollagePiece) => string | null;
   /**
@@ -78,19 +84,42 @@ export function piecesChange(
   next: readonly CollagePiece[],
 ): PiecesChange {
   const upserts: CollagePiece[] = [];
+  const edited = new Map<string, CollagePiece>();
   const present = new Set<string>();
   for (const piece of next) {
     present.add(piece.id);
     const before = base.get(piece.id);
-    if (!before || !samePiece(before, piece)) upserts.push(piece);
+    if (before && samePiece(before, piece)) continue;
+    upserts.push(piece);
+    if (before) edited.set(piece.id, before);
   }
   const removedIds = [...base.keys()].filter((id) => !present.has(id));
   if (upserts.length === 0 && removedIds.length === 0) return EMPTY_CHANGE;
-  return { upserts, removedIds };
+  return { upserts, removedIds, before: edited };
 }
 
 export function isEmptyChange(change: PiecesChange): boolean {
   return change.upserts.length === 0 && change.removedIds.length === 0;
+}
+
+/**
+ * A piece with only the fields someone else changed taken from their version,
+ * so this person's own edit to another field of the same piece stays.
+ */
+function mergePiece(
+  mine: CollagePiece,
+  before: CollagePiece,
+  theirs: CollagePiece,
+): CollagePiece {
+  const merged = { ...mine } as Record<string, unknown>;
+  const was = before as unknown as Record<string, unknown>;
+  const now = theirs as unknown as Record<string, unknown>;
+  for (const key of new Set([...Object.keys(was), ...Object.keys(now)])) {
+    if (JSON.stringify(was[key]) === JSON.stringify(now[key])) continue;
+    if (key in now) merged[key] = now[key];
+    else delete merged[key];
+  }
+  return merged as unknown as CollagePiece;
 }
 
 /** An arrangement with a change applied: edits in place, additions on the end. */
@@ -107,7 +136,8 @@ export function applyChange(
       const replacement = incoming.get(piece.id);
       if (!replacement) return piece;
       incoming.delete(piece.id);
-      return replacement;
+      const before = change.before?.get(piece.id);
+      return before ? mergePiece(piece, before, replacement) : replacement;
     });
   return [...kept, ...incoming.values()];
 }

@@ -49,6 +49,9 @@ describe("piecesChange", () => {
     const change = piecesChange(base, [piece("a", { x: 5 }), piece("c")]);
     expect(change.upserts.map((p) => p.id)).toEqual(["a", "c"]);
     expect(change.removedIds).toEqual(["b"]);
+    // Only the edited piece had a before; the new one did not exist yet.
+    expect([...(change.before?.keys() ?? [])]).toEqual(["a"]);
+    expect(change.before?.get("a")?.x).toBe(piece("a").x);
   });
 
   it("ignores rounding noise from a conversion round trip", () => {
@@ -59,6 +62,14 @@ describe("piecesChange", () => {
 });
 
 describe("applyChange", () => {
+  it("keeps this person's edit to another field of the same piece", () => {
+    const base = piece("a", { x: 0, y: 0 });
+    const theirs = piecesChange(piecesMap([base]), [{ ...base, x: 50 }]);
+    // Meanwhile this person moved it down.
+    const [merged] = applyChange([{ ...base, y: 30 }], theirs);
+    expect([merged.x, merged.y]).toEqual([50, 30]);
+  });
+
   it("edits in place and adds new pieces on the end", () => {
     const next = applyChange([piece("a"), piece("b")], {
       upserts: [piece("b", { x: 3 }), piece("c")],

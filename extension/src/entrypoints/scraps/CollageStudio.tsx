@@ -601,7 +601,7 @@ export function CollageStudio({
     if (changing) {
       if (mine.upserts.length > 0) {
         draftingRef.current = true;
-        current.onDraft?.(mine.upserts);
+        current.onDraft?.(mine);
       }
       return;
     }
