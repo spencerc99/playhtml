@@ -158,11 +158,23 @@ python supabase/tests/internet_map_parity.py \
   --scratch "$HOME/Data/playhtml-private/scratch-rollups/parity"
 ```
 
-Use `--reuse` to reuse a prepared sample after starting the local database. The default sample
+Use `--reuse --incremental` to reuse a prepared sample after starting the local database.
+The incremental check loads two chronological batches, reconnects during backfill and between
+batches, and requires a session to continue across their boundary within 30 minutes. The
+default sample
 contains 100,000 events, 25,000 metadata rows, and 125,000 URL/title cases. The report separates
 Python membership-file parity from SQL parity. A successful Python comparison does not prove
 the migration or database loader works. SQL mismatches produce a failing status and private
 examples in `url-mismatches.json`; investigate every mismatch before production approval.
+`rollup_parity` compares Python visits in timestamp/id order; `legacy_order_parity` separately
+reports differences against the old millisecond/text sorter. `rollup-progress.json` records
+chunk and reconnect counts.
+
+The local loader closes duplicate open metadata versions in older exports to satisfy the
+current-row constraint. It changes only `valid_to_ts`, which neither pipeline reads, and
+records the count in `sample-adaptations.json`. It also grants the local connection owner
+membership in `internet_map_reader` for the export check; this is test setup, not a
+production grant.
 
 Known semantic choices to review during parity:
 
@@ -173,18 +185,37 @@ Known semantic choices to review during parity:
 - Equal title/favicon vote counts choose earliest source timestamp then source id. The old
   Python counter chooses whichever tied value appeared first in the input dump. The parity
   sample sorts metadata by timestamp/id to make that order explicit.
-- SQL uses PostgreSQL Unicode character classes and case conversion. Python uses its own
-  Unicode database. SQL also removes decoded NUL because PostgreSQL text cannot contain it.
+- SQL uses ICU for normalization case conversion, identifier character classes, and metadata
+  whitespace. Python uses its own Unicode database. SQL also removes decoded NUL because
+  PostgreSQL text cannot contain it.
   These differences are not waived by the harness; real mismatches require review.
 - Invalidation detects late history but does not automatically repair it. The readonly Action
   deliberately cannot trigger a privileged repair or fallback refresh.
 
-Initial verification: Docker was unavailable, so `db:verify`, SQL execution, database access
-tests, and SQL parity are pending. Both migrations pass SQL and PL/pgSQL parsing. The private
-100,000-event reference sample matched all 12,382 page keys in the full-bake inventory. The
-membership-file path reproduced all 382 page paths, 1,399 domain paths, 223 junctions, 86,234
-domain pairs, 110,400 host pairs, and 41,437 page pairs exactly. These are Python comparisons,
-not SQL match rates.
+Local verification (2026-10-11): all six migrations apply and schema lint has no findings.
+The 125,000-case sample matches Python on all eight URL/privacy transforms (1,000,000 field
+comparisons). The 100,000-event, 25,000-metadata sample matches all 299,446 aggregate file
+rows/JSON entries against the timestamp/id Python reference. Three invalid URLs are rejected
+by both pipelines. Backfill and incremental loading use 254 committed chunks, two reconnects,
+and two 50,000-event batches with one session continuing across the boundary within 30 minutes.
+The fixture closes 767 duplicate current metadata versions without changing rollup inputs.
+
+The old millisecond/text sorter differs on node statistics (90.8415%), edges (90.8546%), page
+paths (60.0515%), domain paths (83.7011%), and junctions (77.5785%). Reordering only the Python
+visit stream to timestamp/id order produces exact matches for every aggregate; these are
+ordering differences, not missing rollup rows.
+
+The real reader login and full fork bake pass. The bundle has 9,117 displayed pages, passes
+structural validation, and has a CLEAN PII audit. The bake omits 71 unsafe favicon entries.
+The local pg_cron schedule SQL passes in a rolled-back transaction; no job is retained.
+
+**Reader isolation is not yet complete.** All 13 aggregate relations are readable, raw source
+reads and aggregate writes are denied, but stock local Supabase grants PUBLIC writes on
+`net.http_request_queue` and `net._http_response`. Zero-row updates as the reader succeed even
+with no grants directly assigned on those tables. `NOINHERIT` does not remove PUBLIC grants,
+and the read-only transaction setting is a default the login can disable. Shared pg_net
+privilege changes require a separate scope decision; do not treat this reader as write-free.
+No shared grants or production permissions were changed.
 
 ### Approve production setup
 
