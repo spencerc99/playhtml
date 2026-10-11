@@ -1,4 +1,4 @@
-// ABOUTME: The studio rules for the collage sheet (front, back and the turn between) and placed piece material.
+// ABOUTME: The studio rules for the collage mat and sheet (front, back and the turn between) and placed piece material.
 // ABOUTME: Shared by the studio stylesheet and the published-collage viewer, so a piece looks the same in both.
 
 /**
@@ -194,5 +194,64 @@ export const PIECE_MATERIAL_STYLES = `
     width: 100%;
     height: 100%;
     transform: none;
+  }
+`;
+
+/**
+ * The mat the frame is mounted on, with the collage's caption (its title,
+ * count and date) written along its bottom edge.
+ */
+export const COLLAGE_MAT_STYLES = `
+  /* The mat: a board the frame is mounted on, with the collage's caption
+     written along its bottom edge. Its size is set in pixels from the zoom,
+     so the caption stays one size however the frame is fitted. */
+  .collage-mat {
+    position: relative;
+    flex: none;
+    background: var(--c-mat);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, #fff 70%, transparent) inset,
+      0 0 0 1px var(--c-rule),
+      0 10px 24px color-mix(in srgb, var(--c-ink) 8%, transparent);
+  }
+  .collage-mat__window {
+    position: absolute;
+  }
+  .collage-mat .collage-sheet {
+    transform-origin: 0 0;
+  }
+  .collage-mat .collage-frame {
+    box-shadow:
+      inset 1px 1px 0 color-mix(in srgb, var(--c-ink) 14%, transparent),
+      0 0 0 1px color-mix(in srgb, #fff 80%, transparent);
+  }
+  .collage-mat__caption {
+    position: absolute;
+    bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 24px;
+  }
+
+  .collage-title-input {
+    flex: 0 1 300px;
+    min-width: 120px;
+    padding: 2px 0;
+    border: none;
+    border-bottom: 1px dotted var(--c-muted);
+    background: transparent;
+    color: var(--c-ink);
+    font-family: "Lora", Georgia, serif;
+    font-size: 15px;
+  }
+
+  .collage-title-input:focus {
+    outline: none;
+    border-bottom-color: color-mix(in srgb, var(--c-accent) 80%, transparent);
+  }
+
+  .collage-title-input::placeholder {
+    color: color-mix(in srgb, var(--c-muted) 70%, transparent);
   }
 `;

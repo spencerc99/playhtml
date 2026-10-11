@@ -115,6 +115,7 @@ import { saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
 import { ExportMenu } from "./ExportMenu";
+import { CollageMat, MAT, MAT_CAPTION, madeOn } from "./CollageMat";
 import { publishPieceMaterial } from "./publishPieceImages";
 import { useSettledFeatureState } from "../../features/useFeatureAccess";
 import { WORKER_URL } from "@movement/config";
@@ -209,9 +210,6 @@ const STAGE_PADDING = 12;
  * float there, so a frame fitted to a tall stage never slides under them.
  */
 const STAGE_TOP_BAND = 52;
-/** The mat around the frame, in screen pixels, and the band under it that carries the caption. */
-const MAT = 26;
-const MAT_CAPTION = 44;
 /** How far inside the stage's edge a pinned handle stays, in screen pixels. */
 const HANDLE_INSET = 10;
 /** Frame units the pointer must travel before an alt-drag pulls out a copy. */
@@ -360,13 +358,6 @@ function placedPiece(item: ScrapItem, at: Point, z: number): CollagePiece {
 }
 
 /** The day a collage was started, the way the history cards write it. */
-function madeOn(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).toLowerCase();
-}
 
 export function CollageStudio({
   scraps,
@@ -2031,25 +2022,31 @@ export function CollageStudio({
         >
           {/* The sheet holds both sides of the collage in one place and turns
               over about its vertical axis; only the side facing up is live. */}
-          {/* The frame sits on a mat, and the mat carries the collage's name,
-              count and date under it, so a screenshot of the mat says what it is. */}
-          <div
-            className="collage-mat"
-            data-marquee-ground=""
-            style={{
-              width: frame.width * scale + MAT * 2,
-              height: frame.height * scale + MAT + MAT_CAPTION,
-            }}
-          >
-          <div
-            className="collage-mat__window"
-            data-marquee-ground=""
-            style={{
-              left: MAT,
-              top: MAT,
-              width: frame.width * scale,
-              height: frame.height * scale,
-            }}
+          <CollageMat
+            width={frame.width * scale}
+            height={frame.height * scale}
+            caption={
+              over ? (
+                <span className="collage-studio__label">
+                  turned over · T or esc to turn back
+                </span>
+              ) : (
+                <>
+                  <input
+                    className="collage-title-input"
+                    value={title}
+                    placeholder="untitled collage"
+                    onChange={(event) => setTitle(event.target.value)}
+                    aria-label="Collage title"
+                  />
+                  <span className="collage-bar__spacer" />
+                  <span className="collage-studio__label">
+                    {pieces.length} piece{pieces.length === 1 ? "" : "s"} · made{" "}
+                    {madeOn(createdAtRef.current)}
+                  </span>
+                </>
+              )
+            }
           >
           <div
             className={`collage-sheet${over ? " collage-sheet--over" : ""}`}
@@ -2393,36 +2390,7 @@ export function CollageStudio({
               />
             </div>
           </div>
-          </div>
-            <div className="collage-mat__caption" style={{ left: MAT, right: MAT }}>
-              {over ? (
-                <span className="collage-studio__label">
-                  turned over · T or esc to turn back
-                </span>
-              ) : shared ? (
-                shared.caption ?? (
-                  <span className="collage-studio__label">
-                    {pieces.length} piece{pieces.length === 1 ? "" : "s"}
-                  </span>
-                )
-              ) : (
-                <>
-                  <input
-                    className="collage-title-input"
-                    value={title}
-                    placeholder="untitled collage"
-                    onChange={(event) => setTitle(event.target.value)}
-                    aria-label="Collage title"
-                  />
-                  <span className="collage-bar__spacer" />
-                  <span className="collage-studio__label">
-                    {pieces.length} piece{pieces.length === 1 ? "" : "s"} · made{" "}
-                    {madeOn(createdAtRef.current)}
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
+          </CollageMat>
 
           <StudioTools
             canUndo={!over && (canUndo(history) || cropPending)}
