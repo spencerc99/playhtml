@@ -2,7 +2,10 @@
 // ABOUTME: Validates event data structure and lifecycle behavior.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { NavigationCollector } from "../collectors/NavigationCollector";
+import {
+  IDLE_TIMEOUT_MS,
+  NavigationCollector,
+} from "../collectors/NavigationCollector";
 import type { NavigationEventData } from "../collectors/types";
 
 describe("NavigationCollector", () => {
@@ -249,6 +252,121 @@ describe("NavigationCollector", () => {
       expect(emitCallback.mock.calls[0][0].event).toBe("blur");
       expect(emitCallback.mock.calls[1][0].event).toBe("focus");
       expect(emitCallback.mock.calls[2][0].event).toBe("blur");
+    });
+  });
+
+  describe("idle detection", () => {
+    const setVisible = (visible: boolean) => {
+      Object.defineProperty(document, "hidden", {
+        writable: true,
+        configurable: true,
+        value: !visible,
+      });
+      Object.defineProperty(document, "visibilityState", {
+        writable: true,
+        configurable: true,
+        value: visible ? "visible" : "hidden",
+      });
+    };
+    const events = () =>
+      emitCallback.mock.calls.map((c) => (c[0] as NavigationEventData).event);
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      setVisible(true);
+    });
+
+    afterEach(() => {
+      document.body.innerHTML = "";
+      vi.useRealTimers();
+    });
+
+    it("emits an idle blur after no input on a visible tab", () => {
+      collector.enable();
+      emitCallback.mockClear();
+
+      vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 1);
+      expect(emitCallback).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+      expect(events()).toEqual(["blur"]);
+      const call = emitCallback.mock.calls[0][0] as NavigationEventData;
+      expect(call.idle).toBe(true);
+      expect(call.visibility_state).toBe("visible");
+    });
+
+    it("keeps counting while there is input", () => {
+      collector.enable();
+      emitCallback.mockClear();
+
+      for (let i = 0; i < 10; i++) {
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS / 2);
+        window.dispatchEvent(new Event("pointermove"));
+      }
+      expect(emitCallback).not.toHaveBeenCalled();
+    });
+
+    it("resumes with a focus on the next input after going idle", () => {
+      collector.enable();
+      vi.advanceTimersByTime(IDLE_TIMEOUT_MS);
+      emitCallback.mockClear();
+
+      window.dispatchEvent(new Event("keydown"));
+      window.dispatchEvent(new Event("pointermove"));
+      expect(events()).toEqual(["focus"]);
+
+      vi.advanceTimersByTime(IDLE_TIMEOUT_MS);
+      expect(events()).toEqual(["focus", "blur"]);
+    });
+
+    it("does not emit a second blur when an idle tab is hidden", () => {
+      collector.enable();
+      vi.advanceTimersByTime(IDLE_TIMEOUT_MS);
+      emitCallback.mockClear();
+
+      setVisible(false);
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(emitCallback).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(5_000);
+      setVisible(true);
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(events()).toEqual(["focus"]);
+    });
+
+    it("does not go idle while the tab is hidden", () => {
+      collector.enable();
+      setVisible(false);
+      document.dispatchEvent(new Event("visibilitychange"));
+      emitCallback.mockClear();
+
+      vi.advanceTimersByTime(IDLE_TIMEOUT_MS * 3);
+      expect(emitCallback).not.toHaveBeenCalled();
+    });
+
+    it("treats playing media as active", () => {
+      const video = document.createElement("video");
+      Object.defineProperty(video, "paused", { value: false, writable: true });
+      Object.defineProperty(video, "ended", { value: false });
+      Object.defineProperty(video, "readyState", { value: 4 });
+      document.body.appendChild(video);
+
+      collector.enable();
+      emitCallback.mockClear();
+      vi.advanceTimersByTime(IDLE_TIMEOUT_MS * 3);
+      expect(emitCallback).not.toHaveBeenCalled();
+
+      (video as { paused: boolean }).paused = true;
+      vi.advanceTimersByTime(IDLE_TIMEOUT_MS);
+      expect(events()).toEqual(["blur"]);
+    });
+
+    it("stops the idle timer when disabled", () => {
+      collector.enable();
+      emitCallback.mockClear();
+      collector.disable();
+      vi.advanceTimersByTime(IDLE_TIMEOUT_MS * 2);
+      expect(emitCallback).not.toHaveBeenCalled();
     });
   });
 

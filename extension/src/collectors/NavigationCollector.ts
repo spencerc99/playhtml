@@ -7,11 +7,30 @@ import { VERBOSE } from '../config';
 import { buildMetadataHash, getCurrentPageMetadata } from '../utils/pageMetadata';
 
 /**
+ * A visible tab with no input for this long stops counting as screen time.
+ * Leaving a computer unlocked overnight otherwise counts the whole night
+ * against whatever tab was in front.
+ */
+export const IDLE_TIMEOUT_MS = 5 * 60_000;
+
+const ACTIVITY_EVENTS = [
+  'pointermove',
+  'pointerdown',
+  'keydown',
+  'wheel',
+  'scroll',
+  'touchstart',
+] as const;
+
+/**
  * NavigationCollector captures navigation and tab lifecycle events:
  * 
  * - Tab visibility changes (when user switches tabs)
  * - Browser navigation (back/forward via popstate)
  * - Page unload (beforeunload)
+ * - Idle: a visible tab with no input for IDLE_TIMEOUT_MS emits a blur, and the
+ *   next input emits a focus, so idle stretches don't count as screen time.
+ *   Playing media keeps the tab active.
  */
 export class NavigationCollector extends BaseCollector<NavigationEventData> {
   readonly type = 'navigation' as const;
@@ -20,6 +39,12 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
   private visibilityChangeHandler?: () => void;
   private popstateHandler?: (e: PopStateEvent) => void;
   private beforeunloadHandler?: (e: BeforeUnloadEvent) => void;
+  private activityHandler?: () => void;
+
+  // Idle detection: the clock stops after IDLE_TIMEOUT_MS without input
+  private idle = false;
+  private lastActivityTs = 0;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
   
   // Deduplication: prevent duplicate events within time window
   private lastEventType: string | null = null;
@@ -35,7 +60,19 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
     // Visibility change handler (tab switches)
     this.visibilityChangeHandler = () => {
       const event = document.hidden ? 'blur' : 'focus';
-      
+
+      if (document.hidden) {
+        this.clearIdleTimer();
+        // Going idle already emitted the blur that closes this session
+        if (this.idle) {
+          this.idle = false;
+          return;
+        }
+      } else {
+        this.idle = false;
+        this.markActive();
+      }
+
       // Check for duplicates
       if (this.isDuplicate(event)) {
         if (VERBOSE) {
@@ -80,11 +117,29 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
       });
     };
     
+    // Any input marks the tab active and resumes a session that went idle
+    this.activityHandler = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (this.idle) {
+        this.idle = false;
+        this.emitDiscreteEvent({
+          event: 'focus',
+          visibility_state: 'visible',
+          ...this.getPageSnapshot(),
+        });
+        this.updateLastEvent('focus');
+      }
+      this.markActive();
+    };
+
     // Attach event listeners
     // Use visibilitychange instead of focus/blur for better tab switch detection
     document.addEventListener('visibilitychange', this.visibilityChangeHandler);
     window.addEventListener('popstate', this.popstateHandler);
     window.addEventListener('beforeunload', this.beforeunloadHandler);
+    for (const type of ACTIVITY_EVENTS) {
+      window.addEventListener(type, this.activityHandler, { capture: true, passive: true });
+    }
 
     // Emit synthetic focus if the page is already visible when collection starts.
     // Without this, a session that begins mid-visit has no focus anchor and the
@@ -96,6 +151,7 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
         ...this.getPageSnapshot(),
       });
       this.updateLastEvent('focus');
+      this.markActive();
     }
 
     if (VERBOSE) {
@@ -104,6 +160,16 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
   }
   
   stop(): void {
+    this.clearIdleTimer();
+    this.idle = false;
+
+    if (this.activityHandler) {
+      for (const type of ACTIVITY_EVENTS) {
+        window.removeEventListener(type, this.activityHandler, { capture: true });
+      }
+      this.activityHandler = undefined;
+    }
+
     if (this.visibilityChangeHandler) {
       document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
       this.visibilityChangeHandler = undefined;
@@ -118,6 +184,55 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
       window.removeEventListener('beforeunload', this.beforeunloadHandler);
       this.beforeunloadHandler = undefined;
     }
+  }
+
+  /**
+   * Record input and make sure an idle check is pending. The timer is only
+   * scheduled when none is pending, so high-frequency input stays cheap.
+   */
+  private markActive(): void {
+    this.lastActivityTs = Date.now();
+    if (this.idleTimer === null) {
+      this.scheduleIdleCheck(IDLE_TIMEOUT_MS);
+    }
+  }
+
+  private scheduleIdleCheck(delayMs: number): void {
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      this.checkIdle();
+    }, delayMs);
+  }
+
+  private clearIdleTimer(): void {
+    if (this.idleTimer !== null) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+  }
+
+  private checkIdle(): void {
+    if (this.idle || document.visibilityState !== 'visible') return;
+
+    const remaining = this.lastActivityTs + IDLE_TIMEOUT_MS - Date.now();
+    if (remaining > 0) {
+      this.scheduleIdleCheck(remaining);
+      return;
+    }
+    // Watching a video or listening without touching anything is still active
+    if (isMediaPlaying()) {
+      this.scheduleIdleCheck(IDLE_TIMEOUT_MS);
+      return;
+    }
+
+    this.idle = true;
+    this.emitDiscreteEvent({
+      event: 'blur',
+      visibility_state: 'visible',
+      idle: true,
+      ...this.getPageSnapshot(),
+    });
+    this.updateLastEvent('blur');
   }
 
   /**
@@ -185,4 +300,13 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
       metadata_hash: buildMetadataHash(metadata.title, metadata.favicon_url),
     };
   }
+}
+
+function isMediaPlaying(): boolean {
+  return Array.from(document.querySelectorAll('video, audio')).some(
+    (el) => {
+      const media = el as HTMLMediaElement;
+      return !media.paused && !media.ended && media.readyState > 2;
+    },
+  );
 }
