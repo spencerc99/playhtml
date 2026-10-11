@@ -116,7 +116,8 @@ import { PieceMaterial } from "./PieceMaterial";
 import { naturalScrapSize } from "./pieceLettering";
 import { CropSession } from "./CropSession";
 import { KeysPopover } from "./KeysPopover";
-import { ProvenancePeek } from "./ProvenancePeek";
+import { OwnerLine, ProvenancePeek } from "./ProvenancePeek";
+import { pieceBounds } from "./peekTags";
 import { paperBackground } from "./paperGrain";
 import { PiecesHereMenu } from "./PiecesHereMenu";
 import {
@@ -675,6 +676,7 @@ export function CollageStudio({
     () => pieces.find((piece) => piece.id === hoveredId) ?? null,
     [pieces, hoveredId],
   );
+  const hoveredOwner = hovered ? shared?.pieceOwner?.(hovered) ?? null : null;
   /** The pile the menu is listing, resolved fresh so edits keep it honest. */
   const hereStack = useMemo(() => {
     if (!hereMenu) return [];
@@ -2198,7 +2200,9 @@ export function CollageStudio({
                   !(peek.held || sourcesOn) &&
                   !toolActive && (
                   <div
-                    className="collage-piece-hover"
+                    className={`collage-piece-hover${
+                      hoveredOwner ? " collage-piece-hover--owned" : ""
+                    }`}
                     aria-hidden="true"
                     style={{
                       left: hovered.x,
@@ -2206,10 +2210,44 @@ export function CollageStudio({
                       width: hovered.width,
                       height: hovered.height,
                       transform: `rotate(${hovered.rotation}deg)`,
-                      borderWidth: 1 / scale,
+                      borderWidth: (hoveredOwner ? 2.5 : 1) / scale,
+                      ...(hoveredOwner ? { borderColor: hoveredOwner.color } : {}),
                     }}
                   />
                 )}
+
+                {/* On a shared collage, whoever added a piece and where it
+                    came from show under it as it is pointed at. */}
+                {hovered &&
+                  hoveredOwner &&
+                  gesture.kind === "idle" &&
+                  !(peek.held || sourcesOn) &&
+                  !toolActive &&
+                  (() => {
+                    const box = pieceBounds(hovered);
+                    return (
+                      <div
+                        className="collage-peek collage-peek--owner"
+                        aria-hidden="true"
+                        style={
+                          {
+                            left: box.x,
+                            top: box.y + box.height + 6 / scale,
+                            transform: `scale(${1 / scale})`,
+                            zIndex: 10_005,
+                            "--peek-tint": hoveredOwner.color,
+                          } as React.CSSProperties
+                        }
+                      >
+                        <OwnerLine owner={hoveredOwner} />
+                        {hovered.scrap.domain && (
+                          <span className="collage-peek__where">
+                            {hovered.scrap.domain}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                 {(peek.held || sourcesOn) && !over && (
                   <ProvenancePeek
@@ -2217,7 +2255,7 @@ export function CollageStudio({
                     hoveredId={hoveredId}
                     scale={scale}
                     bounds={{ x: 0, y: 0, width: frame.width, height: frame.height }}
-                    noteFor={shared?.pieceNote}
+                    ownerFor={shared?.pieceOwner}
                   />
                 )}
 

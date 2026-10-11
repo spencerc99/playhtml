@@ -12,6 +12,7 @@ import {
   type TagRequest,
 } from "./peekTags";
 import { webPageHref } from "./scrapLinks";
+import type { PieceOwner } from "./sharedCollage";
 
 interface ProvenancePeekProps {
   pieces: readonly CollagePiece[];
@@ -21,8 +22,8 @@ interface ProvenancePeekProps {
   scale: number;
   /** The part of the frame that shows, in frame units; every label stays in it. */
   bounds: Rect;
-  /** An extra line for a piece's label, such as who put it down. */
-  noteFor?: (piece: CollagePiece) => string | null;
+  /** Who put a piece down, on a shared collage; their color tints its label. */
+  ownerFor?: (piece: CollagePiece) => PieceOwner | null;
 }
 
 /** What a tag is assumed to take up before it has been measured. */
@@ -64,13 +65,23 @@ function shortened(title: string, limit = 42): string {
  * What a label says about a scrap: where it came from, the page's title, what
  * kind of thing it is and when it was first seen.
  */
+/** Who added a scrap, leading its label in their cursor's color. */
+export function OwnerLine({ owner }: { owner: PieceOwner }) {
+  return (
+    <span className="collage-peek__who" style={{ color: owner.color }}>
+      <span className="collage-peek__dot" style={{ background: owner.color }} />
+      {owner.name}
+    </span>
+  );
+}
+
 export function ProvenanceLines({
   scrap,
-  note,
+  owner,
 }: {
   scrap: ScrapItem;
-  /** One more line under the rest, when the place showing the label has one. */
-  note?: string | null;
+  /** Who added it, on a shared collage. */
+  owner?: PieceOwner | null;
 }) {
   // Favicons are stored data like any other URL, so only a plain web address
   // is ever loaded.
@@ -78,6 +89,7 @@ export function ProvenanceLines({
   const title = shortened(scrap.pageTitle ?? "");
   return (
     <>
+      {owner && <OwnerLine owner={owner} />}
       <span className="collage-peek__where">
         {favicon && (
           <img
@@ -95,7 +107,6 @@ export function ProvenanceLines({
         <span className="collage-peek__line">
           {scrapKindName(scrap)} &#183; first seen {seenOn(scrap.ts)}
         </span>
-        {note && <span className="collage-peek__line">{note}</span>}
       </span>
     </>
   );
@@ -106,7 +117,7 @@ export function ProvenancePeek({
   hoveredId,
   scale,
   bounds,
-  noteFor,
+  ownerFor,
 }: ProvenancePeekProps) {
   const holderRef = useRef<HTMLDivElement>(null);
   /** Tints given so far, kept for as long as the peek is held. */
@@ -165,13 +176,19 @@ export function ProvenancePeek({
         const { scrap } = piece;
         const hovered = piece.id === hoveredId;
         const tag = placed.get(piece.id);
-        const tint = { "--peek-tint": tints.get(piece.id) } as React.CSSProperties;
+        const owner = ownerFor?.(piece) ?? null;
+        // On a shared collage each piece wears its adder's color instead.
+        const tint = {
+          "--peek-tint": owner?.color ?? tints.get(piece.id),
+        } as React.CSSProperties;
         return (
           <React.Fragment key={piece.id}>
             {/* The piece's own edge, drawn so the label has something to
                 belong to. It turns with the piece. */}
             <div
-              className={`collage-peek-edge${hovered ? " collage-peek-edge--on" : ""}`}
+              className={`collage-peek-edge${hovered ? " collage-peek-edge--on" : ""}${
+                owner ? " collage-peek-edge--owned" : ""
+              }`}
               aria-hidden="true"
               style={{
                 left: piece.x,
@@ -179,7 +196,7 @@ export function ProvenancePeek({
                 width: piece.width,
                 height: piece.height,
                 transform: `rotate(${piece.rotation}deg)`,
-                borderWidth: 1 / scale,
+                borderWidth: (owner ? 2.5 : 1) / scale,
                 ...tint,
               }}
             />
@@ -195,7 +212,7 @@ export function ProvenancePeek({
                 ...tint,
               }}
             >
-              <ProvenanceLines scrap={scrap} note={noteFor?.(piece)} />
+              <ProvenanceLines scrap={scrap} owner={owner} />
             </div>
           </React.Fragment>
         );

@@ -5,6 +5,12 @@ import type { ReactNode } from "react";
 import type { ArrangementHistory, Arrangement } from "./arrangementHistory";
 import type { CollagePiece } from "./collageRecord";
 
+/** Who put a piece down, in the color their cursor carries. */
+export interface PieceOwner {
+  name: string;
+  color: string;
+}
+
 /** What one person changed: pieces added or edited, and pieces taken away. */
 export interface PiecesChange {
   upserts: CollagePiece[];
@@ -30,8 +36,11 @@ export interface SharedCollage {
   onDraft?: (pieces: readonly CollagePiece[] | null) => void;
   /** Why this person may not remove a piece, or null when they may. */
   removalRefusal?: (piece: CollagePiece) => string | null;
-  /** A line under each piece's source in the sources view, such as who added it. */
-  pieceNote?: (piece: CollagePiece) => string | null;
+  /**
+   * Who added a piece, or null when unknown. Their name and color mark the
+   * piece on hover and in the sources view.
+   */
+  pieceOwner?: (piece: CollagePiece) => PieceOwner | null;
   /** Drawn over the frame, in frame units, under the selection and tools. */
   overlay?: ReactNode;
   /** Extra controls for the bar along the bottom. */

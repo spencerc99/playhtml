@@ -900,6 +900,12 @@ ${COLLAGE_PIECE_TOOL_STYLES}
     border-style: solid;
   }
 
+  /* On a shared collage the edge is its adder's cursor color, drawn boldly
+     so whose is whose reads across the table. */
+  .collage-peek-edge--owned {
+    border-style: solid;
+  }
+
   /* An archive label pinned to a piece while the peek key is held. It is a
      slip of paper over the work, never a control: it takes no pointer. */
   .collage-peek {
@@ -937,6 +943,23 @@ ${COLLAGE_PIECE_TOOL_STYLES}
     align-items: center;
     gap: 3px;
     white-space: nowrap;
+  }
+
+  /* Who added a scrap, leading its label in their cursor's color. */
+  .collage-peek__who {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .collage-peek__dot {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
   }
 
   .collage-peek__mark {
