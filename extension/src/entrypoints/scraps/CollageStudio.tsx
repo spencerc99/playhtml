@@ -117,7 +117,6 @@ import { PieceMaterial } from "./PieceMaterial";
 import { ExportMenu } from "./ExportMenu";
 import { CollageMat, MAT, MAT_CAPTION, madeOn } from "./CollageMat";
 import { publishPieceMaterial } from "./publishPieceImages";
-import { useSettledFeatureState } from "../../features/useFeatureAccess";
 import { WORKER_URL } from "@movement/config";
 import { naturalScrapSize } from "./pieceLettering";
 import { CropSession } from "./CropSession";
@@ -310,6 +309,9 @@ interface CollageStudioProps {
   autosaveTimers?: AutosaveTimers;
   /** The choice of editor, offered to people with experiment access. */
   editorSwitch?: EditorSwitchChoice;
+  /** Whether the export menu offers a view-only link. The host decides, since
+   * feature access reads extension storage the walk page can't reach. */
+  canPublish?: boolean;
   /**
    * A collage other people edit at the same time. The studio then reports
    * each settled edit instead of saving, takes in everyone else's edits, and
@@ -366,6 +368,7 @@ export function CollageStudio({
   onLeave,
   autosaveTimers,
   editorSwitch,
+  canPublish = false,
   shared,
 }: CollageStudioProps) {
   const initial = useMemo<readonly CollagePiece[]>(
@@ -399,7 +402,6 @@ export function CollageStudio({
   const [publication, setPublication] = useState<
     CollagePublication | undefined
   >(editing?.publication);
-  const shareFeature = useSettledFeatureState("COLLAGE_SHARE_LINKS");
   const sharedWidth = shared?.frame.width;
   const sharedHeight = shared?.frame.height;
   const frame = useMemo(
@@ -2483,7 +2485,7 @@ export function CollageStudio({
             link={
               // A collage made together is not stored here, so it cannot
               // keep the token that takes its link down.
-              shareFeature?.enabled && !shared
+              canPublish && !shared
                 ? {
                     share: publication,
                     record: () => draftRef.current.record,
