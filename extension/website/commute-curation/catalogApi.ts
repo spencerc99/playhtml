@@ -106,16 +106,19 @@ export async function getCatalog(token: string): Promise<CatalogSnapshot> {
       updatedAt: string;
     }>;
     evidence: CatalogEvidenceItem[];
-  }>(await fetch(`${catalogWorkerUrl()}/admin/internet-places`, {
-    headers: headers(token),
-  }));
+  }>(
+    await fetch(`${catalogWorkerUrl()}/admin/internet-places`, {
+      headers: headers(token),
+    }),
+  );
   return {
     policies: payload.policies.map((policy) => ({
       id: `${policy.scope}:${policy.placeKey}`,
       place: policy.placeKey,
-      domain: policy.scope === "page"
-        ? new URL(policy.placeKey).hostname.replace(/^www\./, "")
-        : policy.placeKey,
+      domain:
+        policy.scope === "page"
+          ? new URL(policy.placeKey).hostname.replace(/^www\./, "")
+          : policy.placeKey,
       scope: policy.scope,
       ...(policy.placement ? { placement: policy.placement } : {}),
       ...(policy.reason ? { reason: policy.reason } : {}),
@@ -140,25 +143,30 @@ export async function saveCatalogPolicy(
       note: string;
       updatedAt: string;
     };
-  }>(await fetch(`${catalogWorkerUrl()}/admin/internet-places/policy`, {
-    method: "PUT",
-    headers: headers(token, true),
-    body: JSON.stringify({
-      scope: policy.scope,
-      placeKey: policy.place,
-      placement: policy.placement,
-      reason: policy.reason,
-      note: policy.comment,
-      ...(previous ? { previous: { scope: previous.scope, placeKey: previous.place } } : {}),
+  }>(
+    await fetch(`${catalogWorkerUrl()}/admin/internet-places/policy`, {
+      method: "PUT",
+      headers: headers(token, true),
+      body: JSON.stringify({
+        scope: policy.scope,
+        placeKey: policy.place,
+        placement: policy.placement,
+        reason: policy.reason,
+        note: policy.comment,
+        ...(previous
+          ? { previous: { scope: previous.scope, placeKey: previous.place } }
+          : {}),
+      }),
     }),
-  }));
+  );
   const saved = payload.policy;
   return {
     id: `${saved.scope}:${saved.placeKey}`,
     place: saved.placeKey,
-    domain: saved.scope === "page"
-      ? new URL(saved.placeKey).hostname.replace(/^www\./, "")
-      : saved.placeKey,
+    domain:
+      saved.scope === "page"
+        ? new URL(saved.placeKey).hostname.replace(/^www\./, "")
+        : saved.placeKey,
     scope: saved.scope,
     ...(saved.placement ? { placement: saved.placement } : {}),
     ...(saved.reason ? { reason: saved.reason } : {}),
@@ -183,9 +191,8 @@ export async function getCatalogSuggestion({
   if (!item.url) {
     throw new Error("Suggestions require a public page URL.");
   }
-  return readCatalogResponse(await fetch(
-    `${catalogWorkerUrl()}/admin/internet-places/suggestion`,
-    {
+  return readCatalogResponse(
+    await fetch(`${catalogWorkerUrl()}/admin/internet-places/suggestion`, {
       method: "POST",
       headers: headers(token, true),
       body: JSON.stringify({
@@ -193,22 +200,24 @@ export async function getCatalogSuggestion({
           url: item.url,
           ...(item.title ? { title: item.title } : {}),
           ...(item.evidence ? { audit: item.evidence } : {}),
-          ...(reserve ? {
-            reserve: {
-              sourceCollection: reserve.sourceCollection,
-              sourceMode: reserve.sourceMode,
-              tags: reserve.tags,
-              interactionLevel: reserve.interactionLevel,
-              ...(reserve.issue ? { issue: reserve.issue } : {}),
-              ...(reserve.section ? { section: reserve.section } : {}),
-            },
-          } : {}),
+          ...(reserve
+            ? {
+                reserve: {
+                  sourceCollection: reserve.sourceCollection,
+                  sourceMode: reserve.sourceMode,
+                  tags: reserve.tags,
+                  interactionLevel: reserve.interactionLevel,
+                  ...(reserve.issue ? { issue: reserve.issue } : {}),
+                  ...(reserve.section ? { section: reserve.section } : {}),
+                },
+              }
+            : {}),
           ...(inspection ? { inspection } : {}),
         },
         refresh,
       }),
-    },
-  ));
+    }),
+  );
 }
 
 export async function deleteCatalogPolicy(
@@ -219,21 +228,25 @@ export async function deleteCatalogPolicy(
     scope: policy.scope,
     placeKey: policy.place,
   });
-  await readCatalogResponse(await fetch(
-    `${catalogWorkerUrl()}/admin/internet-places/policy?${query}`,
-    { method: "DELETE", headers: headers(token) },
-  ));
+  await readCatalogResponse(
+    await fetch(`${catalogWorkerUrl()}/admin/internet-places/policy?${query}`, {
+      method: "DELETE",
+      headers: headers(token),
+    }),
+  );
 }
 
 export async function importEvaluationArtifact(
   token: string,
   artifact: unknown,
 ): Promise<{ imported: number; generatedAt: string }> {
-  return readCatalogResponse(await fetch(`${catalogWorkerUrl()}/admin/internet-places/evidence`, {
-    method: "POST",
-    headers: headers(token, true),
-    body: JSON.stringify(artifact),
-  }));
+  return readCatalogResponse(
+    await fetch(`${catalogWorkerUrl()}/admin/internet-places/evidence`, {
+      method: "POST",
+      headers: headers(token, true),
+      body: JSON.stringify(artifact),
+    }),
+  );
 }
 
 export type ClefLogEntry = {
@@ -246,11 +259,26 @@ export type ClefLogEntry = {
     title?: string;
     hostname?: string;
     inspection?: { verdict?: string; reason?: string };
-    page?: { description?: string; siteName?: string; headings: string[]; text: string };
-    curatedExamples?: Array<{ place: string; scope: string; placement: string }>;
+    page?: {
+      description?: string;
+      siteName?: string;
+      headings: string[];
+      text: string;
+    };
+    curatedExamples?: Array<{
+      place: string;
+      scope: string;
+      placement: string;
+    }>;
   };
-  suggestion: (Partial<CatalogSuggestion> & { stopProbability?: number }) | null;
-  human: { scope: CurationScope; placeKey: string; placement?: CurationPlacement } | null;
+  suggestion:
+    | (Partial<CatalogSuggestion> & { stopProbability?: number })
+    | null;
+  human: {
+    scope: CurationScope;
+    placeKey: string;
+    placement?: CurationPlacement;
+  } | null;
   agreed: boolean | null;
 };
 

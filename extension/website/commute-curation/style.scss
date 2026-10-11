@@ -1570,11 +1570,21 @@ footer {
 
 $reserve-gold: #c9a43a;
 
-.probability--hidden { background: $orange; }
-.probability--scenery { background: $blue; }
-.probability--regular { background: rgba($ink, 0.42); }
-.probability--featured { background: $green; }
-.probability--reserve { background: $reserve-gold; }
+.probability--hidden {
+  background: $orange;
+}
+.probability--scenery {
+  background: $blue;
+}
+.probability--regular {
+  background: rgba($ink, 0.42);
+}
+.probability--featured {
+  background: $green;
+}
+.probability--reserve {
+  background: $reserve-gold;
+}
 
 .clef-card__bar {
   padding: 10px;
