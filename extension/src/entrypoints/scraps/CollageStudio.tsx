@@ -48,6 +48,7 @@ import {
   type BackShows,
   type CollagePiece,
   type CollageRecord,
+  type CollageShare,
 } from "./collageRecord";
 import {
   DEFAULT_CUTOUT_TOLERANCE,
@@ -113,6 +114,10 @@ import {
 import { saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
+import { ShareControl } from "./ShareControl";
+import { sharePieceMaterial } from "./sharePieceImages";
+import { useSettledFeatureState } from "../../features/useFeatureAccess";
+import { WORKER_URL } from "@movement/config";
 import { naturalScrapSize } from "./pieceLettering";
 import { CropSession } from "./CropSession";
 import { KeysPopover } from "./KeysPopover";
@@ -375,6 +380,9 @@ export function CollageStudio({
   const [backShows, setBackShows] = useState<BackShows>(
     editing?.backShows ?? "pieces",
   );
+  /** The view-only link this collage is shared as, kept so it can be taken down. */
+  const [share, setShare] = useState<CollageShare | undefined>(editing?.share);
+  const shareFeature = useSettledFeatureState("COLLAGE_SHARE_LINKS");
   const frame = formatOf(format);
   const [drawer, setDrawer] = useState(() => readDrawerPreference());
   /** Whether the collage is turned over to its back, where the sources are. */
@@ -480,6 +488,7 @@ export function CollageStudio({
       paper,
       backShows,
       pieces: normalizeStack(pieces),
+      ...(share ? { share } : {}),
     },
     hasContent: pieces.length > 0 || title.trim().length > 0,
   };
@@ -515,8 +524,9 @@ export function CollageStudio({
       grain: paper.grain,
       format,
       backShows,
+      share: share?.id ?? null,
     }),
-    [pieces, title, paper.color, paper.grain, format, backShows],
+    [pieces, title, paper.color, paper.grain, format, backShows, share?.id],
   );
   const firstChangeRef = useRef(true);
   useEffect(() => {
@@ -527,6 +537,17 @@ export function CollageStudio({
     }
     noteChange();
   }, [changeKey, noteChange]);
+
+  // A share's delete token is the only way to take its link down again, so it
+  // is written straight away rather than on the next settled change.
+  const firstShareRef = useRef(true);
+  useEffect(() => {
+    if (firstShareRef.current) {
+      firstShareRef.current = false;
+      return;
+    }
+    flush();
+  }, [share?.id, flush]);
 
   const mode: StudioMode = over
     ? "back"
@@ -2323,6 +2344,21 @@ export function CollageStudio({
                   // the bar does not reflow while the video encodes.
                   `mp4 · ${Math.round(videoProgress * 100)}%`}
             </button>
+          )}
+          {shareFeature?.enabled && (
+            <ShareControl
+              share={share}
+              canShare={pieces.length > 0 && !exporting && videoProgress === null}
+              record={() => draftRef.current.record}
+              workerUrl={WORKER_URL}
+              materialFor={sharePieceMaterial}
+              onShared={(next) => {
+                setNotice(null);
+                setShare(next);
+              }}
+              onUnshared={() => setShare(undefined)}
+              onProblem={(text) => setNotice({ tone: "problem", text })}
+            />
           )}
           {confirmingLeave ? (
             <>

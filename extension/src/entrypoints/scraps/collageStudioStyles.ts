@@ -3,6 +3,7 @@
 
 import { COLLAGE_PIECE_TOOL_STYLES } from "./collagePieceToolStyles";
 import { COLLAGE_VIEW_STYLES } from "./collageViewStyles";
+import { SHARE_CONTROL_STYLES } from "./shareControlStyles";
 
 export const COLLAGE_STUDIO_STYLES = `
   /* The collage studio's palette: WWO's linen nudged a hair cooler. Every
@@ -1432,6 +1433,7 @@ ${COLLAGE_PIECE_TOOL_STYLES}
 
   /* Views sit at the top-right: the back, and where the pieces came from. */
 ${COLLAGE_VIEW_STYLES}
+${SHARE_CONTROL_STYLES}
   .collage-setting:focus-visible,
   .collage-keys-button:focus-visible {
     outline: 2px solid var(--c-accent);
