@@ -7,9 +7,9 @@
 export interface Piece {
   id: string;
   src: string;
-  /** The site the scrap came from, as an origin only (no path, query, or
-   * hash), since everyone in the room can read it. Empty when unknown. Rooms
-   * from before this rule may hold full URLs; readers only take the host. */
+  /** The page the scrap came from, so people can get back to it. Pieces
+   * placed during the first walk hold only the site's origin. Empty when
+   * unknown. */
   pageUrl: string;
   alt: string;
   placedByPid: string;
@@ -114,14 +114,15 @@ export function domainOf(url: string | undefined): string {
   }
 }
 
-/** Just the origin of a page URL, so shared data never carries the path,
- * search terms, tokens, or fragments of the page someone was on. */
-export function pageOrigin(url: string | undefined): string {
+/** The page a scrap came from, so anyone at the table can get back to it.
+ * Only web pages count. Pieces placed before this kept just the site's
+ * origin, which still reads as a link to the site. */
+export function pageLink(url: string | undefined): string {
   if (!url) return "";
   try {
     const parsed = new URL(url);
     return parsed.protocol === "http:" || parsed.protocol === "https:"
-      ? parsed.origin
+      ? parsed.href
       : "";
   } catch {
     return "";

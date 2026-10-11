@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import {
   domainOf,
   orderAroundCentroid,
-  pageOrigin,
+  pageLink,
   piecesOf,
   remoteDrafts,
   sortedPieces,
@@ -59,12 +59,13 @@ describe("piece ordering and limits", () => {
 });
 
 describe("domains", () => {
-  it("keeps only the origin of the page a scrap came from", () => {
-    expect(
-      pageOrigin("https://docs.example.com/d/secret-id/edit?token=abc#heading"),
-    ).toBe("https://docs.example.com");
-    expect(pageOrigin("javascript:alert(1)")).toBe("");
-    expect(pageOrigin(undefined)).toBe("");
+  it("keeps the web page a scrap came from", () => {
+    expect(pageLink("https://blog.example.com/posts/1?page=2")).toBe(
+      "https://blog.example.com/posts/1?page=2",
+    );
+    expect(pageLink("https://blog.example.com")).toBe("https://blog.example.com/");
+    expect(pageLink("javascript:alert(1)")).toBe("");
+    expect(pageLink(undefined)).toBe("");
   });
 
   it("strips www and tolerates junk", () => {

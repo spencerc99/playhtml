@@ -99,7 +99,7 @@ describe("tablePiece", () => {
     expect("crop" in back).toBe(false);
   });
 
-  it("hands a new piece to whoever made it, with only the page's origin", () => {
+  it("hands a new piece to whoever made it, with the page it came from", () => {
     const [studio] = studioPieces({ a: piece("a") });
     const copy = {
       ...studio,
@@ -113,7 +113,7 @@ describe("tablePiece", () => {
       placedByPid: "pk_b",
       placedByName: "b",
       placedAt: 99,
-      pageUrl: "https://example.com",
+      pageUrl: "https://example.com/private/path?q=1",
       locked: true,
     });
   });

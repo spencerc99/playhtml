@@ -10,7 +10,7 @@ import type { ScrapItem } from "@movement/components/ScrapCollage";
 import type { PiecesChange } from "@extension/entrypoints/scraps/sharedCollage";
 import {
   FALLBACK_ASPECT,
-  pageOrigin,
+  pageLink,
   sortedPieces,
   sourceDomain,
   type Piece,
@@ -109,7 +109,7 @@ export function tablePiece(
     : {
         id: studio.id,
         src: scrap.kind === "image" ? scrap.src : "",
-        pageUrl: pageOrigin(scrap.pageUrl),
+        pageUrl: pageLink(scrap.pageUrl),
         alt: scrap.kind === "image" ? scrap.alt ?? "" : "",
         placedByPid: placer.pid,
         placedByName: placer.name,
@@ -159,9 +159,8 @@ export function tableChange(
 }
 
 /**
- * A scrap from this person's walk as the studio's drawer shows it. Only the
- * site's origin is kept, since the scrap's page becomes shared data once it
- * is placed.
+ * A scrap from this person's walk as the studio's drawer shows it, with the
+ * page it came from so others can visit it once it is placed.
  */
 export function sessionScrapItem(
   scrap: SessionScrap,
@@ -169,7 +168,7 @@ export function sessionScrapItem(
 ): ScrapItem {
   const width = size?.width ?? scrap.width ?? 400;
   const height = size?.height ?? scrap.height ?? 400 * FALLBACK_ASPECT;
-  const pageUrl = pageOrigin(scrap.pageUrl);
+  const pageUrl = pageLink(scrap.pageUrl);
   return {
     kind: "image",
     id: scrap.id,

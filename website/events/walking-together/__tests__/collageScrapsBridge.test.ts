@@ -93,7 +93,7 @@ describe("requestSessionScraps", () => {
 });
 
 describe("sessionScrapItem", () => {
-  it("keeps only the page's origin and the known image size", () => {
+  it("keeps the page and the known image size", () => {
     expect(
       sessionScrapItem(
         {
@@ -109,7 +109,7 @@ describe("sessionScrapItem", () => {
     ).toMatchObject({
       kind: "image",
       src: "https://x.test/s.png",
-      pageUrl: "https://x.test",
+      pageUrl: "https://x.test/page?token=abc",
       domain: "x.test",
       naturalWidth: 400,
       naturalHeight: 300,
