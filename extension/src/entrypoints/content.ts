@@ -27,6 +27,7 @@ import {
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { isFeatureEnabled } from "../features/featureAccess";
+import { FRAME_ACTIVITY_MESSAGE } from "../features/frameActivity";
 import { parseTrailsLaunch, type TrailsLaunch } from "../utils/trailsLaunch";
 import {
   shouldInitializeCopresence,
@@ -1556,6 +1557,14 @@ export default defineContentScript({
           toggleHistoricalOverlay();
           sendResponse({ success: true, visible: overlayVisible });
           return true;
+        }
+
+        if (message.type === FRAME_ACTIVITY_MESSAGE) {
+          const navigation = collectorManager?.getCollector("navigation") as
+            | NavigationCollector
+            | undefined;
+          navigation?.noteActivity();
+          return;
         }
 
         if (message.type === "SHOW_MILESTONE") {
