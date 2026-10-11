@@ -29,6 +29,8 @@ import {
   getDefaultPathTarget,
   getReviewTarget,
   mergeCatalogEvidence,
+  needsHumanReview,
+  REVIEW_NEED_LABELS,
   parseCommuteReviewResponse,
   type PublicPageInspection,
   serializeCurationArtifact,
@@ -283,6 +285,7 @@ export function App({
   const selectedItemId = useRef<string | null>(null);
   const [copyState, setCopyState] = useState("Copy artifact");
   const [showReviewed, setShowReviewed] = useState(false);
+  const [showAllRecent, setShowAllRecent] = useState(false);
   const [catalogError, setCatalogError] = useState("");
   const [saving, setSaving] = useState(false);
   const [importStatus, setImportStatus] = useState("Import audit JSON");
@@ -292,9 +295,16 @@ export function App({
   const formEdited = useRef(false);
   const requestedSuggestionIds = useRef(new Set<string>());
   const suggestionById = useRef(new Map<string, CatalogSuggestion>());
-  const observedItems = useMemo(
+  const allObservedItems = useMemo(
     () => mergeCatalogEvidence(liveItems, evidenceItems),
     [evidenceItems, liveItems],
+  );
+  const observedItems = useMemo(
+    () =>
+      showAllRecent
+        ? allObservedItems
+        : allObservedItems.filter(needsHumanReview),
+    [allObservedItems, showAllRecent],
   );
   const reserveSources = useMemo(
     () =>
@@ -677,9 +687,9 @@ export function App({
           aria-pressed={reviewView === "observed"}
           onClick={() => setReviewView("observed")}
         >
-          <span>Observed queue</span>
-          <b>{observedItems.length}</b>
-          <small>Recent navigation and audit evidence</small>
+          <span>Needs you</span>
+          <b>{allObservedItems.filter(needsHumanReview).length}</b>
+          <small>Pages where Clef needs a human call</small>
         </button>
         <button
           type="button"
@@ -707,7 +717,10 @@ export function App({
               </h2>
             </div>
             <span className="queue-position">
-              {visibleItems.length} {showReviewed ? "visible" : "unreviewed"}
+              {visibleItems.length}{" "}
+              {showReviewed || showAllRecent || reviewView === "reserve"
+                ? "visible"
+                : "need you"}
             </span>
           </div>
 
@@ -1155,6 +1168,14 @@ export function App({
                   />
                 </label>
               )}
+              {reviewView === "observed" && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllRecent((value) => !value)}
+                >
+                  {showAllRecent ? "Needs you only" : "Show all recent"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setShowReviewed((value) => !value)}
@@ -1207,6 +1228,13 @@ export function App({
                       <span className="place-card__subtitle">
                         {item.title ?? "Scenery domain"}
                       </span>
+                      {"need" in item && item.need && (
+                        <span className={`need-chip need-chip--${item.need}`}>
+                          {REVIEW_NEED_LABELS[item.need]}
+                          {item.clef ? ` · ${item.clef.placement}` : ""}
+                          {item.visits && item.visits > 1 ? ` · ${item.visits} visits` : ""}
+                        </span>
+                      )}
                       {"reserve" in item && (
                         <span className="place-card__source">
                           {item.reserve.sourceCollection}

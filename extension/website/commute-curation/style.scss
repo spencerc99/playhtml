@@ -1391,3 +1391,25 @@ footer {
     border-bottom: 1px solid $ink;
   }
 }
+
+.need-chip {
+  justify-self: start;
+  margin-top: 6px;
+  padding: 2px 6px;
+  border: 1px solid $line;
+  color: rgba($ink, 0.75);
+  font-family: $mono;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.need-chip--hidden {
+  border-color: $orange;
+  color: $orange;
+}
+
+.need-chip--promote {
+  border-color: $green;
+  color: $green;
+}

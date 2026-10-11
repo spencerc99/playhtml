@@ -44,6 +44,8 @@ export interface InternetPlaceSuggestion {
   confidence: number;
   rationale: string;
   uncertainties: string[];
+  /** Clef's combined probability that the page is any kind of stop. */
+  stopProbability?: number;
 }
 
 type SuggestionRow = {
@@ -233,6 +235,18 @@ export function parseInternetPlaceSuggestion(
       reason as (typeof INTERNET_PLACE_REASONS)[number],
     )) return null;
   }
+  let stopProbability: number | undefined;
+  if (value.stopProbability !== undefined) {
+    if (
+      typeof value.stopProbability !== 'number' ||
+      !Number.isFinite(value.stopProbability) ||
+      value.stopProbability < 0 ||
+      value.stopProbability > 1
+    ) {
+      return null;
+    }
+    stopProbability = value.stopProbability;
+  }
   return {
     placement: value.placement as Placement,
     scope: value.scope as SuggestionScope,
@@ -240,6 +254,7 @@ export function parseInternetPlaceSuggestion(
     confidence: value.confidence,
     rationale,
     uncertainties: value.uncertainties.map((item) => String(item).trim()),
+    ...(stopProbability !== undefined ? { stopProbability } : {}),
   };
 }
 
@@ -372,6 +387,17 @@ export function parseClefSuggestion(
     confidence: placement.confidence,
     rationale: `Clef chose ${placement.choice} at ${scope.choice} scope with ${percent(placement.confidence)} confidence.`,
     uncertainties: uncertainties.slice(0, 8),
+    ...(Object.keys(placement.probabilities).length > 0
+      ? {
+          stopProbability: Math.min(
+            1,
+            ['regular', 'featured', 'reserve'].reduce(
+              (total, option) => total + (placement.probabilities[option] ?? 0),
+              0,
+            ),
+          ),
+        }
+      : {}),
   });
 }
 
@@ -598,15 +624,11 @@ export async function suggestUnreviewedPlaces(
 
 const CLEF_APPROVED_PLACEMENTS = new Set<Placement>(['regular', 'featured', 'reserve']);
 
-/**
- * Gates destinations no human has reviewed: a page stays scenery until Clef
- * has approved it as at least regular. Clef never promotes on its own, so an
- * approved page rides as an ordinary stop until someone features it.
- */
-export async function loadClefGate(
+/** Clef's cached answers for these pages, keyed by normalized page key. */
+export async function loadClefSuggestions(
   db: D1Database,
   pageUrls: string[],
-): Promise<InternetPlacePolicy[]> {
+): Promise<Map<string, InternetPlaceSuggestion>> {
   const keys = new Set<string>();
   for (const url of pageUrls) {
     try {
@@ -615,7 +637,8 @@ export async function loadClefGate(
       // Unparseable URLs never become destinations anyway.
     }
   }
-  if (keys.size === 0) return [];
+  const suggestions = new Map<string, InternetPlaceSuggestion>();
+  if (keys.size === 0) return suggestions;
   const rows = await db.prepare(
     `SELECT page_key, suggestion_json FROM place_suggestions
      WHERE model = ? AND prompt_version = ?
@@ -625,26 +648,81 @@ export async function loadClefGate(
     INTERNET_PLACE_SUGGESTION_PROMPT_VERSION,
     JSON.stringify([...keys]),
   ).all<{ page_key: string; suggestion_json: string }>();
-  const approved = new Set<string>();
   for (const row of rows.results ?? []) {
     try {
       const suggestion = parseInternetPlaceSuggestion(JSON.parse(row.suggestion_json));
-      if (suggestion && CLEF_APPROVED_PLACEMENTS.has(suggestion.placement)) {
-        approved.add(row.page_key);
-      }
+      if (suggestion) suggestions.set(row.page_key, suggestion);
     } catch {
-      // A corrupt cache row counts as not yet approved.
+      // A corrupt cache row counts as no answer.
     }
   }
-  return [...keys]
-    .filter((key) => !approved.has(key))
-    .map((placeKey) => ({
-      scope: 'page' as const,
-      placeKey,
-      placement: 'scenery' as const,
-      note: 'Waiting for Clef or a human to approve this page',
-      updatedAt: '',
-    }));
+  return suggestions;
+}
+
+/**
+ * Gates destinations no human has reviewed: a page stays scenery until Clef
+ * has approved it as at least regular, and hides entirely when Clef says its
+ * name alone is sensitive. Clef never promotes on its own, so an approved page
+ * rides as an ordinary stop until someone features it.
+ */
+export async function loadClefGate(
+  db: D1Database,
+  pageUrls: string[],
+): Promise<InternetPlacePolicy[]> {
+  if (pageUrls.length === 0) return [];
+  const suggestions = await loadClefSuggestions(db, pageUrls);
+  const gate = new Map<string, InternetPlacePolicy>();
+  for (const url of pageUrls) {
+    let pageKey: string;
+    let hostnameKey: string;
+    try {
+      pageKey = normalizeInternetPlace(url, 'page');
+      hostnameKey = normalizeInternetPlace(url, 'hostname');
+    } catch {
+      // Unparseable URLs never become destinations anyway.
+      continue;
+    }
+    const placement = suggestions.get(pageKey)?.placement;
+    if (placement && CLEF_APPROVED_PLACEMENTS.has(placement)) continue;
+    // Scenery shows the hostname, so a sensitive name is hidden at that scope.
+    const policy: InternetPlacePolicy = placement === 'hidden'
+      ? {
+          scope: 'hostname',
+          placeKey: hostnameKey,
+          placement: 'hidden',
+          note: 'Clef hid this name until a human reviews it',
+          updatedAt: '',
+        }
+      : {
+          scope: 'page',
+          placeKey: pageKey,
+          placement: 'scenery',
+          note: 'Waiting for Clef or a human to approve this page',
+          updatedAt: '',
+        };
+    gate.set(`${policy.scope}:${policy.placeKey}`, policy);
+  }
+  return [...gate.values()];
+}
+
+export type ReviewNeed = 'pending' | 'unsure' | 'promote' | 'hidden';
+
+/**
+ * Why a page nobody has decided still needs a human, or null when Clef's
+ * answer can stand on its own.
+ */
+export function getReviewNeed(
+  suggestion: InternetPlaceSuggestion | undefined,
+): ReviewNeed | null {
+  if (!suggestion) return 'pending';
+  if (suggestion.placement === 'hidden') return 'hidden';
+  if (suggestion.placement === 'featured' || suggestion.placement === 'reserve') {
+    return 'promote';
+  }
+  const unsure = suggestion.stopProbability !== undefined
+    ? suggestion.stopProbability >= 0.3 && suggestion.stopProbability <= 0.7
+    : suggestion.confidence < 0.5;
+  return unsure ? 'unsure' : null;
 }
 
 export async function handleInternetPlaceSuggestion(

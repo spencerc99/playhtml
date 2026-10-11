@@ -49,10 +49,32 @@ export type CommuteReviewItem = {
   url?: string;
   title?: string;
   currentDisposition: "stop" | "scenery";
+  /** Why this page still needs a human; null when Clef's answer can stand. */
+  need?: ReviewNeed | null;
+  visits?: number;
+  clef?: { placement: string; confidence: number };
   evidence?: EvaluationEvidence;
   evidenceProvenance?: string;
   evidenceGeneratedAt?: string;
 };
+
+export const REVIEW_NEEDS = ["pending", "unsure", "promote", "hidden"] as const;
+export type ReviewNeed = (typeof REVIEW_NEEDS)[number];
+export const REVIEW_NEED_LABELS: Record<ReviewNeed, string> = {
+  pending: "Clef hasn't answered",
+  unsure: "Clef is unsure",
+  promote: "Clef suggests featuring",
+  hidden: "Clef hid it",
+};
+
+/**
+ * Whether the desk's default queue should show this item. Pages Clef decided
+ * confidently stay out; imported audit pages and responses from a Worker that
+ * does not annotate needs stay in.
+ */
+export function needsHumanReview(item: CommuteReviewItem): boolean {
+  return item.need !== null;
+}
 
 export type EvidenceLabel = {
   value: string;
@@ -130,6 +152,10 @@ export function parseCommuteReviewResponse(
   const destinationDomains = new Set(
     destinations.map((destination) => destination.domain),
   );
+  // A Worker that annotates needs has already judged scenery domains safe.
+  const annotated = candidate.destinations.some(
+    (destination) => readReview(destination) !== null,
+  );
   return {
     generatedAt: candidate.generatedAt,
     items: [
@@ -138,7 +164,8 @@ export function parseCommuteReviewResponse(
         domain: destination.domain,
         url: destination.url,
         ...(destination.title ? { title: destination.title } : {}),
-        currentDisposition: "stop" as const,
+        currentDisposition: getLiveDisposition(readReview(destination)),
+        ...(readReview(destination) ?? {}),
       })),
       ...scenery
         .filter((item) => !destinationDomains.has(item.domain))
@@ -146,6 +173,7 @@ export function parseCommuteReviewResponse(
           id: item.domain,
           domain: item.domain,
           currentDisposition: "scenery" as const,
+          ...(annotated ? { need: null } : {}),
         })),
     ],
   };
@@ -461,6 +489,46 @@ type CommuteDestination = {
 type CommuteSceneryItem = {
   domain: string;
 };
+
+const CLEF_STOP_PLACEMENTS = new Set(["regular", "featured", "reserve"]);
+
+/**
+ * Where an annotated page rides without a human decision: the train holds a
+ * page as scenery until Clef approves it.
+ */
+function getLiveDisposition(
+  review: Pick<CommuteReviewItem, "need" | "clef"> | null,
+): "stop" | "scenery" {
+  if (!review) return "stop";
+  if (review.clef) {
+    return CLEF_STOP_PLACEMENTS.has(review.clef.placement) ? "stop" : "scenery";
+  }
+  return review.need === "pending" ? "scenery" : "stop";
+}
+
+function readReview(
+  value: unknown,
+): Pick<CommuteReviewItem, "need" | "visits" | "clef"> | null {
+  if (!value || typeof value !== "object") return null;
+  const review = (value as Record<string, unknown>).review;
+  if (!review || typeof review !== "object") return null;
+  const { need, visits, clef } = review as Record<string, unknown>;
+  if (need !== null && !REVIEW_NEEDS.includes(need as ReviewNeed)) return null;
+  const parsedClef =
+    clef &&
+    typeof clef === "object" &&
+    typeof (clef as Record<string, unknown>).placement === "string" &&
+    typeof (clef as Record<string, unknown>).confidence === "number"
+      ? (clef as { placement: string; confidence: number })
+      : undefined;
+  return {
+    need: need as ReviewNeed | null,
+    ...(typeof visits === "number" ? { visits } : {}),
+    ...(parsedClef
+      ? { clef: { placement: parsedClef.placement, confidence: parsedClef.confidence } }
+      : {}),
+  };
+}
 
 function isCommuteDestination(value: unknown): value is CommuteDestination {
   if (!value || typeof value !== "object") return false;

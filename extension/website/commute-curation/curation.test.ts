@@ -10,6 +10,7 @@ import {
   getReviewTarget,
   getScopedPlace,
   mergeCatalogEvidence,
+  needsHumanReview,
   normalizePlace,
   parseCommuteReviewResponse,
   parseStoredCuration,
@@ -148,6 +149,28 @@ describe("suggestion prefill", () => {
 });
 
 describe("parseCommuteReviewResponse", () => {
+  it("keeps only pages that need a human in the default queue", () => {
+    const { items } = parseCommuteReviewResponse({
+      generatedAt: 1,
+      destinations: [
+        { domain: "a.example", url: "https://a.example/", review: { need: "unsure", visits: 4, clef: { placement: "regular", confidence: 0.5 } } },
+        { domain: "b.example", url: "https://b.example/", review: { need: null, visits: 9 } },
+      ],
+      scenery: [{ domain: "mail.example" }],
+    });
+    expect(items.filter(needsHumanReview).map((item) => item.domain)).toEqual(["a.example"]);
+    expect(items[0]).toMatchObject({ need: "unsure", visits: 4, clef: { placement: "regular" } });
+  });
+
+  it("keeps every page when the Worker does not annotate needs", () => {
+    const { items } = parseCommuteReviewResponse({
+      generatedAt: 1,
+      destinations: [{ domain: "a.example", url: "https://a.example/" }],
+      scenery: [{ domain: "mail.example" }],
+    });
+    expect(items.filter(needsHumanReview)).toHaveLength(2);
+  });
+
   it("accepts a sanitized live review queue", () => {
     expect(
       parseCommuteReviewResponse({

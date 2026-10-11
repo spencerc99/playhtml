@@ -12,10 +12,14 @@ import {
   loadInternetPlacePolicies,
 } from './internetPlaceCatalog';
 import {
+  getReviewNeed,
   loadClefGate,
+  loadClefSuggestions,
   suggestUnreviewedPlaces,
+  type ReviewNeed,
 } from './internetPlaceSuggestion';
 import {
+  normalizeInternetPlace,
   resolveInternetPlacePolicy,
   type InternetPlacePolicy,
 } from '../../../shared/internetPlaceCatalog';
@@ -109,7 +113,7 @@ export async function handleCommuteReview(
       },
     );
 
-    return new Response(JSON.stringify(response), {
+    return new Response(JSON.stringify(await annotateReviewQueue(env, response, navigationEvents)), {
       headers: {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
@@ -218,4 +222,56 @@ export async function suggestIngestedDestinations(
     unreviewedDestinations(candidates, policies),
     INGEST_SUGGESTION_LIMIT,
   );
+}
+
+function pageKeyOf(url: string): string | null {
+  try {
+    return normalizeInternetPlace(url, 'page');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Tells the desk why each undecided page still needs a human, using Clef's
+ * cached answer, and puts the most-visited pages first.
+ */
+async function annotateReviewQueue(
+  env: Env,
+  response: CommuteResponse,
+  navigationEvents: CollectionEvent[],
+): Promise<CommuteResponse & {
+  destinations: Array<CommuteResponse['destinations'][number] & {
+    review: { need: ReviewNeed | null; visits: number; clef?: { placement: string; confidence: number } };
+  }>;
+}> {
+  const visits = new Map<string, number>();
+  for (const event of navigationEvents) {
+    const key = event.meta?.url ? pageKeyOf(event.meta.url) : null;
+    if (key) visits.set(key, (visits.get(key) ?? 0) + 1);
+  }
+  const policies = await loadInternetPlacePolicies(env.WWO_ADMIN_DB, response);
+  const undecided = new Set(
+    unreviewedDestinations(response, policies).map(({ url }) => url),
+  );
+  const suggestions = await loadClefSuggestions(
+    env.WWO_ADMIN_DB,
+    response.destinations.map(({ url }) => url),
+  );
+  const destinations = response.destinations.map((destination) => {
+    const key = pageKeyOf(destination.url);
+    const suggestion = key ? suggestions.get(key) : undefined;
+    return {
+      ...destination,
+      review: {
+        need: undecided.has(destination.url) ? getReviewNeed(suggestion) : null,
+        visits: key ? visits.get(key) ?? 1 : 1,
+        ...(suggestion
+          ? { clef: { placement: suggestion.placement, confidence: suggestion.confidence } }
+          : {}),
+      },
+    };
+  });
+  destinations.sort((first, second) => second.review.visits - first.review.visits);
+  return { ...response, destinations };
 }

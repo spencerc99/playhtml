@@ -12,6 +12,7 @@ import {
   INTERNET_PLACE_SUGGESTION_MODEL,
   INTERNET_PLACE_SUGGESTION_PROMPT_VERSION,
   parseClefSuggestion,
+  getReviewNeed,
 } from '../routes/internetPlaceSuggestion';
 
 const schema = [
@@ -115,6 +116,7 @@ describe('Internet place suggestions', () => {
         'Clef also weighed regular at 30%.',
         'The hostname scope is uncertain (40%).',
       ],
+      stopProbability: expect.closeTo(0.94, 5),
     });
     expect(parseClefSuggestion({ result: { answers } })?.placement).toBe('featured');
     expect(parseClefSuggestion({
@@ -331,5 +333,17 @@ describe('Internet place suggestions', () => {
     }
     expect(await countRows('place_suggestions')).toBe(0);
     expect(await countRows('place_policies')).toBe(0);
+  });
+
+  it('flags only the Clef answers a human needs to settle', () => {
+    const base = { scope: 'page' as const, confidence: 0.6, rationale: 'Clef', uncertainties: [] };
+    expect(getReviewNeed(undefined)).toBe('pending');
+    expect(getReviewNeed({ ...base, placement: 'hidden' })).toBe('hidden');
+    expect(getReviewNeed({ ...base, placement: 'featured' })).toBe('promote');
+    expect(getReviewNeed({ ...base, placement: 'regular', stopProbability: 0.55 })).toBe('unsure');
+    expect(getReviewNeed({ ...base, placement: 'scenery', stopProbability: 0.35 })).toBe('unsure');
+    expect(getReviewNeed({ ...base, placement: 'regular', stopProbability: 0.9 })).toBeNull();
+    expect(getReviewNeed({ ...base, placement: 'scenery', stopProbability: 0.1 })).toBeNull();
+    expect(getReviewNeed({ ...base, placement: 'regular', confidence: 0.4 })).toBe('unsure');
   });
 });

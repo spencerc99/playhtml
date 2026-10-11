@@ -250,4 +250,30 @@ describe('handleCommute', () => {
     expect(await suggestIngestedDestinations(env, [event('navigation', 'https://fresh.example/post')])).toBe(0);
     expect(run).not.toHaveBeenCalled();
   });
+
+  it('hides a page outright when Clef says its name is sensitive', async () => {
+    useClef();
+    await saveClefSuggestion('hidden');
+    const response = await handleCommute(new Request('https://worker.example/commute/recent'), env);
+    const payload = (await response.json()) as CommuteResponse;
+    expect(payload.destinations).toEqual([]);
+    expect(JSON.stringify(payload.scenery)).not.toContain('public.example');
+  });
+
+  it('tells the desk which undecided pages need a human', async () => {
+    env.ADMIN_KEY = 'test-admin-key';
+    const review = async () => {
+      const response = await handleCommuteReview(new Request('https://worker.example/commute/review', {
+        headers: { Authorization: 'Bearer test-admin-key' },
+      }), env);
+      return ((await response.json()) as { destinations: Array<{ review: Record<string, unknown> }> }).destinations;
+    };
+    expect((await review())[0].review).toMatchObject({ need: 'pending', visits: 1 });
+    await saveClefSuggestion('featured');
+    expect((await review())[0].review).toMatchObject({ need: 'promote', clef: { placement: 'featured' } });
+    await env.WWO_ADMIN_DB.prepare(
+      "INSERT INTO place_policies (scope, place_key, placement, note) VALUES ('site', 'public.example', 'regular', '')",
+    ).run();
+    expect((await review())[0].review.need).toBeNull();
+  });
 });
