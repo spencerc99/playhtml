@@ -11,6 +11,7 @@ import {
   stepUrl,
   stopPoint,
   walkerTrailState,
+  spreadLabels,
   walkSteps,
   type Walkers,
 } from "../walk/walkTrails";
@@ -182,5 +183,23 @@ describe("walkerTrailState", () => {
     expect(three.variedPoints.slice(0, two.variedPoints.length - 1)).toEqual(
       two.variedPoints.slice(0, -1),
     );
+  });
+});
+
+describe("spreadLabels", () => {
+  const label = (key: string, x: number, y: number) => ({ key, x, y, width: 100, height: 20 });
+
+  it("leaves labels that don't touch where they are", () => {
+    expect(spreadLabels([label("a", 0, 0), label("b", 0, 40)])).toEqual({
+      a: { x: 0, y: 0 },
+      b: { x: 0, y: 40 },
+    });
+  });
+
+  it("steps a covered label down, then up, until it is clear", () => {
+    const spots = spreadLabels([label("a", 0, 0), label("b", 0, 0), label("c", 0, 0)]);
+    expect(spots.a).toEqual({ x: 0, y: 0 });
+    expect(spots.b).toEqual({ x: 0, y: 20 });
+    expect(spots.c).toEqual({ x: 0, y: -20 });
   });
 });

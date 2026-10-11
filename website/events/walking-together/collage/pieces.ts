@@ -7,9 +7,9 @@
 export interface Piece {
   id: string;
   src: string;
-  /** The site the scrap came from, as an origin only (no path, query, or
-   * hash), since everyone in the room can read it. Empty when unknown. Rooms
-   * from before this rule may hold full URLs; readers only take the host. */
+  /** The page the scrap came from, so people can get back to it. Pieces
+   * placed during the first walk hold only the site's origin. Empty when
+   * unknown. */
   pageUrl: string;
   alt: string;
   placedByPid: string;
@@ -59,13 +59,9 @@ export interface CollageData {
   arrangedAt?: number;
 }
 
-/** Default width of a newly placed scrap, as a fraction of the table width. */
-export const DEFAULT_PIECE_WIDTH = 0.16;
 /** Smallest and largest width a scrap can be resized to. */
 export const MIN_PIECE_WIDTH = 0.04;
 export const MAX_PIECE_WIDTH = 0.7;
-/** A new scrap is never taller than this fraction of the table height. */
-const MAX_NEW_PIECE_HEIGHT = 0.4;
 /** Aspect used when an image never reports its size (e.g. it failed to load). */
 export const FALLBACK_ASPECT = 0.75;
 
@@ -90,30 +86,8 @@ export function topZ(pieces: Pieces): number {
   return max;
 }
 
-/** True when this piece is already painted above every other piece. */
-export function isOnTop(pieces: Pieces, id: string): boolean {
-  const piece = pieces[id];
-  if (!piece) return false;
-  return Object.values(pieces).every(
-    (other) => other.id === id || other.z < piece.z,
-  );
-}
-
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-/** Width for a new scrap: the default, shrunk when a tall image would
- * otherwise run off the table. */
-export function initialWidth(aspect: number, tableAspect: number): number {
-  // Piece height as a fraction of table height = width * aspect * tableAspect,
-  // where tableAspect is table width / table height.
-  const maxForHeight = MAX_NEW_PIECE_HEIGHT / (aspect * tableAspect);
-  return clamp(
-    Math.min(DEFAULT_PIECE_WIDTH, maxForHeight),
-    MIN_PIECE_WIDTH,
-    MAX_PIECE_WIDTH,
-  );
 }
 
 export interface Placer {
@@ -122,125 +96,12 @@ export interface Placer {
   color: string;
 }
 
-export interface NewPieceInput {
-  src: string;
-  pageUrl?: string;
-  alt?: string;
-  aspect: number;
-}
-
-/** Builds a piece for the table at a relative point, on top of everything,
- * with a slight random tilt so it reads as a dropped scrap of paper. */
-export function makePiece(
-  input: NewPieceInput,
-  placer: Placer,
-  at: { x: number; y: number },
-  pieces: Pieces,
-  tableAspect: number,
-  options: { id: string; now: number; random: () => number },
-): Piece {
-  const aspect =
-    Number.isFinite(input.aspect) && input.aspect > 0
-      ? input.aspect
-      : FALLBACK_ASPECT;
-  return {
-    id: options.id,
-    src: input.src,
-    pageUrl: pageOrigin(input.pageUrl),
-    alt: input.alt ?? "",
-    placedByPid: placer.pid,
-    placedByName: placer.name,
-    placedByColor: placer.color,
-    x: clamp(at.x, 0, 1),
-    y: clamp(at.y, 0, 1),
-    width: initialWidth(aspect, tableAspect),
-    aspect,
-    rotation: Math.round((options.random() * 12 - 6) * 10) / 10,
-    z: topZ(pieces) + 1,
-    placedAt: options.now,
-  };
-}
-
-/** The part of a piece a gesture changes. */
+/** The part of a piece that places it on the table. */
 export interface PieceTransform {
   x: number;
   y: number;
   width: number;
   rotation: number;
-}
-
-export function transformOf(piece: Piece): PieceTransform {
-  return {
-    x: piece.x,
-    y: piece.y,
-    width: piece.width,
-    rotation: piece.rotation,
-  };
-}
-
-/** A move gesture: the piece follows the pointer by the same relative delta,
- * keeping its center on the table. */
-export function movedTransform(
-  start: PieceTransform,
-  delta: { dx: number; dy: number },
-): PieceTransform {
-  return {
-    ...start,
-    x: clamp(start.x + delta.dx, 0, 1),
-    y: clamp(start.y + delta.dy, 0, 1),
-  };
-}
-
-/**
- * The corner-handle gesture, which rotates and resizes together. All points
- * are in table pixels. The piece turns by the angle the pointer has swept
- * around the piece center, and scales by how much farther from (or closer to)
- * the center the pointer is than where the gesture began.
- */
-export function rotateResizeTransform(
-  start: PieceTransform,
-  centerPx: { x: number; y: number },
-  startPointerPx: { x: number; y: number },
-  pointerPx: { x: number; y: number },
-): PieceTransform {
-  const startDx = startPointerPx.x - centerPx.x;
-  const startDy = startPointerPx.y - centerPx.y;
-  const dx = pointerPx.x - centerPx.x;
-  const dy = pointerPx.y - centerPx.y;
-  const startDistance = Math.hypot(startDx, startDy);
-  const distance = Math.hypot(dx, dy);
-  if (startDistance < 1 || distance < 1) return start;
-
-  const sweptDeg =
-    ((Math.atan2(dy, dx) - Math.atan2(startDy, startDx)) * 180) / Math.PI;
-  return {
-    ...start,
-    width: clamp(
-      start.width * (distance / startDistance),
-      MIN_PIECE_WIDTH,
-      MAX_PIECE_WIDTH,
-    ),
-    rotation: normalizeDegrees(start.rotation + sweptDeg),
-  };
-}
-
-/** Folds an angle into (-180, 180]. */
-export function normalizeDegrees(deg: number): number {
-  let d = deg % 360;
-  if (d > 180) d -= 360;
-  if (d <= -180) d += 360;
-  return d;
-}
-
-/** True when two transforms differ enough to be worth a shared write. */
-export function transformChanged(a: PieceTransform, b: PieceTransform): boolean {
-  const EPS = 1e-4;
-  return (
-    Math.abs(a.x - b.x) > EPS ||
-    Math.abs(a.y - b.y) > EPS ||
-    Math.abs(a.width - b.width) > EPS ||
-    Math.abs(a.rotation - b.rotation) > 0.05
-  );
 }
 
 /** Host name of a URL without a leading "www.", or "" when it isn't a URL. */
@@ -253,14 +114,15 @@ export function domainOf(url: string | undefined): string {
   }
 }
 
-/** Just the origin of a page URL, so shared data never carries the path,
- * search terms, tokens, or fragments of the page someone was on. */
-export function pageOrigin(url: string | undefined): string {
+/** The page a scrap came from, so anyone at the table can get back to it.
+ * Only web pages count. Pieces placed before this kept just the site's
+ * origin, which still reads as a link to the site. */
+export function pageLink(url: string | undefined): string {
   if (!url) return "";
   try {
     const parsed = new URL(url);
     return parsed.protocol === "http:" || parsed.protocol === "https:"
-      ? parsed.origin
+      ? parsed.href
       : "";
   } catch {
     return "";
@@ -316,18 +178,52 @@ export function orderAroundCentroid(
 
 /** What each person broadcasts while dragging a piece, so others see it move
  * live before the gesture is committed to shared data. */
-export interface CollageLive {
-  drag: { id: string; transform: PieceTransform } | null;
+/** What one person is part way through changing, shared live so everyone
+ * can watch a drag, turn or resize as it happens. Never persisted. */
+/**
+ * One piece someone is part way through changing: just the fields they have
+ * changed so far, or the whole piece when it is new to the table.
+ */
+export interface DraftPatch {
+  id: string;
+  set: Partial<Piece>;
+  unset?: string[];
 }
 
-/** In-progress transforms from other people's drags, keyed by piece id. */
-export function remoteDragTransforms(
-  users: Array<{ user: { isMe: boolean }; live: CollageLive | undefined }>,
-): Record<string, PieceTransform> {
-  const byPiece: Record<string, PieceTransform> = {};
+export interface CollageLive {
+  draft: DraftPatch[] | null;
+}
+
+function isWholePiece(value: Partial<Piece>): value is Piece {
+  return typeof value.src === "string" && typeof value.x === "number";
+}
+
+/**
+ * Other people's in-progress pieces laid over the stored ones, keyed by piece
+ * id. Each draft only overrides the fields its author is changing, so a field
+ * someone else changed meanwhile still shows. Presence from an older page (or
+ * anything malformed) is skipped.
+ */
+export function remoteDrafts(
+  users: Array<{ user: { isMe: boolean }; live: Partial<CollageLive> | undefined }>,
+  stored: Pieces,
+): Record<string, Piece> {
+  const byPiece: Record<string, Piece> = {};
   for (const { user, live } of users) {
-    if (user.isMe || !live?.drag) continue;
-    byPiece[live.drag.id] = live.drag.transform;
+    if (user.isMe || !Array.isArray(live?.draft)) continue;
+    for (const patch of live.draft) {
+      if (!patch || typeof patch.id !== "string") continue;
+      if (!patch.set || typeof patch.set !== "object") continue;
+      const base = byPiece[patch.id] ?? stored[patch.id];
+      if (!base) {
+        if (isWholePiece(patch.set)) byPiece[patch.id] = patch.set;
+        continue;
+      }
+      const next = { ...base } as unknown as Record<string, unknown>;
+      for (const key of Array.isArray(patch.unset) ? patch.unset : []) delete next[key];
+      Object.assign(next, patch.set);
+      byPiece[patch.id] = next as unknown as Piece;
+    }
   }
   return byPiece;
 }
