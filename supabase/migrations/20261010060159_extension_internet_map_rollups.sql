@@ -235,7 +235,7 @@ revoke all on all functions in schema internet_map from public, anon, authentica
 -- CALL outside a transaction: each chunk commits independently and releases ingestion.
 create procedure internet_map.refresh(max_chunks integer default 48, chunk interval default interval '1 hour')
 language plpgsql as $$
-declare result jsonb; cutoff timestamptz := now() - interval '1 hour'; i integer;
+declare result jsonb; cutoff timestamptz := now() - interval '1 hour';
 begin
   if max_chunks is null or max_chunks < 1 or max_chunks > 10000 then raise exception 'Invalid chunk limit'; end if;
   for i in 1..max_chunks loop

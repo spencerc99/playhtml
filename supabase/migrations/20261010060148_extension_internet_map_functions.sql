@@ -12,7 +12,7 @@ create function internet_map.unquote(value text, plus boolean default false) ret
 language plpgsql immutable strict set search_path = pg_catalog as $$
 declare
   bytes bytea := ''::bytea; result text := ''; i integer := 1; c integer;
-  size integer; j integer; valid integer; lower_byte integer; upper_byte integer;
+  size integer; valid integer; lower_byte integer; upper_byte integer;
 begin
   if plus then value := replace(value, '+', ' '); end if;
   while i <= length(value) loop
@@ -67,7 +67,7 @@ create function internet_map.normalise(value text) returns table(page_key text, 
 language plpgsql immutable set search_path = pg_catalog as $$
 declare
   rest text; path text; query text; pair text; k text; v text; sp text;
-  pairs jsonb := '[]'; q text := ''; search_page boolean; pos integer; address text;
+  pairs jsonb := '[]'::jsonb; q text := ''; search_page boolean; pos integer; address text;
 begin
   page_key := ''; host := '';
   if value is null then return next; return; end if;
@@ -76,8 +76,9 @@ begin
   rest := regexp_replace(rest, '^[a-zA-Z][a-zA-Z0-9+.-]*:', '');
   if left(rest, 2) <> '//' then return next; return; end if;
   rest := substr(rest, 3);
-  host := lower(substring(rest from '^[^/?#]*'));
+  host := substring(rest from '^[^/?#]*');
   rest := substr(rest, length(host) + 1);
+  host := lower(host collate "und-x-icu");
   host := regexp_replace(host, '^.*@', '');
   if left(host, 4) = 'www.' then host := substr(host, 5); end if;
   if host = '' or (position('[' in host) > 0) <> (position(']' in host) > 0) then
@@ -105,7 +106,7 @@ begin
   if length(path) > 1 then path := regexp_replace(path, '/$', ''); end if;
   path := internet_map.unquote(path);
   sp := ('{"google.com": "q", "google.co.uk": "q", "google.ca": "q", "google.com.au": "q", "google.de": "q", "google.fr": "q", "google.co.in": "q", "google.com.br": "q", "google.co.jp": "q", "google.it": "q", "google.es": "q", "google.nl": "q", "duckduckgo.com": "q", "bing.com": "q", "search.yahoo.com": "p", "ecosia.org": "q", "search.brave.com": "q", "startpage.com": "query", "kagi.com": "q", "baidu.com": "wd", "yandex.com": "text", "mojeek.com": "q", "searx.be": "q", "lite.duckduckgo.com": "q", "youtube.com": "search_query", "m.youtube.com": "search_query", "reddit.com": "q", "old.reddit.com": "q", "github.com": "q", "stackoverflow.com": "q", "amazon.com": "k", "amazon.co.uk": "k", "amazon.ca": "k", "amazon.de": "k", "x.com": "q", "twitter.com": "q", "pinterest.com": "q", "etsy.com": "q", "ebay.com": "_nkw", "en.wikipedia.org": "search", "wikipedia.org": "search", "scholar.google.com": "q", "news.google.com": "q", "images.google.com": "q", "perplexity.ai": "q", "www.perplexity.ai": "q", "spotify.com": "q", "open.spotify.com": "q", "soundcloud.com": "q", "vimeo.com": "q", "tiktok.com": "q", "linkedin.com": "keywords", "instagram.com": "q", "tumblr.com": "q", "are.na": "q", "arxiv.org": "query", "semanticscholar.org": "q", "goodreads.com": "q"}'::jsonb)->>host;
-  search_page := sp is not null and (path = '/' or lower(path) ~ '^(/search|/results|/s|/find|/explore/search|/web|/wiki/special:search|/sp/search|/discover/search)');
+  search_page := sp is not null and (path = '/' or lower(path collate "und-x-icu") ~ '^(/search|/results|/s|/find|/explore/search|/web|/wiki/special:search|/sp/search|/discover/search)');
   foreach pair in array string_to_array(query, '&') loop
     pos := position('=' in pair);
     if pos = 0 then continue; end if;
@@ -114,7 +115,7 @@ begin
     if v = '' then continue; end if;
     if search_page then
       if k = sp and v ~ '[^[:space:]]' then
-        q := '?' || sp || '=' || lower(left(btrim(regexp_replace(v, '[[:space:]]+', ' ', 'g')), 120)); exit;
+        q := '?' || sp || '=' || lower(left(btrim(regexp_replace(v collate "und-x-icu", '[[:space:]]+', ' ', 'g')), 120) collate "und-x-icu"); exit;
       end if;
     elsif not (k = any(array['__cft__[0]','__tn__','_ga','_gl','_nc_hash','ab_channel','app','aqs','at_campaign','at_medium','authuser','bih','biw','cad','campaign_id','cd','chainedPosts','checksum','cid','client','cmpid','comment_tracking','context','correlationId','csui','cvid','dclid','dpr','ei','eid','enter_from','esrc','fbclid','feature','form','from_page','fromsearch','fs','gbv','gclid','ghpvc','ghsrc','gid','gl','gs_lcrp','gs_lp','gs_ssp','guccounter','guce_referrer','guce_referrer_sig','hl','icid','ie','iflsig','igshid','index','is_from_webapp','language','licu','lipi','list_index','log_pb','mc_cid','mc_eid','mibextid','midSig','midToken','msclkid','ncid','nfpr','notif_id','notif_t','oe','oq','originTrackingId','otpToken','pc','pjf','pp','prmd','pws','rct','rdt','ref','refId','ref_src','ref_url','referer','referrer','rlz','s_kwcid','sa','safe','sca_esv','sclient','scm','screen_name','sei','sender_device','sessionId','session_id','share_id','share_source','shareid','showsuggestions','si','soc_src','soc_trk','source','sourceid','spm','src','sstk','start_radio','sxsrf','t','tab','taid','tbo','trackingId','trk','twclid','uact','udm','usg','usp','utm_brand','utm_campaign','utm_cid','utm_content','utm_id','utm_medium','utm_name','utm_reader','utm_referrer','utm_social','utm_source','utm_term','uule','ved','web_id','yclid']::text[])) and left(k, 4) <> 'utm_' and left(k, 4) <> '__cf' and length(v) <= 80 then
       pairs := pairs || jsonb_build_array(jsonb_build_array(k, v));
@@ -130,20 +131,20 @@ end $$;
 
 create function internet_map.opaque(seg text) returns boolean
 language plpgsql immutable strict set search_path = pg_catalog as $$
-declare part text; cleaned text; letters text;
+declare part text collate "und-x-icu"; cleaned text collate "und-x-icu"; letters text collate "und-x-icu";
 begin
-  if length(seg) >= 10 and seg ~ '^[[:digit:]]+$' then return true; end if;
+  if length(seg) >= 10 and seg collate "und-x-icu" ~ '^[[:digit:]]+$' then return true; end if;
   foreach part in array regexp_split_to_array(seg, '[-_.~+]') loop
     cleaned := regexp_replace(part, '[^[:alnum:]]', '', 'g');
     if (length(cleaned) >= 10 and cleaned ~ '^[[:digit:]]+$') or
        (length(cleaned) >= 16 and cleaned ~ '^[0-9a-fA-F]+$') then return true; end if;
   end loop;
-  if seg ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-     or seg ~* '^[0-9a-f]{8,}$' then return true; end if;
+  if seg collate "und-x-icu" ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     or seg collate "und-x-icu" ~* '^[0-9a-f]{8,}$' then return true; end if;
   if length(seg) < 14 then return false; end if;
-  if (seg ~ '[[:digit:]]' and seg ~ '[[:alpha:]]') or
-     (substr(seg, 2) ~ '[[:upper:]].*[[:upper:]]' and seg ~ '[[:lower:]]' and seg !~ '[-_]') then return true; end if;
-  letters := regexp_replace(lower(seg), '[^[:alpha:]]', '', 'g');
+  if (seg collate "und-x-icu" ~ '[[:digit:]]' and seg collate "und-x-icu" ~ '[[:alpha:]]') or
+     (substr(seg, 2) collate "und-x-icu" ~ '[[:upper:]].*[[:upper:]]' and seg collate "und-x-icu" ~ '[[:lower:]]' and seg collate "und-x-icu" !~ '[-_]') then return true; end if;
+  letters := regexp_replace(lower(seg collate "und-x-icu"), '[^[:alpha:]]', '', 'g');
   return length(letters) > 0 and length(regexp_replace(letters, '[^aeiou]', '', 'g'))::float / length(letters) < 0.28;
 end $$;
 
@@ -183,7 +184,7 @@ end $$;
 
 create function internet_map.redact_query(query text, keep_all boolean) returns text
 language plpgsql immutable strict set search_path = pg_catalog as $$
-declare pair text; k text; v text; pos integer; result text[] := '{}';
+declare pair text; k text; v text; pos integer; result text[] := '{}'::text[];
 begin
   foreach pair in array string_to_array(query, '&') loop
     pos := strpos(pair, '=');

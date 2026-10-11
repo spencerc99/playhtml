@@ -66,6 +66,9 @@ do $$ begin
   assert (select sum(votes) = 2 from internet_map.titles), 'metadata votes';
   assert (select page_key = 'example.com/a?x=1' from internet_map.normalise('https://WWW.Example.com//a/?utm_source=synthetic&x=1#part'));
   assert (select page_key = 'google.com/search?q=hello world' from internet_map.normalise('https://google.com/search?q=Hello+World&source=test'));
+  assert (select page_key = U&'google.com/search?q=i\0307' from internet_map.normalise('https://google.com/search?q=İ')), 'Unicode lowercase expansion';
+  assert not internet_map.opaque('١٢٣٤٥ + ٦٧٨٩٠.'), 'Unicode digits are not letters';
+  assert (select page_key = U&'i\0307.example/path' from internet_map.normalise('https://İ.example/path')), 'Expanded host preserves path';
   assert internet_map.domain_of('docs.example.co.uk:443') = 'example.co.uk';
   assert internet_map.redact_url('localhost:3000/private') = 'private-network';
   assert internet_map.redact_title('private subject','mail.google.com/inbox') = '';
