@@ -273,18 +273,17 @@ input {
   }
 }
 
-// The walk's link chat, docked as a foldable side pane during the collage.
-// It floats over the table instead of shrinking it, so every scrap stays where
-// everyone else sees it.
+// The walk's link chat, docked as a foldable pane on the right during the
+// collage, below the studio's view buttons and clear of its scrap drawer.
 .walk-chat-dock--open,
 .walk-chat-dock--closed {
   position: fixed;
-  top: 1em;
-  left: 1em;
+  top: 64px;
+  right: 1em;
   z-index: 20;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 0.35em;
   width: min(340px, calc(100vw - 2em));
   pointer-events: none;

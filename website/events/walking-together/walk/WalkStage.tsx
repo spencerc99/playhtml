@@ -16,6 +16,7 @@ import type { CollectionEvent } from "@movement/types";
 import { useStickyState } from "../../../hooks/useStickyState";
 import {
   freezeSteps,
+  spreadLabels,
   stepsByWalker,
   stopPoint,
   walkerTrailState,
@@ -153,11 +154,49 @@ export function WalkStage({ active }: { active: boolean }) {
   const joined = !!pid && !!walkers[pid];
   const walkingCount = Object.keys(walkers).length;
 
-  // One label per stop, even when several walkers passed it.
+  // One label per stop, even when several walkers passed it. A stop someone
+  // is on right now is named by their pill instead.
+  const heads = Object.values(walkers).flatMap((w) => {
+    const last = steps[w.pid]?.at(-1);
+    return last ? [{ walker: w, step: last }] : [];
+  });
+  const current = new Set(heads.map((head) => head.step.url));
   const stops = new Map<string, WalkStep>();
   for (const list of Object.values(steps)) {
-    for (const step of list) stops.set(step.url, step);
+    for (const step of list) if (!current.has(step.url)) stops.set(step.url, step);
   }
+
+  // Walkers who meet on one page, and pages near each other, would print
+  // their names on top of one another; nudge every label clear. Sizes are
+  // estimated from the monospace face so this needs no measuring.
+  const at = (url: string) => {
+    const p = stopPoint(url);
+    return { x: p.x * size.width, y: p.y * size.height };
+  };
+  const labelSpots = spreadLabels([
+    ...heads.map(({ walker, step }) => {
+      const p = at(step.url);
+      return {
+        key: `head:${walker.pid}`,
+        x: p.x + 10,
+        y: p.y + 10,
+        width: (walker.name.length + 1 + step.label.length) * 6.7 + 22,
+        height: 24,
+      };
+    }),
+    ...Array.from(stops.values()).map((step) => {
+      const p = at(step.url);
+      return {
+        key: `stop:${step.url}`,
+        x: p.x + 8,
+        y: p.y - 7,
+        width: step.label.length * 6.1,
+        height: 14,
+      };
+    }),
+  ]);
+  /** How far a label moved down (or up) to stay clear of the others. */
+  const shift = (key: string, y: number) => (labelSpots[key]?.y ?? y) - y;
 
   const join = () => {
     if (!pid || ended) return;
@@ -231,28 +270,29 @@ export function WalkStage({ active }: { active: boolean }) {
         />
         {size.width > 0 &&
           Array.from(stops.values()).map((step) => {
-            const p = stopPoint(step.url);
+            const p = at(step.url);
             return (
               <span
                 key={step.url}
                 className="walk-stop"
-                style={{ left: p.x * size.width, top: p.y * size.height }}
+                style={{
+                  left: p.x,
+                  top: p.y + shift(`stop:${step.url}`, p.y - 7),
+                }}
               >
                 {step.label}
               </span>
             );
           })}
-        {Object.values(walkers).map((w) => {
-          const last = steps[w.pid]?.at(-1);
-          if (!last) return null;
-          const p = stopPoint(last.url);
+        {heads.map(({ walker: w, step: last }) => {
+          const p = at(last.url);
           return (
             <span
               key={w.pid}
               className="walk-head"
               style={{
-                left: p.x * size.width,
-                top: p.y * size.height,
+                left: p.x,
+                top: p.y + shift(`head:${w.pid}`, p.y + 10),
                 background: w.color,
               }}
             >
