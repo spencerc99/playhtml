@@ -28,10 +28,19 @@ import {
 } from "@extension/entrypoints/scraps/collageBack";
 import { bakeCollage } from "@extension/entrypoints/scraps/bakeCollage";
 import {
+  CollageMat,
+  MAT,
+  MAT_CAPTION,
+  madeOn,
+} from "@extension/entrypoints/scraps/CollageMat";
+import { StudioViews } from "@extension/entrypoints/scraps/StudioTools";
+import { COLLAGE_PIECE_TOOL_STYLES } from "@extension/entrypoints/scraps/collagePieceToolStyles";
+import {
   pieceMaterialTransform,
   type CollagePiece,
 } from "@extension/entrypoints/scraps/collageRecord";
 import {
+  COLLAGE_MAT_STYLES,
   COLLAGE_SHEET_STYLES,
   PIECE_MATERIAL_STYLES,
 } from "@extension/entrypoints/scraps/collageSheetStyles";
@@ -51,7 +60,6 @@ import type {
   PublishedCollagePiece,
 } from "../../shared/publishedCollage";
 import {
-  SOURCES_MODES,
   faviconFor,
   fitScale,
   loadPublishedCollage,
@@ -67,9 +75,14 @@ import {
 import { VIEWER_STYLES } from "./collageViewerStyles";
 
 /** Room above the frame for the mark and the toggle, and below it for the caption. */
-const CHROME_TOP = 56;
-const CAPTION = 68;
-const CAPTION_NARROW = 84;
+/**
+ * Breathing room kept clear above and below the mat, in screen pixels: the
+ * toolbar row sits in the top band, and the bottom stays open so the framed
+ * collage never runs into the window's edge.
+ */
+const TOOLBAR = 48;
+const ROOM = { top: 40, bottom: 56 };
+const ROOM_NARROW = { top: 24, bottom: 40 };
 /** A tag's size before it has been measured, in screen pixels. */
 const ASSUMED_TAG = { width: 120, height: 18 };
 const NEAR_ON_SCREEN = 48;
@@ -326,58 +339,17 @@ function HoverLabel({
   );
 }
 
-function SourcesToggle({
-  mode,
-  onMode,
-}: {
-  mode: SourcesMode;
-  onMode: (mode: SourcesMode) => void;
-}) {
-  return (
-    <div className="collage-views" role="toolbar" aria-label="Sources">
-      <span className="published-collage__views-label">sources</span>
-      {SOURCES_MODES.map((choice) => (
-        <button
-          key={choice}
-          type="button"
-          className={`collage-view${mode === choice ? " collage-view--on" : ""}`}
-          aria-pressed={mode === choice}
-          title={
-            choice === "off"
-              ? "Hide sources (hold i to peek)"
-              : choice === "site"
-                ? "Label each piece with the site it came from"
-                : "Label each piece with the page it came from"
-          }
-          onClick={() => onMode(choice)}
-        >
-          <span>{choice}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function formatDay(ts: number | undefined): string | null {
-  if (!ts) return null;
-  return new Date(ts).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-/** The line under the title: how much the collage holds, and when it was shared. */
-function captionMeta(collage: PublishedCollage): string {
+/** The quiet line on the mat: how much the collage holds, and when it was made. */
+function captionMeta(collage: PublishedCollage, short: boolean): string {
   const count = collage.pieces.length;
   const sites = new Set(collage.pieces.map((piece) => piece.source.domain))
     .size;
-  const parts = [
-    `${count} ${count === 1 ? "piece" : "pieces"}`,
-    `${sites} ${sites === 1 ? "site" : "sites"}`,
-  ];
-  const shared = formatDay(collage.sharedAt);
-  if (shared) parts.push(`shared ${shared}`);
+  const parts = [`${count} ${count === 1 ? "piece" : "pieces"}`];
+  // A phone's mat is too narrow for the site count beside the title.
+  if (!short) parts.push(`${sites} ${sites === 1 ? "site" : "sites"}`);
+  // The date the studio's mat shows: when it was made, else when it was shared.
+  if (collage.createdAt) parts.push(`made ${madeOn(collage.createdAt)}`);
+  else if (collage.sharedAt) parts.push(`shared ${madeOn(collage.sharedAt)}`);
   return parts.join(" · ");
 }
 
@@ -418,7 +390,7 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
   const chromeHidden = useChromeToggle();
   const peekHeld = usePeekHeld();
   const prefersReducedMotion = usePrefersReducedMotion();
-  const [mode, setMode] = useState<SourcesMode>("off");
+  const [sourcesOn, setSourcesOn] = useState(false);
   const [over, setOver] = useState(false);
   const [hovered, setHovered] = useState<{
     index: number;
@@ -436,17 +408,17 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
 
   const narrow = windowSize.width < 600;
   const gutter = narrow ? 16 : 32;
-  const caption = narrow ? CAPTION_NARROW : CAPTION;
+  const room = narrow ? ROOM_NARROW : ROOM;
+  const toolbar = chromeHidden ? 0 : TOOLBAR;
+  // The whole mat, caption and all, fits between the toolbar and the room
+  // kept below it, so the collage never touches the window's edges.
   const scale = fitScale(frame, {
-    width: windowSize.width - gutter * 2,
+    width: windowSize.width - gutter * 2 - MAT * 2,
     height:
-      windowSize.height - (chromeHidden ? gutter * 2 : CHROME_TOP + caption),
+      windowSize.height - room.top - toolbar - room.bottom - MAT - MAT_CAPTION,
   });
-  const shownMode: SourcesMode = over
-    ? "off"
-    : mode === "off" && peekHeld
-      ? "title"
-      : mode;
+  const shownMode: SourcesMode =
+    !over && (sourcesOn || peekHeld) ? "title" : "off";
 
   const order = useMemo(
     () => readingOrder(pieces, frame.height),
@@ -511,10 +483,23 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
     });
   };
 
-  const turn = () => {
+  const turn = useCallback(() => {
     setHovered(null);
     setOver((value) => !value);
-  };
+  }, []);
+
+  // T turns the collage over and esc turns it face up, as in the studio.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (examining || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable]")) return;
+      if (event.key === "t" || event.key === "T") turn();
+      else if (event.key === "Escape" && over) turn();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [examining, over, turn]);
 
   const examinedIndex = examining ? order[examining.at] : null;
   const examinedItem =
@@ -522,33 +507,50 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
   const examinedPiece = examinedIndex === null ? null : pieces[examinedIndex];
   const title = collage.title.trim() || "untitled collage";
   const fitWidth = frame.width * scale;
+  const fitHeight = frame.height * scale;
 
   return (
     <div
       className={`published-collage${chromeHidden ? " published-collage--bare" : ""}`}
     >
-      {!chromeHidden && (
-        <header className="published-collage__head">
-          <a className="published-collage__mark" href="/">
-            we were online
-          </a>
-        </header>
-      )}
-      {!chromeHidden && !over && <SourcesToggle mode={mode} onMode={setMode} />}
-
       <div
         className="published-collage__stage"
-        style={{
-          top: chromeHidden ? gutter : CHROME_TOP,
-          bottom: chromeHidden ? gutter : 0,
-        }}
+        style={{ paddingTop: room.top, paddingBottom: room.bottom }}
       >
-        <div
-          className="published-collage__fit"
-          style={{ width: fitWidth, height: frame.height * scale }}
+        {!chromeHidden && (
+          <div
+            className="published-collage__toolbar"
+            style={{ width: fitWidth + MAT * 2, height: TOOLBAR }}
+          >
+            <a className="published-collage__mark" href="/">
+              we were online
+            </a>
+            <StudioViews
+              turnedOver={over}
+              sourcesOn={sourcesOn}
+              canShowSources={!over}
+              onTurnOver={turn}
+              onSources={() => setSourcesOn((value) => !value)}
+            />
+          </div>
+        )}
+        <CollageMat
+          width={fitWidth}
+          height={fitHeight}
+          caption={
+            <>
+              <h1 className="collage-title-input published-collage__title">
+                {title}
+              </h1>
+              <span className="collage-bar__spacer" />
+              <span className="collage-studio__label published-collage__meta">
+                {captionMeta(collage, narrow)}
+              </span>
+            </>
+          }
         >
           <div
-            className={`collage-sheet published-collage__sheet${over ? " collage-sheet--over" : ""}`}
+            className={`collage-sheet${over ? " collage-sheet--over" : ""}`}
             style={{
               width: frame.width,
               height: frame.height,
@@ -660,32 +662,11 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
               />
             </div>
           </div>
-        </div>
-
-        {!chromeHidden && (
-          <div
-            className="published-collage__caption"
-            style={{ width: Math.max(fitWidth, narrow ? 0 : 320) }}
-          >
-            <div className="published-collage__about">
-              <h1 className="published-collage__title">{title}</h1>
-              <p className="published-collage__meta">{captionMeta(collage)}</p>
-              {problem && (
-                <p className="published-collage__problem" role="status">
-                  {problem}
-                </p>
-              )}
-            </div>
-            <button
-              type="button"
-              className="published-collage__turn"
-              aria-pressed={over}
-              onClick={turn}
-            >
-              <span aria-hidden="true">&#8635;</span>{" "}
-              {over ? "front" : "turn over"}
-            </button>
-          </div>
+        </CollageMat>
+        {problem && (
+          <p className="published-collage__problem" role="status">
+            {problem}
+          </p>
         )}
       </div>
 
@@ -812,6 +793,8 @@ function PublishedCollagePage() {
       <style>{COLLAGE_STYLES}</style>
       <style>{COLLAGE_SHEET_STYLES}</style>
       <style>{PIECE_MATERIAL_STYLES}</style>
+      <style>{COLLAGE_MAT_STYLES}</style>
+      <style>{COLLAGE_PIECE_TOOL_STYLES}</style>
       <style>{COLLAGE_VIEW_STYLES}</style>
       <style>{VIEWER_STYLES}</style>
       {body}
