@@ -116,7 +116,8 @@ import { PieceMaterial } from "./PieceMaterial";
 import { naturalScrapSize } from "./pieceLettering";
 import { CropSession } from "./CropSession";
 import { KeysPopover } from "./KeysPopover";
-import { ProvenancePeek } from "./ProvenancePeek";
+import { OwnerLine, ProvenancePeek } from "./ProvenancePeek";
+import { pieceBounds } from "./peekTags";
 import { paperBackground } from "./paperGrain";
 import { PiecesHereMenu } from "./PiecesHereMenu";
 import {
@@ -181,6 +182,13 @@ import {
 } from "./useCollageAutosave";
 import type { SaveStanding } from "./autosaveSchedule";
 import { collageExportName } from "./collageFile";
+import {
+  isEmptyChange,
+  piecesChange,
+  piecesMap,
+  rebaseHistory,
+  type SharedCollage,
+} from "./sharedCollage";
 
 /** Longest side a freshly placed piece takes, in frame units. */
 const PLACED_MAX_SIDE = 220;
@@ -314,6 +322,13 @@ interface CollageStudioProps {
   autosaveTimers?: AutosaveTimers;
   /** The choice of editor, offered to people with experiment access. */
   editorSwitch?: EditorSwitchChoice;
+  /**
+   * A collage other people edit at the same time. The studio then reports
+   * each settled edit instead of saving, takes in everyone else's edits, and
+   * leaves out what belongs to a saved collage: title, format, saving and
+   * leaving.
+   */
+  shared?: SharedCollage;
 }
 
 /** What the toolbar says about where the work stands. */
@@ -373,9 +388,14 @@ export function CollageStudio({
   onLeave,
   autosaveTimers,
   editorSwitch,
+  shared,
 }: CollageStudioProps) {
   const initial = useMemo<readonly CollagePiece[]>(
-    () => editing?.pieces.map((piece) => ({ ...piece })) ?? [],
+    () =>
+      (shared ? shared.pieces : editing?.pieces)?.map((piece) => ({ ...piece })) ??
+      [],
+    // A shared collage is only read here once; later edits arrive below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [editing],
   );
   const [history, setHistory] = useState<ArrangementHistory>(() =>
@@ -397,7 +417,15 @@ export function CollageStudio({
   const [backShows, setBackShows] = useState<BackShows>(
     editing?.backShows ?? "pieces",
   );
-  const frame = formatOf(format);
+  const sharedWidth = shared?.frame.width;
+  const sharedHeight = shared?.frame.height;
+  const frame = useMemo(
+    () =>
+      sharedWidth !== undefined && sharedHeight !== undefined
+        ? { ...formatOf(format), width: sharedWidth, height: sharedHeight }
+        : formatOf(format),
+    [format, sharedWidth, sharedHeight],
+  );
   const [drawer, setDrawer] = useState(() => readDrawerPreference());
   const phone = usePhoneLayout();
   /**
@@ -558,8 +586,10 @@ export function CollageStudio({
       firstChangeRef.current = false;
       return;
     }
+    // A shared collage is written as each edit settles, never saved here.
+    if (shared) return;
     noteChange();
-  }, [changeKey, noteChange]);
+  }, [changeKey, noteChange, shared]);
 
   const mode: StudioMode = over
     ? "back"
@@ -571,8 +601,55 @@ export function CollageStudio({
         ? "cutout"
         : "idle";
 
+  // A shared collage trades edits with everyone else. Pieces this person is
+  // dragging, turning, scaling or cutting out go out as a draft others can
+  // watch, and are written once the edit settles. Everyone else's writes fold
+  // into the history, so undo only ever takes back this person's own edits.
+  const sharedRef = useRef(shared);
+  sharedRef.current = shared;
+  /** The pieces as last written or received, which edits are measured from. */
+  const syncedRef = useRef(piecesMap(initial));
+  const seenSharedRef = useRef(shared?.pieces);
+  const draftingRef = useRef(false);
+  const sharedPieces = shared?.pieces;
+  const changing =
+    (gesture.kind !== "idle" && gesture.kind !== "marquee") ||
+    transform !== null ||
+    cutoutSession !== null;
+  useEffect(() => {
+    const current = sharedRef.current;
+    if (!current || !sharedPieces) return;
+    if (sharedPieces !== seenSharedRef.current) {
+      seenSharedRef.current = sharedPieces;
+      const theirs = piecesChange(syncedRef.current, sharedPieces);
+      if (!isEmptyChange(theirs)) {
+        syncedRef.current = piecesMap(sharedPieces);
+        // The rebased arrangement comes back through here on the next render,
+        // which is when this person's own edits are measured.
+        setHistory((history) => rebaseHistory(history, theirs));
+        return;
+      }
+    }
+    const mine = piecesChange(syncedRef.current, pieces);
+    if (changing) {
+      if (mine.upserts.length > 0) {
+        draftingRef.current = true;
+        current.onDraft?.(mine);
+      }
+      return;
+    }
+    if (draftingRef.current) {
+      draftingRef.current = false;
+      current.onDraft?.(null);
+    }
+    if (isEmptyChange(mine)) return;
+    syncedRef.current = piecesMap(pieces);
+    current.onChange(mine);
+  }, [sharedPieces, pieces, changing]);
+
   // Leaving the tab, or the page itself, writes what is pending right away.
   useEffect(() => {
+    if (shared) return;
     const onHidden = () => {
       if (document.visibilityState === "hidden") flush();
     };
@@ -583,7 +660,7 @@ export function CollageStudio({
       document.removeEventListener("visibilitychange", onHidden);
       window.removeEventListener("pagehide", onPageHide);
     };
-  }, [flush]);
+  }, [flush, shared]);
 
   // With the autosave healthy there is nothing to warn about; the warning is
   // kept for a write that failed or one still in flight.
@@ -632,6 +709,7 @@ export function CollageStudio({
     () => pieces.find((piece) => piece.id === hoveredId) ?? null,
     [pieces, hoveredId],
   );
+  const hoveredOwner = hovered ? shared?.pieceOwner?.(hovered) ?? null : null;
   /** The pile the menu is listing, resolved fresh so edits keep it honest. */
   const hereStack = useMemo(() => {
     if (!hereMenu) return [];
@@ -779,7 +857,9 @@ export function CollageStudio({
           size = { width: size.width * grow, height: size.height * grow };
         }
       }
-      const piece = placedPiece(item, at, pieces.length, size);
+      // On top of everything, even where the stack has gaps in its numbering.
+      const top = pieces.reduce((highest, piece) => Math.max(highest, piece.z + 1), 0);
+      const piece = placedPiece(item, at, top, size);
       commit([...pieces, piece]);
       selectPiece(piece.id);
       setNotice(null);
@@ -789,10 +869,24 @@ export function CollageStudio({
 
   const removeSelected = useCallback(() => {
     if (selection.ids.length === 0) return;
-    commit(removePieces(pieces, selection.ids));
+    // On a shared collage some pieces may only be removed by someone else;
+    // those stay, and the first reason is said out loud.
+    const refusal = shared?.removalRefusal;
+    const refused = refusal
+      ? selectedPieces.flatMap((piece) => {
+          const reason = refusal(piece);
+          return reason ? [{ id: piece.id, reason }] : [];
+        })
+      : [];
+    const removable = selection.ids.filter(
+      (id) => !refused.some((piece) => piece.id === id),
+    );
+    if (refused.length > 0) setNotice({ tone: "quiet", text: refused[0].reason });
+    if (removable.length === 0) return;
+    commit(removePieces(pieces, removable));
     setSelection(EMPTY_SELECTION);
     setCrop(null);
-  }, [commit, pieces, selection]);
+  }, [commit, pieces, selectedPieces, selection, shared?.removalRefusal]);
 
   /**
    * Lays copies of the given pieces on top of the stack and takes them in
@@ -1119,6 +1213,7 @@ export function CollageStudio({
   }, [mode]);
 
   useEffect(() => {
+    if (shared) return;
     const onSaveNow = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== "s") return;
       if (!(event.metaKey || event.ctrlKey)) return;
@@ -1128,7 +1223,7 @@ export function CollageStudio({
     };
     window.addEventListener("keydown", onSaveNow);
     return () => window.removeEventListener("keydown", onSaveNow);
-  }, [flush]);
+  }, [flush, shared]);
 
   /**
    * Ends a run so the next edit becomes its own undo step. A press that never
@@ -2140,6 +2235,8 @@ export function CollageStudio({
                 })}
                 </div>
 
+                {shared?.overlay}
+
                 {/* With several in hand, each one's own edge is traced lightly
                     so it is clear which pieces the box around them holds. */}
                 {multiple &&
@@ -2226,7 +2323,9 @@ export function CollageStudio({
                   !(peek.held || sourcesOn) &&
                   !toolActive && (
                   <div
-                    className="collage-piece-hover"
+                    className={`collage-piece-hover${
+                      hoveredOwner ? " collage-piece-hover--owned" : ""
+                    }`}
                     aria-hidden="true"
                     style={{
                       left: hovered.x,
@@ -2234,10 +2333,44 @@ export function CollageStudio({
                       width: hovered.width,
                       height: hovered.height,
                       transform: `rotate(${hovered.rotation}deg)`,
-                      borderWidth: 1 / scale,
+                      borderWidth: (hoveredOwner ? 2.5 : 1) / scale,
+                      ...(hoveredOwner ? { borderColor: hoveredOwner.color } : {}),
                     }}
                   />
                 )}
+
+                {/* On a shared collage, whoever added a piece and where it
+                    came from show under it as it is pointed at. */}
+                {hovered &&
+                  hoveredOwner &&
+                  gesture.kind === "idle" &&
+                  !(peek.held || sourcesOn) &&
+                  !toolActive &&
+                  (() => {
+                    const box = pieceBounds(hovered);
+                    return (
+                      <div
+                        className="collage-peek collage-peek--owner"
+                        aria-hidden="true"
+                        style={
+                          {
+                            left: box.x,
+                            top: box.y + box.height + 6 / scale,
+                            transform: `scale(${1 / scale})`,
+                            zIndex: 10_005,
+                            "--peek-tint": hoveredOwner.color,
+                          } as React.CSSProperties
+                        }
+                      >
+                        <OwnerLine owner={hoveredOwner} />
+                        {hovered.scrap.domain && (
+                          <span className="collage-peek__where">
+                            {hovered.scrap.domain}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                 {(peek.held || sourcesOn) && !over && (
                   <ProvenancePeek
@@ -2245,6 +2378,7 @@ export function CollageStudio({
                     hoveredId={hoveredId}
                     scale={scale}
                     bounds={{ x: 0, y: 0, width: frame.width, height: frame.height }}
+                    ownerFor={shared?.pieceOwner}
                   />
                 )}
 
@@ -2336,6 +2470,12 @@ export function CollageStudio({
                 <span className="collage-studio__label">
                   turned over · T or esc to turn back
                 </span>
+              ) : shared ? (
+                shared.caption ?? (
+                  <span className="collage-studio__label">
+                    {pieces.length} piece{pieces.length === 1 ? "" : "s"}
+                  </span>
+                )
               ) : (
                 <>
                   <input
@@ -2366,7 +2506,7 @@ export function CollageStudio({
               finishRunning();
               setHistory((current) => redo(current));
             }}
-            onBack={leave}
+            onBack={shared ? undefined : leave}
           />
 
           <StudioViews
@@ -2402,16 +2542,20 @@ export function CollageStudio({
         )}
 
         <div className="collage-bar">
-          <FormatControl
-            format={format}
-            paper={paper}
-            zoom={scale}
-            pieceCount={pieces.length}
-            onFormat={setFormat}
-            onPaper={setPaper}
-          />
+          {shared ? (
+            shared.toolbar
+          ) : (
+            <FormatControl
+              format={format}
+              paper={paper}
+              zoom={scale}
+              pieceCount={pieces.length}
+              onFormat={setFormat}
+              onPaper={setPaper}
+            />
+          )}
           <span className="collage-bar__spacer" />
-          {editorSwitch && (
+          {editorSwitch && !shared && (
             <EditorSwitch
               choice={editorSwitch}
               handOver={() => {
@@ -2425,7 +2569,7 @@ export function CollageStudio({
               }}
             />
           )}
-          {standing.text && (
+          {standing.text && !shared && (
             <p
               className={`collage-standing${
                 standing.problem ? " collage-standing--problem" : ""

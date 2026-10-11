@@ -1,12 +1,15 @@
 // ABOUTME: Tests the bridge between table pieces and the scraps studio's piece tools.
-// ABOUTME: Covers the round trip of placement, crop commits, layer moves, and duplicates.
+// ABOUTME: Covers the round trip of placement, crop commits, and turning studio edits into table writes.
 
 import { describe, it, expect } from "vitest";
 import { commitCropSession } from "@extension/entrypoints/scraps/collageRecord";
 import {
-  duplicatedPiece,
+  TABLE_FRAME,
   placementFromStudio,
-  reorderedZ,
+  studioPieces,
+  piecePatch,
+  tableChange,
+  tablePiece,
   toStudioPiece,
 } from "../collage/studioBridge";
 import type { Piece, Pieces } from "../collage/pieces";
@@ -80,63 +83,91 @@ describe("crop commits", () => {
   });
 });
 
-describe("reorderedZ", () => {
-  const pieces: Pieces = {
-    a: piece("a", { z: 3 }),
-    b: piece("b", { z: 7 }),
-    c: piece("c", { z: 9 }),
-  };
+describe("tablePiece", () => {
+  const placer = { pid: "pk_b", name: "b", color: "#0f0" };
 
-  it("sends a piece to the back with only the changed z values", () => {
-    expect(reorderedZ(pieces, "c", "back")).toEqual({ a: 1, b: 2, c: 0 });
+  it("keeps who placed an existing piece and writes the edit", () => {
+    const original = piece("a", { crop: { x: 0.1, y: 0, width: 0.5, height: 1 } });
+    const [studio] = studioPieces({ a: original });
+    const edited = { ...studio, rotation: 12, flipX: true, crop: { x: 0, y: 0, width: 1, height: 1 } };
+    const back = tablePiece(edited, original, placer, 99);
+    expect(back.placedByPid).toBe("pk_a");
+    expect(back.placedAt).toBe(1);
+    expect(back.rotation).toBe(12);
+    expect(back.flipX).toBe(true);
+    expect(back.x).toBeCloseTo(original.x);
+    // A whole crop is left out rather than stored.
+    expect("crop" in back).toBe(false);
   });
 
-  it("steps a piece forward past its neighbor", () => {
-    expect(reorderedZ(pieces, "a", "forward")).toEqual({ a: 1, b: 0, c: 2 });
-  });
-
-  it("keeps tied pieces in the order the table paints them", () => {
-    // Tied on z: the table paints the earlier-placed piece first.
-    const tied: Pieces = {
-      later: piece("later", { z: 1, placedAt: 20 }),
-      earlier: piece("earlier", { z: 1, placedAt: 10 }),
-      other: piece("other", { z: 0 }),
+  it("hands a new piece to whoever made it, with the page it came from", () => {
+    const [studio] = studioPieces({ a: piece("a") });
+    const copy = {
+      ...studio,
+      id: "copy",
+      scrap: { ...studio.scrap, pageUrl: "https://example.com/private/path?q=1" },
+      locked: true as const,
     };
-    // "later" keeps z 1, so only the other two are written.
-    expect(reorderedZ(tied, "other", "front")).toEqual({
-      earlier: 0,
-      other: 2,
+    const made = tablePiece(copy, undefined, placer, 99);
+    expect(made).toMatchObject({
+      id: "copy",
+      placedByPid: "pk_b",
+      placedByName: "b",
+      placedAt: 99,
+      pageUrl: "https://example.com/private/path?q=1",
+      locked: true,
     });
   });
 
-  it("writes nothing when the piece is already in front", () => {
-    const stacked: Pieces = {
-      a: piece("a", { z: 0 }),
-      b: piece("b", { z: 1 }),
-    };
-    expect(reorderedZ(stacked, "b", "front")).toEqual({});
+  it("drops cutout and lock when the studio took them off", () => {
+    const original = piece("a", {
+      locked: true,
+      cutout: { method: "edge-color", tolerance: 30 },
+    });
+    const [studio] = studioPieces({ a: original });
+    const { cutout: _cutout, locked: _locked, ...plain } = studio;
+    const back = tablePiece(plain, original, placer, 0);
+    expect("cutout" in back).toBe(false);
+    expect("locked" in back).toBe(false);
   });
 });
 
-describe("duplicatedPiece", () => {
-  it("copies the edits, nudges it, and hands it to the copier unlocked", () => {
-    const source = piece("a", {
-      locked: true,
-      crop: { x: 0.1, y: 0.1, width: 0.5, height: 0.5 },
-      flipX: true,
-    });
-    const copy = duplicatedPiece(
-      source,
-      { pid: "pk_b", name: "b", color: "#0f0" },
-      { id: "copy", now: 5, z: 10 },
+describe("tableChange", () => {
+  it("writes upserts and removes only pieces the table has", () => {
+    const pieces: Pieces = { a: piece("a"), b: piece("b") };
+    const [studioA] = studioPieces({ a: pieces.a });
+    const change = tableChange(
+      { upserts: [{ ...studioA, rotation: 0 }], removedIds: ["b", "ghost"] },
+      pieces,
+      { pid: "pk_a", name: "a", color: "#f00" },
+      5,
     );
-    expect(copy.id).toBe("copy");
-    expect(copy.placedByPid).toBe("pk_b");
-    expect(copy.z).toBe(10);
-    expect(copy.x).toBeCloseTo(0.52);
-    expect(copy.flipX).toBe(true);
-    expect(copy.crop).toEqual(source.crop);
-    expect(copy.crop).not.toBe(source.crop);
-    expect("locked" in copy).toBe(false);
+    expect(change.write.map((p) => p.id)).toEqual(["a"]);
+    expect(change.remove).toEqual(["b"]);
+  });
+
+  it("patches only the fields an edit changed", () => {
+    const stored = piece("a");
+    const [before] = studioPieces({ a: stored });
+    const placer = { pid: "pk_b", name: "b", color: "#00f" };
+    // Turning a scrap writes its rotation and nothing else.
+    const turned = piecePatch(before, { ...before, rotation: 75 }, stored, placer, 9);
+    expect(turned).toEqual({ set: { rotation: 75 }, unset: [] });
+    // Moving it writes its position, leaving a rotation someone else just set.
+    const moved = piecePatch(before, { ...before, x: before.x + 160 }, stored, placer, 9);
+    expect(Object.keys(moved.set)).toEqual(["x"]);
+    expect(moved.unset).toEqual([]);
+  });
+
+  it("takes away a field the edit removed", () => {
+    const stored = piece("a", { locked: true });
+    const [before] = studioPieces({ a: stored });
+    const { locked: _locked, ...unlocked } = before;
+    const patch = piecePatch(before, unlocked, stored, { pid: "pk_a", name: "a", color: "#f00" }, 9);
+    expect(patch).toEqual({ set: {}, unset: ["locked"] });
+  });
+
+  it("lays the table out at one shared frame", () => {
+    expect(TABLE_FRAME.width / TABLE_FRAME.height).toBeCloseTo(1.6);
   });
 });

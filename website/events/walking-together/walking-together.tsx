@@ -437,8 +437,9 @@ export const GroupActivityDisplay = withSharedState(
 
 /** Keeps the walk's link chat reachable once the room moves on to the
  * collage. During the walk the chat sits in the middle of the page as before;
- * during the collage it docks into a side pane each person can fold away. The
- * wrapper renders the same way in both stages so the chat never remounts. */
+ * during the collage it docks, folded, on the right, clear of the scrap
+ * drawer, and each person can open it. The wrapper renders the same way in
+ * both stages so the chat never remounts. */
 function WalkChatDock({
   stage,
   children,
@@ -446,7 +447,7 @@ function WalkChatDock({
   stage: SessionStage;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const docked = stage === "collage";
   const modifier = docked ? (open ? "open" : "closed") : "walk";
 
@@ -458,7 +459,7 @@ function WalkChatDock({
           onClick={() => setOpen((wasOpen) => !wasOpen)}
           aria-expanded={open}
         >
-          {open ? "◂" : "▸"} walk chat
+          {open ? "▸" : "◂"} walk chat
         </button>
       )}
       <div className="walk-chat-dock__body" hidden={docked && !open}>
