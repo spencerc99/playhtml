@@ -82,7 +82,9 @@ const BACKGROUND_SKIP_TAGS = new Set([
   "WBR",
 ]);
 const MAX_BUTTONS_PER_PAGE = 20;
-const MAX_HEADINGS_PER_PAGE = 20;
+const MAX_HEADINGS_PER_PAGE = 5;
+/** Section titles (h3) are plentiful, so they get one of the page's heading slots at most. */
+const MAX_H3_HEADINGS_PER_PAGE = 1;
 const MAX_BUTTON_SVG_BYTES = 8 * 1024;
 const BUTTON_SELECTOR =
   'button, input[type="submit"], input[type="button"], [role="button"]';
@@ -199,6 +201,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   private imageCaptureCount = 0;
   private buttonCaptureCount = 0;
   private headingCaptureCount = 0;
+  private h3CaptureCount = 0;
   private lastCursorCheckAt = Number.NEGATIVE_INFINITY;
   private readonly measureImage: ImageMeasurer;
   private debugOverlay?: ScrapDebugSink;
@@ -307,6 +310,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     this.imageCaptureCount = 0;
     this.buttonCaptureCount = 0;
     this.headingCaptureCount = 0;
+    this.h3CaptureCount = 0;
     this.lastCursorCheckAt = Number.NEGATIVE_INFINITY;
   }
 
@@ -969,6 +973,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
 
     const level = headingLevel(heading);
     if (level === undefined) return;
+    if (level === 3 && this.h3CaptureCount >= MAX_H3_HEADINGS_PER_PAGE) return;
 
     const text = normalizeHeadingText(heading);
     if (
@@ -998,6 +1003,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     const faviconUrl = getFaviconUrl();
     this.seenCanonicalHeadingKeys.add(canonicalKey);
     this.headingCaptureCount++;
+    if (level === 3) this.h3CaptureCount++;
     this.emit({
       ...data,
       ...(faviconUrl ? { faviconUrl } : {}),

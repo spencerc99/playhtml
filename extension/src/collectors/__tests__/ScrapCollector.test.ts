@@ -1242,17 +1242,17 @@ describe("ScrapCollector", () => {
     );
   });
 
-  it("deduplicates headings by wording regardless of level and caps them at twenty", () => {
+  it("deduplicates headings by wording regardless of level and caps them at five", () => {
     const asH1 = createHeading({ level: 1, text: "Same Wording" });
     const asH3 = createHeading({ level: 3, text: "same wording" });
-    const uniqueHeadings = Array.from({ length: 20 }, (_, index) =>
+    const uniqueHeadings = Array.from({ length: 6 }, (_, index) =>
       createHeading({ text: `Heading number ${index}` }),
     );
 
     collector.enable();
     showForCapture([asH1, asH3, ...uniqueHeadings]);
 
-    expect(emitted("heading")).toHaveLength(20);
+    expect(emitted("heading")).toHaveLength(5);
     expect(
       emitted("heading").filter(
         (data) =>
@@ -1260,7 +1260,23 @@ describe("ScrapCollector", () => {
           data.text.toLowerCase() === "same wording",
       ),
     ).toHaveLength(1);
-    expect(observer().observed.has(uniqueHeadings[19])).toBe(false);
+    expect(observer().observed.has(uniqueHeadings[5])).toBe(false);
+  });
+
+  it("gives h3 section titles at most one of the page's heading slots", () => {
+    const sections = Array.from({ length: 3 }, (_, index) =>
+      createHeading({ level: 3, text: `Section ${index}` }),
+    );
+    const titles = Array.from({ length: 3 }, (_, index) =>
+      createHeading({ level: 2, text: `Title ${index}` }),
+    );
+
+    collector.enable();
+    showForCapture([...sections, ...titles]);
+
+    expect(
+      emitted("heading").map((data) => (data as { text: string }).text),
+    ).toEqual(["Section 0", "Title 0", "Title 1", "Title 2"]);
   });
 
   it("discovers headings added to the page after collection starts", async () => {
