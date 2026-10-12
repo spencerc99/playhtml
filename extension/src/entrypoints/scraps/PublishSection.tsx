@@ -8,6 +8,7 @@ import {
   buildPublishedCollage,
   deletePublishedCollage,
   uploadPublishedCollage,
+  type CollageCoverBaker,
   type PieceMaterialResolver,
 } from "./publishCollage";
 
@@ -23,6 +24,8 @@ export interface PublishSectionProps {
   >;
   workerUrl: string;
   materialFor: PieceMaterialResolver;
+  /** Draws the picture the link previews with where it is pasted. */
+  coverFor?: CollageCoverBaker;
   onShared: (share: CollagePublication) => void;
   onUnshared: () => void;
   onProblem: (text: string) => void;
@@ -50,6 +53,7 @@ export function PublishSection({
   record,
   workerUrl,
   materialFor,
+  coverFor,
   onShared,
   onUnshared,
   onProblem,
@@ -61,7 +65,11 @@ export function PublishSection({
     setBusy("sharing");
     setCopied(false);
     try {
-      const built = await buildPublishedCollage(record(), materialFor);
+      const built = await buildPublishedCollage(
+        record(),
+        materialFor,
+        coverFor,
+      );
       const next = await uploadPublishedCollage(workerUrl, built);
       onShared(next);
       setCopied(await copyText(next.url));
@@ -95,7 +103,11 @@ export function PublishSection({
     setBusy("sharing");
     setCopied(false);
     try {
-      const built = await buildPublishedCollage(record(), materialFor);
+      const built = await buildPublishedCollage(
+        record(),
+        materialFor,
+        coverFor,
+      );
       const next = await uploadPublishedCollage(workerUrl, built);
       onShared(next);
       setCopied(await copyText(next.url));

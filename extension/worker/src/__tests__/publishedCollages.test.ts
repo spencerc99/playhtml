@@ -476,6 +476,69 @@ describe("GET /collages/<id>", () => {
   });
 });
 
+describe("collage covers", () => {
+  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46]);
+
+  it("stores an optional cover and says so when the collage is read", async () => {
+    const { env, bucket } = makeEnv();
+    const res = await share(env, collage(), {
+      "img/0": PNG,
+      "img/1": GIF,
+      cover: JPEG,
+    });
+    expect(res.status).toBe(201);
+    const { id } = (await res.json()) as { id: string };
+    expect(bucket.objects.get(`collages/${id}/cover`)?.contentType).toBe(
+      "image/jpeg",
+    );
+
+    const read = await worker.fetch(
+      new Request(`https://worker.test/collages/${id}`),
+      env,
+      ctx,
+    );
+    expect(read.headers.get("X-Collage-Cover")).toBe("1");
+    const cover = await worker.fetch(
+      new Request(`https://worker.test/collages/${id}/cover`),
+      env,
+      ctx,
+    );
+    expect(cover.status).toBe(200);
+    expect(cover.headers.get("Content-Type")).toBe("image/jpeg");
+    expect(new Uint8Array(await cover.arrayBuffer())).toEqual(JPEG);
+  });
+
+  it("shares without a cover, and has none to serve", async () => {
+    const { env } = makeEnv();
+    const { id } = (await (await share(env)).json()) as { id: string };
+    const read = await worker.fetch(
+      new Request(`https://worker.test/collages/${id}`),
+      env,
+      ctx,
+    );
+    expect(read.headers.get("X-Collage-Cover")).toBeNull();
+    const cover = await worker.fetch(
+      new Request(`https://worker.test/collages/${id}/cover`),
+      env,
+      ctx,
+    );
+    expect(cover.status).toBe(404);
+  });
+
+  it("refuses a cover that is not a picture a preview can show", async () => {
+    const { env, bucket } = makeEnv();
+    for (const bad of [GIF, "not a picture"]) {
+      const res = await share(env, collage(), {
+        "img/0": PNG,
+        "img/1": GIF,
+        cover: bad,
+      });
+      expect(res.status).toBe(400);
+    }
+    expect(bucket.objects.size).toBe(0);
+  });
+});
+
 describe("DELETE /collages/<id>", () => {
   function del(id: string, token?: string) {
     return new Request(`https://worker.test/collages/${id}`, {

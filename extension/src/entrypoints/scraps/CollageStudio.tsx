@@ -124,7 +124,10 @@ import {
   PHONE_MAT_CAPTION,
   madeOn,
 } from "./CollageMat";
-import { publishPieceMaterial } from "./publishPieceImages";
+import {
+  publishCollageCover,
+  publishPieceMaterial,
+} from "./publishPieceImages";
 import { WORKER_URL } from "@movement/config";
 import { naturalScrapSize } from "./pieceLettering";
 import { CropSession } from "./CropSession";
@@ -2640,6 +2643,7 @@ export function CollageStudio({
                   record={() => draftRef.current.record}
                   workerUrl={WORKER_URL}
                   materialFor={publishPieceMaterial}
+                  coverFor={publishCollageCover}
                   onShared={(next) => {
                     if (!mountedRef.current) {
                       // The studio closed while the link uploaded: store its

@@ -21,7 +21,8 @@ import type { Env } from "../lib/supabase";
  * Multipart keeps the pictures as raw bytes (base64 in a JSON envelope would
  * add a third to every upload and force one huge JSON parse), lets the Worker
  * check each part's size on its own, and is what a browser's FormData sends
- * without any encoding code on the extension side.
+ * without any encoding code on the extension side. An optional `cover` part is
+ * a picture of the whole collage, shown when the link is pasted somewhere.
  */
 
 const RATE_LIMIT_RETRY_SECONDS = 60;
@@ -29,6 +30,7 @@ const RATE_LIMIT_RETRY_SECONDS = 60;
 const MULTIPART_OVERHEAD_BYTES = 1024 * 1024;
 const MAX_BODY_BYTES =
   PUBLISHED_COLLAGE_LIMITS.maxTotalImageBytes +
+  PUBLISHED_COLLAGE_LIMITS.maxImageBytes +
   PUBLISHED_COLLAGE_LIMITS.maxCollageJsonBytes +
   MULTIPART_OVERHEAD_BYTES;
 
@@ -38,6 +40,9 @@ const CORS_HEADERS = {
 
 const COLLAGE_PATH = /^\/collages\/([^/]+)$/;
 const IMAGE_PATH = /^\/collages\/([^/]+)\/(img\/[^/]+)$/;
+const COVER_PATH = /^\/collages\/([^/]+)\/cover$/;
+/** The picture types a link preview can show. */
+const COVER_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 function jsonResponse(
   status: number,
@@ -65,6 +70,10 @@ function collageKey(id: string): string {
 
 function imageKey(id: string, ref: string): string {
   return `${collagePrefix(id)}${ref}`;
+}
+
+function coverKey(id: string): string {
+  return `${collagePrefix(id)}cover`;
 }
 
 function base64Url(bytes: Uint8Array): string {
@@ -110,7 +119,8 @@ function sameHash(a: string, b: string): boolean {
 export type PublishedCollageRoute =
   | { kind: "create" }
   | { kind: "collage"; id: string }
-  | { kind: "image"; id: string; ref: string };
+  | { kind: "image"; id: string; ref: string }
+  | { kind: "cover"; id: string };
 
 export function matchPublishedCollageRoute(
   path: string,
@@ -118,6 +128,8 @@ export function matchPublishedCollageRoute(
   if (path === "/collages") return { kind: "create" };
   const image = IMAGE_PATH.exec(path);
   if (image) return { kind: "image", id: image[1], ref: image[2] };
+  const cover = COVER_PATH.exec(path);
+  if (cover) return { kind: "cover", id: cover[1] };
   const collage = COLLAGE_PATH.exec(path);
   if (collage) return { kind: "collage", id: collage[1] };
   return null;
@@ -140,6 +152,11 @@ export async function handlePublishedCollages(
       return jsonResponse(405, { error: "Method not allowed" });
     return handleImage(env, route.id, route.ref);
   }
+  if (route.kind === "cover") {
+    if (request.method !== "GET")
+      return jsonResponse(405, { error: "Method not allowed" });
+    return servePicture(env, coverKey(route.id));
+  }
   if (request.method === "GET") return handleRead(env, route.id);
   if (request.method === "DELETE") return handleDelete(request, env, route.id);
   return jsonResponse(405, { error: "Method not allowed" });
@@ -148,6 +165,7 @@ export async function handlePublishedCollages(
 interface ParsedUpload {
   collage: PublishedCollage;
   images: { ref: string; bytes: Uint8Array; type: string }[];
+  cover: { bytes: Uint8Array; type: string } | null;
 }
 
 /** Reads and checks an upload, or says exactly what is wrong with it. */
@@ -197,7 +215,11 @@ export async function readPublishedCollageUpload(
   // Every part besides the collage must be a picture the collage draws.
   const expected = new Set(indexes.map((index) => `img/${index}`));
   for (const name of new Set(form.keys())) {
-    if (name === "collage") continue;
+    if (name === "collage" || name === "cover") {
+      if (form.getAll(name).length !== 1)
+        throw new PublishedCollageError(`the upload repeats ${name}`);
+      continue;
+    }
     if (!expected.has(name))
       throw new PublishedCollageError(
         `the upload has an unexpected part: ${name}`,
@@ -234,7 +256,26 @@ export async function readPublishedCollageUpload(
     }
     images.push({ ref, bytes, type });
   }
-  return { collage, images };
+  return { collage, images, cover: await readCover(form.get("cover")) };
+}
+
+async function readCover(
+  part: FormDataEntryValue | null,
+): Promise<ParsedUpload["cover"]> {
+  if (part === null) return null;
+  if (typeof part === "string")
+    throw new PublishedCollageError("the cover is not a picture");
+  const file = part as File;
+  if (file.size === 0) throw new PublishedCollageError("the cover is empty");
+  if (file.size > PUBLISHED_COLLAGE_LIMITS.maxImageBytes)
+    throw new PublishedCollageError("the cover is larger than 5 MB");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const type = sniffPublishedImageType(bytes);
+  if (type === null || !COVER_TYPES.has(type))
+    throw new PublishedCollageError(
+      "the cover is not a PNG, JPEG or WebP image",
+    );
+  return { bytes, type };
 }
 
 async function handleCreate(request: Request, env: Env): Promise<Response> {
@@ -286,9 +327,17 @@ async function handleCreate(request: Request, env: Env): Promise<Response> {
         }),
       ),
     );
+    if (upload.cover) {
+      await env.SHARED_COLLAGES.put(coverKey(id), upload.cover.bytes, {
+        httpMetadata: { contentType: upload.cover.type },
+      });
+    }
     await env.SHARED_COLLAGES.put(collageKey(id), JSON.stringify(stored), {
       httpMetadata: { contentType: "application/json" },
-      customMetadata: { deleteTokenHash: await hashDeleteToken(deleteToken) },
+      customMetadata: {
+        deleteTokenHash: await hashDeleteToken(deleteToken),
+        ...(upload.cover ? { cover: "1" } : {}),
+      },
     });
   } catch (error) {
     console.error("[published collages] store failed:", error);
@@ -318,6 +367,10 @@ async function handleRead(env: Env, id: string): Promise<Response> {
       // showing at once rather than lingering in a browser cache.
       "Cache-Control": "no-cache",
       "X-Content-Type-Options": "nosniff",
+      // Read by the viewer page's link-preview tags, which point at the cover.
+      ...(object.customMetadata?.cover === "1"
+        ? { "X-Collage-Cover": "1" }
+        : {}),
     },
   });
 }
@@ -329,7 +382,11 @@ async function handleImage(
 ): Promise<Response> {
   if (publishedImageIndex(ref) === null)
     return jsonResponse(404, { error: "Not found" });
-  const object = await env.SHARED_COLLAGES.get(imageKey(id, ref));
+  return servePicture(env, imageKey(id, ref));
+}
+
+async function servePicture(env: Env, key: string): Promise<Response> {
+  const object = await env.SHARED_COLLAGES.get(key);
   if (!object) return jsonResponse(404, { error: "Not found" });
   return new Response(object.body, {
     headers: {

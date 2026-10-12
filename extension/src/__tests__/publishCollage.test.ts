@@ -405,6 +405,27 @@ describe("upload and take-down", () => {
     });
     expect([...form.keys()]).toEqual(["collage", "img/0", "img/1"]);
   });
+
+  it("sends the cover when one was drawn, and shares without one that failed", async () => {
+    const withCover = await buildPublishedCollage(
+      record([piece()]),
+      resolver(),
+      async () => new Blob([new Uint8Array(8)], { type: "image/jpeg" }),
+    );
+    expect([...publishFormData(withCover).keys()]).toContain("cover");
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const failed = await buildPublishedCollage(
+      record([piece()]),
+      resolver(),
+      async () => {
+        throw new Error("tainted canvas");
+      },
+    );
+    warn.mockRestore();
+    expect(failed.cover).toBeUndefined();
+    expect([...publishFormData(failed).keys()]).not.toContain("cover");
+  });
 });
 
 describe("the stored share", () => {

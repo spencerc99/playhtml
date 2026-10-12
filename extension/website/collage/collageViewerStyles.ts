@@ -97,12 +97,7 @@ export const VIEWER_STYLES = `
     transform: rotate(var(--piece-rotation));
     cursor: zoom-in;
     outline: none;
-    transition: transform 160ms ease, opacity 160ms ease, filter 160ms ease;
-  }
-
-  .published-collage__frame--looking .published-collage__piece:not(.published-collage__piece--lifted) {
-    opacity: 0.42;
-    filter: saturate(0.7);
+    transition: transform 160ms ease, filter 160ms ease;
   }
 
   .published-collage__piece--lifted,
@@ -153,49 +148,6 @@ export const VIEWER_STYLES = `
     text-overflow: ellipsis;
   }
 
-  .published-collage__tags {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-  }
-
-  .published-collage__edge {
-    position: absolute;
-    z-index: 10004;
-    box-sizing: border-box;
-    border-style: dotted;
-    border-color: var(--peek-tint, var(--c-muted));
-    transform-origin: center;
-  }
-
-  .published-collage__edge--on {
-    border-style: solid;
-  }
-
-  .published-collage__tag {
-    position: absolute;
-    z-index: 10005;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    max-width: 230px;
-    padding: 2px 5px;
-    transform-origin: left top;
-    border: 1px solid var(--peek-tint, color-mix(in srgb, var(--c-ink) 50%, transparent));
-    border-left-width: 3px;
-    border-radius: 2px;
-    background: var(--c-surface);
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--c-ink) 18%, transparent);
-    font-size: 9px;
-    line-height: 1.5;
-    white-space: nowrap;
-  }
-
-  .published-collage__tag-text {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
   @media (max-width: 600px) {
     .published-collage__title {
       flex: 1 1 auto;
@@ -237,20 +189,6 @@ export const VIEWER_STYLES = `
     color: var(--c-muted);
     font-size: 11px;
     line-height: 1.6;
-  }
-
-  .published-collage__loading {
-    width: 120px;
-    height: 2px;
-    margin: 14px auto 0 !important;
-    background: linear-gradient(90deg, transparent, var(--c-accent), transparent);
-    background-size: 200% 100%;
-    animation: published-collage-loading 1.2s linear infinite;
-  }
-
-  @keyframes published-collage-loading {
-    from { background-position: 100% 0; }
-    to { background-position: -100% 0; }
   }
 
   .published-collage__retry {
