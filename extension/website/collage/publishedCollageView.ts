@@ -235,16 +235,6 @@ export function viewerPieces(
   });
 }
 
-/** What a source tag says in a given mode. */
-export function sourceLabel(
-  piece: PublishedCollagePiece,
-  mode: Exclude<SourcesMode, "off">,
-): string {
-  const domain = piece.source.domain || "an unknown site";
-  if (mode === "site") return domain;
-  return piece.source.pageTitle.trim() || domain;
-}
-
 /** A page's favicon, or the public favicon service when the scrap kept none. */
 export function faviconFor(piece: PublishedCollagePiece): string | null {
   const own = piece.source.faviconUrl ? webUrl(piece.source.faviconUrl) : null;

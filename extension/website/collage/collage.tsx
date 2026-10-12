@@ -4,7 +4,6 @@
 import React, {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -44,12 +43,8 @@ import {
   COLLAGE_SHEET_STYLES,
   PIECE_MATERIAL_STYLES,
 } from "@extension/entrypoints/scraps/collageSheetStyles";
-import {
-  pieceBounds,
-  placeTags,
-  tintPieces,
-  type TagRequest,
-} from "@extension/entrypoints/scraps/peekTags";
+import { ProvenancePeek } from "@extension/entrypoints/scraps/ProvenancePeek";
+import { COLLAGE_PEEK_STYLES } from "@extension/entrypoints/scraps/collageStudioStyles";
 import {
   createPeekState,
   stepPeek,
@@ -68,7 +63,6 @@ import {
   viewerPieces,
   publishedCollageIdFrom,
   publishedImageUrl,
-  sourceLabel,
   type PublishedCollageLoad,
   type SourcesMode,
 } from "./publishedCollageView";
@@ -83,9 +77,6 @@ import { VIEWER_STYLES } from "./collageViewerStyles";
 const TOOLBAR = 48;
 const ROOM = { top: 40, bottom: 56 };
 const ROOM_NARROW = { top: 24, bottom: 40 };
-/** A tag's size before it has been measured, in screen pixels. */
-const ASSUMED_TAG = { width: 120, height: 18 };
-const NEAR_ON_SCREEN = 48;
 
 function useWindowSize() {
   const read = () => ({ width: window.innerWidth, height: window.innerHeight });
@@ -192,115 +183,6 @@ function Favicon({
       height={size}
       onError={() => setFailed(true)}
     />
-  );
-}
-
-/** Labels pinned beside every piece while the sources show, set like the studio's peek. */
-function SourceTags({
-  pieces,
-  mode,
-  scale,
-  frame,
-  hovered,
-}: {
-  pieces: readonly PublishedCollagePiece[];
-  mode: Exclude<SourcesMode, "off">;
-  scale: number;
-  frame: { width: number; height: number };
-  hovered: number | null;
-}) {
-  const holderRef = useRef<HTMLDivElement>(null);
-  const tintsRef = useRef<ReadonlyMap<string, string>>(new Map());
-  const [sizes, setSizes] = useState<
-    Record<string, { width: number; height: number }>
-  >({});
-
-  useLayoutEffect(() => {
-    const holder = holderRef.current;
-    if (!holder) return;
-    const measure = () => {
-      const measured: Record<string, { width: number; height: number }> = {};
-      for (const node of holder.querySelectorAll<HTMLElement>("[data-tag]")) {
-        const id = node.dataset.tag;
-        if (!id) continue;
-        const box = node.getBoundingClientRect();
-        measured[id] = { width: box.width / scale, height: box.height / scale };
-      }
-      setSizes(measured);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    for (const node of holder.querySelectorAll("[data-tag]"))
-      observer.observe(node);
-    return () => observer.disconnect();
-  }, [pieces, scale, mode]);
-
-  const covered = pieces.map((piece, index) => ({
-    id: String(index),
-    bounds: pieceBounds(piece),
-  }));
-  const tints = tintPieces(covered, tintsRef.current, NEAR_ON_SCREEN / scale);
-  tintsRef.current = tints;
-  const requests: TagRequest[] = covered.map(({ id, bounds }) => {
-    const size = sizes[id] ?? {
-      width: ASSUMED_TAG.width / scale,
-      height: ASSUMED_TAG.height / scale,
-    };
-    return {
-      pieceId: id,
-      piece: bounds,
-      width: size.width,
-      height: size.height,
-    };
-  });
-  const placed = new Map(
-    placeTags(requests, {
-      x: 0,
-      y: 0,
-      width: frame.width,
-      height: frame.height,
-    }).map((tag) => [tag.pieceId, tag] as const),
-  );
-
-  return (
-    <div ref={holderRef} className="published-collage__tags" aria-hidden="true">
-      {pieces.map((piece, index) => {
-        const id = String(index);
-        const tag = placed.get(id);
-        const tint = { "--peek-tint": tints.get(id) } as React.CSSProperties;
-        return (
-          <React.Fragment key={id}>
-            <div
-              className={`published-collage__edge${hovered === index ? " published-collage__edge--on" : ""}`}
-              style={{
-                left: piece.x,
-                top: piece.y,
-                width: piece.width,
-                height: piece.height,
-                transform: `rotate(${piece.rotation}deg)`,
-                borderWidth: 1 / scale,
-                ...tint,
-              }}
-            />
-            <div
-              data-tag={id}
-              className="published-collage__tag"
-              style={{
-                left: tag?.x ?? piece.x,
-                top: tag?.y ?? piece.y,
-                transform: `scale(${1 / scale})`,
-                ...tint,
-              }}
-            >
-              <Favicon piece={piece} size={10} />
-              <span className="published-collage__tag-text">
-                {sourceLabel(piece, mode)}
-              </span>
-            </div>
-          </React.Fragment>
-        );
-      })}
-    </div>
   );
 }
 
@@ -641,12 +523,18 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
                   })}
                 </div>
                 {shownMode !== "off" && (
-                  <SourceTags
-                    pieces={pieces}
-                    mode={shownMode}
+                  <ProvenancePeek
+                    pieces={studioPieces}
+                    hoveredId={
+                      hovered ? (studioPieces[hovered.index]?.id ?? null) : null
+                    }
                     scale={scale}
-                    frame={frame}
-                    hovered={hovered?.index ?? null}
+                    bounds={{
+                      x: 0,
+                      y: 0,
+                      width: frame.width,
+                      height: frame.height,
+                    }}
                   />
                 )}
                 <div className="collage-frame__edge" />
@@ -761,9 +649,12 @@ function PublishedCollagePage() {
     );
   } else if (!load) {
     body = (
-      <Notice title="unfolding the collage…">
-        <p className="published-collage__loading" aria-hidden="true" />
-      </Notice>
+      // A quiet line, as the studio shows while it opens.
+      <div className="published-collage published-collage--notice">
+        <p className="collage-studio__label" role="status">
+          opening the collage...
+        </p>
+      </div>
     );
   } else if (load.kind === "missing") {
     body = (
@@ -796,6 +687,7 @@ function PublishedCollagePage() {
       <style>{COLLAGE_MAT_STYLES}</style>
       <style>{COLLAGE_PIECE_TOOL_STYLES}</style>
       <style>{COLLAGE_VIEW_STYLES}</style>
+      <style>{COLLAGE_PEEK_STYLES}</style>
       <style>{VIEWER_STYLES}</style>
       {body}
     </>

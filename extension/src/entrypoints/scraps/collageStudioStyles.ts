@@ -10,6 +10,110 @@ import {
   PIECE_MATERIAL_STYLES,
 } from "./collageSheetStyles";
 
+/** The source labels and piece edges the peek shows, shared with the collage viewer page. */
+export const COLLAGE_PEEK_STYLES = `
+  /* The peeked piece's own edge, so its label has something to belong to. */
+  /* While peeking, a piece and its label share one quiet tint, so the label
+     can be matched to its piece where pieces sit close or overlap. */
+  .collage-peek-edge {
+    position: absolute;
+    z-index: 10004;
+    border-style: dotted;
+    border-color: var(--peek-tint, var(--c-muted));
+    transform-origin: center;
+    pointer-events: none;
+  }
+
+  .collage-peek-edge--on {
+    border-style: solid;
+  }
+
+  /* On a shared collage the edge is its adder's cursor color, drawn boldly
+     so whose is whose reads across the table. */
+  .collage-peek-edge--owned {
+    border-style: solid;
+  }
+
+  /* An archive label pinned to a piece while the peek key is held. It is a
+     slip of paper over the work, never a control: it takes no pointer. */
+  .collage-peek {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    max-width: 230px;
+    padding: 2px 5px;
+    transform-origin: left top;
+    border: 1px solid var(--peek-tint, color-mix(in srgb, var(--c-ink) 50%, transparent));
+    border-left-width: 3px;
+    border-radius: 2px;
+    background: var(--c-surface);
+    color: var(--c-ink);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--c-ink) 18%, transparent);
+    font-family: "Martian Mono", monospace;
+    font-size: 8px;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* The same label, floated over the drawer for the scrap under the pointer.
+     Fixed, so the drawer's scroll does not clip it. */
+  .collage-peek--tray {
+    position: fixed;
+    z-index: 10010;
+    border-left-width: 1px;
+  }
+
+  .collage-peek__where {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+  }
+
+  /* Who added a scrap, leading its label in their cursor's color. */
+  .collage-peek__who {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .collage-peek__dot {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+
+  .collage-peek__mark {
+    display: block;
+    width: 10px;
+    height: 10px;
+    object-fit: contain;
+  }
+
+  .collage-peek__more {
+    display: flex;
+    flex-direction: column;
+    padding-top: 1px;
+    border-top: 1px solid color-mix(in srgb, var(--c-ink) 14%, transparent);
+    color: var(--c-muted);
+  }
+
+  .collage-peek__line {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+`;
+
 export const COLLAGE_STUDIO_STYLES = `
   /* The collage studio's palette: WWO's linen nudged a hair cooler. Every
      surface, rule and ink in the studio and the history reads from these. */
@@ -881,106 +985,7 @@ ${PIECE_MATERIAL_STYLES}
     color: var(--c-muted);
   }
 
-  /* The peeked piece's own edge, so its label has something to belong to. */
-  /* While peeking, a piece and its label share one quiet tint, so the label
-     can be matched to its piece where pieces sit close or overlap. */
-  .collage-peek-edge {
-    position: absolute;
-    z-index: 10004;
-    border-style: dotted;
-    border-color: var(--peek-tint, var(--c-muted));
-    transform-origin: center;
-    pointer-events: none;
-  }
-
-  .collage-peek-edge--on {
-    border-style: solid;
-  }
-
-  /* On a shared collage the edge is its adder's cursor color, drawn boldly
-     so whose is whose reads across the table. */
-  .collage-peek-edge--owned {
-    border-style: solid;
-  }
-
-  /* An archive label pinned to a piece while the peek key is held. It is a
-     slip of paper over the work, never a control: it takes no pointer. */
-  .collage-peek {
-    position: absolute;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    max-width: 230px;
-    padding: 2px 5px;
-    transform-origin: left top;
-    border: 1px solid var(--peek-tint, color-mix(in srgb, var(--c-ink) 50%, transparent));
-    border-left-width: 3px;
-    border-radius: 2px;
-    background: var(--c-surface);
-    color: var(--c-ink);
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--c-ink) 18%, transparent);
-    font-family: "Martian Mono", monospace;
-    font-size: 8px;
-    line-height: 1.5;
-    letter-spacing: 0.02em;
-    pointer-events: none;
-    user-select: none;
-  }
-
-  /* The same label, floated over the drawer for the scrap under the pointer.
-     Fixed, so the drawer's scroll does not clip it. */
-  .collage-peek--tray {
-    position: fixed;
-    z-index: 10010;
-    border-left-width: 1px;
-  }
-
-  .collage-peek__where {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    white-space: nowrap;
-  }
-
-  /* Who added a scrap, leading its label in their cursor's color. */
-  .collage-peek__who {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
-    font-weight: 700;
-    white-space: nowrap;
-  }
-
-  .collage-peek__dot {
-    display: block;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-  }
-
-  .collage-peek__mark {
-    display: block;
-    width: 10px;
-    height: 10px;
-    object-fit: contain;
-  }
-
-  .collage-peek__more {
-    display: flex;
-    flex-direction: column;
-    padding-top: 1px;
-    border-top: 1px solid color-mix(in srgb, var(--c-ink) 14%, transparent);
-    color: var(--c-muted);
-  }
-
-  .collage-peek__line {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
+${COLLAGE_PEEK_STYLES}
   /* Where the save button used to be: a quiet word on how the work stands. */
   .collage-standing {
     margin: 0;

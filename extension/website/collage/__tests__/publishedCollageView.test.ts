@@ -17,7 +17,6 @@ import {
   viewerPieces,
   publishedCollageIdFrom,
   publishedImageUrl,
-  sourceLabel,
 } from "../publishedCollageView";
 
 const ID = "AbCdEfGhIjKlMnOpQrStU_";
@@ -212,17 +211,6 @@ describe("viewerPieces", () => {
 });
 
 describe("labels", () => {
-  it("names the site or the page", () => {
-    expect(sourceLabel(piece(), "site")).toBe("example.com");
-    expect(sourceLabel(piece(), "title")).toBe("A Page Title");
-    expect(
-      sourceLabel(
-        piece({ source: { ...piece().source, pageTitle: " " } }),
-        "title",
-      ),
-    ).toBe("example.com");
-  });
-
   it("uses the scrap's favicon, else the favicon service", () => {
     expect(
       faviconFor(
