@@ -349,10 +349,10 @@ export function ScrapsPage() {
 
   return (
     <main
+      className="scraps-page"
       style={{
         position: "relative",
         width: "100vw",
-        height: "100vh",
         overflow: "hidden",
         background: "#faf9f6",
         color: "#3d3833",
@@ -401,6 +401,9 @@ export function ScrapsPage() {
           border-radius: 4px;
           background: rgba(245, 240, 232, 0.9);
         }
+        /* The visible height, so on a phone nothing sits under the browser's
+           own toolbar; browsers without dynamic units keep the plain one. */
+        .scraps-page { height: 100vh; height: 100dvh; }
         .scraps-heading { top: 14px; width: min(520px, calc(100vw - 320px)); }
         .scraps-stage { inset: 64px 0 0; }
         .scraps-history-error { position: absolute; top: 80px; right: 16px; z-index: 5; color: #827a72; font-size: 11px; }
