@@ -17,6 +17,7 @@ compatibility_date = "2024-01-01"
 #   Set secrets via: wrangler secret put RESEND_API_KEY
 #   Set secrets via: wrangler secret put CODA_API_TOKEN
 #   Optional:        wrangler secret put RESEND_SEGMENT_ID
+#   Optional:        wrangler secret put INTERNET_MAP_PASSWORD
 #
 # Required variables:
 # - SUPABASE_URL - Your Supabase project URL
@@ -34,6 +35,8 @@ compatibility_date = "2024-01-01"
 # - GET /events/stats: ADMIN_KEY required
 # - POST /events/export: ADMIN_KEY required
 # - POST /feedback: Public (validated + rate limited)
+# - GET /internet-map/<bundle>/<file>: ADMIN_KEY or INTERNET_MAP_PASSWORD (private R2 bundles;
+#   the password is optional and only opens map bundles)
 #
 # TODO: Consider adding CORS restrictions to admin endpoints
 
@@ -63,6 +66,14 @@ binding = "WWO_ADMIN_DB"
 database_name = "wwo-admin"
 database_id = "e6d5d996-c301-45d6-8b81-584d9ae5ee43"
 migrations_dir = "migrations"
+
+# Private internet map bundles. They hold participants' full page URLs and
+# titles, so they are served only through the admin-authenticated
+# /internet-map/<bundle>/<file> route, never as public site files.
+# Create once: bunx wrangler r2 bucket create wwo-internet-map
+[[r2_buckets]]
+binding = "INTERNET_MAP_BUNDLES"
+bucket_name = "wwo-internet-map"
 
 [[migrations]]
 tag = "v1"

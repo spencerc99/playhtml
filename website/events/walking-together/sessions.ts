@@ -102,13 +102,10 @@ export const SESSIONS: WorkshopSession[] = [
     // Sized for a small group. The last prompt makes the shape that becomes
     // the collage template.
     prompts: [
-      "Wave hello to everyone",
-      "Make a circle together",
-      "Stack all cursors in the center",
-      "Line up from lightest to darkest color",
-      "Play tag with each other",
-      "Make a star together",
-      "Make a shape for the internet you want, and hold it",
+      "Make a circle",
+      "Play tag",
+      "Make a zigzag together",
+      "Imagine your cursor as a falling rain drop",
     ],
     hasCollageStage: true,
     hasJoinWalk: true,

@@ -39,6 +39,15 @@ export function selectSafariVersion(versions) {
   return { version: `${major}.${minor + 1}`, id: null };
 }
 
+const SUBMITTED_REVIEW_STATES = new Set(["WAITING_FOR_REVIEW", "IN_REVIEW", "COMPLETE"]);
+
+// App Store Connect treats `submitted` as a write-only flag, so the PATCH
+// response reports the result through `state` and `submittedDate` instead.
+export function reviewSubmissionAccepted(submission) {
+  const attributes = submission?.attributes ?? {};
+  return attributes.submitted === true || Boolean(attributes.submittedDate) || SUBMITTED_REVIEW_STATES.has(attributes.state);
+}
+
 function token(privateKey) {
   const now = Math.floor(Date.now() / 1000);
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -168,7 +177,7 @@ async function complete(request) {
   const submitted = await request("PATCH", `/reviewSubmissions/${submission.data.id}`, {
     data: { type: "reviewSubmissions", id: submission.data.id, attributes: { submitted: true } },
   });
-  if (submitted.data.attributes.submitted !== true) {
+  if (!reviewSubmissionAccepted(submitted.data)) {
     throw new Error(`Safari review submission ${submission.data.id} was not accepted as submitted.`);
   }
   process.stdout.write(`Safari ${expectedVersion} build ${buildNumber} submitted for App Review.\n`);

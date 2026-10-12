@@ -137,6 +137,7 @@ button:hover { background: var(--panel-ink); color: var(--panel); }
 #boot b { display: block; letter-spacing: .18em; margin-bottom: 8px; }
 #boot .bar { width: 260px; height: 8px; border: 2px solid var(--line); margin: 10px auto 0; }
 #boot .bar i { display: block; height: 100%; width: 0; background: var(--panel-ink); transition: width .2s; }
+#boot a { color: inherit; }
 
 /* ---------------------------------------------------------------- routes */
 #routes { left: 12px; bottom: 12px; width: 268px; }
@@ -171,3 +172,6 @@ button:hover { background: var(--panel-ink); color: var(--panel); }
 #r-legs .leg.end { color: var(--panel-ink); }
 #r-legs::-webkit-scrollbar { width: 6px; }
 #r-legs::-webkit-scrollbar-thumb { background: rgba(222,216,189,.25); }
+#bootpw { display: flex; gap: 6px; justify-content: center; margin-top: 12px; }
+#bootpw input, #bootpw button { font: inherit; color: inherit; background: transparent; border: 2px solid var(--line); padding: 4px 8px; }
+#bootpw button { cursor: pointer; }

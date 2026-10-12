@@ -18,6 +18,33 @@ export type Walkers = Record<string, Walker>;
 
 export interface WalkersData {
   walkers: Walkers;
+  /** When the admin ended the walk. */
+  endedAt?: number;
+  /** Each walker's stops as the admin saw them when the walk ended. Once
+   * ended, trails draw from this snapshot instead of from events, so they
+   * stay exactly as they were. (Comparing event timestamps to `endedAt`
+   * would mix different browsers' clocks.) */
+  frozen?: Record<string, WalkStep[]>;
+}
+
+/** A plain copy of the current stops, to store as the ended walk. */
+export function freezeSteps(
+  steps: Record<string, WalkStep[]>,
+): Record<string, WalkStep[]> {
+  const frozen: Record<string, WalkStep[]> = {};
+  for (const [pid, list] of Object.entries(steps)) {
+    frozen[pid] = list.map(({ url, label, ts }) => ({ url, label, ts }));
+  }
+  return frozen;
+}
+
+/** The stops to draw: the frozen snapshot once the walk has ended, otherwise
+ * the live ones. */
+export function walkSteps(
+  data: Pick<WalkersData, "endedAt" | "frozen">,
+  live: Record<string, WalkStep[]>,
+): Record<string, WalkStep[]> {
+  return data.endedAt !== undefined ? data.frozen ?? {} : live;
 }
 
 /** One page a walker landed on. `url` is origin + path, no query or hash. */
@@ -220,4 +247,46 @@ export function walkerTrailState(
       progress: variedStopProgress[i],
     })),
   };
+}
+
+/** A label to place near a point on the page, in page pixels. */
+export interface LabelRequest {
+  key: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Nudges labels apart so none covers another: each keeps its spot if it is
+ * clear, otherwise steps down, then up, a line at a time until it is. Labels
+ * earlier in the list keep their spots first, so the ones that matter most
+ * (walkers' current pages) never move for a stop name.
+ */
+export function spreadLabels(
+  labels: LabelRequest[],
+  maxSteps = 12,
+): Record<string, { x: number; y: number }> {
+  const placed: Array<{ x: number; y: number; width: number; height: number }> = [];
+  const result: Record<string, { x: number; y: number }> = {};
+  const overlaps = (a: LabelRequest, y: number) =>
+    placed.some(
+      (b) =>
+        a.x < b.x + b.width &&
+        b.x < a.x + a.width &&
+        y < b.y + b.height &&
+        b.y < y + a.height,
+    );
+  for (const label of labels) {
+    let y = label.y;
+    for (let step = 1; step <= maxSteps && overlaps(label, y); step++) {
+      // 1 → one line down, 2 → one line up, 3 → two down, ...
+      const lines = Math.ceil(step / 2) * (step % 2 === 1 ? 1 : -1);
+      y = label.y + lines * label.height;
+    }
+    placed.push({ x: label.x, y, width: label.width, height: label.height });
+    result[label.key] = { x: label.x, y };
+  }
+  return result;
 }

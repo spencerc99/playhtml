@@ -6,8 +6,11 @@ import {
   applyMaskAlpha,
   borderSamples,
   cropPixelRegion,
+  cutoutKeeps,
   edgeColorMask,
   featherMask,
+  invertMask,
+  invertedCutout,
   maskPositionPercent,
   parseCutout,
   regionPlacement,
@@ -419,5 +422,46 @@ describe("parseCutout", () => {
     expect(() => parseCutout({ method: "edge-color" })).toThrow(
       /numeric tolerance/,
     );
+  });
+
+  it("reads a cutout that keeps the background", () => {
+    expect(
+      parseCutout({ method: "edge-color", tolerance: 0.2, keep: "background" }),
+    ).toEqual({ method: "edge-color", tolerance: 0.2, keep: "background" });
+  });
+
+  it("reads an explicit subject side as the plain cut", () => {
+    expect(
+      parseCutout({ method: "edge-color", tolerance: 0.2, keep: "subject" }),
+    ).toEqual({ method: "edge-color", tolerance: 0.2 });
+  });
+
+  it("rejects an unknown side loudly", () => {
+    expect(() =>
+      parseCutout({ method: "edge-color", tolerance: 0.2, keep: "both" }),
+    ).toThrow(/unknown side: both/);
+  });
+});
+
+describe("inverse cutout", () => {
+  it("keeps the backdrop and drops the subject", () => {
+    const bitmap = bitmapOf(["WWWW", "WKKW", "WKKW", "WWWW"], PALETTE);
+    const mask = invertMask(edgeColorMask(bitmap, 0.1));
+    expect(maskRows(mask, 4)).toEqual(["####", "#..#", "#..#", "####"]);
+  });
+
+  it("flips a feathered edge so the hole is as soft as the cut", () => {
+    expect(Array.from(invertMask(new Uint8ClampedArray([0, 64, 200, 255])))).toEqual(
+      [255, 191, 55, 0],
+    );
+  });
+
+  it("toggles which side stays and stores the subject side as before", () => {
+    const plain = { method: "edge-color" as const, tolerance: 0.12 };
+    const inverse = invertedCutout(plain);
+    expect(inverse).toEqual({ ...plain, keep: "background" });
+    expect(cutoutKeeps(inverse)).toBe("background");
+    expect(invertedCutout(inverse)).toEqual(plain);
+    expect(cutoutKeeps(plain)).toBe("subject");
   });
 });

@@ -738,13 +738,12 @@ export function WalkingRecordPage({
             />
           </div>
 
-          <ScrapsLaunchCard />
-
           <HowBrowsedSection
             key={`${record.period}:${record.range.startTs}`}
             record={record}
           />
           <SettledPlacesSection record={record} />
+          <ScrapsLaunchCard />
           <BrowsingPortraitsSection
             record={record}
             movementLoading={movementLoading}

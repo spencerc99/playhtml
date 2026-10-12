@@ -1,304 +1,180 @@
-// ABOUTME: The shared table where a small group drops, moves, turns, and sizes scraps together.
-// ABOUTME: Gestures stay local (plus a live preview) and commit to shared data on release.
-import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
+// ABOUTME: The shared table where a small group collages their walk scraps together.
+// ABOUTME: It is the scraps studio itself, editing the room's synced pieces instead of a saved collage.
+import React, { useCallback, useMemo, useRef } from "react";
+import "@fontsource/atkinson-hyperlegible/latin-400.css";
+import "@fontsource/atkinson-hyperlegible/latin-700.css";
 import { playhtml, usePlayerIdentity } from "@playhtml/react";
+import { CollageStudio } from "@extension/entrypoints/scraps/CollageStudio";
+import { COLLAGE_STYLES } from "@movement/components/ScrapCollage";
+import { COLLAGE_STUDIO_STYLES } from "@extension/entrypoints/scraps/collageStudioStyles";
+import type { CollagePiece } from "@extension/entrypoints/scraps/collageRecord";
+import type {
+  PiecesChange,
+  SharedCollage,
+} from "@extension/entrypoints/scraps/sharedCollage";
 import { isAdmin } from "../admin";
 import {
-  arrangeIntoShape,
-  isOnTop,
-  makePiece,
-  movedTransform,
   orderAroundCentroid,
   piecesOf,
-  remoteDragTransforms,
-  rotateResizeTransform,
-  sortedPieces,
-  sourceDomain,
+  remoteDrafts,
   templatePointsFromCursors,
-  topZ,
-  transformChanged,
-  transformOf,
   type CollageData,
   type CollageLive,
+  type DraftPatch,
   type Piece,
-  type PieceTransform,
-  type Pieces,
+  type Placer,
 } from "./pieces";
+import { useSessionScraps } from "./sessionScraps";
 import {
-  isScrapDrag,
-  measureImage,
-  scrapInputFromDrag,
-  type ScrapInput,
-} from "./scrapInput";
-import { downloadBlob, renderCollagePng } from "./exportPng";
-import { ScrapsPanel } from "./ScrapsPanel";
+  TABLE_FRAME,
+  piecePatch,
+  studioPieces,
+  tableChange,
+  tablePiece,
+  type PiecePatch,
+} from "./studioBridge";
 import "./collage.scss";
 
 interface Props {
   data: CollageData;
   setData: (data: CollageData | ((draft: CollageData) => void)) => void;
-  /** Everyone's in-progress drag, from the drag presence channel. */
-  peers: Array<{ user: { isMe: boolean }; live: CollageLive | undefined }>;
+  /** Everyone's in-progress edits, from the drag presence channel. */
+  peers: Array<{ user: { isMe: boolean }; live: Partial<CollageLive> | undefined }>;
   setLive: (live: CollageLive) => void;
 }
 
-/** A gesture in progress on one piece. Kept out of shared data until release. */
-interface Gesture {
-  id: string;
-  mode: "move" | "turn";
-  start: PieceTransform;
-  startPointer: { x: number; y: number };
-  /** Piece center in table pixels at the start of a turn gesture. */
-  centerPx: { x: number; y: number };
-  moved: boolean;
+/** Writes a piece field by field, so two people editing different parts of
+ * one piece both keep their change, and a field the piece no longer has is
+ * deleted rather than set to undefined. */
+function writePiece(target: Piece, next: Piece) {
+  const record = target as unknown as Record<string, unknown>;
+  const values = next as unknown as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (!(key in values)) delete record[key];
+  }
+  for (const [key, value] of Object.entries(values)) {
+    if (JSON.stringify(record[key]) !== JSON.stringify(value)) record[key] = value;
+  }
 }
 
-/** How long after a gather its staggered glide still applies. */
-const GATHER_WINDOW_MS = 6000;
-/** The whole stagger fits in this span, however many scraps there are. */
-const GATHER_SPREAD_MS = 2400;
-const GATHER_MAX_STEP_MS = 140;
-
-function useElementSize(ref: React.RefObject<HTMLElement | null>) {
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const read = () =>
-      setSize({ width: el.clientWidth, height: el.clientHeight });
-    read();
-    const observer = new ResizeObserver(read);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [ref]);
-  return size;
-}
-
-function newPieceId(pid: string): string {
-  return `${pid.slice(0, 8)}-${Date.now().toString(36)}-${Math.random()
-    .toString(36)
-    .slice(2, 7)}`;
+/** Writes just the fields an edit set, and deletes the ones it took away. */
+function applyPatch(target: Piece, patch: PiecePatch) {
+  const record = target as unknown as Record<string, unknown>;
+  for (const key of patch.unset) delete record[key];
+  for (const [key, value] of Object.entries(patch.set)) record[key] = value;
 }
 
 export function CollageTable({ data, setData, peers, setLive }: Props) {
   const { pid, name, color } = usePlayerIdentity();
   const admin = isAdmin(name, color);
-  const pieces = piecesOf(data);
-  const locked = data?.locked ?? false;
+  const stored = piecesOf(data);
+  const storedRef = useRef(stored);
+  storedRef.current = stored;
   const templatePoints = Object.values(data?.templatePoints ?? {});
+  const scraps = useSessionScraps();
+  const [notice, setNotice] = React.useState<string | null>(null);
 
-  const tableRef = useRef<HTMLDivElement>(null);
-  const size = useElementSize(tableRef);
-
-  // Latest shared pieces for event handlers, so handlers never need to be
-  // recreated (or re-subscribed) when shared data changes.
-  const piecesRef = useRef<Pieces>(pieces);
-  piecesRef.current = pieces;
-  const lockedRef = useRef(locked);
-  lockedRef.current = locked;
-
-  const [gesture, setGesture] = useState<{
-    id: string;
-    transform: PieceTransform;
-  } | null>(null);
-  const gestureRef = useRef<Gesture | null>(null);
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [failedSrcs, setFailedSrcs] = useState<Record<string, true>>({});
-  const [dropActive, setDropActive] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
-
-  const remote = remoteDragTransforms(peers);
-
-  const flashNotice = useCallback((message: string) => {
-    setNotice(message);
-    window.setTimeout(
-      () => setNotice((current) => (current === message ? null : current)),
-      3200,
-    );
-  }, []);
-
-  /** The one entrypoint every scrap source uses to put a scrap on the table.
-   * `at` is a point relative to the table; omitted, the scrap lands near the
-   * middle. */
-  const addScrap = useCallback(
-    async (input: ScrapInput, at?: { x: number; y: number }) => {
-      if (lockedRef.current) return;
-      if (!pid) {
-        flashNotice("still connecting, try again in a moment");
-        return;
-      }
-      const measured =
-        input.naturalWidth && input.naturalHeight
-          ? { width: input.naturalWidth, height: input.naturalHeight }
-          : await measureImage(input.src);
-      // The table may have been set while the image was measuring.
-      if (lockedRef.current) return;
-      const table = tableRef.current;
-      const tableAspect =
-        table && table.clientHeight > 0
-          ? table.clientWidth / table.clientHeight
-          : 16 / 9;
-      const point = at ?? {
-        x: 0.5 + (Math.random() - 0.5) * 0.2,
-        y: 0.5 + (Math.random() - 0.5) * 0.2,
-      };
-      const piece = makePiece(
-        {
-          src: input.src,
-          pageUrl: input.pageUrl,
-          alt: input.alt,
-          aspect: measured ? measured.height / measured.width : NaN,
-        },
-        { pid, name: name || "someone", color: color || "#888888" },
-        point,
-        piecesRef.current,
-        tableAspect,
-        { id: newPieceId(pid), now: Date.now(), random: Math.random },
-      );
-      setData((draft) => {
-        if (draft.locked) return;
-        // A room whose collage data predates a field has no map to key into.
-        if (!draft.pieces) {
-          draft.pieces = { [piece.id]: piece };
-          return;
-        }
-        draft.pieces[piece.id] = piece;
-      });
-    },
-    [pid, name, color, setData, flashNotice],
+  // Other people's drags show as they happen, laid over what is stored.
+  const drafts = remoteDrafts(peers, stored);
+  const draftKey = JSON.stringify(drafts);
+  const pieces = useMemo(
+    () => studioPieces({ ...stored, ...drafts }),
+    // The stored map and the drafts are new objects every render; their
+    // contents are what matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(stored), draftKey],
   );
 
-  // ---- Gestures: move and turn ------------------------------------------
+  const placer = useCallback(
+    (): Placer => ({ pid: pid || "someone", name: name || "someone", color: color || "#888888" }),
+    [pid, name, color],
+  );
 
-  const tablePoint = (clientX: number, clientY: number) => {
-    const rect = tableRef.current?.getBoundingClientRect();
-    return rect
-      ? { x: clientX - rect.left, y: clientY - rect.top }
-      : { x: clientX, y: clientY };
-  };
-
-  const startGesture = (
-    e: React.PointerEvent,
-    piece: Piece,
-    mode: Gesture["mode"],
-  ) => {
-    if (lockedRef.current || e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const start = transformOf(piece);
-    gestureRef.current = {
-      id: piece.id,
-      mode,
-      start,
-      startPointer: tablePoint(e.clientX, e.clientY),
-      centerPx: { x: piece.x * size.width, y: piece.y * size.height },
-      moved: false,
-    };
-    setGesture({ id: piece.id, transform: start });
-
-    let frame = 0;
-    let latest = start;
-    const onMove = (ev: PointerEvent) => {
-      const g = gestureRef.current;
-      if (!g || size.width <= 0 || size.height <= 0) return;
-      const pointer = tablePoint(ev.clientX, ev.clientY);
-      latest =
-        g.mode === "move"
-          ? movedTransform(g.start, {
-              dx: (pointer.x - g.startPointer.x) / size.width,
-              dy: (pointer.y - g.startPointer.y) / size.height,
-            })
-          : rotateResizeTransform(g.start, g.centerPx, g.startPointer, pointer);
-      g.moved = g.moved || transformChanged(g.start, latest);
-      setGesture({ id: g.id, transform: latest });
-      // Broadcast the in-progress transform at most once per frame. This is
-      // presence, not shared data: nothing is stored until release.
-      if (!frame) {
-        frame = requestAnimationFrame(() => {
-          frame = 0;
-          setLive({ drag: { id: g.id, transform: latest } });
+  const onChange = useCallback(
+    (change: PiecesChange) => {
+      const now = Date.now();
+      const { write, remove } = tableChange(change, storedRef.current, placer(), now);
+      if (write.length === 0 && remove.length === 0) return;
+      const edits = change.upserts.filter((studio) => studio.scrap.kind === "image");
+      setData((draft) => {
+        if (!draft.pieces) draft.pieces = {};
+        write.forEach((piece, i) => {
+          const target = draft.pieces[piece.id];
+          if (!target) {
+            draft.pieces[piece.id] = piece;
+            return;
+          }
+          const before = change.before?.get(piece.id);
+          if (!before) {
+            writePiece(target, piece);
+            return;
+          }
+          // Only what this edit changed, so someone else's edit to another
+          // part of the same scrap survives.
+          const existing = storedRef.current[piece.id] ?? piece;
+          applyPatch(target, piecePatch(before, edits[i], existing, placer(), now));
         });
+        for (const id of remove) delete draft.pieces[id];
+      });
+    },
+    [placer, setData],
+  );
+
+  const lastDraftAt = useRef(0);
+  const onDraft = useCallback(
+    (draft: PiecesChange | null) => {
+      if (draft === null) {
+        setLive({ draft: null });
+        return;
       }
-    };
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-      if (frame) cancelAnimationFrame(frame);
-      const g = gestureRef.current;
-      gestureRef.current = null;
-      setGesture(null);
-      setLive({ drag: null });
-      if (!g) return;
-      commitGesture(g, latest);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
-  };
+      // Live previews ride presence; a few a second is enough to follow.
+      const at = performance.now();
+      if (at - lastDraftAt.current < 50) return;
+      lastDraftAt.current = at;
+      const now = Date.now();
+      const stored = storedRef.current;
+      const patches: DraftPatch[] = draft.upserts
+        .filter((studio) => studio.scrap.kind === "image")
+        .map((studio) => {
+          const existing = stored[studio.id];
+          const before = draft.before?.get(studio.id);
+          if (!existing || !before) {
+            return { id: studio.id, set: tablePiece(studio, existing, placer(), now) };
+          }
+          return { id: studio.id, ...piecePatch(before, studio, existing, placer(), now) };
+        });
+      setLive({ draft: patches });
+    },
+    [placer, setLive],
+  );
 
-  /** One shared write per gesture: the new transform if it changed, and a
-   * bump to the front if the piece isn't already there. A plain press with no
-   * movement is the bring-to-front gesture. */
-  const commitGesture = (g: Gesture, final: PieceTransform) => {
-    if (lockedRef.current) return;
-    const current = piecesRef.current;
-    const raise = !isOnTop(current, g.id);
-    if (!g.moved && !raise) return;
-    const nextZ = topZ(current) + 1;
-    setData((draft) => {
-      const piece = draft.pieces?.[g.id];
-      // Someone may have removed it mid-gesture.
-      if (!piece) return;
-      if (g.moved) {
-        piece.x = final.x;
-        piece.y = final.y;
-        piece.width = final.width;
-        piece.rotation = final.rotation;
-      }
-      if (raise) piece.z = nextZ;
-    });
-  };
+  const removalRefusal = useCallback(
+    (piece: CollagePiece) => {
+      const owner = storedRef.current[piece.id];
+      if (!owner || owner.placedByPid === pid) return null;
+      return `only ${owner.placedByName || "whoever added it"} can remove this scrap`;
+    },
+    [pid],
+  );
 
-  const removePiece = (piece: Piece) => {
-    if (lockedRef.current || piece.placedByPid !== pid) return;
-    setData((draft) => {
-      if (draft.pieces?.[piece.id]) delete draft.pieces[piece.id];
-    });
-  };
+  const pieceOwner = useCallback((piece: CollagePiece) => {
+    const owner = storedRef.current[piece.id];
+    if (!owner?.placedByName) return null;
+    return { name: owner.placedByName, color: owner.placedByColor || "#888888" };
+  }, []);
 
-  // ---- Drop from the film strip ------------------------------------------
-
-  const onDragOver = (e: React.DragEvent) => {
-    if (locked || !isScrapDrag(Array.from(e.dataTransfer.types))) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-    if (!dropActive) setDropActive(true);
-  };
-
-  const onDrop = (e: React.DragEvent) => {
-    setDropActive(false);
-    if (locked) return;
-    e.preventDefault();
-    const input = scrapInputFromDrag(e.dataTransfer);
-    if (!input) return;
-    const p = tablePoint(e.clientX, e.clientY);
-    void addScrap(
-      input,
-      size.width > 0 && size.height > 0
-        ? { x: p.x / size.width, y: p.y / size.height }
-        : undefined,
-    );
+  const flash = (text: string) => {
+    setNotice(text);
+    window.setTimeout(() => setNotice((current) => (current === text ? null : current)), 3000);
   };
 
   // ---- Admin ------------------------------------------------------------
 
   const captureShape = () => {
-    const table = tableRef.current;
+    const frame = document.querySelector(".collage-table .collage-frame");
     const client = playhtml.cursorClient;
-    if (!table || !client) {
-      flashNotice("cursors are not connected yet");
+    if (!frame || !client) {
+      flash("cursors are not connected yet");
       return;
     }
     const cursors = Array.from(client.getCursorPresences().entries()).flatMap(
@@ -309,53 +185,19 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
                 key,
                 x: presence.cursor.x,
                 y: presence.cursor.y,
-                color:
-                  presence.playerIdentity?.playerStyle.colorPalette[0] ??
-                  "#888888",
+                color: presence.playerIdentity?.playerStyle.colorPalette[0] ?? "#888888",
               },
             ]
           : [],
     );
     // The admin's own cursor is on this button, not in the shape.
-    const points = templatePointsFromCursors(
-      cursors,
-      table.getBoundingClientRect(),
-      pid,
-    );
+    const points = templatePointsFromCursors(cursors, frame.getBoundingClientRect(), pid);
     if (Object.keys(points).length === 0) {
-      flashNotice("no cursors on the table to capture");
+      flash("no cursors on the table to capture");
       return;
     }
     setData((draft) => {
       draft.templatePoints = points;
-    });
-  };
-
-  /** The collaging effect: every scrap glides into the captured shape (or a
-   * soft oval when none was captured), packed densely with overlaps. One
-   * shared write; each client staggers the glide from `arrangedAt`. */
-  const gatherIntoShape = () => {
-    const current = piecesRef.current;
-    if (lockedRef.current || Object.keys(current).length === 0) {
-      flashNotice("no scraps on the table to gather");
-      return;
-    }
-    const aspect = size.height > 0 ? size.width / size.height : 16 / 9;
-    const shape = orderAroundCentroid(templatePoints, aspect);
-    const layout = arrangeIntoShape(current, shape, aspect, Math.random);
-    setData((draft) => {
-      if (!draft.pieces) return;
-      for (const [id, t] of Object.entries(layout)) {
-        const piece = draft.pieces[id];
-        // Someone may have removed it since the layout was computed.
-        if (!piece) continue;
-        piece.x = t.x;
-        piece.y = t.y;
-        piece.width = t.width;
-        piece.rotation = t.rotation;
-        piece.z = t.z;
-      }
-      draft.arrangedAt = Date.now();
     });
   };
 
@@ -365,235 +207,101 @@ export function CollageTable({ data, setData, peers, setLive }: Props) {
     });
   };
 
-  const toggleLock = () => {
+  /** Clears every scrap off the table, for a fresh start between runs. */
+  const clearTable = () => {
+    if (!window.confirm("Clear every scrap off the table for everyone?")) return;
     setData((draft) => {
-      draft.locked = !lockedRef.current;
+      for (const id of Object.keys(draft.pieces ?? {})) delete draft.pieces[id];
     });
-  };
-
-  const exportPng = async () => {
-    if (exporting || size.width <= 0) return;
-    setExporting(true);
-    try {
-      const blob = await renderCollagePng(piecesRef.current, size);
-      const stamp = new Date().toISOString().slice(0, 10);
-      downloadBlob(blob, `walking-together-collage-${stamp}.png`);
-    } catch (err) {
-      console.error("[collage] export failed", err);
-      flashNotice("export failed, see the console");
-    } finally {
-      setExporting(false);
-    }
   };
 
   // ---- Render -----------------------------------------------------------
 
-  const ordered = sortedPieces(pieces);
-  const frontZ = topZ(pieces) + 1;
-  // Right after a gather, scraps glide in one after another, bottom of the
-  // stack first, so the collage visibly assembles.
-  const gathering =
-    !!data?.arrangedAt && Date.now() - data.arrangedAt < GATHER_WINDOW_MS;
-  const gatherStep = Math.min(
-    GATHER_MAX_STEP_MS,
-    GATHER_SPREAD_MS / Math.max(1, ordered.length),
-  );
-  const tableAspect = size.height > 0 ? size.width / size.height : 1;
-  const outline = orderAroundCentroid(templatePoints, tableAspect);
+  const outline = orderAroundCentroid(
+    templatePoints,
+    TABLE_FRAME.width / TABLE_FRAME.height,
+  ).map((p) => ({ x: p.x * TABLE_FRAME.width, y: p.y * TABLE_FRAME.height }));
 
-  return (
-    <div
-      ref={tableRef}
-      className={[
-        "collage-table",
-        dropActive ? "collage-table--drop" : "",
-        locked ? "collage-table--locked" : "",
-      ].join(" ")}
-      onDragOver={onDragOver}
-      onDragLeave={(e) => {
-        if (e.currentTarget === e.target) setDropActive(false);
-      }}
-      onDrop={onDrop}
-    >
-      {templatePoints.length > 0 && size.width > 0 && (
+  const overlay = (
+    <>
+      {outline.length >= 2 && (
         <svg
           className="collage-template"
-          width={size.width}
-          height={size.height}
+          width={TABLE_FRAME.width}
+          height={TABLE_FRAME.height}
           aria-hidden="true"
         >
-          {outline.length >= 3 && (
-            <polygon
-              points={outline
-                .map((p) => `${p.x * size.width},${p.y * size.height}`)
-                .join(" ")}
-            />
+          {outline.length >= 3 ? (
+            <polygon points={outline.map((p) => `${p.x},${p.y}`).join(" ")} />
+          ) : (
+            <line x1={outline[0].x} y1={outline[0].y} x2={outline[1].x} y2={outline[1].y} />
           )}
-          {outline.length === 2 && (
-            <line
-              x1={outline[0].x * size.width}
-              y1={outline[0].y * size.height}
-              x2={outline[1].x * size.width}
-              y2={outline[1].y * size.height}
-            />
-          )}
-          {templatePoints.map((p, i) => (
-            <circle
-              key={i}
-              cx={p.x * size.width}
-              cy={p.y * size.height}
-              r={4}
-              style={{ fill: p.color }}
-            />
-          ))}
         </svg>
       )}
-
-      {size.width > 0 &&
-        ordered.map((piece, index) => {
-          const mine = gesture?.id === piece.id;
-          const t = mine
-            ? gesture.transform
-            : remote[piece.id] ?? transformOf(piece);
-          const widthPx = t.width * size.width;
-          const heightPx = widthPx * piece.aspect;
-          const hovered = hoveredId === piece.id;
-          const own = !!pid && piece.placedByPid === pid;
-          const failed = !!failedSrcs[piece.src];
-          const domain = sourceDomain(piece);
-          // Height of the turned scrap's bounding box, so the hover label sits
-          // just under the scrap at any rotation.
-          const turn = (t.rotation * Math.PI) / 180;
-          const boundsHeight =
-            Math.abs(widthPx * Math.sin(turn)) +
-            Math.abs(heightPx * Math.cos(turn));
-          return (
-            <div
-              key={piece.id}
-              className={[
-                "collage-piece",
-                mine ? "collage-piece--active" : "",
-                remote[piece.id] ? "collage-piece--remote" : "",
-              ].join(" ")}
-              data-piece-id={piece.id}
-              style={{
-                left: t.x * size.width,
-                top: t.y * size.height,
-                width: widthPx,
-                height: heightPx,
-                zIndex: mine ? frontZ : piece.z,
-                transitionDelay: gathering
-                  ? `${Math.round(index * gatherStep)}ms`
-                  : undefined,
-              }}
-            >
-              <div
-                className="collage-piece__paper"
-                style={{
-                  transform: `rotate(${t.rotation}deg)`,
-                  transitionDelay: gathering
-                    ? `${Math.round(index * gatherStep)}ms`
-                    : undefined,
-                }}
-                onPointerDown={(e) => startGesture(e, piece, "move")}
-                onPointerEnter={() => setHoveredId(piece.id)}
-                onPointerLeave={() =>
-                  setHoveredId((h) => (h === piece.id ? null : h))
-                }
-              >
-                {failed ? (
-                  <div className="collage-piece__torn">
-                    <span>{domain || "a scrap"}</span>
-                  </div>
-                ) : (
-                  <img
-                    src={piece.src}
-                    alt={piece.alt}
-                    draggable={false}
-                    referrerPolicy="no-referrer"
-                    onError={() =>
-                      setFailedSrcs((f) => ({ ...f, [piece.src]: true }))
-                    }
-                  />
-                )}
-                {!locked && (
-                  <div
-                    className="collage-piece__handle"
-                    title="turn and resize"
-                    onPointerDown={(e) => startGesture(e, piece, "turn")}
-                  />
-                )}
-                {!locked && own && (
-                  <button
-                    className="collage-piece__remove"
-                    title="remove your scrap"
-                    aria-label="remove your scrap"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={() => removePiece(piece)}
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-              {(hovered || mine) && (
-                <div
-                  className="collage-piece__label"
-                  style={{ top: `calc(50% + ${boundsHeight / 2 + 10}px)` }}
-                >
-                  <span style={{ color: piece.placedByColor }}>
-                    {piece.placedByName}
-                  </span>
-                  {domain && <span className="collage-piece__domain">{domain}</span>}
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-      {ordered.length === 0 && !locked && (
+      {pieces.length === 0 && (
         <p className="collage-empty">
-          scraps from the walk land here
+          {scraps === null
+            ? "scraps from the walk land here"
+            : "pick scraps from your walk on the left to place them here"}
         </p>
       )}
+    </>
+  );
 
-      <div className="collage-toolbar" onPointerDown={(e) => e.stopPropagation()}>
-        {locked ? (
-          <span className="collage-toolbar__note">the table is set</span>
-        ) : (
-          notice && <span className="collage-toolbar__note">{notice}</span>
-        )}
-      </div>
-
-      {!locked && (
-        <ScrapsPanel
-          placedSrcs={new Set(ordered.map((p) => p.src))}
-          onPick={(input) => void addScrap(input)}
-        />
-      )}
-
+  const toolbar = (
+    <>
+      {notice && <span className="collage-studio__label">{notice}</span>}
       {admin && (
-        <div
-          className="collage-admin"
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <button onClick={captureShape} title="Snapshot everyone's cursors as a shape guide">
+        <span className="collage-table-admin" data-admin-control>
+          <button
+            type="button"
+            className="collage-action"
+            onClick={captureShape}
+            title="Snapshot everyone's cursors as a shape guide"
+          >
             capture shape
           </button>
           {templatePoints.length > 0 && (
-            <button onClick={clearShape}>clear shape</button>
+            <button type="button" className="collage-action" onClick={clearShape}>
+              clear shape
+            </button>
           )}
-          <button
-            onClick={gatherIntoShape}
-            title="Glide every scrap into the shape, packed together"
-          >
-            collage into shape
+          <button type="button" className="collage-action" onClick={clearTable}>
+            clear table
           </button>
-          <button onClick={toggleLock}>{locked ? "unlock" : "lock"}</button>
-          <button onClick={exportPng} disabled={exporting}>
-            {exporting ? "exporting" : "export png"}
-          </button>
-        </div>
+        </span>
       )}
+    </>
+  );
+
+  const shared: SharedCollage = {
+    frame: TABLE_FRAME,
+    pieces,
+    onChange,
+    onDraft,
+    removalRefusal,
+    pieceOwner,
+    overlay,
+    toolbar,
+    caption: (
+      <span className="collage-studio__label">
+        {pieces.length} scrap{pieces.length === 1 ? "" : "s"} on the table · point at one or hold i to see who added
+        each
+      </span>
+    ),
+  };
+
+  return (
+    <div className="collage-table">
+      <style>{COLLAGE_STYLES}</style>
+      <style>{COLLAGE_STUDIO_STYLES}</style>
+      <CollageStudio
+        scraps={scraps ?? []}
+        editing={null}
+        onSaved={() => {}}
+        onLeave={() => {}}
+        shared={shared}
+      />
     </div>
   );
 }

@@ -51,6 +51,8 @@ import {
 } from "./collageRecord";
 import {
   DEFAULT_CUTOUT_TOLERANCE,
+  cutoutKeeps,
+  invertedCutout,
   type PieceCutout,
 } from "./backgroundCutout";
 import {
@@ -65,6 +67,7 @@ import {
 } from "./arrangementHistory";
 import {
   leavesKeysAlone,
+  releaseTypingFocus,
   studioCommandFor,
   type StudioMode,
 } from "./studioKeymap";
@@ -113,7 +116,8 @@ import { PieceMaterial } from "./PieceMaterial";
 import { naturalScrapSize } from "./pieceLettering";
 import { CropSession } from "./CropSession";
 import { KeysPopover } from "./KeysPopover";
-import { ProvenancePeek } from "./ProvenancePeek";
+import { OwnerLine, ProvenancePeek } from "./ProvenancePeek";
+import { pieceBounds } from "./peekTags";
 import { paperBackground } from "./paperGrain";
 import { PiecesHereMenu } from "./PiecesHereMenu";
 import {
@@ -161,6 +165,8 @@ import {
   replacePieces,
 } from "./pieceGroup";
 import { handleZones, type HandleZone } from "./handleZones";
+import { pinchChange, pinchedPieces, type FingerPair } from "./pinchGesture";
+import { usePhoneLayout } from "./phoneLayout";
 import {
   toolSessionActive,
   visiblePanel,
@@ -176,9 +182,23 @@ import {
 } from "./useCollageAutosave";
 import type { SaveStanding } from "./autosaveSchedule";
 import { collageExportName } from "./collageFile";
+import {
+  isEmptyChange,
+  piecesChange,
+  piecesMap,
+  rebaseHistory,
+  type SharedCollage,
+} from "./sharedCollage";
 
 /** Longest side a freshly placed piece takes, in frame units. */
 const PLACED_MAX_SIDE = 220;
+/**
+ * On a phone the frame is zoomed far out, so a fresh piece is brought up to
+ * at least this share of the frame's shorter side, to be seen and held with a
+ * finger. It is a share of the frame, not of the screen, so a scrap comes in
+ * the same size whether the drawer is lowered or raised into a sheet.
+ */
+const PHONE_PLACED_FRAME_SHARE = 0.4;
 const ROTATION_SNAP_DEGREES = 15;
 /** How far a pasted or duplicated piece lands from its original. */
 const COPY_OFFSET = 24;
@@ -192,6 +212,9 @@ const STAGE_TOP_BAND = 52;
 /** The mat around the frame, in screen pixels, and the band under it that carries the caption. */
 const MAT = 26;
 const MAT_CAPTION = 44;
+/** On a phone every pixel goes to the collage, so the mat is narrower. */
+const PHONE_MAT = 12;
+const PHONE_MAT_CAPTION = 32;
 /** How far inside the stage's edge a pinned handle stays, in screen pixels. */
 const HANDLE_INSET = 10;
 /** Frame units the pointer must travel before an alt-drag pulls out a copy. */
@@ -262,6 +285,13 @@ type Gesture =
       /** What was held when the marquee began, kept under a shift marquee. */
       base: Selection;
       additive: boolean;
+    }
+  | {
+      kind: "pinch";
+      /** The pieces in hand as they were when the second finger landed. */
+      before: readonly CollagePiece[];
+      /** Where both fingers were then, in frame units. */
+      start: FingerPair;
     };
 
 /** A rotate or scale driven by pointer movement with no button held. */
@@ -292,6 +322,13 @@ interface CollageStudioProps {
   autosaveTimers?: AutosaveTimers;
   /** The choice of editor, offered to people with experiment access. */
   editorSwitch?: EditorSwitchChoice;
+  /**
+   * A collage other people edit at the same time. The studio then reports
+   * each settled edit instead of saving, takes in everyone else's edits, and
+   * leaves out what belongs to a saved collage: title, format, saving and
+   * leaving.
+   */
+  shared?: SharedCollage;
 }
 
 /** What the toolbar says about where the work stands. */
@@ -313,9 +350,12 @@ function standingWords(standing: SaveStanding): {
   }
 }
 
-function placedPiece(item: ScrapItem, at: Point, z: number): CollagePiece {
-  const natural = naturalScrapSize(item);
-  const size = fitWithin(natural.width, natural.height, PLACED_MAX_SIDE);
+function placedPiece(
+  item: ScrapItem,
+  at: Point,
+  z: number,
+  size: { width: number; height: number },
+): CollagePiece {
   return {
     id: createPieceId(),
     scrapId: item.id,
@@ -348,9 +388,14 @@ export function CollageStudio({
   onLeave,
   autosaveTimers,
   editorSwitch,
+  shared,
 }: CollageStudioProps) {
   const initial = useMemo<readonly CollagePiece[]>(
-    () => editing?.pieces.map((piece) => ({ ...piece })) ?? [],
+    () =>
+      (shared ? shared.pieces : editing?.pieces)?.map((piece) => ({ ...piece })) ??
+      [],
+    // A shared collage is only read here once; later edits arrive below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [editing],
   );
   const [history, setHistory] = useState<ArrangementHistory>(() =>
@@ -372,8 +417,27 @@ export function CollageStudio({
   const [backShows, setBackShows] = useState<BackShows>(
     editing?.backShows ?? "pieces",
   );
-  const frame = formatOf(format);
+  const sharedWidth = shared?.frame.width;
+  const sharedHeight = shared?.frame.height;
+  const frame = useMemo(
+    () =>
+      sharedWidth !== undefined && sharedHeight !== undefined
+        ? { ...formatOf(format), width: sharedWidth, height: sharedHeight }
+        : formatOf(format),
+    [format, sharedWidth, sharedHeight],
+  );
   const [drawer, setDrawer] = useState(() => readDrawerPreference());
+  const phone = usePhoneLayout();
+  /**
+   * On a phone the drawer can be raised into a sheet for a long look through
+   * the scraps. The collage then shrinks to a bare miniature above it, with
+   * no mat, caption or bars, so each scrap tapped can be seen landing.
+   */
+  const [raised, setRaised] = useState(false);
+  const sheet = phone && raised && !drawer.collapsed;
+  const mat = sheet ? 0 : phone ? PHONE_MAT : MAT;
+  const matCaption = sheet ? 0 : phone ? PHONE_MAT_CAPTION : MAT_CAPTION;
+  const topBand = sheet ? STAGE_PADDING : STAGE_TOP_BAND;
   /** Whether the collage is turned over to its back, where the sources are. */
   const [over, setOver] = useState(false);
   const [backLook, setBackLook] = useState<BackLook>(BACK_LOOK);
@@ -522,8 +586,10 @@ export function CollageStudio({
       firstChangeRef.current = false;
       return;
     }
+    // A shared collage is written as each edit settles, never saved here.
+    if (shared) return;
     noteChange();
-  }, [changeKey, noteChange]);
+  }, [changeKey, noteChange, shared]);
 
   const mode: StudioMode = over
     ? "back"
@@ -535,8 +601,55 @@ export function CollageStudio({
         ? "cutout"
         : "idle";
 
+  // A shared collage trades edits with everyone else. Pieces this person is
+  // dragging, turning, scaling or cutting out go out as a draft others can
+  // watch, and are written once the edit settles. Everyone else's writes fold
+  // into the history, so undo only ever takes back this person's own edits.
+  const sharedRef = useRef(shared);
+  sharedRef.current = shared;
+  /** The pieces as last written or received, which edits are measured from. */
+  const syncedRef = useRef(piecesMap(initial));
+  const seenSharedRef = useRef(shared?.pieces);
+  const draftingRef = useRef(false);
+  const sharedPieces = shared?.pieces;
+  const changing =
+    (gesture.kind !== "idle" && gesture.kind !== "marquee") ||
+    transform !== null ||
+    cutoutSession !== null;
+  useEffect(() => {
+    const current = sharedRef.current;
+    if (!current || !sharedPieces) return;
+    if (sharedPieces !== seenSharedRef.current) {
+      seenSharedRef.current = sharedPieces;
+      const theirs = piecesChange(syncedRef.current, sharedPieces);
+      if (!isEmptyChange(theirs)) {
+        syncedRef.current = piecesMap(sharedPieces);
+        // The rebased arrangement comes back through here on the next render,
+        // which is when this person's own edits are measured.
+        setHistory((history) => rebaseHistory(history, theirs));
+        return;
+      }
+    }
+    const mine = piecesChange(syncedRef.current, pieces);
+    if (changing) {
+      if (mine.upserts.length > 0) {
+        draftingRef.current = true;
+        current.onDraft?.(mine);
+      }
+      return;
+    }
+    if (draftingRef.current) {
+      draftingRef.current = false;
+      current.onDraft?.(null);
+    }
+    if (isEmptyChange(mine)) return;
+    syncedRef.current = piecesMap(pieces);
+    current.onChange(mine);
+  }, [sharedPieces, pieces, changing]);
+
   // Leaving the tab, or the page itself, writes what is pending right away.
   useEffect(() => {
+    if (shared) return;
     const onHidden = () => {
       if (document.visibilityState === "hidden") flush();
     };
@@ -547,7 +660,7 @@ export function CollageStudio({
       document.removeEventListener("visibilitychange", onHidden);
       window.removeEventListener("pagehide", onPageHide);
     };
-  }, [flush]);
+  }, [flush, shared]);
 
   // With the autosave healthy there is nothing to warn about; the warning is
   // kept for a write that failed or one still in flight.
@@ -596,6 +709,7 @@ export function CollageStudio({
     () => pieces.find((piece) => piece.id === hoveredId) ?? null,
     [pieces, hoveredId],
   );
+  const hoveredOwner = hovered ? shared?.pieceOwner?.(hovered) ?? null : null;
   /** The pile the menu is listing, resolved fresh so edits keep it honest. */
   const hereStack = useMemo(() => {
     if (!hereMenu) return [];
@@ -675,9 +789,9 @@ export function CollageStudio({
     const update = () => {
       setScale(
         frameScale(frame, {
-          width: stage.clientWidth - STAGE_PADDING * 2 - MAT * 2,
+          width: stage.clientWidth - STAGE_PADDING * 2 - mat * 2,
           height:
-            stage.clientHeight - STAGE_TOP_BAND - STAGE_PADDING - MAT - MAT_CAPTION,
+            stage.clientHeight - topBand - STAGE_PADDING - mat - matCaption,
         }),
       );
     };
@@ -687,7 +801,7 @@ export function CollageStudio({
     return () => observer.disconnect();
     // The fit is recomputed when the format changes, so a new size is shown
     // at its own zoom rather than the one the previous format was fitted at.
-  }, [frame]);
+  }, [frame, mat, matCaption, topBand]);
 
   /**
    * The part of the stage in view, in frame units, kept clear of the bars
@@ -705,16 +819,16 @@ export function CollageStudio({
       const inset = HANDLE_INSET;
       setInView({
         x: (area.left + inset - origin.left) / scale,
-        y: (area.top + STAGE_TOP_BAND - origin.top) / scale,
+        y: (area.top + topBand - origin.top) / scale,
         width: (area.width - inset * 2) / scale,
-        height: (area.height - STAGE_TOP_BAND - inset) / scale,
+        height: (area.height - topBand - inset) / scale,
       });
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(stage);
     return () => observer.disconnect();
-  }, [scale, frame]);
+  }, [scale, frame, topBand]);
 
   /** Converts a pointer event into frame coordinates. */
   const framePoint = useCallback(
@@ -732,20 +846,47 @@ export function CollageStudio({
 
   const addPiece = useCallback(
     (item: ScrapItem, at: Point) => {
-      const piece = placedPiece(item, at, pieces.length);
+      const natural = naturalScrapSize(item);
+      let size = fitWithin(natural.width, natural.height, PLACED_MAX_SIDE);
+      if (phone) {
+        const longest = Math.max(size.width, size.height);
+        const wanted =
+          Math.min(frame.width, frame.height) * PHONE_PLACED_FRAME_SHARE;
+        if (longest < wanted) {
+          const grow = wanted / longest;
+          size = { width: size.width * grow, height: size.height * grow };
+        }
+      }
+      // On top of everything, even where the stack has gaps in its numbering.
+      const top = pieces.reduce((highest, piece) => Math.max(highest, piece.z + 1), 0);
+      const piece = placedPiece(item, at, top, size);
       commit([...pieces, piece]);
       selectPiece(piece.id);
       setNotice(null);
     },
-    [commit, pieces, selectPiece],
+    [commit, frame, phone, pieces, selectPiece],
   );
 
   const removeSelected = useCallback(() => {
     if (selection.ids.length === 0) return;
-    commit(removePieces(pieces, selection.ids));
+    // On a shared collage some pieces may only be removed by someone else;
+    // those stay, and the first reason is said out loud.
+    const refusal = shared?.removalRefusal;
+    const refused = refusal
+      ? selectedPieces.flatMap((piece) => {
+          const reason = refusal(piece);
+          return reason ? [{ id: piece.id, reason }] : [];
+        })
+      : [];
+    const removable = selection.ids.filter(
+      (id) => !refused.some((piece) => piece.id === id),
+    );
+    if (refused.length > 0) setNotice({ tone: "quiet", text: refused[0].reason });
+    if (removable.length === 0) return;
+    commit(removePieces(pieces, removable));
     setSelection(EMPTY_SELECTION);
     setCrop(null);
-  }, [commit, pieces, selection]);
+  }, [commit, pieces, selectedPieces, selection, shared?.removalRefusal]);
 
   /**
    * Lays copies of the given pieces on top of the stack and takes them in
@@ -893,17 +1034,27 @@ export function CollageStudio({
     }
   }, [editPiece, selected]);
 
-  const tuneCutout = useCallback(
-    (tolerance: number) => {
+  const reshapeCutout = useCallback(
+    (change: (cutout: PieceCutout) => PieceCutout) => {
       if (!cutoutSession) return;
-      const cutout: PieceCutout = { method: "edge-color", tolerance };
       editPiece(
         cutoutSession.pieceId,
-        (piece) => ({ ...piece, cutout }),
+        (piece) =>
+          piece.cutout ? { ...piece, cutout: change(piece.cutout) } : piece,
         `cutout:${cutoutSession.pieceId}`,
       );
     },
     [cutoutSession, editPiece],
+  );
+
+  const tuneCutout = useCallback(
+    (tolerance: number) => reshapeCutout((cutout) => ({ ...cutout, tolerance })),
+    [reshapeCutout],
+  );
+
+  const invertCutout = useCallback(
+    () => reshapeCutout(invertedCutout),
+    [reshapeCutout],
   );
 
   const confirmCutout = useCallback(() => {
@@ -1062,6 +1213,7 @@ export function CollageStudio({
   }, [mode]);
 
   useEffect(() => {
+    if (shared) return;
     const onSaveNow = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== "s") return;
       if (!(event.metaKey || event.ctrlKey)) return;
@@ -1071,7 +1223,7 @@ export function CollageStudio({
     };
     window.addEventListener("keydown", onSaveNow);
     return () => window.removeEventListener("keydown", onSaveNow);
-  }, [flush]);
+  }, [flush, shared]);
 
   /**
    * Ends a run so the next edit becomes its own undo step. A press that never
@@ -1314,7 +1466,8 @@ export function CollageStudio({
 
       // What a click would take, shown faintly so a buried piece can be seen
       // before it is reached for. A rotated-rect test per piece, no pixels.
-      if (gesture.kind === "idle" && !toolActive) {
+      // A finger has no hover, so nothing is outlined ahead of a tap.
+      if (gesture.kind === "idle" && !toolActive && event.pointerType !== "touch") {
         const under = topPieceUnder(reachable, point);
         setHoveredId(under?.id ?? null);
       }
@@ -1638,6 +1791,70 @@ export function CollageStudio({
   };
 
   /**
+   * Fingers on the stage, by pointer, where each last was on screen. They are
+   * followed as the events pass down to whatever each finger landed on, so a
+   * second finger can turn a one-finger drag into a pinch.
+   */
+  const touchesRef = useRef(new Map<number, { clientX: number; clientY: number }>());
+  const fingerPair = (): FingerPair | null => {
+    const [first, second] = [...touchesRef.current.values()];
+    if (!first || !second) return null;
+    return { a: framePoint(first), b: framePoint(second) };
+  };
+
+  /**
+   * A second finger landing while pieces are in hand starts a pinch: from
+   * then on the two fingers grow, turn and carry what is held, and the press
+   * the first finger began no longer counts as a drag or a tap.
+   */
+  const onStageTouchDown = (event: React.PointerEvent) => {
+    if (event.pointerType !== "touch") return;
+    // A new first finger starts a new touch, whatever was left over.
+    if (event.isPrimary) touchesRef.current.clear();
+    touchesRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+    if (touchesRef.current.size !== 2) return;
+    if (over || toolActive || transform || selectedPieces.length === 0) return;
+    const start = fingerPair();
+    if (!start) return;
+    // The second finger belongs to the pinch, not to the piece under it.
+    event.stopPropagation();
+    pressRef.current = null;
+    setHereMenu(null);
+    setGesture({ kind: "pinch", before: selectedPieces, start });
+  };
+
+  const onStageTouchMove = (event: React.PointerEvent) => {
+    if (event.pointerType !== "touch") return;
+    if (!touchesRef.current.has(event.pointerId)) return;
+    touchesRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+    if (gesture.kind !== "pinch") return;
+    event.stopPropagation();
+    const now = fingerPair();
+    if (!now) return;
+    editPieces(pinchedPieces(gesture.before, gesture.start, now), "pinch");
+    const { factor, degrees } = pinchChange(gesture.start, now);
+    setGestureReadout(
+      `scale ${Math.round(factor * 100)}% · rotate ${Math.round(((normalizeDegrees(degrees) + 180) % 360) - 180)} deg`,
+    );
+  };
+
+  const onStageTouchEnd = (event: React.PointerEvent) => {
+    if (event.pointerType !== "touch") return;
+    touchesRef.current.delete(event.pointerId);
+    if (gesture.kind !== "pinch") return;
+    // Lifting either finger settles the pinch; the finger left down does
+    // nothing until it is lifted too.
+    event.stopPropagation();
+    endGesture();
+  };
+
+  /**
    * Starts a drag from one of the grips around the selection: a corner or an
    * edge scales it, and the squares just past the corners turn it about its
    * middle. One piece and several work the same way.
@@ -1828,16 +2045,27 @@ export function CollageStudio({
       : null;
 
   return (
-    <div className="collage-studio">
+    <div
+      className={`collage-studio${phone ? " collage-studio--phone" : ""}${
+        phone && !drawer.collapsed ? " collage-studio--picking" : ""
+      }${sheet ? " collage-studio--sheet" : ""}`}
+    >
       <ScrapTray
         items={scraps}
+        dock={phone ? "bottom" : "side"}
         width={drawer.width}
         collapsed={drawer.collapsed}
         onWidth={(width) => updateDrawer({ width })}
-        onCollapsed={(collapsed) => updateDrawer({ collapsed })}
+        onCollapsed={(collapsed) => {
+          if (collapsed) setRaised(false);
+          updateDrawer({ collapsed });
+        }}
+        raised={raised}
+        onRaised={setRaised}
         onPlace={(item) => {
           // Placing a scrap is an edit, so the collage turns face up for it.
           if (over) turnOver();
+          releaseTypingFocus(document.activeElement);
           // Clicked scraps fan out from the middle so each one stays grabbable.
           addPiece(item, fanOutPlacement(pieces.length, frame));
         }}
@@ -1852,8 +2080,20 @@ export function CollageStudio({
         <div
           className="collage-frame-area__stage"
           ref={stageRef}
-          style={{ padding: STAGE_PADDING, paddingTop: STAGE_TOP_BAND }}
+          style={{ padding: STAGE_PADDING, paddingTop: topBand }}
           data-marquee-ground=""
+          // Any press here, on a piece, a grip or bare paper, turns from a
+          // text field to the collage, so undo reaches the collage.
+          onPointerDownCapture={(event) => {
+            releaseTypingFocus(
+              document.activeElement,
+              event.target as HTMLElement,
+            );
+            onStageTouchDown(event);
+          }}
+          onPointerMoveCapture={onStageTouchMove}
+          onPointerUpCapture={onStageTouchEnd}
+          onPointerCancelCapture={onStageTouchEnd}
           onPointerDown={onStagePointerDown}
           onPointerMove={onStagePointerMove}
           onPointerUp={endGesture}
@@ -1868,16 +2108,16 @@ export function CollageStudio({
             className="collage-mat"
             data-marquee-ground=""
             style={{
-              width: frame.width * scale + MAT * 2,
-              height: frame.height * scale + MAT + MAT_CAPTION,
+              width: frame.width * scale + mat * 2,
+              height: frame.height * scale + mat + matCaption,
             }}
           >
           <div
             className="collage-mat__window"
             data-marquee-ground=""
             style={{
-              left: MAT,
-              top: MAT,
+              left: mat,
+              top: mat,
               width: frame.width * scale,
               height: frame.height * scale,
             }}
@@ -1936,6 +2176,7 @@ export function CollageStudio({
                   setDropActive(false);
                   const item = draggingScrapRef.current;
                   draggingScrapRef.current = null;
+                  releaseTypingFocus(document.activeElement);
                   if (item) addPiece(item, framePoint(event));
                 }}
               >
@@ -1993,6 +2234,8 @@ export function CollageStudio({
                   );
                 })}
                 </div>
+
+                {shared?.overlay}
 
                 {/* With several in hand, each one's own edge is traced lightly
                     so it is clear which pieces the box around them holds. */}
@@ -2080,7 +2323,9 @@ export function CollageStudio({
                   !(peek.held || sourcesOn) &&
                   !toolActive && (
                   <div
-                    className="collage-piece-hover"
+                    className={`collage-piece-hover${
+                      hoveredOwner ? " collage-piece-hover--owned" : ""
+                    }`}
                     aria-hidden="true"
                     style={{
                       left: hovered.x,
@@ -2088,10 +2333,44 @@ export function CollageStudio({
                       width: hovered.width,
                       height: hovered.height,
                       transform: `rotate(${hovered.rotation}deg)`,
-                      borderWidth: 1 / scale,
+                      borderWidth: (hoveredOwner ? 2.5 : 1) / scale,
+                      ...(hoveredOwner ? { borderColor: hoveredOwner.color } : {}),
                     }}
                   />
                 )}
+
+                {/* On a shared collage, whoever added a piece and where it
+                    came from show under it as it is pointed at. */}
+                {hovered &&
+                  hoveredOwner &&
+                  gesture.kind === "idle" &&
+                  !(peek.held || sourcesOn) &&
+                  !toolActive &&
+                  (() => {
+                    const box = pieceBounds(hovered);
+                    return (
+                      <div
+                        className="collage-peek collage-peek--owner"
+                        aria-hidden="true"
+                        style={
+                          {
+                            left: box.x,
+                            top: box.y + box.height + 6 / scale,
+                            transform: `scale(${1 / scale})`,
+                            zIndex: 10_005,
+                            "--peek-tint": hoveredOwner.color,
+                          } as React.CSSProperties
+                        }
+                      >
+                        <OwnerLine owner={hoveredOwner} />
+                        {hovered.scrap.domain && (
+                          <span className="collage-peek__where">
+                            {hovered.scrap.domain}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                 {(peek.held || sourcesOn) && !over && (
                   <ProvenancePeek
@@ -2099,6 +2378,7 @@ export function CollageStudio({
                     hoveredId={hoveredId}
                     scale={scale}
                     bounds={{ x: 0, y: 0, width: frame.width, height: frame.height }}
+                    ownerFor={shared?.pieceOwner}
                   />
                 )}
 
@@ -2140,9 +2420,11 @@ export function CollageStudio({
                   <CutoutControl
                     piece={selected}
                     tolerance={selected.cutout.tolerance}
+                    inverted={cutoutKeeps(selected.cutout) === "background"}
                     scale={scale}
                     frame={frame}
                     onTolerance={tuneCutout}
+                    onInvert={invertCutout}
                     onKeepBackground={keepBackground}
                     onDone={confirmCutout}
                   />
@@ -2183,11 +2465,17 @@ export function CollageStudio({
             </div>
           </div>
           </div>
-            <div className="collage-mat__caption" style={{ left: MAT, right: MAT }}>
+            <div className="collage-mat__caption" style={{ left: mat, right: mat }}>
               {over ? (
                 <span className="collage-studio__label">
                   turned over · T or esc to turn back
                 </span>
+              ) : shared ? (
+                shared.caption ?? (
+                  <span className="collage-studio__label">
+                    {pieces.length} piece{pieces.length === 1 ? "" : "s"}
+                  </span>
+                )
               ) : (
                 <>
                   <input
@@ -2218,7 +2506,7 @@ export function CollageStudio({
               finishRunning();
               setHistory((current) => redo(current));
             }}
-            onBack={leave}
+            onBack={shared ? undefined : leave}
           />
 
           <StudioViews
@@ -2232,6 +2520,21 @@ export function CollageStudio({
           />
 
           {showKeys && <KeysPopover onClose={() => setShowKeys(false)} />}
+
+          {/* While the sheet is up the miniature only shows what is being
+              added; a tap on it lowers the sheet to work on the collage. */}
+          {sheet && (
+            <button
+              type="button"
+              className="collage-sheet-peek"
+              onClick={() => setRaised(false)}
+            >
+              <span className="collage-sheet-peek__label">
+                {pieces.length} piece{pieces.length === 1 ? "" : "s"} · tap to
+                arrange
+              </span>
+            </button>
+          )}
         </div>
 
         {import.meta.env.DEV && over && (
@@ -2239,16 +2542,20 @@ export function CollageStudio({
         )}
 
         <div className="collage-bar">
-          <FormatControl
-            format={format}
-            paper={paper}
-            zoom={scale}
-            pieceCount={pieces.length}
-            onFormat={setFormat}
-            onPaper={setPaper}
-          />
+          {shared ? (
+            shared.toolbar
+          ) : (
+            <FormatControl
+              format={format}
+              paper={paper}
+              zoom={scale}
+              pieceCount={pieces.length}
+              onFormat={setFormat}
+              onPaper={setPaper}
+            />
+          )}
           <span className="collage-bar__spacer" />
-          {editorSwitch && (
+          {editorSwitch && !shared && (
             <EditorSwitch
               choice={editorSwitch}
               handOver={() => {
@@ -2262,7 +2569,7 @@ export function CollageStudio({
               }}
             />
           )}
-          {standing.text && (
+          {standing.text && !shared && (
             <p
               className={`collage-standing${
                 standing.problem ? " collage-standing--problem" : ""

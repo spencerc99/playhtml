@@ -32,6 +32,7 @@ const ENV: Env = {
     limit: async () => ({ success: true }),
   },
   WWO_ADMIN_DB: {} as D1Database,
+  INTERNET_MAP_BUNDLES: {} as R2Bucket,
 };
 
 function makeRequest(body: unknown, ip = '1.2.3.4'): Request {

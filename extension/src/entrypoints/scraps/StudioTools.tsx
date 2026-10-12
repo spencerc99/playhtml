@@ -63,8 +63,11 @@ interface StudioToolsProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
-  /** Leaves the studio for the history, writing pending work first. */
-  onBack: () => void;
+  /**
+   * Leaves the studio for the history, writing pending work first. Absent
+   * where there is nowhere to go back to, such as a shared collage.
+   */
+  onBack?: () => void;
 }
 
 export function StudioTools({
@@ -76,14 +79,16 @@ export function StudioTools({
 }: StudioToolsProps) {
   return (
     <div className="collage-stage-top">
-      <button
-        type="button"
-        className="collage-leave"
-        aria-label="back to collages"
-        onClick={onBack}
-      >
-        &#8592; collages
-      </button>
+      {onBack && (
+        <button
+          type="button"
+          className="collage-leave"
+          aria-label="back to collages"
+          onClick={onBack}
+        >
+          &#8592; collages
+        </button>
+      )}
       <div className="collage-tools" role="toolbar" aria-label="History">
         <button
           type="button"

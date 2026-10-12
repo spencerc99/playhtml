@@ -17,6 +17,7 @@ import {
   type WorkshopSession,
 } from "./sessions";
 import { isAdmin } from "./admin";
+import { installAdminControlsToggle } from "./adminControls";
 import { PortraitOverlay } from "./PortraitOverlay";
 import { CollageStage } from "./CollageStage";
 import { WalkStage } from "./walk/WalkStage";
@@ -27,6 +28,8 @@ import {
   type RosterEntry,
 } from "./roster";
 import "./walking-together.scss";
+
+installAdminControlsToggle();
 
 // playhtml exposes `window.cursors` with `name`/`color` as settable
 // properties (getters + setters), not setName/setColor methods. Assigning an
@@ -173,6 +176,7 @@ const RosterAdmin = withSharedState(
              * shares. Hover title still shows the participant count. */}
             <button
               className="portrait-trigger"
+              data-admin-control
               onClick={() => setShowPortrait(true)}
               disabled={pids.length === 0}
               title={`Show portrait (${pids.length})`}
@@ -212,6 +216,8 @@ export const URLChat = withSharedState(
   },
   ({ data, setData }) => {
     const [inputUrl, setInputUrl] = React.useState("");
+    const { name, color } = usePlayerIdentity();
+    const admin = isAdmin(name, color);
     const urlListRef = React.useRef<HTMLDivElement>(null);
     const urls: SharedURL[] = Array.isArray(data.urls) ? data.urls : [];
 
@@ -266,6 +272,21 @@ export const URLChat = withSharedState(
               onClick={copyToClipboard}
             >
               COPY
+            </button>
+          )}
+          {admin && urls.length > 0 && (
+            <button
+              data-admin-control
+              style={{
+                fontSize: "10px",
+                fontFamily: "monospace",
+              }}
+              onClick={() => {
+                if (window.confirm("Clear every link from the chat for everyone?"))
+                  setData({ urls: [] });
+              }}
+            >
+              CLEAR
             </button>
           )}
         </div>
@@ -394,6 +415,7 @@ export const GroupActivityDisplay = withSharedState(
         </div>
         {!IS_ARCHIVED && isAdmin(name, color) && (
           <button
+            data-admin-control
             onClick={handleSkip}
             style={{
               fontSize: "10px",
@@ -412,6 +434,40 @@ export const GroupActivityDisplay = withSharedState(
     );
   },
 );
+
+/** Keeps the walk's link chat reachable once the room moves on to the
+ * collage. During the walk the chat sits in the middle of the page as before;
+ * during the collage it docks, folded, on the right, clear of the scrap
+ * drawer, and each person can open it. The wrapper renders the same way in
+ * both stages so the chat never remounts. */
+function WalkChatDock({
+  stage,
+  children,
+}: {
+  stage: SessionStage;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const docked = stage === "collage";
+  const modifier = docked ? (open ? "open" : "closed") : "walk";
+
+  return (
+    <div className={`walk-chat-dock walk-chat-dock--${modifier}`}>
+      {docked && (
+        <button
+          className="walk-chat-dock__tab"
+          onClick={() => setOpen((wasOpen) => !wasOpen)}
+          aria-expanded={open}
+        >
+          {open ? "▸" : "◂"} walk chat
+        </button>
+      )}
+      <div className="walk-chat-dock__body" hidden={docked && !open}>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 /** Holds which stage the whole room is on. The stage belongs to the page, not
  * to any one element, so it lives in page data. Everyone follows it; only the
@@ -434,6 +490,7 @@ function StageSwitch({ session }: { session: WorkshopSession }) {
       {admin && session.hasCollageStage && !session.archived && (
         <button
           className="stage-switch"
+          data-admin-control
           onClick={() => setStageData({ stage: nextStage })}
           title={`Switch everyone to the ${nextStage} stage`}
         >
@@ -445,9 +502,11 @@ function StageSwitch({ session }: { session: WorkshopSession }) {
       )}
       <div className="walk-stage" hidden={stage !== "walk"}>
         <UserSetup />
-        <URLChat />
         <GroupActivityDisplay />
       </div>
+      <WalkChatDock stage={stage}>
+        <URLChat />
+      </WalkChatDock>
       {session.hasCollageStage && (
         <CollageStage active={stage === "collage"} />
       )}

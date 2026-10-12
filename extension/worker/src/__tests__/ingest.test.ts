@@ -50,6 +50,7 @@ const ENV: Env = {
     limit: async () => ({ success: true }),
   },
   WWO_ADMIN_DB: {} as D1Database,
+  INTERNET_MAP_BUNDLES: {} as R2Bucket,
 };
 
 const waitUntil = vi.fn();

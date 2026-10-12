@@ -9,6 +9,7 @@ import React, {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useSwipe } from "../hooks/useSwipe";
 import {
   backingFor,
   hasOwnFill,
@@ -187,6 +188,10 @@ const TIDE_WAVE_STAGGER_MAX_MS = 300;
 const TIDE_BAND_BELOW = 0.15;
 const TIDE_BAND_ABOVE = 0.05;
 const LONG_EDGE_BY_TIER = [96, 152, 208] as const;
+/** The most a piled scrap grows toward filling its cell on the shore. */
+const PILE_MAX_GROWTH = 1.5;
+/** How far a piled scrap strays from its cell's center, as a share of the cell. */
+const PILE_JITTER = 0.35;
 const CURSOR_TILE_SIZE = 48;
 /** Captured font sizes range from hairline to billboard; display needs a narrower band. */
 const MIN_HEADING_DISPLAY_FONT_SIZE = 11;
@@ -744,7 +749,6 @@ export function buildArchiveWindow(
   const columnCount = Math.max(1, Math.floor(width / cell.width));
   const rowCount = Math.ceil(items.length / columnCount);
   const fieldHeight = Math.max(viewportHeight, rowCount * cell.height);
-  const cellWidth = width / columnCount;
   const overscan = viewportHeight * ARCHIVE_OVERSCAN_VIEWPORTS;
   const firstRow = Math.max(
     0,
@@ -754,7 +758,41 @@ export function buildArchiveWindow(
     rowCount - 1,
     Math.ceil((scrollTop + viewportHeight + overscan) / cell.height),
   );
-  const firstIndex = firstRow * columnCount;
+  const layout = layoutArchiveRows(
+    items,
+    width,
+    viewportHeight,
+    scrollTop,
+    seed,
+    sizeBounds,
+    display,
+    firstRow,
+    lastRow,
+  );
+  return { fieldHeight, layout };
+}
+
+/**
+ * Lays out the archive scraps in rows `firstRow` through `lastRow`, exactly
+ * where the archive window places them.
+ */
+function layoutArchiveRows(
+  items: ScrapItem[],
+  width: number,
+  viewportHeight: number,
+  scrollTop: number,
+  seed: number,
+  sizeBounds: ReturnType<typeof tierBounds>,
+  display: ScrapDisplay,
+  firstRow: number,
+  lastRow: number,
+): ScrapLayout[] {
+  const cell = archiveCell(display);
+  const columnCount = Math.max(1, Math.floor(width / cell.width));
+  const rowCount = Math.ceil(items.length / columnCount);
+  const fieldHeight = Math.max(viewportHeight, rowCount * cell.height);
+  const cellWidth = width / columnCount;
+  const firstIndex = Math.max(0, firstRow) * columnCount;
   const lastIndex = Math.min(items.length, (lastRow + 1) * columnCount);
   const layout: ScrapLayout[] = [];
 
@@ -824,7 +862,55 @@ export function buildArchiveWindow(
     });
   }
 
-  return { fieldHeight, layout };
+  return layout;
+}
+
+/** A rectangle in archive field coordinates. */
+export interface ArchiveRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The keys of archive scraps whose tiles touch `rect`, wherever the archive
+ * has scrolled: rows outside the rendered window are laid out on demand, so a
+ * drag that runs past the window still catches everything under it.
+ */
+export function archiveKeysInRect(
+  items: ScrapItem[],
+  width: number,
+  viewportHeight: number,
+  rect: ArchiveRect,
+  seed: number,
+  sizeBounds = tierBounds(items),
+  display: ScrapDisplay = "grid",
+): string[] {
+  if (items.length === 0 || width <= 0 || viewportHeight <= 0) return [];
+  const cell = archiveCell(display);
+  // Jitter and clamping can push a tile a row past its own cell.
+  const firstRow = Math.floor(rect.y / cell.height) - 1;
+  const lastRow = Math.ceil((rect.y + rect.height) / cell.height) + 1;
+  return layoutArchiveRows(
+    items,
+    width,
+    viewportHeight,
+    0,
+    seed,
+    sizeBounds,
+    display,
+    firstRow,
+    lastRow,
+  )
+    .filter(
+      (scrap) =>
+        scrap.x < rect.x + rect.width &&
+        scrap.x + scrap.width > rect.x &&
+        scrap.y < rect.y + rect.height &&
+        scrap.y + scrap.height > rect.y,
+    )
+    .map((scrap) => scrap.item.key);
 }
 
 /**
@@ -953,6 +1039,44 @@ function formatVisitTime(timestamp: number): string {
 }
 
 /**
+ * Where each slot sits on the shore: the slots are dealt into rows as evenly
+ * as the shape allows, and each row spreads its slots across the full width.
+ * Unlike a plain grid, no cells are left over at the end of the last row, so
+ * the pile covers the whole field instead of leaving a bare corner.
+ */
+export function shoreCells(
+  slotCount: number,
+  width: number,
+  height: number,
+): { x: number; y: number; cellWidth: number; cellHeight: number }[] {
+  if (slotCount === 0 || width === 0 || height === 0) return [];
+  const rowCount = clamp(
+    1,
+    slotCount,
+    Math.round(Math.sqrt((slotCount * height) / width)),
+  );
+  const cellHeight = height / rowCount;
+  const cells: { x: number; y: number; cellWidth: number; cellHeight: number }[] =
+    [];
+  for (let row = 0; row < rowCount; row += 1) {
+    // Rows differ by at most one slot, with the longer rows spread out.
+    const start = Math.round((row * slotCount) / rowCount);
+    const end = Math.round(((row + 1) * slotCount) / rowCount);
+    const inRow = end - start;
+    const cellWidth = width / inRow;
+    for (let column = 0; column < inRow; column += 1) {
+      cells.push({
+        x: (column + 0.5) * cellWidth,
+        y: (row + 0.5) * cellHeight,
+        cellWidth,
+        cellHeight,
+      });
+    }
+  }
+  return cells;
+}
+
+/**
  * Lays out one scrap per slot. Slots are positional, so passing `null` for a
  * bare slot keeps every other scrap exactly where it was -- the grid is sized
  * from the slot count, not from how many slots currently hold a scrap, and bare
@@ -977,14 +1101,34 @@ function buildLayout(
     Math.ceil(Math.sqrt(slots.length * aspectRatio)),
   );
   const rowCount = Math.ceil(slots.length / columnCount);
-  const cellWidth = width / columnCount;
-  const cellHeight = height / rowCount;
+  const gridCellWidth = width / columnCount;
+  const gridCellHeight = height / rowCount;
+  const pileCells =
+    display === "pile" ? shoreCells(slots.length, width, height) : [];
 
   return slots.flatMap((item, index) => {
     if (item === null) return [];
     const tier = tierForItem(item, lowerArea, upperArea);
     const itemSeed = seed + hashString(item.key);
     const itemDimensions = itemSize(item, tier, itemSeed);
+    const pileCell = pileCells[index];
+    const cellWidth = pileCell?.cellWidth ?? gridCellWidth;
+    const cellHeight = pileCell?.cellHeight ?? gridCellHeight;
+    if (pileCell && item.kind === "image") {
+      // An image smaller than its cell grows a little toward covering it, so
+      // small scraps do not leave bare paper between their neighbours. Text
+      // pieces keep the size their lettering was fitted to.
+      const grow = clamp(
+        1,
+        PILE_MAX_GROWTH,
+        Math.min(
+          cellWidth / itemDimensions.width,
+          cellHeight / itemDimensions.height,
+        ),
+      );
+      itemDimensions.width *= grow;
+      itemDimensions.height *= grow;
+    }
     if (display === "grid") {
       const scale = Math.min(
         1,
@@ -996,18 +1140,20 @@ function buildLayout(
     }
     const column = index % columnCount;
     const row = Math.floor(index / columnCount);
+    const centerX = pileCell?.x ?? (column + 0.5) * cellWidth;
+    const centerY = pileCell?.y ?? (row + 0.5) * cellHeight;
+    // Pieces wander within their own cell rather than into a neighbour's, so
+    // the pile stays loose without opening gaps.
     const jitterX =
       (display === "pile" ? seededRandom(itemSeed, 2) - 0.5 : 0) *
       cellWidth *
-      0.6;
+      PILE_JITTER;
     const jitterY =
       (display === "pile" ? seededRandom(itemSeed, 3) - 0.5 : 0) *
       cellHeight *
-      0.6;
-    const unclampedX =
-      (column + 0.5) * cellWidth + jitterX - itemDimensions.width / 2;
-    const unclampedY =
-      (row + 0.5) * cellHeight + jitterY - itemDimensions.height / 2;
+      PILE_JITTER;
+    const unclampedX = centerX + jitterX - itemDimensions.width / 2;
+    const unclampedY = centerY + jitterY - itemDimensions.height / 2;
     const x = Math.max(
       4,
       Math.min(width - itemDimensions.width - 4, unclampedX),
@@ -1244,6 +1390,24 @@ export const COLLAGE_STYLES = `
     }
   }
 
+  /* The header takes flicks on a touch screen, so the page must not scroll
+     under them. On a phone the panel also gives back some of its padding. */
+  @media (pointer: coarse) {
+    .scrap-collage__controls-header,
+    .scrap-collage__controls--collapsed .scrap-collage__filter {
+      touch-action: none;
+    }
+  }
+
+  @media (pointer: coarse) and (max-width: 619px) {
+    .scrap-collage__controls {
+      bottom: 8px;
+      gap: 6px;
+      max-width: calc(100% - 16px);
+      padding: 6px;
+    }
+  }
+
   .scrap-collage__scroll {
     position: absolute;
     inset: 0;
@@ -1331,6 +1495,41 @@ export const COLLAGE_STYLES = `
     transform: rotate(var(--scrap-rotation)) scale(1.06) translateY(-4px);
     filter: drop-shadow(0 12px 12px rgba(61, 56, 51, 0.2));
     outline: none;
+  }
+
+  .scrap-collage__tile--selected,
+  .scrap-collage__tile--selected:hover,
+  .scrap-collage__tile--selected:focus-visible {
+    outline: 2px solid #4a9a8a;
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  /* A drag across a selectable archive draws a selection, never a text one. */
+  .scrap-collage__scroll--selectable {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* While a selection is being dragged out, tiles stop answering the pointer
+     so their hover lift and provenance cards stay out of the way. */
+
+  .scrap-collage__scroll--selecting .scrap-collage__tile {
+    pointer-events: none;
+  }
+
+  .scrap-collage__marquee {
+    position: absolute;
+    z-index: 250;
+    box-sizing: border-box;
+    border: 1px dashed #4a9a8a;
+    border-radius: 2px;
+    background: rgba(74, 154, 138, 0.1);
+    pointer-events: none;
+  }
+
+  .scrap-collage__selection-hint {
+    margin-right: auto;
   }
 
   .scrap-collage__image {
@@ -1992,20 +2191,58 @@ export function ScrapCollage({
   const [bulkDeleteStep, setBulkDeleteStep] = useState<
     "idle" | "confirm" | "deleting" | "failed"
   >("idle");
-  // A confirmation names a count for one set of filters; changing them asks again.
+  /**
+   * Scraps picked out of the archive by dragging across them or shift-clicking.
+   * Only offered where scraps can be deleted, since deleting is all a
+   * selection is for.
+   */
+  const selectable = archiveMode && !!onDeleteScraps;
+  const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const selectedScraps = useMemo(
+    () => archiveScraps.filter((item) => selectedKeys.has(item.key)),
+    [archiveScraps, selectedKeys],
+  );
+  const bulkTargets = selectedScraps.length > 0 ? selectedScraps : archiveScraps;
+  // A selection belongs to one view of the archive; changing what it shows lets go.
+  useEffect(() => {
+    setSelectedKeys(new Set());
+  }, [archiveMode, selectedKind, shape, places, search, when]);
+  // A confirmation names a count for one set of scraps; changing them asks again.
   useEffect(() => {
     setBulkDeleteStep("idle");
-  }, [selectedKind, shape, places, search, when]);
+  }, [selectedKind, shape, places, search, when, selectedKeys]);
   const deleteFiltered = () => {
     if (!onDeleteScraps) return;
     setBulkDeleteStep("deleting");
-    onDeleteScraps(archiveScraps)
-      .then(() => setBulkDeleteStep("idle"))
+    onDeleteScraps(bulkTargets)
+      .then(() => {
+        setBulkDeleteStep("idle");
+        setSelectedKeys(new Set());
+      })
       .catch((error: unknown) => {
-        console.error("Could not delete the filtered scraps:", error);
+        console.error("Could not delete the scraps:", error);
         setBulkDeleteStep("failed");
       });
   };
+  const toggleSelected = (key: string) => {
+    setSelectedKeys((current) => {
+      const next = new Set(current);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  };
+  useEffect(() => {
+    if (selectedKeys.size === 0) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) {
+        setSelectedKeys(new Set());
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedKeys]);
   const archiveSizeBounds = useMemo(
     () => tierBounds(archiveScraps),
     [archiveScraps],
@@ -2391,6 +2628,175 @@ export function ScrapCollage({
     });
   };
 
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const [marquee, setMarquee] = useState<ArchiveRect | null>(null);
+  /** The drag in progress over the archive, before and after it becomes a marquee. */
+  const dragRef = useRef<{
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    /** Where the drag began, in field coordinates, so it holds while scrolling. */
+    originX: number;
+    originY: number;
+    clientX: number;
+    clientY: number;
+    additive: boolean;
+    base: ReadonlySet<string>;
+    active: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
+  const autoScrollRef = useRef<number | null>(null);
+
+  /** Redraws the marquee from the pointer and selects whatever it touches. */
+  const updateMarquee = () => {
+    const drag = dragRef.current;
+    const field = fieldRef.current;
+    if (!drag?.active || !field) return;
+    const bounds = field.getBoundingClientRect();
+    const pointerX = Math.max(
+      0,
+      Math.min(bounds.width, drag.clientX - bounds.left),
+    );
+    const pointerY = Math.max(
+      0,
+      Math.min(bounds.height, drag.clientY - bounds.top),
+    );
+    const rect = {
+      x: Math.min(drag.originX, pointerX),
+      y: Math.min(drag.originY, pointerY),
+      width: Math.abs(pointerX - drag.originX),
+      height: Math.abs(pointerY - drag.originY),
+    };
+    setMarquee(rect);
+    const touched = archiveKeysInRect(
+      archiveScraps,
+      containerSize.width,
+      containerSize.height,
+      rect,
+      layoutSeed,
+      archiveSizeBounds,
+      display,
+    ).filter(
+      (key) => !failedScraps.has(key),
+    );
+    const next = new Set(drag.base);
+    for (const key of touched) next.add(key);
+    setSelectedKeys(next);
+  };
+  const updateMarqueeRef = useRef(updateMarquee);
+  updateMarqueeRef.current = updateMarquee;
+
+  const stopAutoScroll = () => {
+    if (autoScrollRef.current !== null) {
+      window.cancelAnimationFrame(autoScrollRef.current);
+      autoScrollRef.current = null;
+    }
+  };
+
+  /** Scrolls the archive while a marquee is held against its top or bottom edge. */
+  const autoScroll = () => {
+    autoScrollRef.current = null;
+    const drag = dragRef.current;
+    const scroller = archiveScrollRef.current;
+    if (!drag?.active || !scroller) return;
+    const bounds = scroller.getBoundingClientRect();
+    const edge = 48;
+    const above = bounds.top + edge - drag.clientY;
+    const below = drag.clientY - (bounds.bottom - edge);
+    const speed =
+      above > 0
+        ? -Math.min(edge, above) / 2
+        : below > 0
+          ? Math.min(edge, below) / 2
+          : 0;
+    if (speed === 0) return;
+    scroller.scrollTop += speed;
+    updateMarqueeRef.current();
+    autoScrollRef.current = window.requestAnimationFrame(autoScroll);
+  };
+
+  const endDrag = () => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    stopAutoScroll();
+    if (!drag?.active) return;
+    setMarquee(null);
+    // The click that ends a drag is not a click on whatever it ended over.
+    suppressClickRef.current = true;
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+  };
+
+  useEffect(() => stopAutoScroll, []);
+
+  const selectionHandlers: React.HTMLAttributes<HTMLDivElement> = selectable
+    ? {
+        onPointerDown: (event) => {
+          // Touch drags scroll the archive; a marquee is for a pointer.
+          if (event.button !== 0 || event.pointerType === "touch") return;
+          const field = fieldRef.current;
+          if (!field) return;
+          const bounds = field.getBoundingClientRect();
+          dragRef.current = {
+            pointerId: event.pointerId,
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            originX: event.clientX - bounds.left,
+            originY: event.clientY - bounds.top,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            additive: event.shiftKey || event.metaKey || event.ctrlKey,
+            base: new Set(),
+            active: false,
+          };
+        },
+        onPointerMove: (event) => {
+          const drag = dragRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          drag.clientX = event.clientX;
+          drag.clientY = event.clientY;
+          if (!drag.active) {
+            if (
+              Math.hypot(
+                event.clientX - drag.startClientX,
+                event.clientY - drag.startClientY,
+              ) < 5
+            ) {
+              return;
+            }
+            drag.active = true;
+            drag.base = drag.additive ? selectedKeys : new Set();
+            setControlsExpanded(true);
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+          updateMarquee();
+          if (autoScrollRef.current === null) autoScroll();
+        },
+        onPointerUp: endDrag,
+        onPointerCancel: endDrag,
+        onLostPointerCapture: endDrag,
+        // Tiles are links and pictures; dragging them would carry them off
+        // the page instead of drawing a selection.
+        onDragStart: (event) => event.preventDefault(),
+        onClickCapture: (event) => {
+          if (!suppressClickRef.current) return;
+          suppressClickRef.current = false;
+          event.preventDefault();
+          event.stopPropagation();
+        },
+        onClick: (event) => {
+          // A click on the archive's open ground lets go of the selection.
+          if (
+            selectedKeys.size > 0 &&
+            !(event.target as Element).closest("[data-scrap-key]")
+          ) {
+            setSelectedKeys(new Set());
+          }
+        },
+      }
+    : {};
+
   const renderTile = (scrap: ScrapLayout, modifier: string) => {
     if (failedScraps.has(scrap.item.key) || !isRenderableScrap(scrap.item)) {
       return null;
@@ -2413,7 +2819,11 @@ export function ScrapCollage({
     return (
       <a
         key={scrap.item.key}
-        className={`scrap-collage__tile${modifier}`}
+        className={`scrap-collage__tile${modifier}${
+          selectable && selectedKeys.has(scrap.item.key)
+            ? " scrap-collage__tile--selected"
+            : ""
+        }`}
         href={scrap.item.pageUrl}
         data-scrap-key={scrap.item.key}
         ref={(element) => {
@@ -2426,14 +2836,33 @@ export function ScrapCollage({
             tileElementsRef.current.delete(scrap.item.key);
           }
         }}
-        aria-label={`Examine ${title}`}
-        aria-haspopup="dialog"
+        aria-label={
+          selectable && selectedKeys.size > 0
+            ? `${selectedKeys.has(scrap.item.key) ? "Deselect" : "Select"} ${title}`
+            : `Examine ${title}`
+        }
+        aria-haspopup={
+          selectable && selectedKeys.size > 0 ? undefined : "dialog"
+        }
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={tileStyle}
         onClick={(event) => {
+          // While scraps are selected, a click adds or removes one; shift-click
+          // starts a selection.
+          if (
+            selectable &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.altKey &&
+            (event.shiftKey || selectedKeys.size > 0)
+          ) {
+            event.preventDefault();
+            toggleSelected(scrap.item.key);
+            return;
+          }
           // Plain clicks open the examine view; modifier clicks keep the
           // anchor's normal "open the source page" behaviour.
           if (
@@ -2509,6 +2938,18 @@ export function ScrapCollage({
     ),
   );
 
+  // On a touch screen the controls answer a flick: down tucks them away, up
+  // brings them back, and sideways moves between drift and the archive.
+  const controlsSwipe = useSwipe(
+    controlsExpanded
+      ? {
+          down: () => setControlsExpanded(false),
+          left: () => setView("archive"),
+          right: () => setView("drift"),
+        }
+      : { up: () => setControlsExpanded(true) },
+  );
+
   return (
     <div
       ref={containerRef}
@@ -2531,7 +2972,10 @@ export function ScrapCollage({
         >
           {controlsExpanded ? (
             <>
-              <div className="scrap-collage__controls-header">
+              <div
+                className="scrap-collage__controls-header"
+                {...controlsSwipe}
+              >
                 <div
                   className="scrap-collage__view-switch"
                   role="group"
@@ -2649,26 +3093,55 @@ export function ScrapCollage({
                   countScraps={countUniqueScraps}
                 />
               </div>
-              {onDeleteScraps && filtersActive && archiveScraps.length > 0 && (
+              {onDeleteScraps &&
+                (selectedScraps.length > 0 ||
+                  selectable ||
+                  (filtersActive && archiveScraps.length > 0)) && (
                 <div className="scrap-collage__bulk-delete" role="group">
                   {bulkDeleteStep === "idle" || bulkDeleteStep === "failed" ? (
                     <>
+                      {selectedScraps.length > 0 ? (
+                        <>
+                          <span className="scrap-collage__selection-hint">
+                            {selectedScraps.length} selected
+                          </span>
+                          <button
+                            type="button"
+                            className="scrap-collage__text-action"
+                            onClick={() => setSelectedKeys(new Set())}
+                          >
+                            clear
+                          </button>
+                        </>
+                      ) : (
+                        selectable && (
+                          <span className="scrap-collage__selection-hint">
+                            drag across scraps to select
+                          </span>
+                        )
+                      )}
                       {bulkDeleteStep === "failed" && (
                         <span role="alert">could not delete them</span>
                       )}
-                      <button
-                        type="button"
-                        className="scrap-collage__text-action"
-                        onClick={() => setBulkDeleteStep("confirm")}
-                      >
-                        delete {archiveScraps.length === 1 ? "this scrap" : `these ${archiveScraps.length}`}
-                      </button>
+                      {(selectedScraps.length > 0 ||
+                        (filtersActive && archiveScraps.length > 0)) && (
+                        <button
+                          type="button"
+                          className="scrap-collage__text-action"
+                          onClick={() => setBulkDeleteStep("confirm")}
+                        >
+                          delete{" "}
+                          {bulkTargets.length === 1
+                            ? "this scrap"
+                            : `these ${bulkTargets.length}`}
+                        </button>
+                      )}
                     </>
                   ) : (
                     <>
                       <span>
-                        delete {archiveScraps.length}{" "}
-                        {archiveScraps.length === 1 ? "scrap" : "scraps"} for good?
+                        delete {bulkTargets.length}{" "}
+                        {bulkTargets.length === 1 ? "scrap" : "scraps"} for good?
                       </span>
                       <button
                         type="button"
@@ -2696,6 +3169,7 @@ export function ScrapCollage({
               type="button"
               className="scrap-collage__filter"
               aria-expanded="false"
+              {...controlsSwipe}
               onClick={() => setControlsExpanded(true)}
             >
               controls ↑
@@ -2726,12 +3200,30 @@ export function ScrapCollage({
       {archiveMode ? (
         <div
           ref={archiveScrollRef}
-          className="scrap-collage__scroll"
+          className={`scrap-collage__scroll${
+            selectable ? " scrap-collage__scroll--selectable" : ""
+          }${marquee ? " scrap-collage__scroll--selecting" : ""}`}
           onScroll={(event) =>
             setArchiveScrollTop(event.currentTarget.scrollTop)
           }
+          {...selectionHandlers}
         >
-          <div className="scrap-collage__field" style={{ height: fieldHeight }}>
+          <div
+            ref={fieldRef}
+            className="scrap-collage__field"
+            style={{ height: fieldHeight }}
+          >
+            {marquee && (
+              <div
+                className="scrap-collage__marquee"
+                style={{
+                  left: marquee.x,
+                  top: marquee.y,
+                  width: marquee.width,
+                  height: marquee.height,
+                }}
+              />
+            )}
             {sourceMarks.map((mark) => (
               <div
                 key={mark.key}
