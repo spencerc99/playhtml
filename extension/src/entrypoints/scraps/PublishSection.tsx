@@ -122,11 +122,11 @@ export function PublishSection({
 
   return (
     <div className="collage-share" data-share-state="shared">
-      <p className="collage-studio__label collage-export__note">
-        {copied
-          ? "link copied · anyone with it can view"
-          : "anyone with the link can view"}
-      </p>
+      {copied && (
+        <p className="collage-studio__label collage-export__note">
+          link copied
+        </p>
+      )}
       <input
         className="collage-share__url"
         readOnly
