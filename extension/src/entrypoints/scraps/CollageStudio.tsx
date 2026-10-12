@@ -89,7 +89,7 @@ import {
   collageToHandOver,
   type EditorSwitchChoice,
 } from "./EditorSwitch";
-import { KeysButton, StudioTools, StudioViews } from "./StudioTools";
+import { KeysButton, SoundButton, StudioTools, StudioViews } from "./StudioTools";
 import { FormatControl } from "./FormatControl";
 import {
   CollageBakeError,
@@ -2601,8 +2601,6 @@ export function CollageStudio({
             canRedo={!over && canRedo(history)}
             onUndo={() => stepHistory("undo")}
             onRedo={() => stepHistory("redo")}
-            soundOn={soundOn}
-            onToggleSound={toggleSound}
             onBack={shared ? undefined : leave}
           />
 
@@ -2676,6 +2674,7 @@ export function CollageStudio({
               {standing.text}
             </p>
           )}
+          <SoundButton on={soundOn} onToggle={toggleSound} />
           <KeysButton
             open={showKeys}
             onToggle={() => setShowKeys((value) => !value)}

@@ -78,9 +78,6 @@ interface StudioToolsProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
-  /** Whether collage actions make sounds; the toggle shows only with both. */
-  soundOn?: boolean;
-  onToggleSound?: () => void;
   /**
    * Leaves the studio for the history, writing pending work first. Absent
    * where there is nowhere to go back to, such as a shared collage.
@@ -93,8 +90,6 @@ export function StudioTools({
   canRedo,
   onUndo,
   onRedo,
-  soundOn,
-  onToggleSound,
   onBack,
 }: StudioToolsProps) {
   return (
@@ -130,18 +125,6 @@ export function StudioTools({
         >
           {REDO}
         </button>
-        {onToggleSound && (
-          <button
-            type="button"
-            className="collage-glyph"
-            title={soundOn ? "Turn sounds off" : "Turn sounds on"}
-            aria-label="Sounds"
-            aria-pressed={soundOn}
-            onClick={onToggleSound}
-          >
-            {soundOn ? SOUND_ON : SOUND_OFF}
-          </button>
-        )}
       </div>
     </div>
   );
@@ -242,6 +225,23 @@ export function KeysButton({ open, onToggle }: { open: boolean; onToggle: () => 
     >
       {KEYS}
       <span>keys</span>
+    </button>
+  );
+}
+
+/** Turns the collage's sounds on or off; it sits beside the shortcut list. */
+export function SoundButton({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className="collage-keys-button"
+      title={on ? "Turn sounds off" : "Turn sounds on"}
+      aria-label="Sounds"
+      aria-pressed={on}
+      onClick={onToggle}
+    >
+      {on ? SOUND_ON : SOUND_OFF}
+      <span>{on ? "sound" : "muted"}</span>
     </button>
   );
 }
