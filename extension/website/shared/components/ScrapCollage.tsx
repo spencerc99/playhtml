@@ -9,6 +9,7 @@ import React, {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useSwipe } from "../hooks/useSwipe";
 import {
   backingFor,
   hasOwnFill,
@@ -1386,6 +1387,24 @@ export const COLLAGE_STYLES = `
   @media (max-width: 619px) {
     .scrap-collage__view-option {
       padding: 0 9px;
+    }
+  }
+
+  /* The header takes flicks on a touch screen, so the page must not scroll
+     under them. On a phone the panel also gives back some of its padding. */
+  @media (pointer: coarse) {
+    .scrap-collage__controls-header,
+    .scrap-collage__controls--collapsed .scrap-collage__filter {
+      touch-action: none;
+    }
+  }
+
+  @media (pointer: coarse) and (max-width: 619px) {
+    .scrap-collage__controls {
+      bottom: 8px;
+      gap: 6px;
+      max-width: calc(100% - 16px);
+      padding: 6px;
     }
   }
 
@@ -2919,6 +2938,18 @@ export function ScrapCollage({
     ),
   );
 
+  // On a touch screen the controls answer a flick: down tucks them away, up
+  // brings them back, and sideways moves between drift and the archive.
+  const controlsSwipe = useSwipe(
+    controlsExpanded
+      ? {
+          down: () => setControlsExpanded(false),
+          left: () => setView("archive"),
+          right: () => setView("drift"),
+        }
+      : { up: () => setControlsExpanded(true) },
+  );
+
   return (
     <div
       ref={containerRef}
@@ -2941,7 +2972,10 @@ export function ScrapCollage({
         >
           {controlsExpanded ? (
             <>
-              <div className="scrap-collage__controls-header">
+              <div
+                className="scrap-collage__controls-header"
+                {...controlsSwipe}
+              >
                 <div
                   className="scrap-collage__view-switch"
                   role="group"
@@ -3135,6 +3169,7 @@ export function ScrapCollage({
               type="button"
               className="scrap-collage__filter"
               aria-expanded="false"
+              {...controlsSwipe}
               onClick={() => setControlsExpanded(true)}
             >
               controls ↑

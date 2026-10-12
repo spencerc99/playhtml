@@ -6,6 +6,9 @@ import React from "react";
 /** The mat around the frame, in screen pixels, and the band under it that carries the caption. */
 export const MAT = 26;
 export const MAT_CAPTION = 44;
+/** On a phone every pixel goes to the collage, so the mat is narrower. */
+export const PHONE_MAT = 12;
+export const PHONE_MAT_CAPTION = 32;
 
 /** A date as the mat's caption writes it: "oct 11, 2026". */
 export function madeOn(timestamp: number): string {
@@ -24,6 +27,9 @@ interface CollageMatProps {
   height: number;
   /** What the mat says along its bottom edge. */
   caption: React.ReactNode;
+  /** The mat's border and caption band, when they differ from the defaults. */
+  mat?: number;
+  matCaption?: number;
   /** The collage sheet, sized to the window. */
   children: React.ReactNode;
 }
@@ -36,6 +42,8 @@ export function CollageMat({
   width,
   height,
   caption,
+  mat = MAT,
+  matCaption = MAT_CAPTION,
   children,
 }: CollageMatProps) {
   return (
@@ -43,18 +51,18 @@ export function CollageMat({
       className="collage-mat"
       data-marquee-ground=""
       style={{
-        width: width + MAT * 2,
-        height: height + MAT + MAT_CAPTION,
+        width: width + mat * 2,
+        height: height + mat + matCaption,
       }}
     >
       <div
         className="collage-mat__window"
         data-marquee-ground=""
-        style={{ left: MAT, top: MAT, width, height }}
+        style={{ left: mat, top: mat, width, height }}
       >
         {children}
       </div>
-      <div className="collage-mat__caption" style={{ left: MAT, right: MAT }}>
+      <div className="collage-mat__caption" style={{ left: mat, right: mat }}>
         {caption}
       </div>
     </div>
