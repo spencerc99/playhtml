@@ -20,11 +20,14 @@ export const VIEWER_STYLES = `
     font-family: "Martian Mono", ui-monospace, monospace;
   }
 
+  /* The same wordmark the extension's pages carry at their top-left. */
   .published-collage__mark {
     flex: 0 0 auto;
-    color: var(--c-muted);
-    font-size: 10px;
-    letter-spacing: 0.04em;
+    color: var(--c-ink);
+    font-family: "Source Serif 4", "Lora", Georgia, serif;
+    font-size: 17px;
+    font-style: italic;
+    font-weight: 200;
     text-decoration: none;
   }
 
