@@ -412,7 +412,7 @@ function unknownInspection(
   };
 }
 
-async function fetchPublicPage(initialUrl: URL): Promise<PublicFetchResult> {
+export async function fetchPublicPage(initialUrl: URL): Promise<PublicFetchResult> {
   let currentUrl = initialUrl;
   const visited = new Set<string>();
   const startedAt = Date.now();

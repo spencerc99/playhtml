@@ -385,6 +385,49 @@ describe("Internet place suggestions", () => {
     }
   });
 
+  it("accepts robots.txt and sitemap evidence and rejects malformed evidence", async () => {
+    const run = vi.fn(async () => ({
+      answers: {
+        placement: { choice: "regular", confidence: 0.6, probabilities: {} },
+        scope: { choice: "page", confidence: 0.6, probabilities: {} },
+        reason: {
+          choice: "editorial-or-cultural",
+          confidence: 0.5,
+          probabilities: {},
+        },
+      },
+    }));
+    env.AI = { run } as unknown as Env["AI"];
+    const published = { disallowed: false, sitemaps: 12, sitemapListed: true };
+    const accepted = await handleInternetPlaceSuggestion(
+      suggestionRequest({
+        candidate: { url: "https://news.example/2026/10/01/museum", published },
+      }),
+      env,
+    );
+    expect(accepted.status).toBe(200);
+    const [, body] = run.mock.calls[0] as unknown as [
+      string,
+      { state: { candidate: { published: unknown } } },
+    ];
+    expect(body.state.candidate.published).toEqual(published);
+
+    for (const malformed of [
+      { disallowed: "no", sitemaps: 1 },
+      { disallowed: false, sitemaps: -1 },
+      { disallowed: false, sitemaps: 1, sitemapListed: "yes" },
+      { disallowed: false, sitemaps: 1, robotsBody: "x" },
+    ]) {
+      const response = await handleInternetPlaceSuggestion(
+        suggestionRequest({
+          candidate: { url: "https://example.com/essay", published: malformed },
+        }),
+        env,
+      );
+      expect(response.status).toBe(400);
+    }
+  });
+
   it("rejects page context with unexpected fields", async () => {
     const response = await handleInternetPlaceSuggestion(
       suggestionRequest({
