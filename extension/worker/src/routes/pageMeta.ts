@@ -222,13 +222,44 @@ interface PageMeta {
 export interface PublicPageContext {
   description?: string;
   siteName?: string;
+  /** The page's declared og:type, such as article, video.other, or profile. */
+  pageType?: string;
   headings: string[];
   text: string;
+  /** Whether the logged-out page carries a password field. */
+  signInForm: boolean;
+  /** Links on the page, and how many distinct other sites they point to. */
+  linkCount: number;
+  externalSites: number;
+  /** Link labels inside the page's main navigation. */
+  navLabels: string[];
 }
 
 const CONTEXT_TEXT_LIMIT = 1_500;
 const CONTEXT_HEADING_LIMIT = 6;
 const CONTEXT_FIELD_LIMIT = 300;
+const CONTEXT_PAGE_TYPE_LIMIT = 40;
+const CONTEXT_NAV_LABEL_LIMIT = 12;
+const CONTEXT_NAV_LABEL_LENGTH = 40;
+const CONTEXT_LINK_SCAN_LIMIT = 1_000;
+
+/** Distinct registrable domains other than the page's own among its links. */
+function countExternalSites(hrefs: string[], pageUrl: URL): number {
+  const ownSite = parse(pageUrl.hostname).domain ?? pageUrl.hostname;
+  const sites = new Set<string>();
+  for (const href of hrefs) {
+    let target: URL;
+    try {
+      target = new URL(href, pageUrl);
+    } catch {
+      continue;
+    }
+    if (target.protocol !== 'https:' && target.protocol !== 'http:') continue;
+    const site = parse(target.hostname).domain ?? target.hostname;
+    if (site && site !== ownSite) sites.add(site);
+  }
+  return sites.size;
+}
 
 function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
@@ -451,7 +482,12 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
   const robotsDirectives: string[] = [];
   let description: string | undefined;
   let siteName: string | undefined;
+  let pageType: string | undefined;
   const headings: string[] = [];
+  const hrefs: string[] = [];
+  let linkCount = 0;
+  const navLabels: string[] = [];
+  let navDepth = 0;
   let headingBuf = '';
   let bodyText = '';
   let skipDepth = 0;
@@ -506,6 +542,7 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
     // stream completes.
     let inTitle = false;
     let titleBuf = '';
+    let navLabelSink: ((chunk: string) => void) | null = null;
     const rewriter = new HTMLRewriter()
       .on('head', {
         element(element) {
@@ -556,6 +593,11 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
           if (metaContent && !siteName && property === 'og:site_name') {
             siteName = collapseWhitespace(metaContent).slice(0, CONTEXT_FIELD_LIMIT);
           }
+          if (metaContent && !pageType && property === 'og:type') {
+            pageType =
+              collapseWhitespace(metaContent).slice(0, CONTEXT_PAGE_TYPE_LIMIT) ||
+              undefined;
+          }
           // og:title is often nicer (cleaner trailing branding) than <title>.
           if (title) return;
           if (property !== 'og:title') return;
@@ -574,6 +616,36 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
         element(el) {
           const action = el.getAttribute('action');
           if (action) formActions.push(action);
+        },
+      })
+      .on('nav, [role="navigation"]', {
+        element(el) {
+          navDepth += 1;
+          el.onEndTag(() => {
+            navDepth = Math.max(0, navDepth - 1);
+          });
+        },
+      })
+      .on('a[href]', {
+        element(el) {
+          linkCount += 1;
+          const href = el.getAttribute('href');
+          if (href && hrefs.length < CONTEXT_LINK_SCAN_LIMIT) hrefs.push(href);
+          if (navDepth === 0 || navLabels.length >= CONTEXT_NAV_LABEL_LIMIT) return;
+          let label = '';
+          navLabelSink = (chunk) => {
+            label += chunk;
+          };
+          el.onEndTag(() => {
+            navLabelSink = null;
+            const text = collapseWhitespace(label).slice(0, CONTEXT_NAV_LABEL_LENGTH);
+            if (text && navLabels.length < CONTEXT_NAV_LABEL_LIMIT && !navLabels.includes(text)) {
+              navLabels.push(text);
+            }
+          });
+        },
+        text(t) {
+          navLabelSink?.(t.text);
         },
       })
       .on('h1, h2', {
@@ -652,8 +724,13 @@ async function tryHtmlScrape(url: URL): Promise<PageMeta | null> {
       context: {
         ...(description ? { description } : {}),
         ...(siteName ? { siteName } : {}),
+        ...(pageType ? { pageType } : {}),
         headings,
         text: collapseWhitespace(bodyText).slice(0, CONTEXT_TEXT_LIMIT),
+        signInForm: hasPasswordInput,
+        linkCount,
+        externalSites: countExternalSites(hrefs, finalUrl),
+        navLabels,
       },
     };
   } catch {

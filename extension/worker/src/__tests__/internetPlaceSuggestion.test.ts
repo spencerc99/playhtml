@@ -332,6 +332,59 @@ describe("Internet place suggestions", () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
+  it("passes the page's type, sign-in form, outbound links, and menu to Clef", async () => {
+    const run = vi.fn(async () => ({
+      answers: {
+        placement: { choice: "regular", confidence: 0.6, probabilities: {} },
+        scope: { choice: "site", confidence: 0.6, probabilities: {} },
+        reason: {
+          choice: "human-community",
+          confidence: 0.5,
+          probabilities: {},
+        },
+      },
+    }));
+    env.AI = { run } as unknown as Env["AI"];
+    const page = {
+      pageType: "website",
+      headings: ["Links I like"],
+      text: "A garden of links",
+      signInForm: false,
+      linkCount: 84,
+      externalSites: 41,
+      navLabels: ["About", "Garden", "Guestbook"],
+    };
+    const response = await handleInternetPlaceSuggestion(
+      suggestionRequest({
+        candidate: { url: "https://garden.example/", page },
+      }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    const [, body] = run.mock.calls[0] as unknown as [
+      string,
+      { state: { candidate: { page: unknown } } },
+    ];
+    expect(body.state.candidate.page).toEqual(page);
+  });
+
+  it("rejects page signals with the wrong shape", async () => {
+    for (const page of [
+      { headings: [], text: "", signInForm: "no" },
+      { headings: [], text: "", externalSites: -1 },
+      { headings: [], text: "", linkCount: 2.5 },
+      { headings: [], text: "", navLabels: ["x".repeat(41)] },
+    ]) {
+      const response = await handleInternetPlaceSuggestion(
+        suggestionRequest({
+          candidate: { url: "https://example.com/essay", page },
+        }),
+        env,
+      );
+      expect(response.status).toBe(400);
+    }
+  });
+
   it("rejects page context with unexpected fields", async () => {
     const response = await handleInternetPlaceSuggestion(
       suggestionRequest({
