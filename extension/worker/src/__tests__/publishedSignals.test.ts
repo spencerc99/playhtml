@@ -6,6 +6,8 @@ import {
   isPathDisallowed,
   parseRobots,
   parseSitemap,
+  patternMatches,
+  readPublishedSignals,
 } from "../routes/publishedSignals";
 
 describe("parseRobots", () => {
@@ -85,6 +87,33 @@ Disallow: /*.pdf$
     expect(
       isPathDisallowed(parseRobots("User-agent: *\nDisallow: /").rules, "/"),
     ).toBe(true);
+  });
+});
+
+describe("patternMatches", () => {
+  it("handles prefixes, inner wildcards, and end anchors", () => {
+    expect(patternMatches("/a", "/abc")).toBe(true);
+    expect(patternMatches("/a$", "/abc")).toBe(false);
+    expect(patternMatches("/a$", "/a")).toBe(true);
+    expect(patternMatches("/*/edit", "/docs/1/edit")).toBe(true);
+    expect(patternMatches("/*/edit$", "/docs/1/edit/more")).toBe(false);
+    expect(patternMatches("/x*y*z$", "/xyz")).toBe(true);
+    expect(patternMatches("/ab*ba$", "/aba")).toBe(false);
+  });
+
+  it("stays fast on patterns built to cause backtracking", () => {
+    const pattern = `/${"*a".repeat(200)}$`;
+    const path = `/${"a".repeat(2_000)}b`;
+    const started = performance.now();
+    expect(patternMatches(pattern, path)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(50);
+  });
+});
+
+describe("readPublishedSignals", () => {
+  it("never fetches from private or local addresses", async () => {
+    expect(await readPublishedSignals("http://127.0.0.1/admin")).toBeNull();
+    expect(await readPublishedSignals("http://localhost/robots")).toBeNull();
   });
 });
 

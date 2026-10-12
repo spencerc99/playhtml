@@ -1,8 +1,9 @@
 // ABOUTME: Reads what a site publishes for bots (robots.txt and sitemaps) as evidence about one page.
 // ABOUTME: Used when the page itself refuses a logged-out fetch, so Clef still learns how the site treats it.
 
+import { parse } from "tldts";
 import { normalizeInternetPlace } from "../../../shared/internetPlaceCatalog";
-import { fetchPublicPage } from "./pageMeta";
+import { fetchPublicPage, isPublicHttpUrl } from "./pageMeta";
 
 /** How a site's own bot-facing files describe one of its pages. */
 export interface PublishedSignals {
@@ -27,6 +28,8 @@ const MAX_ROBOTS_BYTES = 256 * 1_024;
 const MAX_SITEMAP_BYTES = 4 * 1_024 * 1_024;
 const MAX_SITEMAP_FETCHES = 4;
 const MAX_SITEMAPS_CONSIDERED = 50;
+const MAX_ROBOTS_RULES = 500;
+const MAX_ROBOTS_PATTERN_LENGTH = 500;
 
 /**
  * Parses robots.txt into the rules for our fetcher: the group naming our
@@ -59,8 +62,13 @@ export function parseRobots(text: string): RobotsFile {
     }
     if ((field === "allow" || field === "disallow") && current) {
       lastWasAgent = false;
-      // An empty Disallow allows everything, so it adds no rule.
-      if (value)
+      // An empty Disallow allows everything, so it adds no rule. Oversized
+      // patterns and rule lists are skipped to bound matching work.
+      if (
+        value &&
+        value.length <= MAX_ROBOTS_PATTERN_LENGTH &&
+        current.rules.length < MAX_ROBOTS_RULES
+      )
         current.rules.push({ allow: field === "allow", pattern: value });
     }
   }
@@ -76,14 +84,27 @@ export function parseRobots(text: string): RobotsFile {
   return { rules: chosen.flatMap((group) => group.rules), sitemaps };
 }
 
-function patternMatches(pattern: string, path: string): boolean {
+/**
+ * Matches a robots pattern against a path without building a RegExp: the
+ * text between `*`s must appear in order, the first piece at the start, and a
+ * trailing `$` pins the last piece to the end. Greedy leftmost matching is
+ * exact for patterns whose only wildcard is `*`.
+ */
+export function patternMatches(pattern: string, path: string): boolean {
   const anchored = pattern.endsWith("$");
-  const body = anchored ? pattern.slice(0, -1) : pattern;
-  const expression = body
-    .split("*")
-    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
-    .join(".*");
-  return new RegExp(`^${expression}${anchored ? "$" : ""}`).test(path);
+  const pieces = (anchored ? pattern.slice(0, -1) : pattern).split("*");
+  const first = pieces[0];
+  if (!path.startsWith(first)) return false;
+  if (pieces.length === 1) return anchored ? path === first : true;
+  let cursor = first.length;
+  const last = pieces[pieces.length - 1];
+  for (const piece of pieces.slice(1, -1)) {
+    const found = path.indexOf(piece, cursor);
+    if (found < 0) return false;
+    cursor = found + piece.length;
+  }
+  if (!anchored) return path.indexOf(last, cursor) >= 0;
+  return path.length - last.length >= cursor && path.endsWith(last);
 }
 
 /**
@@ -166,16 +187,21 @@ async function readCapped(
   return new TextDecoder().decode(joined);
 }
 
+function siteOf(url: URL): string {
+  return parse(url.hostname).domain ?? url.hostname;
+}
+
+/**
+ * Fetches a robots.txt or sitemap. URLs come from the site's own files, so
+ * each one must be a public address on the same site as the page.
+ */
 async function fetchText(
   raw: string,
   maxBytes: number,
+  site: string,
 ): Promise<string | null> {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return null;
-  }
+  const url = isPublicHttpUrl(raw);
+  if (!url || siteOf(url) !== site) return null;
   const fetched = await fetchPublicPage(url);
   if ("inspection" in fetched || !fetched.response.ok) return null;
   const gzip =
@@ -196,6 +222,7 @@ async function fetchText(
 async function findInSitemaps(
   pageUrl: string,
   sitemaps: string[],
+  site: string,
 ): Promise<boolean | undefined> {
   const queue = [...sitemaps].sort(
     (first, second) =>
@@ -206,7 +233,7 @@ async function findInSitemaps(
   while (queue.length > 0 && fetches < MAX_SITEMAP_FETCHES) {
     const next = queue.shift()!;
     fetches += 1;
-    const xml = await fetchText(next, MAX_SITEMAP_BYTES);
+    const xml = await fetchText(next, MAX_SITEMAP_BYTES, site);
     if (!xml) continue;
     const { index, locations } = parseSitemap(xml);
     if (index) {
@@ -227,15 +254,13 @@ async function findInSitemaps(
 export async function readPublishedSignals(
   pageUrl: string,
 ): Promise<PublishedSignals | null> {
-  let url: URL;
-  try {
-    url = new URL(pageUrl);
-  } catch {
-    return null;
-  }
+  const url = isPublicHttpUrl(pageUrl);
+  if (!url) return null;
+  const site = siteOf(url);
   const robotsText = await fetchText(
     `${url.origin}/robots.txt`,
     MAX_ROBOTS_BYTES,
+    site,
   );
   if (robotsText === null) return null;
   const robots = parseRobots(robotsText);
@@ -245,7 +270,7 @@ export async function readPublishedSignals(
   );
   const sitemapListed = disallowed
     ? undefined
-    : await findInSitemaps(pageUrl, robots.sitemaps);
+    : await findInSitemaps(pageUrl, robots.sitemaps, site);
   return {
     disallowed,
     sitemaps: robots.sitemaps.length,
