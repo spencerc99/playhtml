@@ -39,16 +39,21 @@ export function ShareButton(props: PublishSectionProps) {
           &#9662;
         </span>
       </button>
-      {open && (
-        <div className="collage-export__menu" role="dialog" aria-label="Share">
-          <section className="collage-export__section" aria-label="Link">
-            <p className="collage-studio__label">
-              a view-only page — anyone with the link can look, not edit.
-            </p>
-            <PublishSection {...props} />
-          </section>
-        </div>
-      )}
+      {/* Kept mounted while closed, so a share still uploading keeps its busy
+          state and cannot be started a second time by reopening. */}
+      <div
+        className="collage-export__menu"
+        role="dialog"
+        aria-label="Share"
+        style={open ? undefined : { display: "none" }}
+      >
+        <section className="collage-export__section" aria-label="Link">
+          <p className="collage-studio__label">
+            a view-only page — anyone with the link can look, not edit.
+          </p>
+          <PublishSection {...props} />
+        </section>
+      </div>
     </div>
   );
 }

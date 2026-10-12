@@ -51,6 +51,38 @@ async function canvasBlob(
 }
 
 /**
+ * Draws a picture at the given size and writes it in the first type that fits
+ * the share's per-picture limit, stepping the size down until one does. A
+ * large transparent cut-out can be several megabytes as a PNG.
+ */
+async function encodeWithin(
+  image: CanvasImageSource,
+  width: number,
+  height: number,
+  first: "image/png" | "image/webp",
+): Promise<Blob> {
+  const limit = PUBLISHED_COLLAGE_LIMITS.maxImageBytes;
+  let size = { width, height };
+  for (;;) {
+    const canvas = rasterize(image, size.width, size.height);
+    const blob =
+      first === "image/png"
+        ? await canvasPng(canvas, "the piece could not be drawn")
+        : await canvasBlob(canvas, first);
+    if (blob.size <= limit) return blob;
+    if (first === "image/png") {
+      const webp = await canvasBlob(canvas, "image/webp");
+      if (webp.size <= limit) return webp;
+    }
+    if (Math.max(size.width, size.height) <= 256) return blob;
+    size = {
+      width: Math.max(1, Math.round(size.width * 0.75)),
+      height: Math.max(1, Math.round(size.height * 0.75)),
+    };
+  }
+}
+
+/**
  * The bytes of an image scrap as they are, so an animated GIF stays animated,
  * or a re-encoded copy when they are a kind the share cannot carry (an SVG,
  * say) or too large to.
@@ -73,10 +105,7 @@ async function imageBytes(src: string): Promise<Blob> {
       image.naturalHeight || 1,
       MAX_RASTER_SIDE,
     );
-    return await canvasBlob(
-      rasterize(image, size.width, size.height),
-      "image/webp",
-    );
+    return await encodeWithin(image, size.width, size.height, "image/webp");
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -108,10 +137,7 @@ export async function publishPieceMaterial(
           height: source.height * covered.height * RASTER_DENSITY,
         };
   const size = fitWithin(natural.width, natural.height, MAX_RASTER_SIDE);
-  const blob = await canvasPng(
-    rasterize(image, size.width, size.height),
-    "the piece could not be drawn",
-  );
+  const blob = await encodeWithin(image, size.width, size.height, "image/png");
   return {
     key: `piece:${piece.id}`,
     blob,

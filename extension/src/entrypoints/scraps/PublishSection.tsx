@@ -85,19 +85,31 @@ export function PublishSection({
     }
   };
 
-  /** Sharing again replaces the old link, so it never outlives the new one. */
+  /**
+   * Sharing again replaces the old link. The new one goes up first, so a failed
+   * upload leaves the old link working; the old one comes down only after.
+   */
   const reshareNow = async () => {
     if (!share) return;
-    setBusy("unsharing");
+    const old = share;
+    setBusy("sharing");
+    setCopied(false);
     try {
-      await deletePublishedCollage(workerUrl, share);
-      onUnshared();
+      const built = await buildPublishedCollage(record(), materialFor);
+      const next = await uploadPublishedCollage(workerUrl, built);
+      onShared(next);
+      setCopied(await copyText(next.url));
+      deletePublishedCollage(workerUrl, old).catch((error: unknown) =>
+        console.warn(
+          "[collage publish] could not take the old link down:",
+          error,
+        ),
+      );
     } catch (error) {
       onProblem(`could not update the link — ${reason(error)}`);
+    } finally {
       setBusy("idle");
-      return;
     }
-    await shareNow();
   };
 
   if (!share) {
@@ -110,11 +122,7 @@ export function PublishSection({
           title="Make a view-only link anyone can open"
           onClick={() => void shareNow()}
         >
-          {busy === "sharing"
-            ? "sharing…"
-            : busy === "unsharing"
-              ? "updating…"
-              : "make a view-only link"}
+          {busy === "sharing" ? "sharing…" : "make a view-only link"}
         </button>
       </div>
     );
@@ -157,7 +165,7 @@ export function PublishSection({
           title="Replace the link with one showing the collage as it is now"
           onClick={() => void reshareNow()}
         >
-          {busy === "sharing" ? "sharing…" : "update"}
+          {busy === "sharing" ? "updating…" : "update"}
         </button>
         <button
           type="button"

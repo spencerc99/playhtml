@@ -111,7 +111,7 @@ import {
   type BackLook,
   type CollageBackContent,
 } from "./collageBack";
-import { saveCollage } from "./collageStore";
+import { loadCollage, saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
 import { ExportMenu } from "./ExportMenu";
@@ -604,6 +604,14 @@ export function CollageStudio({
     if (shared) return;
     noteChange();
   }, [changeKey, noteChange, shared]);
+
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // A share's delete token is the only way to take its link down again, so it
   // is written straight away rather than on the next settled change.
@@ -2633,6 +2641,25 @@ export function CollageStudio({
                   workerUrl={WORKER_URL}
                   materialFor={publishPieceMaterial}
                   onShared={(next) => {
+                    if (!mountedRef.current) {
+                      // The studio closed while the link uploaded: store its
+                      // delete token on the saved collage, or the link could
+                      // never be taken down.
+                      const id = draftRef.current.record.id;
+                      void loadCollage(id)
+                        .then(
+                          (stored) =>
+                            stored &&
+                            saveCollage({ ...stored, publication: next }),
+                        )
+                        .catch((error: unknown) =>
+                          console.warn(
+                            "[collage publish] could not keep the link:",
+                            error,
+                          ),
+                        );
+                      return;
+                    }
                     setNotice(null);
                     setPublication(next);
                   }}
