@@ -559,7 +559,7 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
           >
             <div className="collage-sheet__leaf">
               <div
-                className={`collage-frame published-collage__frame${hovered ? " published-collage__frame--looking" : ""}`}
+                className="collage-frame published-collage__frame"
                 data-testid="published-collage-frame"
                 inert={over}
                 aria-label={`The front of ${title}`}

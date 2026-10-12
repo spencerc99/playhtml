@@ -97,12 +97,7 @@ export const VIEWER_STYLES = `
     transform: rotate(var(--piece-rotation));
     cursor: zoom-in;
     outline: none;
-    transition: transform 160ms ease, opacity 160ms ease, filter 160ms ease;
-  }
-
-  .published-collage__frame--looking .published-collage__piece:not(.published-collage__piece--lifted) {
-    opacity: 0.42;
-    filter: saturate(0.7);
+    transition: transform 160ms ease, filter 160ms ease;
   }
 
   .published-collage__piece--lifted,
