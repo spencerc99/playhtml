@@ -395,6 +395,28 @@ describe("ScrapCollector", () => {
     ]);
   });
 
+  it("shows and hides the debug overlay on a running page", () => {
+    collector.enable();
+    expect(document.querySelector("#wwo-scraps-debug")).toBeNull();
+
+    collector.setDebugOverlay(true);
+    expect(document.querySelectorAll("#wwo-scraps-debug")).toHaveLength(1);
+
+    collector.setDebugOverlay(false);
+    expect(document.querySelector("#wwo-scraps-debug")).toBeNull();
+  });
+
+  it("opens a debug overlay requested before collection starts", () => {
+    collector.setDebugOverlay(true);
+    expect(document.querySelector("#wwo-scraps-debug")).toBeNull();
+
+    collector.enable();
+    expect(document.querySelectorAll("#wwo-scraps-debug")).toHaveLength(1);
+
+    collector.disable();
+    expect(document.querySelector("#wwo-scraps-debug")).toBeNull();
+  });
+
   describe("background images", () => {
     const sizes = new Map<string, { width: number; height: number }>();
     const measureImage = vi.fn(async (url: string) => sizes.get(url));

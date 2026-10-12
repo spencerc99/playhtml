@@ -54,6 +54,8 @@ const MAX_BACKGROUND_RESCANNED_ELEMENTS = 4000;
 const MAX_BACKGROUND_RESCANS_PER_ELEMENT = 20;
 /** Attributes whose change can swap the background an element paints. */
 const BACKGROUND_ATTRIBUTES = ["class", "style"];
+/** Bounds the verdicts remembered for a debug overlay switched on later. */
+const MAX_DEBUG_LOG_ENTRIES = 1000;
 /**
  * Lazy loaders and image grids (Google Images among them) paint a placeholder
  * first and swap the real picture in by changing `src`, so a swap puts the
@@ -200,6 +202,12 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   private lastCursorCheckAt = Number.NEGATIVE_INFINITY;
   private readonly measureImage: ImageMeasurer;
   private debugOverlay?: ScrapDebugSink;
+  private debugOverlayRequested = false;
+  /** Latest verdict per image candidate, kept so the overlay can be switched on mid-page. */
+  private debugLog = new Map<
+    Element,
+    { status: ScrapDebugStatus; reason: string }
+  >();
 
   constructor(options: ScrapCollectorOptions = {}) {
     super();
@@ -207,7 +215,9 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   }
 
   start(): void {
-    if (scrapDebugRequested()) this.debugOverlay = createScrapDebugOverlay();
+    if (this.debugOverlayRequested || scrapDebugRequested()) {
+      this.debugOverlay = createScrapDebugOverlay();
+    }
 
     this.intersectionObserver = new IntersectionObserver(
       (entries) => this.handleIntersections(entries),
@@ -264,6 +274,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   stop(): void {
     this.debugOverlay?.destroy();
     this.debugOverlay = undefined;
+    this.debugLog.clear();
     this.intersectionObserver?.disconnect();
     this.mutationObserver?.disconnect();
     this.intersectionObserver = undefined;
@@ -297,6 +308,22 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     this.buttonCaptureCount = 0;
     this.headingCaptureCount = 0;
     this.lastCursorCheckAt = Number.NEGATIVE_INFINITY;
+  }
+
+  /** Shows or hides the debug overlay on a running page, replaying verdicts already made. */
+  setDebugOverlay(enabled: boolean): void {
+    this.debugOverlayRequested = enabled;
+    const running = this.intersectionObserver !== undefined;
+    if (!enabled) {
+      this.debugOverlay?.destroy();
+      this.debugOverlay = undefined;
+      return;
+    }
+    if (!running || this.debugOverlay) return;
+    this.debugOverlay = createScrapDebugOverlay();
+    for (const [element, { status, reason }] of this.debugLog) {
+      this.debugOverlay.note(element, status, reason);
+    }
   }
 
   private discoverCandidates(node: Element): void {
@@ -500,6 +527,13 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     status: ScrapDebugStatus,
     reason: string,
   ): void {
+    if (this.debugLog.size >= MAX_DEBUG_LOG_ENTRIES && !this.debugLog.has(element)) {
+      for (const logged of this.debugLog.keys()) {
+        if (!logged.isConnected) this.debugLog.delete(logged);
+      }
+      if (this.debugLog.size >= MAX_DEBUG_LOG_ENTRIES) return;
+    }
+    this.debugLog.set(element, { status, reason });
     this.debugOverlay?.note(element, status, reason);
   }
 
