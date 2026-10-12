@@ -48,6 +48,12 @@ const MAX_BACKGROUND_RESCANNED_ELEMENTS = 4000;
 const MAX_BACKGROUND_RESCANS_PER_ELEMENT = 20;
 /** Attributes whose change can swap the background an element paints. */
 const BACKGROUND_ATTRIBUTES = ["class", "style"];
+/**
+ * Lazy loaders and image grids (Google Images among them) paint a placeholder
+ * first and swap the real picture in by changing `src`, so a swap puts the
+ * image back up for capture.
+ */
+const IMAGE_SOURCE_ATTRIBUTES = ["src", "srcset"];
 /** Elements whose background never holds a photo worth keeping. */
 const BACKGROUND_SKIP_TAGS = new Set([
   "HEAD",
@@ -214,7 +220,11 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     this.mutationObserver = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === "attributes") {
-          if (mutation.target instanceof Element) {
+          if (IMAGE_SOURCE_ATTRIBUTES.includes(mutation.attributeName ?? "")) {
+            if (mutation.target instanceof HTMLImageElement) {
+              this.reobserveImage(mutation.target);
+            }
+          } else if (mutation.target instanceof Element) {
             this.queueBackgroundRescan(mutation.target);
           }
           continue;
@@ -233,7 +243,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
         // A lazy loader or carousel often swaps a background by changing an
         // existing element's class or style rather than adding a node.
         attributes: true,
-        attributeFilter: BACKGROUND_ATTRIBUTES,
+        attributeFilter: [...BACKGROUND_ATTRIBUTES, ...IMAGE_SOURCE_ATTRIBUTES],
       });
     }
 
@@ -462,6 +472,22 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
 
     this.observedImages.add(image);
     this.intersectionObserver?.observe(image);
+  }
+
+  /** Watches an image again after its source changed, dropping any wait on the old picture. */
+  private reobserveImage(image: HTMLImageElement): void {
+    if (this.observedImages.delete(image)) {
+      this.clearVisibilityTimer(image);
+      if (!this.observedBackgrounds.has(image)) {
+        this.intersectionObserver?.unobserve(image);
+      }
+    }
+    const handleLoad = this.loadHandlers.get(image);
+    if (handleLoad) {
+      image.removeEventListener("load", handleLoad);
+      this.loadHandlers.delete(image);
+    }
+    this.observeImageCandidate(image);
   }
 
   private observeButtonCandidate(button: Element): void {

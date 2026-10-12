@@ -342,6 +342,59 @@ describe("ScrapCollector", () => {
     expect(emitted("image")).toHaveLength(1);
   });
 
+  it("keeps thumbnails that differ only by their identifying query", () => {
+    const first = createImage({
+      src: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcA&s=10",
+    });
+    const second = createImage({
+      src: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcB&s=10",
+    });
+    const resized = createImage({
+      src: "https://cdn.example.com/photo.jpg?w=400",
+    });
+    const sameResized = createImage({
+      src: "https://cdn.example.com/photo.jpg?w=800&q=70",
+    });
+
+    collector.enable();
+    showForCapture([first, second, resized, sameResized]);
+
+    expect(
+      emitted("image").map((data) => (data as { src: string }).src),
+    ).toEqual([
+      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcA&s=10",
+      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcB&s=10",
+      "https://cdn.example.com/photo.jpg?w=400",
+    ]);
+  });
+
+  it("captures the real picture once a lazy loader swaps out a placeholder", async () => {
+    const image = createImage({
+      src: "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+      naturalWidth: 1,
+      naturalHeight: 1,
+    });
+
+    collector.enable();
+    showForCapture([image]);
+    expect(emitted("image")).toHaveLength(0);
+    expect(observer().observed.has(image)).toBe(false);
+
+    Object.defineProperties(image, {
+      currentSrc: { value: "https://example.com/real.jpg", configurable: true },
+      naturalWidth: { value: 400, configurable: true },
+      naturalHeight: { value: 300, configurable: true },
+    });
+    image.setAttribute("src", "https://example.com/real.jpg");
+    await Promise.resolve();
+    expect(observer().observed.has(image)).toBe(true);
+
+    showForCapture([image]);
+    expect(emitted("image")).toEqual([
+      expect.objectContaining({ src: "https://example.com/real.jpg" }),
+    ]);
+  });
+
   describe("background images", () => {
     const sizes = new Map<string, { width: number; height: number }>();
     const measureImage = vi.fn(async (url: string) => sizes.get(url));
