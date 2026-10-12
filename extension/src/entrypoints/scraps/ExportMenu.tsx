@@ -1,8 +1,7 @@
 // ABOUTME: The studio's one "export" button, opening a menu with a section per kind of export.
-// ABOUTME: Picture, video (when something moves), link (when sharing is on) and the collage file.
+// ABOUTME: Picture, video (when something moves) and the collage file; sharing a link has its own button.
 
 import React, { useEffect, useRef, useState } from "react";
-import { PublishSection, type PublishSectionProps } from "./PublishSection";
 
 interface ExportMenuProps {
   /** False while the collage is empty, when nothing but the file can be made. */
@@ -14,8 +13,6 @@ interface ExportMenuProps {
   video?: { ok: true } | { ok: false; reason: string };
   onVideo: () => void;
   onFile: () => void;
-  /** The link section, shown only when sharing links is turned on. */
-  link?: Omit<PublishSectionProps, "canShare">;
 }
 
 export function ExportMenu({
@@ -25,7 +22,6 @@ export function ExportMenu({
   video,
   onVideo,
   onFile,
-  link,
 }: ExportMenuProps) {
   const [open, setOpen] = useState(false);
   const holderRef = useRef<HTMLDivElement>(null);
@@ -97,12 +93,6 @@ export function ExportMenu({
                   mp4 · the moving pieces
                 </button>
               </div>
-            </section>
-          )}
-          {link && (
-            <section className="collage-export__section" aria-label="Link">
-              <p className="collage-studio__label">link</p>
-              <PublishSection {...link} canShare={hasPieces && !busy} />
             </section>
           )}
           <section className="collage-export__section" aria-label="File">

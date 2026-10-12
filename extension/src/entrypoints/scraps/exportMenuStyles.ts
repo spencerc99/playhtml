@@ -1,7 +1,15 @@
-// ABOUTME: Styles for the studio's export menu and its link section with the shared link and take-down.
+// ABOUTME: Styles for the studio's export menu and share popover, with the shared link and take-down.
 // ABOUTME: Folded into the studio stylesheet, so it uses the studio's --c-* palette.
 
 export const EXPORT_MENU_STYLES = `
+  /* Share and export, kept on one line together when the bar wraps. */
+  .collage-bar__send {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+
   .collage-export {
     position: relative;
     display: inline-flex;
@@ -15,11 +23,27 @@ export const EXPORT_MENU_STYLES = `
     display: flex;
     flex-direction: column;
     width: 290px;
+    max-width: calc(100vw - 32px);
     padding: 4px 10px;
     border: 1px solid color-mix(in srgb, var(--c-ink) 20%, transparent);
     border-radius: 4px;
     background: var(--c-surface);
     box-shadow: 0 10px 28px color-mix(in srgb, var(--c-ink) 20%, transparent);
+  }
+
+  /* On a phone the bar is the screen's width and share sits left of export,
+     so both popovers open from the bar's right edge rather than their button's,
+     where share's would run off the left side. */
+  .collage-studio--phone .collage-bar {
+    position: relative;
+  }
+
+  .collage-studio--phone .collage-export {
+    position: static;
+  }
+
+  .collage-studio--phone .collage-export__menu {
+    right: 8px;
   }
 
   .collage-export__section {

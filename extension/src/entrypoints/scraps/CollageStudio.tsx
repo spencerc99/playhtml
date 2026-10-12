@@ -115,6 +115,7 @@ import { saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
 import { ExportMenu } from "./ExportMenu";
+import { ShareButton } from "./ShareButton";
 import {
   CollageMat,
   MAT,
@@ -2617,40 +2618,46 @@ export function CollageStudio({
             open={showKeys}
             onToggle={() => setShowKeys((value) => !value)}
           />
-          <ExportMenu
-            hasPieces={pieces.length > 0}
-            running={
-              exporting
-                ? "exporting…"
-                : videoProgress !== null
-                ? // No wider than "export ▾" in the monospace face, so the bar
-                  // does not reflow while the video encodes.
-                  `mp4 · ${Math.round(videoProgress * 100)}%`
-                : null
-            }
-            onPicture={() => void download()}
-            video={animates ? videoSupport : undefined}
-            onVideo={() => void downloadVideo()}
-            onFile={() => void downloadFile()}
-            link={
-              // A collage made together is not stored here, so it cannot
-              // keep the token that takes its link down.
-              canPublish && !shared
-                ? {
-                    share: publication,
-                    record: () => draftRef.current.record,
-                    workerUrl: WORKER_URL,
-                    materialFor: publishPieceMaterial,
-                    onShared: (next) => {
-                      setNotice(null);
-                      setPublication(next);
-                    },
-                    onUnshared: () => setPublication(undefined),
-                    onProblem: (text) => setNotice({ tone: "problem", text }),
+          {/* Share and export stay side by side when the bar wraps. */}
+          <span className="collage-bar__send">
+            {
+              // A collage made together is not stored here, so it cannot keep
+              // the token that takes its link down.
+              canPublish && !shared && (
+                <ShareButton
+                  share={publication}
+                  canShare={
+                    pieces.length > 0 && !exporting && videoProgress === null
                   }
-                : undefined
+                  record={() => draftRef.current.record}
+                  workerUrl={WORKER_URL}
+                  materialFor={publishPieceMaterial}
+                  onShared={(next) => {
+                    setNotice(null);
+                    setPublication(next);
+                  }}
+                  onUnshared={() => setPublication(undefined)}
+                  onProblem={(text) => setNotice({ tone: "problem", text })}
+                />
+              )
             }
-          />
+            <ExportMenu
+              hasPieces={pieces.length > 0}
+              running={
+                exporting
+                  ? "exporting…"
+                  : videoProgress !== null
+                  ? // No wider than "export ▾" in the monospace face, so the bar
+                    // does not reflow while the video encodes.
+                    `mp4 · ${Math.round(videoProgress * 100)}%`
+                  : null
+              }
+              onPicture={() => void download()}
+              video={animates ? videoSupport : undefined}
+              onVideo={() => void downloadVideo()}
+              onFile={() => void downloadFile()}
+            />
+          </span>
           {confirmingLeave ? (
             <>
               <button
