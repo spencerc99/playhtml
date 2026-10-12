@@ -13,6 +13,7 @@
   "dependencies": {
     "@playhtml/common": "workspace:*",
     "@playhtml/react": "workspace:*",
+    "dompurify": "3.2.6",
     "downshift": "^9.3.2",
     "p5": "^2.3.0",
     "perfect-freehand": "^1.2.3",

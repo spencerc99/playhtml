@@ -48,6 +48,7 @@ import {
   type BackShows,
   type CollagePiece,
   type CollageRecord,
+  type CollagePublication,
 } from "./collageRecord";
 import {
   DEFAULT_CUTOUT_TOLERANCE,
@@ -110,9 +111,21 @@ import {
   type BackLook,
   type CollageBackContent,
 } from "./collageBack";
-import { saveCollage } from "./collageStore";
+import { loadCollage, saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
+import { ExportMenu } from "./ExportMenu";
+import { ShareButton } from "./ShareButton";
+import {
+  CollageMat,
+  MAT,
+  MAT_CAPTION,
+  PHONE_MAT,
+  PHONE_MAT_CAPTION,
+  madeOn,
+} from "./CollageMat";
+import { publishPieceMaterial } from "./publishPieceImages";
+import { WORKER_URL } from "@movement/config";
 import { naturalScrapSize } from "./pieceLettering";
 import { CropSession } from "./CropSession";
 import { KeysPopover } from "./KeysPopover";
@@ -181,7 +194,11 @@ import {
   type CollageDraft,
 } from "./useCollageAutosave";
 import type { SaveStanding } from "./autosaveSchedule";
-import { collageExportName } from "./collageFile";
+import {
+  collageExportName,
+  collageFileName,
+  encodeCollageFile,
+} from "./collageFile";
 import {
   isEmptyChange,
   piecesChange,
@@ -209,12 +226,6 @@ const STAGE_PADDING = 12;
  * float there, so a frame fitted to a tall stage never slides under them.
  */
 const STAGE_TOP_BAND = 52;
-/** The mat around the frame, in screen pixels, and the band under it that carries the caption. */
-const MAT = 26;
-const MAT_CAPTION = 44;
-/** On a phone every pixel goes to the collage, so the mat is narrower. */
-const PHONE_MAT = 12;
-const PHONE_MAT_CAPTION = 32;
 /** How far inside the stage's edge a pinned handle stays, in screen pixels. */
 const HANDLE_INSET = 10;
 /** Frame units the pointer must travel before an alt-drag pulls out a copy. */
@@ -322,6 +333,9 @@ interface CollageStudioProps {
   autosaveTimers?: AutosaveTimers;
   /** The choice of editor, offered to people with experiment access. */
   editorSwitch?: EditorSwitchChoice;
+  /** Whether the export menu offers a view-only link. The host decides, since
+   * feature access reads extension storage the walk page can't reach. */
+  canPublish?: boolean;
   /**
    * A collage other people edit at the same time. The studio then reports
    * each settled edit instead of saving, takes in everyone else's edits, and
@@ -373,13 +387,6 @@ function placedPiece(
 }
 
 /** The day a collage was started, the way the history cards write it. */
-function madeOn(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).toLowerCase();
-}
 
 export function CollageStudio({
   scraps,
@@ -388,6 +395,7 @@ export function CollageStudio({
   onLeave,
   autosaveTimers,
   editorSwitch,
+  canPublish = false,
   shared,
 }: CollageStudioProps) {
   const initial = useMemo<readonly CollagePiece[]>(
@@ -417,6 +425,10 @@ export function CollageStudio({
   const [backShows, setBackShows] = useState<BackShows>(
     editing?.backShows ?? "pieces",
   );
+  /** The view-only link this collage is shared as, kept so it can be taken down. */
+  const [publication, setPublication] = useState<
+    CollagePublication | undefined
+  >(editing?.publication);
   const sharedWidth = shared?.frame.width;
   const sharedHeight = shared?.frame.height;
   const frame = useMemo(
@@ -541,6 +553,7 @@ export function CollageStudio({
       paper,
       backShows,
       pieces: normalizeStack(pieces),
+      ...(publication ? { publication } : {}),
     },
     hasContent: pieces.length > 0 || title.trim().length > 0,
   };
@@ -576,8 +589,9 @@ export function CollageStudio({
       grain: paper.grain,
       format,
       backShows,
+      publication: publication?.id ?? null,
     }),
-    [pieces, title, paper.color, paper.grain, format, backShows],
+    [pieces, title, paper.color, paper.grain, format, backShows, publication?.id],
   );
   const firstChangeRef = useRef(true);
   useEffect(() => {
@@ -590,6 +604,26 @@ export function CollageStudio({
     if (shared) return;
     noteChange();
   }, [changeKey, noteChange, shared]);
+
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // A share's delete token is the only way to take its link down again, so it
+  // is written straight away rather than on the next settled change.
+  const firstShareRef = useRef(true);
+  useEffect(() => {
+    if (firstShareRef.current) {
+      firstShareRef.current = false;
+      return;
+    }
+    if (shared) return;
+    flush();
+  }, [publication?.id, flush, shared]);
 
   const mode: StudioMode = over
     ? "back"
@@ -2010,6 +2044,30 @@ export function CollageStudio({
     }
   };
 
+  /** Saves the collage as a file that opens it again in another browser. */
+  const downloadFile = async () => {
+    flush();
+    const record = collageToHandOver({
+      draft: draftRef.current,
+      standing: autosave.standing,
+      opened: editing,
+      preview: autosave.preview,
+    });
+    if (!record) return;
+    try {
+      const text = await encodeCollageFile(record);
+      saveFile(
+        new Blob([text], { type: "application/json" }),
+        collageFileName(record.title),
+      );
+    } catch (error) {
+      setNotice({
+        tone: "problem",
+        text: `could not save the file — ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  };
+
   const onBackProblem = useCallback((text: string) => {
     setNotice({ tone: "problem", text });
   }, []);
@@ -2102,25 +2160,39 @@ export function CollageStudio({
         >
           {/* The sheet holds both sides of the collage in one place and turns
               over about its vertical axis; only the side facing up is live. */}
-          {/* The frame sits on a mat, and the mat carries the collage's name,
-              count and date under it, so a screenshot of the mat says what it is. */}
-          <div
-            className="collage-mat"
-            data-marquee-ground=""
-            style={{
-              width: frame.width * scale + mat * 2,
-              height: frame.height * scale + mat + matCaption,
-            }}
-          >
-          <div
-            className="collage-mat__window"
-            data-marquee-ground=""
-            style={{
-              left: mat,
-              top: mat,
-              width: frame.width * scale,
-              height: frame.height * scale,
-            }}
+          <CollageMat
+            width={frame.width * scale}
+            height={frame.height * scale}
+            mat={mat}
+            matCaption={matCaption}
+            caption={
+              over ? (
+                <span className="collage-studio__label">
+                  turned over · T or esc to turn back
+                </span>
+              ) : shared ? (
+                shared.caption ?? (
+                  <span className="collage-studio__label">
+                    {pieces.length} piece{pieces.length === 1 ? "" : "s"}
+                  </span>
+                )
+              ) : (
+                <>
+                  <input
+                    className="collage-title-input"
+                    value={title}
+                    placeholder="untitled collage"
+                    onChange={(event) => setTitle(event.target.value)}
+                    aria-label="Collage title"
+                  />
+                  <span className="collage-bar__spacer" />
+                  <span className="collage-studio__label">
+                    {pieces.length} piece{pieces.length === 1 ? "" : "s"} · made{" "}
+                    {madeOn(createdAtRef.current)}
+                  </span>
+                </>
+              )
+            }
           >
           <div
             className={`collage-sheet${over ? " collage-sheet--over" : ""}`}
@@ -2464,36 +2536,7 @@ export function CollageStudio({
               />
             </div>
           </div>
-          </div>
-            <div className="collage-mat__caption" style={{ left: mat, right: mat }}>
-              {over ? (
-                <span className="collage-studio__label">
-                  turned over · T or esc to turn back
-                </span>
-              ) : shared ? (
-                shared.caption ?? (
-                  <span className="collage-studio__label">
-                    {pieces.length} piece{pieces.length === 1 ? "" : "s"}
-                  </span>
-                )
-              ) : (
-                <>
-                  <input
-                    className="collage-title-input"
-                    value={title}
-                    placeholder="untitled collage"
-                    onChange={(event) => setTitle(event.target.value)}
-                    aria-label="Collage title"
-                  />
-                  <span className="collage-bar__spacer" />
-                  <span className="collage-studio__label">
-                    {pieces.length} piece{pieces.length === 1 ? "" : "s"} · made{" "}
-                    {madeOn(createdAtRef.current)}
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
+          </CollageMat>
 
           <StudioTools
             canUndo={!over && (canUndo(history) || cropPending)}
@@ -2583,29 +2626,65 @@ export function CollageStudio({
             open={showKeys}
             onToggle={() => setShowKeys((value) => !value)}
           />
-          <button
-            type="button"
-            className="collage-action"
-            disabled={exporting || videoProgress !== null || pieces.length === 0}
-            onClick={() => void download()}
-          >
-            export png
-          </button>
-          {animates && (
-            <button
-              type="button"
-              className="collage-action"
-              disabled={exporting || videoProgress !== null}
-              title={videoSupport.ok ? undefined : videoSupport.reason}
-              onClick={() => void downloadVideo()}
-            >
-              {videoProgress === null
-                ? "export mp4"
-                : // No wider than "export mp4" in the monospace face, so
-                  // the bar does not reflow while the video encodes.
-                  `mp4 · ${Math.round(videoProgress * 100)}%`}
-            </button>
-          )}
+          {/* Share and export stay side by side when the bar wraps. */}
+          <span className="collage-bar__send">
+            {
+              // A collage made together is not stored here, so it cannot keep
+              // the token that takes its link down.
+              canPublish && !shared && (
+                <ShareButton
+                  share={publication}
+                  canShare={
+                    pieces.length > 0 && !exporting && videoProgress === null
+                  }
+                  record={() => draftRef.current.record}
+                  workerUrl={WORKER_URL}
+                  materialFor={publishPieceMaterial}
+                  onShared={(next) => {
+                    if (!mountedRef.current) {
+                      // The studio closed while the link uploaded: store its
+                      // delete token on the saved collage, or the link could
+                      // never be taken down.
+                      const id = draftRef.current.record.id;
+                      void loadCollage(id)
+                        .then(
+                          (stored) =>
+                            stored &&
+                            saveCollage({ ...stored, publication: next }),
+                        )
+                        .catch((error: unknown) =>
+                          console.warn(
+                            "[collage publish] could not keep the link:",
+                            error,
+                          ),
+                        );
+                      return;
+                    }
+                    setNotice(null);
+                    setPublication(next);
+                  }}
+                  onUnshared={() => setPublication(undefined)}
+                  onProblem={(text) => setNotice({ tone: "problem", text })}
+                />
+              )
+            }
+            <ExportMenu
+              hasPieces={pieces.length > 0}
+              running={
+                exporting
+                  ? "exporting…"
+                  : videoProgress !== null
+                  ? // No wider than "export ▾" in the monospace face, so the bar
+                    // does not reflow while the video encodes.
+                    `mp4 · ${Math.round(videoProgress * 100)}%`
+                  : null
+              }
+              onPicture={() => void download()}
+              video={animates ? videoSupport : undefined}
+              onVideo={() => void downloadVideo()}
+              onFile={() => void downloadFile()}
+            />
+          </span>
           {confirmingLeave ? (
             <>
               <button

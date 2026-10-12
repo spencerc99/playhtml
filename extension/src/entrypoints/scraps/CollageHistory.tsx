@@ -29,6 +29,8 @@ import {
   keepCollageImages,
   releaseCollageImages,
 } from "./localScrapImages";
+import { deletePublishedCollage } from "./publishCollage";
+import { WORKER_URL } from "@movement/config";
 
 interface CollageHistoryProps {
   /** Bumped by the studio after a save so the list reloads. */
@@ -181,6 +183,22 @@ export function CollageHistory({
   };
 
   const remove = async (id: string) => {
+    // A deleted collage takes its shared link down first, since the token that
+    // could do so later is deleted along with the collage.
+    const publication = await loadCollage(id)
+      .then((record) => record?.publication)
+      .catch(() => undefined);
+    if (publication) {
+      try {
+        await deletePublishedCollage(WORKER_URL, publication);
+      } catch (takedownError) {
+        setError(
+          `could not take the shared link down, so the collage was kept — ${takedownError instanceof Error ? takedownError.message : String(takedownError)}`,
+        );
+        setConfirmingId(null);
+        return;
+      }
+    }
     await deleteCollage(id);
     inBackground(releaseCollageImages(id));
     setConfirmingId(null);
@@ -335,7 +353,9 @@ export function CollageHistory({
                     className="collage-card__thumb collage-card__thumb--undrawn"
                     style={paper}
                   >
-                    <span className="collage-studio__label">no preview yet</span>
+                    <span className="collage-studio__label">
+                      no preview yet
+                    </span>
                   </span>
                 )}
                 <span className="collage-card__title">{name}</span>

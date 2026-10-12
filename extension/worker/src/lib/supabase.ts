@@ -47,4 +47,7 @@ export interface Env {
   WWO_ADMIN_DB: D1Database;     // Feature policy, beta cohorts, and operator workflows
   INTERNET_MAP_BUNDLES: R2Bucket;
   INTERNET_MAP_PASSWORD?: string; // Optional: shared password that opens map bundles only // Private internet map bundles (real browsing URLs)
+  SHARED_COLLAGES: R2Bucket;      // Public, view-only shared collages and their pictures
+  COLLAGE_SHARE_RATE_LIMITER: RateLimit; // Public collage share upload limiter
+  COLLAGE_VIEWER_ORIGIN?: string; // Optional: where share links open, for local development
 }
