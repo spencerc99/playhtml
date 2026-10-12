@@ -169,12 +169,17 @@ export async function getCommuteResponse(
   );
 }
 
-/** Scenery hostnames no human policy covers. */
+/**
+ * Scenery hostnames no human hostname or site policy covers. Page and path
+ * policies never apply to scenery, so they don't count as a review here.
+ */
 function unreviewedSceneryNames(
   response: CommuteResponse,
   policies: InternetPlacePolicy[],
 ): string[] {
-  const decided = policies.filter((policy) => policy.placement);
+  const decided = policies.filter(
+    (policy) => policy.placement && (policy.scope === 'hostname' || policy.scope === 'site'),
+  );
   return response.scenery
     .map(({ domain }) => domain)
     .filter((domain) => !resolveInternetPlacePolicy(decided, `https://${domain}/`));

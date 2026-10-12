@@ -303,6 +303,21 @@ describe('handleCommute', () => {
     expect(log.results?.map((row) => row.kind).sort()).toEqual(['name', 'page']);
   });
 
+  it('still checks a scenery name when only its homepage has a page decision', async () => {
+    await env.WWO_ADMIN_DB.prepare(
+      "INSERT INTO place_policies (scope, place_key, placement, note) VALUES ('page', 'https://public.example/', 'hidden', '')",
+    ).run();
+    handleRecent.mockImplementation(async () => new Response(JSON.stringify([
+      event('navigation', 'https://public.example/'),
+      event('navigation', 'https://public.example/article'),
+    ]), { headers: { 'Content-Type': 'application/json' } }));
+    const run = useClef('regular', 'hidden');
+    await suggestCommuteDestinations(env);
+    expect(run.names).toHaveBeenCalledTimes(1);
+    const response = await handleCommute(new Request('https://worker.example/commute/recent'), env);
+    expect(JSON.stringify(await response.json())).not.toContain('public.example');
+  });
+
   it('logs each Clef answer with what it saw and whether the curator agreed', async () => {
     fetchPublicPageContext.mockResolvedValue({
       inspection: { verdict: 'public', reason: 'public_html', finalUrl: 'https://public.example/article' },
