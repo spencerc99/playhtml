@@ -55,7 +55,14 @@ export interface BuiltPublication {
   collage: PublishedCollage;
   /** The pictures in `img/<n>` order. */
   images: Blob[];
+  /** The whole collage as one picture, for link previews, when it could be drawn. */
+  cover?: Blob;
 }
+
+/** Draws the whole collage as one picture for a shared link's preview. */
+export type CollageCoverBaker = (
+  record: Pick<CollageRecord, "frame" | "paper" | "pieces">,
+) => Promise<Blob>;
 
 function clip(text: string, limit: number): string {
   return text.length <= limit ? text : `${text.slice(0, limit - 1)}…`;
@@ -147,6 +154,7 @@ export async function buildPublishedCollage(
     "title" | "createdAt" | "frame" | "paper" | "pieces" | "backShows"
   >,
   materialFor: PieceMaterialResolver,
+  coverFor?: CollageCoverBaker,
 ): Promise<BuiltPublication> {
   const limits = PUBLISHED_COLLAGE_LIMITS;
   if (record.pieces.length === 0) {
@@ -249,7 +257,25 @@ export async function buildPublishedCollage(
       error instanceof Error ? error.message : String(error),
     );
   }
-  return { collage, images };
+  return { collage, images, ...(await bakeCover(record, coverFor)) };
+}
+
+/** A cover is a nicety: a collage whose cover cannot be drawn still shares. */
+async function bakeCover(
+  record: Pick<CollageRecord, "frame" | "paper" | "pieces">,
+  coverFor: CollageCoverBaker | undefined,
+): Promise<{ cover?: Blob }> {
+  if (!coverFor) return {};
+  try {
+    const cover = await coverFor(record);
+    return cover.size > 0 &&
+      cover.size <= PUBLISHED_COLLAGE_LIMITS.maxImageBytes
+      ? { cover }
+      : {};
+  } catch (error) {
+    console.warn("[collage publish] no cover for the link preview:", error);
+    return {};
+  }
 }
 
 /** The multipart body the Worker's `POST /collages` reads. */
@@ -260,6 +286,7 @@ export function publishFormData(built: BuiltPublication): FormData {
     const ref = publishedImageRef(index);
     form.set(ref, blob, ref);
   });
+  if (built.cover) form.set("cover", built.cover, "cover");
   return form;
 }
 

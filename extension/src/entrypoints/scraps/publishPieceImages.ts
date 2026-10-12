@@ -6,8 +6,13 @@ import {
   sniffPublishedImageType,
 } from "../../../shared/publishedCollage";
 import { resolveScrapImageSrc } from "@movement/utils/scrapImageSource";
-import { canvasPng, loadImage, prepareCollagePieces } from "./bakeCollage";
-import type { CollagePiece } from "./collageRecord";
+import {
+  bakeCollageCover,
+  canvasPng,
+  loadImage,
+  prepareCollagePieces,
+} from "./bakeCollage";
+import type { CollagePiece, CollageRecord } from "./collageRecord";
 import type { PublishedPieceMaterial } from "./publishCollage";
 
 /** The longest side a baked or shrunk picture is given. */
@@ -144,4 +149,19 @@ export async function publishPieceMaterial(
     ...(still.placement ? { placement: still.placement } : {}),
     ...(piece.cutout ? { cutout: true } : {}),
   };
+}
+
+/** The whole collage, paper and all, as the picture its shared link previews with. */
+export async function publishCollageCover(
+  record: Pick<CollageRecord, "frame" | "paper" | "pieces">,
+): Promise<Blob> {
+  const options = {
+    frame: record.frame,
+    pieces: record.pieces,
+    paper: record.paper.color,
+    grain: record.paper.grain,
+  };
+  const cover = await bakeCollageCover(options);
+  if (cover.size <= PUBLISHED_COLLAGE_LIMITS.maxImageBytes) return cover;
+  return bakeCollageCover({ ...options, longest: 800 });
 }
