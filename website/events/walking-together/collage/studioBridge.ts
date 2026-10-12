@@ -6,20 +6,24 @@ import {
   FULL_CROP,
   type CropFraction,
 } from "@extension/entrypoints/scraps/collageGeometry";
+import type { ScrapItem } from "@movement/components/ScrapCollage";
+import type { PiecesChange } from "@extension/entrypoints/scraps/sharedCollage";
 import {
-  moveGroupBackward,
-  moveGroupForward,
-  moveGroupToBack,
-  moveGroupToFront,
-} from "@extension/entrypoints/scraps/pieceGroup";
-import { sortedPieces, sourceDomain, type Piece, type PieceTransform, type Pieces, type Placer } from "./pieces";
+  FALLBACK_ASPECT,
+  pageLink,
+  sortedPieces,
+  sourceDomain,
+  type Piece,
+  type PieceTransform,
+  type Pieces,
+  type Placer,
+} from "./pieces";
+import type { SessionScrap } from "./scrapsBridge";
 
 export interface TableSize {
   width: number;
   height: number;
 }
-
-export type OrderMove = "forward" | "backward" | "front" | "back";
 
 /** The table piece as the studio sees it, at the table's current pixel size.
  * `transform` overrides the stored placement, for a gesture in progress. */
@@ -75,53 +79,136 @@ export function placementFromStudio(
   };
 }
 
-/** The new stacking for a layer move, as only the z values that change. The
- * studio renumbers the stack to 0..n-1, so the first move on a table writes
- * most pieces once; later moves write only the pieces that swap. */
-export function reorderedZ(
-  pieces: Pieces,
-  id: string,
-  to: OrderMove,
-): Record<string, number> {
-  // Start from the table's own paint order, so pieces tied on z keep the
-  // order they are drawn in.
-  const stack = sortedPieces(pieces).map((piece) => ({ id: piece.id, z: piece.z }));
-  const move = {
-    forward: moveGroupForward,
-    backward: moveGroupBackward,
-    front: moveGroupToFront,
-    back: moveGroupToBack,
-  }[to];
-  // The group helpers only read ids and z, so the light stand-ins are enough.
-  const next = move(stack as unknown as CollagePiece[], [id]);
-  const changed: Record<string, number> = {};
-  for (const piece of next) {
-    if (pieces[piece.id]?.z !== piece.z) changed[piece.id] = piece.z;
-  }
-  return changed;
+/**
+ * The table's frame in the studio, in frame units. Pieces are stored as
+ * fractions of it, so the size only sets the shape everyone shares.
+ */
+export const TABLE_FRAME: TableSize = { width: 1600, height: 1000 };
+
+/** The table's pieces as the studio edits them, at the shared frame. */
+export function studioPieces(pieces: Pieces): CollagePiece[] {
+  return sortedPieces(pieces).map((piece) => toStudioPiece(piece, TABLE_FRAME));
 }
 
-/** A copy of a piece, nudged down and right so both stay visible, owned by
- * whoever made the copy and placed on top. */
-export function duplicatedPiece(
-  piece: Piece,
+/**
+ * A studio piece back in table terms. A piece already on the table keeps who
+ * placed it and when; a new one, such as a copy or a scrap from the drawer,
+ * belongs to whoever made it. Optional fields are left out rather than set to
+ * undefined, so shared data never holds an empty value.
+ */
+export function tablePiece(
+  studio: CollagePiece,
+  existing: Piece | undefined,
   placer: Placer,
-  options: { id: string; now: number; z: number },
+  now: number,
 ): Piece {
-  // A copy starts free to move; spread leaves `locked` out rather than
-  // writing an undefined value into shared data.
-  // Nested fields are copied so the copy shares no object with the original
-  // in shared data.
-  const { locked: _locked, ...rest } = JSON.parse(JSON.stringify(piece)) as Piece;
+  const placement = placementFromStudio(studio, TABLE_FRAME);
+  const scrap = studio.scrap;
+  const base: Piece = existing
+    ? { ...existing }
+    : {
+        id: studio.id,
+        src: scrap.kind === "image" ? scrap.src : "",
+        pageUrl: pageLink(scrap.pageUrl),
+        alt: scrap.kind === "image" ? scrap.alt ?? "" : "",
+        placedByPid: placer.pid,
+        placedByName: placer.name,
+        placedByColor: placer.color,
+        x: 0,
+        y: 0,
+        width: 0,
+        aspect: FALLBACK_ASPECT,
+        rotation: 0,
+        z: 0,
+        placedAt: now,
+      };
+  const { cutout: _cutout, locked: _locked, crop: _crop, ...rest } = base;
   return {
     ...rest,
-    id: options.id,
-    placedByPid: placer.pid,
-    placedByName: placer.name,
-    placedByColor: placer.color,
-    x: Math.min(1, piece.x + 0.02),
-    y: Math.min(1, piece.y + 0.03),
-    z: options.z,
-    placedAt: options.now,
+    x: placement.x,
+    y: placement.y,
+    width: placement.width,
+    aspect: placement.aspect,
+    rotation: studio.rotation,
+    z: studio.z,
+    flipX: studio.flipX,
+    flipY: studio.flipY,
+    ...(isWholeCrop(placement.crop) ? {} : { crop: placement.crop }),
+    ...(studio.cutout ? { cutout: { ...studio.cutout } } : {}),
+    ...(studio.locked ? { locked: true } : {}),
+  } as Piece;
+}
+
+function isWholeCrop(crop: { x: number; y: number; width: number; height: number }) {
+  return crop.x === 0 && crop.y === 0 && crop.width === 1 && crop.height === 1;
+}
+
+/** The fields of a table piece one edit set, and the ones it took away. */
+export interface PiecePatch {
+  set: Partial<Piece>;
+  unset: string[];
+}
+
+/** One person's studio edit, as the table pieces to write and the ids to drop. */
+export function tableChange(
+  change: PiecesChange,
+  pieces: Pieces,
+  placer: Placer,
+  now: number,
+): { write: Piece[]; remove: string[] } {
+  return {
+    write: change.upserts
+      .filter((studio) => studio.scrap.kind === "image")
+      .map((studio) => tablePiece(studio, pieces[studio.id], placer, now)),
+    remove: change.removedIds.filter((id) => id in pieces),
+  };
+}
+
+/**
+ * What an edit changed on one table piece, found by laying out the piece as
+ * it stood before the edit the same way as after it. A field the edit left
+ * alone stays out of the patch, so writing the patch keeps whatever someone
+ * else did to that field meanwhile.
+ */
+export function piecePatch(
+  before: CollagePiece,
+  after: CollagePiece,
+  existing: Piece,
+  placer: Placer,
+  now: number,
+): PiecePatch {
+  const was = tablePiece(before, existing, placer, now) as unknown as Record<string, unknown>;
+  const is = tablePiece(after, existing, placer, now) as unknown as Record<string, unknown>;
+  const set: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(is)) {
+    if (JSON.stringify(was[key]) !== JSON.stringify(value)) set[key] = value;
+  }
+  const unset = Object.keys(was).filter((key) => !(key in is));
+  return { set: set as Partial<Piece>, unset };
+}
+
+/**
+ * A scrap from this person's walk as the studio's drawer shows it, with the
+ * page it came from so others can visit it once it is placed.
+ */
+export function sessionScrapItem(
+  scrap: SessionScrap,
+  size: { width: number; height: number } | null,
+): ScrapItem {
+  const width = size?.width ?? scrap.width ?? 400;
+  const height = size?.height ?? scrap.height ?? 400 * FALLBACK_ASPECT;
+  const pageUrl = pageLink(scrap.pageUrl);
+  return {
+    kind: "image",
+    id: scrap.id,
+    key: scrap.id,
+    src: scrap.src,
+    ...(scrap.alt ? { alt: scrap.alt } : {}),
+    naturalWidth: width,
+    naturalHeight: height,
+    pageTitle: "",
+    domain: sourceDomain({ pageUrl, src: scrap.src }),
+    pageUrl,
+    ts: scrap.capturedAt,
   };
 }

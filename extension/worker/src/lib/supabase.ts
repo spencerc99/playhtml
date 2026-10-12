@@ -48,4 +48,7 @@ export interface Env {
   AI?: Ai;                      // Advisory Internet place classifications
   INTERNET_MAP_BUNDLES: R2Bucket; // Private internet map bundles (real browsing URLs)
   INTERNET_MAP_PASSWORD?: string; // Optional: shared password that opens map bundles only
+  SHARED_COLLAGES: R2Bucket;      // Public, view-only shared collages and their pictures
+  COLLAGE_SHARE_RATE_LIMITER: RateLimit; // Public collage share upload limiter
+  COLLAGE_VIEWER_ORIGIN?: string; // Optional: where share links open, for local development
 }

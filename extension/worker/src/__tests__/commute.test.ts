@@ -69,7 +69,7 @@ describe('handleCommute', () => {
       d1Databases: ['WWO_ADMIN_DB'],
     });
     const db = await miniflare.getD1Database('WWO_ADMIN_DB');
-    for (const name of ['0005_internet_place_catalog.sql', '0006_internet_place_placement.sql', '0007_internet_place_suggestions.sql', '0008_internet_place_suggestion_evidence.sql', '0009_internet_place_clef_log.sql']) {
+    for (const name of ['0006_internet_place_catalog.sql', '0007_internet_place_placement.sql', '0008_internet_place_suggestions.sql', '0009_internet_place_suggestion_evidence.sql', '0010_internet_place_clef_log.sql']) {
       const sql = readFileSync(new URL(`../../migrations/${name}`, import.meta.url), 'utf8');
       for (const statement of sql.replace(/^--.*$/gm, '').split(';').filter((part) => part.trim())) {
         await db.prepare(statement).run();

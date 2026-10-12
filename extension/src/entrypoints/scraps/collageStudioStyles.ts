@@ -3,6 +3,12 @@
 
 import { COLLAGE_PIECE_TOOL_STYLES } from "./collagePieceToolStyles";
 import { COLLAGE_VIEW_STYLES } from "./collageViewStyles";
+import { EXPORT_MENU_STYLES } from "./exportMenuStyles";
+import {
+  COLLAGE_MAT_STYLES,
+  COLLAGE_SHEET_STYLES,
+  PIECE_MATERIAL_STYLES,
+} from "./collageSheetStyles";
 
 export const COLLAGE_STUDIO_STYLES = `
   /* The collage studio's palette: WWO's linen nudged a hair cooler. Every
@@ -27,6 +33,163 @@ export const COLLAGE_STUDIO_STYLES = `
     background: var(--c-ground);
     color: var(--c-ink);
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+  }
+
+  /* On a phone the drawer docks under the collage, so the collage and the
+     scraps to add to it are on screen together. */
+  .collage-studio--phone {
+    flex-direction: column;
+  }
+
+  .collage-studio--phone .collage-frame-area {
+    order: 0;
+  }
+
+  /* Every touch on the stage is the studio's: a drag moves a piece or draws
+     a marquee, and two fingers pinch, so the page must not scroll or zoom. */
+  .collage-studio--phone .collage-frame-area__stage {
+    touch-action: none;
+  }
+
+  /* Two classes, so this outranks the drawer's own side-docked size and
+     margin, which come later; otherwise the drawer grows with its scraps
+     and buries the collage. */
+  .collage-tray.collage-tray--bottom {
+    order: 1;
+    flex: 0 0 40%;
+    margin: 0 8px 8px;
+    /* Its filter menus open upward over the collage, so they sit above the
+       bars floating at the top of the stage. */
+    z-index: 10020;
+  }
+
+  /* While the drawer is open on a phone the collage is being filled, so the
+     format and export bar steps aside for it; tucking the drawer brings it back. */
+  .collage-studio--picking .collage-bar {
+    display: none;
+  }
+
+  /* No keyboard, so no list of keys. */
+  .collage-studio--phone .collage-keys-button {
+    display: none;
+  }
+
+  .collage-studio--phone .collage-mat__caption {
+    bottom: 4px;
+    min-width: 0;
+  }
+
+  /* When the drawer is raised the frame gets small, so the caption keeps to
+     one line inside the mat and trims its end rather than spilling out. */
+  .collage-studio--phone .collage-mat__caption .collage-studio__label {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .collage-studio--phone .collage-title-input {
+    min-width: 0;
+  }
+
+  /* Raised, the drawer becomes a sheet: it lifts off the page with rounded
+     shoulders and takes most of the screen, and the collage above it shrinks
+     to a bare miniature that shows each scrap landing as it is tapped. */
+  .collage-tray.collage-tray--bottom.collage-tray--tall {
+    flex-basis: 68%;
+    margin: 0;
+    padding-top: 6px;
+    border-width: 1px 0 0;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -10px 30px color-mix(in srgb, var(--c-ink) 18%, transparent);
+  }
+
+  /* Everything around the miniature steps back: the bars, the mat, the
+     selection and its tools. */
+  .collage-studio--sheet .collage-frame-area__stage {
+    background: color-mix(in srgb, var(--c-ink) 6%, var(--c-ground));
+  }
+
+  .collage-studio--sheet .collage-stage-top,
+  .collage-studio--sheet .collage-views,
+  .collage-studio--sheet .collage-piece-actions,
+  .collage-studio--sheet .collage-mat__caption,
+  .collage-studio--sheet .collage-selection-edge,
+  .collage-studio--sheet .collage-handle,
+  .collage-studio--sheet .collage-grip {
+    visibility: hidden;
+  }
+
+  .collage-studio--sheet .collage-mat {
+    background: transparent;
+    box-shadow: none;
+  }
+
+  /* Laid over the whole miniature, so a tap there lowers the sheet rather
+     than moving a piece it cannot see the handles of. */
+  .collage-sheet-peek {
+    position: absolute;
+    inset: 0;
+    z-index: 10010;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0 0 4px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .collage-sheet-peek__label {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--c-ground) 85%, transparent);
+    color: var(--c-muted);
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+  }
+
+  /* The grab bar at the top of a docked drawer: flick it up or down, or tap
+     it to raise and lower the drawer. */
+  .collage-tray__handle {
+    flex: 0 0 auto;
+    align-self: center;
+    width: 64px;
+    height: 18px;
+    margin: -4px 0 2px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .collage-tray__handle::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 0 auto;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--c-ink) 22%, transparent);
+  }
+
+  .collage-tray--bottom .collage-tray__rail {
+    touch-action: none;
+  }
+
+  .collage-tray.collage-tray--bottom.collage-tray--tucked {
+    flex: 0 0 auto;
+    padding: 6px;
+  }
+
+  .collage-tray--bottom .collage-tray__rail {
+    width: 100%;
+    height: auto;
+    padding: 10px;
+    font-size: 10px;
+    writing-mode: horizontal-tb;
   }
 
 ${COLLAGE_PIECE_TOOL_STYLES}
@@ -491,194 +654,12 @@ ${COLLAGE_PIECE_TOOL_STYLES}
     user-select: none;
   }
 
-  /* Both sides of the collage share one place on the stage. The sheet keeps
-     the frame's true size and is only ever zoomed, never squeezed by the flex
-     stage around it. */
-  .collage-sheet {
-    position: relative;
-    flex: none;
-    transform-origin: center;
-    perspective: 6000px;
-  }
-
-  /* The sheet turns over the way a printed card does, about its vertical axis. */
-  .collage-sheet__leaf {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    transform-style: preserve-3d;
-    transition: transform 560ms cubic-bezier(0.22, 0.61, 0.36, 1);
-  }
-
-  .collage-sheet--over .collage-sheet__leaf {
-    transform: rotateY(180deg);
-  }
-
-  /* The frame's paper comes from the record, so the studio shows what bakes. */
-  .collage-frame {
-    position: relative;
-    box-shadow: 0 10px 34px color-mix(in srgb, var(--c-ink) 16%, transparent);
-    touch-action: none;
-    backface-visibility: hidden;
-  }
-
-  /* What bakes stops at the frame's edge, so the pieces are clipped there. */
-  .collage-frame__pieces {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-  }
-
-  /* The back: the same paper, the front faintly through it, and the sources. */
-  .collage-back {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-    box-shadow: 0 10px 34px color-mix(in srgb, var(--c-ink) 16%, transparent);
-    backface-visibility: hidden;
-    transform: rotateY(180deg);
-    user-select: text;
-  }
-
-  .collage-back__text {
-    position: absolute;
-    inset: 0;
-  }
-
-  /* The field over it shows the title, so the written one only holds its place. */
-  .collage-back__text--titled .collage-back__title {
-    visibility: hidden;
-  }
-
-  /* The title on the back, editable where it is written. It always reads as
-     the writing itself: no outline or text cursor, only a caret once it is
-     clicked into. */
-  .collage-back__title-field {
-    position: absolute;
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    outline: none;
-    background: transparent;
-    overflow: hidden;
-    overflow-wrap: anywhere;
-    resize: none;
-    cursor: inherit;
-  }
-
-  .collage-back__title-field::placeholder {
-    color: var(--collage-back-muted);
-    opacity: 1;
-  }
-
-  /* The side facing away takes no pointer, however the sheet turned over. */
-  .collage-sheet__leaf > [inert] {
-    pointer-events: none;
-  }
-
-  /* A sheet that cannot swing still turns over, just as a crossfade. */
-  @media (prefers-reduced-motion: reduce) {
-    .collage-sheet__leaf,
-    .collage-sheet--over .collage-sheet__leaf {
-      transform: none;
-      transition: none;
-    }
-
-    .collage-frame,
-    .collage-back {
-      backface-visibility: visible;
-      transition: opacity 180ms linear;
-    }
-
-    .collage-back {
-      transform: none;
-    }
-
-    .collage-sheet__leaf > [inert] {
-      opacity: 0;
-    }
-  }
-
-  .collage-frame__edge {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-ink) 16%, transparent);
-  }
-
+${COLLAGE_SHEET_STYLES}
   .collage-frame--drop-target {
     box-shadow: 0 10px 34px color-mix(in srgb, var(--c-ink) 16%, transparent), inset 0 0 0 2px color-mix(in srgb, var(--c-accent) 50%, transparent);
   }
 
-  .collage-piece {
-    position: absolute;
-    overflow: hidden;
-    transform-origin: center;
-    user-select: none;
-  }
-
-  .collage-piece__source {
-    position: absolute;
-  }
-
-  /* The box a heading or button is set in before it is scaled to its piece. */
-  .collage-piece__lettering {
-    position: absolute;
-    left: 0;
-    top: 0;
-    transform-origin: left top;
-  }
-
-  /* A placed piece fills its box whatever kind of scrap it came from. */
-  .collage-piece__source .scrap-collage__svg,
-  .collage-piece__source .scrap-collage__button {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  /* Matches how the bake draws a button, so the studio is what you get. */
-  .collage-piece__source .scrap-collage__button {
-    box-sizing: border-box;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-  }
-
-  .collage-piece__source .scrap-collage__svg svg {
-    width: 100%;
-    height: 100%;
-  }
-
-  /*
-   * A cursor is pinned to 32px on the browse surface. A placed piece is sized
-   * by its own box instead, so the pin and its centering offset are undone —
-   * the studio must show exactly what the bake draws.
-   */
-  .collage-piece__source .scrap-collage__cursor,
-  .collage-tray__thumb .scrap-collage__cursor {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    transform: none;
-  }
-
-  /* The swatch stand-in follows the same box as the cursor it sits under. */
-  .collage-piece__source .scrap-collage__swatch,
-  .collage-tray__thumb .scrap-collage__swatch {
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    transform: none;
-  }
-
+${PIECE_MATERIAL_STYLES}
   /* The edge of the selected piece, or of the box around several: a plain
      teal line two screen pixels wide, kept that weight through the frame's
      zoom. It is drawn as an inset shadow because the browser rounds a
@@ -689,6 +670,22 @@ ${COLLAGE_PIECE_TOOL_STYLES}
     inset: 0;
     box-shadow: inset 0 0 0 calc(2px / var(--collage-zoom)) var(--c-accent);
     pointer-events: none;
+  }
+
+  /* A finger needs far more room than a cursor: the handle grows a little and
+     takes presses from well around it, with nothing drawn there. */
+  @media (pointer: coarse) {
+    .collage-handle {
+      width: 18px;
+      height: 18px;
+      margin: -9px 0 0 -9px;
+    }
+
+    .collage-handle::after {
+      content: "";
+      position: absolute;
+      inset: -16px;
+    }
   }
 
   /* A corner handle held at the edge of the view because its corner is out
@@ -900,6 +897,12 @@ ${COLLAGE_PIECE_TOOL_STYLES}
     border-style: solid;
   }
 
+  /* On a shared collage the edge is its adder's cursor color, drawn boldly
+     so whose is whose reads across the table. */
+  .collage-peek-edge--owned {
+    border-style: solid;
+  }
+
   /* An archive label pinned to a piece while the peek key is held. It is a
      slip of paper over the work, never a control: it takes no pointer. */
   .collage-peek {
@@ -937,6 +940,23 @@ ${COLLAGE_PIECE_TOOL_STYLES}
     align-items: center;
     gap: 3px;
     white-space: nowrap;
+  }
+
+  /* Who added a scrap, leading its label in their cursor's color. */
+  .collage-peek__who {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .collage-peek__dot {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
   }
 
   .collage-peek__mark {
@@ -1075,33 +1095,12 @@ ${COLLAGE_PIECE_TOOL_STYLES}
     flex: 1 1 auto;
   }
 
-  .collage-title-input {
-    flex: 0 1 300px;
-    min-width: 120px;
-    padding: 2px 0;
-    border: none;
-    border-bottom: 1px dotted var(--c-muted);
-    background: transparent;
-    color: var(--c-ink);
-    font-family: "Lora", Georgia, serif;
-    font-size: 15px;
-  }
-
   /* Stands where the title was, at the title field's height, so turning over
      never changes the bar's height or the frame's zoom. */
   .collage-bar__turned {
     display: inline-flex;
     align-items: center;
     min-height: 29px;
-  }
-
-  .collage-title-input:focus {
-    outline: none;
-    border-bottom-color: color-mix(in srgb, var(--c-accent) 80%, transparent);
-  }
-
-  .collage-title-input::placeholder {
-    color: color-mix(in srgb, var(--c-muted) 70%, transparent);
   }
 
   .collage-action {
@@ -1398,40 +1397,10 @@ ${COLLAGE_PIECE_TOOL_STYLES}
     flex: 1 1 auto;
   }
 
-  /* The mat: a board the frame is mounted on, with the collage's caption
-     written along its bottom edge. Its size is set in pixels from the zoom,
-     so the caption stays one size however the frame is fitted. */
-  .collage-mat {
-    position: relative;
-    flex: none;
-    background: var(--c-mat);
-    box-shadow:
-      0 1px 0 color-mix(in srgb, #fff 70%, transparent) inset,
-      0 0 0 1px var(--c-rule),
-      0 10px 24px color-mix(in srgb, var(--c-ink) 8%, transparent);
-  }
-  .collage-mat__window {
-    position: absolute;
-  }
-  .collage-mat .collage-sheet {
-    transform-origin: 0 0;
-  }
-  .collage-mat .collage-frame {
-    box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--c-ink) 14%, transparent),
-      0 0 0 1px color-mix(in srgb, #fff 80%, transparent);
-  }
-  .collage-mat__caption {
-    position: absolute;
-    bottom: 10px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-height: 24px;
-  }
-
+${COLLAGE_MAT_STYLES}
   /* Views sit at the top-right: the back, and where the pieces came from. */
 ${COLLAGE_VIEW_STYLES}
+${EXPORT_MENU_STYLES}
   .collage-setting:focus-visible,
   .collage-keys-button:focus-visible {
     outline: 2px solid var(--c-accent);

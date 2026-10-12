@@ -26,11 +26,11 @@ import {
 } from "../routes/internetPlaceSuggestion";
 
 const schema = [
-  "../../migrations/0005_internet_place_catalog.sql",
-  "../../migrations/0006_internet_place_placement.sql",
-  "../../migrations/0007_internet_place_suggestions.sql",
-  "../../migrations/0008_internet_place_suggestion_evidence.sql",
-  "../../migrations/0009_internet_place_clef_log.sql",
+  "../../migrations/0006_internet_place_catalog.sql",
+  "../../migrations/0007_internet_place_placement.sql",
+  "../../migrations/0008_internet_place_suggestions.sql",
+  "../../migrations/0009_internet_place_suggestion_evidence.sql",
+  "../../migrations/0010_internet_place_clef_log.sql",
 ]
   .map((path) =>
     readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8"),
