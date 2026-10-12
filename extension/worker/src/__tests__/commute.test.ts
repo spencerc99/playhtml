@@ -233,7 +233,7 @@ describe('handleCommute', () => {
     expect(await suggestCommuteDestinations(env)).toBe(2);
     const state = (run.mock.calls[0] as unknown[])[1] as { state: { candidate: Record<string, unknown> } };
     expect(state.state.candidate.page).toBeUndefined();
-    expect(state.state.candidate.inspection).toMatchObject({ verdict: 'unknown' });
+    expect(state.state.candidate.inspection).toBeUndefined();
   });
 
   it('asks Clef about a newly ingested destination right away', async () => {

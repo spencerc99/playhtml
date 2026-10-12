@@ -709,17 +709,20 @@ async function withPageContext(candidate: {
     return base;
   }
   if (!fetched) return base;
+  // A blocked or failed fetch (403, 404, 5xx...) says nothing about the page,
+  // and Clef reads "could not inspect" as a reason to keep it private. Leave
+  // it out so Clef judges from the URL and title alone.
+  const { verdict } = fetched.inspection;
+  if (verdict !== "public" && verdict !== "gated") return base;
   const finalUrl = sanitizePublicDestinationUrl(fetched.inspection.finalUrl);
   return {
     ...base,
     inspection: {
-      verdict: fetched.inspection.verdict,
+      verdict,
       reason: fetched.inspection.reason,
       ...(finalUrl ? { finalUrl } : {}),
     },
-    // A blocked or failed fetch shows an error page, which would only
-    // mislead Clef; it then judges from the URL and title alone.
-    ...(fetched.context && fetched.inspection.verdict === "public"
+    ...(fetched.context && verdict === "public"
       ? { page: fetched.context }
       : {}),
   };
