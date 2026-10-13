@@ -10,7 +10,7 @@ import React, {
 } from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
-import { WORKER_URL } from "@movement/config";
+import { ASSETS_URL, WORKER_URL } from "@movement/config";
 import {
   ScrapLightbox,
   type ScrapOrigin,
@@ -83,21 +83,26 @@ const ROOM_NARROW = { top: 24, bottom: 40 };
 
 /**
  * Opens the connections to the collage server while the page is still
- * starting: one for the collage's own fetch, one for its pictures.
+ * starting: the collage's own fetch, and its pictures both as plain images and
+ * as the CORS reads the back's bake makes.
  */
 function preconnectToWorker(): void {
-  let origin: string;
-  try {
-    origin = new URL(WORKER_URL).origin;
-  } catch {
-    return;
+  const origins = new Set<string>();
+  for (const url of [WORKER_URL, ASSETS_URL]) {
+    try {
+      origins.add(new URL(url).origin);
+    } catch {
+      // A malformed override just goes without the head start.
+    }
   }
-  for (const crossOrigin of ["anonymous", null]) {
-    const link = document.createElement("link");
-    link.rel = "preconnect";
-    link.href = origin;
-    if (crossOrigin) link.crossOrigin = crossOrigin;
-    document.head.append(link);
+  for (const origin of origins) {
+    for (const crossOrigin of ["anonymous", null]) {
+      const link = document.createElement("link");
+      link.rel = "preconnect";
+      link.href = origin;
+      if (crossOrigin) link.crossOrigin = crossOrigin;
+      document.head.append(link);
+    }
   }
 }
 preconnectToWorker();
@@ -439,7 +444,7 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
   // Markup is sanitized here, every time the collage is shown.
   const shown = useMemo(
     () =>
-      viewerPieces(collage, (ref) => publishedImageUrl(WORKER_URL, id, ref)),
+      viewerPieces(collage, (ref) => publishedImageUrl(ASSETS_URL, id, ref)),
     [collage, id],
   );
   const studioPieces = useMemo(

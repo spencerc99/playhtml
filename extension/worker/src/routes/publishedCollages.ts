@@ -139,6 +139,7 @@ export async function handlePublishedCollages(
   request: Request,
   env: Env,
   route: PublishedCollageRoute,
+  ctx?: Pick<ExecutionContext, "waitUntil">,
 ): Promise<Response> {
   if (route.kind === "create") {
     if (request.method !== "POST")
@@ -150,12 +151,12 @@ export async function handlePublishedCollages(
   if (route.kind === "image") {
     if (request.method !== "GET")
       return jsonResponse(405, { error: "Method not allowed" });
-    return handleImage(env, route.id, route.ref);
+    return handleImage(request, env, route.id, route.ref, ctx);
   }
   if (route.kind === "cover") {
     if (request.method !== "GET")
       return jsonResponse(405, { error: "Method not allowed" });
-    return servePicture(env, coverKey(route.id));
+    return servePicture(request, env, coverKey(route.id), ctx);
   }
   if (request.method === "GET") return handleRead(env, route.id);
   if (request.method === "DELETE") return handleDelete(request, env, route.id);
@@ -376,29 +377,71 @@ async function handleRead(env: Env, id: string): Promise<Response> {
 }
 
 async function handleImage(
+  request: Request,
   env: Env,
   id: string,
   ref: string,
+  ctx?: Pick<ExecutionContext, "waitUntil">,
 ): Promise<Response> {
   if (publishedImageIndex(ref) === null)
     return jsonResponse(404, { error: "Not found" });
-  return servePicture(env, imageKey(id, ref));
+  return servePicture(request, env, imageKey(id, ref), ctx);
 }
 
-async function servePicture(env: Env, key: string): Promise<Response> {
+/**
+ * How long the edge keeps a picture. Browsers keep it for good, but a share
+ * that is taken down should stop being served from the edge within a day.
+ */
+const EDGE_CACHE_SECONDS = 24 * 60 * 60;
+
+/** The edge cache, which only does anything on a custom domain (not workers.dev). */
+function edgeCache(): Cache | null {
+  if (typeof caches === "undefined") return null;
+  // Workers' CacheStorage has a `default` cache the DOM typings do not know.
+  return (caches as unknown as { default?: Cache }).default ?? null;
+}
+
+async function servePicture(
+  request: Request,
+  env: Env,
+  key: string,
+  ctx?: Pick<ExecutionContext, "waitUntil">,
+): Promise<Response> {
+  const cache = typeof ctx?.waitUntil === "function" ? edgeCache() : null;
+  const cacheKey = new Request(new URL(request.url).toString(), {
+    method: "GET",
+  });
+  const cached = await cache?.match(cacheKey);
+  if (cached) {
+    const headers = new Headers(cached.headers);
+    headers.set("Cache-Control", "public, max-age=31536000, immutable");
+    return new Response(cached.body, { status: cached.status, headers });
+  }
   const object = await env.SHARED_COLLAGES.get(key);
   if (!object) return jsonResponse(404, { error: "Not found" });
-  return new Response(object.body, {
+  const headers = {
+    ...CORS_HEADERS,
+    "Content-Type":
+      object.httpMetadata?.contentType ?? "application/octet-stream",
+    // A picture under a share never changes; a new share gets a new id.
+    "Cache-Control": "public, max-age=31536000, immutable",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'; sandbox",
+  };
+  if (!cache) return new Response(object.body, { headers });
+  const [served, kept] = object.body.tee();
+  const stored = new Response(kept, {
     headers: {
-      ...CORS_HEADERS,
-      "Content-Type":
-        object.httpMetadata?.contentType ?? "application/octet-stream",
-      // A picture under a share never changes; a new share gets a new id.
-      "Cache-Control": "public, max-age=31536000, immutable",
-      "X-Content-Type-Options": "nosniff",
-      "Content-Security-Policy": "default-src 'none'; sandbox",
+      ...headers,
+      "Cache-Control": `public, max-age=${EDGE_CACHE_SECONDS}`,
     },
   });
+  ctx?.waitUntil(
+    cache.put(cacheKey, stored).catch((error: unknown) => {
+      console.warn("[collages] could not keep a picture at the edge:", error);
+    }),
+  );
+  return new Response(served, { headers });
 }
 
 async function handleDelete(

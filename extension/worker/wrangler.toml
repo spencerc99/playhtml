@@ -44,7 +44,23 @@ compatibility_flags = ["global_fetch_strictly_public"]
 #
 # TODO: Consider adding CORS restrictions to admin endpoints
 
-# Deploys to the workers.dev subdomain by default; no custom domain needed.
+# Serves the API from workers.dev. Shared collages' pictures are also served
+# from assets.wewere.online, where Cloudflare's edge cache sits in front of
+# them (the cache does nothing on workers.dev). The custom domain is added once
+# in the dashboard (Worker > Settings > Domains & Routes), because creating one
+# needs a Zone > Workers Routes > Write token that CI deploys do not carry;
+# declaring it here keeps deploys from changing it.
+workers_dev = true
+
+[[routes]]
+pattern = "assets.wewere.online"
+custom_domain = true
+
+# Without this, `wrangler dev` hands the Worker every request as if it were
+# for the first route's host, which would make local dev the assets host.
+[dev]
+host = "localhost"
+
 # Note: rate limiting in /subscribe is per-isolate (in-memory Map), so the
 # effective limit is ~5/min × N active isolates. Acceptable at this scale.
 

@@ -17,8 +17,17 @@ import type { PublishedPieceMaterial } from "./publishCollage";
 
 /** The longest side a baked or shrunk picture is given. */
 const MAX_RASTER_SIDE = 2048;
-/** Cursors are baked at twice their size on the collage, for sharpness. */
+/**
+ * Pictures are published at twice their size on the collage, for sharpness on
+ * dense screens and a viewer that shows the collage larger than it was made.
+ */
 const RASTER_DENSITY = 2;
+/** Sizes are rounded up to this step, so one picture used twice at nearly the same size is sent once. */
+const SIZE_STEP = 128;
+/** Below this, a picture is sent as it is: re-encoding would save little. */
+const SMALL_ENOUGH_BYTES = 150 * 1024;
+/** WebP quality for shrunk photos; high enough that the viewer cannot tell. */
+const PHOTO_QUALITY = 0.85;
 
 function fitWithin(width: number, height: number, longest: number) {
   const scale = Math.min(1, longest / Math.max(width, height, 1));
@@ -47,9 +56,10 @@ function rasterize(
 async function canvasBlob(
   canvas: HTMLCanvasElement,
   type: string,
+  quality = 0.9,
 ): Promise<Blob> {
   const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, type, 0.9),
+    canvas.toBlob(resolve, type, quality),
   );
   // A browser that cannot write the asked-for type writes a PNG instead.
   return blob ?? canvasPng(canvas, "the picture could not be written");
@@ -65,6 +75,7 @@ async function encodeWithin(
   width: number,
   height: number,
   first: "image/png" | "image/webp",
+  quality = 0.9,
 ): Promise<Blob> {
   const limit = PUBLISHED_COLLAGE_LIMITS.maxImageBytes;
   let size = { width, height };
@@ -73,7 +84,7 @@ async function encodeWithin(
     const blob =
       first === "image/png"
         ? await canvasPng(canvas, "the piece could not be drawn")
-        : await canvasBlob(canvas, first);
+        : await canvasBlob(canvas, first, quality);
     if (blob.size <= limit) return blob;
     if (first === "image/png") {
       const webp = await canvasBlob(canvas, "image/webp");
@@ -88,29 +99,66 @@ async function encodeWithin(
 }
 
 /**
- * The bytes of an image scrap as they are, so an animated GIF stays animated,
- * or a re-encoded copy when they are a kind the share cannot carry (an SVG,
- * say) or too large to.
+ * The longest side a picture needs to look sharp in its piece: the whole
+ * picture's size on the collage (a cropped piece shows only part of it), at
+ * the publish density, rounded up to a step.
  */
-async function imageBytes(src: string): Promise<Blob> {
+export function neededLongestSide(
+  piece: Pick<CollagePiece, "width" | "height" | "crop">,
+): number {
+  const shownWidth = piece.width / Math.max(piece.crop.width, 0.01);
+  const shownHeight = piece.height / Math.max(piece.crop.height, 0.01);
+  const needed = Math.max(shownWidth, shownHeight) * RASTER_DENSITY;
+  const stepped = Math.ceil(needed / SIZE_STEP) * SIZE_STEP;
+  return Math.min(MAX_RASTER_SIDE, Math.max(SIZE_STEP, stepped));
+}
+
+/** A GIF, or a WebP whose header flags animation: redrawing it would keep one frame. */
+function isAnimated(type: string | null, head: Uint8Array): boolean {
+  if (type === "image/gif") return true;
+  if (type !== "image/webp") return false;
+  const chunk = String.fromCharCode(...head.slice(12, 16));
+  return chunk === "VP8X" && (head[20] & 0x02) !== 0;
+}
+
+/**
+ * The bytes an image scrap publishes. A picture larger than its piece needs is
+ * shrunk to that size and written as WebP; an animated GIF, or one already
+ * small, is sent as it is. A kind the share cannot carry (an SVG, say) is
+ * always re-encoded.
+ */
+async function imageBytes(src: string, longest: number): Promise<Blob> {
   const display = await resolveScrapImageSrc(src);
   const response = await fetch(display);
   if (!response.ok) throw new Error(`the picture answered ${response.status}`);
   const blob = await response.blob();
-  const head = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+  const head = new Uint8Array(await blob.slice(0, 32).arrayBuffer());
   const type = sniffPublishedImageType(head);
-  if (type && blob.size <= PUBLISHED_COLLAGE_LIMITS.maxImageBytes) {
-    return blob.type === type ? blob : new Blob([blob], { type });
+  const asIs =
+    type && blob.size <= PUBLISHED_COLLAGE_LIMITS.maxImageBytes
+      ? blob.type === type
+        ? blob
+        : new Blob([blob], { type })
+      : null;
+  if (asIs && (isAnimated(type, head) || asIs.size <= SMALL_ENOUGH_BYTES)) {
+    return asIs;
   }
   const url = URL.createObjectURL(blob);
   try {
     const image = await loadImage(url);
-    const size = fitWithin(
-      image.naturalWidth || 1,
-      image.naturalHeight || 1,
-      MAX_RASTER_SIDE,
+    const natural = {
+      width: image.naturalWidth || 1,
+      height: image.naturalHeight || 1,
+    };
+    const size = fitWithin(natural.width, natural.height, longest);
+    const shrunk = await encodeWithin(
+      image,
+      size.width,
+      size.height,
+      "image/webp",
+      PHOTO_QUALITY,
     );
-    return await encodeWithin(image, size.width, size.height, "image/webp");
+    return asIs && asIs.size <= shrunk.size ? asIs : shrunk;
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -126,7 +174,11 @@ export async function publishPieceMaterial(
 ): Promise<PublishedPieceMaterial> {
   const { scrap } = piece;
   if (scrap.kind === "image" && !piece.cutout) {
-    return { key: `src:${scrap.src}`, blob: await imageBytes(scrap.src) };
+    const longest = neededLongestSide(piece);
+    return {
+      key: `src:${scrap.src}@${longest}`,
+      blob: await imageBytes(scrap.src, longest),
+    };
   }
   const [prepared] = await prepareCollagePieces([piece]);
   const { still, source } = prepared;
@@ -141,8 +193,21 @@ export async function publishPieceMaterial(
           width: source.width * covered.width * RASTER_DENSITY,
           height: source.height * covered.height * RASTER_DENSITY,
         };
-  const size = fitWithin(natural.width, natural.height, MAX_RASTER_SIDE);
-  const blob = await encodeWithin(image, size.width, size.height, "image/png");
+  // A cut-out keeps its transparency in WebP at a fraction of a PNG's size.
+  const size = fitWithin(
+    natural.width,
+    natural.height,
+    piece.cutout ? neededLongestSide(piece) : MAX_RASTER_SIDE,
+  );
+  const blob = piece.cutout
+    ? await encodeWithin(
+        image,
+        size.width,
+        size.height,
+        "image/webp",
+        PHOTO_QUALITY,
+      )
+    : await encodeWithin(image, size.width, size.height, "image/png");
   return {
     key: `piece:${piece.id}`,
     blob,

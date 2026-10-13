@@ -2,6 +2,8 @@
 // ABOUTME: Gives a shared collage's page its title and cover in the tags link previews read.
 
 const API_ORIGIN = "https://playhtml-game-api.spencerc99.workers.dev";
+// The same API on a wewere.online subdomain, cached at the edge, for pictures.
+const ASSETS_ORIGIN = "https://assets.wewere.online";
 const COLLAGE_ID = /^[A-Za-z0-9_-]{22}$/;
 
 function escapeHtml(text) {
@@ -60,6 +62,11 @@ async function collagePage(request, env, page) {
     return page;
   }
   const apiOrigin = (env.COLLAGE_API_ORIGIN || API_ORIGIN).replace(/\/+$/, "");
+  const assetsOrigin = (
+    env.COLLAGE_ASSETS_ORIGIN ||
+    env.COLLAGE_API_ORIGIN ||
+    ASSETS_ORIGIN
+  ).replace(/\/+$/, "");
   const found = await readCollage(apiOrigin, id);
   if (!found) return page;
   const { collage, hasCover } = found;
@@ -73,7 +80,7 @@ async function collagePage(request, env, page) {
     title: name,
     description: `a collage of ${countOf(collage.pieces.length, "piece", "pieces")} from ${countOf(sites, "site", "sites")}, on we were online`,
     url: url.toString(),
-    image: hasCover ? `${apiOrigin}/collages/${id}/cover` : null,
+    image: hasCover ? `${assetsOrigin}/collages/${id}/cover` : null,
   });
   const response = new HTMLRewriter()
     .on("title", {
