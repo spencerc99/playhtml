@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  buildReviewDecisions,
   canPrefillSuggestion,
   createCuratedPlace,
   getDecisionForReviewItem,
@@ -20,7 +19,6 @@ import {
   parseStoredCuration,
   serializeCurationArtifact,
   upsertCuratedPlace,
-  undoCuratedPlaces,
 } from "./curation";
 
 const FEATURED = createCuratedPlace({
@@ -30,176 +28,6 @@ const FEATURED = createCuratedPlace({
   placement: "featured",
   comment: "A public essay.",
   updatedAt: "2026-08-12T12:00:00.000Z",
-});
-
-describe("split decisions", () => {
-  const item = {
-    id: "settings",
-    domain: "notes.example.com",
-    url: "https://notes.example.com/settings/profile",
-    currentDisposition: "stop" as const,
-  };
-  const form = {
-    item,
-    scope: "path" as const,
-    pathTarget: "notes.example.com/settings",
-    placement: "hidden" as const,
-    restScope: "hostname" as const,
-    restPlacement: "regular" as const,
-    reason: "authentication-required",
-    comment: "Account pages are private.",
-  };
-
-  it("builds independent page/path and rest-of-site rules", () => {
-    expect(buildReviewDecisions(form)).toEqual([
-      {
-        scope: "path",
-        target: "notes.example.com/settings",
-        placement: "hidden",
-        reason: form.reason,
-        comment: form.comment,
-      },
-      {
-        scope: "hostname",
-        target: "notes.example.com",
-        placement: "regular",
-        reason: "",
-        comment: "",
-      },
-    ]);
-    expect(
-      buildReviewDecisions({ ...form, scope: "page", restScope: "site" }),
-    ).toMatchObject([
-      { scope: "page", target: item.url },
-      { scope: "site", target: "example.com" },
-    ]);
-  });
-
-  it("files only the page row when the rest-of-site placement is empty", () => {
-    expect(buildReviewDecisions({ ...form, restPlacement: undefined })).toEqual(
-      [expect.objectContaining({ scope: "path", placement: "hidden" })],
-    );
-  });
-
-  it("keeps the rest-of-site rule's own reason and note", () => {
-    const existing = createCuratedPlace({
-      id: "host",
-      input: "notes.example.com",
-      scope: "hostname",
-      placement: "scenery",
-      reason: "",
-      comment: "Mostly docs.",
-      updatedAt: FEATURED.updatedAt,
-    });
-    const [, rest] = buildReviewDecisions({ ...form, restExisting: existing });
-    expect(rest).toMatchObject({
-      scope: "hostname",
-      placement: "regular",
-      comment: "Mostly docs.",
-    });
-    expect(rest.reason).toBe("");
-    expect(
-      buildReviewDecisions({
-        ...form,
-        restPlacement: "scenery",
-        restExisting: existing,
-      }),
-    ).toEqual([expect.objectContaining({ scope: "path" })]);
-    expect(
-      buildReviewDecisions({ ...form, restExisting: undefined })[1],
-    ).toMatchObject({ reason: "", comment: "" });
-  });
-
-  it("files only the rest-of-site rule when the page row is empty", () => {
-    expect(buildReviewDecisions({ ...form, placement: undefined })).toEqual([
-      {
-        scope: "hostname",
-        target: "notes.example.com",
-        placement: "regular",
-        reason: form.reason,
-        comment: form.comment,
-      },
-    ]);
-    expect(
-      buildReviewDecisions({
-        ...form,
-        placement: undefined,
-        restScope: "site",
-        comment: "",
-        reason: "",
-      }),
-    ).toEqual([
-      expect.objectContaining({ scope: "site", target: "example.com" }),
-    ]);
-  });
-
-  it("files just the whole-site rule, with the note, when the page part is closed", () => {
-    expect(buildReviewDecisions({ ...form, filePage: false })).toEqual([
-      {
-        scope: "hostname",
-        target: "notes.example.com",
-        placement: "regular",
-        reason: form.reason,
-        comment: form.comment,
-      },
-    ]);
-    expect(() =>
-      buildReviewDecisions({
-        ...form,
-        filePage: false,
-        restPlacement: undefined,
-      }),
-    ).toThrow();
-  });
-
-  it("does not replace an existing rule at a different scope", () => {
-    const site = {
-      ...FEATURED,
-      id: "site",
-      place: "example.com",
-      scope: "site" as const,
-    };
-    for (const draft of buildReviewDecisions(form)) {
-      expect(getDecisionToReplace([site], item, draft.scope)).toBeUndefined();
-    }
-  });
-
-  it("undoes a save group and restores its replaced rules", () => {
-    const drafts = buildReviewDecisions(form);
-    const saved = drafts.map((draft, index) =>
-      createCuratedPlace({
-        ...draft,
-        id: `saved-${index}`,
-        input: draft.target,
-        updatedAt: FEATURED.updatedAt,
-      }),
-    );
-    const previous = { ...saved[1], placement: "scenery" as const };
-    expect(
-      undoCuratedPlaces(
-        [FEATURED, ...saved],
-        [{ saved: saved[0] }, { saved: saved[1], replaced: previous }],
-      ),
-    ).toEqual([previous, FEATURED]);
-  });
-
-  it("rejects a missing path instead of defaulting it", () => {
-    expect(() => buildReviewDecisions({ ...form, pathTarget: " " })).toThrow(
-      "Enter a path prefix.",
-    );
-  });
-
-  it("keeps domain-only rows as a single decision", () => {
-    expect(
-      buildReviewDecisions({
-        ...form,
-        item: { ...item, url: undefined },
-        scope: "hostname",
-      }),
-    ).toEqual([
-      expect.objectContaining({ scope: "hostname", target: item.domain }),
-    ]);
-  });
 });
 
 describe("normalizePlace", () => {

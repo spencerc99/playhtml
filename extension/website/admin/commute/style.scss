@@ -796,35 +796,6 @@ fieldset {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.decision-row {
-  display: grid;
-  gap: 14px;
-  padding: 12px;
-  border: 1px solid $line;
-}
-
-.page-toggle {
-  justify-self: start;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  font-size: 12px;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-
-.decision-row--single {
-  display: contents;
-}
-
-.decision-row .scope-options,
-.scope-options--site {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .scope-option {
   display: grid;
   min-width: 0;
