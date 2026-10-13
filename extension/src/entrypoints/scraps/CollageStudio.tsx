@@ -1917,6 +1917,13 @@ export function CollageStudio({
       });
       return;
     }
+    // A finger on bare paper is reaching past the pieces, not drawing a box
+    // round them: on a phone a marquee swept up whatever the finger crossed.
+    // It only lets go of what is in hand.
+    if (phone && event.pointerType === "touch") {
+      setSelection(EMPTY_SELECTION);
+      return;
+    }
     setSelection(plan.base);
     pressRef.current = {
       at,
