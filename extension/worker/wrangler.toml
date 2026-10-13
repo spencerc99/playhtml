@@ -3,6 +3,7 @@
 name = "playhtml-game-api"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
+compatibility_flags = ["global_fetch_strictly_public"]
 
 # Environment variables
 # 
@@ -37,6 +38,9 @@ compatibility_date = "2024-01-01"
 # - POST /feedback: Public (validated + rate limited)
 # - GET /internet-map/<bundle>/<file>: ADMIN_KEY or INTERNET_MAP_PASSWORD (private R2 bundles;
 #   the password is optional and only opens map bundles)
+# - POST /collages: Public (validated, size capped + rate limited) collage share
+# - GET /collages/<id>, GET /collages/<id>/img/<n>: Public (unguessable ids)
+# - DELETE /collages/<id>: the delete token handed back when it was shared
 #
 # TODO: Consider adding CORS restrictions to admin endpoints
 
@@ -61,11 +65,29 @@ namespace_id = "1620187042"
   limit = 120
   period = 60
 
+# Public collage share uploads (POST /collages), per client IP.
+# namespace_id must be unique within the Cloudflare account.
+[[ratelimits]]
+name = "COLLAGE_SHARE_RATE_LIMITER"
+namespace_id = "1620187043"
+
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
 [[d1_databases]]
 binding = "WWO_ADMIN_DB"
 database_name = "wwo-admin"
 database_id = "e6d5d996-c301-45d6-8b81-584d9ae5ee43"
 migrations_dir = "migrations"
+
+[ai]
+binding = "AI"
+
+# Ingest asks Clef about new commute destinations as they arrive; this hourly
+# sweep retries any that ingest missed or that failed.
+[triggers]
+crons = ["0 * * * *"]
 
 # Private internet map bundles. They hold participants' full page URLs and
 # titles, so they are served only through the admin-authenticated
@@ -74,6 +96,15 @@ migrations_dir = "migrations"
 [[r2_buckets]]
 binding = "INTERNET_MAP_BUNDLES"
 bucket_name = "wwo-internet-map"
+
+# Collages shared as public, view-only links: collages/<id>/collage.json plus
+# collages/<id>/img/<n>. Anyone holding a link can read its collage, so only
+# what the sharer chose to publish is stored here.
+# Must be created once before deploying:
+#   bunx wrangler r2 bucket create wwo-published-collages
+[[r2_buckets]]
+binding = "SHARED_COLLAGES"
+bucket_name = "wwo-published-collages"
 
 [[migrations]]
 tag = "v1"

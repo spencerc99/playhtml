@@ -358,10 +358,42 @@ export async function bakeCollagePreview(
   return drawCollage(options, async () => {});
 }
 
+/**
+ * The whole collage, paper and all, as a JPEG no wider or taller than
+ * `longest` pixels: the picture a shared link shows where it is pasted.
+ */
+export async function bakeCollageCover(
+  options: BakeOptions & { longest?: number },
+): Promise<Blob> {
+  const longest = options.longest ?? 1200;
+  const scale =
+    longest / Math.max(options.frame.width, options.frame.height, 1);
+  const canvas = await drawCollageCanvas({ ...options, scale }, (context) =>
+    paintPaper(context, options.frame, options.paper, options.grain ?? false),
+  );
+  const blob = await new Promise<Blob | null>((resolve, reject) => {
+    try {
+      canvas.toBlob(resolve, "image/jpeg", 0.85);
+    } catch (error) {
+      reject(error);
+    }
+  });
+  if (!blob) throw new Error("The collage canvas produced no image");
+  return blob;
+}
+
 async function drawCollage(
   options: PreviewBakeOptions,
   paint: (context: CanvasRenderingContext2D) => Promise<void>,
 ): Promise<Blob> {
+  const canvas = await drawCollageCanvas(options, paint);
+  return canvasPng(canvas, "The collage canvas produced no image");
+}
+
+async function drawCollageCanvas(
+  options: PreviewBakeOptions,
+  paint: (context: CanvasRenderingContext2D) => Promise<void>,
+): Promise<HTMLCanvasElement> {
   const { frame } = options;
   const scale = options.scale ?? 2;
   const prepared = await prepareCollagePieces(options.pieces);
@@ -374,7 +406,7 @@ async function drawCollage(
   for (const { piece, source, still } of prepared) {
     drawPiece(context, piece, source, still);
   }
-  return canvasPng(canvas, "The collage canvas produced no image");
+  return canvas;
 }
 
 /** Reads a finished canvas out as a PNG, or throws with the given words. */

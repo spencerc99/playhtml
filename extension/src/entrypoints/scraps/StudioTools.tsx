@@ -41,6 +41,21 @@ const KEYS = (
   </Glyph>
 );
 
+/** A small speaker, with sound waves when sounds are on. */
+const SOUND_ON = (
+  <Glyph>
+    <path d="M2.5 6h2.5l3.5-3v10L5 10H2.5z" {...STROKE} />
+    <path d="M10.5 5.8a3 3 0 0 1 0 4.4M12.3 4a5.5 5.5 0 0 1 0 8" {...STROKE} />
+  </Glyph>
+);
+
+const SOUND_OFF = (
+  <Glyph>
+    <path d="M2.5 6h2.5l3.5-3v10L5 10H2.5z" {...STROKE} />
+    <path d="M11 6.2l3 3.6M14 6.2l-3 3.6" {...STROKE} />
+  </Glyph>
+);
+
 /** Two links of a chain: each piece has a page behind it. */
 const SOURCES = (
   <Glyph>
@@ -210,6 +225,23 @@ export function KeysButton({ open, onToggle }: { open: boolean; onToggle: () => 
     >
       {KEYS}
       <span>keys</span>
+    </button>
+  );
+}
+
+/** Turns the collage's sounds on or off; it sits beside the shortcut list. */
+export function SoundButton({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className="collage-keys-button"
+      title={on ? "Turn sounds off" : "Turn sounds on"}
+      aria-label="Sounds"
+      aria-pressed={on}
+      onClick={onToggle}
+    >
+      {on ? SOUND_ON : SOUND_OFF}
+      <span>{on ? "sound" : "muted"}</span>
     </button>
   );
 }

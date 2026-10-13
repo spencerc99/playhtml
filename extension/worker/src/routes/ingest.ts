@@ -10,6 +10,7 @@ import {
   type PageMetadataSnapshot,
 } from '@playhtml/extension-types';
 import { broadcastLiveEvents } from '../live/broadcast';
+import { suggestIngestedDestinations } from './commute';
 
 // Rate limiting: max events per request
 const MAX_EVENTS_PER_REQUEST = 500;
@@ -306,6 +307,14 @@ export async function handleIngest(
         Date.now(),
       ),
     );
+    // New destinations stay scenery until Clef approves them, so ask right away.
+    if (env.AI && typedEvents.some((event) => event.type === 'navigation')) {
+      ctx.waitUntil(
+        suggestIngestedDestinations(env, typedEvents as unknown as CollectionEvent[]).catch(
+          (error) => console.error('[internet-places] ingest suggestion failed:', error),
+        ),
+      );
+    }
 
     return new Response(
       JSON.stringify({ inserted, duplicates, page_metadata_inserted: pageMetadataInserted }),

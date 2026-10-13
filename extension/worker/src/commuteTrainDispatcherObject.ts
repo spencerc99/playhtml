@@ -9,6 +9,7 @@ import type {
 } from '@playhtml/extension-types';
 import type { Env } from './lib/supabase';
 import { getCommuteResponse } from './routes/commute';
+import { applyInternetPlacePolicies, loadInternetPlacePolicies } from './routes/internetPlaceCatalog';
 import {
   CommuteTrainDispatcher,
   CommuteTrainCapacityError,
@@ -43,7 +44,6 @@ const FALLBACK_COMMUNAL_STOPS: CommuteTrainCommunalStop[] = [
 export function selectCommuteTrainCommunalStops(
   destinations: CommuteDestination[],
   recentDomains: Set<string>,
-  now: number,
 ): CommuteTrainCommunalStop[] {
   const stops: CommuteTrainCommunalStop[] = [];
   const selectedDomains = new Set<string>();
@@ -59,17 +59,6 @@ export function selectCommuteTrainCommunalStops(
     if (stops.length === 2) return stops;
   }
 
-  for (const fallback of FALLBACK_COMMUNAL_STOPS) {
-    if (
-      recentDomains.has(fallback.domain) ||
-      selectedDomains.has(fallback.domain)
-    ) {
-      continue;
-    }
-    stops.push({ ...fallback, visitedAt: now });
-    selectedDomains.add(fallback.domain);
-    if (stops.length === 2) return stops;
-  }
   return stops;
 }
 
@@ -115,7 +104,6 @@ export class CommuteTrainDispatcherObject {
         communalStops = selectCommuteTrainCommunalStops(
           destinations,
           dispatcher.getRecentCommunalDomains(now),
-          now,
         );
         if (communalStops.length < 2) {
           throw new Error('Internet Commute requires two unseen communal stops');
@@ -123,7 +111,10 @@ export class CommuteTrainDispatcherObject {
       }
       assignment = dispatcher.board(parsed, communalStops, now);
     } catch (error) {
-      if (!(error instanceof CommuteTrainCapacityError)) throw error;
+      if (!(error instanceof CommuteTrainCapacityError)) {
+        console.warn('[commute trains] no policy-checked route available:', error);
+        return jsonResponse(503, { error: 'No policy-checked train route is available' });
+      }
       await this.state.storage.put(DISPATCHER_STATE_KEY, dispatcher.snapshot());
       await this.scheduleCleanup(dispatcher);
       return jsonResponse(429, { error: 'Train dispatcher is at capacity' });
@@ -156,7 +147,18 @@ export class CommuteTrainDispatcherObject {
       console.warn('[commute trains] communal route unavailable:', error);
     }
 
-    return destinations;
+    const candidates = {
+      generatedAt: now,
+      activePeople: 0,
+      scenery: [],
+      destinations: [
+        ...destinations,
+        ...FALLBACK_COMMUNAL_STOPS.map(({ kind, ...fallback }) => ({ ...fallback, visitedAt: now })),
+      ],
+    };
+    // Every stop, including fallback stops, must pass durable human policies.
+    const policies = await loadInternetPlacePolicies(this.env.WWO_ADMIN_DB, candidates);
+    return applyInternetPlacePolicies(candidates, policies, candidates.destinations.length).destinations;
   }
 
   private async scheduleCleanup(

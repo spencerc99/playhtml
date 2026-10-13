@@ -62,7 +62,7 @@ export function AdminHeader({
         <a aria-current={currentPage === "installation" ? "page" : undefined}
           href="/admin/installation/">Installation</a>
         <a href="/internet-map/">Internet map</a>
-        <span title="The curation desk will join this office when its branch lands">Commute curation</span>
+        <a href="/commute-curation/">Commute curation</a>
         <a href={PLAYHTML_ADMIN_URL}>PlayHTML rooms ↗</a>
       </nav>
       <button className="office-header__logout" onClick={onLogout}>Lock office</button>

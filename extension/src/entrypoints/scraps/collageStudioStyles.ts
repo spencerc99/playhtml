@@ -3,6 +3,116 @@
 
 import { COLLAGE_PIECE_TOOL_STYLES } from "./collagePieceToolStyles";
 import { COLLAGE_VIEW_STYLES } from "./collageViewStyles";
+import { EXPORT_MENU_STYLES } from "./exportMenuStyles";
+import {
+  COLLAGE_MAT_STYLES,
+  COLLAGE_SHEET_STYLES,
+  PIECE_MATERIAL_STYLES,
+} from "./collageSheetStyles";
+
+/** The source labels and piece edges the peek shows, shared with the collage viewer page. */
+export const COLLAGE_PEEK_STYLES = `
+  /* The peeked piece's own edge, so its label has something to belong to. */
+  /* While peeking, a piece and its label share one quiet tint, so the label
+     can be matched to its piece where pieces sit close or overlap. */
+  .collage-peek-edge {
+    position: absolute;
+    z-index: 10004;
+    border-style: dotted;
+    border-color: var(--peek-tint, var(--c-muted));
+    transform-origin: center;
+    pointer-events: none;
+  }
+
+  .collage-peek-edge--on {
+    border-style: solid;
+  }
+
+  /* On a shared collage the edge is its adder's cursor color, drawn boldly
+     so whose is whose reads across the table. */
+  .collage-peek-edge--owned {
+    border-style: solid;
+  }
+
+  /* An archive label pinned to a piece while the peek key is held. It is a
+     slip of paper over the work, never a control: it takes no pointer. */
+  .collage-peek {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    max-width: 230px;
+    padding: 2px 5px;
+    transform-origin: left top;
+    border: 1px solid var(--peek-tint, color-mix(in srgb, var(--c-ink) 50%, transparent));
+    border-left-width: 3px;
+    border-radius: 2px;
+    background: var(--c-surface);
+    color: var(--c-ink);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--c-ink) 18%, transparent);
+    font-family: "Martian Mono", monospace;
+    font-size: 8px;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* The same label, floated over the drawer for the scrap under the pointer.
+     Fixed, so the drawer's scroll does not clip it. */
+  .collage-peek--tray {
+    position: fixed;
+    z-index: 10010;
+    border-left-width: 1px;
+  }
+
+  .collage-peek__where {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+  }
+
+  /* Who added a scrap, leading its label in their cursor's color. */
+  .collage-peek__who {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .collage-peek__dot {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+
+  .collage-peek__mark {
+    display: block;
+    width: 10px;
+    height: 10px;
+    object-fit: contain;
+  }
+
+  .collage-peek__more {
+    display: flex;
+    flex-direction: column;
+    padding-top: 1px;
+    border-top: 1px solid color-mix(in srgb, var(--c-ink) 14%, transparent);
+    color: var(--c-muted);
+  }
+
+  .collage-peek__line {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+`;
 
 export const COLLAGE_STUDIO_STYLES = `
   /* The collage studio's palette: WWO's linen nudged a hair cooler. Every
@@ -648,194 +758,12 @@ ${COLLAGE_PIECE_TOOL_STYLES}
     user-select: none;
   }
 
-  /* Both sides of the collage share one place on the stage. The sheet keeps
-     the frame's true size and is only ever zoomed, never squeezed by the flex
-     stage around it. */
-  .collage-sheet {
-    position: relative;
-    flex: none;
-    transform-origin: center;
-    perspective: 6000px;
-  }
-
-  /* The sheet turns over the way a printed card does, about its vertical axis. */
-  .collage-sheet__leaf {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    transform-style: preserve-3d;
-    transition: transform 560ms cubic-bezier(0.22, 0.61, 0.36, 1);
-  }
-
-  .collage-sheet--over .collage-sheet__leaf {
-    transform: rotateY(180deg);
-  }
-
-  /* The frame's paper comes from the record, so the studio shows what bakes. */
-  .collage-frame {
-    position: relative;
-    box-shadow: 0 10px 34px color-mix(in srgb, var(--c-ink) 16%, transparent);
-    touch-action: none;
-    backface-visibility: hidden;
-  }
-
-  /* What bakes stops at the frame's edge, so the pieces are clipped there. */
-  .collage-frame__pieces {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-  }
-
-  /* The back: the same paper, the front faintly through it, and the sources. */
-  .collage-back {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-    box-shadow: 0 10px 34px color-mix(in srgb, var(--c-ink) 16%, transparent);
-    backface-visibility: hidden;
-    transform: rotateY(180deg);
-    user-select: text;
-  }
-
-  .collage-back__text {
-    position: absolute;
-    inset: 0;
-  }
-
-  /* The field over it shows the title, so the written one only holds its place. */
-  .collage-back__text--titled .collage-back__title {
-    visibility: hidden;
-  }
-
-  /* The title on the back, editable where it is written. It always reads as
-     the writing itself: no outline or text cursor, only a caret once it is
-     clicked into. */
-  .collage-back__title-field {
-    position: absolute;
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    outline: none;
-    background: transparent;
-    overflow: hidden;
-    overflow-wrap: anywhere;
-    resize: none;
-    cursor: inherit;
-  }
-
-  .collage-back__title-field::placeholder {
-    color: var(--collage-back-muted);
-    opacity: 1;
-  }
-
-  /* The side facing away takes no pointer, however the sheet turned over. */
-  .collage-sheet__leaf > [inert] {
-    pointer-events: none;
-  }
-
-  /* A sheet that cannot swing still turns over, just as a crossfade. */
-  @media (prefers-reduced-motion: reduce) {
-    .collage-sheet__leaf,
-    .collage-sheet--over .collage-sheet__leaf {
-      transform: none;
-      transition: none;
-    }
-
-    .collage-frame,
-    .collage-back {
-      backface-visibility: visible;
-      transition: opacity 180ms linear;
-    }
-
-    .collage-back {
-      transform: none;
-    }
-
-    .collage-sheet__leaf > [inert] {
-      opacity: 0;
-    }
-  }
-
-  .collage-frame__edge {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-ink) 16%, transparent);
-  }
-
+${COLLAGE_SHEET_STYLES}
   .collage-frame--drop-target {
     box-shadow: 0 10px 34px color-mix(in srgb, var(--c-ink) 16%, transparent), inset 0 0 0 2px color-mix(in srgb, var(--c-accent) 50%, transparent);
   }
 
-  .collage-piece {
-    position: absolute;
-    overflow: hidden;
-    transform-origin: center;
-    user-select: none;
-  }
-
-  .collage-piece__source {
-    position: absolute;
-  }
-
-  /* The box a heading or button is set in before it is scaled to its piece. */
-  .collage-piece__lettering {
-    position: absolute;
-    left: 0;
-    top: 0;
-    transform-origin: left top;
-  }
-
-  /* A placed piece fills its box whatever kind of scrap it came from. */
-  .collage-piece__source .scrap-collage__svg,
-  .collage-piece__source .scrap-collage__button {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  /* Matches how the bake draws a button, so the studio is what you get. */
-  .collage-piece__source .scrap-collage__button {
-    box-sizing: border-box;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-  }
-
-  .collage-piece__source .scrap-collage__svg svg {
-    width: 100%;
-    height: 100%;
-  }
-
-  /*
-   * A cursor is pinned to 32px on the browse surface. A placed piece is sized
-   * by its own box instead, so the pin and its centering offset are undone —
-   * the studio must show exactly what the bake draws.
-   */
-  .collage-piece__source .scrap-collage__cursor,
-  .collage-tray__thumb .scrap-collage__cursor {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    transform: none;
-  }
-
-  /* The swatch stand-in follows the same box as the cursor it sits under. */
-  .collage-piece__source .scrap-collage__swatch,
-  .collage-tray__thumb .scrap-collage__swatch {
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    transform: none;
-  }
-
+${PIECE_MATERIAL_STYLES}
   /* The edge of the selected piece, or of the box around several: a plain
      teal line two screen pixels wide, kept that weight through the frame's
      zoom. It is drawn as an inset shadow because the browser rounds a
@@ -1057,106 +985,7 @@ ${COLLAGE_PIECE_TOOL_STYLES}
     color: var(--c-muted);
   }
 
-  /* The peeked piece's own edge, so its label has something to belong to. */
-  /* While peeking, a piece and its label share one quiet tint, so the label
-     can be matched to its piece where pieces sit close or overlap. */
-  .collage-peek-edge {
-    position: absolute;
-    z-index: 10004;
-    border-style: dotted;
-    border-color: var(--peek-tint, var(--c-muted));
-    transform-origin: center;
-    pointer-events: none;
-  }
-
-  .collage-peek-edge--on {
-    border-style: solid;
-  }
-
-  /* On a shared collage the edge is its adder's cursor color, drawn boldly
-     so whose is whose reads across the table. */
-  .collage-peek-edge--owned {
-    border-style: solid;
-  }
-
-  /* An archive label pinned to a piece while the peek key is held. It is a
-     slip of paper over the work, never a control: it takes no pointer. */
-  .collage-peek {
-    position: absolute;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    max-width: 230px;
-    padding: 2px 5px;
-    transform-origin: left top;
-    border: 1px solid var(--peek-tint, color-mix(in srgb, var(--c-ink) 50%, transparent));
-    border-left-width: 3px;
-    border-radius: 2px;
-    background: var(--c-surface);
-    color: var(--c-ink);
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--c-ink) 18%, transparent);
-    font-family: "Martian Mono", monospace;
-    font-size: 8px;
-    line-height: 1.5;
-    letter-spacing: 0.02em;
-    pointer-events: none;
-    user-select: none;
-  }
-
-  /* The same label, floated over the drawer for the scrap under the pointer.
-     Fixed, so the drawer's scroll does not clip it. */
-  .collage-peek--tray {
-    position: fixed;
-    z-index: 10010;
-    border-left-width: 1px;
-  }
-
-  .collage-peek__where {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    white-space: nowrap;
-  }
-
-  /* Who added a scrap, leading its label in their cursor's color. */
-  .collage-peek__who {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
-    font-weight: 700;
-    white-space: nowrap;
-  }
-
-  .collage-peek__dot {
-    display: block;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-  }
-
-  .collage-peek__mark {
-    display: block;
-    width: 10px;
-    height: 10px;
-    object-fit: contain;
-  }
-
-  .collage-peek__more {
-    display: flex;
-    flex-direction: column;
-    padding-top: 1px;
-    border-top: 1px solid color-mix(in srgb, var(--c-ink) 14%, transparent);
-    color: var(--c-muted);
-  }
-
-  .collage-peek__line {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
+${COLLAGE_PEEK_STYLES}
   /* Where the save button used to be: a quiet word on how the work stands. */
   .collage-standing {
     margin: 0;
@@ -1271,33 +1100,12 @@ ${COLLAGE_PIECE_TOOL_STYLES}
     flex: 1 1 auto;
   }
 
-  .collage-title-input {
-    flex: 0 1 300px;
-    min-width: 120px;
-    padding: 2px 0;
-    border: none;
-    border-bottom: 1px dotted var(--c-muted);
-    background: transparent;
-    color: var(--c-ink);
-    font-family: "Lora", Georgia, serif;
-    font-size: 15px;
-  }
-
   /* Stands where the title was, at the title field's height, so turning over
      never changes the bar's height or the frame's zoom. */
   .collage-bar__turned {
     display: inline-flex;
     align-items: center;
     min-height: 29px;
-  }
-
-  .collage-title-input:focus {
-    outline: none;
-    border-bottom-color: color-mix(in srgb, var(--c-accent) 80%, transparent);
-  }
-
-  .collage-title-input::placeholder {
-    color: color-mix(in srgb, var(--c-muted) 70%, transparent);
   }
 
   .collage-action {
@@ -1594,40 +1402,10 @@ ${COLLAGE_PIECE_TOOL_STYLES}
     flex: 1 1 auto;
   }
 
-  /* The mat: a board the frame is mounted on, with the collage's caption
-     written along its bottom edge. Its size is set in pixels from the zoom,
-     so the caption stays one size however the frame is fitted. */
-  .collage-mat {
-    position: relative;
-    flex: none;
-    background: var(--c-mat);
-    box-shadow:
-      0 1px 0 color-mix(in srgb, #fff 70%, transparent) inset,
-      0 0 0 1px var(--c-rule),
-      0 10px 24px color-mix(in srgb, var(--c-ink) 8%, transparent);
-  }
-  .collage-mat__window {
-    position: absolute;
-  }
-  .collage-mat .collage-sheet {
-    transform-origin: 0 0;
-  }
-  .collage-mat .collage-frame {
-    box-shadow:
-      inset 1px 1px 0 color-mix(in srgb, var(--c-ink) 14%, transparent),
-      0 0 0 1px color-mix(in srgb, #fff 80%, transparent);
-  }
-  .collage-mat__caption {
-    position: absolute;
-    bottom: 10px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-height: 24px;
-  }
-
+${COLLAGE_MAT_STYLES}
   /* Views sit at the top-right: the back, and where the pieces came from. */
 ${COLLAGE_VIEW_STYLES}
+${EXPORT_MENU_STYLES}
   .collage-setting:focus-visible,
   .collage-keys-button:focus-visible {
     outline: 2px solid var(--c-accent);

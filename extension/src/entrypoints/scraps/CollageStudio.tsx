@@ -48,6 +48,7 @@ import {
   type BackShows,
   type CollagePiece,
   type CollageRecord,
+  type CollagePublication,
 } from "./collageRecord";
 import {
   DEFAULT_CUTOUT_TOLERANCE,
@@ -89,7 +90,7 @@ import {
   collageToHandOver,
   type EditorSwitchChoice,
 } from "./EditorSwitch";
-import { KeysButton, StudioTools, StudioViews } from "./StudioTools";
+import { KeysButton, SoundButton, StudioTools, StudioViews } from "./StudioTools";
 import { FormatControl } from "./FormatControl";
 import {
   CollageBakeError,
@@ -110,9 +111,24 @@ import {
   type BackLook,
   type CollageBackContent,
 } from "./collageBack";
-import { saveCollage } from "./collageStore";
+import { loadCollage, saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
+import { ExportMenu } from "./ExportMenu";
+import { ShareButton } from "./ShareButton";
+import {
+  CollageMat,
+  MAT,
+  MAT_CAPTION,
+  PHONE_MAT,
+  PHONE_MAT_CAPTION,
+  madeOn,
+} from "./CollageMat";
+import {
+  publishCollageCover,
+  publishPieceMaterial,
+} from "./publishPieceImages";
+import { WORKER_URL } from "@movement/config";
 import { naturalScrapSize } from "./pieceLettering";
 import { CropSession } from "./CropSession";
 import { KeysPopover } from "./KeysPopover";
@@ -181,7 +197,17 @@ import {
   type CollageDraft,
 } from "./useCollageAutosave";
 import type { SaveStanding } from "./autosaveSchedule";
-import { collageExportName } from "./collageFile";
+import {
+  collageExportName,
+  collageFileName,
+  encodeCollageFile,
+} from "./collageFile";
+import {
+  collageSoundsMuted,
+  playCollageSound,
+  setCollageSoundsMuted,
+  type CollageSound,
+} from "./collageSounds";
 import {
   isEmptyChange,
   piecesChange,
@@ -209,12 +235,6 @@ const STAGE_PADDING = 12;
  * float there, so a frame fitted to a tall stage never slides under them.
  */
 const STAGE_TOP_BAND = 52;
-/** The mat around the frame, in screen pixels, and the band under it that carries the caption. */
-const MAT = 26;
-const MAT_CAPTION = 44;
-/** On a phone every pixel goes to the collage, so the mat is narrower. */
-const PHONE_MAT = 12;
-const PHONE_MAT_CAPTION = 32;
 /** How far inside the stage's edge a pinned handle stays, in screen pixels. */
 const HANDLE_INSET = 10;
 /** Frame units the pointer must travel before an alt-drag pulls out a copy. */
@@ -322,6 +342,9 @@ interface CollageStudioProps {
   autosaveTimers?: AutosaveTimers;
   /** The choice of editor, offered to people with experiment access. */
   editorSwitch?: EditorSwitchChoice;
+  /** Whether the export menu offers a view-only link. The host decides, since
+   * feature access reads extension storage the walk page can't reach. */
+  canPublish?: boolean;
   /**
    * A collage other people edit at the same time. The studio then reports
    * each settled edit instead of saving, takes in everyone else's edits, and
@@ -373,13 +396,6 @@ function placedPiece(
 }
 
 /** The day a collage was started, the way the history cards write it. */
-function madeOn(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).toLowerCase();
-}
 
 export function CollageStudio({
   scraps,
@@ -388,6 +404,7 @@ export function CollageStudio({
   onLeave,
   autosaveTimers,
   editorSwitch,
+  canPublish = false,
   shared,
 }: CollageStudioProps) {
   const initial = useMemo<readonly CollagePiece[]>(
@@ -417,6 +434,10 @@ export function CollageStudio({
   const [backShows, setBackShows] = useState<BackShows>(
     editing?.backShows ?? "pieces",
   );
+  /** The view-only link this collage is shared as, kept so it can be taken down. */
+  const [publication, setPublication] = useState<
+    CollagePublication | undefined
+  >(editing?.publication);
   const sharedWidth = shared?.frame.width;
   const sharedHeight = shared?.frame.height;
   const frame = useMemo(
@@ -541,6 +562,7 @@ export function CollageStudio({
       paper,
       backShows,
       pieces: normalizeStack(pieces),
+      ...(publication ? { publication } : {}),
     },
     hasContent: pieces.length > 0 || title.trim().length > 0,
   };
@@ -576,8 +598,9 @@ export function CollageStudio({
       grain: paper.grain,
       format,
       backShows,
+      publication: publication?.id ?? null,
     }),
-    [pieces, title, paper.color, paper.grain, format, backShows],
+    [pieces, title, paper.color, paper.grain, format, backShows, publication?.id],
   );
   const firstChangeRef = useRef(true);
   useEffect(() => {
@@ -590,6 +613,26 @@ export function CollageStudio({
     if (shared) return;
     noteChange();
   }, [changeKey, noteChange, shared]);
+
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // A share's delete token is the only way to take its link down again, so it
+  // is written straight away rather than on the next settled change.
+  const firstShareRef = useRef(true);
+  useEffect(() => {
+    if (firstShareRef.current) {
+      firstShareRef.current = false;
+      return;
+    }
+    if (shared) return;
+    flush();
+  }, [publication?.id, flush, shared]);
 
   const mode: StudioMode = over
     ? "back"
@@ -783,6 +826,71 @@ export function CollageStudio({
     [],
   );
 
+  /** Plays an action's sound, panned toward where the pieces sit in the frame. */
+  const sound = useCallback(
+    (name: CollageSound, at: readonly CollagePiece[] = []) => {
+      const pan =
+        at.length === 0
+          ? 0
+          : (at.reduce((sum, piece) => sum + piece.x + piece.width / 2, 0) /
+              at.length /
+              frame.width) *
+              2 -
+            1;
+      playCollageSound(name, pan);
+    },
+    [frame.width],
+  );
+
+  /**
+   * A turn, held to whole steps while shift is down. Each step it catches on
+   * clicks like a detent.
+   */
+  const lastSnapRef = useRef<number | null>(null);
+  const snapTurn = useCallback(
+    (raw: number, snapping: boolean) => {
+      if (!snapping) {
+        lastSnapRef.current = null;
+        return raw;
+      }
+      const degrees = snapDegrees(raw, ROTATION_SNAP_DEGREES);
+      if (lastSnapRef.current !== null && lastSnapRef.current !== degrees) {
+        sound("snap");
+      }
+      lastSnapRef.current = degrees;
+      return degrees;
+    },
+    [sound],
+  );
+
+  /**
+   * The width of the frame when a drag lifted pieces, so letting go can set
+   * them down with a sound; null while nothing is lifted.
+   */
+  const liftedRef = useRef<number | null>(null);
+
+  const [soundOn, setSoundOn] = useState(() => !collageSoundsMuted());
+  const toggleSound = useCallback(() => {
+    setSoundOn((on) => {
+      setCollageSoundsMuted(on);
+      return !on;
+    });
+  }, []);
+
+  /** Changes the paper; a color dragged through the picker rustles once a beat. */
+  const lastRustleRef = useRef(0);
+  const changePaper = useCallback(
+    (next: CollagePaper) => {
+      setPaper(next);
+      const now = performance.now();
+      if (now - lastRustleRef.current > 300) {
+        lastRustleRef.current = now;
+        sound("paper");
+      }
+    },
+    [sound],
+  );
+
   useLayoutEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
@@ -863,8 +971,9 @@ export function CollageStudio({
       commit([...pieces, piece]);
       selectPiece(piece.id);
       setNotice(null);
+      sound("place", [piece]);
     },
-    [commit, frame, phone, pieces, selectPiece],
+    [commit, frame, phone, pieces, selectPiece, sound],
   );
 
   const removeSelected = useCallback(() => {
@@ -886,7 +995,11 @@ export function CollageStudio({
     commit(removePieces(pieces, removable));
     setSelection(EMPTY_SELECTION);
     setCrop(null);
-  }, [commit, pieces, selectedPieces, selection, shared?.removalRefusal]);
+    sound(
+      "delete",
+      selectedPieces.filter((piece) => removable.includes(piece.id)),
+    );
+  }, [commit, pieces, selectedPieces, selection, shared?.removalRefusal, sound]);
 
   /**
    * Lays copies of the given pieces on top of the stack and takes them in
@@ -897,22 +1010,24 @@ export function CollageStudio({
       const copies = copiesOnTop(pieces, originals, COPY_OFFSET, createPieceId);
       commit([...pieces, ...copies], runLabel);
       setSelection(selectMany(copies.map((copy) => copy.id)));
+      sound("duplicate", copies);
       return copies;
     },
-    [commit, pieces],
+    [commit, pieces, sound],
   );
 
   /** Mirrors what is in hand: one piece flips in place, several as a whole. */
   const flipSelection = useCallback(
     (axis: "x" | "y") => {
       if (selectedPieces.length === 0) return;
+      sound("flip", selectedPieces);
       if (selectedPieces.length === 1) {
         editPiece(selectedPieces[0].id, (piece) => flipPiece(piece, axis));
         return;
       }
       editPieces(mirrorGroup(selectedPieces, axis));
     },
-    [editPiece, editPieces, selectedPieces],
+    [editPiece, editPieces, selectedPieces, sound],
   );
 
   /**
@@ -935,8 +1050,12 @@ export function CollageStudio({
         back: moveGroupToBack,
       }[to];
       commit(move(pieces, selection.ids));
+      sound(
+        to === "forward" || to === "front" ? "layerUp" : "layerDown",
+        selectedPieces,
+      );
     },
-    [commit, pieces, selection],
+    [commit, pieces, selectedPieces, selection, sound],
   );
 
   const enterCrop = useCallback(() => {
@@ -958,9 +1077,10 @@ export function CollageStudio({
     const target = pieces.find((piece) => piece.id === crop.pieceId);
     if (target && !sameCrop(target.crop, crop.crop)) {
       editPiece(crop.pieceId, (piece) => commitCropSession(piece, crop.crop));
+      sound("crop", [target]);
     }
     setCrop(null);
-  }, [crop, editPiece, pieces]);
+  }, [crop, editPiece, pieces, sound]);
 
   const cancelCrop = useCallback(() => setCrop(null), []);
 
@@ -991,6 +1111,7 @@ export function CollageStudio({
         Math.hypot(pointer.x - center.x, pointer.y - center.y) > 1
           ? pointer
           : edge;
+      if (kind === "rotate") sound("rotate", selectedPieces);
       setTransform({
         kind,
         before: selectedPieces,
@@ -999,7 +1120,7 @@ export function CollageStudio({
         readout: kind === "rotate" ? "0 deg" : "100%",
       });
     },
-    [multiple, selectedPieces, selectionBox],
+    [multiple, selectedPieces, selectionBox, sound],
   );
 
   const confirmTransform = useCallback(() => {
@@ -1022,6 +1143,7 @@ export function CollageStudio({
     if (!selected || selected.scrap.kind !== "image") return;
     setCutoutSession({ pieceId: selected.id, before: selected.cutout });
     if (!selected.cutout) {
+      sound("cutout", [selected]);
       const cutout: PieceCutout = {
         method: "edge-color",
         tolerance: DEFAULT_CUTOUT_TOLERANCE,
@@ -1032,7 +1154,7 @@ export function CollageStudio({
         `cutout:${selected.id}`,
       );
     }
-  }, [editPiece, selected]);
+  }, [editPiece, selected, sound]);
 
   const reshapeCutout = useCallback(
     (change: (cutout: PieceCutout) => PieceCutout) => {
@@ -1234,6 +1356,12 @@ export function CollageStudio({
   const endGesture = useCallback((event?: React.PointerEvent) => {
     const press = pressRef.current;
     pressRef.current = null;
+    const liftedWidth = liftedRef.current;
+    if (liftedWidth !== null) {
+      liftedRef.current = null;
+      const at = lastPointerRef.current;
+      playCollageSound("place", at ? (at.x / liftedWidth) * 2 - 1 : 0);
+    }
     if (
       event &&
       press &&
@@ -1267,6 +1395,18 @@ export function CollageStudio({
     gesture.kind,
     transform,
   ]);
+
+  /** Steps back or forward through the history, with a sound when it moves. */
+  const stepHistory = useCallback(
+    (direction: "undo" | "redo") => {
+      const moves =
+        direction === "undo" ? canUndo(history) || cropPending : canRedo(history);
+      finishRunning();
+      setHistory((current) => (direction === "undo" ? undo(current) : redo(current)));
+      if (moves) sound(direction);
+    },
+    [cropPending, finishRunning, history, sound],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1304,12 +1444,10 @@ export function CollageStudio({
           if (clipboard) duplicatePieces(clipboard);
           break;
         case "undo":
-          finishRunning();
-          setHistory((current) => undo(current));
+          stepHistory("undo");
           break;
         case "redo":
-          finishRunning();
-          setHistory((current) => redo(current));
+          stepHistory("redo");
           break;
         case "withhold":
           break;
@@ -1404,7 +1542,6 @@ export function CollageStudio({
     duplicatePieces,
     editPieces,
     enterCrop,
-    finishRunning,
     flipSelection,
     mode,
     multiple,
@@ -1416,6 +1553,7 @@ export function CollageStudio({
     selectPiece,
     selectedPieces,
     selection,
+    stepHistory,
     stepSelection,
     turnOver,
   ]);
@@ -1481,6 +1619,10 @@ export function CollageStudio({
           ALT_DRAG_THRESHOLD
         ) {
           press.moved = true;
+          if (gesture.kind === "move") {
+            sound("pickup", gesture.origins);
+            liftedRef.current = frame.width;
+          }
         }
       }
 
@@ -1489,18 +1631,14 @@ export function CollageStudio({
         if (transform.kind === "rotate") {
           if (before.length === 1) {
             const raw = rotationToPointer(before[0], point);
-            const degrees = event.shiftKey
-              ? snapDegrees(raw, ROTATION_SNAP_DEGREES)
-              : raw;
+            const degrees = snapTurn(raw, event.shiftKey);
             editPieces([{ ...before[0], rotation: degrees }], "transform");
             setTransform({ ...transform, readout: `${Math.round(degrees)} deg` });
           } else {
             const raw = normalizeDegrees(
               angleAbout(center, point) - angleAbout(center, anchor),
             );
-            const degrees = event.shiftKey
-              ? snapDegrees(raw, ROTATION_SNAP_DEGREES)
-              : raw;
+            const degrees = snapTurn(raw, event.shiftKey);
             editPieces(rotateGroup(before, center, degrees), "transform");
             setTransform({ ...transform, readout: `${Math.round(degrees)} deg` });
           }
@@ -1589,9 +1727,7 @@ export function CollageStudio({
         const raw = normalizeDegrees(
           angleAbout(center, point) - gesture.grabAngle,
         );
-        const degrees = event.shiftKey
-          ? snapDegrees(raw, ROTATION_SNAP_DEGREES)
-          : raw;
+        const degrees = snapTurn(raw, event.shiftKey);
         editPieces(rotateGroup(gesture.before, center, degrees), "groupRotate");
         setGesture({ ...gesture, turned: degrees });
         setGestureReadout(`rotate ${Math.round(degrees)} deg`);
@@ -1644,9 +1780,7 @@ export function CollageStudio({
         const raw = normalizeDegrees(
           before.rotation + angleAbout(boxCenter(before), point) - grabAngle,
         );
-        const degrees = event.shiftKey
-          ? snapDegrees(raw, ROTATION_SNAP_DEGREES)
-          : raw;
+        const degrees = snapTurn(raw, event.shiftKey);
         editPieces([{ ...before, rotation: degrees }], `rotate:${before.id}`);
         setGestureReadout(`rotate ${Math.round(degrees)} deg`);
       }
@@ -1656,10 +1790,13 @@ export function CollageStudio({
       duplicatePieces,
       editPiece,
       editPieces,
+      frame.width,
       framePoint,
       gesture,
       over,
       reachable,
+      snapTurn,
+      sound,
       toolActive,
       transform,
     ],
@@ -1867,6 +2004,7 @@ export function CollageStudio({
     const box = selectionBox;
     if (zone.kind === "rotate") {
       const grabAngle = angleAbout(boxCenter(box), pressed);
+      sound("rotate", selectedPieces);
       if (multiple) {
         setGesture({
           kind: "groupRotate",
@@ -2010,6 +2148,30 @@ export function CollageStudio({
     }
   };
 
+  /** Saves the collage as a file that opens it again in another browser. */
+  const downloadFile = async () => {
+    flush();
+    const record = collageToHandOver({
+      draft: draftRef.current,
+      standing: autosave.standing,
+      opened: editing,
+      preview: autosave.preview,
+    });
+    if (!record) return;
+    try {
+      const text = await encodeCollageFile(record);
+      saveFile(
+        new Blob([text], { type: "application/json" }),
+        collageFileName(record.title),
+      );
+    } catch (error) {
+      setNotice({
+        tone: "problem",
+        text: `could not save the file — ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  };
+
   const onBackProblem = useCallback((text: string) => {
     setNotice({ tone: "problem", text });
   }, []);
@@ -2102,25 +2264,39 @@ export function CollageStudio({
         >
           {/* The sheet holds both sides of the collage in one place and turns
               over about its vertical axis; only the side facing up is live. */}
-          {/* The frame sits on a mat, and the mat carries the collage's name,
-              count and date under it, so a screenshot of the mat says what it is. */}
-          <div
-            className="collage-mat"
-            data-marquee-ground=""
-            style={{
-              width: frame.width * scale + mat * 2,
-              height: frame.height * scale + mat + matCaption,
-            }}
-          >
-          <div
-            className="collage-mat__window"
-            data-marquee-ground=""
-            style={{
-              left: mat,
-              top: mat,
-              width: frame.width * scale,
-              height: frame.height * scale,
-            }}
+          <CollageMat
+            width={frame.width * scale}
+            height={frame.height * scale}
+            mat={mat}
+            matCaption={matCaption}
+            caption={
+              over ? (
+                <span className="collage-studio__label">
+                  turned over · T or esc to turn back
+                </span>
+              ) : shared ? (
+                shared.caption ?? (
+                  <span className="collage-studio__label">
+                    {pieces.length} piece{pieces.length === 1 ? "" : "s"}
+                  </span>
+                )
+              ) : (
+                <>
+                  <input
+                    className="collage-title-input"
+                    value={title}
+                    placeholder="untitled collage"
+                    onChange={(event) => setTitle(event.target.value)}
+                    aria-label="Collage title"
+                  />
+                  <span className="collage-bar__spacer" />
+                  <span className="collage-studio__label">
+                    {pieces.length} piece{pieces.length === 1 ? "" : "s"} · made{" "}
+                    {madeOn(createdAtRef.current)}
+                  </span>
+                </>
+              )
+            }
           >
           <div
             className={`collage-sheet${over ? " collage-sheet--over" : ""}`}
@@ -2464,48 +2640,13 @@ export function CollageStudio({
               />
             </div>
           </div>
-          </div>
-            <div className="collage-mat__caption" style={{ left: mat, right: mat }}>
-              {over ? (
-                <span className="collage-studio__label">
-                  turned over · T or esc to turn back
-                </span>
-              ) : shared ? (
-                shared.caption ?? (
-                  <span className="collage-studio__label">
-                    {pieces.length} piece{pieces.length === 1 ? "" : "s"}
-                  </span>
-                )
-              ) : (
-                <>
-                  <input
-                    className="collage-title-input"
-                    value={title}
-                    placeholder="untitled collage"
-                    onChange={(event) => setTitle(event.target.value)}
-                    aria-label="Collage title"
-                  />
-                  <span className="collage-bar__spacer" />
-                  <span className="collage-studio__label">
-                    {pieces.length} piece{pieces.length === 1 ? "" : "s"} · made{" "}
-                    {madeOn(createdAtRef.current)}
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
+          </CollageMat>
 
           <StudioTools
             canUndo={!over && (canUndo(history) || cropPending)}
             canRedo={!over && canRedo(history)}
-            onUndo={() => {
-              finishRunning();
-              setHistory((current) => undo(current));
-            }}
-            onRedo={() => {
-              finishRunning();
-              setHistory((current) => redo(current));
-            }}
+            onUndo={() => stepHistory("undo")}
+            onRedo={() => stepHistory("redo")}
             onBack={shared ? undefined : leave}
           />
 
@@ -2551,7 +2692,7 @@ export function CollageStudio({
               zoom={scale}
               pieceCount={pieces.length}
               onFormat={setFormat}
-              onPaper={setPaper}
+              onPaper={changePaper}
             />
           )}
           <span className="collage-bar__spacer" />
@@ -2579,33 +2720,71 @@ export function CollageStudio({
               {standing.text}
             </p>
           )}
+          <SoundButton on={soundOn} onToggle={toggleSound} />
           <KeysButton
             open={showKeys}
             onToggle={() => setShowKeys((value) => !value)}
           />
-          <button
-            type="button"
-            className="collage-action"
-            disabled={exporting || videoProgress !== null || pieces.length === 0}
-            onClick={() => void download()}
-          >
-            export png
-          </button>
-          {animates && (
-            <button
-              type="button"
-              className="collage-action"
-              disabled={exporting || videoProgress !== null}
-              title={videoSupport.ok ? undefined : videoSupport.reason}
-              onClick={() => void downloadVideo()}
-            >
-              {videoProgress === null
-                ? "export mp4"
-                : // No wider than "export mp4" in the monospace face, so
-                  // the bar does not reflow while the video encodes.
-                  `mp4 · ${Math.round(videoProgress * 100)}%`}
-            </button>
-          )}
+          {/* Share and export stay side by side when the bar wraps. */}
+          <span className="collage-bar__send">
+            {
+              // A collage made together is not stored here, so it cannot keep
+              // the token that takes its link down.
+              canPublish && !shared && (
+                <ShareButton
+                  share={publication}
+                  canShare={
+                    pieces.length > 0 && !exporting && videoProgress === null
+                  }
+                  record={() => draftRef.current.record}
+                  workerUrl={WORKER_URL}
+                  materialFor={publishPieceMaterial}
+                  coverFor={publishCollageCover}
+                  onShared={(next) => {
+                    if (!mountedRef.current) {
+                      // The studio closed while the link uploaded: store its
+                      // delete token on the saved collage, or the link could
+                      // never be taken down.
+                      const id = draftRef.current.record.id;
+                      void loadCollage(id)
+                        .then(
+                          (stored) =>
+                            stored &&
+                            saveCollage({ ...stored, publication: next }),
+                        )
+                        .catch((error: unknown) =>
+                          console.warn(
+                            "[collage publish] could not keep the link:",
+                            error,
+                          ),
+                        );
+                      return;
+                    }
+                    setNotice(null);
+                    setPublication(next);
+                  }}
+                  onUnshared={() => setPublication(undefined)}
+                  onProblem={(text) => setNotice({ tone: "problem", text })}
+                />
+              )
+            }
+            <ExportMenu
+              hasPieces={pieces.length > 0}
+              running={
+                exporting
+                  ? "exporting…"
+                  : videoProgress !== null
+                  ? // No wider than "export ▾" in the monospace face, so the bar
+                    // does not reflow while the video encodes.
+                    `mp4 · ${Math.round(videoProgress * 100)}%`
+                  : null
+              }
+              onPicture={() => void download()}
+              video={animates ? videoSupport : undefined}
+              onVideo={() => void downloadVideo()}
+              onFile={() => void downloadFile()}
+            />
+          </span>
           {confirmingLeave ? (
             <>
               <button

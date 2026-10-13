@@ -54,6 +54,7 @@ export function CreateMode({
   onLeave,
 }: CreateModeProps) {
   const tldrawChoice = useSettledFeatureState("TLDRAW_COLLAGES");
+  const shareLinks = useSettledFeatureState("COLLAGE_SHARE_LINKS");
   const license = licenseStatus(BUILD_LICENSE_KEY);
   /** The editor picked from the bar this visit, ahead of the stored choice catching up. */
   const [picked, setPicked] = useState<boolean | null>(null);
@@ -121,6 +122,7 @@ export function CreateMode({
               onSaved={onSaved}
               onLeave={onLeave}
               editorSwitch={editorSwitch}
+              canPublish={shareLinks?.enabled === true}
             />
             {fallbackNotice && (
               <p className="collage-notice collage-notice--quiet collage-engine-notice" role="status">
