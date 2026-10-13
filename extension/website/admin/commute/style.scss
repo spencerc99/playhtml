@@ -803,6 +803,19 @@ fieldset {
   border: 1px solid $line;
 }
 
+.page-toggle {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
 .decision-row--single {
   display: contents;
 }

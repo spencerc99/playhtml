@@ -362,16 +362,17 @@ export type CurationDecisionDraft = {
 };
 
 /**
- * A URL has independent page/path and hostname/site decisions, and either row
- * may be left empty. The reason and note go with the page row when it has a
- * placement; otherwise they go with the rest-of-site rule. A rest-of-site rule
- * is only filed when its placement, scope, or note changed.
+ * A URL has a whole-site (hostname or site) decision and an optional page/path
+ * decision. The reason and note go on the page rule when one is filed,
+ * otherwise on the whole-site rule. A whole-site rule is only re-filed when
+ * something about it changed, so an untouched rule keeps its own note.
  */
 export function buildReviewDecisions({
   item,
   scope,
   pathTarget,
   placement,
+  filePage = true,
   restScope,
   restPlacement,
   restExisting,
@@ -382,6 +383,8 @@ export function buildReviewDecisions({
   scope: CurationScope;
   pathTarget: string;
   placement?: CurationPlacement;
+  /** False when the page part is collapsed: only the whole-site rule is filed. */
+  filePage?: boolean;
   restScope: "hostname" | "site";
   restPlacement?: CurationPlacement;
   restExisting?: CuratedPlace;
@@ -393,8 +396,10 @@ export function buildReviewDecisions({
   }
   const decisions: CurationDecisionDraft[] = [];
   const restChosen = Boolean(item.url && restPlacement);
-  const noteForRest = !placement && restChosen;
-  if (placement || (comment.trim() && !restChosen)) {
+  // With no page placement, a note belongs to the whole-site rule if there is one.
+  const pageFiled =
+    filePage && Boolean(placement || (comment.trim() && !restChosen));
+  if (pageFiled) {
     if (scope === "path" && !pathTarget.trim()) {
       throw new Error("Enter a path prefix.");
     }
@@ -407,30 +412,32 @@ export function buildReviewDecisions({
       comment,
     });
   }
-  const sameRestRule = restExisting?.scope === restScope;
-  const restReason = noteForRest
-    ? reason
-    : sameRestRule
-      ? (restExisting?.reason ?? "")
-      : "";
-  const restComment = noteForRest
-    ? comment
-    : sameRestRule
-      ? (restExisting?.comment ?? "")
-      : "";
-  const restUnchanged =
-    sameRestRule &&
-    restExisting?.placement === restPlacement &&
-    (restExisting?.reason ?? "") === restReason &&
-    restExisting?.comment === restComment;
-  if (restChosen && !restUnchanged) {
-    decisions.push({
-      scope: restScope,
-      target: getReviewTarget(item, restScope),
-      placement: restPlacement,
-      reason: restReason,
-      comment: restComment,
-    });
+  if (restChosen) {
+    const sameRestRule = restExisting?.scope === restScope;
+    const restReason = pageFiled
+      ? sameRestRule
+        ? (restExisting?.reason ?? "")
+        : ""
+      : reason;
+    const restComment = pageFiled
+      ? sameRestRule
+        ? (restExisting?.comment ?? "")
+        : ""
+      : comment;
+    const unchanged =
+      sameRestRule &&
+      restExisting?.placement === restPlacement &&
+      (restExisting?.reason ?? "") === restReason &&
+      (restExisting?.comment ?? "") === restComment;
+    if (!unchanged) {
+      decisions.push({
+        scope: restScope,
+        target: getReviewTarget(item, restScope),
+        placement: restPlacement,
+        reason: restReason,
+        comment: restComment,
+      });
+    }
   }
   if (!decisions.length) throw new Error("Choose a placement or enter a note.");
   return decisions;

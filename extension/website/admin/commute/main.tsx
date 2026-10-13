@@ -358,6 +358,8 @@ export function App({
   const [pathTarget, setPathTarget] = useState("");
   const [placement, setPlacement] = useState<CurationPlacement | undefined>();
   const [restScope, setRestScope] = useState<"hostname" | "site">("hostname");
+  // Whether this page gets its own rule on top of the whole-site one.
+  const [pageOpen, setPageOpen] = useState(false);
   const [restPlacement, setRestPlacement] = useState<
     CurationPlacement | undefined
   >();
@@ -368,6 +370,7 @@ export function App({
   );
   const requestedInspectionIds = useRef(new Set<string>());
   const selectedItemId = useRef<string | null>(null);
+  const selectedItemUrl = useRef<string | undefined>(undefined);
   const [copyState, setCopyState] = useState("Copy artifact");
   const [showReviewed, setShowReviewed] = useState(false);
   const [spotCheck, setSpotCheck] = useState(false);
@@ -385,16 +388,8 @@ export function App({
   const [selectedSuggestion, setSelectedSuggestion] =
     useState<CatalogSuggestion | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const shortcuts = useRef({
-    agree: agreeWithClef,
-    undo: undoLastDecision,
-    restPlacement: setRestShortcut,
-  });
-  shortcuts.current = {
-    agree: agreeWithClef,
-    undo: undoLastDecision,
-    restPlacement: setRestShortcut,
-  };
+  const shortcuts = useRef({ agree: agreeWithClef, undo: undoLastDecision });
+  shortcuts.current = { agree: agreeWithClef, undo: undoLastDecision };
   const [catalogError, setCatalogError] = useState("");
   const [saving, setSaving] = useState(false);
   const [importStatus, setImportStatus] = useState("Import audit JSON");
@@ -509,6 +504,7 @@ export function App({
       ? selectedItem.reserve
       : undefined;
   selectedItemId.current = selectedItem?.id ?? null;
+  selectedItemUrl.current = selectedItem?.url;
   const counts = useMemo(
     () =>
       Object.fromEntries(
@@ -659,16 +655,18 @@ export function App({
       ) {
         return;
       }
-      const digit = /^Digit([1-9])$/.exec(event.code);
-      const placementIndex = digit ? Number(digit[1]) - 1 : -1;
+      const digit = /^Digit([1-9])$/.exec(event.code)?.[1];
+      const placementIndex = digit ? Number(digit) - 1 : -1;
       if (placementIndex >= 0 && placementIndex < CURATION_PLACEMENTS.length) {
         event.preventDefault();
         formEdited.current = true;
-        if (event.shiftKey) {
-          shortcuts.current.restPlacement(CURATION_PLACEMENTS[placementIndex]);
-        } else {
-          setPlacement(CURATION_PLACEMENTS[placementIndex]);
-        }
+        const value = CURATION_PLACEMENTS[placementIndex];
+        // Pages: 1-5 is the whole site, Shift+1-5 is this page only.
+        if (!selectedItemUrl.current) setPlacement(value);
+        else if (event.shiftKey) {
+          setPageOpen(true);
+          setPlacement(value);
+        } else setRestPlacement(value);
       } else if (event.key === "j") {
         event.preventDefault();
         moveSelection(1);
@@ -747,10 +745,14 @@ export function App({
         : (getDefaultPathTarget(selectedItem) ?? ""),
     );
     setPlacement(priorDecision?.placement);
+    setPageOpen(!selectedItem.url || Boolean(priorDecision));
     if (!covering.length && cachedSuggestion)
       prefillSuggestion(cachedSuggestion);
+    const notesFrom = selectedItem.url
+      ? (priorDecision ?? restDecision)
+      : priorDecision;
     setReason(
-      priorDecision?.reason ??
+      notesFrom?.reason ??
         (cachedSuggestion?.reason &&
         CURATION_REASONS.includes(
           cachedSuggestion.reason as (typeof CURATION_REASONS)[number],
@@ -758,7 +760,7 @@ export function App({
           ? cachedSuggestion.reason
           : ""),
     );
-    setComment(priorDecision?.comment ?? "");
+    setComment(notesFrom?.comment ?? "");
     setSelectedSuggestion(cachedSuggestion ?? null);
     setSuggestionStatus(
       covering.length > 0 || !selectedItem.url
@@ -867,10 +869,6 @@ export function App({
     return () => window.clearTimeout(suggestionTimer);
   }, [inspectionById, onUnauthorized, places, selectedItem, token]);
 
-  function setRestShortcut(value: CurationPlacement) {
-    if (selectedItem?.url) setRestPlacement(value);
-  }
-
   function prefillSuggestion(suggestion: CatalogSuggestion) {
     if (
       selectedItem?.url &&
@@ -881,6 +879,7 @@ export function App({
     } else {
       setScope(suggestion.scope);
       setPlacement(suggestion.placement);
+      setPageOpen(true);
     }
   }
 
@@ -893,6 +892,7 @@ export function App({
         scope,
         pathTarget,
         placement,
+        filePage: pageOpen,
         restScope,
         restPlacement,
         restExisting: getDecisionToReplace(places, selectedItem, restScope),
@@ -1422,158 +1422,38 @@ export function App({
                 </p>
               </div>
 
-              <div
-                className={
-                  selectedItem.url ? "decision-row" : "decision-row--single"
-                }
-              >
-                <fieldset>
-                  <legend>
-                    {selectedItem.url
-                      ? "This page (or path)"
-                      : "Decision scope"}
-                  </legend>
-                  <div className="scope-options">
-                    {(selectedItem.url
-                      ? CURATION_SCOPES.filter(
-                          (value) => value === "page" || value === "path",
-                        )
-                      : CURATION_SCOPES
-                    ).map((value) => {
-                      const disabled =
-                        (value === "page" && !selectedItem.url) ||
-                        (value === "path" &&
-                          !getDefaultPathTarget(selectedItem));
-                      return (
-                        <label
-                          className={`scope-option${disabled ? " scope-option--disabled" : ""}`}
-                          key={value}
-                        >
-                          <input
-                            type="radio"
-                            name="scope"
-                            checked={scope === value}
-                            disabled={disabled}
-                            onChange={() => {
-                              markFormEdited();
-                              setScope(value);
-                            }}
-                          />
-                          <span>{SCOPE_LABELS[value]}</span>
-                          <small>
-                            {disabled
-                              ? "No page path exposed"
-                              : value === "path"
-                                ? pathTarget ||
-                                  getReviewTarget(selectedItem, value)
-                                : getReviewTarget(selectedItem, value)}
-                          </small>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  {coveringDecisions.length > 0 && (
-                    <div className="covering-rules">
-                      <span>Your rules here, most specific first</span>
-                      <ul>
-                        {coveringDecisions.map((rule, index) => (
-                          <li key={rule.id}>
-                            <b>{SCOPE_LABELS[rule.scope]}</b>
-                            <code>{rule.place}</code>
-                            <span>
-                              {rule.placement
-                                ? PLACEMENT_LABELS[rule.placement]
-                                : "Note only"}
-                            </span>
-                            {index === 0 && <small>applies here</small>}
-                          </li>
-                        ))}
-                      </ul>
-                      <p>
-                        Saving at a different scope adds a rule, so this page
-                        can differ from the rest of the site.
-                      </p>
-                    </div>
-                  )}
-                  {scope === "path" && (
-                    <label className="scope-path">
-                      <span>Path prefix</span>
-                      <input
-                        type="text"
-                        value={pathTarget}
-                        onChange={(event) => {
-                          markFormEdited();
-                          setPathTarget(event.target.value);
-                        }}
-                      />
-                    </label>
-                  )}
-                </fieldset>
-
-                <fieldset>
-                  <legend>
-                    {selectedItem.url ? "Placement" : "Your decision"}{" "}
-                    <i>optional</i>
-                  </legend>
-                  {suggestionStatus === "loading" && (
-                    <p className="decision-help">Drafting a suggestion…</p>
-                  )}
-                  {selectedSuggestion && (
-                    <ClefCard
-                      suggestion={selectedSuggestion}
-                      seen={clefSeenById.get(selectedItem.id) ?? null}
-                      onAskAgain={() => void askClefAgain()}
-                      busy={suggestionStatus === "loading"}
-                    />
-                  )}
-                  {selectedSuggestion && (
-                    <button
-                      type="button"
-                      className="agree-button"
-                      onClick={() => void agreeWithClef()}
-                      disabled={saving}
-                    >
-                      Keep Clef's call:{" "}
-                      {PLACEMENT_LABELS[selectedSuggestion.placement]},{" "}
-                      {SCOPE_LABELS[selectedSuggestion.scope].toLowerCase()} (A)
-                    </button>
-                  )}
-                  {suggestionStatus === "unavailable" && (
-                    <p className="decision-help">
-                      Clef could not answer for this page.
-                    </p>
-                  )}
-                  <PlacementOptions
-                    name="placement"
-                    placement={placement}
-                    onChange={(value) => {
-                      markFormEdited();
-                      setPlacement(value);
-                    }}
-                  />
-                  <p className="decision-help">
-                    {placement ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          markFormEdited();
-                          setPlacement(undefined);
-                        }}
-                      >
-                        Clear classification
-                      </button>
-                    ) : selectedItem.url ? (
-                      "No page placement — leave it empty to decide only for the rest of the site."
-                    ) : (
-                      "No classification selected — your note can stand on its own."
-                    )}
-                  </p>
-                </fieldset>
-              </div>
+              {suggestionStatus === "loading" && (
+                <p className="decision-help">Drafting a suggestion…</p>
+              )}
+              {selectedSuggestion && (
+                <ClefCard
+                  suggestion={selectedSuggestion}
+                  seen={clefSeenById.get(selectedItem.id) ?? null}
+                  onAskAgain={() => void askClefAgain()}
+                  busy={suggestionStatus === "loading"}
+                />
+              )}
+              {selectedSuggestion && (
+                <button
+                  type="button"
+                  className="agree-button"
+                  onClick={() => void agreeWithClef()}
+                  disabled={saving}
+                >
+                  Keep Clef's call:{" "}
+                  {PLACEMENT_LABELS[selectedSuggestion.placement]},{" "}
+                  {SCOPE_LABELS[selectedSuggestion.scope].toLowerCase()} (A)
+                </button>
+              )}
+              {suggestionStatus === "unavailable" && (
+                <p className="decision-help">
+                  Clef could not answer for this page.
+                </p>
+              )}
               {selectedItem.url && (
                 <div className="decision-row">
                   <fieldset>
-                    <legend>Rest of the site</legend>
+                    <legend>Whole site</legend>
                     <div className="scope-options scope-options--site">
                       {(["hostname", "site"] as const).map((value) => (
                         <label className="scope-option" key={value}>
@@ -1616,7 +1496,142 @@ export function App({
                           Clear classification
                         </button>
                       ) : (
-                        "No placement selected — file only the page row."
+                        "No placement selected. Leave it empty to file only a page rule."
+                      )}
+                    </p>
+                  </fieldset>
+                </div>
+              )}
+              {selectedItem.url && (
+                <button
+                  type="button"
+                  className="page-toggle"
+                  aria-expanded={pageOpen}
+                  onClick={() => {
+                    markFormEdited();
+                    setPageOpen((open) => !open);
+                  }}
+                >
+                  {pageOpen
+                    ? "Same as the whole site, no page rule"
+                    : "Different for this page? (Shift+1-5)"}
+                </button>
+              )}
+              {(!selectedItem.url || pageOpen) && (
+                <div
+                  className={
+                    selectedItem.url ? "decision-row" : "decision-row--single"
+                  }
+                >
+                  <fieldset>
+                    <legend>
+                      {selectedItem.url
+                        ? "Only this page (or path)"
+                        : "Decision scope"}
+                    </legend>
+                    <div className="scope-options">
+                      {(selectedItem.url
+                        ? CURATION_SCOPES.filter(
+                            (value) => value === "page" || value === "path",
+                          )
+                        : CURATION_SCOPES
+                      ).map((value) => {
+                        const disabled =
+                          (value === "page" && !selectedItem.url) ||
+                          (value === "path" &&
+                            !getDefaultPathTarget(selectedItem));
+                        return (
+                          <label
+                            className={`scope-option${disabled ? " scope-option--disabled" : ""}`}
+                            key={value}
+                          >
+                            <input
+                              type="radio"
+                              name="scope"
+                              checked={scope === value}
+                              disabled={disabled}
+                              onChange={() => {
+                                markFormEdited();
+                                setScope(value);
+                              }}
+                            />
+                            <span>{SCOPE_LABELS[value]}</span>
+                            <small>
+                              {disabled
+                                ? "No page path exposed"
+                                : value === "path"
+                                  ? pathTarget ||
+                                    getReviewTarget(selectedItem, value)
+                                  : getReviewTarget(selectedItem, value)}
+                            </small>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {coveringDecisions.length > 0 && (
+                      <div className="covering-rules">
+                        <span>Your rules here, most specific first</span>
+                        <ul>
+                          {coveringDecisions.map((rule, index) => (
+                            <li key={rule.id}>
+                              <b>{SCOPE_LABELS[rule.scope]}</b>
+                              <code>{rule.place}</code>
+                              <span>
+                                {rule.placement
+                                  ? PLACEMENT_LABELS[rule.placement]
+                                  : "Note only"}
+                              </span>
+                              {index === 0 && <small>applies here</small>}
+                            </li>
+                          ))}
+                        </ul>
+                        <p>
+                          Saving at a different scope adds a rule, so this page
+                          can differ from the rest of the site.
+                        </p>
+                      </div>
+                    )}
+                    {scope === "path" && (
+                      <label className="scope-path">
+                        <span>Path prefix</span>
+                        <input
+                          type="text"
+                          value={pathTarget}
+                          onChange={(event) => {
+                            markFormEdited();
+                            setPathTarget(event.target.value);
+                          }}
+                        />
+                      </label>
+                    )}
+                  </fieldset>
+
+                  <fieldset>
+                    <legend>
+                      {selectedItem.url ? "Placement" : "Your decision"}{" "}
+                      <i>optional</i>
+                    </legend>
+                    <PlacementOptions
+                      name="placement"
+                      placement={placement}
+                      onChange={(value) => {
+                        markFormEdited();
+                        setPlacement(value);
+                      }}
+                    />
+                    <p className="decision-help">
+                      {placement ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            markFormEdited();
+                            setPlacement(undefined);
+                          }}
+                        >
+                          Clear classification
+                        </button>
+                      ) : (
+                        "No classification selected — your note can stand on its own."
                       )}
                     </p>
                   </fieldset>
@@ -1696,15 +1711,12 @@ export function App({
               </div>
               <p className="shortcut-hint">
                 <kbd>1</kbd>–<kbd>5</kbd>{" "}
-                {selectedItem.url ? (
+                {selectedItem.url ? "whole site" : "placement"} ·{" "}
+                {selectedItem.url && (
                   <>
-                    page · <kbd>Shift</kbd>+<kbd>1</kbd>–<kbd>5</kbd> rest of
-                    site
+                    <kbd>Shift</kbd>+<kbd>1</kbd>–<kbd>5</kbd> this page ·{" "}
                   </>
-                ) : (
-                  "placement"
-                )}{" "}
-                ·{" "}
+                )}
                 <kbd>Enter</kbd> file · <kbd>J</kbd>/<kbd>K</kbd> next / previous ·{" "}
                 <kbd>A</kbd> keep
                 Clef's call · <kbd>Z</kbd> undo

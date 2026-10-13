@@ -133,6 +133,25 @@ describe("split decisions", () => {
     ]);
   });
 
+  it("files just the whole-site rule, with the note, when the page part is closed", () => {
+    expect(buildReviewDecisions({ ...form, filePage: false })).toEqual([
+      {
+        scope: "hostname",
+        target: "notes.example.com",
+        placement: "regular",
+        reason: form.reason,
+        comment: form.comment,
+      },
+    ]);
+    expect(() =>
+      buildReviewDecisions({
+        ...form,
+        filePage: false,
+        restPlacement: undefined,
+      }),
+    ).toThrow();
+  });
+
   it("does not replace an existing rule at a different scope", () => {
     const site = {
       ...FEATURED,
