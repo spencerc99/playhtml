@@ -353,6 +353,97 @@ export function getDecisionToReplace(
   );
 }
 
+export type CurationDecisionDraft = {
+  scope: CurationScope;
+  target: string;
+  placement?: CurationPlacement;
+  reason: string;
+  comment: string;
+};
+
+/**
+ * A URL has independent page/path and hostname/site decisions. The reason and
+ * note describe the page row; the rest-of-site rule keeps its own, and is only
+ * filed when its placement or scope changed.
+ */
+export function buildReviewDecisions({
+  item,
+  scope,
+  pathTarget,
+  placement,
+  restScope,
+  restPlacement,
+  restExisting,
+  reason,
+  comment,
+}: {
+  item: CommuteReviewItem;
+  scope: CurationScope;
+  pathTarget: string;
+  placement?: CurationPlacement;
+  restScope: "hostname" | "site";
+  restPlacement?: CurationPlacement;
+  restExisting?: CuratedPlace;
+  reason: string;
+  comment: string;
+}): CurationDecisionDraft[] {
+  if (item.url && scope !== "page" && scope !== "path") {
+    throw new Error("Choose page or path scope for this page.");
+  }
+  const decisions: CurationDecisionDraft[] = [];
+  if (placement || comment.trim()) {
+    if (scope === "path" && !pathTarget.trim()) {
+      throw new Error("Enter a path prefix.");
+    }
+    decisions.push({
+      scope,
+      target:
+        scope === "path" ? pathTarget.trim() : getReviewTarget(item, scope),
+      placement,
+      reason,
+      comment,
+    });
+  }
+  const sameRestRule = restExisting?.scope === restScope;
+  if (
+    item.url &&
+    restPlacement &&
+    !(sameRestRule && restExisting?.placement === restPlacement)
+  ) {
+    decisions.push({
+      scope: restScope,
+      target: getReviewTarget(item, restScope),
+      placement: restPlacement,
+      reason: sameRestRule ? (restExisting?.reason ?? "") : "",
+      comment: sameRestRule ? (restExisting?.comment ?? "") : "",
+    });
+  }
+  if (!decisions.length) throw new Error("Choose a placement or enter a note.");
+  return decisions;
+}
+
+export type CurationDecisionChange = {
+  saved: CuratedPlace;
+  replaced?: CuratedPlace;
+};
+
+export type CurationUndoGroup = {
+  itemId: string;
+  previousGroup?: QueueGroup;
+  decisions: CurationDecisionChange[];
+};
+
+/** Restore one save's rules in reverse order, preserving unrelated scopes. */
+export function undoCuratedPlaces(
+  places: CuratedPlace[],
+  decisions: CurationDecisionChange[],
+): CuratedPlace[] {
+  return decisions.reduceRight((current, { saved, replaced }) => {
+    const without = current.filter((place) => place.id !== saved.id);
+    return replaced ? upsertCuratedPlace(without, replaced) : without;
+  }, places);
+}
+
 export function canPrefillSuggestion({
   hasDecision,
   formEdited,

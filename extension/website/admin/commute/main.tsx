@@ -16,6 +16,7 @@ import {
   PAGE_INSPECTION_URL,
 } from "@movement/config";
 import {
+  buildReviewDecisions,
   canPrefillSuggestion,
   createCuratedPlace,
   CURATION_PLACEMENTS,
@@ -25,6 +26,9 @@ import {
   type CuratedPlace,
   type CurationScope,
   type CurationPlacement,
+  type CurationDecisionDraft,
+  type CurationDecisionChange,
+  type CurationUndoGroup,
   getDecisionForReviewItem,
   getDecisionToReplace,
   getDecisionsForReviewItem,
@@ -40,6 +44,7 @@ import {
   type PublicPageInspection,
   serializeCurationArtifact,
   upsertCuratedPlace,
+  undoCuratedPlaces,
 } from "./curation";
 import {
   deleteCatalogPolicy,
@@ -274,6 +279,36 @@ type InspectionState =
   | { status: "missing" }
   | { status: "error" };
 
+function PlacementOptions({
+  name,
+  placement,
+  onChange,
+}: {
+  name: string;
+  placement?: CurationPlacement;
+  onChange: (value: CurationPlacement) => void;
+}) {
+  return (
+    <div className="verdict-options">
+      {CURATION_PLACEMENTS.map((value) => (
+        <label
+          className={`verdict-option placement--${value} status-tone--${placementTone(value)}`}
+          key={value}
+        >
+          <input
+            type="radio"
+            name={name}
+            checked={placement === value}
+            onChange={() => onChange(value)}
+          />
+          <StatusIcon kind={value} />
+          <span>{PLACEMENT_LABELS[value]}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 function relativeTime(timestamp: number): string {
   const elapsedSeconds = Math.max(
     0,
@@ -322,6 +357,10 @@ export function App({
   const [scope, setScope] = useState<CurationScope>("hostname");
   const [pathTarget, setPathTarget] = useState("");
   const [placement, setPlacement] = useState<CurationPlacement | undefined>();
+  const [restScope, setRestScope] = useState<"hostname" | "site">("hostname");
+  const [restPlacement, setRestPlacement] = useState<
+    CurationPlacement | undefined
+  >();
   const [reason, setReason] = useState("");
   const [comment, setComment] = useState("");
   const [inspectionById, setInspectionById] = useState(
@@ -332,11 +371,7 @@ export function App({
   const [copyState, setCopyState] = useState("Copy artifact");
   const [showReviewed, setShowReviewed] = useState(false);
   const [spotCheck, setSpotCheck] = useState(false);
-  const [lastDecision, setLastDecision] = useState<{
-    itemId: string;
-    saved: CuratedPlace;
-    replaced?: CuratedPlace;
-  } | null>(null);
+  const [undoStack, setUndoStack] = useState<CurationUndoGroup[]>([]);
   // Group each row was in when you decided it, so it stays put until refresh.
   const [decidedThisVisit, setDecidedThisVisit] = useState(
     () => new Map<string, QueueGroup>(),
@@ -642,8 +677,7 @@ export function App({
       if (selectedItemId.current !== item.id) return;
       setSelectedSuggestion(suggestion);
       if (!formEdited.current && !getDecisionForReviewItem(places, item)) {
-        setScope(suggestion.scope);
-        setPlacement(suggestion.placement);
+        prefillSuggestion(suggestion);
       }
       setSuggestionStatus("prefilled");
       void loadClefLog();
@@ -663,16 +697,26 @@ export function App({
 
   useEffect(() => {
     if (!selectedItem) return;
-    const priorDecision = getDecisionForReviewItem(places, selectedItem);
+    const covering = getDecisionsForReviewItem(places, selectedItem);
+    const priorDecision = selectedItem.url
+      ? covering.find((rule) => rule.scope === "page" || rule.scope === "path")
+      : covering[0];
+    const restDecision = covering.find(
+      (rule) => rule.scope === "hostname" || rule.scope === "site",
+    );
     const cachedSuggestion = suggestionById.current.get(selectedItem.id);
     formEdited.current = false;
-    setScope(priorDecision?.scope ?? cachedSuggestion?.scope ?? "hostname");
+    setScope(priorDecision?.scope ?? (selectedItem.url ? "page" : "hostname"));
+    setRestScope(restDecision?.scope === "site" ? "site" : "hostname");
+    setRestPlacement(selectedItem.url ? restDecision?.placement : undefined);
     setPathTarget(
       priorDecision?.scope === "path"
         ? priorDecision.place
         : (getDefaultPathTarget(selectedItem) ?? ""),
     );
-    setPlacement(priorDecision?.placement ?? cachedSuggestion?.placement);
+    setPlacement(priorDecision?.placement);
+    if (!covering.length && cachedSuggestion)
+      prefillSuggestion(cachedSuggestion);
     setReason(
       priorDecision?.reason ??
         (cachedSuggestion?.reason &&
@@ -685,7 +729,7 @@ export function App({
     setComment(priorDecision?.comment ?? "");
     setSelectedSuggestion(cachedSuggestion ?? null);
     setSuggestionStatus(
-      priorDecision || !selectedItem.url
+      covering.length > 0 || !selectedItem.url
         ? "idle"
         : cachedSuggestion
           ? "prefilled"
@@ -772,8 +816,7 @@ export function App({
             })
           )
             return;
-          setScope(suggestion.scope);
-          setPlacement(suggestion.placement);
+          prefillSuggestion(suggestion);
           setReason(
             suggestion.reason &&
               CURATION_REASONS.includes(
@@ -792,60 +835,96 @@ export function App({
     return () => window.clearTimeout(suggestionTimer);
   }, [inspectionById, onUnauthorized, places, selectedItem, token]);
 
+  function prefillSuggestion(suggestion: CatalogSuggestion) {
+    if (
+      selectedItem?.url &&
+      (suggestion.scope === "hostname" || suggestion.scope === "site")
+    ) {
+      setRestScope(suggestion.scope);
+      setRestPlacement(suggestion.placement);
+    } else {
+      setScope(suggestion.scope);
+      setPlacement(suggestion.placement);
+    }
+  }
+
   async function fileDecision(event: FormEvent) {
     event.preventDefault();
-    if (!selectedItem) return;
-    if (!placement && !comment.trim()) return;
-    if (scope === "path" && !pathTarget.trim()) return;
-    await saveDecision({
-      scope,
-      target:
-        scope === "path"
-          ? pathTarget.trim()
-          : getReviewTarget(selectedItem, scope),
-      placement,
-      reason,
-      comment,
-    });
+    if (!selectedItem || saving) return;
+    try {
+      const decisions = buildReviewDecisions({
+        item: selectedItem,
+        scope,
+        pathTarget,
+        placement,
+        restScope,
+        restPlacement,
+        restExisting: getDecisionToReplace(places, selectedItem, restScope),
+        reason,
+        comment,
+      });
+      await saveDecision(decisions);
+    } catch (error) {
+      handleCatalogError(error);
+    }
   }
 
   /** Keeps Clef's answer for the selected page as your rule. */
   async function agreeWithClef() {
     if (!selectedItem || !selectedSuggestion || saving) return;
-    const target =
-      selectedSuggestion.scope === "path"
-        ? getDefaultPathTarget(selectedItem)
-        : getReviewTarget(selectedItem, selectedSuggestion.scope);
-    if (!target) return;
-    await saveDecision({
-      scope: selectedSuggestion.scope,
-      target,
-      placement: selectedSuggestion.placement,
-      reason: selectedSuggestion.reason ?? "",
-      comment: "",
-    });
+    try {
+      const target = getReviewTarget(selectedItem, selectedSuggestion.scope);
+      await saveDecision([
+        {
+          scope: selectedSuggestion.scope,
+          target,
+          placement: selectedSuggestion.placement,
+          reason: selectedSuggestion.reason ?? "",
+          comment: "",
+        },
+      ]);
+    } catch (error) {
+      handleCatalogError(error);
+    }
   }
 
   async function undoLastDecision() {
-    if (!lastDecision || saving) return;
-    const { itemId, saved, replaced } = lastDecision;
+    const group = undoStack.at(-1);
+    if (!group || saving) return;
     setSaving(true);
     setCatalogError("");
     try {
-      await deleteCatalogPolicy(token, saved);
-      let restored: CuratedPlace | undefined;
-      if (replaced) restored = await saveCatalogPolicy(token, replaced);
-      setPlaces((current) => {
-        const without = current.filter((place) => place.id !== saved.id);
-        return restored ? upsertCuratedPlace(without, restored) : without;
-      });
+      for (const change of [...group.decisions].reverse()) {
+        await deleteCatalogPolicy(token, change.saved);
+        const restored = change.replaced
+          ? await saveCatalogPolicy(token, change.replaced)
+          : undefined;
+        setPlaces((current) =>
+          undoCuratedPlaces(current, [{ ...change, replaced: restored }]),
+        );
+        // Keep unfinished rules undoable if a later request fails.
+        setUndoStack((current) =>
+          current.map((entry, index) =>
+            index === current.length - 1
+              ? {
+                  ...entry,
+                  decisions: entry.decisions.filter(
+                    (decision) => decision !== change,
+                  ),
+                }
+              : entry,
+          ),
+        );
+      }
       setDecidedThisVisit((groups) => {
         const next = new Map(groups);
-        next.delete(itemId);
+        if (group.previousGroup) next.set(group.itemId, group.previousGroup);
+        else next.delete(group.itemId);
         return next;
       });
-      setLastDecision(null);
-      setSelectedId(itemId);
+      setUndoStack((current) => current.slice(0, -1));
+      setSelectedId(group.itemId);
+      void loadClefLog();
     } catch (error) {
       handleCatalogError(error);
     } finally {
@@ -853,63 +932,62 @@ export function App({
     }
   }
 
-  async function saveDecision({
-    scope: decisionScope,
-    target,
-    placement: decisionPlacement,
-    reason: decisionReason,
-    comment: decisionComment,
-  }: {
-    scope: CurationScope;
-    target: string;
-    placement?: CurationPlacement;
-    reason: string;
-    comment: string;
-  }) {
-    if (!selectedItem) return;
-    const priorDecision = getDecisionToReplace(
-      places,
-      selectedItem,
-      decisionScope,
-    );
-    const decision = createCuratedPlace({
-      id: priorDecision?.id ?? crypto.randomUUID(),
-      input: target,
-      scope: decisionScope,
-      placement: decisionPlacement,
-      reason: decisionReason,
-      comment: decisionComment,
-      updatedAt: new Date().toISOString(),
-    });
+  async function saveDecision(decisions: CurationDecisionDraft[]) {
+    if (!selectedItem || saving) return;
+    const item = selectedItem;
+    const changes: CurationDecisionChange[] = [];
     setSaving(true);
     setCatalogError("");
+    let completed = false;
     try {
-      const saved = await saveCatalogPolicy(token, decision, priorDecision);
-      const otherPlaces = priorDecision
-        ? places.filter((place) => place.id !== priorDecision.id)
-        : places;
-      setPlaces(upsertCuratedPlace(otherPlaces, saved));
-      setLastDecision({
-        itemId: selectedItem.id,
-        saved,
-        replaced: priorDecision,
-      });
-      const groupBefore = groupById.get(selectedItem.id);
-      if (groupBefore && groupBefore !== "decided") {
-        setDecidedThisVisit((groups) =>
-          new Map(groups).set(selectedItem.id, groupBefore),
+      for (const draft of decisions) {
+        const priorDecision = getDecisionToReplace(places, item, draft.scope);
+        const decision = createCuratedPlace({
+          id: priorDecision?.id ?? crypto.randomUUID(),
+          input: draft.target,
+          scope: draft.scope,
+          placement: draft.placement,
+          reason: draft.reason,
+          comment: draft.comment,
+          updatedAt: new Date().toISOString(),
+        });
+        const saved = await saveCatalogPolicy(token, decision, priorDecision);
+        changes.push({ saved, replaced: priorDecision });
+        setPlaces((current) =>
+          upsertCuratedPlace(
+            priorDecision
+              ? current.filter((place) => place.id !== priorDecision.id)
+              : current,
+            saved,
+          ),
         );
       }
+      completed = true;
     } catch (error) {
       handleCatalogError(error);
+    } finally {
+      if (changes.length) {
+        setUndoStack((current) => [
+          ...current,
+          {
+            itemId: item.id,
+            previousGroup: decidedThisVisit.get(item.id),
+            decisions: changes,
+          },
+        ]);
+        const groupBefore = groupById.get(item.id);
+        if (groupBefore && groupBefore !== "decided") {
+          setDecidedThisVisit((groups) =>
+            new Map(groups).set(item.id, groupBefore),
+          );
+        }
+        void loadClefLog();
+      }
       setSaving(false);
-      return;
     }
-    setSaving(false);
-    void loadClefLog();
-
+    if (!completed) return;
     const currentIndex = visibleItems.findIndex(
-      (item) => item.id === selectedItem.id,
+      (candidate) => candidate.id === item.id,
     );
     const nextItem = visibleItems[currentIndex + 1] ?? visibleItems[0];
     setSelectedId(nextItem?.id ?? null);
@@ -1308,146 +1386,204 @@ export function App({
                 </p>
               </div>
 
-              <fieldset>
-                <legend>Decision scope</legend>
-                <div className="scope-options">
-                  {CURATION_SCOPES.map((value) => {
-                    const disabled =
-                      (value === "page" && !selectedItem.url) ||
-                      (value === "path" && !getDefaultPathTarget(selectedItem));
-                    return (
-                      <label
-                        className={`scope-option${disabled ? " scope-option--disabled" : ""}`}
-                        key={value}
-                      >
-                        <input
-                          type="radio"
-                          name="scope"
-                          checked={scope === value}
-                          disabled={disabled}
-                          onChange={() => {
-                            markFormEdited();
-                            setScope(value);
-                          }}
-                        />
-                        <span>{SCOPE_LABELS[value]}</span>
-                        <small>
-                          {disabled
-                            ? "No page path exposed"
-                            : value === "path"
-                              ? pathTarget ||
-                                getReviewTarget(selectedItem, value)
-                              : getReviewTarget(selectedItem, value)}
-                        </small>
-                      </label>
-                    );
-                  })}
-                </div>
-                {coveringDecisions.length > 0 && (
-                  <div className="covering-rules">
-                    <span>Your rules here, most specific first</span>
-                    <ul>
-                      {coveringDecisions.map((rule, index) => (
-                        <li key={rule.id}>
-                          <b>{SCOPE_LABELS[rule.scope]}</b>
-                          <code>{rule.place}</code>
-                          <span>
-                            {rule.placement
-                              ? PLACEMENT_LABELS[rule.placement]
-                              : "Note only"}
-                          </span>
-                          {index === 0 && <small>applies here</small>}
-                        </li>
-                      ))}
-                    </ul>
-                    <p>
-                      Saving at a different scope adds a rule, so this page can
-                      differ from the rest of the site.
-                    </p>
+              <div
+                className={
+                  selectedItem.url ? "decision-row" : "decision-row--single"
+                }
+              >
+                <fieldset>
+                  <legend>
+                    {selectedItem.url
+                      ? "This page (or path)"
+                      : "Decision scope"}
+                  </legend>
+                  <div className="scope-options">
+                    {(selectedItem.url
+                      ? CURATION_SCOPES.filter(
+                          (value) => value === "page" || value === "path",
+                        )
+                      : CURATION_SCOPES
+                    ).map((value) => {
+                      const disabled =
+                        (value === "page" && !selectedItem.url) ||
+                        (value === "path" &&
+                          !getDefaultPathTarget(selectedItem));
+                      return (
+                        <label
+                          className={`scope-option${disabled ? " scope-option--disabled" : ""}`}
+                          key={value}
+                        >
+                          <input
+                            type="radio"
+                            name="scope"
+                            checked={scope === value}
+                            disabled={disabled}
+                            onChange={() => {
+                              markFormEdited();
+                              setScope(value);
+                            }}
+                          />
+                          <span>{SCOPE_LABELS[value]}</span>
+                          <small>
+                            {disabled
+                              ? "No page path exposed"
+                              : value === "path"
+                                ? pathTarget ||
+                                  getReviewTarget(selectedItem, value)
+                                : getReviewTarget(selectedItem, value)}
+                          </small>
+                        </label>
+                      );
+                    })}
                   </div>
-                )}
-                {scope === "path" && (
-                  <label className="scope-path">
-                    <span>Path prefix</span>
-                    <input
-                      type="text"
-                      value={pathTarget}
-                      onChange={(event) => {
-                        markFormEdited();
-                        setPathTarget(event.target.value);
-                      }}
-                    />
-                  </label>
-                )}
-              </fieldset>
-
-              <fieldset>
-                <legend>
-                  Your decision <i>optional</i>
-                </legend>
-                {suggestionStatus === "loading" && (
-                  <p className="decision-help">Drafting a suggestion…</p>
-                )}
-                {selectedSuggestion && (
-                  <ClefCard
-                    suggestion={selectedSuggestion}
-                    seen={clefSeenById.get(selectedItem.id) ?? null}
-                    onAskAgain={() => void askClefAgain()}
-                    busy={suggestionStatus === "loading"}
-                  />
-                )}
-                {selectedSuggestion && (
-                  <button
-                    type="button"
-                    className="agree-button"
-                    onClick={() => void agreeWithClef()}
-                    disabled={saving}
-                  >
-                    Keep Clef's call: {PLACEMENT_LABELS[selectedSuggestion.placement]},{" "}
-                    {SCOPE_LABELS[selectedSuggestion.scope].toLowerCase()} (A)
-                  </button>
-                )}
-                {suggestionStatus === "unavailable" && (
-                  <p className="decision-help">
-                    Clef could not answer for this page.
-                  </p>
-                )}
-                <div className="verdict-options">
-                  {CURATION_PLACEMENTS.map((value) => (
-                    <label
-                      className={`verdict-option placement--${value} status-tone--${placementTone(value)}`}
-                      key={value}
-                    >
+                  {coveringDecisions.length > 0 && (
+                    <div className="covering-rules">
+                      <span>Your rules here, most specific first</span>
+                      <ul>
+                        {coveringDecisions.map((rule, index) => (
+                          <li key={rule.id}>
+                            <b>{SCOPE_LABELS[rule.scope]}</b>
+                            <code>{rule.place}</code>
+                            <span>
+                              {rule.placement
+                                ? PLACEMENT_LABELS[rule.placement]
+                                : "Note only"}
+                            </span>
+                            {index === 0 && <small>applies here</small>}
+                          </li>
+                        ))}
+                      </ul>
+                      <p>
+                        Saving at a different scope adds a rule, so this page
+                        can differ from the rest of the site.
+                      </p>
+                    </div>
+                  )}
+                  {scope === "path" && (
+                    <label className="scope-path">
+                      <span>Path prefix</span>
                       <input
-                        type="radio"
-                        name="placement"
-                        checked={placement === value}
-                        onChange={() => {
+                        type="text"
+                        value={pathTarget}
+                        onChange={(event) => {
                           markFormEdited();
-                          setPlacement(value);
+                          setPathTarget(event.target.value);
                         }}
                       />
-                      <StatusIcon kind={value} />
-                      <span>{PLACEMENT_LABELS[value]}</span>
                     </label>
-                  ))}
-                </div>
-                <p className="decision-help">
-                  {placement ? (
+                  )}
+                </fieldset>
+
+                <fieldset>
+                  <legend>
+                    {selectedItem.url ? "Placement" : "Your decision"}{" "}
+                    <i>optional</i>
+                  </legend>
+                  {suggestionStatus === "loading" && (
+                    <p className="decision-help">Drafting a suggestion…</p>
+                  )}
+                  {selectedSuggestion && (
+                    <ClefCard
+                      suggestion={selectedSuggestion}
+                      seen={clefSeenById.get(selectedItem.id) ?? null}
+                      onAskAgain={() => void askClefAgain()}
+                      busy={suggestionStatus === "loading"}
+                    />
+                  )}
+                  {selectedSuggestion && (
                     <button
                       type="button"
-                      onClick={() => {
-                        markFormEdited();
-                        setPlacement(undefined);
-                      }}
+                      className="agree-button"
+                      onClick={() => void agreeWithClef()}
+                      disabled={saving}
                     >
-                      Clear classification
+                      Keep Clef's call:{" "}
+                      {PLACEMENT_LABELS[selectedSuggestion.placement]},{" "}
+                      {SCOPE_LABELS[selectedSuggestion.scope].toLowerCase()} (A)
                     </button>
-                  ) : (
-                    "No classification selected — your note can stand on its own."
                   )}
-                </p>
-              </fieldset>
+                  {suggestionStatus === "unavailable" && (
+                    <p className="decision-help">
+                      Clef could not answer for this page.
+                    </p>
+                  )}
+                  <PlacementOptions
+                    name="placement"
+                    placement={placement}
+                    onChange={(value) => {
+                      markFormEdited();
+                      setPlacement(value);
+                    }}
+                  />
+                  <p className="decision-help">
+                    {placement ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          markFormEdited();
+                          setPlacement(undefined);
+                        }}
+                      >
+                        Clear classification
+                      </button>
+                    ) : (
+                      "No classification selected — your note can stand on its own."
+                    )}
+                  </p>
+                </fieldset>
+              </div>
+              {selectedItem.url && (
+                <div className="decision-row">
+                  <fieldset>
+                    <legend>Rest of the site</legend>
+                    <div className="scope-options scope-options--site">
+                      {(["hostname", "site"] as const).map((value) => (
+                        <label className="scope-option" key={value}>
+                          <input
+                            type="radio"
+                            name="rest-scope"
+                            checked={restScope === value}
+                            onChange={() => {
+                              markFormEdited();
+                              setRestScope(value);
+                            }}
+                          />
+                          <span>{SCOPE_LABELS[value]}</span>
+                          <small>{getReviewTarget(selectedItem, value)}</small>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <fieldset>
+                    <legend>
+                      Placement <i>optional</i>
+                    </legend>
+                    <PlacementOptions
+                      name="rest-placement"
+                      placement={restPlacement}
+                      onChange={(value) => {
+                        markFormEdited();
+                        setRestPlacement(value);
+                      }}
+                    />
+                    <p className="decision-help">
+                      {restPlacement ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            markFormEdited();
+                            setRestPlacement(undefined);
+                          }}
+                        >
+                          Clear classification
+                        </button>
+                      ) : (
+                        "No placement selected — file only the page row."
+                      )}
+                    </p>
+                  </fieldset>
+                </div>
+              )}
 
               <label>
                 <span>
@@ -1487,9 +1623,11 @@ export function App({
                 <button
                   className="primary-action"
                   type="submit"
-                  disabled={saving || (!placement && !comment.trim())}
+                  disabled={
+                    saving || (!placement && !restPlacement && !comment.trim())
+                  }
                 >
-                  {placement ? "File decision" : "Save note"} →
+                  {placement || restPlacement ? "File decision" : "Save note"} →
                 </button>
                 <button
                   className="text-action"
@@ -1519,9 +1657,11 @@ export function App({
                 )}
               </div>
               <p className="shortcut-hint">
-                <kbd>1</kbd>–<kbd>5</kbd> placement · <kbd>Enter</kbd> file ·{" "}
-                <kbd>J</kbd>/<kbd>K</kbd> next / previous · <kbd>A</kbd>{" "}
-                keep Clef's call · <kbd>Z</kbd> undo
+                <kbd>1</kbd>–<kbd>5</kbd>{" "}
+                {selectedItem.url ? "page placement" : "placement"} ·{" "}
+                <kbd>Enter</kbd> file · <kbd>J</kbd>/<kbd>K</kbd> next / previous ·{" "}
+                <kbd>A</kbd> keep
+                Clef's call · <kbd>Z</kbd> undo
               </p>
             </form>
           )}
@@ -1629,7 +1769,7 @@ export function App({
                   <b>{decidedThisVisit.size}</b> decided this visit
                 </>
               )}
-              {lastDecision && (
+              {undoStack.length > 0 && (
                 <button
                   type="button"
                   className="queue-summary__undo"
@@ -1644,6 +1784,8 @@ export function App({
           <ol className="place-list live-place-list">
             {visibleItems.map((item, index) => {
               const priorDecision = getDecisionForReviewItem(places, item);
+              const preview = clefSeenById
+                .get(item.id)?.input.page?.description?.trim();
               const group =
                 reviewView === "observed" ? displayGroup(item.id) : undefined;
               const startsGroup =
@@ -1693,6 +1835,11 @@ export function App({
                       <span className="place-card__subtitle">
                         {item.title ?? "Scenery domain"}
                       </span>
+                      {preview && (
+                        <span className="place-card__preview" title={preview}>
+                          {preview}
+                        </span>
+                      )}
                       {!("reserve" in item) && (
                         <RowStatus item={item} decision={priorDecision} />
                       )}

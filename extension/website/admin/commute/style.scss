@@ -796,6 +796,22 @@ fieldset {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.decision-row {
+  display: grid;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid $line;
+}
+
+.decision-row--single {
+  display: contents;
+}
+
+.decision-row .scope-options,
+.scope-options--site {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .scope-option {
   display: grid;
   min-width: 0;
@@ -1065,6 +1081,16 @@ fieldset {
   margin-top: 5px;
   overflow: hidden;
   color: rgba($ink, 0.58);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.place-card__preview {
+  display: block;
+  margin-top: 5px;
+  overflow: hidden;
+  color: rgba($ink, 0.55);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
