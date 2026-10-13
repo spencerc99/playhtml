@@ -179,6 +179,30 @@ const QUEUE_GROUP_HINTS: Record<QueueGroup, string> = {
   decided: "Your rules already cover these",
 };
 
+const SPOT_CHECK_SIZE = 5;
+
+/**
+ * Today's sample of Clef's own calls. The same pages come back all day, and
+ * a new sample arrives tomorrow, so checking a few stands in for reading all.
+ */
+function pickSpotCheck<T extends { id: string }>(items: T[]): T[] {
+  const day = new Date().toISOString().slice(0, 10);
+  const rank = (id: string) => {
+    let hash = 2166136261;
+    for (const char of `${day}:${id}`) {
+      hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+    }
+    return hash >>> 0;
+  };
+  const picked = new Set(
+    [...items]
+      .sort((first, second) => rank(first.id) - rank(second.id))
+      .slice(0, SPOT_CHECK_SIZE)
+      .map((item) => item.id),
+  );
+  return items.filter((item) => picked.has(item.id));
+}
+
 function isPlacement(value: string): value is CurationPlacement {
   return (CURATION_PLACEMENTS as readonly string[]).includes(value);
 }
@@ -307,6 +331,12 @@ export function App({
   const selectedItemId = useRef<string | null>(null);
   const [copyState, setCopyState] = useState("Copy artifact");
   const [showReviewed, setShowReviewed] = useState(false);
+  const [spotCheck, setSpotCheck] = useState(false);
+  const [lastDecision, setLastDecision] = useState<{
+    itemId: string;
+    saved: CuratedPlace;
+    replaced?: CuratedPlace;
+  } | null>(null);
   // Group each row was in when you decided it, so it stays put until refresh.
   const [decidedThisVisit, setDecidedThisVisit] = useState(
     () => new Map<string, QueueGroup>(),
@@ -320,6 +350,8 @@ export function App({
   const [selectedSuggestion, setSelectedSuggestion] =
     useState<CatalogSuggestion | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const shortcuts = useRef({ agree: agreeWithClef, undo: undoLastDecision });
+  shortcuts.current = { agree: agreeWithClef, undo: undoLastDecision };
   const [catalogError, setCatalogError] = useState("");
   const [saving, setSaving] = useState(false);
   const [importStatus, setImportStatus] = useState("Import audit JSON");
@@ -366,6 +398,14 @@ export function App({
       ).length,
     [allObservedItems, places],
   );
+  const clefDecidedCount = useMemo(
+    () =>
+      allObservedItems.filter(
+        (item) =>
+          !needsHumanReview(item) && !getDecisionForReviewItem(places, item),
+      ).length,
+    [allObservedItems, places],
+  );
   const groupById = useMemo(
     () =>
       new Map(
@@ -390,10 +430,11 @@ export function App({
         decidedThisVisit.has(item.id),
     );
     if (reviewView === "reserve") return shown;
-    return QUEUE_GROUPS.flatMap((group) =>
-      shown.filter((item) => displayGroup(item.id) === group),
-    );
-  }, [decidedThisVisit, displayGroup, groupById, reviewItems, reviewView, showReviewed]);
+    return QUEUE_GROUPS.flatMap((group) => {
+      const items = shown.filter((item) => displayGroup(item.id) === group);
+      return group === "clef" && spotCheck ? pickSpotCheck(items) : items;
+    });
+  }, [decidedThisVisit, displayGroup, groupById, reviewItems, reviewView, showReviewed, spotCheck]);
   const selectedItem = useMemo(
     () =>
       visibleItems.find((item) => item.id === selectedId) ??
@@ -570,6 +611,12 @@ export function App({
       } else if (event.key === "Enter") {
         event.preventDefault();
         formRef.current?.requestSubmit();
+      } else if (event.key === "a") {
+        event.preventDefault();
+        void shortcuts.current.agree();
+      } else if (event.key === "z") {
+        event.preventDefault();
+        void shortcuts.current.undo();
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -750,18 +797,88 @@ export function App({
     if (!selectedItem) return;
     if (!placement && !comment.trim()) return;
     if (scope === "path" && !pathTarget.trim()) return;
-    const target =
-      scope === "path"
-        ? pathTarget.trim()
-        : getReviewTarget(selectedItem, scope);
-    const priorDecision = getDecisionToReplace(places, selectedItem, scope);
-    const decision = createCuratedPlace({
-      id: priorDecision?.id ?? crypto.randomUUID(),
-      input: target,
+    await saveDecision({
       scope,
+      target:
+        scope === "path"
+          ? pathTarget.trim()
+          : getReviewTarget(selectedItem, scope),
       placement,
       reason,
       comment,
+    });
+  }
+
+  /** Keeps Clef's answer for the selected page as your rule. */
+  async function agreeWithClef() {
+    if (!selectedItem || !selectedSuggestion || saving) return;
+    const target =
+      selectedSuggestion.scope === "path"
+        ? getDefaultPathTarget(selectedItem)
+        : getReviewTarget(selectedItem, selectedSuggestion.scope);
+    if (!target) return;
+    await saveDecision({
+      scope: selectedSuggestion.scope,
+      target,
+      placement: selectedSuggestion.placement,
+      reason: selectedSuggestion.reason ?? "",
+      comment: "",
+    });
+  }
+
+  async function undoLastDecision() {
+    if (!lastDecision || saving) return;
+    const { itemId, saved, replaced } = lastDecision;
+    setSaving(true);
+    setCatalogError("");
+    try {
+      await deleteCatalogPolicy(token, saved);
+      let restored: CuratedPlace | undefined;
+      if (replaced) restored = await saveCatalogPolicy(token, replaced);
+      setPlaces((current) => {
+        const without = current.filter((place) => place.id !== saved.id);
+        return restored ? upsertCuratedPlace(without, restored) : without;
+      });
+      setDecidedThisVisit((groups) => {
+        const next = new Map(groups);
+        next.delete(itemId);
+        return next;
+      });
+      setLastDecision(null);
+      setSelectedId(itemId);
+    } catch (error) {
+      handleCatalogError(error);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveDecision({
+    scope: decisionScope,
+    target,
+    placement: decisionPlacement,
+    reason: decisionReason,
+    comment: decisionComment,
+  }: {
+    scope: CurationScope;
+    target: string;
+    placement?: CurationPlacement;
+    reason: string;
+    comment: string;
+  }) {
+    if (!selectedItem) return;
+    const priorDecision = getDecisionToReplace(
+      places,
+      selectedItem,
+      decisionScope,
+    );
+    const decision = createCuratedPlace({
+      id: priorDecision?.id ?? crypto.randomUUID(),
+      input: target,
+      scope: decisionScope,
+      placement: decisionPlacement,
+      reason: decisionReason,
+      comment: decisionComment,
       updatedAt: new Date().toISOString(),
     });
     setSaving(true);
@@ -772,6 +889,11 @@ export function App({
         ? places.filter((place) => place.id !== priorDecision.id)
         : places;
       setPlaces(upsertCuratedPlace(otherPlaces, saved));
+      setLastDecision({
+        itemId: selectedItem.id,
+        saved,
+        replaced: priorDecision,
+      });
       const groupBefore = groupById.get(selectedItem.id);
       if (groupBefore && groupBefore !== "decided") {
         setDecidedThisVisit((groups) =>
@@ -1274,6 +1396,17 @@ export function App({
                     busy={suggestionStatus === "loading"}
                   />
                 )}
+                {selectedSuggestion && (
+                  <button
+                    type="button"
+                    className="agree-button"
+                    onClick={() => void agreeWithClef()}
+                    disabled={saving}
+                  >
+                    Keep Clef's call: {PLACEMENT_LABELS[selectedSuggestion.placement]},{" "}
+                    {SCOPE_LABELS[selectedSuggestion.scope].toLowerCase()} (A)
+                  </button>
+                )}
                 {suggestionStatus === "unavailable" && (
                   <p className="decision-help">
                     Clef could not answer for this page.
@@ -1387,7 +1520,8 @@ export function App({
               </div>
               <p className="shortcut-hint">
                 <kbd>1</kbd>–<kbd>5</kbd> placement · <kbd>Enter</kbd> file ·{" "}
-                <kbd>J</kbd>/<kbd>K</kbd> next / previous
+                <kbd>J</kbd>/<kbd>K</kbd> next / previous · <kbd>A</kbd>{" "}
+                keep Clef's call · <kbd>Z</kbd> undo
               </p>
             </form>
           )}
@@ -1454,6 +1588,15 @@ export function App({
                   />
                 </label>
               )}
+              {reviewView === "observed" && (
+                <button
+                  type="button"
+                  aria-pressed={spotCheck}
+                  onClick={() => setSpotCheck((value) => !value)}
+                >
+                  {spotCheck ? "Show all Clef calls" : "Spot check 5"}
+                </button>
+              )}
               {reviewView !== "live" && (
                 <button
                   type="button"
@@ -1475,6 +1618,29 @@ export function App({
             </div>
           </div>
 
+          {reviewView === "observed" && (
+            <p className="queue-summary" aria-live="polite">
+              <b>{waitingCount}</b> waiting on you
+              {" · "}
+              <b>{clefDecidedCount}</b> Clef decided
+              {decidedThisVisit.size > 0 && (
+                <>
+                  {" · "}
+                  <b>{decidedThisVisit.size}</b> decided this visit
+                </>
+              )}
+              {lastDecision && (
+                <button
+                  type="button"
+                  className="queue-summary__undo"
+                  onClick={() => void undoLastDecision()}
+                  disabled={saving}
+                >
+                  Undo last (Z)
+                </button>
+              )}
+            </p>
+          )}
           <ol className="place-list live-place-list">
             {visibleItems.map((item, index) => {
               const priorDecision = getDecisionForReviewItem(places, item);

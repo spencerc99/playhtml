@@ -1699,3 +1699,38 @@ $reserve-gold: #c9a43a;
 .place-group--waiting strong {
   color: darken($gold, 18%);
 }
+
+.queue-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  padding: 10px 16px;
+  border-bottom: 1px solid $line;
+  font-family: $mono;
+  font-size: 10px;
+
+  b {
+    font-size: 12px;
+  }
+}
+
+.queue-summary__undo {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  font-family: $mono;
+  font-size: 9px;
+}
+
+.agree-button {
+  justify-self: start;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px dashed $ink;
+  background: $paper-light;
+  font-family: $mono;
+  font-size: 10px;
+}
