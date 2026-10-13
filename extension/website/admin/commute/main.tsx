@@ -441,6 +441,25 @@ export function App({
       ).length,
     [allObservedItems, places],
   );
+  // Newest logged-out description per page, from the Clef log already loaded.
+  const previewByPage = useMemo(() => {
+    const previews = new Map<string, string>();
+    for (const entry of clefLog?.entries ?? []) {
+      const description = entry.input.page?.description?.trim();
+      if (entry.kind === "page" && description && !previews.has(entry.pageKey))
+        previews.set(entry.pageKey, description);
+    }
+    return previews;
+  }, [clefLog]);
+  const previewFor = (item: ReviewItem) => {
+    const seen = clefSeenById.get(item.id)?.input.page?.description?.trim();
+    if (seen || !item.url) return seen;
+    try {
+      return previewByPage.get(normalizeInternetPlace(item.url, "page"));
+    } catch {
+      return undefined;
+    }
+  };
   const groupById = useMemo(
     () =>
       new Map(
@@ -1784,8 +1803,7 @@ export function App({
           <ol className="place-list live-place-list">
             {visibleItems.map((item, index) => {
               const priorDecision = getDecisionForReviewItem(places, item);
-              const preview = clefSeenById
-                .get(item.id)?.input.page?.description?.trim();
+              const preview = previewFor(item);
               const group =
                 reviewView === "observed" ? displayGroup(item.id) : undefined;
               const startsGroup =
