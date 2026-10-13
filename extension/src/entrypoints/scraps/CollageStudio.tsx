@@ -1601,14 +1601,14 @@ export function CollageStudio({
       grabbedAt: Point,
       point: Point,
       lockAxis: boolean,
-      free: boolean,
+      snapping: boolean,
     ) => {
       const travel = { x: point.x - grabbedAt.x, y: point.y - grabbedAt.y };
       const locked = lockAxis ? lockToAxis(travel) : travel;
       let delta = locked;
       let guides: SnapGuide[] = [];
       let caught: string | null = null;
-      if (!free) {
+      if (snapping) {
         let targets = snapTargetsRef.current;
         if (!targets || targets.origins !== origins) {
           const carried = new Set(origins.map((piece) => piece.id));
@@ -1664,27 +1664,28 @@ export function CollageStudio({
   );
 
   // Pressing or letting go of shift mid-drag locks or frees the axis at once,
-  // without waiting for the pointer to move again.
+  // and cmd or ctrl starts or stops snapping, without waiting for the pointer
+  // to move again.
   useEffect(() => {
     if (gesture.kind !== "move") return;
     const { origins, grabbedAt } = gesture;
-    const onShift = (event: KeyboardEvent) => {
-      if (event.key !== "Shift") return;
+    const onModifier = (event: KeyboardEvent) => {
+      if (!["Shift", "Meta", "Control"].includes(event.key)) return;
       const point = lastPointerRef.current;
       if (!point || !pressRef.current?.moved) return;
       carry(
         origins,
         grabbedAt,
         point,
-        event.type === "keydown",
+        event.shiftKey,
         event.metaKey || event.ctrlKey,
       );
     };
-    window.addEventListener("keydown", onShift);
-    window.addEventListener("keyup", onShift);
+    window.addEventListener("keydown", onModifier);
+    window.addEventListener("keyup", onModifier);
     return () => {
-      window.removeEventListener("keydown", onShift);
-      window.removeEventListener("keyup", onShift);
+      window.removeEventListener("keydown", onModifier);
+      window.removeEventListener("keyup", onModifier);
     };
   }, [carry, gesture]);
 
