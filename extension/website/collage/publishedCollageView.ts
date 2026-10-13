@@ -98,6 +98,40 @@ export function readingOrder(
     .map((entry) => entry.index);
 }
 
+/** Where a collage starts appearing from as its pictures arrive. */
+export type RevealFrom = "center" | "edges";
+
+/**
+ * Each piece's turn in the opening reveal, by how far its middle sits from the
+ * collage's middle: nearest first from the center, farthest first from the edges.
+ */
+export function revealRanks(
+  pieces: readonly PublishedCollagePiece[],
+  frame: { width: number; height: number },
+  from: RevealFrom = "center",
+): number[] {
+  const cx = frame.width / 2;
+  const cy = frame.height / 2;
+  const sorted = pieces
+    .map((piece, index) => ({
+      index,
+      distance: Math.hypot(
+        piece.x + piece.width / 2 - cx,
+        piece.y + piece.height / 2 - cy,
+      ),
+    }))
+    .sort((a, b) =>
+      from === "center"
+        ? a.distance - b.distance || a.index - b.index
+        : b.distance - a.distance || a.index - b.index,
+    );
+  const ranks = new Array<number>(pieces.length);
+  sorted.forEach((entry, rank) => {
+    ranks[entry.index] = rank;
+  });
+  return ranks;
+}
+
 /**
  * A published piece ready to show: as a studio piece, which the studio's own
  * material and bake draw, and as the scrap the lightbox examines.

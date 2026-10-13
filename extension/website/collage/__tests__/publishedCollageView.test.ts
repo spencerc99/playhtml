@@ -14,6 +14,7 @@ import {
   fitScale,
   loadPublishedCollage,
   readingOrder,
+  revealRanks,
   viewerPieces,
   publishedCollageIdFrom,
   publishedImageUrl,
@@ -242,5 +243,16 @@ describe("layout", () => {
       piece({ x: 50, y: 60 }),
     ];
     expect(readingOrder(pieces, 1000)).toEqual([2, 0, 1]);
+  });
+
+  it("reveals pieces from the middle out, or from the edges in", () => {
+    const frame = { width: 1000, height: 1000 };
+    const pieces = [
+      piece({ x: 0, y: 0, width: 100, height: 100 }),
+      piece({ x: 450, y: 450, width: 100, height: 100 }),
+      piece({ x: 300, y: 450, width: 100, height: 100 }),
+    ];
+    expect(revealRanks(pieces, frame)).toEqual([2, 0, 1]);
+    expect(revealRanks(pieces, frame, "edges")).toEqual([0, 2, 1]);
   });
 });

@@ -60,11 +60,14 @@ import {
   loadPublishedCollage,
   placeholderColor,
   readingOrder,
+  revealRanks,
   viewerPieces,
   publishedCollageIdFrom,
   publishedImageUrl,
   type PublishedCollageLoad,
+  type RevealFrom,
   type SourcesMode,
+  type ViewerPiece,
 } from "./publishedCollageView";
 import { VIEWER_STYLES } from "./collageViewerStyles";
 
@@ -77,6 +80,114 @@ import { VIEWER_STYLES } from "./collageViewerStyles";
 const TOOLBAR = 48;
 const ROOM = { top: 40, bottom: 56 };
 const ROOM_NARROW = { top: 24, bottom: 40 };
+
+/**
+ * Opens the connections to the collage server while the page is still
+ * starting: one for the collage's own fetch, one for its pictures.
+ */
+function preconnectToWorker(): void {
+  let origin: string;
+  try {
+    origin = new URL(WORKER_URL).origin;
+  } catch {
+    return;
+  }
+  for (const crossOrigin of ["anonymous", null]) {
+    const link = document.createElement("link");
+    link.rel = "preconnect";
+    link.href = origin;
+    if (crossOrigin) link.crossOrigin = crossOrigin;
+    document.head.append(link);
+  }
+}
+preconnectToWorker();
+
+/** The longest gap between one piece's turn in the opening reveal and the next. */
+const REVEAL_STEP_MS = 45;
+/** The opening reveal's whole length, however many pieces the collage holds. */
+const REVEAL_SPAN_MS = 1100;
+/**
+ * How long the reveal waits for every picture before it starts anyway. Pieces
+ * whose pictures arrive later land as they come.
+ */
+const REVEAL_HOLD_MS = 1600;
+
+/** `?reveal=edges` opens the collage from its edges in, for comparing. */
+function revealFromSearch(search: string): RevealFrom {
+  return new URLSearchParams(search).get("reveal") === "edges"
+    ? "edges"
+    : "center";
+}
+
+/** The picture a piece draws, or null for lettering and other drawn content. */
+function pictureOf({ piece }: ViewerPiece): string | null {
+  return piece.scrap.kind === "image" && piece.scrap.src
+    ? piece.scrap.src
+    : null;
+}
+
+/**
+ * Fetches every picture at once, ahead of the pieces' own lazy images, and
+ * holds the collage back until they have arrived (or a short wait has passed).
+ * Then the pieces are set down in turn, from the middle out, instead of
+ * popping in wherever the network happens to finish first.
+ */
+function useOpeningReveal(
+  shown: readonly ViewerPiece[],
+  ranks: readonly number[],
+  reducedMotion: boolean,
+): { arrived: ReadonlySet<number>; settled: boolean } {
+  const [arrived, setArrived] = useState<ReadonlySet<number>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    const timers: number[] = [];
+    const ready = new Set<number>();
+    let started: number | null = null;
+    const step = reducedMotion
+      ? 0
+      : Math.min(REVEAL_STEP_MS, REVEAL_SPAN_MS / Math.max(1, shown.length));
+    const show = (index: number) =>
+      setArrived((current) => new Set(current).add(index));
+    const land = (index: number) => {
+      if (started === null) return;
+      const wait = started + ranks[index] * step - performance.now();
+      if (wait <= 0) show(index);
+      else timers.push(window.setTimeout(() => show(index), wait));
+    };
+    const begin = () => {
+      if (cancelled || started !== null) return;
+      started = performance.now();
+      ready.forEach(land);
+    };
+    const onReady = (index: number) => {
+      if (cancelled) return;
+      ready.add(index);
+      if (started !== null) land(index);
+      else if (ready.size === shown.length) begin();
+    };
+    shown.forEach((entry, index) => {
+      const src = pictureOf(entry);
+      if (!src) {
+        onReady(index);
+        return;
+      }
+      const image = new Image();
+      image.fetchPriority = "high";
+      image.src = src;
+      // A picture that fails still takes its turn: the piece shows its gap.
+      void image
+        .decode()
+        .catch(() => undefined)
+        .then(() => onReady(index));
+    });
+    timers.push(window.setTimeout(begin, REVEAL_HOLD_MS));
+    return () => {
+      cancelled = true;
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+  }, [shown, ranks, reducedMotion]);
+  return { arrived, settled: arrived.size >= shown.length };
+}
 
 function useWindowSize() {
   const read = () => ({ width: window.innerWidth, height: window.innerHeight });
@@ -236,33 +347,52 @@ function captionMeta(collage: PublishedCollage, short: boolean): string {
 }
 
 /**
- * The baked front, for the back to show faintly through, drawn only once the
- * collage is first turned over. Without it the back is plain paper.
+ * The baked front, for the back to show faintly through. It is drawn in idle
+ * time once the front's pictures have arrived, so the back is ready before
+ * anyone turns the collage over; turning it over sooner draws it right away.
+ * Without it the back is plain paper.
  */
 function useBakedFront(
-  wanted: boolean,
+  turnedOver: boolean,
+  frontSettled: boolean,
   collage: PublishedCollage,
   pieces: readonly CollagePiece[],
 ): Blob | null {
   const [front, setFront] = useState<Blob | null>(null);
   const started = useRef(false);
   useEffect(() => {
-    if (!wanted || started.current) return;
-    started.current = true;
-    bakeCollage({
-      frame: collage.frame,
-      pieces,
-      paper: collage.paper.color,
-      grain: collage.paper.grain,
-    })
-      .then(setFront)
-      .catch((error: unknown) => {
-        console.warn(
-          "[published collage] the front could not be baked:",
-          error,
-        );
+    if (started.current || (!turnedOver && !frontSettled)) return;
+    const bake = () => {
+      if (started.current) return;
+      started.current = true;
+      void bakeCollage({
+        frame: collage.frame,
+        pieces,
+        paper: collage.paper.color,
+        grain: collage.paper.grain,
+      })
+        .then(setFront)
+        .catch((error: unknown) => {
+          console.warn(
+            "[published collage] the front could not be baked:",
+            error,
+          );
+        });
+    };
+    if (turnedOver) {
+      bake();
+      return;
+    }
+    // Past the reveal's end, so the bake never stutters the opening.
+    if (typeof window.requestIdleCallback === "function") {
+      const handle = window.requestIdleCallback(bake, {
+        timeout: REVEAL_SPAN_MS * 2,
       });
-  }, [collage, pieces, wanted]);
+      return () => window.cancelIdleCallback(handle);
+    }
+    const timer = window.setTimeout(bake, REVEAL_SPAN_MS);
+    return () => window.clearTimeout(timer);
+  }, [collage, pieces, turnedOver, frontSettled]);
   return front;
 }
 
@@ -317,7 +447,12 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
     [shown],
   );
 
-  const front = useBakedFront(over, collage, studioPieces);
+  const ranks = useMemo(
+    () => revealRanks(pieces, frame, revealFromSearch(window.location.search)),
+    [pieces, frame],
+  );
+  const reveal = useOpeningReveal(shown, ranks, prefersReducedMotion);
+  const front = useBakedFront(over, reveal.settled, collage, studioPieces);
   const backContent = useMemo<CollageBackContent>(
     () => ({
       title: collage.title,
@@ -468,7 +603,11 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
                           if (element) pieceRefs.current.set(index, element);
                           else pieceRefs.current.delete(index);
                         }}
-                        className={`collage-piece published-collage__piece${lifted ? " published-collage__piece--lifted" : ""}`}
+                        className={`collage-piece published-collage__piece${
+                          reveal.arrived.has(index)
+                            ? " published-collage__piece--arrived"
+                            : " published-collage__piece--waiting"
+                        }${lifted ? " published-collage__piece--lifted" : ""}`}
                         role="button"
                         tabIndex={0}
                         aria-label={`${published.source.alt || published.source.kind} from ${published.source.domain || "an unknown site"}`}
@@ -546,6 +685,7 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
                 look={BACK_LOOK}
                 front={front}
                 showing={over}
+                prepare={reveal.settled}
                 onProblem={onBackProblem}
               />
             </div>
