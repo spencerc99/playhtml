@@ -28,6 +28,9 @@ import {
   getDecisionForReviewItem,
   getDecisionToReplace,
   getDecisionsForReviewItem,
+  getQueueGroup,
+  QUEUE_GROUPS,
+  type QueueGroup,
   getDefaultPathTarget,
   getReviewTarget,
   mergeCatalogEvidence,
@@ -164,6 +167,69 @@ function StatusIcon({ kind }: { kind: StatusIconKind }) {
   );
 }
 
+const QUEUE_GROUP_LABELS: Record<QueueGroup, string> = {
+  waiting: "Waiting on you",
+  clef: "Clef decided",
+  decided: "You decided",
+};
+
+const QUEUE_GROUP_HINTS: Record<QueueGroup, string> = {
+  waiting: "Clef couldn't or shouldn't call these alone",
+  clef: "Skim, and press Enter to keep Clef's call as your rule",
+  decided: "Your rules already cover these",
+};
+
+function isPlacement(value: string): value is CurationPlacement {
+  return (CURATION_PLACEMENTS as readonly string[]).includes(value);
+}
+
+/**
+ * One status tag for every row in every tab: who decided it and what they
+ * chose, in the same colors as the totals above.
+ */
+function RowStatus({
+  item,
+  decision,
+}: {
+  item: ReviewItem;
+  decision?: CuratedPlace;
+}) {
+  const visits =
+    "visits" in item && item.visits && item.visits > 1 ? item.visits : 0;
+  const clef = "clef" in item ? item.clef : undefined;
+  const clefPlacement =
+    clef && isPlacement(clef.placement) ? clef.placement : undefined;
+  let source: "you" | "waiting" | "clef" | "auto";
+  let text: string;
+  let kind: CurationPlacement | "note" | "unknown";
+  if (decision) {
+    source = "you";
+    kind = decision.placement ?? "note";
+    text = `You · ${decision.placement ? PLACEMENT_LABELS[decision.placement] : "Note only"}`;
+  } else if ("need" in item && item.need) {
+    source = "waiting";
+    kind = "unknown";
+    text = `Waiting · ${REVIEW_NEED_LABELS[item.need]}${clefPlacement && item.need === "unsure" ? `, leans ${PLACEMENT_LABELS[clefPlacement].toLowerCase()}` : ""}`;
+  } else if (clefPlacement && clef) {
+    source = "clef";
+    kind = clefPlacement;
+    text = `Clef · ${PLACEMENT_LABELS[clefPlacement]} ${Math.round(clef.confidence * 100)}%`;
+  } else {
+    return visits ? <span className="row-visits">{visits} visits</span> : null;
+  }
+  const tone =
+    kind === "note" || kind === "unknown" ? "neutral" : placementTone(kind);
+  return (
+    <span className="row-status">
+      <b className={`status-tag status-tag--${source} status-tone--${tone}`}>
+        <StatusIcon kind={kind} />
+        {text}
+      </b>
+      {visits > 0 && <span className="row-visits">{visits} visits</span>}
+    </span>
+  );
+}
+
 function placementTone(placement: CurationPlacement): string {
   if (placement === "featured" || placement === "reserve") return "green";
   if (placement === "scenery") return "blue";
@@ -241,6 +307,10 @@ export function App({
   const selectedItemId = useRef<string | null>(null);
   const [copyState, setCopyState] = useState("Copy artifact");
   const [showReviewed, setShowReviewed] = useState(false);
+  // Group each row was in when you decided it, so it stays put until refresh.
+  const [decidedThisVisit, setDecidedThisVisit] = useState(
+    () => new Map<string, QueueGroup>(),
+  );
   const [clefLog, setClefLog] = useState<ClefLog | null>(null);
   const [clefLogDisagreementsOnly, setClefLogDisagreementsOnly] =
     useState(false);
@@ -265,10 +335,8 @@ export function App({
   );
   const observedItems = useMemo(
     () =>
-      reviewView === "live"
-        ? allObservedItems
-        : allObservedItems.filter(needsHumanReview),
-    [allObservedItems, reviewView],
+      allObservedItems,
+    [allObservedItems],
   );
   const reserveSources = useMemo(
     () =>
@@ -290,13 +358,42 @@ export function App({
   const reviewItems: ReviewItem[] =
     reviewView === "reserve" ? filteredReserveItems : observedItems;
 
-  const visibleItems = useMemo(
+  const waitingCount = useMemo(
     () =>
-      showReviewed || reviewView === "live"
-        ? reviewItems
-        : reviewItems.filter((item) => !getDecisionForReviewItem(places, item)),
-    [places, reviewItems, reviewView, showReviewed],
+      allObservedItems.filter(
+        (item) =>
+          needsHumanReview(item) && !getDecisionForReviewItem(places, item),
+      ).length,
+    [allObservedItems, places],
   );
+  const groupById = useMemo(
+    () =>
+      new Map(
+        reviewItems.map((item) => [
+          item.id,
+          getQueueGroup(item, Boolean(getDecisionForReviewItem(places, item))),
+        ]),
+      ),
+    [places, reviewItems],
+  );
+  const displayGroup = useCallback(
+    (id: string) => decidedThisVisit.get(id) ?? groupById.get(id),
+    [decidedThisVisit, groupById],
+  );
+  const visibleItems = useMemo(() => {
+    if (reviewView === "live") return reviewItems;
+    // Rows decided since the last refresh stay put, showing your call.
+    const shown = reviewItems.filter(
+      (item) =>
+        showReviewed ||
+        groupById.get(item.id) !== "decided" ||
+        decidedThisVisit.has(item.id),
+    );
+    if (reviewView === "reserve") return shown;
+    return QUEUE_GROUPS.flatMap((group) =>
+      shown.filter((item) => displayGroup(item.id) === group),
+    );
+  }, [decidedThisVisit, displayGroup, groupById, reviewItems, reviewView, showReviewed]);
   const selectedItem = useMemo(
     () =>
       visibleItems.find((item) => item.id === selectedId) ??
@@ -341,6 +438,7 @@ export function App({
 
   const loadQueue = useCallback(async () => {
     setQueueStatus("loading");
+    setDecidedThisVisit(new Map());
     try {
       const response = await fetch(COMMUTE_REVIEW_URL ?? COMMUTE_RECENT_URL, {
         headers: {
@@ -674,6 +772,12 @@ export function App({
         ? places.filter((place) => place.id !== priorDecision.id)
         : places;
       setPlaces(upsertCuratedPlace(otherPlaces, saved));
+      const groupBefore = groupById.get(selectedItem.id);
+      if (groupBefore && groupBefore !== "decided") {
+        setDecidedThisVisit((groups) =>
+          new Map(groups).set(selectedItem.id, groupBefore),
+        );
+      }
     } catch (error) {
       handleCatalogError(error);
       setSaving(false);
@@ -771,7 +875,7 @@ export function App({
           onClick={() => setReviewView("observed")}
         >
           <span>Needs you</span>
-          <b>{allObservedItems.filter(needsHumanReview).length}</b>
+          <b>{waitingCount}</b>
           <small>Pages waiting on your final call</small>
         </button>
         <button
@@ -1374,10 +1478,29 @@ export function App({
           <ol className="place-list live-place-list">
             {visibleItems.map((item, index) => {
               const priorDecision = getDecisionForReviewItem(places, item);
+              const group =
+                reviewView === "observed" ? displayGroup(item.id) : undefined;
+              const startsGroup =
+                group !== undefined &&
+                (index === 0 ||
+                  displayGroup(visibleItems[index - 1].id) !== group);
               return (
+                <React.Fragment key={item.id}>
+                {startsGroup && group && (
+                  <li className={`place-group place-group--${group}`}>
+                    <strong>{QUEUE_GROUP_LABELS[group]}</strong>
+                    <span>
+                      {
+                        visibleItems.filter(
+                          (other) => displayGroup(other.id) === group,
+                        ).length
+                      }
+                    </span>
+                    <small>{QUEUE_GROUP_HINTS[group]}</small>
+                  </li>
+                )}
                 <li
                   className={`place-card place-card--route-${item.currentDisposition} ${selectedItem?.id === item.id ? "place-card--selected" : ""}`}
-                  key={item.id}
                 >
                   <button
                     className="place-card__select"
@@ -1404,14 +1527,8 @@ export function App({
                       <span className="place-card__subtitle">
                         {item.title ?? "Scenery domain"}
                       </span>
-                      {"need" in item && item.need && (
-                        <span className={`need-chip need-chip--${item.need}`}>
-                          {REVIEW_NEED_LABELS[item.need]}
-                          {item.clef ? ` · ${item.clef.placement}` : ""}
-                          {item.visits && item.visits > 1
-                            ? ` · ${item.visits} visits`
-                            : ""}
-                        </span>
+                      {!("reserve" in item) && (
+                        <RowStatus item={item} decision={priorDecision} />
                       )}
                       {"reserve" in item && (
                         <span className="place-card__source">
@@ -1419,21 +1536,8 @@ export function App({
                           {item.reserve.issue ? ` · ${item.reserve.issue}` : ""}
                         </span>
                       )}
-                      {priorDecision && (
-                        <b
-                          className={`decision-mark ${
-                            priorDecision.placement
-                              ? `status-tone--${placementTone(priorDecision.placement)}`
-                              : "status-tone--neutral"
-                          }`}
-                        >
-                          <StatusIcon
-                            kind={priorDecision.placement ?? "note"}
-                          />
-                          {priorDecision.placement
-                            ? PLACEMENT_LABELS[priorDecision.placement]
-                            : "Note only"}
-                        </b>
+                      {"reserve" in item && priorDecision && (
+                        <RowStatus item={item} decision={priorDecision} />
                       )}
                     </span>
                   </button>
@@ -1448,6 +1552,7 @@ export function App({
                     </button>
                   )}
                 </li>
+                </React.Fragment>
               );
             })}
           </ol>

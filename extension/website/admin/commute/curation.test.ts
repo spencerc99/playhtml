@@ -8,6 +8,7 @@ import {
   getDecisionForReviewItem,
   getDecisionToReplace,
   getDecisionsForReviewItem,
+  getQueueGroup,
   getDefaultPathTarget,
   getReviewTarget,
   getScopedPlace,
@@ -297,6 +298,17 @@ describe("getReviewTarget", () => {
         currentDisposition: "scenery",
       }),
     ).toEqual(decision);
+  });
+
+  it("sorts rows into waiting, Clef decided and you decided", () => {
+    const item = {
+      id: "a",
+      domain: "a.example",
+      currentDisposition: "stop" as const,
+    };
+    expect(getQueueGroup({ ...item, need: "unsure" }, false)).toBe("waiting");
+    expect(getQueueGroup({ ...item, need: null }, false)).toBe("clef");
+    expect(getQueueGroup({ ...item, need: "unsure" }, true)).toBe("decided");
   });
 
   it("keeps a site rule when a page under it gets its own rule", () => {

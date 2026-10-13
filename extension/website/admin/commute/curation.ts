@@ -76,6 +76,18 @@ export function needsHumanReview(item: CommuteReviewItem): boolean {
   return item.need !== null;
 }
 
+/** Sections of the Needs you list, in the order they are shown. */
+export const QUEUE_GROUPS = ["waiting", "clef", "decided"] as const;
+export type QueueGroup = (typeof QUEUE_GROUPS)[number];
+
+export function getQueueGroup(
+  item: CommuteReviewItem,
+  decided: boolean,
+): QueueGroup {
+  if (decided) return "decided";
+  return needsHumanReview(item) ? "waiting" : "clef";
+}
+
 export type EvidenceLabel = {
   value: string;
   confidence: number;

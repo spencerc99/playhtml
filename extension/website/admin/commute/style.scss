@@ -9,6 +9,7 @@ $paper-light: #fbfaf4;
 $blue: #3468d4;
 $green: #4c8a67;
 $orange: #df6d45;
+$gold: #e2b84a;
 $line: rgba($ink, 0.28);
 $mono: "Martian Mono", monospace;
 $body: "Atkinson Hyperlegible", sans-serif;
@@ -1080,22 +1081,6 @@ fieldset {
   white-space: nowrap;
 }
 
-.decision-mark {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 7px;
-  color: var(--status-color);
-  font-family: $mono;
-  font-size: 8px;
-  text-transform: uppercase;
-}
-
-.decision-mark .status-icon {
-  width: 12px;
-  height: 12px;
-}
-
 .place-card__remove {
   align-self: flex-start;
   margin: 13px 12px 0 0;
@@ -1331,28 +1316,6 @@ footer {
     border-right: 0;
     border-bottom: 1px solid $ink;
   }
-}
-
-.need-chip {
-  justify-self: start;
-  margin-top: 6px;
-  padding: 2px 6px;
-  border: 1px solid $line;
-  color: rgba($ink, 0.75);
-  font-family: $mono;
-  font-size: 9px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.need-chip--hidden {
-  border-color: $orange;
-  color: $orange;
-}
-
-.need-chip--promote {
-  border-color: $green;
-  color: $green;
 }
 
 .shortcut-hint {
@@ -1654,4 +1617,85 @@ $reserve-gold: #c9a43a;
     font-family: $body;
     font-size: 12px;
   }
+}
+
+.row-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 7px;
+}
+
+.status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px 2px 5px;
+  border: 1px solid var(--status-color);
+  color: var(--status-color);
+  font-family: $mono;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+
+  .status-icon {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+// Waiting rows carry the only filled tag, so they read first at a glance.
+.status-tag--waiting {
+  border-color: $gold;
+  background: $gold;
+  color: $ink;
+}
+
+.status-tag--you {
+  background: color-mix(in srgb, var(--status-color) 14%, transparent);
+  border-width: 2px;
+}
+
+.status-tag--clef {
+  border-style: dashed;
+}
+
+.row-visits {
+  color: rgba($ink, 0.6);
+  font-family: $mono;
+  font-size: 9px;
+}
+
+.place-group {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 14px 16px 8px;
+  border-bottom: 1px solid $ink;
+  background: $paper;
+  font-family: $mono;
+
+  strong {
+    font-size: 10px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+
+  span {
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  small {
+    color: rgba($ink, 0.6);
+    font-family: $body;
+    font-size: 12px;
+  }
+}
+
+.place-group--waiting strong {
+  color: darken($gold, 18%);
 }
