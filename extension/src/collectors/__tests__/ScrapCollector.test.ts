@@ -406,6 +406,26 @@ describe("ScrapCollector", () => {
     expect(document.querySelector("#wwo-scraps-debug")).toBeNull();
   });
 
+  it("records page-cap verdicts for a debug overlay turned on later", () => {
+    const images = Array.from({ length: 51 }, (_, index) =>
+      createImage({ src: `https://example.com/capped-${index}.jpg` }),
+    );
+
+    collector.enable();
+    showForCapture(images.slice(0, 50));
+
+    const debugLog = (
+      collector as unknown as {
+        debugLog: Map<Element, { status: string; reason: string }>;
+      }
+    ).debugLog;
+    expect(debugLog.get(images[50])).toEqual({
+      status: "skipped",
+      reason: "page cap (50)",
+    });
+    expect(debugLog.get(images[49])?.status).toBe("kept");
+  });
+
   it("opens a debug overlay requested before collection starts", () => {
     collector.setDebugOverlay(true);
     expect(document.querySelector("#wwo-scraps-debug")).toBeNull();

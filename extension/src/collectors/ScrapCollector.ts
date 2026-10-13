@@ -1073,16 +1073,15 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   }
 
   private stopObservingImages(captured: Element): void {
-    if (this.debugOverlay) {
-      const leftovers = new Set<Element>([
-        ...this.observedImages,
-        ...this.loadHandlers.keys(),
-        ...this.observedBackgrounds.keys(),
-      ]);
-      leftovers.delete(captured);
-      for (const element of leftovers) {
-        this.debugNote(element, "skipped", `page cap (${MAX_IMAGES_PER_PAGE})`);
-      }
+    // Logged even with no overlay up, so turning it on later replays the cap.
+    const leftovers = new Set<Element>([
+      ...this.observedImages,
+      ...this.loadHandlers.keys(),
+      ...this.observedBackgrounds.keys(),
+    ]);
+    leftovers.delete(captured);
+    for (const element of leftovers) {
+      this.debugNote(element, "skipped", `page cap (${MAX_IMAGES_PER_PAGE})`);
     }
     for (const image of this.observedImages) {
       this.clearVisibilityTimer(image);
