@@ -3,6 +3,7 @@
 
 export type CollageSound =
   | "pickup"
+  | "slide"
   | "place"
   | "snap"
   | "rotate"
@@ -300,12 +301,23 @@ function shear(ctx: AudioContext, at: number, length: number, pan: number) {
 const lift = (ctx: AudioContext, at: number, pan: number) =>
   noise(ctx, { f: 1800, f2: 5000, q: 0.8, a: 0.04, d: 0.06, v: 0.1, at, pan });
 
-type Voice = (ctx: AudioContext, pan: number) => void;
+type Voice = (ctx: AudioContext, pan: number, level: number) => void;
 
 const VOICES: Record<CollageSound, Voice> = {
   pickup: (ctx, pan) => {
     noise(ctx, { f: 2600, f2: 6000, q: 0.8, a: 0.01, d: 0.07, v: 0.14, pan });
     tone(ctx, { f: note(10) * jitter(), a: 0.003, d: 0.08, v: 0.04, pan });
+  },
+  // Paper scuffing across paper while a piece is carried; louder when faster.
+  slide: (ctx, pan, level) => {
+    noise(ctx, {
+      f: 1300 + Math.random() * 1400,
+      q: 0.7,
+      a: 0.012,
+      d: 0.05 + Math.random() * 0.03,
+      v: 0.03 + 0.07 * level,
+      pan,
+    });
   },
   // A tap on the table: a thunk with a short wooden pluck.
   place: (ctx, pan) => {
@@ -439,15 +451,24 @@ const VOICES: Record<CollageSound, Voice> = {
 
 /**
  * Plays one collage action's sound. `pan` runs from -1 (left) to 1 (right),
- * usually where the piece sits in the frame. Call it only from a person's own
- * action: browsers start audio only after a gesture.
+ * usually where the piece sits in the frame. `level` (0 to 1) scales the
+ * sounds that vary with effort, like a slide's speed. Call it only from a
+ * person's own action: browsers start audio only after a gesture.
  */
-export function playCollageSound(sound: CollageSound, pan = 0): void {
+export function playCollageSound(
+  sound: CollageSound,
+  pan = 0,
+  level = 1,
+): void {
   if (collageSoundsMuted()) return;
   try {
     const ctx = audio();
     if (!ctx) return;
-    VOICES[sound](ctx, Math.max(-0.8, Math.min(0.8, pan)));
+    VOICES[sound](
+      ctx,
+      Math.max(-0.8, Math.min(0.8, pan)),
+      Math.max(0, Math.min(1, level)),
+    );
   } catch {
     // Sound is decoration; a refused or broken audio context never stops an edit.
   }

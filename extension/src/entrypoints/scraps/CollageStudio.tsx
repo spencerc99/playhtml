@@ -208,6 +208,7 @@ import {
   setCollageSoundsMuted,
   type CollageSound,
 } from "./collageSounds";
+import { snapMove, type SnapGuide } from "./moveSnap";
 import {
   isEmptyChange,
   piecesChange,
@@ -226,6 +227,17 @@ const PLACED_MAX_SIDE = 220;
  */
 const PHONE_PLACED_FRAME_SHARE = 0.4;
 const ROTATION_SNAP_DEGREES = 15;
+/**
+ * How near, in screen pixels, a carried piece's edge or middle comes to
+ * another's (or the frame's) before it catches there.
+ */
+const MOVE_SNAP_REACH = 6;
+/** A carried piece scuffs once per this many screen pixels of travel... */
+const SLIDE_EVERY_PX = 26;
+/** ...and no more often than this, in milliseconds. */
+const SLIDE_MIN_MS = 55;
+/** Pointer speed, in screen pixels per millisecond, that scuffs loudest. */
+const SLIDE_FULL_SPEED = 1.6;
 /** How far a pasted or duplicated piece lands from its original. */
 const COPY_OFFSET = 24;
 /** Stage padding around the frame, in screen pixels. */
@@ -1372,6 +1384,10 @@ export function CollageStudio({
     }
     setGesture({ kind: "idle" });
     setGestureReadout(null);
+    setSnapGuides([]);
+    snapTargetsRef.current = null;
+    caughtRef.current = null;
+    slideRef.current = null;
     setHistory((current) => endRun(current));
   }, []);
 
@@ -1563,36 +1579,113 @@ export function CollageStudio({
    * the move to the axis the drag has mostly travelled along, decided afresh
    * each time so the axis can change mid-drag.
    */
+  /** Lines shown while a carried piece is caught on another or the frame. */
+  const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
+  /**
+   * What a drag can catch on, worked out once per carry: the carried group's
+   * bounds and every other piece's, in frame units.
+   */
+  const snapTargetsRef = useRef<{
+    origins: readonly CollagePiece[];
+    moving: Bounds;
+    others: Bounds[];
+  } | null>(null);
+  /** What the drag last caught on, so a fresh catch clicks once. */
+  const caughtRef = useRef<string | null>(null);
+  /** Where and when the last slide scuff played during a carry. */
+  const slideRef = useRef<{ at: Point; time: number } | null>(null);
+
   const carry = useCallback(
     (
       origins: readonly CollagePiece[],
       grabbedAt: Point,
       point: Point,
       lockAxis: boolean,
+      snapping: boolean,
     ) => {
       const travel = { x: point.x - grabbedAt.x, y: point.y - grabbedAt.y };
-      const delta = lockAxis ? lockToAxis(travel) : travel;
+      const locked = lockAxis ? lockToAxis(travel) : travel;
+      let delta = locked;
+      let guides: SnapGuide[] = [];
+      let caught: string | null = null;
+      if (snapping) {
+        let targets = snapTargetsRef.current;
+        if (!targets || targets.origins !== origins) {
+          const carried = new Set(origins.map((piece) => piece.id));
+          targets = {
+            origins,
+            moving: groupBounds(origins),
+            others: ordered
+              .filter((piece) => !carried.has(piece.id))
+              .map((piece) => groupBounds([piece])),
+          };
+          snapTargetsRef.current = targets;
+        }
+        const snap = snapMove({
+          moving: targets.moving,
+          travel: locked,
+          others: targets.others,
+          frame: { width: frame.width, height: frame.height },
+          reach: MOVE_SNAP_REACH / scale,
+          lock: lockAxis ? (locked.x !== 0 ? "x" : "y") : null,
+        });
+        delta = snap.delta;
+        guides = snap.guides;
+        caught =
+          snap.caught.x || snap.caught.y
+            ? `${snap.caught.x}|${snap.caught.y}`
+            : null;
+      }
+      const pan = (point.x / frame.width) * 2 - 1;
+      if (caught && caught !== caughtRef.current) {
+        playCollageSound("snap", pan);
+      }
+      caughtRef.current = caught;
+      setSnapGuides(guides);
+
+      // A scuff every so often while the pieces travel, louder when faster.
+      const now = performance.now();
+      const last = slideRef.current;
+      if (!last) {
+        slideRef.current = { at: point, time: now };
+      } else {
+        const distance =
+          Math.hypot(point.x - last.at.x, point.y - last.at.y) * scale;
+        const elapsed = now - last.time;
+        if (distance >= SLIDE_EVERY_PX && elapsed >= SLIDE_MIN_MS) {
+          playCollageSound("slide", pan, distance / elapsed / SLIDE_FULL_SPEED);
+          slideRef.current = { at: point, time: now };
+        }
+      }
+
       editPieces(translateGroup(origins, delta.x, delta.y), "move");
     },
-    [editPieces],
+    [editPieces, frame.height, frame.width, ordered, scale],
   );
 
   // Pressing or letting go of shift mid-drag locks or frees the axis at once,
-  // without waiting for the pointer to move again.
+  // and cmd or ctrl starts or stops snapping, without waiting for the pointer
+  // to move again.
   useEffect(() => {
     if (gesture.kind !== "move") return;
     const { origins, grabbedAt } = gesture;
-    const onShift = (event: KeyboardEvent) => {
-      if (event.key !== "Shift") return;
+    const onModifier = (event: KeyboardEvent) => {
+      if (!["Shift", "Meta", "Control"].includes(event.key)) return;
       const point = lastPointerRef.current;
       if (!point || !pressRef.current?.moved) return;
-      carry(origins, grabbedAt, point, event.type === "keydown");
+      carry(
+        origins,
+        grabbedAt,
+        point,
+        event.shiftKey,
+        event.metaKey || event.ctrlKey,
+      );
     };
-    window.addEventListener("keydown", onShift);
-    window.addEventListener("keyup", onShift);
+    window.addEventListener("keydown", onModifier);
+    window.addEventListener("keyup", onModifier);
     return () => {
-      window.removeEventListener("keydown", onShift);
-      window.removeEventListener("keyup", onShift);
+      window.removeEventListener("keydown", onModifier);
+      window.removeEventListener("keyup", onModifier);
     };
   }, [carry, gesture]);
 
@@ -1692,7 +1785,13 @@ export function CollageStudio({
           setGesture({ kind: "move", origins: copies, grabbedAt });
           return;
         }
-        carry(origins, grabbedAt, point, event.shiftKey);
+        carry(
+          origins,
+          grabbedAt,
+          point,
+          event.shiftKey,
+          event.metaKey || event.ctrlKey,
+        );
         return;
       }
       if (gesture.kind === "groupScale") {
@@ -2446,6 +2545,30 @@ export function CollageStudio({
                     onGrip={beginGrip}
                   />
                 )}
+
+                {gesture.kind === "move" &&
+                  snapGuides.map((guide) => (
+                    <div
+                      key={`${guide.axis}:${guide.at}`}
+                      className="collage-snap-guide"
+                      aria-hidden="true"
+                      style={
+                        guide.axis === "x"
+                          ? {
+                              left: guide.at - 0.5 / scale,
+                              top: guide.from,
+                              width: 1 / scale,
+                              height: guide.to - guide.from,
+                            }
+                          : {
+                              left: guide.from,
+                              top: guide.at - 0.5 / scale,
+                              width: guide.to - guide.from,
+                              height: 1 / scale,
+                            }
+                      }
+                    />
+                  ))}
 
                 {marqueeArea && (
                   <div
