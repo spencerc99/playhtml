@@ -110,6 +110,29 @@ describe("split decisions", () => {
     ).toMatchObject({ reason: "", comment: "" });
   });
 
+  it("files only the rest-of-site rule when the page row is empty", () => {
+    expect(buildReviewDecisions({ ...form, placement: undefined })).toEqual([
+      {
+        scope: "hostname",
+        target: "notes.example.com",
+        placement: "regular",
+        reason: form.reason,
+        comment: form.comment,
+      },
+    ]);
+    expect(
+      buildReviewDecisions({
+        ...form,
+        placement: undefined,
+        restScope: "site",
+        comment: "",
+        reason: "",
+      }),
+    ).toEqual([
+      expect.objectContaining({ scope: "site", target: "example.com" }),
+    ]);
+  });
+
   it("does not replace an existing rule at a different scope", () => {
     const site = {
       ...FEATURED,

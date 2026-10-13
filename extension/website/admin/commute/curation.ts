@@ -362,9 +362,10 @@ export type CurationDecisionDraft = {
 };
 
 /**
- * A URL has independent page/path and hostname/site decisions. The reason and
- * note describe the page row; the rest-of-site rule keeps its own, and is only
- * filed when its placement or scope changed.
+ * A URL has independent page/path and hostname/site decisions, and either row
+ * may be left empty. The reason and note go with the page row when it has a
+ * placement; otherwise they go with the rest-of-site rule. A rest-of-site rule
+ * is only filed when its placement, scope, or note changed.
  */
 export function buildReviewDecisions({
   item,
@@ -391,7 +392,9 @@ export function buildReviewDecisions({
     throw new Error("Choose page or path scope for this page.");
   }
   const decisions: CurationDecisionDraft[] = [];
-  if (placement || comment.trim()) {
+  const restChosen = Boolean(item.url && restPlacement);
+  const noteForRest = !placement && restChosen;
+  if (placement || (comment.trim() && !restChosen)) {
     if (scope === "path" && !pathTarget.trim()) {
       throw new Error("Enter a path prefix.");
     }
@@ -405,17 +408,28 @@ export function buildReviewDecisions({
     });
   }
   const sameRestRule = restExisting?.scope === restScope;
-  if (
-    item.url &&
-    restPlacement &&
-    !(sameRestRule && restExisting?.placement === restPlacement)
-  ) {
+  const restReason = noteForRest
+    ? reason
+    : sameRestRule
+      ? (restExisting?.reason ?? "")
+      : "";
+  const restComment = noteForRest
+    ? comment
+    : sameRestRule
+      ? (restExisting?.comment ?? "")
+      : "";
+  const restUnchanged =
+    sameRestRule &&
+    restExisting?.placement === restPlacement &&
+    (restExisting?.reason ?? "") === restReason &&
+    restExisting?.comment === restComment;
+  if (restChosen && !restUnchanged) {
     decisions.push({
       scope: restScope,
       target: getReviewTarget(item, restScope),
       placement: restPlacement,
-      reason: sameRestRule ? (restExisting?.reason ?? "") : "",
-      comment: sameRestRule ? (restExisting?.comment ?? "") : "",
+      reason: restReason,
+      comment: restComment,
     });
   }
   if (!decisions.length) throw new Error("Choose a placement or enter a note.");

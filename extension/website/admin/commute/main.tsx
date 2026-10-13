@@ -385,8 +385,16 @@ export function App({
   const [selectedSuggestion, setSelectedSuggestion] =
     useState<CatalogSuggestion | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const shortcuts = useRef({ agree: agreeWithClef, undo: undoLastDecision });
-  shortcuts.current = { agree: agreeWithClef, undo: undoLastDecision };
+  const shortcuts = useRef({
+    agree: agreeWithClef,
+    undo: undoLastDecision,
+    restPlacement: setRestShortcut,
+  });
+  shortcuts.current = {
+    agree: agreeWithClef,
+    undo: undoLastDecision,
+    restPlacement: setRestShortcut,
+  };
   const [catalogError, setCatalogError] = useState("");
   const [saving, setSaving] = useState(false);
   const [importStatus, setImportStatus] = useState("Import audit JSON");
@@ -651,11 +659,16 @@ export function App({
       ) {
         return;
       }
-      const placementIndex = Number(event.key) - 1;
+      const digit = /^Digit([1-9])$/.exec(event.code);
+      const placementIndex = digit ? Number(digit[1]) - 1 : -1;
       if (placementIndex >= 0 && placementIndex < CURATION_PLACEMENTS.length) {
         event.preventDefault();
         formEdited.current = true;
-        setPlacement(CURATION_PLACEMENTS[placementIndex]);
+        if (event.shiftKey) {
+          shortcuts.current.restPlacement(CURATION_PLACEMENTS[placementIndex]);
+        } else {
+          setPlacement(CURATION_PLACEMENTS[placementIndex]);
+        }
       } else if (event.key === "j") {
         event.preventDefault();
         moveSelection(1);
@@ -853,6 +866,10 @@ export function App({
     }, 350);
     return () => window.clearTimeout(suggestionTimer);
   }, [inspectionById, onUnauthorized, places, selectedItem, token]);
+
+  function setRestShortcut(value: CurationPlacement) {
+    if (selectedItem?.url) setRestPlacement(value);
+  }
 
   function prefillSuggestion(suggestion: CatalogSuggestion) {
     if (
@@ -1545,6 +1562,8 @@ export function App({
                       >
                         Clear classification
                       </button>
+                    ) : selectedItem.url ? (
+                      "No page placement — leave it empty to decide only for the rest of the site."
                     ) : (
                       "No classification selected — your note can stand on its own."
                     )}
@@ -1677,7 +1696,15 @@ export function App({
               </div>
               <p className="shortcut-hint">
                 <kbd>1</kbd>–<kbd>5</kbd>{" "}
-                {selectedItem.url ? "page placement" : "placement"} ·{" "}
+                {selectedItem.url ? (
+                  <>
+                    page · <kbd>Shift</kbd>+<kbd>1</kbd>–<kbd>5</kbd> rest of
+                    site
+                  </>
+                ) : (
+                  "placement"
+                )}{" "}
+                ·{" "}
                 <kbd>Enter</kbd> file · <kbd>J</kbd>/<kbd>K</kbd> next / previous ·{" "}
                 <kbd>A</kbd> keep
                 Clef's call · <kbd>Z</kbd> undo
