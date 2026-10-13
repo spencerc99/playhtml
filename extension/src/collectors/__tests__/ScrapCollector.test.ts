@@ -342,6 +342,101 @@ describe("ScrapCollector", () => {
     expect(emitted("image")).toHaveLength(1);
   });
 
+  it("keeps thumbnails that differ only by their identifying query", () => {
+    const first = createImage({
+      src: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcA&s=10",
+    });
+    const second = createImage({
+      src: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcB&s=10",
+    });
+    const resized = createImage({
+      src: "https://cdn.example.com/photo.jpg?w=400",
+    });
+    const sameResized = createImage({
+      src: "https://cdn.example.com/photo.jpg?w=800&q=70",
+    });
+
+    collector.enable();
+    showForCapture([first, second, resized, sameResized]);
+
+    expect(
+      emitted("image").map((data) => (data as { src: string }).src),
+    ).toEqual([
+      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcA&s=10",
+      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcB&s=10",
+      "https://cdn.example.com/photo.jpg?w=400",
+    ]);
+  });
+
+  it("captures the real picture once a lazy loader swaps out a placeholder", async () => {
+    const image = createImage({
+      src: "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+      naturalWidth: 1,
+      naturalHeight: 1,
+    });
+
+    collector.enable();
+    showForCapture([image]);
+    expect(emitted("image")).toHaveLength(0);
+    expect(observer().observed.has(image)).toBe(false);
+
+    Object.defineProperties(image, {
+      currentSrc: { value: "https://example.com/real.jpg", configurable: true },
+      naturalWidth: { value: 400, configurable: true },
+      naturalHeight: { value: 300, configurable: true },
+    });
+    image.setAttribute("src", "https://example.com/real.jpg");
+    await Promise.resolve();
+    expect(observer().observed.has(image)).toBe(true);
+
+    showForCapture([image]);
+    expect(emitted("image")).toEqual([
+      expect.objectContaining({ src: "https://example.com/real.jpg" }),
+    ]);
+  });
+
+  it("shows and hides the debug overlay on a running page", () => {
+    collector.enable();
+    expect(document.querySelector("#wwo-scraps-debug")).toBeNull();
+
+    collector.setDebugOverlay(true);
+    expect(document.querySelectorAll("#wwo-scraps-debug")).toHaveLength(1);
+
+    collector.setDebugOverlay(false);
+    expect(document.querySelector("#wwo-scraps-debug")).toBeNull();
+  });
+
+  it("records page-cap verdicts for a debug overlay turned on later", () => {
+    const images = Array.from({ length: 51 }, (_, index) =>
+      createImage({ src: `https://example.com/capped-${index}.jpg` }),
+    );
+
+    collector.enable();
+    showForCapture(images.slice(0, 50));
+
+    const debugLog = (
+      collector as unknown as {
+        debugLog: Map<Element, { status: string; reason: string }>;
+      }
+    ).debugLog;
+    expect(debugLog.get(images[50])).toEqual({
+      status: "skipped",
+      reason: "page cap (50)",
+    });
+    expect(debugLog.get(images[49])?.status).toBe("kept");
+  });
+
+  it("opens a debug overlay requested before collection starts", () => {
+    collector.setDebugOverlay(true);
+    expect(document.querySelector("#wwo-scraps-debug")).toBeNull();
+
+    collector.enable();
+    expect(document.querySelectorAll("#wwo-scraps-debug")).toHaveLength(1);
+
+    collector.disable();
+    expect(document.querySelector("#wwo-scraps-debug")).toBeNull();
+  });
+
   describe("background images", () => {
     const sizes = new Map<string, { width: number; height: number }>();
     const measureImage = vi.fn(async (url: string) => sizes.get(url));
@@ -1167,17 +1262,17 @@ describe("ScrapCollector", () => {
     );
   });
 
-  it("deduplicates headings by wording regardless of level and caps them at twenty", () => {
+  it("deduplicates headings by wording regardless of level and caps them at five", () => {
     const asH1 = createHeading({ level: 1, text: "Same Wording" });
     const asH3 = createHeading({ level: 3, text: "same wording" });
-    const uniqueHeadings = Array.from({ length: 20 }, (_, index) =>
+    const uniqueHeadings = Array.from({ length: 6 }, (_, index) =>
       createHeading({ text: `Heading number ${index}` }),
     );
 
     collector.enable();
     showForCapture([asH1, asH3, ...uniqueHeadings]);
 
-    expect(emitted("heading")).toHaveLength(20);
+    expect(emitted("heading")).toHaveLength(5);
     expect(
       emitted("heading").filter(
         (data) =>
@@ -1185,7 +1280,23 @@ describe("ScrapCollector", () => {
           data.text.toLowerCase() === "same wording",
       ),
     ).toHaveLength(1);
-    expect(observer().observed.has(uniqueHeadings[19])).toBe(false);
+    expect(observer().observed.has(uniqueHeadings[5])).toBe(false);
+  });
+
+  it("gives h3 section titles at most one of the page's heading slots", () => {
+    const sections = Array.from({ length: 3 }, (_, index) =>
+      createHeading({ level: 3, text: `Section ${index}` }),
+    );
+    const titles = Array.from({ length: 3 }, (_, index) =>
+      createHeading({ level: 2, text: `Title ${index}` }),
+    );
+
+    collector.enable();
+    showForCapture([...sections, ...titles]);
+
+    expect(
+      emitted("heading").map((data) => (data as { text: string }).text),
+    ).toEqual(["Section 0", "Title 0", "Title 1", "Title 2"]);
   });
 
   it("discovers headings added to the page after collection starts", async () => {

@@ -21,6 +21,10 @@ import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
 import { ScrapCollector } from "../collectors/ScrapCollector";
 import {
+  DEV_MODE_KEY,
+  SCRAPS_DEBUG_KEY,
+} from "../features/debugModes/debugModes";
+import {
   collectionModeStorageKey,
   normalizeCollectionMode,
 } from "../collectors/modes";
@@ -1374,6 +1378,7 @@ export default defineContentScript({
           await ensureScrapCollectionMode();
           const scrapCollector = new ScrapCollector();
           collectorManager.registerCollector(scrapCollector);
+          watchScrapsDebugOverlay(scrapCollector);
         }
 
         // Initialize manager (loads saved enabled state)
@@ -1713,3 +1718,30 @@ export default defineContentScript({
     }
   },
 });
+
+/**
+ * Follows the popup's scraps debug switch, which only counts while developer
+ * mode is on, so open pages show or hide the overlay without a reload.
+ */
+function watchScrapsDebugOverlay(collector: ScrapCollector): void {
+  let devMode = false;
+  let overlay = false;
+  const apply = () => collector.setDebugOverlay(devMode && overlay);
+  browser.storage.local
+    .get([DEV_MODE_KEY, SCRAPS_DEBUG_KEY])
+    .then((stored) => {
+      devMode = Boolean(stored[DEV_MODE_KEY]);
+      overlay = Boolean(stored[SCRAPS_DEBUG_KEY]);
+      apply();
+    })
+    .catch(() => {});
+  browser.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local") return;
+    if (!changes[DEV_MODE_KEY] && !changes[SCRAPS_DEBUG_KEY]) return;
+    if (changes[DEV_MODE_KEY]) devMode = Boolean(changes[DEV_MODE_KEY].newValue);
+    if (changes[SCRAPS_DEBUG_KEY]) {
+      overlay = Boolean(changes[SCRAPS_DEBUG_KEY].newValue);
+    }
+    apply();
+  });
+}
