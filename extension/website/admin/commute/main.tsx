@@ -26,6 +26,8 @@ import {
   type CurationScope,
   type CurationPlacement,
   getDecisionForReviewItem,
+  getDecisionToReplace,
+  getDecisionsForReviewItem,
   getDefaultPathTarget,
   getReviewTarget,
   mergeCatalogEvidence,
@@ -53,7 +55,8 @@ import {
   type ReserveReviewItem,
   type ReserveSourceMode,
 } from "./reserveCatalog";
-import { normalizeInternetPlace } from "../../shared/internetPlaceCatalog";
+import { normalizeInternetPlace } from "../../../shared/internetPlaceCatalog";
+import { AdminHeader, AdminLogin, useAdminToken } from "../adminAuth";
 import "./style.scss";
 
 const PLACEMENT_LABELS: Record<CurationPlacement, string> = {
@@ -71,10 +74,9 @@ const SCOPE_LABELS: Record<CurationScope, string> = {
   site: "Entire site",
 };
 const CURATION_SCOPES: CurationScope[] = ["page", "path", "hostname", "site"];
-const TOKEN_STORAGE_KEY = "wwo-admin-token";
 const RESERVE_CATALOG_URL = "/internet-commute-reserve-catalog.json";
 
-type ReviewView = "observed" | "reserve";
+type ReviewView = "observed" | "live" | "reserve";
 type ReviewItem = CommuteReviewItem | ReserveReviewItem;
 
 const REASON_LABELS = Object.fromEntries(
@@ -195,53 +197,11 @@ function relativeTime(timestamp: number): string {
   return `${Math.round(elapsedHours / 24)}d ago`;
 }
 
-function Login({
-  error,
-  onLogin,
-}: {
-  error: string;
-  onLogin: (token: string) => void;
-}) {
-  const [token, setToken] = useState("");
-  return (
-    <main className="curation-login">
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (token.trim()) onLogin(token.trim());
-        }}
-      >
-        <span className="eyebrow">WWO / INTERNAL OFFICE</span>
-        <h1>Commute Curation</h1>
-        <p>
-          Use the Worker admin key to review and change the durable catalog.
-        </p>
-        {error && <p className="curation-login__error">{error}</p>}
-        <label>
-          <span>Admin key</span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            autoFocus
-          />
-        </label>
-        <button type="submit" disabled={!token.trim()}>
-          Enter desk
-        </button>
-      </form>
-    </main>
-  );
-}
-
 export function App({
   token,
-  onLogout,
   onUnauthorized,
 }: {
   token: string;
-  onLogout: () => void;
   onUnauthorized: () => void;
 }) {
   const [places, setPlaces] = useState<CuratedPlace[]>([]);
@@ -250,11 +210,10 @@ export function App({
   const [evidenceItems, setEvidenceItems] = useState<
     Awaited<ReturnType<typeof getCatalog>>["evidence"]
   >([]);
-  const [reviewView, setReviewView] = useState<ReviewView>(() =>
-    new URLSearchParams(window.location.search).get("view") === "reserve"
-      ? "reserve"
-      : "observed",
-  );
+  const [reviewView, setReviewView] = useState<ReviewView>(() => {
+    const view = new URLSearchParams(window.location.search).get("view");
+    return view === "reserve" || view === "live" ? view : "observed";
+  });
   const [reserveSource, setReserveSource] = useState("all");
   const [reserveMode, setReserveMode] = useState<ReserveSourceMode | "all">(
     "trusted-editorial",
@@ -282,7 +241,6 @@ export function App({
   const selectedItemId = useRef<string | null>(null);
   const [copyState, setCopyState] = useState("Copy artifact");
   const [showReviewed, setShowReviewed] = useState(false);
-  const [showAllRecent, setShowAllRecent] = useState(false);
   const [clefLog, setClefLog] = useState<ClefLog | null>(null);
   const [clefLogDisagreementsOnly, setClefLogDisagreementsOnly] =
     useState(false);
@@ -307,10 +265,10 @@ export function App({
   );
   const observedItems = useMemo(
     () =>
-      showAllRecent
+      reviewView === "live"
         ? allObservedItems
         : allObservedItems.filter(needsHumanReview),
-    [allObservedItems, showAllRecent],
+    [allObservedItems, reviewView],
   );
   const reserveSources = useMemo(
     () =>
@@ -334,10 +292,10 @@ export function App({
 
   const visibleItems = useMemo(
     () =>
-      showReviewed
+      showReviewed || reviewView === "live"
         ? reviewItems
         : reviewItems.filter((item) => !getDecisionForReviewItem(places, item)),
-    [places, reviewItems, showReviewed],
+    [places, reviewItems, reviewView, showReviewed],
   );
   const selectedItem = useMemo(
     () =>
@@ -553,7 +511,7 @@ export function App({
   useEffect(() => {
     setSelectedId(null);
     const url = new URL(window.location.href);
-    if (reviewView === "reserve") url.searchParams.set("view", "reserve");
+    if (reviewView !== "observed") url.searchParams.set("view", reviewView);
     else url.searchParams.delete("view");
     window.history.replaceState(null, "", url);
   }, [reviewView, reserveMode, reserveSource]);
@@ -698,7 +656,7 @@ export function App({
       scope === "path"
         ? pathTarget.trim()
         : getReviewTarget(selectedItem, scope);
-    const priorDecision = getDecisionForReviewItem(places, selectedItem);
+    const priorDecision = getDecisionToReplace(places, selectedItem, scope);
     const decision = createCuratedPlace({
       id: priorDecision?.id ?? crypto.randomUUID(),
       input: target,
@@ -771,6 +729,9 @@ export function App({
     }
   }
 
+  const coveringDecisions = selectedItem
+    ? getDecisionsForReviewItem(places, selectedItem)
+    : [];
   const selectedInspection = selectedItem
     ? inspectionById.get(selectedItem.id)
     : undefined;
@@ -783,23 +744,12 @@ export function App({
     <main>
       <header className="masthead">
         <div className="masthead__identity">
-          <img src="/icon.png" alt="" />
-          <div>
-            <span className="eyebrow">WWO / INTERNAL OFFICE</span>
-            <h1>
-              Internet Commute
-              <br />
-              Curation Desk
-            </h1>
-          </div>
+          <h2>Internet Commute Curation Desk</h2>
         </div>
         <div className="masthead__notice">
           <span>DURABLE CATALOG</span>
           <strong>CHANGES AFFECT THE TRAIN</strong>
           <small>human policy stored in D1</small>
-          <button type="button" onClick={onLogout}>
-            Lock desk
-          </button>
         </div>
       </header>
 
@@ -822,7 +772,16 @@ export function App({
         >
           <span>Needs you</span>
           <b>{allObservedItems.filter(needsHumanReview).length}</b>
-          <small>Pages where Clef needs a human call</small>
+          <small>Pages waiting on your final call</small>
+        </button>
+        <button
+          type="button"
+          aria-pressed={reviewView === "live"}
+          onClick={() => setReviewView("live")}
+        >
+          <span>Live now</span>
+          <b>{allObservedItems.length}</b>
+          <small>Everything on the commute right now</small>
         </button>
         <button
           type="button"
@@ -843,19 +802,23 @@ export function App({
               <span>
                 {reviewView === "reserve"
                   ? "RESERVE REVIEW 01"
-                  : "LIVE REVIEW 01"}
+                  : reviewView === "live"
+                    ? "SELECTED 01"
+                    : "DECISION 01"}
               </span>
               <h2>
                 {reviewView === "reserve"
                   ? "Reserve candidate"
-                  : "Current candidate"}
+                  : reviewView === "live"
+                    ? "Selected page"
+                    : "Your call"}
               </h2>
             </div>
             <span className="queue-position">
               {visibleItems.length}{" "}
-              {showReviewed || showAllRecent || reviewView === "reserve"
-                ? "visible"
-                : "need you"}
+              {reviewView === "observed" && !showReviewed
+                ? "need you"
+                : "visible"}
             </span>
           </div>
 
@@ -1154,6 +1117,29 @@ export function App({
                     );
                   })}
                 </div>
+                {coveringDecisions.length > 0 && (
+                  <div className="covering-rules">
+                    <span>Your rules here, most specific first</span>
+                    <ul>
+                      {coveringDecisions.map((rule, index) => (
+                        <li key={rule.id}>
+                          <b>{SCOPE_LABELS[rule.scope]}</b>
+                          <code>{rule.place}</code>
+                          <span>
+                            {rule.placement
+                              ? PLACEMENT_LABELS[rule.placement]
+                              : "Note only"}
+                          </span>
+                          {index === 0 && <small>applies here</small>}
+                        </li>
+                      ))}
+                    </ul>
+                    <p>
+                      Saving at a different scope adds a rule, so this page can
+                      differ from the rest of the site.
+                    </p>
+                  </div>
+                )}
                 {scope === "path" && (
                   <label className="scope-path">
                     <span>Path prefix</span>
@@ -1309,10 +1295,16 @@ export function App({
               <span>
                 {reviewView === "reserve"
                   ? "RESERVE REGISTER 02"
-                  : "LIVE REGISTER 02"}
+                  : reviewView === "live"
+                    ? "LIVE NOW 02"
+                    : "QUEUE 02"}
               </span>
               <h2>
-                {reviewView === "reserve" ? "Reserve catalog" : "Commute queue"}
+                {reviewView === "reserve"
+                  ? "Reserve catalog"
+                  : reviewView === "live"
+                    ? "On the commute now"
+                    : "Waiting on you"}
               </h2>
             </div>
             <div className="queue-controls">
@@ -1358,20 +1350,14 @@ export function App({
                   />
                 </label>
               )}
-              {reviewView === "observed" && (
+              {reviewView !== "live" && (
                 <button
                   type="button"
-                  onClick={() => setShowAllRecent((value) => !value)}
+                  onClick={() => setShowReviewed((value) => !value)}
                 >
-                  {showAllRecent ? "Needs you only" : "Show all recent"}
+                  {showReviewed ? "Hide reviewed" : "Show reviewed"}
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => setShowReviewed((value) => !value)}
-              >
-                {showReviewed ? "Hide reviewed" : "Show reviewed"}
-              </button>
               <button
                 type="button"
                 onClick={() =>
@@ -1590,37 +1576,32 @@ export function App({
 }
 
 function CurationDesk() {
-  const [token, setToken] = useState(
-    () => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "",
-  );
+  const auth = useAdminToken();
   const [authError, setAuthError] = useState("");
-  const logout = useCallback(() => {
-    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-    setToken("");
-  }, []);
-  if (!token) {
+  if (!auth.token) {
     return (
-      <Login
+      <AdminLogin
         error={authError}
         onLogin={(nextToken) => {
           setAuthError("");
-          sessionStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
-          setToken(nextToken);
+          auth.login(nextToken);
         }}
       />
     );
   }
   return (
-    <App
-      token={token}
-      onLogout={logout}
-      onUnauthorized={() => {
-        setAuthError(
-          "That admin key was rejected. Check the current Worker key and try again.",
-        );
-        logout();
-      }}
-    />
+    <>
+      <AdminHeader currentPage="commute" onLogout={auth.logout} />
+      <App
+        token={auth.token}
+        onUnauthorized={() => {
+          setAuthError(
+            "That admin key was rejected. Check the current Worker key and try again.",
+          );
+          auth.logout();
+        }}
+      />
+    </>
   );
 }
 

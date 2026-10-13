@@ -1,6 +1,8 @@
 // ABOUTME: Styles the Internet Commute curation desk as a dense editorial workbench.
 // ABOUTME: Combines WWO paper warmth with functional print-shop graphics.
 
+@use "../office-chrome";
+
 $ink: #22211e;
 $paper: #f2efe5;
 $paper-light: #fbfaf4;
@@ -38,56 +40,6 @@ textarea {
   font: inherit;
 }
 
-.curation-login {
-  min-height: calc(100vh - 88px);
-  display: grid;
-  place-items: center;
-}
-
-.curation-login form {
-  width: min(460px, 100%);
-  padding: 34px;
-  border: 1px solid $ink;
-  background: $paper-light;
-  box-shadow: 8px 8px 0 rgba($ink, 0.12);
-}
-
-.curation-login h1 {
-  margin: 10px 0 18px;
-}
-
-.curation-login p {
-  margin-bottom: 24px;
-  color: rgba($ink, 0.65);
-}
-
-.curation-login .curation-login__error {
-  margin: -10px 0 18px;
-  padding: 9px 10px;
-  border-left: 4px solid $orange;
-  background: rgba($orange, 0.1);
-  color: $ink;
-  font-size: 13px;
-}
-
-.curation-login input,
-.curation-login button {
-  width: 100%;
-  min-height: 44px;
-  border: 1px solid $ink;
-}
-
-.curation-login input {
-  padding: 9px 10px;
-  background: #fffef8;
-}
-
-.curation-login button {
-  margin-top: 12px;
-  background: $ink;
-  color: $paper-light;
-}
-
 button,
 a {
   -webkit-tap-highlight-color: transparent;
@@ -104,7 +56,7 @@ main {
 
 .masthead {
   display: flex;
-  min-height: 144px;
+  min-height: 96px;
   border: 1px solid $ink;
   background: $paper-light;
 }
@@ -117,10 +69,11 @@ main {
   padding: 20px 24px;
 }
 
-.masthead__identity img {
-  width: 70px;
-  height: 70px;
-  image-rendering: auto;
+.masthead__identity h2 {
+  font-size: clamp(26px, 3vw, 40px);
+  font-weight: 400;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
 }
 
 .eyebrow,
@@ -171,17 +124,6 @@ h1 {
 
 .masthead__notice small {
   color: rgba($ink, 0.65);
-}
-
-.masthead__notice button {
-  width: max-content;
-  margin-top: 8px;
-  padding: 0;
-  border: 0;
-  border-bottom: 1px solid currentColor;
-  background: transparent;
-  font-family: $mono;
-  font-size: 8px;
 }
 
 .verdict-key {
@@ -273,7 +215,7 @@ h1 {
 
 .review-view-switch {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border: solid $ink;
   border-width: 0 1px 1px;
   background: $paper-light;
@@ -1338,11 +1280,6 @@ footer {
     padding: 16px;
   }
 
-  .masthead__identity img {
-    width: 44px;
-    height: 44px;
-  }
-
   .masthead__notice {
     width: auto;
     padding: 12px 16px;
@@ -1351,6 +1288,10 @@ footer {
   }
 
   .verdict-key {
+    grid-template-columns: 1fr;
+  }
+
+  .review-view-switch {
     grid-template-columns: 1fr;
   }
 
@@ -1669,4 +1610,48 @@ $reserve-gold: #c9a43a;
 .clef-log__answer {
   display: grid;
   min-width: 0;
+}
+
+.covering-rules {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px dashed $line;
+  background: rgba($paper-light, 0.7);
+  font-family: $mono;
+  font-size: 9px;
+
+  > span {
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+
+  ul {
+    margin: 6px 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba($ink, 0.08);
+  }
+
+  code {
+    overflow-wrap: anywhere;
+  }
+
+  small {
+    color: $green;
+    font-weight: 600;
+  }
+
+  p {
+    color: rgba($ink, 0.65);
+    font-family: $body;
+    font-size: 12px;
+  }
 }

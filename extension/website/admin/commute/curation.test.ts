@@ -6,6 +6,8 @@ import {
   canPrefillSuggestion,
   createCuratedPlace,
   getDecisionForReviewItem,
+  getDecisionToReplace,
+  getDecisionsForReviewItem,
   getDefaultPathTarget,
   getReviewTarget,
   getScopedPlace,
@@ -295,6 +297,35 @@ describe("getReviewTarget", () => {
         currentDisposition: "scenery",
       }),
     ).toEqual(decision);
+  });
+
+  it("keeps a site rule when a page under it gets its own rule", () => {
+    const site = createCuratedPlace({
+      id: "site",
+      input: "etsy.com",
+      scope: "site",
+      placement: "regular",
+      comment: "",
+      updatedAt: "2026-10-13T12:00:00.000Z",
+    });
+    const page = createCuratedPlace({
+      id: "page",
+      input: "https://www.etsy.com/your/purchases",
+      scope: "page",
+      placement: "hidden",
+      comment: "",
+      updatedAt: "2026-10-13T12:01:00.000Z",
+    });
+    const item = {
+      id: "purchases",
+      domain: "www.etsy.com",
+      url: "https://www.etsy.com/your/purchases",
+      currentDisposition: "stop" as const,
+    };
+    expect(getDecisionToReplace([site], item, "page")).toBeUndefined();
+    expect(getDecisionToReplace([site], item, "site")).toEqual(site);
+    expect(getDecisionsForReviewItem([site, page], item)).toEqual([page, site]);
+    expect(getDecisionForReviewItem([site, page], item)).toEqual(page);
   });
 
   it("finds a path decision for pages beneath it and defaults paths to the first segment", () => {
