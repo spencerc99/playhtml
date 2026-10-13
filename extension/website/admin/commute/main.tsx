@@ -387,6 +387,11 @@ export function App({
       ),
     [reserveItems, reserveMode, reserveSource],
   );
+  // Imported audit evidence adds historical rows; Live now shows only the current commute.
+  const liveIds = useMemo(
+    () => new Set(liveItems.map((item) => item.id)),
+    [liveItems],
+  );
   const reviewItems: ReviewItem[] =
     reviewView === "reserve" ? filteredReserveItems : observedItems;
 
@@ -440,7 +445,8 @@ export function App({
     [decidedThisVisit, groupById],
   );
   const visibleItems = useMemo(() => {
-    if (reviewView === "live") return reviewItems;
+    if (reviewView === "live")
+      return reviewItems.filter((item) => liveIds.has(item.id));
     // Rows decided since the last refresh stay put, showing your call.
     const shown = reviewItems.filter(
       (item) =>
@@ -453,7 +459,7 @@ export function App({
       const items = shown.filter((item) => displayGroup(item.id) === group);
       return group === "clef" && spotCheck ? pickSpotCheck(items) : items;
     });
-  }, [decidedThisVisit, displayGroup, groupById, reviewItems, reviewView, showReviewed, spotCheck]);
+  }, [decidedThisVisit, displayGroup, groupById, liveIds, reviewItems, reviewView, showReviewed, spotCheck]);
   const selectedItem = useMemo(
     () =>
       visibleItems.find((item) => item.id === selectedId) ??
@@ -851,9 +857,10 @@ export function App({
     setSaving(true);
     setCatalogError("");
     try {
-      await deleteCatalogPolicy(token, saved);
+      // Restoring with `saved` as the previous rule swaps them in one request.
       let restored: CuratedPlace | undefined;
-      if (replaced) restored = await saveCatalogPolicy(token, replaced);
+      if (replaced) restored = await saveCatalogPolicy(token, replaced, saved);
+      else await deleteCatalogPolicy(token, saved);
       setPlaces((current) => {
         const without = current.filter((place) => place.id !== saved.id);
         return restored ? upsertCuratedPlace(without, restored) : without;
@@ -1025,7 +1032,7 @@ export function App({
           onClick={() => setReviewView("live")}
         >
           <span>Live now</span>
-          <b>{allObservedItems.length}</b>
+          <b>{liveItems.length}</b>
           <small>Everything on the commute right now</small>
         </button>
         <button
