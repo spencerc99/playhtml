@@ -337,6 +337,25 @@ describe("fitWithin", () => {
 describe("fanOutPlacement", () => {
   const frame = { width: 1200, height: 800 };
 
+  it("spreads pieces further apart with a larger step", () => {
+    const near = fanOutPlacement(1, frame);
+    const far = fanOutPlacement(1, frame, { step: 150, inset: 120 });
+    const fromMiddle = (point: { x: number; y: number }) =>
+      Math.hypot(point.x - frame.width / 2, point.y - frame.height / 2);
+    expect(fromMiddle(far)).toBeCloseTo(150);
+    expect(fromMiddle(far)).toBeGreaterThan(fromMiddle(near) * 4);
+  });
+
+  it("keeps a widely spread piece inside the given inset", () => {
+    for (let index = 0; index < 20; index += 1) {
+      const point = fanOutPlacement(index, frame, { step: 150, inset: 200 });
+      expect(point.x).toBeGreaterThanOrEqual(200);
+      expect(point.x).toBeLessThanOrEqual(frame.width - 200);
+      expect(point.y).toBeGreaterThanOrEqual(200);
+      expect(point.y).toBeLessThanOrEqual(frame.height - 200);
+    }
+  });
+
   it("puts the first piece in the middle", () => {
     const first = fanOutPlacement(0, frame);
     expect(first.x).toBeCloseTo(600);

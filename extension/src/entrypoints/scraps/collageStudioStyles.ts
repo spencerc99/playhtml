@@ -256,12 +256,14 @@ export const COLLAGE_STUDIO_STYLES = `
 
   /* The grab bar at the top of a docked drawer: flick it up or down, or tap
      it to raise and lower the drawer. */
+  /* Tall enough for a thumb to land on without aiming; the bar drawn in it
+     stays small. */
   .collage-tray__handle {
     flex: 0 0 auto;
     align-self: center;
-    width: 64px;
-    height: 18px;
-    margin: -4px 0 2px;
+    width: 120px;
+    height: 32px;
+    margin: -10px 0 -4px;
     padding: 0;
     border: 0;
     background: transparent;
