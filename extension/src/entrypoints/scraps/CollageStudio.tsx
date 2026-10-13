@@ -90,7 +90,7 @@ import {
   collageToHandOver,
   type EditorSwitchChoice,
 } from "./EditorSwitch";
-import { KeysButton, StudioTools, StudioViews } from "./StudioTools";
+import { KeysButton, SoundButton, StudioTools, StudioViews } from "./StudioTools";
 import { FormatControl } from "./FormatControl";
 import {
   CollageBakeError,
@@ -202,6 +202,12 @@ import {
   collageFileName,
   encodeCollageFile,
 } from "./collageFile";
+import {
+  collageSoundsMuted,
+  playCollageSound,
+  setCollageSoundsMuted,
+  type CollageSound,
+} from "./collageSounds";
 import {
   isEmptyChange,
   piecesChange,
@@ -820,6 +826,71 @@ export function CollageStudio({
     [],
   );
 
+  /** Plays an action's sound, panned toward where the pieces sit in the frame. */
+  const sound = useCallback(
+    (name: CollageSound, at: readonly CollagePiece[] = []) => {
+      const pan =
+        at.length === 0
+          ? 0
+          : (at.reduce((sum, piece) => sum + piece.x + piece.width / 2, 0) /
+              at.length /
+              frame.width) *
+              2 -
+            1;
+      playCollageSound(name, pan);
+    },
+    [frame.width],
+  );
+
+  /**
+   * A turn, held to whole steps while shift is down. Each step it catches on
+   * clicks like a detent.
+   */
+  const lastSnapRef = useRef<number | null>(null);
+  const snapTurn = useCallback(
+    (raw: number, snapping: boolean) => {
+      if (!snapping) {
+        lastSnapRef.current = null;
+        return raw;
+      }
+      const degrees = snapDegrees(raw, ROTATION_SNAP_DEGREES);
+      if (lastSnapRef.current !== null && lastSnapRef.current !== degrees) {
+        sound("snap");
+      }
+      lastSnapRef.current = degrees;
+      return degrees;
+    },
+    [sound],
+  );
+
+  /**
+   * The width of the frame when a drag lifted pieces, so letting go can set
+   * them down with a sound; null while nothing is lifted.
+   */
+  const liftedRef = useRef<number | null>(null);
+
+  const [soundOn, setSoundOn] = useState(() => !collageSoundsMuted());
+  const toggleSound = useCallback(() => {
+    setSoundOn((on) => {
+      setCollageSoundsMuted(on);
+      return !on;
+    });
+  }, []);
+
+  /** Changes the paper; a color dragged through the picker rustles once a beat. */
+  const lastRustleRef = useRef(0);
+  const changePaper = useCallback(
+    (next: CollagePaper) => {
+      setPaper(next);
+      const now = performance.now();
+      if (now - lastRustleRef.current > 300) {
+        lastRustleRef.current = now;
+        sound("paper");
+      }
+    },
+    [sound],
+  );
+
   useLayoutEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
@@ -900,8 +971,9 @@ export function CollageStudio({
       commit([...pieces, piece]);
       selectPiece(piece.id);
       setNotice(null);
+      sound("place", [piece]);
     },
-    [commit, frame, phone, pieces, selectPiece],
+    [commit, frame, phone, pieces, selectPiece, sound],
   );
 
   const removeSelected = useCallback(() => {
@@ -923,7 +995,11 @@ export function CollageStudio({
     commit(removePieces(pieces, removable));
     setSelection(EMPTY_SELECTION);
     setCrop(null);
-  }, [commit, pieces, selectedPieces, selection, shared?.removalRefusal]);
+    sound(
+      "delete",
+      selectedPieces.filter((piece) => removable.includes(piece.id)),
+    );
+  }, [commit, pieces, selectedPieces, selection, shared?.removalRefusal, sound]);
 
   /**
    * Lays copies of the given pieces on top of the stack and takes them in
@@ -934,22 +1010,24 @@ export function CollageStudio({
       const copies = copiesOnTop(pieces, originals, COPY_OFFSET, createPieceId);
       commit([...pieces, ...copies], runLabel);
       setSelection(selectMany(copies.map((copy) => copy.id)));
+      sound("duplicate", copies);
       return copies;
     },
-    [commit, pieces],
+    [commit, pieces, sound],
   );
 
   /** Mirrors what is in hand: one piece flips in place, several as a whole. */
   const flipSelection = useCallback(
     (axis: "x" | "y") => {
       if (selectedPieces.length === 0) return;
+      sound("flip", selectedPieces);
       if (selectedPieces.length === 1) {
         editPiece(selectedPieces[0].id, (piece) => flipPiece(piece, axis));
         return;
       }
       editPieces(mirrorGroup(selectedPieces, axis));
     },
-    [editPiece, editPieces, selectedPieces],
+    [editPiece, editPieces, selectedPieces, sound],
   );
 
   /**
@@ -972,8 +1050,12 @@ export function CollageStudio({
         back: moveGroupToBack,
       }[to];
       commit(move(pieces, selection.ids));
+      sound(
+        to === "forward" || to === "front" ? "layerUp" : "layerDown",
+        selectedPieces,
+      );
     },
-    [commit, pieces, selection],
+    [commit, pieces, selectedPieces, selection, sound],
   );
 
   const enterCrop = useCallback(() => {
@@ -995,9 +1077,10 @@ export function CollageStudio({
     const target = pieces.find((piece) => piece.id === crop.pieceId);
     if (target && !sameCrop(target.crop, crop.crop)) {
       editPiece(crop.pieceId, (piece) => commitCropSession(piece, crop.crop));
+      sound("crop", [target]);
     }
     setCrop(null);
-  }, [crop, editPiece, pieces]);
+  }, [crop, editPiece, pieces, sound]);
 
   const cancelCrop = useCallback(() => setCrop(null), []);
 
@@ -1028,6 +1111,7 @@ export function CollageStudio({
         Math.hypot(pointer.x - center.x, pointer.y - center.y) > 1
           ? pointer
           : edge;
+      if (kind === "rotate") sound("rotate", selectedPieces);
       setTransform({
         kind,
         before: selectedPieces,
@@ -1036,7 +1120,7 @@ export function CollageStudio({
         readout: kind === "rotate" ? "0 deg" : "100%",
       });
     },
-    [multiple, selectedPieces, selectionBox],
+    [multiple, selectedPieces, selectionBox, sound],
   );
 
   const confirmTransform = useCallback(() => {
@@ -1059,6 +1143,7 @@ export function CollageStudio({
     if (!selected || selected.scrap.kind !== "image") return;
     setCutoutSession({ pieceId: selected.id, before: selected.cutout });
     if (!selected.cutout) {
+      sound("cutout", [selected]);
       const cutout: PieceCutout = {
         method: "edge-color",
         tolerance: DEFAULT_CUTOUT_TOLERANCE,
@@ -1069,7 +1154,7 @@ export function CollageStudio({
         `cutout:${selected.id}`,
       );
     }
-  }, [editPiece, selected]);
+  }, [editPiece, selected, sound]);
 
   const reshapeCutout = useCallback(
     (change: (cutout: PieceCutout) => PieceCutout) => {
@@ -1271,6 +1356,12 @@ export function CollageStudio({
   const endGesture = useCallback((event?: React.PointerEvent) => {
     const press = pressRef.current;
     pressRef.current = null;
+    const liftedWidth = liftedRef.current;
+    if (liftedWidth !== null) {
+      liftedRef.current = null;
+      const at = lastPointerRef.current;
+      playCollageSound("place", at ? (at.x / liftedWidth) * 2 - 1 : 0);
+    }
     if (
       event &&
       press &&
@@ -1304,6 +1395,18 @@ export function CollageStudio({
     gesture.kind,
     transform,
   ]);
+
+  /** Steps back or forward through the history, with a sound when it moves. */
+  const stepHistory = useCallback(
+    (direction: "undo" | "redo") => {
+      const moves =
+        direction === "undo" ? canUndo(history) || cropPending : canRedo(history);
+      finishRunning();
+      setHistory((current) => (direction === "undo" ? undo(current) : redo(current)));
+      if (moves) sound(direction);
+    },
+    [cropPending, finishRunning, history, sound],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1341,12 +1444,10 @@ export function CollageStudio({
           if (clipboard) duplicatePieces(clipboard);
           break;
         case "undo":
-          finishRunning();
-          setHistory((current) => undo(current));
+          stepHistory("undo");
           break;
         case "redo":
-          finishRunning();
-          setHistory((current) => redo(current));
+          stepHistory("redo");
           break;
         case "withhold":
           break;
@@ -1441,7 +1542,6 @@ export function CollageStudio({
     duplicatePieces,
     editPieces,
     enterCrop,
-    finishRunning,
     flipSelection,
     mode,
     multiple,
@@ -1453,6 +1553,7 @@ export function CollageStudio({
     selectPiece,
     selectedPieces,
     selection,
+    stepHistory,
     stepSelection,
     turnOver,
   ]);
@@ -1518,6 +1619,10 @@ export function CollageStudio({
           ALT_DRAG_THRESHOLD
         ) {
           press.moved = true;
+          if (gesture.kind === "move") {
+            sound("pickup", gesture.origins);
+            liftedRef.current = frame.width;
+          }
         }
       }
 
@@ -1526,18 +1631,14 @@ export function CollageStudio({
         if (transform.kind === "rotate") {
           if (before.length === 1) {
             const raw = rotationToPointer(before[0], point);
-            const degrees = event.shiftKey
-              ? snapDegrees(raw, ROTATION_SNAP_DEGREES)
-              : raw;
+            const degrees = snapTurn(raw, event.shiftKey);
             editPieces([{ ...before[0], rotation: degrees }], "transform");
             setTransform({ ...transform, readout: `${Math.round(degrees)} deg` });
           } else {
             const raw = normalizeDegrees(
               angleAbout(center, point) - angleAbout(center, anchor),
             );
-            const degrees = event.shiftKey
-              ? snapDegrees(raw, ROTATION_SNAP_DEGREES)
-              : raw;
+            const degrees = snapTurn(raw, event.shiftKey);
             editPieces(rotateGroup(before, center, degrees), "transform");
             setTransform({ ...transform, readout: `${Math.round(degrees)} deg` });
           }
@@ -1626,9 +1727,7 @@ export function CollageStudio({
         const raw = normalizeDegrees(
           angleAbout(center, point) - gesture.grabAngle,
         );
-        const degrees = event.shiftKey
-          ? snapDegrees(raw, ROTATION_SNAP_DEGREES)
-          : raw;
+        const degrees = snapTurn(raw, event.shiftKey);
         editPieces(rotateGroup(gesture.before, center, degrees), "groupRotate");
         setGesture({ ...gesture, turned: degrees });
         setGestureReadout(`rotate ${Math.round(degrees)} deg`);
@@ -1681,9 +1780,7 @@ export function CollageStudio({
         const raw = normalizeDegrees(
           before.rotation + angleAbout(boxCenter(before), point) - grabAngle,
         );
-        const degrees = event.shiftKey
-          ? snapDegrees(raw, ROTATION_SNAP_DEGREES)
-          : raw;
+        const degrees = snapTurn(raw, event.shiftKey);
         editPieces([{ ...before, rotation: degrees }], `rotate:${before.id}`);
         setGestureReadout(`rotate ${Math.round(degrees)} deg`);
       }
@@ -1693,10 +1790,13 @@ export function CollageStudio({
       duplicatePieces,
       editPiece,
       editPieces,
+      frame.width,
       framePoint,
       gesture,
       over,
       reachable,
+      snapTurn,
+      sound,
       toolActive,
       transform,
     ],
@@ -1904,6 +2004,7 @@ export function CollageStudio({
     const box = selectionBox;
     if (zone.kind === "rotate") {
       const grabAngle = angleAbout(boxCenter(box), pressed);
+      sound("rotate", selectedPieces);
       if (multiple) {
         setGesture({
           kind: "groupRotate",
@@ -2544,14 +2645,8 @@ export function CollageStudio({
           <StudioTools
             canUndo={!over && (canUndo(history) || cropPending)}
             canRedo={!over && canRedo(history)}
-            onUndo={() => {
-              finishRunning();
-              setHistory((current) => undo(current));
-            }}
-            onRedo={() => {
-              finishRunning();
-              setHistory((current) => redo(current));
-            }}
+            onUndo={() => stepHistory("undo")}
+            onRedo={() => stepHistory("redo")}
             onBack={shared ? undefined : leave}
           />
 
@@ -2597,7 +2692,7 @@ export function CollageStudio({
               zoom={scale}
               pieceCount={pieces.length}
               onFormat={setFormat}
-              onPaper={setPaper}
+              onPaper={changePaper}
             />
           )}
           <span className="collage-bar__spacer" />
@@ -2625,6 +2720,7 @@ export function CollageStudio({
               {standing.text}
             </p>
           )}
+          <SoundButton on={soundOn} onToggle={toggleSound} />
           <KeysButton
             open={showKeys}
             onToggle={() => setShowKeys((value) => !value)}
