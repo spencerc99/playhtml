@@ -333,9 +333,10 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-tray__handle {
     flex: 0 0 auto;
     align-self: center;
-    width: 64px;
-    height: 18px;
-    margin: -4px 0 2px;
+    /* Far wider and taller than the bar it draws, so a thumb finds it. */
+    width: min(100%, 220px);
+    height: 30px;
+    margin: -10px 0 -4px;
     padding: 0;
     border: 0;
     background: transparent;
