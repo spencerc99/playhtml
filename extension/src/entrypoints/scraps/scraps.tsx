@@ -411,10 +411,12 @@ export function ScrapsPage() {
           .scraps-heading { top: 48px; width: calc(100vw - 32px); }
           .scraps-stage { inset: 104px 0 0; }
           .scraps-history-error { top: 120px; }
+          /* An open collage takes the screen; its own back link returns to the list. */
+          .scraps-heading--studio { display: none; }
         }
       `}</style>
       <header
-        className="scraps-heading"
+        className={`scraps-heading${mode === "create" && studioOpen ? " scraps-heading--studio" : ""}`}
         style={{
           position: "absolute",
           left: "50%",

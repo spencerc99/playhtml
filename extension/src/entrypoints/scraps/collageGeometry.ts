@@ -622,10 +622,11 @@ export function fitWithin(
 export function fanOutPlacement(
   index: number,
   frame: { width: number; height: number },
+  step = 34,
 ): Point {
   // An irrational turn keeps successive pieces from lining up into spokes.
   const turn = index * 2.399963229728653;
-  const reach = 34 * Math.sqrt(index);
+  const reach = step * Math.sqrt(index);
   const inset = 120;
   return {
     x: clamp(

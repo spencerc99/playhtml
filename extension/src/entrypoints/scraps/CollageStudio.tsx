@@ -24,6 +24,7 @@ import {
   dragEdge,
   edgeGrabOffset,
   lockToAxis,
+  rotatePoint,
   rotationToPointer,
   sameCrop,
   scaleAboutCenter,
@@ -180,9 +181,15 @@ import {
   removePieces,
   replacePieces,
 } from "./pieceGroup";
-import { handleZones, type HandleZone } from "./handleZones";
+import {
+  handleZones,
+  ROTATE_KNOB_REACH,
+  ROTATE_KNOB_SIZE,
+  type HandleZone,
+} from "./handleZones";
 import { pinchChange, pinchedPieces, type FingerPair } from "./pinchGesture";
 import { usePhoneLayout } from "./phoneLayout";
+import { ExportReady, downloadFile, type ReadyFile } from "./ExportReady";
 import {
   toolSessionActive,
   visiblePanel,
@@ -225,6 +232,12 @@ const PLACED_MAX_SIDE = 220;
  * the same size whether the drawer is lowered or raised into a sheet.
  */
 const PHONE_PLACED_FRAME_SHARE = 0.4;
+/**
+ * How far apart tapped scraps fan out on a phone, in frame units per step:
+ * the frame is zoomed far out there, so the desktop's spacing would stack
+ * every piece on the last one.
+ */
+const PHONE_FAN_REACH = 150;
 const ROTATION_SNAP_DEGREES = 15;
 /** How far a pasted or duplicated piece lands from its original. */
 const COPY_OFFSET = 24;
@@ -244,6 +257,10 @@ const ALT_DRAG_THRESHOLD = 4;
  * was the start of a drag that never got going, so it leaves the selection be.
  */
 const CLICK_MAX_MS = 350;
+/** How long a finger rests on the collage before it opens the pieces-here list. */
+const LONG_PRESS_MS = 500;
+/** How far a resting finger may wander, in screen pixels, and still be held. */
+const LONG_PRESS_SLOP = 10;
 
 /** What a scaling drag took hold of: a corner or an edge of the box. */
 type ScaleGrip =
@@ -456,6 +473,8 @@ export function CollageStudio({
    */
   const [raised, setRaised] = useState(false);
   const sheet = phone && raised && !drawer.collapsed;
+  /** Exports waiting on a phone for a tap to save each one. */
+  const [readyFiles, setReadyFiles] = useState<ReadyFile[] | null>(null);
   const mat = sheet ? 0 : phone ? PHONE_MAT : MAT;
   const matCaption = sheet ? 0 : phone ? PHONE_MAT_CAPTION : MAT_CAPTION;
   const topBand = sheet ? STAGE_PADDING : STAGE_TOP_BAND;
@@ -1928,6 +1947,47 @@ export function CollageStudio({
   };
 
   /**
+   * A finger resting on the collage stands in for the right-click a mouse
+   * has: it opens the list of pieces under that spot, which is also where a
+   * locked piece is let go again. The press it began stops being a drag, and
+   * any nudge the resting finger gave the piece is put back.
+   */
+  const longPressRef = useRef<{
+    timer: number;
+    clientX: number;
+    clientY: number;
+  } | null>(null);
+  const gestureRef = useRef(gesture);
+  gestureRef.current = gesture;
+  const cancelLongPress = () => {
+    const held = longPressRef.current;
+    if (!held) return;
+    window.clearTimeout(held.timer);
+    longPressRef.current = null;
+  };
+  useEffect(() => () => cancelLongPress(), []);
+  const startLongPress = (event: React.PointerEvent) => {
+    if (over || toolActive || transform) return;
+    const { clientX, clientY } = event;
+    const timer = window.setTimeout(() => {
+      longPressRef.current = null;
+      const at = framePoint({ clientX, clientY });
+      const stack = piecesUnder(pieces, at);
+      if (stack.length === 0) return;
+      const running = gestureRef.current;
+      if (running.kind === "move" && pressRef.current?.moved) {
+        editPieces(running.origins, "move");
+      }
+      pressRef.current = null;
+      setGesture({ kind: "idle" });
+      setGestureReadout(null);
+      setHistory((current) => endRun(current));
+      setHereMenu({ at, pieceIds: stack.map((piece) => piece.id) });
+    }, LONG_PRESS_MS);
+    longPressRef.current = { timer, clientX, clientY };
+  };
+
+  /**
    * Fingers on the stage, by pointer, where each last was on screen. They are
    * followed as the events pass down to whatever each finger landed on, so a
    * second finger can turn a one-finger drag into a pinch.
@@ -1952,6 +2012,8 @@ export function CollageStudio({
       clientX: event.clientX,
       clientY: event.clientY,
     });
+    cancelLongPress();
+    if (touchesRef.current.size === 1) startLongPress(event);
     if (touchesRef.current.size !== 2) return;
     if (over || toolActive || transform || selectedPieces.length === 0) return;
     const start = fingerPair();
@@ -1966,6 +2028,14 @@ export function CollageStudio({
   const onStageTouchMove = (event: React.PointerEvent) => {
     if (event.pointerType !== "touch") return;
     if (!touchesRef.current.has(event.pointerId)) return;
+    const held = longPressRef.current;
+    if (
+      held &&
+      Math.hypot(event.clientX - held.clientX, event.clientY - held.clientY) >
+        LONG_PRESS_SLOP
+    ) {
+      cancelLongPress();
+    }
     touchesRef.current.set(event.pointerId, {
       clientX: event.clientX,
       clientY: event.clientY,
@@ -1984,6 +2054,7 @@ export function CollageStudio({
   const onStageTouchEnd = (event: React.PointerEvent) => {
     if (event.pointerType !== "touch") return;
     touchesRef.current.delete(event.pointerId);
+    cancelLongPress();
     if (gesture.kind !== "pinch") return;
     // Lifting either finger settles the pinch; the finger left down does
     // nothing until it is lifted too.
@@ -2056,14 +2127,20 @@ export function CollageStudio({
     onLeave();
   };
 
-  /** Hands the browser a file to save under the given name. */
-  const saveFile = (file: Blob, name: string) => {
-    const url = URL.createObjectURL(file);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = name;
-    link.click();
-    URL.revokeObjectURL(url);
+  /**
+   * Hands the browser a file to save under the given name. A phone only lets
+   * a file be saved straight from a tap, and an export is long done baking
+   * by then, so there the file waits in a panel with its own save button.
+   */
+  const saveFile = (file: Blob, name: string, label?: string) => {
+    if (phone) {
+      setReadyFiles((current) => [
+        ...(current ?? []).filter((ready) => ready.name !== name),
+        { file, name, label },
+      ]);
+      return;
+    }
+    downloadFile(file, name);
   };
 
   /**
@@ -2074,6 +2151,7 @@ export function CollageStudio({
     if (pieces.length === 0) return;
     setExporting(true);
     setNotice(null);
+    setReadyFiles(null);
     const name = collageExportName(title);
     try {
       const front = await bakeCollage({
@@ -2091,8 +2169,8 @@ export function CollageStudio({
         thumbnails: await resolveBackThumbnails(backContent.pieces),
         look: backLook,
       });
-      saveFile(front, `${name} front.png`);
-      saveFile(back, `${name} back.png`);
+      saveFile(front, `${name} front.png`, "front · png");
+      saveFile(back, `${name} back.png`, "back · png");
     } catch (error) {
       // An export is asked for out loud, so it fails out loud, naming the
       // pieces that would have left holes in the picture.
@@ -2125,6 +2203,7 @@ export function CollageStudio({
     }
     setVideoProgress(0);
     setNotice(null);
+    setReadyFiles(null);
     try {
       const { bakeCollageVideo } = await import("./collageVideo");
       const video = await bakeCollageVideo({
@@ -2149,8 +2228,9 @@ export function CollageStudio({
   };
 
   /** Saves the collage as a file that opens it again in another browser. */
-  const downloadFile = async () => {
+  const downloadCollageFile = async () => {
     flush();
+    setReadyFiles(null);
     const record = collageToHandOver({
       draft: draftRef.current,
       standing: autosave.standing,
@@ -2229,7 +2309,10 @@ export function CollageStudio({
           if (over) turnOver();
           releaseTypingFocus(document.activeElement);
           // Clicked scraps fan out from the middle so each one stays grabbable.
-          addPiece(item, fanOutPlacement(pieces.length, frame));
+          addPiece(
+            item,
+            fanOutPlacement(pieces.length, frame, phone ? PHONE_FAN_REACH : undefined),
+          );
         }}
         onDragStart={(item, event) => {
           draggingScrapRef.current = item;
@@ -2272,7 +2355,9 @@ export function CollageStudio({
             caption={
               over ? (
                 <span className="collage-studio__label">
-                  turned over · T or esc to turn back
+                  {phone
+                    ? "turned over · tap front / back to turn back"
+                    : "turned over · T or esc to turn back"}
                 </span>
               ) : shared ? (
                 shared.caption ?? (
@@ -2443,6 +2528,7 @@ export function CollageStudio({
                     label="selection"
                     scale={scale}
                     inView={inView}
+                    knob={phone}
                     onGrip={beginGrip}
                   />
                 )}
@@ -2467,6 +2553,7 @@ export function CollageStudio({
                     label="piece"
                     scale={scale}
                     inView={inView}
+                    knob={phone}
                     onGrip={beginGrip}
                   />
                 )}
@@ -2563,6 +2650,7 @@ export function CollageStudio({
                     pieces={hereStack}
                     at={hereMenu.at}
                     scale={scale}
+                    frame={frame}
                     selectedId={selection.primary}
                     onPick={(pieceId) => {
                       selectPiece(pieceId);
@@ -2622,6 +2710,10 @@ export function CollageStudio({
                     onLock={lockSelection}
                     onDuplicate={() => duplicatePieces(selectedPieces)}
                     onRemove={removeSelected}
+                    lockHint={phone ? "hold the spot to unlock" : undefined}
+                    extraBelow={
+                      phone ? ROTATE_KNOB_REACH + ROTATE_KNOB_SIZE / 2 : 0
+                    }
                   />
                 )}
 
@@ -2782,7 +2874,7 @@ export function CollageStudio({
               onPicture={() => void download()}
               video={animates ? videoSupport : undefined}
               onVideo={() => void downloadVideo()}
-              onFile={() => void downloadFile()}
+              onFile={() => void downloadCollageFile()}
             />
           </span>
           {confirmingLeave ? (
@@ -2805,6 +2897,14 @@ export function CollageStudio({
           ) : null}
         </div>
 
+        {readyFiles && readyFiles.length > 0 && (
+          <ExportReady
+            files={readyFiles}
+            onClose={() => setReadyFiles(null)}
+            onProblem={(text) => setNotice({ tone: "problem", text })}
+          />
+        )}
+
         {notice && (
           <p
             className={`collage-notice${notice.tone === "quiet" ? " collage-notice--quiet" : ""}`}
@@ -2823,6 +2923,7 @@ function PieceHandles({
   label,
   scale,
   inView,
+  knob = false,
   onGrip,
 }: {
   /** The box the handles sit on: one piece, or the box around several. */
@@ -2833,9 +2934,23 @@ function PieceHandles({
   scale: number;
   /** The part of the stage in view, in frame units, once it is measured. */
   inView: Bounds | null;
+  /** Draws a knob under the selection that turns it, for a finger. */
+  knob?: boolean;
   onGrip: (zone: HandleZone, event: React.PointerEvent) => void;
 }) {
   const zones = handleZones(box, scale, inView);
+  const center = boxCenter(box);
+  const radians = (box.rotation * Math.PI) / 180;
+  const knobAt = rotatePoint(
+    { x: center.x, y: box.y + box.height + ROTATE_KNOB_REACH / scale },
+    center,
+    radians,
+  );
+  const stemFrom = rotatePoint(
+    { x: center.x, y: box.y + box.height },
+    center,
+    radians,
+  );
   return (
     <>
       <div
@@ -2903,6 +3018,56 @@ function PieceHandles({
           />
         );
       })}
+      {knob && (
+        <>
+          <div
+            aria-hidden="true"
+            className="collage-rotate-stem"
+            style={{
+              left: stemFrom.x,
+              top: stemFrom.y,
+              height: ROTATE_KNOB_REACH,
+              transform: `scale(${1 / scale}) rotate(${box.rotation}deg)`,
+            }}
+          />
+          <button
+            type="button"
+            aria-label={`Turn ${label}`}
+            data-grip="rotate-knob"
+            className="collage-rotate-knob"
+            style={{
+              left: knobAt.x,
+              top: knobAt.y,
+              transform: `translate(-50%, -50%) scale(${1 / scale})`,
+            }}
+            onPointerDown={(event) =>
+              onGrip(
+                {
+                  kind: "rotate",
+                  corner: "bottom-right",
+                  center: knobAt,
+                  width: 0,
+                  height: 0,
+                  rotation: box.rotation,
+                  cursor: "grab",
+                },
+                event,
+              )
+            }
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <path
+                d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v2.4h-2.4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </>
+      )}
     </>
   );
 }

@@ -343,6 +343,13 @@ describe("fanOutPlacement", () => {
     expect(first.y).toBeCloseTo(400);
   });
 
+  it("spreads pieces wider for a larger step", () => {
+    const near = fanOutPlacement(1, frame);
+    const far = fanOutPlacement(1, frame, 150);
+    expect(Math.hypot(far.x - 600, far.y - 400)).toBeCloseTo(150);
+    expect(Math.hypot(near.x - 600, near.y - 400)).toBeCloseTo(34);
+  });
+
   it("keeps every piece well clear of its neighbours", () => {
     const spots = Array.from({ length: 30 }, (_, index) =>
       fanOutPlacement(index, frame),

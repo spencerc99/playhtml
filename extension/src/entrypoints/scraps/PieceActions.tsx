@@ -130,6 +130,8 @@ export interface PieceActionsProps {
   locked?: boolean;
   onDuplicate: () => void;
   onRemove: () => void;
+  /** Further on-screen room to keep below the piece, for a knob drawn there. */
+  extraBelow?: number;
 }
 
 type Action =
@@ -158,6 +160,7 @@ export function useBesidePiece(
   piece: PieceBox,
   scale: number,
   frame: { width: number; height: number },
+  extraBelow = 0,
 ) {
   const ref = useRef<HTMLDivElement>(null);
   /** The panel's own on-screen size, measured so it can be kept in frame. */
@@ -176,7 +179,13 @@ export function useBesidePiece(
     return () => observer.disconnect();
   }, []);
 
-  const { left, top } = placeBesidePiece(piece, size, scale, frame);
+  const { left, top } = placeBesidePiece(
+    piece,
+    size,
+    scale,
+    frame,
+    extraBelow,
+  );
   return {
     ref,
     style: { left, top, transform: `scale(${1 / scale})` },
@@ -203,8 +212,9 @@ export function PieceActions({
   locked = false,
   onDuplicate,
   onRemove,
+  extraBelow = 0,
 }: PieceActionsProps) {
-  const placement = useBesidePiece(box, scale, frame);
+  const placement = useBesidePiece(box, scale, frame, extraBelow);
 
   const actions: Action[] = [
     {
