@@ -351,6 +351,7 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
       { keys: "shift on a corner or edge", what: "free the aspect ratio" },
       { keys: "alt on a corner or edge", what: "resize from the center" },
       { keys: "shift while dragging", what: "keep to one axis" },
+      { keys: "cmd while dragging", what: "move freely, without snapping" },
       { keys: "esc", what: "cancel what you started" },
     ],
   },
