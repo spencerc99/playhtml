@@ -11,12 +11,14 @@ import {
 } from "./imageCopyPolicy";
 
 const DB_NAME = "scrap_image_copies_db";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 /** Copy metadata by content hash; small, so budget checks never touch image bytes. */
 const COPIES = "copies";
 /** Image bytes by content hash. */
 const BLOBS = "blobs";
+/** Disposable gallery previews, kept separately from full-quality image bytes. */
+const PREVIEWS = "previews";
 /** Which copy each image URL resolves to. */
 const SOURCES = "sources";
 /** The image URLs each saved collage holds pieces of. */
@@ -31,6 +33,7 @@ export interface ImageCopy extends StoredCopySummary {
   mimeType: string;
   width?: number;
   height?: number;
+  previewByteLength?: number;
 }
 
 interface SourceRow {
@@ -60,6 +63,9 @@ function openDatabase(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(BLOBS)) {
         db.createObjectStore(BLOBS, { keyPath: "hash" });
+      }
+      if (!db.objectStoreNames.contains(PREVIEWS)) {
+        db.createObjectStore(PREVIEWS, { keyPath: "hash" });
       }
       if (!db.objectStoreNames.contains(SOURCES)) {
         const sources = db.createObjectStore(SOURCES, { keyPath: "src" });
@@ -194,6 +200,7 @@ export interface NewImageCopy {
   mimeType: string;
   width?: number;
   height?: number;
+  preview?: Blob;
 }
 
 /**
@@ -203,7 +210,7 @@ export interface NewImageCopy {
  */
 export async function storeImageCopy(copy: NewImageCopy): Promise<boolean> {
   return transact(
-    [COPIES, BLOBS, SOURCES],
+    [COPIES, BLOBS, SOURCES, PREVIEWS],
     "readwrite",
     async (transaction) => {
       const copies = transaction.objectStore(COPIES);
@@ -226,9 +233,97 @@ export async function storeImageCopy(copy: NewImageCopy): Promise<boolean> {
       transaction
         .objectStore(SOURCES)
         .put({ src: copy.src, hash: copy.hash } satisfies SourceRow);
+      if (copy.preview) {
+        transaction
+          .objectStore(PREVIEWS)
+          .put({ hash: copy.hash, blob: copy.preview } satisfies BlobRow);
+        const metadata = (await requestResult(
+          copies.get(copy.hash),
+        )) as ImageCopy;
+        copies.put({ ...metadata, previewByteLength: copy.preview.size });
+      }
       return held === undefined;
     },
   );
+}
+
+/** Reads gallery previews and the originals needed to derive any missing ones. */
+export async function readImagePreviewInputs(srcs: readonly string[]): Promise<
+  Map<
+    string,
+    {
+      hash: string;
+      blob: Blob;
+      preview?: Blob;
+      width?: number;
+      height?: number;
+    }
+  >
+> {
+  return transact(
+    [SOURCES, COPIES, BLOBS, PREVIEWS],
+    "readonly",
+    async (transaction) => {
+      const found = new Map<
+        string,
+        {
+          hash: string;
+          blob: Blob;
+          preview?: Blob;
+          width?: number;
+          height?: number;
+        }
+      >();
+      await Promise.all(
+        [...new Set(srcs)].map(async (src) => {
+          const source = (await requestResult(
+            transaction.objectStore(SOURCES).get(src),
+          )) as SourceRow | undefined;
+          if (!source) return;
+          const [copy, preview] = await Promise.all([
+            requestResult(
+              transaction.objectStore(COPIES).get(source.hash),
+            ) as Promise<ImageCopy | undefined>,
+            requestResult(
+              transaction.objectStore(PREVIEWS).get(source.hash),
+            ) as Promise<BlobRow | undefined>,
+          ]);
+          const original =
+            preview ??
+            ((await requestResult(
+              transaction.objectStore(BLOBS).get(source.hash),
+            )) as BlobRow | undefined);
+          if (original)
+            found.set(src, {
+              hash: source.hash,
+              blob: original.blob,
+              preview: preview?.blob,
+              width: copy?.width,
+              height: copy?.height,
+            });
+        }),
+      );
+      return found;
+    },
+  );
+}
+
+/** Stores a derived preview only while its original is still held. */
+export async function storeImagePreview(
+  hash: string,
+  blob: Blob,
+): Promise<boolean> {
+  return transact([COPIES, PREVIEWS], "readwrite", async (transaction) => {
+    const copy = (await requestResult(
+      transaction.objectStore(COPIES).get(hash),
+    )) as ImageCopy | undefined;
+    if (!copy) return false;
+    transaction.objectStore(PREVIEWS).put({ hash, blob } satisfies BlobRow);
+    transaction
+      .objectStore(COPIES)
+      .put({ ...copy, previewByteLength: blob.size });
+    return true;
+  });
 }
 
 /** Records the image URLs a collage holds, replacing what it held before. */
@@ -251,21 +346,26 @@ export async function unpinCollage(collageId: string): Promise<void> {
 }
 
 export async function listCollagePins(): Promise<CollagePin[]> {
-  return transact([PINS], "readonly", async (transaction) =>
-    (await requestResult(transaction.objectStore(PINS).getAll())) as CollagePin[],
+  return transact(
+    [PINS],
+    "readonly",
+    async (transaction) =>
+      (await requestResult(
+        transaction.objectStore(PINS).getAll(),
+      )) as CollagePin[],
   );
 }
 
 /**
- * Lets go of the oldest copies no collage holds until the total fits the
- * budget. Runs in one transaction, so a pin written alongside is either seen
+ * Drops disposable previews first, then the oldest copies no collage holds
+ * until the total fits the budget. A pin written alongside is either seen
  * in full or not at all.
  */
 export async function trimImageCopies(
   budgetBytes: number = IMAGE_COPY_BUDGET_BYTES,
 ): Promise<{ evicted: number; totalBytes: number }> {
   return transact(
-    [COPIES, BLOBS, SOURCES, PINS],
+    [COPIES, BLOBS, SOURCES, PINS, PREVIEWS],
     "readwrite",
     async (transaction) => {
       const copies = (await requestResult(
@@ -274,6 +374,24 @@ export async function trimImageCopies(
       const pins = (await requestResult(
         transaction.objectStore(PINS).getAll(),
       )) as CollagePin[];
+      let totalHeldBytes = copies.reduce(
+        (sum, copy) => sum + copy.byteLength + (copy.previewByteLength ?? 0),
+        0,
+      );
+      for (const copy of [...copies].sort(
+        (first, second) => first.storedAt - second.storedAt,
+      )) {
+        if (totalHeldBytes <= budgetBytes) break;
+        if (!copy.previewByteLength) continue;
+        totalHeldBytes -= copy.previewByteLength;
+        transaction.objectStore(PREVIEWS).delete(copy.hash);
+        delete copy.previewByteLength;
+        transaction.objectStore(COPIES).put(copy);
+      }
+      const budgetCopies = copies.map((copy) => ({
+        ...copy,
+        byteLength: copy.byteLength + (copy.previewByteLength ?? 0),
+      }));
       const sources = transaction.objectStore(SOURCES);
       const pinnedHashes = new Set<string>();
       await Promise.all(
@@ -284,16 +402,17 @@ export async function trimImageCopies(
           if (row) pinnedHashes.add(row.hash);
         }),
       );
-      const evicted = copiesToEvict(copies, pinnedHashes, budgetBytes);
+      const evicted = copiesToEvict(budgetCopies, pinnedHashes, budgetBytes);
       const byHash = sources.index(SOURCES_BY_HASH);
       for (const hash of evicted) {
         transaction.objectStore(COPIES).delete(hash);
         transaction.objectStore(BLOBS).delete(hash);
+        transaction.objectStore(PREVIEWS).delete(hash);
         const keys = await requestResult(byHash.getAllKeys(hash));
         for (const key of keys) sources.delete(key);
       }
       const evictedSet = new Set(evicted);
-      const totalBytes = copies
+      const totalBytes = budgetCopies
         .filter((copy) => !evictedSet.has(copy.hash))
         .reduce((sum, copy) => sum + copy.byteLength, 0);
       return { evicted: evicted.length, totalBytes };
@@ -303,9 +422,9 @@ export async function trimImageCopies(
 
 export async function readImageCopyMeta(key: string): Promise<unknown> {
   return transact([META], "readonly", async (transaction) => {
-    const row = (await requestResult(transaction.objectStore(META).get(key))) as
-      | MetaRow
-      | undefined;
+    const row = (await requestResult(
+      transaction.objectStore(META).get(key),
+    )) as MetaRow | undefined;
     return row?.value;
   });
 }

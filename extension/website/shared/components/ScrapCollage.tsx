@@ -28,7 +28,10 @@ import {
 import type { FilterChip } from "../utils/eventUtils";
 import { hashString, seededRandom } from "../utils/styleUtils";
 import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
-import { useScrapImageSrc } from "../utils/scrapImageSource";
+import {
+  prioritizeScrapPreviews,
+  useScrapImageSrc,
+} from "../utils/scrapImageSource";
 import {
   isImageContentHash,
   canonicalButtonKey,
@@ -598,13 +601,14 @@ export function headingDisplayFontSize(
   availableWidth = MAX_HEADING_TILE_WIDTH,
 ): number {
   const capturedSize = Number.parseFloat(styles.fontSize ?? "");
-  const bandedSize = Number.isFinite(capturedSize) && capturedSize > 0
-    ? clamp(
-        MIN_HEADING_DISPLAY_FONT_SIZE,
-        MAX_HEADING_DISPLAY_FONT_SIZE,
-        capturedSize,
-      )
-    : MIN_HEADING_DISPLAY_FONT_SIZE;
+  const bandedSize =
+    Number.isFinite(capturedSize) && capturedSize > 0
+      ? clamp(
+          MIN_HEADING_DISPLAY_FONT_SIZE,
+          MAX_HEADING_DISPLAY_FONT_SIZE,
+          capturedSize,
+        )
+      : MIN_HEADING_DISPLAY_FONT_SIZE;
 
   const characterCount = text.trim().length;
   if (characterCount === 0) return bandedSize;
@@ -1021,8 +1025,10 @@ export function buildArchiveSources(
     // above and below, so rows join only where they overlap.
     const fromColumn = start - rowStart;
     const toColumn = end - rowStart;
-    const aboveFromColumn = Math.max(visitStart, rowStart - columnCount) - (rowStart - columnCount);
-    const belowToColumn = Math.min(visitEnd, lastInRow + columnCount) - (lastInRow + 1);
+    const aboveFromColumn =
+      Math.max(visitStart, rowStart - columnCount) - (rowStart - columnCount);
+    const belowToColumn =
+      Math.min(visitEnd, lastInRow + columnCount) - (lastInRow + 1);
     const continuesAbove =
       start === rowStart && !begins && aboveFromColumn <= toColumn;
     const continuesBelow =
@@ -1075,8 +1081,12 @@ export function shoreCells(
     Math.round(Math.sqrt((slotCount * height) / width)),
   );
   const cellHeight = height / rowCount;
-  const cells: { x: number; y: number; cellWidth: number; cellHeight: number }[] =
-    [];
+  const cells: {
+    x: number;
+    y: number;
+    cellWidth: number;
+    cellHeight: number;
+  }[] = [];
   for (let row = 0; row < rowCount; row += 1) {
     // Rows differ by at most one slot, with the longer rows spread out.
     const start = Math.round((row * slotCount) / rowCount);
@@ -1821,12 +1831,8 @@ export interface ScrapContentProps {
   onLoad: () => void;
   /** Laid-out tile width, so text-bearing scraps can size themselves to it. */
   tileWidth?: number;
-  /** Requests the first visible images before the rest of the collage. */
-  imagePriority?: "high";
-  /** Resolves local copies without starting the browser's image request yet. */
-  deferImage?: boolean;
-  /** Signals when the requested decode settles, including failures. */
-  onImageReady?: () => void;
+  /** Uses a tile-sized local preview where the surface provides one. */
+  imagePreview?: boolean;
   /**
    * Whether dark lettering sits on a light chequer. Browsed and drawer tiles
    * show it; a piece placed in a collage sits directly on the collage.
@@ -1939,21 +1945,13 @@ export function ScrapContent({
   onError,
   onLoad,
   tileWidth,
-  imagePriority,
-  deferImage = false,
-  onImageReady,
+  imagePreview = false,
   letteringChecker = true,
 }: ScrapContentProps) {
   const imageSrc = useScrapImageSrc(
     item.kind === "image" ? item.src : undefined,
+    imagePreview,
   );
-  const imageLoaded = (event: React.SyntheticEvent<HTMLImageElement>) => {
-    onLoad();
-    if (!onImageReady) return;
-    const image = event.currentTarget;
-    if (typeof image.decode !== "function") onImageReady();
-    else void image.decode().then(onImageReady, onImageReady);
-  };
   switch (item.kind) {
     case "image":
       return (
@@ -1963,13 +1961,11 @@ export function ScrapContent({
             className={`scrap-collage__image scrap-collage__developing${
               loaded ? " scrap-collage__developed" : ""
             }`}
-            src={deferImage ? undefined : (imageSrc ?? undefined)}
+            src={imageSrc ?? undefined}
             alt={item.alt ?? ""}
-            loading={imagePriority ? "eager" : "lazy"}
-            fetchPriority={imagePriority}
-            decoding={imagePriority ? "async" : undefined}
+            loading="lazy"
             draggable={false}
-            onLoad={imageLoaded}
+            onLoad={onLoad}
             onError={onError}
           />
         </>
@@ -2066,13 +2062,11 @@ export function ScrapContent({
             className={`scrap-collage__cursor scrap-collage__developing${
               loaded ? " scrap-collage__developed" : ""
             }`}
-            src={deferImage ? undefined : item.url}
+            src={item.url}
             alt=""
-            loading={imagePriority ? "eager" : "lazy"}
-            fetchPriority={imagePriority}
-            decoding={imagePriority ? "async" : undefined}
+            loading="lazy"
             draggable={false}
-            onLoad={imageLoaded}
+            onLoad={onLoad}
             onError={onError}
           />
         </>
@@ -2091,6 +2085,7 @@ function ScrapTileContent({
   return (
     <ScrapContent
       {...props}
+      imagePreview
       loaded={loaded}
       onLoad={() => {
         loadedKeys.add(props.item.key);
@@ -2164,26 +2159,6 @@ export function ScrapCollage({
     () => new Set(),
   );
   const loadedScrapsRef = useRef(new Set<string>());
-  const initialImageKeysRef = useRef<Set<string> | null>(null);
-  const settledImageKeysRef = useRef(new Set<string>());
-  const initialImageFrameRef = useRef<number | null>(null);
-  const initialImagesActiveRef = useRef(true);
-  const initialImagesReleasedRef = useRef(false);
-  useEffect(() => {
-    initialImagesActiveRef.current = true;
-    return () => {
-      initialImagesActiveRef.current = false;
-      if (initialImageFrameRef.current !== null) {
-        window.cancelAnimationFrame(initialImageFrameRef.current);
-        initialImageFrameRef.current = null;
-      }
-    };
-  }, []);
-  const [initialImagesReleased, setInitialImagesReleased] = useState(false);
-  const releaseInitialImages = () => {
-    initialImagesReleasedRef.current = true;
-    setInitialImagesReleased(true);
-  };
   const prefersReducedMotion = usePrefersReducedMotion();
 
   const [tide, setTide] = useState<TideState | null>(null);
@@ -2259,13 +2234,17 @@ export function ScrapCollage({
     () => new Set(),
   );
   const selectedScraps = useMemo(
-    () => archiveScraps.filter((item) => selectedKeys.has(item.key)),
+    () =>
+      selectedKeys.size === 0
+        ? []
+        : archiveScraps.filter((item) => selectedKeys.has(item.key)),
     [archiveScraps, selectedKeys],
   );
-  const bulkTargets = selectedScraps.length > 0 ? selectedScraps : archiveScraps;
+  const bulkTargets =
+    selectedScraps.length > 0 ? selectedScraps : archiveScraps;
   // A selection belongs to one view of the archive; changing what it shows lets go.
   useEffect(() => {
-    setSelectedKeys(new Set());
+    setSelectedKeys((current) => (current.size === 0 ? current : new Set()));
   }, [archiveMode, selectedKind, shape, places, search, when]);
   // A confirmation names a count for one set of scraps; changing them asks again.
   useEffect(() => {
@@ -2419,6 +2398,21 @@ export function ScrapCollage({
     ],
   );
 
+  useEffect(() => {
+    prioritizeScrapPreviews([
+      ...new Set(
+        layout.flatMap(({ item }) =>
+          item.kind === "image" &&
+          !failedScraps.has(item.key) &&
+          isRenderableScrap(item)
+            ? [item.src]
+            : [],
+        ),
+      ),
+    ]);
+    return () => prioritizeScrapPreviews([]);
+  }, [layout, failedScraps]);
+
   const visits = useMemo(
     () => (archiveMode && showSources ? archiveVisits(archiveScraps) : []),
     [archiveMode, showSources, archiveScraps],
@@ -2466,7 +2460,7 @@ export function ScrapCollage({
     setArchiveScrollTop(0);
     setHovered(false);
     setFocused(false);
-    setWashingOut([]);
+    setWashingOut((current) => (current.length === 0 ? current : []));
   }, [archiveMode, selectedKind, shape, places, search, when]);
 
   /**
@@ -2740,9 +2734,7 @@ export function ScrapCollage({
       layoutSeed,
       archiveSizeBounds,
       display,
-    ).filter(
-      (key) => !failedScraps.has(key),
-    );
+    ).filter((key) => !failedScraps.has(key));
     const next = new Set(drag.base);
     for (const key of touched) next.add(key);
     setSelectedKeys(next);
@@ -2861,67 +2853,6 @@ export function ScrapCollage({
       }
     : {};
 
-  const prioritizedImageKeys = new Set<string>();
-  for (const scrap of layout) {
-    if (
-      (scrap.item.kind === "image" || scrap.item.kind === "cursor") &&
-      !failedScraps.has(scrap.item.key) &&
-      isRenderableScrap(scrap.item)
-    ) {
-      prioritizedImageKeys.add(scrap.item.key);
-      if (prioritizedImageKeys.size === 6) break;
-    }
-  }
-
-  if (!initialImageKeysRef.current && layout.length > 0) {
-    initialImageKeysRef.current = prioritizedImageKeys;
-  }
-  const initialImageCount = initialImageKeysRef.current?.size;
-  useEffect(() => {
-    if (initialImagesReleased || initialImageCount === undefined) return;
-    const timeout = window.setTimeout(releaseInitialImages, 1000);
-    return () => {
-      window.clearTimeout(timeout);
-      if (initialImageFrameRef.current !== null) {
-        window.cancelAnimationFrame(initialImageFrameRef.current);
-        initialImageFrameRef.current = null;
-      }
-    };
-  }, [initialImageCount, initialImagesReleased]);
-  useEffect(() => {
-    if (initialImagesReleased || !initialImageKeysRef.current) return;
-    const visibleKeys = new Set(layout.map((scrap) => scrap.item.key));
-    if (
-      initialImageCount === 0 ||
-      [...initialImageKeysRef.current].some(
-        (key) => !visibleKeys.has(key) || failedScraps.has(key),
-      )
-    )
-      releaseInitialImages();
-  }, [layout, failedScraps, initialImageCount, initialImagesReleased]);
-  const imageReady = (key: string) => {
-    if (
-      !initialImagesActiveRef.current ||
-      initialImagesReleasedRef.current ||
-      !initialImageKeysRef.current?.has(key)
-    )
-      return;
-    settledImageKeysRef.current.add(key);
-    if (
-      settledImageKeysRef.current.size !== initialImageCount ||
-      initialImageFrameRef.current !== null
-    )
-      return;
-    initialImageFrameRef.current = window.requestAnimationFrame(() => {
-      initialImageFrameRef.current = window.requestAnimationFrame(() => {
-        initialImageFrameRef.current = window.requestAnimationFrame(() => {
-          initialImageFrameRef.current = null;
-          releaseInitialImages();
-        });
-      });
-    });
-  };
-
   const renderTile = (scrap: ScrapLayout, modifier: string) => {
     if (failedScraps.has(scrap.item.key) || !isRenderableScrap(scrap.item)) {
       return null;
@@ -3005,27 +2936,8 @@ export function ScrapCollage({
         <ScrapTileContent
           item={scrap.item}
           loadedKeys={loadedScrapsRef.current}
-          onError={() => {
-            imageReady(scrap.item.key);
-            removeScrap(scrap.item.key);
-          }}
+          onError={() => removeScrap(scrap.item.key)}
           tileWidth={scrap.width}
-          imagePriority={
-            !initialImagesReleased &&
-            initialImageKeysRef.current?.has(scrap.item.key)
-              ? "high"
-              : undefined
-          }
-          deferImage={
-            !initialImagesReleased &&
-            !initialImageKeysRef.current?.has(scrap.item.key)
-          }
-          onImageReady={
-            !initialImagesReleased &&
-            initialImageKeysRef.current?.has(scrap.item.key)
-              ? () => imageReady(scrap.item.key)
-              : undefined
-          }
         />
         <div
           className="scrap-collage__provenance"
@@ -3242,72 +3154,76 @@ export function ScrapCollage({
                 (selectedScraps.length > 0 ||
                   selectable ||
                   (filtersActive && archiveScraps.length > 0)) && (
-                <div className="scrap-collage__bulk-delete" role="group">
-                  {bulkDeleteStep === "idle" || bulkDeleteStep === "failed" ? (
-                    <>
-                      {selectedScraps.length > 0 ? (
-                        <>
-                          <span className="scrap-collage__selection-hint">
-                            {selectedScraps.length} selected
-                          </span>
+                  <div className="scrap-collage__bulk-delete" role="group">
+                    {bulkDeleteStep === "idle" ||
+                    bulkDeleteStep === "failed" ? (
+                      <>
+                        {selectedScraps.length > 0 ? (
+                          <>
+                            <span className="scrap-collage__selection-hint">
+                              {selectedScraps.length} selected
+                            </span>
+                            <button
+                              type="button"
+                              className="scrap-collage__text-action"
+                              onClick={() => setSelectedKeys(new Set())}
+                            >
+                              clear
+                            </button>
+                          </>
+                        ) : (
+                          selectable && (
+                            <span className="scrap-collage__selection-hint">
+                              drag across scraps to select
+                            </span>
+                          )
+                        )}
+                        {bulkDeleteStep === "failed" && (
+                          <span role="alert">could not delete them</span>
+                        )}
+                        {(selectedScraps.length > 0 ||
+                          (filtersActive && archiveScraps.length > 0)) && (
                           <button
                             type="button"
                             className="scrap-collage__text-action"
-                            onClick={() => setSelectedKeys(new Set())}
+                            onClick={() => setBulkDeleteStep("confirm")}
                           >
-                            clear
+                            delete{" "}
+                            {bulkTargets.length === 1
+                              ? "this scrap"
+                              : `these ${bulkTargets.length}`}
                           </button>
-                        </>
-                      ) : (
-                        selectable && (
-                          <span className="scrap-collage__selection-hint">
-                            drag across scraps to select
-                          </span>
-                        )
-                      )}
-                      {bulkDeleteStep === "failed" && (
-                        <span role="alert">could not delete them</span>
-                      )}
-                      {(selectedScraps.length > 0 ||
-                        (filtersActive && archiveScraps.length > 0)) && (
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span>
+                          delete {bulkTargets.length}{" "}
+                          {bulkTargets.length === 1 ? "scrap" : "scraps"} for
+                          good?
+                        </span>
+                        <button
+                          type="button"
+                          className="scrap-collage__text-action scrap-collage__text-action--danger"
+                          disabled={bulkDeleteStep === "deleting"}
+                          onClick={deleteFiltered}
+                        >
+                          {bulkDeleteStep === "deleting"
+                            ? "deleting..."
+                            : "delete"}
+                        </button>
                         <button
                           type="button"
                           className="scrap-collage__text-action"
-                          onClick={() => setBulkDeleteStep("confirm")}
+                          disabled={bulkDeleteStep === "deleting"}
+                          onClick={() => setBulkDeleteStep("idle")}
                         >
-                          delete{" "}
-                          {bulkTargets.length === 1
-                            ? "this scrap"
-                            : `these ${bulkTargets.length}`}
+                          keep
                         </button>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <span>
-                        delete {bulkTargets.length}{" "}
-                        {bulkTargets.length === 1 ? "scrap" : "scraps"} for good?
-                      </span>
-                      <button
-                        type="button"
-                        className="scrap-collage__text-action scrap-collage__text-action--danger"
-                        disabled={bulkDeleteStep === "deleting"}
-                        onClick={deleteFiltered}
-                      >
-                        {bulkDeleteStep === "deleting" ? "deleting..." : "delete"}
-                      </button>
-                      <button
-                        type="button"
-                        className="scrap-collage__text-action"
-                        disabled={bulkDeleteStep === "deleting"}
-                        onClick={() => setBulkDeleteStep("idle")}
-                      >
-                        keep
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
+                      </>
+                    )}
+                  </div>
+                )}
             </>
           ) : (
             <button
@@ -3373,9 +3289,13 @@ export function ScrapCollage({
               <div
                 key={mark.key}
                 className={`scrap-collage__source${
-                  mark.continuesAbove ? " scrap-collage__source--from-above" : ""
+                  mark.continuesAbove
+                    ? " scrap-collage__source--from-above"
+                    : ""
                 }${
-                  mark.continuesBelow ? " scrap-collage__source--onto-below" : ""
+                  mark.continuesBelow
+                    ? " scrap-collage__source--onto-below"
+                    : ""
                 }`}
                 style={
                   {
@@ -3462,9 +3382,7 @@ export function ScrapCollage({
             onPrevious={() => stepExamine(-1)}
             onNext={() => stepExamine(1)}
             onDelete={
-              onDeleteScraps
-                ? () => onDeleteScraps([examinedItem])
-                : undefined
+              onDeleteScraps ? () => onDeleteScraps([examinedItem]) : undefined
             }
           />,
           document.body,

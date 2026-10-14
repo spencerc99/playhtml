@@ -28,7 +28,12 @@ function buildItems(count: number): ScrapItem[] {
           naturalWidth: 400,
           naturalHeight: 300,
         }
-      : { ...base, kind: "button" as const, text: `Scrap ${index}`, styles: {} };
+      : {
+          ...base,
+          kind: "button" as const,
+          text: `Scrap ${index}`,
+          styles: {},
+        };
   });
 }
 
@@ -129,7 +134,7 @@ describe("ScrapCollage controls", () => {
     ).not.toBeNull();
   });
 
-  it("prioritizes six images among mixed scraps and leaves the rest lazy", () => {
+  it("makes every visible image source available without a startup gate", () => {
     render();
     const images = Array.from(
       container.querySelectorAll<HTMLImageElement>(
@@ -137,111 +142,9 @@ describe("ScrapCollage controls", () => {
       ),
     );
     expect(images.length).toBeGreaterThan(6);
-    expect(
-      images
-        .slice(0, 6)
-        .every((image) => image.getAttribute("decoding") === "async"),
-    ).toBe(true);
-    expect(
-      images.slice(6).every((image) => !image.hasAttribute("decoding")),
-    ).toBe(true);
-    expect(images.slice(0, 6).every((image) => image.hasAttribute("src"))).toBe(
-      true,
-    );
-    expect(images.slice(6).every((image) => !image.hasAttribute("src"))).toBe(
-      true,
-    );
-    expect(
-      images
-        .slice(0, 6)
-        .map((image) => [
-          image.getAttribute("loading"),
-          image.getAttribute("fetchpriority"),
-        ]),
-    ).toEqual(Array.from({ length: 6 }, () => ["eager", "high"]));
-    expect(
-      images
-        .slice(6)
-        .every(
-          (image) =>
-            image.getAttribute("loading") === "lazy" &&
-            !image.hasAttribute("fetchpriority"),
-        ),
-    ).toBe(true);
+    expect(images.every((image) => image.hasAttribute("src"))).toBe(true);
+    expect(images.every((image) => !image.hasAttribute("decoding"))).toBe(true);
   });
-
-  it("releases deferred sources after initial images settle or the timeout", () => {
-    vi.useFakeTimers();
-    try {
-      render();
-      const images = Array.from(
-        container.querySelectorAll<HTMLImageElement>(".scrap-collage__image"),
-      );
-      act(() =>
-        images
-          .slice(0, 6)
-          .forEach((image) => image.dispatchEvent(new Event("load"))),
-      );
-      expect(images.slice(6).every((image) => !image.hasAttribute("src"))).toBe(
-        true,
-      );
-      act(() => vi.advanceTimersByTime(100));
-      expect(images.every((image) => image.hasAttribute("src"))).toBe(true);
-      expect(images.every((image) => !image.hasAttribute("decoding"))).toBe(
-        true,
-      );
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("fails open after one second when initial images never complete", () => {
-    vi.useFakeTimers();
-    try {
-      render();
-      const images = Array.from(
-        container.querySelectorAll<HTMLImageElement>(".scrap-collage__image"),
-      );
-      expect(images.slice(6).every((image) => !image.hasAttribute("src"))).toBe(
-        true,
-      );
-      act(() => vi.advanceTimersByTime(1000));
-      expect(images.every((image) => image.hasAttribute("src"))).toBe(true);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it.each([false, true])(
-    "ignores late decode completion after timeout (unmounted: %s)",
-    async (unmounted) => {
-      vi.useFakeTimers();
-      const frames = vi.spyOn(window, "requestAnimationFrame");
-      try {
-        render();
-        const finish: (() => void)[] = [];
-        const images = Array.from(
-          container.querySelectorAll<HTMLImageElement>(".scrap-collage__image"),
-        ).slice(0, 6);
-        for (const image of images) {
-          Object.defineProperty(image, "decode", {
-            value: () => new Promise<void>((resolve) => finish.push(resolve)),
-          });
-        }
-        act(() =>
-          images.forEach((image) => image.dispatchEvent(new Event("load"))),
-        );
-        act(() => vi.advanceTimersByTime(1000));
-        if (unmounted) act(() => root.render(null));
-        frames.mockClear();
-        await act(async () => finish.forEach((resolve) => resolve()));
-        expect(frames).not.toHaveBeenCalled();
-      } finally {
-        frames.mockRestore();
-        vi.useRealTimers();
-      }
-    },
-  );
 
   it("shows the initial shore immediately and animates later arrivals", () => {
     vi.stubGlobal(
@@ -339,9 +242,7 @@ describe("ScrapCollage controls", () => {
       expect(tiles()[0].dataset.scrapKey).toBe("earlier");
       act(() =>
         container
-          .querySelector<HTMLButtonElement>(
-            '[aria-label="Clear search"]',
-          )!
+          .querySelector<HTMLButtonElement>('[aria-label="Clear search"]')!
           .click(),
       );
       act(() =>
@@ -456,8 +357,8 @@ describe("ScrapCollage controls", () => {
     ).toBeNull();
     expect(container.querySelector(".scrap-collage__filter--cycle")).toBeNull();
     expect(
-      Array.from(container.querySelectorAll("button")).some(
-        (button) => button.textContent?.endsWith("shuffle"),
+      Array.from(container.querySelectorAll("button")).some((button) =>
+        button.textContent?.endsWith("shuffle"),
       ),
     ).toBe(false);
   });
@@ -472,7 +373,12 @@ describe("ScrapCollage controls", () => {
     });
 
   const fewItems = (): ScrapItem[] => {
-    const base = (id: string, pageUrl: string, pageTitle: string, ts: number) => ({
+    const base = (
+      id: string,
+      pageUrl: string,
+      pageTitle: string,
+      ts: number,
+    ) => ({
       id,
       key: id,
       pageUrl,
@@ -556,9 +462,9 @@ describe("ScrapCollage controls", () => {
       );
     });
     expect(search.value).toBe("");
-    expect(
-      container.querySelector('input[aria-label="Search scraps"]'),
-    ).toBe(search);
+    expect(container.querySelector('input[aria-label="Search scraps"]')).toBe(
+      search,
+    );
   });
 
   it("summarises picked sites on the from chip and pins them in the popover", () => {
@@ -604,7 +510,9 @@ describe("ScrapCollage controls", () => {
     expect(count("example.com")).toBe("1");
 
     act(() => chip("type").click());
-    expect(container.querySelector(".scrap-filters__popover--places")).toBeNull();
+    expect(
+      container.querySelector(".scrap-filters__popover--places"),
+    ).toBeNull();
     const kindCount = (kind: string) =>
       container.querySelector(
         `[data-scrap-kind="${kind}"] .scrap-filters__count`,

@@ -14,6 +14,7 @@ const evidence = resolve(
   process.env.SCRAPS_EVIDENCE_DIR || "/private/tmp/scraps-drift-loading",
 );
 const runs = Number(process.env.SCRAPS_RUNS || 3);
+const overall = process.env.SCRAPS_OVERALL !== "0";
 const motion =
   process.env.SCRAPS_MOTION === "reduce" ? "reduce" : "no-preference";
 const ordinaryCount = Number(process.env.SCRAPS_HISTORY_COUNT || 20000);
@@ -220,6 +221,13 @@ try {
       return {
         ordinaryCount,
         scrapCount,
+        originalDigest: [
+          ...new Uint8Array(
+            await crypto.subtle.digest("SHA-256", await blobs[0].arrayBuffer()),
+          ),
+        ]
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join(""),
         imageBytes:
           (blobs.reduce((n, blob) => n + blob.size, 0) / blobs.length) *
           scrapCount,
@@ -261,7 +269,7 @@ try {
     await seed.close();
 
     const finishedChecks = [];
-    const waitVisibleImages = async (page) => {
+    const waitVisibleImages = async (page, minimumImages) => {
       const examinedImage = page.locator(".scrap-lightbox__scrap img");
       if (await examinedImage.count()) {
         await examinedImage.evaluate(async (img) => {
@@ -292,7 +300,7 @@ try {
                   visible.every((img) => img.complete && img.naturalWidth > 0)
                 );
               }),
-          { timeout: 20000 },
+          { timeout: 20000, intervals: [50] },
         )
         .toBe(true);
       await page.evaluate(
@@ -397,12 +405,13 @@ try {
             );
             return (
               check.sampledCenters >=
-                (check.viewport.width >= 1200 ? 100 : 6) &&
-              check.tileCount >= (check.viewport.width >= 1200 ? 100 : 20) &&
+                (minimumImages ?? (check.viewport.width >= 1200 ? 100 : 6)) &&
+              check.tileCount >=
+                (minimumImages ?? (check.viewport.width >= 1200 ? 100 : 20)) &&
               check.paintedFraction >= 0.9
             );
           },
-          { timeout: 20000, intervals: [250, 500, 1000] },
+          { timeout: 20000, intervals: [100] },
         )
         .toBe(true)
         .catch(async (error) => {
@@ -459,168 +468,221 @@ try {
             url: message.location().url,
           });
       });
-      await page.addInitScript(() => {
-        window.driftTiming = {
-          firstImageMs: null,
-          firstSixImagesMs: null,
-          firstFullyRevealedImageMs: null,
-          firstSixFullyVisibleImagesMs: null,
-          firstImageDecodedMs: null,
-          decodeResolutions: [],
-          firstSixSharpFrameMs: null,
-          decodeRetries: [],
-          scrapImageErrors: [],
-          decodeErrors: [],
-          detachedDecodeCancellations: 0,
-          longTasks: [],
-        };
-        new PerformanceObserver((list) =>
-          window.driftTiming.longTasks.push(
-            ...list.getEntries().map((entry) => ({
-              start: entry.startTime,
-              duration: entry.duration,
-            })),
-          ),
-        ).observe({ type: "longtask", buffered: true });
-        document.addEventListener(
-          "error",
-          (event) => {
-            const img = event.target;
-            if (
-              img instanceof HTMLImageElement &&
-              img.matches(".scrap-collage__image")
-            )
-              window.driftTiming.scrapImageErrors.push({
-                ms: performance.now(),
-                src: img.getAttribute("src"),
-                currentSrc: img.currentSrc,
-                loading: img.loading,
-                decoding: img.decoding,
-                naturalWidth: img.naturalWidth,
-                key: img.closest(".scrap-collage__tile")?.dataset.scrapKey,
-              });
-          },
-          true,
-        );
-        const decoding = new WeakMap();
-        let decodeCandidates = [];
-        let fullyVisibleFrames = 0;
-        const check = () => {
-          const loaded = [
-            ...document.querySelectorAll(
-              ".scrap-collage__tile img:not(.scrap-collage__favicon)",
+      await page.addInitScript(
+        ({ overall }) => {
+          window.driftTiming = {
+            firstImageMs: null,
+            firstSixImagesMs: null,
+            firstFullyRevealedImageMs: null,
+            firstSixFullyVisibleImagesMs: null,
+            firstImageDecodedMs: null,
+            decodeResolutions: [],
+            firstSixSharpFrameMs: null,
+            decodeRetries: [],
+            scrapImageErrors: [],
+            decodeErrors: [],
+            detachedDecodeCancellations: 0,
+            searchInputs: [],
+            searchImageLoads: [],
+            frameGaps: [],
+            longTasks: [],
+          };
+          new PerformanceObserver((list) =>
+            window.driftTiming.longTasks.push(
+              ...list.getEntries().map((entry) => ({
+                start: entry.startTime,
+                duration: entry.duration,
+              })),
             ),
-          ].filter((img) => {
-            const box = img.getBoundingClientRect();
-            return (
-              img.complete &&
-              img.naturalWidth > 0 &&
-              box.bottom > 0 &&
-              box.top < innerHeight &&
-              box.right > 0 &&
-              box.left < innerWidth
-            );
-          });
-          const count = loaded.length;
-          decodeCandidates = decodeCandidates.filter((img) => img.isConnected);
-          for (const img of loaded) {
-            if (decodeCandidates.length >= 6) break;
-            if (
-              img.currentSrc &&
-              img.getAttribute("src") &&
-              !decodeCandidates.includes(img)
-            )
-              decodeCandidates.push(img);
-          }
-          for (const img of decodeCandidates) {
-            const src = img.currentSrc;
-            if (!src) continue;
-            let state = decoding.get(img);
-            if (!state || state.src !== src) {
-              state = { src, decoded: false };
-              decoding.set(img, state);
-              const decode = (retried = false) =>
-                img
-                  .decode()
-                  .then(() => {
-                    if (decoding.get(img) !== state || img.currentSrc !== src)
-                      return;
-                    state.decoded = true;
-                    window.driftTiming.decodeResolutions.push({
-                      candidate: decodeCandidates.indexOf(img),
-                      ms: performance.now(),
-                      src,
-                    });
-                    if (window.driftTiming.firstImageDecodedMs === null)
-                      window.driftTiming.firstImageDecodedMs =
-                        performance.now();
-                  })
-                  .catch((error) => {
-                    if (!img.isConnected) {
-                      window.driftTiming.detachedDecodeCancellations += 1;
-                      return;
-                    }
-                    if (decoding.get(img) !== state || img.currentSrc !== src)
-                      return;
-                    const failure = {
-                      src,
-                      error: String(error),
-                      complete: img.complete,
-                      naturalWidth: img.naturalWidth,
-                      currentSrc: img.currentSrc,
-                      attributeSrc: img.getAttribute("src"),
-                      loading: img.loading,
-                      connected: img.isConnected,
-                    };
-                    if (!retried) {
-                      window.driftTiming.decodeRetries.push(failure);
-                      requestAnimationFrame(() => {
-                        if (img.isConnected && img.currentSrc === src)
-                          decode(true);
-                      });
-                    } else window.driftTiming.decodeErrors.push(failure);
-                  });
-              decode();
-            }
-          }
-          if (count > 0 && window.driftTiming.firstImageMs === null)
-            window.driftTiming.firstImageMs = performance.now();
-          if (count >= 6 && window.driftTiming.firstSixImagesMs === null)
-            window.driftTiming.firstSixImagesMs = performance.now();
-          const fullyVisible = loaded.filter((img) => {
-            if (!decoding.get(img)?.decoded) return false;
-            const tile = img.closest(".scrap-collage__tile");
-            return [img, tile].every((element) => {
-              const style = getComputedStyle(element);
-              const blurs = [...style.filter.matchAll(/blur\(([^)]+)\)/g)];
+          ).observe({ type: "longtask", buffered: true });
+          document.addEventListener(
+            "error",
+            (event) => {
+              const img = event.target;
+              if (
+                img instanceof HTMLImageElement &&
+                img.matches(".scrap-collage__image")
+              )
+                window.driftTiming.scrapImageErrors.push({
+                  ms: performance.now(),
+                  src: img.getAttribute("src"),
+                  currentSrc: img.currentSrc,
+                  loading: img.loading,
+                  decoding: img.decoding,
+                  naturalWidth: img.naturalWidth,
+                  key: img.closest(".scrap-collage__tile")?.dataset.scrapKey,
+                });
+            },
+            true,
+          );
+          document.addEventListener(
+            "input",
+            (event) => {
+              if (
+                event.target instanceof HTMLInputElement &&
+                event.target.getAttribute("aria-label") === "Search scraps"
+              )
+                window.driftTiming.searchInputs.push(performance.now());
+            },
+            true,
+          );
+          document.addEventListener(
+            "load",
+            (event) => {
+              const img = event.target;
+              const search = document.querySelector(
+                'input[aria-label="Search scraps"]',
+              );
+              if (
+                img instanceof HTMLImageElement &&
+                img.matches(".scrap-collage__image") &&
+                search?.value
+              )
+                window.driftTiming.searchImageLoads.push({
+                  ms: performance.now(),
+                  key: img.closest(".scrap-collage__tile")?.dataset.scrapKey,
+                  naturalWidth: img.naturalWidth,
+                });
+            },
+            true,
+          );
+          let lastFrame = null;
+          const observeFrames = (now) => {
+            if (lastFrame !== null)
+              window.driftTiming.frameGaps.push({
+                start: lastFrame,
+                end: now,
+                duration: now - lastFrame,
+              });
+            lastFrame = now;
+            requestAnimationFrame(observeFrames);
+          };
+          requestAnimationFrame(observeFrames);
+          const decoding = new WeakMap();
+          let decodeCandidates = [];
+          let fullyVisibleFrames = 0;
+          const check = () => {
+            if (overall) return;
+            const loaded = [
+              ...document.querySelectorAll(
+                ".scrap-collage__tile img:not(.scrap-collage__favicon)",
+              ),
+            ].filter((img) => {
+              const box = img.getBoundingClientRect();
               return (
-                Number(style.opacity) >= 0.99 &&
-                blurs.every((match) => Number.parseFloat(match[1]) === 0)
+                img.complete &&
+                img.naturalWidth > 0 &&
+                box.bottom > 0 &&
+                box.top < innerHeight &&
+                box.right > 0 &&
+                box.left < innerWidth
               );
             });
-          });
-          if (
-            fullyVisible.length > 0 &&
-            window.driftTiming.firstFullyRevealedImageMs === null
-          )
-            window.driftTiming.firstFullyRevealedImageMs = performance.now();
-          if (
-            fullyVisible.length >= 6 &&
-            window.driftTiming.firstSixSharpFrameMs === null
-          )
-            window.driftTiming.firstSixSharpFrameMs = performance.now();
-          fullyVisibleFrames =
-            fullyVisible.length >= 6 ? fullyVisibleFrames + 1 : 0;
-          if (
-            fullyVisibleFrames >= 2 &&
-            window.driftTiming.firstSixFullyVisibleImagesMs === null
-          )
-            window.driftTiming.firstSixFullyVisibleImagesMs = performance.now();
-          if (window.driftTiming.firstSixFullyVisibleImagesMs === null)
-            requestAnimationFrame(check);
-        };
-        requestAnimationFrame(check);
-      });
+            const count = loaded.length;
+            decodeCandidates = decodeCandidates.filter(
+              (img) => img.isConnected,
+            );
+            for (const img of loaded) {
+              if (decodeCandidates.length >= 6) break;
+              if (
+                img.currentSrc &&
+                img.getAttribute("src") &&
+                !decodeCandidates.includes(img)
+              )
+                decodeCandidates.push(img);
+            }
+            for (const img of decodeCandidates) {
+              const src = img.currentSrc;
+              if (!src) continue;
+              let state = decoding.get(img);
+              if (!state || state.src !== src) {
+                state = { src, decoded: false };
+                decoding.set(img, state);
+                const decode = (retried = false) =>
+                  img
+                    .decode()
+                    .then(() => {
+                      if (decoding.get(img) !== state || img.currentSrc !== src)
+                        return;
+                      state.decoded = true;
+                      window.driftTiming.decodeResolutions.push({
+                        candidate: decodeCandidates.indexOf(img),
+                        ms: performance.now(),
+                        src,
+                      });
+                      if (window.driftTiming.firstImageDecodedMs === null)
+                        window.driftTiming.firstImageDecodedMs =
+                          performance.now();
+                    })
+                    .catch((error) => {
+                      if (!img.isConnected) {
+                        window.driftTiming.detachedDecodeCancellations += 1;
+                        return;
+                      }
+                      if (decoding.get(img) !== state || img.currentSrc !== src)
+                        return;
+                      const failure = {
+                        src,
+                        error: String(error),
+                        complete: img.complete,
+                        naturalWidth: img.naturalWidth,
+                        currentSrc: img.currentSrc,
+                        attributeSrc: img.getAttribute("src"),
+                        loading: img.loading,
+                        connected: img.isConnected,
+                      };
+                      if (!retried) {
+                        window.driftTiming.decodeRetries.push(failure);
+                        requestAnimationFrame(() => {
+                          if (img.isConnected && img.currentSrc === src)
+                            decode(true);
+                        });
+                      } else window.driftTiming.decodeErrors.push(failure);
+                    });
+                decode();
+              }
+            }
+            if (count > 0 && window.driftTiming.firstImageMs === null)
+              window.driftTiming.firstImageMs = performance.now();
+            if (count >= 6 && window.driftTiming.firstSixImagesMs === null)
+              window.driftTiming.firstSixImagesMs = performance.now();
+            const fullyVisible = loaded.filter((img) => {
+              if (!decoding.get(img)?.decoded) return false;
+              const tile = img.closest(".scrap-collage__tile");
+              return [img, tile].every((element) => {
+                const style = getComputedStyle(element);
+                const blurs = [...style.filter.matchAll(/blur\(([^)]+)\)/g)];
+                return (
+                  Number(style.opacity) >= 0.99 &&
+                  blurs.every((match) => Number.parseFloat(match[1]) === 0)
+                );
+              });
+            });
+            if (
+              fullyVisible.length > 0 &&
+              window.driftTiming.firstFullyRevealedImageMs === null
+            )
+              window.driftTiming.firstFullyRevealedImageMs = performance.now();
+            if (
+              fullyVisible.length >= 6 &&
+              window.driftTiming.firstSixSharpFrameMs === null
+            )
+              window.driftTiming.firstSixSharpFrameMs = performance.now();
+            fullyVisibleFrames =
+              fullyVisible.length >= 6 ? fullyVisibleFrames + 1 : 0;
+            if (
+              fullyVisibleFrames >= 2 &&
+              window.driftTiming.firstSixFullyVisibleImagesMs === null
+            )
+              window.driftTiming.firstSixFullyVisibleImagesMs =
+                performance.now();
+            if (window.driftTiming.firstSixFullyVisibleImagesMs === null)
+              requestAnimationFrame(check);
+          };
+          requestAnimationFrame(check);
+        },
+        { overall },
+      );
       const cdp = await context.newCDPSession(page);
       await cdp.send("Performance.enable");
       const before = await cdp.send("Performance.getMetrics");
@@ -635,6 +697,347 @@ try {
       const coldLaunchToNavigationMs =
         relaunchedAt === null ? null : Date.now() - relaunchedAt;
       await page.goto(`${origin}/scraps.html`, { waitUntil: "load" });
+      if (overall) {
+        const windows = [];
+        const measure = async (name, action, settle) => {
+          const start =
+            name === "initial-drift" || name === "reload-drift"
+              ? 0
+              : await page.evaluate(() => performance.now());
+          const profileAction =
+            process.env.SCRAPS_OVERALL_PROFILE_ACTION === name;
+          if (profileAction) {
+            await cdp.send("Profiler.enable");
+            await cdp.send("Profiler.start");
+            await cdp.send("Tracing.start", {
+              categories:
+                "devtools.timeline,disabled-by-default-devtools.timeline,disabled-by-default-devtools.timeline.stack,blink.user_timing",
+              transferMode: "ReturnAsStream",
+            });
+          }
+          await action();
+          if (settle) await settle();
+          else await waitVisibleImages(page);
+          await page.evaluate(
+            () =>
+              new Promise((resolveFrame) =>
+                requestAnimationFrame(() =>
+                  requestAnimationFrame(resolveFrame),
+                ),
+              ),
+          );
+          const metrics = await page.evaluate((start) => {
+            const end = performance.now();
+            const inputs = window.driftTiming.searchInputs.filter(
+              (time) => time >= start && time < end,
+            );
+            const imageLoads = window.driftTiming.searchImageLoads.filter(
+              (event) => event.ms >= start && event.ms < end,
+            );
+            const tasks = window.driftTiming.longTasks.filter(
+              (task) => task.start >= start && task.start < end,
+            );
+            const gaps = window.driftTiming.frameGaps.filter(
+              (gap) => gap.end >= start && gap.end < end,
+            );
+            return {
+              start,
+              end,
+              durationMs: end - start,
+              lastInputToPaintMs: inputs.length
+                ? end - inputs[inputs.length - 1]
+                : null,
+              inputDurationMs:
+                inputs.length > 1 ? inputs[inputs.length - 1] - inputs[0] : 0,
+              inputTimestamps: inputs,
+              imageLoads,
+              maxFrameGapMs: Math.max(0, ...gaps.map((gap) => gap.duration)),
+              longTaskCount: tasks.length,
+              longTaskDurationMs: tasks.reduce(
+                (sum, task) => sum + task.duration,
+                0,
+              ),
+              longestTaskMs: Math.max(0, ...tasks.map((task) => task.duration)),
+              tasks,
+              gaps: gaps.filter((gap) => gap.duration > 32),
+              tileCount: document.querySelectorAll(".scrap-collage__tile")
+                .length,
+            };
+          }, start);
+          if (profileAction) {
+            const { profile: cpuProfile } = await cdp.send("Profiler.stop");
+            await writeFile(
+              `${evidence}/${name}.cpuprofile`,
+              JSON.stringify(cpuProfile),
+            );
+            const completed = new Promise((resolveTrace) =>
+              cdp.once("Tracing.tracingComplete", resolveTrace),
+            );
+            await cdp.send("Tracing.end");
+            const { stream } = await completed;
+            let trace = "";
+            while (true) {
+              const chunk = await cdp.send("IO.read", { handle: stream });
+              trace += chunk.data;
+              if (chunk.eof) break;
+            }
+            await cdp.send("IO.close", { handle: stream });
+            await writeFile(`${evidence}/${name}.trace.json`, trace);
+          }
+          if (
+            name === "search-typing" &&
+            process.env.SCRAPS_CAPTURE_PREVIEW_PROBE === "1"
+          )
+            await writeFile(
+              `${evidence}/preview-probe.json`,
+              JSON.stringify(
+                await page.evaluate(() => window.__scrapPreviewProbe ?? null),
+                null,
+                2,
+              ),
+            );
+          windows.push({ name, ...metrics });
+          await writeFile(
+            `${evidence}/overall-${run + 1}.json`,
+            JSON.stringify({ extension, seeded, windows }, null, 2),
+          );
+          console.log(
+            JSON.stringify({
+              phase: "overall",
+              name,
+              durationMs: metrics.durationMs,
+              maxFrameGapMs: metrics.maxFrameGapMs,
+              longestTaskMs: metrics.longestTaskMs,
+            }),
+          );
+        };
+        await measure("initial-drift", async () => {});
+        await page.screenshot({
+          path: `${evidence}/overall-drift-${run + 1}.png`,
+        });
+        await measure("archive", async () =>
+          page.getByRole("button", { name: "archive", exact: true }).click(),
+        );
+        await page.screenshot({
+          path: `${evidence}/overall-archive-${run + 1}.png`,
+        });
+        await measure("place-filter", async () => {
+          await page.getByRole("button", { name: /^from / }).click();
+          await page.locator('[data-place="notebook.example"]').click();
+          await page
+            .getByRole("textbox", { name: "Find a domain or page" })
+            .press("Escape");
+        });
+        await page.screenshot({
+          path: `${evidence}/overall-filtered-${run + 1}.png`,
+        });
+        await measure("clear-place", async () => {
+          await page.getByRole("button", { name: /^from / }).click();
+          await page
+            .getByRole("button", { name: "clear", exact: true })
+            .click();
+          await page
+            .getByRole("textbox", { name: "Find a domain or page" })
+            .press("Escape");
+        });
+        const search = page.getByRole("textbox", {
+          name: "Search scraps",
+          exact: true,
+        });
+        await measure(
+          "search-typing",
+          async () =>
+            search.pressSequentially("Visual notebook page 123", { delay: 40 }),
+          async () => {
+            await expect(page.locator(".scrap-collage__tile")).toHaveCount(1);
+            await waitVisibleImages(page, 1);
+          },
+        );
+        await measure("clear-search", async () => search.fill(""));
+        await measure(
+          "kind-no-match",
+          async () => {
+            await page.getByRole("button", { name: /^type / }).click();
+            await page.locator('[data-scrap-kind="button"]').click();
+            await page.locator('[data-scrap-kind="button"]').press("Escape");
+          },
+          async () => {
+            await expect(page.getByRole("status")).toHaveText(
+              "No scraps match these filters.",
+            );
+          },
+        );
+        await measure("clear-kind", async () => {
+          await page.getByRole("button", { name: /^type / }).click();
+          await page.locator('[data-scrap-kind="all"]').click();
+          await page.locator('[data-scrap-kind="all"]').press("Escape");
+        });
+        await measure("return-drift", async () =>
+          page.getByRole("button", { name: "drift", exact: true }).click(),
+        );
+        await page.screenshot({
+          path: `${evidence}/overall-finished-${run + 1}.png`,
+        });
+        await measure("reload-drift", async () =>
+          page.reload({ waitUntil: "load" }),
+        );
+        await page.screenshot({
+          path: `${evidence}/overall-reload-${run + 1}.png`,
+        });
+        const tileDimensions = await page
+          .locator(".scrap-collage__image")
+          .evaluateAll((images) => ({
+            maxWidth: Math.max(...images.map((img) => img.naturalWidth)),
+            maxHeight: Math.max(...images.map((img) => img.naturalHeight)),
+          }));
+        await page.locator(".scrap-collage__tile").first().click();
+        const originalDimensions = await page
+          .locator(".scrap-lightbox__scrap img")
+          .evaluate(async (img) => {
+            await img.decode();
+            return { width: img.naturalWidth, height: img.naturalHeight };
+          });
+        assert.deepEqual(originalDimensions, { width: 1200, height: 800 });
+        await page.waitForFunction(() => {
+          const overlay = document.querySelector(".scrap-lightbox--visible");
+          return (
+            overlay &&
+            Number(getComputedStyle(overlay).opacity) === 1 &&
+            overlay
+              .getAnimations({ subtree: true })
+              .every((animation) => animation.playState === "finished")
+          );
+        });
+        const originalPixels = await page
+          .locator(".scrap-lightbox__scrap img")
+          .screenshot();
+        const paintedOriginalFraction = await page.evaluate(async (base64) => {
+          const image = new Image();
+          image.src = `data:image/png;base64,${base64}`;
+          await image.decode();
+          const canvas = new OffscreenCanvas(image.width, image.height);
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(image, 0, 0);
+          const pixels = ctx.getImageData(0, 0, image.width, image.height).data;
+          let saturated = 0;
+          for (let i = 0; i < pixels.length; i += 4) {
+            const max = Math.max(pixels[i], pixels[i + 1], pixels[i + 2]);
+            const min = Math.min(pixels[i], pixels[i + 1], pixels[i + 2]);
+            if (max > 0 && (max - min) / max >= 0.45) saturated++;
+          }
+          return saturated / (image.width * image.height);
+        }, originalPixels.toString("base64"));
+        assert.ok(
+          paintedOriginalFraction > 0.3,
+          "Examine image has real fixture pixels",
+        );
+        await page.screenshot({
+          path: `${evidence}/overall-original-${run + 1}.png`,
+        });
+        await page
+          .getByRole("button", { name: "Close examine view", exact: true })
+          .click();
+        await expect(page.locator(".scrap-lightbox")).toHaveCount(0);
+        const cache = await page.evaluate(async () => {
+          const db = await new Promise((resolveDb, reject) => {
+            const request = indexedDB.open("scrap_image_copies_db");
+            request.onsuccess = () => resolveDb(request.result);
+            request.onerror = () => reject(request.error);
+          });
+          const request = (value) =>
+            new Promise((resolveValue, reject) => {
+              value.onsuccess = () => resolveValue(value.result);
+              value.onerror = () => reject(value.error);
+            });
+          const originals = await request(
+            db.transaction("blobs").objectStore("blobs").getAllKeys(),
+          );
+          const original = await request(
+            db.transaction("blobs").objectStore("blobs").get("0".repeat(64)),
+          );
+          const previews = db.objectStoreNames.contains("previews")
+            ? await request(
+                db.transaction("previews").objectStore("previews").getAll(),
+              )
+            : [];
+          db.close();
+          const digest = [
+            ...new Uint8Array(
+              await crypto.subtle.digest(
+                "SHA-256",
+                await original.blob.arrayBuffer(),
+              ),
+            ),
+          ]
+            .map((byte) => byte.toString(16).padStart(2, "0"))
+            .join("");
+          return {
+            originalCount: originals.length,
+            originalKeys: originals,
+            originalDigest: digest,
+            previewCount: previews.length,
+            previewBytes: previews.reduce((sum, row) => sum + row.blob.size, 0),
+          };
+        });
+        if (cache.previewCount > 0)
+          assert.ok(
+            tileDimensions.maxWidth <= 640 && tileDimensions.maxHeight <= 640,
+            "Gallery images use bounded previews",
+          );
+        assert.equal(cache.originalCount, 1000);
+        assert.equal(cache.originalDigest, seeded.originalDigest);
+        assert.deepEqual(
+          cache.originalKeys,
+          Array.from({ length: 1000 }, (_, index) =>
+            index.toString(16).padStart(64, "0"),
+          ),
+        );
+        await writeFile(
+          `${evidence}/cache-${run + 1}.json`,
+          JSON.stringify(
+            {
+              ...cache,
+              originalKeys: undefined,
+              originalDimensions,
+              tileDimensions,
+            },
+            null,
+            2,
+          ),
+        );
+        const unexpected = errors.filter(
+          (error) =>
+            !(
+              typeof error === "object" &&
+              error.text ===
+                "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector" &&
+              /^https:\/\/(fonts\.googleapis\.com|www\.google\.com|icons\.duckduckgo\.com)\//.test(
+                error.url,
+              )
+            ),
+        );
+        await measure("responsive-mobile", async () =>
+          page.setViewportSize({ width: 390, height: 844 }),
+        );
+        await page.screenshot({
+          path: `${evidence}/overall-mobile-${run + 1}.png`,
+        });
+        assert.deepEqual(unexpected, []);
+        assert.deepEqual(
+          await page.evaluate(() => window.driftTiming.scrapImageErrors),
+          [],
+        );
+        results.push({
+          run: run + 1,
+          windows,
+          cache: { ...cache, originalKeys: undefined },
+          originalDimensions,
+          tileDimensions,
+          errors: [],
+        });
+        await page.close();
+        continue;
+      }
       await page.waitForFunction(
         () => window.driftTiming.firstImageMs !== null,
       );
@@ -967,6 +1370,7 @@ try {
       ].map((key) => [key, median(key)]),
     );
     const report = {
+      overall,
       extension,
       motion,
       coldBrowser: process.env.SCRAPS_COLD_BROWSER === "1",
@@ -977,7 +1381,9 @@ try {
       medians,
       queryTimings,
       evidence,
-      note: "Full archive readiness includes switching from Drift to Archive after visible images load.",
+      note: overall
+        ? "Pixel readiness includes screenshot validation overhead, bounded metadata polling at 50ms and pixel sampling at 100ms. Frame gaps are measured continuously. First visit begins with original copies only; reload uses naturally derived previews."
+        : "Full archive readiness includes switching from Drift to Archive after visible images load.",
     };
     await writeFile(
       `${evidence}/results.json`,
