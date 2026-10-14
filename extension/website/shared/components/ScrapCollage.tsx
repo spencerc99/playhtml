@@ -273,8 +273,13 @@ function compareDomainScraps(a: ScrapItem, b: ScrapItem, seed: number): number {
 }
 
 function newestUniqueScraps(items: ScrapItem[]): ScrapItem[] {
+  return newestUniqueGroupedScraps(groupPhotoEncounters(items));
+}
+
+/** Selects the newest scraps after photo encounters have already been grouped. */
+function newestUniqueGroupedScraps(items: ScrapItem[]): ScrapItem[] {
   const newestByCanonicalKey = new Map<string, ScrapItem>();
-  for (const item of groupPhotoEncounters(items)) {
+  for (const item of items) {
     const canonicalKey = canonicalScrapKey(item);
     const current = newestByCanonicalKey.get(canonicalKey);
     if (!current || item.ts > current.ts) {
@@ -293,13 +298,21 @@ function newestUniqueScraps(items: ScrapItem[]): ScrapItem[] {
 }
 
 /** Counts scraps the way the archive lists them, once per scrap however often it was met. */
-function countUniqueScraps(items: ScrapItem[]): number {
-  return newestUniqueScraps(items).length;
+function countUniqueGroupedScraps(items: ScrapItem[]): number {
+  return newestUniqueGroupedScraps(items).length;
 }
 
 export function curateScraps(
   items: ScrapItem[],
   opts: CurateScrapsOptions,
+): ScrapItem[] {
+  return curateUniqueScraps(items, opts, false);
+}
+
+function curateUniqueScraps(
+  items: ScrapItem[],
+  opts: CurateScrapsOptions,
+  alreadyUnique = true,
 ): ScrapItem[] {
   const perDomainCap = Math.max(
     0,
@@ -312,7 +325,7 @@ export function curateScraps(
   if (perDomainCap === 0 || targetCount === 0) return [];
 
   const scrapsByDomain = new Map<string, ScrapItem[]>();
-  for (const item of newestUniqueScraps(items)) {
+  for (const item of alreadyUnique ? items : newestUniqueScraps(items)) {
     const domainScraps = scrapsByDomain.get(item.domain);
     if (domainScraps) {
       domainScraps.push(item);
@@ -1557,8 +1570,8 @@ export const COLLAGE_STYLES = `
     filter: blur(10px) saturate(0.35);
     opacity: 0;
     transition:
-      filter 760ms ease,
-      opacity 760ms ease;
+      filter 180ms ease,
+      opacity 180ms ease;
   }
 
   .scrap-collage__developing.scrap-collage__developed {
@@ -2164,7 +2177,7 @@ export function ScrapCollage({
 
   const groupedItems = useMemo(() => groupPhotoEncounters(items), [items]);
   const uniqueItems = useMemo(
-    () => newestUniqueScraps(groupedItems),
+    () => newestUniqueGroupedScraps(groupedItems),
     [groupedItems],
   );
   const filteredItems = useMemo(
@@ -2174,13 +2187,17 @@ export function ScrapCollage({
       ),
     [groupedItems, selectedKind, shape, places, search, when],
   );
+  const filteredUniqueItems = useMemo(
+    () => newestUniqueGroupedScraps(filteredItems),
+    [filteredItems],
+  );
   const archiveScraps = useMemo(
     () =>
-      newestUniqueScraps(filteredItems).sort(
+      [...filteredUniqueItems].sort(
         (first, second) =>
           second.ts - first.ts || first.key.localeCompare(second.key),
       ),
-    [filteredItems],
+    [filteredUniqueItems],
   );
   const filtersActive =
     selectedKind.length > 0 ||
@@ -2244,17 +2261,18 @@ export function ScrapCollage({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedKeys]);
   const archiveSizeBounds = useMemo(
-    () => tierBounds(archiveScraps),
-    [archiveScraps],
+    () =>
+      archiveMode ? tierBounds(archiveScraps) : { lowerArea: 0, upperArea: 0 },
+    [archiveMode, archiveScraps],
   );
   const curatedScraps = useMemo(
     () =>
-      curateScraps(filteredItems, {
+      curateUniqueScraps(filteredUniqueItems, {
         seed: layoutSeed,
         targetCount: selectedTargetCount,
         perDomainCap: perDomainCap ?? Infinity,
       }),
-    [filteredItems, layoutSeed, perDomainCap, selectedTargetCount],
+    [filteredUniqueItems, layoutSeed, perDomainCap, selectedTargetCount],
   );
   /**
    * Every scrap the tide can reach, ordered so the front of the queue is the
@@ -2353,7 +2371,10 @@ export function ScrapCollage({
     ],
   );
 
-  const visits = useMemo(() => archiveVisits(archiveScraps), [archiveScraps]);
+  const visits = useMemo(
+    () => (archiveMode && showSources ? archiveVisits(archiveScraps) : []),
+    [archiveMode, showSources, archiveScraps],
+  );
   const sourceMarks = useMemo(() => {
     if (!archiveMode || !showSources || archiveWindow.layout.length === 0) {
       return [];
@@ -2512,7 +2533,11 @@ export function ScrapCollage({
 
     const updateSize = () => {
       const bounds = container.getBoundingClientRect();
-      setContainerSize({ width: bounds.width, height: bounds.height });
+      setContainerSize((current) =>
+        current.width === bounds.width && current.height === bounds.height
+          ? current
+          : { width: bounds.width, height: bounds.height },
+      );
     };
     updateSize();
 
@@ -3090,7 +3115,7 @@ export function ScrapCollage({
                   when={when}
                   onWhen={setWhen}
                   matchCount={archiveScraps.length}
-                  countScraps={countUniqueScraps}
+                  countScraps={countUniqueGroupedScraps}
                 />
               </div>
               {onDeleteScraps &&
