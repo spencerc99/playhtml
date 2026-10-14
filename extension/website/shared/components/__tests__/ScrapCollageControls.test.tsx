@@ -100,6 +100,186 @@ describe("ScrapCollage controls", () => {
   const tiles = () =>
     container.querySelectorAll<HTMLElement>("[data-scrap-key]");
 
+  it("remembers completed images when their tiles remount between views", () => {
+    render();
+    const image = container.querySelector<HTMLImageElement>(
+      ".scrap-collage__image",
+    )!;
+    const key =
+      image.closest<HTMLElement>("[data-scrap-key]")!.dataset.scrapKey!;
+    act(() => image.dispatchEvent(new Event("load")));
+    expect(image.classList.contains("scrap-collage__developed")).toBe(true);
+    const view = container.querySelector(".scrap-collage__view-switch")!;
+    act(() =>
+      view.querySelector<HTMLButtonElement>("button:last-child")!.click(),
+    );
+    act(() =>
+      view.querySelector<HTMLButtonElement>("button:first-child")!.click(),
+    );
+    const remounted = Array.from(tiles()).find(
+      (tile) => tile.dataset.scrapKey === key,
+    )!;
+    expect(
+      remounted
+        .querySelector(".scrap-collage__image")!
+        .classList.contains("scrap-collage__developed"),
+    ).toBe(true);
+    expect(
+      remounted.querySelector(".scrap-collage__swatch--settled"),
+    ).not.toBeNull();
+  });
+
+  it("prioritizes six images among mixed scraps and leaves the rest lazy", () => {
+    render();
+    const images = Array.from(
+      container.querySelectorAll<HTMLImageElement>(
+        ".scrap-collage__image, .scrap-collage__cursor",
+      ),
+    );
+    expect(images.length).toBeGreaterThan(6);
+    expect(
+      images
+        .slice(0, 6)
+        .every((image) => image.getAttribute("decoding") === "async"),
+    ).toBe(true);
+    expect(
+      images.slice(6).every((image) => !image.hasAttribute("decoding")),
+    ).toBe(true);
+    expect(images.slice(0, 6).every((image) => image.hasAttribute("src"))).toBe(
+      true,
+    );
+    expect(images.slice(6).every((image) => !image.hasAttribute("src"))).toBe(
+      true,
+    );
+    expect(
+      images
+        .slice(0, 6)
+        .map((image) => [
+          image.getAttribute("loading"),
+          image.getAttribute("fetchpriority"),
+        ]),
+    ).toEqual(Array.from({ length: 6 }, () => ["eager", "high"]));
+    expect(
+      images
+        .slice(6)
+        .every(
+          (image) =>
+            image.getAttribute("loading") === "lazy" &&
+            !image.hasAttribute("fetchpriority"),
+        ),
+    ).toBe(true);
+  });
+
+  it("releases deferred sources after initial images settle or the timeout", () => {
+    vi.useFakeTimers();
+    try {
+      render();
+      const images = Array.from(
+        container.querySelectorAll<HTMLImageElement>(".scrap-collage__image"),
+      );
+      act(() =>
+        images
+          .slice(0, 6)
+          .forEach((image) => image.dispatchEvent(new Event("load"))),
+      );
+      expect(images.slice(6).every((image) => !image.hasAttribute("src"))).toBe(
+        true,
+      );
+      act(() => vi.advanceTimersByTime(100));
+      expect(images.every((image) => image.hasAttribute("src"))).toBe(true);
+      expect(images.every((image) => !image.hasAttribute("decoding"))).toBe(
+        true,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails open after one second when initial images never complete", () => {
+    vi.useFakeTimers();
+    try {
+      render();
+      const images = Array.from(
+        container.querySelectorAll<HTMLImageElement>(".scrap-collage__image"),
+      );
+      expect(images.slice(6).every((image) => !image.hasAttribute("src"))).toBe(
+        true,
+      );
+      act(() => vi.advanceTimersByTime(1000));
+      expect(images.every((image) => image.hasAttribute("src"))).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([false, true])(
+    "ignores late decode completion after timeout (unmounted: %s)",
+    async (unmounted) => {
+      vi.useFakeTimers();
+      const frames = vi.spyOn(window, "requestAnimationFrame");
+      try {
+        render();
+        const finish: (() => void)[] = [];
+        const images = Array.from(
+          container.querySelectorAll<HTMLImageElement>(".scrap-collage__image"),
+        ).slice(0, 6);
+        for (const image of images) {
+          Object.defineProperty(image, "decode", {
+            value: () => new Promise<void>((resolve) => finish.push(resolve)),
+          });
+        }
+        act(() =>
+          images.forEach((image) => image.dispatchEvent(new Event("load"))),
+        );
+        act(() => vi.advanceTimersByTime(1000));
+        if (unmounted) act(() => root.render(null));
+        frames.mockClear();
+        await act(async () => finish.forEach((resolve) => resolve()));
+        expect(frames).not.toHaveBeenCalled();
+      } finally {
+        frames.mockRestore();
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("shows the initial shore immediately and animates later arrivals", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    const attributes = vi.spyOn(Element.prototype, "setAttribute");
+    try {
+      render();
+      expect(tiles().length).toBe(responsiveTargetCount(1_600, 1_000));
+      expect(
+        attributes.mock.calls.some(
+          ([name, value]) =>
+            name === "class" &&
+            value.includes("scrap-collage__tile--washing-in"),
+        ),
+      ).toBe(false);
+      attributes.mockClear();
+      const shuffle = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("shuffle"),
+      )!;
+      act(() => shuffle.click());
+      expect(
+        attributes.mock.calls.some(
+          ([name, value]) =>
+            name === "class" &&
+            value.includes("scrap-collage__tile--washing-in"),
+        ),
+      ).toBe(true);
+    } finally {
+      attributes.mockRestore();
+    }
+  });
+
   it.each(["button", "svg-icon", "cursor"] as const)(
     "finds earlier %s occurrences before deduplication",
     (kind) => {

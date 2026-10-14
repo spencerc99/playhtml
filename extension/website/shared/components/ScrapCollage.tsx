@@ -554,12 +554,15 @@ function placeholderColor(domain: string): string {
   return `hsl(${hue}, 30%, 72%)`;
 }
 
+let collectedDateFormatter: Intl.DateTimeFormat | undefined;
+
 function formatCollectedDate(timestamp: number): string {
-  return new Intl.DateTimeFormat("en-US", {
+  collectedDateFormatter ??= new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(timestamp);
+  });
+  return collectedDateFormatter.format(timestamp);
 }
 
 function clamp(minimum: number, maximum: number, value: number): number {
@@ -1042,13 +1045,16 @@ export function buildArchiveSources(
   return marks;
 }
 
+let visitTimeFormatter: Intl.DateTimeFormat | undefined;
+
 function formatVisitTime(timestamp: number): string {
-  return new Intl.DateTimeFormat("en-US", {
+  visitTimeFormatter ??= new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(timestamp);
+  });
+  return visitTimeFormatter.format(timestamp);
 }
 
 /**
@@ -1566,19 +1572,6 @@ export const COLLAGE_STYLES = `
     opacity: 0;
   }
 
-  .scrap-collage__developing {
-    filter: blur(10px) saturate(0.35);
-    opacity: 0;
-    transition:
-      filter 180ms ease,
-      opacity 180ms ease;
-  }
-
-  .scrap-collage__developing.scrap-collage__developed {
-    filter: blur(0) saturate(1);
-    opacity: 1;
-  }
-
   .scrap-collage__tile--washing-in {
     animation: scrap-collage-wash-in 900ms ease forwards;
   }
@@ -1611,14 +1604,8 @@ export const COLLAGE_STYLES = `
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .scrap-collage__swatch,
-    .scrap-collage__developing {
+    .scrap-collage__swatch {
       transition: none;
-    }
-
-    .scrap-collage__developing {
-      filter: none;
-      opacity: 1;
     }
 
     .scrap-collage__tile--washing-in,
@@ -1834,6 +1821,12 @@ export interface ScrapContentProps {
   onLoad: () => void;
   /** Laid-out tile width, so text-bearing scraps can size themselves to it. */
   tileWidth?: number;
+  /** Requests the first visible images before the rest of the collage. */
+  imagePriority?: "high";
+  /** Resolves local copies without starting the browser's image request yet. */
+  deferImage?: boolean;
+  /** Signals when the requested decode settles, including failures. */
+  onImageReady?: () => void;
   /**
    * Whether dark lettering sits on a light chequer. Browsed and drawer tiles
    * show it; a piece placed in a collage sits directly on the collage.
@@ -1841,11 +1834,7 @@ export interface ScrapContentProps {
   letteringChecker?: boolean;
 }
 
-/**
- * Tinted stand-in occupying the exact box the remote image will fill, so the
- * scrap holds its footprint from first paint and the image develops in over it
- * rather than popping into an empty slot.
- */
+/** Keeps image tiles sized and tinted while their source loads. */
 function ScrapSwatch({
   domain,
   loaded,
@@ -1950,11 +1939,21 @@ export function ScrapContent({
   onError,
   onLoad,
   tileWidth,
+  imagePriority,
+  deferImage = false,
+  onImageReady,
   letteringChecker = true,
 }: ScrapContentProps) {
   const imageSrc = useScrapImageSrc(
     item.kind === "image" ? item.src : undefined,
   );
+  const imageLoaded = (event: React.SyntheticEvent<HTMLImageElement>) => {
+    onLoad();
+    if (!onImageReady) return;
+    const image = event.currentTarget;
+    if (typeof image.decode !== "function") onImageReady();
+    else void image.decode().then(onImageReady, onImageReady);
+  };
   switch (item.kind) {
     case "image":
       return (
@@ -1964,11 +1963,13 @@ export function ScrapContent({
             className={`scrap-collage__image scrap-collage__developing${
               loaded ? " scrap-collage__developed" : ""
             }`}
-            src={imageSrc ?? undefined}
+            src={deferImage ? undefined : (imageSrc ?? undefined)}
             alt={item.alt ?? ""}
-            loading="lazy"
+            loading={imagePriority ? "eager" : "lazy"}
+            fetchPriority={imagePriority}
+            decoding={imagePriority ? "async" : undefined}
             draggable={false}
-            onLoad={onLoad}
+            onLoad={imageLoaded}
             onError={onError}
           />
         </>
@@ -2065,16 +2066,38 @@ export function ScrapContent({
             className={`scrap-collage__cursor scrap-collage__developing${
               loaded ? " scrap-collage__developed" : ""
             }`}
-            src={item.url}
+            src={deferImage ? undefined : item.url}
             alt=""
-            loading="lazy"
+            loading={imagePriority ? "eager" : "lazy"}
+            fetchPriority={imagePriority}
+            decoding={imagePriority ? "async" : undefined}
             draggable={false}
-            onLoad={onLoad}
+            onLoad={imageLoaded}
             onError={onError}
           />
         </>
       );
   }
+}
+
+/** Keeps image completion local while remembering loaded scraps across tile remounts. */
+function ScrapTileContent({
+  loadedKeys,
+  ...props
+}: Omit<ScrapContentProps, "loaded" | "onLoad"> & {
+  loadedKeys: Set<string>;
+}) {
+  const [loaded, setLoaded] = useState(() => loadedKeys.has(props.item.key));
+  return (
+    <ScrapContent
+      {...props}
+      loaded={loaded}
+      onLoad={() => {
+        loadedKeys.add(props.item.key);
+        setLoaded(true);
+      }}
+    />
+  );
 }
 
 /**
@@ -2140,9 +2163,27 @@ export function ScrapCollage({
   const [failedFavicons, setFailedFavicons] = useState<Set<string>>(
     () => new Set(),
   );
-  const [loadedScraps, setLoadedScraps] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const loadedScrapsRef = useRef(new Set<string>());
+  const initialImageKeysRef = useRef<Set<string> | null>(null);
+  const settledImageKeysRef = useRef(new Set<string>());
+  const initialImageFrameRef = useRef<number | null>(null);
+  const initialImagesActiveRef = useRef(true);
+  const initialImagesReleasedRef = useRef(false);
+  useEffect(() => {
+    initialImagesActiveRef.current = true;
+    return () => {
+      initialImagesActiveRef.current = false;
+      if (initialImageFrameRef.current !== null) {
+        window.cancelAnimationFrame(initialImageFrameRef.current);
+        initialImageFrameRef.current = null;
+      }
+    };
+  }, []);
+  const [initialImagesReleased, setInitialImagesReleased] = useState(false);
+  const releaseInitialImages = () => {
+    initialImagesReleasedRef.current = true;
+    setInitialImagesReleased(true);
+  };
   const prefersReducedMotion = usePrefersReducedMotion();
 
   const [tide, setTide] = useState<TideState | null>(null);
@@ -2303,6 +2344,7 @@ export function ScrapCollage({
   );
 
   useEffect(() => {
+    if (containerSize.width <= 0 || containerSize.height <= 0) return;
     setTide((current) => {
       const shuffled = tideShuffleIndexRef.current !== shuffleIndex;
       tideShuffleIndexRef.current = shuffleIndex;
@@ -2312,7 +2354,13 @@ export function ScrapCollage({
         shuffled ? undefined : (current ?? undefined),
       );
     });
-  }, [shuffleIndex, tideCapacity, tidePool]);
+  }, [
+    containerSize.width,
+    containerSize.height,
+    shuffleIndex,
+    tideCapacity,
+    tidePool,
+  ]);
 
   /**
    * The shore as slots: one entry per position, `null` where a scrap has washed
@@ -2560,15 +2608,6 @@ export function ScrapCollage({
       if (current.has(domain)) return current;
       const next = new Set(current);
       next.add(domain);
-      return next;
-    });
-  };
-
-  const markScrapLoaded = (key: string) => {
-    setLoadedScraps((current) => {
-      if (current.has(key)) return current;
-      const next = new Set(current);
-      next.add(key);
       return next;
     });
   };
@@ -2822,6 +2861,67 @@ export function ScrapCollage({
       }
     : {};
 
+  const prioritizedImageKeys = new Set<string>();
+  for (const scrap of layout) {
+    if (
+      (scrap.item.kind === "image" || scrap.item.kind === "cursor") &&
+      !failedScraps.has(scrap.item.key) &&
+      isRenderableScrap(scrap.item)
+    ) {
+      prioritizedImageKeys.add(scrap.item.key);
+      if (prioritizedImageKeys.size === 6) break;
+    }
+  }
+
+  if (!initialImageKeysRef.current && layout.length > 0) {
+    initialImageKeysRef.current = prioritizedImageKeys;
+  }
+  const initialImageCount = initialImageKeysRef.current?.size;
+  useEffect(() => {
+    if (initialImagesReleased || initialImageCount === undefined) return;
+    const timeout = window.setTimeout(releaseInitialImages, 1000);
+    return () => {
+      window.clearTimeout(timeout);
+      if (initialImageFrameRef.current !== null) {
+        window.cancelAnimationFrame(initialImageFrameRef.current);
+        initialImageFrameRef.current = null;
+      }
+    };
+  }, [initialImageCount, initialImagesReleased]);
+  useEffect(() => {
+    if (initialImagesReleased || !initialImageKeysRef.current) return;
+    const visibleKeys = new Set(layout.map((scrap) => scrap.item.key));
+    if (
+      initialImageCount === 0 ||
+      [...initialImageKeysRef.current].some(
+        (key) => !visibleKeys.has(key) || failedScraps.has(key),
+      )
+    )
+      releaseInitialImages();
+  }, [layout, failedScraps, initialImageCount, initialImagesReleased]);
+  const imageReady = (key: string) => {
+    if (
+      !initialImagesActiveRef.current ||
+      initialImagesReleasedRef.current ||
+      !initialImageKeysRef.current?.has(key)
+    )
+      return;
+    settledImageKeysRef.current.add(key);
+    if (
+      settledImageKeysRef.current.size !== initialImageCount ||
+      initialImageFrameRef.current !== null
+    )
+      return;
+    initialImageFrameRef.current = window.requestAnimationFrame(() => {
+      initialImageFrameRef.current = window.requestAnimationFrame(() => {
+        initialImageFrameRef.current = window.requestAnimationFrame(() => {
+          initialImageFrameRef.current = null;
+          releaseInitialImages();
+        });
+      });
+    });
+  };
+
   const renderTile = (scrap: ScrapLayout, modifier: string) => {
     if (failedScraps.has(scrap.item.key) || !isRenderableScrap(scrap.item)) {
       return null;
@@ -2902,12 +3002,30 @@ export function ScrapCollage({
           openExamine(scrap.item, event.currentTarget);
         }}
       >
-        <ScrapContent
+        <ScrapTileContent
           item={scrap.item}
-          loaded={loadedScraps.has(scrap.item.key)}
-          onLoad={() => markScrapLoaded(scrap.item.key)}
-          onError={() => removeScrap(scrap.item.key)}
+          loadedKeys={loadedScrapsRef.current}
+          onError={() => {
+            imageReady(scrap.item.key);
+            removeScrap(scrap.item.key);
+          }}
           tileWidth={scrap.width}
+          imagePriority={
+            !initialImagesReleased &&
+            initialImageKeysRef.current?.has(scrap.item.key)
+              ? "high"
+              : undefined
+          }
+          deferImage={
+            !initialImagesReleased &&
+            !initialImageKeysRef.current?.has(scrap.item.key)
+          }
+          onImageReady={
+            !initialImagesReleased &&
+            initialImageKeysRef.current?.has(scrap.item.key)
+              ? () => imageReady(scrap.item.key)
+              : undefined
+          }
         />
         <div
           className="scrap-collage__provenance"
@@ -2954,7 +3072,9 @@ export function ScrapCollage({
       }
     }
   }
-  renderedKeysRef.current = new Set(layout.map((scrap) => scrap.item.key));
+  if (layout.length > 0 || renderedKeysRef.current) {
+    renderedKeysRef.current = new Set(layout.map((scrap) => scrap.item.key));
+  }
 
   const tiles = layout.map((scrap) =>
     renderTile(
