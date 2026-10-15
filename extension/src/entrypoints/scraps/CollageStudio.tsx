@@ -215,6 +215,7 @@ import {
   setCollageSoundsMuted,
   type CollageSound,
 } from "./collageSounds";
+import { snapMove, type SnapGuide } from "./moveSnap";
 import {
   isEmptyChange,
   piecesChange,
@@ -238,7 +239,26 @@ const PHONE_PLACED_FRAME_SHARE = 0.4;
  * stack them into one pile that has to be pulled apart by hand.
  */
 const PHONE_FAN_STEP_SHARE = 0.18;
+/**
+ * How long a finger rests on bare paper before a drag from it draws a
+ * selection box, and how far it may wander meanwhile, in screen pixels. The
+ * same touch-and-hold Freeform, Pages and Keynote use: a quick swipe there
+ * selects nothing.
+ */
+const PHONE_BOX_HOLD_MS = 400;
+const PHONE_BOX_HOLD_SLOP = 8;
 const ROTATION_SNAP_DEGREES = 15;
+/**
+ * How near, in screen pixels, a carried piece's edge or middle comes to
+ * another's (or the frame's) before it catches there.
+ */
+const MOVE_SNAP_REACH = 6;
+/** A carried piece scuffs once per this many screen pixels of travel... */
+const SLIDE_EVERY_PX = 26;
+/** ...and no more often than this, in milliseconds. */
+const SLIDE_MIN_MS = 55;
+/** Pointer speed, in screen pixels per millisecond, that scuffs loudest. */
+const SLIDE_FULL_SPEED = 1.6;
 /** How far a pasted or duplicated piece lands from its original. */
 const COPY_OFFSET = 24;
 /** Stage padding around the frame, in screen pixels. */
@@ -261,6 +281,8 @@ const CLICK_MAX_MS = 350;
 const LONG_PRESS_MS = 500;
 /** How far a resting finger may wander, in screen pixels, and still be held. */
 const LONG_PRESS_SLOP = 10;
+/** Across the ring under a finger that has rested long enough, in pixels. */
+const HOLD_MARK_SIZE = 44;
 
 /** What a scaling drag took hold of: a corner or an edge of the box. */
 type ScaleGrip =
@@ -1391,6 +1413,10 @@ export function CollageStudio({
     }
     setGesture({ kind: "idle" });
     setGestureReadout(null);
+    setSnapGuides([]);
+    snapTargetsRef.current = null;
+    caughtRef.current = null;
+    slideRef.current = null;
     setHistory((current) => endRun(current));
   }, []);
 
@@ -1582,36 +1608,113 @@ export function CollageStudio({
    * the move to the axis the drag has mostly travelled along, decided afresh
    * each time so the axis can change mid-drag.
    */
+  /** Lines shown while a carried piece is caught on another or the frame. */
+  const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
+  /**
+   * What a drag can catch on, worked out once per carry: the carried group's
+   * bounds and every other piece's, in frame units.
+   */
+  const snapTargetsRef = useRef<{
+    origins: readonly CollagePiece[];
+    moving: Bounds;
+    others: Bounds[];
+  } | null>(null);
+  /** What the drag last caught on, so a fresh catch clicks once. */
+  const caughtRef = useRef<string | null>(null);
+  /** Where and when the last slide scuff played during a carry. */
+  const slideRef = useRef<{ at: Point; time: number } | null>(null);
+
   const carry = useCallback(
     (
       origins: readonly CollagePiece[],
       grabbedAt: Point,
       point: Point,
       lockAxis: boolean,
+      snapping: boolean,
     ) => {
       const travel = { x: point.x - grabbedAt.x, y: point.y - grabbedAt.y };
-      const delta = lockAxis ? lockToAxis(travel) : travel;
+      const locked = lockAxis ? lockToAxis(travel) : travel;
+      let delta = locked;
+      let guides: SnapGuide[] = [];
+      let caught: string | null = null;
+      if (snapping) {
+        let targets = snapTargetsRef.current;
+        if (!targets || targets.origins !== origins) {
+          const carried = new Set(origins.map((piece) => piece.id));
+          targets = {
+            origins,
+            moving: groupBounds(origins),
+            others: ordered
+              .filter((piece) => !carried.has(piece.id))
+              .map((piece) => groupBounds([piece])),
+          };
+          snapTargetsRef.current = targets;
+        }
+        const snap = snapMove({
+          moving: targets.moving,
+          travel: locked,
+          others: targets.others,
+          frame: { width: frame.width, height: frame.height },
+          reach: MOVE_SNAP_REACH / scale,
+          lock: lockAxis ? (locked.x !== 0 ? "x" : "y") : null,
+        });
+        delta = snap.delta;
+        guides = snap.guides;
+        caught =
+          snap.caught.x || snap.caught.y
+            ? `${snap.caught.x}|${snap.caught.y}`
+            : null;
+      }
+      const pan = (point.x / frame.width) * 2 - 1;
+      if (caught && caught !== caughtRef.current) {
+        playCollageSound("snap", pan);
+      }
+      caughtRef.current = caught;
+      setSnapGuides(guides);
+
+      // A scuff every so often while the pieces travel, louder when faster.
+      const now = performance.now();
+      const last = slideRef.current;
+      if (!last) {
+        slideRef.current = { at: point, time: now };
+      } else {
+        const distance =
+          Math.hypot(point.x - last.at.x, point.y - last.at.y) * scale;
+        const elapsed = now - last.time;
+        if (distance >= SLIDE_EVERY_PX && elapsed >= SLIDE_MIN_MS) {
+          playCollageSound("slide", pan, distance / elapsed / SLIDE_FULL_SPEED);
+          slideRef.current = { at: point, time: now };
+        }
+      }
+
       editPieces(translateGroup(origins, delta.x, delta.y), "move");
     },
-    [editPieces],
+    [editPieces, frame.height, frame.width, ordered, scale],
   );
 
   // Pressing or letting go of shift mid-drag locks or frees the axis at once,
-  // without waiting for the pointer to move again.
+  // and cmd or ctrl starts or stops snapping, without waiting for the pointer
+  // to move again.
   useEffect(() => {
     if (gesture.kind !== "move") return;
     const { origins, grabbedAt } = gesture;
-    const onShift = (event: KeyboardEvent) => {
-      if (event.key !== "Shift") return;
+    const onModifier = (event: KeyboardEvent) => {
+      if (!["Shift", "Meta", "Control"].includes(event.key)) return;
       const point = lastPointerRef.current;
       if (!point || !pressRef.current?.moved) return;
-      carry(origins, grabbedAt, point, event.type === "keydown");
+      carry(
+        origins,
+        grabbedAt,
+        point,
+        event.shiftKey,
+        event.metaKey || event.ctrlKey,
+      );
     };
-    window.addEventListener("keydown", onShift);
-    window.addEventListener("keyup", onShift);
+    window.addEventListener("keydown", onModifier);
+    window.addEventListener("keyup", onModifier);
     return () => {
-      window.removeEventListener("keydown", onShift);
-      window.removeEventListener("keyup", onShift);
+      window.removeEventListener("keydown", onModifier);
+      window.removeEventListener("keyup", onModifier);
     };
   }, [carry, gesture]);
 
@@ -1711,7 +1814,13 @@ export function CollageStudio({
           setGesture({ kind: "move", origins: copies, grabbedAt });
           return;
         }
-        carry(origins, grabbedAt, point, event.shiftKey);
+        carry(
+          origins,
+          grabbedAt,
+          point,
+          event.shiftKey,
+          event.metaKey || event.ctrlKey,
+        );
         return;
       }
       if (gesture.kind === "groupScale") {
@@ -1930,11 +2039,40 @@ export function CollageStudio({
       });
       return;
     }
-    // A finger on bare paper is reaching past the pieces, not drawing a box
-    // round them: on a phone a marquee swept up whatever the finger crossed.
-    // It only lets go of what is in hand.
+    // A finger on bare paper is usually reaching past the pieces, so a tap
+    // there lets go of what is in hand and a quick swipe does nothing. Only a
+    // finger held still first draws a selection box.
     if (phone && event.pointerType === "touch") {
-      setSelection(EMPTY_SELECTION);
+      event.currentTarget.setPointerCapture(event.pointerId);
+      pressRef.current = {
+        at,
+        downAt: performance.now(),
+        selectOnClick: EMPTY_SELECTION,
+        moved: false,
+      };
+      cancelBoxHold();
+      boxHoldRef.current = {
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        timer: window.setTimeout(() => {
+          boxHoldRef.current = null;
+          const press = pressRef.current;
+          if (!press || press.moved) return;
+          // From here the finger's travel draws the box, and letting go
+          // keeps what it took rather than counting as a tap.
+          press.moved = true;
+          setSelection(EMPTY_SELECTION);
+          setHoldMark(at);
+          setGesture({
+            kind: "marquee",
+            start: at,
+            end: at,
+            base: EMPTY_SELECTION,
+            additive: false,
+          });
+        }, PHONE_BOX_HOLD_MS),
+      };
       return;
     }
     setSelection(plan.base);
@@ -1954,20 +2092,27 @@ export function CollageStudio({
   };
 
   /**
-   * A finger resting on the collage stands in for the right-click a mouse
-   * has: it opens the list of pieces under that spot, which is also where a
-   * locked piece is let go again. The press it began stops being a drag, and
-   * any nudge the resting finger gave the piece is put back.
+   * A finger resting still on a piece and then lifted stands in for the
+   * right-click a mouse has: it opens the list of pieces under that spot,
+   * which is also where a locked piece is let go again. The list waits for
+   * the lift so a second finger can still tap more pieces into the hand
+   * meanwhile. A ring under the finger shows the rest has counted, here and
+   * when a finger resting on bare paper is ready to draw a box.
    */
   const longPressRef = useRef<{
     timer: number;
+    pointerId: number;
     clientX: number;
     clientY: number;
+    /** Once the finger has rested on pieces: what lifting it would list. */
+    here?: { at: Point; pieceIds: string[] };
   } | null>(null);
+  const [holdMark, setHoldMark] = useState<Point | null>(null);
   const gestureRef = useRef(gesture);
   gestureRef.current = gesture;
   const cancelLongPress = () => {
     const held = longPressRef.current;
+    setHoldMark(null);
     if (!held) return;
     window.clearTimeout(held.timer);
     longPressRef.current = null;
@@ -1975,23 +2120,35 @@ export function CollageStudio({
   useEffect(() => () => cancelLongPress(), []);
   const startLongPress = (event: React.PointerEvent) => {
     if (over || toolActive || transform) return;
-    const { clientX, clientY } = event;
+    const { clientX, clientY, pointerId } = event;
     const timer = window.setTimeout(() => {
-      longPressRef.current = null;
+      const held = longPressRef.current;
+      if (!held || held.pointerId !== pointerId) return;
       const at = framePoint({ clientX, clientY });
       const stack = piecesUnder(pieces, at);
-      if (stack.length === 0) return;
-      const running = gestureRef.current;
-      if (running.kind === "move" && pressRef.current?.moved) {
-        editPieces(running.origins, "move");
+      if (stack.length === 0) {
+        longPressRef.current = null;
+        return;
       }
-      pressRef.current = null;
-      setGesture({ kind: "idle" });
-      setGestureReadout(null);
-      setHistory((current) => endRun(current));
-      setHereMenu({ at, pieceIds: stack.map((piece) => piece.id) });
+      held.here = { at, pieceIds: stack.map((piece) => piece.id) };
+      setHoldMark(at);
     }, LONG_PRESS_MS);
-    longPressRef.current = { timer, clientX, clientY };
+    longPressRef.current = { timer, pointerId, clientX, clientY };
+  };
+
+  /** Lifting a finger that rested on pieces opens the list of them. */
+  const openHeldList = () => {
+    const here = longPressRef.current?.here;
+    if (!here) return;
+    const running = gestureRef.current;
+    if (running.kind === "move" && pressRef.current?.moved) {
+      editPieces(running.origins, "move");
+    }
+    pressRef.current = null;
+    setGesture({ kind: "idle" });
+    setGestureReadout(null);
+    setHistory((current) => endRun(current));
+    setHereMenu(here);
   };
 
   /**
@@ -2000,6 +2157,20 @@ export function CollageStudio({
    * second finger can turn a one-finger drag into a pinch.
    */
   const touchesRef = useRef(new Map<number, { clientX: number; clientY: number }>());
+  /** A finger resting on bare paper, waiting to see if it is held long enough to draw a box. */
+  const boxHoldRef = useRef<{
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    timer: number;
+  } | null>(null);
+  const cancelBoxHold = () => {
+    if (boxHoldRef.current) window.clearTimeout(boxHoldRef.current.timer);
+    boxHoldRef.current = null;
+  };
+  useEffect(() => cancelBoxHold, []);
+  /** Second fingers that tapped a piece into the selection, whose lift is theirs alone. */
+  const addingFingersRef = useRef(new Set<number>());
   const fingerPair = (): FingerPair | null => {
     const [first, second] = [...touchesRef.current.values()];
     if (!first || !second) return null;
@@ -2022,7 +2193,26 @@ export function CollageStudio({
     cancelLongPress();
     if (touchesRef.current.size === 1) startLongPress(event);
     if (touchesRef.current.size !== 2) return;
+    cancelBoxHold();
     if (over || toolActive || transform || selectedPieces.length === 0) return;
+    // Holding one piece still and tapping another with a second finger adds
+    // it to the selection, as in Freeform; a second finger on a held piece or
+    // on bare paper starts a pinch instead.
+    const press = pressRef.current;
+    if (gesture.kind === "move" && press && !press.moved) {
+      const tapped = topPieceUnder(reachable, framePoint(event));
+      if (tapped && !isSelected(selection, tapped.id)) {
+        event.stopPropagation();
+        const ids = [...selection.ids, tapped.id];
+        const next = selectMany(ids);
+        setSelection(next);
+        press.selectOnClick = next;
+        setGesture({ ...gesture, origins: piecesById(pieces, ids) });
+        addingFingersRef.current.add(event.pointerId);
+        touchesRef.current.delete(event.pointerId);
+        return;
+      }
+    }
     const start = fingerPair();
     if (!start) return;
     // The second finger belongs to the pinch, not to the piece under it.
@@ -2034,6 +2224,10 @@ export function CollageStudio({
 
   const onStageTouchMove = (event: React.PointerEvent) => {
     if (event.pointerType !== "touch") return;
+    if (addingFingersRef.current.has(event.pointerId)) {
+      event.stopPropagation();
+      return;
+    }
     if (!touchesRef.current.has(event.pointerId)) return;
     const held = longPressRef.current;
     if (
@@ -2047,6 +2241,15 @@ export function CollageStudio({
       clientX: event.clientX,
       clientY: event.clientY,
     });
+    const hold = boxHoldRef.current;
+    if (
+      hold &&
+      hold.pointerId === event.pointerId &&
+      Math.hypot(event.clientX - hold.clientX, event.clientY - hold.clientY) >
+        PHONE_BOX_HOLD_SLOP
+    ) {
+      cancelBoxHold();
+    }
     if (gesture.kind !== "pinch") return;
     event.stopPropagation();
     const now = fingerPair();
@@ -2061,7 +2264,14 @@ export function CollageStudio({
   const onStageTouchEnd = (event: React.PointerEvent) => {
     if (event.pointerType !== "touch") return;
     touchesRef.current.delete(event.pointerId);
+    if (longPressRef.current?.pointerId === event.pointerId) openHeldList();
     cancelLongPress();
+    if (boxHoldRef.current?.pointerId === event.pointerId) cancelBoxHold();
+    // The tapping finger's lift must not end the drag the first finger holds.
+    if (addingFingersRef.current.delete(event.pointerId)) {
+      event.stopPropagation();
+      return;
+    }
     if (gesture.kind !== "pinch") return;
     // Lifting either finger settles the pinch; the finger left down does
     // nothing until it is lifted too.
@@ -2547,6 +2757,44 @@ export function CollageStudio({
                     inView={inView}
                     knob={phone}
                     onGrip={beginGrip}
+                  />
+                )}
+
+                {gesture.kind === "move" &&
+                  snapGuides.map((guide) => (
+                    <div
+                      key={`${guide.axis}:${guide.at}`}
+                      className="collage-snap-guide"
+                      aria-hidden="true"
+                      style={
+                        guide.axis === "x"
+                          ? {
+                              left: guide.at - 0.5 / scale,
+                              top: guide.from,
+                              width: 1 / scale,
+                              height: guide.to - guide.from,
+                            }
+                          : {
+                              left: guide.from,
+                              top: guide.at - 0.5 / scale,
+                              width: guide.to - guide.from,
+                              height: 1 / scale,
+                            }
+                      }
+                    />
+                  ))}
+
+                {holdMark && !marqueeArea && (
+                  <div
+                    className="collage-hold-mark"
+                    aria-hidden="true"
+                    style={{
+                      left: holdMark.x,
+                      top: holdMark.y,
+                      width: HOLD_MARK_SIZE / scale,
+                      height: HOLD_MARK_SIZE / scale,
+                      borderWidth: 2 / scale,
+                    }}
                   />
                 )}
 

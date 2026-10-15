@@ -28,7 +28,10 @@ import {
 import type { FilterChip } from "../utils/eventUtils";
 import { hashString, seededRandom } from "../utils/styleUtils";
 import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
-import { useScrapImageSrc } from "../utils/scrapImageSource";
+import {
+  prioritizeScrapPreviews,
+  useScrapImageSrc,
+} from "../utils/scrapImageSource";
 import {
   isImageContentHash,
   canonicalButtonKey,
@@ -273,8 +276,13 @@ function compareDomainScraps(a: ScrapItem, b: ScrapItem, seed: number): number {
 }
 
 function newestUniqueScraps(items: ScrapItem[]): ScrapItem[] {
+  return newestUniqueGroupedScraps(groupPhotoEncounters(items));
+}
+
+/** Selects the newest scraps after photo encounters have already been grouped. */
+function newestUniqueGroupedScraps(items: ScrapItem[]): ScrapItem[] {
   const newestByCanonicalKey = new Map<string, ScrapItem>();
-  for (const item of groupPhotoEncounters(items)) {
+  for (const item of items) {
     const canonicalKey = canonicalScrapKey(item);
     const current = newestByCanonicalKey.get(canonicalKey);
     if (!current || item.ts > current.ts) {
@@ -293,13 +301,21 @@ function newestUniqueScraps(items: ScrapItem[]): ScrapItem[] {
 }
 
 /** Counts scraps the way the archive lists them, once per scrap however often it was met. */
-function countUniqueScraps(items: ScrapItem[]): number {
-  return newestUniqueScraps(items).length;
+function countUniqueGroupedScraps(items: ScrapItem[]): number {
+  return newestUniqueGroupedScraps(items).length;
 }
 
 export function curateScraps(
   items: ScrapItem[],
   opts: CurateScrapsOptions,
+): ScrapItem[] {
+  return curateUniqueScraps(items, opts, false);
+}
+
+function curateUniqueScraps(
+  items: ScrapItem[],
+  opts: CurateScrapsOptions,
+  alreadyUnique = true,
 ): ScrapItem[] {
   const perDomainCap = Math.max(
     0,
@@ -312,7 +328,7 @@ export function curateScraps(
   if (perDomainCap === 0 || targetCount === 0) return [];
 
   const scrapsByDomain = new Map<string, ScrapItem[]>();
-  for (const item of newestUniqueScraps(items)) {
+  for (const item of alreadyUnique ? items : newestUniqueScraps(items)) {
     const domainScraps = scrapsByDomain.get(item.domain);
     if (domainScraps) {
       domainScraps.push(item);
@@ -541,12 +557,15 @@ function placeholderColor(domain: string): string {
   return `hsl(${hue}, 30%, 72%)`;
 }
 
+let collectedDateFormatter: Intl.DateTimeFormat | undefined;
+
 function formatCollectedDate(timestamp: number): string {
-  return new Intl.DateTimeFormat("en-US", {
+  collectedDateFormatter ??= new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(timestamp);
+  });
+  return collectedDateFormatter.format(timestamp);
 }
 
 function clamp(minimum: number, maximum: number, value: number): number {
@@ -582,13 +601,14 @@ export function headingDisplayFontSize(
   availableWidth = MAX_HEADING_TILE_WIDTH,
 ): number {
   const capturedSize = Number.parseFloat(styles.fontSize ?? "");
-  const bandedSize = Number.isFinite(capturedSize) && capturedSize > 0
-    ? clamp(
-        MIN_HEADING_DISPLAY_FONT_SIZE,
-        MAX_HEADING_DISPLAY_FONT_SIZE,
-        capturedSize,
-      )
-    : MIN_HEADING_DISPLAY_FONT_SIZE;
+  const bandedSize =
+    Number.isFinite(capturedSize) && capturedSize > 0
+      ? clamp(
+          MIN_HEADING_DISPLAY_FONT_SIZE,
+          MAX_HEADING_DISPLAY_FONT_SIZE,
+          capturedSize,
+        )
+      : MIN_HEADING_DISPLAY_FONT_SIZE;
 
   const characterCount = text.trim().length;
   if (characterCount === 0) return bandedSize;
@@ -1005,8 +1025,10 @@ export function buildArchiveSources(
     // above and below, so rows join only where they overlap.
     const fromColumn = start - rowStart;
     const toColumn = end - rowStart;
-    const aboveFromColumn = Math.max(visitStart, rowStart - columnCount) - (rowStart - columnCount);
-    const belowToColumn = Math.min(visitEnd, lastInRow + columnCount) - (lastInRow + 1);
+    const aboveFromColumn =
+      Math.max(visitStart, rowStart - columnCount) - (rowStart - columnCount);
+    const belowToColumn =
+      Math.min(visitEnd, lastInRow + columnCount) - (lastInRow + 1);
     const continuesAbove =
       start === rowStart && !begins && aboveFromColumn <= toColumn;
     const continuesBelow =
@@ -1029,13 +1051,16 @@ export function buildArchiveSources(
   return marks;
 }
 
+let visitTimeFormatter: Intl.DateTimeFormat | undefined;
+
 function formatVisitTime(timestamp: number): string {
-  return new Intl.DateTimeFormat("en-US", {
+  visitTimeFormatter ??= new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(timestamp);
+  });
+  return visitTimeFormatter.format(timestamp);
 }
 
 /**
@@ -1056,8 +1081,12 @@ export function shoreCells(
     Math.round(Math.sqrt((slotCount * height) / width)),
   );
   const cellHeight = height / rowCount;
-  const cells: { x: number; y: number; cellWidth: number; cellHeight: number }[] =
-    [];
+  const cells: {
+    x: number;
+    y: number;
+    cellWidth: number;
+    cellHeight: number;
+  }[] = [];
   for (let row = 0; row < rowCount; row += 1) {
     // Rows differ by at most one slot, with the longer rows spread out.
     const start = Math.round((row * slotCount) / rowCount);
@@ -1553,19 +1582,6 @@ export const COLLAGE_STYLES = `
     opacity: 0;
   }
 
-  .scrap-collage__developing {
-    filter: blur(10px) saturate(0.35);
-    opacity: 0;
-    transition:
-      filter 760ms ease,
-      opacity 760ms ease;
-  }
-
-  .scrap-collage__developing.scrap-collage__developed {
-    filter: blur(0) saturate(1);
-    opacity: 1;
-  }
-
   .scrap-collage__tile--washing-in {
     animation: scrap-collage-wash-in 900ms ease forwards;
   }
@@ -1598,14 +1614,8 @@ export const COLLAGE_STYLES = `
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .scrap-collage__swatch,
-    .scrap-collage__developing {
+    .scrap-collage__swatch {
       transition: none;
-    }
-
-    .scrap-collage__developing {
-      filter: none;
-      opacity: 1;
     }
 
     .scrap-collage__tile--washing-in,
@@ -1821,6 +1831,8 @@ export interface ScrapContentProps {
   onLoad: () => void;
   /** Laid-out tile width, so text-bearing scraps can size themselves to it. */
   tileWidth?: number;
+  /** Uses a tile-sized local preview where the surface provides one. */
+  imagePreview?: boolean;
   /**
    * Whether dark lettering sits on a light chequer. Browsed and drawer tiles
    * show it; a piece placed in a collage sits directly on the collage.
@@ -1828,11 +1840,7 @@ export interface ScrapContentProps {
   letteringChecker?: boolean;
 }
 
-/**
- * Tinted stand-in occupying the exact box the remote image will fill, so the
- * scrap holds its footprint from first paint and the image develops in over it
- * rather than popping into an empty slot.
- */
+/** Keeps image tiles sized and tinted while their source loads. */
 function ScrapSwatch({
   domain,
   loaded,
@@ -1937,10 +1945,12 @@ export function ScrapContent({
   onError,
   onLoad,
   tileWidth,
+  imagePreview = false,
   letteringChecker = true,
 }: ScrapContentProps) {
   const imageSrc = useScrapImageSrc(
     item.kind === "image" ? item.src : undefined,
+    imagePreview,
   );
   switch (item.kind) {
     case "image":
@@ -2064,6 +2074,27 @@ export function ScrapContent({
   }
 }
 
+/** Keeps image completion local while remembering loaded scraps across tile remounts. */
+function ScrapTileContent({
+  loadedKeys,
+  ...props
+}: Omit<ScrapContentProps, "loaded" | "onLoad"> & {
+  loadedKeys: Set<string>;
+}) {
+  const [loaded, setLoaded] = useState(() => loadedKeys.has(props.item.key));
+  return (
+    <ScrapContent
+      {...props}
+      imagePreview
+      loaded={loaded}
+      onLoad={() => {
+        loadedKeys.add(props.item.key);
+        setLoaded(true);
+      }}
+    />
+  );
+}
+
 /**
  * A scrap that has left the tide but is still on screen for the duration of its
  * wash-out animation. It keeps the layout it had in its old slot so it drifts
@@ -2127,9 +2158,7 @@ export function ScrapCollage({
   const [failedFavicons, setFailedFavicons] = useState<Set<string>>(
     () => new Set(),
   );
-  const [loadedScraps, setLoadedScraps] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const loadedScrapsRef = useRef(new Set<string>());
   const prefersReducedMotion = usePrefersReducedMotion();
 
   const [tide, setTide] = useState<TideState | null>(null);
@@ -2164,7 +2193,7 @@ export function ScrapCollage({
 
   const groupedItems = useMemo(() => groupPhotoEncounters(items), [items]);
   const uniqueItems = useMemo(
-    () => newestUniqueScraps(groupedItems),
+    () => newestUniqueGroupedScraps(groupedItems),
     [groupedItems],
   );
   const filteredItems = useMemo(
@@ -2174,13 +2203,17 @@ export function ScrapCollage({
       ),
     [groupedItems, selectedKind, shape, places, search, when],
   );
+  const filteredUniqueItems = useMemo(
+    () => newestUniqueGroupedScraps(filteredItems),
+    [filteredItems],
+  );
   const archiveScraps = useMemo(
     () =>
-      newestUniqueScraps(filteredItems).sort(
+      [...filteredUniqueItems].sort(
         (first, second) =>
           second.ts - first.ts || first.key.localeCompare(second.key),
       ),
-    [filteredItems],
+    [filteredUniqueItems],
   );
   const filtersActive =
     selectedKind.length > 0 ||
@@ -2201,13 +2234,17 @@ export function ScrapCollage({
     () => new Set(),
   );
   const selectedScraps = useMemo(
-    () => archiveScraps.filter((item) => selectedKeys.has(item.key)),
+    () =>
+      selectedKeys.size === 0
+        ? []
+        : archiveScraps.filter((item) => selectedKeys.has(item.key)),
     [archiveScraps, selectedKeys],
   );
-  const bulkTargets = selectedScraps.length > 0 ? selectedScraps : archiveScraps;
+  const bulkTargets =
+    selectedScraps.length > 0 ? selectedScraps : archiveScraps;
   // A selection belongs to one view of the archive; changing what it shows lets go.
   useEffect(() => {
-    setSelectedKeys(new Set());
+    setSelectedKeys((current) => (current.size === 0 ? current : new Set()));
   }, [archiveMode, selectedKind, shape, places, search, when]);
   // A confirmation names a count for one set of scraps; changing them asks again.
   useEffect(() => {
@@ -2244,17 +2281,18 @@ export function ScrapCollage({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedKeys]);
   const archiveSizeBounds = useMemo(
-    () => tierBounds(archiveScraps),
-    [archiveScraps],
+    () =>
+      archiveMode ? tierBounds(archiveScraps) : { lowerArea: 0, upperArea: 0 },
+    [archiveMode, archiveScraps],
   );
   const curatedScraps = useMemo(
     () =>
-      curateScraps(filteredItems, {
+      curateUniqueScraps(filteredUniqueItems, {
         seed: layoutSeed,
         targetCount: selectedTargetCount,
         perDomainCap: perDomainCap ?? Infinity,
       }),
-    [filteredItems, layoutSeed, perDomainCap, selectedTargetCount],
+    [filteredUniqueItems, layoutSeed, perDomainCap, selectedTargetCount],
   );
   /**
    * Every scrap the tide can reach, ordered so the front of the queue is the
@@ -2285,6 +2323,7 @@ export function ScrapCollage({
   );
 
   useEffect(() => {
+    if (containerSize.width <= 0 || containerSize.height <= 0) return;
     setTide((current) => {
       const shuffled = tideShuffleIndexRef.current !== shuffleIndex;
       tideShuffleIndexRef.current = shuffleIndex;
@@ -2294,7 +2333,13 @@ export function ScrapCollage({
         shuffled ? undefined : (current ?? undefined),
       );
     });
-  }, [shuffleIndex, tideCapacity, tidePool]);
+  }, [
+    containerSize.width,
+    containerSize.height,
+    shuffleIndex,
+    tideCapacity,
+    tidePool,
+  ]);
 
   /**
    * The shore as slots: one entry per position, `null` where a scrap has washed
@@ -2353,7 +2398,25 @@ export function ScrapCollage({
     ],
   );
 
-  const visits = useMemo(() => archiveVisits(archiveScraps), [archiveScraps]);
+  useEffect(() => {
+    prioritizeScrapPreviews([
+      ...new Set(
+        layout.flatMap(({ item }) =>
+          item.kind === "image" &&
+          !failedScraps.has(item.key) &&
+          isRenderableScrap(item)
+            ? [item.src]
+            : [],
+        ),
+      ),
+    ]);
+    return () => prioritizeScrapPreviews([]);
+  }, [layout, failedScraps]);
+
+  const visits = useMemo(
+    () => (archiveMode && showSources ? archiveVisits(archiveScraps) : []),
+    [archiveMode, showSources, archiveScraps],
+  );
   const sourceMarks = useMemo(() => {
     if (!archiveMode || !showSources || archiveWindow.layout.length === 0) {
       return [];
@@ -2397,7 +2460,7 @@ export function ScrapCollage({
     setArchiveScrollTop(0);
     setHovered(false);
     setFocused(false);
-    setWashingOut([]);
+    setWashingOut((current) => (current.length === 0 ? current : []));
   }, [archiveMode, selectedKind, shape, places, search, when]);
 
   /**
@@ -2512,7 +2575,11 @@ export function ScrapCollage({
 
     const updateSize = () => {
       const bounds = container.getBoundingClientRect();
-      setContainerSize({ width: bounds.width, height: bounds.height });
+      setContainerSize((current) =>
+        current.width === bounds.width && current.height === bounds.height
+          ? current
+          : { width: bounds.width, height: bounds.height },
+      );
     };
     updateSize();
 
@@ -2535,15 +2602,6 @@ export function ScrapCollage({
       if (current.has(domain)) return current;
       const next = new Set(current);
       next.add(domain);
-      return next;
-    });
-  };
-
-  const markScrapLoaded = (key: string) => {
-    setLoadedScraps((current) => {
-      if (current.has(key)) return current;
-      const next = new Set(current);
-      next.add(key);
       return next;
     });
   };
@@ -2676,9 +2734,7 @@ export function ScrapCollage({
       layoutSeed,
       archiveSizeBounds,
       display,
-    ).filter(
-      (key) => !failedScraps.has(key),
-    );
+    ).filter((key) => !failedScraps.has(key));
     const next = new Set(drag.base);
     for (const key of touched) next.add(key);
     setSelectedKeys(next);
@@ -2877,10 +2933,9 @@ export function ScrapCollage({
           openExamine(scrap.item, event.currentTarget);
         }}
       >
-        <ScrapContent
+        <ScrapTileContent
           item={scrap.item}
-          loaded={loadedScraps.has(scrap.item.key)}
-          onLoad={() => markScrapLoaded(scrap.item.key)}
+          loadedKeys={loadedScrapsRef.current}
           onError={() => removeScrap(scrap.item.key)}
           tileWidth={scrap.width}
         />
@@ -2929,7 +2984,9 @@ export function ScrapCollage({
       }
     }
   }
-  renderedKeysRef.current = new Set(layout.map((scrap) => scrap.item.key));
+  if (layout.length > 0 || renderedKeysRef.current) {
+    renderedKeysRef.current = new Set(layout.map((scrap) => scrap.item.key));
+  }
 
   const tiles = layout.map((scrap) =>
     renderTile(
@@ -3090,79 +3147,83 @@ export function ScrapCollage({
                   when={when}
                   onWhen={setWhen}
                   matchCount={archiveScraps.length}
-                  countScraps={countUniqueScraps}
+                  countScraps={countUniqueGroupedScraps}
                 />
               </div>
               {onDeleteScraps &&
                 (selectedScraps.length > 0 ||
                   selectable ||
                   (filtersActive && archiveScraps.length > 0)) && (
-                <div className="scrap-collage__bulk-delete" role="group">
-                  {bulkDeleteStep === "idle" || bulkDeleteStep === "failed" ? (
-                    <>
-                      {selectedScraps.length > 0 ? (
-                        <>
-                          <span className="scrap-collage__selection-hint">
-                            {selectedScraps.length} selected
-                          </span>
+                  <div className="scrap-collage__bulk-delete" role="group">
+                    {bulkDeleteStep === "idle" ||
+                    bulkDeleteStep === "failed" ? (
+                      <>
+                        {selectedScraps.length > 0 ? (
+                          <>
+                            <span className="scrap-collage__selection-hint">
+                              {selectedScraps.length} selected
+                            </span>
+                            <button
+                              type="button"
+                              className="scrap-collage__text-action"
+                              onClick={() => setSelectedKeys(new Set())}
+                            >
+                              clear
+                            </button>
+                          </>
+                        ) : (
+                          selectable && (
+                            <span className="scrap-collage__selection-hint">
+                              drag across scraps to select
+                            </span>
+                          )
+                        )}
+                        {bulkDeleteStep === "failed" && (
+                          <span role="alert">could not delete them</span>
+                        )}
+                        {(selectedScraps.length > 0 ||
+                          (filtersActive && archiveScraps.length > 0)) && (
                           <button
                             type="button"
                             className="scrap-collage__text-action"
-                            onClick={() => setSelectedKeys(new Set())}
+                            onClick={() => setBulkDeleteStep("confirm")}
                           >
-                            clear
+                            delete{" "}
+                            {bulkTargets.length === 1
+                              ? "this scrap"
+                              : `these ${bulkTargets.length}`}
                           </button>
-                        </>
-                      ) : (
-                        selectable && (
-                          <span className="scrap-collage__selection-hint">
-                            drag across scraps to select
-                          </span>
-                        )
-                      )}
-                      {bulkDeleteStep === "failed" && (
-                        <span role="alert">could not delete them</span>
-                      )}
-                      {(selectedScraps.length > 0 ||
-                        (filtersActive && archiveScraps.length > 0)) && (
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span>
+                          delete {bulkTargets.length}{" "}
+                          {bulkTargets.length === 1 ? "scrap" : "scraps"} for
+                          good?
+                        </span>
+                        <button
+                          type="button"
+                          className="scrap-collage__text-action scrap-collage__text-action--danger"
+                          disabled={bulkDeleteStep === "deleting"}
+                          onClick={deleteFiltered}
+                        >
+                          {bulkDeleteStep === "deleting"
+                            ? "deleting..."
+                            : "delete"}
+                        </button>
                         <button
                           type="button"
                           className="scrap-collage__text-action"
-                          onClick={() => setBulkDeleteStep("confirm")}
+                          disabled={bulkDeleteStep === "deleting"}
+                          onClick={() => setBulkDeleteStep("idle")}
                         >
-                          delete{" "}
-                          {bulkTargets.length === 1
-                            ? "this scrap"
-                            : `these ${bulkTargets.length}`}
+                          keep
                         </button>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <span>
-                        delete {bulkTargets.length}{" "}
-                        {bulkTargets.length === 1 ? "scrap" : "scraps"} for good?
-                      </span>
-                      <button
-                        type="button"
-                        className="scrap-collage__text-action scrap-collage__text-action--danger"
-                        disabled={bulkDeleteStep === "deleting"}
-                        onClick={deleteFiltered}
-                      >
-                        {bulkDeleteStep === "deleting" ? "deleting..." : "delete"}
-                      </button>
-                      <button
-                        type="button"
-                        className="scrap-collage__text-action"
-                        disabled={bulkDeleteStep === "deleting"}
-                        onClick={() => setBulkDeleteStep("idle")}
-                      >
-                        keep
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
+                      </>
+                    )}
+                  </div>
+                )}
             </>
           ) : (
             <button
@@ -3228,9 +3289,13 @@ export function ScrapCollage({
               <div
                 key={mark.key}
                 className={`scrap-collage__source${
-                  mark.continuesAbove ? " scrap-collage__source--from-above" : ""
+                  mark.continuesAbove
+                    ? " scrap-collage__source--from-above"
+                    : ""
                 }${
-                  mark.continuesBelow ? " scrap-collage__source--onto-below" : ""
+                  mark.continuesBelow
+                    ? " scrap-collage__source--onto-below"
+                    : ""
                 }`}
                 style={
                   {
@@ -3317,9 +3382,7 @@ export function ScrapCollage({
             onPrevious={() => stepExamine(-1)}
             onNext={() => stepExamine(1)}
             onDelete={
-              onDeleteScraps
-                ? () => onDeleteScraps([examinedItem])
-                : undefined
+              onDeleteScraps ? () => onDeleteScraps([examinedItem]) : undefined
             }
           />,
           document.body,

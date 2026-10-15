@@ -6,7 +6,7 @@ import { clearAdminToken, loadAdminToken, saveAdminToken } from "./adminToken";
 
 const PLAYHTML_ADMIN_URL = "https://playhtml.fun/admin.html";
 
-export type AdminPage = "access" | "installation";
+export type AdminPage = "access" | "installation" | "commute";
 
 export function useAdminToken() {
   const [token, setToken] = useState(loadAdminToken);
@@ -24,7 +24,7 @@ export function useAdminToken() {
   };
 }
 
-export function AdminLogin({ onLogin }: { onLogin: (token: string) => void }) {
+export function AdminLogin({ error, onLogin }: { error?: string; onLogin: (token: string) => void }) {
   const [token, setToken] = useState("");
   return (
     <main className="office-login">
@@ -32,6 +32,7 @@ export function AdminLogin({ onLogin }: { onLogin: (token: string) => void }) {
         <span className="office-kicker">WE WERE ONLINE</span>
         <h1>Internal Office</h1>
         <p>Use the Worker admin key to open WWO operator tools.</p>
+        {error && <p className="office-login__error" role="alert">{error}</p>}
         <form onSubmit={(event) => {
           event.preventDefault();
           if (token.trim()) onLogin(token.trim());
@@ -62,7 +63,8 @@ export function AdminHeader({
         <a aria-current={currentPage === "installation" ? "page" : undefined}
           href="/admin/installation/">Installation</a>
         <a href="/internet-map/">Internet map</a>
-        <a href="/commute-curation/">Commute curation</a>
+        <a aria-current={currentPage === "commute" ? "page" : undefined}
+          href="/admin/commute/">Commute curation</a>
         <a href={PLAYHTML_ADMIN_URL}>PlayHTML rooms ↗</a>
       </nav>
       <button className="office-header__logout" onClick={onLogout}>Lock office</button>

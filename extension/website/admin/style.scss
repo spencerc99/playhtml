@@ -1,6 +1,8 @@
 // ABOUTME: Styles the WWO admin office and beta-access management desk.
 // ABOUTME: Establishes the shared visual shell intended for future WWO operator tools.
 
+@use "office-chrome";
+
 :root {
   color: #202421;
   background: #f4f1e9;
@@ -39,62 +41,7 @@ a {
   min-height: 100vh;
 }
 
-.office-header {
-  min-height: 84px;
-  padding: 16px clamp(20px, 4vw, 56px);
-  display: grid;
-  grid-template-columns: minmax(190px, 1fr) auto minmax(110px, 1fr);
-  align-items: center;
-  gap: 24px;
-  border-bottom: 1px solid #b9b7aa;
-  background: rgba(250, 248, 242, 0.92);
 
-  h1 {
-    margin: 2px 0 0;
-    font: 600 clamp(20px, 2vw, 28px) "Lora", serif;
-  }
-
-  nav {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px;
-    border: 1px solid #c9c6b9;
-    border-radius: 7px;
-    background: #eeece4;
-
-    a,
-    span {
-      padding: 7px 10px;
-      color: #62665f;
-      font-size: 10px;
-      text-decoration: none;
-      white-space: nowrap;
-    }
-
-    a[aria-current="page"] {
-      border-radius: 4px;
-      background: #fffefa;
-      color: #236859;
-      box-shadow: 0 1px 3px rgba(31, 44, 39, 0.12);
-    }
-
-    span {
-      opacity: 0.5;
-    }
-  }
-
-  &__logout {
-    justify-self: end;
-    border: 0;
-    background: transparent;
-    color: #6f716b;
-    font-size: 10px;
-    cursor: pointer;
-  }
-}
-
-.office-kicker,
 .office-section-number {
   color: #a34f32;
   font-size: 9px;
@@ -149,8 +96,7 @@ a {
 }
 
 .office-panel,
-.office-roadmap,
-.office-login__card {
+.office-roadmap {
   border: 1px solid #bbb8aa;
   border-radius: 9px;
   background: rgba(255, 254, 250, 0.92);
@@ -806,58 +752,8 @@ button {
   }
 }
 
-.office-login {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-
-  &__card {
-    width: min(430px, 100%);
-    padding: 36px;
-
-    h1 {
-      margin: 4px 0 8px;
-      font: 600 34px "Lora", serif;
-    }
-
-    p {
-      margin: 0 0 24px;
-      color: #666960;
-      font: 15px/1.5 "Lora", serif;
-    }
-
-    form {
-      display: grid;
-      gap: 9px;
-    }
-
-    label {
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-    }
-
-    a {
-      display: inline-block;
-      margin-top: 24px;
-      color: #236859;
-      font-size: 10px;
-    }
-  }
-}
 
 @media (max-width: 760px) {
-  .office-header {
-    grid-template-columns: 1fr auto;
-
-    nav {
-      grid-column: 1 / -1;
-      order: 3;
-      overflow-x: auto;
-    }
-  }
-
   .office-main {
     margin-top: 32px;
   }

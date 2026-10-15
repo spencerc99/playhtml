@@ -933,6 +933,13 @@ ${PIECE_MATERIAL_STYLES}
   }
 
   /* The area a drag across bare paper is sweeping. */
+  .collage-snap-guide {
+    position: absolute;
+    z-index: 10003;
+    background: var(--c-accent);
+    pointer-events: none;
+  }
+
   .collage-marquee {
     position: absolute;
     z-index: 10003;
@@ -940,6 +947,27 @@ ${PIECE_MATERIAL_STYLES}
     border-color: var(--c-accent);
     background: color-mix(in srgb, var(--c-accent) 8%, transparent);
     pointer-events: none;
+  }
+
+  /* A ring under a finger that has rested long enough: dragging from bare
+     paper now draws a box, and lifting from a piece lists the pieces there. */
+  .collage-hold-mark {
+    position: absolute;
+    z-index: 10003;
+    border-style: solid;
+    border-color: var(--c-accent);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    animation: collage-hold-mark 180ms ease-out;
+  }
+
+  @keyframes collage-hold-mark {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.4);
+    }
   }
 
   /* Every piece stacked under the pointer, so a buried one can be picked by

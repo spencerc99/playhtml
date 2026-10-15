@@ -21,6 +21,7 @@ import { FeatureGate } from "./FeatureGate";
 import { useFeatureState } from "../features/useFeatureAccess";
 import { PopupNav, WALKING_RECORD_PAGE } from "./PopupNav";
 import { SlowModeSettings } from "./SlowModeSettings";
+import { DebugModesSettings } from "./DebugModesSettings";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
@@ -313,6 +314,7 @@ export function InternetPortraitHome({
             </div>
           )}
         </section>
+        <DebugModesSettings />
       </main>
 
       <footer className="portrait-home__footer">

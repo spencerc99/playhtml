@@ -1,22 +1,17 @@
-<!-- ABOUTME: HTML shell for the private Internet Commute curation workbench. -->
-<!-- ABOUTME: Keeps the prototype isolated from released WWO navigation. -->
+<!-- ABOUTME: Forwards the old commute curation desk address to its home in the admin office. -->
+<!-- ABOUTME: Keeps bookmarks working after the desk moved under /admin/commute/. -->
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;600&display=swap"
-      rel="stylesheet"
-    />
-    <title>commute curation — we were online</title>
+    <meta http-equiv="refresh" content="0; url=/admin/commute/" />
+    <title>Commute curation moved — we were online</title>
+    <script>
+      window.location.replace("/admin/commute/" + window.location.search + window.location.hash);
+    </script>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="./main.tsx"></script>
+    <p>The commute curation desk moved to <a href="/admin/commute/">/admin/commute/</a>.</p>
   </body>
 </html>
