@@ -8,6 +8,7 @@ import {
   getDecisionForReviewItem,
   getDecisionToReplace,
   getDecisionsForReviewItem,
+  getDefaultPatternTarget,
   getQueueGroup,
   getDefaultPathTarget,
   getReviewTarget,
@@ -417,5 +418,47 @@ describe("serializeCurationArtifact", () => {
       scope: "hostname",
       comment: "Review this family of pages later.",
     });
+  });
+});
+
+describe("pattern rules", () => {
+  const item = {
+    id: "naomi",
+    domain: "letterboxd.com",
+    url: "https://letterboxd.com/nylonsmile/tag/naomi/films",
+    currentDisposition: "stop" as const,
+  };
+  const seen = ["a/tag/b", "c/tag/d", "e/tag/f"].map(
+    (path) => `https://letterboxd.com/${path}/films`,
+  );
+
+  it("defaults to the inferred pattern, or the path with its last segment open", () => {
+    expect(getDefaultPatternTarget(item, seen)).toBe(
+      "letterboxd.com/*/tag/*/films",
+    );
+    expect(getDefaultPatternTarget(item)).toBe(
+      "letterboxd.com/nylonsmile/tag/naomi/*",
+    );
+  });
+
+  it("lists a covering pattern between the page and the site rule", () => {
+    const rule = (id: string, input: string, scope: "pattern" | "site" | "page") =>
+      createCuratedPlace({
+        id,
+        input,
+        scope,
+        placement: "regular",
+        comment: "",
+        updatedAt: FEATURED.updatedAt,
+      });
+    const places = [
+      rule("site", "letterboxd.com", "site"),
+      rule("pattern", "letterboxd.com/*/tag/*/films", "pattern"),
+      rule("other", "letterboxd.com/*/films", "pattern"),
+      rule("page", item.url, "page"),
+    ];
+    expect(getDecisionsForReviewItem(places, item).map((place) => place.id)).toEqual(
+      ["page", "pattern", "site"],
+    );
   });
 });

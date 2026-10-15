@@ -33,6 +33,8 @@ import {
   type QueueGroup,
   getDefaultPathTarget,
   getReviewTarget,
+  getDefaultPatternTarget,
+  getPatternSuggestions,
   mergeCatalogEvidence,
   needsHumanReview,
   REVIEW_NEED_LABELS,
@@ -58,7 +60,10 @@ import {
   type ReserveReviewItem,
   type ReserveSourceMode,
 } from "./reserveCatalog";
-import { normalizeInternetPlace } from "../../../shared/internetPlaceCatalog";
+import {
+  matchesUrlPattern,
+  normalizeInternetPlace,
+} from "../../../shared/internetPlaceCatalog";
 import { AdminHeader, AdminLogin, useAdminToken } from "../adminAuth";
 import "./style.scss";
 
@@ -72,11 +77,18 @@ const PLACEMENT_LABELS: Record<CurationPlacement, string> = {
 
 const SCOPE_LABELS: Record<CurationScope, string> = {
   page: "Exact page",
+  pattern: "URL pattern",
   path: "Pages under a path",
   hostname: "This hostname",
   site: "Entire site",
 };
-const CURATION_SCOPES: CurationScope[] = ["page", "path", "hostname", "site"];
+const CURATION_SCOPES: CurationScope[] = [
+  "page",
+  "pattern",
+  "path",
+  "hostname",
+  "site",
+];
 const RESERVE_CATALOG_URL = "/internet-commute-reserve-catalog.json";
 
 type ReviewView = "observed" | "live" | "reserve";
@@ -321,6 +333,7 @@ export function App({
   >("loading");
   const [scope, setScope] = useState<CurationScope>("hostname");
   const [pathTarget, setPathTarget] = useState("");
+  const [patternTarget, setPatternTarget] = useState("");
   const [placement, setPlacement] = useState<CurationPlacement | undefined>();
   const [reason, setReason] = useState("");
   const [comment, setComment] = useState("");
@@ -365,6 +378,17 @@ export function App({
     () => mergeCatalogEvidence(liveItems, evidenceItems),
     [evidenceItems, liveItems],
   );
+  // Every URL the desk knows about; pattern suggestions compare a page against these.
+  const seenUrls = useMemo(() => {
+    const urls = new Set<string>();
+    for (const item of allObservedItems) if (item.url) urls.add(item.url);
+    for (const entry of clefLog?.entries ?? [])
+      if (entry.kind === "page") urls.add(entry.pageKey);
+    for (const place of places) if (place.scope === "page") urls.add(place.place);
+    return [...urls];
+  }, [allObservedItems, clefLog, places]);
+  const seenUrlsRef = useRef(seenUrls);
+  seenUrlsRef.current = seenUrls;
   const observedItems = useMemo(
     () =>
       allObservedItems,
@@ -697,6 +721,11 @@ export function App({
         ? priorDecision.place
         : (getDefaultPathTarget(selectedItem) ?? ""),
     );
+    setPatternTarget(
+      priorDecision?.scope === "pattern"
+        ? priorDecision.place
+        : (getDefaultPatternTarget(selectedItem, seenUrlsRef.current) ?? ""),
+    );
     setPlacement(priorDecision?.placement ?? cachedSuggestion?.placement);
     setReason(
       priorDecision?.reason ??
@@ -822,12 +851,15 @@ export function App({
     if (!selectedItem) return;
     if (!placement && !comment.trim()) return;
     if (scope === "path" && !pathTarget.trim()) return;
+    if (scope === "pattern" && !patternTarget.trim()) return;
     await saveDecision({
       scope,
       target:
         scope === "path"
           ? pathTarget.trim()
-          : getReviewTarget(selectedItem, scope),
+          : scope === "pattern"
+            ? patternTarget.trim()
+            : getReviewTarget(selectedItem, scope),
       placement,
       reason,
       comment,
@@ -984,6 +1016,18 @@ export function App({
   const coveringDecisions = selectedItem
     ? getDecisionsForReviewItem(places, selectedItem)
     : [];
+  const patternSuggestions = selectedItem
+    ? getPatternSuggestions(selectedItem, seenUrls)
+    : [];
+  const patternReach = (() => {
+    if (scope !== "pattern" || !patternTarget.trim()) return null;
+    try {
+      const pattern = normalizeInternetPlace(patternTarget, "pattern");
+      return seenUrls.filter((url) => matchesUrlPattern(pattern, url)).length;
+    } catch (error) {
+      return error instanceof Error ? error.message : "Invalid pattern";
+    }
+  })();
   const selectedInspection = selectedItem
     ? inspectionById.get(selectedItem.id)
     : undefined;
@@ -1340,7 +1384,8 @@ export function App({
                   {CURATION_SCOPES.map((value) => {
                     const disabled =
                       (value === "page" && !selectedItem.url) ||
-                      (value === "path" && !getDefaultPathTarget(selectedItem));
+                      ((value === "path" || value === "pattern") &&
+                        !getDefaultPathTarget(selectedItem));
                     return (
                       <label
                         className={`scope-option${disabled ? " scope-option--disabled" : ""}`}
@@ -1363,7 +1408,10 @@ export function App({
                             : value === "path"
                               ? pathTarget ||
                                 getReviewTarget(selectedItem, value)
-                              : getReviewTarget(selectedItem, value)}
+                              : value === "pattern"
+                                ? patternTarget ||
+                                  getReviewTarget(selectedItem, value)
+                                : getReviewTarget(selectedItem, value)}
                         </small>
                       </label>
                     );
@@ -1390,6 +1438,45 @@ export function App({
                       Saving at a different scope adds a rule, so this page can
                       differ from the rest of the site.
                     </p>
+                  </div>
+                )}
+                {scope === "pattern" && (
+                  <div className="scope-pattern">
+                    <label className="scope-path">
+                      <span>Pattern (* is one path segment)</span>
+                      <input
+                        type="text"
+                        value={patternTarget}
+                        onChange={(event) => {
+                          markFormEdited();
+                          setPatternTarget(event.target.value);
+                        }}
+                      />
+                    </label>
+                    <p className="decision-help">
+                      {typeof patternReach === "number"
+                        ? `Covers ${patternReach} page${patternReach === 1 ? "" : "s"} seen so far.`
+                        : patternReach}
+                    </p>
+                    {patternSuggestions.length > 0 && (
+                      <div className="pattern-suggestions">
+                        <span>Seen on this site</span>
+                        {patternSuggestions.map((suggestion) => (
+                          <button
+                            type="button"
+                            key={suggestion.pattern}
+                            aria-pressed={patternTarget === suggestion.pattern}
+                            onClick={() => {
+                              markFormEdited();
+                              setPatternTarget(suggestion.pattern);
+                            }}
+                          >
+                            <code>{suggestion.pattern}</code>
+                            <small>{suggestion.matches.length} pages</small>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
                 {scope === "path" && (

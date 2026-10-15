@@ -1,11 +1,15 @@
 // ABOUTME: Defines Internet Commute curation decisions, evidence, and portable artifacts.
-// ABOUTME: Normalizes page, hostname, and site identities consistently with the Worker catalog.
+// ABOUTME: Normalizes page, pattern, path, hostname, and site identities consistently with the Worker catalog.
 
 import {
   INTERNET_PLACE_PLACEMENTS,
   INTERNET_PLACE_REASONS,
+  getCoveringInternetPlacePolicies,
   getInternetPlaceLookupKeys,
   normalizeInternetPlace,
+  suggestUrlPatterns,
+  URL_PATTERN_WILDCARD,
+  type UrlPatternSuggestion,
   type InternetPlacePlacement,
   type InternetPlaceScope,
 } from "../../../shared/internetPlaceCatalog";
@@ -242,10 +246,44 @@ export function getDefaultPathTarget(item: CommuteReviewItem): string | null {
   return keys.at(-1)?.placeKey ?? null;
 }
 
+/**
+ * Wildcard patterns for a page, inferred from URLs already seen on its
+ * hostname. Empty until the site shows a repeating shape.
+ */
+export function getPatternSuggestions(
+  item: CommuteReviewItem,
+  seenUrls: Iterable<string>,
+): UrlPatternSuggestion[] {
+  return item.url ? suggestUrlPatterns(item.url, seenUrls) : [];
+}
+
+/**
+ * A pattern rule defaults to the narrowest inferred pattern; with none, to
+ * the page's path with its last segment as `*`, ready to edit.
+ */
+export function getDefaultPatternTarget(
+  item: CommuteReviewItem,
+  seenUrls: Iterable<string> = [],
+): string | null {
+  const suggested = getPatternSuggestions(item, seenUrls)[0];
+  if (suggested) return suggested.pattern;
+  const deepestPath = getInternetPlaceLookupKeys(item.url ?? item.domain).find(
+    (key) => key.scope === "path",
+  );
+  if (!deepestPath) return null;
+  const [hostname, ...segments] = deepestPath.placeKey.split("/");
+  return [hostname, ...segments.slice(0, -1), URL_PATTERN_WILDCARD].join("/");
+}
+
 export function getReviewTarget(
   item: CommuteReviewItem,
   scope: CurationScope,
 ): string {
+  if (scope === "pattern") {
+    const target = getDefaultPatternTarget(item);
+    if (!target) throw new Error("This page has no path to match.");
+    return target;
+  }
   if (scope === "path") {
     const target = getDefaultPathTarget(item);
     if (!target) throw new Error("This page has no path to match.");
@@ -323,12 +361,16 @@ export function getDecisionsForReviewItem(
   places: CuratedPlace[],
   item: CommuteReviewItem,
 ): CuratedPlace[] {
-  const lookups: Array<{ scope: CurationScope; placeKey: string }> = item.url
-    ? getInternetPlaceLookupKeys(item.url)
-    : (["hostname", "site"] as const).map((scope) => ({
-        scope,
-        placeKey: getReviewTarget(item, scope),
-      }));
+  if (item.url) {
+    return getCoveringInternetPlacePolicies(
+      places.map((place) => ({ scope: place.scope, placeKey: place.place, place })),
+      item.url,
+    ).map(({ place }) => place);
+  }
+  const lookups = (["hostname", "site"] as const).map((scope) => ({
+    scope,
+    placeKey: getReviewTarget(item, scope),
+  }));
   return lookups.flatMap((lookup) =>
     places.filter(
       (place) =>

@@ -28,6 +28,13 @@ const placementMigration = readFileSync(
   'utf8',
 ).replace(/^--.*$/gm, '').trim();
 
+const patternMigration = readFileSync(
+  fileURLToPath(
+    new URL('../../migrations/0011_internet_place_pattern_scope.sql', import.meta.url),
+  ),
+  'utf8',
+).replace(/^--.*$/gm, '').trim();
+
 let miniflare: Miniflare;
 let env: Env;
 
@@ -169,6 +176,7 @@ beforeEach(async () => {
   const db = await miniflare.getD1Database('WWO_ADMIN_DB');
   await executeSql(db, verdictSchema);
   await executeSql(db, placementMigration);
+  await executeSql(db, patternMigration);
   env = {
     ADMIN_KEY: 'admin-secret',
     WWO_ADMIN_DB: db,
@@ -424,6 +432,40 @@ describe('Internet place catalog', () => {
       }),
       env,
     )).status).toBe(400);
+  });
+
+  it('matches wildcard patterns one segment per *, below page and above path', async () => {
+    const response = commuteResponse();
+    const stop = (id: string, url: string) => ({ id, url, domain: 'letterboxd.com', title: id, visitedAt: 1, hue: '#000' });
+    response.destinations = [
+      stop('naomi', 'https://letterboxd.com/nylonsmile/tag/naomi/films'),
+      stop('horror', 'https://letterboxd.com/someone/tag/horror/films'),
+      stop('deeper', 'https://letterboxd.com/someone/tag/horror/films/by/rating'),
+      stop('settings', 'https://letterboxd.com/settings/tag/x/films'),
+    ];
+    for (const policy of [
+      { scope: 'hostname', placeKey: 'letterboxd.com', placement: 'scenery' },
+      { scope: 'pattern', placeKey: 'https://www.letterboxd.com/*/tag/*/films', placement: 'regular' },
+      { scope: 'page', placeKey: 'https://letterboxd.com/settings/tag/x/films', placement: 'hidden' },
+    ]) {
+      expect((await handleInternetPlacePolicyPut(
+        adminRequest('/admin/internet-places/policy', { method: 'PUT', body: JSON.stringify(policy) }),
+        env,
+      )).status).toBe(200);
+    }
+    const loaded = await loadInternetPlacePolicies(env.WWO_ADMIN_DB, response);
+    expect(loaded.find((policy) => policy.scope === 'pattern')?.placeKey).toBe('letterboxd.com/*/tag/*/films');
+    expect(applyInternetPlacePolicies(response, loaded, 50).destinations.map((item) => item.id))
+      .toEqual(['naomi', 'horror']);
+    for (const placeKey of ['letterboxd.com/nylonsmile/films', 'letterboxd.com/a*b/films', '*.letterboxd.com/*']) {
+      expect((await handleInternetPlacePolicyPut(
+        adminRequest('/admin/internet-places/policy', {
+          method: 'PUT',
+          body: JSON.stringify({ scope: 'pattern', placeKey, placement: 'hidden' }),
+        }),
+        env,
+      )).status).toBe(400);
+    }
   });
 
   it('orders reserve and featured stops while preserving explicit regular stops', async () => {
