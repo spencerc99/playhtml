@@ -227,6 +227,14 @@ export const COLLAGE_STUDIO_STYLES = `
     border-radius: 50%;
   }
 
+  /* A held finger must not raise the system's copy and look-up menu or
+     start selecting text over the collage. */
+  .collage-studio--phone .collage-frame-area {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
   /* Two classes, so this outranks the drawer's own side-docked size and
      margin, which come later; otherwise the drawer grows with its scraps
      and buries the collage. */
@@ -330,6 +338,8 @@ export const COLLAGE_STUDIO_STYLES = `
 
   /* The grab bar at the top of a docked drawer: flick it up or down, or tap
      it to raise and lower the drawer. */
+  /* Tall enough for a thumb to land on without aiming; the bar drawn in it
+     stays small. */
   .collage-tray__handle {
     flex: 0 0 auto;
     align-self: center;

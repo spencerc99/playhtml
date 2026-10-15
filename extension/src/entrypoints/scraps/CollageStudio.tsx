@@ -233,11 +233,11 @@ const PLACED_MAX_SIDE = 220;
  */
 const PHONE_PLACED_FRAME_SHARE = 0.4;
 /**
- * How far apart tapped scraps fan out on a phone, in frame units per step:
- * the frame is zoomed far out there, so the desktop's spacing would stack
- * every piece on the last one.
+ * How far apart tapped scraps fan out on a phone, as a share of the frame's
+ * shorter side. Pieces there come in large, so the desktop spacing would
+ * stack them into one pile that has to be pulled apart by hand.
  */
-const PHONE_FAN_REACH = 150;
+const PHONE_FAN_STEP_SHARE = 0.18;
 const ROTATION_SNAP_DEGREES = 15;
 /** How far a pasted or duplicated piece lands from its original. */
 const COPY_OFFSET = 24;
@@ -1930,6 +1930,13 @@ export function CollageStudio({
       });
       return;
     }
+    // A finger on bare paper is reaching past the pieces, not drawing a box
+    // round them: on a phone a marquee swept up whatever the finger crossed.
+    // It only lets go of what is in hand.
+    if (phone && event.pointerType === "touch") {
+      setSelection(EMPTY_SELECTION);
+      return;
+    }
     setSelection(plan.base);
     pressRef.current = {
       at,
@@ -2309,9 +2316,19 @@ export function CollageStudio({
           if (over) turnOver();
           releaseTypingFocus(document.activeElement);
           // Clicked scraps fan out from the middle so each one stays grabbable.
+          const shorter = Math.min(frame.width, frame.height);
           addPiece(
             item,
-            fanOutPlacement(pieces.length, frame, phone ? PHONE_FAN_REACH : undefined),
+            fanOutPlacement(
+              pieces.length,
+              frame,
+              phone
+                ? {
+                    step: shorter * PHONE_FAN_STEP_SHARE,
+                    inset: (shorter * PHONE_PLACED_FRAME_SHARE) / 2,
+                  }
+                : undefined,
+            ),
           );
         }}
         onDragStart={(item, event) => {
