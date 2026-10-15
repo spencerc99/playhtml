@@ -81,6 +81,14 @@ describe("scrap filters", () => {
       ),
     ).toBe(false);
   });
+  it("keeps place exclusions active when search is only whitespace", () => {
+    const hidden = { ...parseFilterChip("are.na"), exclude: true };
+    expect(matchesScrapFilters(photo, [hidden], " \t\n ")).toBe(false);
+    expect(matchesScrapFilters(grouped, [hidden], " \t\n ")).toBe(true);
+    expect(
+      matchesScrapFilters(photo, [parseFilterChip("missing.test")], "   "),
+    ).toBe(false);
+  });
   it("searches button text and URLs", () => {
     const button: ScrapItem = {
       ...photo,

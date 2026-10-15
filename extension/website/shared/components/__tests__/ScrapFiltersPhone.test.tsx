@@ -49,6 +49,7 @@ describe("ScrapFilters on a phone", () => {
   let root: Root;
 
   beforeEach(() => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);

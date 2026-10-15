@@ -282,6 +282,7 @@ export function ScrapFilters({
     );
   // Sites are listed by when a scrap was last met there, newest first.
   const domains = useMemo(() => {
+    if (panel !== "places") return [];
     const lastSeen = new Map<string, number>();
     for (const item of items) {
       for (const location of scrapLocations(item)) {
@@ -293,7 +294,7 @@ export function ScrapFilters({
     return Array.from(lastSeen.keys()).sort(
       (a, b) => lastSeen.get(b)! - lastSeen.get(a)! || a.localeCompare(b),
     );
-  }, [items]);
+  }, [items, panel]);
   // Counts answer "how many would I see if I picked this", so each facet
   // honours the other filters but not its own.
   const domainCounts = useMemo(() => {

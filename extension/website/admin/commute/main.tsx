@@ -26,6 +26,11 @@ import {
   type CurationScope,
   type CurationPlacement,
   getDecisionForReviewItem,
+  getDecisionToReplace,
+  getDecisionsForReviewItem,
+  getQueueGroup,
+  QUEUE_GROUPS,
+  type QueueGroup,
   getDefaultPathTarget,
   getReviewTarget,
   mergeCatalogEvidence,
@@ -53,7 +58,8 @@ import {
   type ReserveReviewItem,
   type ReserveSourceMode,
 } from "./reserveCatalog";
-import { normalizeInternetPlace } from "../../shared/internetPlaceCatalog";
+import { normalizeInternetPlace } from "../../../shared/internetPlaceCatalog";
+import { AdminHeader, AdminLogin, useAdminToken } from "../adminAuth";
 import "./style.scss";
 
 const PLACEMENT_LABELS: Record<CurationPlacement, string> = {
@@ -71,10 +77,9 @@ const SCOPE_LABELS: Record<CurationScope, string> = {
   site: "Entire site",
 };
 const CURATION_SCOPES: CurationScope[] = ["page", "path", "hostname", "site"];
-const TOKEN_STORAGE_KEY = "wwo-admin-token";
 const RESERVE_CATALOG_URL = "/internet-commute-reserve-catalog.json";
 
-type ReviewView = "observed" | "reserve";
+type ReviewView = "observed" | "live" | "reserve";
 type ReviewItem = CommuteReviewItem | ReserveReviewItem;
 
 const REASON_LABELS = Object.fromEntries(
@@ -162,6 +167,93 @@ function StatusIcon({ kind }: { kind: StatusIconKind }) {
   );
 }
 
+const QUEUE_GROUP_LABELS: Record<QueueGroup, string> = {
+  waiting: "Waiting on you",
+  clef: "Clef decided",
+  decided: "You decided",
+};
+
+const QUEUE_GROUP_HINTS: Record<QueueGroup, string> = {
+  waiting: "Clef couldn't or shouldn't call these alone",
+  clef: "Skim, and press Enter to keep Clef's call as your rule",
+  decided: "Your rules already cover these",
+};
+
+const SPOT_CHECK_SIZE = 5;
+
+/**
+ * Today's sample of Clef's own calls. The same pages come back all day, and
+ * a new sample arrives tomorrow, so checking a few stands in for reading all.
+ */
+function pickSpotCheck<T extends { id: string }>(items: T[]): T[] {
+  const day = new Date().toISOString().slice(0, 10);
+  const rank = (id: string) => {
+    let hash = 2166136261;
+    for (const char of `${day}:${id}`) {
+      hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+    }
+    return hash >>> 0;
+  };
+  const picked = new Set(
+    [...items]
+      .sort((first, second) => rank(first.id) - rank(second.id))
+      .slice(0, SPOT_CHECK_SIZE)
+      .map((item) => item.id),
+  );
+  return items.filter((item) => picked.has(item.id));
+}
+
+function isPlacement(value: string): value is CurationPlacement {
+  return (CURATION_PLACEMENTS as readonly string[]).includes(value);
+}
+
+/**
+ * One status tag for every row in every tab: who decided it and what they
+ * chose, in the same colors as the totals above.
+ */
+function RowStatus({
+  item,
+  decision,
+}: {
+  item: ReviewItem;
+  decision?: CuratedPlace;
+}) {
+  const visits =
+    "visits" in item && item.visits && item.visits > 1 ? item.visits : 0;
+  const clef = "clef" in item ? item.clef : undefined;
+  const clefPlacement =
+    clef && isPlacement(clef.placement) ? clef.placement : undefined;
+  let source: "you" | "waiting" | "clef" | "auto";
+  let text: string;
+  let kind: CurationPlacement | "note" | "unknown";
+  if (decision) {
+    source = "you";
+    kind = decision.placement ?? "note";
+    text = `You · ${decision.placement ? PLACEMENT_LABELS[decision.placement] : "Note only"}`;
+  } else if ("need" in item && item.need) {
+    source = "waiting";
+    kind = "unknown";
+    text = `Waiting · ${REVIEW_NEED_LABELS[item.need]}${clefPlacement && item.need === "unsure" ? `, leans ${PLACEMENT_LABELS[clefPlacement].toLowerCase()}` : ""}`;
+  } else if (clefPlacement && clef) {
+    source = "clef";
+    kind = clefPlacement;
+    text = `Clef · ${PLACEMENT_LABELS[clefPlacement]} ${Math.round(clef.confidence * 100)}%`;
+  } else {
+    return visits ? <span className="row-visits">{visits} visits</span> : null;
+  }
+  const tone =
+    kind === "note" || kind === "unknown" ? "neutral" : placementTone(kind);
+  return (
+    <span className="row-status">
+      <b className={`status-tag status-tag--${source} status-tone--${tone}`}>
+        <StatusIcon kind={kind} />
+        {text}
+      </b>
+      {visits > 0 && <span className="row-visits">{visits} visits</span>}
+    </span>
+  );
+}
+
 function placementTone(placement: CurationPlacement): string {
   if (placement === "featured" || placement === "reserve") return "green";
   if (placement === "scenery") return "blue";
@@ -195,53 +287,11 @@ function relativeTime(timestamp: number): string {
   return `${Math.round(elapsedHours / 24)}d ago`;
 }
 
-function Login({
-  error,
-  onLogin,
-}: {
-  error: string;
-  onLogin: (token: string) => void;
-}) {
-  const [token, setToken] = useState("");
-  return (
-    <main className="curation-login">
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (token.trim()) onLogin(token.trim());
-        }}
-      >
-        <span className="eyebrow">WWO / INTERNAL OFFICE</span>
-        <h1>Commute Curation</h1>
-        <p>
-          Use the Worker admin key to review and change the durable catalog.
-        </p>
-        {error && <p className="curation-login__error">{error}</p>}
-        <label>
-          <span>Admin key</span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            autoFocus
-          />
-        </label>
-        <button type="submit" disabled={!token.trim()}>
-          Enter desk
-        </button>
-      </form>
-    </main>
-  );
-}
-
 export function App({
   token,
-  onLogout,
   onUnauthorized,
 }: {
   token: string;
-  onLogout: () => void;
   onUnauthorized: () => void;
 }) {
   const [places, setPlaces] = useState<CuratedPlace[]>([]);
@@ -250,11 +300,10 @@ export function App({
   const [evidenceItems, setEvidenceItems] = useState<
     Awaited<ReturnType<typeof getCatalog>>["evidence"]
   >([]);
-  const [reviewView, setReviewView] = useState<ReviewView>(() =>
-    new URLSearchParams(window.location.search).get("view") === "reserve"
-      ? "reserve"
-      : "observed",
-  );
+  const [reviewView, setReviewView] = useState<ReviewView>(() => {
+    const view = new URLSearchParams(window.location.search).get("view");
+    return view === "reserve" || view === "live" ? view : "observed";
+  });
   const [reserveSource, setReserveSource] = useState("all");
   const [reserveMode, setReserveMode] = useState<ReserveSourceMode | "all">(
     "trusted-editorial",
@@ -282,7 +331,16 @@ export function App({
   const selectedItemId = useRef<string | null>(null);
   const [copyState, setCopyState] = useState("Copy artifact");
   const [showReviewed, setShowReviewed] = useState(false);
-  const [showAllRecent, setShowAllRecent] = useState(false);
+  const [spotCheck, setSpotCheck] = useState(false);
+  const [lastDecision, setLastDecision] = useState<{
+    itemId: string;
+    saved: CuratedPlace;
+    replaced?: CuratedPlace;
+  } | null>(null);
+  // Group each row was in when you decided it, so it stays put until refresh.
+  const [decidedThisVisit, setDecidedThisVisit] = useState(
+    () => new Map<string, QueueGroup>(),
+  );
   const [clefLog, setClefLog] = useState<ClefLog | null>(null);
   const [clefLogDisagreementsOnly, setClefLogDisagreementsOnly] =
     useState(false);
@@ -292,6 +350,8 @@ export function App({
   const [selectedSuggestion, setSelectedSuggestion] =
     useState<CatalogSuggestion | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const shortcuts = useRef({ agree: agreeWithClef, undo: undoLastDecision });
+  shortcuts.current = { agree: agreeWithClef, undo: undoLastDecision };
   const [catalogError, setCatalogError] = useState("");
   const [saving, setSaving] = useState(false);
   const [importStatus, setImportStatus] = useState("Import audit JSON");
@@ -307,10 +367,8 @@ export function App({
   );
   const observedItems = useMemo(
     () =>
-      showAllRecent
-        ? allObservedItems
-        : allObservedItems.filter(needsHumanReview),
-    [allObservedItems, showAllRecent],
+      allObservedItems,
+    [allObservedItems],
   );
   const reserveSources = useMemo(
     () =>
@@ -329,16 +387,79 @@ export function App({
       ),
     [reserveItems, reserveMode, reserveSource],
   );
+  // Imported audit evidence adds historical rows; Live now shows only the current commute.
+  const liveIds = useMemo(
+    () => new Set(liveItems.map((item) => item.id)),
+    [liveItems],
+  );
   const reviewItems: ReviewItem[] =
     reviewView === "reserve" ? filteredReserveItems : observedItems;
 
-  const visibleItems = useMemo(
+  const waitingCount = useMemo(
     () =>
-      showReviewed
-        ? reviewItems
-        : reviewItems.filter((item) => !getDecisionForReviewItem(places, item)),
-    [places, reviewItems, showReviewed],
+      allObservedItems.filter(
+        (item) =>
+          needsHumanReview(item) && !getDecisionForReviewItem(places, item),
+      ).length,
+    [allObservedItems, places],
   );
+  const clefDecidedCount = useMemo(
+    () =>
+      allObservedItems.filter(
+        (item) =>
+          !needsHumanReview(item) && !getDecisionForReviewItem(places, item),
+      ).length,
+    [allObservedItems, places],
+  );
+  // Newest logged-out description per page, from the Clef log already loaded.
+  const previewByPage = useMemo(() => {
+    const previews = new Map<string, string>();
+    for (const entry of clefLog?.entries ?? []) {
+      const description = entry.input.page?.description?.trim();
+      if (entry.kind === "page" && description && !previews.has(entry.pageKey))
+        previews.set(entry.pageKey, description);
+    }
+    return previews;
+  }, [clefLog]);
+  const previewFor = (item: ReviewItem) => {
+    const seen = clefSeenById.get(item.id)?.input.page?.description?.trim();
+    if (seen || !item.url) return seen;
+    try {
+      return previewByPage.get(normalizeInternetPlace(item.url, "page"));
+    } catch {
+      return undefined;
+    }
+  };
+  const groupById = useMemo(
+    () =>
+      new Map(
+        reviewItems.map((item) => [
+          item.id,
+          getQueueGroup(item, Boolean(getDecisionForReviewItem(places, item))),
+        ]),
+      ),
+    [places, reviewItems],
+  );
+  const displayGroup = useCallback(
+    (id: string) => decidedThisVisit.get(id) ?? groupById.get(id),
+    [decidedThisVisit, groupById],
+  );
+  const visibleItems = useMemo(() => {
+    if (reviewView === "live")
+      return reviewItems.filter((item) => liveIds.has(item.id));
+    // Rows decided since the last refresh stay put, showing your call.
+    const shown = reviewItems.filter(
+      (item) =>
+        showReviewed ||
+        groupById.get(item.id) !== "decided" ||
+        decidedThisVisit.has(item.id),
+    );
+    if (reviewView === "reserve") return shown;
+    return QUEUE_GROUPS.flatMap((group) => {
+      const items = shown.filter((item) => displayGroup(item.id) === group);
+      return group === "clef" && spotCheck ? pickSpotCheck(items) : items;
+    });
+  }, [decidedThisVisit, displayGroup, groupById, liveIds, reviewItems, reviewView, showReviewed, spotCheck]);
   const selectedItem = useMemo(
     () =>
       visibleItems.find((item) => item.id === selectedId) ??
@@ -383,6 +504,7 @@ export function App({
 
   const loadQueue = useCallback(async () => {
     setQueueStatus("loading");
+    setDecidedThisVisit(new Map());
     try {
       const response = await fetch(COMMUTE_REVIEW_URL ?? COMMUTE_RECENT_URL, {
         headers: {
@@ -514,6 +636,12 @@ export function App({
       } else if (event.key === "Enter") {
         event.preventDefault();
         formRef.current?.requestSubmit();
+      } else if (event.key === "a") {
+        event.preventDefault();
+        void shortcuts.current.agree();
+      } else if (event.key === "z") {
+        event.preventDefault();
+        void shortcuts.current.undo();
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -553,7 +681,7 @@ export function App({
   useEffect(() => {
     setSelectedId(null);
     const url = new URL(window.location.href);
-    if (reviewView === "reserve") url.searchParams.set("view", "reserve");
+    if (reviewView !== "observed") url.searchParams.set("view", reviewView);
     else url.searchParams.delete("view");
     window.history.replaceState(null, "", url);
   }, [reviewView, reserveMode, reserveSource]);
@@ -694,18 +822,89 @@ export function App({
     if (!selectedItem) return;
     if (!placement && !comment.trim()) return;
     if (scope === "path" && !pathTarget.trim()) return;
-    const target =
-      scope === "path"
-        ? pathTarget.trim()
-        : getReviewTarget(selectedItem, scope);
-    const priorDecision = getDecisionForReviewItem(places, selectedItem);
-    const decision = createCuratedPlace({
-      id: priorDecision?.id ?? crypto.randomUUID(),
-      input: target,
+    await saveDecision({
       scope,
+      target:
+        scope === "path"
+          ? pathTarget.trim()
+          : getReviewTarget(selectedItem, scope),
       placement,
       reason,
       comment,
+    });
+  }
+
+  /** Keeps Clef's answer for the selected page as your rule. */
+  async function agreeWithClef() {
+    if (!selectedItem || !selectedSuggestion || saving) return;
+    const target =
+      selectedSuggestion.scope === "path"
+        ? getDefaultPathTarget(selectedItem)
+        : getReviewTarget(selectedItem, selectedSuggestion.scope);
+    if (!target) return;
+    await saveDecision({
+      scope: selectedSuggestion.scope,
+      target,
+      placement: selectedSuggestion.placement,
+      reason: selectedSuggestion.reason ?? "",
+      comment: "",
+    });
+  }
+
+  async function undoLastDecision() {
+    if (!lastDecision || saving) return;
+    const { itemId, saved, replaced } = lastDecision;
+    setSaving(true);
+    setCatalogError("");
+    try {
+      // Restoring with `saved` as the previous rule swaps them in one request.
+      let restored: CuratedPlace | undefined;
+      if (replaced) restored = await saveCatalogPolicy(token, replaced, saved);
+      else await deleteCatalogPolicy(token, saved);
+      setPlaces((current) => {
+        const without = current.filter((place) => place.id !== saved.id);
+        return restored ? upsertCuratedPlace(without, restored) : without;
+      });
+      setDecidedThisVisit((groups) => {
+        const next = new Map(groups);
+        next.delete(itemId);
+        return next;
+      });
+      setLastDecision(null);
+      setSelectedId(itemId);
+    } catch (error) {
+      handleCatalogError(error);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveDecision({
+    scope: decisionScope,
+    target,
+    placement: decisionPlacement,
+    reason: decisionReason,
+    comment: decisionComment,
+  }: {
+    scope: CurationScope;
+    target: string;
+    placement?: CurationPlacement;
+    reason: string;
+    comment: string;
+  }) {
+    if (!selectedItem) return;
+    const priorDecision = getDecisionToReplace(
+      places,
+      selectedItem,
+      decisionScope,
+    );
+    const decision = createCuratedPlace({
+      id: priorDecision?.id ?? crypto.randomUUID(),
+      input: target,
+      scope: decisionScope,
+      placement: decisionPlacement,
+      reason: decisionReason,
+      comment: decisionComment,
       updatedAt: new Date().toISOString(),
     });
     setSaving(true);
@@ -716,6 +915,17 @@ export function App({
         ? places.filter((place) => place.id !== priorDecision.id)
         : places;
       setPlaces(upsertCuratedPlace(otherPlaces, saved));
+      setLastDecision({
+        itemId: selectedItem.id,
+        saved,
+        replaced: priorDecision,
+      });
+      const groupBefore = groupById.get(selectedItem.id);
+      if (groupBefore && groupBefore !== "decided") {
+        setDecidedThisVisit((groups) =>
+          new Map(groups).set(selectedItem.id, groupBefore),
+        );
+      }
     } catch (error) {
       handleCatalogError(error);
       setSaving(false);
@@ -771,6 +981,9 @@ export function App({
     }
   }
 
+  const coveringDecisions = selectedItem
+    ? getDecisionsForReviewItem(places, selectedItem)
+    : [];
   const selectedInspection = selectedItem
     ? inspectionById.get(selectedItem.id)
     : undefined;
@@ -783,23 +996,12 @@ export function App({
     <main>
       <header className="masthead">
         <div className="masthead__identity">
-          <img src="/icon.png" alt="" />
-          <div>
-            <span className="eyebrow">WWO / INTERNAL OFFICE</span>
-            <h1>
-              Internet Commute
-              <br />
-              Curation Desk
-            </h1>
-          </div>
+          <h2>Internet Commute Curation Desk</h2>
         </div>
         <div className="masthead__notice">
           <span>DURABLE CATALOG</span>
           <strong>CHANGES AFFECT THE TRAIN</strong>
           <small>human policy stored in D1</small>
-          <button type="button" onClick={onLogout}>
-            Lock desk
-          </button>
         </div>
       </header>
 
@@ -821,8 +1023,17 @@ export function App({
           onClick={() => setReviewView("observed")}
         >
           <span>Needs you</span>
-          <b>{allObservedItems.filter(needsHumanReview).length}</b>
-          <small>Pages where Clef needs a human call</small>
+          <b>{waitingCount}</b>
+          <small>Pages waiting on your final call</small>
+        </button>
+        <button
+          type="button"
+          aria-pressed={reviewView === "live"}
+          onClick={() => setReviewView("live")}
+        >
+          <span>Live now</span>
+          <b>{liveItems.length}</b>
+          <small>Everything on the commute right now</small>
         </button>
         <button
           type="button"
@@ -843,19 +1054,23 @@ export function App({
               <span>
                 {reviewView === "reserve"
                   ? "RESERVE REVIEW 01"
-                  : "LIVE REVIEW 01"}
+                  : reviewView === "live"
+                    ? "SELECTED 01"
+                    : "DECISION 01"}
               </span>
               <h2>
                 {reviewView === "reserve"
                   ? "Reserve candidate"
-                  : "Current candidate"}
+                  : reviewView === "live"
+                    ? "Selected page"
+                    : "Your call"}
               </h2>
             </div>
             <span className="queue-position">
               {visibleItems.length}{" "}
-              {showReviewed || showAllRecent || reviewView === "reserve"
-                ? "visible"
-                : "need you"}
+              {reviewView === "observed" && !showReviewed
+                ? "need you"
+                : "visible"}
             </span>
           </div>
 
@@ -1154,6 +1369,29 @@ export function App({
                     );
                   })}
                 </div>
+                {coveringDecisions.length > 0 && (
+                  <div className="covering-rules">
+                    <span>Your rules here, most specific first</span>
+                    <ul>
+                      {coveringDecisions.map((rule, index) => (
+                        <li key={rule.id}>
+                          <b>{SCOPE_LABELS[rule.scope]}</b>
+                          <code>{rule.place}</code>
+                          <span>
+                            {rule.placement
+                              ? PLACEMENT_LABELS[rule.placement]
+                              : "Note only"}
+                          </span>
+                          {index === 0 && <small>applies here</small>}
+                        </li>
+                      ))}
+                    </ul>
+                    <p>
+                      Saving at a different scope adds a rule, so this page can
+                      differ from the rest of the site.
+                    </p>
+                  </div>
+                )}
                 {scope === "path" && (
                   <label className="scope-path">
                     <span>Path prefix</span>
@@ -1183,6 +1421,17 @@ export function App({
                     onAskAgain={() => void askClefAgain()}
                     busy={suggestionStatus === "loading"}
                   />
+                )}
+                {selectedSuggestion && (
+                  <button
+                    type="button"
+                    className="agree-button"
+                    onClick={() => void agreeWithClef()}
+                    disabled={saving}
+                  >
+                    Keep Clef's call: {PLACEMENT_LABELS[selectedSuggestion.placement]},{" "}
+                    {SCOPE_LABELS[selectedSuggestion.scope].toLowerCase()} (A)
+                  </button>
                 )}
                 {suggestionStatus === "unavailable" && (
                   <p className="decision-help">
@@ -1297,7 +1546,8 @@ export function App({
               </div>
               <p className="shortcut-hint">
                 <kbd>1</kbd>–<kbd>5</kbd> placement · <kbd>Enter</kbd> file ·{" "}
-                <kbd>J</kbd>/<kbd>K</kbd> next / previous
+                <kbd>J</kbd>/<kbd>K</kbd> next / previous · <kbd>A</kbd>{" "}
+                keep Clef's call · <kbd>Z</kbd> undo
               </p>
             </form>
           )}
@@ -1309,10 +1559,16 @@ export function App({
               <span>
                 {reviewView === "reserve"
                   ? "RESERVE REGISTER 02"
-                  : "LIVE REGISTER 02"}
+                  : reviewView === "live"
+                    ? "LIVE NOW 02"
+                    : "QUEUE 02"}
               </span>
               <h2>
-                {reviewView === "reserve" ? "Reserve catalog" : "Commute queue"}
+                {reviewView === "reserve"
+                  ? "Reserve catalog"
+                  : reviewView === "live"
+                    ? "On the commute now"
+                    : "Waiting on you"}
               </h2>
             </div>
             <div className="queue-controls">
@@ -1361,17 +1617,20 @@ export function App({
               {reviewView === "observed" && (
                 <button
                   type="button"
-                  onClick={() => setShowAllRecent((value) => !value)}
+                  aria-pressed={spotCheck}
+                  onClick={() => setSpotCheck((value) => !value)}
                 >
-                  {showAllRecent ? "Needs you only" : "Show all recent"}
+                  {spotCheck ? "Show all Clef calls" : "Spot check 5"}
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => setShowReviewed((value) => !value)}
-              >
-                {showReviewed ? "Hide reviewed" : "Show reviewed"}
-              </button>
+              {reviewView !== "live" && (
+                <button
+                  type="button"
+                  onClick={() => setShowReviewed((value) => !value)}
+                >
+                  {showReviewed ? "Hide reviewed" : "Show reviewed"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() =>
@@ -1385,13 +1644,56 @@ export function App({
             </div>
           </div>
 
+          {reviewView === "observed" && (
+            <p className="queue-summary" aria-live="polite">
+              <b>{waitingCount}</b> waiting on you
+              {" · "}
+              <b>{clefDecidedCount}</b> Clef decided
+              {decidedThisVisit.size > 0 && (
+                <>
+                  {" · "}
+                  <b>{decidedThisVisit.size}</b> decided this visit
+                </>
+              )}
+              {lastDecision && (
+                <button
+                  type="button"
+                  className="queue-summary__undo"
+                  onClick={() => void undoLastDecision()}
+                  disabled={saving}
+                >
+                  Undo last (Z)
+                </button>
+              )}
+            </p>
+          )}
           <ol className="place-list live-place-list">
             {visibleItems.map((item, index) => {
               const priorDecision = getDecisionForReviewItem(places, item);
+              const preview = previewFor(item);
+              const group =
+                reviewView === "observed" ? displayGroup(item.id) : undefined;
+              const startsGroup =
+                group !== undefined &&
+                (index === 0 ||
+                  displayGroup(visibleItems[index - 1].id) !== group);
               return (
+                <React.Fragment key={item.id}>
+                {startsGroup && group && (
+                  <li className={`place-group place-group--${group}`}>
+                    <strong>{QUEUE_GROUP_LABELS[group]}</strong>
+                    <span>
+                      {
+                        visibleItems.filter(
+                          (other) => displayGroup(other.id) === group,
+                        ).length
+                      }
+                    </span>
+                    <small>{QUEUE_GROUP_HINTS[group]}</small>
+                  </li>
+                )}
                 <li
                   className={`place-card place-card--route-${item.currentDisposition} ${selectedItem?.id === item.id ? "place-card--selected" : ""}`}
-                  key={item.id}
                 >
                   <button
                     className="place-card__select"
@@ -1418,14 +1720,13 @@ export function App({
                       <span className="place-card__subtitle">
                         {item.title ?? "Scenery domain"}
                       </span>
-                      {"need" in item && item.need && (
-                        <span className={`need-chip need-chip--${item.need}`}>
-                          {REVIEW_NEED_LABELS[item.need]}
-                          {item.clef ? ` · ${item.clef.placement}` : ""}
-                          {item.visits && item.visits > 1
-                            ? ` · ${item.visits} visits`
-                            : ""}
+                      {preview && (
+                        <span className="place-card__preview" title={preview}>
+                          {preview}
                         </span>
+                      )}
+                      {!("reserve" in item) && (
+                        <RowStatus item={item} decision={priorDecision} />
                       )}
                       {"reserve" in item && (
                         <span className="place-card__source">
@@ -1433,21 +1734,8 @@ export function App({
                           {item.reserve.issue ? ` · ${item.reserve.issue}` : ""}
                         </span>
                       )}
-                      {priorDecision && (
-                        <b
-                          className={`decision-mark ${
-                            priorDecision.placement
-                              ? `status-tone--${placementTone(priorDecision.placement)}`
-                              : "status-tone--neutral"
-                          }`}
-                        >
-                          <StatusIcon
-                            kind={priorDecision.placement ?? "note"}
-                          />
-                          {priorDecision.placement
-                            ? PLACEMENT_LABELS[priorDecision.placement]
-                            : "Note only"}
-                        </b>
+                      {"reserve" in item && priorDecision && (
+                        <RowStatus item={item} decision={priorDecision} />
                       )}
                     </span>
                   </button>
@@ -1462,6 +1750,7 @@ export function App({
                     </button>
                   )}
                 </li>
+                </React.Fragment>
               );
             })}
           </ol>
@@ -1590,37 +1879,32 @@ export function App({
 }
 
 function CurationDesk() {
-  const [token, setToken] = useState(
-    () => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "",
-  );
+  const auth = useAdminToken();
   const [authError, setAuthError] = useState("");
-  const logout = useCallback(() => {
-    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-    setToken("");
-  }, []);
-  if (!token) {
+  if (!auth.token) {
     return (
-      <Login
+      <AdminLogin
         error={authError}
         onLogin={(nextToken) => {
           setAuthError("");
-          sessionStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
-          setToken(nextToken);
+          auth.login(nextToken);
         }}
       />
     );
   }
   return (
-    <App
-      token={token}
-      onLogout={logout}
-      onUnauthorized={() => {
-        setAuthError(
-          "That admin key was rejected. Check the current Worker key and try again.",
-        );
-        logout();
-      }}
-    />
+    <>
+      <AdminHeader currentPage="commute" onLogout={auth.logout} />
+      <App
+        token={auth.token}
+        onUnauthorized={() => {
+          setAuthError(
+            "That admin key was rejected. Check the current Worker key and try again.",
+          );
+          auth.logout();
+        }}
+      />
+    </>
   );
 }
 

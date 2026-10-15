@@ -8,7 +8,7 @@ import {
   normalizeInternetPlace,
   type InternetPlacePlacement,
   type InternetPlaceScope,
-} from "../../shared/internetPlaceCatalog";
+} from "../../../shared/internetPlaceCatalog";
 
 export const CURATION_STORAGE_KEY = "wwo-commute-curation-v1";
 
@@ -74,6 +74,18 @@ export const REVIEW_NEED_LABELS: Record<ReviewNeed, string> = {
  */
 export function needsHumanReview(item: CommuteReviewItem): boolean {
   return item.need !== null;
+}
+
+/** Sections of the Needs you list, in the order they are shown. */
+export const QUEUE_GROUPS = ["waiting", "clef", "decided"] as const;
+export type QueueGroup = (typeof QUEUE_GROUPS)[number];
+
+export function getQueueGroup(
+  item: CommuteReviewItem,
+  decided: boolean,
+): QueueGroup {
+  if (decided) return "decided";
+  return needsHumanReview(item) ? "waiting" : "clef";
 }
 
 export type EvidenceLabel = {
@@ -300,21 +312,45 @@ export function getDecisionForReviewItem(
   places: CuratedPlace[],
   item: CommuteReviewItem,
 ): CuratedPlace | undefined {
+  return getDecisionsForReviewItem(places, item)[0];
+}
+
+/**
+ * Every human rule covering an item, most specific first. The first one is
+ * what routing uses; the rest stay in force for the site's other pages.
+ */
+export function getDecisionsForReviewItem(
+  places: CuratedPlace[],
+  item: CommuteReviewItem,
+): CuratedPlace[] {
   const lookups: Array<{ scope: CurationScope; placeKey: string }> = item.url
     ? getInternetPlaceLookupKeys(item.url)
     : (["hostname", "site"] as const).map((scope) => ({
         scope,
         placeKey: getReviewTarget(item, scope),
       }));
-  for (const lookup of lookups) {
-    const decision = places.find(
+  return lookups.flatMap((lookup) =>
+    places.filter(
       (place) =>
         getDecisionKey(place.scope, place.place) ===
         getDecisionKey(lookup.scope, lookup.placeKey),
-    );
-    if (decision) return decision;
-  }
-  return undefined;
+    ),
+  );
+}
+
+/**
+ * The rule a new decision edits: the covering rule at the same scope. A
+ * decision at another scope is added alongside, so a hidden page can sit
+ * under a site that rides as a stop.
+ */
+export function getDecisionToReplace(
+  places: CuratedPlace[],
+  item: CommuteReviewItem,
+  scope: CurationScope,
+): CuratedPlace | undefined {
+  return getDecisionsForReviewItem(places, item).find(
+    (place) => place.scope === scope,
+  );
 }
 
 export function canPrefillSuggestion({

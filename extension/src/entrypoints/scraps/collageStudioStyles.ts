@@ -858,6 +858,13 @@ ${PIECE_MATERIAL_STYLES}
   }
 
   /* The area a drag across bare paper is sweeping. */
+  .collage-snap-guide {
+    position: absolute;
+    z-index: 10003;
+    background: var(--c-accent);
+    pointer-events: none;
+  }
+
   .collage-marquee {
     position: absolute;
     z-index: 10003;

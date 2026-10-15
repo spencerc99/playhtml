@@ -1406,10 +1406,38 @@ describe("LocalEventStore pending uploads", () => {
     expect(third.nextCursor).toBeNull();
     expect(
       new Set(
-        [...first.events, ...second.events, ...third.events].map(({ id }) => id),
+        [...first.events, ...second.events, ...third.events].map(
+          ({ id }) => id,
+        ),
       ).size,
     ).toBe(5);
   });
+
+  it.each([1, 2, 3, 4])(
+    "finishes bounded pages of size %i without a spurious cursor",
+    async (limit) => {
+      const store = createStore();
+      await store.addEvents([
+        { ...scrapEvent("a", "https://assets.example/a.png"), ts: 3_000 },
+        { ...scrapEvent("b", "https://assets.example/b.png"), ts: 3_000 },
+        { ...scrapEvent("c", "https://assets.example/c.png"), ts: 3_000 },
+        { ...event("cursor", "cursor"), ts: 4_000 },
+      ]);
+      const ids: string[] = [];
+      let cursor: { ts: number; id: string } | undefined;
+      do {
+        const page = await store.queryEventPage("element", limit, cursor);
+        expect(page.events.length).toBeLessThanOrEqual(limit);
+        ids.push(...page.events.map(({ id }) => id));
+        cursor = page.nextCursor ?? undefined;
+        if (ids.length === 3) expect(page.nextCursor).toBeNull();
+      } while (cursor);
+      expect(ids).toEqual(["c", "b", "a"]);
+      expect(
+        await store.queryEventPage("element", limit, { ts: 3_000, id: "a" }),
+      ).toEqual({ events: [], nextCursor: null });
+    },
+  );
 
   it("deletes scrap events by id and leaves other events alone", async () => {
     const store = createStore();

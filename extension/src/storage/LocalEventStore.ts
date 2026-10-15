@@ -1393,7 +1393,10 @@ export class LocalEventStore {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
       throw new Error("Event page limit must be between 1 and 1000");
     }
-    if (cursor && (!Number.isFinite(cursor.ts) || typeof cursor.id !== "string")) {
+    if (
+      cursor &&
+      (!Number.isFinite(cursor.ts) || typeof cursor.id !== "string")
+    ) {
       throw new Error("Invalid event page cursor");
     }
     await this.ensureInitialized();
@@ -1407,22 +1410,33 @@ export class LocalEventStore {
       const index = transaction.objectStore(STORE_NAME).index("typeTsId");
       const upper = cursor ? [type, cursor.ts, cursor.id] : [type, []];
       const range = IDBKeyRange.bound([type], upper, false, !!cursor);
-      const request = index.openCursor(range, "prev");
-      const events: CollectionEvent[] = [];
+      const request = index.openKeyCursor(range, "prev");
+      let advanced = false;
 
       request.onsuccess = () => {
         const position = request.result;
-        if (!position) {
-          resolve({ events, nextCursor: null });
+        if (position && !advanced) {
+          advanced = true;
+          // Find the first omitted key without reading each event's payload.
+          position.advance(limit);
           return;
         }
-        if (events.length === limit) {
+        const hasMore = position !== null;
+        const pageRange = position
+          ? IDBKeyRange.bound(position.key, upper, true, !!cursor)
+          : range;
+        const pageRequest = index.getAll(pageRange, limit);
+        pageRequest.onsuccess = () => {
+          const events = (pageRequest.result as StoredCollectionEvent[])
+            .reverse()
+            .map(toCollectionEvent);
           const last = events[events.length - 1];
-          resolve({ events, nextCursor: { ts: last.ts, id: last.id } });
-          return;
-        }
-        events.push(toCollectionEvent(position.value as StoredCollectionEvent));
-        position.continue();
+          resolve({
+            events,
+            nextCursor: hasMore ? { ts: last.ts, id: last.id } : null,
+          });
+        };
+        pageRequest.onerror = () => reject(pageRequest.error);
       };
       request.onerror = () => reject(request.error);
       transaction.onerror = () => reject(transaction.error);

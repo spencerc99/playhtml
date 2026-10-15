@@ -75,6 +75,8 @@ export function matchesScrapFilters(
   places: ScrapPlace[],
   search: string,
 ): boolean {
+  const query = search.trim();
+  if (places.length === 0 && query === "") return true;
   const locations = scrapLocations(item);
   const kept = places.filter((place) => !place.exclude);
   const hidden = places.filter((place) => place.exclude);
@@ -88,7 +90,8 @@ export function matchesScrapFilters(
     )
   )
     return false;
-  const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
   const text = [
     ...locations.flatMap((source) => [
       source.pageTitle,

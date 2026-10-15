@@ -1,12 +1,15 @@
 // ABOUTME: Styles the Internet Commute curation desk as a dense editorial workbench.
 // ABOUTME: Combines WWO paper warmth with functional print-shop graphics.
 
+@use "../office-chrome";
+
 $ink: #22211e;
 $paper: #f2efe5;
 $paper-light: #fbfaf4;
 $blue: #3468d4;
 $green: #4c8a67;
 $orange: #df6d45;
+$gold: #e2b84a;
 $line: rgba($ink, 0.28);
 $mono: "Martian Mono", monospace;
 $body: "Atkinson Hyperlegible", sans-serif;
@@ -38,56 +41,6 @@ textarea {
   font: inherit;
 }
 
-.curation-login {
-  min-height: calc(100vh - 88px);
-  display: grid;
-  place-items: center;
-}
-
-.curation-login form {
-  width: min(460px, 100%);
-  padding: 34px;
-  border: 1px solid $ink;
-  background: $paper-light;
-  box-shadow: 8px 8px 0 rgba($ink, 0.12);
-}
-
-.curation-login h1 {
-  margin: 10px 0 18px;
-}
-
-.curation-login p {
-  margin-bottom: 24px;
-  color: rgba($ink, 0.65);
-}
-
-.curation-login .curation-login__error {
-  margin: -10px 0 18px;
-  padding: 9px 10px;
-  border-left: 4px solid $orange;
-  background: rgba($orange, 0.1);
-  color: $ink;
-  font-size: 13px;
-}
-
-.curation-login input,
-.curation-login button {
-  width: 100%;
-  min-height: 44px;
-  border: 1px solid $ink;
-}
-
-.curation-login input {
-  padding: 9px 10px;
-  background: #fffef8;
-}
-
-.curation-login button {
-  margin-top: 12px;
-  background: $ink;
-  color: $paper-light;
-}
-
 button,
 a {
   -webkit-tap-highlight-color: transparent;
@@ -104,7 +57,7 @@ main {
 
 .masthead {
   display: flex;
-  min-height: 144px;
+  min-height: 96px;
   border: 1px solid $ink;
   background: $paper-light;
 }
@@ -117,10 +70,11 @@ main {
   padding: 20px 24px;
 }
 
-.masthead__identity img {
-  width: 70px;
-  height: 70px;
-  image-rendering: auto;
+.masthead__identity h2 {
+  font-size: clamp(26px, 3vw, 40px);
+  font-weight: 400;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
 }
 
 .eyebrow,
@@ -171,17 +125,6 @@ h1 {
 
 .masthead__notice small {
   color: rgba($ink, 0.65);
-}
-
-.masthead__notice button {
-  width: max-content;
-  margin-top: 8px;
-  padding: 0;
-  border: 0;
-  border-bottom: 1px solid currentColor;
-  background: transparent;
-  font-family: $mono;
-  font-size: 8px;
 }
 
 .verdict-key {
@@ -273,7 +216,7 @@ h1 {
 
 .review-view-switch {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border: solid $ink;
   border-width: 0 1px 1px;
   background: $paper-light;
@@ -1127,6 +1070,16 @@ fieldset {
   white-space: nowrap;
 }
 
+.place-card__preview {
+  display: block;
+  margin-top: 5px;
+  overflow: hidden;
+  color: rgba($ink, 0.55);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .place-card__source {
   display: block;
   margin-top: 4px;
@@ -1136,22 +1089,6 @@ fieldset {
   font-size: 8px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.decision-mark {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 7px;
-  color: var(--status-color);
-  font-family: $mono;
-  font-size: 8px;
-  text-transform: uppercase;
-}
-
-.decision-mark .status-icon {
-  width: 12px;
-  height: 12px;
 }
 
 .place-card__remove {
@@ -1338,11 +1275,6 @@ footer {
     padding: 16px;
   }
 
-  .masthead__identity img {
-    width: 44px;
-    height: 44px;
-  }
-
   .masthead__notice {
     width: auto;
     padding: 12px 16px;
@@ -1351,6 +1283,10 @@ footer {
   }
 
   .verdict-key {
+    grid-template-columns: 1fr;
+  }
+
+  .review-view-switch {
     grid-template-columns: 1fr;
   }
 
@@ -1390,28 +1326,6 @@ footer {
     border-right: 0;
     border-bottom: 1px solid $ink;
   }
-}
-
-.need-chip {
-  justify-self: start;
-  margin-top: 6px;
-  padding: 2px 6px;
-  border: 1px solid $line;
-  color: rgba($ink, 0.75);
-  font-family: $mono;
-  font-size: 9px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.need-chip--hidden {
-  border-color: $orange;
-  color: $orange;
-}
-
-.need-chip--promote {
-  border-color: $green;
-  color: $green;
 }
 
 .shortcut-hint {
@@ -1669,4 +1583,164 @@ $reserve-gold: #c9a43a;
 .clef-log__answer {
   display: grid;
   min-width: 0;
+}
+
+.covering-rules {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px dashed $line;
+  background: rgba($paper-light, 0.7);
+  font-family: $mono;
+  font-size: 9px;
+
+  > span {
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+
+  ul {
+    margin: 6px 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba($ink, 0.08);
+  }
+
+  code {
+    overflow-wrap: anywhere;
+  }
+
+  small {
+    color: $green;
+    font-weight: 600;
+  }
+
+  p {
+    color: rgba($ink, 0.65);
+    font-family: $body;
+    font-size: 12px;
+  }
+}
+
+.row-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 7px;
+}
+
+.status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px 2px 5px;
+  border: 1px solid var(--status-color);
+  color: var(--status-color);
+  font-family: $mono;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+
+  .status-icon {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+// Waiting rows carry the only filled tag, so they read first at a glance.
+.status-tag--waiting {
+  border-color: $gold;
+  background: $gold;
+  color: $ink;
+}
+
+.status-tag--you {
+  background: color-mix(in srgb, var(--status-color) 14%, transparent);
+  border-width: 2px;
+}
+
+.status-tag--clef {
+  border-style: dashed;
+}
+
+.row-visits {
+  color: rgba($ink, 0.6);
+  font-family: $mono;
+  font-size: 9px;
+}
+
+.place-group {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 14px 16px 8px;
+  border-bottom: 1px solid $ink;
+  background: $paper;
+  font-family: $mono;
+
+  strong {
+    font-size: 10px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+
+  span {
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  small {
+    color: rgba($ink, 0.6);
+    font-family: $body;
+    font-size: 12px;
+  }
+}
+
+.place-group--waiting strong {
+  color: darken($gold, 18%);
+}
+
+.queue-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  padding: 10px 16px;
+  border-bottom: 1px solid $line;
+  font-family: $mono;
+  font-size: 10px;
+
+  b {
+    font-size: 12px;
+  }
+}
+
+.queue-summary__undo {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  font-family: $mono;
+  font-size: 9px;
+}
+
+.agree-button {
+  justify-self: start;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px dashed $ink;
+  background: $paper-light;
+  font-family: $mono;
+  font-size: 10px;
 }
