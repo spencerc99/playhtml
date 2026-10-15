@@ -232,6 +232,14 @@ const PHONE_PLACED_FRAME_SHARE = 0.4;
  * stack them into one pile that has to be pulled apart by hand.
  */
 const PHONE_FAN_STEP_SHARE = 0.18;
+/**
+ * How long a finger rests on bare paper before a drag from it draws a
+ * selection box, and how far it may wander meanwhile, in screen pixels. The
+ * same touch-and-hold Freeform, Pages and Keynote use: a quick swipe there
+ * selects nothing.
+ */
+const PHONE_BOX_HOLD_MS = 400;
+const PHONE_BOX_HOLD_SLOP = 8;
 const ROTATION_SNAP_DEGREES = 15;
 /**
  * How near, in screen pixels, a carried piece's edge or middle comes to
@@ -2016,11 +2024,39 @@ export function CollageStudio({
       });
       return;
     }
-    // A finger on bare paper is reaching past the pieces, not drawing a box
-    // round them: on a phone a marquee swept up whatever the finger crossed.
-    // It only lets go of what is in hand.
+    // A finger on bare paper is usually reaching past the pieces, so a tap
+    // there lets go of what is in hand and a quick swipe does nothing. Only a
+    // finger held still first draws a selection box.
     if (phone && event.pointerType === "touch") {
-      setSelection(EMPTY_SELECTION);
+      event.currentTarget.setPointerCapture(event.pointerId);
+      pressRef.current = {
+        at,
+        downAt: performance.now(),
+        selectOnClick: EMPTY_SELECTION,
+        moved: false,
+      };
+      cancelBoxHold();
+      boxHoldRef.current = {
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        timer: window.setTimeout(() => {
+          boxHoldRef.current = null;
+          const press = pressRef.current;
+          if (!press || press.moved) return;
+          // From here the finger's travel draws the box, and letting go
+          // keeps what it took rather than counting as a tap.
+          press.moved = true;
+          setSelection(EMPTY_SELECTION);
+          setGesture({
+            kind: "marquee",
+            start: at,
+            end: at,
+            base: EMPTY_SELECTION,
+            additive: false,
+          });
+        }, PHONE_BOX_HOLD_MS),
+      };
       return;
     }
     setSelection(plan.base);
@@ -2045,6 +2081,20 @@ export function CollageStudio({
    * second finger can turn a one-finger drag into a pinch.
    */
   const touchesRef = useRef(new Map<number, { clientX: number; clientY: number }>());
+  /** A finger resting on bare paper, waiting to see if it is held long enough to draw a box. */
+  const boxHoldRef = useRef<{
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    timer: number;
+  } | null>(null);
+  const cancelBoxHold = () => {
+    if (boxHoldRef.current) window.clearTimeout(boxHoldRef.current.timer);
+    boxHoldRef.current = null;
+  };
+  useEffect(() => cancelBoxHold, []);
+  /** Second fingers that tapped a piece into the selection, whose lift is theirs alone. */
+  const addingFingersRef = useRef(new Set<number>());
   const fingerPair = (): FingerPair | null => {
     const [first, second] = [...touchesRef.current.values()];
     if (!first || !second) return null;
@@ -2065,7 +2115,26 @@ export function CollageStudio({
       clientY: event.clientY,
     });
     if (touchesRef.current.size !== 2) return;
+    cancelBoxHold();
     if (over || toolActive || transform || selectedPieces.length === 0) return;
+    // Holding one piece still and tapping another with a second finger adds
+    // it to the selection, as in Freeform; a second finger on a held piece or
+    // on bare paper starts a pinch instead.
+    const press = pressRef.current;
+    if (gesture.kind === "move" && press && !press.moved) {
+      const tapped = topPieceUnder(reachable, framePoint(event));
+      if (tapped && !isSelected(selection, tapped.id)) {
+        event.stopPropagation();
+        const ids = [...selection.ids, tapped.id];
+        const next = selectMany(ids);
+        setSelection(next);
+        press.selectOnClick = next;
+        setGesture({ ...gesture, origins: piecesById(pieces, ids) });
+        addingFingersRef.current.add(event.pointerId);
+        touchesRef.current.delete(event.pointerId);
+        return;
+      }
+    }
     const start = fingerPair();
     if (!start) return;
     // The second finger belongs to the pinch, not to the piece under it.
@@ -2077,11 +2146,24 @@ export function CollageStudio({
 
   const onStageTouchMove = (event: React.PointerEvent) => {
     if (event.pointerType !== "touch") return;
+    if (addingFingersRef.current.has(event.pointerId)) {
+      event.stopPropagation();
+      return;
+    }
     if (!touchesRef.current.has(event.pointerId)) return;
     touchesRef.current.set(event.pointerId, {
       clientX: event.clientX,
       clientY: event.clientY,
     });
+    const hold = boxHoldRef.current;
+    if (
+      hold &&
+      hold.pointerId === event.pointerId &&
+      Math.hypot(event.clientX - hold.clientX, event.clientY - hold.clientY) >
+        PHONE_BOX_HOLD_SLOP
+    ) {
+      cancelBoxHold();
+    }
     if (gesture.kind !== "pinch") return;
     event.stopPropagation();
     const now = fingerPair();
@@ -2096,6 +2178,12 @@ export function CollageStudio({
   const onStageTouchEnd = (event: React.PointerEvent) => {
     if (event.pointerType !== "touch") return;
     touchesRef.current.delete(event.pointerId);
+    if (boxHoldRef.current?.pointerId === event.pointerId) cancelBoxHold();
+    // The tapping finger's lift must not end the drag the first finger holds.
+    if (addingFingersRef.current.delete(event.pointerId)) {
+      event.stopPropagation();
+      return;
+    }
     if (gesture.kind !== "pinch") return;
     // Lifting either finger settles the pinch; the finger left down does
     // nothing until it is lifted too.
