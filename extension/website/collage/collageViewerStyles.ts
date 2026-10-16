@@ -100,6 +100,31 @@ export const VIEWER_STYLES = `
     transition: transform 160ms ease, filter 160ms ease;
   }
 
+  /* The opening reveal: a piece waits unseen for its picture and its turn,
+     then is set down onto the paper. Fill backwards only, so the hover lift
+     still works once it has landed. */
+  .published-collage__piece--waiting {
+    opacity: 0;
+  }
+
+  .published-collage__piece--arrived {
+    animation: published-collage-set-down 460ms cubic-bezier(0.2, 0.8, 0.2, 1)
+      backwards;
+  }
+
+  @keyframes published-collage-set-down {
+    from {
+      opacity: 0;
+      transform: rotate(var(--piece-rotation)) translateY(-14px) scale(1.06);
+      filter: drop-shadow(0 12px 16px rgba(40, 34, 28, 0.22));
+    }
+    to {
+      opacity: 1;
+      transform: rotate(var(--piece-rotation));
+      filter: drop-shadow(0 0 0 rgba(40, 34, 28, 0));
+    }
+  }
+
   .published-collage__piece--lifted,
   .published-collage__piece:focus-visible {
     transform: rotate(var(--piece-rotation)) scale(1.035);
@@ -206,6 +231,10 @@ export const VIEWER_STYLES = `
   @media (prefers-reduced-motion: reduce) {
     .published-collage__piece {
       transition: none;
+    }
+
+    .published-collage__piece--arrived {
+      animation: none;
     }
   }
 `;

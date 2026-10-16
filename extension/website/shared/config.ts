@@ -12,6 +12,15 @@ const DEFAULT_WORKER_URL = "https://playhtml-game-api.spencerc99.workers.dev";
 export const WORKER_URL: string =
   (import.meta.env.VITE_WORKER_URL as string | undefined) ?? DEFAULT_WORKER_URL;
 
+/**
+ * Where shared collages' pictures are read from: the same Worker on a
+ * wewere.online subdomain, so its edge cache sits in front of them.
+ */
+export const ASSETS_URL: string =
+  (import.meta.env.VITE_ASSETS_URL as string | undefined) ??
+  (import.meta.env.VITE_WORKER_URL as string | undefined) ??
+  "https://assets.wewere.online";
+
 export const RECENT_EVENTS_URL = `${WORKER_URL}/events/recent`;
 export const COMMUTE_RECENT_URL = `${WORKER_URL}/commute/recent`;
 export const COMMUTE_REVIEW_URL = import.meta.env.VITE_COMMUTE_REVIEW_URL as

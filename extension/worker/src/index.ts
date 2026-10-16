@@ -61,6 +61,15 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     
+    // The assets subdomain serves shared collages' pictures and nothing else.
+    if (url.hostname.startsWith('assets.')) {
+      const route = matchPublishedCollageRoute(path);
+      if (request.method !== 'GET' || (route?.kind !== 'image' && route?.kind !== 'cover')) {
+        return new Response('Not found', { status: 404 });
+      }
+      return handlePublishedCollages(request, env, route, ctx);
+    }
+
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -253,7 +262,7 @@ export default {
     // Shared collages: public, view-only links made from the scraps studio.
     const publishedCollageRoute = matchPublishedCollageRoute(path);
     if (publishedCollageRoute) {
-      return handlePublishedCollages(request, env, publishedCollageRoute);
+      return handlePublishedCollages(request, env, publishedCollageRoute, ctx);
     }
 
     // Health check
