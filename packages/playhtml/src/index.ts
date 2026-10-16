@@ -1967,7 +1967,7 @@ function getElementUsers<V>(
   byStableId: Map<string, V>,
   selfLive: V | undefined,
 ): ElementUser<V>[] {
-  if (!usersAPI) return [];
+  if (!usersAPI || (byStableId.size === 0 && selfLive === undefined)) return [];
 
   const liveByUser = new Map(byStableId);
   if (selfLive !== undefined) {
