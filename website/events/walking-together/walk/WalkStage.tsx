@@ -7,7 +7,11 @@ import React, {
   useState,
   useSyncExternalStore,
 } from "react";
-import { usePageData, usePlayerIdentity } from "@playhtml/react";
+import {
+  usePageData,
+  usePlayContext,
+  usePlayerIdentity,
+} from "@playhtml/react";
 import { LiveTrails } from "@movement/components/LiveTrails";
 import { DEFAULT_SETTINGS } from "@movement/components/settingsDefaults";
 import { useLiveEvents } from "@movement/hooks/useLiveEvents";
@@ -113,6 +117,9 @@ export function WalkStage({ active }: { active: boolean }) {
   );
   const walkers = data?.walkers ?? {};
   const ended = data?.endedAt !== undefined;
+  // Until the room syncs, the page data is the empty default, so an ended
+  // walk would briefly read as open and offer "join the walk".
+  const { hasSynced } = usePlayContext();
   // An ended walk lands fully drawn; each replay remounts the trails so they
   // trace in again from the start.
   const [replays, setReplays] = useState(0);
@@ -351,7 +358,8 @@ export function WalkStage({ active }: { active: boolean }) {
             reset walk
           </button>
         )}
-        {ended ? null : joined ? (
+        {!hasSynced && <span className="walk-pill">loading the walk…</span>}
+        {!hasSynced || ended ? null : joined ? (
           <button className="walk-pill walk-pill--button" onClick={leave}>
             leave the walk
           </button>
@@ -367,7 +375,7 @@ export function WalkStage({ active }: { active: boolean }) {
         )}
       </div>
 
-      {!joined && !watching && !ended && (
+      {hasSynced && !joined && !watching && !ended && (
         <div className="walk-join" role="dialog" aria-labelledby="walk-join-title">
           <h2 id="walk-join-title">join the walk</h2>
           <p>
