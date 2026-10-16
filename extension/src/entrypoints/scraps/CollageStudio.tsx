@@ -85,12 +85,8 @@ import {
   writeDrawerPreference,
   type DrawerPreference,
 } from "./drawerPreference";
+import { collageFromDraft } from "./collageDraft";
 import { PieceActions } from "./PieceActions";
-import {
-  EditorSwitch,
-  collageToHandOver,
-  type EditorSwitchChoice,
-} from "./EditorSwitch";
 import { KeysButton, SoundButton, StudioTools, StudioViews } from "./StudioTools";
 import { FormatControl } from "./FormatControl";
 import {
@@ -379,8 +375,6 @@ interface CollageStudioProps {
   onLeave: () => void;
   /** Timers the autosave runs on, so a test can drive the schedule directly. */
   autosaveTimers?: AutosaveTimers;
-  /** The choice of editor, offered to people with experiment access. */
-  editorSwitch?: EditorSwitchChoice;
   /** Whether the export menu offers a view-only link. The host decides, since
    * feature access reads extension storage the walk page can't reach. */
   canPublish?: boolean;
@@ -442,7 +436,6 @@ export function CollageStudio({
   onSaved,
   onLeave,
   autosaveTimers,
-  editorSwitch,
   canPublish = false,
   shared,
 }: CollageStudioProps) {
@@ -2448,7 +2441,7 @@ export function CollageStudio({
   const downloadCollageFile = async () => {
     flush();
     setReadyFiles(null);
-    const record = collageToHandOver({
+    const record = collageFromDraft({
       draft: draftRef.current,
       standing: autosave.standing,
       opened: editing,
@@ -3053,20 +3046,6 @@ export function CollageStudio({
             />
           )}
           <span className="collage-bar__spacer" />
-          {editorSwitch && !shared && (
-            <EditorSwitch
-              choice={editorSwitch}
-              handOver={() => {
-                flush();
-                return collageToHandOver({
-                  draft: draftRef.current,
-                  standing: autosave.standing,
-                  opened: editing,
-                  preview: autosave.preview,
-                });
-              }}
-            />
-          )}
           {standing.text && !shared && (
             <p
               className={`collage-standing${

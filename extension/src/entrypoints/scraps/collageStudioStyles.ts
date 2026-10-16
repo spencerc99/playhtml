@@ -235,6 +235,14 @@ export const COLLAGE_STUDIO_STYLES = `
     user-select: none;
   }
 
+  /* A held finger must not raise the system's copy and look-up menu or
+     start selecting text over the collage. */
+  .collage-studio--phone .collage-frame-area {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
   /* Two classes, so this outranks the drawer's own side-docked size and
      margin, which come later; otherwise the drawer grows with its scraps
      and buries the collage. */
@@ -1263,34 +1271,6 @@ ${COLLAGE_PEEK_STYLES}
     font-size: 9px;
     line-height: 1.6;
     letter-spacing: 0.02em;
-  }
-
-  .collage-editor-switch {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-  }
-
-  .collage-editor-switch .collage-studio__label {
-    margin-right: 3px;
-  }
-
-  .collage-editor-switch .collage-chip:disabled {
-    opacity: 0.45;
-    cursor: default;
-  }
-
-  /* Why the regular editor opened when the tldraw one was chosen. */
-  .collage-engine-notice {
-    position: absolute;
-    left: 50%;
-    bottom: 52px;
-    z-index: 10002;
-    margin: 0;
-    transform: translateX(-50%);
-    border: 1px solid rgba(61, 56, 51, 0.12);
-    border-radius: 4px;
-    pointer-events: none;
   }
 
   .collage-notice--quiet {

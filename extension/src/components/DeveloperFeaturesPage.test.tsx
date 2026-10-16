@@ -68,9 +68,6 @@ describe("DeveloperFeaturesPage", () => {
             !FEATURE_CATALOG[feature].chosenWhereUsed,
         ).length,
       );
-      expect(
-        container.querySelector('input[aria-label="Enable tldraw collage editor"]'),
-      ).toBeNull();
       expect(container.textContent).toContain("Early access");
       expect(container.textContent).not.toContain("Closed beta");
       const commuteToggle = container.querySelector<HTMLInputElement>(
