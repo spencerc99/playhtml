@@ -113,9 +113,40 @@ export function neededLongestSide(
   return Math.min(MAX_RASTER_SIDE, Math.max(SIZE_STEP, stepped));
 }
 
-/** A GIF, or a WebP whose header flags animation: redrawing it would keep one frame. */
-function isAnimated(type: string | null, head: Uint8Array): boolean {
+/** How far into a PNG to look for its animation chunk, which must come before the first frame. */
+const PNG_SCAN_BYTES = 1024 * 1024;
+
+/** Whether a PNG is an APNG: it carries an `acTL` chunk before its first `IDAT`. */
+async function isAnimatedPng(blob: Blob): Promise<boolean> {
+  const scanned = new DataView(
+    await blob.slice(0, Math.min(blob.size, PNG_SCAN_BYTES)).arrayBuffer(),
+  );
+  // Chunks follow the 8-byte signature: a 4-byte length, a 4-byte type, the
+  // data, then a 4-byte CRC.
+  for (let at = 8; at + 8 <= scanned.byteLength; ) {
+    const length = scanned.getUint32(at);
+    const type = String.fromCharCode(
+      scanned.getUint8(at + 4),
+      scanned.getUint8(at + 5),
+      scanned.getUint8(at + 6),
+      scanned.getUint8(at + 7),
+    );
+    if (type === "acTL") return true;
+    if (type === "IDAT" || type === "IEND") return false;
+    at += 12 + length;
+  }
+  // Not ruled out within the scan: keep the original rather than risk a still.
+  return blob.size > PNG_SCAN_BYTES;
+}
+
+/** Whether redrawing the picture would keep only one frame of an animation. */
+async function isAnimated(
+  type: string | null,
+  head: Uint8Array,
+  blob: Blob,
+): Promise<boolean> {
   if (type === "image/gif") return true;
+  if (type === "image/png") return isAnimatedPng(blob);
   if (type !== "image/webp") return false;
   const chunk = String.fromCharCode(...head.slice(12, 16));
   return chunk === "VP8X" && (head[20] & 0x02) !== 0;
@@ -123,8 +154,8 @@ function isAnimated(type: string | null, head: Uint8Array): boolean {
 
 /**
  * The bytes an image scrap publishes. A picture larger than its piece needs is
- * shrunk to that size and written as WebP; an animated GIF, or one already
- * small, is sent as it is. A kind the share cannot carry (an SVG, say) is
+ * shrunk to that size and written as WebP; an animated GIF, PNG or WebP, or
+ * one already small, is sent as it is. A kind the share cannot carry (an SVG, say) is
  * always re-encoded.
  */
 async function imageBytes(src: string, longest: number): Promise<Blob> {
@@ -140,7 +171,10 @@ async function imageBytes(src: string, longest: number): Promise<Blob> {
         ? blob
         : new Blob([blob], { type })
       : null;
-  if (asIs && (isAnimated(type, head) || asIs.size <= SMALL_ENOUGH_BYTES)) {
+  if (
+    asIs &&
+    (asIs.size <= SMALL_ENOUGH_BYTES || (await isAnimated(type, head, blob)))
+  ) {
     return asIs;
   }
   const url = URL.createObjectURL(blob);
