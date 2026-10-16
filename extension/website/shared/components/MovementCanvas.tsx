@@ -1684,6 +1684,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     <div className="internet-movement">
       <Controls
         visible={controlsVisible}
+        recordedScrollTiming={installationRecordings !== undefined}
         settings={settings}
         settingsDefaults={settingsDefaults}
         setSettings={setSettingsFromControls}
