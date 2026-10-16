@@ -37,6 +37,22 @@ export function normalizeUrl(url: string): string {
 }
 
 /**
+ * Strip the hash fragment from a URL before it leaves the device (e.g. upload
+ * to the shared worker). The query string is kept because on many sites it
+ * identifies the page itself (YouTube's `?v=`). Unlike `normalizeUrl`, this
+ * preserves protocol/host/path casing exactly.
+ */
+export function stripFragment(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
  * Extract domain from URL, removing www prefix
  *
  * Examples:
