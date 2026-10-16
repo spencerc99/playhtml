@@ -31,8 +31,7 @@ const ACTIVITY_EVENTS = [
  * - Page unload (beforeunload)
  * - Idle: a visible tab with no input for IDLE_TIMEOUT_MS emits a blur, and the
  *   next input emits a focus, so idle stretches don't count as screen time.
- *   Playing media keeps the tab active. Embedded frames report their input
- *   and media through noteActivity() (see features/frameActivity.ts).
+ *   Playing media in the main page keeps the tab active.
  */
 export class NavigationCollector extends BaseCollector<NavigationEventData> {
   readonly type = 'navigation' as const;
@@ -186,14 +185,6 @@ export class NavigationCollector extends BaseCollector<NavigationEventData> {
       window.removeEventListener('beforeunload', this.beforeunloadHandler);
       this.beforeunloadHandler = undefined;
     }
-  }
-
-  /**
-   * Input or playing media inside an embedded frame, relayed from the frame's
-   * content script. Counts the same as input on this page.
-   */
-  noteActivity(): void {
-    this.activityHandler?.();
   }
 
   /**
