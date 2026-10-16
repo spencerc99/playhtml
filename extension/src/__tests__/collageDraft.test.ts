@@ -1,8 +1,8 @@
-// ABOUTME: Tests which collage is handed to the other editor when someone switches editors.
-// ABOUTME: An untouched collage goes across exactly as stored; an edited one goes as it stands.
+// ABOUTME: Tests assembling a collage record from the current draft for file export.
+// ABOUTME: Preserves untouched records and the latest preview, and skips empty drafts.
 
 import { describe, expect, it } from "vitest";
-import { collageToHandOver } from "../entrypoints/scraps/EditorSwitch";
+import { collageFromDraft } from "../entrypoints/scraps/collageDraft";
 import type { CollageRecord } from "../entrypoints/scraps/collageRecord";
 import type { CollageDraft } from "../entrypoints/scraps/useCollageAutosave";
 
@@ -23,10 +23,10 @@ function draft(title: string, hasContent = true): CollageDraft {
   return { record: { ...record, title, updatedAt: 3 }, hasContent };
 }
 
-describe("collageToHandOver", () => {
-  it("hands over an untouched collage exactly as it was opened", () => {
+describe("collageFromDraft", () => {
+  it("exports an untouched collage exactly as it was opened", () => {
     expect(
-      collageToHandOver({
+      collageFromDraft({
         draft: draft("kept"),
         standing: { kind: "untouched" },
         opened: stored,
@@ -35,9 +35,9 @@ describe("collageToHandOver", () => {
     ).toBe(stored);
   });
 
-  it("hands over an edited collage as it stands, with the last picture that drew", () => {
+  it("exports an edited collage as it stands, with the last picture that drew", () => {
     const picture = new Blob(["png"]);
-    const handed = collageToHandOver({
+    const handed = collageFromDraft({
       draft: draft("renamed"),
       standing: { kind: "saving" },
       opened: stored,
@@ -47,9 +47,9 @@ describe("collageToHandOver", () => {
     expect(handed?.preview).toEqual({ drawn: true, image: picture });
   });
 
-  it("hands over nothing for a fresh collage with nothing in it", () => {
+  it("exports nothing for a fresh collage with nothing in it", () => {
     expect(
-      collageToHandOver({
+      collageFromDraft({
         draft: draft("", false),
         standing: { kind: "untouched" },
         opened: null,

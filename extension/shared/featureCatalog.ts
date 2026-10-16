@@ -11,11 +11,6 @@ type FeatureDefinition = {
   defaultStage: FeatureStage;
   requiresReload: boolean;
   /**
-   * Stays off for someone granted access until they turn it on, for an
-   * experiment that replaces something they already rely on.
-   */
-  startsOff?: boolean;
-  /**
    * Turned on and off where it is used rather than in the settings list, for
    * a choice that belongs next to the thing it changes.
    */
@@ -64,16 +59,6 @@ const FEATURE_DEFINITIONS = {
     description: "Share a scrap collage as a view-only link anyone can open.",
     defaultStage: "internal",
     requiresReload: false,
-  },
-  TLDRAW_COLLAGES: {
-    name: "tldraw collage editor",
-    description: "Arrange scrap collages in an editor built on tldraw instead of the regular one.",
-    defaultStage: "internal",
-    requiresReload: false,
-    // Chosen from the collage editor's own bar, and only loaded (and only
-    // reaching tldraw's servers) once someone picks it there.
-    startsOff: true,
-    chosenWhereUsed: true,
   },
   BAG_SETTINGS: {
     name: "Bag settings",
