@@ -1819,20 +1819,15 @@ function markElementAsReady(element: HTMLElement): void {
   element.removeAttribute("aria-live");
 }
 
-// Finds every capability element with one document scan and groups them by
-// capability attribute, each group in document order. An element with several
-// capabilities appears in each of their groups.
+// Groups HTML capability elements in document order within each capability.
+// Separate attribute selectors avoid testing unrelated nodes against every tag.
 function getPlayElementsByTag(): Map<TagType | string, HTMLElement[]> {
-  const tags = getTagTypes();
-  const byTag = new Map<TagType | string, HTMLElement[]>(
-    tags.map((tag) => [tag, []]),
-  );
-  const selector = tags.map((tag) => `[${tag}]`).join(",");
-  for (const element of document.querySelectorAll(selector)) {
-    if (!isHTMLElement(element)) continue;
-    for (const tag of tags) {
-      if (element.hasAttribute(tag)) byTag.get(tag)!.push(element);
-    }
+  const byTag = new Map<TagType | string, HTMLElement[]>();
+  for (const tag of getTagTypes()) {
+    byTag.set(
+      tag,
+      Array.from(document.querySelectorAll(`[${tag}]`)).filter(isHTMLElement),
+    );
   }
   return byTag;
 }
