@@ -113,6 +113,9 @@ export function WalkStage({ active }: { active: boolean }) {
   );
   const walkers = data?.walkers ?? {};
   const ended = data?.endedAt !== undefined;
+  // An ended walk lands fully drawn; each replay remounts the trails so they
+  // trace in again from the start.
+  const [replays, setReplays] = useState(0);
   const { pid, name, color } = usePlayerIdentity();
   const extension = useSyncExternalStore(onExtensionDetected, extensionStatus);
   const [watching, setWatching] = useStickyState<boolean>(
@@ -261,7 +264,9 @@ export function WalkStage({ active }: { active: boolean }) {
     <>
       <div className="walk-layer" aria-hidden="true">
         <LiveTrails
+          key={replays}
           trailStates={trailStates}
+          startDrawn={ended && replays === 0}
           settings={TRAIL_SETTINGS}
           showClickRipples
           // A walker who lingers on one page still walked here; keep their
@@ -309,6 +314,14 @@ export function WalkStage({ active }: { active: boolean }) {
           </span>
         )}
         {ended && <span className="walk-pill">the walk has ended</span>}
+        {ended && (
+          <button
+            className="walk-pill walk-pill--button"
+            onClick={() => setReplays((n) => n + 1)}
+          >
+            replay the walk
+          </button>
+        )}
         {admin &&
           (ended ? (
             <button
