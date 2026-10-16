@@ -81,7 +81,7 @@ it("requests all-site access from a Safari onboarding button", async () => {
   );
   expect(button).toBeDefined();
   expect(container.textContent).toContain(
-    "When Safari asks, choose “Always Allow on Every Website.”",
+    "When Safari asks, choose “Always Allow.”",
   );
 
   await act(async () => {

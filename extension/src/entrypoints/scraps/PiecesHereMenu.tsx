@@ -1,7 +1,7 @@
 // ABOUTME: A quiet list of every piece stacked under the pointer, front to back.
 // ABOUTME: Right-clicking a pile is how a buried piece is picked out by eye.
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ScrapContent } from "@movement/components/ScrapCollage";
 import type { CollagePiece } from "./collageRecord";
 import { GLYPHS } from "./PieceActions";
@@ -13,6 +13,8 @@ interface PiecesHereMenuProps {
   at: { x: number; y: number };
   /** The frame's zoom, so the menu stays one size on screen. */
   scale: number;
+  /** The frame's size, so the menu is kept inside it. */
+  frame?: { width: number; height: number };
   selectedId: string | null;
   onPick: (pieceId: string) => void;
   /** Holds a piece in place or lets it go. */
@@ -39,12 +41,29 @@ export function PiecesHereMenu({
   pieces,
   at,
   scale,
+  frame,
   selectedId,
   onPick,
   onLock,
   onClose,
 }: PiecesHereMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  /** The menu's own on-screen size, measured so it can be kept in frame. */
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const box = menu.getBoundingClientRect();
+    setSize({ width: box.width, height: box.height });
+  }, [pieces.length]);
+  // Opened near the right or bottom edge, it slides back in rather than
+  // running off the frame, which on a phone is off the screen too.
+  const left = frame
+    ? Math.max(0, Math.min(at.x, frame.width - size.width / scale))
+    : at.x;
+  const top = frame
+    ? Math.max(0, Math.min(at.y, frame.height - size.height / scale))
+    : at.y;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -73,8 +92,8 @@ export function PiecesHereMenu({
       role="menu"
       aria-label="Pieces here"
       style={{
-        left: at.x,
-        top: at.y,
+        left,
+        top,
         transform: `scale(${1 / scale})`,
       }}
       onPointerDown={(event) => event.stopPropagation()}

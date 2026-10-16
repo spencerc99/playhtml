@@ -353,7 +353,7 @@ export default function SetupPage() {
                     : "Allow on every website"}
                 </button>
                 <p className="setup-step__website-access-hint">
-                  When Safari asks, choose “Always Allow on Every Website.”
+                  When Safari asks, choose “Always Allow.”
                 </p>
                 {websiteAccess === "error" && (
                   <p className="setup-step__website-access-error">

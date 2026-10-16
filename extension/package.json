@@ -13,6 +13,8 @@
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "zip:safari": "wxt zip -b safari --mv3",
+    "ios:safari": "./scripts/packageSafariIOS.sh",
+    "ios:safari:simulator": "./scripts/packageSafariIOS.sh --simulator",
     "submit": "./release.sh",
     "submit:dry": "./release.sh --dry-run",
     "submit:refresh-chrome-token": "./scripts/refresh-chrome-token.sh",

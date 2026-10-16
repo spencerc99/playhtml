@@ -37,7 +37,9 @@ export function CreateMode({
   return (
     <>
       <style>{COLLAGE_STUDIO_STYLES}</style>
-      <div style={{ position: "absolute", inset: "96px 0 0", zIndex: 2 }}>
+      <div
+        className={`collage-create-area${studioOpen ? " collage-create-area--studio" : ""}`}
+      >
         {!studioOpen ? (
           <CollageHistory
             revision={savedRevision}

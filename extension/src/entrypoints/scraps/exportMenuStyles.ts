@@ -89,4 +89,76 @@ export const EXPORT_MENU_STYLES = `
   .collage-export a.collage-action {
     text-decoration: none;
   }
+
+  /* On a phone, finished exports wait over the studio for a tap each: the
+     share sheet only opens straight from a tap, not after a long bake. */
+  .collage-ready {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background: color-mix(in srgb, var(--c-ink) 30%, transparent);
+  }
+
+  .collage-ready__panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 14px 16px calc(16px + env(safe-area-inset-bottom));
+    border-radius: 14px 14px 0 0;
+    background: var(--c-surface);
+    box-shadow: 0 -10px 30px color-mix(in srgb, var(--c-ink) 18%, transparent);
+  }
+
+  .collage-ready__list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .collage-ready__item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 6px 10px;
+  }
+
+  .collage-ready__preview {
+    grid-column: 1 / -1;
+    width: 100%;
+    max-height: 30vh;
+    object-fit: contain;
+    border: 1px solid color-mix(in srgb, var(--c-ink) 14%, transparent);
+    /* Press and hold offers the system's own "save image". */
+    -webkit-touch-callout: default;
+  }
+
+  .collage-ready__name {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--c-muted);
+    font-family: "Martian Mono", monospace;
+    font-size: 11px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .collage-ready__item .collage-action,
+  .collage-ready__panel > .collage-action {
+    min-height: 40px;
+  }
+
+  .collage-ready__hint {
+    margin: 0;
+    color: var(--c-muted);
+    font-size: 12px;
+  }
 `;

@@ -59,6 +59,15 @@ interface ScrapTrayProps {
   onDragStart: (item: ScrapItem, event: React.DragEvent) => void;
 }
 
+/** Whether focus on this element came from the keyboard, where that can be told. */
+function focusVisible(element: Element): boolean {
+  try {
+    return element.matches(":focus-visible");
+  } catch {
+    return true;
+  }
+}
+
 export function ScrapTray({
   items,
   dock,
@@ -325,12 +334,15 @@ export function ScrapTray({
                   });
                 }}
                 onPointerLeave={() => setPointed(null)}
-                onFocus={(event) =>
+                onFocus={(event) => {
+                  // Only focus from the keyboard shows the label; a tap also
+                  // focuses the scrap, and the label would cover the drawer.
+                  if (!focusVisible(event.currentTarget)) return;
                   setPointed({
                     item,
                     box: event.currentTarget.getBoundingClientRect(),
-                  })
-                }
+                  });
+                }}
                 onBlur={() => setPointed(null)}
               >
                 <span

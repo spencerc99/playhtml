@@ -139,6 +139,26 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
   }
 
+  /* Create mode sits under the page's heading and its browse / create switch. */
+  .collage-create-area {
+    position: absolute;
+    inset: 96px 0 0;
+    z-index: 2;
+  }
+
+  /* A phone stacks the heading taller, so the list of collages starts lower;
+     once a collage is open the heading steps away and the studio takes the
+     screen from just under the page links. */
+  @media (max-width: 620px) {
+    .collage-create-area {
+      top: 124px;
+    }
+
+    .collage-create-area--studio {
+      top: 48px;
+    }
+  }
+
   /* On a phone the drawer docks under the collage, so the collage and the
      scraps to add to it are on screen together. */
   .collage-studio--phone {
@@ -153,6 +173,66 @@ export const COLLAGE_STUDIO_STYLES = `
      a marquee, and two fingers pinch, so the page must not scroll or zoom. */
   .collage-studio--phone .collage-frame-area__stage {
     touch-action: none;
+    /* Holding a finger down opens the pieces-here list, not the system's
+       text selection or its menu for the picture under it. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Each tool beside a piece is big enough for a fingertip. */
+  .collage-studio--phone .collage-piece-actions .collage-glyph {
+    width: 36px;
+    height: 36px;
+  }
+
+  .collage-studio--phone .collage-piece-actions__rule {
+    height: 22px;
+    margin: 0 2px;
+  }
+
+  /* The knob under a selection that turns it, on a touch screen. */
+  .collage-rotate-stem {
+    position: absolute;
+    z-index: 10001;
+    width: 1.5px;
+    margin-left: -0.75px;
+    transform-origin: top center;
+    background: var(--c-accent);
+    pointer-events: none;
+  }
+
+  .collage-rotate-knob {
+    position: absolute;
+    z-index: 10003;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1.5px solid var(--c-accent);
+    border-radius: 50%;
+    background: var(--c-surface);
+    color: var(--c-accent-ink);
+    transform-origin: center;
+    touch-action: none;
+  }
+
+  /* A fingertip takes the knob from well around it. */
+  .collage-rotate-knob::after {
+    content: "";
+    position: absolute;
+    inset: -12px;
+    border-radius: 50%;
+  }
+
+  /* A held finger must not raise the system's copy and look-up menu or
+     start selecting text over the collage. */
+  .collage-studio--phone .collage-frame-area {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
 
   /* A held finger must not raise the system's copy and look-up menu or
@@ -228,7 +308,9 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-studio--sheet .collage-mat__caption,
   .collage-studio--sheet .collage-selection-edge,
   .collage-studio--sheet .collage-handle,
-  .collage-studio--sheet .collage-grip {
+  .collage-studio--sheet .collage-grip,
+  .collage-studio--sheet .collage-rotate-knob,
+  .collage-studio--sheet .collage-rotate-stem {
     visibility: hidden;
   }
 
@@ -269,8 +351,9 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-tray__handle {
     flex: 0 0 auto;
     align-self: center;
-    width: 120px;
-    height: 32px;
+    /* Far wider and taller than the bar it draws, so a thumb finds it. */
+    width: min(100%, 220px);
+    height: 30px;
     margin: -10px 0 -4px;
     padding: 0;
     border: 0;
@@ -872,6 +955,27 @@ ${PIECE_MATERIAL_STYLES}
     border-color: var(--c-accent);
     background: color-mix(in srgb, var(--c-accent) 8%, transparent);
     pointer-events: none;
+  }
+
+  /* A ring under a finger that has rested long enough: dragging from bare
+     paper now draws a box, and lifting from a piece lists the pieces there. */
+  .collage-hold-mark {
+    position: absolute;
+    z-index: 10003;
+    border-style: solid;
+    border-color: var(--c-accent);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    animation: collage-hold-mark 180ms ease-out;
+  }
+
+  @keyframes collage-hold-mark {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.4);
+    }
   }
 
   /* Every piece stacked under the pointer, so a buried one can be picked by
