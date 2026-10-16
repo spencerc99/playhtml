@@ -1,0 +1,77 @@
+# ABOUTME: Uploads the iPhone Safari app to TestFlight whenever extension code lands on main.
+# ABOUTME: Internal testers get each build automatically; separate from the store release workflow.
+name: iOS TestFlight
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "extension/**"
+      - "packages/**"
+      - ".github/workflows/ios-testflight.yml"
+  workflow_dispatch:
+
+# A newer push replaces a build still in progress; testers only need the latest.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    name: Build and upload to TestFlight
+    runs-on: macos-26
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build packages
+        run: bun run build-packages
+
+      - name: Build Safari extension
+        working-directory: extension
+        run: |
+          WXT_OUT_DIR=publish bun run build:safari
+          node scripts/validateExtensionBuild.mjs publish/safari-mv3 safari
+
+      - name: Prepare App Store Connect key
+        id: apple-key
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          if [ -z "$APPLE_API_KEY_ID" ] || [ -z "$APPLE_API_PRIVATE_KEY" ]; then
+            echo "APPLE_API_KEY_ID and APPLE_API_PRIVATE_KEY are required."
+            exit 1
+          fi
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_PRIVATE_KEY" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "path=$KEY_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Archive and upload to TestFlight
+        working-directory: extension
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_PATH: ${{ steps.apple-key.outputs.path }}
+          # Re-runs keep the run number, so the attempt keeps each upload unique.
+          BUILD_NUMBER: ${{ github.run_number }}.${{ github.run_attempt }}
+        run: scripts/uploadSafariIOS.sh --skip-build
