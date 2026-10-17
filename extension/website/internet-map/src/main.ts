@@ -9,7 +9,7 @@ import { Camera, attachControls } from "./camera";
 import { AsciiRenderer } from "./ascii/renderer";
 import { bakeMap, ROAD_LEVELS } from "./ascii/bake";
 import { LANDMARKS, LM_TREE, LM_WTREE } from "./ascii/tileset";
-import { buildRoadGraph, findRoute, stopsAlong, MODES, Mode, Route } from "./route";
+import { buildRoadGraph, findRoute, meaningfulStops, buildPlaces, MODES, Mode, Route } from "./route";
 import { roadPath, pathCells, GRIDDED } from "./ascii/roadgeom";
 import { setRoadGlyphs, ROAD, PALETTE, BUILD_ALPHA, setPalette } from "./ascii/glyphs";
 import { LabelLayer, prominentHosts } from "./ascii/labels";
@@ -193,6 +193,9 @@ let landing: { x: number; y: number; r: number; name: string; t0: number } | nul
 
 // ------------------------------------------------------------------ routing
 const roads = buildRoadGraph(A);
+/** sites and their sizes, so a route crosses between places rather than through one */
+const routePlaces = buildPlaces(labels.subs, A.sub_pages as Uint32Array, A.sub_dom as Uint32Array);
+const roadSites = { site: routePlaces.site, roadA: A.road_a as Uint32Array, roadB: A.road_b as Uint32Array };
 let fromPage = -1, toPage = -1;
 let mode: Mode = "fast";
 let routes: Route[] = [];
@@ -586,6 +589,23 @@ function drawRoute() {
 
 const WALK_GLYPH = "\u00b7";
 
+/**
+ * Where a route stops, by name. A stretch through one host is listed once, by
+ * its host, plus any of its paths notable enough to be stops of their own.
+ */
+function stopNames(r: Route): string[] {
+  const names: string[] = [];
+  let lastHost = -1;
+  for (const st of meaningfulStops(r.nodes, routePlaces)) {
+    const node = r.nodes[st.at];
+    const h = routePlaces.host[node];
+    if (!st.landmark && h === lastHost) continue;
+    names.push(st.landmark ? routePlaces.names[node] : routePlaces.names[node].split("/")[0]);
+    lastHost = h;
+  }
+  return names;
+}
+
 /** The itinerary. All modes are solved so the trade-off is visible. */
 function renderRoutes() {
   const hint = $("#r-hint"), list = $("#r-list"), legs = $("#r-legs");
@@ -612,8 +632,8 @@ function renderRoutes() {
     b.querySelector("b")!.textContent = m.name;
     b.querySelector("span")!.textContent = m.blurb;
     b.querySelector("i")!.textContent =
-      over < 1.005 ? `${r.nodes.length} stops`
-                   : `${r.nodes.length} stops \u00b7 +${Math.round((over - 1) * 100)}%`;
+      over < 1.005 ? `${stopNames(r).length} stops`
+                   : `${stopNames(r).length} stops \u00b7 +${Math.round((over - 1) * 100)}%`;
     b.onclick = () => { mode = r.mode; renderRoutes(); draw(); };
     list.appendChild(b);
   }
@@ -621,13 +641,7 @@ function renderRoutes() {
   const r = routes.find((x) => x.mode === mode);
   legs.innerHTML = "";
   if (r) {
-    const stops = stopsAlong(roads, r, A.sub_x as Float32Array, A.sub_y as Float32Array,
-                             A.sub_pages as Uint32Array);
-    const names: string[] = [];
-    for (const s of stops) {
-      const nm = labels.subs[s].replace(/ \[\d+\]$/, "");
-      if (nm !== names[names.length - 1]) names.push(nm);
-    }
+    const names = stopNames(r);
     const head = document.createElement("div");
     head.className = "lhead";
     head.textContent = `${names.length} stops \u00b7 ${r.nodes.length} places passed`;
@@ -753,7 +767,7 @@ function pick(x: number, y: number) {
 function solve() {
   if (fromPage < 0 || toPage < 0) { routes = []; return; }
   const a = PAGE_SUB[fromPage], b = PAGE_SUB[toPage];
-  const all = MODES.map((m) => findRoute(roads, a, b, m.id)).filter((r) => r.ok);
+  const all = MODES.map((m) => findRoute(roads, a, b, m.id, roadSites)).filter((r) => r.ok);
   // The network is nearly a tree — 2.12 roads per settlement, 3,101 cycles
   // over 50,260 places — so most pairs have exactly one route. Listing four
   // identical options would misrepresent that.

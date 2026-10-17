@@ -15,7 +15,7 @@
 import { Camera, flyTo } from "../camera";
 import { BakedMap } from "../ascii/bake";
 import { Arrays, Labels } from "../data";
-import { RoadGraph } from "../route";
+import { RoadGraph, buildPlaces } from "../route";
 import { Theme } from "../theme";
 import { Walker, Arrival } from "./walker";
 import { subHost } from "./locate";
@@ -128,6 +128,7 @@ export class Wayfarer {
       subPages: A.sub_pages as Uint32Array | undefined,
       pageX: A.page_x as Float32Array, pageY: A.page_y as Float32Array,
       pageSub: A.page_sub as Uint32Array,
+      places: buildPlaces(c.labels.subs, A.sub_pages as Uint32Array, A.sub_dom as Uint32Array),
       x0: baked.x0, y0: baked.y0, cellW: baked.cellW, cellH: baked.cellH,
     });
     this.subHosts = c.labels.subs.map(subHost);
@@ -252,8 +253,10 @@ export class Wayfarer {
       const P = w.pathOf(w.edge);
       total += w.dir > 0 ? P.len - w.s : w.s;
     }
-    if (w.plan && !w.leg) {
-      for (const st of w.plan.steps) total += this.c.roads.len[st.edge];
+    // A trip from a door starts with the walk out to the street; the roads
+    // after it still count. Only the final walk up to the door has none.
+    if (w.plan && !w.leg?.toPage) {
+      for (const st of w.plan.steps) total += st.kind === "road" ? this.c.roads.len[st.edge] : st.len;
       const A = this.c.A;
       const nx = (A.sub_x as Float32Array)[w.plan.node], ny = (A.sub_y as Float32Array)[w.plan.node];
       total += Math.hypot((A.page_x as Float32Array)[w.plan.page] - nx,
@@ -408,6 +411,10 @@ export class Wayfarer {
       const n = w.standing.node;
       return { at: this.subHosts[n], host: this.subHosts[n], domain: domOf(n), page: -1 };
     }
+    if (w.leg?.cut) {
+      const n = w.leg.node;
+      return { at: `crossing ${this.subHosts[n]}`, host: this.subHosts[n], domain: domOf(n), page: -1 };
+    }
     if (w.leg) {
       const n = w.leg.node;
       return { at: `${w.leg.toPage ? "walking up to" : "leaving"} ${labels.pages[w.leg.page]}`,
@@ -466,7 +473,7 @@ export class Wayfarer {
     if (dest) dest.style.display = this.dest ? "" : "none";
     if (this.dest) {
       const left = w.plan ? w.plan.steps.length : 0;
-      set("wk-dest", `${this.dest.name}${left ? ` · ${left} ${left === 1 ? "road" : "roads"} to go` : ""}`);
+      set("wk-dest", `${this.dest.name}${left ? ` · ${left} ${left === 1 ? "stop" : "stops"} to go` : ""}`);
     }
     const pass = p.querySelector<HTMLElement>("#wk-passport");
     if (pass) {
@@ -485,13 +492,34 @@ export class Wayfarer {
     const w = this.walker;
     const cw = baked.cellW * cam.k;
 
-    // the planned road ahead, in the route ink
+    // the planned way ahead: roads in the route ink, cuts across a site
+    // dashed like the walk to a door, since they are on foot off the road
     if (w.plan) {
-      const edges = w.plan.steps.map((s) => s.edge);
-      if (w.edge >= 0) edges.unshift(w.edge);
+      const edges: number[] = [];
+      const cuts: number[] = [];
+      if (w.edge >= 0) edges.push(w.edge);
+      if (w.leg?.cut) cuts.push(w.x, w.y, w.leg.x1, w.leg.y1);
+      const A = this.c.A;
+      const sx = A.sub_x as Float32Array, sy = A.sub_y as Float32Array;
+      for (const st of w.plan.steps) {
+        if (st.kind === "road") edges.push(st.edge);
+        else cuts.push(sx[st.from], sy[st.from], sx[st.to], sy[st.to]);
+      }
       ctx.save();
       ctx.globalAlpha = 0.55;
       this.c.paintEdges(edges, t.routeInk);
+      if (cuts.length) {
+        ctx.strokeStyle = t.routeWalk;
+        ctx.lineWidth = Math.max(1.5, cw * 0.3);
+        ctx.setLineDash([Math.max(2, cw * 0.5), Math.max(3, cw * 0.7)]);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        for (let i = 0; i < cuts.length; i += 4) {
+          ctx.moveTo(cam.toScreenX(cuts[i]), cam.toScreenY(cuts[i + 1]));
+          ctx.lineTo(cam.toScreenX(cuts[i + 2]), cam.toScreenY(cuts[i + 3]));
+        }
+        ctx.stroke();
+      }
       ctx.restore();
     }
 

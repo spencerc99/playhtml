@@ -12,7 +12,7 @@
  * Roads follow the same polyline the bake drew — `roadPath` in cell space —
  * so the walker can never drift off the pavement it claims to be on.
  */
-import { RoadGraph, findRoute, Mode } from "../route";
+import { RoadGraph, findRoute, Mode, Places, meaningfulStops, Route } from "../route";
 import { roadPath, GRIDDED } from "../ascii/roadgeom";
 
 export interface WalkerWorld {
@@ -26,6 +26,12 @@ export interface WalkerWorld {
   pageX: Float32Array;
   pageY: Float32Array;
   pageSub: Uint32Array;
+  /**
+   * Which site each settlement belongs to and how big it is. With it, a
+   * journey prefers roads between places and cuts across a site rather than
+   * winding through every one of its paths and subdomains.
+   */
+  places?: Places;
   /** cell geometry, because roads bend in cells, not world units */
   x0: number;
   y0: number;
@@ -45,6 +51,14 @@ export interface WalkerInput {
   heading: { x: number; y: number } | null;
   sprint: boolean;
 }
+
+/**
+ * One stretch of a planned journey: a road, or a straight walk across one
+ * site from where the route enters it to the next stop worth making there.
+ */
+export type PlanStep =
+  | { kind: "road"; edge: number; dir: 1 | -1 }
+  | { kind: "cut"; from: number; to: number; len: number };
 
 export type Standing =
   | { kind: "node"; node: number }
@@ -77,11 +91,15 @@ export class Walker {
   s = 0;
   /** +1 walks towards `b`, -1 towards `a` */
   dir: 1 | -1 = 1;
-  /** an off-road leg between a settlement and a building */
+  /**
+   * An off-road leg: between a settlement and a building, or (`cut`) straight
+   * across a site between two of its settlements. `node` is where a leg that
+   * is not to a building comes out.
+   */
   leg: { x0: number; y0: number; x1: number; y1: number; s: number; len: number;
-         node: number; page: number; toPage: boolean } | null = null;
-  /** a planned journey: roads still to walk, then the building at the end */
-  plan: { steps: { edge: number; dir: 1 | -1 }[]; page: number; node: number } | null = null;
+         node: number; page: number; toPage: boolean; cut: boolean } | null = null;
+  /** a planned journey: stretches still to walk, then the building at the end */
+  plan: { steps: PlanStep[]; page: number; node: number } | null = null;
   /** world units walked in total */
   odometer = 0;
   /** world units per second on an untravelled road */
@@ -161,18 +179,19 @@ export class Walker {
     }
     if (!starts.length) return false;
 
-    let best: { total: number; steps: { edge: number; dir: 1 | -1 }[] } | null = null;
+    const P = this.w.places;
+    const sites = P ? { site: P.site, roadA: this.w.roadA, roadB: this.w.roadB } : undefined;
+    let best: { total: number; steps: PlanStep[] } | null = null;
     for (const st of starts) {
-      const steps: { edge: number; dir: 1 | -1 }[] = [];
+      const steps: PlanStep[] = [];
       let total = st.lead;
-      if (st.edge >= 0) steps.push({ edge: st.edge, dir: st.dir });
+      if (st.edge >= 0) steps.push({ kind: "road", edge: st.edge, dir: st.dir });
       if (st.node !== target) {
-        const r = findRoute(this.w.roads, st.node, target, mode);
+        const r = findRoute(this.w.roads, st.node, target, mode, sites);
         if (!r.ok) continue;
-        for (let i = 0; i < r.edges.length; i++) {
-          const e = r.edges[i];
-          steps.push({ edge: e, dir: this.w.roadA[e] === r.nodes[i] ? 1 : -1 });
-          total += this.w.roads.len[e];
+        for (const step of this.stepsOf(r)) {
+          steps.push(step);
+          total += step.kind === "road" ? this.w.roads.len[step.edge] : step.len;
         }
       }
       if (!best || total < best.total) best = { total, steps };
@@ -188,12 +207,37 @@ export class Walker {
     }
     // From the middle of a road the plan's first step is this road, walked
     // towards whichever end won; keep our place on it rather than restarting.
-    if (this.edge >= 0 && best.steps[0]?.edge === this.edge) {
-      this.dir = best.steps[0].dir;
+    const first = best.steps[0];
+    if (this.edge >= 0 && first?.kind === "road" && first.edge === this.edge) {
+      this.dir = first.dir;
       best.steps.shift();
     }
     this.plan = { steps: best.steps, page, node: target };
     return true;
+  }
+
+  /**
+   * A route as stretches to walk. Without place data every road is walked;
+   * with it, consecutive stops are joined by their road when they are
+   * neighbours, and by a straight walk across the site when the stops
+   * between them were dropped as more of the same place.
+   */
+  private stepsOf(r: Route): PlanStep[] {
+    const road = (i: number): PlanStep => {
+      const e = r.edges[i];
+      return { kind: "road", edge: e, dir: this.w.roadA[e] === r.nodes[i] ? 1 : -1 };
+    };
+    if (!this.w.places) return r.edges.map((_, i) => road(i));
+    const { subX, subY } = this.w;
+    const stops = meaningfulStops(r.nodes, this.w.places);
+    const out: PlanStep[] = [];
+    for (let k = 1; k < stops.length; k++) {
+      const i = stops[k - 1].at, j = stops[k].at;
+      if (j === i + 1) { out.push(road(i)); continue; }
+      const a = r.nodes[i], b = r.nodes[j];
+      out.push({ kind: "cut", from: a, to: b, len: Math.hypot(subX[b] - subX[a], subY[b] - subY[a]) });
+    }
+    return out;
   }
 
   /** Abandon a planned journey and answer to the heading again. */
@@ -221,7 +265,8 @@ export class Walker {
     // ── an off-road leg: the door and the street ──────────────────────────
     if (this.leg) {
       const L = this.leg;
-      const v = this.baseSpeed * 0.8 * sprint;
+      // a door is a few steps off the kerb; a cut across a site is the journey itself
+      const v = this.baseSpeed * (L.cut ? 1 : 0.8) * sprint;
       const move = Math.min(v * dt, L.len - L.s);
       L.s += move;
       this.odometer += move;
@@ -232,7 +277,13 @@ export class Walker {
       this.speed = v; this.moving = move > 0;
       if (L.s >= L.len - 1e-6) {
         this.leg = null;
-        if (L.toPage) {
+        if (L.cut) {
+          this.standing = { kind: "node", node: L.node };
+          this.x = this.w.subX[L.node]; this.y = this.w.subY[L.node];
+          const final = !!this.plan && this.plan.steps.length === 0 && this.plan.page < 0;
+          this.arrivals.push({ kind: "node", node: L.node, page: -1, final });
+          if (final) this.plan = null;
+        } else if (L.toPage) {
           this.standing = { kind: "page", page: L.page, node: L.node };
           this.x = this.w.pageX[L.page]; this.y = this.w.pageY[L.page];
           // the journey ends at the door, not at the kerb: the plan stays
@@ -264,7 +315,8 @@ export class Walker {
       if (this.plan) {
         if (this.plan.steps.length) {
           const st = this.plan.steps.shift()!;
-          this.enterEdge(st.edge, st.dir);
+          if (st.kind === "road") this.enterEdge(st.edge, st.dir);
+          else { this.startCut(st.from, st.to); return dt; }
         } else if (this.plan.page >= 0 && this.plan.node === node) {
           const page = this.plan.page;
           const dx = this.w.pageX[page] - this.x, dy = this.w.pageY[page] - this.y;
@@ -335,7 +387,18 @@ export class Walker {
     const [x0, y0, x1, y1] = toPage ? [nx, ny, px, py] : [px, py, nx, ny];
     this.standing = null;
     this.edge = -1;
-    this.leg = { x0, y0, x1, y1, s: 0, len: Math.hypot(x1 - x0, y1 - y0), node, page, toPage };
+    this.leg = { x0, y0, x1, y1, s: 0, len: Math.hypot(x1 - x0, y1 - y0), node, page, toPage, cut: false };
+    this.x = x0; this.y = y0;
+  }
+
+  /** Walk straight from one settlement to another of the same site. */
+  private startCut(from: number, to: number) {
+    const x0 = this.w.subX[from], y0 = this.w.subY[from];
+    const x1 = this.w.subX[to], y1 = this.w.subY[to];
+    this.standing = null;
+    this.edge = -1;
+    this.leg = { x0, y0, x1, y1, s: 0, len: Math.hypot(x1 - x0, y1 - y0),
+                 node: to, page: -1, toPage: false, cut: true };
     this.x = x0; this.y = y0;
   }
 

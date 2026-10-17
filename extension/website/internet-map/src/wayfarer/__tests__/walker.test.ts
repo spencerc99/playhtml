@@ -1,8 +1,8 @@
 // ABOUTME: Exercises the road-graph walker on a tiny hand-built network.
-// ABOUTME: Covers steering by heading, turning around, planned journeys and off-road legs.
+// ABOUTME: Covers steering, turning around, planned journeys, off-road legs and cuts across a host.
 
 import { describe, expect, it } from "vitest";
-import { buildRoadGraph } from "../../route";
+import { buildPlaces, buildRoadGraph } from "../../route";
 import { Walker } from "../walker";
 
 /**
@@ -132,5 +132,38 @@ describe("Walker", () => {
     expect(w.leg?.toPage).toBe(false);
     run(w, 2, { x: 0, y: -1 });
     expect(w.edge).toBe(2);
+  });
+
+  it("cuts straight across a host instead of walking every one of its roads", () => {
+    // 0 ── 1 ── 2 ── 3 ── 4 ── 5, where 1..4 are all paths of one site
+    const subs = ["a.com", "big.com/p", "big.com/q", "big.com/r", "big.com/s", "b.com"];
+    const subX = Float32Array.from([0, 40, 80, 120, 160, 200]);
+    const subY = new Float32Array(6);
+    const roadA = Uint32Array.from([0, 1, 2, 3, 4]);
+    const roadB = Uint32Array.from([1, 2, 3, 4, 5]);
+    const roads = buildRoadGraph({ sub_x: subX, sub_y: subY, road_a: roadA, road_b: roadB,
+                                   road_w: new Float32Array(5).fill(1) } as never);
+    const w = new Walker({
+      roads, roadA, roadB, subX, subY,
+      pageX: Float32Array.from([1, 201]), pageY: Float32Array.from([2, 2]),
+      pageSub: Uint32Array.from([0, 5]),
+      places: buildPlaces(subs, [5, 5, 5, 5, 5, 5]),
+      x0: -10, y0: -10, cellW: 2, cellH: 2.8,
+    }, 20);
+    w.placeAtNode(0);
+    expect(w.travelTo(1)).toBe(true);
+    expect(w.plan!.steps.map((s) => s.kind)).toEqual(["road", "cut", "road"]);
+    const cut = w.plan!.steps[1];
+    expect(cut.kind === "cut" && [cut.from, cut.to]).toEqual([1, 4]);
+
+    const seen = new Set<number>();
+    for (let t = 0; t < 30 && !(w.standing?.kind === "page"); t += 1 / 60) {
+      w.step(1 / 60, { heading: null, sprint: false });
+      for (const a of w.drainArrivals()) if (a.kind === "node") seen.add(a.node);
+    }
+    expect(w.standing).toEqual({ kind: "page", page: 1, node: 5 });
+    // it never stopped in the middle of the site
+    expect(seen.has(2) || seen.has(3)).toBe(false);
+    expect(seen.has(4)).toBe(true);
   });
 });
