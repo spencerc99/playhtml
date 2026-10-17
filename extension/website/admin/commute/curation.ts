@@ -361,23 +361,11 @@ export function getDecisionsForReviewItem(
   places: CuratedPlace[],
   item: CommuteReviewItem,
 ): CuratedPlace[] {
-  if (item.url) {
-    return getCoveringInternetPlacePolicies(
-      places.map((place) => ({ scope: place.scope, placeKey: place.place, place })),
-      item.url,
-    ).map(({ place }) => place);
-  }
-  const lookups = (["hostname", "site"] as const).map((scope) => ({
-    scope,
-    placeKey: getReviewTarget(item, scope),
-  }));
-  return lookups.flatMap((lookup) =>
-    places.filter(
-      (place) =>
-        getDecisionKey(place.scope, place.place) ===
-        getDecisionKey(lookup.scope, lookup.placeKey),
-    ),
-  );
+  // A domain-only row stands for its homepage, as the Worker's review queue does.
+  return getCoveringInternetPlacePolicies(
+    places.map((place) => ({ scope: place.scope, placeKey: place.place, place })),
+    item.url ?? `https://${item.domain}/`,
+  ).map(({ place }) => place);
 }
 
 /**

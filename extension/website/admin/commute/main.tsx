@@ -1382,7 +1382,6 @@ export function App({
                 <div className="scope-options">
                   {CURATION_SCOPES.map((value) => {
                     const disabled =
-                      (value === "page" && !selectedItem.url) ||
                       ((value === "path" || value === "pattern") &&
                         !getDefaultPathTarget(selectedItem));
                     return (

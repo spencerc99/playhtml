@@ -374,6 +374,34 @@ describe("getReviewTarget", () => {
     expect(getDefaultPathTarget(item)).toBe("github.com/settings");
     expect(getDefaultPathTarget({ ...item, url: "https://github.com/" })).toBeNull();
   });
+
+  it("lets a domain-only row take a homepage page rule", () => {
+    const item = {
+      id: "canva.com",
+      domain: "canva.com",
+      currentDisposition: "scenery" as const,
+    };
+    expect(getReviewTarget(item, "page")).toBe("https://canva.com/");
+    const homepage = createCuratedPlace({
+      id: "home",
+      input: getReviewTarget(item, "page"),
+      scope: "page",
+      placement: "hidden",
+      comment: "",
+      updatedAt: "2026-10-16T12:00:00.000Z",
+    });
+    const deepPage = createCuratedPlace({
+      id: "deep",
+      input: "https://canva.com/design/abc",
+      scope: "page",
+      placement: "hidden",
+      comment: "",
+      updatedAt: "2026-10-16T12:00:00.000Z",
+    });
+    expect(getDecisionForReviewItem([deepPage, homepage], item)).toEqual(homepage);
+    expect(getDecisionToReplace([homepage], item, "page")).toEqual(homepage);
+    expect(getDecisionToReplace([homepage], item, "hostname")).toBeUndefined();
+  });
 });
 
 describe("serializeCurationArtifact", () => {
