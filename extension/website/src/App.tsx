@@ -549,6 +549,27 @@ export default function App() {
                 you settled in, and a cursor portrait from each day.
               </p>
             </div>
+
+            <div className={styles.featureCard}>
+              <BrowserWindow
+                label="your shore · internet scraps"
+                bodyClassName={styles.featureCardFrame}
+              >
+                <img
+                  className={styles.featureCardImage}
+                  src="/home/scraps-all.jpg"
+                  alt="A dense collage of images, buttons, icons, and screenshots collected while browsing, layered across the page"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </BrowserWindow>
+              <h3 className={styles.featureCardTitle}>collect internet scraps</h3>
+              <p className={styles.featureCardBody}>
+                The images, buttons, icons, and cursors you pass wash up on your
+                own shore. Search them, filter by site, and trace any scrap back
+                to the page it came from.
+              </p>
+            </div>
           </div>
 
           <div className={styles.featureRow}>
@@ -598,23 +619,23 @@ export default function App() {
                     <span className={styles.browserDot} />
                     <span className={styles.browserDot} />
                   </span>
-                  <span className={styles.browserLabel}>your shore</span>
-                  <span className={styles.statusChipBeta}>BETA</span>
+                  <span className={styles.browserLabel}>untitled collage</span>
+                  <span className={styles.statusChip}>SOON</span>
                 </div>
                 <div className={styles.comingThumbFrame}>
                   <img
                     className={styles.comingThumb}
-                    src="/home/scraps-all.jpg"
-                    alt="A dense collage of images, buttons, icons, and screenshots collected while browsing, layered across the page"
+                    src="/home/browsing-collage.jpg"
+                    alt="A collage of found browsing materials: leather boots stepping across a sunset painting, chrome pipes and a faucet winding between them, blue tape rolls, and a minion in a sea of cartoon eyeballs"
                     loading="lazy"
                     decoding="async"
                   />
                 </div>
               </div>
-              <h3 className={styles.comingTitle}>internet scraps</h3>
+              <h3 className={styles.comingTitle}>browsing collages</h3>
               <p className={styles.comingBody}>
-                a snapshot of your browsing in the media you pass — images,
-                buttons, icons, cursors.
+                arrange your scraps into collages. every piece remembers the
+                page it came from.
               </p>
             </div>
 

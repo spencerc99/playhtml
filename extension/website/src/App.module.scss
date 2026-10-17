@@ -710,11 +710,11 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   }
 }
 
-// Two matching cards sharing the what's-coming card anatomy: window on top,
+// Three matching cards sharing the what's-coming card anatomy: window on top,
 // title, then copy.
 .featureCards {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 24px;
 
   @media (max-width: 768px) {
