@@ -312,6 +312,31 @@
     margin-top: 2px;
     line-height: 1.4;
   }
+
+  &__deny-list {}
+
+  &__deny-list-label {}
+
+  &__deny-list-title {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: $text;
+    line-height: 1.3;
+  }
+
+  &__deny-list-desc {
+    display: block;
+    font-size: 11px;
+    color: $text-muted;
+    margin-top: 2px;
+    line-height: 1.4;
+  }
+
+  &__deny-list-entry {
+    div {
+    }
+  }
 }
 
 // Individual collector card

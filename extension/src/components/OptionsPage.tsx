@@ -11,6 +11,7 @@ import {
   DataCollectionSection,
   DeveloperModeSection,
   YourDataSection,
+  DenyListSection
 } from "./Collections";
 import { DeveloperFeaturesSection } from "./DeveloperFeaturesPage";
 import { FeatureGate } from "./FeatureGate";
@@ -42,6 +43,7 @@ const SECTIONS = [
   { id: "experiments", title: "Experiments" },
   { id: "community", title: "Community" },
   { id: "your-data", title: "Your data" },
+  { id: "deny-list", title: "Deny List" },
 ] as const;
 
 function randomPrimaryColor(): string {
@@ -211,7 +213,7 @@ export function OptionsPage() {
           setEmailDraft(savedEmail);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -226,7 +228,7 @@ export function OptionsPage() {
           const savedColor = playerIdentity?.playerStyle.colorPalette[0];
           if (savedColor) setColor(savedColor);
         })
-        .catch(() => {});
+        .catch(() => { });
     };
     browser.storage.onChanged.addListener(handleStorageChange);
     return () => browser.storage.onChanged.removeListener(handleStorageChange);
@@ -476,9 +478,8 @@ export function OptionsPage() {
           <div className="options-page__card">
             {experimentAccess && <DeveloperFeaturesSection />}
             <div
-              className={`options-page__access-request${
-                experimentAccess ? " options-page__access-request--divided" : ""
-              }`}
+              className={`options-page__access-request${experimentAccess ? " options-page__access-request--divided" : ""
+                }`}
             >
               <h2>Request early access</h2>
               <p>
@@ -588,6 +589,13 @@ export function OptionsPage() {
           <h1>Your data</h1>
           <div className="options-page__card options-page__collections-card">
             <YourDataSection />
+          </div>
+        </section>
+
+        <section id="deny-list" className="options-page__section">
+          <h1>Deny list</h1>
+          <div className="options-page__card options-page__collections-card">
+            <DenyListSection/>
           </div>
         </section>
       </main>

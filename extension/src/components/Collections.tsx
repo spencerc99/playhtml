@@ -25,7 +25,7 @@ import "./Collections.scss";
 
 interface CollectionsProps {
   onBack?: () => void;
-  visibleSection?: "all" | "data" | "your-data" | "developer";
+  visibleSection?: "all" | "data" | "your-data" | "deny-list" | "developer";
 }
 
 const PRIVACY_LEVEL_KEY = LEGIBILITY_KEY;
@@ -269,6 +269,11 @@ export function Collections({
   const [keyboardLegibilityPct, setKeyboardLegibilityPct] =
     useState<number>(DEFAULT_LEGIBILITY);
   const [filterSubstrings, setFilterSubstrings] = useState<string[]>([]);
+  const [denyList, setDenyList] = useState<{ text: string, editing: boolean }[]>([
+    { text: "https://bankofamerica.com", editing: false },
+    { text: "https://tumblr.com", editing: false },
+    { text: "https://capitalone.com", editing: false },
+  ]);
   const [newFilterSubstring, setNewFilterSubstring] = useState("");
   const [modes, setModes] = useState<Record<string, CollectionMode>>({});
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
@@ -547,15 +552,14 @@ export function Collections({
         | undefined;
       const countDetail = counts
         ? Object.entries(counts)
-            .filter(([, n]) => n > 0)
-            .map(([t, n]) => `${n} ${t}`)
-            .join(", ")
+          .filter(([, n]) => n > 0)
+          .map(([t, n]) => `${n} ${t}`)
+          .join(", ")
         : "";
       setTransferStatus({
         type: "success",
-        message: `Restored ${response.imported.toLocaleString()} events${
-          countDetail ? ` (${countDetail})` : ""
-        }.`,
+        message: `Restored ${response.imported.toLocaleString()} events${countDetail ? ` (${countDetail})` : ""
+          }.`,
       });
       await loadStorageStats();
     } catch (e: any) {
@@ -698,8 +702,7 @@ export function Collections({
           prev.map((c) => (c.type === type ? { ...c, enabled: !enabled } : c)),
         );
         alert(
-          `Failed to ${enabled ? "enable" : "disable"} collector: ${
-            response.error || "Unknown error"
+          `Failed to ${enabled ? "enable" : "disable"} collector: ${response.error || "Unknown error"
           }`,
         );
       } else {
@@ -722,9 +725,87 @@ export function Collections({
     return <div className="collections__loading">Loading collections...</div>;
   }
 
+  const denyListRef = useRef<HTMLDivElement>(null);
+  const startEditingDenyListEntry = useCallback((id: number) => {
+    const newDenyList = [...denyList];
+    denyList[id].editing = true;
+    setDenyList(newDenyList);
+  }, [denyList]);
+
+  const commitDenyListEntry = useCallback((id: number, form?: HTMLFormElement) => {
+    const root = denyListRef.current ?? document;
+    const formEl: HTMLFormElement | null = form ?? root.querySelector(`form#collections__deny-list-edit-entry-form-${id}`);
+    if (!formEl) return;
+
+    const urlInput: HTMLInputElement | null = formEl.querySelector('input[type="url"]');
+    if (!urlInput) return;
+
+    const value = urlInput.value;
+
+    const newDenyList = [...denyList];
+    denyList[id].editing = false;
+    if (value) {
+      denyList[id].text = value;
+    }
+
+    setDenyList(newDenyList);
+  }, [denyList]);
+
+  const removeDenyListEntry = useCallback((id: number) => {
+    setDenyList(denyList.filter((_, i) => i !== id))
+  }, [denyList])
+
+
+  const populateDenyListFromStorage = useCallback(async function(abortPromise: Promise<void>) {
+    try {
+      const v = await Promise.race([browser.storage.local.get("deny-list"), abortPromise]);
+      if (!v) return;
+      if (!Array.isArray(v)) return;
+      setDenyList(v.map(t => {
+        return { text: t, editing: false }
+      }));
+    } catch {
+      console.log("Failed to populate deny list from local storage");
+    }
+  }, []);
+
+  const updateDenyListFromStorage = useCallback(async function(denyList: string[], abortPromise: Promise<void>) {
+    try {
+      await Promise.race([browser.storage.local.set({ "deny-list": denyList }), abortPromise]);
+    } catch {
+      console.log("Failed to persist deny list local storage");
+    }
+  }, []);
+
+  // Only run this on page load
+  useEffect(() => {
+    const controller = new AbortController();
+    const signalPromise: Promise<void> = new Promise((_resolve, reject) => {
+      controller.signal.addEventListener('abort', reject);
+      return null;
+    });
+    populateDenyListFromStorage(signalPromise);
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    console.log("updating denyList in storage");
+    const controller = new AbortController();
+    const signalPromise: Promise<void> = new Promise((_resolve, reject) => {
+      controller.signal.addEventListener('abort', reject);
+      return null;
+    });
+
+    updateDenyListFromStorage(denyList.map(t => t.text), signalPromise);
+
+    return () => controller.abort();
+  }, [denyList]);
+
+
   const eventTypeCounts = storageStats
     ? getEventTypeCounts(storageStats.countsByType)
     : [];
+
   const scrapSizeBytes = storageStats?.estimatedSizeBytesByType?.element;
   const hasActiveCollection = Object.values(modes).some(
     (mode) => mode !== "off",
@@ -850,7 +931,7 @@ export function Collections({
 
             <div className="collections__privacy-notice">
               {keyboardLegibilityPct > 0 &&
-              (modes["keyboard"] ?? "local") !== "off" ? (
+                (modes["keyboard"] ?? "local") !== "off" ? (
                 <>
                   Keyboard legibility is above 0, so some typed text is
                   recorded. Use filters above to redact sensitive content. All
@@ -1016,8 +1097,74 @@ export function Collections({
             </label>
           </div>
         )}
-      </main>
-    </div>
+
+        {(visibleSection === 'all' || visibleSection === 'deny-list') && (
+          <div className="collections__deny-list" ref={denyListRef}>
+            <label className="collections__deny-list-label">
+              <div>
+                <span className="collections__deny-list-title">
+                  Deny list
+                </span>
+              </div>
+              <span className="collections__deny-list-desc">
+                List of websites where wwo won't collect store any data, local or otherwise
+              </span>
+            </label>
+            <div>
+              <form onSubmit={ev => {
+                ev.preventDefault();
+                const newDenyInput: HTMLInputElement | null = ev.target.querySelector('input[name="new-deny-entry"]');
+                if (newDenyInput) {
+                  setDenyList([...denyList, { text: newDenyInput.value, editing: false }]);
+                  newDenyInput.value = '';
+                }
+              }}>
+                <input name="new-deny-entry" type="url" />
+                <label htmlFor="new-deny-entry">Add new site to deny list</label>
+                <input type="submit" hidden />
+              </form>
+
+              <ul>
+                {denyList.map((s, i) => (
+                  <li key={i} className="collections__deny-list-entry">
+                    <div>
+                      {s.editing
+                        ? (
+                          <>
+                            <div>
+                              <form id={`collections__deny-list-edit-entry-form-${i}`} onSubmit={ev => {
+                                commitDenyListEntry(i, ev.target);
+                              }}>
+                                <input type="url" defaultValue={s.text} />
+                                <input type="submit" hidden />
+                              </form>
+                            </div>
+                            <div>
+                              <button onClick={() => commitDenyListEntry(i)}>Done</button>
+                              <button onClick={() => removeDenyListEntry(i)}>X</button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div>
+                              <span>{s.text}</span>
+                            </div>
+                            <div>
+                              <button onClick={() => startEditingDenyListEntry(i)}>Edit</button>
+                              <button onClick={() => removeDenyListEntry(i)}>X</button>
+                            </div>
+                          </>
+                        )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div >
+        )
+        }
+      </main >
+    </div >
   );
 }
 
@@ -1031,4 +1178,8 @@ export function YourDataSection() {
 
 export function DeveloperModeSection() {
   return <Collections visibleSection="developer" />;
+}
+
+export function DenyListSection() {
+  return <Collections visibleSection="deny-list" />
 }
