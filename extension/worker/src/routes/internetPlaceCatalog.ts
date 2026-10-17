@@ -443,6 +443,16 @@ export async function loadInternetPlacePolicies(
 ): Promise<InternetPlacePolicy[]> {
   const lookups = uniqueLookupPairs(response);
   if (lookups.length === 0) return [];
+  const hostnames = [...new Set(
+    lookups.filter((lookup) => lookup.scope === 'hostname').map((lookup) => lookup.placeKey),
+  )];
+  // Patterns can't be looked up by key, so every pattern on these hostnames comes along.
+  const patternRows = await allRows<PolicyRow>(db.prepare(
+    `SELECT scope, place_key, placement, reason, note, updated_at
+     FROM place_policies
+     WHERE scope = 'pattern'
+       AND substr(place_key, 1, instr(place_key, '/') - 1) IN (SELECT value FROM json_each(?))`,
+  ).bind(JSON.stringify(hostnames)));
   const rows = await allRows<PolicyRow>(db.prepare(
     `WITH requested AS (
        SELECT
@@ -455,7 +465,7 @@ export async function loadInternetPlacePolicies(
      INNER JOIN requested r
        ON r.scope = p.scope AND r.place_key = p.place_key`,
   ).bind(JSON.stringify(lookups)));
-  return rows.map(policyFromRow);
+  return [...rows, ...patternRows].map(policyFromRow);
 }
 
 export function applyInternetPlacePolicies(

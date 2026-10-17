@@ -8,6 +8,7 @@ import {
   getDecisionForReviewItem,
   getDecisionToReplace,
   getDecisionsForReviewItem,
+  getDefaultPatternTarget,
   getQueueGroup,
   getDefaultPathTarget,
   getReviewTarget,
@@ -163,6 +164,19 @@ describe("parseCommuteReviewResponse", () => {
     });
     expect(items.filter(needsHumanReview).map((item) => item.domain)).toEqual(["a.example"]);
     expect(items[0]).toMatchObject({ need: "unsure", visits: 4, clef: { placement: "regular" } });
+  });
+
+  it("reads Clef's call on scenery names", () => {
+    const { items } = parseCommuteReviewResponse({
+      generatedAt: 1,
+      destinations: [],
+      scenery: [
+        { domain: "x.com", review: { need: null, visits: 1, clef: { placement: "scenery", confidence: 0.9 } } },
+        { domain: "mail.example", review: { need: "hidden", visits: 1, clef: { placement: "hidden", confidence: 0.8 } } },
+      ],
+    });
+    expect(items.filter(needsHumanReview).map((item) => item.domain)).toEqual(["mail.example"]);
+    expect(items[0]).toMatchObject({ need: null, clef: { placement: "scenery" } });
   });
 
   it("keeps every page when the Worker does not annotate needs", () => {
@@ -360,6 +374,34 @@ describe("getReviewTarget", () => {
     expect(getDefaultPathTarget(item)).toBe("github.com/settings");
     expect(getDefaultPathTarget({ ...item, url: "https://github.com/" })).toBeNull();
   });
+
+  it("lets a domain-only row take a homepage page rule", () => {
+    const item = {
+      id: "canva.com",
+      domain: "canva.com",
+      currentDisposition: "scenery" as const,
+    };
+    expect(getReviewTarget(item, "page")).toBe("https://canva.com/");
+    const homepage = createCuratedPlace({
+      id: "home",
+      input: getReviewTarget(item, "page"),
+      scope: "page",
+      placement: "hidden",
+      comment: "",
+      updatedAt: "2026-10-16T12:00:00.000Z",
+    });
+    const deepPage = createCuratedPlace({
+      id: "deep",
+      input: "https://canva.com/design/abc",
+      scope: "page",
+      placement: "hidden",
+      comment: "",
+      updatedAt: "2026-10-16T12:00:00.000Z",
+    });
+    expect(getDecisionForReviewItem([deepPage, homepage], item)).toEqual(homepage);
+    expect(getDecisionToReplace([homepage], item, "page")).toEqual(homepage);
+    expect(getDecisionToReplace([homepage], item, "hostname")).toBeUndefined();
+  });
 });
 
 describe("serializeCurationArtifact", () => {
@@ -417,5 +459,47 @@ describe("serializeCurationArtifact", () => {
       scope: "hostname",
       comment: "Review this family of pages later.",
     });
+  });
+});
+
+describe("pattern rules", () => {
+  const item = {
+    id: "naomi",
+    domain: "letterboxd.com",
+    url: "https://letterboxd.com/nylonsmile/tag/naomi/films",
+    currentDisposition: "stop" as const,
+  };
+  const seen = ["a/tag/b", "c/tag/d", "e/tag/f"].map(
+    (path) => `https://letterboxd.com/${path}/films`,
+  );
+
+  it("defaults to the inferred pattern, or the path with its last segment open", () => {
+    expect(getDefaultPatternTarget(item, seen)).toBe(
+      "letterboxd.com/*/tag/*/films",
+    );
+    expect(getDefaultPatternTarget(item)).toBe(
+      "letterboxd.com/nylonsmile/tag/naomi/*",
+    );
+  });
+
+  it("lists a covering pattern between the page and the site rule", () => {
+    const rule = (id: string, input: string, scope: "pattern" | "site" | "page") =>
+      createCuratedPlace({
+        id,
+        input,
+        scope,
+        placement: "regular",
+        comment: "",
+        updatedAt: FEATURED.updatedAt,
+      });
+    const places = [
+      rule("site", "letterboxd.com", "site"),
+      rule("pattern", "letterboxd.com/*/tag/*/films", "pattern"),
+      rule("other", "letterboxd.com/*/films", "pattern"),
+      rule("page", item.url, "page"),
+    ];
+    expect(getDecisionsForReviewItem(places, item).map((place) => place.id)).toEqual(
+      ["page", "pattern", "site"],
+    );
   });
 });
