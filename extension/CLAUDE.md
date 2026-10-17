@@ -13,6 +13,7 @@ Browser extension that collects anonymous browsing behavior (cursor movements, n
 - `bun run zip`: Package for Chrome Web Store
 - `bun run zip:safari`: Package for Safari Web Extension Packager
 - `bun run ios:safari`: Build Safari and open an iOS app project in Xcode for running on an iPhone (local prototype only, macOS + Xcode required; `APPLE_TEAM_ID` sets signing). `bun run ios:safari:simulator` instead compiles it for the Simulator with a local ad-hoc signature, which Safari needs before it will turn the extension on. Output lives in `publish/safari-ios-app` and never touches the macOS release.
+- `scripts/uploadSafariIOS.sh`: Archive the iOS app and upload it to TestFlight (same `APPLE_*` variables as the release, plus `BUILD_NUMBER`). The `iOS TestFlight` workflow runs it on every push to `main` that touches `extension/` or `packages/`, so internal testers get each merge. The app icon comes from `ios/AppIcon-1024.png` (1024px, no transparency).
 
 Worker backend (in `worker/`):
 - `cd worker && wrangler dev`: Local API server (localhost:8787)

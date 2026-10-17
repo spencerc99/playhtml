@@ -1,23 +1,26 @@
 #!/bin/bash
 # ABOUTME: Packages the Safari build into an iOS app project for local device testing.
-# ABOUTME: Separate from the macOS release path; it never archives or uploads anything.
+# ABOUTME: Separate from the macOS release path; uploadSafariIOS.sh archives what it makes for TestFlight.
 
 set -euo pipefail
 
-# Usage: scripts/packageSafariIOS.sh [--simulator] [--skip-build]
-#   --simulator   Build the generated project for the iOS Simulator with an
-#                 ad-hoc signature (no Apple account). Without it, the script
-#                 opens the project in Xcode so you can run it on an iPhone.
-#   --skip-build  Reuse an existing Safari build in publish/safari-mv3.
+# Usage: scripts/packageSafariIOS.sh [--simulator] [--skip-build] [--project-only]
+#   --simulator     Build the generated project for the iOS Simulator with an
+#                   ad-hoc signature (no Apple account). Without it, the script
+#                   opens the project in Xcode so you can run it on an iPhone.
+#   --skip-build    Reuse an existing Safari build in publish/safari-mv3.
+#   --project-only  Generate the Xcode project and stop, for uploadSafariIOS.sh.
 #
 # Set APPLE_TEAM_ID to have the project signed with your team automatically.
 
 SIMULATOR=0
 SKIP_BUILD=0
+PROJECT_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     --simulator) SIMULATOR=1 ;;
     --skip-build) SKIP_BUILD=1 ;;
+    --project-only) PROJECT_ONLY=1 ;;
     *) echo "Unknown arg: $arg"; exit 1 ;;
   esac
 done
@@ -32,6 +35,8 @@ IOS_PROJECT_ROOT="publish/safari-ios-app"
 APP_NAME="we were online"
 PROJECT_PATH="${IOS_PROJECT_ROOT}/${APP_NAME}/${APP_NAME}.xcodeproj"
 PROJECT_FILE="${PROJECT_PATH}/project.pbxproj"
+# The extension's own icon tops out at 128px; iOS needs one opaque 1024px icon.
+APP_ICON_SOURCE="ios/AppIcon-1024.png"
 # Safari 18 is the floor the macOS app already targets; iOS 18 ships it.
 IOS_DEPLOYMENT_TARGET="18.0"
 GENERATED_APP_BUNDLE_ID="${SAFARI_BUNDLE_ID%.*}.we-were-online"
@@ -68,6 +73,46 @@ sed -i '' "s/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 
 if [ -n "${APPLE_TEAM_ID:-}" ]; then
   sed -i '' "s/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Automatic;\\
                 DEVELOPMENT_TEAM = ${APPLE_TEAM_ID};/g" "$PROJECT_FILE"
+fi
+
+# Replace the packager's icon set, scaled up from the 128px extension icon,
+# with the single 1024px icon iOS builds every other size from.
+APP_ICON_SET=$(find "$IOS_PROJECT_ROOT" -type d -name AppIcon.appiconset | head -n 1)
+if [ -z "$APP_ICON_SET" ]; then
+  echo "The generated project has no AppIcon set."
+  exit 1
+fi
+rm -f "${APP_ICON_SET}"/*
+cp "$APP_ICON_SOURCE" "${APP_ICON_SET}/AppIcon-1024.png"
+cat > "${APP_ICON_SET}/Contents.json" <<'JSON'
+{
+  "images" : [
+    {
+      "filename" : "AppIcon-1024.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "1024x1024"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
+JSON
+
+# The app only uses the system's HTTPS, which is exempt from export
+# compliance. Declaring it lets each TestFlight build reach testers without
+# a compliance question in App Store Connect.
+while IFS= read -r plist; do
+  if ! /usr/libexec/PlistBuddy -c "Print :NSExtension" "$plist" >/dev/null 2>&1; then
+    plutil -replace ITSAppUsesNonExemptEncryption -bool NO "$plist"
+  fi
+done < <(find "$IOS_PROJECT_ROOT" -name Info.plist -not -path "*/build/*")
+
+if [ "$PROJECT_ONLY" -eq 1 ]; then
+  echo "Generated ${PROJECT_PATH}."
+  exit 0
 fi
 
 if [ "$SIMULATOR" -eq 1 ]; then
