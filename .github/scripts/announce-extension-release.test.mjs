@@ -68,7 +68,8 @@ describe("extension release workflow", () => {
       "Submit to Chrome",
       "Submit to Edge",
       "Submit to Firefox",
-      "Package and submit Safari app",
+      "Package and upload Safari app",
+      "Submit Safari app for review",
     ];
 
     for (const storeStep of storeSteps) {
@@ -81,7 +82,7 @@ describe("extension release workflow", () => {
     }
 
     const safariStepIndex = workflow.indexOf(
-      "- name: Package and submit Safari app",
+      "- name: Submit Safari app for review",
     );
     const checkStepIndex = workflow.indexOf("- name: Check store submissions");
     const tagStepIndex = workflow.indexOf("- name: Tag release");
@@ -106,7 +107,7 @@ describe("extension release workflow", () => {
     assert.ok(releaseCommandIndex < announceStepIndex);
   });
 
-  it("uses the extension release Discord webhook", () => {
+  it("uses the shared release Discord webhook", () => {
     const workflowPath = fileURLToPath(
       new URL("../workflows/extension-release.yml", import.meta.url),
     );
@@ -116,7 +117,7 @@ describe("extension release workflow", () => {
     const announceStep = workflow.slice(announceStepIndex, nextStepIndex);
 
     assert.notEqual(announceStepIndex, -1);
-    assert.match(announceStep, /secrets\.DISCORD_EXTENSION_RELEASE_WEBHOOK/);
-    assert.doesNotMatch(announceStep, /secrets\.DISCORD_RELEASE_WEBHOOK/);
+    assert.match(announceStep, /secrets\.DISCORD_RELEASE_WEBHOOK/);
+    assert.doesNotMatch(announceStep, /secrets\.DISCORD_EXTENSION_RELEASE_WEBHOOK/);
   });
 });
