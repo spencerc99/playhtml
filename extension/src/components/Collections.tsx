@@ -31,6 +31,7 @@ interface CollectionsProps {
 const PRIVACY_LEVEL_KEY = LEGIBILITY_KEY;
 const FILTER_SUBSTRINGS_KEY = "collection_keyboard_filter_substrings";
 const DEV_MODE_KEY = "dev_mode";
+const DENY_LIST_KEY = "deny-list";
 
 interface StorageStats {
   totalEvents: number;
@@ -269,11 +270,7 @@ export function Collections({
   const [keyboardLegibilityPct, setKeyboardLegibilityPct] =
     useState<number>(DEFAULT_LEGIBILITY);
   const [filterSubstrings, setFilterSubstrings] = useState<string[]>([]);
-  const [denyList, setDenyList] = useState<{ text: string, editing: boolean }[]>([
-    { text: "https://bankofamerica.com", editing: false },
-    { text: "https://tumblr.com", editing: false },
-    { text: "https://capitalone.com", editing: false },
-  ]);
+  const [denyList, setDenyList] = useState<{ text: string, editing: boolean }[]>([]);
   const [newFilterSubstring, setNewFilterSubstring] = useState("");
   const [modes, setModes] = useState<Record<string, CollectionMode>>({});
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
@@ -308,6 +305,10 @@ export function Collections({
       visibleSection === "developer"
     ) {
       loadDevMode();
+    }
+
+    if (visibleSection === 'all' || visibleSection === 'deny-list') {
+      populateDenyListFromStorage();
     }
   }, [visibleSection]);
 
@@ -726,6 +727,28 @@ export function Collections({
   }
 
   const denyListRef = useRef<HTMLDivElement>(null);
+
+  const persistDenyListToLocalStore = async function(denyList: { text: string, editing: boolean }[]) {
+    await browser.storage.local.set({ [DENY_LIST_KEY]: denyList.map(e => e.text) });
+    console.log("persisted to local store")
+  }
+  const populateDenyListFromStorage = async function() {
+    const v = await browser.storage.local.get([DENY_LIST_KEY]);
+    console.log("Got", v);
+
+    if (!v) {
+      console.log("no locally stored deny list");
+      return;
+    };
+    if (!Array.isArray(v[DENY_LIST_KEY])) {
+      console.log("locally stored list is not an array");
+      return;
+    };
+    setDenyList(v[DENY_LIST_KEY].map(t => {
+      return { text: t, editing: false }
+    }));
+  };
+
   const startEditingDenyListEntry = useCallback((id: number) => {
     const newDenyList = [...denyList];
     denyList[id].editing = true;
@@ -748,59 +771,22 @@ export function Collections({
       denyList[id].text = value;
     }
 
+    persistDenyListToLocalStore(denyList);
     setDenyList(newDenyList);
   }, [denyList]);
 
   const removeDenyListEntry = useCallback((id: number) => {
-    setDenyList(denyList.filter((_, i) => i !== id))
+    const newDenyList = denyList.filter((_, i) => i !== id);
+    persistDenyListToLocalStore(newDenyList);
+    setDenyList(newDenyList)
   }, [denyList])
 
-
-  const populateDenyListFromStorage = useCallback(async function(abortPromise: Promise<void>) {
-    try {
-      const v = await Promise.race([browser.storage.local.get("deny-list"), abortPromise]);
-      if (!v) return;
-      if (!Array.isArray(v)) return;
-      setDenyList(v.map(t => {
-        return { text: t, editing: false }
-      }));
-    } catch {
-      console.log("Failed to populate deny list from local storage");
-    }
-  }, []);
-
-  const updateDenyListFromStorage = useCallback(async function(denyList: string[], abortPromise: Promise<void>) {
-    try {
-      await Promise.race([browser.storage.local.set({ "deny-list": denyList }), abortPromise]);
-    } catch {
-      console.log("Failed to persist deny list local storage");
-    }
-  }, []);
-
-  // Only run this on page load
-  useEffect(() => {
-    const controller = new AbortController();
-    const signalPromise: Promise<void> = new Promise((_resolve, reject) => {
-      controller.signal.addEventListener('abort', reject);
-      return null;
-    });
-    populateDenyListFromStorage(signalPromise);
-    return () => controller.abort();
-  }, []);
-
-  useEffect(() => {
-    console.log("updating denyList in storage");
-    const controller = new AbortController();
-    const signalPromise: Promise<void> = new Promise((_resolve, reject) => {
-      controller.signal.addEventListener('abort', reject);
-      return null;
-    });
-
-    updateDenyListFromStorage(denyList.map(t => t.text), signalPromise);
-
-    return () => controller.abort();
-  }, [denyList]);
-
+  // Intended ordering:
+  // on open options page:
+  //    - Checks local storage for deny list
+  //    - if local storage has deny list, update ui with deny list
+  // edit deny list with ui
+  //    - when state changes, update local storage with new deny list
 
   const eventTypeCounts = storageStats
     ? getEventTypeCounts(storageStats.countsByType)
@@ -1115,7 +1101,10 @@ export function Collections({
                 ev.preventDefault();
                 const newDenyInput: HTMLInputElement | null = ev.target.querySelector('input[name="new-deny-entry"]');
                 if (newDenyInput) {
-                  setDenyList([...denyList, { text: newDenyInput.value, editing: false }]);
+                  const newDenyList = [...denyList, { text: newDenyInput.value, editing: false }];
+                  setDenyList(newDenyList);
+                  persistDenyListToLocalStore(newDenyList);
+
                   newDenyInput.value = '';
                 }
               }}>
