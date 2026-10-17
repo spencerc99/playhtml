@@ -18,6 +18,7 @@ import { MapSearch, SearchPlace } from "./ui/search";
 import { Theme, applyChrome, paletteOf } from "./theme";
 import { DevPanel, initialTheme } from "./devpanel";
 import { computeAnchors } from "./ascii/anchors";
+import { Wayfarer } from "./wayfarer/wayfarer";
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
 
@@ -169,7 +170,9 @@ const anchors = q.get("anchors") === "0"
 // The old CFG panel is gone. Place names are off by default; still
 // reachable with ?labels=1 or the L key.
 let showRoads = q.get("roads") !== "0";
-let showLabels = q.get("labels") === "1";
+/** the reader's own choice; walk mode turns names on over the top of it */
+let labelsPref = q.get("labels") === "1";
+let showLabels = labelsPref;
 const labelLayer = new LabelLayer();
 /** the page whose building is under the cursor */
 let hoverPage = -1;
@@ -335,6 +338,7 @@ function paint() {
   if (routes.length) drawRoute();
   if (hoverPage >= 0) drawDistrict();
   if (landing) drawLanding();
+  if (wayfarer.active) wayfarer.draw();
   $("#level").textContent = `${baked.cols}\u00d7${baked.rows} · ${ren.cellPx.toFixed(1)}px`
     + (ren.usedCache ? " · cached" : "");
   syncURL();
@@ -485,24 +489,24 @@ function drawLanding() {
   draw();
 }
 
-/** Trace the route over the same polyline roadgeom gave the bake. */
-function drawRoute() {
-  const r = routes.find((x) => x.mode === mode);
-  if (!r || !r.ok) return;
+/**
+ * Paint the cells of some roads in a colour, over the same polyline roadgeom
+ * gave the bake. A stroked vector would read as laid over the map; this reads
+ * as the road itself lit up. Shared by the route overlay and the walker.
+ */
+function paintEdges(edges: number[], fill: string) {
   const M = baked;
   const sxA = A.sub_x as Float32Array, syA = A.sub_y as Float32Array;
   const sgrid = A.sub_grid as Float32Array | undefined;
   const spages = A.sub_pages as Uint32Array | undefined;
   const ra = A.road_a as Uint32Array, rb = A.road_b as Uint32Array;
-
-  // paint the road's own cells: a stroked vector reads as laid over the map
   const cw = M.cellW * cam.k, ch = M.cellH * cam.k;
   ctx.save();
   ctx.textBaseline = "top";
   ctx.font = `${cw / 0.8}px MEKDings, monospace`;
-  ctx.fillStyle = ren.theme.routeInk;
+  ctx.fillStyle = fill;
   const glyph = ROAD.h;
-  for (const e of r.edges) {
+  for (const e of edges) {
     const a = ra[e], b = rb[e];
     const ax = (sxA[a] - M.x0) / M.cellW, ay = (syA[a] - M.y0) / M.cellH;
     const bx = (sxA[b] - M.x0) / M.cellW, by = (syA[b] - M.y0) / M.cellH;
@@ -518,6 +522,21 @@ function drawRoute() {
       else ctx.fillText(glyph, sx2, sy2);
     }
   }
+  ctx.restore();
+}
+
+/** Trace the route: its roads, the walking legs at each end, and the two doors. */
+function drawRoute() {
+  const r = routes.find((x) => x.mode === mode);
+  if (!r || !r.ok) return;
+  const M = baked;
+  const sxA = A.sub_x as Float32Array, syA = A.sub_y as Float32Array;
+  paintEdges(r.edges, ren.theme.routeInk);
+
+  const cw = M.cellW * cam.k, ch = M.cellH * cam.k;
+  ctx.save();
+  ctx.textBaseline = "top";
+  ctx.font = `${cw / 0.8}px MEKDings, monospace`;
 
   // routes run between settlements but you start at a building: the legs on
   // foot, dashed so they read as different travel
@@ -625,6 +644,33 @@ function renderRoutes() {
 }
 renderRoutes();
 
+// ------------------------------------------------------------------ walking
+/**
+ * Third-person mode: a character on the roads, led by the cursor and followed
+ * by the camera. It shares the route ink, the landing mark and the building
+ * picker with the rest of the map, and takes the routes panel's corner.
+ */
+const wayfarer = new Wayfarer({
+  cam, ctx, baked, A, labels, roads,
+  theme: () => ren.theme,
+  draw,
+  paintEdges,
+  buildingAt: (x, y) => buildingAt(x, y),
+  land: (x, y, r, name) => { landing = { x, y, r, name, t0: performance.now() }; },
+  setLabels: (on) => { showLabels = on || labelsPref; },
+  onModeChange: (active) => {
+    document.body.classList.toggle("walking", active);
+    if (!active) { hoverPage = -1; tip.style.display = "none"; }
+  },
+  panel: $("#walk"),
+});
+$("#walkbtn").onclick = () => wayfarer.toggle();
+$("#wk-leave").onclick = () => wayfarer.leave();
+// a handle for tests and the console; nothing in the page relies on it
+(window as any).__wayfarer = wayfarer;
+// The character is drawn as a cursor; ?color= paints it in a given colour.
+if (q.get("color")) wayfarer.setColor(q.get("color"));
+
 // ------------------------------------------------------------------ picking
 /**
  * Which building is under the cursor — one array index, because the grid
@@ -689,9 +735,10 @@ function showTip(i: number, sx: number, sy: number) {
 // ------------------------------------------------------------------ controls
 attachControls(canvas, cam,
   () => { syncURL(); draw(); },
-  (x, y) => hover(x, y),
-  (x, y) => pick(x, y),
-  (active) => { interacting = active; });
+  (x, y) => { if (wayfarer.active) wayfarer.pointerMove(x, y); else hover(x, y); },
+  (x, y) => { if (wayfarer.active) wayfarer.click(x, y); else pick(x, y); },
+  (active) => { interacting = active; },
+  () => !wayfarer.active);
 
 /** Click: origin, destination, then start over. Empty ground clears. */
 function pick(x: number, y: number) {
@@ -720,6 +767,7 @@ function solve() {
 }
 canvas.addEventListener("pointerleave", () => {
   tip.style.display = "none";
+  wayfarer.pointerLeave();
   if (hoverPage >= 0) { hoverPage = -1; draw(); }
 });
 
@@ -728,8 +776,13 @@ $("#zout").onclick = () => { cam.zoomAt(cam.W / 2, cam.H / 2, 1 / 1.6); draw(); 
 addEventListener("resize", resize);
 addEventListener("keydown", (e) => {
   if (e.key === "Escape") { hoverPage = -1; tip.style.display = "none"; draw(); }
-  if (e.key === "l" || e.key === "L") { showLabels = !showLabels; draw(); }
+  if (e.key === "l" || e.key === "L") { labelsPref = !labelsPref; showLabels = wayfarer.active || labelsPref; draw(); }
   if (e.key === "r" || e.key === "R") { showRoads = !showRoads; draw(); }
+  // W enters walk mode; once walking, the keys belong to the walker (Esc leaves)
+  const typing = (e.target as HTMLElement | null)?.tagName === "INPUT";
+  if ((e.key === "w" || e.key === "W") && !typing && !wayfarer.active && !e.metaKey && !e.ctrlKey) {
+    wayfarer.enter({ page: hoverPage >= 0 ? hoverPage : fromPage });
+  }
 });
 
 
@@ -867,6 +920,8 @@ const labelWindow = (p: SearchPlace): [number, number] => {
   return [lo, Math.max(lo, hi)];
 };
 
+/** set by ?walk=1 with a ?q=, so the walk starts where the search lands */
+let walkOnArrive = false;
 const search = new MapSearch({
   cam,
   places,
@@ -877,10 +932,19 @@ const search = new MapSearch({
     hoverPage = busiestPage(p);
     landing = { x: p.x, y: p.y, r: spreadOf(p), name: p.name, t0: performance.now() };
     draw();
+    if (walkOnArrive) { walkOnArrive = false; wayfarer.enter({ page: hoverPage }); }
   },
 });
 const initialQuery = q.get("q");
-if (initialQuery) search.jump(initialQuery);
+// ?walk=1 starts in walk mode: at the searched place once the flight lands,
+// otherwise wherever the view already is.
+const WALK = q.get("walk") === "1";
+if (initialQuery) {
+  if (WALK) walkOnArrive = true;
+  search.jump(initialQuery);
+} else if (WALK) {
+  wayfarer.enter();
+}
 
 const devPanel = new DevPanel(theme, boot0.preset, { onChange: applyTheme, canvas });
 if (q.get("dev") === "1") devPanel.setOpen(true);
