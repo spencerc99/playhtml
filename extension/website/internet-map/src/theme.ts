@@ -68,6 +68,10 @@ export interface Theme {
   routeWalk: string;
   routeFrom: string;
   routeTo: string;
+  /** the walking character, the ground it stands out from, and its footprints */
+  walker: string;
+  walkerHalo: string;
+  walkerTrail: string;
   /** panels, tooltips and buttons */
   chrome: ChromeTheme;
 }
@@ -134,6 +138,9 @@ export const DARK: Theme = {
   routeWalk: "#b9a86a",
   routeFrom: "#9dff96",
   routeTo: "#ff8f6a",
+  walker: "#fff4c2",
+  walkerHalo: "#17160f",
+  walkerTrail: "#b9a86a",
   chrome: DARK_CHROME,
 };
 
@@ -192,6 +199,9 @@ export const PAPER: Theme = {
   routeWalk: "#c0a86a",
   routeFrom: "#2f6b60",
   routeTo: "#8b3f24",
+  walker: "#8b3f24",
+  walkerHalo: "#faf7f2",
+  walkerTrail: "#c4724e",
   chrome: LIGHT_CHROME,
 };
 
@@ -238,6 +248,9 @@ export const INK: Theme = {
   routeWalk: "#8fb5ad",
   routeFrom: "#1d4f47",
   routeTo: "#8b3f24",
+  walker: "#1d4f47",
+  walkerHalo: "#faf7f2",
+  walkerTrail: "#4a9a8a",
   chrome: LIGHT_CHROME,
 };
 
@@ -287,6 +300,9 @@ export const ATLAS: Theme = {
   routeWalk: "#bda370",
   routeFrom: "#2f6b60",
   routeTo: "#8b3f24",
+  walker: "#8b3f24",
+  walkerHalo: "#f5f0e8",
+  walkerTrail: "#c4724e",
   chrome: LIGHT_CHROME,
 };
 
@@ -417,6 +433,9 @@ export const COLOR_GROUPS: ColorGroup[] = [
       slot("routeWalk", "walking leg", (t) => t.routeWalk, (t, v) => { t.routeWalk = v; }),
       slot("routeFrom", "origin", (t) => t.routeFrom, (t, v) => { t.routeFrom = v; }),
       slot("routeTo", "destination", (t) => t.routeTo, (t, v) => { t.routeTo = v; }),
+      slot("walker", "walker", (t) => t.walker, (t, v) => { t.walker = v; }),
+      slot("walkerHalo", "walker halo", (t) => t.walkerHalo, (t, v) => { t.walkerHalo = v; }),
+      slot("walkerTrail", "walker trail", (t) => t.walkerTrail, (t, v) => { t.walkerTrail = v; }),
     ],
   },
   {
