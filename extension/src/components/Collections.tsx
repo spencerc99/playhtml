@@ -308,7 +308,7 @@ export function Collections({
     }
 
     if (visibleSection === 'all' || visibleSection === 'deny-list') {
-      populateDenyListFromStorage();
+      loadDenyList();
     }
   }, [visibleSection]);
 
@@ -728,23 +728,19 @@ export function Collections({
 
   const denyListRef = useRef<HTMLDivElement>(null);
 
-  const persistDenyListToLocalStore = async function(denyList: { text: string, editing: boolean }[]) {
+  const writeDenyListToStorage = async function(denyList: { text: string, editing: boolean }[]) {
     await browser.storage.local.set({ [DENY_LIST_KEY]: denyList.map(e => e.text) });
     console.log("persisted to local store")
   }
-  const populateDenyListFromStorage = async function() {
-    const v = await browser.storage.local.get([DENY_LIST_KEY]);
-    console.log("Got", v);
 
-    if (!v) {
-      console.log("no locally stored deny list");
+  const loadDenyList = async function() {
+    const result = await browser.storage.local.get([DENY_LIST_KEY]);
+
+    if (!Array.isArray(result[DENY_LIST_KEY])) {
       return;
     };
-    if (!Array.isArray(v[DENY_LIST_KEY])) {
-      console.log("locally stored list is not an array");
-      return;
-    };
-    setDenyList(v[DENY_LIST_KEY].map(t => {
+
+    setDenyList(result[DENY_LIST_KEY].map(t => {
       return { text: t, editing: false }
     }));
   };
@@ -771,13 +767,13 @@ export function Collections({
       denyList[id].text = value;
     }
 
-    persistDenyListToLocalStore(denyList);
+    writeDenyListToStorage(denyList);
     setDenyList(newDenyList);
   }, [denyList]);
 
   const removeDenyListEntry = useCallback((id: number) => {
     const newDenyList = denyList.filter((_, i) => i !== id);
-    persistDenyListToLocalStore(newDenyList);
+    writeDenyListToStorage(newDenyList);
     setDenyList(newDenyList)
   }, [denyList])
 
@@ -1103,7 +1099,7 @@ export function Collections({
                 if (newDenyInput) {
                   const newDenyList = [...denyList, { text: newDenyInput.value, editing: false }];
                   setDenyList(newDenyList);
-                  persistDenyListToLocalStore(newDenyList);
+                  writeDenyListToStorage(newDenyList);
 
                   newDenyInput.value = '';
                 }
