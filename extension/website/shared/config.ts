@@ -14,9 +14,10 @@ export const WORKER_URL: string =
 
 export const RECENT_EVENTS_URL = `${WORKER_URL}/events/recent`;
 export const COMMUTE_RECENT_URL = `${WORKER_URL}/commute/recent`;
-export const COMMUTE_REVIEW_URL = import.meta.env.VITE_COMMUTE_REVIEW_URL as
-  | string
-  | undefined;
+/** Admin-only route queue annotated with Clef's calls; the curation desk reads it. */
+export const COMMUTE_REVIEW_URL =
+  (import.meta.env.VITE_COMMUTE_REVIEW_URL as string | undefined) ??
+  `${WORKER_URL}/commute/review`;
 export const COMMUTE_TRAIN_BOARD_URL = `${WORKER_URL}/commute/trains/board`;
 export const DAILY_COUNTS_URL = `${WORKER_URL}/events/daily-counts`;
 export const PAGE_META_URL = `${WORKER_URL}/page-meta`;

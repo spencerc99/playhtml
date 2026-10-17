@@ -11,7 +11,6 @@ import React, {
 } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  COMMUTE_RECENT_URL,
   COMMUTE_REVIEW_URL,
   PAGE_INSPECTION_URL,
 } from "@movement/config";
@@ -530,10 +529,10 @@ export function App({
     setQueueStatus("loading");
     setDecidedThisVisit(new Map());
     try {
-      const response = await fetch(COMMUTE_REVIEW_URL ?? COMMUTE_RECENT_URL, {
+      const response = await fetch(COMMUTE_REVIEW_URL, {
         headers: {
           Accept: "application/json",
-          ...(COMMUTE_REVIEW_URL ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
       });
       if (!response.ok)

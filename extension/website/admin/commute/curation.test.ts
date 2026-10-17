@@ -166,6 +166,19 @@ describe("parseCommuteReviewResponse", () => {
     expect(items[0]).toMatchObject({ need: "unsure", visits: 4, clef: { placement: "regular" } });
   });
 
+  it("reads Clef's call on scenery names", () => {
+    const { items } = parseCommuteReviewResponse({
+      generatedAt: 1,
+      destinations: [],
+      scenery: [
+        { domain: "x.com", review: { need: null, visits: 1, clef: { placement: "scenery", confidence: 0.9 } } },
+        { domain: "mail.example", review: { need: "hidden", visits: 1, clef: { placement: "hidden", confidence: 0.8 } } },
+      ],
+    });
+    expect(items.filter(needsHumanReview).map((item) => item.domain)).toEqual(["mail.example"]);
+    expect(items[0]).toMatchObject({ need: null, clef: { placement: "scenery" } });
+  });
+
   it("keeps every page when the Worker does not annotate needs", () => {
     const { items } = parseCommuteReviewResponse({
       generatedAt: 1,

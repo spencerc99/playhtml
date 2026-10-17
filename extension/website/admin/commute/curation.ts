@@ -189,7 +189,7 @@ export function parseCommuteReviewResponse(
           id: item.domain,
           domain: item.domain,
           currentDisposition: "scenery" as const,
-          ...(annotated ? { need: null } : {}),
+          ...(readReview(item) ?? (annotated ? { need: null } : {})),
         })),
     ],
   };
