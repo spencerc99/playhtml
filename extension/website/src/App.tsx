@@ -565,9 +565,9 @@ export default function App() {
               </BrowserWindow>
               <h3 className={styles.featureCardTitle}>collect internet scraps</h3>
               <p className={styles.featureCardBody}>
-                The images, buttons, icons, and cursors you pass wash up on your
-                own shore. Search them, filter by site, and trace any scrap back
-                to the page it came from.
+                The images, buttons, icons, and cursors you pass become a visual
+                browsing history. Search them, filter by site, and trace any
+                scrap back to the page it came from.
               </p>
             </div>
           </div>
