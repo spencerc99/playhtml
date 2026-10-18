@@ -342,6 +342,152 @@ export default function App() {
           </span>
         </section>
 
+        <section className={styles.section} id="homepage-essay">
+          <div className={styles.essayBlock}>
+            <p>
+              It's controversial to have hope for the internet these days.{" "}
+              <a
+                href="https://en.wikipedia.org/wiki/Dead_Internet_theory"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Dead internet theory
+              </a>{" "}
+              has entered mainstream discourse as AI social accounts multiply
+              and compete for what flavor of slop comes after Italian brainrot.
+            </p>
+
+            <p>
+              But there's so much life around us, still thriving on the open
+              Internet. From rural{" "}
+              <a
+                href="https://forum.melonland.net/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                forums
+              </a>
+              ,{" "}
+              <a
+                href="https://merveilles.town/about"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                towns
+              </a>
+              , and{" "}
+              <a
+                href="https://playhtml.fun/fridge"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                fridge walls
+              </a>{" "}
+              to community-run{" "}
+              <a
+                href="http://wikipedia.org/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                encyclopedias
+              </a>{" "}
+              and{" "}
+              <a
+                href="https://www.openstreetmap.org/communities"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                maps
+              </a>
+              , pockets of humanity continue to flourish despite (&amp; perhaps
+              now, in part, in spite) of these existential fears.
+            </p>
+
+            <p>
+              So why does it still feel so lonely when we browse the Internet?
+            </p>
+
+            <div className={`${styles.marginalia} ${styles.marginaliaLeft}`}>
+              <aside className={styles.marginaliaAside}>
+                <Bench id="wewere-bench" />
+              </aside>
+              <p className={styles.benchesLine}>
+                I think it's because{" "}
+                <a
+                  href={BENCHES_ESSAY_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  the Internet has no benches
+                </a>
+                .
+              </p>
+            </div>
+
+            <p>
+              One of my favorite things about walking around in the real world
+              is the causal sharing of space with other people. We share a look
+              when something funny happens or help out when a stranger trips.
+              Sometimes these spontaneous encounters become meaningful
+              encounters that stay with us.
+            </p>
+
+            <div className={styles.marginalia}>
+              <p>
+                The Internet has none of this. Online, we're forced to perform
+                or consume. We have all this life around us on the web, but we
+                can't feel it.
+              </p>
+              <aside className={styles.marginaliaAside}>
+                <CoffeeMachine id="wewere-coffee" />
+              </aside>
+            </div>
+
+            <p>
+              <em>
+                <b style={{ fontSize: "1.1em" }}>we were online</b>
+              </em>{" "}
+              is an online multiplayer world—part game, artwork, and tool—that
+              turns the existing Internet into a living, shared world, actively
+              shaped by its inhabitants.
+            </p>
+
+            <p>
+              Built on <a href="https://playhtml.fun/">playhtml</a>, an
+              open-source library for creating shared experiences, the game is
+              designed to be customized and extended by its players. Individual
+              websites can create interactions that respond to live events on
+              other websites and change behavior depending on a user’s history
+              and personality.
+            </p>
+
+            <p>
+              Isolated browsing becomes the site of serendipitous encounters as
+              everything becomes material for connection. Assets, buttons, and
+              other components can be created, grown, moved, taken, and gifted.
+              Pages show wear as people pass through and use them. Cursors
+              become digital appendages for bumping into others.
+            </p>
+
+            <p>
+              Instead of a new social platform, I'm invested in helping the
+              existing Internet we already live in{" "}
+              <a
+                href={ALIVE_INTERNET_ESSAY_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                come to life
+              </a>{" "}
+              with our presence — one we can shape together, piece by piece. Not
+              as users, but as neighbors and stewards nurturing a home for
+              generations to come.
+            </p>
+          </div>
+          <br />
+          <DownloadGate />
+        </section>
+
         <div className={styles.transitionDivider} aria-hidden="true">
           <span className={styles.transitionRule} />
           <span className={styles.transitionLabel}>
@@ -543,152 +689,6 @@ export default function App() {
           <div className={styles.comingSoonCommute}>
             <TrainCrossing variant="compact" />
           </div>
-        </section>
-
-        <section className={styles.section} id="homepage-essay">
-          <div className={styles.essayBlock}>
-            <p>
-              It's controversial to have hope for the internet these days.{" "}
-              <a
-                href="https://en.wikipedia.org/wiki/Dead_Internet_theory"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Dead internet theory
-              </a>{" "}
-              has entered mainstream discourse as AI social accounts multiply
-              and compete for what flavor of slop comes after Italian brainrot.
-            </p>
-
-            <p>
-              But there's so much life around us, still thriving on the open
-              Internet. From rural{" "}
-              <a
-                href="https://forum.melonland.net/"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                forums
-              </a>
-              ,{" "}
-              <a
-                href="https://merveilles.town/about"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                towns
-              </a>
-              , and{" "}
-              <a
-                href="https://playhtml.fun/fridge"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                fridge walls
-              </a>{" "}
-              to community-run{" "}
-              <a
-                href="http://wikipedia.org/"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                encyclopedias
-              </a>{" "}
-              and{" "}
-              <a
-                href="https://www.openstreetmap.org/communities"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                maps
-              </a>
-              , pockets of humanity continue to flourish despite (&amp; perhaps
-              now, in part, in spite) of these existential fears.
-            </p>
-
-            <p>
-              So why does it still feel so lonely when we browse the Internet?
-            </p>
-
-            <div className={`${styles.marginalia} ${styles.marginaliaLeft}`}>
-              <aside className={styles.marginaliaAside}>
-                <Bench id="wewere-bench" />
-              </aside>
-              <p className={styles.benchesLine}>
-                I think it's because{" "}
-                <a
-                  href={BENCHES_ESSAY_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  the Internet has no benches
-                </a>
-                .
-              </p>
-            </div>
-
-            <p>
-              One of my favorite things about walking around in the real world
-              is the causal sharing of space with other people. We share a look
-              when something funny happens or help out when a stranger trips.
-              Sometimes these spontaneous encounters become meaningful
-              encounters that stay with us.
-            </p>
-
-            <div className={styles.marginalia}>
-              <p>
-                The Internet has none of this. Online, we're forced to perform
-                or consume. We have all this life around us on the web, but we
-                can't feel it.
-              </p>
-              <aside className={styles.marginaliaAside}>
-                <CoffeeMachine id="wewere-coffee" />
-              </aside>
-            </div>
-
-            <p>
-              <em>
-                <b style={{ fontSize: "1.1em" }}>we were online</b>
-              </em>{" "}
-              is an online multiplayer world—part game, artwork, and tool—that
-              turns the existing Internet into a living, shared world, actively
-              shaped by its inhabitants.
-            </p>
-
-            <p>
-              Built on <a href="https://playhtml.fun/">playhtml</a>, an
-              open-source library for creating shared experiences, the game is
-              designed to be customized and extended by its players. Individual
-              websites can create interactions that respond to live events on
-              other websites and change behavior depending on a user’s history
-              and personality.
-            </p>
-
-            <p>
-              Isolated browsing becomes the site of serendipitous encounters as
-              everything becomes material for connection. Assets, buttons, and
-              other components can be created, grown, moved, taken, and gifted.
-              Pages show wear as people pass through and use them. Cursors
-              become digital appendages for bumping into others.
-            </p>
-
-            <p>
-              Instead of a new social platform, I'm invested in helping the
-              existing Internet we already live in{" "}
-              <a
-                href={ALIVE_INTERNET_ESSAY_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                come to life
-              </a>{" "}
-              with our presence — one we can shape together, piece by piece. Not
-              as users, but as neighbors and stewards nurturing a home for
-              generations to come.
-            </p>
-          </div>
-          <br />
-          <DownloadGate />
         </section>
 
         <section className={styles.section}>
