@@ -45,14 +45,16 @@ export function LiveIndicator({
   const parts = [label];
   if (timezones && timezones > 1) parts.push(plural(timezones, "timezone"));
   if (continents && continents > 1) parts.push(plural(continents, "continent"));
-  label = parts.join(" · ");
+  // Keep each count with its noun when the label wraps on narrow screens.
+  label = parts.map((part) => part.replace(/ /g, "\u00a0")).join(" · ");
 
   return (
     <span
       style={{
         fontFamily: "'Martian Mono', ui-monospace, monospace",
-        fontSize: "11px",
-        letterSpacing: "0.06em",
+        // Overridable by a page that needs the label to fit a narrow screen.
+        fontSize: "var(--live-indicator-font-size, 11px)",
+        letterSpacing: "var(--live-indicator-letter-spacing, 0.06em)",
         textTransform: "uppercase",
         color: TEAL,
         pointerEvents: "none",

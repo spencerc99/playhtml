@@ -30,6 +30,42 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   z-index: 1;
 }
 
+// Bottom edge of the first screen: anchored at 100vh and shifted up by its own
+// height, so it grows upward when it wraps.
+.firstScreenMeta {
+  position: absolute;
+  top: 100vh;
+  left: 16px;
+  right: 16px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  column-gap: 24px;
+  row-gap: 4px;
+  padding-bottom: 12px;
+  transform: translateY(-100%);
+  pointer-events: none;
+
+  // Narrow screens center the people-count on its own and drop the clock.
+  // The count scales with the screen so it stays on one line on phones.
+  @media (max-width: 768px) {
+    justify-content: center;
+    text-align: center;
+    --live-indicator-font-size: min(11px, 2.5vw);
+    --live-indicator-letter-spacing: 0.03em;
+  }
+}
+
+.firstScreenClock {
+  margin-left: auto;
+
+  @media (max-width: 768px) {
+    display: none;
+  }
+}
+
 .siteNav {
   position: fixed;
   top: 18px;
@@ -68,7 +104,10 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
     }
   }
 
+  // On phones a fixed nav sits on top of the wordmark and body text once the
+  // page scrolls, so it stays at the top of the page instead.
   @media (max-width: 520px) {
+    position: absolute;
     top: 14px;
     right: 14px;
     gap: 12px;
@@ -188,10 +227,9 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   opacity: 0.82;
   pointer-events: none;
 
-  @media (max-width: 480px) {
-    bottom: 18px;
-    width: 64px;
-    height: 42px;
+  // Hidden on narrow screens, where it crowds the people-count.
+  @media (max-width: 768px) {
+    display: none;
   }
 }
 
