@@ -49,9 +49,12 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   pointer-events: none;
 
   // Narrow screens center the people-count on its own and drop the clock.
+  // The count scales with the screen so it stays on one line on phones.
   @media (max-width: 768px) {
     justify-content: center;
     text-align: center;
+    --live-indicator-font-size: min(11px, 2.5vw);
+    --live-indicator-letter-spacing: 0.03em;
   }
 }
 

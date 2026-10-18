@@ -52,8 +52,9 @@ export function LiveIndicator({
     <span
       style={{
         fontFamily: "'Martian Mono', ui-monospace, monospace",
-        fontSize: "11px",
-        letterSpacing: "0.06em",
+        // Overridable by a page that needs the label to fit a narrow screen.
+        fontSize: "var(--live-indicator-font-size, 11px)",
+        letterSpacing: "var(--live-indicator-letter-spacing, 0.06em)",
         textTransform: "uppercase",
         color: TEAL,
         pointerEvents: "none",
