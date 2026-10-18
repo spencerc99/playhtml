@@ -260,29 +260,19 @@ export default function App() {
           />
         )}
         <RisoTexture />
-        {/* People-count pinned to the bottom of the first screen (the portrait
-            area) and scrolls away with the page — not fixed to the viewport. */}
-        <LiveIndicator
-          connected={connected}
-          peopleCount={activity.people}
-          timezones={activity.timezones}
-          continents={activity.continents}
-          style={{
-            position: "absolute",
-            top: "calc(100vh - 36px)",
-            left: 16,
-            zIndex: 2,
-          }}
-        />
-        {/* Live current date + time in the wordmark style, bottom-right. */}
-        <WordmarkClock
-          style={{
-            position: "absolute",
-            top: "calc(100vh - 40px)",
-            right: 16,
-            zIndex: 2,
-          }}
-        />
+        {/* People-count and live clock pinned to the bottom of the first
+            screen (the portrait area); they scroll away with the page. They
+            share one row so narrow screens stack them instead of overlapping. */}
+        <div className={styles.firstScreenMeta}>
+          <LiveIndicator
+            connected={connected}
+            peopleCount={activity.people}
+            timezones={activity.timezones}
+            continents={activity.continents}
+          />
+          {/* Live current date + time in the wordmark style. */}
+          <WordmarkClock />
+        </div>
       </div>
 
       <div className={styles.content}>

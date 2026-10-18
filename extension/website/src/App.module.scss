@@ -30,6 +30,39 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   z-index: 1;
 }
 
+// Bottom edge of the first screen: anchored at 100vh and shifted up by its own
+// height, so it grows upward when it wraps.
+.firstScreenMeta {
+  position: absolute;
+  top: 100vh;
+  left: 16px;
+  right: 16px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  column-gap: 24px;
+  row-gap: 4px;
+  padding-bottom: 12px;
+  transform: translateY(-100%);
+  pointer-events: none;
+
+  & > :last-child {
+    margin-left: auto;
+  }
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+
+    & > :last-child {
+      margin-left: 0;
+    }
+  }
+}
+
 .siteNav {
   position: fixed;
   top: 18px;
@@ -68,7 +101,10 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
     }
   }
 
+  // On phones a fixed nav sits on top of the wordmark and body text once the
+  // page scrolls, so it stays at the top of the page instead.
   @media (max-width: 520px) {
+    position: absolute;
     top: 14px;
     right: 14px;
     gap: 12px;
@@ -188,8 +224,13 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   opacity: 0.82;
   pointer-events: none;
 
+  // Narrow screens stack the people-count and clock at the bottom of the
+  // first screen, so the cue sits above them.
+  @media (max-width: 768px) {
+    bottom: 84px;
+  }
+
   @media (max-width: 480px) {
-    bottom: 18px;
     width: 64px;
     height: 42px;
   }

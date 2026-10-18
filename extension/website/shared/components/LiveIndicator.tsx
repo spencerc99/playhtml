@@ -45,7 +45,8 @@ export function LiveIndicator({
   const parts = [label];
   if (timezones && timezones > 1) parts.push(plural(timezones, "timezone"));
   if (continents && continents > 1) parts.push(plural(continents, "continent"));
-  label = parts.join(" · ");
+  // Keep each count with its noun when the label wraps on narrow screens.
+  label = parts.map((part) => part.replace(/ /g, "\u00a0")).join(" · ");
 
   return (
     <span
