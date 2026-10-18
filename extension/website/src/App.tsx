@@ -261,8 +261,7 @@ export default function App() {
         )}
         <RisoTexture />
         {/* People-count and live clock pinned to the bottom of the first
-            screen (the portrait area); they scroll away with the page. They
-            share one row so narrow screens stack them instead of overlapping. */}
+            screen (the portrait area); they scroll away with the page. */}
         <div className={styles.firstScreenMeta}>
           <LiveIndicator
             connected={connected}
@@ -270,8 +269,10 @@ export default function App() {
             timezones={activity.timezones}
             continents={activity.continents}
           />
-          {/* Live current date + time in the wordmark style. */}
-          <WordmarkClock />
+          {/* Live current date + time in the wordmark style (desktop only). */}
+          <span className={styles.firstScreenClock}>
+            <WordmarkClock />
+          </span>
         </div>
       </div>
 

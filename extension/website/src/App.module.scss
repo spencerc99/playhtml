@@ -48,18 +48,18 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   transform: translateY(-100%);
   pointer-events: none;
 
-  & > :last-child {
-    margin-left: auto;
+  // Narrow screens center the people-count on its own and drop the clock.
+  @media (max-width: 768px) {
+    justify-content: center;
+    text-align: center;
   }
+}
+
+.firstScreenClock {
+  margin-left: auto;
 
   @media (max-width: 768px) {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-
-    & > :last-child {
-      margin-left: 0;
-    }
+    display: none;
   }
 }
 
@@ -224,15 +224,9 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   opacity: 0.82;
   pointer-events: none;
 
-  // Narrow screens stack the people-count and clock at the bottom of the
-  // first screen, so the cue sits above them.
+  // Hidden on narrow screens, where it crowds the people-count.
   @media (max-width: 768px) {
-    bottom: 84px;
-  }
-
-  @media (max-width: 480px) {
-    width: 64px;
-    height: 42px;
+    display: none;
   }
 }
 
