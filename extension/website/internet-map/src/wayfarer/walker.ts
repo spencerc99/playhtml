@@ -204,6 +204,10 @@ export class Walker {
     } else if (this.standing?.kind === "page" && this.standing.page === page) {
       this.arrivals.push({ kind: "page", node: target, page, final: true });
       return true;
+    } else if (this.leg?.toPage && this.leg.page !== page) {
+      // Halfway up the path to another door: turn back to the street from
+      // here, since the new route starts there.
+      this.turnBackToStreet();
     }
     // From the middle of a road the plan's first step is this road, walked
     // towards whichever end won; keep our place on it rather than restarting.
@@ -287,9 +291,11 @@ export class Walker {
           this.standing = { kind: "page", page: L.page, node: L.node };
           this.x = this.w.pageX[L.page]; this.y = this.w.pageY[L.page];
           // the journey ends at the door, not at the kerb: the plan stays
-          // until now so a heading cannot pull the walker away mid-leg
-          this.plan = null;
-          this.arrivals.push({ kind: "page", node: L.node, page: L.page, final: true });
+          // until now so a heading cannot pull the walker away mid-leg. A
+          // plan for somewhere else is kept, and starts back out from here.
+          const final = !this.plan || this.plan.page === L.page;
+          if (final) this.plan = null;
+          this.arrivals.push({ kind: "page", node: L.node, page: L.page, final });
         } else {
           this.standing = { kind: "node", node: L.node };
           this.x = this.w.subX[L.node]; this.y = this.w.subY[L.node];
@@ -389,6 +395,14 @@ export class Walker {
     this.edge = -1;
     this.leg = { x0, y0, x1, y1, s: 0, len: Math.hypot(x1 - x0, y1 - y0), node, page, toPage, cut: false };
     this.x = x0; this.y = y0;
+  }
+
+  /** Abandon the walk up to a door and head back to its street from where the walker is. */
+  private turnBackToStreet() {
+    const L = this.leg!;
+    const x1 = this.w.subX[L.node], y1 = this.w.subY[L.node];
+    this.leg = { x0: this.x, y0: this.y, x1, y1, s: 0, len: Math.hypot(x1 - this.x, y1 - this.y),
+                 node: L.node, page: L.page, toPage: false, cut: false };
   }
 
   /** Walk straight from one settlement to another of the same site. */

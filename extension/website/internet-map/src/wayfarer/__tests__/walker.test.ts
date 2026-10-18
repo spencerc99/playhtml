@@ -166,4 +166,24 @@ describe("Walker", () => {
     expect(seen.has(2) || seen.has(3)).toBe(false);
     expect(seen.has(4)).toBe(true);
   });
+
+  it("takes a new destination given on the final walk up to another door", () => {
+    const w = new Walker(world(), 10);
+    w.placeAtNode(2);
+    expect(w.travelTo(1)).toBe(true);          // page 1's door is just off settlement 2
+    run(w, 0.05, null);
+    expect(w.leg?.toPage).toBe(true);
+    expect(w.leg?.page).toBe(1);
+
+    expect(w.travelTo(2)).toBe(true);          // page 2, by settlement 3
+    expect(w.leg?.toPage).toBe(false);         // turned back towards the street
+
+    const finals: number[] = [];
+    for (let t = 0; t < 30 && !(w.standing?.kind === "page" && w.standing.page === 2); t += 1 / 60) {
+      w.step(1 / 60, { heading: null, sprint: false });
+      for (const a of w.drainArrivals()) if (a.final) finals.push(a.page);
+    }
+    expect(w.standing).toEqual({ kind: "page", page: 2, node: 3 });
+    expect(finals).toEqual([2]);
+  });
 });
