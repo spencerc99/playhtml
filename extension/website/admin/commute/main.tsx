@@ -638,7 +638,9 @@ export function App({
       if (
         target instanceof HTMLTextAreaElement ||
         target instanceof HTMLSelectElement ||
-        target instanceof HTMLButtonElement ||
+        // A clicked row keeps focus; its shortcuts still belong to the desk.
+        (target instanceof HTMLButtonElement &&
+          !target.classList.contains("place-card__select")) ||
         (target instanceof HTMLInputElement &&
           target.type !== "radio" &&
           target.type !== "checkbox")
