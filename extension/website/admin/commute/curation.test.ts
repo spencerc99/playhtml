@@ -7,6 +7,8 @@ import {
   createCuratedPlace,
   getDecisionForReviewItem,
   getDecisionToReplace,
+  getNarrowerRuleThatWins,
+  getPageRuleToClear,
   getDecisionsForReviewItem,
   getDefaultPatternTarget,
   getQueueGroup,
@@ -501,5 +503,31 @@ describe("pattern rules", () => {
     expect(getDecisionsForReviewItem(places, item).map((place) => place.id)).toEqual(
       ["page", "pattern", "site"],
     );
+  });
+});
+
+describe("wider decisions over an older page rule", () => {
+  const rule = (id: string, input: string, scope: "page" | "path" | "hostname" | "site", placement: "regular" | "featured" | "hidden") =>
+    createCuratedPlace({ id, input, scope, placement, comment: "", updatedAt: "2026-10-19T00:00:00.000Z" });
+  const item = {
+    id: "https://neocities.org/",
+    domain: "neocities.org",
+    url: "https://neocities.org/",
+    currentDisposition: "stop" as const,
+  };
+
+  it("clears only this page's own rule when saving wider", () => {
+    const page = rule("page", "https://neocities.org/", "page", "regular");
+    const other = rule("other", "https://neocities.org/browse", "page", "hidden");
+    expect(getPageRuleToClear([page, other], item, "hostname")).toEqual(page);
+    expect(getPageRuleToClear([page, other], item, "page")).toBeUndefined();
+    expect(getPageRuleToClear([other], item, "site")).toBeUndefined();
+  });
+
+  it("names a narrower rule that would still win", () => {
+    const hostname = rule("host", "neocities.org", "hostname", "featured");
+    expect(getNarrowerRuleThatWins([hostname], item, "site")).toEqual(hostname);
+    expect(getNarrowerRuleThatWins([hostname], item, "hostname")).toBeUndefined();
+    expect(getNarrowerRuleThatWins([hostname], item, "page")).toBeUndefined();
   });
 });

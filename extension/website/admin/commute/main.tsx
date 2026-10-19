@@ -26,6 +26,8 @@ import {
   type CurationPlacement,
   getDecisionForReviewItem,
   getDecisionToReplace,
+  getNarrowerRuleThatWins,
+  getPageRuleToClear,
   getDecisionsForReviewItem,
   getQueueGroup,
   QUEUE_GROUPS,
@@ -348,6 +350,7 @@ export function App({
     itemId: string;
     saved: CuratedPlace;
     replaced?: CuratedPlace;
+    cleared?: CuratedPlace;
   } | null>(null);
   // Group each row was in when you decided it, so it stays put until refresh.
   const [decidedThisVisit, setDecidedThisVisit] = useState(
@@ -886,7 +889,7 @@ export function App({
 
   async function undoLastDecision() {
     if (!lastDecision || saving) return;
-    const { itemId, saved, replaced } = lastDecision;
+    const { itemId, saved, replaced, cleared } = lastDecision;
     setSaving(true);
     setCatalogError("");
     try {
@@ -894,9 +897,14 @@ export function App({
       let restored: CuratedPlace | undefined;
       if (replaced) restored = await saveCatalogPolicy(token, replaced, saved);
       else await deleteCatalogPolicy(token, saved);
+      const restoredPage = cleared
+        ? await saveCatalogPolicy(token, cleared)
+        : undefined;
       setPlaces((current) => {
-        const without = current.filter((place) => place.id !== saved.id);
-        return restored ? upsertCuratedPlace(without, restored) : without;
+        let next = current.filter((place) => place.id !== saved.id);
+        if (restored) next = upsertCuratedPlace(next, restored);
+        if (restoredPage) next = upsertCuratedPlace(next, restoredPage);
+        return next;
       });
       setDecidedThisVisit((groups) => {
         const next = new Map(groups);
@@ -942,16 +950,21 @@ export function App({
     });
     setSaving(true);
     setCatalogError("");
+    const pageRule = getPageRuleToClear(places, selectedItem, decisionScope);
     try {
       const saved = await saveCatalogPolicy(token, decision, priorDecision);
-      const otherPlaces = priorDecision
-        ? places.filter((place) => place.id !== priorDecision.id)
-        : places;
+      // A wider call replaces this page's own rule, which would otherwise win.
+      if (pageRule) await deleteCatalogPolicy(token, pageRule);
+      const otherPlaces = places.filter(
+        (place) =>
+          place.id !== priorDecision?.id && place.id !== pageRule?.id,
+      );
       setPlaces(upsertCuratedPlace(otherPlaces, saved));
       setLastDecision({
         itemId: selectedItem.id,
         saved,
         replaced: priorDecision,
+        cleared: pageRule,
       });
       const groupBefore = groupById.get(selectedItem.id);
       if (groupBefore && groupBefore !== "decided") {
@@ -1595,6 +1608,24 @@ export function App({
                   placeholder="Why this is ambiguous, or what broader rule it suggests…"
                 />
               </label>
+
+              {(() => {
+                const pageRule = getPageRuleToClear(places, selectedItem, scope);
+                const winner = getNarrowerRuleThatWins(
+                  places,
+                  selectedItem,
+                  scope,
+                );
+                if (!pageRule && !winner) return null;
+                return (
+                  <p className="decision-help rule-shadow">
+                    {pageRule &&
+                      `Replaces this page's own rule (${pageRule.placement ? PLACEMENT_LABELS[pageRule.placement] : "note only"}). `}
+                    {winner &&
+                      `A ${SCOPE_LABELS[winner.scope].toLowerCase()} rule (${winner.place}) still decides this page: ${winner.placement ? PLACEMENT_LABELS[winner.placement] : "note only"}.`}
+                  </p>
+                );
+              })()}
 
               <div className="form-actions">
                 <button

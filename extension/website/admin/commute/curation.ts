@@ -4,6 +4,7 @@
 import {
   INTERNET_PLACE_PLACEMENTS,
   INTERNET_PLACE_REASONS,
+  INTERNET_PLACE_SCOPES,
   getCoveringInternetPlacePolicies,
   getInternetPlaceLookupKeys,
   normalizeInternetPlace,
@@ -381,6 +382,40 @@ export function getDecisionToReplace(
   return getDecisionsForReviewItem(places, item).find(
     (place) => place.scope === scope,
   );
+}
+
+/**
+ * The exact-page rule a wider decision clears. Without this, a page rule left
+ * over from an earlier call keeps winning and the new decision looks unsaved.
+ */
+export function getPageRuleToClear(
+  places: CuratedPlace[],
+  item: CommuteReviewItem,
+  scope: CurationScope,
+): CuratedPlace | undefined {
+  if (scope === "page") return undefined;
+  return getDecisionsForReviewItem(places, item).find(
+    (place) => place.scope === "page",
+  );
+}
+
+/**
+ * A narrower path or pattern rule that would still decide this page after a
+ * decision at `scope`, so the desk can say so before saving.
+ */
+export function getNarrowerRuleThatWins(
+  places: CuratedPlace[],
+  item: CommuteReviewItem,
+  scope: CurationScope,
+): CuratedPlace | undefined {
+  const winner = getDecisionsForReviewItem(places, item).find(
+    (place) => place.scope !== "page",
+  );
+  if (!winner) return undefined;
+  return INTERNET_PLACE_SCOPES.indexOf(winner.scope) <
+    INTERNET_PLACE_SCOPES.indexOf(scope)
+    ? winner
+    : undefined;
 }
 
 export function canPrefillSuggestion({
