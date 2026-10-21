@@ -26,6 +26,9 @@ import {
   type CurationPlacement,
   getDecisionForReviewItem,
   getDecisionToReplace,
+  decisionCoversItem,
+  getPageRuleToClear,
+  getRuleThatStillWins,
   getDecisionsForReviewItem,
   getQueueGroup,
   QUEUE_GROUPS,
@@ -348,6 +351,7 @@ export function App({
     itemId: string;
     saved: CuratedPlace;
     replaced?: CuratedPlace;
+    cleared?: CuratedPlace;
   } | null>(null);
   // Group each row was in when you decided it, so it stays put until refresh.
   const [decidedThisVisit, setDecidedThisVisit] = useState(
@@ -638,7 +642,9 @@ export function App({
       if (
         target instanceof HTMLTextAreaElement ||
         target instanceof HTMLSelectElement ||
-        target instanceof HTMLButtonElement ||
+        // A clicked row keeps focus; its shortcuts still belong to the desk.
+        (target instanceof HTMLButtonElement &&
+          !target.classList.contains("place-card__select")) ||
         (target instanceof HTMLInputElement &&
           target.type !== "radio" &&
           target.type !== "checkbox")
@@ -845,6 +851,17 @@ export function App({
     return () => window.clearTimeout(suggestionTimer);
   }, [inspectionById, onUnauthorized, places, selectedItem, token]);
 
+  /** The place the form would save for this row, or nothing when it is incomplete. */
+  function getFormTarget(item: ReviewItem): string | undefined {
+    if (scope === "path") return pathTarget.trim() || undefined;
+    if (scope === "pattern") return patternTarget.trim() || undefined;
+    try {
+      return getReviewTarget(item, scope);
+    } catch {
+      return undefined;
+    }
+  }
+
   async function fileDecision(event: FormEvent) {
     event.preventDefault();
     if (!selectedItem) return;
@@ -884,13 +901,21 @@ export function App({
 
   async function undoLastDecision() {
     if (!lastDecision || saving) return;
-    const { itemId, saved, replaced } = lastDecision;
+    const { itemId, saved, replaced, cleared } = lastDecision;
     setSaving(true);
     setCatalogError("");
     try {
+      if (replaced && cleared) {
+        // Two rules come back. The page rule goes first, so a failure after it
+        // leaves a state the next Z can finish.
+        const restoredPage = await saveCatalogPolicy(token, cleared);
+        setPlaces((current) => upsertCuratedPlace(current, restoredPage));
+        setLastDecision({ ...lastDecision, cleared: undefined });
+      }
       // Restoring with `saved` as the previous rule swaps them in one request.
+      const restoring = replaced ?? cleared;
       let restored: CuratedPlace | undefined;
-      if (replaced) restored = await saveCatalogPolicy(token, replaced, saved);
+      if (restoring) restored = await saveCatalogPolicy(token, restoring, saved);
       else await deleteCatalogPolicy(token, saved);
       setPlaces((current) => {
         const without = current.filter((place) => place.id !== saved.id);
@@ -940,25 +965,56 @@ export function App({
     });
     setSaving(true);
     setCatalogError("");
+    const item = selectedItem;
+    const pageRule = getPageRuleToClear(
+      places,
+      item,
+      decisionScope,
+      target,
+      decisionPlacement,
+    );
+    // The Worker swaps one earlier rule out in the same request as the save.
+    const swapped = priorDecision ?? pageRule;
+    let saved: CuratedPlace;
     try {
-      const saved = await saveCatalogPolicy(token, decision, priorDecision);
-      const otherPlaces = priorDecision
-        ? places.filter((place) => place.id !== priorDecision.id)
-        : places;
-      setPlaces(upsertCuratedPlace(otherPlaces, saved));
-      setLastDecision({
-        itemId: selectedItem.id,
-        saved,
-        replaced: priorDecision,
-      });
-      const groupBefore = groupById.get(selectedItem.id);
-      if (groupBefore && groupBefore !== "decided") {
-        setDecidedThisVisit((groups) =>
-          new Map(groups).set(selectedItem.id, groupBefore),
-        );
-      }
+      saved = await saveCatalogPolicy(token, decision, swapped);
     } catch (error) {
       handleCatalogError(error);
+      setSaving(false);
+      return;
+    }
+    // A wider call replaces this page's own rule, which would otherwise win.
+    let cleared = swapped === pageRule ? pageRule : undefined;
+    let clearError: unknown;
+    if (pageRule && !cleared) {
+      try {
+        await deleteCatalogPolicy(token, pageRule);
+        cleared = pageRule;
+      } catch (error) {
+        clearError = error;
+      }
+    }
+    setPlaces(
+      upsertCuratedPlace(
+        places.filter(
+          (place) =>
+            place.id !== priorDecision?.id && place.id !== cleared?.id,
+        ),
+        saved,
+      ),
+    );
+    setLastDecision({
+      itemId: item.id,
+      saved,
+      replaced: priorDecision,
+      cleared,
+    });
+    const groupBefore = groupById.get(item.id);
+    if (groupBefore && groupBefore !== "decided") {
+      setDecidedThisVisit((groups) => new Map(groups).set(item.id, groupBefore));
+    }
+    if (clearError) {
+      handleCatalogError(clearError);
       setSaving(false);
       return;
     }
@@ -1593,6 +1649,36 @@ export function App({
                   placeholder="Why this is ambiguous, or what broader rule it suggests…"
                 />
               </label>
+
+              {(() => {
+                const target = getFormTarget(selectedItem);
+                if (!target) return null;
+                const covers = decisionCoversItem(selectedItem, scope, target);
+                const pageRule = getPageRuleToClear(
+                  places,
+                  selectedItem,
+                  scope,
+                  target,
+                  placement,
+                );
+                const winner = getRuleThatStillWins(
+                  places,
+                  selectedItem,
+                  scope,
+                  target,
+                  placement,
+                );
+                if (covers && !pageRule && !winner) return null;
+                return (
+                  <p className="decision-help rule-shadow">
+                    {!covers && "This rule does not include this page. "}
+                    {pageRule &&
+                      `Replaces this page's own rule (${pageRule.placement ? PLACEMENT_LABELS[pageRule.placement] : "note only"}). `}
+                    {winner &&
+                      `Your ${SCOPE_LABELS[winner.scope].toLowerCase()} rule (${winner.place}) still decides this page: ${winner.placement ? PLACEMENT_LABELS[winner.placement] : "note only"}.`}
+                  </p>
+                );
+              })()}
 
               <div className="form-actions">
                 <button
