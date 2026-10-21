@@ -75,7 +75,7 @@ Each has a live demo and full docs in the [capabilities reference](https://playh
 
 ## Building with AI
 
-playhtml works well with coding assistants.
+playhtml works well with coding assistants. The quickest start is to tell your agent: _"Read https://playhtml.fun/docs/integrations/building-with-ai/ and use it to add playhtml to this project."_
 
 **Claude Code users** — install the plugin for a skill that auto-activates when you ask Claude to build playhtml elements:
 

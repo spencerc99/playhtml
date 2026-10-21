@@ -5,7 +5,17 @@ sidebar:
   order: 1
 ---
 
-playhtml plays well with AI coding assistants. There are two supported paths, depending on which assistant you use.
+playhtml plays well with AI coding assistants.
+
+## Point your agent here
+
+The quickest start: paste this into any coding agent (Claude Code, Codex, Cursor, and so on).
+
+```text
+Read https://playhtml.fun/docs/integrations/building-with-ai/ and use it to add playhtml to this project.
+```
+
+The rest of this page is what your agent reads. You can also use one of the two paths below directly, depending on which assistant you use.
 
 ## Claude Code plugin (recommended)
 
