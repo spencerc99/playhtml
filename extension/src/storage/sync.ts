@@ -4,6 +4,21 @@
 import browser from 'webextension-polyfill';
 import type { CollectionEvent } from '../collectors/types';
 import { VERBOSE } from '../config';
+import { stripFragment } from '../utils/urlNormalization';
+
+/**
+ * Hash fragments can carry sensitive content (OAuth tokens, in-page state)
+ * regardless of event type. Strip them from the outgoing payload only; the
+ * local IndexedDB copy (used for the user's own history/visualization
+ * features) keeps the full URL.
+ */
+function sanitizeForUpload(events: CollectionEvent[]): CollectionEvent[] {
+  return events.map((event) =>
+    event.meta?.url
+      ? { ...event, meta: { ...event.meta, url: stripFragment(event.meta.url) } }
+      : event
+  );
+}
 
 const STORAGE_KEYS = {
   WORKER_URL: 'collection_worker_url',
@@ -76,14 +91,15 @@ export async function uploadEvents(events: CollectionEvent[]): Promise<void> {
   }
   
   const workerUrl = await getWorkerUrl();
-  
+  const sanitizedEvents = sanitizeForUpload(events);
+
   try {
     const response = await fetch(`${workerUrl}/events`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ events }),
+      body: JSON.stringify({ events: sanitizedEvents }),
     });
     
     if (!response.ok) {
