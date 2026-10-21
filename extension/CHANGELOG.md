@@ -1,5 +1,10 @@
 # @playhtml/extension
 
+## 0.1.28 (2026-10-21)
+
+- Time on a site stops counting after a few minutes away from your computer, so a tab left open overnight no longer inflates your history.
+
+
 ## 0.1.27 (2026-10-10)
 
 - Fix bug with "Save image" on a page portrait on some browsers
