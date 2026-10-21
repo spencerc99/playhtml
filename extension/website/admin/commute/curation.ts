@@ -415,15 +415,21 @@ export function decisionCoversItem(
 /**
  * The exact-page rule a wider decision clears. Without this, a page rule left
  * over from an earlier call keeps winning and the new decision looks unsaved.
- * Nothing is cleared when the new rule would not cover this page.
+ * Nothing is cleared when the new rule would not cover this page, or when it
+ * is a note without a placement, since a note never routes the page.
  */
 export function getPageRuleToClear(
   places: CuratedPlace[],
   item: CommuteReviewItem,
   scope: CurationScope,
   target: string,
+  placement: CurationPlacement | undefined,
 ): CuratedPlace | undefined {
-  if (scope === "page" || !decisionCoversItem(item, scope, target)) {
+  if (
+    !placement ||
+    scope === "page" ||
+    !decisionCoversItem(item, scope, target)
+  ) {
     return undefined;
   }
   return getDecisionsForReviewItem(places, item).find(
@@ -434,20 +440,22 @@ export function getPageRuleToClear(
 /**
  * The rule that would still decide this page after saving at `scope` for
  * `target`, so the desk can say so before saving. Compares the real rules
- * left after the save, including narrower rules at the same scope.
+ * left after the save, including narrower rules at the same scope. Notes
+ * without a placement never route a page, so they are left out.
  */
 export function getRuleThatStillWins(
   places: CuratedPlace[],
   item: CommuteReviewItem,
   scope: CurationScope,
   target: string,
+  placement: CurationPlacement | undefined,
 ): CuratedPlace | undefined {
   const placeKey = getCandidateKey(scope, target);
-  if (!placeKey) return undefined;
+  if (!placeKey || !placement) return undefined;
   const removed = new Set(
     [
       getDecisionToReplace(places, item, scope)?.id,
-      getPageRuleToClear(places, item, scope, target)?.id,
+      getPageRuleToClear(places, item, scope, target, placement)?.id,
     ].filter(Boolean),
   );
   const candidateKey = getDecisionKey(scope, placeKey);
@@ -458,6 +466,7 @@ export function getRuleThatStillWins(
   const remaining = places
     .filter(
       (place) =>
+        Boolean(place.placement) &&
         !removed.has(place.id) &&
         getDecisionKey(place.scope, place.place) !== candidateKey,
     )

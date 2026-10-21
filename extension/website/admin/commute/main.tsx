@@ -966,7 +966,13 @@ export function App({
     setSaving(true);
     setCatalogError("");
     const item = selectedItem;
-    const pageRule = getPageRuleToClear(places, item, decisionScope, target);
+    const pageRule = getPageRuleToClear(
+      places,
+      item,
+      decisionScope,
+      target,
+      decisionPlacement,
+    );
     // The Worker swaps one earlier rule out in the same request as the save.
     const swapped = priorDecision ?? pageRule;
     let saved: CuratedPlace;
@@ -1653,12 +1659,14 @@ export function App({
                   selectedItem,
                   scope,
                   target,
+                  placement,
                 );
                 const winner = getRuleThatStillWins(
                   places,
                   selectedItem,
                   scope,
                   target,
+                  placement,
                 );
                 if (covers && !pageRule && !winner) return null;
                 return (
