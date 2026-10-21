@@ -7,8 +7,9 @@ import {
   createCuratedPlace,
   getDecisionForReviewItem,
   getDecisionToReplace,
-  getNarrowerRuleThatWins,
+  decisionCoversItem,
   getPageRuleToClear,
+  getRuleThatStillWins,
   getDecisionsForReviewItem,
   getDefaultPatternTarget,
   getQueueGroup,
@@ -520,25 +521,32 @@ describe("wider decisions over an older page rule", () => {
     const page = rule("page", "https://neocities.org/", "page", "regular");
     const other = rule("other", "https://neocities.org/browse", "page", "hidden");
     expect(getPageRuleToClear([page, other], item, "hostname", "neocities.org")).toEqual(page);
-    expect(getPageRuleToClear([page, other], item, "page", "https://neocities.org/")).toBeUndefined();
+    expect(getPageRuleToClear([page, other], item, "page", item.url)).toBeUndefined();
     expect(getPageRuleToClear([other], item, "site", "neocities.org")).toBeUndefined();
   });
 
-  it("keeps the page rule when a typed path or pattern points elsewhere", () => {
-    const page = rule("page", "https://neocities.org/browse/art", "page", "regular");
-    const browse = { ...item, id: page.place, url: "https://neocities.org/browse/art" };
-    expect(getPageRuleToClear([page], browse, "path", "neocities.org/browse")).toEqual(page);
-    expect(getPageRuleToClear([page], browse, "path", "neocities.org/news")).toBeUndefined();
-    expect(getPageRuleToClear([page], browse, "path", "other.example/browse")).toBeUndefined();
-    expect(getPageRuleToClear([page], browse, "pattern", "neocities.org/*/art")).toEqual(page);
-    expect(getPageRuleToClear([page], browse, "pattern", "neocities.org/*")).toBeUndefined();
-    expect(getPageRuleToClear([page], browse, "pattern", "not a url")).toBeUndefined();
+  it("keeps the page rule when the new rule does not cover the page", () => {
+    const article = { ...item, id: "a", url: "https://example.com/a" };
+    const page = rule("page", "https://example.com/a", "page", "regular");
+    expect(decisionCoversItem(article, "path", "example.com/other")).toBe(false);
+    expect(getPageRuleToClear([page], article, "path", "example.com/other")).toBeUndefined();
+    expect(decisionCoversItem(article, "path", "example.com/a")).toBe(true);
+    expect(getPageRuleToClear([page], article, "path", "example.com/a")).toEqual(page);
   });
 
   it("names a narrower rule that would still win", () => {
     const hostname = rule("host", "neocities.org", "hostname", "featured");
-    expect(getNarrowerRuleThatWins([hostname], item, "site")).toEqual(hostname);
-    expect(getNarrowerRuleThatWins([hostname], item, "hostname")).toBeUndefined();
-    expect(getNarrowerRuleThatWins([hostname], item, "page")).toBeUndefined();
+    expect(getRuleThatStillWins([hostname], item, "site", "neocities.org")).toEqual(hostname);
+    expect(getRuleThatStillWins([hostname], item, "hostname", "neocities.org")).toBeUndefined();
+    expect(getRuleThatStillWins([hostname], item, "page", item.url)).toBeUndefined();
+  });
+
+  it("names a narrower rule at the same scope", () => {
+    const deep = { ...item, id: "deep", url: "https://example.com/a/b/c/d" };
+    const abc = rule("abc", "example.com/a/b/c", "path", "hidden");
+    const ab = rule("ab", "example.com/a/b", "path", "featured");
+    // Saving /a replaces /a/b/c, but /a/b still decides the page.
+    expect(getRuleThatStillWins([abc, ab], deep, "path", "example.com/a")).toEqual(ab);
+    expect(getRuleThatStillWins([abc], deep, "path", "example.com/a")).toBeUndefined();
   });
 });

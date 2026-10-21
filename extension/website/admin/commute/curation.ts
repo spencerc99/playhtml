@@ -4,7 +4,6 @@
 import {
   INTERNET_PLACE_PLACEMENTS,
   INTERNET_PLACE_REASONS,
-  INTERNET_PLACE_SCOPES,
   getCoveringInternetPlacePolicies,
   getInternetPlaceLookupKeys,
   normalizeInternetPlace,
@@ -384,9 +383,39 @@ export function getDecisionToReplace(
   );
 }
 
+function getReviewUrl(item: CommuteReviewItem): string {
+  return item.url ?? `https://${item.domain}/`;
+}
+
+function getCandidateKey(
+  scope: CurationScope,
+  target: string,
+): string | undefined {
+  try {
+    return normalizeInternetPlace(target, scope);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether a rule at `scope` for `target` would apply to this row's page. */
+export function decisionCoversItem(
+  item: CommuteReviewItem,
+  scope: CurationScope,
+  target: string,
+): boolean {
+  const placeKey = getCandidateKey(scope, target);
+  if (!placeKey) return false;
+  return (
+    getCoveringInternetPlacePolicies([{ scope, placeKey }], getReviewUrl(item))
+      .length > 0
+  );
+}
+
 /**
  * The exact-page rule a wider decision clears. Without this, a page rule left
  * over from an earlier call keeps winning and the new decision looks unsaved.
+ * Nothing is cleared when the new rule would not cover this page.
  */
 export function getPageRuleToClear(
   places: CuratedPlace[],
@@ -394,42 +423,50 @@ export function getPageRuleToClear(
   scope: CurationScope,
   target: string,
 ): CuratedPlace | undefined {
-  if (scope === "page") return undefined;
-  // A typed path or pattern can point elsewhere; only a rule that covers
-  // this page may replace its own rule.
-  let place: string;
-  try {
-    place = normalizeInternetPlace(target, scope);
-  } catch {
+  if (scope === "page" || !decisionCoversItem(item, scope, target)) {
     return undefined;
   }
-  const covering = getCoveringInternetPlacePolicies(
-    [{ scope, placeKey: place }],
-    item.url ?? `https://${item.domain}/`,
-  );
-  if (covering.length === 0) return undefined;
   return getDecisionsForReviewItem(places, item).find(
     (place) => place.scope === "page",
   );
 }
 
 /**
- * A narrower path or pattern rule that would still decide this page after a
- * decision at `scope`, so the desk can say so before saving.
+ * The rule that would still decide this page after saving at `scope` for
+ * `target`, so the desk can say so before saving. Compares the real rules
+ * left after the save, including narrower rules at the same scope.
  */
-export function getNarrowerRuleThatWins(
+export function getRuleThatStillWins(
   places: CuratedPlace[],
   item: CommuteReviewItem,
   scope: CurationScope,
+  target: string,
 ): CuratedPlace | undefined {
-  const winner = getDecisionsForReviewItem(places, item).find(
-    (place) => place.scope !== "page",
+  const placeKey = getCandidateKey(scope, target);
+  if (!placeKey) return undefined;
+  const removed = new Set(
+    [
+      getDecisionToReplace(places, item, scope)?.id,
+      getPageRuleToClear(places, item, scope, target)?.id,
+    ].filter(Boolean),
   );
-  if (!winner) return undefined;
-  return INTERNET_PLACE_SCOPES.indexOf(winner.scope) <
-    INTERNET_PLACE_SCOPES.indexOf(scope)
-    ? winner
-    : undefined;
+  const candidateKey = getDecisionKey(scope, placeKey);
+  const candidate: { scope: CurationScope; placeKey: string; place?: CuratedPlace } = {
+    scope,
+    placeKey,
+  };
+  const remaining = places
+    .filter(
+      (place) =>
+        !removed.has(place.id) &&
+        getDecisionKey(place.scope, place.place) !== candidateKey,
+    )
+    .map((place) => ({ scope: place.scope, placeKey: place.place, place }));
+  const winner = getCoveringInternetPlacePolicies(
+    [...remaining, candidate],
+    getReviewUrl(item),
+  )[0];
+  return winner && winner !== candidate ? winner.place : undefined;
 }
 
 export function canPrefillSuggestion({
