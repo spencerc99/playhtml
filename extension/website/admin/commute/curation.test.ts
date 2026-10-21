@@ -519,9 +519,20 @@ describe("wider decisions over an older page rule", () => {
   it("clears only this page's own rule when saving wider", () => {
     const page = rule("page", "https://neocities.org/", "page", "regular");
     const other = rule("other", "https://neocities.org/browse", "page", "hidden");
-    expect(getPageRuleToClear([page, other], item, "hostname")).toEqual(page);
-    expect(getPageRuleToClear([page, other], item, "page")).toBeUndefined();
-    expect(getPageRuleToClear([other], item, "site")).toBeUndefined();
+    expect(getPageRuleToClear([page, other], item, "hostname", "neocities.org")).toEqual(page);
+    expect(getPageRuleToClear([page, other], item, "page", "https://neocities.org/")).toBeUndefined();
+    expect(getPageRuleToClear([other], item, "site", "neocities.org")).toBeUndefined();
+  });
+
+  it("keeps the page rule when a typed path or pattern points elsewhere", () => {
+    const page = rule("page", "https://neocities.org/browse/art", "page", "regular");
+    const browse = { ...item, id: page.place, url: "https://neocities.org/browse/art" };
+    expect(getPageRuleToClear([page], browse, "path", "neocities.org/browse")).toEqual(page);
+    expect(getPageRuleToClear([page], browse, "path", "neocities.org/news")).toBeUndefined();
+    expect(getPageRuleToClear([page], browse, "path", "other.example/browse")).toBeUndefined();
+    expect(getPageRuleToClear([page], browse, "pattern", "neocities.org/*/art")).toEqual(page);
+    expect(getPageRuleToClear([page], browse, "pattern", "neocities.org/*")).toBeUndefined();
+    expect(getPageRuleToClear([page], browse, "pattern", "not a url")).toBeUndefined();
   });
 
   it("names a narrower rule that would still win", () => {

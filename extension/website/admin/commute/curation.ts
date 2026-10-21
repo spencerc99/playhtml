@@ -392,8 +392,22 @@ export function getPageRuleToClear(
   places: CuratedPlace[],
   item: CommuteReviewItem,
   scope: CurationScope,
+  target: string,
 ): CuratedPlace | undefined {
   if (scope === "page") return undefined;
+  // A typed path or pattern can point elsewhere; only a rule that covers
+  // this page may replace its own rule.
+  let place: string;
+  try {
+    place = normalizeInternetPlace(target, scope);
+  } catch {
+    return undefined;
+  }
+  const covering = getCoveringInternetPlacePolicies(
+    [{ scope, placeKey: place }],
+    item.url ?? `https://${item.domain}/`,
+  );
+  if (covering.length === 0) return undefined;
   return getDecisionsForReviewItem(places, item).find(
     (place) => place.scope === "page",
   );

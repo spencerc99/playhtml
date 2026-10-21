@@ -950,7 +950,12 @@ export function App({
     });
     setSaving(true);
     setCatalogError("");
-    const pageRule = getPageRuleToClear(places, selectedItem, decisionScope);
+    const pageRule = getPageRuleToClear(
+      places,
+      selectedItem,
+      decisionScope,
+      target,
+    );
     try {
       const saved = await saveCatalogPolicy(token, decision, priorDecision);
       // A wider call replaces this page's own rule, which would otherwise win.
@@ -1610,7 +1615,16 @@ export function App({
               </label>
 
               {(() => {
-                const pageRule = getPageRuleToClear(places, selectedItem, scope);
+                const pageRule = getPageRuleToClear(
+                  places,
+                  selectedItem,
+                  scope,
+                  scope === "path"
+                    ? pathTarget.trim()
+                    : scope === "pattern"
+                      ? patternTarget.trim()
+                      : getReviewTarget(selectedItem, scope),
+                );
                 const winner = getNarrowerRuleThatWins(
                   places,
                   selectedItem,
