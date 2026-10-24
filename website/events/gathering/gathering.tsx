@@ -52,7 +52,7 @@ export function UserSetup() {
     "username",
     null,
     (newName) => {
-      window.cursors!.name = newName;
+      if (window.cursors) window.cursors.name = newName ?? "";
     }
   );
 
@@ -61,7 +61,7 @@ export function UserSetup() {
   );
   const setColor = (newColor: string) => {
     setInternalColor(newColor);
-    window.cursors!.color = newColor;
+    if (window.cursors) window.cursors.color = newColor;
   };
 
   const [cursorsLoaded, setCursorsLoaded] = React.useState(false);
@@ -84,6 +84,15 @@ export function UserSetup() {
       clearTimeout(timeout);
     };
   }, [name, color]);
+
+  // The cursor client loads after first render, so the sticky name and color
+  // callbacks above can run before it exists. Apply them once it appears.
+  React.useEffect(() => {
+    if (!cursorsLoaded || !window.cursors) return;
+    if (name) window.cursors.name = name;
+    if (color) window.cursors.color = color;
+    else setInternalColor(window.cursors.color);
+  }, [cursorsLoaded]);
 
   if (!cursorsLoaded) {
     return <div>Loading cursor party...</div>;

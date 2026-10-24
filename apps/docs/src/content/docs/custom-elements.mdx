@@ -8,7 +8,7 @@ sidebar:
 import { Aside } from "@astrojs/starlight/components";
 import { SmileyRow } from "@/components/react/capability-demos/SmileyRow";
 import { DocsSpinner } from "@/components/react/capability-demos/DocsSpinner";
-import { InteractiveToggleDemo } from "@/components/react/InteractiveToggleDemo";
+import { SharedSwitchDemo } from "@/components/react/SharedSwitchDemo";
 import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
 import { RecipeExample } from "@/components/playground/RecipeExample";
 import {
@@ -19,6 +19,15 @@ import {
   sharedCounterRecipe,
   sharedGuestbookRecipe,
 } from "@/components/playground/recipes/shared-state-basics";
+import DemoCode from "@/components/demo-code/DemoCode.astro";
+import { doodleStripSnippet } from "@/components/demo-code/snippets/doodle-strip";
+import {
+  emojiMirrorSnippet,
+  growingListMirrorSnippet,
+} from "@/components/demo-code/snippets/mirror";
+import { onlineIndicatorSnippet } from "@/components/demo-code/snippets/online-indicator";
+import { prizeWheelSnippet } from "@/components/demo-code/snippets/prize-wheel";
+import { sharedSwitchSnippet } from "@/components/demo-code/snippets/toggles";
 
 The built-in [capabilities](/docs/capabilities/) (`can-move`, `can-toggle`, …) cover the common interactions. When you need your **own** state — a counter, a poll, a guestbook, a chat — you build a custom element. There are two approaches:
 
@@ -27,7 +36,7 @@ The built-in [capabilities](/docs/capabilities/) (`can-move`, `can-toggle`, …)
 
 This page covers both. **Vanilla HTML** has the full range — `can-mirror`, `can-play`, and an experimental reactive `view` API. **React** has a single, declarative path: `withSharedState`. Pick your framework below.
 
-This page runs a few live `can-play` demos in its margins — a doodle strip here, a [guestbook](#play-guestbook) and a [prize wheel](#play-spinner) further down, and a tally on every code block you copy from. Open the page in a second tab to watch them sync.
+This page runs a few live `can-play` demos in its margins — a doodle strip here, a [guestbook](#play-guestbook) and a [prize wheel](#play-spinner) further down, and a tally on every code block you copy from. Open the page in a second tab to watch them sync. Each demo has a "Code for this demo" toggle with its Vanilla HTML and React source.
 
 <div id="play-doodle" class="ph-canplay-inline" data-label="can-play · doodle strip">
   <div class="ph-canplay-inline__head">
@@ -37,6 +46,7 @@ This page runs a few live `can-play` demos in its margins — a doodle strip her
     </p>
   </div>
   <SmileyRow client:only="react" />
+  <DemoCode snippet={doodleStripSnippet} />
 </div>
 
 ## Vanilla HTML
@@ -62,17 +72,7 @@ A textarea that filters to emoji characters on input. The filtered value mirrors
   />
 </div>
 
-```html
-<textarea can-mirror id="emoji-pad" rows="4" placeholder="emojis only..."></textarea>
-
-<script>
-  const emojiOnly = /\p{Extended_Pictographic}/gu;
-  document.getElementById("emoji-pad").addEventListener("input", (e) => {
-    const match = e.target.value.match(emojiOnly);
-    e.target.value = match ? match.join("") : "";
-  });
-</script>
-```
+<DemoCode snippet={emojiMirrorSnippet} open />
 
 #### Example: a list you can add children to
 
@@ -87,16 +87,7 @@ Click "+" to append a new `<li>`. The list itself has `can-mirror`, so the direc
   />
 </div>
 
-```html
-<ul can-mirror id="guestbook">
-  <li>first</li>
-</ul>
-<button onclick="
-  document.getElementById('guestbook').appendChild(
-    Object.assign(document.createElement('li'), { textContent: new Date().toLocaleTimeString() })
-  );
-">add entry</button>
-```
+<DemoCode snippet={growingListMirrorSnippet} open />
 
 If a mirrored child also has its own playhtml capability, keep giving it a stable `id`. The element that creates it locally can still call `playhtml.setupPlayElement(child)` right after insertion; copies that arrive through `can-mirror` are wired automatically. If that child should mirror its own nested DOM changes later, put `can-mirror` on the child too.
 
@@ -165,6 +156,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
     frameHeight="20rem"
     client:load
   />
+  <DemoCode recipe={sharedCounterRecipe} />
 </div>
 
 #### State to style
@@ -201,7 +193,8 @@ Most capabilities can share the same element. Each keeps its own data and behavi
       Click to flip it on/off for everyone.
     </p>
   </div>
-  <InteractiveToggleDemo client:only="react" />
+  <SharedSwitchDemo client:only="react" />
+  <DemoCode snippet={sharedSwitchSnippet} />
 </div>
 
 #### Users and live per-user state
@@ -241,6 +234,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
     </p>
   </div>
   <OnlineIndicatorDemo client:only="react" />
+  <DemoCode snippet={onlineIndicatorSnippet} />
 </div>
 
 #### Reset shortcut
@@ -359,6 +353,7 @@ form.addEventListener("submit", (e) => {
     frameHeight="34rem"
     client:load
   />
+  <DemoCode recipe={sharedGuestbookRecipe} />
 </div>
 
 #### Reusing the element many times: `define`
@@ -416,6 +411,7 @@ playhtml.register("timer", {
     </p>
   </div>
   <DocsSpinner client:only="react" />
+  <DemoCode snippet={prizeWheelSnippet} />
 </div>
 
 #### Composition: views that render other elements
