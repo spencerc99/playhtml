@@ -93,7 +93,7 @@ import { TagType } from "playhtml";
 
 <CanPlayElement
   tagInfo={[TagType.CanToggle]}
-  id="my-lamp"
+  id="my-switch"
   defaultData={{ on: false }}
 >
   {({ data, setData }) => (

@@ -23,10 +23,11 @@ The fastest path, with no `import` and no `playhtml.init()` call. Add the script
 
 ```html
 <body>
-  <button id="my-lamp" can-toggle>lamp</button>
+  <div id="my-light" class="light" can-toggle></div>
   <style>
-    /* can-toggle adds the "toggled" class when the lamp is on */
-    #my-lamp.toggled { background: gold; }
+    /* can-toggle adds the "toggled" class when it's on */
+    .light { width: 80px; height: 80px; border-radius: 50%; background: red; }
+    .light.toggled { background: green; }
   </style>
 
   <script type="module" src="https://unpkg.com/playhtml/dist/init.es.js"></script>
@@ -47,10 +48,11 @@ Reach for this when you want to pass options to `init()` (cursors, custom rooms,
 
 ```html
 <body>
-  <button id="my-lamp" can-toggle>lamp</button>
+  <div id="my-light" class="light" can-toggle></div>
   <style>
-    /* can-toggle adds the "toggled" class when the lamp is on */
-    #my-lamp.toggled { background: gold; }
+    /* can-toggle adds the "toggled" class when it's on */
+    .light { width: 80px; height: 80px; border-radius: 50%; background: red; }
+    .light.toggled { background: green; }
   </style>
 
   <script type="module">
@@ -95,17 +97,18 @@ export function App() {
   return (
     <PlayProvider initOptions={{ cursors: { enabled: true } }}>
       <CanToggleElement>
-        <button id="my-lamp">lamp</button>
+        <div id="my-light" className="light" />
       </CanToggleElement>
     </PlayProvider>
   );
 }
 ```
 
-`CanToggleElement` adds the `toggled` class to the button when it's on, so give that class a look in your CSS:
+`CanToggleElement` adds the `toggled` class to the div when it's on, so give both states a look in your CSS:
 
 ```css
-#my-lamp.toggled { background: gold; }
+.light { width: 80px; height: 80px; border-radius: 50%; background: red; }
+.light.toggled { background: green; }
 ```
 
 Need more control? Use `CanPlayElement` with a render prop to read and write the shared data directly:
@@ -116,7 +119,7 @@ import { TagType } from "playhtml";
 
 <CanPlayElement
   tagInfo={[TagType.CanToggle]}
-  id="my-lamp"
+  id="my-switch"
   defaultData={{ on: false }}
 >
   {({ data, setData }) => (
