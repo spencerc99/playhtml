@@ -17,6 +17,8 @@ hero:
 
 import { Card, CardGrid, Tabs, TabItem } from "@astrojs/starlight/components";
 import { LampToggleDemo } from "../../components/react/LampToggleDemo";
+import DemoCode from "../../components/demo-code/DemoCode.astro";
+import { lampSnippet } from "../../components/demo-code/snippets/toggles";
 
 <figure class="ph-splash-lamp ph-splash-lamp--furniture" aria-label="live demo">
   <LampToggleDemo client:only="react" id="ph-splash-lamp" />
@@ -77,6 +79,8 @@ import { PlayProvider, CanToggleElement, CanMoveElement } from "@playhtml/react"
 ```
     </TabItem>
   </Tabs>
+
+  <DemoCode snippet={lampSnippet} label="Code for the lamp above" />
 </div>
 
 <div class="ph-splash-section">

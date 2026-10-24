@@ -1997,23 +1997,47 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   bottom: 0;
   font-size: 1.65rem;
   pointer-events: none;
-  transition: none;
-  will-change: transform, opacity;
+  animation: ph-live-reaction-float 2.5s ease-out forwards;
+}
+@keyframes ph-live-reaction-float {
+  to {
+    opacity: 0;
+    transform: translateY(-140px) scale(0.8);
+  }
 }
 
-/* LiveReactions from packages/react/examples — light docs polish when className set */
-.ph-live-reactions-root button {
-  font-family: var(--ph-font-mono);
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 6px;
-  background: var(--ph-paper);
-  color: var(--ph-ink);
-  cursor: pointer;
-  box-shadow: var(--ph-shadow-brick);
+/* Page-wide rain from the events demo. RainSprinklerDemo appends one
+   .ph-docs-rain to <body> per event and removes it after 6s. */
+.ph-docs-rain {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
 }
-.ph-live-reactions-root button:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 0 var(--ph-ink);
+.ph-docs-rain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("https://media.giphy.com/media/Wmp1EOzVybWd13s5DB/giphy.gif") 0 0 / 200px;
+  animation: ph-docs-rain 6s ease-in-out forwards;
+}
+.ph-docs-rain__cloud {
+  position: absolute;
+  top: 10px;
+  width: 150px;
+  height: 80px;
+  background: url("/docs/rain-cloud.webp") center / contain no-repeat;
+  animation: ph-docs-rain-cloud 5.5s ease-out both;
+}
+@keyframes ph-docs-rain {
+  0%, 15% { opacity: 0; }
+  30%, 85% { opacity: 0.7; }
+  100% { opacity: 0; }
+}
+@keyframes ph-docs-rain-cloud {
+  0% { opacity: 0; transform: translateY(-120px); }
+  20%, 80% { opacity: 0.9; transform: none; }
+  100% { opacity: 0; transform: translateY(-120px); }
 }
 
 /* ---------------------------------------------------------------------

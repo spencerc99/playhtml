@@ -486,7 +486,7 @@ export const matterPhysicsRecipe: ExampleRecipe = {
         controllerId: "",
         bodies: structuredClone(INITIAL_BODIES),
       },
-      updateElement: ({ data }) => applySharedState(data),
+      update: ({ data }) => applySharedState(data),
       onMount: (context) => {
         getData = context.getData;
         setData = context.setData;
