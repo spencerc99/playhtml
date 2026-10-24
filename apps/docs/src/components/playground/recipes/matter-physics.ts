@@ -177,7 +177,7 @@ export const matterPhysicsRecipe: ExampleRecipe = {
 
   <script type="module">
     import Matter from "https://esm.sh/matter-js@0.20.0";
-    import { playhtml } from "playhtml";
+    import { playhtml } from "https://unpkg.com/playhtml@latest";
 
     const { Bodies, Body, Composite, Engine, Sleeping } = Matter;
     const WORLD_WIDTH = 640;

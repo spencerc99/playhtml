@@ -28,7 +28,7 @@ ${styles}
 ${body}
 
   <script type="module">
-    import { playhtml } from "playhtml";
+    import { playhtml } from "https://unpkg.com/playhtml@latest";
 
 ${script}
 
