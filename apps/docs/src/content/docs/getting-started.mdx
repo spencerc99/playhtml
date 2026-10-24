@@ -26,8 +26,13 @@ The fastest path, with no `import` and no `playhtml.init()` call. Add the script
   <div id="my-light" class="light" can-toggle></div>
   <style>
     /* can-toggle adds the "toggled" class when it's on */
-    .light { width: 80px; height: 80px; border-radius: 50%; background: red; }
-    .light.toggled { background: green; }
+    .light {
+      width: 80px; height: 80px; border-radius: 50%;
+      background: gold; filter: brightness(0.4);
+    }
+    .light.toggled {
+      filter: brightness(1.2) drop-shadow(0 0 24px gold);
+    }
   </style>
 
   <script type="module" src="https://unpkg.com/playhtml/dist/init.es.js"></script>
@@ -51,8 +56,13 @@ Reach for this when you want to pass options to `init()` (cursors, custom rooms,
   <div id="my-light" class="light" can-toggle></div>
   <style>
     /* can-toggle adds the "toggled" class when it's on */
-    .light { width: 80px; height: 80px; border-radius: 50%; background: red; }
-    .light.toggled { background: green; }
+    .light {
+      width: 80px; height: 80px; border-radius: 50%;
+      background: gold; filter: brightness(0.4);
+    }
+    .light.toggled {
+      filter: brightness(1.2) drop-shadow(0 0 24px gold);
+    }
   </style>
 
   <script type="module">
@@ -107,27 +117,25 @@ export function App() {
 `CanToggleElement` adds the `toggled` class to the div when it's on, so give both states a look in your CSS:
 
 ```css
-.light { width: 80px; height: 80px; border-radius: 50%; background: red; }
-.light.toggled { background: green; }
+.light {
+  width: 80px; height: 80px; border-radius: 50%;
+  background: gold; filter: brightness(0.4);
+}
+.light.toggled {
+  filter: brightness(1.2) drop-shadow(0 0 24px gold);
+}
 ```
 
-Need more control? Use `CanPlayElement` with a render prop to read and write the shared data directly:
+Want to render from the shared state? Pass a function as the child. Clicking still flips `on` for everyone:
 
 ```tsx
-import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "playhtml";
+import { CanToggleElement } from "@playhtml/react";
 
-<CanPlayElement
-  tagInfo={[TagType.CanToggle]}
-  id="my-switch"
-  defaultData={{ on: false }}
->
-  {({ data, setData }) => (
-    <button onClick={() => setData({ on: !data.on })}>
-      {data.on ? "on" : "off"}
-    </button>
+<CanToggleElement>
+  {({ data }) => (
+    <button id="my-switch">{data.on ? "on" : "off"}</button>
   )}
-</CanPlayElement>
+</CanToggleElement>
 ```
 
   </TabItem>

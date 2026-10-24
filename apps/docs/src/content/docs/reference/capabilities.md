@@ -165,8 +165,8 @@ Toggles the `toggled` CSS class on the element.
 
 ```css
 /* Style both states */
-.light { background: red; }
-.light.toggled { background: green; }
+.light { background: gold; filter: brightness(0.4); }
+.light.toggled { filter: brightness(1.2) drop-shadow(0 0 24px gold); }
 ```
 
 ### Interaction

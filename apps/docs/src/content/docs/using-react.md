@@ -89,10 +89,8 @@ Same idea, different shape. Useful when the thing you're wrapping is a specific 
 
 ```tsx
 import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "playhtml";
 
 <CanPlayElement
-  tagInfo={[TagType.CanToggle]}
   id="my-switch"
   defaultData={{ on: false }}
 >
