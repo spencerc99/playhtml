@@ -4,6 +4,41 @@
 import type { PresenceAPI } from "@playhtml/common";
 import { isWikiArticleUrl, type WikiPresenceView } from "../custom-sites/wikipedia";
 import { OffscreenIndicator } from "./OffscreenIndicator";
+import { PHONE_LAYOUT_QUERY } from "../entrypoints/scraps/phoneLayout";
+import {
+  FOLLOW_AVAILABLE_ATTR,
+  FOLLOW_PEER_EVENT,
+  type FollowPeerDetail,
+} from "./peerEvents";
+
+function isPhone(): boolean {
+  return (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(PHONE_LAYOUT_QUERY).matches
+  );
+}
+
+function phoneButton(label: string, onClick: () => void): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  Object.assign(button.style, {
+    minHeight: "44px",
+    padding: "0 16px",
+    border: "1px solid rgba(90,78,65,0.25)",
+    borderRadius: "22px",
+    background: "#fffdf9",
+    color: "#3d3833",
+    font: "700 15px 'Atkinson Hyperlegible', system-ui, sans-serif",
+    cursor: "pointer",
+    flexShrink: "0",
+  });
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onClick();
+  });
+  return button;
+}
 
 export interface FollowState {
   targetPublicKey: string;
@@ -105,6 +140,21 @@ export class FollowManager {
     );
 
     this.watchForFollowers();
+
+    const onFollowPeer = (e: Event) => {
+      const detail = (e as CustomEvent<Partial<FollowPeerDetail>>)
+        .detail;
+      if (!detail?.publicKey) return;
+      if (this.followState) this.unfollow();
+      this.removeHint();
+      this.follow(detail.publicKey, detail.color ?? "#4a9a8a");
+    };
+    window.addEventListener(FOLLOW_PEER_EVENT, onFollowPeer);
+    document.documentElement.setAttribute(FOLLOW_AVAILABLE_ATTR, "");
+    this.cleanups.push(() => {
+      window.removeEventListener(FOLLOW_PEER_EVENT, onFollowPeer);
+      document.documentElement.removeAttribute(FOLLOW_AVAILABLE_ATTR);
+    });
   }
 
   // Called by cursor options onProximityEntered
@@ -159,6 +209,8 @@ export class FollowManager {
     // Convert document coords to viewport coords for the fixed-position hint
     const hintX = positions ? positions.theirs.x - window.scrollX : window.innerWidth / 2;
     const hintY = positions ? positions.theirs.y - window.scrollY : window.innerHeight / 2;
+    // Phones have no f key; tapping the cursor offers Follow instead.
+    if (isPhone()) return;
     this.showHint(hintX, hintY, closest.color);
   }
 
@@ -371,7 +423,28 @@ export class FollowManager {
       transition: "opacity 0.3s ease",
       opacity: "0",
     });
-    bar.append(colorDot(color), "following ", muted("esc to stop", { marginLeft: "4px" }));
+    if (isPhone()) {
+      Object.assign(bar.style, {
+        top: "calc(12px + env(safe-area-inset-top))",
+        bottom: "auto",
+        left: "12px",
+        right: "12px",
+        transform: "none",
+        borderRadius: "18px",
+        border: `1px solid ${color}66`,
+        padding: "8px 8px 8px 16px",
+        fontSize: "15px",
+        gap: "10px",
+        boxShadow: "0 8px 24px rgba(61,56,51,0.14)",
+      });
+      const label = document.createElement("span");
+      label.style.flex = "1";
+      label.style.fontWeight = "700";
+      label.textContent = "following";
+      bar.append(colorDot(color, { width: "12px", height: "12px", flexShrink: "0" }), label, phoneButton("Stop", () => this.unfollow()));
+    } else {
+      bar.append(colorDot(color), "following ", muted("esc to stop", { marginLeft: "4px" }));
+    }
     document.body.appendChild(bar);
     this.statusBarElement = bar;
     requestAnimationFrame(() => {
@@ -572,10 +645,35 @@ export class FollowManager {
       whiteSpace: "nowrap",
     });
 
+    const phone = isPhone();
+    const stayButton = phone ? phoneButton("Stay here", () => this.unfollow()) : null;
+    if (phone) {
+      Object.assign(toast.style, {
+        bottom: "calc(24px + env(safe-area-inset-bottom))",
+        left: "16px",
+        right: "16px",
+        transform: "none",
+        whiteSpace: "normal",
+        fontSize: "15px",
+        borderRadius: "18px",
+        padding: "10px 10px 10px 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+      });
+    }
+
     const updateText = () => {
       toast.textContent = "";
       const strong = document.createElement("strong");
       strong.textContent = displayTitle;
+      if (stayButton) {
+        const text = document.createElement("span");
+        text.style.flex = "1";
+        text.append("following to ", strong, ` ${remaining}...`);
+        toast.append(text, stayButton);
+        return;
+      }
       toast.append("following to ", strong, ` ${remaining}...`);
       toast.append(document.createElement("br"));
       toast.append(muted("esc to cancel", { fontSize: "11px" }));

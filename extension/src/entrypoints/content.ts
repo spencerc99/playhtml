@@ -47,6 +47,7 @@ import {
 } from "../features/sessionScraps/sessionScrapsBridge";
 import { watchInstallationContent } from "./content/installationContent";
 import { MILESTONE_TOASTS_ENABLED_KEY } from "../milestones/state";
+import { PHONE_LAYOUT_QUERY } from "./scraps/phoneLayout";
 
 // Scraps are local-only, so normalize any unsupported stored mode before the
 // collector starts.
@@ -88,6 +89,7 @@ export default defineContentScript({
       private isInitialized = false;
       private globalCleanup: (() => void) | null = null;
       private emoteCleanup: (() => void) | null = null;
+      private peerTapCleanup: (() => void) | null = null;
       private customSiteCleanup: (() => void) | null = null;
       // The extension's own playhtml instance, lazily inited. Shared between the
       // cursor-site path and the headless every-page path for social experiments.
@@ -1198,7 +1200,8 @@ export default defineContentScript({
           // where cursors are enabled, so it lives inside this block. Gated
           // behind its feature gate while it is still in progress.
           const cursorClient = playhtml.cursorClient;
-          if (cursorClient && (await isFeatureEnabled("EMOTES"))) {
+          const emotesEnabled = await isFeatureEnabled("EMOTES");
+          if (cursorClient && emotesEnabled) {
             try {
               const { initEmotes } = await import("../features/emotes");
               this.emoteCleanup = initEmotes({
@@ -1207,6 +1210,25 @@ export default defineContentScript({
               });
             } catch (err) {
               console.error("[we-were-online] initEmotes failed:", err);
+            }
+          }
+          // Phones have no hover or keys, so tapping someone's cursor opens a
+          // card with Follow and the emotes.
+          if (
+            cursorClient &&
+            typeof window.matchMedia === "function" &&
+            window.matchMedia(PHONE_LAYOUT_QUERY).matches
+          ) {
+            try {
+              const { initPeerTapMenu } = await import(
+                "../features/PeerTapMenu"
+              );
+              this.peerTapCleanup = initPeerTapMenu({
+                cursorClient,
+                emotesEnabled,
+              });
+            } catch (err) {
+              console.error("[we-were-online] initPeerTapMenu failed:", err);
             }
           }
         }
@@ -1232,6 +1254,8 @@ export default defineContentScript({
         this.customSiteCleanup = null;
         this.emoteCleanup?.();
         this.emoteCleanup = null;
+        this.peerTapCleanup?.();
+        this.peerTapCleanup = null;
         this.globalCleanup?.();
         this.globalCleanup = null;
       }
