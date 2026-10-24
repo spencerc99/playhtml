@@ -1,0 +1,206 @@
+/* ABOUTME: Styles for the iPhone app's home screen, in the extension popup's palette and type. */
+/* ABOUTME: packageSafariIOS.sh replaces the fonts placeholder below with the extension's own font files. */
+
+/*@@FONTS@@*/
+
+* {
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+}
+
+:root {
+    color-scheme: light;
+    --bg: #faf7f2;
+    --card: #fffdf9;
+    --text: #3d3833;
+    --muted: #6f675e;
+    --rule: rgba(90, 78, 65, 0.16);
+    --blue: #4d7fae;
+    --gold: #d4b44a;
+    --rust: #c86a46;
+    --font-wordmark: "Source Serif 4", Lora, Georgia, serif;
+    --font-heading: Lora, Georgia, serif;
+    --font-body: "Atkinson Hyperlegible", -apple-system, sans-serif;
+    --font-mono: "Martian Mono", ui-monospace, monospace;
+}
+
+html {
+    height: 100%;
+    background: var(--bg);
+}
+
+body {
+    margin: 0;
+    min-height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+}
+
+.home {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: calc(env(safe-area-inset-top, 0px) + 40px) 20px calc(env(safe-area-inset-bottom, 0px) + 24px);
+}
+
+.intro {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.wordmark {
+    margin: 0;
+    font-family: var(--font-wordmark);
+    font-style: italic;
+    font-weight: 200;
+    font-size: 34px;
+    color: var(--text);
+}
+
+.lede {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.45;
+    color: #5d564e;
+}
+
+.commute {
+    position: relative;
+    display: grid;
+    grid-template-columns: 40px 1fr;
+    gap: 14px;
+    align-items: center;
+    min-height: 128px;
+    padding: 18px 76px 18px 18px;
+    border: 1px solid rgba(77, 127, 174, 0.34);
+    border-radius: 14px;
+    background: linear-gradient(110deg, rgba(77, 127, 174, 0.12), rgba(74, 157, 138, 0.06)), #fbf8f2;
+    box-shadow: 0 4px 14px rgba(77, 127, 174, 0.08);
+    color: var(--text);
+    text-decoration: none;
+    overflow: hidden;
+}
+
+.commute__route {
+    position: relative;
+    height: 84px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.commute__route::before {
+    content: "";
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    left: 19px;
+    width: 2px;
+    background: rgba(111, 103, 94, 0.34);
+}
+
+.commute__stop {
+    position: relative;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid #fbf8f2;
+    box-shadow: 0 0 0 1px rgba(111, 103, 94, 0.24);
+}
+
+.commute__stop--blue { background: var(--blue); }
+.commute__stop--gold { background: var(--gold); }
+.commute__stop--rust { background: var(--rust); }
+
+.commute__copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.commute__eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: var(--blue);
+}
+
+.commute__title {
+    font-family: var(--font-heading);
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.commute__detail {
+    font-size: 14px;
+    color: var(--muted);
+}
+
+.commute__door {
+    position: absolute;
+    top: 18px;
+    right: 16px;
+    bottom: 18px;
+    width: 48px;
+    padding: 5px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+    border: 1px solid rgba(122, 90, 140, 0.3);
+    border-radius: 22px 22px 8px 8px;
+    background: repeating-linear-gradient(135deg, rgba(122, 90, 140, 0.12) 0 4px, rgba(77, 127, 174, 0.06) 4px 8px), #f3eee6;
+}
+
+.commute__door span {
+    border: 1px solid rgba(111, 103, 94, 0.22);
+    background: rgba(251, 248, 242, 0.72);
+}
+
+.commute__door span:first-child { border-radius: 16px 2px 2px 3px; }
+.commute__door span:last-child { border-radius: 2px 16px 3px 2px; }
+
+.start {
+    min-height: 54px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    background: var(--text);
+    color: #fffdf9;
+    font: 700 17px var(--font-body);
+    text-decoration: none;
+}
+
+.commute:active,
+.start:active {
+    opacity: 0.85;
+}
+
+.first-time {
+    margin-top: auto;
+    padding: 14px 16px;
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    background: var(--card);
+}
+
+.first-time h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.first-time p {
+    margin: 2px 0 0;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--muted);
+}
