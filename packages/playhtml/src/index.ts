@@ -33,6 +33,7 @@ import type {
   PlayerIdentity,
   CursorPresence,
   CursorPresenceView,
+  User,
 } from "@playhtml/common";
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import type { Map as YMap } from "yjs";
@@ -418,7 +419,7 @@ export type CursorRoom =
 export type CursorCoordinateMode = "relative" | "absolute";
 
 export interface CursorZoneOptions {
-  onCustomCursorRender?: (connectionId: string, element: HTMLElement) => HTMLElement | null;
+  onCustomCursorRender?: (pid: string, element: HTMLElement) => HTMLElement | null;
   getCursorStyle?: (presence: CursorPresence) => Partial<CSSStyleDeclaration> | Record<string, string>;
 }
 
@@ -434,6 +435,11 @@ export interface CursorOptions {
   visibilityThreshold?: number;
   cursorStyle?: string;
   coordinateMode?: CursorCoordinateMode; // "relative" (viewport %) or "absolute" (document px)
+  /**
+   * Called when another cursor comes within `proximityThreshold`. Prefer the
+   * fourth `user` argument; the first (`playerIdentity`) is kept for
+   * compatibility and is deprecated.
+   */
   onProximityEntered?: (
     playerIdentity?: PlayerIdentity,
     positions?: {
@@ -441,10 +447,11 @@ export interface CursorOptions {
       theirs: { x: number; y: number };
     },
     angle?: number,
+    user?: User,
   ) => void;
-  onProximityLeft?: (connectionId: string) => void;
+  onProximityLeft?: (pid: string) => void;
   onCustomCursorRender?: (
-    connectionId: string,
+    pid: string,
     element: HTMLElement,
   ) => HTMLElement | null;
   enableChat?: boolean;

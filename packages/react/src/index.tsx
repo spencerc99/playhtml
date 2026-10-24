@@ -634,6 +634,7 @@ export {
   usePageData,
   usePresenceRoom,
   usePlayerIdentity,
+  useMe,
   useUsers,
 } from "./hooks";
 export {

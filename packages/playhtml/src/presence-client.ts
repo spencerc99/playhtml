@@ -4,6 +4,7 @@
 import {
   type Cursor,
   type CursorPresenceView,
+  playerIdentityToUser,
   type PlayerIdentity,
   type PresenceAPI,
   type PresenceView,
@@ -105,7 +106,7 @@ export class PresenceClient implements PresenceAPI {
     if (isReservedPresenceField(channel)) {
       throw new Error(
         `[playhtml] "${channel}" is a reserved presence field and cannot be used as a channel name. ` +
-          `playerIdentity, cursor, and isMe are populated by playhtml; choose a different channel name.`,
+          `user, playerIdentity, cursor, and isMe are populated by playhtml; choose a different channel name.`,
       );
     }
     const wireChannel = toPagePresenceChannel(channel);
@@ -316,6 +317,13 @@ export class PresenceClient implements PresenceAPI {
     }
 
     this.mergeCursorPresences(presences, myPublicKey);
+    // Derive the public `user` from the (deprecated) playerIdentity in one
+    // place so self, peer, and cursor-merged views all carry it.
+    for (const view of presences.values()) {
+      view.user = view.playerIdentity
+        ? playerIdentityToUser(view.playerIdentity, view.isMe)
+        : undefined;
+    }
     return presences;
   }
 

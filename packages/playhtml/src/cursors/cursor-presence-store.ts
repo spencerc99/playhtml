@@ -1,11 +1,12 @@
 // ABOUTME: Cursor view over the shared PeerStore: decodes folded channels into
 // ABOUTME: cursor presence and collapses multiple tabs of one player.
 
-import type {
-  Cursor,
-  CursorPresence,
-  CursorZonePosition,
-  PlayerIdentity,
+import {
+  playerIdentityToUser,
+  type Cursor,
+  type CursorPresence,
+  type CursorZonePosition,
+  type PlayerIdentity,
 } from "@playhtml/common";
 import type { PeerChannels, PeerStore } from "../peer-store";
 import {
@@ -95,6 +96,7 @@ export class CursorPresenceStore {
 
     return {
       cursor,
+      user: playerIdentityToUser(identity, false),
       playerIdentity: identity,
       lastSeen,
       message: getNullableString(channels.message),

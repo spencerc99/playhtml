@@ -420,6 +420,9 @@ export interface PageDataChannel<T> {
 }
 
 export type PresenceView<T extends Record<string, unknown> = Record<string, unknown>> = {
+  /** Who this presence belongs to. */
+  user?: User;
+  /** @deprecated Use `user` (`user.pid`, `user.name`, `user.color`). */
   playerIdentity?: PlayerIdentity;
   cursor: Cursor | null;
   isMe: boolean;
@@ -432,6 +435,7 @@ export interface PresenceAPI {
     channel: string,
     callback: (presences: Map<string, PresenceView>) => void,
   ): () => void;
+  /** @deprecated Use `playhtml.users.me`. */
   getMyIdentity(): PlayerIdentity;
 }
 

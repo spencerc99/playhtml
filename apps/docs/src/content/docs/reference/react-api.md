@@ -272,11 +272,12 @@ interface LoadingOptions {
 Access the playhtml context from any descendant of `PlayProvider`.
 
 ```tsx
-interface PlayContextValue {
+interface PlayContextInfo {
   isLoading: boolean;
   cursors: CursorEvents;
   cursorPresences: Map<string, CursorPresenceView>;
   configureCursors: (opts: Partial<CursorOptions>) => void;
+  /** @deprecated Use useMe() */
   getMyPlayerIdentity: () => PlayerIdentity | null;
   registerPlayEventListener: (type: string, handler: PlayEvent) => string;
   removePlayEventListener: (type: string, id: string) => void;
@@ -284,7 +285,7 @@ interface PlayContextValue {
 }
 ```
 
-Most consumers don't read the raw context. Prefer the dedicated hooks ([`usePresence`](#usepresence), [`usePageData`](#usepagedata), [`useCursorPresences`](#usecursorpresences), [`usePlayerIdentity`](#useplayeridentity)) which subscribe and re-render for you.
+Most consumers don't read the raw context. Prefer the dedicated hooks ([`usePresence`](#usepresence), [`usePageData`](#usepagedata), [`useCursorPresences`](#usecursorpresences), [`useMe`](#useme), [`useUsers`](#useusers)) which subscribe and re-render for you.
 
 ### `isLoading`
 
@@ -349,6 +350,8 @@ function usePresence<
     PresenceView<Partial<Record<Channel, Payload>>>
   >;
   setMyPresence: (data: Payload) => void;
+  me: User | null;
+  /** @deprecated Use me */
   myIdentity: PlayerIdentity | null;
 };
 ```
@@ -359,9 +362,10 @@ const { presences, setMyPresence } = usePresence<
   { text: string }
 >("status");
 setMyPresence({ text: "focused" });
-// presences is keyed by stable id; each value has isMe, playerIdentity, cursor,
+// presences is keyed by pid; each value has user, isMe, cursor,
 // plus your channel data nested under the channel name:
 for (const [, p] of presences) {
+  p.user?.name;    // who this is
   p.isMe;          // boolean
   p.status?.text;  // your channel value, keyed by the channel name ("status")
 }
@@ -415,7 +419,7 @@ The room and its connection are torn down automatically when the component unmou
 
 ### `useCursorPresences`
 
-Read the live map of cursor presences (stable id → `CursorPresenceView`). Re-renders when cursors move. Requires `cursors: { enabled: true }`.
+Read the live map of cursor presences (`pid` → `CursorPresenceView`, each with a `user`). Re-renders when cursors move. Requires `cursors: { enabled: true }`.
 
 ```tsx
 function useCursorPresences(): Map<string, CursorPresenceView>;
@@ -466,36 +470,29 @@ function OnlineCount() {
 
 See [Users](/docs/data/presence/users/) for the full identity API.
 
-### `usePlayerIdentity`
+### `useMe`
 
-Read the local player's color, participant id, and name. Backed by `playhtml.users`, so it works without `cursors: { enabled: true }`.
+Your own `User` (`pid`, `name`, `color`, `isMe: true`), the reactive form of `playhtml.users.me`. Returns `null` until sync. Works without `cursors: { enabled: true }`.
 
 ```tsx
-function usePlayerIdentity(): {
-  color: string;
-  pid: string | undefined;
-  name: string | undefined;
-};
+function useMe(): User | null;
 ```
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `color` | `string` | Primary color. |
-| `pid` | `string \| undefined` | Participant id (`publicKey`). `undefined` until sync. |
-| `name` | `string \| undefined` | Display name, if set. |
-
 ```tsx
-import { usePlayerIdentity } from "@playhtml/react";
+import { useMe } from "@playhtml/react";
 
 function Profile() {
-  const { color, pid, name } = usePlayerIdentity();
-  return <div style={{ color }}>{name ?? "anonymous"}</div>;
+  const me = useMe();
+  if (!me) return null;
+  return <div style={{ color: me.color }}>{me.name ?? "anonymous"}</div>;
 }
 ```
 
-Values update reactively. With the "we were online" extension installed, color and `pid` reflect the extension's injected identity.
+Values update reactively. With the "we were online" extension installed, `color` and `pid` reflect the extension's injected identity. To change your name or color, assign to `playhtml.users.me`. See [Users](/docs/data/presence/users/).
 
-To set these values or read other players, see [Users](/docs/data/presence/users/). See [Presence & identity](/docs/reference/presence/) for the underlying `PlayerIdentity` type.
+### `usePlayerIdentity` (deprecated)
+
+Use [`useMe`](#useme). `usePlayerIdentity()` returns `{ color, pid, name }` with `pid` `undefined` until sync, and remains available for existing code.
 
 ## `TagType`
 

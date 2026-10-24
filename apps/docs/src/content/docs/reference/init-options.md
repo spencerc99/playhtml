@@ -162,13 +162,14 @@ interface CursorOptions {
     | React.RefObject<HTMLElement>;
   shouldRenderCursor?: (presence) => boolean;
   getCursorStyle?: (presence) => Partial<CSSStyleDeclaration>;
-  playerIdentity?: PlayerIdentity;
+  playerIdentity?: PlayerIdentity; // advanced: seed your identity
   proximityThreshold?: number;
-  onProximityEntered?: (identity, positions, angle) => void;
-  onProximityLeft?: (connectionId) => void;
+  // `identity` is deprecated; use the fourth `user` argument
+  onProximityEntered?: (identity, positions, angle, user) => void;
+  onProximityLeft?: (pid) => void;
   visibilityThreshold?: number;
   enableChat?: boolean;
-  onCustomCursorRender?: (connectionId, element) => Element | null;
+  onCustomCursorRender?: (pid, element) => Element | null;
 }
 ```
 

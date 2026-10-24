@@ -130,6 +130,9 @@ export function usePresence<
 ): {
   presences: SelectedPresences<Channel, Payload>;
   setMyPresence: (data: Payload) => void;
+  /** Your own user (`pid`, `name`, `color`, `isMe`). `null` until sync. */
+  me: User | null;
+  /** @deprecated Use `me`. */
   myIdentity: PlayerIdentity | null;
 } {
   const { isLoading } = useContext(PlayContext);
@@ -177,7 +180,9 @@ export function usePresence<
     return playhtml.users.onChange(readIdentity);
   }, [isLoading]);
 
-  return { presences, setMyPresence, myIdentity };
+  const me = useMe();
+
+  return { presences, setMyPresence, me, myIdentity };
 }
 
 /**
@@ -301,6 +306,7 @@ const EMPTY_PLAYER_IDENTITY = {
  * Backed by the users module, so it works without `cursors: { enabled: true }`.
  * Returns empty/undefined values until playhtml has synced.
  */
+/** @deprecated Use `useMe()`, which returns the same fields as a `User`. */
 export function usePlayerIdentity(): {
   color: string;
   pid: string | undefined;
@@ -329,6 +335,49 @@ export function usePlayerIdentity(): {
   }, [isLoading]);
 
   return identity;
+}
+
+function sameUser(a: User | null, b: User): boolean {
+  return (
+    a !== null &&
+    a.pid === b.pid &&
+    a.name === b.name &&
+    a.color === b.color
+  );
+}
+
+/**
+ * Your own user (`pid`, `name`, `color`, `isMe: true`), the React form of
+ * `playhtml.users.me`. Works without `cursors: { enabled: true }`. Returns
+ * `null` until playhtml has synced. Write identity fields through
+ * `playhtml.users.me`.
+ */
+export function useMe(): User | null {
+  const { isLoading } = useContext(PlayContext);
+  const [me, setMe] = useState<User | null>(null);
+
+  useEffect(() => {
+    if (isLoading) {
+      setMe(null);
+      return;
+    }
+    const readMe = () => {
+      const self = playhtml.users.me;
+      const next: User = {
+        pid: self.pid,
+        name: self.name,
+        color: self.color,
+        isMe: true,
+      };
+      // users.onChange fires on every presence tick; only re-render when the
+      // identity itself changed.
+      setMe((prev) => (sameUser(prev, next) ? prev : next));
+    };
+    readMe();
+    return playhtml.users.onChange(readMe);
+  }, [isLoading]);
+
+  return me;
 }
 
 /**

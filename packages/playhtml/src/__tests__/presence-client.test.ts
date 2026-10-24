@@ -183,6 +183,11 @@ describe("PresenceClient", () => {
     const presences = client.getPresences();
     expect(presences.size).toBe(1);
     expect(presences.get("pk_local")!.isMe).toBe(true);
+    expect(presences.get("pk_local")!.user).toEqual({
+      pid: "pk_local",
+      color: "red",
+      isMe: true,
+    });
   });
 
   it("rebuilds a remote peer's presence keyed by identity publicKey", () => {
@@ -200,6 +205,7 @@ describe("PresenceClient", () => {
     const remote = presences.get("pk_remote")!;
     expect(remote.isMe).toBe(false);
     expect(remote.playerIdentity!.publicKey).toBe("pk_remote");
+    expect(remote.user).toEqual({ pid: "pk_remote", color: "blue", isMe: false });
     expect((remote as any).status).toEqual({ text: "typing" });
   });
 
@@ -386,6 +392,7 @@ describe("PresenceClient", () => {
     const remote = client.getPresences().get("pk_remote")!;
     expect(remote.cursor).toEqual({ x: 10, y: 20, pointer: "mouse" });
     expect(remote.playerIdentity!.publicKey).toBe("pk_remote");
+    expect(remote.user).toEqual({ pid: "pk_remote", color: "blue", isMe: false });
     expect(remote.isMe).toBe(false);
   });
 
@@ -604,7 +611,7 @@ describe("PresenceClient", () => {
 
   it("rejects writing a reserved presence field name", () => {
     const { client } = createClient();
-    for (const reserved of ["playerIdentity", "cursor", "isMe"]) {
+    for (const reserved of ["user", "playerIdentity", "cursor", "isMe"]) {
       expect(() => client.setMyPresence(reserved, { spoof: true })).toThrow(
         /reserved presence field/,
       );

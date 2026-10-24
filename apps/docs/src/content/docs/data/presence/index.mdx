@@ -10,7 +10,7 @@ import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicat
 
 Presence is used for anything that is real-time and ephemeral (meaning it doesn't stick around after you leave). For example, cursors only matter when you are actually on the page. When you leave, they are gone and there's no record of them.
 
-For the full API surface (`PlayerIdentity`, `PresenceAPI`, element users, cursor types), see the [Presence & identity reference](/docs/reference/presence/).
+For the full API surface (`User`, `PresenceAPI`, element users, cursor types), see the [Presence & identity reference](/docs/reference/presence/).
 
 When you want things to stay after refreshing, use [persistent data](/docs/data/data-essentials/) and use [events](/docs/data/events/) for real-time events that don't rely on updating data. 
 
@@ -31,7 +31,7 @@ playhtml.presence.setMyPresence("status", null);
 const presences = playhtml.presence.getPresences();
 for (const [id, p] of presences) {
   p.isMe;            // boolean
-  p.playerIdentity;  // name, colors, publicKey
+  p.user;            // { pid, name, color, isMe }
   p.cursor;          // { x, y, pointer } | null
   p.status;          // your custom channel (if set)
 }
@@ -40,7 +40,7 @@ for (const [id, p] of presences) {
 const unsub = playhtml.presence.onPresenceChange("status", renderStatusRow);
 
 // Your own identity
-const me = playhtml.presence.getMyIdentity();
+const me = playhtml.users.me;
 ```
   </TabItem>
   <TabItem label="React">
@@ -48,9 +48,9 @@ const me = playhtml.presence.getMyIdentity();
 import { usePresence } from "@playhtml/react";
 
 function StatusList() {
-  // presences is the live map (keyed by stable id); setMyPresence writes
-  // your own; myIdentity is your name/colors/publicKey.
-  const { presences, setMyPresence, myIdentity } = usePresence<
+  // presences is keyed by pid; setMyPresence writes your own;
+  // me is your User ({ pid, name, color, isMe }).
+  const { presences, setMyPresence, me } = usePresence<
     "status",
     { text: string }
   >("status");
@@ -82,7 +82,7 @@ For pixel-accurate cursor rendering (including coordinate conversion across scro
 
 ## Custom channels
 
-Channel names flatten into the top-level `PresenceView`. Pick names that don't collide with the system fields (`playerIdentity`, `cursor`, `isMe`): collisions are silently dropped.
+Channel names flatten into the top-level `PresenceView`. Pick names that don't collide with the system fields (`user`, `playerIdentity`, `cursor`, `isMe`): `setMyPresence` throws for these names.
 
 **Common shapes:**
 
