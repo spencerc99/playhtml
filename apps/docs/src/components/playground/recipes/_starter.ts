@@ -107,7 +107,7 @@ export const starterRecipe: RunnableRecipe = {
   </div>
 
   <script type="module">
-    import { playhtml, html } from "playhtml";
+    import { playhtml, html } from "https://unpkg.com/playhtml@latest";
 
     // Register the reaction button with a view. register() can run before OR
     // after init() — there's no ordering rule. The view renders from the
