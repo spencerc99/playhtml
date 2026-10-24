@@ -101,6 +101,22 @@ cat > "${APP_ICON_SET}/Contents.json" <<'JSON'
 }
 JSON
 
+# Swap the converter's placeholder home page for ours, and its view controller
+# for one that opens links in Safari. The extension's own files are left alone.
+replace_app_file() {
+  local name="$1" source="$2" found=0
+  while IFS= read -r target; do
+    cp "$source" "$target"
+    found=1
+  done < <(find "$IOS_PROJECT_ROOT" -name "$name" -not -path "*Extension*" -not -path "*/build/*")
+  if [ "$found" -eq 0 ]; then
+    echo "The generated project has no ${name} to replace."
+    exit 1
+  fi
+}
+replace_app_file Main.html "ios/app/Main.html"
+replace_app_file ViewController.swift "ios/app/ViewController.swift"
+
 # The app only uses the system's HTTPS, which is exempt from export
 # compliance. Declaring it lets each TestFlight build reach testers without
 # a compliance question in App Store Connect.

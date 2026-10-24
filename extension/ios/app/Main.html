@@ -1,0 +1,246 @@
+<!doctype html>
+<!-- ABOUTME: Home screen of the we were online iPhone app, shown in the app's web view. -->
+<!-- ABOUTME: packageSafariIOS.sh copies it over the Safari converter's placeholder page. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="color-scheme" content="light" />
+    <title>we were online</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,600;1,400&family=Martian+Mono:wght@700&family=Atkinson+Hyperlegible:wght@400;700&display=swap"
+    />
+    <style>
+      :root {
+        --paper: #f8f5ef;
+        --ink: #3d3833;
+        --muted: #6f675e;
+        --blue: #4d7fae;
+        --serif: Lora, Georgia, serif;
+        --sans: "Atkinson Hyperlegible", -apple-system, system-ui, sans-serif;
+        --mono: "Martian Mono", ui-monospace, Menlo, monospace;
+      }
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+      }
+      body {
+        min-height: 100vh;
+        padding: calc(env(safe-area-inset-top) + 40px) 20px
+          calc(env(safe-area-inset-bottom) + 24px);
+        font-family: var(--sans);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-text-size-adjust: 100%;
+      }
+      .intro {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .wordmark {
+        margin: 0;
+        font: italic 400 30px var(--serif);
+        color: #4a443d;
+      }
+      .lede {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.45;
+        color: #5d564e;
+      }
+      .commute {
+        position: relative;
+        display: grid;
+        grid-template-columns: 40px 1fr;
+        gap: 14px;
+        align-items: center;
+        min-height: 128px;
+        padding: 18px 76px 18px 18px;
+        border: 1px solid rgba(77, 127, 174, 0.34);
+        border-radius: 14px;
+        background:
+          linear-gradient(
+            110deg,
+            rgba(77, 127, 174, 0.12),
+            rgba(74, 157, 138, 0.06)
+          ),
+          #fbf8f2;
+        box-shadow: 0 4px 14px rgba(77, 127, 174, 0.08);
+        color: var(--ink);
+        text-align: left;
+        font: inherit;
+        overflow: hidden;
+        cursor: pointer;
+      }
+      .commute:active,
+      .start:active {
+        transform: scale(0.985);
+      }
+      .stops {
+        position: relative;
+        height: 84px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .stops::before {
+        content: "";
+        position: absolute;
+        top: 6px;
+        bottom: 6px;
+        left: 19px;
+        width: 2px;
+        background: rgba(111, 103, 94, 0.34);
+      }
+      .stop {
+        position: relative;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 2px solid #fbf8f2;
+        box-shadow: 0 0 0 1px rgba(111, 103, 94, 0.24);
+      }
+      .copy {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .kicker {
+        font: 700 11px var(--mono);
+        letter-spacing: 0.08em;
+        color: var(--blue);
+      }
+      .title {
+        font: 600 20px/1.2 var(--serif);
+      }
+      .sub {
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .train {
+        position: absolute;
+        top: 18px;
+        right: 16px;
+        bottom: 18px;
+        width: 48px;
+        padding: 5px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 3px;
+        border: 1px solid rgba(122, 90, 140, 0.3);
+        border-radius: 22px 22px 8px 8px;
+        background:
+          repeating-linear-gradient(
+            135deg,
+            rgba(122, 90, 140, 0.12) 0 4px,
+            rgba(77, 127, 174, 0.06) 4px 8px
+          ),
+          #f3eee6;
+      }
+      .train span {
+        border: 1px solid rgba(111, 103, 94, 0.22);
+        background: rgba(251, 248, 242, 0.72);
+      }
+      .train span:first-child {
+        border-radius: 16px 2px 2px 3px;
+      }
+      .train span:last-child {
+        border-radius: 2px 16px 3px 2px;
+      }
+      .start {
+        min-height: 54px;
+        border: 0;
+        border-radius: 14px;
+        background: var(--ink);
+        color: #fffdf9;
+        font: 700 17px var(--sans);
+        cursor: pointer;
+      }
+      .setup {
+        margin-top: auto;
+        padding: 14px 16px;
+        border: 1px solid rgba(90, 78, 65, 0.16);
+        border-radius: 12px;
+        background: #fffdf9;
+      }
+      .setup strong {
+        display: block;
+        font-size: 15px;
+      }
+      .setup p {
+        margin: 2px 0 0;
+        font-size: 13px;
+        line-height: 1.4;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="intro">
+      <h1 class="wordmark">we were online</h1>
+      <p class="lede">
+        Browse with other people. Your trail, and theirs, shows up on every page
+        you visit in Safari.
+      </p>
+    </header>
+
+    <button class="commute" type="button" data-open-commute>
+      <div class="stops" aria-hidden="true">
+        <span class="stop" style="background: #4d7fae"></span>
+        <span class="stop" style="background: #d4b44a"></span>
+        <span class="stop" style="background: #c86a46"></span>
+      </div>
+      <div class="copy">
+        <span class="kicker">BOARDING NOW</span>
+        <span class="title">Board the internet commute</span>
+        <span class="sub">A slow train through pages people found lately.</span>
+      </div>
+      <div class="train" aria-hidden="true"><span></span><span></span></div>
+    </button>
+
+    <button class="start" type="button" data-open-commute>
+      Start browsing in Safari
+    </button>
+
+    <section class="setup">
+      <strong>First time here?</strong>
+      <p>
+        Turn it on in Settings, Apps, Safari, Extensions, and allow every
+        website.
+      </p>
+    </section>
+
+    <script>
+      const COMMUTE_URL = "https://wewere.online/commute";
+
+      // The app's web view can't browse; the native side hands the link to Safari.
+      function openCommute() {
+        const handler = window.webkit?.messageHandlers?.controller;
+        if (handler) handler.postMessage({ action: "open", url: COMMUTE_URL });
+        else window.location.href = COMMUTE_URL;
+      }
+
+      for (const el of document.querySelectorAll("[data-open-commute]")) {
+        el.addEventListener("click", openCommute);
+      }
+
+      // The converter's view controller calls show() once the page loads.
+      function show() {}
+    </script>
+  </body>
+</html>
