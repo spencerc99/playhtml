@@ -1,0 +1,47 @@
+// ABOUTME: Grows small text links and buttons to finger-sized hit areas on touch screens.
+// ABOUTME: Pads only the invisible hit area, so the quiet desktop look stays the same on phones.
+
+$touch-target: 44px;
+
+$touch-target-selectors: (
+  ".extension-page-nav__links a",
+  ".popup-nav__item",
+  ".collection-status__settings-link",
+  ".portrait-home__changelog-link",
+  ".walking-record__period-options button",
+  ".walking-record__period-step",
+  ".scraps-launch__cta",
+  ".scraps-launch__dismiss",
+  ".stats-page__sort-btn",
+  ".collage-chip"
+);
+
+@media (pointer: coarse) {
+  // :where keeps this at zero specificity, so a control placed with its own
+  // position keeps it and still anchors the hit area.
+  :where(#{$touch-target-selectors}, .walking-record__period-dab) {
+    position: relative;
+  }
+
+  :is(#{$touch-target-selectors})::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, #{$touch-target});
+    height: max(100%, #{$touch-target});
+    transform: translate(-50%, -50%);
+  }
+
+  // The week dabs sit close together, so they only grow taller; wider areas
+  // would steal taps from their neighbours.
+  .walking-record__period-dab::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: $touch-target;
+    transform: translateY(-50%);
+  }
+}
