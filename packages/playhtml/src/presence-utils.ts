@@ -32,6 +32,7 @@ export const PAGE_PRESENCE_CHANNEL_PREFIX = "presence:";
 // another user's identity, cursor, or isMe flag in the built PresenceView.
 // Rejected on write (DX) and skipped on fold (the security boundary).
 export const RESERVED_PRESENCE_FIELDS = new Set([
+  "user",
   "playerIdentity",
   "cursor",
   "isMe",

@@ -34,7 +34,7 @@ await playhtml.init();
 | Custom elements | `register`, `define`, `getHandle` |
 | Events | `dispatchPlayEvent`, `registerPlayEventListener`, `removePlayEventListener` |
 | Page data | `createPageData` |
-| Presence | `presence`, `createPresenceRoom`, `cursorClient` |
+| Users & presence | `users`, `presence`, `createPresenceRoom`, `cursorClient` |
 | Inspection | `roomId`, `host`, `syncedStore`, `listSharedElements` |
 
 ---
@@ -382,7 +382,7 @@ Presence tracks who is in the room and what they are doing. See [Presence & iden
 
 **Type:** `{ me, getAll(), onChange(cb) }`
 
-Durable user identity (name and color) for everyone in the room, whether or not cursors are enabled. Throws if accessed before `init()` completes. Usage guide: [Users](/docs/data/presence/users/).
+Who is in the room, as [`User`](/docs/reference/presence/#user) objects (`pid`, `name`, `color`, `isMe`), whether or not cursors are enabled. This is the place to read or set identity. Throws if accessed before `init()` completes. Usage guide: [Users](/docs/data/presence/users/).
 
 ```js
 await playhtml.ready;
@@ -415,9 +415,9 @@ console.log(`${presences.size} people in this room`);
 | Method | Description |
 |---|---|
 | `setMyPresence(channel: string, data: unknown): void` | Broadcasts a presence value on the given channel to other clients. |
-| `getPresences(): Map<string, PresenceView>` | Returns a snapshot map of all currently visible presences, keyed by connection id. Each entry includes `cursor`, `isMe`, and `playerIdentity` alongside any data you set. |
+| `getPresences(): Map<string, PresenceView>` | Returns a snapshot map of all currently visible presences, keyed by `pid`. Each entry includes `user`, `cursor`, and `isMe` alongside any data you set. |
 | `onPresenceChange(channel: string, callback: (presences: Map<string, PresenceView>) => void): () => void` | Subscribes to presence changes on the given channel. Returns an unsubscribe function. |
-| `getMyIdentity(): PlayerIdentity` | Returns the local player's persistent identity object. |
+| `getMyIdentity(): PlayerIdentity` | **Deprecated.** Use `playhtml.users.me`. |
 
 ---
 

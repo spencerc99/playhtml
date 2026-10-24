@@ -117,7 +117,7 @@ React (withSharedState):
 - withSharedState({ defaultData: {...} }, ({ data, setData, ref }) => JSX)
 - For element users: { live: value } in config, use setLive and render users
 - For events: usePlayContext() → { registerPlayEventListener, dispatchPlayEvent }
-- For cursors in React: usePlayContext() → { cursors, configureCursors, getMyPlayerIdentity }
+- For identity in React: useMe() and useUsers() (User = { pid, name, color, isMe }); for cursor options: usePlayContext().configureCursors
 
 DATA UPDATES:
 - `setData` has two forms: mutator and replacement

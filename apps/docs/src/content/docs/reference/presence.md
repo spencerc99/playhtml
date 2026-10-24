@@ -1,6 +1,6 @@
 ---
 title: "Presence & identity"
-description: "PlayerIdentity, page-level presence channels, element users, and isolated presence rooms."
+description: "User identity, page-level presence channels, element users, and isolated presence rooms."
 sidebar:
   order: 5
 ---
@@ -11,10 +11,33 @@ For usage examples, see [Presence](/docs/data/presence/). For cursor rendering a
 
 ---
 
-## `PlayerIdentity`
+## `User`
 
-**Type:** object  
-**Persisted:** yes (in `localStorage` per browser; not synced across devices)
+**Type:** object
+
+Every API that tells you who someone is uses this shape: [`playhtml.users`](/docs/data/presence/users/), presence views (`p.user`), element users (`users[].user`), cursor views, and the React hooks `useMe()` and `useUsers()`.
+
+```ts
+type User = {
+  pid: string;
+  name?: string;
+  color: string;
+  isMe: boolean;
+};
+```
+
+| Field | Notes |
+| --- | --- |
+| `pid` | Stable id for this browser. The same value keys presence and cursor maps. |
+| `name` | Display name, if set. |
+| `color` | Primary color. |
+| `isMe` | `true` for your own entry. |
+
+Read yourself with `playhtml.users.me` (vanilla) or `useMe()` (React). Set `name` and `color` by assigning to `playhtml.users.me`. Identity persists in `localStorage` per browser and is not synced across devices.
+
+### `PlayerIdentity` (advanced)
+
+`PlayerIdentity` is the lower-level object playhtml stores and sends. You only need it to seed identity with the `cursors.playerIdentity` init option or to set a custom cursor style. Everywhere else, prefer `User`. `publicKey` is the same value as `pid`, and `playerStyle.colorPalette[0]` is `color`.
 
 ```ts
 interface PlayerIdentity {
@@ -28,19 +51,9 @@ interface PlayerIdentity {
 }
 ```
 
-| Field | Notes |
-| --- | --- |
-| `publicKey` | Stable participant id for this browser. |
-| `name` | Display name, if set. |
-| `playerStyle.colorPalette` | Cursor colors. Index `0` is the primary color. |
-| `playerStyle.cursorStyle` | Optional custom cursor CSS. |
-| `createdAt` | Local identity creation time as a Unix timestamp in milliseconds. |
+Keep private keys, local profile data, and browsing history in your own app storage instead of adding them to this object.
 
-`PlayerIdentity` is the public identity shared through presence. Keep private keys, local profile data, and browsing history in your own app storage instead of adding them to this object.
-
-Read your identity with `playhtml.presence.getMyIdentity()` (vanilla) or `usePlayContext().getMyPlayerIdentity()` / `usePlayerIdentity()` (React). To set identity fields, use [`playhtml.users.me`](/docs/data/presence/users/).
-
-When the "we were online" browser extension is installed, it can inject identity via the `playhtml:configure-identity` DOM event. playhtml merges the extension's color and public key automatically.
+When the "we were online" browser extension is installed, it can inject identity via the `playhtml:configure-identity` DOM event. playhtml merges the extension's color and `pid` automatically.
 
 ---
 
@@ -57,6 +70,7 @@ interface PresenceAPI {
     channel: string,
     callback: (presences: Map<string, PresenceView>) => void,
   ): () => void;
+  /** @deprecated Use playhtml.users.me */
   getMyIdentity(): PlayerIdentity;
 }
 ```
@@ -72,14 +86,16 @@ playhtml.presence.setMyPresence("status", { text: "focused" });
 playhtml.presence.setMyPresence("status", null);
 ```
 
-Channel names become top-level keys on `PresenceView`. Do not collide with system fields (`playerIdentity`, `cursor`, `isMe`) — collisions are dropped.
+Channel names become top-level keys on `PresenceView`. Do not collide with system fields (`user`, `playerIdentity`, `cursor`, `isMe`): `setMyPresence` throws for these names.
 
 ### `getPresences()`
 
-Returns a snapshot `Map` keyed by connection id. Each value is a `PresenceView`:
+Returns a snapshot `Map` keyed by `pid`. Each value is a `PresenceView`:
 
 ```ts
 type PresenceView<T = Record<string, unknown>> = {
+  user?: User;
+  /** @deprecated Use user */
   playerIdentity?: PlayerIdentity;
   cursor: Cursor | null;
   isMe: boolean;
@@ -92,9 +108,9 @@ Custom channel data appears under the channel name (e.g. `p.status` for channel 
 
 Subscribes to changes on one channel. Returns an unsubscribe function. Cursor movement uses channel `"cursor"`.
 
-### `getMyIdentity()`
+### `getMyIdentity()` (deprecated)
 
-Returns the local `PlayerIdentity` object.
+Returns the local `PlayerIdentity` object. Use [`playhtml.users.me`](/docs/data/presence/users/) instead, which returns a `User`.
 
 ---
 
@@ -147,6 +163,8 @@ type Cursor = {
 
 type CursorPresenceView = {
   cursor: Cursor | null;
+  user?: User;
+  /** @deprecated Use user */
   playerIdentity?: PlayerIdentity;
   zone?: CursorZonePosition | null;
   page?: string;
@@ -159,7 +177,7 @@ type CursorZonePosition = {
 };
 ```
 
-**React hooks:** [`useCursorPresences`](/docs/reference/react-api/#usecursorpresences), [`useCursorZone`](/docs/reference/react-api/#usecursorzone), [`usePlayerIdentity`](/docs/reference/react-api/#useplayeridentity).
+**React hooks:** [`useCursorPresences`](/docs/reference/react-api/#usecursorpresences), [`useCursorZone`](/docs/reference/react-api/#usecursorzone), [`useMe`](/docs/reference/react-api/#useme).
 
 **Vanilla:** `playhtml.cursorClient` (advanced; `null` when cursors are disabled). See [playhtml client](/docs/reference/playhtml-client/#cursorclient).
 

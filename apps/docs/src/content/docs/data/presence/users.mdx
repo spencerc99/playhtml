@@ -9,6 +9,8 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 `playhtml.users` is where you read and set who someone is: their name and color. It works whether or not cursors are enabled.
 
+Every API that describes a person uses the same [`User`](/docs/reference/presence/#user) shape: `{ pid, name, color, isMe }`. `pid` is a stable id for this browser, and it is also the key in presence and cursor maps.
+
 It helps to keep three things apart. **Users** is who people are: durable identity that persists across visits. [**Presence**](/docs/data/presence/) is what they're doing right now: live, ephemeral channels that clear when they leave. **Cursors** render both as the pointer and label you see moving around the page.
 
 ## `users.me`
@@ -109,17 +111,20 @@ function OnlineCount() {
 }
 ```
 
-### `usePlayerIdentity()`
+### `useMe()`
 
-Reads your own identity reactively. It does not require cursors to be enabled.
+Reactive version of `users.me`. Returns your `User`, or `null` until playhtml has synced. It does not require cursors to be enabled.
 
 ```tsx
-import { usePlayerIdentity } from "@playhtml/react";
+import { useMe } from "@playhtml/react";
 
 function Profile() {
-  const { color, pid, name } = usePlayerIdentity();
-  return <div style={{ color }}>{name ?? "anonymous"}</div>;
+  const me = useMe();
+  if (!me) return null;
+  return <div style={{ color: me.color }}>{me.name ?? "anonymous"}</div>;
 }
 ```
+
+`usePlayerIdentity()` is the older form of this hook and is deprecated.
 
 See the [React API reference](/docs/reference/react-api/#useusers) for full signatures.

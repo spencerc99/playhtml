@@ -26,6 +26,8 @@ These determine which API and data type to use. Getting them wrong means a rewri
 | `dispatchPlayEvent` | No | One-shot | Confetti, notifications |
 | `localStorage` | Yes | No | Per-user flags ("has reacted") |
 
+Identity: everything that describes a person is a `User` (`{ pid, name, color, isMe }`). Read yourself with `playhtml.users.me` / `useMe()`, the room with `playhtml.users.getAll()` / `useUsers()`, and key per-user data by `pid`. Presence views carry `p.user`; `p.playerIdentity`, `getMyIdentity()`, and `usePlayerIdentity()` are deprecated.
+
 ## Critical Rules
 
 - Every element MUST have a unique `id` attribute — without it, sync silently fails

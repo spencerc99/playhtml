@@ -12,6 +12,7 @@ import {
   usePageData,
   usePresenceRoom,
   usePlayerIdentity,
+  useMe,
   useUsers,
   useCursorZone,
   playhtml,
@@ -325,6 +326,53 @@ describe("usePresenceRoom", () => {
     await waitFor(() => {
       expect(getByTestId("room")).toHaveTextContent("second");
     });
+  });
+});
+
+describe("useMe", () => {
+  it("returns null pre-sync, then your User, and follows users.me edits", async () => {
+    const seen: Array<ReturnType<typeof useMe>> = [];
+    function TestComponent() {
+      seen.push(useMe());
+      return <div />;
+    }
+
+    render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+
+    expect(seen[0]).toBeNull();
+    await waitFor(() => {
+      expect(seen.at(-1)).toMatchObject({
+        pid: "mock-pid",
+        color: "#123456",
+        isMe: true,
+      });
+    });
+
+    act(() => {
+      playhtml.users.me.name = "ada";
+    });
+    await waitFor(() => expect(seen.at(-1)?.name).toBe("ada"));
+  });
+
+  it("is also returned as `me` from usePresence", async () => {
+    let captured: ReturnType<typeof usePresence> | null = null;
+    function TestComponent() {
+      captured = usePresence("status");
+      return <div />;
+    }
+
+    render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+
+    await waitFor(() => expect(captured?.me?.pid).toBe("mock-pid"));
+    expect(captured?.me?.isMe).toBe(true);
   });
 });
 
