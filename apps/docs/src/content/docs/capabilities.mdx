@@ -222,12 +222,11 @@ import { CanToggleElement } from "@playhtml/react";
   </TabItem>
   <TabItem label="React">
 ```tsx
-import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "playhtml";
+import { CanGrowElement } from "@playhtml/react";
 
-<CanPlayElement tagInfo={[TagType.CanGrow]} id="balloon" defaultData={{ scale: 1 }}>
-  {() => <img src="/water-balloon.png" alt="" />}
-</CanPlayElement>
+<CanGrowElement>
+  <img id="balloon" src="/water-balloon.png" alt="" />
+</CanGrowElement>
 ```
   </TabItem>
 </Tabs>
@@ -250,12 +249,11 @@ import { TagType } from "playhtml";
   </TabItem>
   <TabItem label="React">
 ```tsx
-import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "playhtml";
+import { CanSpinElement } from "@playhtml/react";
 
-<CanPlayElement tagInfo={[TagType.CanSpin]} id="wheel" defaultData={{ rotation: 0 }}>
-  {() => <img src="/bike-wheel.webp" alt="" />}
-</CanPlayElement>
+<CanSpinElement>
+  <img id="wheel" src="/bike-wheel.webp" alt="" />
+</CanSpinElement>
 ```
   </TabItem>
 </Tabs>
