@@ -17,10 +17,7 @@ export function LiveReactionsDemo(): React.ReactElement {
   // Each reaction becomes a burst that removes itself when its animation ends.
   useEffect(() => {
     const id = playhtml.registerPlayEventListener(REACTION_EVENT, {
-      // onEvent receives the dispatched eventPayload itself, although
-      // PlayEvent types it as { eventPayload }.
-      onEvent: (payload) => {
-        const { emoji } = payload as unknown as { emoji: string };
+      onEvent: ({ emoji }: { emoji: string }) => {
         const burst = {
           id: crypto.randomUUID(),
           emoji,

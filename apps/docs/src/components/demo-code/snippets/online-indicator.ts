@@ -46,7 +46,7 @@ ${indent(css)}
         ...users.map(({ user, live }) => {
           const dot = document.createElement("span");
           dot.className = user.isMe ? "dot me" : "dot";
-          dot.style.background = live.color;
+          dot.style.background = live?.color ?? user.color;
           return dot;
         }),
       );
@@ -64,10 +64,12 @@ ${indent(css)}
 </script>`,
   react: `import { withSharedState } from "@playhtml/react";
 
+const DEFAULT_COLOR = "#4a6a3e";
+
 // \`live\` is your value for this element. It never persists, and every
 // reader's current value arrives in \`users\` next to their identity.
 export const OnlineIndicator = withSharedState(
-  { id: "online", defaultData: {}, live: { color: "#4a6a3e" } },
+  { id: "online", defaultData: {}, live: { color: DEFAULT_COLOR } },
   ({ live, setLive, users }) => (
     <div>
       <div className="dots">
@@ -75,7 +77,7 @@ export const OnlineIndicator = withSharedState(
           <span
             key={user.pid}
             className={user.isMe ? "dot me" : "dot"}
-            style={{ background: live.color }}
+            style={{ background: live?.color ?? user.color }}
           />
         ))}
       </div>
@@ -86,7 +88,7 @@ export const OnlineIndicator = withSharedState(
         your color
         <input
           type="color"
-          value={live.color}
+          value={live?.color ?? DEFAULT_COLOR}
           onChange={(event) => setLive({ color: event.target.value })}
         />
       </label>
