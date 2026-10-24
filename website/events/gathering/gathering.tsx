@@ -52,7 +52,7 @@ export function UserSetup() {
     "username",
     null,
     (newName) => {
-      window.cursors!.name = newName;
+      if (window.cursors) window.cursors.name = newName ?? "";
     }
   );
 
@@ -61,7 +61,7 @@ export function UserSetup() {
   );
   const setColor = (newColor: string) => {
     setInternalColor(newColor);
-    window.cursors!.color = newColor;
+    if (window.cursors) window.cursors.color = newColor;
   };
 
   const [cursorsLoaded, setCursorsLoaded] = React.useState(false);
