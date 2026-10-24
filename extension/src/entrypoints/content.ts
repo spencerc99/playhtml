@@ -47,7 +47,6 @@ import {
 } from "../features/sessionScraps/sessionScrapsBridge";
 import { watchInstallationContent } from "./content/installationContent";
 import { MILESTONE_TOASTS_ENABLED_KEY } from "../milestones/state";
-import { PHONE_LAYOUT_QUERY } from "./scraps/phoneLayout";
 
 // Scraps are local-only, so normalize any unsupported stored mode before the
 // collector starts.
@@ -1213,12 +1212,9 @@ export default defineContentScript({
             }
           }
           // Phones have no hover or keys, so tapping someone's cursor opens a
-          // card with Follow and the emotes.
-          if (
-            cursorClient &&
-            typeof window.matchMedia === "function" &&
-            window.matchMedia(PHONE_LAYOUT_QUERY).matches
-          ) {
+          // card with Follow and the emotes. The menu checks the phone layout
+          // on every tap, so rotating into it works without a reload.
+          if (cursorClient && typeof window.matchMedia === "function") {
             try {
               const { initPeerTapMenu } = await import(
                 "../features/PeerTapMenu"

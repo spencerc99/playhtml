@@ -108,10 +108,15 @@ export function initPeerTapMenu(deps: {
   cursorClient: PeerTapCursorClient;
   emotesEnabled: boolean;
 }): () => void {
-  const { host, shadow } = injectShadow({
-    hostStyle: "position:fixed;inset:0;pointer-events:none;z-index:2147483646;",
-    css: CSS,
-  });
+  // Built on the first tap so a page that never goes phone-sized (or a phone
+  // turned to landscape) carries no extra host until it's needed.
+  let ui: { host: HTMLElement; shadow: ShadowRoot } | null = null;
+  const getUI = () =>
+    (ui ??= injectShadow({
+      hostStyle:
+        "position:fixed;inset:0;pointer-events:none;z-index:2147483646;",
+      css: CSS,
+    }));
 
   let open: { card: HTMLElement; ring: HTMLElement } | null = null;
   let swallowNextClick = false;
@@ -207,7 +212,7 @@ export function initPeerTapMenu(deps: {
       card.append(label, grid);
     }
 
-    shadow.append(ring, card);
+    getUI().shadow.append(ring, card);
     // Sit under the cursor, or above it when the bottom of the screen is near.
     const margin = 12;
     const left = Math.min(
@@ -235,7 +240,7 @@ export function initPeerTapMenu(deps: {
     down = null;
     if (!start || e.pointerType !== "touch" || !isPhone()) return;
     // Taps inside the card belong to its buttons.
-    if (e.composedPath().includes(host)) return;
+    if (ui && e.composedPath().includes(ui.host)) return;
     const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
     if (moved > TAP_MOVE_PX || e.timeStamp - start.t > TAP_MAX_MS) return;
     const pid = deps.cursorClient.getCursorIdAt(
@@ -282,6 +287,6 @@ export function initPeerTapMenu(deps: {
     window.removeEventListener("keydown", onKeyDown);
     if (swallowTimer) clearTimeout(swallowTimer);
     close();
-    host.remove();
+    ui?.host.remove();
   };
 }

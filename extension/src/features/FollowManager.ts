@@ -5,6 +5,7 @@ import type { PresenceAPI } from "@playhtml/common";
 import { isWikiArticleUrl, type WikiPresenceView } from "../custom-sites/wikipedia";
 import { OffscreenIndicator } from "./OffscreenIndicator";
 import { PHONE_LAYOUT_QUERY } from "../entrypoints/scraps/phoneLayout";
+import { injectShadow } from "../entrypoints/content/inject-ui";
 import {
   FOLLOW_AVAILABLE_ATTR,
   FOLLOW_PEER_EVENT,
@@ -16,6 +17,22 @@ function isPhone(): boolean {
     typeof window.matchMedia === "function" &&
     window.matchMedia(PHONE_LAYOUT_QUERY).matches
   );
+}
+
+// The follow banner and countdown carry the only touch controls for stopping,
+// so they sit in a shadow root where host-page button rules can't reach them.
+const shadowHosts = new WeakMap<HTMLElement, HTMLElement>();
+
+function appendIsolated(el: HTMLElement): void {
+  const { host, shadow } = injectShadow({ hostStyle: "all:initial;" });
+  shadow.append(el);
+  shadowHosts.set(el, host);
+}
+
+function removeIsolated(el: HTMLElement): void {
+  el.remove();
+  shadowHosts.get(el)?.remove();
+  shadowHosts.delete(el);
 }
 
 function phoneButton(label: string, onClick: () => void): HTMLButtonElement {
@@ -445,7 +462,7 @@ export class FollowManager {
     } else {
       bar.append(colorDot(color), "following ", muted("esc to stop", { marginLeft: "4px" }));
     }
-    document.body.appendChild(bar);
+    appendIsolated(bar);
     this.statusBarElement = bar;
     requestAnimationFrame(() => {
       bar.style.opacity = "1";
@@ -462,7 +479,7 @@ export class FollowManager {
     if (this.statusBarElement) {
       this.statusBarElement.style.opacity = "0";
       const el = this.statusBarElement;
-      setTimeout(() => el.remove(), 300);
+      setTimeout(() => removeIsolated(el), 300);
       this.statusBarElement = null;
     }
   }
@@ -680,7 +697,7 @@ export class FollowManager {
     };
     updateText();
 
-    document.body.appendChild(toast);
+    appendIsolated(toast);
     this.navToastElement = toast;
     requestAnimationFrame(() => { toast.style.opacity = "1"; });
 
@@ -712,7 +729,7 @@ export class FollowManager {
       this.navCountdownInterval = null;
     }
     if (this.navToastElement) {
-      this.navToastElement.remove();
+      removeIsolated(this.navToastElement);
       this.navToastElement = null;
     }
     this.pendingNavUrl = null;
