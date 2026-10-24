@@ -1,6 +1,6 @@
 // Docs live demo for events: click the hydrant and clouds bring rain to
 // everyone reading the page. The code readers copy lives in
-// demo-code/snippets/events.ts; the .ph-docs-rain styles are in docs-extras.css.
+// playground/recipes/events-basics.ts; the .ph-docs-rain styles are in docs-extras.css.
 //
 // Uses the `playhtml` singleton rather than PlayContext: the docs site calls
 // playhtml.init() from HeadOverride.astro and never renders <PlayProvider>,

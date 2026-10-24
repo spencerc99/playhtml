@@ -1,5 +1,5 @@
 // Docs live demo for events: emoji bursts that only people here right now see.
-// The code readers copy lives in demo-code/snippets/events.ts.
+// The code readers copy lives in playground/recipes/events-basics.ts.
 //
 // Uses the `playhtml` singleton rather than PlayContext because the docs site
 // never renders <PlayProvider> (see RainSprinklerDemo).

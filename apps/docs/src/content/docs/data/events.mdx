@@ -5,11 +5,9 @@ sidebar:
   order: 4
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
 import { RainSprinklerDemo } from "@/components/react/data-demos/RainSprinklerDemo";
 import { LiveReactionsDemo } from "@/components/react/data-demos/LiveReactionsDemo";
-import DemoCode from "@/components/demo-code/DemoCode.astro";
-import { liveReactionsSnippet, rainSnippet } from "@/components/demo-code/snippets/events";
 
 Events are for **transient signals that don't need to persist**: confetti bursts, sound chimes, a "nudge" from one reader to another, a "rain on everyone's page" button. Any connected reader can dispatch one, and every other connected reader gets the callback fired.
 
@@ -117,7 +115,7 @@ Click the hydrant. It dispatches a `"rain"` event, and clouds drift across the t
   <RainSprinklerDemo client:only="react" />
 </div>
 
-<DemoCode snippet={rainSnippet} />
+<LinkCard title="Rain event code" description="Full Vanilla HTML and React code, ready to copy or remix." href="/docs/examples/rain-event/" />
 
 Same primitive, different shape: each click below sends a short-lived emoji burst. No state, no persistence: exactly the "live reactions" pattern from video calls.
 
@@ -125,7 +123,7 @@ Same primitive, different shape: each click below sends a short-lived emoji burs
   <LiveReactionsDemo client:only="react" />
 </div>
 
-<DemoCode snippet={liveReactionsSnippet} />
+<LinkCard title="Live reactions code" description="Full Vanilla HTML and React code, ready to copy or remix." href="/docs/examples/live-reactions/" />
 
 ## Gotchas
 

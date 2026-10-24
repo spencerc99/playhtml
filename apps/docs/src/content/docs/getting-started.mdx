@@ -7,8 +7,6 @@ sidebar:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 import { InteractiveToggleDemo } from '@/components/react/InteractiveToggleDemo';
-import DemoCode from '@/components/demo-code/DemoCode.astro';
-import { toggleSwitchSnippet } from '@/components/demo-code/snippets/toggles';
 
 playhtml turns any HTML element into a live, collaborative one with a single attribute. This guide gets you from empty page to a working shared toggle.
 
@@ -123,8 +121,6 @@ import { TagType } from "playhtml";
 This toggle is shared with everyone reading this page right now. Click it to see it update for all readers.
 
 <InteractiveToggleDemo client:only="react" />
-
-<DemoCode snippet={toggleSwitchSnippet} />
 
 ## Where to next
 

@@ -1,5 +1,5 @@
 // Docs live demo for presence: one colored dot per reader, yours glowing.
-// The code readers copy lives in demo-code/snippets/online-indicator.ts.
+// The code readers copy lives in playground/recipes/online-indicator.ts.
 import React from "react";
 import { withSharedState } from "@playhtml/react";
 
