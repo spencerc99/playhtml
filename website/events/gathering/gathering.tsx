@@ -69,14 +69,20 @@ export function UserSetup() {
   // Check for cursors availability
   React.useEffect(() => {
     const checkCursors = () => {
-      if (window.cursors) {
-        setCursorsLoaded(true);
-      }
+      if (!window.cursors) return false;
+      // The setters above skip writes while the client is still loading,
+      // so apply the saved identity once it arrives.
+      if (name) window.cursors.name = name;
+      if (color) window.cursors.color = color;
+      setCursorsLoaded(true);
+      return true;
     };
 
-    checkCursors();
+    if (checkCursors()) return;
     // Check every second for 10 seconds
-    const interval = setInterval(checkCursors, 1000);
+    const interval = setInterval(() => {
+      if (checkCursors()) clearInterval(interval);
+    }, 1000);
     const timeout = setTimeout(() => clearInterval(interval), 10000);
 
     return () => {
@@ -84,15 +90,6 @@ export function UserSetup() {
       clearTimeout(timeout);
     };
   }, [name, color]);
-
-  // The cursor client loads after first render, so the sticky name and color
-  // callbacks above can run before it exists. Apply them once it appears.
-  React.useEffect(() => {
-    if (!cursorsLoaded || !window.cursors) return;
-    if (name) window.cursors.name = name;
-    if (color) window.cursors.color = color;
-    else setInternalColor(window.cursors.color);
-  }, [cursorsLoaded]);
 
   if (!cursorsLoaded) {
     return <div>Loading cursor party...</div>;
