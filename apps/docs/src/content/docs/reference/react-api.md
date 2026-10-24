@@ -238,6 +238,8 @@ These props let an element participate in [cross-page / cross-site sharing](/doc
 </CanToggleElement>
 ```
 
+Both buttons get the `toggled` class when the lamp is on. Style it so the state is visible, e.g. `button.toggled { background: gold; }`.
+
 ## Loading options
 
 `CanPlayElement` and `withSharedState` accept a `loading` prop controlling the affordance shown before the element's first sync from the server (it's hidden or animated so readers don't see a flash of default state). The vanilla equivalents are the `loading-behavior` / `loading-class` / `loading-style` HTML attributes, which work on any playhtml element.

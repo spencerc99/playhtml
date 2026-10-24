@@ -5,7 +5,7 @@ _interactive, collaborative HTML elements with a single data attribute_
 playhtml is a fast, small (~300KB), library-agnostic, and expressive library for magically creating collaborative interactive HTML elements that persist their state across sessions. It aims to be infrastructure for creating lived-in, alive internet spaces filled with traces of past visitors and the life of present visitors.
 
 ```html
-<div id="couch" can-move style="font-size: 80px">🛋</div>
+<div id="couch" can-move style="display: inline-block; font-size: 80px">🛋</div>
 ```
 
 That's it. The couch is draggable for everyone on the page, and its position persists across sessions.
@@ -25,7 +25,7 @@ playhtml is in beta and actively developed. Join the [Discord](https://discord.c
   import { playhtml } from "https://unpkg.com/playhtml";
   playhtml.init();
 </script>
-<img can-toggle id="lamp" src="lamp.png" />
+<div id="couch" can-move style="display: inline-block; font-size: 80px">🛋</div>
 ```
 
 **React:**
@@ -35,12 +35,12 @@ npm install playhtml @playhtml/react
 ```
 
 ```tsx
-import { PlayProvider, CanToggleElement } from "@playhtml/react";
+import { PlayProvider, CanMoveElement } from "@playhtml/react";
 
 <PlayProvider>
-  <CanToggleElement>
-    <img id="lamp" src="lamp.png" />
-  </CanToggleElement>
+  <CanMoveElement>
+    <div id="couch" style={{ display: "inline-block", fontSize: 80 }}>🛋</div>
+  </CanMoveElement>
 </PlayProvider>;
 ```
 

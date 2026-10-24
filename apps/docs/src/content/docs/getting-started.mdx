@@ -24,6 +24,10 @@ The fastest path, with no `import` and no `playhtml.init()` call. Add the script
 ```html
 <body>
   <button id="my-lamp" can-toggle>lamp</button>
+  <style>
+    /* can-toggle adds the "toggled" class when the lamp is on */
+    #my-lamp.toggled { background: gold; }
+  </style>
 
   <script type="module" src="https://unpkg.com/playhtml/dist/init.es.js"></script>
 </body>
@@ -44,6 +48,10 @@ Reach for this when you want to pass options to `init()` (cursors, custom rooms,
 ```html
 <body>
   <button id="my-lamp" can-toggle>lamp</button>
+  <style>
+    /* can-toggle adds the "toggled" class when the lamp is on */
+    #my-lamp.toggled { background: gold; }
+  </style>
 
   <script type="module">
     import { playhtml } from "https://unpkg.com/playhtml";
@@ -92,6 +100,12 @@ export function App() {
     </PlayProvider>
   );
 }
+```
+
+`CanToggleElement` adds the `toggled` class to the button when it's on, so give that class a look in your CSS:
+
+```css
+#my-lamp.toggled { background: gold; }
 ```
 
 Need more control? Use `CanPlayElement` with a render prop to read and write the shared data directly:
