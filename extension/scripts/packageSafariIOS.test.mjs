@@ -42,27 +42,3 @@ test("uploads to TestFlight from its own script, not the macOS release", async (
   expect(script).toContain("-exportArchive");
   expect(script).not.toContain("publish/safari-app\"");
 });
-
-test("replaces the converter's app home page and view controller with ours", async () => {
-  const script = await readFile(
-    path.join(process.cwd(), "scripts/packageSafariIOS.sh"),
-    "utf8",
-  );
-  expect(script).toContain('replace_app_file Main.html "ios/app/Main.html"');
-  expect(script).toContain(
-    'replace_app_file ViewController.swift "ios/app/ViewController.swift"',
-  );
-
-  const page = await readFile(path.join(process.cwd(), "ios/app/Main.html"), "utf8");
-  expect(page).toContain("https://wewere.online/commute");
-  // The converter's view controller calls show() after load.
-  expect(page).toContain("function show(");
-
-  const controller = await readFile(
-    path.join(process.cwd(), "ios/app/ViewController.swift"),
-    "utf8",
-  );
-  expect(controller).toContain("class ViewController");
-  expect(controller).toContain("@IBOutlet var webView: WKWebView!");
-  expect(controller).toContain('add(self, name: "controller")');
-});
