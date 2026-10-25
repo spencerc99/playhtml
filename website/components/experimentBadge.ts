@@ -23,8 +23,10 @@ export interface ExperimentBadgeOptions {
 
 const RepoUrl = "https://github.com/spencerc99/playhtml";
 const BadgeSelector = "[data-playhtml-experiment-badge]";
+const FontsUrl =
+  "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700&family=IBM+Plex+Mono:wght@500&family=Play:wght@400;700&display=swap";
 const CodeIcon =
-  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5"/><path d="M16 7l5 5-5 5"/><path d="M13.5 5l-3 14"/></svg>';
+  '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5"/><path d="M16 7l5 5-5 5"/><path d="M13.5 5l-3 14"/></svg>';
 
 function sourceUrl(entry: ExperimentCatalogEntry | undefined): string {
   if (!entry?.sourcePath) return `${RepoUrl}/tree/main/website/experiments`;
@@ -53,6 +55,16 @@ function link(label: string, href: string, className: string) {
   return anchor;
 }
 
+// Experiments load their own fonts, so the badge brings the playhtml site
+// faces (shared with the homepage and docs) itself.
+function loadBadgeFonts() {
+  if (document.querySelector(`link[href="${FontsUrl}"]`)) return;
+  const fonts = document.createElement("link");
+  fonts.rel = "stylesheet";
+  fonts.href = FontsUrl;
+  document.head.append(fonts);
+}
+
 export function mountExperimentBadge({
   experiment,
   position = "bottom-right",
@@ -61,6 +73,7 @@ export function mountExperimentBadge({
   const existing = document.querySelector<HTMLElement>(BadgeSelector);
   if (existing) return () => existing.remove();
 
+  loadBadgeFonts();
   const entry = findExperiment(experiment);
   const badge = element(
     "aside",
@@ -76,19 +89,24 @@ export function mountExperimentBadge({
   panel.hidden = true;
   panel.setAttribute("aria-label", "About this experiment");
 
-  const eyebrow = element(
-    "p",
-    "playhtml-experiment-badge__eyebrow",
-    `playhtml experiment ${entry?.number ?? experiment}`,
-  );
+  const body = element("div", "playhtml-experiment-badge__body");
+  const meta = element("div", "playhtml-experiment-badge__meta");
   const title = element(
     "h2",
     "playhtml-experiment-badge__title",
     entry?.name ?? "an experiment",
   );
-  panel.append(eyebrow, title);
+  meta.append(
+    title,
+    element(
+      "span",
+      "playhtml-experiment-badge__chip",
+      entry?.number ?? experiment,
+    ),
+  );
+  body.append(meta);
   if (entry?.description) {
-    panel.append(
+    body.append(
       element("p", "playhtml-experiment-badge__description", entry.description),
     );
   }
@@ -101,41 +119,18 @@ export function mountExperimentBadge({
         "playhtml-experiment-badge__inline",
       ),
     );
-    panel.append(related);
+    body.append(related);
   }
 
   const about = element("p", "playhtml-experiment-badge__about");
   about.append(
-    "One of a series of small experiments in how the web can feel more shared and alive, made with ",
+    "Experiments in making the web feel more shared and alive, using ",
     link("playhtml", "/", "playhtml-experiment-badge__inline"),
-    ", an open-source library that makes HTML elements collaborative with a single attribute.",
+    ", an open-source tool for making communal websites.",
   );
-  panel.append(about);
+  body.append(about);
 
-  const links = element("nav", "playhtml-experiment-badge__links");
-  links.setAttribute("aria-label", "playhtml links");
-  const source = link(
-    "",
-    sourceUrl(entry),
-    "playhtml-experiment-badge__source",
-  );
-  source.setAttribute("aria-label", "View source on GitHub");
-  source.title = "View source";
-  source.innerHTML = CodeIcon;
-  links.append(
-    link("home", "/", "playhtml-experiment-badge__link"),
-    link("docs", "/docs/", "playhtml-experiment-badge__link"),
-    link(
-      "all experiments",
-      "/#experiments-index",
-      "playhtml-experiment-badge__link",
-    ),
-  );
-  panel.append(links);
-
-  const footer = element("div", "playhtml-experiment-badge__footer");
   const credit = element("p", "playhtml-experiment-badge__credit");
-  footer.append(credit, source);
   credit.append(
     "by ",
     link(
@@ -144,7 +139,30 @@ export function mountExperimentBadge({
       "playhtml-experiment-badge__inline",
     ),
   );
-  panel.append(footer);
+  body.append(credit);
+
+  const bar = element("div", "playhtml-experiment-badge__bar");
+  const links = element("nav", "playhtml-experiment-badge__links");
+  links.setAttribute("aria-label", "playhtml links");
+  links.append(
+    link("home", "/", "playhtml-experiment-badge__link"),
+    link(
+      "experiments",
+      "/#experiments-index",
+      "playhtml-experiment-badge__link",
+    ),
+    link("docs", "/docs/", "playhtml-experiment-badge__link"),
+  );
+  const source = link(
+    "",
+    sourceUrl(entry),
+    "playhtml-experiment-badge__source",
+  );
+  source.setAttribute("aria-label", "View source on GitHub");
+  source.title = "View source";
+  source.innerHTML = CodeIcon;
+  bar.append(links, source);
+  panel.append(body, bar);
 
   const toggle = element("button", "playhtml-experiment-badge__toggle");
   toggle.type = "button";
