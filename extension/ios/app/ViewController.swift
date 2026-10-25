@@ -8,6 +8,10 @@ class ViewController: UIViewController, WKNavigationDelegate {
 
     @IBOutlet var webView: WKWebView!
 
+    // Closing the browser shows this screen again, so the launch argument
+    // must only open it once.
+    private var openedLaunchURL = false
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -25,10 +29,12 @@ class ViewController: UIViewController, WKNavigationDelegate {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         let arguments = ProcessInfo.processInfo.arguments
-        guard presentedViewController == nil,
+        guard !openedLaunchURL,
+              presentedViewController == nil,
               let flag = arguments.firstIndex(of: "-wwoOpen"),
               flag + 1 < arguments.count,
               let url = URL(string: arguments[flag + 1]) else { return }
+        openedLaunchURL = true
         openBrowser(at: url)
     }
 
