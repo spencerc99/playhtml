@@ -83,20 +83,20 @@ Each person has one presence object (`PagePresence = Record<string, unknown>`).
 interface PresenceScope {
   getEveryone(): PresenceEntry<PagePresence>[];
   getEveryone<V>(key: string): PresenceEntry<V | undefined>[];
-  setPresence(partial: PagePresence): void;
+  setMyPresence(partial: PagePresence): void;
   onPresenceChange(callback): () => void;
   onPresenceChange(key: string, callback): () => void;
   onPresenceChange(select: (presence: PagePresence) => S, callback): () => void;
 }
 ```
 
-### `setPresence(partial)`
+### `setMyPresence(partial)`
 
 Merges top-level keys into your presence. `null` or `undefined` removes a key. Values inside a key replace (no deep merge). Throws for a non-object, for `"cursor"` (use [`users.cursors`](#cursors-userscursors)), and for the reserved keys `user`, `playerIdentity`, and `isMe`.
 
 ```js
-playhtml.page.setPresence({ status: { text: "focused" } });
-playhtml.page.setPresence({ status: null });
+playhtml.page.setMyPresence({ status: { text: "focused" } });
+playhtml.page.setMyPresence({ status: null });
 ```
 
 Writes are rate limited per person (about 20 per second); extra writes are dropped. Use presence for state changes, and cursors for pointer position. With `developmentMode`, playhtml warns once when you exceed the limit.
@@ -117,14 +117,14 @@ Calls `callback(everyone)` right away, then whenever the watched part changes. R
 
 ## Isolated presence rooms
 
-**Vanilla:** `playhtml.createPresenceRoom(name)` returns a room with the same `getEveryone`, `setPresence`, and `onPresenceChange` as `playhtml.page`, plus `destroy()`.  
+**Vanilla:** `playhtml.createPresenceRoom(name)` returns a room with the same `getEveryone`, `setMyPresence`, and `onPresenceChange` as `playhtml.page`, plus `destroy()`.  
 **React:** [`usePresenceRoom(name)`](/docs/reference/react-api/#usepresenceroom)
 
 A separate presence scope from the page (lobby, sidebar, shared document). Call `destroy()` when done to disconnect and clear your presence for others.
 
 ```js
 const room = playhtml.createPresenceRoom("lobby");
-room.setPresence({ status: { text: "ready" } });
+room.setMyPresence({ status: { text: "ready" } });
 room.destroy();
 ```
 
@@ -141,14 +141,14 @@ Set on the [Element API](/docs/reference/element-api/):
 | `presence` | Your starting value for this element. |
 | `myPresence` | Your current value. |
 | `everyone` | `PresenceEntry[]` for everyone with the element on screen. |
-| `setPresence` | Replace your value. |
+| `setMyPresence` | Replace your value. |
 | `update` | Render shared data and presence through one callback. |
 
-From outside the element, use its handle: `getHandle(id).getMyPresence()`, `.getEveryone()`, `.setPresence(v)`, and `.onPresenceChange(select?, callback)` (works before the element exists).
+From outside the element, use its handle: `getHandle(id).getMyPresence()`, `.getEveryone()`, `.setMyPresence(v)`, and `.onPresenceChange(select?, callback)` (works before the element exists).
 
 Built-in example: `can-hover` uses a `{ hover: boolean }` presence and sets `[data-playhtml-hover]` when anyone hovers.
 
-In React, `withSharedState` / `<CanPlayElement>` expose the same `myPresence`, `everyone`, and `setPresence` fields on render props.
+In React, `withSharedState` / `<CanPlayElement>` expose the same `myPresence`, `everyone`, and `setMyPresence` fields on render props.
 
 ---
 
@@ -183,8 +183,8 @@ These keep working. New code should use the APIs above.
 | `playhtml.presence` (`PresenceAPI`: `setMyPresence`, `getPresences`, `onPresenceChange`, `getMyIdentity`) | `playhtml.page`, `playhtml.users.me`, `playhtml.users.cursors` |
 | `PresenceView` (pid-keyed `Map` of flattened channels) | `PresenceEntry` |
 | `room.presence` | the same methods on `room` |
-| Element `live`, `setLive`, `getLive`, `users` | `presence`, `setPresence`, `getMyPresence`, `everyone` |
-| Element `awareness`, `myAwareness`, `setMyAwareness`, `myDefaultAwareness`, `awarenessByStableId` | `everyone`, `myPresence`, `setPresence`, `presence` |
+| Element `live`, `setLive`, `getLive`, `users` | `presence`, `setMyPresence`, `getMyPresence`, `everyone` |
+| Element `awareness`, `myAwareness`, `setMyAwareness`, `myDefaultAwareness`, `awarenessByStableId` | `everyone`, `myPresence`, `setMyPresence`, `presence` |
 | `playhtml.cursorClient.getCursorPresences()`, `CursorPresenceView` | `playhtml.users.cursors.getAll()`, `CursorEntry` |
 
 With `developmentMode`, playhtml logs a one-time notice the first time you use a deprecated name (except the element `live` names and `window.cursors`).

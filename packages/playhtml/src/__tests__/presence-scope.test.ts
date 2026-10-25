@@ -41,18 +41,18 @@ describe("playhtml.page presence", () => {
   });
 
   it("merges top-level keys into my presence and clears with null", () => {
-    playhtml.page.setPresence({ status: "typing", mood: "happy" });
-    playhtml.page.setPresence({ status: "idle" });
+    playhtml.page.setMyPresence({ status: "typing", mood: "happy" });
+    playhtml.page.setMyPresence({ status: "idle" });
     const [me] = playhtml.page.getEveryone();
     expect(me.user.isMe).toBe(true);
     expect(me.presence).toEqual({ status: "idle", mood: "happy" });
 
-    playhtml.page.setPresence({ mood: null });
+    playhtml.page.setMyPresence({ mood: null });
     expect(playhtml.page.getEveryone()[0].presence).toEqual({ status: "idle" });
   });
 
   it("includes remote people with their presence, in users order", () => {
-    playhtml.page.setPresence({ status: "here" });
+    playhtml.page.setMyPresence({ status: "here" });
     receiveRemote({
       remote: {
         identity: mina,
@@ -70,14 +70,22 @@ describe("playhtml.page presence", () => {
   });
 
   it("narrows to one key", () => {
-    playhtml.page.setPresence({ status: "typing", mood: "happy" });
+    playhtml.page.setMyPresence({ status: "typing", mood: "happy" });
     expect(playhtml.page.getEveryone("status")[0].presence).toBe("typing");
   });
 
   it("rejects non-objects and reserved keys", () => {
-    expect(() => playhtml.page.setPresence("typing" as any)).toThrow(/takes an object/);
-    expect(() => playhtml.page.setPresence({ cursor: 1 })).toThrow(/users.cursors/);
-    expect(() => playhtml.page.setPresence({ isMe: true })).toThrow(/reserved/);
+    expect(() => playhtml.page.setMyPresence(5 as any)).toThrow(/takes an object/);
+    expect(() => playhtml.page.setMyPresence({ cursor: 1 })).toThrow(/users.cursors/);
+    expect(() => playhtml.page.setMyPresence({ isMe: true })).toThrow(/reserved/);
+  });
+
+  it("accepts the older channel form", () => {
+    playhtml.page.setMyPresence("status", "typing");
+    expect(playhtml.page.getEveryone()[0].presence).toEqual({ status: "typing" });
+    playhtml.page.setMyPresence("status", null);
+    expect(playhtml.page.getEveryone()[0].presence).toEqual({});
+    expect(() => playhtml.page.setMyPresence("cursor", 1)).toThrow(/users.cursors/);
   });
 
   it("key subscriptions replay, then fire only when that key changes", () => {
@@ -86,20 +94,20 @@ describe("playhtml.page presence", () => {
     expect(callback).toHaveBeenCalledTimes(1);
     expect(callback.mock.lastCall![0][0].presence).toBeUndefined();
 
-    playhtml.page.setPresence({ status: "typing" });
+    playhtml.page.setMyPresence({ status: "typing" });
     expect(callback).toHaveBeenCalledTimes(2);
     expect(callback.mock.lastCall![0][0].presence).toBe("typing");
 
-    playhtml.page.setPresence({ mood: "happy" });
+    playhtml.page.setMyPresence({ mood: "happy" });
     expect(callback).toHaveBeenCalledTimes(2);
 
     unsubscribe();
-    playhtml.page.setPresence({ status: "idle" });
+    playhtml.page.setMyPresence({ status: "idle" });
     expect(callback).toHaveBeenCalledTimes(2);
   });
 
   it("selector subscriptions fire only when the selection changes", () => {
-    playhtml.page.setPresence({ status: { text: "a", emoji: "x" } });
+    playhtml.page.setMyPresence({ status: { text: "a", emoji: "x" } });
     const callback = vi.fn();
     playhtml.page.onPresenceChange(
       (presence) => (presence.status as { text: string } | undefined)?.text,
@@ -108,10 +116,10 @@ describe("playhtml.page presence", () => {
     expect(callback).toHaveBeenCalledTimes(1);
     expect(callback.mock.lastCall![0][0].presence).toBe("a");
 
-    playhtml.page.setPresence({ status: { text: "a", emoji: "y" } });
+    playhtml.page.setMyPresence({ status: { text: "a", emoji: "y" } });
     expect(callback).toHaveBeenCalledTimes(1);
 
-    playhtml.page.setPresence({ status: { text: "b", emoji: "y" } });
+    playhtml.page.setMyPresence({ status: { text: "b", emoji: "y" } });
     expect(callback).toHaveBeenCalledTimes(2);
     expect(callback.mock.lastCall![0][0].presence).toBe("b");
   });
@@ -129,7 +137,7 @@ describe("playhtml.page presence", () => {
   });
 
   it("the old presence API sees values written through the new one", () => {
-    playhtml.page.setPresence({ status: "typing" });
+    playhtml.page.setMyPresence({ status: "typing" });
     const self = Array.from(playhtml.presence.getPresences().values()).find(
       (view) => view.isMe,
     )!;
@@ -140,7 +148,7 @@ describe("playhtml.page presence", () => {
     await resetPlayHTML();
     await playhtml.init({ cursors: { enabled: false }, developmentMode: true });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    for (let i = 0; i < 25; i++) playhtml.page.setPresence({ scroll: i });
+    for (let i = 0; i < 25; i++) playhtml.page.setMyPresence({ scroll: i });
     const rateWarnings = warn.mock.calls.filter(([message]) =>
       String(message).includes("more than 20 times per second"),
     );
@@ -173,7 +181,7 @@ describe("element presence", () => {
     return { handle, update, element };
   }
 
-  it("exposes myPresence, everyone, and setPresence to update", async () => {
+  it("exposes myPresence, everyone, and setMyPresence to update", async () => {
     const { update } = registerReady();
     await flushPresencePublishes();
     const ctx = update.mock.lastCall![0];
@@ -185,7 +193,7 @@ describe("element presence", () => {
       },
     ]);
 
-    ctx.setPresence({ ready: true });
+    ctx.setMyPresence({ ready: true });
     const next = update.mock.lastCall![0];
     expect(next.myPresence).toEqual({ ready: true });
     expect(next.everyone[0].presence).toEqual({ ready: true });
@@ -219,13 +227,13 @@ describe("element presence", () => {
     expect(callback.mock.lastCall![0][0].presence).toBe(false);
     const calls = callback.mock.calls.length;
 
-    handle.setPresence({ ready: false });
+    handle.setMyPresence({ ready: false });
     expect(callback).toHaveBeenCalledTimes(calls);
-    handle.setPresence({ ready: true });
+    handle.setMyPresence({ ready: true });
     expect(callback.mock.lastCall![0][0].presence).toBe(true);
 
     unsubscribe();
-    handle.setPresence({ ready: false });
+    handle.setMyPresence({ ready: false });
     expect(callback.mock.lastCall![0][0].presence).toBe(true);
   });
 
@@ -254,7 +262,7 @@ describe("presence rooms", () => {
 
   it("share the page presence API", () => {
     const room = playhtml.createPresenceRoom("lobby-42");
-    room.setPresence({ ready: true });
+    room.setMyPresence({ ready: true });
     expect(room.getEveryone()[0].presence).toEqual({ ready: true });
     expect(playhtml.page.getEveryone()[0].presence).toEqual({});
     room.destroy();

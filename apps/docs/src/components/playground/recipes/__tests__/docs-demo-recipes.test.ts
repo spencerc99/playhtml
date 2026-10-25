@@ -24,7 +24,7 @@ const DEPRECATED = [
   "playerIdentity",
   "setLive",
   "getPresences",
-  "setMyPresence",
+  "playhtml.presence.",
   "usePresence(",
 ];
 

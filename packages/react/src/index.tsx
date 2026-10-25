@@ -474,14 +474,14 @@ export function CanPlayElement<T extends object, V = any>({
       }
       handler.setData(newData);
     },
-    setPresence: (next) => {
-      getRegisteredHandler()?.setPresence(next);
+    setMyPresence: (next) => {
+      getRegisteredHandler()?.setMyPresence(next);
     },
     setLive: (next) => {
-      getRegisteredHandler()?.setPresence(next);
+      getRegisteredHandler()?.setMyPresence(next);
     },
     setMyAwareness: (next) => {
-      getRegisteredHandler()?.setPresence(next);
+      getRegisteredHandler()?.setMyPresence(next);
     },
     myAwareness: live,
     ref,

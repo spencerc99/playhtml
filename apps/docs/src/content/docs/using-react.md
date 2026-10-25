@@ -81,7 +81,7 @@ export const ReactionView = withSharedState(
 
 Use the mutator form for counters and other `+/-` updates so each interaction edits the draft value at write time.
 
-Add `presence` to the config for per-person state scoped to this element that clears when they leave. Render everyone from `everyone`, read yours from `myPresence`, and change it with `setPresence`.
+Add `presence` to the config for per-person state scoped to this element that clears when they leave. Render everyone from `everyone`, read yours from `myPresence`, and change it with `setMyPresence`.
 
 ### `<CanPlayElement>`: for when you need JSX children, not a wrapper
 

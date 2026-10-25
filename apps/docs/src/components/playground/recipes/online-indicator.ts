@@ -25,7 +25,7 @@ const online = playhtml.register("online", {
 });
 
 document.getElementById("my-color").addEventListener("input", (event) => {
-  online.setPresence({ color: event.target.value });
+  online.setMyPresence({ color: event.target.value });
 });`;
 
 export const onlineIndicatorRecipe: ExampleRecipe = {

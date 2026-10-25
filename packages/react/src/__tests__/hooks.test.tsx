@@ -495,8 +495,8 @@ describe("usePagePresence", () => {
     await waitFor(() => expect(captured!.everyone.length).toBe(1));
     expect(captured!.myPresence).toBeUndefined();
 
-    act(() => captured!.setPresence("typing"));
-    expect(playhtml.page.setPresence).toHaveBeenLastCalledWith({ status: "typing" });
+    act(() => captured!.setMyPresence("typing"));
+    expect(playhtml.page.setMyPresence).toHaveBeenLastCalledWith({ status: "typing" });
     await waitFor(() => expect(captured!.myPresence).toBe("typing"));
     expect(captured!.everyone[0].presence).toBe("typing");
   });
@@ -516,14 +516,14 @@ describe("usePagePresence", () => {
     );
     await waitFor(() => expect(captured.everyone.length).toBe(1));
 
-    act(() => captured.setPresence({ status: { text: "a" }, mood: "x" }));
+    act(() => captured.setMyPresence({ status: { text: "a" }, mood: "x" }));
     await waitFor(() => expect(captured.myPresence).toBe("a"));
     const rendersAfterA = renders;
-    act(() => captured.setPresence({ mood: "y" }));
+    act(() => captured.setMyPresence({ mood: "y" }));
     expect(renders).toBe(rendersAfterA);
   });
 
-  it("setPresence warns and no-ops before sync", () => {
+  it("setMyPresence warns and no-ops before sync", () => {
     let captured: any = null;
     function TestComponent() {
       captured = usePagePresence();
@@ -534,9 +534,9 @@ describe("usePagePresence", () => {
         <TestComponent />
       </PlayContext.Provider>,
     );
-    captured.setPresence({ status: "x" });
+    captured.setMyPresence({ status: "x" });
     expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining("usePagePresence().setPresence called before init"),
+      expect.stringContaining("usePagePresence().setMyPresence called before init"),
     );
     expect(captured.everyone).toEqual([]);
   });

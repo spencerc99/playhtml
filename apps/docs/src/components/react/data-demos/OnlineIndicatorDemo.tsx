@@ -12,7 +12,7 @@ export const OnlineIndicatorDemo = withSharedState(
     defaultData: {},
     presence: { color: DEFAULT_COLOR },
   },
-  ({ myPresence, setPresence, everyone }) => (
+  ({ myPresence, setMyPresence, everyone }) => (
     <div className="ph-online-indicator">
       <div
         className="ph-online-indicator__row"
@@ -36,7 +36,7 @@ export const OnlineIndicatorDemo = withSharedState(
           <input
             type="color"
             value={myPresence?.color ?? DEFAULT_COLOR}
-            onChange={(event) => setPresence({ color: event.target.value })}
+            onChange={(event) => setMyPresence({ color: event.target.value })}
           />
         </label>
       </div>

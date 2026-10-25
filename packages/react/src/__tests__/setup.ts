@@ -55,7 +55,7 @@ function mockGetAllUsers(): Array<Record<string, unknown>> {
 }
 
 // Mock page presence: one presence object for the local user, merged by
-// setPresence, with key/selector subscriptions that replay immediately.
+// setMyPresence, with key/selector subscriptions that replay immediately.
 let mockPagePresence: Record<string, unknown> = {};
 const pagePresenceListeners = new Set<() => void>();
 
@@ -73,7 +73,7 @@ function toSelector(keyOrSelect?: string | ((presence: Record<string, unknown>) 
 
 const mockPage = {
   getEveryone: vi.fn((key?: string) => mockPageEveryone(toSelector(key))),
-  setPresence: vi.fn((partial: Record<string, unknown>) => {
+  setMyPresence: vi.fn((partial: Record<string, unknown>) => {
     const next = { ...mockPagePresence };
     for (const [key, value] of Object.entries(partial)) {
       if (value === null || value === undefined) delete next[key];

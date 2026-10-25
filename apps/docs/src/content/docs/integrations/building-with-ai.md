@@ -107,8 +107,8 @@ Vanilla HTML (register):
 - init.resetShortcut = "shiftKey"                              // Keyboard reset
 - ctx.setData(value | (draft) => { ... })                     // Write shared state
 - ctx.localData / ctx.setLocalData(...)                        // Per-user, un-synced UI state
-- ctx.myPresence / ctx.everyone / ctx.setPresence(...)        // Element presence (init.presence = starting value)
-- playhtml.page.setPresence({ key: value }) / .getEveryone() / .onPresenceChange(key, cb) // Page presence
+- ctx.myPresence / ctx.everyone / ctx.setMyPresence(...)        // Element presence (init.presence = starting value)
+- playhtml.page.setMyPresence({ key: value }) / .getEveryone() / .onPresenceChange(key, cb) // Page presence
 - ctx.requestUpdate()                                          // Repaint clock-driven views (timers)
 
 Use exactly one renderer: `update` or `view`. Do not assign initializer
@@ -116,8 +116,8 @@ fields directly to the DOM element in new code.
 
 React (withSharedState):
 - withSharedState({ defaultData: {...} }, ({ data, setData, ref }) => JSX)
-- For element presence: { presence: value } in config, use setPresence and render everyone
-- For page presence: usePagePresence(key) → { myPresence, everyone, setPresence }
+- For element presence: { presence: value } in config, use setMyPresence and render everyone
+- For page presence: usePagePresence(key) → { myPresence, everyone, setMyPresence }
 - For events: usePlayContext() → { registerPlayEventListener, dispatchPlayEvent }
 - For identity in React: useMe() and useUsers() (User = { pid, name, color, isMe }); for cursor options: usePlayContext().configureCursors
 

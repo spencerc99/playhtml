@@ -23,13 +23,13 @@ For the full API surface (`User`, `PresenceEntry`, `playhtml.page`, cursor types
 
 ## Page presence
 
-Each person has one presence object for the page. `setPresence` merges the keys you pass into yours, so separate features can each own a key without overwriting each other. Everyone reads it back as a list of `{ user, presence }`, including you.
+Each person has one presence object for the page. `setMyPresence` merges the keys you pass into yours, so separate features can each own a key without overwriting each other. Everyone reads it back as a list of `{ user, presence }`, including you.
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```js
 // Set a key on your presence (other keys are kept)
-playhtml.page.setPresence({ status: { text: "focused", icon: "target" } });
+playhtml.page.setMyPresence({ status: { text: "focused", icon: "target" } });
 
 // Read everyone (including you; user.isMe marks you)
 for (const { user, presence } of playhtml.page.getEveryone()) {
@@ -49,12 +49,12 @@ const unsubscribe = playhtml.page.onPresenceChange("status", (everyone) => {
 import { usePagePresence } from "@playhtml/react";
 
 function StatusList() {
-  // Watches one key; setPresence writes just that key.
-  const { myPresence, everyone, setPresence } = usePagePresence<{ text: string }>("status");
+  // Watches one key; setMyPresence writes just that key.
+  const { myPresence, everyone, setMyPresence } = usePagePresence<{ text: string }>("status");
 
   return (
     <>
-      <button onClick={() => setPresence({ text: "focused" })}>focus</button>
+      <button onClick={() => setMyPresence({ text: "focused" })}>focus</button>
       {everyone.map(({ user, presence }) => (
         <span key={user.pid} style={{ color: user.color }}>
           {presence?.text ?? "…"}
@@ -84,17 +84,17 @@ playhtml.page.onPresenceChange((p) => p.status?.text, callback); // a selection
 ### Setting and clearing
 
 ```js
-playhtml.page.setPresence({ status: "typing" });  // set a key
-playhtml.page.setPresence({ status: null });      // remove a key
+playhtml.page.setMyPresence({ status: "typing" });  // set a key
+playhtml.page.setMyPresence({ status: null });      // remove a key
 ```
 
-Top-level keys merge, but values inside a key replace: `setPresence({ status: { icon: "wave" } })` replaces the whole `status`. If two separate features on your page both use presence, give their keys distinct names (`chatTyping`, `lobbyReady`) so they don't collide.
+Top-level keys merge, but values inside a key replace: `setMyPresence({ status: { icon: "wave" } })` replaces the whole `status`. If two separate features on your page both use presence, give their keys distinct names (`chatTyping`, `lobbyReady`) so they don't collide.
 
 Presence is for **state changes**, not per-frame streams. Each person's page presence writes are rate limited (about 20 per second), and extra writes are dropped. For pointer position, use [cursors](/docs/data/presence/cursors/). For scroll position or similar, throttle your writes.
 
 ## Element presence
 
-Use element presence when the signal belongs to one playhtml element, like "who has joined this widget" or "which choice is this reader previewing here". Give the element a starting `presence`, change yours with `setPresence`, and render everyone from `everyone`.
+Use element presence when the signal belongs to one playhtml element, like "who has joined this widget" or "which choice is this reader previewing here". Give the element a starting `presence`, change yours with `setMyPresence`, and render everyone from `everyone`.
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
@@ -106,8 +106,8 @@ Use element presence when the signal belongs to one playhtml element, like "who 
 
   playhtml.register("ready-count", {
     presence: { ready: false },
-    onClick: (_event, { myPresence, setPresence }) => {
-      setPresence({ ready: !myPresence.ready });
+    onClick: (_event, { myPresence, setMyPresence }) => {
+      setMyPresence({ ready: !myPresence.ready });
     },
     update: ({ element, everyone }) => {
       const ready = everyone.filter(({ presence }) => presence.ready).length;
@@ -122,10 +122,10 @@ Use element presence when the signal belongs to one playhtml element, like "who 
   <TabItem label="React">
 ```tsx
 <CanPlayElement id="ready-count" defaultData={{}} presence={{ ready: false }}>
-  {({ myPresence, everyone, setPresence }) => {
+  {({ myPresence, everyone, setMyPresence }) => {
     const ready = everyone.filter(({ presence }) => presence.ready).length;
     return (
-      <button onClick={() => setPresence({ ready: !myPresence.ready })}>
+      <button onClick={() => setMyPresence({ ready: !myPresence.ready })}>
         {ready} of {everyone.length} ready
       </button>
     );
@@ -135,7 +135,7 @@ Use element presence when the signal belongs to one playhtml element, like "who 
   </TabItem>
 </Tabs>
 
-On an element, `everyone` means everyone who has that element on screen, each starting at the element's `presence` value. `setPresence` on an element replaces your value (the page merges, because many features share it; an element owns its value).
+On an element, `everyone` means everyone who has that element on screen, each starting at the element's `presence` value. `setMyPresence` on an element replaces your value (the page merges, because many features share it; an element owns its value).
 
 You can also read and watch an element's presence from elsewhere on the page through its handle:
 
@@ -158,7 +158,7 @@ Page presence covers everyone on the page. When you want presence **scoped to so
 ```js
 const room = playhtml.createPresenceRoom("lobby-42");
 
-room.setPresence({ status: { text: "ready" } });
+room.setMyPresence({ status: { text: "ready" } });
 const unsubscribe = room.onPresenceChange("status", renderLobby);
 
 // When you're done (e.g. the user leaves the lobby), tear it down:
@@ -175,7 +175,7 @@ function Lobby() {
   const room = usePresenceRoom("lobby-42");
   if (!room) return null; // null until joined
   return (
-    <button onClick={() => room.setPresence({ ready: true })}>
+    <button onClick={() => room.setMyPresence({ ready: true })}>
       {room.getEveryone().length} in the lobby
     </button>
   );
@@ -203,13 +203,13 @@ Earlier versions used a channel-based `playhtml.presence` object and element `li
 
 | Before | Now |
 | --- | --- |
-| `playhtml.presence.setMyPresence("status", v)` | `playhtml.page.setPresence({ status: v })` |
+| `playhtml.presence.setMyPresence("status", v)` | `playhtml.page.setMyPresence({ status: v })` |
 | `playhtml.presence.getPresences()` | `playhtml.page.getEveryone()` |
 | `playhtml.presence.onPresenceChange("status", cb)` | `playhtml.page.onPresenceChange("status", cb)` |
 | `playhtml.presence.onPresenceChange("cursor", cb)` | `playhtml.users.cursors.onChange(cb)` |
 | `usePresence("status")` | `usePagePresence("status")` |
-| `room.presence.setMyPresence(...)` | `room.setPresence({ ... })` |
-| element `live`, `setLive`, `users` | `presence`, `setPresence`, `everyone` (your own value is `myPresence`) |
+| `room.presence.setMyPresence(...)` | `room.setMyPresence({ ... })` |
+| element `live`, `setLive`, `users` | `presence`, `setMyPresence`, `everyone` (your own value is `myPresence`) |
 
 ## When to use data instead
 

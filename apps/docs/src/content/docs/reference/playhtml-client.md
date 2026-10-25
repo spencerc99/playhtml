@@ -404,12 +404,12 @@ playhtml.users.cursors.onChange(drawCursors);
 
 **Type:** [`PresenceScope`](/docs/reference/presence/#page-presence-playhtmlpage)
 
-Page presence: what each person on the page is doing right now. Each person has one presence object; `setPresence` merges keys into yours. Throws if accessed before `init()` completes.
+Page presence: what each person on the page is doing right now. Each person has one presence object; `setMyPresence` merges keys into yours. Throws if accessed before `init()` completes.
 
 ```js
 await playhtml.ready;
 
-playhtml.page.setPresence({ status: "typing" });
+playhtml.page.setMyPresence({ status: "typing" });
 playhtml.page.getEveryone();                         // [{ user, presence }]
 playhtml.page.onPresenceChange("status", renderStatusRow);
 ```
@@ -417,7 +417,7 @@ playhtml.page.onPresenceChange("status", renderStatusRow);
 | Method | Description |
 |---|---|
 | `getEveryone(key?)` | Everyone's presence (including yours), in join order. With a key, each `presence` is that key's value. |
-| `setPresence(partial)` | Merges top-level keys into your presence. `null` removes a key. |
+| `setMyPresence(partial)` | Merges top-level keys into your presence. `null` removes a key. |
 | `onPresenceChange(keyOrSelect?, callback)` | Calls back right away and whenever the watched part changes. Returns an unsubscribe function. |
 
 ---
@@ -432,7 +432,7 @@ Creates a separate presence scope (sidebar, lobby, shared document) with the sam
 await playhtml.ready;
 
 const sidebar = playhtml.createPresenceRoom("sidebar");
-sidebar.setPresence({ focus: { section: "comments" } });
+sidebar.setMyPresence({ focus: { section: "comments" } });
 
 // Tear down when done
 sidebar.destroy();

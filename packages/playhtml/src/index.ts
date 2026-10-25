@@ -3086,7 +3086,7 @@ export interface PlayElementHandle<T = any, U = any, V = any> {
   /** Everyone with this element on screen (including you), in join order. */
   getEveryone(): PresenceEntry<V>[];
   /** Replaces your presence on this element. */
-  setPresence(next: V): void;
+  setMyPresence(next: V): void;
   /**
    * Subscribes to presence on this element. Replays immediately, then fires
    * only when the (selected) presence changes. Works before the element binds.
@@ -3096,9 +3096,9 @@ export interface PlayElementHandle<T = any, U = any, V = any> {
     select: (presence: V) => S,
     callback: (everyone: PresenceEntry<S>[]) => void,
   ): () => void;
-  /** @deprecated Use `setPresence`. */
+  /** @deprecated Use `setMyPresence`. */
   setLive(next: V): void;
-  /** @deprecated Use `setPresence`. */
+  /** @deprecated Use `setMyPresence`. */
   setMyAwareness(next: V): void;
   /** Re-run the view now (for clock-driven views). No-op without a view. */
   requestUpdate(): void;
@@ -3216,10 +3216,10 @@ function createPlayElementHandle(
     },
     getMyPresence: () => findHandlerForElementId(elementId, tag)?.selfAwareness,
     getEveryone: () => findHandlerForElementId(elementId, tag)?.getEveryone() ?? [],
-    setPresence: (next) => {
+    setMyPresence: (next) => {
       const handler = findHandlerForElementId(elementId, tag);
-      if (!handler) return warnUnboundHandleWrite("setPresence", elementId);
-      handler.setPresence(next);
+      if (!handler) return warnUnboundHandleWrite("setMyPresence", elementId);
+      handler.setMyPresence(next);
     },
     onPresenceChange: (
       first: ((presence: any) => unknown) | ((everyone: PresenceEntry<any>[]) => void),
@@ -3257,13 +3257,13 @@ function createPlayElementHandle(
     setLive: (next) => {
       const handler = findHandlerForElementId(elementId, tag);
       if (!handler) return warnUnboundHandleWrite("setLive", elementId);
-      handler.setPresence(next);
+      handler.setMyPresence(next);
     },
     setMyAwareness: (next) => {
-      warnDeprecated("setMyAwareness", "setPresence");
+      warnDeprecated("setMyAwareness", "setMyPresence");
       const handler = findHandlerForElementId(elementId, tag);
       if (!handler) return warnUnboundHandleWrite("setMyAwareness", elementId);
-      handler.setPresence(next);
+      handler.setMyPresence(next);
     },
     requestUpdate: () => {
       const handler = findHandlerForElementId(elementId, tag);

@@ -126,7 +126,7 @@ export function createPresenceScope(options: PresenceScopeOptions): PresenceScop
     if (recentWrites.length > PRESENCE_WRITE_BUDGET) {
       warnedAboutRate = true;
       console.warn(
-        `[playhtml] setPresence() was called more than ${PRESENCE_WRITE_BUDGET} times per second. ` +
+        `[playhtml] setMyPresence() was called more than ${PRESENCE_WRITE_BUDGET} times per second. ` +
           `Presence is for state changes, not per-frame streams; extra writes are dropped. ` +
           `Throttle the writes, or use cursors for pointer position.`,
       );
@@ -139,10 +139,17 @@ export function createPresenceScope(options: PresenceScopeOptions): PresenceScop
     return everyoneSelected(selectorFor(key));
   }
 
-  function setPresence(partial: PagePresence): void {
+  function setMyPresence(partial: PagePresence): void;
+  function setMyPresence(channel: string, data: unknown): void;
+  function setMyPresence(partial: PagePresence | string, data?: unknown): void {
+    // The channel form is the older PresenceAPI call; same write, one key.
+    if (typeof partial === "string") {
+      setMyPresence({ [partial]: data });
+      return;
+    }
     if (partial === null || typeof partial !== "object" || Array.isArray(partial)) {
       throw new Error(
-        "[playhtml] setPresence() takes an object of keys to merge, e.g. setPresence({ status: \"typing\" }).",
+        "[playhtml] setMyPresence() takes an object of keys to merge, e.g. setMyPresence({ status: \"typing\" }).",
       );
     }
     const entries = Object.entries(partial);
@@ -188,5 +195,5 @@ export function createPresenceScope(options: PresenceScopeOptions): PresenceScop
     });
   }
 
-  return { getEveryone, setPresence, onPresenceChange };
+  return { getEveryone, setMyPresence, onPresenceChange };
 }

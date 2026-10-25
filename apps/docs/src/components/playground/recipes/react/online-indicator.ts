@@ -1,5 +1,5 @@
 // ABOUTME: Provides the copy-paste React source for the online indicator recipe.
-// ABOUTME: Reads every reader's color from `everyone` and sets your own with setPresence.
+// ABOUTME: Reads every reader's color from `everyone` and sets your own with setMyPresence.
 import { onlineIndicatorCss } from "../demo-shared";
 import { appShell } from "./app-shell";
 
@@ -11,7 +11,7 @@ const DEFAULT_COLOR = "#4a6a3e";
 // reader's current value arrives in \`everyone\` next to their identity.
 const OnlineIndicator = withSharedState(
   { id: "online", defaultData: {}, presence: { color: DEFAULT_COLOR } },
-  ({ myPresence, setPresence, everyone }) => (
+  ({ myPresence, setMyPresence, everyone }) => (
     <div>
       <div className="dots">
         {everyone.map(({ user, presence }) => (
@@ -30,7 +30,7 @@ const OnlineIndicator = withSharedState(
         <input
           type="color"
           value={myPresence?.color ?? DEFAULT_COLOR}
-          onChange={(event) => setPresence({ color: event.target.value })}
+          onChange={(event) => setMyPresence({ color: event.target.value })}
         />
       </label>
     </div>

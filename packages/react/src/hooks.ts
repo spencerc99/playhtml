@@ -134,7 +134,7 @@ export function useCursorZone(
 
 /**
  * @deprecated Use `usePagePresence(key)`, which returns
- * `{ myPresence, everyone, setPresence }`, plus `useMe()` for your user.
+ * `{ myPresence, everyone, setMyPresence }`, plus `useMe()` for your user.
  *
  * Subscribe to a presence channel. Safe to call before playhtml has initialized:
  * returns an empty map, a setter that warns and no-ops, and `null` identity
@@ -212,7 +212,7 @@ type PagePresenceResult<M, E, W> = {
   /** Everyone on the page (including you), in join order. */
   everyone: PresenceEntry<E>[];
   /** Writes your presence. Warns and no-ops before playhtml has synced. */
-  setPresence: (value: W) => void;
+  setMyPresence: (value: W) => void;
 };
 
 /**
@@ -220,11 +220,11 @@ type PagePresenceResult<M, E, W> = {
  * only when the part you watch changes.
  *
  * - `usePagePresence()` watches each person's whole presence object;
- *   `setPresence(partial)` merges top-level keys into yours.
- * - `usePagePresence("status")` watches one key; `setPresence(value)` writes
+ *   `setMyPresence(partial)` merges top-level keys into yours.
+ * - `usePagePresence("status")` watches one key; `setMyPresence(value)` writes
  *   just that key (`null` clears it).
  * - `usePagePresence((p) => p.status?.text)` watches a selection (read the
- *   rest with `setPresence(partial)`). The selector is read on each change, so
+ *   rest with `setMyPresence(partial)`). The selector is read on each change, so
  *   it may close over props.
  */
 export function usePagePresence(): PagePresenceResult<
@@ -266,13 +266,13 @@ export function usePagePresence(
     [key, hasSelector],
   );
 
-  const setPresence = useCallback(
+  const setMyPresence = useCallback(
     (value: unknown) => {
       if (isLoading) {
-        warnPreInit("usePagePresence().setPresence");
+        warnPreInit("usePagePresence().setMyPresence");
         return;
       }
-      playhtml.page.setPresence(
+      playhtml.page.setMyPresence(
         key !== undefined ? { [key]: value } : (value as PagePresence),
       );
     },
@@ -280,7 +280,7 @@ export function usePagePresence(
   );
 
   const myPresence = everyone.find(({ user }) => user.isMe)?.presence;
-  return { myPresence, everyone, setPresence };
+  return { myPresence, everyone, setMyPresence };
 }
 
 /**

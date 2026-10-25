@@ -93,7 +93,7 @@ const ReactionButton = withSharedState(
     defaultData: { count: initialCount },
     presence: { hovering: false },
   }),
-  ({ data, everyone, setData, setPresence, ref }) => {
+  ({ data, everyone, setData, setMyPresence, ref }) => {
     const [hasReacted, setHasReacted] = useState(false);
 
     useEffect(() => {
@@ -105,8 +105,8 @@ const ReactionButton = withSharedState(
     return (
       <button
         id="reaction-button"
-        onPointerEnter={() => setPresence({ hovering: true })}
-        onPointerLeave={() => setPresence({ hovering: false })}
+        onPointerEnter={() => setMyPresence({ hovering: true })}
+        onPointerLeave={() => setMyPresence({ hovering: false })}
         onClick={() => {
           if (hasReacted) {
             setData((draft) => {

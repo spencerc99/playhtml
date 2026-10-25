@@ -250,7 +250,7 @@
           return { count: Number(initialCount) };
         },
         presence: { hovering: false },
-        view: ({ data, everyone, setData, setPresence }) => {
+        view: ({ data, everyone, setData, setMyPresence }) => {
           const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
           const peopleHovering = everyone.filter(({ presence }) => presence.hovering).length;
           const react = () => {
@@ -267,8 +267,8 @@
               class="reaction ${hasReacted ? "reacted" : ""}"
               style="font-size: 24px; padding: 10px 20px; margin: 10px 0;"
               @click=${react}
-              @pointerenter=${() => setPresence({ hovering: true })}
-              @pointerleave=${() => setPresence({ hovering: false })}
+              @pointerenter=${() => setMyPresence({ hovering: true })}
+              @pointerleave=${() => setMyPresence({ hovering: false })}
             >
               💖 ${data.count} · ${peopleHovering} here
             </button>

@@ -537,9 +537,9 @@ export class ElementHandler<T = any, U = any, V = any> {
       myAwareness: this.selfAwareness,
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
-      setPresence: (newData) => this.setPresence(newData),
-      setLive: (newData) => this.setPresence(newData),
-      setMyAwareness: (newData) => this.setPresence(newData),
+      setMyPresence: (newData) => this.setMyPresence(newData),
+      setLive: (newData) => this.setMyPresence(newData),
+      setMyAwareness: (newData) => this.setMyPresence(newData),
       requestUpdate: () => this.requestUpdate(),
     };
   }
@@ -562,9 +562,9 @@ export class ElementHandler<T = any, U = any, V = any> {
       getAwareness: () => this.awareness,
       setData: (newData) => this.setSetupData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
-      setPresence: (newData) => this.setPresence(newData),
-      setLive: (newData) => this.setPresence(newData),
-      setMyAwareness: (newData) => this.setPresence(newData),
+      setMyPresence: (newData) => this.setMyPresence(newData),
+      setLive: (newData) => this.setMyPresence(newData),
+      setMyAwareness: (newData) => this.setMyPresence(newData),
       requestUpdate: () => this.requestUpdate(),
     };
   }
@@ -613,10 +613,10 @@ export class ElementHandler<T = any, U = any, V = any> {
   }
 
   // TODO: this should be keyed on the element to avoid conflicts
-  setPresence(data: V): void {
+  setMyPresence(data: V): void {
     // In view mode an awareness change re-renders, so writing awareness during
     // render would loop. Reject it like the other write paths.
-    if (this.rejectWriteDuringRender("setPresence")) return;
+    if (this.rejectWriteDuringRender("setMyPresence")) return;
     if (data === this.selfAwareness) {
       // avoid duplicate broadcasts
       return;
@@ -631,14 +631,14 @@ export class ElementHandler<T = any, U = any, V = any> {
     this.triggerAwarenessUpdate?.();
   }
 
-  /** @deprecated Use `setPresence`. */
+  /** @deprecated Use `setMyPresence`. */
   setLive(data: V): void {
-    this.setPresence(data);
+    this.setMyPresence(data);
   }
 
-  /** @deprecated Use `setPresence`. */
+  /** @deprecated Use `setMyPresence`. */
   setMyAwareness(data: V): void {
-    this.setPresence(data);
+    this.setMyPresence(data);
   }
 
   setDataDebounced(data: T) {

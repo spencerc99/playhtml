@@ -75,14 +75,14 @@ interface ReactElementEventHandlerData<T, V> {
   setData: (data: T | ((draft: T) => void)) => void;
   myPresence?: V;
   everyone: Array<{ user: User; presence: V }>;
-  setPresence: (data: V) => void;
+  setMyPresence: (data: V) => void;
   ref: React.RefObject<HTMLElement>;
 }
 ```
 
 `setData` accepts either a replacement value or a mutator function. See [Data essentials](/docs/data/data-essentials/) for the merge semantics.
 
-`myPresence`, `everyone`, and `setPresence` are this element's [presence](/docs/data/presence/#element-presence). Use them for signals tied to this element that should disappear when the person leaves. `everyone` lists everyone with the element on screen (including you), each with their current `presence`. The 2.15 names `live`, `users`, and `setLive` still work.
+`myPresence`, `everyone`, and `setMyPresence` are this element's [presence](/docs/data/presence/#element-presence). Use them for signals tied to this element that should disappear when the person leaves. `everyone` lists everyone with the element on screen (including you), each with their current `presence`. The 2.15 names `live`, `users`, and `setLive` still work.
 
 ### Props-dependent config
 
@@ -357,23 +357,23 @@ Read and write [page presence](/docs/data/presence/#page-presence): what each pe
 function usePagePresence(): {
   myPresence: PagePresence | undefined;
   everyone: PresenceEntry<PagePresence>[];
-  setPresence: (partial: PagePresence) => void; // merges keys
+  setMyPresence: (partial: PagePresence) => void; // merges keys
 };
 function usePagePresence<V>(key: string): {
   myPresence: V | undefined;
   everyone: PresenceEntry<V | undefined>[];
-  setPresence: (value: V | null) => void;     // writes just this key
+  setMyPresence: (value: V | null) => void;     // writes just this key
 };
 function usePagePresence<S>(select: (presence: PagePresence) => S): {
   myPresence: S | undefined;
   everyone: PresenceEntry<S>[];
-  setPresence: (partial: PagePresence) => void;
+  setMyPresence: (partial: PagePresence) => void;
 };
 ```
 
 ```tsx
-const { myPresence, everyone, setPresence } = usePagePresence<{ text: string }>("status");
-setPresence({ text: "focused" });
+const { myPresence, everyone, setMyPresence } = usePagePresence<{ text: string }>("status");
+setMyPresence({ text: "focused" });
 everyone.map(({ user, presence }) => `${user.name}: ${presence?.text}`);
 ```
 
@@ -422,7 +422,7 @@ function usePresenceRoom(name: string): PresenceRoom | null;
 
 ```tsx
 const room = usePresenceRoom("lobby");
-room?.setPresence({ status: { text: "ready" } });
+room?.setMyPresence({ status: { text: "ready" } });
 ```
 
 The room and its connection are torn down automatically when the component unmounts or `name` changes.

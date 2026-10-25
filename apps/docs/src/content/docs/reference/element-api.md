@@ -33,14 +33,14 @@ Passed to `update`, `view`, `onClick`, `onDrag`, and `onDragStart`:
 
   setData,             // (next) mutator fn or replacement object
   setLocalData,        // (next) mutator fn or replacement; re-renders view
-  setPresence,         // (next) replace your presence value for this element
+  setMyPresence,         // (next) replace your presence value for this element
   requestUpdate,       // () re-run view now; no-op without view
 }
 ```
 
 The older `live`, `users`, `setLive`, `awareness`, `awarenessByStableId`, `myAwareness`, and `setMyAwareness` fields remain available as compatibility aliases.
 
-Do not call `setData`, `setLocalData`, or `setPresence` during a `view` render — playhtml logs an error and ignores the write. `setData` merge rules: [Data essentials](/docs/data/data-essentials/).
+Do not call `setData`, `setLocalData`, or `setMyPresence` during a `view` render — playhtml logs an error and ignores the write. `setData` merge rules: [Data essentials](/docs/data/data-essentials/).
 
 ### `onMount` context
 
@@ -56,7 +56,7 @@ Do not call `setData`, `setLocalData`, or `setPresence` during a `view` render �
 
   setData,             // same setters as ctx
   setLocalData,
-  setPresence,
+  setMyPresence,
   requestUpdate,
 }
 ```
@@ -148,7 +148,7 @@ const initializer = {
 
 ## `presence`
 
-Your starting [presence](/docs/data/presence/#element-presence) value for this element. It clears when you leave. Everyone sees it in `everyone`, paired with your identity. `setPresence` replaces your value.
+Your starting [presence](/docs/data/presence/#element-presence) value for this element. It clears when you leave. Everyone sees it in `everyone`, paired with your identity. `setMyPresence` replaces your value.
 
 ```js
 const initializer = {
@@ -187,7 +187,7 @@ See [Registration API](/docs/reference/view-api/) for `register`, `define`, help
 
 ## Deprecated compatibility names
 
-`updateElement`, `updateElementAwareness`, `live`, `myDefaultAwareness`, `users`, `setLive`, `getLive`, `getUsers`, `awareness`, `awarenessByStableId`, `myAwareness`, `setMyAwareness`, and `getAwareness` remain available for existing elements. New code should use `update`, `presence`, `myPresence`, `everyone`, `setPresence`, `getMyPresence`, and `getEveryone`. Supplying both names from an alias pair, such as `update` and `updateElement`, is an error.
+`updateElement`, `updateElementAwareness`, `live`, `myDefaultAwareness`, `users`, `setLive`, `getLive`, `getUsers`, `awareness`, `awarenessByStableId`, `myAwareness`, `setMyAwareness`, and `getAwareness` remain available for existing elements. New code should use `update`, `presence`, `myPresence`, `everyone`, `setMyPresence`, `getMyPresence`, and `getEveryone`. Supplying both names from an alias pair, such as `update` and `updateElement`, is an error.
 
 ---
 

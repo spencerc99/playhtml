@@ -148,10 +148,10 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
   // TODO: should probably rename to "setTemporaryData" and use setLocalData to set indexeddb data
   setLocalData: (data: U | ((draft: U) => void)) => void;
   /** Replaces your presence on this element. */
-  setPresence: (data: V) => void;
-  /** @deprecated Use `setPresence`. */
+  setMyPresence: (data: V) => void;
+  /** @deprecated Use `setMyPresence`. */
   setLive: (data: V) => void;
-  /** @deprecated Use `setPresence`. */
+  /** @deprecated Use `setMyPresence`. */
   setMyAwareness: (data: V) => void;
   /**
    * Re-runs the element's `view` and patches the result into the DOM, even
@@ -179,10 +179,10 @@ export interface ElementSetupData<T = any, U = any, V = any> {
   getElement: () => HTMLElement;
   setData: (data: T | ((draft: T) => void)) => void;
   setLocalData: (data: U | ((draft: U) => void)) => void;
-  setPresence: (data: V) => void;
-  /** @deprecated Use `setPresence`. */
+  setMyPresence: (data: V) => void;
+  /** @deprecated Use `setMyPresence`. */
   setLive: (data: V) => void;
-  /** @deprecated Use `setPresence`. */
+  /** @deprecated Use `setMyPresence`. */
   setMyAwareness: (data: V) => void;
   /**
    * Re-runs the element's `view` and patches the result into the DOM. See
@@ -462,7 +462,7 @@ export type PagePresence = Record<string, unknown>;
 
 /**
  * Presence on the page or a presence room. Each person has one presence
- * object; `setPresence` merges top-level keys into yours. Subscriptions take
+ * object; `setMyPresence` merges top-level keys into yours. Subscriptions take
  * what to watch first: nothing (the whole object), a key, or a selector.
  */
 export interface PresenceScope {
@@ -475,7 +475,9 @@ export interface PresenceScope {
    * key. Values inside a key replace. Meant for state changes, not per-frame
    * streams: writes are rate limited (use cursors for pointer position).
    */
-  setPresence(partial: PagePresence): void;
+  setMyPresence(partial: PagePresence): void;
+  /** @deprecated Pass an object: `setMyPresence({ [channel]: data })`. */
+  setMyPresence(channel: string, data: unknown): void;
   onPresenceChange(
     callback: (everyone: PresenceEntry<PagePresence>[]) => void,
   ): () => void;
@@ -502,7 +504,7 @@ export interface PresenceAPI {
 }
 
 export interface PresenceRoom extends PresenceScope {
-  /** @deprecated Call `setPresence`, `getEveryone`, and `onPresenceChange` on the room itself. */
+  /** @deprecated Call `setMyPresence`, `getEveryone`, and `onPresenceChange` on the room itself. */
   presence: PresenceAPI;
   destroy: () => void;
 }
@@ -877,14 +879,14 @@ export const TagTypeToElement: DefaultTagInitializers = {
   [TagType.CanHover]: {
     defaultData: {},
     presence: { hover: false },
-    onMount: ({ getElement, setPresence }) => {
+    onMount: ({ getElement, setMyPresence }) => {
       const element = getElement();
       element.addEventListener("mouseenter", () => {
-        setPresence({ hover: true });
+        setMyPresence({ hover: true });
         element.setAttribute("data-playhtml-hover", "");
       });
       element.addEventListener("mouseleave", () => {
-        setPresence({ hover: false });
+        setMyPresence({ hover: false });
         element.removeAttribute("data-playhtml-hover");
       });
     },

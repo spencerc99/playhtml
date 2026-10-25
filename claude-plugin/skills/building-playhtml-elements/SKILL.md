@@ -26,7 +26,7 @@ These determine which API and data type to use. Getting them wrong means a rewri
 | `dispatchPlayEvent` | No | One-shot | Confetti, notifications |
 | `localStorage` | Yes | No | Per-user flags ("has reacted") |
 
-Identity: everything that describes a person is a `User` (`{ pid, name, color, isMe }`). Read yourself with `playhtml.users.me` / `useMe()`, the room with `playhtml.users.getAll()` / `useUsers()`, and key per-user data by `pid`. Presence lists are `{ user, presence }[]` named `everyone` (includes you; filter `!user.isMe` for others). Page presence: `playhtml.page.setPresence({ key: v })` (merges keys), `getEveryone(key?)`, `onPresenceChange(key | select, cb)`; React `usePagePresence(key)`. Cursors: `playhtml.users.cursors.getAll()` / `useCursors()`. Deprecated but working: `playhtml.presence`, `usePresence`, element `live`/`users`/`setLive`, `p.playerIdentity`, `getMyIdentity()`, `usePlayerIdentity()`.
+Identity: everything that describes a person is a `User` (`{ pid, name, color, isMe }`). Read yourself with `playhtml.users.me` / `useMe()`, the room with `playhtml.users.getAll()` / `useUsers()`, and key per-user data by `pid`. Presence lists are `{ user, presence }[]` named `everyone` (includes you; filter `!user.isMe` for others). Page presence: `playhtml.page.setMyPresence({ key: v })` (merges keys), `getEveryone(key?)`, `onPresenceChange(key | select, cb)`; React `usePagePresence(key)`. Cursors: `playhtml.users.cursors.getAll()` / `useCursors()`. Deprecated but working: `playhtml.presence`, `usePresence`, element `live`/`users`/`setLive`, `p.playerIdentity`, `getMyIdentity()`, `usePlayerIdentity()`.
 
 ## Critical Rules
 
@@ -80,7 +80,7 @@ const Counter = withSharedState(
   )
 );
 
-// Component receives: data, setData, myPresence, everyone, setPresence, ref
+// Component receives: data, setData, myPresence, everyone, setMyPresence, ref
 // For events: usePlayContext() → { dispatchPlayEvent, registerPlayEventListener }
 // For cursors: usePlayContext() → { cursors, configureCursors }
 ```
