@@ -15,6 +15,8 @@ import {
   useMe,
   useUsers,
   useCursorZone,
+  useCursors,
+  usePagePresence,
   playhtml,
 } from "../index";
 import type { PlayerIdentity } from "playhtml";
@@ -27,6 +29,8 @@ const mockedPlayhtml = (globalThis as any).MOCKED_PLAYHTML as {
   resolveReady: () => void;
   createPresenceRoom: ReturnType<typeof vi.fn>;
   presence: unknown;
+  resetMockPagePresence: () => void;
+  setMockCursors: (next: Array<Record<string, unknown>>) => void;
   setMockPlayerIdentity: (next: {
     publicKey?: string;
     name?: string;
@@ -468,6 +472,92 @@ describe("useUsers", () => {
     });
     const self = captured!.find((user) => user.isMe);
     expect(self).toBeDefined();
+  });
+});
+
+describe("usePagePresence", () => {
+  beforeEach(() => {
+    mockedPlayhtml.resetMockPagePresence();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  it("key form reads and writes one key", async () => {
+    let captured: ReturnType<typeof usePagePresence<string>> | null = null;
+    function TestComponent() {
+      captured = usePagePresence<string>("status");
+      return <div />;
+    }
+    render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+    await waitFor(() => expect(captured!.everyone.length).toBe(1));
+    expect(captured!.myPresence).toBeUndefined();
+
+    act(() => captured!.setPresence("typing"));
+    expect(playhtml.page.setPresence).toHaveBeenLastCalledWith({ status: "typing" });
+    await waitFor(() => expect(captured!.myPresence).toBe("typing"));
+    expect(captured!.everyone[0].presence).toBe("typing");
+  });
+
+  it("selector form re-renders only when the selection changes", async () => {
+    let renders = 0;
+    let captured: any = null;
+    function TestComponent() {
+      renders++;
+      captured = usePagePresence((presence) => (presence.status as any)?.text);
+      return <div />;
+    }
+    render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+    await waitFor(() => expect(captured.everyone.length).toBe(1));
+
+    act(() => captured.setPresence({ status: { text: "a" }, mood: "x" }));
+    await waitFor(() => expect(captured.myPresence).toBe("a"));
+    const rendersAfterA = renders;
+    act(() => captured.setPresence({ mood: "y" }));
+    expect(renders).toBe(rendersAfterA);
+  });
+
+  it("setPresence warns and no-ops before sync", () => {
+    let captured: any = null;
+    function TestComponent() {
+      captured = usePagePresence();
+      return <div />;
+    }
+    render(
+      <PlayContext.Provider value={{ isLoading: true } as any}>
+        <TestComponent />
+      </PlayContext.Provider>,
+    );
+    captured.setPresence({ status: "x" });
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("usePagePresence().setPresence called before init"),
+    );
+    expect(captured.everyone).toEqual([]);
+  });
+});
+
+describe("useCursors", () => {
+  it("returns cursors with their user and updates on moves", async () => {
+    let captured: any[] = [];
+    function TestComponent() {
+      captured = useCursors();
+      return <div />;
+    }
+    render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+    const user = { pid: "p1", name: "Ana", color: "#f00", isMe: false };
+    act(() => mockedPlayhtml.setMockCursors([{ user, cursor: { x: 1, y: 2, pointer: "mouse" } }]));
+    await waitFor(() => expect(captured).toHaveLength(1));
+    expect(captured[0].user).toEqual(user);
   });
 });
 
