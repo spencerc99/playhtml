@@ -1,6 +1,13 @@
 // ABOUTME: Spike page comparing the SVG trail renderer with p5 and raw WebGL2 renderers.
 // ABOUTME: Same synthetic trails and cinematic camera in every mode; shows fps on screen.
 import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
+import {
+  getCursorComponent,
+  getCursorHotspot,
+  getCursorScaleFactor,
+} from "@movement/cursors";
+import { getTrailRenderer } from "@movement/styles/trailRenderers";
 import p5 from "p5";
 import { AnimatedTrails } from "@movement/components/AnimatedTrails";
 import { DEFAULT_SETTINGS } from "@movement/components/settingsDefaults";
@@ -608,33 +615,91 @@ function mountGl2(container: HTMLElement) {
     progress: number;
   }> = [];
   let prevLooped = 0;
+  // Cursors: only trails still drawing have one, so a small pool of SVG
+  // groups over the canvas covers them. The overlay shares the camera's
+  // viewBox, so cursors zoom with the trails exactly as in SVG mode.
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const overlay = document.createElementNS(SVG_NS, "svg");
+  overlay.setAttribute("preserveAspectRatio", "none");
+  overlay.style.cssText = `position:absolute;inset:0;width:${W}px;height:${H}px;pointer-events:none`;
+  container.appendChild(overlay);
+  const renderer = getTrailRenderer(INK ? "monochrome" : "color");
+  const CURSOR_SIZE = 32;
+  const markupCache = new Map<string, string>();
+  const cursorMarkup = (type: string | undefined, color: string) => {
+    const key = `${type}|${color}`;
+    let markup = markupCache.get(key);
+    if (!markup) {
+      const Cursor = getCursorComponent(type);
+      const scale = (CURSOR_SIZE / 24) * getCursorScaleFactor(type);
+      const hotspot = getCursorHotspot(type);
+      // Render the shared cursor component once, off-DOM, and keep its markup.
+      const host = document.createElementNS(SVG_NS, "g");
+      const root = createRoot(host);
+      flushSync(() => root.render(<Cursor color={color} size={CURSOR_SIZE} />));
+      markup = `<g transform="translate(${-hotspot.x * scale}, ${-hotspot.y * scale})">${host.innerHTML}</g>`;
+      root.unmount();
+      markupCache.set(key, markup);
+    }
+    return markup;
+  };
+  const pool: Array<{ el: SVGGElement; key: string }> = [];
+  const updateCursors = () => {
+    for (let i = 0; i < active.length; i++) {
+      if (i === pool.length) {
+        const el = document.createElementNS(SVG_NS, "g");
+        overlay.appendChild(el);
+        pool.push({ el, key: "" });
+      }
+      const slot = pool[i];
+      const { index, x, y, progress } = active[i];
+      const s = states[index];
+      const pts = s.trail.points;
+      const type =
+        pts[Math.min(Math.floor((pts.length - 1) * progress), pts.length - 1)]
+          ?.cursor;
+      const color = renderer.getCursorColor(s.trail.color, type);
+      const key = `${type}|${color}`;
+      if (slot.key !== key) {
+        slot.el.innerHTML = cursorMarkup(type, color);
+        slot.key = key;
+      }
+      slot.el.setAttribute("transform", `translate(${x}, ${y})`);
+      slot.el.style.display = "";
+    }
+    for (let i = active.length; i < pool.length; i++)
+      pool[i].el.style.display = "none";
+  };
+
   const frame = () => {
     const looped = elapsedMs() % DURATION;
     if (looped < prevLooped) camera?.reset();
     prevLooped = looped;
+    // Trail heads from the CPU: they feed the camera and the cursors, as they
+    // would the sound engine.
+    active.length = 0;
+    for (let i = 0; i < states.length; i++) {
+      const s = states[i];
+      const pr = (looped - s.startOffsetMs) / s.durationMs;
+      if (pr <= 0 || pr >= 1) continue;
+      const pts = s.variedPoints,
+        exact = (pts.length - 1) * pr,
+        k = Math.floor(exact),
+        f = exact - k;
+      const a = pts[k],
+        b = pts[Math.min(k + 1, pts.length - 1)];
+      active.push({
+        index: i,
+        x: a.x + (b.x - a.x) * f,
+        y: a.y + (b.y - a.y) * f,
+        progress: pr,
+      });
+    }
     let view: ViewBox = { x: 0, y: 0, w: W, h: H };
     if (VIEW) {
       const [vx, vy, vw] = VIEW.split(",").map(Number);
       view = { x: vx, y: vy, w: vw, h: (vw * H) / W };
     } else if (camera) {
-      active.length = 0;
-      for (let i = 0; i < states.length; i++) {
-        const s = states[i];
-        const pr = (looped - s.startOffsetMs) / s.durationMs;
-        if (pr <= 0 || pr >= 1) continue;
-        const pts = s.variedPoints,
-          exact = (pts.length - 1) * pr,
-          k = Math.floor(exact),
-          f = exact - k;
-        const a = pts[k],
-          b = pts[Math.min(k + 1, pts.length - 1)];
-        active.push({
-          index: i,
-          x: a.x + (b.x - a.x) * f,
-          y: a.y + (b.y - a.y) * f,
-          progress: pr,
-        });
-      }
       view =
         camera.tick({
           screenW: W,
@@ -643,6 +708,8 @@ function mountGl2(container: HTMLElement) {
           activeTrails: active,
         }) ?? view;
     }
+    overlay.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
+    updateCursors();
     (window as any).__view = view;
     gl.clearColor(0, 0, 0, 0);
     gl.clearDepth(1);
