@@ -7,9 +7,21 @@ description: Use when building, creating, or implementing a playhtml element or 
 
 playhtml makes HTML elements collaborative and real-time via Yjs CRDTs.
 
+## The Person's Idea Drives the Build
+
+playhtml is for people making their own internet playgrounds. The experience is theirs to design; your job is to make their idea work, not to fill in the idea for them.
+
+- **Build only what was asked.** Do not add mechanics, rules, sounds, music, animations, motion, scoring, timers, themes, or extra features the person did not describe. A "musical chairs with cursors" request does not authorize you to pick the music, make cursors circle, or invent the elimination rules.
+- **Ask about experience decisions before building.** If the request leaves open how the interaction works (what people do, what happens in response, how it starts and ends, what everyone else sees), list those open questions briefly and wait for answers. Do not pick for them.
+- **Confirm the plan first for anything bigger than a single element.** Restate the interaction in a few plain sentences and get a yes before writing code.
+- **Keep styling plain.** Use browser defaults plus only the CSS needed for the thing to work and be legible (size, position, a visible state change). No gradients, glows, shadows, glassmorphism, emoji decoration, custom fonts, color palettes, or "polished landing page" layout unless the person asks or the page already has its own style to match. If the page has existing styles, match them instead of introducing new ones.
+- **Offer ideas, don't ship them.** If you see a good addition, mention it in one line after the working version. The person decides.
+
+If the person says to surprise them or to use your judgment, you may make those choices, and say which ones you made.
+
 ## Before Implementing — Ask These Questions
 
-If the user's request is ambiguous on ANY of these, **stop and ask**:
+Along with any open experience decisions above, if the request is ambiguous on ANY of these, **stop and ask**:
 
 1. **Persistence**: Should data survive page refresh? (`defaultData`=yes, `live`=no)
 2. **Shared vs per-user**: Should all users see the same state, or does each user have their own?

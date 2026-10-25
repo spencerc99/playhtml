@@ -27,11 +27,13 @@ npx skills add spencerc99/playhtml --skill building-playhtml-elements
 
 The installer asks which agents to set up. After that, just describe the element you want.
 
-## Describe what you want
+## Your idea leads
 
-Whichever setup you use, the agent will ask before guessing about these three things, so mentioning them up front saves a round trip:
+The guide tells agents that you design the experience. They build only what you describe, ask before deciding how an interaction works, and keep styling plain unless you ask for a look. Ideas they have come back as suggestions, not extra code. If you'd rather they fill in the gaps, tell them to use their judgment.
 
-- What people see and do with the element.
+The more of these you describe up front, the fewer questions you'll get:
+
+- What people see and do with the element, and what happens in response.
 - Whether everyone shares the same state, or each person has their own.
 - Whether the state should **persist** across reloads, last only while people are **online**, or fire once as an **event** (like a confetti burst).
 
