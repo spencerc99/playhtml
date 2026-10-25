@@ -17,6 +17,8 @@ export type IframeTemplateArgs = {
   roomId: string;
   /** Whether the playground development panel should open below the recipe. */
   showDevPanel?: boolean;
+  /** Let the host page's demo frame show through the recipe's own page color. */
+  transparentBackground?: boolean;
 };
 
 // Inlined dev-panel-bottom CSS. Originally lived as a separate stylesheet at
@@ -76,7 +78,13 @@ const DEV_PANEL_BOTTOM_CSS = `
  *      and configures the development panel for the current surface.
  */
 export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
-  const { recipeHtml, playhtmlUrl, roomId, showDevPanel = true } = args;
+  const {
+    recipeHtml,
+    playhtmlUrl,
+    roomId,
+    showDevPanel = true,
+    transparentBackground = false,
+  } = args;
 
   // The recipe's <script type="module"> calls `playhtml.init({...})`. We
   // need to override that init's `room` option so the iframe joins the
@@ -164,15 +172,23 @@ export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
 </script>
 `;
 
+  // Appended after the recipe so it wins over the recipe's own page color.
+  const backgroundOverride = transparentBackground
+    ? `<style>html, :root, body { background: transparent !important; }</style>`
+    : "";
+
   // Splice bootstrap into the recipe's <head>. Recipes are expected to have
   // a <head> tag; if not, fall back to inserting after <html>.
   const headIdx = recipeHtml.search(/<head[^>]*>/i);
   if (headIdx === -1) {
     // No <head> — wrap minimally
-    return `<!doctype html><html><head>${bootstrap}</head><body>${recipeHtml}</body></html>`;
+    return `<!doctype html><html><head>${bootstrap}</head><body>${recipeHtml}${backgroundOverride}</body></html>`;
   }
   const insertAfter = recipeHtml.indexOf(">", headIdx) + 1;
   return (
-    recipeHtml.slice(0, insertAfter) + bootstrap + recipeHtml.slice(insertAfter)
+    recipeHtml.slice(0, insertAfter) +
+    bootstrap +
+    recipeHtml.slice(insertAfter) +
+    backgroundOverride
   );
 }

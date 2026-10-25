@@ -1716,7 +1716,9 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   border-radius: 6px;
   box-shadow: var(--ph-shadow-brick);
 }
-.ph-demo-slot::before {
+.ph-demo-slot::before,
+.ph-canplay-inline::before,
+.ph-mirror-sample::before {
   content: attr(data-label);
   position: absolute;
   top: -0.65rem;
@@ -2032,23 +2034,47 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   bottom: 0;
   font-size: 1.65rem;
   pointer-events: none;
-  transition: none;
-  will-change: transform, opacity;
+  animation: ph-live-reaction-float 2.5s ease-out forwards;
+}
+@keyframes ph-live-reaction-float {
+  to {
+    opacity: 0;
+    transform: translateY(-140px) scale(0.8);
+  }
 }
 
-/* LiveReactions from packages/react/examples — light docs polish when className set */
-.ph-live-reactions-root button {
-  font-family: var(--ph-font-mono);
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 6px;
-  background: var(--ph-paper);
-  color: var(--ph-ink);
-  cursor: pointer;
-  box-shadow: var(--ph-shadow-brick);
+/* Page-wide rain from the events demo. RainSprinklerDemo appends one
+   .ph-docs-rain to <body> per event and removes it after 6s. */
+.ph-docs-rain {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
 }
-.ph-live-reactions-root button:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 0 var(--ph-ink);
+.ph-docs-rain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("https://media.giphy.com/media/Wmp1EOzVybWd13s5DB/giphy.gif") 0 0 / 200px;
+  animation: ph-docs-rain 6s ease-in-out forwards;
+}
+.ph-docs-rain__cloud {
+  position: absolute;
+  top: 10px;
+  width: 150px;
+  height: 80px;
+  background: url("/docs/rain-cloud.webp") center / contain no-repeat;
+  animation: ph-docs-rain-cloud 5.5s ease-out both;
+}
+@keyframes ph-docs-rain {
+  0%, 15% { opacity: 0; }
+  30%, 85% { opacity: 0.7; }
+  100% { opacity: 0; }
+}
+@keyframes ph-docs-rain-cloud {
+  0% { opacity: 0; transform: translateY(-120px); }
+  20%, 80% { opacity: 0.9; transform: none; }
+  100% { opacity: 0; transform: translateY(-120px); }
 }
 
 /* ---------------------------------------------------------------------
@@ -2345,13 +2371,14 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
    behave uniquely (hover, focus, editable, etc.). */
 
 .ph-mirror-sample {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.6rem;
-  margin: 0.9rem 0 1.2rem;
-  padding: 1rem;
-  background: var(--ph-paper);
+  margin: 1.4rem 0 1.2rem;
+  padding: 1.25rem 1rem 1rem;
+  background: var(--ph-sage-wash);
   border: 1.5px solid var(--ph-ink);
   border-radius: 6px;
   box-shadow: var(--ph-shadow-brick);
@@ -2740,23 +2767,24 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ------------------------------------------------------------------
-   Inline can-play vignettes — scattered through the capabilities page
-   so the page itself becomes a `can-play` showcase. Each block is a
-   margin-style aside, not a heavy framed demo box: a ruled head with a
-   tiny "CAN-PLAY · …" kicker, the demo, and a target id so the can-play
-   section's nav links can jump to it.
+   Inline can-play vignettes — scattered through the custom elements page
+   so the page itself becomes a `can-play` showcase. Each block uses the
+   same frame as .ph-demo-slot (bordered box, data-label notched into the
+   top border), stacked so a caption sits above the demo, plus a target id
+   so the can-play section's nav links can jump to it.
    ------------------------------------------------------------------ */
 
 .ph-canplay-inline {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
   margin: 1.6rem 0;
-  padding: 0.85rem 1rem 1rem;
-  border: 1px solid var(--ph-sage-wash);
-  border-left: 3px solid var(--ph-sage-deep);
-  border-radius: 4px;
+  padding: 1.25rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
   background: var(--ph-sage-wash);
+  box-shadow: var(--ph-shadow-brick);
   scroll-margin-top: 5rem;
 }
 
@@ -2770,13 +2798,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   gap: 0.25rem;
 }
 
-.ph-canplay-inline__kicker {
-  font-family: var(--ph-font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ph-sage-deep);
-}
 
 .ph-canplay-inline__caption {
   margin: 0;
@@ -2785,4 +2806,37 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   line-height: 1.45;
   color: var(--ph-ink-2);
   max-width: 56ch;
+}
+
+/* "View code" link on a live demo (DemoCodeLink.astro). Styled like the
+   demo boxes' mono labels so it reads as part of the frame. The doubled
+   class beats Starlight's markdown link color. */
+.sl-markdown-content .ph-demo-code-link.ph-demo-code-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--ph-font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  color: var(--ph-ink-2);
+}
+.sl-markdown-content .ph-demo-code-link.ph-demo-code-link:hover,
+.sl-markdown-content .ph-demo-code-link.ph-demo-code-link:focus-visible {
+  color: var(--ph-ink);
+  text-decoration-thickness: 2px;
+}
+.ph-demo-slot > .ph-demo-code-link,
+.ph-canplay-inline > .ph-demo-code-link {
+  position: absolute;
+  right: 0.9rem;
+  bottom: -0.6rem;
+  padding: 0 0.4rem;
+  background: var(--ph-paper);
+}
+.ph-demo-slot:has(> .ph-demo-code-link),
+.ph-canplay-inline:has(> .ph-demo-code-link) {
+  margin-bottom: 1.4rem;
 }

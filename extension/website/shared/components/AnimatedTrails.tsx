@@ -9,7 +9,7 @@ import React, {
   useMemo,
 } from "react";
 import { TrailState, ClickEffect } from "../types";
-import { RippleEffect } from "./ClickRipple";
+import { RippleEffect, type RippleSettings } from "./ClickRipple";
 import { createClickEffect } from "./clickEffects";
 import { useDebugHover } from "./DebugHover";
 import type { SoundEngine } from "../sound/SoundEngine";
@@ -94,6 +94,60 @@ interface AnimatedTrailsProps {
   };
 }
 
+type RippleUpdate = ClickEffect[] | ((prev: ClickEffect[]) => ClickEffect[]);
+
+interface RippleLayerHandle {
+  set(update: RippleUpdate): void;
+}
+
+const RippleLayer = memo(
+  React.forwardRef<RippleLayerHandle, { settings: RippleSettings }>(
+    ({ settings }, ref) => {
+      const [effects, setEffects] = useState<ClickEffect[]>([]);
+      React.useImperativeHandle(ref, () => ({ set: setEffects }), []);
+      const rippleSettings = useMemo(
+        () => ({
+          clickMinRadius: settings.clickMinRadius,
+          clickMaxRadius: settings.clickMaxRadius,
+          clickCoreRadius: settings.clickCoreRadius,
+          clickMinDuration: settings.clickMinDuration,
+          clickMaxDuration: settings.clickMaxDuration,
+          clickExpansionDuration: settings.clickExpansionDuration,
+          clickStrokeWidth: settings.clickStrokeWidth,
+          clickOpacity: settings.clickOpacity,
+          clickNumRings: settings.clickNumRings,
+          clickRingDelayMs: settings.clickRingDelayMs,
+          clickAnimationStopPoint: settings.clickAnimationStopPoint,
+        }),
+        [
+          settings.clickMinRadius,
+          settings.clickMaxRadius,
+          settings.clickCoreRadius,
+          settings.clickMinDuration,
+          settings.clickMaxDuration,
+          settings.clickExpansionDuration,
+          settings.clickStrokeWidth,
+          settings.clickOpacity,
+          settings.clickNumRings,
+          settings.clickRingDelayMs,
+          settings.clickAnimationStopPoint,
+        ],
+      );
+      return (
+        <>
+          {effects.map((effect) => (
+            <RippleEffect
+              key={effect.id}
+              effect={effect}
+              settings={rippleSettings}
+            />
+          ))}
+        </>
+      );
+    },
+  ),
+);
+
 export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
   ({
     trailStates,
@@ -110,9 +164,12 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     playbackClock = null,
     settings,
   }) => {
-    const [activeClickEffects, setActiveClickEffects] = useState<ClickEffect[]>(
-      [],
-    );
+    // Ripples live in their own layer so a click re-renders only the ripples,
+    // not the thousands of trail paths and cursors beside them.
+    const rippleLayerRef = useRef<RippleLayerHandle>(null);
+    const setActiveClickEffects = useCallback((update: RippleUpdate) => {
+      rippleLayerRef.current?.set(update);
+    }, []);
 
     const animationRef = useRef<number | undefined>(undefined);
     const timeoutRef = useRef<number | undefined>(undefined);
@@ -808,26 +865,9 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             <g dangerouslySetInnerHTML={{ __html: renderer.svgDefs }} />
           )}
         </defs>
-        {showClickRipples &&
-          activeClickEffects.map((effect) => (
-            <RippleEffect
-              key={effect.id}
-              effect={effect}
-              settings={{
-                clickMinRadius: settings.clickMinRadius,
-                clickMaxRadius: settings.clickMaxRadius,
-                clickCoreRadius: settings.clickCoreRadius,
-                clickMinDuration: settings.clickMinDuration,
-                clickMaxDuration: settings.clickMaxDuration,
-                clickExpansionDuration: settings.clickExpansionDuration,
-                clickStrokeWidth: settings.clickStrokeWidth,
-                clickOpacity: settings.clickOpacity,
-                clickNumRings: settings.clickNumRings,
-                clickRingDelayMs: settings.clickRingDelayMs,
-                clickAnimationStopPoint: settings.clickAnimationStopPoint,
-              }}
-            />
-          ))}
+        {showClickRipples && (
+          <RippleLayer ref={rippleLayerRef} settings={settings} />
+        )}
         {debug.enabled && (
           <g style={{ pointerEvents: "stroke" }}>
             {trailStates.map((ts, idx) => {

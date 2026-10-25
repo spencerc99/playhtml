@@ -91,6 +91,15 @@ export function UserSetup() {
     };
   }, [name, color]);
 
+  // The cursor client loads after first render, so the sticky name and color
+  // callbacks above can run before it exists. Apply them once it appears.
+  React.useEffect(() => {
+    if (!cursorsLoaded || !window.cursors) return;
+    if (name) window.cursors.name = name;
+    if (color) window.cursors.color = color;
+    else setInternalColor(window.cursors.color);
+  }, [cursorsLoaded]);
+
   if (!cursorsLoaded) {
     return <div>Loading cursor party...</div>;
   }
