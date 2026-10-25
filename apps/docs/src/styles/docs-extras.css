@@ -1717,7 +1717,8 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   box-shadow: var(--ph-shadow-brick);
 }
 .ph-demo-slot::before,
-.ph-canplay-inline::before {
+.ph-canplay-inline::before,
+.ph-mirror-sample::before {
   content: attr(data-label);
   position: absolute;
   top: -0.65rem;
@@ -2335,13 +2336,14 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
    behave uniquely (hover, focus, editable, etc.). */
 
 .ph-mirror-sample {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.6rem;
-  margin: 0.9rem 0 1.2rem;
-  padding: 1rem;
-  background: var(--ph-paper);
+  margin: 1.4rem 0 1.2rem;
+  padding: 1.25rem 1rem 1rem;
+  background: var(--ph-sage-wash);
   border: 1.5px solid var(--ph-ink);
   border-radius: 6px;
   box-shadow: var(--ph-shadow-brick);

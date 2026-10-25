@@ -42,4 +42,16 @@ describe("buildIframeSrcdoc", () => {
     expect(result).not.toContain('</script><script>window.injected');
     expect(result).toContain('\\u003c/script>\\u003cscript>window.injected');
   });
+
+  it("lets the host frame show through only when asked", () => {
+    const base = { recipeHtml, playhtmlUrl: "blob:test", roomId: "r-abcd1234" };
+    const override = "background: transparent !important";
+
+    expect(buildIframeSrcdoc(base)).not.toContain(override);
+    expect(
+      buildIframeSrcdoc({ ...base, transparentBackground: true }).endsWith(
+        `<style>html, :root, body { ${override}; }</style>`,
+      ),
+    ).toBe(true);
+  });
 });

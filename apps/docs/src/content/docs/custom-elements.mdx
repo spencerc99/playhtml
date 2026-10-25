@@ -30,7 +30,7 @@ This page covers both. **Vanilla HTML** has the full range — `can-mirror`, `ca
 
 This page runs a few live `can-play` demos in its margins — a doodle strip here, a [guestbook](#play-guestbook) and a [prize wheel](#play-spinner) further down, and a tally on every code block you copy from. Open the page in a second tab to watch them sync.
 
-<div id="play-doodle" class="ph-canplay-inline" data-label="CAN-PLAY — doodle strip">
+<div id="play-doodle" class="ph-canplay-inline" data-label="LIVE DEMO — doodle strip">
   <div class="ph-canplay-inline__head">
     <p class="ph-canplay-inline__caption">
       Draw a tiny 64×64 face. It joins the strip for everyone reading this page. Capped at 20.
@@ -160,7 +160,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 
 `setData` takes either a **mutator** that edits a draft in place (`setData(d => { d.count += 1 })`, merge-friendly across clients — preferred for counters, lists, nested fields) or a **replacement value** (`setData({ count: 5 })`, last-write-wins). See [Data essentials](/docs/data/data-essentials/) for the merge rules.
 
-<div id="play-counter" class="ph-canplay-inline" data-label="CAN-PLAY — counter">
+<div id="play-counter" class="ph-canplay-inline" data-label="LIVE DEMO — counter">
   <div class="ph-canplay-inline__head">
     <p class="ph-canplay-inline__caption">
       Click to add one. The count is shared — everyone reading this page bumps the same number.
@@ -201,7 +201,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 </script>
 ```
 
-<div id="play-toggle" class="ph-canplay-inline" data-label="CAN-PLAY — toggle">
+<div id="play-toggle" class="ph-canplay-inline" data-label="LIVE DEMO — toggle">
   <div class="ph-canplay-inline__head">
     <p class="ph-canplay-inline__caption">
       Click to flip it on/off for everyone.
@@ -239,7 +239,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 </script>
 ```
 
-<div id="play-presence" class="ph-canplay-inline" data-label="CAN-PLAY — presence">
+<div id="play-presence" class="ph-canplay-inline" data-label="LIVE DEMO — presence">
   <div class="ph-canplay-inline__head">
     <p class="ph-canplay-inline__caption">
       Everyone online shows up as a colored dot — yours is highlighted.
@@ -352,7 +352,7 @@ form.addEventListener("submit", (e) => {
 });
 ```
 
-<div id="play-guestbook" class="ph-canplay-inline" data-label="CAN-PLAY — guestbook">
+<div id="play-guestbook" class="ph-canplay-inline" data-label="LIVE DEMO — guestbook">
   <div class="ph-canplay-inline__head">
     <p class="ph-canplay-inline__caption">
       Drop a note about what you're learning or building. The list is shared, capped at 20, oldest entries fall off.
@@ -413,7 +413,7 @@ playhtml.register("timer", {
 });
 ```
 
-<div id="play-spinner" class="ph-canplay-inline ph-canplay-inline--final" data-label="CAN-PLAY — prize wheel">
+<div id="play-spinner" class="ph-canplay-inline ph-canplay-inline--final" data-label="LIVE DEMO — prize wheel">
   <div class="ph-canplay-inline__head">
     <p class="ph-canplay-inline__caption">
       Spin to pick a docs page to read next. The wheel's spin seed is shared, so everyone here sees it land on the same label.
