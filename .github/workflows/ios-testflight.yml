@@ -65,6 +65,32 @@ jobs:
           chmod 600 "$KEY_PATH"
           echo "path=$KEY_PATH" >> "$GITHUB_OUTPUT"
 
+      # Fresh runners have an empty keychain, so without this Xcode creates a new
+      # Apple Development certificate on every run and the account hits Apple's
+      # certificate cap. Importing one stored certificate lets every run reuse it.
+      # Renew APPLE_SIGNING_CERT_P12 when that certificate expires.
+      - name: Import signing certificate
+        env:
+          APPLE_SIGNING_CERT_P12: ${{ secrets.APPLE_SIGNING_CERT_P12 }}
+          APPLE_SIGNING_CERT_PASSWORD: ${{ secrets.APPLE_SIGNING_CERT_PASSWORD }}
+        run: |
+          if [ -z "$APPLE_SIGNING_CERT_P12" ] || [ -z "$APPLE_SIGNING_CERT_PASSWORD" ]; then
+            echo "APPLE_SIGNING_CERT_P12 and APPLE_SIGNING_CERT_PASSWORD are required."
+            exit 1
+          fi
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          CERT_PATH="$RUNNER_TEMP/signing.p12"
+          printf '%s' "$APPLE_SIGNING_CERT_P12" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT_PATH" -P "$APPLE_SIGNING_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$CERT_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
       - name: Archive and upload to TestFlight
         working-directory: extension
         env:
