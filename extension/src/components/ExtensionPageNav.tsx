@@ -7,6 +7,7 @@ import "@fontsource/martian-mono/latin-400.css";
 import "@fontsource/source-serif-4/latin-200-italic.css";
 import { useFeatureState } from "../features/useFeatureAccess";
 import "./ExtensionPageNav.scss";
+import "../styles/touchTargets.scss";
 
 export type ExtensionPageId = "portrait" | "time" | "walking-record" | "scraps";
 

@@ -124,7 +124,7 @@ export const sharedAudioFileRecipe: ExampleRecipe = {
   </main>
 
   <script type="module">
-    import { playhtml } from "playhtml";
+    import { playhtml } from "https://unpkg.com/playhtml@latest";
 
     const player = document.getElementById("shared-audio-player");
     const audio = player.querySelector("[data-audio]");
@@ -195,7 +195,7 @@ export const sharedAudioFileRecipe: ExampleRecipe = {
         startedAtMs: 0,
         positionMs: 0,
       },
-      updateElement: ({ element, data }) => {
+      update: ({ element, data }) => {
         render(element, data, Date.now());
       },
       onClick: (event, { data, setData }) => {

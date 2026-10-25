@@ -1,6 +1,13 @@
 // ABOUTME: Builds the srcdoc wrapper used by playground and docs example iframes.
 // ABOUTME: Injects the playhtml import, shared room, and optional development panel.
 
+/**
+ * CDN URL recipes import playhtml from, so their source works unchanged when
+ * pasted into any hosted HTML file. Inside the preview iframe the importmap
+ * points this URL at the in-repo build instead.
+ */
+export const PLAYHTML_CDN_URL = "https://unpkg.com/playhtml@latest";
+
 export type IframeTemplateArgs = {
   /** Recipe source. Must be a complete <!doctype html> document. */
   recipeHtml: string;
@@ -10,6 +17,8 @@ export type IframeTemplateArgs = {
   roomId: string;
   /** Whether the playground development panel should open below the recipe. */
   showDevPanel?: boolean;
+  /** Let the host page's demo frame show through the recipe's own page color. */
+  transparentBackground?: boolean;
 };
 
 // Inlined dev-panel-bottom CSS. Originally lived as a separate stylesheet at
@@ -61,14 +70,21 @@ const DEV_PANEL_BOTTOM_CSS = `
  * authors recipes as full pages, see _starter.ts). We inject our wrappers
  * by string-splicing into the recipe's <head>:
  *
- *   1. Importmap so `import { playhtml } from "playhtml"` works.
+ *   1. Importmap that points the recipe's CDN import (and the bare
+ *      "playhtml" specifier older edits may still use) at the in-repo build.
  *   2. Inline <style> with dev-panel-bottom override CSS (inlined to avoid
  *      Astro dev-server cross-origin block on sandboxed iframe subresources).
  *   3. A small bootstrap script that overrides playhtml.init's room option
  *      and configures the development panel for the current surface.
  */
 export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
-  const { recipeHtml, playhtmlUrl, roomId, showDevPanel = true } = args;
+  const {
+    recipeHtml,
+    playhtmlUrl,
+    roomId,
+    showDevPanel = true,
+    transparentBackground = false,
+  } = args;
 
   // The recipe's <script type="module"> calls `playhtml.init({...})`. We
   // need to override that init's `room` option so the iframe joins the
@@ -104,12 +120,14 @@ export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
   panelStyles.textContent = "#playhtml-dev-root { display: none !important; }";
   document.head.append(panelStyles);`;
 
+  const serializedPlayhtmlUrl = JSON.stringify(playhtmlUrl);
   const serializedRoomId = JSON.stringify(roomId).replaceAll("<", "\\u003c");
   const bootstrap = `
 <script type="importmap">
 {
   "imports": {
-    "playhtml": ${JSON.stringify(playhtmlUrl)}
+    "playhtml": ${serializedPlayhtmlUrl},
+    ${JSON.stringify(PLAYHTML_CDN_URL)}: ${serializedPlayhtmlUrl}
   }
 }
 </script>
@@ -154,13 +172,23 @@ export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
 </script>
 `;
 
+  // Appended after the recipe so it wins over the recipe's own page color.
+  const backgroundOverride = transparentBackground
+    ? `<style>html, :root, body { background: transparent !important; }</style>`
+    : "";
+
   // Splice bootstrap into the recipe's <head>. Recipes are expected to have
   // a <head> tag; if not, fall back to inserting after <html>.
   const headIdx = recipeHtml.search(/<head[^>]*>/i);
   if (headIdx === -1) {
     // No <head> — wrap minimally
-    return `<!doctype html><html><head>${bootstrap}</head><body>${recipeHtml}</body></html>`;
+    return `<!doctype html><html><head>${bootstrap}</head><body>${recipeHtml}${backgroundOverride}</body></html>`;
   }
   const insertAfter = recipeHtml.indexOf(">", headIdx) + 1;
-  return recipeHtml.slice(0, insertAfter) + bootstrap + recipeHtml.slice(insertAfter);
+  return (
+    recipeHtml.slice(0, insertAfter) +
+    bootstrap +
+    recipeHtml.slice(insertAfter) +
+    backgroundOverride
+  );
 }

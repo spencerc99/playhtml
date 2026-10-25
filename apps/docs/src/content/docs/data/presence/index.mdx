@@ -6,6 +6,7 @@ sidebar:
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
+import DemoCodeLink from '@/components/DemoCodeLink.astro';
 import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
 
 Presence is per-person state that only exists while someone is on the page: "Ana is typing", "Sam is hovering the lamp", "Jo's cursor is here". When a person leaves, their presence is gone, and someone who arrives later never sees it.
@@ -101,7 +102,7 @@ Use element presence when the signal belongs to one playhtml element, like "who 
 <button id="ready-count">0 ready</button>
 
 <script type="module">
-  import { playhtml } from "playhtml";
+  import { playhtml } from "https://unpkg.com/playhtml@latest";
 
   playhtml.register("ready-count", {
     presence: { ready: false },
@@ -187,8 +188,9 @@ function Lobby() {
 
 ## Try it live
 
-<div id="online-indicator-demo" className="ph-demo-slot" data-label="PRESENCE — online indicator">
+<div id="online-indicator-demo" className="ph-demo-slot" data-label="DEMO — online indicator">
   <OnlineIndicatorDemo client:only="react" />
+  <DemoCodeLink href="/docs/examples/online-indicator/" />
 </div>
 
 Each dot is one reader; the yellow-glowing dot is **you**. Pick a color and watch yours change for everyone else. Open this page in a second tab and you'll see two dots. Close a tab and the dot disappears. This is presence: no persistence, no replay.

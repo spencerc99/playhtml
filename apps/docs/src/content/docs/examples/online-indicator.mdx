@@ -1,0 +1,41 @@
+---
+title: "Online presence indicator"
+description: "Show one live colored dot for each reader currently on the page."
+sidebar:
+  hidden: true
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { onlineIndicatorRecipe } from "@/components/playground/recipes/online-indicator";
+
+Each reader on the page gets a dot. Yours glows. Pick a color and everyone sees
+your dot change. Close a window and its dot disappears.
+
+<RecipeExample recipe={onlineIndicatorRecipe} client:load />
+
+<RecipeCodeTabs recipe={onlineIndicatorRecipe} />
+
+## Presence per reader
+
+`presence` is your own value for this element. It is never saved, and it clears
+when you leave. `everyone` lists everyone here right now, including you, each
+with their identity and their current `presence`:
+
+```js
+everyone.map(({ user, presence }) => presence?.color ?? user.color);
+```
+
+A reader who hasn't set a value yet has no `presence`, so fall back to their
+cursor color.
+
+## Set your value
+
+Call `setPresence` from a user event. It replaces your value and reaches everyone
+else right away:
+
+```js
+online.setPresence({ color: event.target.value });
+```
+
+See [Presence](/docs/data/presence/) for page-wide presence and cursors.

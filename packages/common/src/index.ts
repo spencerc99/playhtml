@@ -201,7 +201,8 @@ export type EventMessage<T = any> = Pick<PlayEvent<T>, "type"> &
 
 export interface PlayEvent<T = any> {
   type: string;
-  onEvent: (eventPayload: EventData<T>) => void;
+  /** Receives the `eventPayload` passed to `dispatchPlayEvent`. */
+  onEvent: (eventPayload: T) => void;
 }
 
 export interface RegisteredPlayEvent<T = any> extends PlayEvent<T> {

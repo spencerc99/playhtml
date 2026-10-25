@@ -6,8 +6,12 @@ import {
   canMoveRecipe,
   canToggleRecipe,
 } from "./built-in-capabilities";
+import { doodleStripRecipe } from "./doodle-strip";
+import { liveReactionsRecipe, rainEventRecipe } from "./events-basics";
 import { matterPhysicsRecipe } from "./matter-physics";
 import { emojiMirrorRecipe, growingListMirrorRecipe } from "./mirror-basics";
+import { onlineIndicatorRecipe } from "./online-indicator";
+import { prizeWheelRecipe } from "./prize-wheel";
 import { sharedAudioFileRecipe } from "./shared-audio-file";
 import {
   sharedCounterRecipe,
@@ -24,6 +28,11 @@ export const exampleRecipes = [
   growingListMirrorRecipe,
   sharedCounterRecipe,
   sharedGuestbookRecipe,
+  doodleStripRecipe,
+  onlineIndicatorRecipe,
+  rainEventRecipe,
+  liveReactionsRecipe,
+  prizeWheelRecipe,
   sharedAudioFileRecipe,
   synchronizedSoundRecipe,
   matterPhysicsRecipe,

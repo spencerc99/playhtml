@@ -1,8 +1,8 @@
 // ABOUTME: Provides copy-paste React sources for the basic built-in capability recipes.
 // ABOUTME: Covers persistent movement and toggles plus presence-based shared hover.
 
-export const canMoveReactSource = `// ABOUTME: Constrains two shared draggable images to one arena.
-// ABOUTME: Uses stable ids so positions persist and synchronize across browsers.
+export const canMoveReactSource = `// Constrains two shared draggable images to one arena.
+// Uses stable ids so positions persist and synchronize across browsers.
 import { PlayProvider, CanMoveElement } from "@playhtml/react";
 
 const ARENA_ID = "ph-cap-move-arena";
@@ -64,8 +64,8 @@ export default function App() {
 }
 `;
 
-export const canToggleReactSource = `// ABOUTME: Shares one persistent on or off button across browsers.
-// ABOUTME: Renders the established docs toggle from CanToggleElement data.
+export const canToggleReactSource = `// Shares one persistent on or off button across browsers.
+// Renders the established docs toggle from CanToggleElement data.
 import { PlayProvider, CanToggleElement } from "@playhtml/react";
 
 export default function App() {
@@ -119,8 +119,8 @@ export default function App() {
 }
 `;
 
-export const canHoverReactSource = `// ABOUTME: Shares ephemeral hover state across connected browsers.
-// ABOUTME: Styles the established docs hover pad from the PlayHTML attribute.
+export const canHoverReactSource = `// Shares ephemeral hover state across connected browsers.
+// Styles the established docs hover pad from the PlayHTML attribute.
 import { PlayProvider, CanHoverElement } from "@playhtml/react";
 
 export default function App() {
