@@ -27,13 +27,6 @@ npx skills add spencerc99/playhtml --skill building-playhtml-elements
 
 The installer asks which agents to set up. After that, just describe the element you want.
 
-Claude Code users can also install it as a plugin:
-
-```bash
-claude plugin marketplace add spencerc99/playhtml
-claude plugin install playhtml@playhtml
-```
-
 ## Describe what you want
 
 Whichever setup you use, the agent will ask before guessing about these three things, so mentioning them up front saves a round trip:
