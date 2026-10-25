@@ -164,8 +164,9 @@ final class BrowserTab: NSObject, WKWebExtensionTab {
     }
 }
 
-/// A one-page browser with the extension running in it: a bar with close,
-/// the address and the extension's button above the page, back and forward below.
+/// A one-page browser with the extension running in it, laid out like Safari:
+/// the page fills the screen and one bar along the bottom holds back, forward,
+/// the address, the extension's button and close.
 @available(iOS 18.4, *)
 final class BrowserViewController: UIViewController,
     WKNavigationDelegate, WKUIDelegate, WKWebExtensionControllerDelegate, UITextFieldDelegate {
@@ -233,15 +234,11 @@ final class BrowserViewController: UIViewController,
     }
 
     private func layout() {
-        let close = UIButton(type: .system)
-        close.setImage(UIImage(systemName: "xmark"), for: .normal)
-        close.accessibilityLabel = "Close the browser"
-        close.addAction(UIAction { [weak self] _ in self?.close() }, for: .touchUpInside)
-
         addressField.font = .systemFont(ofSize: 15)
         addressField.textColor = Self.ink
-        addressField.backgroundColor = UIColor(red: 0.95, green: 0.93, blue: 0.89, alpha: 1)
-        addressField.layer.cornerRadius = 10
+        addressField.textAlignment = .center
+        addressField.backgroundColor = UIColor(red: 0.93, green: 0.91, blue: 0.87, alpha: 1)
+        addressField.layer.cornerRadius = 18
         addressField.leftView = UIView(frame: CGRect(x: 0, y: 0, width: 12, height: 1))
         addressField.leftViewMode = .always
         addressField.keyboardType = .webSearch
@@ -252,10 +249,20 @@ final class BrowserViewController: UIViewController,
         addressField.delegate = self
         addressField.accessibilityLabel = "Address"
 
+        backButton.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+        backButton.accessibilityLabel = "Back"
+        backButton.isEnabled = false
+        backButton.addAction(UIAction { [weak self] _ in self?.webView.goBack() }, for: .touchUpInside)
+
+        forwardButton.setImage(UIImage(systemName: "chevron.right"), for: .normal)
+        forwardButton.accessibilityLabel = "Forward"
+        forwardButton.isEnabled = false
+        forwardButton.addAction(UIAction { [weak self] _ in self?.webView.goForward() }, for: .touchUpInside)
+
         // The extension's own icon, in its colors rather than tinted.
         actionButton.setImage(
             ExtensionHost.shared.context?.webExtension
-                .actionIcon(for: CGSize(width: 26, height: 26))?
+                .actionIcon(for: CGSize(width: 24, height: 24))?
                 .withRenderingMode(.alwaysOriginal)
                 ?? UIImage(systemName: "circle.dotted"),
             for: .normal
@@ -263,44 +270,58 @@ final class BrowserViewController: UIViewController,
         actionButton.accessibilityLabel = "we were online"
         actionButton.addAction(UIAction { [weak self] _ in self?.openExtensionPopup() }, for: .touchUpInside)
 
-        let top = UIStackView(arrangedSubviews: [close, addressField, actionButton])
-        top.axis = .horizontal
-        top.spacing = 10
-        top.alignment = .center
+        let close = UIButton(type: .system)
+        close.setImage(UIImage(systemName: "xmark"), for: .normal)
+        close.accessibilityLabel = "Close the browser"
+        close.addAction(UIAction { [weak self] _ in self?.close() }, for: .touchUpInside)
 
-        backButton.setImage(UIImage(systemName: "chevron.left"), for: .normal)
-        backButton.accessibilityLabel = "Back"
-        backButton.addAction(UIAction { [weak self] _ in self?.webView.goBack() }, for: .touchUpInside)
-        forwardButton.setImage(UIImage(systemName: "chevron.right"), for: .normal)
-        forwardButton.accessibilityLabel = "Forward"
-        forwardButton.addAction(UIAction { [weak self] _ in self?.webView.goForward() }, for: .touchUpInside)
-        let bottom = UIStackView(arrangedSubviews: [backButton, forwardButton, UIView()])
-        bottom.axis = .horizontal
-        bottom.spacing = 28
-
-        for item in [close, actionButton, backButton, forwardButton] {
+        for item in [backButton, forwardButton, actionButton, close] {
             item.tintColor = Self.ink
-            item.widthAnchor.constraint(equalToConstant: 44).isActive = true
+            item.widthAnchor.constraint(equalToConstant: 40).isActive = true
             item.heightAnchor.constraint(equalToConstant: 44).isActive = true
         }
 
-        for item in [top, webView!, bottom] as [UIView] {
+        let row = UIStackView(arrangedSubviews: [backButton, forwardButton, addressField, actionButton, close])
+        row.axis = .horizontal
+        row.spacing = 4
+        row.alignment = .center
+
+        let bar = UIView()
+        bar.backgroundColor = Self.ground
+        let rule = UIView()
+        rule.backgroundColor = UIColor(red: 0.24, green: 0.22, blue: 0.20, alpha: 0.12)
+
+        for item in [webView!, bar, rule, row] as [UIView] {
             item.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(item)
         }
+        view.addSubview(webView)
+        view.addSubview(bar)
+        bar.addSubview(rule)
+        bar.addSubview(row)
+
         let guide = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            top.topAnchor.constraint(equalTo: guide.topAnchor, constant: 4),
-            top.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 8),
-            top.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -8),
-            addressField.heightAnchor.constraint(equalToConstant: 40),
-            webView.topAnchor.constraint(equalTo: top.bottomAnchor, constant: 4),
+            webView.topAnchor.constraint(equalTo: guide.topAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.bottomAnchor.constraint(equalTo: bottom.topAnchor),
-            bottom.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 16),
-            bottom.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -16),
-            bottom.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
+            webView.bottomAnchor.constraint(equalTo: bar.topAnchor),
+
+            bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            rule.topAnchor.constraint(equalTo: bar.topAnchor),
+            rule.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
+            rule.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
+            rule.heightAnchor.constraint(equalToConstant: 0.5),
+
+            row.topAnchor.constraint(equalTo: bar.topAnchor, constant: 6),
+            row.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 8),
+            row.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -8),
+            // Above the keyboard while typing an address, above the home
+            // indicator otherwise.
+            row.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -2),
+            addressField.heightAnchor.constraint(equalToConstant: 36),
         ])
     }
 
@@ -356,13 +377,16 @@ final class BrowserViewController: UIViewController,
     // MARK: Address
 
     func textFieldDidBeginEditing(_ textField: UITextField) {
+        textField.textAlignment = .left
         textField.text = webView.url?.absoluteString
         textField.selectAll(nil)
     }
 
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        textField.resignFirstResponder()
+        // Read what was typed before leaving the field: ending editing puts
+        // the current page's address back in it.
         let typed = (textField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        textField.resignFirstResponder()
         guard !typed.isEmpty else { return true }
         let url: URL?
         if typed.contains(" ") || !typed.contains(".") {
@@ -379,6 +403,7 @@ final class BrowserViewController: UIViewController,
     }
 
     func textFieldDidEndEditing(_ textField: UITextField) {
+        textField.textAlignment = .center
         showAddress(webView.url)
     }
 
@@ -408,6 +433,7 @@ final class BrowserViewController: UIViewController,
                let configuration = context.webViewConfiguration {
                 let page = ExtensionPageViewController(url: url, configuration: configuration)
                 page.modalPresentationStyle = .pageSheet
+                page.sheetPresentationController?.prefersGrabberVisible = true
                 self.present(page, animated: true)
             } else {
                 self.webView.load(URLRequest(url: url))
@@ -497,7 +523,7 @@ final class BrowserViewController: UIViewController,
     }
 }
 
-/// One of the extension's own pages, shown in a sheet with a close button.
+/// One of the extension's own pages, shown in a sheet that swipes down to close.
 @available(iOS 18.4, *)
 final class ExtensionPageViewController: UIViewController {
     private let url: URL
@@ -520,21 +546,11 @@ final class ExtensionPageViewController: UIViewController {
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
 
-        let close = UIButton(type: .close)
-        close.accessibilityLabel = "Close"
-        close.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
-        close.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(close)
-
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: view.topAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            close.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            close.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
-            close.widthAnchor.constraint(equalToConstant: 44),
-            close.heightAnchor.constraint(equalToConstant: 44),
         ])
         webView.load(URLRequest(url: url))
     }

@@ -110,6 +110,21 @@ while IFS= read -r plist; do
   fi
 done < <(find "$IOS_PROJECT_ROOT" -name Info.plist -not -path "*/build/*")
 
+# The app runs the extension in its own browser through WKWebExtension, where
+# a service worker background never starts (the context reports
+# backgroundContentFailedToLoad without running a line of it). The same bundle
+# runs as a non-persistent background page, which Safari on iOS also supports.
+EXTENSION_MANIFEST="${IOS_PROJECT_ROOT}/${APP_NAME}/${APP_NAME} Extension/Resources/manifest.json"
+node -e '
+  const fs = require("node:fs");
+  const path = process.argv[1];
+  const manifest = JSON.parse(fs.readFileSync(path, "utf8"));
+  const worker = manifest.background && manifest.background.service_worker;
+  if (!worker) throw new Error("The Safari manifest has no background service worker to convert");
+  manifest.background = { scripts: [worker], persistent: false };
+  fs.writeFileSync(path, JSON.stringify(manifest, null, 2));
+' "$EXTENSION_MANIFEST"
+
 # Replace the packager's placeholder home screen with ours. The app bundles only
 # the files the packager listed, so the fonts are inlined into Style.css from
 # the extension's own build rather than shipped as separate files.
