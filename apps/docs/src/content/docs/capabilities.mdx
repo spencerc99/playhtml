@@ -20,15 +20,24 @@ Every capability in playhtml is a single HTML attribute. Slap it on an element, 
 
 This page has live demos and both framework forms. For attribute names, data shapes, and options, see the [capabilities reference](/docs/reference/capabilities/).
 
-:::tip[Every playhtml element needs a stable id]
-The `id` is the key an element's synced data is stored under, so it must be **stable across reloads and browsers**. That's how two visitors agree on which element is which. A hand-written `id="my-lamp"` is ideal. If you omit it, playhtml falls back to hashing the element's HTML, which can differ across browsers and break sync.
+<div class="ph-know">
+<p class="ph-know-label">Two things to know</p>
 
-For **many elements that share a selector** (a row of magnets, a list of reactions), give each the same markup and add a single `selector-id` attribute instead of inventing unique ids. playhtml indexes the matches by position, so the N-th `.magnet` always gets the N-th slot of state. See [Dynamic elements](/docs/advanced/dynamic-elements/#many-of-a-kind-elements-with-selector-id).
-:::
+<details>
+<summary>Every element needs a stable <code>id</code></summary>
 
-:::tip[Shift-click to reset]
-The built-in interactive capabilities (`can-move`, `can-spin`, `can-toggle`, and `can-grow`) support **shift-clicking** an element to reset it to its default state. Because the state is shared, this resets it for everyone in the room (a moved element snaps back to its origin, a spun one to 0°, a toggle to off, a grown one to scale 1). Custom `can-play` elements can opt into this with the [`resetShortcut`](/docs/custom-elements/#reset-shortcut) option.
-:::
+The `id` is the key an element's synced data is stored under, so keep it the same across reloads and browsers. A hand-written `id="my-lamp"` is ideal. For a row of identical elements, use `selector-id` instead. See [Core concepts](/docs/concepts/#every-element-needs-a-stable-id).
+
+</details>
+
+<details>
+<summary>Shift-click resets data</summary>
+
+Shift-clicking a `can-move`, `can-spin`, `can-toggle`, or `can-grow` element resets it to its default state for everyone in the room (back to its origin, 0°, off, or scale 1). Custom `can-play` elements can opt in with the [`resetShortcut`](/docs/custom-elements/#reset-shortcut) option.
+
+</details>
+</div>
+
 
 Every section below has the same shape:
 

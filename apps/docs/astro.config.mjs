@@ -11,6 +11,10 @@ const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 export default defineConfig({
   site: "https://playhtml.fun",
   base: "/docs",
+  // Pages removed or merged elsewhere; keep old links working.
+  redirects: {
+    "/using-react": "/docs/getting-started/",
+  },
   outDir: path.resolve(repoRoot, "site-dist/docs"),
   // Shiki's dual-theme mode. Starlight's Expressive Code integration is
   // disabled below, so every fenced ``` block goes through Astro's built-in
@@ -92,7 +96,7 @@ export default defineConfig({
       },
       // Sidebar IA — hybrid manual + autogenerate.
       //
-      //   Start        → getting-started, concepts, using-react
+      //   Start        → getting-started, concepts
       //   Capabilities → capabilities (single page)
       //   Examples     → autogenerate (examples/)
       //   Data         → autogenerate (data/)
@@ -120,17 +124,15 @@ export default defineConfig({
       // lives in concepts (Start #2) first so readers can pick the right
       // primitive without having to read the whole reference.
       //
-      // "Using React" lives in Start (not its own framework section)
-      // because the rest of the docs show React inline, tabbed next to
-      // vanilla. The primer just orients the React reader; the concept
-      // pages carry the actual framework examples.
+      // There is no separate React page: the rest of the docs show React
+      // inline, tabbed next to vanilla, and the React setup lives in the
+      // React tab of Getting started.
       sidebar: [
         {
           label: "Start",
           items: [
             { label: "Getting started", slug: "getting-started" },
             { label: "Core concepts", slug: "concepts" },
-            { label: "Using React", slug: "using-react" },
           ],
         },
         {
