@@ -5,7 +5,8 @@ sidebar:
   order: 4
 ---
 
-import { LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import DemoCodeLink from '@/components/DemoCodeLink.astro';
 import { RainSprinklerDemo } from "@/components/react/data-demos/RainSprinklerDemo";
 import { LiveReactionsDemo } from "@/components/react/data-demos/LiveReactionsDemo";
 
@@ -113,17 +114,15 @@ Click the hydrant. It dispatches a `"rain"` event, and clouds drift across the t
 
 <div id="rain-event-demo" className="ph-demo-slot" data-label="EVENTS — rain">
   <RainSprinklerDemo client:only="react" />
+  <DemoCodeLink href="/docs/examples/rain-event/" />
 </div>
-
-<LinkCard title="Rain event code" description="Full Vanilla HTML and React code, ready to copy or remix." href="/docs/examples/rain-event/" />
 
 Same primitive, different shape: each click below sends a short-lived emoji burst. No state, no persistence: exactly the "live reactions" pattern from video calls.
 
 <div id="live-reactions-demo" className="ph-demo-slot" data-label="EVENTS — live reactions">
   <LiveReactionsDemo client:only="react" />
+  <DemoCodeLink href="/docs/examples/live-reactions/" />
 </div>
-
-<LinkCard title="Live reactions code" description="Full Vanilla HTML and React code, ready to copy or remix." href="/docs/examples/live-reactions/" />
 
 ## Gotchas
 

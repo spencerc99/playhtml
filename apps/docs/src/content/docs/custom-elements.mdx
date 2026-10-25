@@ -5,7 +5,8 @@ sidebar:
   order: 5
 ---
 
-import { Aside, LinkCard } from "@astrojs/starlight/components";
+import { Aside } from "@astrojs/starlight/components";
+import DemoCodeLink from "@/components/DemoCodeLink.astro";
 import { SmileyRow } from "@/components/react/capability-demos/SmileyRow";
 import { DocsSpinner } from "@/components/react/capability-demos/DocsSpinner";
 import { SharedSwitchDemo } from "@/components/react/SharedSwitchDemo";
@@ -37,9 +38,8 @@ This page runs a few live `can-play` demos in its margins — a doodle strip her
     </p>
   </div>
   <SmileyRow client:only="react" />
+  <DemoCodeLink href="/docs/examples/doodle-strip/" />
 </div>
-
-<LinkCard title="Shared doodle strip code" description="Full Vanilla HTML and React code, ready to copy or remix." href="/docs/examples/doodle-strip/" />
 
 ## Vanilla HTML
 
@@ -250,9 +250,8 @@ Most capabilities can share the same element. Each keeps its own data and behavi
     </p>
   </div>
   <OnlineIndicatorDemo client:only="react" />
+  <DemoCodeLink href="/docs/examples/online-indicator/" />
 </div>
-
-<LinkCard title="Online presence indicator code" description="Full Vanilla HTML and React code, ready to copy or remix." href="/docs/examples/online-indicator/" />
 
 #### Reset shortcut
 
@@ -427,9 +426,8 @@ playhtml.register("timer", {
     </p>
   </div>
   <DocsSpinner client:only="react" />
+  <DemoCodeLink href="/docs/examples/prize-wheel/" />
 </div>
-
-<LinkCard title="Shared prize wheel code" description="Full Vanilla HTML and React code, ready to copy or remix." href="/docs/examples/prize-wheel/" />
 
 #### Composition: views that render other elements
 
