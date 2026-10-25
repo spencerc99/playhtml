@@ -118,7 +118,9 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 .hero {
   position: relative;
   min-height: 100vh;
-  min-height: 100dvh;
+  // svh, not dvh: dvh grows while a phone's address bar slides away, which
+  // stretched the first screen mid-scroll.
+  min-height: 100svh;
   display: flex;
   flex-direction: column;
   align-items: center;
