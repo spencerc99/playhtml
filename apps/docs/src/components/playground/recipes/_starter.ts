@@ -61,6 +61,12 @@ export const starterRecipe: RunnableRecipe = {
     <input id="colorBox" can-mirror />
     <button id="colorBtn">change color</button>
   </section>
+  <script type="module">
+    document.getElementById("colorBtn").addEventListener("click", () => {
+      const box = document.getElementById("colorBox");
+      box.style.backgroundColor = box.style.backgroundColor === "red" ? "green" : "red";
+    });
+  </script>
 
   <!-- can-mirror on a list: appended items appear for everyone. -->
   <h2>guestbook</h2>
@@ -69,43 +75,7 @@ export const starterRecipe: RunnableRecipe = {
     <button id="guestbookBtn">say hi</button>
   </section>
   <ul id="guestbook" can-mirror></ul>
-
-  <!-- Events: a one-off moment everyone sees, nothing saved. -->
-  <h2>events</h2>
-  <button id="starBtn">shooting star!</button>
-  <div id="shootingStar">★</div>
-
-  <!-- can-play: your own shared element with custom data. -->
-  <h2>custom elements</h2>
-  <div id="reactionBtn" can-play></div>
-
   <script type="module">
-    import { playhtml, html } from "https://unpkg.com/playhtml@latest";
-
-    // A reaction button with a shared count. register() can run before or
-    // after init(). The view renders from \`data\` and re-renders on change.
-    playhtml.register("reactionBtn", {
-      defaultData: { count: 0 },
-      view: ({ data, setData }) => {
-        const reacted = Boolean(localStorage.getItem("reacted"));
-        const toggle = () => {
-          setData((d) => { d.count += reacted ? -1 : 1; });
-          reacted ? localStorage.removeItem("reacted") : localStorage.setItem("reacted", "1");
-        };
-        return html\`<button class=\${reacted ? "reacted" : ""} @click=\${toggle}>react \${data.count}</button>\`;
-      },
-    });
-
-    await playhtml.init({
-      developmentMode: true,
-      cursors: { enabled: true, room: "page" },
-    });
-
-    document.getElementById("colorBtn").addEventListener("click", () => {
-      const box = document.getElementById("colorBox");
-      box.style.backgroundColor = box.style.backgroundColor === "red" ? "green" : "red";
-    });
-
     document.getElementById("guestbookBtn").addEventListener("click", () => {
       const input = document.getElementById("guestbookInput");
       if (!input.value) return;
@@ -114,6 +84,14 @@ export const starterRecipe: RunnableRecipe = {
       document.getElementById("guestbook").appendChild(entry);
       input.value = "";
     });
+  </script>
+
+  <!-- Events: a one-off moment everyone sees, nothing saved. -->
+  <h2>events</h2>
+  <button id="starBtn">shooting star!</button>
+  <div id="shootingStar">★</div>
+  <script type="module">
+    import { playhtml } from "https://unpkg.com/playhtml@latest";
 
     playhtml.registerPlayEventListener("shootingStar", {
       onEvent: () => {
@@ -128,6 +106,46 @@ export const starterRecipe: RunnableRecipe = {
     });
     document.getElementById("starBtn").addEventListener("click", () => {
       playhtml.dispatchPlayEvent({ type: "shootingStar" });
+    });
+  </script>
+
+  <!-- can-play: your own shared element with custom data. -->
+  <h2>custom elements</h2>
+  <div id="reactionBtn" can-play></div>
+  <script type="module">
+    import { playhtml, html } from "https://unpkg.com/playhtml@latest";
+
+    // A reaction button with a shared count. The view renders from \`data\`
+    // and re-renders whenever anyone changes it.
+    playhtml.register("reactionBtn", {
+      defaultData: { count: 0 },
+      view: ({ data, setData }) => {
+        const hasReacted = Boolean(localStorage.getItem("reacted"));
+        const react = () => {
+          if (hasReacted) {
+            setData((d) => { d.count -= 1; });
+            localStorage.removeItem("reacted");
+          } else {
+            setData((d) => { d.count += 1; });
+            localStorage.setItem("reacted", "true");
+          }
+        };
+        return html\`
+          <button class=\${hasReacted ? "reacted" : ""} @click=\${react}>
+            react \${data.count}
+          </button>
+        \`;
+      },
+    });
+  </script>
+
+  <!-- Start playhtml once, after every element above is set up. -->
+  <script type="module">
+    import { playhtml } from "https://unpkg.com/playhtml@latest";
+
+    await playhtml.init({
+      developmentMode: true,
+      cursors: { enabled: true, room: "page" },
     });
   </script>
 </body>
