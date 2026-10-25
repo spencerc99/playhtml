@@ -9,6 +9,7 @@ import {
 } from "@movement/cursors";
 import { getTrailRenderer } from "@movement/styles/trailRenderers";
 import p5 from "p5";
+import { getStrokePoints } from "perfect-freehand";
 import { AnimatedTrails } from "@movement/components/AnimatedTrails";
 import { DEFAULT_SETTINGS } from "@movement/components/settingsDefaults";
 import {
@@ -256,6 +257,112 @@ function smoothCenterline(pts: Array<{ x: number; y: number }>) {
   return out;
 }
 
+// perfect-freehand's own centerline and width profile, so the GPU strokes
+// match the SVG ones: its streamline/smoothing for the points, its taper
+// easings for the ends, and (when thinning > 0) its velocity-simulated pressure.
+// Mirrors the portrait's FREEHAND_OPTIONS in utils/trailAnimation.ts.
+const THINNING = Number(q.get("thinning") ?? 0);
+const END_TAPER = 20;
+const taperStartEase = (t: number) => t * (2 - t);
+const taperEndEase = (t: number) => --t * t * t + 1;
+const RATE_OF_PRESSURE_CHANGE = 0.275;
+const simulatePressure = (prev: number, distance: number, size: number) => {
+  const sp = Math.min(1, distance / size);
+  const rp = Math.min(1, 1 - sp);
+  return Math.min(1, prev + (rp - prev) * (sp * RATE_OF_PRESSURE_CHANGE));
+};
+
+function freehandCenterline(
+  src: Array<{ x: number; y: number }>,
+  size: number,
+) {
+  const sp = getStrokePoints(src, {
+    size,
+    thinning: THINNING,
+    smoothing: 0.5,
+    streamline: 0.05,
+    simulatePressure: THINNING > 0,
+    last: true,
+  });
+  // Progress is index-based in the SVG renderer (head = (n-1) * progress), so
+  // map each smoothed point back to a fractional input index by arc length.
+  const cum = [0];
+  for (let k = 1; k < src.length; k++)
+    cum.push(
+      cum[k - 1] + Math.hypot(src[k].x - src[k - 1].x, src[k].y - src[k - 1].y),
+    );
+  const inputTotal = cum[cum.length - 1] || 1;
+  const total = sp[sp.length - 1]?.runningLength || 1;
+  let seg = 0;
+  const indexAt = (len: number) => {
+    while (seg < cum.length - 2 && cum[seg + 1] < len) seg++;
+    const span = cum[seg + 1] - cum[seg] || 1;
+    return Math.min(1, (seg + (len - cum[seg]) / span) / (src.length - 1));
+  };
+  let pressure = sp
+    .slice(0, 10)
+    .reduce(
+      (acc, p) =>
+        (acc +
+          (THINNING > 0
+            ? simulatePressure(acc, p.distance, size)
+            : p.pressure)) /
+        2,
+      sp[0]?.pressure ?? 0.5,
+    );
+  return sp.map((p) => {
+    let r = size / 2;
+    if (THINNING > 0) {
+      pressure = simulatePressure(pressure, p.distance, size);
+      r = size * (0.5 - THINNING * (0.5 - pressure));
+    }
+    const len = p.runningLength;
+    const ts = len < END_TAPER ? taperStartEase(len / END_TAPER) : 1;
+    const te =
+      total - len < END_TAPER ? taperEndEase((total - len) / END_TAPER) : 1;
+    r = Math.max(0.01, r * Math.min(ts, te));
+    return {
+      x: p.point[0],
+      y: p.point[1],
+      r,
+      t: indexAt((len / total) * inputTotal),
+    };
+  });
+}
+
+// Catmull-Rom between the smoothed points so curves hold up at 4-8x zoom.
+function subdivide(
+  line: Array<{ x: number; y: number; r: number; t: number }>,
+) {
+  const out: typeof line = [];
+  const n = line.length;
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = line[Math.max(0, i - 1)],
+      p1 = line[i],
+      p2 = line[i + 1],
+      p3 = line[Math.min(n - 1, i + 2)];
+    for (let k = 0; k < SUB; k++) {
+      const u = k / SUB,
+        u2 = u * u,
+        u3 = u2 * u;
+      const cr = (a: number, b: number, c: number, d: number) =>
+        0.5 *
+        (2 * b +
+          (-a + c) * u +
+          (2 * a - 5 * b + 4 * c - d) * u2 +
+          (-a + 3 * b - 3 * c + d) * u3);
+      out.push({
+        x: cr(p0.x, p1.x, p2.x, p3.x),
+        y: cr(p0.y, p1.y, p2.y, p3.y),
+        r: p1.r + (p2.r - p1.r) * u,
+        t: p1.t + (p2.t - p1.t) * u,
+      });
+    }
+  }
+  out.push(line[n - 1]);
+  return out;
+}
+
 function evictTimes(): Float64Array {
   const order = states
     .map((s, i) => ({ i, f: s.startOffsetMs + s.durationMs }))
@@ -407,7 +514,7 @@ void main() {
   vec4 color = texelFetch(uTrails, base + ivec2(1, 0), 0);
   vec2 p = aPos.xy;
   vec2 ndc = (p - uView.xy) / uView.zw * 2.0 - 1.0;
-  gl_Position = vec4(ndc.x, -ndc.y, 0.999 - 1.998 * (float(id) + 1.0) / uCount, 1.0);
+  gl_Position = vec4(ndc.x, -ndc.y, 0.999 - 1.998 * (timing.w + 1.0) / uCount, 1.0);
   float start = timing.x, dur = timing.y, evict = timing.z;
   float prog = (uTime - start) / dur;
   float alpha = 1.0;
@@ -485,18 +592,13 @@ function mountGl2(container: HTMLElement) {
   const chunks: Float32Array[] = [];
   let count = 0;
   states.forEach((s, idx) => {
-    const half = INK ? (1 + ((idx * 7 + 3) % 5)) / 2 : settings.strokeWidth / 2;
-    const line = smoothCenterline(s.variedPoints);
+    const size = INK ? 1 + ((idx * 7 + 3) % 5) : settings.strokeWidth;
+    const pts = freehandCenterline(s.variedPoints, size);
+    if (pts.length < 2) return;
+    const line = subdivide(pts);
     const n = line.length;
-    const src = s.variedPoints;
-    const buf = new Float32Array((n * 2 + 2 + src.length * 6) * 7);
+    const buf = new Float32Array((n * 2 + 2 + pts.length * 6) * 7);
     let o = 0;
-    const lens = new Float32Array(n);
-    for (let k = 1; k < n; k++)
-      lens[k] =
-        lens[k - 1] +
-        Math.hypot(line[k].x - line[k - 1].x, line[k].y - line[k - 1].y);
-    const total = lens[n - 1];
     const put = (x: number, y: number, t: number, lx: number, ly = 0) => {
       buf[o++] = x;
       buf[o++] = y;
@@ -514,27 +616,17 @@ function mountGl2(container: HTMLElement) {
       const len = Math.hypot(dx, dy) || 1;
       dx /= len;
       dy /= len;
-      const w =
-        half *
-        Math.max(0.15, Math.min(1, lens[k] / TAPER, (total - lens[k]) / TAPER));
+      const w = line[k].r;
       if (k === 0) put(line[k].x + dy * w, line[k].y - dx * w, line[k].t, -1); // degenerate start
       put(line[k].x + dy * w, line[k].y - dx * w, line[k].t, -1);
       put(line[k].x - dy * w, line[k].y + dx * w, line[k].t, 1);
       if (k === n - 1)
         put(line[k].x - dy * w, line[k].y + dx * w, line[k].t, 1); // degenerate end
     }
-    // Round joins: a disc at every recorded point. The per-trail depth test keeps
-    // a disc from darkening the strip it overlaps.
-    for (let k = 0; k < src.length; k++) {
-      const t = k / (src.length - 1);
-      const lk = Math.min(n - 1, k * SUB);
-      const r =
-        half *
-        Math.max(
-          0.15,
-          Math.min(1, lens[lk] / TAPER, (total - lens[lk]) / TAPER),
-        );
-      const { x, y } = src[k];
+    // Round joins: a disc at every smoothed point, standing in for
+    // perfect-freehand's corner caps. The per-trail depth test keeps a disc
+    // from darkening the strip it overlaps.
+    for (const { x, y, r, t } of pts) {
       put(x - r, y - r, t, -1, -1); // degenerate in
       put(x - r, y - r, t, -1, -1);
       put(x + r, y - r, t, 1, -1);
@@ -567,12 +659,22 @@ function mountGl2(container: HTMLElement) {
   gl.vertexAttribPointer(aTrail, 1, gl.FLOAT, false, 28, 24);
 
   // Per-trail data texture.
+  // Paint order: the later a trail starts, the nearer it sits, so the newest
+  // trail is always on top (the SVG renderer re-appends active heads the same way).
+  const startRank = new Float32Array(states.length);
+  states
+    .map((st, i) => ({ i, start: st.startOffsetMs }))
+    .sort((a, b) => a.start - b.start)
+    .forEach((e, rank) => (startRank[e.i] = rank));
   const texW = 2048,
     texH = Math.ceil((states.length * 2) / texW);
   const data = new Float32Array(texW * texH * 4);
   states.forEach((s, i) => {
     const [r, g, b] = hslToRgb(s.trail.color);
-    data.set([s.startOffsetMs, s.durationMs, evict[i], 0, r, g, b, 0], i * 8);
+    data.set(
+      [s.startOffsetMs, s.durationMs, evict[i], startRank[i], r, g, b, 0],
+      i * 8,
+    );
   });
   const tex = gl.createTexture();
   gl.activeTexture(gl.TEXTURE0);
