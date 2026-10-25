@@ -97,24 +97,25 @@ export default defineConfig({
       // Sidebar IA — mirrors the four kinds of shared state in the Core
       // concepts diagram (element data, page data, presence, events).
       //
-      //   Start        → getting-started, concepts
+      //   Start        → getting-started, concepts, examples
       //   Element data → capabilities, custom-elements, data/data-essentials,
       //                  advanced/{dynamic-elements,shared-elements,merging-data}
       //   Page data    → data/page-data
       //   Presence     → data/presence/*, plus element `live` data
       //   Events       → data/events
-      //   Examples     → autogenerate (examples/)
       //   Advanced     → advanced/{navigation,development,mirror-playground}
       //   Integrations → autogenerate (integrations/)
       //   Reference    → autogenerate (reference/)
       //
       // The groups are hand-rolled because they don't match directories on
       // disk: pages kept their URLs when the sidebar was regrouped. Only
-      // Examples, Integrations, and Reference autogenerate (set
+      // Integrations and Reference autogenerate (set
       // `sidebar: { order: N }` in a page's frontmatter there).
       //
-      // ⚠️ When adding a page outside examples/ / integrations/ / reference/,
-      // add an entry to the matching group here or it won't show up.
+      // ⚠️ When adding a page outside integrations/ / reference/, add an
+      // entry to the matching group here or it won't show up. Individual
+      // example pages stay hidden (`sidebar.hidden`) and are linked from the
+      // examples index.
       //
       // There is no separate React section: every page shows React inline,
       // tabbed next to vanilla, and the React setup lives in the React tab of
@@ -125,12 +126,13 @@ export default defineConfig({
           items: [
             { label: "Getting started", slug: "getting-started" },
             { label: "Core concepts", slug: "concepts" },
+            { label: "Examples", slug: "examples" },
           ],
         },
         {
           label: "Element data",
           items: [
-            { label: "Built-in capabilities", slug: "capabilities" },
+            { label: "Built-in elements", slug: "capabilities" },
             { label: "Custom elements", slug: "custom-elements" },
             { label: "Data essentials", slug: "data/data-essentials" },
             { label: "Dynamic elements", slug: "advanced/dynamic-elements" },
@@ -158,7 +160,6 @@ export default defineConfig({
           label: "Events",
           items: [{ label: "Events", slug: "data/events" }],
         },
-        { label: "Examples", autogenerate: { directory: "examples" } },
         {
           label: "Advanced",
           items: [
