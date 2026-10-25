@@ -122,13 +122,8 @@ export const starterRecipe: RunnableRecipe = {
       view: ({ data, setData }) => {
         const hasReacted = Boolean(localStorage.getItem("reacted"));
         const react = () => {
-          if (hasReacted) {
-            setData((d) => { d.count -= 1; });
-            localStorage.removeItem("reacted");
-          } else {
-            setData((d) => { d.count += 1; });
-            localStorage.setItem("reacted", "true");
-          }
+          setData((d) => { d.count += hasReacted ? -1 : 1; });
+          hasReacted ? localStorage.removeItem("reacted") : localStorage.setItem("reacted", "1");
         };
         return html\`
           <button class=\${hasReacted ? "reacted" : ""} @click=\${react}>
