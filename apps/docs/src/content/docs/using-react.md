@@ -81,7 +81,7 @@ export const ReactionView = withSharedState(
 
 Use the mutator form for counters and other `+/-` updates so each interaction edits the draft value at write time.
 
-Add `live` to the config for ephemeral per-user data scoped to this element. Render every current identity and value from `users`, and change yours with `setLive`.
+Add `presence` to the config for per-person state scoped to this element that clears when they leave. Render everyone from `everyone`, read yours from `myPresence`, and change it with `setPresence`.
 
 ### `<CanPlayElement>`: for when you need JSX children, not a wrapper
 

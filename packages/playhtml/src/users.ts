@@ -5,6 +5,7 @@ import {
   generatePersistentPlayerIdentity,
   savePlayerIdentityToStorage,
   User,
+  type CursorEntry,
   type CursorPresenceView,
   type PlayerIdentity,
 } from "@playhtml/common";
@@ -53,10 +54,19 @@ export interface UsersSelfIdentity {
   color: string;
 }
 
+/** Everyone's cursors. Empty when cursors are disabled. */
+export interface UsersCursorsAPI {
+  /** Every visible cursor, in the same order as `users.getAll()`. */
+  getAll(): CursorEntry[];
+  /** Fires on every cursor move. Replays the current cursors immediately. */
+  onChange(callback: (cursors: CursorEntry[]) => void): () => void;
+}
+
 export interface UsersAPI {
   readonly me: UsersSelfIdentity;
   getAll(): User[];
   onChange(callback: (users: User[]) => void): () => void;
+  readonly cursors: UsersCursorsAPI;
   /** Adopts a whole new identity object (init option / configure() injection). */
   adoptIdentity(identity: PlayerIdentity): void;
   /** Returns the live identity reference (cursor client keeps reading this). */
@@ -178,6 +188,42 @@ export function createUsersAPI(
     return Array.from(usersByStableId.values());
   }
 
+  function getAllCursors(): CursorEntry[] {
+    const cursorPresences = deps.getCursorPresences?.();
+    if (!cursorPresences || cursorPresences.size === 0) return [];
+    const usersByPid = new Map(getAll().map((user) => [user.pid, user]));
+    const entries: CursorEntry[] = [];
+    for (const [stableId, presence] of cursorPresences) {
+      const user = usersByPid.get(stableId);
+      if (!user) continue;
+      entries.push({
+        user,
+        cursor: presence.cursor,
+        zone: presence.zone,
+        page: presence.page,
+      });
+    }
+    const order = new Map(Array.from(usersByPid.keys()).map((pid, index) => [pid, index]));
+    return entries.sort((a, b) => order.get(a.user.pid)! - order.get(b.user.pid)!);
+  }
+
+  const cursors: UsersCursorsAPI = {
+    getAll: getAllCursors,
+    onChange(callback) {
+      const unsubscribe =
+        deps.onCursorPresencesChange?.(() => {
+          const entries = getAllCursors();
+          try {
+            callback(entries);
+          } catch (error) {
+            console.error("[playhtml] users.cursors subscriber threw:", error);
+          }
+        }) ?? (() => {});
+      callback(getAllCursors());
+      return unsubscribe;
+    },
+  };
+
   function applyIdentityMutation(mutate: () => void): void {
     mutate();
     savePlayerIdentityToStorage(identity);
@@ -216,6 +262,7 @@ export function createUsersAPI(
 
   return {
     me,
+    cursors,
     getAll(): User[] {
       ensureSubscribed();
       return getAll();

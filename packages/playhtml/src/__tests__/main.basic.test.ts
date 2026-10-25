@@ -170,17 +170,17 @@ describe("playhtml basic setup with SyncedStore", () => {
       {
         id: "render-without-data",
         props: { updateElement: vi.fn() },
-        message: "update, updateElement, or view requires defaultData or live",
+        message: "update, updateElement, or view requires defaultData or presence",
       },
       {
         id: "view-without-data",
         props: { view: vi.fn() },
-        message: "update, updateElement, or view requires defaultData or live",
+        message: "update, updateElement, or view requires defaultData or presence",
       },
       {
         id: "render-with-awareness-render-without-data",
         props: { updateElement: vi.fn(), updateElementAwareness: vi.fn() },
-        message: "update, updateElement, or view requires defaultData or live",
+        message: "update, updateElement, or view requires defaultData or presence",
       },
       {
         id: "awareness-without-render",

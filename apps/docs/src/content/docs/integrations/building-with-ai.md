@@ -91,8 +91,8 @@ SETUP — React:
 
 DATA TYPES (choose the right one):
 1. Persistent data (defaultData): State that syncs and persists (position, count, messages, etc.)
-2. Presence: Temporary per-user state (which users are online, their colors, cursor positions)
-3. Element users: Identity plus live data scoped to one element (who is hovering this card, this user's choice in this widget)
+2. Page presence: Temporary per-person state for the page (status, typing, which section they're reading) via playhtml.page; identity via playhtml.users; cursors via playhtml.users.cursors
+3. Element presence: Temporary per-person state scoped to one element (who is hovering this card, this person's choice in this widget)
 4. Events: One-time triggers (confetti, notifications, animations) — use dispatchPlayEvent/registerPlayEventListener
 
 KEY APIs:
@@ -101,13 +101,14 @@ Vanilla HTML (register):
 - playhtml.register(elementOrId, init) → handle                // Bind one element by DOM node or id
 - playhtml.define(name, init)                                  // Reusable capability for every [name] element
 - init.defaultData = { ... }                                   // Initial state (REQUIRED)
-- init.update = ({ element, data, live, users }) => { ... }     // Supported imperative renderer
+- init.update = ({ element, data, myPresence, everyone }) => { ... } // Supported imperative renderer
 - init.view = ({ data, setData }) => html`...`                 // Experimental declarative renderer
 - init.onMount = (ctx) => { ...; return cleanup }              // Setup loops/listeners; return a cleanup
 - init.resetShortcut = "shiftKey"                              // Keyboard reset
 - ctx.setData(value | (draft) => { ... })                     // Write shared state
 - ctx.localData / ctx.setLocalData(...)                        // Per-user, un-synced UI state
-- ctx.live / ctx.users / ctx.setLive(...)                     // Element users
+- ctx.myPresence / ctx.everyone / ctx.setPresence(...)        // Element presence (init.presence = starting value)
+- playhtml.page.setPresence({ key: value }) / .getEveryone() / .onPresenceChange(key, cb) // Page presence
 - ctx.requestUpdate()                                          // Repaint clock-driven views (timers)
 
 Use exactly one renderer: `update` or `view`. Do not assign initializer
@@ -115,9 +116,10 @@ fields directly to the DOM element in new code.
 
 React (withSharedState):
 - withSharedState({ defaultData: {...} }, ({ data, setData, ref }) => JSX)
-- For element users: { live: value } in config, use setLive and render users
+- For element presence: { presence: value } in config, use setPresence and render everyone
+- For page presence: usePagePresence(key) → { myPresence, everyone, setPresence }
 - For events: usePlayContext() → { registerPlayEventListener, dispatchPlayEvent }
-- For cursors in React: usePlayContext() → { cursors, configureCursors, getMyPlayerIdentity }
+- For identity in React: useMe() and useUsers() (User = { pid, name, color, isMe }); for cursor options: usePlayContext().configureCursors
 
 DATA UPDATES:
 - `setData` has two forms: mutator and replacement
@@ -160,7 +162,7 @@ DATA PERFORMANCE TIPS:
 - Keep data shapes simple and flat (avoid deep nesting)
 - Don't store computed/derived values — calculate them in the view / render function
 - Use events for ephemeral actions (confetti, notifications), not persistent data
-- Use presence or element live data for temporary per-user state, not defaultData
+- Use page or element presence for temporary per-person state, not defaultData
 - Don't update data on high-frequency events (mousemove, scroll) — debounce
 - For growing lists (messages, history), consider limiting size or implementing cleanup
 - Store only what needs to sync — use component state for UI-only state

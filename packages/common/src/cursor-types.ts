@@ -30,6 +30,9 @@ export type CursorZonePosition = {
 
 export type CursorPresence = {
   cursor?: Cursor | null;
+  /** Who this cursor belongs to. */
+  user?: User;
+  /** @deprecated Use `user`. */
   playerIdentity?: PlayerIdentity;
   lastSeen?: number;
   message?: string | null;
@@ -44,10 +47,22 @@ export type CursorPresence = {
 // single-page apps can set it to anything they want to group presences by.
 export type CursorPresenceView = {
   cursor: Cursor | null;
+  /** Who this cursor belongs to. */
+  user?: User;
+  /** @deprecated Use `user` (`user.pid`, `user.name`, `user.color`). */
   playerIdentity?: PlayerIdentity;
   zone?: CursorZonePosition | null;
   page?: string;
 };
+
+/** One person's cursor, from `playhtml.users.cursors`. */
+export interface CursorEntry {
+  user: User;
+  cursor: Cursor | null;
+  zone?: CursorZonePosition | null;
+  /** The page this cursor is on. */
+  page?: string;
+}
 
 // Event payloads for cursor-related global API updates
 export interface CursorEvents {
@@ -65,6 +80,24 @@ export type User = {
   color: string;
   isMe: boolean;
 };
+
+/**
+ * Flattens a PlayerIdentity into the public `User` shape. Unlike the users
+ * module's strict conversion, a missing color becomes "" so a partially
+ * populated remote identity still yields a usable view.
+ */
+export function playerIdentityToUser(
+  identity: PlayerIdentity,
+  isMe: boolean,
+): User {
+  const user: User = {
+    pid: identity.publicKey,
+    color: identity.playerStyle?.colorPalette?.[0] ?? "",
+    isMe,
+  };
+  if (identity.name !== undefined) user.name = identity.name;
+  return user;
+}
 
 // Constants
 export const PROXIMITY_THRESHOLD = 150; // pixels

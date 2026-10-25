@@ -63,6 +63,7 @@ export interface PlayContextInfo
   isLoading: boolean;
   isProviderMissing: boolean;
   configureCursors: (options: Partial<CursorOptions>) => void;
+  /** @deprecated Use `useMe()` or `playhtml.users.me`. */
   getMyPlayerIdentity: () => PlayerIdentity | null;
   /**
    * Apply a CSS class to the actual cursor DOM element for the given stableId.

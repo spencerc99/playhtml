@@ -11,7 +11,7 @@ playhtml makes HTML elements collaborative and real-time via Yjs CRDTs.
 
 If the user's request is ambiguous on ANY of these, **stop and ask**:
 
-1. **Persistence**: Should data survive page refresh? (`defaultData`=yes, `live`=no)
+1. **Persistence**: Should data survive page refresh? (`defaultData`=yes, `presence`=no)
 2. **Shared vs per-user**: Should all users see the same state, or does each user have their own?
 3. **Vanilla HTML or React?**
 
@@ -22,9 +22,11 @@ These determine which API and data type to use. Getting them wrong means a rewri
 | Type | Persists? | Syncs? | Use for |
 |------|-----------|--------|---------|
 | `defaultData` | Yes | Yes | Positions, counts, messages, toggles |
-| `live` | No | Yes | Per-user typing, ready, hover, or selection state |
+| `presence` (element) / `playhtml.page` | No | Yes | Per-person typing, ready, hover, or selection state |
 | `dispatchPlayEvent` | No | One-shot | Confetti, notifications |
 | `localStorage` | Yes | No | Per-user flags ("has reacted") |
+
+Identity: everything that describes a person is a `User` (`{ pid, name, color, isMe }`). Read yourself with `playhtml.users.me` / `useMe()`, the room with `playhtml.users.getAll()` / `useUsers()`, and key per-user data by `pid`. Presence lists are `{ user, presence }[]` named `everyone` (includes you; filter `!user.isMe` for others). Page presence: `playhtml.page.setPresence({ key: v })` (merges keys), `getEveryone(key?)`, `onPresenceChange(key | select, cb)`; React `usePagePresence(key)`. Cursors: `playhtml.users.cursors.getAll()` / `useCursors()`. Deprecated but working: `playhtml.presence`, `usePresence`, element `live`/`users`/`setLive`, `p.playerIdentity`, `getMyIdentity()`, `usePlayerIdentity()`.
 
 ## Critical Rules
 
@@ -40,8 +42,8 @@ import { playhtml } from "https://unpkg.com/playhtml@latest";
 const el = document.getElementById("myElement");
 playhtml.register(el, {
   defaultData: { count: 0 },                           // REQUIRED
-  live: { ready: false },
-  update: ({ element, data, live, users }) => { ... },  // REQUIRED
+  presence: { ready: false },
+  update: ({ element, data, myPresence, everyone }) => { ... },  // REQUIRED
   onClick: (e, { data, setData }) => { ... },
   onDrag: (e, { data, setData, localData, setLocalData }) => { ... },
   onDragStart: (e, { setLocalData }) => { ... },
@@ -78,7 +80,7 @@ const Counter = withSharedState(
   )
 );
 
-// Component receives: data, setData, live, users, setLive, ref
+// Component receives: data, setData, myPresence, everyone, setPresence, ref
 // For events: usePlayContext() → { dispatchPlayEvent, registerPlayEventListener }
 // For cursors: usePlayContext() → { cursors, configureCursors }
 ```
@@ -165,7 +167,7 @@ Use instead of `can-play` when they fit: `can-move`, `can-toggle`, `can-spin`, `
 
 ```javascript
 playhtml.init({ cursors: { enabled: true, room: "page" } }); // "page"|"domain"|"section"
-window.cursors.allColors.length; // user count
+playhtml.users.getAll().length; // user count (window.cursors still works but is legacy)
 ```
 
 See https://playhtml.fun/docs/data/presence/cursors/ for full API.
@@ -174,11 +176,11 @@ See https://playhtml.fun/docs/data/presence/cursors/ for full API.
 
 1. **Direct element-property setup** (vanilla): Use `playhtml.register(elementOrId, initializer)` so setup does not depend on assigning callbacks to a DOM node before initialization.
 2. **Missing `id`**: No id = no sync. Silent failure.
-3. **Wrong data type**: `live` for persistent data (it disappears on disconnect) or `defaultData` for ephemeral user state (it leaves stale data). Refer to the Data Types table.
+3. **Wrong data type**: `presence` for persistent data (it disappears on disconnect) or `defaultData` for ephemeral user state (it leaves stale data). Refer to the Data Types table.
 4. **Bad array mutations**: In mutator form, the draft is a Yjs CRDT proxy. Use `push()`/`splice()` only — `shift()`, `pop()`, and `items[i] = x` don't sync correctly.
 5. **Replacement form loses fields**: `setData({ x: 5 })` erases `y`. Use replacement only for whole-value writes, or use mutator form for field-level changes.
 6. **Deep nesting**: CRDTs work best with flat data. Avoid deeply nested objects.
-7. **High-frequency updates**: Don't `setData` on every mousemove. Debounce, or use `setLocalData`/`live`.
+7. **High-frequency updates**: Don't `setData` on every mousemove. Debounce, or use `setLocalData`/presence (rate limited to ~20 writes/s; use cursors for pointer position).
    - **Worst case — self-triggering write loop**: a callback that writes shared data AND re-runs when that data changes. See the "NEVER write shared data…" section above. This crashed a production room; treat it as a hard rule.
 8. **Computed values in state**: Don't store what you can calculate. Compute in `update`/render.
 9. **Missing PlayProvider** (React): `withSharedState` silently fails without it.

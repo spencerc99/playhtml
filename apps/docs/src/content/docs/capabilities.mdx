@@ -305,15 +305,15 @@ import { CanHoverElement } from "@playhtml/react";
   </TabItem>
 </Tabs>
 
-If you want the hover effect to reflect *who* is hovering (for example, tint the element with each hovering viewer's color) rather than a plain on/off, pass a function child and read `users`. Each entry's `live.hover` says whether that viewer is hovering right now. It clears when they leave and does not persist:
+If you want the hover effect to reflect *who* is hovering (for example, tint the element with each hovering viewer's color) rather than a plain on/off, pass a function child and read `everyone`. Each entry's `presence.hover` says whether that viewer is hovering right now. It clears when they leave and does not persist:
 
 ```tsx
 import { CanHoverElement } from "@playhtml/react";
 
 <CanHoverElement>
-  {({ users }) => {
-    const colors = users
-      .filter(({ live }) => live?.hover)
+  {({ everyone }) => {
+    const colors = everyone
+      .filter(({ presence }) => presence?.hover)
       .map(({ user }) => user.color);
     return (
       <div

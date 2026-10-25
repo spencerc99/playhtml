@@ -267,13 +267,18 @@ export function CanPlayElement<T extends object, V = any>({
   const ref = useRef<HTMLElement>(null);
   const registeredBindingRef = useRef<ElementBinding | undefined>(undefined);
   const warningKeysRef = useRef<Set<string>>(new Set());
-  const { defaultData, live: configuredLive, myDefaultAwareness } = elementProps;
+  const {
+    defaultData,
+    presence: configuredPresence,
+    live: configuredLive,
+    myDefaultAwareness,
+  } = elementProps;
   requireDefaultValue(defaultData, "defaultData");
+  requireDefaultValue(configuredPresence, "presence");
   requireDefaultValue(configuredLive, "live");
   requireDefaultValue(myDefaultAwareness, "myDefaultAwareness");
 
-  const initialLive =
-    configuredLive !== undefined ? configuredLive : myDefaultAwareness;
+  const initialLive = configuredPresence ?? configuredLive ?? myDefaultAwareness;
   const [data, setData] = useState<T | undefined>(() => defaultData);
   const [awareness, setAwareness] = useState<V[]>(
     initialLive === undefined ? [] : [initialLive],
@@ -438,6 +443,8 @@ export function CanPlayElement<T extends object, V = any>({
   const renderedChildren = children({
     // @ts-ignore
     data,
+    myPresence: live,
+    everyone: users,
     live,
     users,
     awareness,
@@ -467,11 +474,14 @@ export function CanPlayElement<T extends object, V = any>({
       }
       handler.setData(newData);
     },
-    setLive: (newLive) => {
-      getRegisteredHandler()?.setLive(newLive);
+    setPresence: (next) => {
+      getRegisteredHandler()?.setPresence(next);
     },
-    setMyAwareness: (newLive) => {
-      getRegisteredHandler()?.setLive(newLive);
+    setLive: (next) => {
+      getRegisteredHandler()?.setPresence(next);
+    },
+    setMyAwareness: (next) => {
+      getRegisteredHandler()?.setPresence(next);
     },
     myAwareness: live,
     ref,
@@ -628,12 +638,15 @@ export { playhtml };
 export { PlayProvider, PlayContext } from "./PlayProvider";
 export { usePlayContext } from "./usePlayContext";
 export {
+  useCursors,
   useCursorPresences,
   useCursorZone,
+  usePagePresence,
   usePresence,
   usePageData,
   usePresenceRoom,
   usePlayerIdentity,
+  useMe,
   useUsers,
 } from "./hooks";
 export {

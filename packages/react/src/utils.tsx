@@ -27,12 +27,16 @@ export type ReactElementInitializer<T = object, V = any> = Omit<
   | "defaultData"
   | "defaultLocalData"
   | "myDefaultAwareness"
+  | "presence"
   | "live"
   | "updateElementAwareness"
 > & {
   defaultData: Exclude<T, (...args: any[]) => any>;
+  /** Your starting presence on this element. Read it back as `myPresence`. */
+  presence?: Exclude<V, (...args: any[]) => any>;
+  /** @deprecated Use `presence`. */
   live?: Exclude<V, (...args: any[]) => any>;
-  /** @deprecated Use `live`. */
+  /** @deprecated Use `presence`. */
   myDefaultAwareness?: Exclude<V, (...args: any[]) => any>;
   id?: string;
 } & PlayableChildren<T, V>;

@@ -22,6 +22,10 @@ const DEPRECATED = [
   "setMyAwareness",
   "awareness",
   "playerIdentity",
+  "setLive",
+  "getPresences",
+  "setMyPresence",
+  "usePresence(",
 ];
 
 function moduleScript(html: string): string {

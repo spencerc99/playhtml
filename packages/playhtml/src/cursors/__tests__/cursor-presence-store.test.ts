@@ -76,6 +76,7 @@ describe("CursorPresenceStore", () => {
         "pk_alice",
         {
           cursor: { x: 12, y: 34, pointer: "mouse" },
+          user: expect.objectContaining({ pid: alice.publicKey, isMe: false }),
           playerIdentity: alice,
           lastSeen: 100,
           message: null,
@@ -116,6 +117,7 @@ describe("CursorPresenceStore", () => {
         "pk_alice",
         {
           cursor: null,
+          user: expect.objectContaining({ pid: alice.publicKey, isMe: false }),
           playerIdentity: alice,
           lastSeen: undefined,
           message: null,
@@ -147,6 +149,7 @@ describe("CursorPresenceStore", () => {
 
     expect(store.getRemotePresences("pk_self").get(alice.publicKey)).toEqual({
       cursor: { x: 12, y: 34, pointer: "mouse" },
+      user: expect.objectContaining({ pid: alice.publicKey, isMe: false }),
       playerIdentity: alice,
       lastSeen: 100,
       message: null,
@@ -199,6 +202,7 @@ describe("CursorPresenceStore", () => {
 
     expect(store.getPresenceByStableId("pk_bob")).toEqual({
       cursor: null,
+      user: expect.objectContaining({ pid: bob.publicKey, isMe: false }),
       playerIdentity: bob,
       lastSeen: undefined,
       message: null,

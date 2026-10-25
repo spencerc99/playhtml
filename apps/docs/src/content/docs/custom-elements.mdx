@@ -210,9 +210,9 @@ Most capabilities can share the same element. Each keeps its own data and behavi
   <SharedSwitchDemo client:only="react" />
 </div>
 
-#### Users and live per-user state
+#### Element presence
 
-`live` is your value for this element. It does not persist. `setLive` changes it, and every user's current value appears in `users` beside their identity. The same `update` function renders shared `data` and live user changes.
+`presence` is your value for this element. It does not persist. `setPresence` changes it, and everyone's current value appears in `everyone` beside their identity (your own is also `myPresence`). The same `update` function renders shared `data` and presence changes. See [Presence](/docs/data/presence/#element-presence).
 
 ```html
 <div id="online"></div>
@@ -221,10 +221,10 @@ Most capabilities can share the same element. Each keeps its own data and behavi
   import { playhtml } from "https://unpkg.com/playhtml@latest";
 
   playhtml.register("online", {
-    live: { status: "here" },
-    update: ({ element, users }) => {
+    presence: { status: "here" },
+    update: ({ element, everyone }) => {
       element.replaceChildren(
-        ...users.map(({ user }) => {
+        ...everyone.map(({ user }) => {
           const dot = document.createElement("span");
           dot.className = "dot";
           dot.style.background = user.color;
@@ -309,7 +309,7 @@ The element is an empty mount point; everything you see is rendered from state. 
 </script>
 ```
 
-`register` returns a **handle** (`getElement`, `getData`, `setData`, `setLocalData`, `setLive`, `requestUpdate`, `unregister`) for reads/writes from outside the view.
+`register` returns a **handle** (`getElement`, `getData`, `setData`, `setLocalData`, `getMyPresence`, `getEveryone`, `setPresence`, `onPresenceChange`, `requestUpdate`, `unregister`) for reads/writes from outside the view.
 
 #### Local UI state
 
@@ -449,7 +449,7 @@ playhtml.register("chats", {
 
 #### Rules and gotchas (view API)
 
-- **Renders must be pure.** Don't call `setData` / `setLocalData` / `setLive` while rendering — it's an infinite re-render loop. playhtml rejects such writes with a console error. Drive writes from `@event` handlers or `onMount`.
+- **Renders must be pure.** Don't call `setData` / `setLocalData` / `setPresence` while rendering — it's an infinite re-render loop. playhtml rejects such writes with a console error. Drive writes from `@event` handlers or `onMount`.
 - **Key lists by a stable id**, never index or timestamp.
 - **Security:** interpolated text and attribute values are auto-escaped (and `unsafeHTML` is deliberately not exported). Two sharp edges remain about a binding's *content*: `style` from a user-controlled string is CSS-injectable (prefer `styleMap`), and `href`/`src` from user data isn't URL-sanitized (validate the scheme).
 - **Changing the shape of already-live data** needs a migration or a new field name — see [Data essentials](/docs/data/data-essentials/).
@@ -543,16 +543,16 @@ export const Guestbook = withSharedState(
 
 [▶ Live demo ↑](#play-guestbook)
 
-### Users and live per-user state
+### Element presence
 
-`live` seeds your ephemeral value; `setLive` broadcasts it; `users` renders every current user with their identity and live value.
+`presence` seeds your value; `setPresence` replaces it for everyone; `everyone` lists each person with their identity and current `presence`.
 
 ```tsx
 export const Online = withSharedState(
-  { defaultData: {}, live: { ready: false } },
-  ({ users }) => (
+  { defaultData: {}, presence: { ready: false } },
+  ({ everyone }) => (
     <div className="row">
-      {users.map(({ user }) => (
+      {everyone.map(({ user }) => (
         <span key={user.pid} className="dot" style={{ background: user.color }} />
       ))}
     </div>

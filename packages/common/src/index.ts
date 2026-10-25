@@ -18,20 +18,32 @@ export * from "./presence-protocol";
  */
 export type ViewTemplate = unknown;
 
-export interface ElementUser<V = any> {
+/** One person's presence on an element or a page, paired with who they are. */
+export interface PresenceEntry<V = any> {
   user: User;
+  presence: V;
+  /** @deprecated Use `presence`. */
   live: V;
 }
+
+/** @deprecated Use `PresenceEntry`. */
+export type ElementUser<V = any> = PresenceEntry<V>;
 
 export interface ElementInitializer<T = any, U = any, V = any> {
   defaultData?: T | ((element: HTMLElement) => T);
   defaultLocalData?: U | ((element: HTMLElement) => U);
+  /**
+   * Your starting presence on this element: per-person state everyone can
+   * see, which disappears when you leave. Read it back as `myPresence`.
+   */
+  presence?: V | ((element: HTMLElement) => V);
+  /** @deprecated Use `presence`. */
   live?: V | ((element: HTMLElement) => V);
-  /** @deprecated Use `live`. */
+  /** @deprecated Use `presence`. */
   myDefaultAwareness?: V | ((element: HTMLElement) => V);
   /**
    * Imperative update path. Receives the current state and mutates the DOM.
-   * Runs when shared data or element live values change.
+   * Runs when shared data or anyone's presence on the element changes.
    */
   update?: (data: ElementEventHandlerData<T, U, V>) => void;
   /**
@@ -52,7 +64,7 @@ export interface ElementInitializer<T = any, U = any, V = any> {
    */
   view?: (data: ElementEventHandlerData<T, U, V>) => ViewTemplate;
   /**
-   * @deprecated Use `update`, which also runs when element live values change.
+   * @deprecated Use `update`, which also runs when presence changes.
    */
   updateElementAwareness?: (
     data: ElementAwarenessEventHandlerData<T, U, V>,
@@ -102,13 +114,19 @@ export interface ElementData<T = any, U = any, V = any>
 export interface ElementEventHandlerData<T = any, U = any, V = any> {
   data: T;
   localData: U;
+  /** Your presence on this element. */
+  myPresence: V | undefined;
+  /** Everyone with this element on screen (including you), in join order. */
+  everyone: PresenceEntry<V>[];
+  /** @deprecated Use `myPresence`. */
   live: V | undefined;
-  users: ElementUser<V>[];
-  /** @deprecated Use `users.map(({ live }) => live)`. */
+  /** @deprecated Use `everyone`. */
+  users: PresenceEntry<V>[];
+  /** @deprecated Use `everyone.map(({ presence }) => presence)`. */
   awareness: V[];
-  /** @deprecated Use `users`. */
+  /** @deprecated Use `everyone`. */
   awarenessByStableId: Map<string, V>;
-  /** @deprecated Use `live`. */
+  /** @deprecated Use `myPresence`. */
   myAwareness?: V;
   element: HTMLElement;
   /**
@@ -129,8 +147,11 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
   setData: (data: T | ((draft: T) => void)) => void;
   // TODO: should probably rename to "setTemporaryData" and use setLocalData to set indexeddb data
   setLocalData: (data: U | ((draft: U) => void)) => void;
+  /** Replaces your presence on this element. */
+  setPresence: (data: V) => void;
+  /** @deprecated Use `setPresence`. */
   setLive: (data: V) => void;
-  /** @deprecated Use `setLive`. */
+  /** @deprecated Use `setPresence`. */
   setMyAwareness: (data: V) => void;
   /**
    * Re-runs the element's `view` and patches the result into the DOM, even
@@ -147,15 +168,21 @@ export interface ElementAwarenessEventHandlerData<T = any, U = any, V = any>
 export interface ElementSetupData<T = any, U = any, V = any> {
   getData: () => T;
   getLocalData: () => U;
+  getMyPresence: () => V | undefined;
+  getEveryone: () => PresenceEntry<V>[];
+  /** @deprecated Use `getMyPresence`. */
   getLive: () => V | undefined;
-  getUsers: () => ElementUser<V>[];
-  /** @deprecated Use `getUsers`. */
+  /** @deprecated Use `getEveryone`. */
+  getUsers: () => PresenceEntry<V>[];
+  /** @deprecated Use `getEveryone`. */
   getAwareness: () => V[];
   getElement: () => HTMLElement;
   setData: (data: T | ((draft: T) => void)) => void;
   setLocalData: (data: U | ((draft: U) => void)) => void;
+  setPresence: (data: V) => void;
+  /** @deprecated Use `setPresence`. */
   setLive: (data: V) => void;
-  /** @deprecated Use `setLive`. */
+  /** @deprecated Use `setPresence`. */
   setMyAwareness: (data: V) => void;
   /**
    * Re-runs the element's `view` and patches the result into the DOM. See
@@ -420,12 +447,49 @@ export interface PageDataChannel<T> {
   destroy(): void;
 }
 
+/** @deprecated Use `PresenceEntry` from `playhtml.page.getEveryone()`. */
 export type PresenceView<T extends Record<string, unknown> = Record<string, unknown>> = {
+  /** Who this presence belongs to. */
+  user?: User;
+  /** @deprecated Use `user` (`user.pid`, `user.name`, `user.color`). */
   playerIdentity?: PlayerIdentity;
   cursor: Cursor | null;
   isMe: boolean;
 } & T;
 
+/** A page's (or presence room's) presence: one object per person. */
+export type PagePresence = Record<string, unknown>;
+
+/**
+ * Presence on the page or a presence room. Each person has one presence
+ * object; `setPresence` merges top-level keys into yours. Subscriptions take
+ * what to watch first: nothing (the whole object), a key, or a selector.
+ */
+export interface PresenceScope {
+  /** Everyone here (including you), in join order. */
+  getEveryone(): PresenceEntry<PagePresence>[];
+  /** Everyone here, with `presence` narrowed to one key. */
+  getEveryone<V = unknown>(key: string): PresenceEntry<V | undefined>[];
+  /**
+   * Merges top-level keys into your presence. `null` or `undefined` removes a
+   * key. Values inside a key replace. Meant for state changes, not per-frame
+   * streams: writes are rate limited (use cursors for pointer position).
+   */
+  setPresence(partial: PagePresence): void;
+  onPresenceChange(
+    callback: (everyone: PresenceEntry<PagePresence>[]) => void,
+  ): () => void;
+  onPresenceChange<V = unknown>(
+    key: string,
+    callback: (everyone: PresenceEntry<V | undefined>[]) => void,
+  ): () => void;
+  onPresenceChange<S>(
+    select: (presence: PagePresence) => S,
+    callback: (everyone: PresenceEntry<S>[]) => void,
+  ): () => void;
+}
+
+/** @deprecated Use `playhtml.page` (a `PresenceScope`). */
 export interface PresenceAPI {
   setMyPresence(channel: string, data: unknown): void;
   getPresences(): Map<string, PresenceView>;
@@ -433,10 +497,12 @@ export interface PresenceAPI {
     channel: string,
     callback: (presences: Map<string, PresenceView>) => void,
   ): () => void;
+  /** @deprecated Use `playhtml.users.me`. */
   getMyIdentity(): PlayerIdentity;
 }
 
-export interface PresenceRoom {
+export interface PresenceRoom extends PresenceScope {
+  /** @deprecated Call `setPresence`, `getEveryone`, and `onPresenceChange` on the room itself. */
   presence: PresenceAPI;
   destroy: () => void;
 }
@@ -810,21 +876,20 @@ export const TagTypeToElement: DefaultTagInitializers = {
   // so users don't need to manually rewrite their hover styles.
   [TagType.CanHover]: {
     defaultData: {},
-    myDefaultAwareness: { hover: false },
-    onMount: ({ getElement, setMyAwareness }) => {
+    presence: { hover: false },
+    onMount: ({ getElement, setPresence }) => {
       const element = getElement();
       element.addEventListener("mouseenter", () => {
-        setMyAwareness({ hover: true });
+        setPresence({ hover: true });
         element.setAttribute("data-playhtml-hover", "");
       });
       element.addEventListener("mouseleave", () => {
-        setMyAwareness({ hover: false });
+        setPresence({ hover: false });
         element.removeAttribute("data-playhtml-hover");
       });
     },
-    updateElement: () => {},
-    updateElementAwareness: ({ element, awareness }) => {
-      const anyHover = awareness.some((a) => a?.hover);
+    update: ({ element, everyone }) => {
+      const anyHover = everyone.some(({ presence }) => presence?.hover);
       if (anyHover) {
         element.setAttribute("data-playhtml-hover", "");
       } else {

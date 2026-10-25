@@ -166,7 +166,7 @@ describe("element awareness sync", () => {
         color: "blue",
         isMe: false,
       },
-      live: { active: false },
+      presence: { active: false },
     });
 
     const updateCount = updates.length;
@@ -192,7 +192,7 @@ describe("element awareness sync", () => {
         color: "purple",
         isMe: false,
       },
-      live: { active: false },
+      presence: { active: false },
     });
   });
 
@@ -214,7 +214,7 @@ describe("element awareness sync", () => {
     expect(update).toHaveBeenCalledTimes(1);
     expect(update.mock.lastCall?.[0].users).toContainEqual({
       user: expect.objectContaining({ name: "Ada", isMe: true }),
-      live: { active: true },
+      presence: { active: true },
     });
   });
 

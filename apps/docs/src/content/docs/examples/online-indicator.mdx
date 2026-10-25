@@ -16,26 +16,26 @@ your dot change. Close a window and its dot disappears.
 
 <RecipeCodeTabs recipe={onlineIndicatorRecipe} />
 
-## Live state per reader
+## Presence per reader
 
-`live` is your own value for this element. It is never saved, and it clears
-when you leave. `users` lists everyone here right now, including you, each with
-their identity and their current `live` value:
+`presence` is your own value for this element. It is never saved, and it clears
+when you leave. `everyone` lists everyone here right now, including you, each
+with their identity and their current `presence`:
 
 ```js
-users.map(({ user, live }) => live?.color ?? user.color);
+everyone.map(({ user, presence }) => presence?.color ?? user.color);
 ```
 
-A reader who hasn't set a value yet has no `live`, so fall back to their
+A reader who hasn't set a value yet has no `presence`, so fall back to their
 cursor color.
 
 ## Set your value
 
-Call `setLive` from a user event. It replaces your value and reaches everyone
+Call `setPresence` from a user event. It replaces your value and reaches everyone
 else right away:
 
 ```js
-online.setLive({ color: event.target.value });
+online.setPresence({ color: event.target.value });
 ```
 
 See [Presence](/docs/data/presence/) for page-wide presence and cursors.

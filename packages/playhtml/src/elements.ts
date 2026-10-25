@@ -30,6 +30,8 @@ interface ElementHandlerOptions<V> {
     byStableId: Map<string, V>,
     selfLive: V | undefined,
   ) => ElementUser<V>[];
+  /** Called after anyone's presence on this element changes (local or remote). */
+  onPresenceChange?: () => void;
 }
 
 // TODO: turn this into just an extension of HTMLElement and initialize all the methods / do all the state tracking
@@ -72,6 +74,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     byStableId: Map<string, V>,
     selfLive: V | undefined,
   ) => ElementUser<V>[];
+  private onPresenceChange?: () => void;
   private clickListener?: (e: MouseEvent) => void;
   private touchStartListener?: (e: TouchEvent) => void;
   private mouseDownListener?: (e: MouseEvent) => void;
@@ -102,6 +105,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       onAwarenessChange,
       defaultData,
       defaultLocalData,
+      presence,
       live,
       myDefaultAwareness,
       data,
@@ -118,6 +122,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     // console.log("🔨 constructing ", element.id);
     this.scheduleSetupDataWrite = options.scheduleSetupDataWrite;
     this.getUsers = options.getUsers ?? (() => []);
+    this.onPresenceChange = options.onPresenceChange;
     this.element = element;
     this.view = view;
     this.devMode = devMode;
@@ -138,7 +143,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     if (awarenessData !== undefined) {
       this.awareness = awarenessData;
     }
-    const initialLive = live !== undefined ? live : myDefaultAwareness;
+    const initialLive = presence ?? live ?? myDefaultAwareness;
     const myInitialLive =
       initialLive instanceof Function ? initialLive(element) : initialLive;
     if (myInitialLive !== undefined) {
@@ -495,6 +500,11 @@ export class ElementHandler<T = any, U = any, V = any> {
     return true;
   }
 
+  /** Everyone with this element on screen, including you. */
+  getEveryone(): ElementUser<V>[] {
+    return this.getUsers(this.awarenessByStableId, this.selfAwareness);
+  }
+
   updateAwareness(data: V[], byStableId: Map<string, V>) {
     this.awareness = data;
     this.awarenessByStableId = byStableId;
@@ -509,22 +519,27 @@ export class ElementHandler<T = any, U = any, V = any> {
       );
     }
     this.render();
+    this.onPresenceChange?.();
   }
 
   getEventHandlerData(): ElementEventHandlerData<T, U, V> {
+    const everyone = this.getEveryone();
     return {
       element: this.element,
       data: this.data,
       localData: this.localData,
+      myPresence: this.selfAwareness,
+      everyone,
       live: this.selfAwareness,
-      users: this.getUsers(this.awarenessByStableId, this.selfAwareness),
+      users: everyone,
       awareness: this.awareness,
       awarenessByStableId: this.awarenessByStableId,
       myAwareness: this.selfAwareness,
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
-      setLive: (newData) => this.setLive(newData),
-      setMyAwareness: (newData) => this.setLive(newData),
+      setPresence: (newData) => this.setPresence(newData),
+      setLive: (newData) => this.setPresence(newData),
+      setMyAwareness: (newData) => this.setPresence(newData),
       requestUpdate: () => this.requestUpdate(),
     };
   }
@@ -540,14 +555,16 @@ export class ElementHandler<T = any, U = any, V = any> {
       getElement: () => this.element,
       getData: () => this.data,
       getLocalData: () => this.localData,
+      getMyPresence: () => this.selfAwareness,
+      getEveryone: () => this.getEveryone(),
       getLive: () => this.selfAwareness,
-      getUsers: () =>
-        this.getUsers(this.awarenessByStableId, this.selfAwareness),
+      getUsers: () => this.getEveryone(),
       getAwareness: () => this.awareness,
       setData: (newData) => this.setSetupData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
-      setLive: (newData) => this.setLive(newData),
-      setMyAwareness: (newData) => this.setLive(newData),
+      setPresence: (newData) => this.setPresence(newData),
+      setLive: (newData) => this.setPresence(newData),
+      setMyAwareness: (newData) => this.setPresence(newData),
       requestUpdate: () => this.requestUpdate(),
     };
   }
@@ -596,10 +613,10 @@ export class ElementHandler<T = any, U = any, V = any> {
   }
 
   // TODO: this should be keyed on the element to avoid conflicts
-  setLive(data: V): void {
+  setPresence(data: V): void {
     // In view mode an awareness change re-renders, so writing awareness during
     // render would loop. Reject it like the other write paths.
-    if (this.rejectWriteDuringRender("setLive")) return;
+    if (this.rejectWriteDuringRender("setPresence")) return;
     if (data === this.selfAwareness) {
       // avoid duplicate broadcasts
       return;
@@ -614,9 +631,14 @@ export class ElementHandler<T = any, U = any, V = any> {
     this.triggerAwarenessUpdate?.();
   }
 
-  /** @deprecated Use `setLive`. */
+  /** @deprecated Use `setPresence`. */
+  setLive(data: V): void {
+    this.setPresence(data);
+  }
+
+  /** @deprecated Use `setPresence`. */
   setMyAwareness(data: V): void {
-    this.setLive(data);
+    this.setPresence(data);
   }
 
   setDataDebounced(data: T) {

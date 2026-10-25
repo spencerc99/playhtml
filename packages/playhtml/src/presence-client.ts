@@ -4,6 +4,7 @@
 import {
   type Cursor,
   type CursorPresenceView,
+  playerIdentityToUser,
   type PlayerIdentity,
   type PresenceAPI,
   type PresenceView,
@@ -23,6 +24,7 @@ import {
   unwrapPagePresenceValue,
   wrapPagePresenceValue,
 } from "./presence-utils";
+import { ALL_PRESENCE_CHANNELS } from "./presence-scope";
 
 type PresenceClientOptions = {
   transport: RealtimePresenceTransport;
@@ -105,7 +107,7 @@ export class PresenceClient implements PresenceAPI {
     if (isReservedPresenceField(channel)) {
       throw new Error(
         `[playhtml] "${channel}" is a reserved presence field and cannot be used as a channel name. ` +
-          `playerIdentity, cursor, and isMe are populated by playhtml; choose a different channel name.`,
+          `user, playerIdentity, cursor, and isMe are populated by playhtml; choose a different channel name.`,
       );
     }
     const wireChannel = toPagePresenceChannel(channel);
@@ -260,6 +262,7 @@ export class PresenceClient implements PresenceAPI {
    * payload so a keepalive re-stamp (which only bumps the envelope `at`) does
    * not count as a change and re-fire subscribers. */
   private channelFingerprint(channel: string): string {
+    if (channel === ALL_PRESENCE_CHANNELS) return this.allChannelsFingerprint();
     const parts: string[] = [`self-identity:${safeStringify(this.getIdentity())}`];
     if (this.localChannels.has(channel)) {
       parts.push(`self:${safeStringify(this.localChannels.get(channel))}`);
@@ -270,6 +273,25 @@ export class PresenceClient implements PresenceAPI {
       const folded = channels[wireChannel];
       if (folded === undefined) continue;
       parts.push(`${connectionId}:${safeStringify(channels.identity)}:${safeStringify(unwrapPagePresenceValue(folded))}`);
+    }
+    return parts.join("|");
+  }
+
+  /** Fingerprint of every page presence channel (cursor excluded) plus identities. */
+  private allChannelsFingerprint(): string {
+    const parts: string[] = [
+      `self-identity:${safeStringify(this.getIdentity())}`,
+      `self:${safeStringify(Array.from(this.localChannels.entries()))}`,
+    ];
+    for (const connectionId of Array.from(this.peers.keys()).sort()) {
+      const channels = this.peers.get(connectionId)!;
+      const values: [string, unknown][] = [];
+      for (const [channel, value] of Object.entries(channels)) {
+        if (!isPagePresenceChannel(channel)) continue;
+        values.push([channel, unwrapPagePresenceValue(value)]);
+      }
+      values.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+      parts.push(`${connectionId}:${safeStringify(channels.identity)}:${safeStringify(values)}`);
     }
     return parts.join("|");
   }
@@ -316,6 +338,13 @@ export class PresenceClient implements PresenceAPI {
     }
 
     this.mergeCursorPresences(presences, myPublicKey);
+    // Derive the public `user` from the (deprecated) playerIdentity in one
+    // place so self, peer, and cursor-merged views all carry it.
+    for (const view of presences.values()) {
+      view.user = view.playerIdentity
+        ? playerIdentityToUser(view.playerIdentity, view.isMe)
+        : undefined;
+    }
     return presences;
   }
 

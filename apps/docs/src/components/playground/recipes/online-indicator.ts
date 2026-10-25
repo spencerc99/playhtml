@@ -1,31 +1,31 @@
 // ABOUTME: Defines the online indicator recipe: one colored dot per reader on the page.
-// ABOUTME: Each reader's color is live per-user state, so it clears when they leave.
+// ABOUTME: Each reader's color is element presence, so it clears when they leave.
 import { onlineIndicatorCss } from "./demo-shared";
 import { indent, recipeBaseStyles, recipeDocument } from "./recipe-document";
 import { onlineIndicatorReactSource } from "./react/online-indicator";
 import type { ExampleRecipe } from "./types";
 
-const script = `// \`live\` is your value for this element. It never persists, and every
-// reader's current value arrives in \`users\` next to their identity.
+const script = `// \`presence\` is your value for this element. It never persists, and every
+// reader's current value arrives in \`everyone\` next to their identity.
 const online = playhtml.register("online", {
-  live: { color: "#4a6a3e" },
-  update: ({ element, users }) => {
+  presence: { color: "#4a6a3e" },
+  update: ({ element, everyone }) => {
     element.querySelector(".dots").replaceChildren(
-      ...users.map(({ user, live }) => {
+      ...everyone.map(({ user, presence }) => {
         const dot = document.createElement("span");
         dot.className = user.isMe ? "dot me" : "dot";
-        dot.style.background = live?.color ?? user.color;
+        dot.style.background = presence?.color ?? user.color;
         return dot;
       }),
     );
-    const people = users.length === 1 ? "person" : "people";
+    const people = everyone.length === 1 ? "person" : "people";
     element.querySelector(".count").textContent =
-      \`\${users.length} \${people} here\`;
+      \`\${everyone.length} \${people} here\`;
   },
 });
 
 document.getElementById("my-color").addEventListener("input", (event) => {
-  online.setLive({ color: event.target.value });
+  online.setPresence({ color: event.target.value });
 });`;
 
 export const onlineIndicatorRecipe: ExampleRecipe = {
@@ -33,7 +33,7 @@ export const onlineIndicatorRecipe: ExampleRecipe = {
   title: "Online presence indicator",
   description:
     "Show one live colored dot for each reader currently on the page.",
-  tags: ["presence", "online", "live state"],
+  tags: ["presence", "online"],
   capabilities: ["can-play"],
   difficulty: "intermediate",
   docsHref: "/docs/examples/online-indicator/",
