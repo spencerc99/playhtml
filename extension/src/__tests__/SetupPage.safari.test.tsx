@@ -137,6 +137,48 @@ it("closes the setup tab after onboarding", async () => {
   container.remove();
 });
 
+it("closes its own window when setup is not in a tab", async () => {
+  vi.mocked(browser.tabs.getCurrent).mockResolvedValue(undefined);
+  const close = vi.spyOn(window, "close").mockImplementation(() => {});
+  const { default: SetupPage } = await import("../components/SetupPage");
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+
+  await act(async () => {
+    root.render(<SetupPage />);
+    await Promise.resolve();
+  });
+
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Get started")
+      ?.click();
+  });
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Continue")
+      ?.click();
+    await Promise.resolve();
+  });
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Finish setup")
+      ?.click();
+    await Promise.resolve();
+  });
+
+  expect(browser.storage.local.set).toHaveBeenCalledWith(
+    expect.objectContaining({ onboarding_complete: "true" }),
+  );
+  expect(close).toHaveBeenCalledOnce();
+  expect(browser.tabs.remove).not.toHaveBeenCalled();
+  expect(container.textContent).not.toContain("Try again");
+
+  act(() => root.unmount());
+  container.remove();
+});
+
 it("offers recovery when Safari cannot save setup choices", async () => {
   vi.mocked(browser.storage.local.set)
     .mockRejectedValueOnce(

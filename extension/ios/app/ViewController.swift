@@ -274,6 +274,7 @@ final class BrowserViewController: UIViewController,
             for: .normal
         )
         actionButton.accessibilityLabel = "we were online"
+        actionButton.accessibilityIdentifier = "extension-action"
         actionButton.addAction(UIAction { [weak self] _ in self?.openExtensionPopup() }, for: .touchUpInside)
 
         let close = UIButton(type: .system)
@@ -529,9 +530,11 @@ final class BrowserViewController: UIViewController,
     }
 }
 
-/// One of the extension's own pages, shown in a sheet that swipes down to close.
+/// One of the extension's own pages, shown in a sheet that swipes down to
+/// close. The sheet is not a tab the extension can see, so a page that is
+/// done (setup, when it finishes) closes its own window, which closes the sheet.
 @available(iOS 18.4, *)
-final class ExtensionPageViewController: UIViewController {
+final class ExtensionPageViewController: UIViewController, WKUIDelegate {
     private let url: URL
     private let configuration: WKWebViewConfiguration
 
@@ -549,6 +552,7 @@ final class ExtensionPageViewController: UIViewController {
         super.viewDidLoad()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.isInspectable = true
+        webView.uiDelegate = self
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
 
@@ -559,5 +563,9 @@ final class ExtensionPageViewController: UIViewController {
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         webView.load(URLRequest(url: url))
+    }
+
+    func webViewDidClose(_ webView: WKWebView) {
+        dismiss(animated: true)
     }
 }

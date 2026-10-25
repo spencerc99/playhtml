@@ -15,6 +15,7 @@
     "zip:safari": "wxt zip -b safari --mv3",
     "ios:safari": "./scripts/packageSafariIOS.sh",
     "ios:safari:simulator": "./scripts/packageSafariIOS.sh --simulator",
+    "ios:safari:check": "./scripts/checkSafariIOSApp.sh",
     "submit": "./release.sh",
     "submit:dry": "./release.sh --dry-run",
     "submit:refresh-chrome-token": "./scripts/refresh-chrome-token.sh",
