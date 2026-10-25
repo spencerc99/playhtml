@@ -273,7 +273,7 @@ export const synchronizedSoundRecipe: ExampleRecipe = {
         startedAtMs: 0,
         positionMs: 0,
       },
-      updateElement: ({ element, data }) => {
+      update: ({ element, data }) => {
         renderTimeline(element, data, Date.now());
       },
       onClick: (event, { data, setData }) => {

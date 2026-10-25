@@ -1,0 +1,24 @@
+---
+// Small "View code" link for a live docs demo, pointing at its example page.
+// It sits in the demo box's bottom border, mirroring the box's top label.
+type Props = { href: string };
+const { href } = Astro.props;
+---
+
+<a class="ph-demo-code-link" href={href}>
+  <svg
+    width="12"
+    height="12"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2.4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <polyline points="8 6 2 12 8 18"></polyline>
+    <polyline points="16 6 22 12 16 18"></polyline>
+  </svg>
+  <span>View code</span>
+</a>

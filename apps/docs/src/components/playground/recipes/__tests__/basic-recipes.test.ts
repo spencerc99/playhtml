@@ -74,7 +74,7 @@ describe("basic canonical recipes", () => {
       expect(recipe.html.indexOf("defaultData:", registerIndex)).toBeLessThan(
         initIndex,
       );
-      expect(recipe.html.indexOf("updateElement:", registerIndex)).toBeLessThan(
+      expect(recipe.html.indexOf("update:", registerIndex)).toBeLessThan(
         initIndex,
       );
     }
@@ -85,7 +85,7 @@ describe("basic canonical recipes", () => {
       'playhtml.register("ph-docs-counter", {',
     );
     const counterUpdate = sharedCounterRecipe.html.indexOf(
-      "updateElement:",
+      "update:",
       counterRegister,
     );
     const counterInit = sharedCounterRecipe.html.indexOf("await playhtml.init");
@@ -94,25 +94,23 @@ describe("basic canonical recipes", () => {
     ).not.toContain("setData(");
 
     const guestbookRegister = sharedGuestbookRecipe.html.indexOf(
-      "playhtml.register(guestbook, {",
+      'playhtml.register("ph-cap-docs-guestbook", {',
     );
     const guestbookUpdate = sharedGuestbookRecipe.html.indexOf(
-      "updateElement:",
+      "update:",
       guestbookRegister,
     );
-    const guestbookClick = sharedGuestbookRecipe.html.indexOf(
-      "onClick:",
+    const guestbookSubmit = sharedGuestbookRecipe.html.indexOf(
+      'form.addEventListener("submit"',
       guestbookRegister,
     );
+    expect(guestbookRegister).toBeGreaterThan(-1);
     expect(
-      sharedGuestbookRecipe.html.slice(guestbookUpdate, guestbookClick),
+      sharedGuestbookRecipe.html.slice(guestbookUpdate, guestbookSubmit),
     ).not.toContain("setData(");
-    expect(
-      sharedGuestbookRecipe.html.slice(
-        guestbookClick,
-        sharedGuestbookRecipe.html.indexOf("onMount:", guestbookRegister),
-      ),
-    ).toContain("setData(");
+    expect(sharedGuestbookRecipe.html.slice(guestbookSubmit)).toContain(
+      "guestbook.setData(",
+    );
     expect(sharedGuestbookRecipe.html).toContain(
       "draft.entries.splice(0, draft.entries.length - MAX_ENTRIES)",
     );

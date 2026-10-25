@@ -195,7 +195,7 @@ export const sharedAudioFileRecipe: ExampleRecipe = {
         startedAtMs: 0,
         positionMs: 0,
       },
-      updateElement: ({ element, data }) => {
+      update: ({ element, data }) => {
         render(element, data, Date.now());
       },
       onClick: (event, { data, setData }) => {
