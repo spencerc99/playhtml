@@ -30,7 +30,9 @@ describe("basic canonical recipes", () => {
 
     for (const recipe of recipes) {
       expect(recipe.html).toContain("<!doctype html>");
-      expect(recipe.html).toContain('import { playhtml } from "playhtml"');
+      expect(recipe.html).toContain(
+        'import { playhtml } from "https://unpkg.com/playhtml@latest"',
+      );
       expect(recipe.html).toContain("await playhtml.init");
       expect(recipe.docsHref).toBe(`/docs/examples/${recipe.id}/`);
       expect(recipe.html).toMatch(/\sid="[^"]+"/);

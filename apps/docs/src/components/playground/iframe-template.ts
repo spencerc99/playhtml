@@ -1,6 +1,13 @@
 // ABOUTME: Builds the srcdoc wrapper used by playground and docs example iframes.
 // ABOUTME: Injects the playhtml import, shared room, and optional development panel.
 
+/**
+ * CDN URL recipes import playhtml from, so their source works unchanged when
+ * pasted into any hosted HTML file. Inside the preview iframe the importmap
+ * points this URL at the in-repo build instead.
+ */
+export const PLAYHTML_CDN_URL = "https://unpkg.com/playhtml@latest";
+
 export type IframeTemplateArgs = {
   /** Recipe source. Must be a complete <!doctype html> document. */
   recipeHtml: string;
@@ -63,7 +70,8 @@ const DEV_PANEL_BOTTOM_CSS = `
  * authors recipes as full pages, see _starter.ts). We inject our wrappers
  * by string-splicing into the recipe's <head>:
  *
- *   1. Importmap so `import { playhtml } from "playhtml"` works.
+ *   1. Importmap that points the recipe's CDN import (and the bare
+ *      "playhtml" specifier older edits may still use) at the in-repo build.
  *   2. Inline <style> with dev-panel-bottom override CSS (inlined to avoid
  *      Astro dev-server cross-origin block on sandboxed iframe subresources).
  *   3. A small bootstrap script that overrides playhtml.init's room option
@@ -112,12 +120,14 @@ export function buildIframeSrcdoc(args: IframeTemplateArgs): string {
   panelStyles.textContent = "#playhtml-dev-root { display: none !important; }";
   document.head.append(panelStyles);`;
 
+  const serializedPlayhtmlUrl = JSON.stringify(playhtmlUrl);
   const serializedRoomId = JSON.stringify(roomId).replaceAll("<", "\\u003c");
   const bootstrap = `
 <script type="importmap">
 {
   "imports": {
-    "playhtml": ${JSON.stringify(playhtmlUrl)}
+    "playhtml": ${serializedPlayhtmlUrl},
+    ${JSON.stringify(PLAYHTML_CDN_URL)}: ${serializedPlayhtmlUrl}
   }
 }
 </script>

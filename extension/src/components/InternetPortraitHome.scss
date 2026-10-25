@@ -138,7 +138,6 @@
     @include btn-teal;
     margin-left: auto;
   }
-
 }
 
 .commute-entry {
@@ -746,4 +745,61 @@
   &__button {
     @include btn-primary;
   }
+}
+
+// Phone: the header links become big tiles under the portrait card.
+.phone-tiles {
+  margin: 12px 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.phone-tile {
+  min-height: 104px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba($text-muted, 0.08);
+  color: $text;
+  text-align: left;
+  cursor: pointer;
+
+  &--commute {
+    background: rgba($accent-blue, 0.12);
+  }
+
+  &:focus-visible {
+    outline: 2px solid $accent-teal;
+    outline-offset: 2px;
+  }
+
+  &__copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  &__title {
+    font-family: $font-heading;
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  &__subtitle {
+    font-size: 13px;
+    color: $text-muted;
+  }
+}
+
+.collection-status__summary {
+  margin: 4px 0 0;
+  font-family: $font-mono;
+  font-size: 12px;
+  color: $accent-teal;
 }

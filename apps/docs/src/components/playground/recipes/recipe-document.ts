@@ -55,7 +55,7 @@ ${styles}
 ${body}
 
   <script type="module">
-    import { ${imports} } from "playhtml";
+    import { ${imports} } from "https://unpkg.com/playhtml@latest";
 
 ${script}
 

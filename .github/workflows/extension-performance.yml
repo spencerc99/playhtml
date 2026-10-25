@@ -28,7 +28,8 @@ permissions:
 jobs:
   compare:
     name: Compare extension trace metrics
-    runs-on: ubuntu-latest
+    # Playwright 1.59 cannot install Chromium on ubuntu-latest (26.04) yet.
+    runs-on: ubuntu-24.04
     continue-on-error: true
     timeout-minutes: 35
     env:

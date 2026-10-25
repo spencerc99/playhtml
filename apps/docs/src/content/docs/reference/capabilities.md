@@ -7,7 +7,7 @@ sidebar:
 
 Capabilities are HTML attributes. Add one to an element, give it a stable unique `id`, call `playhtml.init()`, and playhtml handles sync and event wiring.
 
-The `id` is the storage key — it must match across visitors. Use a hand-written `id="my-lamp"`. Without one, playhtml falls back to an HTML hash that can differ across browsers and break sync. For many same-template elements, use `selector-id` instead — see [Dynamic elements](/docs/advanced/dynamic-elements/).
+The `id` is the storage key — it must match across visitors. Use a hand-written `id="my-light"`. Without one, playhtml falls back to an HTML hash that can differ across browsers and break sync. For many same-template elements, use `selector-id` instead — see [Dynamic elements](/docs/advanced/dynamic-elements/).
 
 For demos, see the [Capabilities guide](/docs/capabilities/). For React wrappers, see [React API](/docs/reference/react-api/).
 
@@ -164,11 +164,9 @@ Turns click into a shared boolean switch. State persists and syncs.
 Toggles the `toggled` CSS class on the element.
 
 ```css
-/* Style the on state */
-#my-lamp.toggled {
-  opacity: 1;
-  filter: brightness(1.4);
-}
+/* Style both states */
+.light { background: gold; filter: brightness(0.4); }
+.light.toggled { filter: brightness(1.2) drop-shadow(0 0 24px gold); }
 ```
 
 ### Interaction

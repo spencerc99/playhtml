@@ -79,7 +79,7 @@ describe("docs demo recipes", () => {
 
   it("imports the view helpers the prize wheel uses", () => {
     expect(prizeWheelRecipe.html).toContain(
-      'import { playhtml, html, nothing } from "playhtml"',
+      'import { playhtml, html, nothing } from "https://unpkg.com/playhtml@latest"',
     );
   });
 });

@@ -14,6 +14,7 @@ import { playInteraction } from "./InteractionRenderer";
 import { ReactHint } from "./ReactHint";
 import { ACTIVE_EMOTES, getEmote, type EmoteDef } from "./emotes";
 import { matchesEmoteShortcut, type EmoteShortcut } from "./emoteShortcut";
+import { FIRE_EMOTE_EVENT, type FireEmoteDetail } from "../peerEvents";
 import {
   nearestPeer,
   detectMutualHighFive,
@@ -287,10 +288,20 @@ export function initEmotes(
   }
   window.addEventListener("keydown", onKeyDown);
 
+  // The phone tap menu fires emotes from where the finger touched.
+  function onFireEmote(e: Event) {
+    const detail = (e as CustomEvent<FireEmoteDetail>).detail;
+    if (!detail) return;
+    lastCursor = { x: detail.x, y: detail.y };
+    fire(detail.emoteId);
+  }
+  window.addEventListener(FIRE_EMOTE_EVENT, onFireEmote);
+
   render();
 
   return () => {
     window.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener(FIRE_EMOTE_EVENT, onFireEmote);
     window.removeEventListener("pointermove", trackCursor);
     if (proximityInterval !== null) clearInterval(proximityInterval);
     reactHint?.destroy();

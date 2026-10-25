@@ -305,28 +305,31 @@ import { CanHoverElement } from "@playhtml/react";
   </TabItem>
 </Tabs>
 
-If you want the hover effect to reflect *who* is hovering (for example, tint the element with each viewer's color) rather than a plain on/off, render the element's `users`. Live user data clears when readers leave and does not persist:
+If you want the hover effect to reflect *who* is hovering (for example, tint the element with each hovering viewer's color) rather than a plain on/off, pass a function child and read `users`. Each entry's `live.hover` says whether that viewer is hovering right now. It clears when they leave and does not persist:
 
 ```tsx
-import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "playhtml";
+import { CanHoverElement } from "@playhtml/react";
 
-<CanPlayElement
-  tagInfo={[TagType.CanHover]}
-  id="hover-pad"
-  defaultData={{}}
-  live={{ hovering: false }}
->
-  {({ users }) => (
-    <div
-      style={{
-        background: `linear-gradient(45deg, ${users.map(({ user }) => user.color).join(", ")})`,
-      }}
-    >
-      hover me
-    </div>
-  )}
-</CanPlayElement>
+<CanHoverElement>
+  {({ users }) => {
+    const colors = users
+      .filter(({ live }) => live?.hover)
+      .map(({ user }) => user.color);
+    return (
+      <div
+        id="hover-pad"
+        style={{
+          background:
+            colors.length > 1
+              ? `linear-gradient(45deg, ${colors.join(", ")})`
+              : colors[0],
+        }}
+      >
+        hover me
+      </div>
+    );
+  }}
+</CanHoverElement>
 ```
 
 ## can-duplicate

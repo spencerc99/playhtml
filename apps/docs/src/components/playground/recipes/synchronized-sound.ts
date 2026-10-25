@@ -135,7 +135,7 @@ export const synchronizedSoundRecipe: ExampleRecipe = {
   </main>
 
   <script type="module">
-    import { playhtml } from "playhtml";
+    import { playhtml } from "https://unpkg.com/playhtml@latest";
 
     const CUE_EVENT = "synchronized-sound-cue";
     const STEP_MS = 500;
