@@ -80,7 +80,7 @@ export const starterRecipe: RunnableRecipe = {
   <div id="reactionBtn" can-play></div>
 
   <script type="module">
-    import { playhtml, html } from "playhtml";
+    import { playhtml, html } from "https://unpkg.com/playhtml@latest";
 
     // A reaction button with a shared count. register() can run before or
     // after init(). The view renders from \`data\` and re-renders on change.
