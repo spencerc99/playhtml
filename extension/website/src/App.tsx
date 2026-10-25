@@ -218,8 +218,17 @@ export default function App() {
   });
 
   useEffect(() => {
-    const onResize = () =>
+    // On phones the address bar slides away on the first scroll, which
+    // resizes the window taller. Re-measuring then rebuilds every trail at the
+    // new height and visibly stretches the portrait mid-scroll, so touch
+    // screens only re-measure when the width changes (a rotation).
+    const touch = window.matchMedia("(pointer: coarse)");
+    let lastWidth = window.innerWidth;
+    const onResize = () => {
+      if (touch.matches && window.innerWidth === lastWidth) return;
+      lastWidth = window.innerWidth;
       setViewportSize({ width: window.innerWidth, height: window.innerHeight });
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
