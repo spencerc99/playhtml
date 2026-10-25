@@ -96,9 +96,11 @@ Either way, give every interactive element a unique `id`. That's how state is ke
 npm install playhtml @playhtml/react
 ```
 
+Works with React 16.8 and above, including React 17, 18, and 19.
+
 ### Initialize
 
-Wrap your tree in `PlayProvider` once, then drop in a capability component. Cursors are opt-in.
+Wrap your tree in `PlayProvider` once, then drop in a capability component. Anything you'd pass to `playhtml.init()` goes in `initOptions`. Cursors are opt-in.
 
 ```tsx
 import { PlayProvider, CanToggleElement } from "@playhtml/react";
@@ -138,6 +140,28 @@ import { CanToggleElement } from "@playhtml/react";
 </CanToggleElement>
 ```
 
+You need one `PlayProvider` per React root, so most apps wrap their whole tree once. A separate root (like an Astro island) needs its own provider, or pass `standalone` to the element.
+
+### Make your own
+
+For anything the built-ins don't cover, wrap a component with `withSharedState` to give it shared `data` and a `setData` callback:
+
+```tsx
+import { withSharedState } from "@playhtml/react";
+
+export const ToggleSquare = withSharedState(
+  { defaultData: { on: false } },
+  ({ data, setData }) => (
+    <div
+      style={{ background: data.on ? "green" : "red", width: 200, height: 200 }}
+      onClick={() => setData({ on: !data.on })}
+    />
+  ),
+);
+```
+
+See [Custom elements](/docs/custom-elements/) for counters, lists, and per-user live data, and the [React API](/docs/reference/react-api/) for every component and hook.
+
   </TabItem>
 </Tabs>
 
@@ -150,7 +174,6 @@ This toggle is shared with everyone reading this page right now. Click it to see
 ## Where to next
 
 - [Core concepts](/docs/concepts/): the four kinds of shared state (element data, page data, presence, events) and when to use each.
-- [Using React](/docs/using-react/): if your app is a React app, start here; concept pages show React inline.
 - [Capabilities](/docs/capabilities/): every built-in `can-*` attribute with live demos.
 - [Data essentials](/docs/data/data-essentials/): shape, update, and clean up `defaultData`.
 - [Presence & cursors](/docs/data/presence/): multiplayer cursors and ephemeral per-user state.

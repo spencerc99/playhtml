@@ -1737,6 +1737,41 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   line-height: 1.6;
 }
 
+/* "Two things to know" — collapsed gotchas above the capability demos. Only
+   the summaries show until a reader opens one. */
+.sl-markdown-content .ph-know {
+  margin: 1.25rem 0;
+  padding: 0.25rem 0;
+  border-top: 1px dashed var(--ph-ink-3);
+  border-bottom: 1px dashed var(--ph-ink-3);
+}
+.sl-markdown-content .ph-know-label {
+  margin: 0.5rem 0 0.25rem;
+  font-family: var(--ph-font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ph-ink-2);
+}
+.sl-markdown-content .ph-know details {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.sl-markdown-content .ph-know details + details {
+  margin-top: 0;
+}
+.sl-markdown-content .ph-know summary {
+  padding: 0.3rem 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sl-markdown-content .ph-know details > :not(summary) {
+  margin: 0.25rem 0 0.75rem 1.1rem;
+  color: var(--ph-ink-2);
+}
+
 /* Media placeholder: renders where a real photo will eventually sit. The
    author grep's for "TODO-IMAGE" to find every instance. Keep this VERY
    obviously a placeholder — we don't want it to read as finished. */
