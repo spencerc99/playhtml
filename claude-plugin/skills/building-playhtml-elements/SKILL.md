@@ -122,7 +122,7 @@ setData((draft) => {
 
 ## NEVER write shared data from code that re-runs when that data changes
 
-The most dangerous bug in playhtml. A React effect (or `updateElement`) that **both reads shared data and writes it** loops forever: the write changes the data → the dependency re-fires → it writes again. Because the data is a CRDT, concurrent writes from multiple readers **append rather than overwrite**, so the loop never converges to a value a guard can catch. This passes local testing and only blows up once several readers connect — one such bug grew a production room to 1.2M ops / 23 MB and crashed the room.
+The most dangerous bug in playhtml. A React effect (or `updateElement`) that **both reads shared data and writes it** loops forever: the write changes the data → the dependency re-fires → it writes again. Because the data is a CRDT, concurrent writes from multiple readers **append rather than overwrite**, so the loop never converges to a value a guard can catch. This passes local testing and only blows up once several readers connect, when the room's data grows without bound until the page stops loading.
 
 ```tsx
 // DANGER — infinite write loop
@@ -153,13 +153,13 @@ Rule of thumb: **write shared data from explicit user events, not from reactive 
 **If you are changing the shape of data that is already live, STOP and flag it to the user, then pick one (in order of preference):**
 1. **Write to a NEW field name**, abandon the old one. No migration, writes are always clean. (Best.)
 2. **Handle both shapes defensively** at read AND write — null-safe reads, initialize-if-absent, in-place migrate. Fragile; test against real legacy data.
-3. **Clear the room's persisted data** (delete the `documents` row).
+3. **Reset the element's existing data** (for example with its `resetShortcut`), accepting that saved state is lost.
 
-Only applies to **already-live / persisted** data — brand-new features have no old data. And note: **the load/soak tests will NOT catch this** — they bypass page code and start from empty rooms. A shape change must be verified by loading the real page against a room pre-seeded with the old shape.
+Only applies to **already-live / persisted** data — brand-new features have no old data. Testing against a fresh room will NOT catch this: verify a shape change by loading the real page against a room that still holds the old shape.
 
 ## Built-in Capabilities
 
-Use instead of `can-play` when they fit: `can-move`, `can-toggle`, `can-spin`, `can-grow`, `can-duplicate`, `can-mirror`. See `packages/common/src/index.ts` for implementations.
+Use instead of `can-play` when they fit: `can-move`, `can-toggle`, `can-spin`, `can-grow`, `can-duplicate`, `can-hover`, `can-mirror`. See https://playhtml.fun/docs/capabilities/ for each one.
 
 ## Cursors (optional)
 
@@ -179,6 +179,6 @@ See https://playhtml.fun/docs/data/presence/cursors/ for full API.
 5. **Replacement form loses fields**: `setData({ x: 5 })` erases `y`. Use replacement only for whole-value writes, or use mutator form for field-level changes.
 6. **Deep nesting**: CRDTs work best with flat data. Avoid deeply nested objects.
 7. **High-frequency updates**: Don't `setData` on every mousemove. Debounce, or use `setLocalData`/`live`.
-   - **Worst case — self-triggering write loop**: a callback that writes shared data AND re-runs when that data changes. See the "NEVER write shared data…" section above. This crashed a production room; treat it as a hard rule.
+   - **Worst case — self-triggering write loop**: a callback that writes shared data AND re-runs when that data changes. See the "NEVER write shared data…" section above. Treat it as a hard rule.
 8. **Computed values in state**: Don't store what you can calculate. Compute in `update`/render.
 9. **Missing PlayProvider** (React): `withSharedState` silently fails without it.
