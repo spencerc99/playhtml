@@ -52,18 +52,18 @@ withSharedState<T, V, P>(
 ```tsx
 interface WithSharedStateConfig<T, V> {
   defaultData: T;
-  live?: V;
+  presence?: V;
   id?: string;
   tagInfo?: TagType[];
 }
 ```
 
 - **`defaultData`**: required. The initial value of `data`. Survives reload.
-- **`live`**: optional. Initial ephemeral value for this user on this element. It does _not_ persist.
+- **`presence`**: optional. Your starting [presence](/docs/data/presence/#element-presence) on this element: per-person state that clears when you leave. It does _not_ persist.
 - **`id`**: optional. Stable id for the element. If omitted, playhtml derives one from the rendered DOM; see [Dynamic elements](/docs/advanced/dynamic-elements/) for why stable ids matter.
 - **`tagInfo`**: optional. Marks the element as one of the built-in capabilities (e.g. `[TagType.CanToggle]`). See [Capabilities](/docs/capabilities/).
 
-`defaultData`, `live`, and `myDefaultAwareness` accept values, not functions that
+`defaultData` and `presence` accept values, not functions that
 receive DOM elements. They are available on the first render. Derive them from
 React props with a [props-dependent config](#props-dependent-config).
 
@@ -73,16 +73,16 @@ React props with a [props-dependent config](#props-dependent-config).
 interface ReactElementEventHandlerData<T, V> {
   data: T;
   setData: (data: T | ((draft: T) => void)) => void;
-  live?: V;
-  users: Array<{ user: User; live: V }>;
-  setLive: (data: V) => void;
+  myPresence?: V;
+  everyone: Array<{ user: User; presence: V }>;
+  setPresence: (data: V) => void;
   ref: React.RefObject<HTMLElement>;
 }
 ```
 
 `setData` accepts either a replacement value or a mutator function. See [Data essentials](/docs/data/data-essentials/) for the merge semantics.
 
-`live`, `users`, and `setLive` are element-scoped per-user data. Use them for signals tied to this element that should disappear when the user leaves. Each `users` entry joins the person's identity with their current `live` value.
+`myPresence`, `everyone`, and `setPresence` are this element's [presence](/docs/data/presence/#element-presence). Use them for signals tied to this element that should disappear when the person leaves. `everyone` lists everyone with the element on screen (including you), each with their current `presence`. The 2.15 names `live`, `users`, and `setLive` still work.
 
 ### Props-dependent config
 
@@ -109,7 +109,7 @@ Defaults seed shared state; changing props does not overwrite saved state.
 Component form of `withSharedState`. Useful when you want JSX children (render-prop style) instead of wrapping a component, or when you need ref access to a specific element.
 
 Pass computed values directly, such as `defaultData={{ count: initialCount }}`.
-The same value-only rule applies to `live` and `myDefaultAwareness`.
+The same value-only rule applies to `presence`.
 DOM-dependent default functions belong to the
 [vanilla element API](/docs/reference/element-api/#defaultdata).
 
@@ -117,7 +117,7 @@ DOM-dependent default functions belong to the
 interface CanPlayElementProps<T, V> {
   id?: string;
   defaultData: T;
-  live?: V;
+  presence?: V;
   tagInfo?: TagType[];
   standalone?: boolean;
   loading?: LoadingOptions;
@@ -129,7 +129,7 @@ interface CanPlayElementProps<T, V> {
 ```
 
 - **`id`**: required if the top-level child is a React Fragment. Otherwise defaults to the child's id, or a hash of the child's content. A stable id matters for cross-browser sync; see [Dynamic elements](/docs/advanced/dynamic-elements/).
-- **`live`**: optional. Initial live value for this user. It clears when the user leaves.
+- **`presence`**: optional. Your starting presence on this element. It clears when you leave.
 - **`standalone`**: when `true`, the element initializes playhtml itself if no `PlayProvider` is present. Use it for one-off components mounted outside your provider tree (e.g. an Astro island). A no-op when a provider already exists.
 - **`loading`**: controls the loading affordance shown before the element's first sync. See [Loading options](#loading-options).
 - **`dataSource`**, **`shared`**, **`dataSourceReadOnly`**: wire the element to a shared source across pages or sites. See [Shared data props](#shared-data-props) and the [Shared elements](/docs/advanced/shared-elements/) guide.
@@ -275,6 +275,7 @@ Access the playhtml context from any descendant of `PlayProvider`.
 interface PlayContextInfo {
   isLoading: boolean;
   cursors: CursorEvents;
+  /** @deprecated Use useCursors() */
   cursorPresences: Map<string, CursorPresenceView>;
   configureCursors: (opts: Partial<CursorOptions>) => void;
   /** @deprecated Use useMe() */
@@ -285,7 +286,7 @@ interface PlayContextInfo {
 }
 ```
 
-Most consumers don't read the raw context. Prefer the dedicated hooks ([`usePresence`](#usepresence), [`usePageData`](#usepagedata), [`useCursorPresences`](#usecursorpresences), [`useMe`](#useme), [`useUsers`](#useusers)) which subscribe and re-render for you.
+Most consumers don't read the raw context. Prefer the dedicated hooks ([`usePagePresence`](#usepagepresence), [`usePageData`](#usepagedata), [`useCursors`](#usecursors), [`useMe`](#useme), [`useUsers`](#useusers)) which subscribe and re-render for you.
 
 ### `isLoading`
 
@@ -336,42 +337,39 @@ Usually you'll wrap these in a hook to bind a listener to the component's lifecy
 
 All hooks must be used inside a `PlayProvider`. Each is safe to call before playhtml has finished initializing: it returns an empty/default value, and any setter warns and no-ops until sync completes, then wires up automatically. You never need to gate them on a loading flag yourself.
 
-### `usePresence`
+### `usePagePresence`
 
-Subscribe to a custom [presence](/docs/data/presence/) channel. Returns the live map of everyone's presence, a setter for your own, and your identity.
+Read and write [page presence](/docs/data/presence/#page-presence): what each person on the page is doing right now. Re-renders only when the part you watch changes.
 
 ```tsx
-function usePresence<
-  Channel extends string,
-  Payload extends Record<string, unknown> = Record<string, unknown>,
->(channel: Channel): {
-  presences: Map<
-    string,
-    PresenceView<Partial<Record<Channel, Payload>>>
-  >;
-  setMyPresence: (data: Payload) => void;
-  me: User | null;
-  /** @deprecated Use me */
-  myIdentity: PlayerIdentity | null;
+function usePagePresence(): {
+  myPresence: PagePresence | undefined;
+  everyone: PresenceEntry<PagePresence>[];
+  setPresence: (partial: PagePresence) => void; // merges keys
+};
+function usePagePresence<V>(key: string): {
+  myPresence: V | undefined;
+  everyone: PresenceEntry<V | undefined>[];
+  setPresence: (value: V | null) => void;     // writes just this key
+};
+function usePagePresence<S>(select: (presence: PagePresence) => S): {
+  myPresence: S | undefined;
+  everyone: PresenceEntry<S>[];
+  setPresence: (partial: PagePresence) => void;
 };
 ```
 
 ```tsx
-const { presences, setMyPresence } = usePresence<
-  "status",
-  { text: string }
->("status");
-setMyPresence({ text: "focused" });
-// presences is keyed by pid; each value has user, isMe, cursor,
-// plus your channel data nested under the channel name:
-for (const [, p] of presences) {
-  p.user?.name;    // who this is
-  p.isMe;          // boolean
-  p.status?.text;  // your channel value, keyed by the channel name ("status")
-}
+const { myPresence, everyone, setPresence } = usePagePresence<{ text: string }>("status");
+setPresence({ text: "focused" });
+everyone.map(({ user, presence }) => `${user.name}: ${presence?.text}`);
 ```
 
-The type parameters describe the channel name and its payload. No runtime validation is performed. The channel property is optional because a peer may not have published a value. Your data lives under the channel key (`p.status`), not directly on the view.
+`everyone` includes you (`user.isMe`) in join order. A selector can close over props; it is read again on each change.
+
+### `usePresence` (deprecated)
+
+The earlier channel-based hook, returning `{ presences, setMyPresence, me }`. It keeps working; use [`usePagePresence(key)`](#usepagepresence) and [`useMe()`](#useme) instead.
 
 ### `usePageData`
 
@@ -412,18 +410,22 @@ function usePresenceRoom(name: string): PresenceRoom | null;
 
 ```tsx
 const room = usePresenceRoom("lobby");
-room?.presence.setMyPresence("status", { text: "ready" });
+room?.setPresence({ status: { text: "ready" } });
 ```
 
 The room and its connection are torn down automatically when the component unmounts or `name` changes.
 
-### `useCursorPresences`
+### `useCursors`
 
-Read the live map of cursor presences (`pid` → `CursorPresenceView`, each with a `user`). Re-renders when cursors move. Requires `cursors: { enabled: true }`.
+Everyone's cursors, the React form of [`playhtml.users.cursors`](/docs/reference/presence/#cursors-userscursors). Re-renders on every cursor move, so call it in the component that draws cursors. Empty when cursors are disabled.
 
 ```tsx
-function useCursorPresences(): Map<string, CursorPresenceView>;
+function useCursors(): CursorEntry[]; // [{ user, cursor, zone, page }]
 ```
+
+### `useCursorPresences` (deprecated)
+
+Returns a `pid`-keyed `Map` of cursor views. Use [`useCursors()`](#usecursors) instead.
 
 ### `useCursorZone`
 

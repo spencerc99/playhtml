@@ -17,9 +17,9 @@ playhtml has four primitives for moving state between readers. Pick by **lifetim
 |---|---|---|---|
 | A toggle, position, count, or any state tied to one element | [Element data](/docs/data/data-essentials/) (`defaultData` / `can-play`) | Yes | One element |
 | A page-wide counter, prompt, or vote not tied to a DOM node | [Page data](/docs/data/page-data/) (`playhtml.createPageData`) | Yes | One page |
-| "Who is connected right now?" / "How many readers?" | [Presence](/docs/data/presence/) (`playhtml.presence.getPresences()`) | No | Per-user |
-| "Who's typing in this input?" / live status | [Custom presence channel](/docs/data/presence/#custom-channels) or element live data | No | Per-user |
-| "Where is everyone's cursor?" | [Cursors](/docs/data/presence/cursors/) | No | Per-user |
+| "Who is connected right now?" / "How many readers?" | [Presence](/docs/data/presence/) (`playhtml.users.getAll()`) | No | Per-person |
+| "Who's typing in this input?" / live status | [Page presence](/docs/data/presence/#page-presence) (`playhtml.page`) or [element presence](/docs/data/presence/#element-presence) | No | Per-person |
+| "Where is everyone's cursor?" | [Cursors](/docs/data/presence/cursors/) (`playhtml.users.cursors`) | No | Per-person |
 | Confetti burst, chime, notification | [Events](/docs/data/events/) (`dispatchPlayEvent`) | No (fires once) | Broadcast |
 | "How many people reacted to this post?" | Element data (a `count` field) | Yes | One element |
 

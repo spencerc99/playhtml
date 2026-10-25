@@ -255,11 +255,45 @@ The [`website/fridge.tsx`](https://github.com/spencerc99/playhtml/blob/main/webs
 
 The transform itself (e.g. `translate(panX, panY) scale(scale)`) is applied however you like: inline `style.transform`, a CSS class, or a CSS variable. playhtml just reads it.
 
-## Global Cursor API
+## Reading everyone's cursors
 
-Cursors expose a global `window.cursors` object.
+To draw your own cursor layer (a mini-map, trails, a "who's looking where" overlay), read cursors from `playhtml.users.cursors`. Each entry pairs a person with their cursor.
 
-`window.cursors` predates [`playhtml.users`](/docs/data/presence/users/). Its identity fields are the same data, not a second copy: `color` and `name` are aliases for `playhtml.users.me.color` and `playhtml.users.me.name`, and `allColors` is derived from the room's users. Reading or writing through either API gives identical results. We recommend `playhtml.users` for new code because it works whether or not cursors are enabled. `window.cursors` remains supported.
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```js
+// [{ user, cursor, zone, page }], in the same order as playhtml.users.getAll()
+for (const { user, cursor } of playhtml.users.cursors.getAll()) {
+  if (cursor) drawDot(cursor.x, cursor.y, user.color);
+}
+
+// Fires on every cursor move (and once right away)
+const unsubscribe = playhtml.users.cursors.onChange(redrawMiniMap);
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { useCursors } from "@playhtml/react";
+
+function MiniMap() {
+  const cursors = useCursors(); // re-renders on every cursor move
+  return cursors.map(({ user, cursor }) =>
+    cursor ? <Dot key={user.pid} x={cursor.x} y={cursor.y} color={user.color} /> : null,
+  );
+}
+```
+
+Call `useCursors()` in the component that draws cursors, not high in your tree, since it re-renders on every move.
+  </TabItem>
+</Tabs>
+
+The list is empty when cursors are disabled. `page` is the page that cursor is on, which matters when cursors are shared across a whole domain.
+
+## Legacy global API (`window.cursors`)
+
+`window.cursors` predates [`playhtml.users`](/docs/data/presence/users/) and keeps working, so existing pages and examples don't need to change. New code should use `playhtml.users` (and `playhtml.users.cursors`), which works whether or not cursors are enabled.
+
+Its identity fields are the same data, not a second copy: `color` and `name` are aliases for `playhtml.users.me.color` and `playhtml.users.me.name`, and `allColors` is derived from the room's users.
 
 ### Properties
 

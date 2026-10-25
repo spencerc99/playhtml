@@ -13,7 +13,7 @@ Once you can reach for the right one, everything else is just attribute names.
 
 - **Element data** (`defaultData` / [`can-play`](/docs/capabilities/)): persistent state scoped to a single DOM element. A toggle's on/off, a draggable's position, a shared count. Survives reload. See [data essentials](/docs/data/data-essentials/) for shape, updates, and cleanup.
 - **Page data** (`playhtml.createPageData`): persistent state keyed by a name, not tied to any element. A page-level counter, a shared prompt, an open vote. See [page-level data](/docs/data/page-data/).
-- **Users** (`playhtml.users`, cursors, element `live` data): identity plus ephemeral per-user state: "who's online", "who's typing", "where's my cursor". Element callbacks join each user's identity with their element-specific value in `users`. Disappears when users disconnect. See [presence](/docs/data/presence/) and [cursors](/docs/data/presence/cursors/).
+- **Presence** (`playhtml.users`, `playhtml.page`, cursors, element `presence`): who is here plus per-person state: "who's online", "who's typing", "where's my cursor". Each list pairs a person's identity with their value as `{ user, presence }`. Disappears when people leave. See [presence](/docs/data/presence/) and [cursors](/docs/data/presence/cursors/).
 - **Events** (`playhtml.dispatchPlayEvent`): one-off broadcasts with no persisted state. Confetti, chimes, notifications. See [events](/docs/data/events/).
 
 Not sure which one you want? The [decision table on data essentials](/docs/data/data-essentials/#when-to-use-which-primitive) lays out the tradeoffs side by side.

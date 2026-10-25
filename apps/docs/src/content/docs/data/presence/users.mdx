@@ -29,7 +29,7 @@ playhtml.users.me.name = "Bob";
 playhtml.users.me.color = "#ff0000";
 ```
 
-When cursors are enabled, `window.cursors.color` and `window.cursors.name` are aliases for these fields (see [Cursors](/docs/data/presence/cursors/#global-cursor-api)). `playhtml.users` is the primary API and does not require cursors.
+Older pages use `window.cursors.color` and `window.cursors.name`. Those still work as aliases for these fields when cursors are enabled (see [the legacy cursor API](/docs/data/presence/cursors/#legacy-global-api-windowcursors)), but new code should use `playhtml.users`, which does not require cursors.
 
 ## `getAll()` and `onChange()`
 
