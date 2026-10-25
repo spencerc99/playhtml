@@ -61,9 +61,11 @@ describe("element users", () => {
             pid: playhtml.users.me.pid,
             isMe: true,
           }),
-          live,
+          presence: live,
         },
       ]);
+      // 2.15 entries exposed the value as `live`; it stays as an alias.
+      expect(update.mock.calls.at(-1)![0].users[0].live).toBe(live);
     }
   });
 
@@ -90,7 +92,7 @@ describe("element users", () => {
     expect(update.mock.calls.at(-1)![0].users).toEqual([
       {
         user: { pid: "remote-user", name: "Mina", color: "blue", isMe: false },
-        live: false,
+        presence: false,
       },
     ]);
 

@@ -55,6 +55,15 @@ export type CursorPresenceView = {
   page?: string;
 };
 
+/** One person's cursor, from `playhtml.users.cursors`. */
+export interface CursorEntry {
+  user: User;
+  cursor: Cursor | null;
+  zone?: CursorZonePosition | null;
+  /** The page this cursor is on. */
+  page?: string;
+}
+
 // Event payloads for cursor-related global API updates
 export interface CursorEvents {
   allColors: string[];

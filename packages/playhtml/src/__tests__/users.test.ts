@@ -276,4 +276,58 @@ describe("users", () => {
       ]),
     ).toEqual(["#111111", "#222222"]);
   });
+  it("exposes cursors with their user, and empty when cursors are off", () => {
+    const { users: noCursors } = makeUsers();
+    expect(noCursors.cursors.getAll()).toEqual([]);
+    const emptyListener = vi.fn();
+    noCursors.cursors.onChange(emptyListener);
+    expect(emptyListener).toHaveBeenCalledWith([]);
+
+    const transport = createFakePresenceTransport();
+    const remoteIdentity = makeIdentity("remote-key", "#abcdef", "Ana");
+    let cursorPresences = new Map([
+      [
+        "remote-key",
+        {
+          cursor: { x: 1, y: 2, pointer: "mouse" },
+          playerIdentity: remoteIdentity,
+          page: "/a",
+        },
+      ],
+    ]);
+    let notifyCursorPresences = () => {};
+    const users = createUsersAPI(makeIdentity("local-key"), {
+      getIdentityPeers: () => transport.peers.getPeers(),
+      onIdentityPeersChange: (callback) =>
+        transport.peers.subscribe("identity", callback),
+      getCursorPresences: () => cursorPresences as any,
+      onCursorPresencesChange(callback) {
+        notifyCursorPresences = () => callback(cursorPresences as any);
+        return () => {};
+      },
+    });
+    const listener = vi.fn();
+    users.cursors.onChange(listener);
+    expect(listener).toHaveBeenLastCalledWith([
+      {
+        user: { pid: "remote-key", name: "Ana", color: "#abcdef", isMe: false },
+        cursor: { x: 1, y: 2, pointer: "mouse" },
+        zone: undefined,
+        page: "/a",
+      },
+    ]);
+
+    cursorPresences = new Map([
+      [
+        "remote-key",
+        {
+          cursor: { x: 5, y: 6, pointer: "mouse" },
+          playerIdentity: remoteIdentity,
+          page: "/a",
+        },
+      ],
+    ]);
+    notifyCursorPresences();
+    expect(listener.mock.lastCall![0][0].cursor).toEqual({ x: 5, y: 6, pointer: "mouse" });
+  });
 });
