@@ -1716,7 +1716,8 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   border-radius: 6px;
   box-shadow: var(--ph-shadow-brick);
 }
-.ph-demo-slot::before {
+.ph-demo-slot::before,
+.ph-canplay-inline::before {
   content: attr(data-label);
   position: absolute;
   top: -0.65rem;
@@ -2729,23 +2730,24 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ------------------------------------------------------------------
-   Inline can-play vignettes — scattered through the capabilities page
-   so the page itself becomes a `can-play` showcase. Each block is a
-   margin-style aside, not a heavy framed demo box: a ruled head with a
-   tiny "CAN-PLAY · …" kicker, the demo, and a target id so the can-play
-   section's nav links can jump to it.
+   Inline can-play vignettes — scattered through the custom elements page
+   so the page itself becomes a `can-play` showcase. Each block uses the
+   same frame as .ph-demo-slot (bordered box, data-label notched into the
+   top border), stacked so a caption sits above the demo, plus a target id
+   so the can-play section's nav links can jump to it.
    ------------------------------------------------------------------ */
 
 .ph-canplay-inline {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
   margin: 1.6rem 0;
-  padding: 0.85rem 1rem 1rem;
-  border: 1px solid var(--ph-sage-wash);
-  border-left: 3px solid var(--ph-sage-deep);
-  border-radius: 4px;
+  padding: 1.25rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
   background: var(--ph-sage-wash);
+  box-shadow: var(--ph-shadow-brick);
   scroll-margin-top: 5rem;
 }
 
@@ -2759,13 +2761,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   gap: 0.25rem;
 }
 
-.ph-canplay-inline__kicker {
-  font-family: var(--ph-font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ph-sage-deep);
-}
 
 .ph-canplay-inline__caption {
   margin: 0;
@@ -2796,16 +2791,15 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   color: var(--ph-ink);
   text-decoration-thickness: 2px;
 }
-.ph-demo-slot > .ph-demo-code-link {
+.ph-demo-slot > .ph-demo-code-link,
+.ph-canplay-inline > .ph-demo-code-link {
   position: absolute;
   right: 0.9rem;
   bottom: -0.6rem;
   padding: 0 0.4rem;
   background: var(--ph-paper);
 }
-.ph-demo-slot:has(> .ph-demo-code-link) {
+.ph-demo-slot:has(> .ph-demo-code-link),
+.ph-canplay-inline:has(> .ph-demo-code-link) {
   margin-bottom: 1.4rem;
-}
-.ph-canplay-inline > .ph-demo-code-link {
-  align-self: flex-end;
 }

@@ -1,7 +1,6 @@
 ---
 // Small "View code" link for a live docs demo, pointing at its example page.
-// Inside a .ph-demo-slot it sits in the bottom border, mirroring the box's
-// top label; inside a .ph-canplay-inline it sits at the bottom right.
+// It sits in the demo box's bottom border, mirroring the box's top label.
 type Props = { href: string };
 const { href } = Astro.props;
 ---
@@ -22,5 +21,4 @@ const { href } = Astro.props;
     <polyline points="16 6 22 12 16 18"></polyline>
   </svg>
   <span>View code</span>
-  <span aria-hidden="true">→</span>
 </a>
