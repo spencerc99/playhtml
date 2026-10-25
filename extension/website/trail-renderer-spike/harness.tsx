@@ -1,5 +1,5 @@
 // ABOUTME: Spike page comparing the SVG trail renderer with p5 and raw WebGL2 renderers.
-// ABOUTME: Same synthetic trails and cinematic camera in every mode; shows fps on screen.
+// ABOUTME: Real recent cursor data (or synthetic) through the same camera in every mode; shows fps.
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import {
@@ -17,12 +17,19 @@ import {
   DEFAULT_CINEMATIC_CONFIG,
   type ViewBox,
 } from "@movement/utils/cinematicCamera";
-import type { TrailState } from "@movement/types";
+import type { CollectionEvent, TrailState } from "@movement/types";
+import { useCursorTrails } from "@movement/hooks/useCursorTrails";
+import { RECENT_EVENTS_URL } from "@movement/config";
 
 const q = new URLSearchParams(location.search);
 const N = Number(q.get("n") ?? 2000);
+// real: the worker's most recent cursor events, through the archive's own
+// trail pipeline. synthetic: random walks. testclick: one trail ending in one
+// click, for comparing a single ripple across renderers.
+const DATA = q.get("data") ?? "real";
+const LIMIT = Number(q.get("limit") ?? 20000);
 const PTS = Number(q.get("pts") ?? 150);
-const SPEED = Number(q.get("speed") ?? 20);
+const SPEED = Number(q.get("speed") ?? 1);
 const MODE = q.get("mode") ?? "svg"; // svg | gl
 const WINDOW = q.get("window") === "all" ? 1e9 : Number(q.get("window") ?? 30);
 const CINEMATIC = q.get("cinematic") === "1";
@@ -34,57 +41,152 @@ const W = innerWidth,
   H = innerHeight;
 let seed = 1;
 const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-const DURATION = 60 * 60 * 1000;
+let DURATION = 60 * 60 * 1000;
 const cursors = ["default", "pointer", "text"];
-const states: TrailState[] = [];
-for (let i = 0; i < N; i++) {
-  const n = Math.max(4, Math.round(PTS * (0.3 + rnd() * 1.4)));
-  let x = rnd() * W,
-    y = rnd() * H;
-  const pts = [] as TrailState["trail"]["points"];
-  const t0 = rnd() * DURATION * 0.95;
-  for (let k = 0; k < n; k++) {
-    x = Math.min(W, Math.max(0, x + (rnd() - 0.5) * 40));
-    y = Math.min(H, Math.max(0, y + (rnd() - 0.5) * 40));
-    pts.push({
-      x,
-      y,
-      ts: t0 + k * 250,
-      cursor: cursors[Math.floor(k / 40) % 3],
+let states: TrailState[] = [];
+function buildSynthetic(count: number) {
+  const out: TrailState[] = [];
+  for (let i = 0; i < count; i++) {
+    const n = Math.max(4, Math.round(PTS * (0.3 + rnd() * 1.4)));
+    let x = rnd() * W,
+      y = rnd() * H;
+    const pts = [] as TrailState["trail"]["points"];
+    const t0 = rnd() * DURATION * 0.95;
+    for (let k = 0; k < n; k++) {
+      x = Math.min(W, Math.max(0, x + (rnd() - 0.5) * 40));
+      y = Math.min(H, Math.max(0, y + (rnd() - 0.5) * 40));
+      pts.push({
+        x,
+        y,
+        ts: t0 + k * 250,
+        cursor: cursors[Math.floor(k / 40) % 3],
+      });
+    }
+    const durationMs = Math.min(20000, n * 120);
+    const clicks = Array.from({ length: Math.floor(rnd() * 4) }, () => {
+      const p = rnd();
+      const pt = pts[Math.floor(p * (n - 1))];
+      return { x: pt.x, y: pt.y, ts: pt.ts, progress: p };
+    });
+    out.push({
+      trail: {
+        points: pts,
+        color: `hsl(${Math.floor(rnd() * 360)}, 70%, 55%)`,
+        opacity: 1,
+        id: `t${i}`,
+        pid: `p${i % 200}`,
+        startTime: t0,
+        endTime: t0 + n * 250,
+        clicks: clicks as any,
+      },
+      startOffsetMs: t0,
+      durationMs,
+      variedPoints: pts.map((p) => ({ x: p.x, y: p.y })),
+      clicksWithProgress: clicks,
     });
   }
-  const durationMs = Math.min(20000, n * 120);
-  const clicks = Array.from({ length: Math.floor(rnd() * 4) }, () => {
-    const p = rnd();
-    const pt = pts[Math.floor(p * (n - 1))];
-    return { x: pt.x, y: pt.y, ts: pt.ts, progress: p };
-  });
-  states.push({
-    trail: {
-      points: pts,
-      color: `hsl(${Math.floor(rnd() * 360)}, 70%, 55%)`,
-      opacity: 1,
-      id: `t${i}`,
-      pid: `p${i % 200}`,
-      startTime: t0,
-      endTime: t0 + n * 250,
-      clicks: clicks as any,
-    },
-    startOffsetMs: t0,
-    durationMs,
-    variedPoints: pts.map((p) => ({ x: p.x, y: p.y })),
-    clicksWithProgress: clicks,
-  });
+  return out;
 }
-const timeRange = { min: 0, max: DURATION, duration: DURATION };
+let timeRange = { min: 0, max: DURATION, duration: DURATION };
 const settings = {
   ...DEFAULT_SETTINGS,
   animationSpeed: SPEED,
   trailVisualStyle: INK ? "monochrome" : "color",
 };
 
+// Recent real cursor events through the same trail pipeline the archive uses
+// (useCursorTrails with the portrait's default settings), run once off-screen.
+async function buildReal(): Promise<{
+  states: TrailState[];
+  duration: number;
+}> {
+  const params = new URLSearchParams({ type: "cursor", limit: String(LIMIT) });
+  const res = await fetch(`${RECENT_EVENTS_URL}?${params}`);
+  if (!res.ok) throw new Error(`events/recent ${res.status}`);
+  const events = (await res.json()) as CollectionEvent[];
+  const trailSettings = {
+    randomizeColors: DEFAULT_SETTINGS.randomizeColors,
+    filters: DEFAULT_SETTINGS.filters,
+    pidFilter: DEFAULT_SETTINGS.pidFilter,
+    eventFilter: DEFAULT_SETTINGS.eventFilter,
+    trailStyle: DEFAULT_SETTINGS.trailStyle,
+    chaosIntensity: DEFAULT_SETTINGS.chaosIntensity,
+    trailAnimationMode: DEFAULT_SETTINGS.trailAnimationMode,
+    maxConcurrentTrails: DEFAULT_SETTINGS.maxConcurrentTrails,
+    overlapFactor: DEFAULT_SETTINGS.overlapFactor,
+    minGapBetweenTrails: DEFAULT_SETTINGS.minGapBetweenTrails,
+    documentSpace: false,
+  };
+  let result: { states: TrailState[]; duration: number } | null = null;
+  const Probe = () => {
+    const r = useCursorTrails(events, { width: W, height: H }, trailSettings);
+    result = { states: r.trailStates, duration: r.cycleDuration };
+    return null;
+  };
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  flushSync(() => root.render(<Probe />));
+  root.unmount();
+  if (!result || (result as { states: TrailState[] }).states.length === 0)
+    throw new Error("no cursor trails in recent events");
+  return result;
+}
+
+function buildTestClick(): TrailState[] {
+  // Same ripple size in every renderer: both draw radiusFactor from Math.random.
+  Math.random = () => 0.8;
+  const pts = Array.from({ length: 30 }, (_, k) => ({
+    x: W / 2 - 150 + k * 10,
+    y: H / 2 + Math.sin(k / 4) * 40,
+    ts: k * 250,
+  }));
+  const end = pts[pts.length - 1];
+  const clicks = [{ x: end.x, y: end.y, ts: end.ts, progress: 1 }];
+  return [
+    {
+      trail: {
+        points: pts,
+        color: "hsl(280, 70%, 55%)",
+        opacity: 1,
+        id: "t0",
+        pid: "p0",
+        startTime: 0,
+        endTime: end.ts,
+        clicks: clicks as any,
+      },
+      startOffsetMs: 1000,
+      durationMs: 3000,
+      variedPoints: pts.map((p) => ({ x: p.x, y: p.y })),
+      clicksWithProgress: clicks,
+    },
+  ];
+}
+
+let dataNote = "";
+async function loadData() {
+  if (DATA === "testclick") {
+    states = buildTestClick();
+    DURATION = 60_000;
+  } else if (DATA === "real") {
+    try {
+      const real = await buildReal();
+      states = real.states;
+      DURATION = Math.max(1, real.duration);
+      dataNote = `real data (${LIMIT} events)`;
+    } catch (err) {
+      console.warn("[spike] real data unavailable, using synthetic:", err);
+      dataNote = "real data unavailable, synthetic";
+      states = buildSynthetic(N);
+    }
+  } else {
+    states = buildSynthetic(N);
+    dataNote = "synthetic";
+  }
+  timeRange = { min: 0, max: DURATION, duration: DURATION };
+}
+
 // One shared clock for both renderers so runs are comparable.
-const wallStart = performance.now();
+let wallStart = performance.now();
 const elapsedMs = () =>
   FREEZE !== null
     ? Number(FREEZE) * DURATION
@@ -123,6 +225,14 @@ const hudLinks = [
     q.get("window") === "all" ? "window 30" : "all trails",
   ),
   link({ style: INK ? "color" : "monochrome" }, INK ? "color" : "ink"),
+  link(
+    { data: DATA === "real" ? "synthetic" : "real" },
+    DATA === "real" ? "synthetic data" : "real data",
+  ),
+  link(
+    { speed: SPEED === 1 ? "20" : "1" },
+    SPEED === 1 ? "20× speed" : "1× speed",
+  ),
 ].join(" · ");
 let hudFrames = 0,
   hudLast = performance.now();
@@ -131,7 +241,7 @@ const hudTick = (t: number) => {
   if (t - hudLast > 1000) {
     const w = window as any;
     hud.innerHTML =
-      `${MODE} · ${N} trails · ${Math.round((hudFrames * 1000) / (t - hudLast))} fps` +
+      `${MODE} · ${states.length} trails · ${dataNote} · ${SPEED}× · ${Math.round((hudFrames * 1000) / (t - hudLast))} fps` +
       (w.__glVerts
         ? ` · ${(w.__glVerts / 1e6).toFixed(2)}M verts · built in ${Math.round(w.__glBuildMs)}ms`
         : "") +
@@ -145,33 +255,38 @@ requestAnimationFrame(hudTick);
 
 const cinematicConfig = CINEMATIC ? { ...DEFAULT_CINEMATIC_CONFIG } : null;
 
-if (MODE === "svg") {
-  createRoot(document.getElementById("root")!).render(
-    <AnimatedTrails
-      trailStates={states}
-      timeRange={timeRange}
-      windowSize={WINDOW}
-      settings={settings as any}
-      cinematic={cinematicConfig}
-      getInstallationElapsedMs={() => elapsedMs()}
-      showClickRipples={q.get("clicks") !== "0"}
-    />,
-  );
-  if (VIEW) {
-    const [vx, vy, vw] = VIEW.split(",").map(Number);
-    setTimeout(
-      () =>
-        document
-          .querySelector("svg.trails-svg")
-          ?.setAttribute("viewBox", `${vx} ${vy} ${vw} ${(vw * H) / W}`),
-      500,
+async function boot() {
+  await loadData();
+  wallStart = performance.now();
+  if (MODE === "svg") {
+    createRoot(document.getElementById("root")!).render(
+      <AnimatedTrails
+        trailStates={states}
+        timeRange={timeRange}
+        windowSize={WINDOW}
+        settings={settings as any}
+        cinematic={cinematicConfig}
+        getInstallationElapsedMs={() => elapsedMs()}
+        showClickRipples={q.get("clicks") !== "0"}
+      />,
     );
+    if (VIEW) {
+      const [vx, vy, vw] = VIEW.split(",").map(Number);
+      setTimeout(
+        () =>
+          document
+            .querySelector("svg.trails-svg")
+            ?.setAttribute("viewBox", `${vx} ${vy} ${vw} ${(vw * H) / W}`),
+        500,
+      );
+    }
+  } else if (MODE === "gl") {
+    mountGl(document.getElementById("root")!);
+  } else {
+    mountGl2(document.getElementById("root")!);
   }
-} else if (MODE === "gl") {
-  mountGl(document.getElementById("root")!);
-} else {
-  queueMicrotask(() => mountGl2(document.getElementById("root")!));
 }
+queueMicrotask(() => void boot());
 
 // ---------------- WebGL spike ----------------
 const VERT = `#version 300 es
@@ -767,9 +882,8 @@ function mountGl2(container: HTMLElement) {
   if (!gl.getProgramParameter(rippleProg, gl.LINK_STATUS))
     throw new Error(gl.getProgramInfoLog(rippleProg)!);
   const rippleVerts: number[] = [];
-  let rippleSeed = 7;
-  const rippleRnd = () =>
-    (rippleSeed = (rippleSeed * 16807) % 2147483647) / 2147483647;
+  // createClickEffect's radiusFactor is Math.random(); match it.
+  const rippleRnd = Math.random;
   states.forEach((s, idx) => {
     for (const click of s.clicksWithProgress) {
       const pts = s.variedPoints;
