@@ -138,7 +138,10 @@ it("closes the setup tab after onboarding", async () => {
 });
 
 it("closes its own window when setup is not in a tab", async () => {
-  vi.mocked(browser.tabs.getCurrent).mockResolvedValue(undefined);
+  vi.mocked(browser.tabs.getCurrent).mockResolvedValue(
+    // Inside the iPhone app, setup opens in a sheet, so there is no tab.
+    undefined as unknown as Awaited<ReturnType<typeof browser.tabs.getCurrent>>,
+  );
   const close = vi.spyOn(window, "close").mockImplementation(() => {});
   const { default: SetupPage } = await import("../components/SetupPage");
   const container = document.createElement("div");
