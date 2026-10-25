@@ -30,11 +30,14 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   z-index: 1;
 }
 
-// Bottom edge of the first screen: anchored at 100vh and shifted up by its own
-// height, so it grows upward when it wraps.
+// Bottom edge of the first screen: anchored at the hero's height and shifted
+// up by its own height, so it grows upward when it wraps. It uses the same svh
+// as .hero: on phones 100vh is the taller bar-hidden viewport, which put this
+// below the hero and over the essay.
 .firstScreenMeta {
   position: absolute;
   top: 100vh;
+  top: 100svh;
   left: 16px;
   right: 16px;
   z-index: 2;
