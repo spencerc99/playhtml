@@ -3,6 +3,7 @@ import React, { useContext, useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { PlayContext, PlayProvider, withSharedState } from "@playhtml/react";
 import confetti from "canvas-confetti";
+import { mountExperimentBadge } from "../../components/experimentBadge";
 
 interface Cursor {
   cursorUrl: string;
@@ -174,6 +175,8 @@ const CursorController = withSharedState(
     );
   }
 );
+
+mountExperimentBadge({ experiment: "EX-02" });
 
 // Website with a shared color.
 ReactDOM.createRoot(
