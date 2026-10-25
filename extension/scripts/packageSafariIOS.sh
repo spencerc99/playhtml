@@ -110,6 +110,52 @@ while IFS= read -r plist; do
   fi
 done < <(find "$IOS_PROJECT_ROOT" -name Info.plist -not -path "*/build/*")
 
+# The app runs the extension in its own browser through WKWebExtension, where
+# a service worker background never starts (the context reports
+# backgroundContentFailedToLoad without running a line of it). The same bundle
+# runs as a non-persistent background page, which Safari on iOS also supports.
+EXTENSION_MANIFEST="${IOS_PROJECT_ROOT}/${APP_NAME}/${APP_NAME} Extension/Resources/manifest.json"
+node -e '
+  const fs = require("node:fs");
+  const path = process.argv[1];
+  const manifest = JSON.parse(fs.readFileSync(path, "utf8"));
+  const worker = manifest.background && manifest.background.service_worker;
+  if (!worker) throw new Error("The Safari manifest has no background service worker to convert");
+  manifest.background = { scripts: [worker], persistent: false };
+  fs.writeFileSync(path, JSON.stringify(manifest, null, 2));
+' "$EXTENSION_MANIFEST"
+
+# Replace the packager's placeholder home screen with ours. The app bundles only
+# the files the packager listed, so the fonts are inlined into Style.css from
+# the extension's own build rather than shipped as separate files.
+APP_SOURCES="${IOS_PROJECT_ROOT}/${APP_NAME}/${APP_NAME}"
+APP_RESOURCES="${APP_SOURCES}/Resources"
+cp ios/app/Main.html "${APP_RESOURCES}/Base.lproj/Main.html"
+cp ios/app/ViewController.swift "${APP_SOURCES}/ViewController.swift"
+FONT_FACES=""
+add_font_face() {
+  local family="$1" style="$2" weight="$3" file_prefix="$4"
+  local file
+  file=$(find "${SAFARI_BUILD_DIR}/assets" -name "${file_prefix}-*.woff2" | head -n 1)
+  if [ -z "$file" ]; then
+    echo "The Safari build has no ${file_prefix} font for the app's home screen."
+    exit 1
+  fi
+  FONT_FACES+="@font-face{font-family:\"${family}\";font-style:${style};font-weight:${weight};src:url(data:font/woff2;base64,$(base64 < "$file" | tr -d '\n')) format(\"woff2\");}"
+}
+add_font_face "Source Serif 4" italic 200 source-serif-4-latin-200-italic
+add_font_face "Lora" normal 600 lora-latin-600-normal
+add_font_face "Atkinson Hyperlegible" normal 400 atkinson-hyperlegible-latin-400-normal
+add_font_face "Atkinson Hyperlegible" normal 700 atkinson-hyperlegible-latin-700-normal
+add_font_face "Martian Mono" normal 500 martian-mono-latin-500-normal
+FONT_FACES="$FONT_FACES" node -e '
+  const fs = require("node:fs");
+  const [source, target] = process.argv.slice(1);
+  const css = fs.readFileSync(source, "utf8");
+  if (!css.includes("/*@@FONTS@@*/")) throw new Error("Style.css has no fonts placeholder");
+  fs.writeFileSync(target, css.replace("/*@@FONTS@@*/", process.env.FONT_FACES));
+' ios/app/Style.css "${APP_RESOURCES}/Style.css"
+
 if [ "$PROJECT_ONLY" -eq 1 ]; then
   echo "Generated ${PROJECT_PATH}."
   exit 0
