@@ -139,10 +139,6 @@ export default defineConfig({
                 { label: "Users", slug: "data/presence/users" },
                 { label: "Presence", slug: "data/presence" },
                 { label: "Cursors", slug: "data/presence/cursors" },
-                {
-                  label: "Element live data",
-                  link: "/custom-elements/#users-and-live-per-user-state",
-                },
               ],
             },
             { label: "Events", slug: "data/events" },
