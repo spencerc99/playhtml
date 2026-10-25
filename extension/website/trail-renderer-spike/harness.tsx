@@ -558,6 +558,63 @@ function hslToRgb(css: string): [number, number, number] {
   return [f(h + 1 / 3), f(h), f(h - 1 / 3)];
 }
 
+// Click ripples on the GPU: one quad per click, rings drawn in the fragment
+// shader with getRippleGeometry's math (rings start ringDelay apart, each
+// eases out to its own target radius). Ripples live in world space, so they
+// follow the cinematic camera, and they stay as long as their trail does.
+const RIPPLE_VERT = `#version 300 es
+precision highp float;
+in vec4 aPos;    // x, y, local dx, local dy (world px from the click)
+in vec4 aClick;  // click time (data ms), trail id, outer target radius, core radius
+in float aVel;   // ring expansion velocity, px per real ms
+uniform vec4 uView;
+uniform highp sampler2D uTrails;
+uniform float uTime;
+out vec2 vLocal; out float vClickT; out float vOuter; out float vCore; out float vVel; out vec3 vColor; out float vVisible;
+void main() {
+  int id = int(aClick.y);
+  ivec2 base = ivec2((id * 2) % 2048, (id * 2) / 2048);
+  vec4 timing = texelFetch(uTrails, base, 0);
+  vec4 color = texelFetch(uTrails, base + ivec2(1, 0), 0);
+  // Same lifetime as the trail: gone once it has finished its eviction fade.
+  float evict = timing.z;
+  vVisible = uTime > evict + 3000.0 ? 0.0 : 1.0;
+  vec2 ndc = (aPos.xy - uView.xy) / uView.zw * 2.0 - 1.0;
+  gl_Position = vec4(ndc.x, -ndc.y, 0.0, 1.0);
+  vLocal = aPos.zw; vClickT = aClick.x; vOuter = aClick.z; vCore = aClick.w; vVel = aVel; vColor = color.rgb;
+}`;
+const RIPPLE_FRAG = `#version 300 es
+precision highp float;
+in vec2 vLocal; in float vClickT; in float vOuter; in float vCore; in float vVel; in vec3 vColor; in float vVisible;
+uniform float uTime;
+uniform float uSpeed;
+uniform int uRings;
+uniform float uRingDelay;
+uniform float uStroke;
+uniform float uClickOpacity;
+out vec4 outColor;
+void main() {
+  if (vVisible <= 0.0) discard;
+  // Ripple timings are real milliseconds; the trail clock runs at uSpeed.
+  float elapsed = (uTime - vClickT) / uSpeed;
+  if (elapsed < 0.0) discard;
+  float d = length(vLocal);
+  float aa = fwidth(d);
+  float cov = 0.0;
+  for (int i = 0; i < 8; i++) {
+    if (i >= uRings) break;
+    float start = float(i) * uRingDelay;
+    if (elapsed < start) continue;
+    float target = uRings == 1 ? vOuter : vCore + (vOuter - vCore) * float(i) / float(uRings - 1);
+    float p = clamp((elapsed - start) / max(1.0, target / vVel), 0.0, 1.0);
+    float r = target * (1.0 - pow(1.0 - p, 3.0));
+    cov = max(cov, 1.0 - smoothstep(uStroke * 0.5 - aa, uStroke * 0.5 + aa, abs(d - r)));
+  }
+  if (cov <= 0.0) discard;
+  float a = uClickOpacity * cov;
+  outColor = vec4(vColor * a, a);
+}`;
+
 function mountGl2(container: HTMLElement) {
   const canvas = document.createElement("canvas");
   const dpr = window.devicePixelRatio;
@@ -591,7 +648,16 @@ function mountGl2(container: HTMLElement) {
   const evict = evictTimes();
   const chunks: Float32Array[] = [];
   let count = 0;
-  states.forEach((s, idx) => {
+  // Draw oldest first. Each trail sits at its own depth (newer in front) so it
+  // never blends over itself; drawing back to front means every older layer is
+  // already in the framebuffer when a newer one blends over it, so layers stack
+  // like the SVG renderer's instead of the newest hiding everything behind it.
+  const drawOrder = states
+    .map((st, i) => ({ i, start: st.startOffsetMs }))
+    .sort((a, b) => a.start - b.start)
+    .map((e) => e.i);
+  drawOrder.forEach((idx) => {
+    const s = states[idx];
     const size = INK ? 1 + ((idx * 7 + 3) % 5) : settings.strokeWidth;
     const pts = freehandCenterline(s.variedPoints, size);
     if (pts.length < 2) return;
@@ -662,10 +728,7 @@ function mountGl2(container: HTMLElement) {
   // Paint order: the later a trail starts, the nearer it sits, so the newest
   // trail is always on top (the SVG renderer re-appends active heads the same way).
   const startRank = new Float32Array(states.length);
-  states
-    .map((st, i) => ({ i, start: st.startOffsetMs }))
-    .sort((a, b) => a.start - b.start)
-    .forEach((e, rank) => (startRank[e.i] = rank));
+  drawOrder.forEach((idx, rank) => (startRank[idx] = rank));
   const texW = 2048,
     texH = Math.ceil((states.length * 2) / texW);
   const data = new Float32Array(texW * texH * 4);
@@ -695,6 +758,100 @@ function mountGl2(container: HTMLElement) {
   (window as any).__glBuildMs = performance.now() - t0;
   (window as any).__glVerts = count;
   (window as any).__glMB = (verts.byteLength + data.byteLength) / 1e6;
+
+  // Ripple geometry, built once like the trails.
+  const rippleProg = gl.createProgram()!;
+  gl.attachShader(rippleProg, compile(gl.VERTEX_SHADER, RIPPLE_VERT));
+  gl.attachShader(rippleProg, compile(gl.FRAGMENT_SHADER, RIPPLE_FRAG));
+  gl.linkProgram(rippleProg);
+  if (!gl.getProgramParameter(rippleProg, gl.LINK_STATUS))
+    throw new Error(gl.getProgramInfoLog(rippleProg)!);
+  const rippleVerts: number[] = [];
+  let rippleSeed = 7;
+  const rippleRnd = () =>
+    (rippleSeed = (rippleSeed * 16807) % 2147483647) / 2147483647;
+  states.forEach((s, idx) => {
+    for (const click of s.clicksWithProgress) {
+      const pts = s.variedPoints;
+      const exact = (pts.length - 1) * click.progress;
+      const k = Math.min(Math.floor(exact), pts.length - 1);
+      const f = exact - k;
+      const a = pts[k],
+        b = pts[Math.min(k + 1, pts.length - 1)];
+      const cx = a.x + (b.x - a.x) * f,
+        cy = a.y + (b.y - a.y) * f;
+      // getRippleGeometry, with createClickEffect's random radiusFactor.
+      const radiusFactor = rippleRnd();
+      const hold = click.duration ? Math.min(3, 1 + click.duration / 1000) : 1;
+      const expansion = settings.clickExpansionDuration * hold;
+      const effMax =
+        (settings.clickMinRadius +
+          radiusFactor * (settings.clickMaxRadius - settings.clickMinRadius)) *
+        hold;
+      const outer = effMax * settings.clickAnimationStopPoint;
+      const core = Math.max(
+        1,
+        Math.min(settings.clickCoreRadius + (radiusFactor - 0.5) * 4, outer),
+      );
+      const vel = outer / expansion;
+      const clickT = s.startOffsetMs + click.progress * s.durationMs;
+      const h = outer + settings.clickStrokeWidth;
+      const corner = (dx: number, dy: number) =>
+        rippleVerts.push(
+          cx + dx,
+          cy + dy,
+          dx,
+          dy,
+          clickT,
+          idx,
+          outer,
+          core,
+          vel,
+        );
+      corner(-h, -h); // degenerate in
+      corner(-h, -h);
+      corner(h, -h);
+      corner(-h, h);
+      corner(h, h);
+      corner(h, h); // degenerate out
+    }
+  });
+  const rippleCount = rippleVerts.length / 9;
+  const rippleVao = gl.createVertexArray();
+  gl.bindVertexArray(rippleVao);
+  const rippleVbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, rippleVbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(rippleVerts), gl.STATIC_DRAW);
+  const rp = (name: string, size: number, offset: number) => {
+    const loc = gl.getAttribLocation(rippleProg, name);
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 36, offset);
+  };
+  rp("aPos", 4, 0);
+  rp("aClick", 4, 16);
+  rp("aVel", 1, 32);
+  gl.useProgram(rippleProg);
+  const rView = gl.getUniformLocation(rippleProg, "uView"),
+    rTime = gl.getUniformLocation(rippleProg, "uTime");
+  gl.uniform1i(gl.getUniformLocation(rippleProg, "uTrails"), 0);
+  gl.uniform1f(gl.getUniformLocation(rippleProg, "uSpeed"), SPEED);
+  gl.uniform1i(
+    gl.getUniformLocation(rippleProg, "uRings"),
+    Math.max(1, Math.min(8, settings.clickNumRings)),
+  );
+  gl.uniform1f(
+    gl.getUniformLocation(rippleProg, "uRingDelay"),
+    settings.clickRingDelayMs,
+  );
+  gl.uniform1f(
+    gl.getUniformLocation(rippleProg, "uStroke"),
+    settings.clickStrokeWidth,
+  );
+  gl.uniform1f(
+    gl.getUniformLocation(rippleProg, "uClickOpacity"),
+    settings.clickOpacity,
+  );
+  (window as any).__glRipples = rippleCount / 6;
 
   gl.useProgram(prog);
   const uView = gl.getUniformLocation(prog, "uView"),
@@ -813,9 +970,26 @@ function mountGl2(container: HTMLElement) {
     overlay.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
     updateCursors();
     (window as any).__view = view;
-    gl.clearColor(0, 0, 0, 0);
+    // Opaque page background, so multiplied ripples have something to darken.
+    gl.clearColor(0xfa / 255, 0xf7 / 255, 0xf2 / 255, 1);
     gl.clearDepth(1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    // Ripples first, without depth, so trails paint over them as in SVG.
+    if (q.get("clicks") !== "0" && rippleCount > 0) {
+      gl.disable(gl.DEPTH_TEST);
+      // mix-blend-mode: multiply, as the SVG rings use: with premultiplied
+      // (c*a, a) this gives dst * (1 - a + a*c).
+      gl.blendFunc(gl.DST_COLOR, gl.ONE_MINUS_SRC_ALPHA);
+      gl.useProgram(rippleProg);
+      gl.bindVertexArray(rippleVao);
+      gl.uniform4f(rView, view.x, view.y, view.w, view.h);
+      gl.uniform1f(rTime, looped);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, rippleCount);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.enable(gl.DEPTH_TEST);
+    }
+    gl.useProgram(prog);
+    gl.bindVertexArray(vao);
     gl.uniform4f(uView, view.x, view.y, view.w, view.h);
     gl.uniform1f(uTime, looped);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, count);
