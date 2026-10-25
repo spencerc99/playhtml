@@ -94,28 +94,25 @@ export default defineConfig({
         SiteTitle: "./src/components/SiteTitle.astro",
         Hero: "./src/components/Hero.astro",
       },
-      // Sidebar IA — mirrors the four kinds of shared state in the Core
-      // concepts diagram (element data, page data, presence, events).
+      // Sidebar IA
       //
-      //   Start        → getting-started, concepts, examples
-      //   Element data → capabilities, custom-elements, data/data-essentials,
-      //                  advanced/{dynamic-elements,shared-elements,merging-data}
-      //   Page data    → data/page-data
-      //   Presence     → data/presence/*, plus element `live` data
-      //   Events       → data/events
-      //   Advanced     → advanced/{navigation,development,mirror-playground}
+      //   Start        → getting-started, concepts, examples (index)
+      //   Shared state → data-essentials, capabilities, custom-elements,
+      //                  page-data, presence/* (nested), events
+      //   Advanced     → autogenerate (advanced/)
       //   Integrations → autogenerate (integrations/)
       //   Reference    → autogenerate (reference/)
       //
-      // The groups are hand-rolled because they don't match directories on
-      // disk: pages kept their URLs when the sidebar was regrouped. Only
-      // Integrations and Reference autogenerate (set
-      // `sidebar: { order: N }` in a page's frontmatter there).
+      // Start and Shared state are hand-rolled: Shared state pulls the
+      // capability and custom element pages (top-level files) in next to the
+      // data/ pages so all four kinds of shared state from Core concepts live
+      // in one group.
+      // Individual example pages stay hidden (`sidebar.hidden`) and are
+      // linked from the examples index.
       //
-      // ⚠️ When adding a page outside integrations/ / reference/, add an
-      // entry to the matching group here or it won't show up. Individual
-      // example pages stay hidden (`sidebar.hidden`) and are linked from the
-      // examples index.
+      // ⚠️ When adding a page: in advanced/ / integrations/ / reference/,
+      // set `sidebar: { order: N }` in its frontmatter and you're done.
+      // Anywhere else, add an entry to the hand-rolled groups here too.
       //
       // There is no separate React section: every page shows React inline,
       // tabbed next to vanilla, and the React setup lives in the React tab of
@@ -130,50 +127,28 @@ export default defineConfig({
           ],
         },
         {
-          label: "Element data",
+          label: "Shared state",
           items: [
+            { label: "Data essentials", slug: "data/data-essentials" },
             { label: "Built-in elements", slug: "capabilities" },
             { label: "Custom elements", slug: "custom-elements" },
-            { label: "Data essentials", slug: "data/data-essentials" },
-            { label: "Dynamic elements", slug: "advanced/dynamic-elements" },
-            { label: "Shared elements", slug: "advanced/shared-elements" },
-            { label: "Merging data changes", slug: "advanced/merging-data" },
+            { label: "Page-level data", slug: "data/page-data" },
+            {
+              label: "Presence",
+              items: [
+                { label: "Users", slug: "data/presence/users" },
+                { label: "Presence", slug: "data/presence" },
+                { label: "Cursors", slug: "data/presence/cursors" },
+                {
+                  label: "Element live data",
+                  link: "/custom-elements/#users-and-live-per-user-state",
+                },
+              ],
+            },
+            { label: "Events", slug: "data/events" },
           ],
         },
-        {
-          label: "Page data",
-          items: [{ label: "Page data", slug: "data/page-data" }],
-        },
-        {
-          label: "Presence",
-          items: [
-            { label: "Presence", slug: "data/presence" },
-            { label: "Users", slug: "data/presence/users" },
-            { label: "Cursors", slug: "data/presence/cursors" },
-            {
-              label: "Element live data",
-              link: "/custom-elements/#users-and-live-per-user-state",
-            },
-          ],
-        },
-        {
-          label: "Events",
-          items: [{ label: "Events", slug: "data/events" }],
-        },
-        {
-          label: "Advanced",
-          items: [
-            { label: "Navigation & SPAs", slug: "advanced/navigation" },
-            {
-              label: "Development & data cleanup",
-              slug: "advanced/development",
-            },
-            {
-              label: "can-mirror playground",
-              slug: "advanced/mirror-playground",
-            },
-          ],
-        },
+        { label: "Advanced", autogenerate: { directory: "advanced" } },
         { label: "Integrations", autogenerate: { directory: "integrations" } },
         { label: "Reference", autogenerate: { directory: "reference" } },
       ],
