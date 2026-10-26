@@ -676,31 +676,38 @@ function hslToRgb(css: string): [number, number, number] {
 // Click ripples on the GPU: one quad per click, rings drawn in the fragment
 // shader with getRippleGeometry's math (rings start ringDelay apart, each
 // eases out to its own target radius). Ripples live in world space, so they
-// follow the cinematic camera, and they stay as long as their trail does.
+// follow the cinematic camera, and once open they stay for the rest of the
+// pass instead of leaving with their trail.
+//
+// Each click carries two placements. Normally a ripple opens where and when
+// the click happened. On the first pass after starting partway through
+// (?start / ?freeze), clicks the playhead has already passed open together
+// at their trail's head at the start moment, which is what the SVG renderer
+// does when its first frame catches up on them, and what stacks rings.
 const RIPPLE_VERT = `#version 300 es
 precision highp float;
 in vec4 aPos;    // x, y, local dx, local dy (world px from the click)
+in vec3 aFirst;  // first-pass x, y, spawn time (1e12 = not shown on the first pass)
 in vec4 aClick;  // click time (data ms), trail id, outer target radius, core radius
 in float aVel;   // ring expansion velocity, px per real ms
 uniform vec4 uView;
 uniform highp sampler2D uTrails;
-uniform float uTime;
-out vec2 vLocal; out float vClickT; out float vOuter; out float vCore; out float vVel; out vec3 vColor; out float vVisible;
+uniform float uFirstPass;
+out vec2 vLocal; out float vClickT; out float vOuter; out float vCore; out float vVel; out vec3 vColor;
 void main() {
   int id = int(aClick.y);
   ivec2 base = ivec2((id * 2) % 2048, (id * 2) / 2048);
-  vec4 timing = texelFetch(uTrails, base, 0);
   vec4 color = texelFetch(uTrails, base + ivec2(1, 0), 0);
-  // Same lifetime as the trail: gone once it has finished its eviction fade.
-  float evict = timing.z;
-  vVisible = uTime > evict + 3000.0 ? 0.0 : 1.0;
-  vec2 ndc = (aPos.xy - uView.xy) / uView.zw * 2.0 - 1.0;
+  bool first = uFirstPass > 0.5;
+  vec2 center = first ? aFirst.xy : aPos.xy - aPos.zw;
+  vec2 world = center + aPos.zw;
+  vec2 ndc = (world - uView.xy) / uView.zw * 2.0 - 1.0;
   gl_Position = vec4(ndc.x, -ndc.y, 0.0, 1.0);
-  vLocal = aPos.zw; vClickT = aClick.x; vOuter = aClick.z; vCore = aClick.w; vVel = aVel; vColor = color.rgb;
+  vLocal = aPos.zw; vClickT = first ? aFirst.z : aClick.x; vOuter = aClick.z; vCore = aClick.w; vVel = aVel; vColor = color.rgb;
 }`;
 const RIPPLE_FRAG = `#version 300 es
 precision highp float;
-in vec2 vLocal; in float vClickT; in float vOuter; in float vCore; in float vVel; in vec3 vColor; in float vVisible;
+in vec2 vLocal; in float vClickT; in float vOuter; in float vCore; in float vVel; in vec3 vColor;
 uniform float uTime;
 uniform float uSpeed;
 uniform int uRings;
@@ -709,7 +716,6 @@ uniform float uStroke;
 uniform float uClickOpacity;
 out vec4 outColor;
 void main() {
-  if (vVisible <= 0.0) discard;
   // Ripple timings are real milliseconds; the trail clock runs at uSpeed.
   float elapsed = (uTime - vClickT) / uSpeed;
   if (elapsed < 0.0) discard;
@@ -882,6 +888,8 @@ function mountGl2(container: HTMLElement) {
   if (!gl.getProgramParameter(rippleProg, gl.LINK_STATUS))
     throw new Error(gl.getProgramInfoLog(rippleProg)!);
   const rippleVerts: number[] = [];
+  const firstPassStart =
+    (FREEZE !== null ? Number(FREEZE) : START_FRAC) * DURATION;
   // createClickEffect's radiusFactor is Math.random(); match it.
   const rippleRnd = Math.random;
   states.forEach((s, idx) => {
@@ -909,6 +917,29 @@ function mountGl2(container: HTMLElement) {
       );
       const vel = outer / expansion;
       const clickT = s.startOffsetMs + click.progress * s.durationMs;
+      // First pass after a partway start: a click the playhead already passed
+      // opens at the start moment, at its trail's head then, if the trail is
+      // still on screen; otherwise it waits for the next pass.
+      let firstX = cx,
+        firstY = cy,
+        firstT = clickT;
+      if (clickT < firstPassStart) {
+        if (evict[idx] + 3000 > firstPassStart) {
+          const head = Math.min(
+            1,
+            (firstPassStart - s.startOffsetMs) / s.durationMs,
+          );
+          const he = (pts.length - 1) * head;
+          const hk = Math.min(Math.floor(he), pts.length - 1);
+          const ha = pts[hk],
+            hb = pts[Math.min(hk + 1, pts.length - 1)];
+          firstX = ha.x + (hb.x - ha.x) * (he - hk);
+          firstY = ha.y + (hb.y - ha.y) * (he - hk);
+          firstT = firstPassStart;
+        } else {
+          firstT = 1e12;
+        }
+      }
       const h = outer + settings.clickStrokeWidth;
       const corner = (dx: number, dy: number) =>
         rippleVerts.push(
@@ -916,6 +947,9 @@ function mountGl2(container: HTMLElement) {
           cy + dy,
           dx,
           dy,
+          firstX,
+          firstY,
+          firstT,
           clickT,
           idx,
           outer,
@@ -930,7 +964,7 @@ function mountGl2(container: HTMLElement) {
       corner(h, h); // degenerate out
     }
   });
-  const rippleCount = rippleVerts.length / 9;
+  const rippleCount = rippleVerts.length / 12;
   const rippleVao = gl.createVertexArray();
   gl.bindVertexArray(rippleVao);
   const rippleVbo = gl.createBuffer();
@@ -939,14 +973,16 @@ function mountGl2(container: HTMLElement) {
   const rp = (name: string, size: number, offset: number) => {
     const loc = gl.getAttribLocation(rippleProg, name);
     gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 36, offset);
+    gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 48, offset);
   };
   rp("aPos", 4, 0);
-  rp("aClick", 4, 16);
-  rp("aVel", 1, 32);
+  rp("aFirst", 3, 16);
+  rp("aClick", 4, 28);
+  rp("aVel", 1, 44);
   gl.useProgram(rippleProg);
   const rView = gl.getUniformLocation(rippleProg, "uView"),
-    rTime = gl.getUniformLocation(rippleProg, "uTime");
+    rTime = gl.getUniformLocation(rippleProg, "uTime"),
+    rFirstPass = gl.getUniformLocation(rippleProg, "uFirstPass");
   gl.uniform1i(gl.getUniformLocation(rippleProg, "uTrails"), 0);
   gl.uniform1f(gl.getUniformLocation(rippleProg, "uSpeed"), SPEED);
   gl.uniform1i(
@@ -1098,6 +1134,7 @@ function mountGl2(container: HTMLElement) {
       gl.bindVertexArray(rippleVao);
       gl.uniform4f(rView, view.x, view.y, view.w, view.h);
       gl.uniform1f(rTime, looped);
+      gl.uniform1f(rFirstPass, elapsedMs() < DURATION ? 1 : 0);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, rippleCount);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       gl.enable(gl.DEPTH_TEST);
