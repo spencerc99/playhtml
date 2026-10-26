@@ -1,5 +1,5 @@
 // ABOUTME: Compares extension trace summaries and writes report artifacts.
-// ABOUTME: Flags large regressions while remaining report-only unless enforcement is requested.
+// ABOUTME: Flags large regressions and fails when --fail-on-regression is passed.
 
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -151,6 +151,7 @@ export function compareSummaries(traceSummary, options = {}) {
     },
     metrics,
     regressions,
+    enforced: resolvedOptions.failOnRegression,
     traceFiles: {
       base: baseSummary.traces ?? [],
       head: headSummary.traces ?? [],
@@ -190,11 +191,23 @@ function statusText(status) {
   return "ok";
 }
 
+export const REPORT_MARKER = "<!-- extension-performance-report -->";
+
+function resultLine(comparison) {
+  const count = comparison.regressions.length;
+  if (count === 0) return "**Result:** no regressions flagged.";
+  const flagged = `${count} metric${count === 1 ? "" : "s"} flagged`;
+  return comparison.enforced
+    ? `**Result:** ${flagged}. This check fails until the regression is fixed.`
+    : `**Result:** ${flagged} (report-only, the check still passes).`;
+}
+
 export function formatMarkdownReport(comparison) {
   const lines = [
+    REPORT_MARKER,
     "# Extension Performance Report",
     "",
-    "Report-only: this comparison flags regressions but does not fail unless `--fail-on-regression` is used.",
+    resultLine(comparison),
     "",
     `Compared \`${comparison.baseLabel}\` (${comparison.baseRuns} run${
       comparison.baseRuns === 1 ? "" : "s"
