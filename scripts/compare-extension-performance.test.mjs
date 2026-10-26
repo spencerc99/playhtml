@@ -1,5 +1,5 @@
 // ABOUTME: Tests extension performance comparison thresholds and report text.
-// ABOUTME: Keeps the report-only workflow behavior stable without launching a browser.
+// ABOUTME: Keeps the PR comment and enforcement behavior stable without launching a browser.
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -56,11 +56,13 @@ test("flags substantial regressions while ignoring tiny deltas", () => {
     ["TaskDuration", "JSHeapUsedSize"],
   );
   assert.equal(
-    comparison.metrics.find((metric) => metric.name === "ScriptDuration").status,
+    comparison.metrics.find((metric) => metric.name === "ScriptDuration")
+      .status,
     "ok",
   );
   assert.equal(
-    comparison.metrics.find((metric) => metric.name === "LayoutDuration").status,
+    comparison.metrics.find((metric) => metric.name === "LayoutDuration")
+      .status,
     "ok",
   );
 });
@@ -77,7 +79,8 @@ test("formats a report-only markdown table", () => {
   const markdown = formatMarkdownReport(comparison);
 
   assert.match(markdown, /# Extension Performance Report/);
-  assert.match(markdown, /Report-only/);
+  assert.match(markdown, /<!-- extension-performance-report -->/);
+  assert.match(markdown, /2 metrics flagged \(report-only/);
   assert.match(
     markdown,
     /\| TaskDuration \| 1\.000s \| 1\.400s \| \+40\.0% \(\+0\.400s\) \| flagged \|/,
@@ -87,4 +90,33 @@ test("formats a report-only markdown table", () => {
     /\| JSHeapUsedSize \| 10\.00 MB \| 17\.00 MB \| \+70\.0% \(\+7\.00 MB\) \| flagged \|/,
   );
   assert.match(markdown, /FunctionCall/);
+});
+
+test("reports enforcement when failing on regression", () => {
+  const comparison = compareSummaries(traceSummary(), {
+    failOnRegression: true,
+  });
+
+  const markdown = formatMarkdownReport(comparison);
+
+  assert.equal(comparison.enforced, true);
+  assert.match(markdown, /2 metrics flagged\. This check fails/);
+});
+
+test("flags a metric the head trace stopped reporting", () => {
+  const summary = traceSummary();
+  const head = summary.summary.find((item) => item.label === "head");
+  delete head.meanMetrics.ScriptDuration;
+
+  const comparison = compareSummaries(summary, { failOnRegression: true });
+
+  assert.equal(
+    comparison.metrics.find((metric) => metric.name === "ScriptDuration")
+      .status,
+    "missing",
+  );
+  assert.match(
+    formatMarkdownReport(comparison),
+    /ScriptDuration was not reported by the `head` trace/,
+  );
 });
