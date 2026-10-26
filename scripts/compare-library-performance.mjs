@@ -106,15 +106,20 @@ function parseArgs(argv) {
   return args;
 }
 
+const isMeasured = (value) =>
+  typeof value === "number" && Number.isFinite(value);
+
 function compareMetric(metric, base, head) {
-  if (typeof base !== "number" || typeof head !== "number") {
+  // A tracked metric the PR stopped emitting fails the check so coverage can't
+  // silently drop. One that only base lacks is new in this PR and passes.
+  if (!isMeasured(head) || !isMeasured(base)) {
     return {
       ...metric,
       base,
       head,
       delta: null,
       relative: null,
-      status: "missing",
+      status: isMeasured(head) ? "new" : "missing",
     };
   }
   const delta = head - base;
@@ -136,12 +141,13 @@ export function compareResults(base, head, options = {}) {
   return {
     metrics,
     regressions: metrics.filter((metric) => metric.status === "regression"),
+    missing: metrics.filter((metric) => metric.status === "missing"),
     enforced: Boolean(options.failOnRegression),
   };
 }
 
 function formatValue(metric, value) {
-  if (typeof value !== "number") return "n/a";
+  if (!isMeasured(value)) return "n/a";
   const rounded =
     metric.unit === "KB" ? value.toFixed(1) : String(Math.round(value));
   return metric.unit ? `${rounded} ${metric.unit}` : rounded;
@@ -164,10 +170,25 @@ function formatThreshold(metric) {
   return `>${(metric.maxRelative * 100).toFixed(0)}% and >=${absolute}`;
 }
 
+export function failureCount(comparison) {
+  return comparison.regressions.length + comparison.missing.length;
+}
+
 function resultLine(comparison) {
-  const count = comparison.regressions.length;
+  const count = failureCount(comparison);
   if (count === 0) return "**Result:** no regressions flagged.";
-  const flagged = `${count} metric${count === 1 ? "" : "s"} flagged`;
+  const parts = [];
+  if (comparison.regressions.length > 0) {
+    const n = comparison.regressions.length;
+    parts.push(`${n} metric${n === 1 ? "" : "s"} flagged`);
+  }
+  if (comparison.missing.length > 0) {
+    const names = comparison.missing
+      .map((metric) => `\`${metric.key}\``)
+      .join(", ");
+    parts.push(`the benchmark no longer reports ${names}`);
+  }
+  const flagged = parts.join("; ");
   return comparison.enforced
     ? `**Result:** ${flagged}. This check fails until the regression is fixed.`
     : `**Result:** ${flagged} (report-only, the check still passes).`;
@@ -213,7 +234,7 @@ async function main() {
   await writeFile(resolve(args.outDir, "report.md"), markdown);
   console.log(markdown);
 
-  if (args.failOnRegression && comparison.regressions.length > 0) {
+  if (args.failOnRegression && failureCount(comparison) > 0) {
     process.exitCode = 1;
   }
 }

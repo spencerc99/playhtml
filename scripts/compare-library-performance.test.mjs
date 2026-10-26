@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   compareResults,
+  failureCount,
   formatMarkdownReport,
 } from "./compare-library-performance.mjs";
 
@@ -68,11 +69,26 @@ test("small bundle growth under the absolute threshold is not flagged", () => {
   assert.equal(statusOf(comparison, "bundle_gz_kb"), "ok");
 });
 
-test("metrics missing from one side are reported, not flagged", () => {
+test("a metric the PR stops reporting fails the check", () => {
+  const comparison = compareResults(
+    base,
+    { ...base, init_qsa_calls: undefined, fanout_renders: Number.NaN },
+    { failOnRegression: true },
+  );
+  assert.equal(statusOf(comparison, "init_qsa_calls"), "missing");
+  assert.equal(statusOf(comparison, "fanout_renders"), "missing");
+  assert.equal(failureCount(comparison), 2);
+  assert.match(
+    formatMarkdownReport(comparison),
+    /no longer reports `fanout_renders`, `init_qsa_calls`\. This check fails/,
+  );
+});
+
+test("a metric new in the PR passes", () => {
   const comparison = compareResults(
     { ...base, init_qsa_calls: undefined },
     base,
   );
-  assert.equal(statusOf(comparison, "init_qsa_calls"), "missing");
-  assert.equal(comparison.regressions.length, 0);
+  assert.equal(statusOf(comparison, "init_qsa_calls"), "new");
+  assert.equal(failureCount(comparison), 0);
 });
