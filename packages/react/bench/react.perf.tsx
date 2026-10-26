@@ -21,6 +21,9 @@ const OUT = path.resolve(__dirname, "out/metrics.json");
 const metrics: Record<string, number> = {};
 const CARDS = 50;
 
+// Fixed Yjs client id so byte counts don't depend on a random id's length.
+(globalThis as any).PLAYHTML_TEST_DOC_CLIENT_ID = 123456789;
+
 // jsdom has no layout; the cursor client asks what is under the pointer.
 document.elementFromPoint ??= () => document.body;
 

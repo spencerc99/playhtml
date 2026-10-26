@@ -78,7 +78,7 @@ function isHeapMetric(name) {
 
 function metricValue(summary, name) {
   const value = summary.meanMetrics?.[name];
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function relativeChange(base, delta) {
@@ -86,7 +86,13 @@ function relativeChange(base, delta) {
   return delta / base;
 }
 
-function compareMetric(name, base, head, options) {
+function compareMetric(name, rawBase, head, options) {
+  // A metric the head trace stopped reporting is flagged so the check can't
+  // pass on missing data.
+  if (head === null) {
+    return { name, base: rawBase ?? 0, head: 0, delta: 0, relative: 0, status: "missing" };
+  }
+  const base = rawBase ?? 0;
   const delta = head - base;
   const relative = relativeChange(base, delta);
   const minimumDelta = isHeapMetric(name) ? options.minHeapDelta : options.minDurationDelta;
@@ -135,7 +141,9 @@ export function compareSummaries(traceSummary, options = {}) {
       resolvedOptions,
     ),
   );
-  const regressions = metrics.filter((metric) => metric.status === "regression");
+  const regressions = metrics.filter(
+    (metric) => metric.status === "regression" || metric.status === "missing",
+  );
 
   return {
     createdAt: new Date().toISOString(),
@@ -187,6 +195,7 @@ function formatPercent(value) {
 
 function statusText(status) {
   if (status === "regression") return "flagged";
+  if (status === "missing") return "missing";
   if (status === "improved") return "improved";
   return "ok";
 }
@@ -242,6 +251,10 @@ export function formatMarkdownReport(comparison) {
     lines.push("No dramatic regressions were flagged.");
   } else {
     for (const metric of comparison.regressions) {
+      if (metric.status === "missing") {
+        lines.push(`- ${metric.name} was not reported by the \`${comparison.headLabel}\` trace.`);
+        continue;
+      }
       lines.push(
         `- ${metric.name} increased by ${formatPercent(metric.relative)} (${formatSignedMetricValue(
           metric,

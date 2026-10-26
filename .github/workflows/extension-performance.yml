@@ -25,6 +25,9 @@ jobs:
     # Playwright 1.59 cannot install Chromium on ubuntu-latest (26.04) yet.
     runs-on: ubuntu-24.04
     timeout-minutes: 50
+    defaults:
+      run:
+        shell: bash
     env:
       TRACE_RUNS: ${{ github.event.inputs.runs || '3' }}
 
@@ -41,8 +44,14 @@ jobs:
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # Compare against where the PR branched from, so commits that landed on
+          # main after it don't count as this PR's change.
+          echo "BASE_SHA=$(git merge-base "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")" >> "$GITHUB_ENV"
           pattern='^(extension/src/|extension/package\.json$|extension/wxt\.config\.ts$|packages/[^/]+/src/|scripts/(trace|compare)-extension-performance|\.github/workflows/extension-performance\.yml$|package\.json$|bun\.lock$)'
-          if git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" | grep -Eq "$pattern"; then
+          # Read the diff into a variable: under pipefail, `grep -q` exiting early
+          # would kill `git diff` and read as "no match".
+          changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}")"
+          if grep -Eq "$pattern" <<< "$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -86,7 +95,7 @@ jobs:
         if: steps.changes.outputs.relevant == 'true'
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git checkout --detach "${{ github.event.pull_request.base.sha }}"
+            git checkout --detach "$BASE_SHA"
           else
             git checkout --detach HEAD^
           fi
@@ -97,7 +106,7 @@ jobs:
           cp -R extension/dist/chrome-mv3 "$RUNNER_TEMP/base-extension"
 
       - name: Restore head checkout
-        if: steps.changes.outputs.relevant == 'true'
+        if: always() && steps.changes.outputs.relevant == 'true'
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             git checkout --detach "${{ github.event.pull_request.head.sha }}"

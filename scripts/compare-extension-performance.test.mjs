@@ -56,11 +56,13 @@ test("flags substantial regressions while ignoring tiny deltas", () => {
     ["TaskDuration", "JSHeapUsedSize"],
   );
   assert.equal(
-    comparison.metrics.find((metric) => metric.name === "ScriptDuration").status,
+    comparison.metrics.find((metric) => metric.name === "ScriptDuration")
+      .status,
     "ok",
   );
   assert.equal(
-    comparison.metrics.find((metric) => metric.name === "LayoutDuration").status,
+    comparison.metrics.find((metric) => metric.name === "LayoutDuration")
+      .status,
     "ok",
   );
 });
@@ -91,10 +93,30 @@ test("formats a report-only markdown table", () => {
 });
 
 test("reports enforcement when failing on regression", () => {
-  const comparison = compareSummaries(traceSummary(), { failOnRegression: true });
+  const comparison = compareSummaries(traceSummary(), {
+    failOnRegression: true,
+  });
 
   const markdown = formatMarkdownReport(comparison);
 
   assert.equal(comparison.enforced, true);
   assert.match(markdown, /2 metrics flagged\. This check fails/);
+});
+
+test("flags a metric the head trace stopped reporting", () => {
+  const summary = traceSummary();
+  const head = summary.summary.find((item) => item.label === "head");
+  delete head.meanMetrics.ScriptDuration;
+
+  const comparison = compareSummaries(summary, { failOnRegression: true });
+
+  assert.equal(
+    comparison.metrics.find((metric) => metric.name === "ScriptDuration")
+      .status,
+    "missing",
+  );
+  assert.match(
+    formatMarkdownReport(comparison),
+    /ScriptDuration was not reported by the `head` trace/,
+  );
 });

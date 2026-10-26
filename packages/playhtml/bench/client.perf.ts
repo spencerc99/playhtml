@@ -17,6 +17,9 @@ import { getPresenceSocketForRoom } from "../src/__tests__/presence-test-utils";
 
 const OUT = path.resolve(__dirname, "out/metrics.json");
 
+// Fixed Yjs client id so byte counts don't depend on a random id's length.
+(globalThis as any).PLAYHTML_TEST_DOC_CLIENT_ID = 123456789;
+
 // jsdom has no layout; the cursor client asks what is under the pointer.
 document.elementFromPoint ??= () => document.body;
 const metrics: Record<string, number> = {};
