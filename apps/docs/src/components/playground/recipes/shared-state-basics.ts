@@ -69,7 +69,7 @@ export const sharedCounterRecipe: ExampleRecipe = {
           draft.count += 1;
         });
       },
-      updateElement: ({ element, data }) => {
+      update: ({ element, data }) => {
         element.querySelector("[data-count]").textContent = String(data.count);
       },
     });`,
@@ -133,7 +133,7 @@ export const sharedGuestbookRecipe: ExampleRecipe = {
     <h1>Shared guestbook</h1>
     <p class="intro">Add a short note. The latest 20 entries remain for everyone.</p>
     <section id="ph-cap-docs-guestbook" class="guestbook">
-      <form data-form>
+      <form>
         <label>
           Prompt
           <select name="prompt">
@@ -145,15 +145,14 @@ export const sharedGuestbookRecipe: ExampleRecipe = {
           Your entry
           <textarea name="text" maxlength="140" rows="3" placeholder="I'm building…"></textarea>
         </label>
-        <button type="submit" data-submit>Post</button>
+        <button type="submit">Post</button>
       </form>
-      <ul data-entries aria-live="polite"></ul>
+      <ul aria-live="polite"></ul>
     </section>
   </main>`,
     script: `    import words from "https://esm.sh/profane-words@1.6.0";
 
     const MAX_ENTRIES = 20;
-    const guestbook = document.getElementById("ph-cap-docs-guestbook");
     const prompts = {
       building: "I'm building…",
       learned: "I learned…",
@@ -165,69 +164,54 @@ export const sharedGuestbookRecipe: ExampleRecipe = {
       );
     }
 
-    playhtml.register(guestbook, {
+    const guestbook = playhtml.register("ph-cap-docs-guestbook", {
       defaultData: { entries: [] },
-      updateElement: ({ element, data }) => {
-        const list = element.querySelector("[data-entries]");
+      update: ({ element, data }) => {
+        const list = element.querySelector("ul");
         const entries = [...data.entries].reverse();
+        if (!entries.length) {
+          list.innerHTML = '<li class="empty">No entries yet.</li>';
+          return;
+        }
         list.replaceChildren(
-          ...(entries.length
-            ? entries.map((entry) => {
-                const item = document.createElement("li");
-                const prompt = document.createElement("strong");
-                const text = document.createElement("span");
-                prompt.textContent = prompts[entry.prompt];
-                text.textContent = entry.text;
-                item.append(prompt, text);
-                return item;
-              })
-            : [Object.assign(document.createElement("li"), {
-                className: "empty",
-                textContent: "No entries yet.",
-              })]),
+          ...entries.map((entry) => {
+            const item = document.createElement("li");
+            const label = document.createElement("strong");
+            const body = document.createElement("span");
+            label.textContent = prompts[entry.prompt];
+            body.textContent = entry.text;
+            item.append(label, body);
+            return item;
+          }),
         );
       },
-      onClick: (event, { setData }) => {
-        if (!event.target.closest("[data-submit]")) {
-          return;
-        }
-        event.preventDefault();
+    });
 
-        const form = guestbook.querySelector("[data-form]");
-        const prompt = form.elements.prompt;
-        const text = form.elements.text;
-        const value = text.value.trim().slice(0, 140);
-        if (!value || isProfane(value)) {
-          text.value = "";
-          return;
-        }
+    const form = document.querySelector("#ph-cap-docs-guestbook form");
+    const { prompt, text } = form.elements;
 
-        setData((draft) => {
-          draft.entries.push({
-            id: crypto.randomUUID(),
-            prompt: prompt.value,
-            text: value,
-            at: Date.now(),
-          });
-          if (draft.entries.length > MAX_ENTRIES) {
-            draft.entries.splice(0, draft.entries.length - MAX_ENTRIES);
-          }
+    prompt.addEventListener("change", () => {
+      text.placeholder = prompts[prompt.value];
+    });
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const value = text.value.trim().slice(0, 140);
+      text.value = "";
+      if (!value || isProfane(value)) return;
+
+      guestbook.setData((draft) => {
+        draft.entries.push({
+          id: crypto.randomUUID(),
+          prompt: prompt.value,
+          text: value,
+          at: Date.now(),
         });
-        text.value = "";
-      },
-      onMount: ({ getElement }) => {
-        const form = getElement().querySelector("[data-form]");
-        const prompt = form.elements.prompt;
-        const text = form.elements.text;
-        const updatePlaceholder = () => {
-          text.placeholder = prompts[prompt.value];
-        };
-
-        prompt.addEventListener("change", updatePlaceholder);
-        return () => {
-          prompt.removeEventListener("change", updatePlaceholder);
-        };
-      },
+        // Keep the latest 20. Shared arrays support splice, not shift.
+        if (draft.entries.length > MAX_ENTRIES) {
+          draft.entries.splice(0, draft.entries.length - MAX_ENTRIES);
+        }
+      });
     });`,
   }),
 };

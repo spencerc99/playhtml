@@ -1,8 +1,8 @@
 // ABOUTME: Provides the copy-paste React source for the synchronized-sound example.
 // ABOUTME: Mirrors event-driven cues and a shared generated-audio transport.
 
-export const synchronizedSoundReactSource = `// ABOUTME: Broadcasts one-shot tones and shares a generated loop transport.
-// ABOUTME: Keeps Web Audio permission and scheduling local to each browser.
+export const synchronizedSoundReactSource = `// Broadcasts one-shot tones and shares a generated loop transport.
+// Keeps Web Audio permission and scheduling local to each browser.
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   PlayProvider,

@@ -1,0 +1,40 @@
+---
+title: "Send a rain event"
+description: "Trigger a temporary rain effect for everyone currently connected."
+sidebar:
+  hidden: true
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { rainEventRecipe } from "@/components/playground/recipes/events-basics";
+
+Click the hydrant and it rains for everyone on the page for a few seconds.
+Someone who opens the page afterward sees nothing, because events are never
+stored.
+
+<RecipeExample recipe={rainEventRecipe} client:load />
+
+<RecipeCodeTabs recipe={rainEventRecipe} />
+
+## Listen, then dispatch
+
+Register the event with `playhtml.init`, then dispatch it from a click. Every
+connected browser, including yours, runs `onEvent`:
+
+```js
+playhtml.init({
+  events: {
+    rain: { type: "rain", onEvent: makeItRain },
+  },
+});
+
+hydrant.addEventListener("click", () => {
+  playhtml.dispatchPlayEvent({ type: "rain" });
+});
+```
+
+The rain itself is plain DOM and CSS animation that removes itself after six
+seconds.
+
+See [Events](/docs/data/events/) for when to use events instead of shared data.

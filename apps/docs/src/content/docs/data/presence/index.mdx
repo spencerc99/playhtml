@@ -6,6 +6,7 @@ sidebar:
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
+import DemoCodeLink from '@/components/DemoCodeLink.astro';
 import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
 
 Presence is used for anything that is real-time and ephemeral (meaning it doesn't stick around after you leave). For example, cursors only matter when you are actually on the page. When you leave, they are gone and there's no record of them.
@@ -130,7 +131,7 @@ In vanilla HTML, add `live` to the initializer passed to `register`:
 <button id="presence-count">0 readers here</button>
 
 <script type="module">
-  import { playhtml } from "playhtml";
+  import { playhtml } from "https://unpkg.com/playhtml@latest";
 
   playhtml.register("presence-count", {
     live: { ready: false },
@@ -202,8 +203,9 @@ function Lobby() {
 
 ## Try it live
 
-<div id="online-indicator-demo" className="ph-demo-slot" data-label="PRESENCE — online indicator">
+<div id="online-indicator-demo" className="ph-demo-slot" data-label="DEMO — online indicator">
   <OnlineIndicatorDemo client:only="react" />
+  <DemoCodeLink href="/docs/examples/online-indicator/" />
 </div>
 
 Each dot is one reader; the yellow-glowing dot is **you**. Pick a color and watch yours change for everyone else. Open this page in a second tab and you'll see two dots. Close a tab and the dot disappears. This is presence: no persistence, no replay.

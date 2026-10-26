@@ -24,6 +24,7 @@ import {
   listSnapshotsNewestFirst,
   roundTransform,
 } from "./model";
+import { mountExperimentBadge } from "../../components/experimentBadge";
 
 const {
   Bodies,
@@ -766,6 +767,8 @@ class CinderblockYard {
     this.animationFrame = requestAnimationFrame(this.animate);
   }
 }
+
+mountExperimentBadge({ experiment: "EX-10" });
 
 const yardElement = requireElement("cinderblock-yard");
 const yard = new CinderblockYard({

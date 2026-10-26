@@ -8,6 +8,7 @@ const Agentation = import.meta.env.DEV
   : null;
 import { createRoot } from "react-dom/client";
 import "../../styles/popup.scss";
+import "../../styles/touchTargets.scss";
 import browser from "webextension-polyfill";
 import { Inventory } from "../../components/Inventory";
 import { InternetPortraitHome } from "../../components/InternetPortraitHome";

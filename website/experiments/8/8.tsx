@@ -27,6 +27,7 @@ import {
   INTRO_SCROLL_DURATION_MS,
   isPlayhtmlHostReady,
 } from "./intro";
+import { mountExperimentBadge } from "../../components/experimentBadge";
 
 interface CellData {
   letter: string;
@@ -563,16 +564,14 @@ const Main = withSharedState(
               </div>
             ))}
           </div>
-          <p className="experiment-attribution">
-            this is <a href="/experiments">experiment 8</a> made with{" "}
-            <a href="/">playhtml</a>
-          </p>
           <OnlineNowIndicator />
         </div>
       </div>
     );
   }
 );
+
+mountExperimentBadge({ experiment: "EX-08", position: "top-right" });
 
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement

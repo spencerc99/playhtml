@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { PlayProvider, withSharedState } from "@playhtml/react";
 import { invertColor } from "../../utils/color";
+import { mountExperimentBadge } from "../../components/experimentBadge";
 
 interface ColorChange {
   color: string;
@@ -152,20 +153,14 @@ const ColorController = withSharedState(
             </details>
           </div>
         </div>
-        <footer>
-          <div>
-            <a href="https://playhtml.fun">playhtml</a> experiment{" "}
-            <a href="https://github.com/spencerc99/playhtml/blob/main/website/experiments/one/">
-              "01"
-            </a>
-          </div>
-        </footer>
       </div>
     );
   }
 );
 
 // Website with a shared color.
+mountExperimentBadge({ experiment: "EX-01" });
+
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
