@@ -96,8 +96,9 @@ export default defineConfig({
       },
       // Sidebar IA
       //
-      //   Start        → getting-started, concepts, examples (index)
-      //   Shared state → data-essentials, capabilities, custom-elements,
+      //   Examples     → examples index (top-level link, above the path)
+      //   Start        → getting-started, concepts
+      //   Shared state → capabilities, custom-elements, data-essentials,
       //                  page-data, presence/* (nested), events
       //   Advanced     → autogenerate (advanced/)
       //   Integrations → autogenerate (integrations/)
@@ -118,26 +119,32 @@ export default defineConfig({
       // tabbed next to vanilla, and the React setup lives in the React tab of
       // Getting started.
       sidebar: [
+        // Examples sits above the reading path so it's easy to find for
+        // inspiration without interrupting prev/next from Getting started.
+        {
+          label: "Examples",
+          slug: "examples",
+          badge: { text: "inspo", variant: "tip" },
+        },
         {
           label: "Start",
           items: [
             { label: "Getting started", slug: "getting-started" },
             { label: "Core concepts", slug: "concepts" },
-            { label: "Examples", slug: "examples" },
           ],
         },
         {
           label: "Shared state",
           items: [
-            { label: "Data essentials", slug: "data/data-essentials" },
             { label: "Built-in elements", slug: "capabilities" },
             { label: "Custom elements", slug: "custom-elements" },
+            { label: "Data essentials", slug: "data/data-essentials" },
             { label: "Page-level data", slug: "data/page-data" },
             {
               label: "Presence",
               items: [
-                { label: "Users", slug: "data/presence/users" },
                 { label: "Presence", slug: "data/presence" },
+                { label: "Users", slug: "data/presence/users" },
                 { label: "Cursors", slug: "data/presence/cursors" },
               ],
             },
