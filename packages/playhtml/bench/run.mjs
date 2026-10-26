@@ -1,4 +1,4 @@
-// ABOUTME: Runs the client performance benchmark: bundle size plus the jsdom perf suite.
+// ABOUTME: Runs the client performance benchmark: bundle size, the jsdom perf suite, React renders.
 // ABOUTME: Usage: node bench/run.mjs <label>; appends one row to bench/out/history.tsv.
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, mkdirSync } from "node:fs";
@@ -21,7 +21,8 @@ function staticClosure(entry) {
     if (seen.has(file)) return;
     seen.add(file);
     const source = readFileSync(file, "utf8");
-    const pattern = /(?:import|export)\s*(?:[^"'()]*?from\s*)?["'](\.\/[^"']+)["']/g;
+    const pattern =
+      /(?:import|export)\s*(?:[^"'()]*?from\s*)?["'](\.\/[^"']+)["']/g;
     for (const match of source.matchAll(pattern)) {
       visit(path.join(path.dirname(file), match[1]));
     }
@@ -45,14 +46,32 @@ execSync("npx vitest run --config bench/vitest.config.ts", {
   stdio: "ignore",
   env: { ...process.env, NODE_OPTIONS: "--no-experimental-webstorage" },
 });
+// The React render benchmark lives with @playhtml/react; older checkouts lack it.
+const reactDir = path.resolve(pkgDir, "../react");
+const reactMetricsFile = path.join(reactDir, "bench/out/metrics.json");
+let reactMetrics = {};
+if (existsSync(path.join(reactDir, "bench/vitest.config.ts"))) {
+  execSync("npx vitest run --config bench/vitest.config.ts", {
+    cwd: reactDir,
+    stdio: "ignore",
+    env: { ...process.env, NODE_OPTIONS: "--no-experimental-webstorage" },
+  });
+  reactMetrics = JSON.parse(readFileSync(reactMetricsFile, "utf8"));
+}
+
 const metrics = {
   bundle_gz_kb: +(gz / 1024).toFixed(1),
   bundle_raw_kb: +(raw / 1024).toFixed(1),
   ...JSON.parse(readFileSync(path.join(outDir, "metrics.json"), "utf8")),
+  ...reactMetrics,
 };
 
 const historyFile = path.join(outDir, "history.tsv");
 const keys = Object.keys(metrics);
-if (!existsSync(historyFile)) appendFileSync(historyFile, ["label", ...keys].join("\t") + "\n");
-appendFileSync(historyFile, [label, ...keys.map((k) => metrics[k])].join("\t") + "\n");
+if (!existsSync(historyFile))
+  appendFileSync(historyFile, ["label", ...keys].join("\t") + "\n");
+appendFileSync(
+  historyFile,
+  [label, ...keys.map((k) => metrics[k])].join("\t") + "\n",
+);
 console.log(JSON.stringify({ label, ...metrics }));

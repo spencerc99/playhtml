@@ -8,9 +8,11 @@ import {
   compareResults,
   failureCount,
   formatMarkdownReport,
+  METRICS,
 } from "./compare-library-performance.mjs";
 
 const base = {
+  ...Object.fromEntries(METRICS.map((metric) => [metric.key, 100])),
   bundle_gz_kb: 65.2,
   bundle_raw_kb: 217.6,
   stream_msgs: 193,
@@ -57,7 +59,7 @@ test("flags increases past both the relative and absolute threshold", () => {
   assert.match(markdown, /2 metrics flagged\. This check fails/);
   assert.match(
     markdown,
-    /\| Remote update: renders \| 100 \| 200 \| \+100\.0% \(\+100\) \|/,
+    /\| 100 remote updates: updateElement calls \| 100 \| 200 \| \+100\.0% \(\+100\) \|/,
   );
 });
 
@@ -91,4 +93,30 @@ test("a metric new in the PR passes", () => {
   );
   assert.equal(statusOf(comparison, "init_qsa_calls"), "new");
   assert.equal(failureCount(comparison), 0);
+});
+
+test("timings are shown but never flagged or required", () => {
+  const comparison = compareResults(
+    { ...base, init_1000_ms: 100 },
+    { ...base, init_1000_ms: 500, react_mount_50_ms: undefined },
+    { failOnRegression: true },
+  );
+  assert.equal(statusOf(comparison, "init_1000_ms"), "info");
+  assert.equal(statusOf(comparison, "react_mount_50_ms"), "new");
+  assert.equal(failureCount(comparison), 0);
+  assert.match(
+    formatMarkdownReport(comparison),
+    /\| 500\.0 ms \| \+400\.0% \(\+400\.0 ms\) \| info only \| info \|/,
+  );
+});
+
+test("a render count that used to be zero is flagged at one", () => {
+  const comparison = compareResults(
+    { ...base, react_remote_unrelated_renders: 0 },
+    { ...base, react_remote_unrelated_renders: 1 },
+  );
+  assert.equal(
+    statusOf(comparison, "react_remote_unrelated_renders"),
+    "regression",
+  );
 });
