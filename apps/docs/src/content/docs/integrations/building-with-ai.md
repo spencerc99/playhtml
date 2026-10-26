@@ -29,7 +29,7 @@ The installer asks which agents to set up. After that, just describe the element
 
 ## Your idea leads
 
-The guide tells agents that you design the experience. They build only what you describe, ask before deciding how an interaction works, and keep the look simple (no gradients, glows or heavy shadows) unless you ask for a style. Ideas they have come back as suggestions, not extra code. If you'd rather they fill in the gaps, tell them to use their judgment.
+The guide tells agents that you design the experience. They build only what you describe, ask before deciding how an interaction works, and match your page's existing style instead of adding their own (no gradients, glows or heavy shadows unless you ask). Ideas they have come back as suggestions, not extra code. If you'd rather they fill in the gaps, tell them to use their judgment.
 
 The more of these you describe up front, the fewer questions you'll get:
 
