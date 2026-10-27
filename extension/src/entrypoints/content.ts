@@ -1728,9 +1728,8 @@ export default defineContentScript({
     function setupDenyListChangeListener() {
       try {
         browser.storage.onChanged.addListener((changes, area) => {
-          if (area !== "local" || !collectorManager) return;
           const change = changes[DENY_LIST_KEY];
-          if (!change) return;
+          if (area !== "local" || !collectorManager || !change) return;
           const { oldValue, newValue } = change;
           const oldList = !oldValue || (oldValue && !Array.isArray(oldValue)) ? new Set() : new Set(oldValue);
           const newList = !newValue || (newValue && !Array.isArray(newValue)) ? new Set() : new Set(newValue);

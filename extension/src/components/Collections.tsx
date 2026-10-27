@@ -738,7 +738,6 @@ export function Collections({
 
   const writeDenyListToStorage = async function(denyList: { text: string, editing: boolean }[]) {
     await saveDenyList(new Set(denyList.map(e => e.text)));
-    console.log("persisted to local store")
   }
 
   const loadDenyListFromStorage = async function() {
