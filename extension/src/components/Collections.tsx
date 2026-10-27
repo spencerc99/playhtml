@@ -22,6 +22,7 @@ import {
 } from "../utils/keyboardRedaction";
 import { useVisibleCollectorTypes } from "./useVisibleCollectorTypes";
 import "./Collections.scss";
+import { DENY_LIST_KEY, loadDenyList, saveDenyList } from "@/storage/denyList";
 
 interface CollectionsProps {
   onBack?: () => void;
@@ -31,7 +32,6 @@ interface CollectionsProps {
 const PRIVACY_LEVEL_KEY = LEGIBILITY_KEY;
 const FILTER_SUBSTRINGS_KEY = "collection_keyboard_filter_substrings";
 const DEV_MODE_KEY = "dev_mode";
-const DENY_LIST_KEY = "deny-list";
 
 interface StorageStats {
   totalEvents: number;
@@ -308,7 +308,7 @@ export function Collections({
     }
 
     if (visibleSection === 'all' || visibleSection === 'deny-list') {
-      loadDenyList();
+      loadDenyListFromStorage();
     }
   }, [visibleSection]);
 
@@ -319,6 +319,14 @@ export function Collections({
     ) => {
       if (areaName === "local" && changes[DEV_MODE_KEY]) {
         setDevMode(Boolean(changes[DEV_MODE_KEY].newValue));
+      }
+      if (areaName === "local" && changes[DENY_LIST_KEY]) {
+        const denyList = changes[DENY_LIST_KEY].newValue;
+        if (!Array.isArray(denyList)) {
+          setDenyList([]);
+        } else {
+          setDenyList(denyList.map(t => { return { text: t, editing: false } }));
+        }
       }
     };
     browser.storage.onChanged.addListener(handleStorageChange);
@@ -729,20 +737,15 @@ export function Collections({
   const denyListRef = useRef<HTMLDivElement>(null);
 
   const writeDenyListToStorage = async function(denyList: { text: string, editing: boolean }[]) {
-    await browser.storage.local.set({ [DENY_LIST_KEY]: denyList.map(e => e.text) });
+    await saveDenyList(new Set(denyList.map(e => e.text)));
     console.log("persisted to local store")
   }
 
-  const loadDenyList = async function() {
-    const result = await browser.storage.local.get([DENY_LIST_KEY]);
-
-    if (!Array.isArray(result[DENY_LIST_KEY])) {
-      return;
-    };
-
-    setDenyList(result[DENY_LIST_KEY].map(t => {
-      return { text: t, editing: false }
-    }));
+  const loadDenyListFromStorage = async function() {
+    const denyList = await loadDenyList();
+    setDenyList(denyList.values().map(t => {
+      return { text: t, editing: false };
+    }).toArray());
   };
 
   const startEditingDenyListEntry = useCallback((id: number) => {
@@ -764,7 +767,12 @@ export function Collections({
     const newDenyList = [...denyList];
     denyList[id].editing = false;
     if (value) {
-      denyList[id].text = value;
+      try {
+        const loc = new URL(value);
+        denyList[id].text = loc.host.toLowerCase();
+      } catch {
+        denyList[id].text = value;
+      }
     }
 
     writeDenyListToStorage(denyList);
@@ -1097,7 +1105,13 @@ export function Collections({
                 ev.preventDefault();
                 const newDenyInput: HTMLInputElement | null = ev.target.querySelector('input[name="new-deny-entry"]');
                 if (newDenyInput) {
-                  const newDenyList = [...denyList, { text: newDenyInput.value, editing: false }];
+                  let entry: string;
+                  try {
+                    entry = new URL(newDenyInput.value).host.toLowerCase();
+                  } catch {
+                    entry = newDenyInput.value;
+                  }
+                  const newDenyList = [...denyList, { text: entry, editing: false }];
                   setDenyList(newDenyList);
                   writeDenyListToStorage(newDenyList);
 

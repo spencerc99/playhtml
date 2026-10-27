@@ -16,8 +16,10 @@ import {
   INSTALLATION_PACE,
   watchInstallationMode,
 } from '../features/installationMode';
+import { loadDenyList } from '@/storage/denyList';
 
 const STORAGE_KEY = 'collection_enabled_collectors';
+const DENY_LIST_KEY = 'deny-list';
 
 /**
  * CollectorManager orchestrates all collectors
@@ -45,9 +47,9 @@ export class CollectorManager {
     this.eventBuffer.setPace(
       enabled
         ? {
-            storeIntervalMs: INSTALLATION_PACE.storeBatchIntervalMs,
-            batchIntervalMs: INSTALLATION_PACE.uploadBatchIntervalMs,
-          }
+          storeIntervalMs: INSTALLATION_PACE.storeBatchIntervalMs,
+          batchIntervalMs: INSTALLATION_PACE.uploadBatchIntervalMs,
+        }
         : null,
     );
     const cursor = this.collectors.get('cursor');
@@ -55,20 +57,20 @@ export class CollectorManager {
       cursor.setPace(
         enabled
           ? {
-              sampleRateMs: INSTALLATION_PACE.cursorSampleRateMs,
-              movementThresholdPx: INSTALLATION_PACE.cursorMovementThresholdPx,
-            }
+            sampleRateMs: INSTALLATION_PACE.cursorSampleRateMs,
+            movementThresholdPx: INSTALLATION_PACE.cursorMovementThresholdPx,
+          }
           : null,
       );
     }
   }
-  
+
   /**
    * Initialize the manager
    */
   async init(): Promise<void> {
     if (this.initialized) return;
-    
+
     this.stopInstallationPaceWatch = watchInstallationMode((enabled) =>
       this.applyInstallationPace(enabled),
     );
@@ -77,7 +79,7 @@ export class CollectorManager {
     await this.applyModesFromStorage();
     // Then, load legacy enabled flags for backward compatibility
     await this.loadEnabledCollectors();
-    
+
     this.initialized = true;
   }
 
@@ -108,7 +110,7 @@ export class CollectorManager {
       }
     }
   }
-  
+
   /**
    * Register a collector
    */
@@ -117,7 +119,7 @@ export class CollectorManager {
       console.log(`[CollectorManager] Registering collector: ${collector.type}`);
     }
     this.collectors.set(collector.type, collector);
-    
+
     // Set up event emission callback
     collector.setEmitCallback(async (data) => {
       try {
@@ -130,7 +132,7 @@ export class CollectorManager {
         console.error(`[CollectorManager] Failed to add event:`, error);
       }
     });
-    
+
     if (VERBOSE) {
       console.log(`[CollectorManager] Emit callback set for ${collector.type}`);
     }
@@ -154,7 +156,7 @@ export class CollectorManager {
       console.error(`[CollectorManager] Collector ${type} not found`);
     }
   }
-  
+
   /**
    * Disable a collector
    */
@@ -165,7 +167,23 @@ export class CollectorManager {
       await this.saveCollectorState(type, false);
     }
   }
-  
+
+  async disableAll(): Promise<void> {
+    const collectors = this.collectors.values();
+    for (const collector of collectors) {
+      collector.disable();
+    }
+  }
+
+  // Enables collectors without updating local storage
+  async enableAll(): Promise<void> {
+    for (const [type, collector] of this.collectors) {
+      if (await this.isCollectorEnabled(type) && !collector.isEnabled()) {
+        collector.enable();
+      }
+    }
+  }
+
   /**
    * Check if a collector is enabled
    */
@@ -178,7 +196,7 @@ export class CollectorManager {
       return false;
     }
   }
-  
+
   /**
    * Save collector enabled state
    */
@@ -195,15 +213,17 @@ export class CollectorManager {
       console.error('Failed to save collector state:', error);
     }
   }
-  
+
   /**
    * Load enabled collectors from storage
    */
   private async loadEnabledCollectors(): Promise<void> {
     try {
-      const result = await browser.storage.local.get([STORAGE_KEY]);
+      let result = await browser.storage.local.get([STORAGE_KEY]);
       const enabledCollectors = result[STORAGE_KEY] || {};
-      
+
+      result = await browser.storage.local.get([DENY_LIST_KEY]);
+
       // Apply saved state to all registered collectors
       for (const [type, collector] of this.collectors.entries()) {
         if (enabledCollectors[type]) {
@@ -216,7 +236,7 @@ export class CollectorManager {
       console.error('Failed to load enabled collectors:', error);
     }
   }
-  
+
   /**
    * Get status of all collectors
    */
@@ -227,21 +247,21 @@ export class CollectorManager {
       description: collector.description,
     }));
   }
-  
+
   /**
    * Get a specific collector
    */
   getCollector(type: CollectionEventType): BaseCollector<any> | undefined {
     return this.collectors.get(type);
   }
-  
+
   /**
    * Get event buffer (for stats)
    */
   getEventBuffer(): EventBuffer {
     return this.eventBuffer;
   }
-  
+
   /**
    * Pause emission on all enabled collectors without tearing down DOM listeners.
    * Use resumeAll() to restore.

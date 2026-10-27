@@ -47,6 +47,7 @@ import {
 } from "../features/sessionScraps/sessionScrapsBridge";
 import { watchInstallationContent } from "./content/installationContent";
 import { MILESTONE_TOASTS_ENABLED_KEY } from "../milestones/state";
+import { DENY_LIST_KEY, DenyList, loadDenyList } from "@/storage/denyList";
 
 // Scraps are local-only, so normalize any unsupported stored mode before the
 // collector starts.
@@ -1359,6 +1360,7 @@ export default defineContentScript({
         if (VERBOSE) {
           console.log("[Collections] Initializing collector manager...");
         }
+        // Check if in deny list, if so, don't instantiate collector manager
         collectorManager = new CollectorManager();
 
         // Register collectors
@@ -1384,6 +1386,15 @@ export default defineContentScript({
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();
 
+        // Check if we are on a denied page and run disableCollectors
+        const denyList = new Set(await loadDenyList());
+        const host = window.location.host.toLowerCase();
+        if (denyList.has(host)) {
+          await collectorManager.disableAll();
+          if (VERBOSE) {
+            console.log(`[Collections] Collectors disabled due to host ${host} being in deny list`);
+          }
+        }
         // Best-effort final flush; browsers may not wait for async unload work.
         window.addEventListener("beforeunload", () => {
           void collectorManager?.stopAll().catch(console.error);
@@ -1426,22 +1437,19 @@ export default defineContentScript({
       }
     };
 
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => {
-        extensionInstance = new PlayHTMLExtension();
-        extensionInstance.init();
-        initializeCollectors()
-          .catch(console.error)
-          .then(openTrailsFromHash);
-        setupModeChangeListener();
-      });
-    } else {
+    const setup = () => {
       extensionInstance = new PlayHTMLExtension();
       extensionInstance.init();
       initializeCollectors()
         .catch(console.error)
         .then(openTrailsFromHash);
       setupModeChangeListener();
+      setupDenyListChangeListener();
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", setup);
+    } else {
+      setup();
     }
 
     // Tear down the extension's collaborative-feature resources when the page
@@ -1716,6 +1724,40 @@ export default defineContentScript({
         console.warn("[Content] Failed to set up mode change listener", e);
       }
     }
+
+    function setupDenyListChangeListener() {
+      try {
+        browser.storage.onChanged.addListener((changes, area) => {
+          if (area !== "local" || !collectorManager) return;
+          const change = changes[DENY_LIST_KEY];
+          if (!change) return;
+          const { oldValue, newValue } = change;
+          const oldList = !oldValue || (oldValue && !Array.isArray(oldValue)) ? new Set() : new Set(oldValue);
+          const newList = !newValue || (newValue && !Array.isArray(newValue)) ? new Set() : new Set(newValue);
+          const host = window.location.host.toLowerCase();
+          const inOld = oldList.has(host);
+          const inNew = newList.has(host);
+          if (!inOld && inNew) {
+            // Disables collectors without modifying local storage
+            collectorManager.disableAll();
+            if (VERBOSE)
+              console.log(`[Content] Disabled all collectors for host ${host}`);
+          }
+
+          else if (inOld && !inNew) {
+            collectorManager.enableAll();
+            // handle current location getting removed
+            if (VERBOSE)
+              console.log(`[Content] Reenabled all collectors for host ${host}`);
+          } else {
+            // otherwise do nothing (either the host was both in the old and new lists and the collectors are already disabled or it was in neither and the collectors should stay on)
+          }
+        });
+      }
+      catch (e) {
+        console.warn("[Content] Failed to set deny list change listener", e);
+      }
+    }
   },
 });
 
@@ -1734,7 +1776,7 @@ function watchScrapsDebugOverlay(collector: ScrapCollector): void {
       overlay = Boolean(stored[SCRAPS_DEBUG_KEY]);
       apply();
     })
-    .catch(() => {});
+    .catch(() => { });
   browser.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "local") return;
     if (!changes[DEV_MODE_KEY] && !changes[SCRAPS_DEBUG_KEY]) return;
