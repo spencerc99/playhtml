@@ -7,9 +7,21 @@ description: Use when building, creating, or implementing a playhtml element or 
 
 playhtml makes HTML elements collaborative and real-time via Yjs CRDTs.
 
+## The Person's Idea Drives the Build
+
+playhtml is for people making their own internet playgrounds. The experience is theirs to design; your job is to make their idea work, not to fill in the idea for them.
+
+- **Build only what was asked.** Do not add mechanics, rules, sounds, music, animations, motion, scoring, timers, themes, or extra features the person did not describe. A "musical chairs with cursors" request does not authorize you to pick the music, make cursors circle, or invent the elimination rules.
+- **Ask about experience decisions before building.** If the request leaves open how the interaction works (what people do, what happens in response, how it starts and ends, what everyone else sees), list those open questions briefly and wait for answers. Do not pick for them.
+- **Confirm the plan first for anything bigger than a single element.** Restate the interaction in a few plain sentences and get a yes before writing code.
+- **Fit the page, with a lighter touch than usual.** On a page with its own style, match its character: reuse its colors, fonts, borders, illustrations, and level of playfulness, so the new element looks like it was always there. A colorful, hand-made page should get colorful, hand-made-feeling pieces, not a single-color placeholder. On a blank page, keep the styling modest and let the interaction be the interesting part. In both cases, lean a bit more restrained than you normally would: the look is the person's call, so leave room for them to make it theirs. If the look clearly matters to them, ask what they want.
+- **Offer ideas, don't ship them.** If you see a good addition, mention it in one line after the working version. The person decides.
+
+If the person says to surprise them or to use your judgment, you may make those choices, and say which ones you made.
+
 ## Before Implementing — Ask These Questions
 
-If the user's request is ambiguous on ANY of these, **stop and ask**:
+Along with any open experience decisions above, if the request is ambiguous on ANY of these, **stop and ask**:
 
 1. **Persistence**: Should data survive page refresh? (`defaultData`=yes, `live`=no)
 2. **Shared vs per-user**: Should all users see the same state, or does each user have their own?
@@ -122,7 +134,7 @@ setData((draft) => {
 
 ## NEVER write shared data from code that re-runs when that data changes
 
-The most dangerous bug in playhtml. A React effect (or `updateElement`) that **both reads shared data and writes it** loops forever: the write changes the data → the dependency re-fires → it writes again. Because the data is a CRDT, concurrent writes from multiple readers **append rather than overwrite**, so the loop never converges to a value a guard can catch. This passes local testing and only blows up once several readers connect — one such bug grew a production room to 1.2M ops / 23 MB and crashed the room.
+The most dangerous bug in playhtml. A React effect (or `updateElement`) that **both reads shared data and writes it** loops forever: the write changes the data → the dependency re-fires → it writes again. Because the data is a CRDT, concurrent writes from multiple readers **append rather than overwrite**, so the loop never converges to a value a guard can catch. This passes local testing and only blows up once several readers connect, when the room's data grows without bound until the page stops loading.
 
 ```tsx
 // DANGER — infinite write loop
@@ -153,13 +165,13 @@ Rule of thumb: **write shared data from explicit user events, not from reactive 
 **If you are changing the shape of data that is already live, STOP and flag it to the user, then pick one (in order of preference):**
 1. **Write to a NEW field name**, abandon the old one. No migration, writes are always clean. (Best.)
 2. **Handle both shapes defensively** at read AND write — null-safe reads, initialize-if-absent, in-place migrate. Fragile; test against real legacy data.
-3. **Clear the room's persisted data** (delete the `documents` row).
+3. **Reset the element's existing data** (for example with its `resetShortcut`), accepting that saved state is lost.
 
-Only applies to **already-live / persisted** data — brand-new features have no old data. And note: **the load/soak tests will NOT catch this** — they bypass page code and start from empty rooms. A shape change must be verified by loading the real page against a room pre-seeded with the old shape.
+Only applies to **already-live / persisted** data — brand-new features have no old data. Testing against a fresh room will NOT catch this: verify a shape change by loading the real page against a room that still holds the old shape.
 
 ## Built-in Capabilities
 
-Use instead of `can-play` when they fit: `can-move`, `can-toggle`, `can-spin`, `can-grow`, `can-duplicate`, `can-mirror`. See `packages/common/src/index.ts` for implementations.
+Use instead of `can-play` when they fit: `can-move`, `can-toggle`, `can-spin`, `can-grow`, `can-duplicate`, `can-hover`, `can-mirror`. See https://playhtml.fun/docs/capabilities/ for each one.
 
 ## Cursors (optional)
 
@@ -179,6 +191,6 @@ See https://playhtml.fun/docs/data/presence/cursors/ for full API.
 5. **Replacement form loses fields**: `setData({ x: 5 })` erases `y`. Use replacement only for whole-value writes, or use mutator form for field-level changes.
 6. **Deep nesting**: CRDTs work best with flat data. Avoid deeply nested objects.
 7. **High-frequency updates**: Don't `setData` on every mousemove. Debounce, or use `setLocalData`/`live`.
-   - **Worst case — self-triggering write loop**: a callback that writes shared data AND re-runs when that data changes. See the "NEVER write shared data…" section above. This crashed a production room; treat it as a hard rule.
+   - **Worst case — self-triggering write loop**: a callback that writes shared data AND re-runs when that data changes. See the "NEVER write shared data…" section above. Treat it as a hard rule.
 8. **Computed values in state**: Don't store what you can calculate. Compute in `update`/render.
 9. **Missing PlayProvider** (React): `withSharedState` silently fails without it.
