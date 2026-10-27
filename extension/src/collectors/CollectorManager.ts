@@ -219,10 +219,8 @@ export class CollectorManager {
    */
   private async loadEnabledCollectors(): Promise<void> {
     try {
-      let result = await browser.storage.local.get([STORAGE_KEY]);
+      const result = await browser.storage.local.get([STORAGE_KEY, DENY_LIST_KEY]);
       const enabledCollectors = result[STORAGE_KEY] || {};
-
-      result = await browser.storage.local.get([DENY_LIST_KEY]);
 
       // Apply saved state to all registered collectors
       for (const [type, collector] of this.collectors.entries()) {
