@@ -18,6 +18,8 @@ export const DEVICE_SYNC_ALARM = "deviceSync";
 export const DEVICE_SYNC_PERIOD_MINUTES = 10;
 export const SYNC_DELETIONS_KEY = "wwoSyncDeletions";
 export const SYNC_PROGRESS_KEY = "wwoSyncProgress";
+/** Each setup choice's last value seen here and when it was set, on either side. */
+export const SYNC_SETTINGS_SEEN_KEY = "wwoSyncSettingsSeen";
 
 const ONBOARDING_KEY = "onboarding_complete";
 /** Setup choices that travel with the identity: who you are and what you collect. */
@@ -47,6 +49,8 @@ export interface SideState {
   writtenAt: number;
   onboarded: boolean;
   settings: Record<string, unknown>;
+  /** When each setup choice was last changed, so the later change wins on both sides. */
+  settingsAt: Record<string, number>;
   deletions: Deletions;
   /** Each collage as the text of its collage file. */
   collages: string[];
@@ -214,6 +218,78 @@ function fingerprint(text: string): string {
   return `${text.length}:${hash.toString(16)}`;
 }
 
+function readTimes(value: unknown): Record<string, number> {
+  const times: Record<string, number> = {};
+  if (!value || typeof value !== "object") return times;
+  for (const [key, at] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof at === "number") times[key] = at;
+  }
+  return times;
+}
+
+type SettingsSeen = Record<string, { value: string; at: number }>;
+
+function readSettingsSeen(value: unknown): SettingsSeen {
+  const seen: SettingsSeen = {};
+  if (!value || typeof value !== "object") return seen;
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    const { value: text, at } = (entry ?? {}) as Record<string, unknown>;
+    if (typeof text === "string" && typeof at === "number") {
+      seen[key] = { value: text, at };
+    }
+  }
+  return seen;
+}
+
+/**
+ * Setup choices other than who you are (what is collected, keyboard
+ * legibility, email). These follow the most recent change on either side; the
+ * identity and whether setup is done follow `shouldAdopt` instead.
+ */
+function choiceKeys(settings: Record<string, unknown>): string[] {
+  return Object.keys(settings).filter(
+    (key) => key !== PLAYER_IDENTITY_STORAGE_KEY && key !== ONBOARDING_KEY,
+  );
+}
+
+/**
+ * Stamps each choice whose value changed here since the last pass with `now`.
+ * A choice made before sync first saw it is stamped as oldest, so it never
+ * overrides one the other side made.
+ */
+export function noteChoiceChanges(
+  settings: Record<string, unknown>,
+  seen: SettingsSeen,
+  now: number,
+): SettingsSeen {
+  const noted = { ...seen };
+  for (const key of choiceKeys(settings)) {
+    const value = JSON.stringify(settings[key]);
+    if (noted[key]?.value === value) continue;
+    noted[key] = { value, at: noted[key] ? now : 0 };
+  }
+  return noted;
+}
+
+/** The other side's choices changed more recently than this side's. */
+export function newerChoices(
+  seen: SettingsSeen,
+  other: {
+    settings: Record<string, unknown>;
+    settingsAt: Record<string, number>;
+  },
+): Record<string, unknown> {
+  const newer: Record<string, unknown> = {};
+  for (const key of choiceKeys(other.settings)) {
+    const at = other.settingsAt[key] ?? 0;
+    const value = JSON.stringify(other.settings[key]);
+    if (at > (seen[key]?.at ?? 0) && value !== seen[key]?.value) {
+      newer[key] = other.settings[key];
+    }
+  }
+  return newer;
+}
+
 function readSideState(text: string, side: SyncSide): SideState | null {
   try {
     const parsed = JSON.parse(text) as Partial<SideState>;
@@ -227,6 +303,7 @@ function readSideState(text: string, side: SyncSide): SideState | null {
         parsed.settings && typeof parsed.settings === "object"
           ? pickSharedSettings(parsed.settings)
           : {},
+      settingsAt: readTimes(parsed.settingsAt),
       deletions: readDeletions(parsed.deletions),
       collages: Array.isArray(parsed.collages)
         ? parsed.collages.filter(
@@ -291,12 +368,29 @@ export async function runDeviceSync(deps: SyncDeps): Promise<SyncResult> {
 
   let deletions = localDeletions;
   let settings = pickSharedSettings(local);
+  let seen = noteChoiceChanges(
+    settings,
+    readSettingsSeen(local[SYNC_SETTINGS_SEEN_KEY]),
+    deps.now(),
+  );
   if (otherState) {
     deletions = mergeDeletions(localDeletions, otherState.deletions);
     const pending = newDeletions(localDeletions, deletions);
     if (pending.scraps.length > 0)
       await store.deleteScrapEvents(pending.scraps);
-    for (const id of pending.collages) await collages.remove(id);
+    if (pending.collages.length > 0) {
+      // A collage edited here after the other side deleted it is kept, the
+      // same newer-wins rule the other side applies when this one comes back.
+      const held = new Map(
+        (await collages.list()).map((entry) => [entry.id, entry.updatedAt]),
+      );
+      for (const id of pending.collages) {
+        const heldAt = held.get(id);
+        if (heldAt === undefined || deletions.collages[id] >= heldAt) {
+          await collages.remove(id);
+        }
+      }
+    }
     if (pending.scraps.length > 0 || pending.collages.length > 0) {
       await storage.set({ [SYNC_DELETIONS_KEY]: deletions });
     }
@@ -313,7 +407,27 @@ export async function runDeviceSync(deps: SyncDeps): Promise<SyncResult> {
     ) {
       await storage.set(otherState.settings);
       settings = { ...settings, ...otherState.settings };
+      // Every choice comes over with the identity, keeping when it was made.
+      for (const key of choiceKeys(otherState.settings)) {
+        seen[key] = {
+          value: JSON.stringify(otherState.settings[key]),
+          at: otherState.settingsAt[key] ?? 0,
+        };
+      }
       result.adoptedIdentity = true;
+    } else {
+      const newer = newerChoices(seen, otherState);
+      if (Object.keys(newer).length > 0) {
+        await storage.set(newer);
+        settings = { ...settings, ...newer };
+        seen = { ...seen };
+        for (const [key, value] of Object.entries(newer)) {
+          seen[key] = {
+            value: JSON.stringify(value),
+            at: otherState.settingsAt[key] ?? 0,
+          };
+        }
+      }
     }
 
     const incoming: CollageRecord[] = [];
@@ -377,6 +491,9 @@ export async function runDeviceSync(deps: SyncDeps): Promise<SyncResult> {
     side,
     onboarded: isOnboarded(settings),
     settings,
+    settingsAt: Object.fromEntries(
+      Object.entries(seen).map(([key, entry]) => [key, entry.at]),
+    ),
     deletions,
     collages: ownCollages,
   };
@@ -401,6 +518,9 @@ export async function runDeviceSync(deps: SyncDeps): Promise<SyncResult> {
     progress.eventsFingerprint = eventsFingerprint;
   }
 
-  await storage.set({ [SYNC_PROGRESS_KEY]: progress });
+  await storage.set({
+    [SYNC_PROGRESS_KEY]: progress,
+    [SYNC_SETTINGS_SEEN_KEY]: seen,
+  });
   return result;
 }

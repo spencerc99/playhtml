@@ -78,6 +78,8 @@ function identity(publicKey: string) {
   };
 }
 
+const clock = { now: 5_000 };
+
 function side(
   container: SharedContainer,
   storage: Record<string, unknown> = {},
@@ -141,7 +143,7 @@ function side(
         Object.assign(storage, items);
       },
     },
-    now: () => 5_000,
+    now: () => clock.now,
   };
   return { deps, events, collages, storage };
 }
@@ -348,5 +350,55 @@ describe("runDeviceSync", () => {
     expect(await safari.deps.container.stat("safari.state")).toEqual(
       stateBefore,
     );
+  });
+
+  it("carries a later change to a setup choice to the other side", async () => {
+    const folder = sharedFolder();
+    const safari = side(folder("safari"), {
+      playerIdentity: identity("safari"),
+      onboarding_complete: "true",
+      collection_mode_cursor: "local",
+    });
+    const app = side(folder("app"));
+    await runDeviceSync(safari.deps);
+    await runDeviceSync(app.deps);
+    await runDeviceSync(safari.deps);
+    expect(app.storage.collection_mode_cursor).toBe("local");
+
+    clock.now += 1_000;
+    app.storage.collection_mode_cursor = "off";
+    await runDeviceSync(app.deps);
+    await runDeviceSync(safari.deps);
+    expect(safari.storage.collection_mode_cursor).toBe("off");
+
+    // Safari's older value does not flip it back.
+    await runDeviceSync(app.deps);
+    expect(app.storage.collection_mode_cursor).toBe("off");
+
+    clock.now += 1_000;
+    safari.storage.collection_mode_cursor = "shared";
+    await runDeviceSync(safari.deps);
+    await runDeviceSync(app.deps);
+    expect(app.storage.collection_mode_cursor).toBe("shared");
+  });
+
+  it("keeps a collage edited here after the other side deleted it", async () => {
+    const folder = sharedFolder();
+    const safari = side(folder("safari"));
+    const app = side(folder("app"));
+    safari.collages.set("c1", collage("c1", 10));
+    await runDeviceSync(safari.deps);
+    await runDeviceSync(app.deps);
+
+    app.collages.delete("c1");
+    app.storage[SYNC_DELETIONS_KEY] = { scraps: {}, collages: { c1: 20 } };
+    safari.collages.set("c1", collage("c1", 30));
+    await runDeviceSync(app.deps);
+    await runDeviceSync(safari.deps);
+    expect(safari.collages.get("c1")?.updatedAt).toBe(30);
+
+    // And the newer edit comes back to the side that deleted the older one.
+    await runDeviceSync(app.deps);
+    expect(app.collages.get("c1")?.updatedAt).toBe(30);
   });
 });
