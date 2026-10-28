@@ -2564,6 +2564,26 @@ export class LocalEventStore {
     return stored;
   }
 
+  /**
+   * Store history the other copy of the extension on this iPhone recorded,
+   * marked as uploaded because that copy uploads its own. Most passes bring
+   * nothing new, so the aggregates are rebuilt only when something was stored.
+   */
+  async addSyncedEvents(events: CollectionEvent[]): Promise<CollectionEvent[]> {
+    await this.ensureSessionStatsBackfilled();
+    const stored = await this.addEvents(
+      events.map((event) => ({ ...event, uploaded: true })),
+    );
+    if (stored.length === 0) return stored;
+    await this.rebuildSessionStats();
+    await this.rebuildAggregateDays();
+    await this.writeDaysBackfillState("complete");
+    this.daysBackfillComplete = true;
+    await this.writeStatsBackfillState("complete");
+    this.statsBackfillComplete = true;
+    return stored;
+  }
+
   /** Store server-restored history as uploaded before rebuilding aggregates. */
   async addRestoredEvents(events: CollectionEvent[]): Promise<void> {
     await this.addImportedEvents(

@@ -207,6 +207,9 @@ final class BrowserViewController: UIViewController,
 
     private func start() async {
         let host = ExtensionHost.shared
+        // Set before loading, so the background's first message to the shared
+        // folder, sent as soon as it starts, has someone to answer it.
+        host.controller.delegate = self
         do {
             _ = try await host.load()
         } catch {
@@ -215,7 +218,6 @@ final class BrowserViewController: UIViewController,
             dismiss(animated: true) { UIApplication.shared.open(self.startURL) }
             return
         }
-        host.controller.delegate = self
 
         let configuration = WKWebViewConfiguration()
         configuration.webExtensionController = host.controller
@@ -509,6 +511,18 @@ final class BrowserViewController: UIViewController,
         completionHandler: @escaping (Set<URL>, Date?) -> Void
     ) {
         completionHandler(urls, nil)
+    }
+
+    // The extension's background keeps its identity, history and collages in
+    // step with Safari's copy through the folder the app and Safari share.
+    func webExtensionController(
+        _ controller: WKWebExtensionController,
+        sendMessage message: Any,
+        toApplicationWithIdentifier applicationIdentifier: String?,
+        for extensionContext: WKWebExtensionContext,
+        replyHandler: @escaping (Any?, Error?) -> Void
+    ) {
+        replyHandler(SharedContainer.handle(message, side: "app"), nil)
     }
 
     func webExtensionController(
