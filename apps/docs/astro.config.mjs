@@ -98,13 +98,13 @@ export default defineConfig({
       //
       //   Examples     → examples index (top-level link, above the path)
       //   Start        → getting-started, concepts
-      //   Shared state → capabilities, custom-elements, data-essentials,
-      //                  page-data, presence/* (nested), events
+      //   Building blocks → capabilities, custom-elements, data-essentials,
+      //                     page-data, presence/* (nested), events
       //   Advanced     → autogenerate (advanced/)
       //   Integrations → autogenerate (integrations/)
       //   Reference    → autogenerate (reference/)
       //
-      // Start and Shared state are hand-rolled: Shared state pulls the
+      // Start and Building blocks are hand-rolled: Building blocks pulls the
       // capability and custom element pages (top-level files) in next to the
       // data/ pages so all four kinds of shared state from Core concepts live
       // in one group.
@@ -134,7 +134,7 @@ export default defineConfig({
           ],
         },
         {
-          label: "Shared state",
+          label: "Building blocks",
           items: [
             { label: "Built-in elements", slug: "capabilities" },
             { label: "Custom elements", slug: "custom-elements" },
