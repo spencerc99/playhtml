@@ -31,7 +31,11 @@ export interface Piece {
   flipX?: boolean;
   flipY?: boolean;
   /** A background cutout, computed in each viewer's browser. */
-  cutout?: { method: "edge-color"; tolerance: number; keep?: "subject" | "background" };
+  cutout?: {
+    method: "edge-color";
+    tolerance: number;
+    keep?: "subject" | "background";
+  };
   /** A locked piece can't be moved, turned, or sized until it's unlocked. */
   locked?: boolean;
 }
@@ -68,6 +72,90 @@ export const FALLBACK_ASPECT = 0.75;
 /** Null-safe view of the pieces map, tolerant of a room that predates it. */
 export function piecesOf(data: Partial<CollageData> | undefined): Pieces {
   return data?.pieces ?? {};
+}
+
+/** Most pieces a table shows; anything past it in the room is ignored. */
+export const MAX_TABLE_PIECES = 400;
+
+function isWebUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function finite(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function text(value: unknown, max: number): string {
+  return typeof value === "string" ? value.slice(0, max) : "";
+}
+
+/** A piece rebuilt field by field from whatever the room holds, or null when
+ * it can't be shown. Anyone can write to the room, so nothing is trusted. */
+export function safePiece(id: string, value: unknown): Piece | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  if (!isWebUrl(raw.src) || raw.src.length > 4000) return null;
+  const piece: Piece = {
+    id: id.slice(0, 200),
+    src: raw.src,
+    pageUrl: isWebUrl(raw.pageUrl) ? raw.pageUrl.slice(0, 2000) : "",
+    alt: text(raw.alt, 500),
+    placedByPid: text(raw.placedByPid, 100),
+    placedByName: text(raw.placedByName, 40),
+    placedByColor: /^#[0-9a-f]{3,8}$/i.test(text(raw.placedByColor, 9))
+      ? (raw.placedByColor as string)
+      : "#888888",
+    x: clamp(finite(raw.x, 0.5), -1, 2),
+    y: clamp(finite(raw.y, 0.5), -1, 2),
+    width: clamp(finite(raw.width, 0.2), MIN_PIECE_WIDTH, MAX_PIECE_WIDTH),
+    aspect: clamp(finite(raw.aspect, FALLBACK_ASPECT), 0.01, 100),
+    rotation: finite(raw.rotation, 0) % 360,
+    z: clamp(finite(raw.z, 0), -1e9, 1e9),
+    placedAt: finite(raw.placedAt, 0),
+  };
+  const crop = raw.crop as Record<string, unknown> | undefined;
+  if (crop && typeof crop === "object") {
+    piece.crop = {
+      x: clamp(finite(crop.x, 0), 0, 1),
+      y: clamp(finite(crop.y, 0), 0, 1),
+      width: clamp(finite(crop.width, 1), 0.001, 1),
+      height: clamp(finite(crop.height, 1), 0.001, 1),
+    };
+  }
+  if (raw.flipX === true) piece.flipX = true;
+  if (raw.flipY === true) piece.flipY = true;
+  if (raw.locked === true) piece.locked = true;
+  const cutout = raw.cutout as Record<string, unknown> | undefined;
+  if (cutout && typeof cutout === "object" && cutout.method === "edge-color") {
+    piece.cutout = {
+      method: "edge-color",
+      tolerance: clamp(finite(cutout.tolerance, 0), 0, 1),
+      ...(cutout.keep === "subject" || cutout.keep === "background"
+        ? { keep: cutout.keep }
+        : {}),
+    };
+  }
+  return piece;
+}
+
+/** The room's pieces, each rebuilt by `safePiece`, at most `MAX_TABLE_PIECES`. */
+export function safePieces(pieces: Record<string, unknown>): Pieces {
+  const safe: Pieces = {};
+  let count = 0;
+  for (const [id, value] of Object.entries(pieces)) {
+    if (count >= MAX_TABLE_PIECES) break;
+    const piece = safePiece(id, value);
+    if (!piece) continue;
+    safe[id] = piece;
+    count++;
+  }
+  return safe;
 }
 
 /** Pieces in paint order: lowest z first, ties broken by placement time. */
@@ -205,7 +293,10 @@ function isWholePiece(value: Partial<Piece>): value is Piece {
  * anything malformed) is skipped.
  */
 export function remoteDrafts(
-  users: Array<{ user: { isMe: boolean }; live: Partial<CollageLive> | undefined }>,
+  users: Array<{
+    user: { isMe: boolean };
+    live: Partial<CollageLive> | undefined;
+  }>,
   stored: Pieces,
 ): Record<string, Piece> {
   const byPiece: Record<string, Piece> = {};
@@ -220,7 +311,8 @@ export function remoteDrafts(
         continue;
       }
       const next = { ...base } as unknown as Record<string, unknown>;
-      for (const key of Array.isArray(patch.unset) ? patch.unset : []) delete next[key];
+      for (const key of Array.isArray(patch.unset) ? patch.unset : [])
+        delete next[key];
       Object.assign(next, patch.set);
       byPiece[patch.id] = next as unknown as Piece;
     }
@@ -315,7 +407,11 @@ export function arrangeIntoShape(
   const maxY = Math.max(...ys);
   const candidates: Array<{ x: number; y: number }> = [];
   const wanted = Math.max(200, list.length * 30);
-  for (let tries = 0; candidates.length < wanted && tries < wanted * 20; tries++) {
+  for (
+    let tries = 0;
+    candidates.length < wanted && tries < wanted * 20;
+    tries++
+  ) {
     const p = {
       x: minX + random() * (maxX - minX),
       y: minY + random() * (maxY - minY),
@@ -361,7 +457,11 @@ export function arrangeIntoShape(
       x: clamp(spot.x, 0, 1),
       y: clamp(spot.y, 0, 1),
       // A little size variety keeps it from looking like a contact sheet.
-      width: clamp(width * (0.85 + random() * 0.3), MIN_PIECE_WIDTH, MAX_PIECE_WIDTH),
+      width: clamp(
+        width * (0.85 + random() * 0.3),
+        MIN_PIECE_WIDTH,
+        MAX_PIECE_WIDTH,
+      ),
       rotation: Math.round((random() * 16 - 8) * 10) / 10,
       z: baseZ + order[i],
     };

@@ -89,6 +89,7 @@ const GIVE_UP_MS = 3000;
  */
 export function requestSessionScraps(
   win: Window = window,
+  since?: number,
 ): Promise<SessionScrap[] | null> {
   const requestId = `${Date.now().toString(36)}-${Math.random()
     .toString(36)
@@ -114,6 +115,7 @@ export function requestSessionScraps(
           source: SESSION_SCRAPS_SOURCE,
           type: SESSION_SCRAPS_REQUEST,
           requestId,
+          ...(since === undefined ? {} : { since }),
         },
         win.location.origin,
       );

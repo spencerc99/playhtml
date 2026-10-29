@@ -31,6 +31,7 @@ const PAGES: { path: string; skip?: string }[] = [
   { path: "/events/gathering/" },
   { path: "/events/gray-area/" },
   { path: "/events/if-then/" },
+  { path: "/events/collage/" },
   { path: "/events/walking-together/" },
   // The session experience (list links here with ?session=<id>). Smoke-test
   // the active session so a broken session page is caught.
@@ -112,55 +113,65 @@ async function collectErrors(page: Page) {
 
 for (const { path, skip } of PAGES) {
   const runner = skip ? test.skip : test;
-  runner(`smoke: ${path}${skip ? ` (skipped: ${skip})` : ""}`, async ({ page }) => {
-    const errors = await collectErrors(page);
+  runner(
+    `smoke: ${path}${skip ? ` (skipped: ${skip})` : ""}`,
+    async ({ page }) => {
+      const errors = await collectErrors(page);
 
-    const response = await page.goto(path, { waitUntil: "domcontentloaded" });
-    expect(response, `no response for ${path}`).not.toBeNull();
-    expect(response!.status(), `bad status for ${path}`).toBeLessThan(400);
+      const response = await page.goto(path, { waitUntil: "domcontentloaded" });
+      expect(response, `no response for ${path}`).not.toBeNull();
+      expect(response!.status(), `bad status for ${path}`).toBeLessThan(400);
 
-    // Give playhtml a moment to register and any synchronous render errors to
-    // surface. The library's 10s yjs sync timeout means we don't need to wait
-    // for full sync — registration happens earlier.
-    await page.waitForTimeout(2_000);
+      // Give playhtml a moment to register and any synchronous render errors to
+      // surface. The library's 10s yjs sync timeout means we don't need to wait
+      // for full sync — registration happens earlier.
+      await page.waitForTimeout(2_000);
 
-    // Page must have rendered *something*. Catches silent failures where a
-    // React island throws and an error boundary leaves a blank document.
-    const bodyText = (await page.locator("body").innerText()).trim();
-    expect(bodyText.length, `${path} rendered an empty body`).toBeGreaterThan(0);
-
-    // Title must be present. Catches HTML emit / template breakage.
-    const title = await page.title();
-    expect(title.length, `${path} has no <title>`).toBeGreaterThan(0);
-
-    expect.soft(errors.pageErrors, `uncaught page errors on ${path}`).toEqual([]);
-    expect
-      .soft(errors.consoleErrors, `fatal console errors on ${path}`)
-      .toEqual([]);
-    expect
-      .soft(errors.sameOriginFailures, `same-origin asset failures on ${path}`)
-      .toEqual([]);
-
-    // Surface the soft assertions if any tripped.
-    if (
-      errors.pageErrors.length ||
-      errors.consoleErrors.length ||
-      errors.sameOriginFailures.length
-    ) {
-      throw new Error(
-        `Smoke check failed for ${path}:\n` +
-          (errors.pageErrors.length
-            ? `  page errors: ${errors.pageErrors.join(" | ")}\n`
-            : "") +
-          (errors.consoleErrors.length
-            ? `  console: ${errors.consoleErrors.join(" | ")}\n`
-            : "") +
-          (errors.sameOriginFailures.length
-            ? `  assets: ${errors.sameOriginFailures.join(" | ")}\n`
-            : ""),
+      // Page must have rendered *something*. Catches silent failures where a
+      // React island throws and an error boundary leaves a blank document.
+      const bodyText = (await page.locator("body").innerText()).trim();
+      expect(bodyText.length, `${path} rendered an empty body`).toBeGreaterThan(
+        0,
       );
-    }
-  });
+
+      // Title must be present. Catches HTML emit / template breakage.
+      const title = await page.title();
+      expect(title.length, `${path} has no <title>`).toBeGreaterThan(0);
+
+      expect
+        .soft(errors.pageErrors, `uncaught page errors on ${path}`)
+        .toEqual([]);
+      expect
+        .soft(errors.consoleErrors, `fatal console errors on ${path}`)
+        .toEqual([]);
+      expect
+        .soft(
+          errors.sameOriginFailures,
+          `same-origin asset failures on ${path}`,
+        )
+        .toEqual([]);
+
+      // Surface the soft assertions if any tripped.
+      if (
+        errors.pageErrors.length ||
+        errors.consoleErrors.length ||
+        errors.sameOriginFailures.length
+      ) {
+        throw new Error(
+          `Smoke check failed for ${path}:\n` +
+            (errors.pageErrors.length
+              ? `  page errors: ${errors.pageErrors.join(" | ")}\n`
+              : "") +
+            (errors.consoleErrors.length
+              ? `  console: ${errors.consoleErrors.join(" | ")}\n`
+              : "") +
+            (errors.sameOriginFailures.length
+              ? `  assets: ${errors.sameOriginFailures.join(" | ")}\n`
+              : ""),
+        );
+      }
+    },
+  );
 }
 
 async function openHomepageAwarenessClient(
@@ -208,14 +219,20 @@ test("smoke: homepage element awareness syncs across two browser clients", async
 
   try {
     await expect
-      .poll(async () => {
-        return readHomepageAwarenessCount(clientA.page);
-      }, { timeout: 20_000 })
+      .poll(
+        async () => {
+          return readHomepageAwarenessCount(clientA.page);
+        },
+        { timeout: 20_000 },
+      )
       .toBe(2);
     await expect
-      .poll(async () => {
-        return readHomepageAwarenessCount(clientB.page);
-      }, { timeout: 20_000 })
+      .poll(
+        async () => {
+          return readHomepageAwarenessCount(clientB.page);
+        },
+        { timeout: 20_000 },
+      )
       .toBe(2);
 
     expect.soft(clientA.errors.pageErrors, "client A page errors").toEqual([]);
@@ -236,9 +253,12 @@ test("smoke: homepage element awareness syncs across two browser clients", async
     await clientB.context.close();
     clientBClosed = true;
     await expect
-      .poll(async () => {
-        return readHomepageAwarenessCount(clientA.page);
-      }, { timeout: 20_000 })
+      .poll(
+        async () => {
+          return readHomepageAwarenessCount(clientA.page);
+        },
+        { timeout: 20_000 },
+      )
       .toBe(1);
   } finally {
     await clientA.context.close();
@@ -256,25 +276,45 @@ test("smoke: element awareness stays page-scoped when cursors use a domain room"
   const roomY = `/smoke/awareness-domain-y-${suffix}`;
   const cursorParams = { playhtmlCursorRoom: "domain" };
 
-  const clientA = await openHomepageAwarenessClient(browser, roomX, cursorParams);
-  const clientB = await openHomepageAwarenessClient(browser, roomX, cursorParams);
+  const clientA = await openHomepageAwarenessClient(
+    browser,
+    roomX,
+    cursorParams,
+  );
+  const clientB = await openHomepageAwarenessClient(
+    browser,
+    roomX,
+    cursorParams,
+  );
   // Same domain cursor room, DIFFERENT page room — must not see A/B's element awareness.
-  const clientC = await openHomepageAwarenessClient(browser, roomY, cursorParams);
+  const clientC = await openHomepageAwarenessClient(
+    browser,
+    roomY,
+    cursorParams,
+  );
 
   try {
     await expect
-      .poll(async () => readHomepageAwarenessCount(clientA.page), { timeout: 20_000 })
+      .poll(async () => readHomepageAwarenessCount(clientA.page), {
+        timeout: 20_000,
+      })
       .toBe(2);
     await expect
-      .poll(async () => readHomepageAwarenessCount(clientB.page), { timeout: 20_000 })
+      .poll(async () => readHomepageAwarenessCount(clientB.page), {
+        timeout: 20_000,
+      })
       .toBe(2);
     await expect
-      .poll(async () => readHomepageAwarenessCount(clientC.page), { timeout: 20_000 })
+      .poll(async () => readHomepageAwarenessCount(clientC.page), {
+        timeout: 20_000,
+      })
       .toBe(1);
 
     await clientB.context.close();
     await expect
-      .poll(async () => readHomepageAwarenessCount(clientA.page), { timeout: 20_000 })
+      .poll(async () => readHomepageAwarenessCount(clientA.page), {
+        timeout: 20_000,
+      })
       .toBe(1);
     await clientC.context.close();
     await clientA.context.close();

@@ -14,6 +14,8 @@ import {
   topZ,
   type Piece,
   type Pieces,
+  safePieces,
+  MAX_TABLE_PIECES,
 } from "../collage/pieces";
 
 const piece = (id: string, overrides: Partial<Piece> = {}): Piece => ({
@@ -63,7 +65,9 @@ describe("domains", () => {
     expect(pageLink("https://blog.example.com/posts/1?page=2")).toBe(
       "https://blog.example.com/posts/1?page=2",
     );
-    expect(pageLink("https://blog.example.com")).toBe("https://blog.example.com/");
+    expect(pageLink("https://blog.example.com")).toBe(
+      "https://blog.example.com/",
+    );
     expect(pageLink("javascript:alert(1)")).toBe("");
     expect(pageLink(undefined)).toBe("");
   });
@@ -76,7 +80,10 @@ describe("domains", () => {
 
   it("prefers the page over the image host", () => {
     expect(
-      sourceDomain({ pageUrl: "https://blog.test/post", src: "https://cdn.test/x.png" }),
+      sourceDomain({
+        pageUrl: "https://blog.test/post",
+        src: "https://cdn.test/x.png",
+      }),
     ).toBe("blog.test");
     expect(sourceDomain({ pageUrl: "", src: "https://cdn.test/x.png" })).toBe(
       "cdn.test",
@@ -135,8 +142,14 @@ describe("remote drafts", () => {
     expect(
       remoteDrafts(
         [
-          { user: { isMe: false }, live: { draft: [{ id: "p1", set: { x: 0.1 } }] } },
-          { user: { isMe: true }, live: { draft: [{ id: "p1", set: { y: 0.9 } }] } },
+          {
+            user: { isMe: false },
+            live: { draft: [{ id: "p1", set: { x: 0.1 } }] },
+          },
+          {
+            user: { isMe: true },
+            live: { draft: [{ id: "p1", set: { y: 0.9 } }] },
+          },
           { user: { isMe: false }, live: { draft: null } },
           { user: { isMe: false }, live: undefined },
         ],
@@ -149,7 +162,12 @@ describe("remote drafts", () => {
     // The stored piece already has another person's new turn.
     const stored = { p1: piece("p1", { rotation: 45 }) };
     const drafts = remoteDrafts(
-      [{ user: { isMe: false }, live: { draft: [{ id: "p1", set: { x: 0.2 }, unset: ["crop"] }] } }],
+      [
+        {
+          user: { isMe: false },
+          live: { draft: [{ id: "p1", set: { x: 0.2 }, unset: ["crop"] }] },
+        },
+      ],
       stored,
     );
     expect(drafts.p1.rotation).toBe(45);
@@ -159,14 +177,75 @@ describe("remote drafts", () => {
   it("shows a piece new to the table whole", () => {
     const fresh = piece("p9");
     expect(
-      remoteDrafts([{ user: { isMe: false }, live: { draft: [{ id: "p9", set: fresh }] } }], {}),
+      remoteDrafts(
+        [
+          {
+            user: { isMe: false },
+            live: { draft: [{ id: "p9", set: fresh }] },
+          },
+        ],
+        {},
+      ),
     ).toEqual({ p9: fresh });
   });
 
   it("skips presence from an older page", () => {
     const old = { drag: { id: "p1" } } as unknown as { draft: null };
     const wholePieces = { draft: [piece("p1")] } as unknown as { draft: null };
-    expect(remoteDrafts([{ user: { isMe: false }, live: old }], {})).toEqual({});
-    expect(remoteDrafts([{ user: { isMe: false }, live: wholePieces }], {})).toEqual({});
+    expect(remoteDrafts([{ user: { isMe: false }, live: old }], {})).toEqual(
+      {},
+    );
+    expect(
+      remoteDrafts([{ user: { isMe: false }, live: wholePieces }], {}),
+    ).toEqual({});
+  });
+});
+
+describe("safePieces", () => {
+  const good = {
+    id: "a",
+    src: "https://example.com/a.png",
+    pageUrl: "https://example.com/page",
+    alt: "a",
+    placedByPid: "p",
+    placedByName: "pat",
+    placedByColor: "#ff0000",
+    x: 0.5,
+    y: 0.5,
+    width: 0.2,
+    aspect: 1,
+    rotation: 0,
+    z: 1,
+    placedAt: 1,
+  };
+
+  it("keeps a well-formed piece unchanged", () => {
+    expect(safePieces({ a: good }).a).toEqual(good);
+  });
+
+  it("drops pieces that aren't web images and repairs bad fields", () => {
+    const safe = safePieces({
+      js: { ...good, src: "javascript:alert(1)" },
+      bad: {
+        ...good,
+        x: Number.NaN,
+        pageUrl: "javascript:x",
+        placedByColor: "red;}",
+        width: 99,
+      },
+      junk: "nope",
+    });
+    expect(Object.keys(safe)).toEqual(["bad"]);
+    expect(safe.bad.x).toBe(0.5);
+    expect(safe.bad.pageUrl).toBe("");
+    expect(safe.bad.placedByColor).toBe("#888888");
+    expect(safe.bad.width).toBe(0.7);
+  });
+
+  it("caps how many pieces a table shows", () => {
+    const many: Record<string, unknown> = {};
+    for (let i = 0; i < MAX_TABLE_PIECES + 10; i++)
+      many[`p${i}`] = { ...good, id: `p${i}` };
+    expect(Object.keys(safePieces(many))).toHaveLength(MAX_TABLE_PIECES);
   });
 });
