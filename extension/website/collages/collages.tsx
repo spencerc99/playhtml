@@ -1,35 +1,16 @@
 // ABOUTME: Public gallery of shared collages: a hand-picked list, each pinned up with tape over a catalog slip.
-// ABOUTME: Shows a share's baked cover when it has one, else draws the collage small from its pieces.
+// ABOUTME: Each card shows the share's baked cover, the one picture of its whole front.
 
-import React, {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ASSETS_URL, WORKER_URL } from "@movement/config";
-import { COLLAGE_STYLES } from "@movement/components/ScrapCollage";
-import { paperBackground } from "@extension/entrypoints/scraps/paperGrain";
-import { sourceBoxForCrop } from "@extension/entrypoints/scraps/collageGeometry";
-import { PieceMaterial } from "@extension/entrypoints/scraps/PieceMaterial";
 import { madeOn } from "@extension/entrypoints/scraps/CollageMat";
-import { pieceMaterialTransform } from "@extension/entrypoints/scraps/collageRecord";
-import {
-  COLLAGE_SHEET_STYLES,
-  PIECE_MATERIAL_STYLES,
-} from "@extension/entrypoints/scraps/collageSheetStyles";
 import {
   isPublishedCollageId,
   publishedCollageViewerUrl,
   type PublishedCollage,
 } from "../../shared/publishedCollage";
-import {
-  loadPublishedCollage,
-  publishedImageUrl,
-  viewerPieces,
-} from "../collage/publishedCollageView";
+import { loadPublishedCollage } from "../collage/publishedCollageView";
 import { PINNED_COLLAGES } from "./pinnedCollages";
 import { GALLERY_STYLES } from "./galleryStyles";
 
@@ -73,92 +54,8 @@ function slipMeta(collage: PublishedCollage): string {
   return when ? `${when} · ${what}` : what;
 }
 
-/** The width an element is laid out at, kept current as the board reflows. */
-function useWidth<T extends HTMLElement>(): [
-  React.RefObject<T | null>,
-  number,
-] {
-  const ref = useRef<T>(null);
-  const [width, setWidth] = useState(0);
-  useLayoutEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    setWidth(element.clientWidth);
-    const observer = new ResizeObserver(() => setWidth(element.clientWidth));
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-  return [ref, width];
-}
-
-/** The collage drawn small from its own pieces, for a share made before covers were baked. */
-function SmallCollage({ id, collage }: Pinned) {
-  const { frame, paper } = collage;
-  const [ref, width] = useWidth<HTMLDivElement>();
-  const pieces = useMemo(
-    () =>
-      viewerPieces(collage, (ref) => publishedImageUrl(ASSETS_URL, id, ref)),
-    [collage, id],
-  );
-  const scale = width > 0 ? width / frame.width : 0;
-  return (
-    <div ref={ref} className="collage-board__small">
-      {scale > 0 && (
-        <div
-          className="collage-board__sheet"
-          style={{
-            width: frame.width,
-            height: frame.height,
-            transform: `scale(${scale})`,
-            ...paperBackground(
-              paper.color,
-              paper.grain,
-              frame.width,
-              frame.height,
-            ),
-          }}
-        >
-          {pieces.map(({ piece }) => {
-            const source = sourceBoxForCrop(piece, piece.crop);
-            return (
-              <div
-                key={piece.id}
-                className="collage-piece"
-                style={{
-                  left: piece.x,
-                  top: piece.y,
-                  width: piece.width,
-                  height: piece.height,
-                  zIndex: piece.z + 1,
-                  transform: `rotate(${piece.rotation}deg)`,
-                }}
-              >
-                <div
-                  className="collage-piece__source"
-                  style={{
-                    left: source.x - piece.x,
-                    top: source.y - piece.y,
-                    width: source.width,
-                    height: source.height,
-                    transform: pieceMaterialTransform(piece),
-                    transformOrigin: "center",
-                  }}
-                >
-                  <PieceMaterial piece={piece} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
+/** Every shared collage carries a cover: one baked picture of its whole front. */
 function CollageFace({ id, collage }: Pinned) {
-  // Shares made since covers were baked carry one picture of the whole front,
-  // far lighter than every piece; older shares answer 404 and are drawn instead.
-  const [coverMissing, setCoverMissing] = useState(false);
   const title = collage.title.trim() || "untitled collage";
   return (
     <div
@@ -167,17 +64,12 @@ function CollageFace({ id, collage }: Pinned) {
         aspectRatio: `${collage.frame.width} / ${collage.frame.height}`,
       }}
     >
-      {coverMissing ? (
-        <SmallCollage id={id} collage={collage} />
-      ) : (
-        <img
-          className="collage-board__cover"
-          src={`${ASSETS_URL}/collages/${encodeURIComponent(id)}/cover`}
-          alt={`${title}, a collage`}
-          decoding="async"
-          onError={() => setCoverMissing(true)}
-        />
-      )}
+      <img
+        className="collage-board__cover"
+        src={`${ASSETS_URL}/collages/${encodeURIComponent(id)}/cover`}
+        alt={`${title}, a collage`}
+        decoding="async"
+      />
     </div>
   );
 }
@@ -254,9 +146,6 @@ function CollagesPage() {
 
   return (
     <div className="collage-board">
-      <style>{COLLAGE_STYLES}</style>
-      <style>{COLLAGE_SHEET_STYLES}</style>
-      <style>{PIECE_MATERIAL_STYLES}</style>
       <style>{GALLERY_STYLES}</style>
       <nav className="collage-board__nav" aria-label="Site navigation">
         <a href="/">home</a>

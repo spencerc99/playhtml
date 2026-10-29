@@ -1,5 +1,5 @@
 // ABOUTME: Styles for the public collage gallery: a dotted cream board, taped cards and grain catalog slips.
-// ABOUTME: Layered over the studio's sheet and piece rules, which draw a collage that has no baked cover.
+// ABOUTME: Each card is a share's baked cover; the page needs none of the studio's piece rules.
 
 export const GALLERY_STYLES = `
   .collage-board {
@@ -207,21 +207,6 @@ export const GALLERY_STYLES = `
     width: 100%;
     height: 100%;
     object-fit: cover;
-  }
-
-  .collage-board__small {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-  }
-
-  .collage-board__sheet {
-    position: absolute;
-    left: 0;
-    top: 0;
-    overflow: hidden;
-    transform-origin: 0 0;
-    pointer-events: none;
   }
 
   .collage-board__slip {
