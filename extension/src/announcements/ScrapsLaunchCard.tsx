@@ -11,7 +11,6 @@ import {
   toScrapItem,
   type ScrapRecord,
 } from "../entrypoints/scraps/scrapItems";
-import type { EventTimeRange } from "../storage/LocalEventStore";
 import "./ScrapsLaunchCard.scss";
 
 export const SCRAPS_LAUNCH_CARD_ID = "scraps-2026-08-newtab";
@@ -131,7 +130,11 @@ const EXAMPLE_ITEMS: ScrapItem[] = [
 ];
 
 /** The card for the scraps collected within `range`. */
-export function ScrapsLaunchCard({ range }: { range: EventTimeRange }) {
+export function ScrapsLaunchCard({
+  range,
+}: {
+  range: { startTs: number; endTs: number };
+}) {
   const { startTs, endTs } = range;
   const [available, setAvailable] = useState(false);
   const [textDismissed, setTextDismissed] = useState(false);
