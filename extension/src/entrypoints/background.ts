@@ -630,6 +630,11 @@ export default defineBackground(() => {
     ) {
       updateExperimentBadge().catch(() => {})
     }
+    // Finishing setup here is what the other copy of the extension on this
+    // iPhone waits for, so it hears now rather than on the next alarm.
+    if (areaName === 'local' && changes.onboarding_complete?.newValue) {
+      runDeviceSyncPass().catch(() => {})
+    }
   })
 
   // Hydrate cursor_color onto locally-stored events from the user's identity.
@@ -927,11 +932,28 @@ export default defineBackground(() => {
             console.warn('[Background] could not record scrap deletions:', e),
           )
           reply({ deleted })
+          // Tells the other copy of the extension on this iPhone right away.
+          runDeviceSyncPass().catch(() => {})
         })
         .catch((e) => {
           console.error('[Background] DELETE_SCRAPS error:', e)
           reply({ error: String(e) })
         })
+      return true
+    }
+
+    // Pages ask before showing what may have changed on the other copy of the
+    // extension on this iPhone: the popup before offering setup, and the
+    // scraps page before listing scraps. Elsewhere there is nothing to sync.
+    if (message.type === 'SYNC_DEVICES') {
+      runDeviceSyncPass()
+        .then((result) =>
+          reply({
+            synced: result !== null,
+            adoptedIdentity: result?.adoptedIdentity ?? false,
+          }),
+        )
+        .catch((e) => reply({ error: String(e) }))
       return true
     }
 

@@ -59,7 +59,9 @@ final class AppBrowserCheck: XCTestCase {
         XCTAssertTrue(overlay.waitForExistence(timeout: 20), "the popup shows the portrait after setup")
         capture("popup after setup")
         overlay.tap()
-        XCTAssertTrue(element("save image").waitForExistence(timeout: 20), "the trails overlay opens on the page")
+        let overlayCard = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS[c] '/wiki/cat'")).firstMatch
+        XCTAssertTrue(overlayCard.waitForExistence(timeout: 20), "the trails overlay opens on the page")
         capture("trails overlay")
 
         // Relaunch: setup is remembered, and the browser's close button
