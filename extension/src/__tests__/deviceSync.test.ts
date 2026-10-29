@@ -142,6 +142,9 @@ function side(
       async set(items) {
         Object.assign(storage, items);
       },
+      async remove(keys) {
+        for (const key of keys) delete storage[key];
+      },
     },
     now: () => clock.now,
   };
@@ -400,5 +403,35 @@ describe("runDeviceSync", () => {
     // And the newer edit comes back to the side that deleted the older one.
     await runDeviceSync(app.deps);
     expect(app.collages.get("c1")?.updatedAt).toBe(30);
+  });
+
+  it("clears a forgotten email on the other side too", async () => {
+    const folder = sharedFolder();
+    const safari = side(folder("safari"), {
+      playerIdentity: identity("safari"),
+      onboarding_complete: "true",
+      setup_email: "me@example.com",
+    });
+    const app = side(folder("app"));
+    await runDeviceSync(safari.deps);
+    await runDeviceSync(app.deps);
+    await runDeviceSync(safari.deps);
+    expect(app.storage.setup_email).toBe("me@example.com");
+
+    clock.now += 1_000;
+    delete app.storage.setup_email;
+    await runDeviceSync(app.deps);
+    await runDeviceSync(safari.deps);
+    expect(safari.storage).not.toHaveProperty("setup_email");
+
+    await runDeviceSync(app.deps);
+    expect(app.storage).not.toHaveProperty("setup_email");
+
+    // Setting it again later carries over as before.
+    clock.now += 1_000;
+    safari.storage.setup_email = "new@example.com";
+    await runDeviceSync(safari.deps);
+    await runDeviceSync(app.deps);
+    expect(app.storage.setup_email).toBe("new@example.com");
   });
 });

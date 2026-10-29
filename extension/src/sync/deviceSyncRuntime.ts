@@ -102,6 +102,7 @@ export function syncDevices(
         storage: {
           get: (keys) => browser.storage.local.get(keys),
           set: (items) => browser.storage.local.set(items),
+          remove: (keys) => browser.storage.local.remove(keys),
         },
         now: () => Date.now(),
       });

@@ -89,6 +89,7 @@ export interface SyncDeps {
   storage: {
     get(keys: string[] | null): Promise<Record<string, unknown>>;
     set(items: Record<string, unknown>): Promise<void>;
+    remove(keys: string[]): Promise<void>;
   };
   now(): number;
 }
@@ -171,17 +172,19 @@ export function shouldAdopt(
   return other.side === "safari";
 }
 
+function isSharedSettingKey(key: string): boolean {
+  return (
+    SHARED_SETTING_KEYS.includes(key) ||
+    SHARED_SETTING_PREFIXES.some((prefix) => key.startsWith(prefix))
+  );
+}
+
 export function pickSharedSettings(
   all: Record<string, unknown>,
 ): Record<string, unknown> {
   const picked: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(all)) {
-    if (
-      SHARED_SETTING_KEYS.includes(key) ||
-      SHARED_SETTING_PREFIXES.some((prefix) => key.startsWith(prefix))
-    ) {
-      picked[key] = value;
-    }
+    if (isSharedSettingKey(key)) picked[key] = value;
   }
   return picked;
 }
@@ -263,12 +266,24 @@ export function noteChoiceChanges(
   now: number,
 ): SettingsSeen {
   const noted = { ...seen };
-  for (const key of choiceKeys(settings)) {
-    const value = JSON.stringify(settings[key]);
+  // A choice removed here (an email forgotten) is a change too, kept as
+  // absent so the other side removes it as well.
+  for (const key of new Set([...choiceKeys(settings), ...choiceKeys(seen)])) {
+    const value = choiceValue(settings, key);
     if (noted[key]?.value === value) continue;
+    if (!noted[key] && value === ABSENT) continue;
     noted[key] = { value, at: noted[key] ? now : 0 };
   }
   return noted;
+}
+
+/** What a choice that is not set is recorded as; no JSON value is empty text. */
+const ABSENT = "";
+
+function choiceValue(settings: Record<string, unknown>, key: string): string {
+  return key in settings && settings[key] !== undefined
+    ? JSON.stringify(settings[key])
+    : ABSENT;
 }
 
 /** The other side's choices changed more recently than this side's. */
@@ -278,13 +293,18 @@ export function newerChoices(
     settings: Record<string, unknown>;
     settingsAt: Record<string, number>;
   },
-): Record<string, unknown> {
-  const newer: Record<string, unknown> = {};
-  for (const key of choiceKeys(other.settings)) {
+): { set: Record<string, unknown>; remove: string[] } {
+  const newer = { set: {} as Record<string, unknown>, remove: [] as string[] };
+  const keys = new Set([
+    ...choiceKeys(other.settings),
+    ...choiceKeys(other.settingsAt).filter(isSharedSettingKey),
+  ]);
+  for (const key of keys) {
     const at = other.settingsAt[key] ?? 0;
-    const value = JSON.stringify(other.settings[key]);
-    if (at > (seen[key]?.at ?? 0) && value !== seen[key]?.value) {
-      newer[key] = other.settings[key];
+    const value = choiceValue(other.settings, key);
+    if (at > (seen[key]?.at ?? 0) && value !== (seen[key]?.value ?? ABSENT)) {
+      if (value === ABSENT) newer.remove.push(key);
+      else newer.set[key] = other.settings[key];
     }
   }
   return newer;
@@ -368,7 +388,7 @@ export async function runDeviceSync(deps: SyncDeps): Promise<SyncResult> {
 
   let deletions = localDeletions;
   let settings = pickSharedSettings(local);
-  let seen = noteChoiceChanges(
+  const seen = noteChoiceChanges(
     settings,
     readSettingsSeen(local[SYNC_SETTINGS_SEEN_KEY]),
     deps.now(),
@@ -410,23 +430,25 @@ export async function runDeviceSync(deps: SyncDeps): Promise<SyncResult> {
       // Every choice comes over with the identity, keeping when it was made.
       for (const key of choiceKeys(otherState.settings)) {
         seen[key] = {
-          value: JSON.stringify(otherState.settings[key]),
+          value: choiceValue(otherState.settings, key),
           at: otherState.settingsAt[key] ?? 0,
         };
       }
       result.adoptedIdentity = true;
-    } else {
-      const newer = newerChoices(seen, otherState);
-      if (Object.keys(newer).length > 0) {
-        await storage.set(newer);
-        settings = { ...settings, ...newer };
-        seen = { ...seen };
-        for (const [key, value] of Object.entries(newer)) {
-          seen[key] = {
-            value: JSON.stringify(value),
-            at: otherState.settingsAt[key] ?? 0,
-          };
-        }
+    }
+    // Choices changed more recently on the other side, including ones it
+    // removed, win here too.
+    const newer = newerChoices(seen, otherState);
+    if (Object.keys(newer.set).length > 0) await storage.set(newer.set);
+    if (newer.remove.length > 0) await storage.remove(newer.remove);
+    if (Object.keys(newer.set).length > 0 || newer.remove.length > 0) {
+      settings = { ...settings, ...newer.set };
+      for (const key of newer.remove) delete settings[key];
+      for (const key of [...Object.keys(newer.set), ...newer.remove]) {
+        seen[key] = {
+          value: choiceValue(settings, key),
+          at: otherState.settingsAt[key] ?? 0,
+        };
       }
     }
 
