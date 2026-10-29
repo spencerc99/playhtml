@@ -125,6 +125,18 @@ node -e '
   fs.writeFileSync(path, JSON.stringify(manifest, null, 2));
 ' "$EXTENSION_MANIFEST"
 
+# Safari's copy of the extension and the app's own copy keep one identity,
+# history and set of collages through a folder they share (an App Group). The
+# extension reaches that folder by native messaging, which only the iOS build
+# asks for; the Chrome, Firefox and Mac Safari manifests are unchanged.
+node --input-type=module -e '
+  import fs from "node:fs";
+  import { withNativeMessaging } from "./scripts/iosProjectSharing.mjs";
+  const path = process.argv[1];
+  const manifest = JSON.parse(fs.readFileSync(path, "utf8"));
+  fs.writeFileSync(path, JSON.stringify(withNativeMessaging(manifest), null, 2));
+' "$EXTENSION_MANIFEST"
+
 # Replace the packager's placeholder home screen with ours. The app bundles only
 # the files the packager listed, so the fonts are inlined into Style.css from
 # the extension's own build rather than shipped as separate files.
@@ -132,6 +144,26 @@ APP_SOURCES="${IOS_PROJECT_ROOT}/${APP_NAME}/${APP_NAME}"
 APP_RESOURCES="${APP_SOURCES}/Resources"
 cp ios/app/Main.html "${APP_RESOURCES}/Base.lproj/Main.html"
 cp ios/app/ViewController.swift "${APP_SOURCES}/ViewController.swift"
+
+# Both sides answer the extension's shared folder messages with the same code,
+# appended to each target's own Swift file so the project needs no new file
+# references. The app and the extension each get the App Group entitlement.
+EXTENSION_SOURCES="${IOS_PROJECT_ROOT}/${APP_NAME}/${APP_NAME} Extension"
+EXTENSION_HANDLER="${EXTENSION_SOURCES}/SafariWebExtensionHandler.swift"
+if [ ! -f "$EXTENSION_HANDLER" ]; then
+  echo "The generated project has no SafariWebExtensionHandler.swift."
+  exit 1
+fi
+cp ios/extension/SafariWebExtensionHandler.swift "$EXTENSION_HANDLER"
+for swift_file in "${APP_SOURCES}/ViewController.swift" "$EXTENSION_HANDLER"; do
+  printf '\n' >> "$swift_file"
+  grep -v -e '^import ' -e '^// ABOUTME:' ios/shared/SharedContainer.swift >> "$swift_file"
+done
+cp ios/entitlements/app.entitlements "${APP_SOURCES}/${APP_NAME}.entitlements"
+cp ios/entitlements/extension.entitlements "${EXTENSION_SOURCES}/${APP_NAME} Extension.entitlements"
+node scripts/iosProjectSharing.mjs "$PROJECT_FILE" "$SAFARI_BUNDLE_ID" \
+  "${APP_NAME}/${APP_NAME}.entitlements" \
+  "${APP_NAME} Extension/${APP_NAME} Extension.entitlements"
 FONT_FACES=""
 add_font_face() {
   local family="$1" style="$2" weight="$3" file_prefix="$4"
