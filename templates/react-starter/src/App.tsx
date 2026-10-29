@@ -16,6 +16,24 @@ import {
   useUsers,
 } from "@playhtml/react";
 
+// Lets TypeScript accept playhtml's ready-made <play-*> tags in JSX.
+type PlayTagProps = React.HTMLAttributes<HTMLElement> & {
+  src?: string;
+  "src-on"?: string;
+  label?: string;
+  limit?: number;
+};
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      "play-lamp": PlayTagProps;
+      "play-reaction": PlayTagProps;
+      "play-online-count": PlayTagProps;
+      "play-guestbook": PlayTagProps;
+    }
+  }
+}
+
 const ShootingStarEventType = "shootingStar";
 
 // Custom hook for shooting star events
@@ -293,6 +311,14 @@ function App() {
               playhtml docs
             </a>
           </p>
+
+          <div style={{ marginTop: "2rem" }}>
+            <p>Ready-made tags work inside PlayProvider with no extra setup.</p>
+            <play-lamp id="starterLamp" />
+            <play-reaction id="starterReaction">{"\u2605"}</play-reaction>
+            <play-online-count />
+            <play-guestbook id="starterGuestbook" />
+          </div>
 
           <div style={{ marginTop: "2rem" }}>
             <p>Here's a playhtml event. It triggers a shooting star for everyone</p>
