@@ -75,16 +75,19 @@ Each has a live demo and full docs in the [capabilities reference](https://playh
 
 ## Building with AI
 
-playhtml works well with coding assistants.
+Point any coding agent (Claude, Codex, Cursor, Copilot, ChatGPT, ...) at one guide:
 
-**Claude Code users** — install the plugin for a skill that auto-activates when you ask Claude to build playhtml elements:
-
-```bash
-claude plugin marketplace add spencerc99/playhtml
-claude plugin install playhtml@playhtml
+```text
+Read https://playhtml.fun/docs/llms.txt first, then help me build a playhtml element that...
 ```
 
-**Any other LLM (ChatGPT, Copilot, Cursor, ...)** — copy the prompt template from the [building with AI](https://playhtml.fun/docs/integrations/building-with-ai/) guide into your conversation.
+Or install it as a skill so your agent picks it up automatically:
+
+```bash
+npx skills add spencerc99/playhtml --skill building-playhtml-elements
+```
+
+More options in the [building with AI](https://playhtml.fun/docs/integrations/building-with-ai/) guide.
 
 ## Examples
 

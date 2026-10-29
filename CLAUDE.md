@@ -62,7 +62,7 @@ The extension and PartyKit use one Supabase project with different tables. All n
 
 ### Extension Performance
 
-- The `Extension Performance Report` workflow runs extension performance traces in CI.
+- The `Extension Performance Report` workflow runs extension performance traces in CI. The `Library Performance Report` workflow runs the deterministic playhtml client benchmark (`packages/playhtml/bench/`, bundle size plus message/byte/render counts). Both compare the PR to its base, keep one bot comment on the PR up to date, and fail the check when a metric regresses past its threshold (thresholds live in `scripts/compare-*-performance.mjs`). If a regression is intentional, say so in the PR; the check stays red until it's resolved or Spencer overrides it.
 - Do not run `perf:extension:trace` during local agent work. Repeated traces consume local resources and duplicate CI coverage. Check the CI workflow result instead.
 - Run a local trace only when Spencer explicitly requests one. Treat large increases in `TaskDuration`, `ScriptDuration`, `LayoutDuration`, `RecalcStyleDuration`, or `JSHeapUsedSize` as regression signals to investigate.
 

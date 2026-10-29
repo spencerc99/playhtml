@@ -31,6 +31,7 @@ import {
 } from "./localScrapImages";
 import { deletePublishedCollage } from "./publishCollage";
 import { WORKER_URL } from "@movement/config";
+import { recordCollageDeletion } from "../../sync/deviceSync";
 
 interface CollageHistoryProps {
   /** Bumped by the studio after a save so the list reloads. */
@@ -201,6 +202,8 @@ export function CollageHistory({
     }
     await deleteCollage(id);
     inBackground(releaseCollageImages(id));
+    // Keeps the other copy of the extension on an iPhone from bringing it back.
+    inBackground(recordCollageDeletion(id));
     setConfirmingId(null);
     setSummaries((current) =>
       current ? current.filter((entry) => entry.id !== id) : current,

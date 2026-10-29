@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import ReactDOM from "react-dom/client";
 import { PlayProvider, withSharedState, usePlayContext } from "@playhtml/react";
+import { mountExperimentBadge } from "../../components/experimentBadge";
 
 interface DeviceInfo {
   userAgent: string;
@@ -687,9 +688,6 @@ const Main = withSharedState(
         {/* Title - always visible */}
         <div className="title">
           <h1>screen symphony</h1>
-          <span style={{ fontSize: "0.5rem" }}>
-            <a href="/">playhtml</a> <a href="/experiments">experiment</a> 06
-          </span>
         </div>
 
         {/* Full-screen visualization container */}
@@ -762,6 +760,8 @@ const Main = withSharedState(
     );
   }
 );
+
+mountExperimentBadge({ experiment: "EX-06", position: "bottom-left" });
 
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement

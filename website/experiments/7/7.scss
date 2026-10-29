@@ -394,7 +394,8 @@ body {
   .info-panel {
     bottom: 1rem;
     left: 1rem;
-    right: 1rem;
+    // Leave the bottom-right corner to the experiment badge (48px + 12px inset).
+    right: calc(1rem + 60px);
     padding: 0.8rem 1rem;
 
     .stat {
