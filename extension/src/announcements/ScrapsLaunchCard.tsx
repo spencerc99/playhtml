@@ -1,4 +1,4 @@
-// ABOUTME: New-tab card showing a small pile of the reader's newest internet scraps.
+// ABOUTME: New-tab card showing a small pile of the scraps from the period the record shows.
 // ABOUTME: Announces the feature until dismissed, then stays as a compact window onto the pile.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -11,11 +11,12 @@ import {
   toScrapItem,
   type ScrapRecord,
 } from "../entrypoints/scraps/scrapItems";
+import type { EventTimeRange } from "../storage/LocalEventStore";
 import "./ScrapsLaunchCard.scss";
 
 export const SCRAPS_LAUNCH_CARD_ID = "scraps-2026-08-newtab";
 
-/** How many of the newest scraps the pile draws from. */
+/** How many of the period's newest scraps the pile draws from. */
 export const PILE_CAPACITY = 50;
 
 /** How many scraps sit ashore in the card at once while the rest drift in. */
@@ -129,7 +130,9 @@ const EXAMPLE_ITEMS: ScrapItem[] = [
   ),
 ];
 
-export function ScrapsLaunchCard() {
+/** The card for the scraps collected within `range`. */
+export function ScrapsLaunchCard({ range }: { range: EventTimeRange }) {
+  const { startTs, endTs } = range;
   const [available, setAvailable] = useState(false);
   const [textDismissed, setTextDismissed] = useState(false);
   const [scraps, setScraps] = useState<ScrapRecord[] | null>(null);
@@ -152,7 +155,7 @@ export function ScrapsLaunchCard() {
         const [response, countResponse] = (await Promise.all([
           browser.runtime.sendMessage({
             type: "GET_SCRAPS",
-            options: { limit: PILE_CAPACITY },
+            options: { limit: PILE_CAPACITY, range: { startTs, endTs } },
           }),
           browser.runtime.sendMessage({ type: "GET_SCRAP_COUNT" }),
         ])) as [ScrapsResponse, ScrapCountResponse];
@@ -177,7 +180,7 @@ export function ScrapsLaunchCard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [startTs, endTs]);
 
   const onDismiss = useCallback(() => {
     setTextDismissed(true);

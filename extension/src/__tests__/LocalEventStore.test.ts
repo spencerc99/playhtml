@@ -1439,6 +1439,45 @@ describe("LocalEventStore pending uploads", () => {
     },
   );
 
+  it("pages only the events inside a time range", async () => {
+    const store = createStore();
+    await store.addEvents([
+      { ...scrapEvent("after", "https://assets.example/after.png"), ts: 5_000 },
+      { ...scrapEvent("end-a", "https://assets.example/end-a.png"), ts: 4_000 },
+      { ...scrapEvent("end-b", "https://assets.example/end-b.png"), ts: 4_000 },
+      { ...buttonScrapEvent("middle"), ts: 3_000 },
+      { ...scrapEvent("start", "https://assets.example/start.png"), ts: 2_000 },
+      {
+        ...scrapEvent("before", "https://assets.example/before.png"),
+        ts: 1_000,
+      },
+      { ...event("cursor", "cursor"), ts: 3_000 },
+    ]);
+    const range = { startTs: 2_000, endTs: 4_000 };
+
+    const first = await store.queryEventPage("element", 3, undefined, range);
+    const second = await store.queryEventPage(
+      "element",
+      3,
+      first.nextCursor!,
+      range,
+    );
+
+    expect(first.events.map(({ id }) => id)).toEqual([
+      "end-b",
+      "end-a",
+      "middle",
+    ]);
+    expect(second.events.map(({ id }) => id)).toEqual(["start"]);
+    expect(second.nextCursor).toBeNull();
+    await expect(
+      store.queryEventPage("element", 3, undefined, {
+        startTs: 4_000,
+        endTs: 2_000,
+      }),
+    ).rejects.toThrow("Invalid event page time range");
+  });
+
   it("deletes scrap events by id and leaves other events alone", async () => {
     const store = createStore();
     await store.addEvents([

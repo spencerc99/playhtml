@@ -13,12 +13,14 @@ function cleanup(root: Root, container: HTMLDivElement) {
   container.remove();
 }
 
+const WEEK = { startTs: 1_000, endTs: 9_000 };
+
 async function renderCard() {
   const container = document.createElement("div");
   const root = createRoot(container);
   document.body.appendChild(container);
   await act(async () => {
-    root.render(<ScrapsLaunchCard />);
+    root.render(<ScrapsLaunchCard range={WEEK} />);
   });
   return { container, root };
 }
@@ -97,7 +99,7 @@ describe("ScrapsLaunchCard", () => {
     }
   });
 
-  it("asks for the newest scraps and shows the reader's own pile", async () => {
+  it("asks for the period's newest scraps and shows the reader's own pile", async () => {
     const scraps = Array.from({ length: 12 }, (_unused, index) =>
       scrapImage(`scrap-${index}`),
     );
@@ -107,7 +109,7 @@ describe("ScrapsLaunchCard", () => {
     try {
       expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
         type: "GET_SCRAPS",
-        options: { limit: PILE_CAPACITY },
+        options: { limit: PILE_CAPACITY, range: WEEK },
       });
       expect(container.textContent).toContain("(12 scraps so far)");
       expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();

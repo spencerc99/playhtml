@@ -743,7 +743,7 @@ export function WalkingRecordPage({
             record={record}
           />
           <SettledPlacesSection record={record} />
-          <ScrapsLaunchCard />
+          <ScrapsLaunchCard range={record.range} />
           <BrowsingPortraitsSection
             record={record}
             movementLoading={movementLoading}

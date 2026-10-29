@@ -81,6 +81,12 @@ export interface EventPageCursor {
   id: string;
 }
 
+/** An inclusive span of event timestamps. */
+export interface EventTimeRange {
+  startTs: number;
+  endTs: number;
+}
+
 export interface EventPage {
   events: CollectionEvent[];
   nextCursor: EventPageCursor | null;
@@ -1389,9 +1395,18 @@ export class LocalEventStore {
     type: CollectionEventType,
     limit: number,
     cursor?: EventPageCursor,
+    range?: EventTimeRange,
   ): Promise<EventPage> {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
       throw new Error("Event page limit must be between 1 and 1000");
+    }
+    if (
+      range &&
+      (!Number.isFinite(range.startTs) ||
+        !Number.isFinite(range.endTs) ||
+        range.startTs > range.endTs)
+    ) {
+      throw new Error("Invalid event page time range");
     }
     if (
       cursor &&
@@ -1408,9 +1423,15 @@ export class LocalEventStore {
       }
       const transaction = this.db.transaction(STORE_NAME, "readonly");
       const index = transaction.objectStore(STORE_NAME).index("typeTsId");
-      const upper = cursor ? [type, cursor.ts, cursor.id] : [type, []];
-      const range = IDBKeyRange.bound([type], upper, false, !!cursor);
-      const request = index.openKeyCursor(range, "prev");
+      const lower = range ? [type, range.startTs] : [type];
+      // `[]` sorts after every id, so the upper key includes all events at endTs.
+      const upper = cursor
+        ? [type, cursor.ts, cursor.id]
+        : range
+          ? [type, range.endTs, []]
+          : [type, []];
+      const keyRange = IDBKeyRange.bound(lower, upper, false, !!cursor);
+      const request = index.openKeyCursor(keyRange, "prev");
       let advanced = false;
 
       request.onsuccess = () => {
@@ -1424,7 +1445,7 @@ export class LocalEventStore {
         const hasMore = position !== null;
         const pageRange = position
           ? IDBKeyRange.bound(position.key, upper, true, !!cursor)
-          : range;
+          : keyRange;
         const pageRequest = index.getAll(pageRange, limit);
         pageRequest.onsuccess = () => {
           const events = (pageRequest.result as StoredCollectionEvent[])
