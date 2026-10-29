@@ -12,7 +12,8 @@ import {
 /** Scraps whose size the extension did not record land in this shape. */
 const FALLBACK_SIZE = { width: 400, height: 300 };
 const RETRY_MS = 250;
-const GIVE_UP_MS = 4000;
+/** The first read of a large library can take a few seconds. */
+const GIVE_UP_MS = 12000;
 
 function isWebUrl(value: unknown): value is string {
   if (typeof value !== "string") return false;

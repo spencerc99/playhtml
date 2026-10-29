@@ -48,7 +48,7 @@ interface CollageHistoryProps {
   revision: number;
   onEdit: (record: CollageRecord) => void;
   onStartNew: () => void;
-  /** Whether this person can start collages made together with others. */
+  /** Whether collages made together are open to this person: starting them and listing them. */
   canStartShared?: boolean;
 }
 
@@ -283,7 +283,7 @@ export function CollageHistory({
             {entries && (
               <p className="collage-history__summary">
                 {collagesSummaryLine(readable)}
-                {shared.length > 0 && ` \u00b7 ${shared.length} shared`}
+                {canStartShared && shared.length > 0 && ` \u00b7 ${shared.length} shared`}
               </p>
             )}
           </div>
@@ -341,7 +341,7 @@ export function CollageHistory({
       )}
 
       <div className="collage-history__grid">
-        {mergeCollageCards(entries ?? [], entries ? shared : []).map((card) => {
+        {mergeCollageCards(entries ?? [], entries && canStartShared ? shared : []).map((card) => {
           if (card.kind === "shared") {
             return (
               <SharedCollageCard

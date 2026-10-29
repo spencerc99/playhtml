@@ -67,12 +67,14 @@ export async function savePlayerColor(color: string): Promise<PlayerIdentity | n
 }
 
 /**
- * Names this person everywhere their identity travels. Stays on this device;
- * pages that run playhtml receive it with the rest of the public identity.
+ * Gives this person a name everywhere their identity travels, when they have
+ * none yet. A page can only fill in a missing name, never replace one, so no
+ * page can rename someone. Stays on this device; pages that run playhtml
+ * receive it with the rest of the public identity.
  */
-export async function savePlayerName(name: string): Promise<PlayerIdentity | null> {
+export async function savePlayerNameIfUnset(name: string): Promise<PlayerIdentity | null> {
   const stored = await getStoredPlayerIdentity();
-  if (!stored) return null;
+  if (!stored || stored.public.name?.trim()) return null;
   const updated: PlayerIdentity = { ...stored.public, name };
   await saveStoredPlayerIdentity({ ...stored, public: updated });
   return updated;

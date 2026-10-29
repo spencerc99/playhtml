@@ -26,7 +26,7 @@ import {
   getPublicPlayerIdentity,
   recordDiscoveredSite,
 } from '../storage/playerIdentity'
-import { savePlayerName, syncStoredPlayerColor } from '../storage/playerColor'
+import { savePlayerNameIfUnset, syncStoredPlayerColor } from '../storage/playerColor'
 import { VERBOSE } from '../config'
 import { gzipEventExport, gunzipToString } from '../utils/dataTransfer'
 import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
@@ -63,6 +63,7 @@ import {
   FEATURE_OVERRIDES_STORAGE_KEY,
   FEATURE_ACCESS_STORAGE_KEY,
   getAllFeatureStates,
+  isFeatureEnabled,
   refreshFeatureAccess,
 } from '../features/featureAccess'
 import { FEATURE_IDS } from '../flags'
@@ -193,24 +194,42 @@ async function readSessionScraps(
   return selectSessionScraps(candidates, { now, since, until })
 }
 
+/** How long one library answer is reused, so refocusing a tab doesn't read again. */
+const LIBRARY_CACHE_MS = 60_000
+/** The most event pages one library read goes through, however few are images. */
+const LIBRARY_MAX_PAGES = 20
+let libraryRead: { at: number; answer: Promise<SessionScrapsAnswer> } | null = null
+
 /**
  * The newest image scraps from the whole history, for a shared collage
- * page's drawer. Reads only as far back as it takes to fill the drawer.
+ * page's drawer. Reads only as far back as it takes to fill the drawer, never
+ * more than `LIBRARY_MAX_PAGES` pages, and shares one read between requests
+ * that arrive within `LIBRARY_CACHE_MS`.
  */
-async function readLibraryScraps(): Promise<SessionScrapsAnswer> {
-  const candidates: SessionScrapCandidate[] = []
-  let cursor: { ts: number; id: string } | undefined
-  // Duplicates are dropped after reading, so read a little past the limit.
-  while (candidates.length < LIBRARY_SCRAP_LIMIT * 2) {
-    const page = await store.queryEventPage('element', 500, cursor)
-    for (const event of page.events) {
-      const scrap = toScrapRecord(event)
-      if (scrap?.kind === 'image') candidates.push(scrap)
-    }
-    if (!page.nextCursor) break
-    cursor = page.nextCursor
+function readLibraryScraps(): Promise<SessionScrapsAnswer> {
+  if (libraryRead && Date.now() - libraryRead.at < LIBRARY_CACHE_MS) {
+    return libraryRead.answer
   }
-  return selectLibraryScraps(candidates)
+  const answer = (async () => {
+    const candidates: SessionScrapCandidate[] = []
+    let cursor: { ts: number; id: string } | undefined
+    // Duplicates are dropped after reading, so read a little past the limit.
+    for (let pages = 0; pages < LIBRARY_MAX_PAGES; pages += 1) {
+      const page = await store.queryEventPage('element', 500, cursor)
+      for (const event of page.events) {
+        const scrap = toScrapRecord(event)
+        if (scrap?.kind === 'image') candidates.push(scrap)
+      }
+      if (!page.nextCursor || candidates.length >= LIBRARY_SCRAP_LIMIT * 2) break
+      cursor = page.nextCursor
+    }
+    return selectLibraryScraps(candidates)
+  })()
+  libraryRead = { at: Date.now(), answer }
+  answer.catch(() => {
+    libraryRead = null
+  })
+  return answer
 }
 
 function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
@@ -928,9 +947,12 @@ export default defineBackground(() => {
       }
       const answer =
         message.scope === 'library'
-          ? // The whole library only goes to a shared collage page.
+          ? // The whole library only goes to a shared collage page, and only
+            // while collages made together are open to this person.
             isSharedCollagePageUrl(sender.tab.url, ALLOW_LOCAL_SESSION_SCRAPS_PAGES)
-            ? readLibraryScraps()
+            ? isFeatureEnabled('COLLAGE_SHARE_LINKS').then((enabled) =>
+                enabled ? readLibraryScraps() : null,
+              )
             : Promise.resolve(null)
           : readSessionScraps(
               typeof message.since === 'number' ? message.since : undefined,
@@ -946,22 +968,25 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'SET_PLAYER_NAME' || message.type === 'REMEMBER_SHARED_COLLAGE') {
-      // Only a shared collage page may name this person or add to their list.
-      if (
-        !sender.tab?.url ||
-        !isSharedCollagePageUrl(sender.tab.url, ALLOW_LOCAL_SESSION_SCRAPS_PAGES)
-      ) {
+      // Only a shared collage page may name this person or add to their list,
+      // and only while collages made together are open to them.
+      const tabUrl = sender.tab?.url
+      if (!tabUrl || !isSharedCollagePageUrl(tabUrl, ALLOW_LOCAL_SESSION_SCRAPS_PAGES)) {
         reply(null)
         return
       }
-      const work =
-        message.type === 'SET_PLAYER_NAME'
-          ? (() => {
-              const name = cleanName(message.name)
-              return name ? savePlayerName(name).then(() => true) : Promise.resolve(false)
-            })()
-          : rememberSharedCollage(message.collage)
-      work
+      isFeatureEnabled('COLLAGE_SHARE_LINKS')
+        .then((enabled) => {
+          if (!enabled) return null
+          return message.type === 'SET_PLAYER_NAME'
+            ? (() => {
+                const name = cleanName(message.name)
+                return name
+                  ? savePlayerNameIfUnset(name).then((saved) => saved !== null)
+                  : false
+              })()
+            : rememberSharedCollage(message.collage)
+        })
         .then(reply)
         .catch((e) => {
           console.error(`[Background] ${message.type} error:`, e)

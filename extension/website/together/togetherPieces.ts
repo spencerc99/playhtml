@@ -3,8 +3,11 @@
 
 import type { CollagePiece } from "@extension/entrypoints/scraps/collageRecord";
 import type { PiecesChange } from "@extension/entrypoints/scraps/sharedCollage";
+import { parseCutout } from "@extension/entrypoints/scraps/backgroundCutout";
 import {
   MAX_COVER_PIECES,
+  cleanName,
+  isColor,
   MAX_PEOPLE,
   type SharedCollageEntry,
   type SharedCollagePerson,
@@ -46,6 +49,148 @@ export interface PieceWrite {
 
 function same(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * The most pieces drawn from a room, so a room flooded with pieces stays
+ * usable. Well past what one collage holds.
+ */
+export const MAX_ROOM_PIECES = 400;
+/** The most pieces one person's drag in progress can move. */
+export const MAX_DRAFT_PIECES = 60;
+/** Who placed a piece, when the room's record of it is unusable. */
+const UNKNOWN_COLOR = "#888888";
+
+function isWebUrl(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 4000) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function finite(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function shortText(value: unknown, max = 200): string {
+  return typeof value === "string" ? value.slice(0, max) : "";
+}
+
+/** A crop as four fractions of the source, or the whole picture. */
+function safeCrop(value: unknown): CollagePiece["crop"] {
+  const crop = (value ?? {}) as Record<string, unknown>;
+  const { x, y, width, height } = crop;
+  if (
+    finite(x) &&
+    finite(y) &&
+    finite(width) &&
+    finite(height) &&
+    width > 0 &&
+    height > 0
+  ) {
+    return { x, y, width, height };
+  }
+  return { x: 0, y: 0, width: 1, height: 1 };
+}
+
+/** Who placed a piece, cleaned: a name and color fit to show, never markup or CSS. */
+export function safePlacer(value: unknown): Placer | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const by = value as Record<string, unknown>;
+  if (typeof by.pid !== "string" || !by.pid || by.pid.length > 200)
+    return undefined;
+  const name = cleanName(by.name);
+  return {
+    pid: by.pid,
+    ...(name ? { name } : {}),
+    color: isColor(by.color) ? by.color : UNKNOWN_COLOR,
+  };
+}
+
+/**
+ * A piece from the room rebuilt from known fields, or null when it is not a
+ * placed picture. Anyone with the link can write to the room, so nothing
+ * from it reaches the studio unchecked: only image scraps with a web address
+ * and finite geometry, never markup.
+ */
+export function safePiece(id: string, value: unknown): StoredPiece | null {
+  if (!value || typeof value !== "object" || id.length > 200) return null;
+  const piece = value as Record<string, unknown>;
+  const scrap = (piece.scrap ?? {}) as Record<string, unknown>;
+  if (scrap.kind !== "image" || !isWebUrl(scrap.src)) return null;
+  const { x, y, width, height, rotation, z } = piece;
+  if (
+    !finite(x) ||
+    !finite(y) ||
+    !finite(width) ||
+    !finite(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    return null;
+  }
+  let cutout: CollagePiece["cutout"];
+  try {
+    cutout = parseCutout(piece.cutout);
+  } catch {
+    cutout = undefined;
+  }
+  const by = safePlacer(piece.by);
+  return {
+    id,
+    scrapId: shortText(piece.scrapId) || id,
+    scrap: {
+      kind: "image",
+      id: shortText(scrap.id) || id,
+      key: shortText(scrap.key) || id,
+      src: scrap.src,
+      ...(typeof scrap.alt === "string" && scrap.alt
+        ? { alt: scrap.alt.slice(0, 500) }
+        : {}),
+      naturalWidth:
+        finite(scrap.naturalWidth) && scrap.naturalWidth > 0
+          ? scrap.naturalWidth
+          : 400,
+      naturalHeight:
+        finite(scrap.naturalHeight) && scrap.naturalHeight > 0
+          ? scrap.naturalHeight
+          : 300,
+      pageTitle: shortText(scrap.pageTitle, 300),
+      domain: shortText(scrap.domain),
+      pageUrl: isWebUrl(scrap.pageUrl) ? scrap.pageUrl : "",
+      ts: finite(scrap.ts) ? scrap.ts : 0,
+    },
+    x,
+    y,
+    width,
+    height,
+    rotation: finite(rotation) ? rotation : 0,
+    z: finite(z) ? z : 0,
+    crop: safeCrop(piece.crop),
+    flipX: piece.flipX === true,
+    flipY: piece.flipY === true,
+    ...(cutout ? { cutout } : {}),
+    ...(piece.locked === true ? { locked: true as const } : {}),
+    ...(by ? { by } : {}),
+  };
+}
+
+/** The room's pieces, each rebuilt by `safePiece`, at most `MAX_ROOM_PIECES` of them. */
+export function safePieces(value: unknown): Record<string, StoredPiece> {
+  if (!value || typeof value !== "object") return {};
+  const pieces: Record<string, StoredPiece> = {};
+  let count = 0;
+  for (const [id, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (count >= MAX_ROOM_PIECES) break;
+    const piece = safePiece(id, raw);
+    if (!piece) continue;
+    pieces[id] = piece;
+    count += 1;
+  }
+  return pieces;
 }
 
 /** A stored piece without the room's own bookkeeping, as the studio sees it. */
@@ -119,7 +264,11 @@ export function applyWrites(
   for (const id of removedIds) delete pieces[id];
 }
 
-/** The stored pieces with everyone else's drags in progress laid over them. */
+/**
+ * The stored pieces with everyone else's drags in progress laid over them. A
+ * drag only moves, turns, resizes, crops or flips a piece already in the
+ * room: what the piece shows and who placed it always come from the room.
+ */
 export function withDrafts(
   pieces: Record<string, StoredPiece>,
   peers: Array<{ isMe: boolean; live?: Partial<TogetherLive> }>,
@@ -128,13 +277,36 @@ export function withDrafts(
   for (const peer of peers) {
     const draft = peer.live?.draft;
     if (peer.isMe || !Array.isArray(draft)) continue;
-    for (const piece of draft) {
-      if (!piece || typeof piece.id !== "string") continue;
-      // A draft only moves pieces still in the room, never brings one back.
+    for (const raw of draft.slice(0, MAX_DRAFT_PIECES)) {
+      if (!raw || typeof raw !== "object") continue;
+      const piece = raw as unknown as Record<string, unknown>;
+      if (typeof piece.id !== "string") continue;
       const stored = pieces[piece.id];
       if (!stored) continue;
+      const { x, y, width, height, rotation, z } = piece;
+      if (
+        !finite(x) ||
+        !finite(y) ||
+        !finite(width) ||
+        !finite(height) ||
+        width <= 0 ||
+        height <= 0
+      ) {
+        continue;
+      }
       if (merged === pieces) merged = { ...pieces };
-      merged[piece.id] = { ...piece, by: stored.by };
+      merged[piece.id] = {
+        ...stored,
+        x,
+        y,
+        width,
+        height,
+        rotation: finite(rotation) ? rotation : stored.rotation,
+        z: finite(z) ? z : stored.z,
+        crop: piece.crop === undefined ? stored.crop : safeCrop(piece.crop),
+        flipX: typeof piece.flipX === "boolean" ? piece.flipX : stored.flipX,
+        flipY: typeof piece.flipY === "boolean" ? piece.flipY : stored.flipY,
+      };
     }
   }
   return merged;

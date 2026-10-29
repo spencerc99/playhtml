@@ -7,6 +7,8 @@ import {
   peopleOf,
   pieceWrites,
   removalRefusal,
+  safePiece,
+  safePieces,
   studioPieces,
   withDrafts,
   type StoredPiece,
@@ -95,7 +97,74 @@ describe("pieceWrites", () => {
   });
 });
 
+describe("safePiece", () => {
+  it("keeps a placed picture, rebuilt from known fields", () => {
+    const stored = safePiece("a", { ...piece("a"), by: MIRA, extra: "<b>" });
+    expect(stored).toEqual({ ...piece("a"), by: MIRA });
+  });
+
+  it("refuses anything that is not a web picture, so room data can never carry markup", () => {
+    const markup = {
+      ...piece("a"),
+      scrap: {
+        kind: "svg-icon",
+        markup: "<img src=x onerror=alert(1)>",
+        width: 10,
+        height: 10,
+      },
+    };
+    expect(safePiece("a", markup)).toBeNull();
+    expect(
+      safePiece("a", {
+        ...piece("a"),
+        scrap: { ...piece("a").scrap, src: "javascript:alert(1)" },
+      }),
+    ).toBeNull();
+    expect(safePiece("a", { ...piece("a"), x: Infinity })).toBeNull();
+  });
+
+  it("cleans who placed a piece: no CSS beyond plain colors, no control characters", () => {
+    const stored = safePiece("a", {
+      ...piece("a"),
+      by: {
+        pid: "x",
+        name: "mira\u202E",
+        color: "url(https://tracker.example/x)",
+      },
+    });
+    expect(stored?.by).toEqual({ pid: "x", name: "mira", color: "#888888" });
+  });
+
+  it("drops unusable pieces and caps how many are drawn", () => {
+    const many: Record<string, unknown> = { bad: { nope: true } };
+    for (let i = 0; i < 450; i += 1) many[`p${i}`] = piece(`p${i}`);
+    const kept = safePieces(many);
+    expect(kept.bad).toBeUndefined();
+    expect(Object.keys(kept)).toHaveLength(400);
+  });
+});
+
 describe("withDrafts", () => {
+  it("takes only placement from a draft, never the picture or who placed it", () => {
+    const stored = { a: { ...piece("a"), by: MIRA } };
+    const shown = withDrafts(stored, [
+      {
+        isMe: false,
+        live: {
+          draft: [
+            {
+              ...piece("a", { x: 640 }),
+              scrap: { kind: "svg-icon", markup: "<img onerror=x>" },
+            } as unknown as CollagePiece,
+          ],
+        },
+      },
+    ]);
+    expect(shown.a.x).toBe(640);
+    expect(shown.a.scrap).toEqual(stored.a.scrap);
+    expect(shown.a.by).toEqual(MIRA);
+  });
+
   it("lays another person's drag over the stored piece but never brings back a removed one", () => {
     const stored = { a: { ...piece("a"), by: MIRA } };
     const shown = withDrafts(stored, [
@@ -129,8 +198,8 @@ describe("collageEntry", () => {
       b: { ...piece("b", { z: 1, x: 750, y: 500 }), by: MIRA },
     };
     const entry = collageEntry({
-      id: "abcd1234",
-      url: "https://wewere.online/together/?c=abcd1234",
+      id: "abcdefghjk23",
+      url: "https://wewere.online/together/?c=abcdefghjk23",
       data: { title: "buttons", pieces },
       myPid: "me",
       startedByMe: true,

@@ -67,15 +67,25 @@ export interface RememberMessage {
   collage: SharedCollageEntry;
 }
 
-/** A collage id: short, url-safe, and nothing else. */
+/**
+ * A collage id exactly as the shared collage page makes them: 12 characters
+ * from an alphabet without look-alikes. Anything else, such as a hand-typed
+ * "?c=test", is refused, so there are no guessable public rooms.
+ */
 export function isCollageId(value: unknown): value is string {
-  return typeof value === "string" && /^[a-z0-9-]{4,64}$/.test(value);
+  return typeof value === "string" && /^[a-km-np-z2-9]{12}$/.test(value);
 }
 
 /** A name with surrounding space trimmed, or null when there is none to keep. */
 export function cleanName(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  const name = value.replace(/\s+/g, " ").trim().slice(0, MAX_NAME_LENGTH);
+  // Control, zero-width and direction-override characters never belong in a
+  // name that shows beside a cursor on every playhtml page.
+  const name = value
+    .replace(/[\p{Cc}\p{Cf}]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_NAME_LENGTH);
   return name || null;
 }
 
@@ -93,7 +103,8 @@ function finite(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function isColor(value: unknown): value is string {
+/** A plain color: hex, hsl() or rgb(), never another CSS value such as url(). */
+export function isColor(value: unknown): value is string {
   return (
     typeof value === "string" &&
     /^(#[0-9a-f]{3,8}|hsla?\([^)]{1,60}\)|rgba?\([^)]{1,60}\))$/i.test(value)

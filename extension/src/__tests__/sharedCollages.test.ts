@@ -20,8 +20,8 @@ import {
 const isPage = (url: string) => isSharedCollagePageUrl(url);
 
 const ENTRY = {
-  id: "abcd1234",
-  url: "https://wewere.online/together/?c=abcd1234",
+  id: "abcdefghjk23",
+  url: "https://wewere.online/together/?c=abcdefghjk23",
   title: "buttons",
   startedByMe: false,
   joinedAt: 5,
@@ -122,6 +122,7 @@ describe("page messages", () => {
   it("recognizes names and remembered collages", () => {
     expect(cleanName("  mira   c  ")).toBe("mira c");
     expect(cleanName("   ")).toBeNull();
+    expect(cleanName("mi\u202Era\u200B")).toBe("mi ra");
     expect(
       isSetNameMessage({
         source: SHARED_COLLAGE_SOURCE,
@@ -187,7 +188,7 @@ describe("collage list cards", () => {
     const cards = mergeCollageCards(own, [{ ...ENTRY, updatedAt: 9 }]);
     expect(cards.map((card) => `${card.kind}:${card.entry.id}`)).toEqual([
       "own:new",
-      "shared:abcd1234",
+      "shared:abcdefghjk23",
       "own:old",
     ]);
   });

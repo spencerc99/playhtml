@@ -28,6 +28,7 @@ import {
   SHARED_COLLAGE_SET_NAME,
   SHARED_COLLAGE_SOURCE,
   cleanName,
+  isColor,
 } from "@extension/features/sharedCollages/sharedCollageEntry";
 import { useLibraryScraps } from "./libraryScraps";
 import {
@@ -37,6 +38,7 @@ import {
   collageEntry,
   pieceWrites,
   removalRefusal,
+  safePieces,
   studioPieces,
   withDrafts,
   type Placer,
@@ -100,7 +102,14 @@ export function TogetherStudio({ collageId, startedByMe }: Props) {
   const [askingName, setAskingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
 
-  const stored = data?.pieces ?? {};
+  // Anyone with the link can write to the room, so its pieces are rebuilt
+  // from known-safe fields before anything draws them.
+  const rawKey = JSON.stringify(data?.pieces ?? {});
+  const stored = useMemo(
+    () => safePieces(data?.pieces),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rawKey],
+  );
   const storedRef = useRef(stored);
   storedRef.current = stored;
 
@@ -182,7 +191,7 @@ export function TogetherStudio({ collageId, startedByMe }: Props) {
   // ---- Title --------------------------------------------------------------
 
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
-  const title = data?.title ?? "";
+  const title = typeof data?.title === "string" ? data.title.slice(0, 120) : "";
   const saveTitle = () => {
     if (titleDraft === null) return;
     const next = titleDraft.replace(/\s+/g, " ").trim().slice(0, 120);
@@ -225,7 +234,7 @@ export function TogetherStudio({ collageId, startedByMe }: Props) {
 
   // ---- Keeping it in the extension's list -----------------------------------
 
-  const entryKey = JSON.stringify([title, stored]);
+  const entryKey = JSON.stringify([title, rawKey]);
   useEffect(() => {
     if (!pid) return;
     // Settles first, so a burst of edits sends one summary.
@@ -278,8 +287,8 @@ export function TogetherStudio({ collageId, startedByMe }: Props) {
           <span
             key={user.pid}
             className="together-face"
-            style={{ background: user.color }}
-            title={user.isMe ? "you" : user.name || "someone"}
+            style={{ background: isColor(user.color) ? user.color : "#888888" }}
+            title={user.isMe ? "you" : cleanName(user.name) || "someone"}
           />
         ))}
         <span className="collage-studio__label">{here.length} here</span>
