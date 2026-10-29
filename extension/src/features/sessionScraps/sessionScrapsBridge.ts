@@ -8,7 +8,9 @@ import type { SessionScrap, SessionWindow } from "./sessionScraps";
  *  - page → extension: { source, type: "request-scraps", requestId, since?, until? }
  *  - extension → page: { source, type: "scraps-response", requestId, scraps, window }
  * `since`/`until` are optional epoch milliseconds; without them the session is
- * the latest burst of browsing. A page elsewhere gets no answer at all.
+ * the latest burst of browsing. `scope: "library"` asks instead for the newest
+ * image scraps from the whole history, which only a shared collage page may do.
+ * A page elsewhere gets no answer at all.
  */
 export const SESSION_SCRAPS_BRIDGE_SOURCE = "wwo-session-scraps";
 export const SESSION_SCRAPS_REQUEST = "request-scraps";
@@ -20,7 +22,11 @@ export interface SessionScrapsRequestMessage {
   requestId: string;
   since?: number;
   until?: number;
+  scope?: SessionScrapsScope;
 }
+
+/** "session" is one stretch of browsing; "library" is everything, newest first. */
+export type SessionScrapsScope = "session" | "library";
 
 export interface SessionScrapsResponseMessage {
   source: typeof SESSION_SCRAPS_BRIDGE_SOURCE;
@@ -32,9 +38,32 @@ export interface SessionScrapsResponseMessage {
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
+function isLocalPage(url: URL, allowLocal: boolean): boolean {
+  return allowLocal && url.protocol === "http:" && LOCAL_HOSTS.has(url.hostname);
+}
+
 /**
- * Pages allowed to ask for scraps: playhtml.fun event pages, plus local dev
- * servers when `allowLocal` is set (never in a store build).
+ * Shared collage pages on wewere.online, plus local dev servers when
+ * `allowLocal` is set (never in a store build). Only these may ask for the
+ * whole scraps library, since they show it to no one but the person whose
+ * library it is: other people only see the scraps they place.
+ */
+export function isSharedCollagePageUrl(value: string, allowLocal = false): boolean {
+  try {
+    const url = new URL(value);
+    if (url.origin === "https://wewere.online") {
+      return url.pathname === "/together" || url.pathname.startsWith("/together/");
+    }
+    return isLocalPage(url, allowLocal) && url.pathname.startsWith("/together");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pages allowed to ask for scraps: playhtml.fun event pages and shared
+ * collage pages, plus local dev servers when `allowLocal` is set (never in a
+ * store build).
  */
 export function isSessionScrapsPageUrl(value: string, allowLocal = false): boolean {
   try {
@@ -42,7 +71,8 @@ export function isSessionScrapsPageUrl(value: string, allowLocal = false): boole
     if (url.origin === "https://playhtml.fun") {
       return url.pathname.startsWith("/events/");
     }
-    return allowLocal && url.protocol === "http:" && LOCAL_HOSTS.has(url.hostname);
+    if (isSharedCollagePageUrl(value, allowLocal)) return true;
+    return isLocalPage(url, allowLocal);
   } catch {
     return false;
   }
@@ -66,6 +96,9 @@ export function isSessionScrapsRequest(
     message.type === SESSION_SCRAPS_REQUEST &&
     typeof message.requestId === "string" &&
     isTime(message.since) &&
-    isTime(message.until)
+    isTime(message.until) &&
+    (message.scope === undefined ||
+      message.scope === "session" ||
+      message.scope === "library")
   );
 }

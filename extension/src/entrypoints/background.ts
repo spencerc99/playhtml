@@ -26,7 +26,7 @@ import {
   getPublicPlayerIdentity,
   recordDiscoveredSite,
 } from '../storage/playerIdentity'
-import { syncStoredPlayerColor } from '../storage/playerColor'
+import { savePlayerName, syncStoredPlayerColor } from '../storage/playerColor'
 import { VERBOSE } from '../config'
 import { gzipEventExport, gunzipToString } from '../utils/dataTransfer'
 import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
@@ -82,12 +82,17 @@ import {
 } from '../sync/deviceSync'
 import { sharedContainer, syncDevices } from '../sync/deviceSyncRuntime'
 import { isHostedCommuteUrl } from '../features/slowMode/slowModeHostedBridge'
+import { cleanName } from '../features/sharedCollages/sharedCollageEntry'
+import { rememberSharedCollage } from '../features/sharedCollages/sharedCollageStore'
 import {
   ALLOW_LOCAL_SESSION_SCRAPS_PAGES,
   isSessionScrapsPageUrl,
+  isSharedCollagePageUrl,
 } from '../features/sessionScraps/sessionScrapsBridge'
 import {
+  LIBRARY_SCRAP_LIMIT,
   SESSION_LOOKBACK_MS,
+  selectLibraryScraps,
   selectSessionScraps,
   type SessionScrapCandidate,
   type SessionScrapsAnswer,
@@ -186,6 +191,26 @@ async function readSessionScraps(
     cursor = page.nextCursor
   }
   return selectSessionScraps(candidates, { now, since, until })
+}
+
+/**
+ * The newest image scraps from the whole history, for a shared collage
+ * page's drawer. Reads only as far back as it takes to fill the drawer.
+ */
+async function readLibraryScraps(): Promise<SessionScrapsAnswer> {
+  const candidates: SessionScrapCandidate[] = []
+  let cursor: { ts: number; id: string } | undefined
+  // Duplicates are dropped after reading, so read a little past the limit.
+  while (candidates.length < LIBRARY_SCRAP_LIMIT * 2) {
+    const page = await store.queryEventPage('element', 500, cursor)
+    for (const event of page.events) {
+      const scrap = toScrapRecord(event)
+      if (scrap?.kind === 'image') candidates.push(scrap)
+    }
+    if (!page.nextCursor) break
+    cursor = page.nextCursor
+  }
+  return selectLibraryScraps(candidates)
 }
 
 function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
@@ -901,13 +926,45 @@ export default defineBackground(() => {
         reply(null)
         return
       }
-      readSessionScraps(
-        typeof message.since === 'number' ? message.since : undefined,
-        typeof message.until === 'number' ? message.until : undefined,
-      )
+      const answer =
+        message.scope === 'library'
+          ? // The whole library only goes to a shared collage page.
+            isSharedCollagePageUrl(sender.tab.url, ALLOW_LOCAL_SESSION_SCRAPS_PAGES)
+            ? readLibraryScraps()
+            : Promise.resolve(null)
+          : readSessionScraps(
+              typeof message.since === 'number' ? message.since : undefined,
+              typeof message.until === 'number' ? message.until : undefined,
+            )
+      answer
         .then(reply)
         .catch((e) => {
           console.error('[Background] GET_SESSION_SCRAPS error:', e)
+          reply(null)
+        })
+      return true
+    }
+
+    if (message.type === 'SET_PLAYER_NAME' || message.type === 'REMEMBER_SHARED_COLLAGE') {
+      // Only a shared collage page may name this person or add to their list.
+      if (
+        !sender.tab?.url ||
+        !isSharedCollagePageUrl(sender.tab.url, ALLOW_LOCAL_SESSION_SCRAPS_PAGES)
+      ) {
+        reply(null)
+        return
+      }
+      const work =
+        message.type === 'SET_PLAYER_NAME'
+          ? (() => {
+              const name = cleanName(message.name)
+              return name ? savePlayerName(name).then(() => true) : Promise.resolve(false)
+            })()
+          : rememberSharedCollage(message.collage)
+      work
+        .then(reply)
+        .catch((e) => {
+          console.error(`[Background] ${message.type} error:`, e)
           reply(null)
         })
       return true

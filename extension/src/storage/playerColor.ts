@@ -1,4 +1,4 @@
-// ABOUTME: Persists the participant's primary cursor color for extension UI.
+// ABOUTME: Persists the participant's primary cursor color and name for extension UI.
 // ABOUTME: Updates local identity storage and best-effort server color sync.
 
 import type { PlayerIdentity } from "../types";
@@ -63,5 +63,17 @@ export async function savePlayerColor(color: string): Promise<PlayerIdentity | n
     await syncPlayerColor(updated.publicKey, color);
   }
 
+  return updated;
+}
+
+/**
+ * Names this person everywhere their identity travels. Stays on this device;
+ * pages that run playhtml receive it with the rest of the public identity.
+ */
+export async function savePlayerName(name: string): Promise<PlayerIdentity | null> {
+  const stored = await getStoredPlayerIdentity();
+  if (!stored) return null;
+  const updated: PlayerIdentity = { ...stored.public, name };
+  await saveStoredPlayerIdentity({ ...stored, public: updated });
   return updated;
 }

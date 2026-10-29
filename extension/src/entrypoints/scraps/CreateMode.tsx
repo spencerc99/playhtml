@@ -45,6 +45,7 @@ export function CreateMode({
             revision={savedRevision}
             onEdit={onEdit}
             onStartNew={onStartNew}
+            canStartShared={shareLinks?.enabled === true}
           />
         ) : (
           <CollageStudio

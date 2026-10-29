@@ -32,12 +32,24 @@ import {
 import { deletePublishedCollage } from "./publishCollage";
 import { WORKER_URL } from "@movement/config";
 import { recordCollageDeletion } from "../../sync/deviceSync";
+import browser from "webextension-polyfill";
+import { TOGETHER_URL } from "@movement/config";
+import type { SharedCollageEntry } from "../../features/sharedCollages/sharedCollageEntry";
+import {
+  SHARED_COLLAGES_STORAGE_KEY,
+  forgetSharedCollage,
+  listSharedCollages,
+} from "../../features/sharedCollages/sharedCollageStore";
+import { getPublicPlayerIdentity } from "../../storage/playerIdentity";
+import { SharedCollageCard, mergeCollageCards } from "./SharedCollageCard";
 
 interface CollageHistoryProps {
   /** Bumped by the studio after a save so the list reloads. */
   revision: number;
   onEdit: (record: CollageRecord) => void;
   onStartNew: () => void;
+  /** Whether this person can start collages made together with others. */
+  canStartShared?: boolean;
 }
 
 /** A day, so a collage touched again the day it was made reads as unchanged. */
@@ -55,7 +67,40 @@ export function CollageHistory({
   revision,
   onEdit,
   onStartNew,
+  canStartShared = false,
 }: CollageHistoryProps) {
+  const [shared, setShared] = useState<SharedCollageEntry[]>([]);
+  const [myColor, setMyColor] = useState<string | undefined>();
+
+  // Shared collages change on their own pages, so follow the list as it changes.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      listSharedCollages()
+        .then((list) => {
+          if (!cancelled) setShared(list);
+        })
+        .catch(() => {});
+    };
+    load();
+    void getPublicPlayerIdentity().then((identity) => {
+      if (!cancelled) setMyColor(identity?.playerStyle.colorPalette[0]);
+    });
+    const onChanged = (changes: Record<string, unknown>, area: string) => {
+      if (area === "local" && SHARED_COLLAGES_STORAGE_KEY in changes) load();
+    };
+    browser.storage.onChanged.addListener(onChanged);
+    return () => {
+      cancelled = true;
+      browser.storage.onChanged.removeListener(onChanged);
+    };
+  }, []);
+
+  const forgetShared = (id: string) => {
+    setShared((current) => current.filter((entry) => entry.id !== id));
+    void forgetSharedCollage(id);
+  };
+
   const [entries, setSummaries] = useState<CollageEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -238,6 +283,7 @@ export function CollageHistory({
             {entries && (
               <p className="collage-history__summary">
                 {collagesSummaryLine(readable)}
+                {shared.length > 0 && ` \u00b7 ${shared.length} shared`}
               </p>
             )}
           </div>
@@ -246,9 +292,20 @@ export function CollageHistory({
           <p className="collage-history__tagline">
             turn browsing artifacts into self-portrait collages
           </p>
-          <button type="button" className="collage-action" onClick={onStartNew}>
-            new collage
-          </button>
+          <span className="collage-history__new">
+            <button type="button" className="collage-action" onClick={onStartNew}>
+              new collage
+            </button>
+            {canStartShared && (
+              <button
+                type="button"
+                className="collage-action collage-action--together"
+                onClick={() => window.open(TOGETHER_URL, "_blank", "noopener")}
+              >
+                new shared collage
+              </button>
+            )}
+          </span>
           {/* Secondary to starting a new one, so it reads as a quiet link. */}
           <button
             type="button"
@@ -284,7 +341,18 @@ export function CollageHistory({
       )}
 
       <div className="collage-history__grid">
-        {entries?.map((entry) => {
+        {mergeCollageCards(entries ?? [], entries ? shared : []).map((card) => {
+          if (card.kind === "shared") {
+            return (
+              <SharedCollageCard
+                key={`shared-${card.entry.id}`}
+                entry={card.entry}
+                myColor={myColor}
+                onForget={forgetShared}
+              />
+            );
+          }
+          const entry = card.entry;
           if (isUnreadable(entry)) {
             return (
               <article
