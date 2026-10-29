@@ -1,7 +1,7 @@
 // ABOUTME: The studio's one "export" button, opening a menu with a section per kind of export.
 // ABOUTME: Picture, video (when something moves) and the collage file; sharing a link has its own button.
 
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface ExportMenuProps {
   /** False while the collage is empty, when nothing but the file can be made. */

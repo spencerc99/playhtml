@@ -1,7 +1,7 @@
 // ABOUTME: A quiet list of every piece stacked under the pointer, front to back.
 // ABOUTME: Right-clicking a pile is how a buried piece is picked out by eye.
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ScrapContent } from "@movement/components/ScrapCollage";
 import type { CollagePiece } from "./collageRecord";
 import { GLYPHS } from "./PieceActions";
