@@ -54,8 +54,7 @@ export function useSessionScraps(windowMs?: number): ScrapItem[] | null {
 
   useEffect(() => {
     for (const scrap of scraps ?? []) {
-      if ((scrap.width && scrap.height) || measuring.current.has(scrap.src))
-        continue;
+      if ((scrap.width && scrap.height) || measuring.current.has(scrap.src)) continue;
       measuring.current.add(scrap.src);
       void measureImage(scrap.src).then((size) =>
         setSizes((known) => ({ ...known, [scrap.src]: size })),
@@ -67,9 +66,7 @@ export function useSessionScraps(windowMs?: number): ScrapItem[] | null {
     () =>
       scraps === null
         ? null
-        : scraps.map((scrap) =>
-            sessionScrapItem(scrap, sizes[scrap.src] ?? null),
-          ),
+        : scraps.map((scrap) => sessionScrapItem(scrap, sizes[scrap.src] ?? null)),
     [scraps, sizes],
   );
 }

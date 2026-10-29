@@ -65,9 +65,7 @@ describe("domains", () => {
     expect(pageLink("https://blog.example.com/posts/1?page=2")).toBe(
       "https://blog.example.com/posts/1?page=2",
     );
-    expect(pageLink("https://blog.example.com")).toBe(
-      "https://blog.example.com/",
-    );
+    expect(pageLink("https://blog.example.com")).toBe("https://blog.example.com/");
     expect(pageLink("javascript:alert(1)")).toBe("");
     expect(pageLink(undefined)).toBe("");
   });
@@ -80,10 +78,7 @@ describe("domains", () => {
 
   it("prefers the page over the image host", () => {
     expect(
-      sourceDomain({
-        pageUrl: "https://blog.test/post",
-        src: "https://cdn.test/x.png",
-      }),
+      sourceDomain({ pageUrl: "https://blog.test/post", src: "https://cdn.test/x.png" }),
     ).toBe("blog.test");
     expect(sourceDomain({ pageUrl: "", src: "https://cdn.test/x.png" })).toBe(
       "cdn.test",
@@ -142,14 +137,8 @@ describe("remote drafts", () => {
     expect(
       remoteDrafts(
         [
-          {
-            user: { isMe: false },
-            live: { draft: [{ id: "p1", set: { x: 0.1 } }] },
-          },
-          {
-            user: { isMe: true },
-            live: { draft: [{ id: "p1", set: { y: 0.9 } }] },
-          },
+          { user: { isMe: false }, live: { draft: [{ id: "p1", set: { x: 0.1 } }] } },
+          { user: { isMe: true }, live: { draft: [{ id: "p1", set: { y: 0.9 } }] } },
           { user: { isMe: false }, live: { draft: null } },
           { user: { isMe: false }, live: undefined },
         ],
@@ -162,12 +151,7 @@ describe("remote drafts", () => {
     // The stored piece already has another person's new turn.
     const stored = { p1: piece("p1", { rotation: 45 }) };
     const drafts = remoteDrafts(
-      [
-        {
-          user: { isMe: false },
-          live: { draft: [{ id: "p1", set: { x: 0.2 }, unset: ["crop"] }] },
-        },
-      ],
+      [{ user: { isMe: false }, live: { draft: [{ id: "p1", set: { x: 0.2 }, unset: ["crop"] }] } }],
       stored,
     );
     expect(drafts.p1.rotation).toBe(45);
@@ -177,27 +161,15 @@ describe("remote drafts", () => {
   it("shows a piece new to the table whole", () => {
     const fresh = piece("p9");
     expect(
-      remoteDrafts(
-        [
-          {
-            user: { isMe: false },
-            live: { draft: [{ id: "p9", set: fresh }] },
-          },
-        ],
-        {},
-      ),
+      remoteDrafts([{ user: { isMe: false }, live: { draft: [{ id: "p9", set: fresh }] } }], {}),
     ).toEqual({ p9: fresh });
   });
 
   it("skips presence from an older page", () => {
     const old = { drag: { id: "p1" } } as unknown as { draft: null };
     const wholePieces = { draft: [piece("p1")] } as unknown as { draft: null };
-    expect(remoteDrafts([{ user: { isMe: false }, live: old }], {})).toEqual(
-      {},
-    );
-    expect(
-      remoteDrafts([{ user: { isMe: false }, live: wholePieces }], {}),
-    ).toEqual({});
+    expect(remoteDrafts([{ user: { isMe: false }, live: old }], {})).toEqual({});
+    expect(remoteDrafts([{ user: { isMe: false }, live: wholePieces }], {})).toEqual({});
   });
 });
 

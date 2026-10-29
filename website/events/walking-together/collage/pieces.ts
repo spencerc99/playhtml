@@ -31,11 +31,7 @@ export interface Piece {
   flipX?: boolean;
   flipY?: boolean;
   /** A background cutout, computed in each viewer's browser. */
-  cutout?: {
-    method: "edge-color";
-    tolerance: number;
-    keep?: "subject" | "background";
-  };
+  cutout?: { method: "edge-color"; tolerance: number; keep?: "subject" | "background" };
   /** A locked piece can't be moved, turned, or sized until it's unlocked. */
   locked?: boolean;
 }
@@ -293,10 +289,7 @@ function isWholePiece(value: Partial<Piece>): value is Piece {
  * anything malformed) is skipped.
  */
 export function remoteDrafts(
-  users: Array<{
-    user: { isMe: boolean };
-    live: Partial<CollageLive> | undefined;
-  }>,
+  users: Array<{ user: { isMe: boolean }; live: Partial<CollageLive> | undefined }>,
   stored: Pieces,
 ): Record<string, Piece> {
   const byPiece: Record<string, Piece> = {};
@@ -311,8 +304,7 @@ export function remoteDrafts(
         continue;
       }
       const next = { ...base } as unknown as Record<string, unknown>;
-      for (const key of Array.isArray(patch.unset) ? patch.unset : [])
-        delete next[key];
+      for (const key of Array.isArray(patch.unset) ? patch.unset : []) delete next[key];
       Object.assign(next, patch.set);
       byPiece[patch.id] = next as unknown as Piece;
     }
@@ -407,11 +399,7 @@ export function arrangeIntoShape(
   const maxY = Math.max(...ys);
   const candidates: Array<{ x: number; y: number }> = [];
   const wanted = Math.max(200, list.length * 30);
-  for (
-    let tries = 0;
-    candidates.length < wanted && tries < wanted * 20;
-    tries++
-  ) {
+  for (let tries = 0; candidates.length < wanted && tries < wanted * 20; tries++) {
     const p = {
       x: minX + random() * (maxX - minX),
       y: minY + random() * (maxY - minY),
@@ -457,11 +445,7 @@ export function arrangeIntoShape(
       x: clamp(spot.x, 0, 1),
       y: clamp(spot.y, 0, 1),
       // A little size variety keeps it from looking like a contact sheet.
-      width: clamp(
-        width * (0.85 + random() * 0.3),
-        MIN_PIECE_WIDTH,
-        MAX_PIECE_WIDTH,
-      ),
+      width: clamp(width * (0.85 + random() * 0.3), MIN_PIECE_WIDTH, MAX_PIECE_WIDTH),
       rotation: Math.round((random() * 16 - 8) * 10) / 10,
       z: baseZ + order[i],
     };
