@@ -21,10 +21,10 @@ export const ASSETS_URL: string =
   (import.meta.env.VITE_WORKER_URL as string | undefined) ??
   "https://assets.wewere.online";
 
-/** Where collages made together live; opening it alone starts a new one. */
-export const TOGETHER_URL: string =
-  (import.meta.env.VITE_TOGETHER_URL as string | undefined) ??
-  "https://wewere.online/together/";
+/** Opens a new shared collage, made with others, at its own editing link. */
+export const NEW_SHARED_COLLAGE_URL: string =
+  (import.meta.env.VITE_NEW_SHARED_COLLAGE_URL as string | undefined) ??
+  "https://wewere.online/collage/new";
 
 export const RECENT_EVENTS_URL = `${WORKER_URL}/events/recent`;
 export const COMMUTE_RECENT_URL = `${WORKER_URL}/commute/recent`;

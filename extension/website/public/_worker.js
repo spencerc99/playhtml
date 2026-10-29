@@ -1,10 +1,13 @@
 // ABOUTME: Cloudflare Pages worker for wewere.online; every other path is served as a static file.
-// ABOUTME: Gives a shared collage's page its title and cover in the tags link previews read.
+// ABOUTME: Gives a shared collage's page its title and cover in the tags link previews read, and serves shared collages' editing links.
 
 const API_ORIGIN = "https://playhtml-game-api.spencerc99.workers.dev";
 // The same API on a wewere.online subdomain, cached at the edge, for pictures.
 const ASSETS_ORIGIN = "https://assets.wewere.online";
 const COLLAGE_ID = /^[A-Za-z0-9_-]{22}$/;
+// A shared collage's editing link, or the link that starts a new one, is
+// served by the editing page.
+const SHARED_COLLAGE_EDIT = /^\/collage\/(new|[a-z0-9]+\/edit)\/?$/;
 
 function escapeHtml(text) {
   return String(text)
@@ -21,7 +24,7 @@ function countOf(count, one, many) {
 /** The collage a viewer link names, read from the share API, or null. */
 async function readCollage(apiOrigin, id) {
   try {
-    const response = await fetch(`${apiOrigin}/collages/${id}`);
+    const response = await fetch(`${apiOrigin}/collage/${id}`);
     if (!response.ok) return null;
     const collage = await response.json();
     if (!collage || !Array.isArray(collage.pieces)) return null;
@@ -80,7 +83,7 @@ async function collagePage(request, env, page) {
     title: name,
     description: `a collage of ${countOf(collage.pieces.length, "piece", "pieces")} from ${countOf(sites, "site", "sites")}, on we were online`,
     url: url.toString(),
-    image: hasCover ? `${assetsOrigin}/collages/${id}/cover` : null,
+    image: hasCover ? `${assetsOrigin}/collage/${id}/cover` : null,
   });
   const response = new HTMLRewriter()
     .on("title", {
@@ -102,8 +105,11 @@ async function collagePage(request, env, page) {
 
 export default {
   async fetch(request, env) {
-    const page = await env.ASSETS.fetch(request);
     const { pathname } = new URL(request.url);
+    if (SHARED_COLLAGE_EDIT.test(pathname)) {
+      return env.ASSETS.fetch(new URL("/collage/edit/", request.url));
+    }
+    const page = await env.ASSETS.fetch(request);
     if (pathname === "/collage/" || pathname === "/collage/index.html") {
       return collagePage(request, env, page);
     }

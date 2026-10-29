@@ -11,34 +11,92 @@ export const TOGETHER_STYLES = `
 
   .together-bar {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
+    min-width: 0;
   }
 
-  .together-here {
+  /* The "shared" tag is also the invite button: it copies the link. */
+  .together-share {
     display: inline-flex;
     align-items: center;
+    gap: 6px;
+    padding: 3px 10px 3px 7px;
+    border: 1px solid #9fcabf;
+    border-radius: 999px;
+    background: #fdfcfa;
+    color: #2f6b60;
+    font-family: "Martian Mono", monospace;
+    font-size: 10px;
+    white-space: nowrap;
+    cursor: pointer;
   }
 
-  .together-face {
-    width: 14px;
-    height: 14px;
+  .together-share:hover,
+  .together-share:focus-visible {
+    border-color: #4a9a8a;
+    background: #eef6f3;
+  }
+
+  .together-share__dot {
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
-    border: 2px solid #f6f5f1;
-    margin-left: -5px;
+    background: #4a9a8a;
   }
 
-  .together-face:first-child {
-    margin-left: 0;
+  .together-with {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
   }
 
-  .together-here .collage-studio__label {
-    margin-left: 6px;
+  /* Each person's name on a wash of their cursor color; a dot marks who is
+     here right now. */
+  .together-person {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 12ch;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--person) 24%, #fdfcfa);
+    color: #3a3734;
+    font-family: "Martian Mono", monospace;
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.7;
   }
 
-  .together-invite {
+  .together-person--here {
+    opacity: 1;
+  }
+
+  .together-person--here::before {
+    content: "";
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--person);
+  }
+
+  .together-join {
     border-color: #4a9a8a;
     color: #2f6b60;
+  }
+
+  /* The mat's edge in the accent, so the whole collage reads as shared. */
+  .together .collage-studio:not(.collage-studio--sheet) .collage-mat {
+    box-shadow:
+      0 1px 0 color-mix(in srgb, #fff 70%, transparent) inset,
+      0 0 0 1px #9fcabf,
+      0 10px 24px color-mix(in srgb, #3a3734 8%, transparent);
   }
 
   .together-caption {

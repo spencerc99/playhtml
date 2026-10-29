@@ -1505,24 +1505,11 @@ ${COLLAGE_PEEK_STYLES}
     color: var(--c-accent-ink);
   }
 
-  /* A collage made with others: tape across the top, an accent edge, and a
-     tag in everyone's colors, so it reads as shared at a glance. */
+  /* A collage made with others: an accent edge and a tag in everyone's
+     colors, so it reads as shared at a glance. */
   .collage-card--shared {
     position: relative;
     border-color: color-mix(in srgb, var(--c-accent) 55%, transparent);
-  }
-
-  .collage-card--shared::before {
-    content: "";
-    position: absolute;
-    left: 50%;
-    top: -7px;
-    width: 54px;
-    height: 15px;
-    transform: translateX(-50%) rotate(-2deg);
-    background: color-mix(in srgb, var(--c-accent) 30%, #fff);
-    opacity: 0.85;
-    pointer-events: none;
   }
 
   .collage-card__thumb--shared {

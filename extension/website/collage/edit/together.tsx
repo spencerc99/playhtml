@@ -13,7 +13,11 @@ import "@fontsource/lora/latin-700.css";
 import { PlayProvider } from "@playhtml/react";
 import { TogetherStudio } from "./TogetherStudio";
 import { isCollageId } from "@extension/features/sharedCollages/sharedCollageEntry";
-import { newCollageId } from "./togetherPieces";
+import {
+  collageIdFromAddress,
+  collagePath,
+  newCollageId,
+} from "./togetherPieces";
 
 const STARTED_KEY = "wwo-together-started";
 
@@ -44,17 +48,14 @@ function markStarted(id: string) {
  * rewrites the address to it, so the address bar is already the invite link.
  */
 function collageFromAddress(): { id: string; startedByMe: boolean } {
-  const params = new URLSearchParams(window.location.search);
-  const named = params.get("c");
-  if (isCollageId(named)) {
-    return { id: named, startedByMe: readStarted().includes(named) };
+  const { pathname, search } = window.location;
+  const named = collageIdFromAddress(pathname, isCollageId);
+  const id = named ?? newCollageId();
+  if (!named) markStarted(id);
+  if (pathname !== collagePath(id) || search) {
+    window.history.replaceState(null, "", collagePath(id));
   }
-  const id = newCollageId();
-  markStarted(id);
-  const url = new URL(window.location.href);
-  url.search = `?c=${id}`;
-  window.history.replaceState(null, "", url);
-  return { id, startedByMe: true };
+  return { id, startedByMe: !named || readStarted().includes(id) };
 }
 
 const { id, startedByMe } = collageFromAddress();

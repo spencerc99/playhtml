@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { CollagePiece } from "@extension/entrypoints/scraps/collageRecord";
+import { isCollageId } from "@extension/features/sharedCollages/sharedCollageEntry";
 import {
   applyWrites,
   collageEntry,
+  collageIdFromAddress,
+  collagePath,
+  membersOf,
   newCollageId,
   peopleOf,
   pieceWrites,
@@ -199,7 +203,7 @@ describe("collageEntry", () => {
     };
     const entry = collageEntry({
       id: "abcdefghjk23",
-      url: "https://wewere.online/together/?c=abcdefghjk23",
+      url: "https://wewere.online/collage/abcdefghjk23/edit",
       data: { title: "buttons", pieces },
       myPid: "me",
       startedByMe: true,
@@ -244,5 +248,60 @@ describe("studioPieces and newCollageId", () => {
 
   it("makes url-safe ids", () => {
     expect(newCollageId(new Uint8Array(12).fill(7))).toMatch(/^[a-z0-9]{12}$/);
+  });
+});
+
+describe("membersOf", () => {
+  const placed = (id: string, pid: string, name?: string): StoredPiece => ({
+    ...piece(id),
+    by: { pid, color: "#e0752d", ...(name ? { name } : {}) },
+  });
+
+  it("puts who is here first, then who placed pieces, never me", () => {
+    const pieces = {
+      a: placed("a", "jun", "jun"),
+      b: placed("b", "me", "spencer"),
+      c: placed("c", "mira", "mira"),
+    };
+    const here = [
+      { pid: "me", name: "spencer", color: "#4a9a8a", isMe: true },
+      { pid: "mira", name: "mira", color: "#e06aa0", isMe: false },
+    ];
+    expect(membersOf(pieces, here, "me")).toEqual([
+      { pid: "mira", name: "mira", color: "#e06aa0", here: true },
+      { pid: "jun", name: "jun", color: "#e0752d", here: false },
+    ]);
+  });
+
+  it("cleans names and colors of people here", () => {
+    const here = [
+      { pid: "x", name: "a\u202eb", color: "url(evil)", isMe: false },
+    ];
+    const [member] = membersOf({}, here, "me");
+    expect(member.name).toBe("a b");
+    expect(member.color).not.toContain("url");
+  });
+});
+
+describe("collage addresses", () => {
+  it("reads the id from the editing link", () => {
+    expect(
+      collageIdFromAddress("/collage/k7m2qd9xh4ap/edit", isCollageId),
+    ).toBe("k7m2qd9xh4ap");
+    expect(
+      collageIdFromAddress("/collage/k7m2qd9xh4ap/edit/", isCollageId),
+    ).toBe("k7m2qd9xh4ap");
+  });
+
+  it("names no collage for a new or made-up address", () => {
+    expect(collageIdFromAddress("/collage/new", isCollageId)).toBeNull();
+    expect(collageIdFromAddress("/collage/test/edit", isCollageId)).toBeNull();
+    expect(
+      collageIdFromAddress("/collage/k7m2qd9xh4ap", isCollageId),
+    ).toBeNull();
+  });
+
+  it("builds the editing link back", () => {
+    expect(collagePath("k7m2qd9xh4ap")).toBe("/collage/k7m2qd9xh4ap/edit");
   });
 });

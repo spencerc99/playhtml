@@ -28,7 +28,6 @@ import {
   SHARED_COLLAGE_SET_NAME,
   SHARED_COLLAGE_SOURCE,
   cleanName,
-  isColor,
 } from "@extension/features/sharedCollages/sharedCollageEntry";
 import { useLibraryScraps } from "./libraryScraps";
 import {
@@ -36,6 +35,8 @@ import {
   TOGETHER_FRAME,
   applyWrites,
   collageEntry,
+  collagePath,
+  membersOf,
   pieceWrites,
   removalRefusal,
   safePieces,
@@ -78,11 +79,11 @@ function markNameAsked() {
 
 /** The address to share: this collage, and nothing else from the address bar. */
 function inviteUrl(collageId: string): string {
-  const url = new URL(window.location.href);
-  url.search = `?c=${collageId}`;
-  url.hash = "";
-  return url.toString();
+  return new URL(collagePath(collageId), window.location.origin).toString();
 }
+
+/** How many other people the bar names before counting the rest. */
+const NAMES_SHOWN = 3;
 
 interface Props {
   collageId: string;
@@ -98,7 +99,7 @@ export function TogetherStudio({ collageId, startedByMe }: Props) {
   const { pid, name, color } = usePlayerIdentity();
   const users = useUsers();
   const scraps = useLibraryScraps();
-  const [notice, setNotice] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [askingName, setAskingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
 
@@ -134,14 +135,6 @@ export function TogetherStudio({ collageId, startedByMe }: Props) {
     }),
     [pid, name, color],
   );
-
-  const flash = useCallback((text: string) => {
-    setNotice(text);
-    window.setTimeout(
-      () => setNotice((current) => (current === text ? null : current)),
-      3000,
-    );
-  }, []);
 
   // ---- Edits --------------------------------------------------------------
 
@@ -261,7 +254,8 @@ export function TogetherStudio({ collageId, startedByMe }: Props) {
     const link = inviteUrl(collageId);
     try {
       await navigator.clipboard.writeText(link);
-      flash("invite link copied");
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2500);
     } catch {
       window.prompt("copy this link to invite people", link);
     }
@@ -269,7 +263,7 @@ export function TogetherStudio({ collageId, startedByMe }: Props) {
 
   // ---- Render -------------------------------------------------------------
 
-  const here = users.filter((user) => user.pid);
+  const members = membersOf(stored, users, pid);
   const overlay =
     pieces.length === 0 ? (
       <p className="together-empty">
@@ -281,25 +275,39 @@ export function TogetherStudio({ collageId, startedByMe }: Props) {
 
   const toolbar = (
     <span className="together-bar">
-      {notice && <span className="collage-studio__label">{notice}</span>}
-      <span className="together-here" aria-label={`${here.length} here now`}>
-        {here.slice(0, 6).map((user) => (
-          <span
-            key={user.pid}
-            className="together-face"
-            style={{ background: isColor(user.color) ? user.color : "#888888" }}
-            title={user.isMe ? "you" : cleanName(user.name) || "someone"}
-          />
-        ))}
-        <span className="collage-studio__label">{here.length} here</span>
-      </span>
       <button
         type="button"
-        className="collage-action together-invite"
+        className="together-share"
+        title="copy the link that invites people to this collage"
         onClick={() => void invite()}
       >
-        invite
+        <span className="together-share__dot" aria-hidden="true" />
+        shared · {copied ? "link copied" : "invite"}
       </button>
+      {members.length === 0 ? (
+        <span className="collage-studio__label">just you so far</span>
+      ) : (
+        <span className="together-with">
+          <span className="collage-studio__label">with</span>
+          {members.slice(0, NAMES_SHOWN).map((member) => (
+            <span
+              key={member.pid}
+              className={`together-person${
+                member.here ? " together-person--here" : ""
+              }`}
+              style={{ "--person": member.color } as React.CSSProperties}
+              title={member.here ? "here now" : "not here right now"}
+            >
+              {member.name || "someone"}
+            </span>
+          ))}
+          {members.length > NAMES_SHOWN && (
+            <span className="collage-studio__label">
+              +{members.length - NAMES_SHOWN}
+            </span>
+          )}
+        </span>
+      )}
     </span>
   );
 
@@ -377,7 +385,7 @@ export function TogetherStudio({ collageId, startedByMe }: Props) {
             </button>
             <button
               type="submit"
-              className="collage-action together-invite"
+              className="collage-action together-join"
               disabled={!cleanName(nameDraft)}
             >
               join

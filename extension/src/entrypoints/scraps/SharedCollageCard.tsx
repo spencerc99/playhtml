@@ -1,4 +1,4 @@
-// ABOUTME: A shared collage's card in the collage list: tape, a "shared" tag in everyone's colors, and who it's with.
+// ABOUTME: A shared collage's card in the collage list: an accent edge, a "shared" tag in everyone's colors, and who it's with.
 // ABOUTME: Opens the shared page; the card can copy the invite link or take the collage off this person's list.
 
 import React, { useState } from "react";

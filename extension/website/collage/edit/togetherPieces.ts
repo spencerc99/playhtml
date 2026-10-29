@@ -390,3 +390,52 @@ export function newCollageId(
   const alphabet = "abcdefghijkmnpqrstuvwxyz23456789";
   return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }
+
+/** Someone else in a shared collage, as the bar along the bottom shows them. */
+export interface Member {
+  pid: string;
+  name?: string;
+  color: string;
+  here: boolean;
+}
+
+/**
+ * Everyone else in the collage: whoever is here now first, then whoever has
+ * placed a piece. Names and colors come from the room, so they are cleaned.
+ */
+export function membersOf(
+  pieces: Record<string, StoredPiece>,
+  here: { pid: string; name?: string; color: string; isMe: boolean }[],
+  myPid: string | undefined,
+): Member[] {
+  const members = new Map<string, Member>();
+  for (const user of here) {
+    const placer = safePlacer(user);
+    if (!placer || user.isMe || placer.pid === myPid) continue;
+    if (!members.has(placer.pid))
+      members.set(placer.pid, { ...placer, here: true });
+  }
+  for (const piece of Object.values(pieces)) {
+    const by = piece.by;
+    if (!by || by.pid === myPid || members.has(by.pid)) continue;
+    members.set(by.pid, { ...by, here: false });
+  }
+  return [...members.values()];
+}
+
+/** A shared collage's editing link on the site. */
+export function collagePath(id: string): string {
+  return `/collage/${id}/edit`;
+}
+
+/**
+ * The collage an address names, `/collage/<id>/edit`, or null for one that
+ * names none, such as `/collage/new`, which starts a new collage.
+ */
+export function collageIdFromAddress(
+  pathname: string,
+  isId: (value: unknown) => value is string,
+): string | null {
+  const named = /^\/collage\/([^/]+)\/edit\/?$/.exec(pathname)?.[1];
+  return isId(named) ? named : null;
+}

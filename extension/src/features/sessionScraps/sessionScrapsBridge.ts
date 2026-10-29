@@ -38,6 +38,9 @@ export interface SessionScrapsResponseMessage {
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
+/** A shared collage's editing page, or the address that starts a new one. */
+const SHARED_COLLAGE_PATH = /^\/collage\/(new|edit|[a-z0-9]+\/edit)\/?$/;
+
 function isLocalPage(url: URL, allowLocal: boolean): boolean {
   return allowLocal && url.protocol === "http:" && LOCAL_HOSTS.has(url.hostname);
 }
@@ -51,10 +54,8 @@ function isLocalPage(url: URL, allowLocal: boolean): boolean {
 export function isSharedCollagePageUrl(value: string, allowLocal = false): boolean {
   try {
     const url = new URL(value);
-    if (url.origin === "https://wewere.online") {
-      return url.pathname === "/together" || url.pathname.startsWith("/together/");
-    }
-    return isLocalPage(url, allowLocal) && url.pathname.startsWith("/together");
+    if (!SHARED_COLLAGE_PATH.test(url.pathname)) return false;
+    return url.origin === "https://wewere.online" || isLocalPage(url, allowLocal);
   } catch {
     return false;
   }

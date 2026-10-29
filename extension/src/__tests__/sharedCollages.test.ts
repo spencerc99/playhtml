@@ -21,7 +21,7 @@ const isPage = (url: string) => isSharedCollagePageUrl(url);
 
 const ENTRY = {
   id: "abcdefghjk23",
-  url: "https://wewere.online/together/?c=abcdefghjk23",
+  url: "https://wewere.online/collage/abcdefghjk23/edit",
   title: "buttons",
   startedByMe: false,
   joinedAt: 5,
@@ -45,30 +45,31 @@ const ENTRY = {
 };
 
 describe("shared collage pages", () => {
-  it("only counts wewere.online/together, plus local dev pages when allowed", () => {
-    expect(isSharedCollagePageUrl("https://wewere.online/together/?c=x")).toBe(
-      true,
-    );
-    expect(isSharedCollagePageUrl("https://wewere.online/together")).toBe(true);
-    expect(isSharedCollagePageUrl("https://wewere.online/together-evil/")).toBe(
-      false,
-    );
-    expect(isSharedCollagePageUrl("https://wewere.online/collage/")).toBe(
-      false,
-    );
-    expect(isSharedCollagePageUrl("https://evil.example/together/")).toBe(
-      false,
-    );
-    expect(isSharedCollagePageUrl("http://localhost:5174/together/")).toBe(
-      false,
-    );
+  it("only counts editing links on wewere.online, plus local dev pages when allowed", () => {
+    const yes = [
+      "https://wewere.online/collage/abcdefghjk23/edit",
+      "https://wewere.online/collage/abcdefghjk23/edit/",
+      "https://wewere.online/collage/new",
+    ];
+    for (const url of yes) expect(isSharedCollagePageUrl(url)).toBe(true);
+    const no = [
+      // The public gallery and view-only pages never get the library.
+      "https://wewere.online/collages/",
+      "https://wewere.online/collage/",
+      "https://wewere.online/collage/?id=TpNCMd88MOQVtAeRT9Lvlw",
+      "https://wewere.online/collage/abcdefghjk23",
+      "https://wewere.online/collage/abcdefghjk23/edit/more",
+      "https://evil.example/collage/abcdefghjk23/edit",
+      "http://localhost:5174/collage/new",
+    ];
+    for (const url of no) expect(isSharedCollagePageUrl(url)).toBe(false);
     expect(
-      isSharedCollagePageUrl("http://localhost:5174/together/", true),
+      isSharedCollagePageUrl("http://localhost:5174/collage/new", true),
     ).toBe(true);
     // The page also gets the extension's identity and session scraps.
-    expect(isSessionScrapsPageUrl("https://wewere.online/together/?c=x")).toBe(
-      true,
-    );
+    expect(
+      isSessionScrapsPageUrl("https://wewere.online/collage/abcdefghjk23/edit"),
+    ).toBe(true);
     expect(isSessionScrapsPageUrl("https://wewere.online/")).toBe(false);
   });
 });
@@ -81,7 +82,7 @@ describe("parseSharedCollageEntry", () => {
   it("refuses entries that point anywhere but a shared collage page", () => {
     expect(
       parseSharedCollageEntry(
-        { ...ENTRY, url: "https://evil.example/together/" },
+        { ...ENTRY, url: "https://evil.example/collage/abcdefghjk23/edit" },
         isPage,
       ),
     ).toBeNull();

@@ -33,7 +33,7 @@ import { deletePublishedCollage } from "./publishCollage";
 import { WORKER_URL } from "@movement/config";
 import { recordCollageDeletion } from "../../sync/deviceSync";
 import browser from "webextension-polyfill";
-import { TOGETHER_URL } from "@movement/config";
+import { NEW_SHARED_COLLAGE_URL } from "@movement/config";
 import type { SharedCollageEntry } from "../../features/sharedCollages/sharedCollageEntry";
 import {
   SHARED_COLLAGES_STORAGE_KEY,
@@ -300,7 +300,7 @@ export function CollageHistory({
               <button
                 type="button"
                 className="collage-action collage-action--together"
-                onClick={() => window.open(TOGETHER_URL, "_blank", "noopener")}
+                onClick={() => window.open(NEW_SHARED_COLLAGE_URL, "_blank", "noopener")}
               >
                 new shared collage
               </button>
