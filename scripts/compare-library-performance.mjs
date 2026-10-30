@@ -26,6 +26,15 @@ const bytes = (key, label) => ({
   maxRelative: 0.1,
   minAbsolute: 256,
 });
+// Server time a room stays awake. One keepalive more or less per hour moves
+// this by about 10 s, so smaller shifts are left alone.
+const seconds = (key, label) => ({
+  key,
+  label,
+  unit: "s",
+  maxRelative: 0.1,
+  minAbsolute: 10,
+});
 const timing = (key, label) => ({ key, label, unit: "ms", infoOnly: true });
 
 export const METRICS = [
@@ -61,6 +70,10 @@ export const METRICS = [
   count("presence_dom_writes", "20 cursors moving: cursor DOM writes"),
   count("presence_msgs_sent", "Own cursor 5s: presence messages"),
   bytes("presence_bytes_sent", "Own cursor 5s: presence bytes"),
+  count("idle_hour_msgs", "Idle tab 1h: messages"),
+  seconds("idle_hour_room_awake_s", "Idle tab 1h: server time awake"),
+  count("hidden_hour_msgs", "Background tab 1h: messages"),
+  seconds("hidden_hour_room_awake_s", "Background tab 1h: server time awake"),
   count("init_qsa_calls", "Init 200 elements: DOM scans"),
   count("init_1000_qsa_calls", "Init 1,000 elements: DOM scans"),
   count("init_1000_listeners", "Init 1,000 elements: event listeners"),
@@ -208,7 +221,7 @@ export function formatMarkdownReport(comparison) {
     "",
     resultLine(comparison),
     "",
-    "Compares `main` to this PR on the bundle a page downloads and common paths in `packages/playhtml/bench/` and `packages/react/bench/`: sync traffic, renders, drags, presence and init. Lower is better. Counts are stable between runs, so a change past the threshold is real. Timings are info only.",
+    "Compares `main` to this PR on the bundle a page downloads and common paths in `packages/playhtml/bench/` and `packages/react/bench/`: sync traffic, renders, drags, presence, idle server traffic and init. Lower is better. Server time awake counts how long one tab keeps its rooms' servers running, which is what the server bill charges for. Counts are stable between runs, so a change past the threshold is real. Timings are info only.",
     "",
     "| Metric | main | This PR | Change | Flag if | Status |",
     "| --- | ---: | ---: | ---: | --- | --- |",

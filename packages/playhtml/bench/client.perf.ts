@@ -143,6 +143,94 @@ async function measureWrites(
   };
 }
 
+// A room's server sleeps once it has gone about 10 s without a message, and is
+// billed only while awake. Each message a tab sends keeps its room up this long.
+const ROOM_SLEEP_AFTER_MS = 10_000;
+
+function setVisibility(state: DocumentVisibilityState) {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => state,
+  });
+  Object.defineProperty(document, "hidden", {
+    configurable: true,
+    get: () => state === "hidden",
+  });
+  document.dispatchEvent(new Event("visibilitychange"));
+}
+
+// Initializes under fake timers so the page's keepalive intervals run on the
+// simulated clock. Returns per-room sent counts: the data room and the
+// presence room are separate servers, each awake on its own.
+async function setupIdlePage(room: string) {
+  vi.useFakeTimers({
+    toFake: [
+      "setTimeout",
+      "clearTimeout",
+      "setInterval",
+      "clearInterval",
+      "Date",
+      "performance",
+      "requestAnimationFrame",
+      "cancelAnimationFrame",
+    ],
+  });
+  const el = document.createElement("div");
+  el.id = "ready-check";
+  el.setAttribute("can-play", "");
+  (el as any).defaultData = { count: 0 };
+  (el as any).live = { ready: false };
+  (el as any).updateElement = () => {};
+  document.body.appendChild(el);
+  const init = playhtml.init({
+    host: "http://localhost:1999",
+    room,
+    cursors: { enabled: true },
+  } as any);
+  await vi.advanceTimersByTimeAsync(100);
+  await init;
+  playhtml.presence.setMyPresence("status", { text: "reading" });
+  // Let the startup publishes finish so they don't count as idle traffic.
+  await vi.advanceTimersByTimeAsync(5000);
+  const socket = getPresenceSocketForRoom(playhtml.roomId);
+  const p = provider();
+  const rooms = [
+    () => p.ws.send.mock.calls.length as number,
+    () => socket.sent.length,
+  ];
+  return {
+    rooms,
+    sent: () => rooms.reduce((total, room) => total + room(), 0),
+  };
+}
+
+// Advances an hour one second at a time. Reports messages sent and the
+// seconds each room spends awake because of them, summed across rooms.
+async function runHour(page: Awaited<ReturnType<typeof setupIdlePage>>) {
+  const hourSeconds = 3600;
+  const awakeForSeconds = ROOM_SLEEP_AFTER_MS / 1000;
+  const startCounts = page.rooms.map((room) => room());
+  const lastCounts = [...startCounts];
+  const awakeUntil = page.rooms.map(() => 0);
+  let roomAwakeSeconds = 0;
+  for (let second = 1; second <= hourSeconds; second += 1) {
+    await vi.advanceTimersByTimeAsync(1000);
+    page.rooms.forEach((room, i) => {
+      const count = room();
+      if (count > lastCounts[i]) awakeUntil[i] = second + awakeForSeconds;
+      lastCounts[i] = count;
+      if (second <= awakeUntil[i]) roomAwakeSeconds += 1;
+    });
+  }
+  return {
+    messages: lastCounts.reduce(
+      (total, count, i) => total + count - startCounts[i],
+      0,
+    ),
+    roomAwakeSeconds,
+  };
+}
+
 describe("client performance", () => {
   // A custom element streaming its state (a sticker, a slider) at 60 Hz for 10 s.
   it("can-play stream", async () => {
@@ -422,6 +510,28 @@ describe("client performance", () => {
     metrics.presence_bytes_sent =
       socket.sent.reduce((total, message) => total + message.length, 0) -
       bytesBefore;
+  });
+
+  // One tab left open on a page with cursors, a presence channel and an
+  // element's live data, nobody touching it for an hour.
+  it("idle tab hour", async () => {
+    const page = await setupIdlePage("/bench-idle");
+    const result = await runHour(page);
+    metrics.idle_hour_msgs = result.messages;
+    metrics.idle_hour_room_awake_s = result.roomAwakeSeconds;
+  });
+
+  // The same page in a background tab for an hour.
+  it("hidden tab hour", async () => {
+    const page = await setupIdlePage("/bench-hidden");
+    setVisibility("hidden");
+    try {
+      const result = await runHour(page);
+      metrics.hidden_hour_msgs = result.messages;
+      metrics.hidden_hour_room_awake_s = result.roomAwakeSeconds;
+    } finally {
+      setVisibility("visible");
+    }
   });
 
   // A big page: 1,000 elements across capabilities. Counts event listeners
