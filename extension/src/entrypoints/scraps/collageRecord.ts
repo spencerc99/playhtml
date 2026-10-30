@@ -12,6 +12,7 @@ import {
   sourceBoxForCrop,
 } from "./collageGeometry";
 import { parseCutout, type PieceCutout } from "./backgroundCutout";
+import type { PublishedSignature } from "../../../shared/publishedCollage";
 import {
   isCollageFormatName,
   parsePaper,
@@ -93,6 +94,8 @@ export interface CollagePublication {
   sharedAt: number;
   /** The page the link opens. */
   url: string;
+  /** How it was signed when shared; absent when it went unsigned. */
+  signature?: PublishedSignature;
 }
 
 /** What the back lists under each site: the pieces, or the titles of their pages. */
@@ -406,6 +409,26 @@ function readPublication(value: unknown): CollagePublication {
     deleteToken: readPublicationString(publication, "deleteToken"),
     sharedAt: readNumber(publication, "sharedAt"),
     url: readPublicationString(publication, "url"),
+    ...(publication.signature === undefined
+      ? {}
+      : { signature: readPublicationSignature(publication.signature) }),
+  };
+}
+
+function readPublicationSignature(value: unknown): PublishedSignature {
+  if (!value || typeof value !== "object") {
+    throw new Error("Collage publication signature is not an object");
+  }
+  const signature = value as Record<string, unknown>;
+  if (typeof signature.color !== "string") {
+    throw new Error("Collage publication signature has no colour");
+  }
+  if (signature.name !== undefined && typeof signature.name !== "string") {
+    throw new Error("Collage publication signature name is not text");
+  }
+  return {
+    color: signature.color,
+    ...(signature.name ? { name: signature.name } : {}),
   };
 }
 
