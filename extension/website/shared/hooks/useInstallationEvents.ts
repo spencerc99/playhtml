@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CollectionEvent } from "../types";
 import { parseInstallationRoleFromUrl, parseTimeOfDayFromUrl } from "../config";
 import { useArchiveEvents } from "./useArchiveEvents";
+import type { DayRange } from "../utils/dayRange";
 import { readEvents, writeEvents } from "../utils/installationEventStore";
 
 type TimeOfDay = ReturnType<typeof parseTimeOfDayFromUrl> | null;
@@ -27,7 +28,7 @@ export interface InstallationEventsState {
 }
 
 export interface UseInstallationEventsParams {
-  selectedDay: string | null;
+  selectedDays: DayRange | null;
   timeOfDay: TimeOfDay;
   serverDomain: string;
   activeVisualizations: string[];
@@ -63,7 +64,7 @@ export function useInstallationEvents(
   const useLiveFetch = role !== "follower" || followerMustFetch;
 
   const archive = useArchiveEvents({
-    selectedDay: params.selectedDay,
+    selectedDays: params.selectedDays,
     timeOfDay: params.timeOfDay,
     serverDomain: params.serverDomain,
     activeVisualizations: useLiveFetch ? params.activeVisualizations : [],

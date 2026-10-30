@@ -16,3 +16,4 @@ extension/website/public/changelog/media/ and reference them here:
 -->
 
 - Time on a site stops counting after a few minutes away from your computer, so a tab left open overnight no longer inflates your history.
+- Pick a range of days, a whole month, or a time of day like "mornings" when looking back at your movement portrait or your scraps.

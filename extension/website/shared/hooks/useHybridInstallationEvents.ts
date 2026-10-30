@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CollectionEvent } from "../types";
 import { useArchiveEvents } from "./useArchiveEvents";
+import { serializeDayRange, type DayRange } from "../utils/dayRange";
 import { useLiveEvents } from "./useLiveEvents";
 import { deriveRequiredEventTypes } from "../components/registry";
 import {
@@ -40,13 +41,13 @@ export interface HybridInstallationEventsState {
 }
 
 export function useHybridInstallationEvents(params: {
-  selectedDay: string | null;
+  selectedDays: DayRange | null;
   timeOfDay: TimeOfDay;
   serverDomain: string;
   activeVisualizations: string[];
   screen: LiveInstallationScreenConfig;
 }): HybridInstallationEventsState {
-  const { selectedDay, timeOfDay, serverDomain, activeVisualizations, screen } =
+  const { selectedDays, timeOfDay, serverDomain, activeVisualizations, screen } =
     params;
   const typingOnly =
     activeVisualizations.length === 1 && activeVisualizations[0] === "typing";
@@ -55,7 +56,7 @@ export function useHybridInstallationEvents(params: {
     activeVisualizations[0] === "scrolling";
   const reservoirOnly = typingOnly || scrollingOnly;
   const archive = useArchiveEvents({
-    selectedDay,
+    selectedDays,
     timeOfDay,
     serverDomain,
     activeVisualizations,
@@ -72,7 +73,7 @@ export function useHybridInstallationEvents(params: {
   const seededInitialArchiveRef = useRef(false);
   const lastLiveTimestampRef = useRef(-Infinity);
   const typingContextKey = [
-    selectedDay ?? "recent",
+    selectedDays ? serializeDayRange(selectedDays) : "recent",
     `${timeOfDay?.centerMinutes ?? "all"}:${timeOfDay?.radiusMinutes ?? "all"}`,
     serverDomain,
     `${screen.view}:${screen.slot}:${screen.slots}`,
