@@ -2,6 +2,7 @@
 // ABOUTME: the namespaces a message touched, replaying snapshots to subscribers.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PRESENCE_STALE_MS } from "../presence-utils";
 import type { PresenceServerMessage } from "@playhtml/common";
 import { PEER_SYNC_GRACE_MS, PeerStore } from "../peer-store";
 import { RealtimePresenceTransport } from "../presence-transport";
@@ -357,7 +358,7 @@ describe("PeerStore", () => {
 
     // No further message arrives (killed tab). After the window, the periodic
     // sweep drops the stale channel; identity (unstamped) survives.
-    vi.advanceTimersByTime(31_000);
+    vi.advanceTimersByTime(PRESENCE_STALE_MS + 1_000);
     const ghost = store.getPeers().get("conn-ghost")!;
     expect("presence:status" in ghost).toBe(false);
     expect("identity" in ghost).toBe(true);
@@ -374,7 +375,7 @@ describe("PeerStore", () => {
     store.subscribe("presence", cb);
     cb.mockClear();
     // Advancing time with only an unstamped identity channel expires nothing.
-    vi.advanceTimersByTime(31_000);
+    vi.advanceTimersByTime(PRESENCE_STALE_MS + 1_000);
     expect(cb).not.toHaveBeenCalled();
   });
 

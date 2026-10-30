@@ -59,16 +59,21 @@ export function fromPagePresenceChannel(channel: string): string {
   return channel.slice(PAGE_PRESENCE_CHANNEL_PREFIX.length);
 }
 
-// Client-side staleness backstop, shared by cursors, element awareness, and
-// page presence. Yjs awareness dropped peers that went quiet for ~30s even when
-// the server never saw the disconnect (killed tab, dropped network, lid close);
-// the transport views reproduce that by stamping publications with `at` and
-// age-filtering here. Peers re-stamp on every publish and on a keepalive re-
-// publish well under this window, so only genuinely-gone peers expire.
-export const PRESENCE_STALE_MS = 30_000;
+// Client-side staleness backstop for element awareness and page presence.
+// Peers can vanish without the server seeing a disconnect (killed tab, dropped
+// network, lid close); the transport views catch that by stamping publications
+// with `at` and age-filtering here. Peers re-stamp on every publish and on a
+// keepalive re-publish well under this window, so only genuinely-gone peers
+// (or tabs that stayed hidden for the whole window) expire.
+export const PRESENCE_STALE_MS = 150_000;
 // Re-stamp interval: comfortably under PRESENCE_STALE_MS so a quiet-but-
-// connected peer keeps its presence alive across the window.
-export const PRESENCE_KEEPALIVE_MS = 10_000;
+// connected peer keeps its presence alive across the window. It is kept well
+// above the server's ~10s hibernation window: a shorter cadence keeps an idle
+// room awake (and billed) for as long as any tab sits on the page.
+export const PRESENCE_KEEPALIVE_MS = 60_000;
+// Cursors have no keepalive: a cursor that stops moving expires after this
+// window, the same way a cursor left still has always faded out.
+export const CURSOR_STALE_MS = 30_000;
 
 /** True when a publication's `at` timestamp is within the staleness window.
  * A missing/non-finite `at` is treated as fresh (older peers that never stamp
@@ -107,10 +112,26 @@ export function startPresenceKeepalive(
   republish: () => void,
   intervalMs: number = PRESENCE_KEEPALIVE_MS,
 ): () => void {
+  // A hidden tab stops re-stamping, so it ages out of peers' views instead of
+  // keeping the room awake. Becoming visible again re-stamps right away.
+  const isHidden = () =>
+    typeof document !== "undefined" && document.visibilityState === "hidden";
   const handle = setInterval(() => {
+    if (isHidden()) return;
     republish();
   }, intervalMs);
-  return () => clearInterval(handle);
+  const onVisibilityChange = () => {
+    if (!isHidden()) republish();
+  };
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", onVisibilityChange);
+  }
+  return () => {
+    clearInterval(handle);
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    }
+  };
 }
 
 /** Wire envelope for a page-presence channel value: the user's payload plus the
