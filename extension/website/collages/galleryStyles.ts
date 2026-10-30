@@ -1,9 +1,9 @@
-// ABOUTME: Styles for the public collage gallery: the site's own ground and nav, framed covers, tinted detail cards.
-// ABOUTME: Each frame copies the studio's mat; each card takes its colour from its collage via --card-tint.
+// ABOUTME: Styles for the public collage gallery: the studio's grained ground, the site's nav, framed covers, washed detail cards.
+// ABOUTME: Each frame copies the studio's mat; each card's wash comes from blurred blots of its collage's colours.
 
 export const GALLERY_STYLES = `
   .collage-board {
-    --b-ground: #faf7f2;
+    --b-ground: #f6f5f1;
     --b-ink: #3d3833;
     --b-muted: #8a8279;
     --b-accent: #4a9a8a;
@@ -16,10 +16,10 @@ export const GALLERY_STYLES = `
     box-sizing: border-box;
     overflow-x: hidden;
     padding: 28px 20px 96px;
-    /* The same ground as the changelog and the rest of the site. */
-    background:
-      radial-gradient(circle at top left, rgba(74, 154, 138, 0.16), transparent 32rem),
-      var(--b-ground);
+    /* The collage studio's ground, with its paper grain multiplied over it. */
+    background-color: var(--b-ground);
+    background-size: 240px 240px;
+    background-blend-mode: multiply;
     color: var(--b-ink);
     font-family: "Atkinson Hyperlegible", -apple-system, BlinkMacSystemFont, sans-serif;
     line-height: 1.5;
@@ -305,74 +305,61 @@ export const GALLERY_STYLES = `
     letter-spacing: 0.02em;
   }
 
-  /* The detail card under each frame, washed in the collage's own loudest colour. */
+  /* The detail card under each frame, its own collage's colours bleeding into the paper. */
   .collage-board__card {
     position: relative;
     z-index: 1;
+    isolation: isolate;
+    overflow: hidden;
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 12px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
     width: 88%;
     margin: -6px 10px 0 auto;
-    padding: 12px 14px;
+    padding: 16px 18px 14px;
     box-sizing: border-box;
-    background-color: color-mix(in srgb, var(--card-tint) 32%, #fbf8f3);
-    background-image:
-      radial-gradient(rgba(90, 78, 65, 0.09) 0.6px, transparent 0.9px),
-      radial-gradient(rgba(90, 78, 65, 0.06) 0.6px, transparent 0.9px);
-    background-size: 5px 5px, 7px 7px;
-    background-position: 0 0, 2px 3px;
-    border-top: 3px solid var(--card-tint);
+    background-color: #fbf8f3;
     box-shadow: 0 1px 3px rgba(90, 78, 65, 0.18);
   }
 
-  .collage-board__swatches {
-    display: flex;
-    gap: 3px;
+  /* Grain over the wash, so the colour reads as soaked into paper. */
+  .collage-board__card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      radial-gradient(rgba(60, 50, 40, 0.13) 0.6px, transparent 0.9px),
+      radial-gradient(rgba(60, 50, 40, 0.09) 0.6px, transparent 0.9px);
+    background-size: 5px 5px, 7px 7px;
+    background-position: 0 0, 2px 3px;
+    mix-blend-mode: multiply;
   }
 
-  .collage-board__swatch {
-    width: 12px;
-    height: 12px;
-    border-radius: 2px;
-    box-shadow: 0 0 0 1px rgba(45, 42, 39, 0.2);
+  .collage-board__blot {
+    position: absolute;
+    z-index: -2;
+    pointer-events: none;
+    transition: opacity 400ms ease;
   }
 
-  .collage-board__maker {
-    display: inline-flex;
-    align-items: flex-start;
-    gap: 1px;
-  }
-
-  .collage-board__cursor {
-    width: 12px;
-    height: 16px;
-  }
-
-  /* The name tag a cursor carries on the site, in the maker's own cursor colour. */
+  /* The maker's name, set in a tag of their cursor colour. */
   .collage-board__name {
-    margin-top: 9px;
-    padding: 1px 7px;
+    padding: 1px 8px;
     border-radius: 3px;
     color: #2d2a27;
     font-family: "Martian Mono", ui-monospace, monospace;
-    font-size: 10.5px;
-    font-weight: 500;
+    font-size: 12px;
+    font-weight: 700;
   }
 
-  .collage-board__open {
-    flex: 1 0 100%;
-    order: 4;
-    text-align: right;
-    color: #2d2a27;
-    font-family: "Source Serif 4", Georgia, serif;
-    font-style: italic;
-    font-size: 13px;
-  }
-
-  .collage-board__pin:hover .collage-board__open {
-    text-decoration: underline;
+  .collage-board__meta {
+    color: #3f3a35;
+    font-family: "Martian Mono", ui-monospace, monospace;
+    font-size: 10px;
+    letter-spacing: 0.02em;
   }
 
   .collage-board__status {
