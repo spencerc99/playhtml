@@ -242,6 +242,33 @@
     }
   }
 
+  &__import-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+    color: $text-muted;
+    font-family: $font-mono;
+    font-size: 10px;
+  }
+
+  &__import-bar {
+    height: 3px;
+    background: $border;
+    border-radius: 2px;
+    overflow: hidden;
+
+    div {
+      height: 100%;
+      background: $accent-teal;
+      transition: width 0.2s ease;
+    }
+
+    &--waiting div {
+      animation: collections-import-finishing 1.2s ease-in-out infinite;
+    }
+  }
+
   &__transfer-status {
     margin: 6px 0 0;
     font-size: 11px;
@@ -624,5 +651,15 @@
     font-size: 11px;
     color: $text-faint;
     font-style: italic;
+  }
+}
+
+@keyframes collections-import-finishing {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
   }
 }

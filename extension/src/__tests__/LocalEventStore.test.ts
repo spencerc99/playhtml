@@ -622,6 +622,34 @@ describe("LocalEventStore aggregates", () => {
     }
   });
 
+  it("stores batches of an import without counting them until the import finishes", async () => {
+    const store = createStore();
+    const focus = {
+      ...event("batch-focus", "navigation"),
+      ts: 1_000,
+      data: { event: "focus" },
+    };
+    const blur = {
+      ...event("batch-blur", "navigation"),
+      ts: 7_000,
+      data: { event: "blur" },
+    };
+
+    expect(await store.addImportedEventBatch([blur])).toHaveLength(1);
+    expect(await store.addImportedEventBatch([focus, blur])).toEqual([
+      expect.objectContaining({ id: "batch-focus" }),
+    ]);
+    expect(await store.getSessionStats("example.com")).toBeNull();
+
+    await store.rebuildStatsAfterImport();
+
+    expect(await store.getSessionStats("example.com")).toMatchObject({
+      totalTimeMs: 6_000,
+      sessionCount: 1,
+      eventsByType: { navigation: 2 },
+    });
+  });
+
   it("restores active-day counts after a bulk import rebuilds domain stats", async () => {
     const store = createStore();
     const firstDay = Date.parse("2026-07-20T12:00:00-04:00");

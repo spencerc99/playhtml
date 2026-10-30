@@ -15,6 +15,12 @@ import {
 } from "../collectors/modes";
 import { triggerDownload } from "../utils/portraitExport";
 import {
+  estimateRemainingMs,
+  formatRemaining,
+  readExportFiles,
+} from "../utils/importStream";
+import type { StatsRebuildProgress } from "../storage/LocalEventStore";
+import {
   LEGIBILITY_KEY,
   DEFAULT_LEGIBILITY,
   parseLegibility,
@@ -45,7 +51,9 @@ interface StorageStats {
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 function formatCompactCount(count: number): string {
@@ -70,6 +78,94 @@ function formatAge(ts: number): string {
   if (weeks < 8) return `${weeks}w`;
   const months = Math.floor(days / 30);
   return `${months}mo`;
+}
+
+interface ImportProgress {
+  phase: "reading" | "finishing";
+  bytesRead: number;
+  totalBytes: number;
+  eventsRead: number;
+  startedAt: number;
+  stats?: StatsProgress;
+}
+
+interface StatsProgress {
+  step: StatsRebuildProgress["step"];
+  done: number;
+  total: number;
+  /** When this step began, for its time estimate. */
+  stepStartedAt: number;
+}
+
+const STATS_STEPS: Record<StatsRebuildProgress["step"], string> = {
+  adding: "Adding up time on each site",
+  saving: "Saving your stats",
+  days: "Counting active days",
+};
+const STATS_STEP_ORDER = Object.keys(STATS_STEPS) as StatsRebuildProgress["step"][];
+
+function statsProgressLabel(stats: StatsProgress | undefined): {
+  share: number | null;
+  text: string;
+} {
+  if (!stats) return { share: null, text: "Updating your stats…" };
+  const number = STATS_STEP_ORDER.indexOf(stats.step) + 1;
+  const prefix = `Updating your stats · step ${number} of ${STATS_STEP_ORDER.length}: ${STATS_STEPS[stats.step]}`;
+  if (stats.total <= 0 || stats.step === "saving")
+    return { share: null, text: `${prefix}…` };
+  const share = Math.min(stats.done / stats.total, 1);
+  const remainingMs = estimateRemainingMs(
+    Date.now() - stats.stepStartedAt,
+    stats.done,
+    stats.total,
+  );
+  return {
+    share,
+    text:
+      `${prefix} · ${Math.floor(share * 100)}%` +
+      (remainingMs === null ? "" : ` · ${formatRemaining(remainingMs)}`),
+  };
+}
+
+function ImportProgressBar({ progress }: { progress: ImportProgress }) {
+  let share: number | null;
+  let label: string;
+  if (progress.phase === "finishing") {
+    const stats = statsProgressLabel(progress.stats);
+    share = stats.share;
+    label = `All ${progress.eventsRead.toLocaleString()} events saved. ${stats.text}`;
+  } else {
+    share =
+      progress.totalBytes > 0 ? progress.bytesRead / progress.totalBytes : 0;
+    const remainingMs = estimateRemainingMs(
+      Date.now() - progress.startedAt,
+      progress.bytesRead,
+      progress.totalBytes,
+    );
+    label =
+      `${progress.eventsRead.toLocaleString()} events read · ${Math.floor(
+        share * 100,
+      )}%` +
+      (remainingMs === null
+        ? " · estimating time…"
+        : ` · ${formatRemaining(remainingMs)}`);
+  }
+  return (
+    <div className="collections__import-progress" role="status">
+      <div
+        className={`collections__import-bar${
+          share === null ? " collections__import-bar--waiting" : ""
+        }`}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={share === null ? undefined : Math.floor(share * 100)}
+      >
+        <div style={{ width: `${(share ?? 1) * 100}%` }} />
+      </div>
+      <span>{label}</span>
+    </div>
+  );
 }
 
 function getEventTypeCounts(countsByType: Record<string, number>) {
@@ -279,6 +375,9 @@ export function Collections({
   } | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(
+    null,
+  );
   const [isRestoring, setIsRestoring] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -568,30 +667,89 @@ export function Collections({
     }
   };
 
-  const handleImportFile = async (file: File) => {
+  const listenForStatsProgress = () => {
+    const listener = (message: any) => {
+      if (message?.type !== "IMPORT_STATS_PROGRESS") return;
+      const { step, done, total } = message as StatsRebuildProgress;
+      setImportProgress((current) => {
+        if (!current) return current;
+        const stepStartedAt =
+          current.stats?.step === step
+            ? current.stats.stepStartedAt
+            : Date.now();
+        return { ...current, stats: { step, done, total, stepStartedAt } };
+      });
+    };
+    browser.runtime.onMessage.addListener(listener);
+    return () => browser.runtime.onMessage.removeListener(listener);
+  };
+
+  const handleImportFiles = async (files: File[]) => {
+    let stopStatsProgress = () => {};
     setIsImporting(true);
     setTransferStatus(null);
+    const startedAt = Date.now();
+    let imported = 0;
+    let alreadyHeld = 0;
+    let scrapsAdded = false;
+    setImportProgress({
+      phase: "reading",
+      bytesRead: 0,
+      totalBytes: files.reduce((sum, file) => sum + file.size, 0),
+      eventsRead: 0,
+      startedAt,
+    });
     try {
-      const buffer = await file.arrayBuffer();
-      const data = Array.from(new Uint8Array(buffer));
-      const response = await browser.runtime.sendMessage({
-        type: "IMPORT_EVENTS",
-        data,
+      await readExportFiles(files, async (events, progress) => {
+        if (events.length > 0) {
+          const response = await browser.runtime.sendMessage({
+            type: "IMPORT_EVENT_BATCH",
+            events,
+          });
+          if (!response?.success)
+            throw new Error(response?.error ?? "Import failed");
+          imported += response.imported;
+          alreadyHeld += response.alreadyHeld;
+          scrapsAdded ||= response.scrapsAdded;
+        }
+        setImportProgress({ phase: "reading", ...progress, startedAt });
       });
-      if (!response?.success)
-        throw new Error(response?.error ?? "Import failed");
+      setImportProgress((current) =>
+        current ? { ...current, phase: "finishing" } : current,
+      );
+      // Nothing new means the stats are already right.
+      if (imported > 0) {
+        stopStatsProgress = listenForStatsProgress();
+        const response = await browser.runtime.sendMessage({
+          type: "FINISH_IMPORT",
+          scrapsAdded,
+        });
+        if (!response?.success)
+          throw new Error(response?.error ?? "Import failed");
+      }
+      setImportProgress(null);
       setTransferStatus({
         type: "success",
-        message: `Imported ${response.imported.toLocaleString()} events.`,
+        message:
+          `Imported ${imported.toLocaleString()} events` +
+          (alreadyHeld > 0
+            ? `; ${alreadyHeld.toLocaleString()} were already here.`
+            : "."),
       });
       await loadStorageStats();
     } catch (e: any) {
       setTransferStatus({
         type: "error",
-        message: `Import failed: ${e.message}`,
+        message:
+          `Import failed: ${e.message}` +
+          (imported > 0
+            ? ` ${imported.toLocaleString()} events were saved; importing the same file again picks up where it stopped.`
+            : ""),
       });
     } finally {
+      stopStatsProgress();
       setIsImporting(false);
+      setImportProgress(null);
       if (importInputRef.current) importInputRef.current.value = "";
     }
   };
@@ -973,12 +1131,14 @@ export function Collections({
                 ref={importInputRef}
                 type="file"
                 accept=".json.gz"
+                multiple
                 style={{ display: "none" }}
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleImportFile(file);
+                  const files = Array.from(e.target.files ?? []);
+                  if (files.length > 0) handleImportFiles(files);
                 }}
               />
+              {importProgress && <ImportProgressBar progress={importProgress} />}
               {transferStatus && (
                 <p
                   className={`collections__transfer-status collections__transfer-status--${transferStatus.type}`}
