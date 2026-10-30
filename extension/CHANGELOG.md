@@ -1,5 +1,12 @@
 # @playhtml/extension
 
+## 0.1.28 (2026-10-30)
+
+- Time on a site stops counting after a few minutes away from your computer, so a tab left open overnight no longer inflates your history.
+- the scraps on your history page now show what you came across in the week, month, or year you're looking at, not just your latest finds.
+- Beta: share a scrap collage as a view-only link anyone can open, from the share button in the collage studio.
+
+
 ## 0.1.27 (2026-10-10)
 
 - Fix bug with "Save image" on a page portrait on some browsers
