@@ -24,7 +24,7 @@ function countOf(count, one, many) {
 /** The collage a viewer link names, read from the share API, or null. */
 async function readCollage(apiOrigin, id) {
   try {
-    const response = await fetch(`${apiOrigin}/collage/${id}`);
+    const response = await fetch(`${apiOrigin}/collages/${id}`);
     if (!response.ok) return null;
     const collage = await response.json();
     if (!collage || !Array.isArray(collage.pieces)) return null;
@@ -83,7 +83,7 @@ async function collagePage(request, env, page) {
     title: name,
     description: `a collage of ${countOf(collage.pieces.length, "piece", "pieces")} from ${countOf(sites, "site", "sites")}, on we were online`,
     url: url.toString(),
-    image: hasCover ? `${assetsOrigin}/collage/${id}/cover` : null,
+    image: hasCover ? `${assetsOrigin}/collages/${id}/cover` : null,
   });
   const response = new HTMLRewriter()
     .on("title", {
