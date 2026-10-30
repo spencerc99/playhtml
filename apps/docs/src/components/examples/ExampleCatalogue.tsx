@@ -19,6 +19,12 @@ type ExampleCatalogueProps = {
   examples: readonly CatalogueExampleSummary[];
 };
 
+// On "All" with no search, each section shows a short preview so both kinds of
+// results are visible at a glance; "Show all" switches to that section's filter.
+// Site cards carry a screenshot and run tall, so they preview one row.
+const SITE_PREVIEW_COUNT = 2;
+const EXAMPLE_PREVIEW_COUNT = 4;
+
 const SOURCE_FILTERS: Array<{ value: SourceFilter; label: string }> = [
   { value: "all", label: "All" },
   { value: "examples", label: "Examples" },
@@ -193,6 +199,13 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
     [query, sites, sourceFilter],
   );
   const resultCount = visibleExamples.length + visibleSites.length;
+  const isPreview = sourceFilter === "all" && query.trim() === "";
+  const shownSites = isPreview
+    ? visibleSites.slice(0, SITE_PREVIEW_COUNT)
+    : visibleSites;
+  const shownExamples = isPreview
+    ? visibleExamples.slice(0, EXAMPLE_PREVIEW_COUNT)
+    : visibleExamples;
   const sitesAreVisible = sourceFilter !== "examples";
   const showEmptyState =
     resultCount === 0 && !(sitesAreVisible && sitesState === "loading");
@@ -280,33 +293,57 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
       )}
 
       <div id="examples-catalogue-results" className={styles.resultGroups}>
-        {visibleExamples.length > 0 && (
-          <section
-            className={styles.resultGroup}
-            aria-labelledby="examples-heading"
-          >
-            <h2 id="examples-heading" className={styles.groupTitle}>
-              Examples
-            </h2>
-            <div className={styles.cardGrid}>
-              {visibleExamples.map((example) => (
-                <ExampleCard key={example.id} example={example} />
-              ))}
-            </div>
-          </section>
-        )}
-
         {visibleSites.length > 0 && (
           <section
             className={styles.resultGroup}
             aria-labelledby="sites-heading"
           >
-            <h2 id="sites-heading" className={styles.groupTitle}>
-              Community sites
-            </h2>
+            <div className={styles.groupHeader}>
+              <h2 id="sites-heading" className={styles.groupTitle}>
+                Community sites
+              </h2>
+              {isPreview && visibleSites.length > shownSites.length && (
+                <button
+                  type="button"
+                  className={styles.showAll}
+                  onClick={() => setSourceFilter("sites")}
+                >
+                  Show all {visibleSites.length}
+                  <ArrowIcon />
+                </button>
+              )}
+            </div>
             <div className={styles.cardGrid}>
-              {visibleSites.map((site) => (
+              {shownSites.map((site) => (
                 <SiteCard key={site.id} site={site} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {visibleExamples.length > 0 && (
+          <section
+            className={styles.resultGroup}
+            aria-labelledby="examples-heading"
+          >
+            <div className={styles.groupHeader}>
+              <h2 id="examples-heading" className={styles.groupTitle}>
+                Examples
+              </h2>
+              {isPreview && visibleExamples.length > shownExamples.length && (
+                <button
+                  type="button"
+                  className={styles.showAll}
+                  onClick={() => setSourceFilter("examples")}
+                >
+                  Show all {visibleExamples.length}
+                  <ArrowIcon />
+                </button>
+              )}
+            </div>
+            <div className={styles.cardGrid}>
+              {shownExamples.map((example) => (
+                <ExampleCard key={example.id} example={example} />
               ))}
             </div>
           </section>
