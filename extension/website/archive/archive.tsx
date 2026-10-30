@@ -8,15 +8,16 @@ import { DEFAULT_ACTIVE_VISUALIZATIONS } from "../shared/components/registry";
 import {
   parseFiltersFromUrl,
   parseVizFromUrl,
-  parseDayFromUrl,
+  parseDaysFromUrl,
   parseTimeOfDayFromUrl,
 } from "../shared/config";
 import { useArchiveEvents } from "../shared/hooks/useArchiveEvents";
 import type { FilterChip } from "../shared/utils/eventUtils";
+import type { DayRange } from "../shared/utils/dayRange";
 
 const InternetMovement = () => {
-  const [selectedDay, setSelectedDay] = useState<string | null>(
-    () => parseDayFromUrl() ?? null,
+  const [selectedDays, setSelectedDays] = useState<DayRange | null>(
+    () => parseDaysFromUrl() ?? null,
   );
   const [timeOfDay, setTimeOfDay] = useState(() => parseTimeOfDayFromUrl() ?? null);
   const [filters, setFilters] = useState<FilterChip[]>(() => {
@@ -75,7 +76,7 @@ const InternetMovement = () => {
     batchKey,
     batchContextKey,
   } = useArchiveEvents({
-    selectedDay,
+    selectedDays,
     timeOfDay,
     serverDomain,
     activeVisualizations,
@@ -107,8 +108,8 @@ const InternetMovement = () => {
         error={error}
         fetchEvents={refresh}
         dayCounts={dayCounts}
-        selectedDay={selectedDay}
-        onSelectDay={setSelectedDay}
+        selectedDays={selectedDays}
+        onSelectDays={setSelectedDays}
         timeOfDay={timeOfDay}
         onSetTimeOfDay={setTimeOfDay}
         filters={filters}

@@ -1,7 +1,17 @@
 // ABOUTME: Month-grouped grid of day cells with a stroke texture whose density follows each day's count.
-// ABOUTME: Shared by the portrait's day selector and the scraps page's "when" filter; clicking toggles a day.
+// ABOUTME: Picks a day, a span between two clicked days, or a whole month from its header; shared by every "when" panel.
 
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  dayRangeContains,
+  isSingleDay,
+  isWholeMonth,
+  monthOf,
+  sameDayRange,
+  singleDay,
+  spanBetween,
+  type DayRange,
+} from "../utils/dayRange";
 
 // RISO palette as [r,g,b] for canvas rendering
 const PALETTE: [number, number, number][] = [
@@ -25,8 +35,11 @@ export const DAY_GRID_WIDTH = COLS * CELL_W + (COLS - 1) * GRID_GAP;
 
 const SURFACE = "#f5f0e8";
 const ACCENT_TEAL = "#4a9a8a";
+const ACCENT_TEAL_TEXT = "#2f6f62";
 const TEXT = "#3d3833";
-const TEXT_FAINT = "rgba(61,56,51,0.35)";
+const TEXT_FAINT = "rgba(61,56,51,0.6)";
+const RANGE_WASH = "rgba(74,154,138,0.16)";
+const RANGE_BORDER = "1px solid rgba(74,154,138,0.5)";
 
 function seededRand(seed: number) {
   return () => {
@@ -90,6 +103,11 @@ function formatDayDow(dateStr: string): string {
   return DAY_NAMES[d.getDay()];
 }
 
+function formatMonthName(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
 function formatMonthHeader(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
   return `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
@@ -136,21 +154,39 @@ function groupByMonth(
 interface DayGridProps {
   /** Every day to show, keyed "YYYY-MM-DD" in local time, with its count. */
   dayCounts: Map<string, number>;
-  selectedDay: string | null;
-  /** Receives the clicked day, or null when the selected day is clicked again. */
-  onSelectDay: (day: string | null) => void;
+  selected: DayRange | null;
+  /**
+   * Receives a single day on a first click and the span to the day of a
+   * second click. Clicking a lone selected day again clears it (null).
+   */
+  onSelect: (range: DayRange | null) => void;
   /** Overrides for the scrolling area, such as a height cap. */
   style?: React.CSSProperties;
 }
 
 export const DayGrid: React.FC<DayGridProps> = ({
   dayCounts,
-  selectedDay,
-  onSelectDay,
+  selected,
+  onSelect,
   style,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRefs = useRef<Map<string, HTMLCanvasElement>>(new Map());
+
+  // The day a span starts from, while the viewer picks where it ends.
+  const [anchor, setAnchor] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
+
+  // A selection made elsewhere (a preset, a month, clearing) ends the pick.
+  useEffect(() => {
+    if (anchor !== null && !sameDayRange(selected, singleDay(anchor))) {
+      setAnchor(null);
+    }
+  }, [anchor, selected]);
+
+  const shown =
+    anchor !== null && hovered !== null ? spanBetween(anchor, hovered) : selected;
+  const wholeMonth = shown !== null && isWholeMonth(shown);
 
   const { groups, maxCount } = useMemo(() => {
     const sortedDays = [...dayCounts.keys()].sort();
@@ -183,18 +219,25 @@ export const DayGrid: React.FC<DayGridProps> = ({
 
   const handleDayClick = useCallback(
     (dateStr: string) => {
-      if (selectedDay === dateStr) {
-        onSelectDay(null);
-      } else {
-        onSelectDay(dateStr);
+      if (anchor !== null) {
+        onSelect(spanBetween(anchor, dateStr));
+        setAnchor(null);
+        return;
       }
+      if (selected && isSingleDay(selected) && selected.start === dateStr) {
+        onSelect(null);
+        return;
+      }
+      onSelect(singleDay(dateStr));
+      setAnchor(dateStr);
     },
-    [selectedDay, onSelectDay],
+    [anchor, selected, onSelect],
   );
 
   return (
     <div
       ref={scrollRef}
+      onMouseLeave={() => setHovered(null)}
       style={{
         flex: 1,
         overflowY: "auto",
@@ -204,23 +247,56 @@ export const DayGrid: React.FC<DayGridProps> = ({
     >
       {groups.map((group) => (
         <div key={group.header} style={{ marginBottom: 4 }}>
-          {/* Month header */}
-          <div
-            style={{
-              fontFamily: "'Martian Mono', monospace",
-              fontSize: 8,
-              color: TEXT_FAINT,
-              padding: "3px 0 2px",
-              letterSpacing: "0.5px",
-              textTransform: "uppercase",
-              position: "sticky",
-              top: 0,
-              background: "rgba(250,249,246,0.95)",
-              zIndex: 1,
-            }}
-          >
-            {group.header}
-          </div>
+          {/* Month header picks the whole month */}
+          {(() => {
+            const month = monthOf(group.dates[0]);
+            const on = sameDayRange(selected, month);
+            return (
+              <button
+                type="button"
+                aria-pressed={on}
+                aria-label={`All of ${formatMonthName(group.dates[0])}`}
+                onClick={() => {
+                  setAnchor(null);
+                  onSelect(on ? null : month);
+                }}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  width: "100%",
+                  margin: 0,
+                  border: "none",
+                  fontFamily: "'Martian Mono', monospace",
+                  fontSize: 8,
+                  color: on ? ACCENT_TEAL_TEXT : TEXT_FAINT,
+                  fontWeight: on ? 500 : 400,
+                  padding: "5px 0 3px",
+                  letterSpacing: "0.5px",
+                  textTransform: "uppercase",
+                  position: "sticky",
+                  top: 0,
+                  background: "rgba(250,249,246,0.98)",
+                  zIndex: 2,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <span
+                  style={{
+                    textDecoration: "underline",
+                    textDecorationColor: on
+                      ? ACCENT_TEAL
+                      : "rgba(61,56,51,0.25)",
+                    textUnderlineOffset: 2,
+                  }}
+                >
+                  {group.header}
+                </span>
+                {on && <span aria-hidden="true">{"\u25CF"}</span>}
+              </button>
+            );
+          })()}
           {/* Day cells in grid */}
           <div
             style={{
@@ -230,7 +306,14 @@ export const DayGrid: React.FC<DayGridProps> = ({
             }}
           >
             {group.dates.map((dateStr) => {
-              const isSelected = selectedDay === dateStr;
+              const isSelected =
+                selected !== null && dayRangeContains(selected, dateStr);
+              const inShown =
+                shown !== null && dayRangeContains(shown, dateStr);
+              const isEdge =
+                inShown &&
+                !wholeMonth &&
+                (dateStr === shown.start || dateStr === shown.end);
               return (
                 <div
                   key={dateStr}
@@ -240,6 +323,8 @@ export const DayGrid: React.FC<DayGridProps> = ({
                   aria-label={formatSingleDate(dateStr)}
                   data-day={dateStr}
                   onClick={() => handleDayClick(dateStr)}
+                  onMouseEnter={() => setHovered(dateStr)}
+                  onFocus={() => setHovered(dateStr)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
@@ -253,9 +338,11 @@ export const DayGrid: React.FC<DayGridProps> = ({
                     cursor: "pointer",
                     borderRadius: 3,
                     overflow: "hidden",
-                    border: isSelected
+                    border: isEdge
                       ? `2px solid ${ACCENT_TEAL}`
-                      : "1px solid rgba(61,56,51,0.08)",
+                      : inShown
+                        ? RANGE_BORDER
+                        : "1px solid rgba(61,56,51,0.08)",
                     boxSizing: "border-box",
                   }}
                 >
@@ -274,6 +361,16 @@ export const DayGrid: React.FC<DayGridProps> = ({
                       height: "100%",
                     }}
                   />
+                  {inShown && (
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        background: RANGE_WASH,
+                      }}
+                    />
+                  )}
                   {/* Day number + dow overlay */}
                   <div
                     style={{
@@ -289,8 +386,8 @@ export const DayGrid: React.FC<DayGridProps> = ({
                       style={{
                         fontFamily: "'Lora', Georgia, serif",
                         fontSize: 14,
-                        fontWeight: isSelected ? 700 : 500,
-                        color: isSelected ? ACCENT_TEAL : TEXT,
+                        fontWeight: isEdge ? 700 : 500,
+                        color: inShown ? ACCENT_TEAL_TEXT : TEXT,
                         lineHeight: 1,
                       }}
                     >

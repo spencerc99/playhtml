@@ -2,6 +2,7 @@
 // ABOUTME: Worker base URL + URL-param overrides for experiment settings.
 
 import { parseSpec } from "./utils/settingsSpec";
+import { parseDayRange, type DayRange } from "./utils/dayRange";
 import {
   DEFAULT_CINEMATIC_CONFIG,
   type CinematicConfig,
@@ -175,14 +176,15 @@ export function parseTimeRangeFromUrl():
   return { startMs, endMs };
 }
 
-/** `?day=YYYY-MM-DD` → the archive day to fetch, or undefined when absent.
- * Lets a capture URL pin a specific historical day (e.g. to source a past
- * midnight window) without clicking the calendar. */
-export function parseDayFromUrl(): string | undefined {
+/** `?day=YYYY-MM-DD` or `?day=YYYY-MM-DD..YYYY-MM-DD` → the archive days to
+ * fetch, or undefined when absent or malformed. Lets a capture URL pin a
+ * specific historical day or span (e.g. to source a past midnight window)
+ * without clicking the calendar. */
+export function parseDaysFromUrl(): DayRange | undefined {
   if (typeof window === "undefined") return undefined;
   const raw = new URLSearchParams(window.location.search).get("day");
   if (raw === null) return undefined;
-  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : undefined;
+  return parseDayRange(raw);
 }
 
 /** A recurring time-of-day window, expressed in minutes from local midnight.
