@@ -1,46 +1,87 @@
-// ABOUTME: Styles for the public collage gallery: a dotted cream board, taped cards and grain catalog slips.
-// ABOUTME: Each card is a share's baked cover; the page needs none of the studio's piece rules.
+// ABOUTME: Styles for the public collage gallery: the site's own ground and nav, framed covers, tinted detail cards.
+// ABOUTME: Each frame copies the studio's mat; each card takes its colour from its collage via --card-tint.
 
 export const GALLERY_STYLES = `
   .collage-board {
     --b-ground: #faf7f2;
     --b-ink: #3d3833;
     --b-muted: #8a8279;
-    --b-accent: #3a7d6f;
-    --b-slip: #ece8e2;
+    --b-accent: #4a9a8a;
+    /* The studio's mat palette, so a framed collage reads as it does in the editor. */
+    --c-mat: #e6e3dc;
+    --c-ink: #3a3734;
+    --c-muted: #86807a;
+    --c-rule: #dcd8cf;
     min-height: 100vh;
+    box-sizing: border-box;
     overflow-x: hidden;
-    background-color: var(--b-ground);
-    background-image: radial-gradient(rgba(90, 78, 65, 0.07) 1px, transparent 1.2px);
-    background-size: 6px 6px;
+    padding: 28px 20px 96px;
+    /* The same ground as the changelog and the rest of the site. */
+    background:
+      radial-gradient(circle at top left, rgba(74, 154, 138, 0.16), transparent 32rem),
+      var(--b-ground);
     color: var(--b-ink);
-    font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+    font-family: "Atkinson Hyperlegible", -apple-system, BlinkMacSystemFont, sans-serif;
     line-height: 1.5;
   }
 
   .collage-board__nav {
     display: flex;
-    justify-content: center;
-    gap: 22px;
-    padding: 18px 16px 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    max-width: 1120px;
+    margin: 0 auto;
     font-size: 13px;
+    color: var(--b-muted);
   }
 
-  .collage-board__nav a {
-    color: var(--b-muted);
+  .collage-board__wordmark {
+    font-family: "Source Serif 4", "Lora", Georgia, serif;
+    font-style: italic;
+    font-weight: 200;
+    font-size: 18px;
+    color: var(--b-ink);
     text-decoration: none;
   }
 
-  .collage-board__nav a:hover,
-  .collage-board__nav a[aria-current="page"] {
+  .collage-board__links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 16px;
+  }
+
+  .collage-board__links a {
+    position: relative;
+    color: var(--b-muted);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+
+  .collage-board__links a:hover {
     color: var(--b-accent);
+  }
+
+  .collage-board__links a[aria-current="page"] {
+    color: var(--b-ink);
+  }
+
+  .collage-board__links a[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -4px;
+    height: 1px;
+    background: rgba(74, 154, 138, 0.7);
   }
 
   .collage-board__header {
     position: relative;
     max-width: 1000px;
     margin: 0 auto;
-    padding: 64px 24px 40px;
+    padding: 64px 0 40px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -68,8 +109,6 @@ export const GALLERY_STYLES = `
   .collage-board__tape {
     position: absolute;
     z-index: 2;
-    top: -16px;
-    left: 50%;
     pointer-events: none;
     opacity: 0.88;
     mix-blend-mode: multiply;
@@ -78,7 +117,7 @@ export const GALLERY_STYLES = `
   /* A cut-out hyperlink, the kind of scrap the studio collects. */
   .collage-board__note {
     position: absolute;
-    left: 24px;
+    left: 0;
     top: 70px;
     width: 196px;
     padding: 8px 10px;
@@ -98,7 +137,7 @@ export const GALLERY_STYLES = `
   /* A cut-out grey system button. */
   .collage-board__cta {
     position: absolute;
-    right: 30px;
+    right: 6px;
     top: 96px;
     transform: rotate(2.4deg);
   }
@@ -121,13 +160,12 @@ export const GALLERY_STYLES = `
   }
 
   .collage-board__section {
-    max-width: 1160px;
+    max-width: 1120px;
     margin: 0 auto;
-    padding: 8px 24px 96px;
-    box-sizing: border-box;
+    padding-top: 8px;
     display: flex;
     flex-direction: column;
-    gap: 48px;
+    gap: 20px;
   }
 
   .collage-board__band {
@@ -142,10 +180,10 @@ export const GALLERY_STYLES = `
     position: absolute;
     left: 50%;
     bottom: 14px;
-    width: 560px;
+    width: 460px;
     max-width: 90vw;
     height: 46px;
-    transform: translateX(-45%) skewX(-12deg);
+    transform: translateX(-50%) skewX(-12deg);
     background: linear-gradient(90deg, rgba(255, 106, 19, 0) 0%, #ff6a13 12%, #ff8a1f 48%, #ff6a13 80%, rgba(255, 106, 19, 0) 100%);
     filter: blur(3px);
   }
@@ -161,21 +199,29 @@ export const GALLERY_STYLES = `
     color: #161616;
   }
 
-  .collage-board__picker {
-    position: relative;
-    margin: 0 0 20px 18px;
-    font-family: "Helvetica Neue", Arial, sans-serif;
-    font-weight: 800;
-    font-size: 22px;
-    letter-spacing: -0.01em;
-    white-space: nowrap;
+  /* A row of found "Share" buttons, fading out, as if cut from page after page. */
+  .collage-board__shares {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 36px;
+  }
+
+  .collage-board__share {
+    padding: 3px 12px;
+    border-radius: 999px;
+    background: #1f4bff;
     color: #ffffff;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
   }
 
   .collage-board__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 72px 48px;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 64px 48px;
     align-items: start;
   }
 
@@ -185,21 +231,39 @@ export const GALLERY_STYLES = `
     flex-direction: column;
     color: inherit;
     text-decoration: none;
-    transition: transform 160ms ease, filter 160ms ease;
   }
 
-  .collage-board__pin:hover,
+  .collage-board__mat {
+    position: relative;
+    padding: 14px 14px 0;
+    background: var(--c-mat);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, #fff 70%, transparent) inset,
+      0 0 0 1px var(--c-rule),
+      0 10px 24px color-mix(in srgb, var(--c-ink) 8%, transparent);
+    transition: transform 160ms ease, box-shadow 160ms ease;
+  }
+
+  .collage-board__pin:hover .collage-board__mat,
+  .collage-board__pin:focus-visible .collage-board__mat {
+    transform: translateY(-3px);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, #fff 70%, transparent) inset,
+      0 0 0 1px var(--c-rule),
+      0 16px 30px color-mix(in srgb, var(--c-ink) 14%, transparent);
+  }
+
   .collage-board__pin:focus-visible {
-    filter: drop-shadow(0 10px 14px rgba(40, 34, 28, 0.18));
     outline: none;
   }
 
-  .collage-board__face {
+  .collage-board__window {
     position: relative;
-    width: 100%;
     overflow: hidden;
-    background: #f5f0e8;
-    box-shadow: 0 1px 3px rgba(90, 78, 65, 0.2);
+    background: #fdfcfa;
+    box-shadow:
+      inset 1px 1px 0 color-mix(in srgb, var(--c-ink) 14%, transparent),
+      0 0 0 1px color-mix(in srgb, #fff 80%, transparent);
   }
 
   .collage-board__cover {
@@ -209,58 +273,106 @@ export const GALLERY_STYLES = `
     object-fit: cover;
   }
 
-  .collage-board__slip {
+  .collage-board__caption {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-height: 40px;
+    padding: 8px 0;
+    box-sizing: border-box;
+  }
+
+  .collage-board__title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--c-ink);
+    font-family: "Lora", Georgia, serif;
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  .collage-board__meta {
+    flex: 1 0 100%;
+    order: 3;
+    padding-top: 6px;
+    border-top: 1px solid rgba(45, 42, 39, 0.18);
+    color: #4d4741;
+    font-family: "Martian Mono", ui-monospace, monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.02em;
+  }
+
+  /* The detail card under each frame, washed in the collage's own loudest colour. */
+  .collage-board__card {
     position: relative;
     z-index: 1;
     display: flex;
-    flex-direction: column;
-    gap: 2px;
-    width: 76%;
-    margin: -18px 14px 0 auto;
-    padding: 12px 14px 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    width: 88%;
+    margin: -6px 10px 0 auto;
+    padding: 12px 14px;
     box-sizing: border-box;
-    background-color: var(--b-slip);
+    background-color: color-mix(in srgb, var(--card-tint) 32%, #fbf8f3);
     background-image:
       radial-gradient(rgba(90, 78, 65, 0.09) 0.6px, transparent 0.9px),
       radial-gradient(rgba(90, 78, 65, 0.06) 0.6px, transparent 0.9px);
     background-size: 5px 5px, 7px 7px;
     background-position: 0 0, 2px 3px;
+    border-top: 3px solid var(--card-tint);
     box-shadow: 0 1px 3px rgba(90, 78, 65, 0.18);
   }
 
-  .collage-board__title {
-    font-family: "Lora", Georgia, serif;
-    font-weight: 600;
-    font-size: 17px;
-    color: #2d2a27;
-  }
-
-  .collage-board__meta {
-    padding-bottom: 6px;
-    border-bottom: 1px solid rgba(90, 78, 65, 0.25);
-    font-family: "Martian Mono", ui-monospace, monospace;
-    font-size: 10px;
-    color: var(--b-muted);
-  }
-
-  .collage-board__sign {
+  .collage-board__swatches {
     display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    padding-top: 6px;
+    gap: 3px;
   }
 
-  .collage-board__who {
+  .collage-board__swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(45, 42, 39, 0.2);
+  }
+
+  .collage-board__maker {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 1px;
+  }
+
+  .collage-board__cursor {
+    width: 12px;
+    height: 16px;
+  }
+
+  /* The name tag a cursor carries on the site, in the maker's own cursor colour. */
+  .collage-board__name {
+    margin-top: 9px;
+    padding: 1px 7px;
+    border-radius: 3px;
+    color: #2d2a27;
     font-family: "Martian Mono", ui-monospace, monospace;
     font-size: 10.5px;
-    color: var(--b-accent);
+    font-weight: 500;
   }
 
-  .collage-board__mark {
+  .collage-board__open {
+    flex: 1 0 100%;
+    order: 4;
+    text-align: right;
+    color: #2d2a27;
     font-family: "Source Serif 4", Georgia, serif;
     font-style: italic;
-    font-size: 12px;
-    color: var(--b-muted);
+    font-size: 13px;
+  }
+
+  .collage-board__pin:hover .collage-board__open {
+    text-decoration: underline;
   }
 
   .collage-board__status {
@@ -273,8 +385,12 @@ export const GALLERY_STYLES = `
 
   /* The cut-out scraps crowd the title on narrow screens; they sit under it instead. */
   @media (max-width: 760px) {
+    .collage-board {
+      padding: 20px 16px 64px;
+    }
+
     .collage-board__header {
-      padding: 40px 16px 24px;
+      padding: 40px 0 24px;
     }
 
     .collage-board__heading {
@@ -290,30 +406,29 @@ export const GALLERY_STYLES = `
       margin-top: 18px;
     }
 
-    .collage-board__section {
-      padding: 8px 16px 64px;
-    }
-
     .collage-board__band {
       height: 92px;
     }
 
     .collage-board__favorites {
-      font-size: 60px;
-    }
-
-    .collage-board__picker {
-      margin: 0 0 10px 8px;
-      font-size: 14px;
+      font-size: 68px;
     }
 
     .collage-board__grid {
       grid-template-columns: 1fr;
     }
+
+    .collage-board__mat {
+      padding: 10px 10px 0;
+    }
+
+    .collage-board__card {
+      width: 92%;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .collage-board__pin {
+    .collage-board__mat {
       transition: none;
     }
   }
