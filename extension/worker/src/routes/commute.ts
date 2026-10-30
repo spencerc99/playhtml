@@ -37,9 +37,9 @@ const REVIEW_DESTINATION_LIMIT = 200;
 const REVIEW_SCENERY_LIMIT = 200;
 const CATALOG_CANDIDATE_LIMIT = 200;
 const COMMUTE_DESTINATION_LIMIT = 50;
-const SWEEP_SUGGESTION_LIMIT = 50;
-// Caps Clef calls per upload so a burst of traffic can't fan out into hundreds.
-const INGEST_SUGGESTION_LIMIT = 5;
+// Caps Clef calls per sweep. The sweep runs every 15 minutes, so this bounds
+// Clef to about 1,400 page checks and 1,400 name checks a day.
+const SWEEP_SUGGESTION_LIMIT = 15;
 
 async function fetchRecentEvents(
   request: Request,
@@ -197,8 +197,9 @@ function unreviewedDestinations(
 }
 
 /**
- * Scheduled backup sweep: asks Clef about live destinations that ingest
- * missed or that failed, so the gate can let approved pages through.
+ * Scheduled sweep: asks Clef about the commute's live candidates that it has
+ * not judged yet, so the gate can let approved pages through. Only pages that
+ * could appear in a commute are asked about; most visited pages never do.
  */
 export async function suggestCommuteDestinations(
   env: Env,
@@ -222,35 +223,6 @@ export async function suggestCommuteDestinations(
       SWEEP_SUGGESTION_LIMIT,
     ),
     checkSceneryNames(env, unreviewedSceneryNames(candidates, policies), SWEEP_SUGGESTION_LIMIT),
-  ]);
-  return pages + names;
-}
-
-/**
- * Asks Clef about the destinations in a freshly ingested batch, so a new page
- * is usually approved or held within seconds of the visit instead of waiting
- * for the scheduled sweep.
- */
-export async function suggestIngestedDestinations(
-  env: Env,
-  events: CollectionEvent[],
-  now = Date.now(),
-): Promise<number> {
-  if (!env.AI) return 0;
-  const navigationEvents = events.filter((event) => event.type === 'navigation');
-  if (navigationEvents.length === 0) return 0;
-  const candidates = buildCommuteResponse(navigationEvents, [], now, {
-    destinations: CATALOG_CANDIDATE_LIMIT,
-  });
-  if (candidates.destinations.length === 0 && candidates.scenery.length === 0) return 0;
-  const policies = await loadInternetPlacePolicies(env.WWO_ADMIN_DB, candidates);
-  const [pages, names] = await Promise.all([
-    suggestUnreviewedPlaces(
-      env,
-      unreviewedDestinations(candidates, policies),
-      INGEST_SUGGESTION_LIMIT,
-    ),
-    checkSceneryNames(env, unreviewedSceneryNames(candidates, policies), INGEST_SUGGESTION_LIMIT),
   ]);
   return pages + names;
 }

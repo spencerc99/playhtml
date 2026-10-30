@@ -31,7 +31,6 @@ import {
   handleCommute,
   handleCommuteReview,
   suggestCommuteDestinations,
-  suggestIngestedDestinations,
 } from '../routes/commute';
 import { handleClefLog } from '../routes/clefLog';
 import {
@@ -234,29 +233,6 @@ describe('handleCommute', () => {
     const state = (run.mock.calls[0] as unknown[])[1] as { state: { candidate: Record<string, unknown> } };
     expect(state.state.candidate.page).toBeUndefined();
     expect(state.state.candidate.inspection).toBeUndefined();
-  });
-
-  it('asks Clef about a newly ingested destination right away', async () => {
-    fetchPublicPageContext.mockResolvedValue({
-      inspection: { verdict: 'public', reason: 'public_html', finalUrl: 'https://fresh.example/post' },
-      context: { headings: ['A post'], text: 'Hello.' },
-    });
-    const run = useClef('regular');
-    const batch = [event('navigation', 'https://fresh.example/post'), event('keyboard', 'https://fresh.example/post')];
-    expect(await suggestIngestedDestinations(env, batch)).toBe(2);
-    expect(run).toHaveBeenCalledTimes(1);
-    expect(await suggestIngestedDestinations(env, batch)).toBe(0);
-    expect(await suggestIngestedDestinations(env, [event('keyboard', 'https://other.example/')])).toBe(0);
-    expect(run).toHaveBeenCalledTimes(1);
-  });
-
-  it('skips ingested pages a human already decided', async () => {
-    await env.WWO_ADMIN_DB.prepare(
-      "INSERT INTO place_policies (scope, place_key, placement, note) VALUES ('site', 'fresh.example', 'regular', '')",
-    ).run();
-    const run = useClef('regular');
-    expect(await suggestIngestedDestinations(env, [event('navigation', 'https://fresh.example/post')])).toBe(0);
-    expect(run).not.toHaveBeenCalled();
   });
 
   it('hides a page outright when Clef says its name is sensitive', async () => {
