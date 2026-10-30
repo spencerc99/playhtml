@@ -22,6 +22,21 @@ describe("signerIdentity", () => {
     ).toEqual({ color: "#ff0000" });
   });
 
+  it("cleans a stored name the way a signature needs it", () => {
+    expect(
+      signerIdentity({
+        name: "ari\u202Ekcis\u200B",
+        playerStyle: { colorPalette: ["#ffae00"] },
+      }),
+    ).toEqual({ color: "#ffae00", name: "arikcis" });
+    expect(
+      signerIdentity({
+        name: "\u200B",
+        playerStyle: { colorPalette: ["#ffae00"] },
+      }),
+    ).toEqual({ color: "#ffae00" });
+  });
+
   it("has no signer without a usable colour", () => {
     expect(signerIdentity(null)).toBeNull();
     expect(signerIdentity({ playerStyle: { colorPalette: [] } })).toBeNull();

@@ -37,7 +37,9 @@ export function signerIdentity(
 ): SignerIdentity | null {
   const color = cssColorToHex(identity?.playerStyle.colorPalette[0] ?? "");
   if (!identity || !color) return null;
-  const name = identity.name?.trim();
+  // A name saved before signing existed may hold characters a signature
+  // refuses, so it gets the same cleaning as a typed one.
+  const name = signatureName(identity.name ?? "");
   return name ? { color, name } : { color };
 }
 
