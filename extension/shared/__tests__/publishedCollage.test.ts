@@ -329,6 +329,14 @@ describe("parsePublishedCollage", () => {
       "a signature name with control characters",
       { name: "a\nb", color: "#ffae00" },
     ],
+    [
+      "a signature name with a direction override",
+      { name: "ari\u202Ekcis", color: "#ffae00" },
+    ],
+    [
+      "a signature name with a zero-width character",
+      { name: "spen\u200Bcer", color: "#ffae00" },
+    ],
     ["an overlong signature name", { name: "x".repeat(61), color: "#ffae00" }],
   ] as const) {
     it(`rejects ${name}`, () => {

@@ -59,6 +59,7 @@ describe("signatureFor", () => {
 
   it("trims a typed name to what a signature carries", () => {
     expect(signatureName("a\u0007b")).toBe("ab");
+    expect(signatureName("ari\u202Ekcis\u200B")).toBe("arikcis");
     expect(signatureName("x".repeat(80))).toHaveLength(60);
   });
 });

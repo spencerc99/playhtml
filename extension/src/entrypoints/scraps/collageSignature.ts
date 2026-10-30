@@ -44,7 +44,7 @@ export function signerIdentity(
 /** Trims a typed name to what a signature can carry. */
 export function signatureName(text: string): string {
   return text
-    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[\p{Cc}\p{Cf}]/gu, "")
     .trim()
     .slice(0, PUBLISHED_COLLAGE_LIMITS.maxSignatureNameLength)
     .trim();

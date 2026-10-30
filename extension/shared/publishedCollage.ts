@@ -701,8 +701,8 @@ function parseSignature(value: unknown): PublishedSignature {
       PUBLISHED_COLLAGE_LIMITS.maxSignatureNameLength,
     ).trim();
     if (name.length === 0) fail("its signature has an empty name");
-    if (/[\u0000-\u001f\u007f]/.test(name)) {
-      fail("its signature name has control characters");
+    if (/[\p{Cc}\p{Cf}]/u.test(name)) {
+      fail("its signature name has control or format characters");
     }
     signature.name = name;
   }
