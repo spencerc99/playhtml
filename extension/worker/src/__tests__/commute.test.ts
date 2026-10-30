@@ -10,12 +10,14 @@ import type {
 } from '@playhtml/extension-types';
 import type { Env } from '../lib/supabase';
 
-const { handleRecent } = vi.hoisted(() => ({
+const { handleRecent, loadRecentParticipantIds } = vi.hoisted(() => ({
   handleRecent: vi.fn(),
+  loadRecentParticipantIds: vi.fn(),
 }));
 
 vi.mock('../routes/recent', () => ({
   handleRecent,
+  loadRecentParticipantIds,
 }));
 
 const { fetchPublicPageContext } = vi.hoisted(() => ({
@@ -28,10 +30,11 @@ vi.mock('../routes/pageMeta', async (importOriginal) => ({
 }));
 
 import {
+  clearCommuteResponseMemo,
+  getCommuteResponse,
   handleCommute,
   handleCommuteReview,
   suggestCommuteDestinations,
-  suggestIngestedDestinations,
 } from '../routes/commute';
 import { handleClefLog } from '../routes/clefLog';
 import {
@@ -42,6 +45,14 @@ import {
 
 let env: Env;
 let miniflare: Miniflare;
+
+/** Rebuilds the public route so each read reflects the database state at that moment. */
+function readFreshCommute(
+  request = new Request('https://worker.example/commute/recent'),
+): Promise<Response> {
+  clearCommuteResponseMemo();
+  return handleCommute(request, env);
+}
 
 function event(type: CollectionEvent['type'], url: string): CollectionEvent {
   return {
@@ -76,6 +87,9 @@ describe('handleCommute', () => {
       }
     }
     env = { WWO_ADMIN_DB: db } as Env;
+    clearCommuteResponseMemo();
+    loadRecentParticipantIds.mockReset();
+    loadRecentParticipantIds.mockResolvedValue(['private-participant-id']);
     handleRecent.mockReset();
     handleRecent.mockImplementation(async (request: Request) => {
       const type = new URL(request.url).searchParams.get('type');
@@ -102,10 +116,11 @@ describe('handleCommute', () => {
     const payload = (await response.json()) as CommuteResponse;
 
     expect(response.status).toBe(200);
-    expect(handleRecent).toHaveBeenCalledTimes(2);
+    expect(handleRecent).toHaveBeenCalledTimes(1);
     expect(
-      new URL(handleRecent.mock.calls[1][0].url).searchParams.get('type'),
-    ).toBe('all');
+      new URL(handleRecent.mock.calls[0][0].url).searchParams.get('type'),
+    ).toBe('navigation');
+    expect(loadRecentParticipantIds).toHaveBeenCalledTimes(1);
     expect(payload.destinations).toEqual([
       expect.objectContaining({
         domain: 'public.example',
@@ -123,11 +138,11 @@ describe('handleCommute', () => {
       "INSERT INTO place_policies (scope, place_key, placement, note) VALUES ('hostname', 'public.example', 'hidden', '')",
     ).run();
     const request = new Request('https://worker.example/commute/recent');
-    const filtered = await handleCommute(request, env);
+    const filtered = await readFreshCommute(request);
     expect(await filtered.json()).toMatchObject({ destinations: [], scenery: [] });
     await env.WWO_ADMIN_DB.prepare('DROP TABLE place_policies').run();
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const unavailable = await handleCommute(request, env);
+    const unavailable = await readFreshCommute(request);
     expect(unavailable.status).toBe(500);
     expect(await unavailable.json()).toEqual({ error: 'Failed to build recent commute route' });
     expect(error).toHaveBeenCalledWith('[commute] recent route failed:', expect.any(Error));
@@ -144,6 +159,77 @@ describe('handleCommute', () => {
       headers: { Authorization: 'Bearer test-admin-key' },
     }), env);
     expect(authenticated.status).toBe(200);
+  });
+
+  it('counts active people from the window before the build started', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(1_000_000);
+      loadRecentParticipantIds.mockResolvedValue(['one', 'two', 'one']);
+      const payload = (await (await handleCommute(
+        new Request('https://worker.example/commute/recent'),
+        env,
+      )).json()) as CommuteResponse;
+      expect(loadRecentParticipantIds.mock.calls[0].slice(1)).toEqual([1_000_000 - 2 * 60_000, 1000]);
+      expect(payload.activePeople).toBe(2);
+      expect(JSON.stringify(payload)).not.toContain('"one"');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shares one build across riders for 30 seconds and stamps the send time', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(1_000_000);
+      const request = () => new Request('https://worker.example/commute/recent');
+      const [first, second] = await Promise.all([
+        handleCommute(request(), env),
+        handleCommute(request(), env),
+        getCommuteResponse(env),
+      ]);
+      expect(handleRecent).toHaveBeenCalledTimes(1);
+      expect(loadRecentParticipantIds).toHaveBeenCalledTimes(1);
+      expect(((await first.json()) as CommuteResponse).generatedAt).toBe(1_000_000);
+      expect(((await second.json()) as CommuteResponse).generatedAt).toBe(1_000_000);
+
+      vi.setSystemTime(1_020_000);
+      const cached = (await (await handleCommute(request(), env)).json()) as CommuteResponse;
+      expect(handleRecent).toHaveBeenCalledTimes(1);
+      expect(cached.generatedAt).toBe(1_020_000);
+      expect(cached.destinations).toHaveLength(1);
+
+      vi.setSystemTime(1_030_000);
+      await handleCommute(request(), env);
+      expect(handleRecent).toHaveBeenCalledTimes(2);
+      expect(loadRecentParticipantIds).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rebuilds after a failed build instead of serving the failure', async () => {
+    loadRecentParticipantIds.mockRejectedValueOnce(new Error('database unavailable'));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const request = () => new Request('https://worker.example/commute/recent');
+    expect((await handleCommute(request(), env)).status).toBe(500);
+    expect(error).toHaveBeenCalledWith('[commute] recent route failed:', expect.any(Error));
+    expect((await handleCommute(request(), env)).status).toBe(200);
+    expect(loadRecentParticipantIds).toHaveBeenCalledTimes(2);
+  });
+
+  it('builds the admin review feed fresh instead of reading the public route', async () => {
+    env.ADMIN_KEY = 'test-admin-key';
+    await handleCommute(new Request('https://worker.example/commute/recent'), env);
+    expect(handleRecent).toHaveBeenCalledTimes(1);
+    const review = await handleCommuteReview(new Request('https://worker.example/commute/review', {
+      headers: { Authorization: 'Bearer test-admin-key' },
+    }), env);
+    expect(review.status).toBe(200);
+    expect(handleRecent).toHaveBeenCalledTimes(2);
+    expect(new URL(handleRecent.mock.calls[1][0].url).searchParams.get('limit')).toBe('10000');
+    const body = (await review.json()) as { destinations: Array<{ review?: unknown }> };
+    expect(body.destinations[0].review).toBeDefined();
   });
 
   async function saveClefSuggestion(placement: string) {
@@ -177,7 +263,7 @@ describe('handleCommute', () => {
   }
 
   async function destinations(): Promise<CommuteResponse['destinations']> {
-    const response = await handleCommute(new Request('https://worker.example/commute/recent'), env);
+    const response = await readFreshCommute();
     return ((await response.json()) as CommuteResponse).destinations;
   }
 
@@ -236,33 +322,10 @@ describe('handleCommute', () => {
     expect(state.state.candidate.inspection).toBeUndefined();
   });
 
-  it('asks Clef about a newly ingested destination right away', async () => {
-    fetchPublicPageContext.mockResolvedValue({
-      inspection: { verdict: 'public', reason: 'public_html', finalUrl: 'https://fresh.example/post' },
-      context: { headings: ['A post'], text: 'Hello.' },
-    });
-    const run = useClef('regular');
-    const batch = [event('navigation', 'https://fresh.example/post'), event('keyboard', 'https://fresh.example/post')];
-    expect(await suggestIngestedDestinations(env, batch)).toBe(2);
-    expect(run).toHaveBeenCalledTimes(1);
-    expect(await suggestIngestedDestinations(env, batch)).toBe(0);
-    expect(await suggestIngestedDestinations(env, [event('keyboard', 'https://other.example/')])).toBe(0);
-    expect(run).toHaveBeenCalledTimes(1);
-  });
-
-  it('skips ingested pages a human already decided', async () => {
-    await env.WWO_ADMIN_DB.prepare(
-      "INSERT INTO place_policies (scope, place_key, placement, note) VALUES ('site', 'fresh.example', 'regular', '')",
-    ).run();
-    const run = useClef('regular');
-    expect(await suggestIngestedDestinations(env, [event('navigation', 'https://fresh.example/post')])).toBe(0);
-    expect(run).not.toHaveBeenCalled();
-  });
-
   it('hides a page outright when Clef says its name is sensitive', async () => {
     useClef();
     await saveClefSuggestion('hidden');
-    const response = await handleCommute(new Request('https://worker.example/commute/recent'), env);
+    const response = await readFreshCommute();
     const payload = (await response.json()) as CommuteResponse;
     expect(payload.destinations).toEqual([]);
     expect(JSON.stringify(payload.scenery)).not.toContain('public.example');
@@ -289,7 +352,7 @@ describe('handleCommute', () => {
     const run = useClef('regular', 'hidden');
     expect(await suggestCommuteDestinations(env)).toBe(2);
     expect(run.names).toHaveBeenCalledTimes(1);
-    const response = await handleCommute(new Request('https://worker.example/commute/recent'), env);
+    const response = await readFreshCommute();
     const payload = (await response.json()) as CommuteResponse;
     expect(JSON.stringify(payload)).not.toContain('public.example');
 
@@ -314,7 +377,7 @@ describe('handleCommute', () => {
     const run = useClef('regular', 'hidden');
     await suggestCommuteDestinations(env);
     expect(run.names).toHaveBeenCalledTimes(1);
-    const response = await handleCommute(new Request('https://worker.example/commute/recent'), env);
+    const response = await readFreshCommute();
     expect(JSON.stringify(await response.json())).not.toContain('public.example');
   });
 

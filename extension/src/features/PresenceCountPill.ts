@@ -14,7 +14,9 @@ const PORTAL_SVG = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
   <circle cx="7" cy="7" r="1" fill="currentColor" opacity="0.6"/>
 </svg>`;
 
-const LOBBY_PAGE_TTL_MS = 30_000;
+// Pages re-stamp lastSeenAt once a minute (the Wikipedia lobby heartbeat), so
+// this leaves room for a missed beat before a page drops out of the count.
+const LOBBY_PAGE_TTL_MS = 150_000;
 
 export class PresenceCountPill {
   private element: HTMLElement | null = null;

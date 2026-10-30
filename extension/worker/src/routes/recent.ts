@@ -83,6 +83,44 @@ export function getRecentEventTypeFilter(url: URL): string | null {
   return requestedType === 'all' ? null : requestedType || 'cursor';
 }
 
+/**
+ * Participant ids of the newest events (any type) at or after `since`,
+ * newest first, at most `limit` rows. Selects only the id column so counting
+ * who is browsing never loads event payloads, titles, or colors. Ids repeat
+ * once per event.
+ */
+export async function loadRecentParticipantIds(
+  env: Env,
+  since: number,
+  limit: number,
+): Promise<string[]> {
+  if (limit > SUPABASE_PAGE_SIZE) {
+    throw new Error(`Participant id limit ${limit} exceeds one Supabase page`);
+  }
+
+  const supabase = createSupabaseClient(env);
+  const { data, error } = await supabase
+    .from('collection_events')
+    .select('participant_id')
+    .gte('ts', new Date(since).toISOString())
+    .order('ts', { ascending: false })
+    .limit(limit);
+  if (error) {
+    throw new Error(`Recent participant query failed: ${error.message}`);
+  }
+  if (!Array.isArray(data)) {
+    throw new Error('Recent participant query returned no rows array');
+  }
+
+  return data.map((row) => {
+    const participantId = (row as { participant_id?: unknown }).participant_id;
+    if (typeof participantId !== 'string' || !participantId) {
+      throw new Error('Recent participant row is missing participant_id');
+    }
+    return participantId;
+  });
+}
+
 type PageMeta = { title?: string; favicon_url?: string };
 
 /**
