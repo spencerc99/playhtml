@@ -82,19 +82,6 @@ say "  quarantine tape table:           $([[ $quarantine_present == t ]] && echo
 say "  page title saving function:      $([[ $page_metadata_present == t ]] && echo present || echo missing)"
 say "  participant restore function:    $([[ $restore_present == t ]] && echo present || echo missing)"
 
-if [[ "$page_metadata_present" != "t" ]]; then
-  say "Checking page titles for duplicate current rows before changing anything (reads 5M rows)."
-  duplicates="$(sql "select count(*) from (
-      select page_ref from public.page_metadata_history
-      where valid_to_ts is null group by page_ref having count(*) > 1) d")"
-  if [[ "$duplicates" != "0" ]]; then
-    say "Stopping: $duplicates pages have more than one current title row." >&2
-    say "Nothing was changed. These must be resolved before the page title migration can apply." >&2
-    exit 2
-  fi
-  say "  no duplicates."
-fi
-
 # 1. Quarantine tape: one new table.
 if [[ "$quarantine_present" != "t" ]]; then
   say "Applying $QUARANTINE_NAME (new table)."
@@ -102,15 +89,7 @@ if [[ "$quarantine_present" != "t" ]]; then
 fi
 recorded "$QUARANTINE_VERSION" || record "$QUARANTINE_VERSION" "$QUARANTINE_NAME"
 
-# 2. Page title saving. Rewrites page_metadata_history (about 5M rows) in one transaction.
-if [[ "$page_metadata_present" != "t" ]]; then
-  say "Applying $PAGE_METADATA_NAME. This rewrites the page title table; expect a few minutes."
-  with_progress "" apply_file "$migrations_dir/${PAGE_METADATA_VERSION}_${PAGE_METADATA_NAME}.sql"
-  say "Page titles will save again on the next upload."
-fi
-recorded "$PAGE_METADATA_VERSION" || record "$PAGE_METADATA_VERSION" "$PAGE_METADATA_NAME"
-
-# 3. Participant restore index. Built concurrently: event uploads keep working.
+# 2. Participant restore index. Built concurrently: event uploads keep working.
 index_state() {
   sql "select coalesce(
     (select case when i.indisvalid then 'valid' else 'invalid' end
@@ -156,5 +135,45 @@ if [[ "$restore_present" != "t" ]]; then
   say "Restore function added."
 fi
 recorded "$RESTORE_VERSION" || record "$RESTORE_VERSION" "$RESTORE_NAME"
+
+# 3. Page title saving. Its migration needs exactly one current row per page, and the old
+# non-unique index let duplicates pile up. Closing them is a data change, so it only runs
+# when CLOSE_DUPLICATE_TITLES=1; otherwise this step reports what it would do and stops.
+if [[ "$page_metadata_present" != "t" ]]; then
+  say "Checking page titles for pages with more than one current row (reads every current row; a few minutes)."
+  duplicate_summary="$(sql "select count(*) || ' pages, ' || coalesce(sum(n - 1), 0) || ' extra current rows'
+    from (select count(*) n from public.page_metadata_history
+          where valid_to_ts is null group by page_ref having count(*) > 1) d")"
+  if [[ "$duplicate_summary" != 0\ pages* ]]; then
+    if [[ "${CLOSE_DUPLICATE_TITLES:-}" != "1" ]]; then
+      say "Found $duplicate_summary."
+      say "To fix page title saving, rerun with CLOSE_DUPLICATE_TITLES=1. For each page that keeps the"
+      say "newest row as current and ends each older one when the next began. Nothing else was changed."
+      exit 2
+    fi
+    say "Closing $duplicate_summary, then applying $PAGE_METADATA_NAME, in one transaction."
+  else
+    say "No duplicate current rows. Applying $PAGE_METADATA_NAME. This rewrites the page title table."
+  fi
+  apply_titles() {
+    psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 --single-transaction \
+      -c "set statement_timeout = 0" \
+      -c "set lock_timeout = '15s'" \
+      -c "set client_min_messages = warning" \
+      -c "with ranked as (
+            select id, lead(valid_from_ts) over (
+              partition by page_ref order by valid_from_ts, created_at, id) as next_from
+            from public.page_metadata_history
+            where valid_to_ts is null)
+          update public.page_metadata_history h
+          set valid_to_ts = r.next_from
+          from ranked r
+          where h.id = r.id and r.next_from is not null" \
+      -f "$migrations_dir/${PAGE_METADATA_VERSION}_${PAGE_METADATA_NAME}.sql"
+  }
+  with_progress "" apply_titles
+  say "Page titles will save again on the next upload."
+fi
+recorded "$PAGE_METADATA_VERSION" || record "$PAGE_METADATA_VERSION" "$PAGE_METADATA_NAME"
 
 say "Production is caught up with the repository's migrations."
