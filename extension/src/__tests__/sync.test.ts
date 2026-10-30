@@ -1,4 +1,4 @@
-// ABOUTME: Tests that event upload strips hash fragments from meta.url
+// ABOUTME: Tests that event upload strips hash fragments from meta.url and navigation URLs
 // ABOUTME: before events leave the device, without touching the caller's objects.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -52,5 +52,29 @@ describe("uploadEvents", () => {
     await uploadEvents([event]);
 
     expect(event.meta.url).toBe("https://example.com/page#token=secret");
+  });
+
+  it("strips the hash from navigation data.url and data.from_url", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ inserted: 2, duplicates: 0 }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const popstate = {
+      ...makeEvent("https://example.com/a?q=1#token=x"),
+      type: "navigation",
+      data: { event: "popstate", url: "https://example.com/b?q=2#access_token=y" },
+    } as CollectionEvent;
+    const unload = {
+      ...makeEvent("https://example.com/a?q=1#token=x"),
+      type: "navigation",
+      data: { event: "beforeunload", from_url: "https://example.com/c?v=3#secret" },
+    } as CollectionEvent;
+    await uploadEvents([popstate, unload]);
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.events[0].data.url).toBe("https://example.com/b?q=2");
+    expect(body.events[1].data.from_url).toBe("https://example.com/c?v=3");
+    expect((popstate.data as { url: string }).url).toBe("https://example.com/b?q=2#access_token=y");
   });
 });
