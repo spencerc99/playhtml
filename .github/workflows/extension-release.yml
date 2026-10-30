@@ -308,6 +308,7 @@ jobs:
         run: node scripts/safariRelease.mjs complete
 
       - name: Check store submissions
+        id: check
         if: always()
         env:
           BUILD_CHROME_OUTCOME: ${{ steps.build-chrome.outcome }}
@@ -322,6 +323,19 @@ jobs:
           SAFARI_REVIEW_OUTCOME: ${{ steps.review-safari.outcome }}
         run: |
           FAILED=0
+          # A store that took the release, or a run that skipped every store
+          # (the recovery dispatch that only tags and announces), still tags,
+          # releases and announces even when another store failed.
+          SHIPPED=false
+          if [ "$SKIP_CHROME" = "true" ] && [ "$SKIP_EDGE" = "true" ] && [ "$SKIP_FIREFOX" = "true" ] && [ "$SKIP_SAFARI" = "true" ]; then
+            SHIPPED=true
+          fi
+          for OUTCOME in "$CHROME_OUTCOME" "$EDGE_OUTCOME" "$FIREFOX_OUTCOME" "$SAFARI_REVIEW_OUTCOME"; do
+            if [ "$OUTCOME" = "success" ]; then
+              SHIPPED=true
+            fi
+          done
+          echo "shipped=$SHIPPED" >> "$GITHUB_OUTPUT"
 
           check_outcome() {
             STORE="$1"
@@ -360,7 +374,7 @@ jobs:
 
       - name: Tag release
         id: tag
-        if: env.DRY_RUN != 'true'
+        if: always() && env.DRY_RUN != 'true' && steps.check.outputs.shipped == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -376,7 +390,7 @@ jobs:
           fi
 
       - name: Create GitHub release
-        if: env.DRY_RUN != 'true' && steps.tag.outputs.tag_created == 'true'
+        if: always() && env.DRY_RUN != 'true' && steps.tag.outputs.tag_created == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -386,7 +400,7 @@ jobs:
             --notes "See https://wewere.online/changelog/ for release notes."
 
       - name: Announce release on Discord
-        if: env.DRY_RUN != 'true' && steps.tag.outputs.tag_created == 'true'
+        if: always() && env.DRY_RUN != 'true' && steps.tag.outputs.tag_created == 'true'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
           VERSION: ${{ env.VERSION }}
