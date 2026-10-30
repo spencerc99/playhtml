@@ -361,21 +361,24 @@ describe("NavigationCollector", () => {
       expect(events()).toEqual(["blur"]);
     });
 
-    it("counts relayed frame activity as input", () => {
+    it("does not count input inside an embedded frame as page activity", () => {
+      const frame = document.createElement("iframe");
+      document.body.appendChild(frame);
       collector.enable();
       emitCallback.mockClear();
 
-      for (let i = 0; i < 6; i++) {
-        vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 1_000);
-        collector.noteActivity();
-      }
-      expect(emitCallback).not.toHaveBeenCalled();
-
-      vi.advanceTimersByTime(IDLE_TIMEOUT_MS);
+      vi.advanceTimersByTime(IDLE_TIMEOUT_MS / 2);
+      frame.contentWindow!.dispatchEvent(new Event("pointermove"));
+      vi.advanceTimersByTime(IDLE_TIMEOUT_MS / 2);
       expect(events()).toEqual(["blur"]);
 
-      collector.noteActivity();
+      frame.contentWindow!.dispatchEvent(new Event("keydown"));
+      expect(events()).toEqual(["blur"]);
+
+      window.dispatchEvent(new Event("keydown"));
       expect(events()).toEqual(["blur", "focus"]);
+      vi.advanceTimersByTime(IDLE_TIMEOUT_MS);
+      expect(events()).toEqual(["blur", "focus", "blur"]);
     });
 
     it("stops the idle timer when disabled", () => {

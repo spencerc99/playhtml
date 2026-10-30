@@ -31,7 +31,6 @@ import { syncStoredPlayerColor } from '../storage/playerColor'
 import { VERBOSE } from '../config'
 import { gzipEventExport, gunzipToString } from '../utils/dataTransfer'
 import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
-import { FRAME_ACTIVITY_MESSAGE } from '../features/frameActivity'
 import {
   loadState,
   saveState,
@@ -657,17 +656,6 @@ export default defineBackground(() => {
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = sendResponse as (response?: any) => void
-    if (message.type === FRAME_ACTIVITY_MESSAGE) {
-      // Forward an embedded frame's activity to the tab's top frame, where the
-      // navigation collector keeps the screen-time clock
-      const tabId = sender.tab?.id
-      if (tabId !== undefined && sender.frameId !== 0) {
-        browser.tabs
-          .sendMessage(tabId, { type: FRAME_ACTIVITY_MESSAGE }, { frameId: 0 })
-          .catch(() => {})
-      }
-      return
-    }
     if (message.type === 'GET_SLOW_MODE_HOSTED_RIDE') {
       if (
         typeof message.rideId !== 'string' ||
