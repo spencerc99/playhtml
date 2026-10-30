@@ -16,3 +16,4 @@ extension/website/public/changelog/media/ and reference them here:
 -->
 
 - Time on a site stops counting after a few minutes away from your computer, so a tab left open overnight no longer inflates your history.
+- Beta: share a scrap collage as a view-only link anyone can open, from the share button in the collage studio.
