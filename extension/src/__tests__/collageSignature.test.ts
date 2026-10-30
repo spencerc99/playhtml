@@ -75,6 +75,13 @@ describe("signatureFor", () => {
   it("trims a typed name to what a signature carries", () => {
     expect(signatureName("a\u0007b")).toBe("ab");
     expect(signatureName("ari\u202Ekcis\u200B")).toBe("arikcis");
+    // Joiners hold emoji sequences and Persian or Indic names together.
+    expect(signatureName("\u{1F469}\u200D\u{1F4BB}")).toBe(
+      "\u{1F469}\u200D\u{1F4BB}",
+    );
+    expect(
+      signatureName("\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645"),
+    ).toBe("\u0645\u06CC\u200C\u062E\u0648\u0627\u0647\u0645");
     expect(signatureName("x".repeat(80))).toHaveLength(60);
   });
 });

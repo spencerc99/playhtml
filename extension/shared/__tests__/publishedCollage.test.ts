@@ -318,6 +318,12 @@ describe("parsePublishedCollage", () => {
       collage({ signature: { color: "#4f8cff" } }),
     );
     expect(sealed.signature).toEqual({ color: "#4f8cff" });
+    const joined = parsePublishedCollage(
+      collage({
+        signature: { color: "#4f8cff", name: "\u{1F469}\u200D\u{1F4BB}" },
+      }),
+    );
+    expect(joined.signature?.name).toBe("\u{1F469}\u200D\u{1F4BB}");
     expect(parsePublishedCollage(collage())).not.toHaveProperty("signature");
   });
 
