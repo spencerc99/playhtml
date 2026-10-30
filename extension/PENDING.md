@@ -16,3 +16,4 @@ extension/website/public/changelog/media/ and reference them here:
 -->
 
 - Time on a site stops counting after a few minutes away from your computer, so a tab left open overnight no longer inflates your history.
+- The scraps on your history page now show what you came across in the week, month, or year you're looking at, not just your latest finds.
