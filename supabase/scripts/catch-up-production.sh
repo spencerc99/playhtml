@@ -136,42 +136,125 @@ if [[ "$restore_present" != "t" ]]; then
 fi
 recorded "$RESTORE_VERSION" || record "$RESTORE_VERSION" "$RESTORE_NAME"
 
-# 3. Page title saving. Its migration needs exactly one current row per page, and the old
-# non-unique index let duplicates pile up. Closing them is a data change, so it only runs
-# when CLOSE_DUPLICATE_TITLES=1; otherwise this step reports what it would do and stops.
+# 3. Page title saving. Its migration (20261007000000) needs exactly one current row per
+# page, a filled latest_observed_at_ts column and a unique index. The table holds millions of
+# rows, so this does the same work in small committed pieces instead of one transaction:
+# nothing is locked for more than a moment, and a dropped connection loses at most one
+# batch. Every piece is safe to rerun. Closing duplicate rows is a data change, so it only
+# runs when CLOSE_DUPLICATE_TITLES=1.
+
+# Runs SQL from stdin with psql variables (-v name=value), so values are quoted by psql.
+sql_with() {
+  psql "$DATABASE_URL" -X -q -At -v ON_ERROR_STOP=1 -c "set statement_timeout = 0" "$@" -f -
+}
+
+# Retries a brief DDL statement that needs a table lock, so it never queues traffic for long.
+brief_ddl() {
+  local attempt
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    if psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 \
+        -c "set lock_timeout = '3s'" -c "$1" >/dev/null 2>&1; then
+      return 0
+    fi
+    say "  waiting for a quiet moment on the page title table (try $attempt)"
+    sleep 5
+  done
+  psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -c "set lock_timeout = '3s'" -c "$1"
+}
+
+title_index_unique() {
+  sql "select coalesce((select i.indisunique and i.indisvalid from pg_index i join pg_class c on c.oid = i.indexrelid
+        where c.relname = 'idx_page_metadata_history_current' and c.relnamespace = 'public'::regnamespace), false)"
+}
+
 if [[ "$page_metadata_present" != "t" ]]; then
-  say "Checking page titles for pages with more than one current row (reads every current row; a few minutes)."
-  duplicate_summary="$(sql "select count(*) || ' pages, ' || coalesce(sum(n - 1), 0) || ' extra current rows'
-    from (select count(*) n from public.page_metadata_history
-          where valid_to_ts is null group by page_ref having count(*) > 1) d")"
-  if [[ "$duplicate_summary" != 0\ pages* ]]; then
+  say "Checking page titles for pages with more than one current row (a few minutes)."
+  duplicate_pages="$(sql "select count(*) from (select 1 from public.page_metadata_history
+    where valid_to_ts is null group by page_ref having count(*) > 1) d")"
+
+  if [[ "$duplicate_pages" != "0" ]]; then
     if [[ "${CLOSE_DUPLICATE_TITLES:-}" != "1" ]]; then
-      say "Found $duplicate_summary."
+      say "Found $duplicate_pages pages with more than one current title row."
       say "To fix page title saving, rerun with CLOSE_DUPLICATE_TITLES=1. For each page that keeps the"
       say "newest row as current and ends each older one when the next began. Nothing else was changed."
       exit 2
     fi
-    say "Closing $duplicate_summary, then applying $PAGE_METADATA_NAME, in one transaction."
-  else
-    say "No duplicate current rows. Applying $PAGE_METADATA_NAME. This rewrites the page title table."
+    say "Closing older current rows on $duplicate_pages pages, about 20,000 current rows at a time."
+    last=""
+    closed_total=0
+    while :; do
+      # The page_ref that ends this batch; empty when the rest fits in one batch.
+      upto="$(sql_with -v last="$last" <<'SQL'
+select page_ref from public.page_metadata_history
+where valid_to_ts is null and page_ref > :'last'
+order by page_ref offset 19999 limit 1;
+SQL
+)"
+      closed="$(sql_with -v last="$last" -v upto="$upto" <<'SQL'
+with ranked as (
+  select id, lead(valid_from_ts) over (
+    partition by page_ref order by valid_from_ts, created_at, id) as next_from
+  from public.page_metadata_history
+  where valid_to_ts is null
+    and page_ref > :'last'
+    and (:'upto' = '' or page_ref <= :'upto'))
+, closed as (
+  update public.page_metadata_history h
+  set valid_to_ts = r.next_from
+  from ranked r
+  where h.id = r.id and r.next_from is not null
+  returning 1)
+select count(*) from closed;
+SQL
+)"
+      closed_total=$((closed_total + closed))
+      say "  closed $closed_total rows so far"
+      [[ -z "$upto" ]] && break
+      last="$upto"
+    done
   fi
-  apply_titles() {
-    psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 --single-transaction \
-      -c "set statement_timeout = 0" \
-      -c "set lock_timeout = '15s'" \
-      -c "set client_min_messages = warning" \
-      -c "with ranked as (
-            select id, lead(valid_from_ts) over (
-              partition by page_ref order by valid_from_ts, created_at, id) as next_from
-            from public.page_metadata_history
-            where valid_to_ts is null)
-          update public.page_metadata_history h
-          set valid_to_ts = r.next_from
-          from ranked r
-          where h.id = r.id and r.next_from is not null" \
-      -f "$migrations_dir/${PAGE_METADATA_VERSION}_${PAGE_METADATA_NAME}.sql"
-  }
-  with_progress "" apply_titles
+
+  # Shorter than the old migration's single UPDATE: an empty nullable column is instant.
+  brief_ddl "alter table public.page_metadata_history add column if not exists latest_observed_at_ts timestamptz"
+
+  pages="$(sql "select greatest(pg_relation_size('public.page_metadata_history') / current_setting('block_size')::int, 1)")"
+  step=4000
+  say "Filling latest_observed_at_ts, $step table pages (about 50,000 rows) at a time."
+  for ((start = 0; start < pages; start += step)); do
+    sql_with -v lo="($start,0)" -v hi="($((start + step)),0)" >/dev/null <<'SQL'
+update public.page_metadata_history
+set latest_observed_at_ts = valid_from_ts
+where ctid >= :'lo'::tid and ctid < :'hi'::tid and latest_observed_at_ts is null;
+SQL
+    done_pages=$((start + step < pages ? start + step : pages))
+    say "  $((done_pages * 100 / pages))% of the table filled"
+  done
+  # Rows moved by an update land with the column already filled; this catches anything else.
+  sql "update public.page_metadata_history set latest_observed_at_ts = valid_from_ts
+       where latest_observed_at_ts is null" >/dev/null
+
+  if [[ "$(title_index_unique)" != "t" ]]; then
+    say "Building the one-current-row-per-page index without locking the table."
+    sql "drop index concurrently if exists public.idx_page_metadata_history_current_unique" >/dev/null
+    sql "create unique index concurrently idx_page_metadata_history_current_unique
+         on public.page_metadata_history (page_ref) where valid_to_ts is null" >/dev/null
+    sql "drop index concurrently if exists public.idx_page_metadata_history_current" >/dev/null
+    brief_ddl "alter index public.idx_page_metadata_history_current_unique rename to idx_page_metadata_history_current"
+  fi
+
+  say "Making latest_observed_at_ts required (checks the table without blocking it)."
+  brief_ddl "alter table public.page_metadata_history drop constraint if exists page_metadata_history_latest_observed_present"
+  brief_ddl "alter table public.page_metadata_history add constraint page_metadata_history_latest_observed_present
+             check (latest_observed_at_ts is not null) not valid"
+  sql "alter table public.page_metadata_history validate constraint page_metadata_history_latest_observed_present" >/dev/null
+  # With a validated check in place, setting NOT NULL does not scan the table again.
+  brief_ddl "alter table public.page_metadata_history alter column latest_observed_at_ts set not null"
+  brief_ddl "alter table public.page_metadata_history drop constraint page_metadata_history_latest_observed_present"
+
+  # The rest of the migration file defines the function that saves titles.
+  awk '/^create or replace function public.record_page_metadata_snapshot/,0' \
+    "$migrations_dir/${PAGE_METADATA_VERSION}_${PAGE_METADATA_NAME}.sql" \
+    | psql "$DATABASE_URL" -X -q -v ON_ERROR_STOP=1 -f - >/dev/null
   say "Page titles will save again on the next upload."
 fi
 recorded "$PAGE_METADATA_VERSION" || record "$PAGE_METADATA_VERSION" "$PAGE_METADATA_NAME"
