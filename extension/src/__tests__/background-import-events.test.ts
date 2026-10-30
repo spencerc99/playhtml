@@ -1,9 +1,8 @@
-// ABOUTME: Verifies the background import handler reports what it actually stored.
-// ABOUTME: Guards skipped-record counting and the scraps refresh broadcast.
+// ABOUTME: Verifies the background import handlers report what they actually stored.
+// ABOUTME: Guards skipped-record counting, the single stats rebuild, and the scraps refresh broadcast.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CollectionEvent } from "@playhtml/extension-types";
-import { gzipEventExport } from "../utils/dataTransfer";
 
 const originalDefineBackground = (globalThis as any).defineBackground;
 
@@ -31,12 +30,18 @@ function elementEvent(id: string): CollectionEvent {
   } as CollectionEvent;
 }
 
-async function loadBackground(addImportedEvents: ReturnType<typeof vi.fn>) {
+async function loadBackground(
+  addImportedEventBatch: ReturnType<typeof vi.fn>,
+  rebuildStatsAfterImport = vi.fn().mockResolvedValue(undefined),
+) {
   const onMessageAddListener = vi.fn();
   const sendMessage = vi.fn().mockResolvedValue(undefined);
 
   vi.doMock("../storage/LocalEventStore", () => ({
-    LocalEventStore: vi.fn(() => ({ addImportedEvents })),
+    LocalEventStore: vi.fn(() => ({
+      addImportedEventBatch,
+      rebuildStatsAfterImport,
+    })),
   }));
   vi.doMock("../storage/sync", () => ({ uploadEvents: vi.fn() }));
   vi.doMock("../storage/restore", () => ({ fetchEventsByPid: vi.fn() }));
@@ -72,22 +77,25 @@ async function loadBackground(addImportedEvents: ReturnType<typeof vi.fn>) {
   return { listener: onMessageAddListener.mock.calls[0][0], sendMessage };
 }
 
-async function importEvents(
+function send<T>(
+  listener: (message: unknown, sender: unknown, reply: unknown) => boolean,
+  message: unknown,
+) {
+  return new Promise<T>((resolve) => {
+    listener(message, {}, resolve);
+  });
+}
+
+function importBatch(
   listener: (message: unknown, sender: unknown, reply: unknown) => boolean,
   events: CollectionEvent[],
 ) {
-  const compressed = await gzipEventExport(events, null, Date.now());
-  return new Promise<{
+  return send<{
     success: boolean;
     imported: number;
     alreadyHeld: number;
-  }>((resolve) => {
-    listener(
-      { type: "IMPORT_EVENTS", data: Array.from(compressed) },
-      {},
-      resolve,
-    );
-  });
+    scrapsAdded: boolean;
+  }>(listener, { type: "IMPORT_EVENT_BATCH", events });
 }
 
 describe("background event import", () => {
@@ -110,44 +118,69 @@ describe("background event import", () => {
       elementEvent("already-a"),
       elementEvent("already-b"),
     ];
-    const addImportedEvents = vi.fn().mockResolvedValue([submitted[0]]);
-    const { listener, sendMessage } = await loadBackground(addImportedEvents);
+    const addImportedEventBatch = vi.fn().mockResolvedValue([submitted[0]]);
+    const { listener } = await loadBackground(addImportedEventBatch);
 
-    const response = await importEvents(listener, submitted);
+    const response = await importBatch(listener, submitted);
 
-    expect(addImportedEvents).toHaveBeenCalledTimes(1);
-    expect(addImportedEvents.mock.calls[0][0]).toHaveLength(3);
+    expect(addImportedEventBatch).toHaveBeenCalledTimes(1);
+    expect(addImportedEventBatch.mock.calls[0][0]).toHaveLength(3);
     expect(response).toEqual({
       success: true,
       imported: 1,
       alreadyHeld: 2,
+      scrapsAdded: true,
     });
-    expect(sendMessage).toHaveBeenCalledWith({ type: "SCRAP_PHOTOS_UPDATED" });
   });
 
   it("reports nothing imported when every record was already held", async () => {
     const submitted = [elementEvent("already-a"), elementEvent("already-b")];
-    const addImportedEvents = vi.fn().mockResolvedValue([]);
-    const { listener, sendMessage } = await loadBackground(addImportedEvents);
+    const addImportedEventBatch = vi.fn().mockResolvedValue([]);
+    const { listener } = await loadBackground(addImportedEventBatch);
 
-    const response = await importEvents(listener, submitted);
+    const response = await importBatch(listener, submitted);
 
     expect(response).toEqual({
       success: true,
       imported: 0,
       alreadyHeld: 2,
-    });
-    expect(sendMessage).not.toHaveBeenCalledWith({
-      type: "SCRAP_PHOTOS_UPDATED",
+      scrapsAdded: false,
     });
   });
 
-  it("preserves each event's timestamp through the import message", async () => {
-    const addImportedEvents = vi.fn().mockResolvedValue([]);
-    const { listener } = await loadBackground(addImportedEvents);
+  it("preserves each event's timestamp through the batch message", async () => {
+    const addImportedEventBatch = vi.fn().mockResolvedValue([]);
+    const { listener } = await loadBackground(addImportedEventBatch);
 
-    await importEvents(listener, [elementEvent("kept")]);
+    await importBatch(listener, [elementEvent("kept")]);
 
-    expect(addImportedEvents.mock.calls[0][0][0].ts).toBe(1787288971906);
+    expect(addImportedEventBatch.mock.calls[0][0][0].ts).toBe(1787288971906);
+  });
+
+  it("rebuilds stats once when the import finishes and refreshes scraps", async () => {
+    const rebuildStatsAfterImport = vi.fn().mockResolvedValue(undefined);
+    const { listener, sendMessage } = await loadBackground(
+      vi.fn(),
+      rebuildStatsAfterImport,
+    );
+
+    const response = await send(listener, {
+      type: "FINISH_IMPORT",
+      scrapsAdded: true,
+    });
+
+    expect(response).toEqual({ success: true });
+    expect(rebuildStatsAfterImport).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith({ type: "SCRAP_PHOTOS_UPDATED" });
+  });
+
+  it("skips the scraps refresh when the import added no scraps", async () => {
+    const { listener, sendMessage } = await loadBackground(vi.fn());
+
+    await send(listener, { type: "FINISH_IMPORT", scrapsAdded: false });
+
+    expect(sendMessage).not.toHaveBeenCalledWith({
+      type: "SCRAP_PHOTOS_UPDATED",
+    });
   });
 });
