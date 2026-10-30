@@ -10,6 +10,7 @@ import {
 } from '@playhtml/extension-types';
 import { getDomain, getDomainWithoutSuffix, getSubdomain } from 'tldts';
 
+/** How recently someone must have sent any event to count as browsing now. */
 const ACTIVE_PEOPLE_WINDOW_MS = 2 * 60_000;
 const DESTINATION_LIMIT = 50;
 const PREFERRED_STOPS_PER_RIDER = 2;
@@ -992,29 +993,22 @@ function buildDestinations(
   return destinations;
 }
 
-function countActivePeople(
-  activityEvents: CollectionEvent[],
-  now: number,
-): number {
-  const cutoff = now - ACTIVE_PEOPLE_WINDOW_MS;
-  const activePeople = new Set<string>();
+/** Earliest event time that still counts someone as browsing at `now`. */
+export function getActivePeopleSince(now: number): number {
+  return now - ACTIVE_PEOPLE_WINDOW_MS;
+}
 
-  for (const event of activityEvents) {
-    if (
-      !event.meta?.pid ||
-      Math.min(event.ts, now) < cutoff
-    ) {
-      continue;
-    }
-    activePeople.add(event.meta.pid);
-  }
-
-  return activePeople.size;
+/**
+ * Counts distinct people among participant ids already limited to the
+ * active window, so the response carries a number instead of identifiers.
+ */
+function countActivePeople(activeParticipantIds: string[]): number {
+  return new Set(activeParticipantIds).size;
 }
 
 export function buildCommuteResponse(
   navigationEvents: CollectionEvent[],
-  activityEvents: CollectionEvent[],
+  activeParticipantIds: string[],
   now = Date.now(),
   limits?: { destinations?: number; scenery?: number },
 ): CommuteResponse {
@@ -1038,7 +1032,7 @@ export function buildCommuteResponse(
 
   return {
     generatedAt: now,
-    activePeople: countActivePeople(activityEvents, now),
+    activePeople: countActivePeople(activeParticipantIds),
     scenery: buildScenery(
       candidates,
       limits?.scenery ?? getSceneryLimit(candidates.length),

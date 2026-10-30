@@ -31,6 +31,7 @@ import {
   type CommuteStop,
 } from "./commuteStops";
 import { estimateServerTimeOffset } from "./commuteService";
+import { startVisibleInterval } from "../../utils/visibleInterval";
 import {
   DEPARTURE_SECONDS,
   getSlowModePlatformPhase,
@@ -211,14 +212,14 @@ function useRecentRoute(): RecentRoute {
           : current,
       );
     }, COMMUTE_ROUTE_TIMEOUT_MS);
-    const refreshTimer = window.setInterval(
+    const stopRefreshing = startVisibleInterval(
       () => void load(),
       COMMUTE_REFRESH_MS,
     );
     return () => {
       controller.abort();
       window.clearTimeout(routeTimeout);
-      window.clearInterval(refreshTimer);
+      stopRefreshing();
     };
   }, []);
 

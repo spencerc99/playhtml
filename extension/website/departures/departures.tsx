@@ -8,6 +8,7 @@ import { Departures } from "../shared/components/Departures";
 import { RECENT_EVENTS_URL } from "../shared/config";
 import { useLiveEvents } from "../shared/hooks/useLiveEvents";
 import { CollectionEvent } from "../shared/types";
+import { startVisibleInterval } from "@extension/utils/visibleInterval";
 
 const REFRESH_INTERVAL_MS = 60_000;
 
@@ -33,8 +34,7 @@ function DeparturesPage() {
 
   useEffect(() => {
     fetchEvents();
-    const interval = setInterval(fetchEvents, REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
+    return startVisibleInterval(() => void fetchEvents(), REFRESH_INTERVAL_MS);
   }, [fetchEvents]);
 
   // History + live stream, deduped by id (the periodic refetch overlaps the

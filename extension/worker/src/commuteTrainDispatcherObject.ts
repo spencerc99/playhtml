@@ -137,11 +137,7 @@ export class CommuteTrainDispatcherObject {
   ): Promise<CommuteDestination[]> {
     let destinations: CommuteDestination[] = [];
     try {
-      const response = await getCommuteResponse(
-        new Request('https://dispatcher.internal/commute/recent'),
-        this.env,
-        now,
-      );
+      const response = await getCommuteResponse(this.env);
       destinations = response.destinations;
     } catch (error) {
       console.warn('[commute trains] communal route unavailable:', error);
