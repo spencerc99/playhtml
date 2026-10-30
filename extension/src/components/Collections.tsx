@@ -97,22 +97,21 @@ interface StatsProgress {
   stepStartedAt: number;
 }
 
-const STATS_STEPS: Record<StatsRebuildProgress["step"], string> = {
-  adding: "Adding up time on each site",
-  saving: "Saving your stats",
-  days: "Counting active days",
-};
-const STATS_STEP_ORDER = Object.keys(STATS_STEPS) as StatsRebuildProgress["step"][];
+const STATS_STEP_ORDER: StatsRebuildProgress["step"][] = [
+  "adding",
+  "saving",
+  "days",
+];
 
 function statsProgressLabel(stats: StatsProgress | undefined): {
   share: number | null;
   text: string;
 } {
-  if (!stats) return { share: null, text: "Updating your stats…" };
+  if (!stats) return { share: null, text: "updating stats" };
   const number = STATS_STEP_ORDER.indexOf(stats.step) + 1;
-  const prefix = `Updating your stats · step ${number} of ${STATS_STEP_ORDER.length}: ${STATS_STEPS[stats.step]}`;
+  const prefix = `updating stats (${number} of ${STATS_STEP_ORDER.length})`;
   if (stats.total <= 0 || stats.step === "saving")
-    return { share: null, text: `${prefix}…` };
+    return { share: null, text: prefix };
   const share = Math.min(stats.done / stats.total, 1);
   const remainingMs = estimateRemainingMs(
     Date.now() - stats.stepStartedAt,
@@ -133,7 +132,7 @@ function ImportProgressBar({ progress }: { progress: ImportProgress }) {
   if (progress.phase === "finishing") {
     const stats = statsProgressLabel(progress.stats);
     share = stats.share;
-    label = `All ${progress.eventsRead.toLocaleString()} events saved. ${stats.text}`;
+    label = stats.text;
   } else {
     share =
       progress.totalBytes > 0 ? progress.bytesRead / progress.totalBytes : 0;
@@ -143,12 +142,10 @@ function ImportProgressBar({ progress }: { progress: ImportProgress }) {
       progress.totalBytes,
     );
     label =
-      `${progress.eventsRead.toLocaleString()} events read · ${Math.floor(
+      `${progress.eventsRead.toLocaleString()} events · ${Math.floor(
         share * 100,
       )}%` +
-      (remainingMs === null
-        ? " · estimating time…"
-        : ` · ${formatRemaining(remainingMs)}`);
+      (remainingMs === null ? "" : ` · ${formatRemaining(remainingMs)}`);
   }
   return (
     <div className="collections__import-progress" role="status">
@@ -733,8 +730,8 @@ export function Collections({
         message:
           `Imported ${imported.toLocaleString()} events` +
           (alreadyHeld > 0
-            ? `; ${alreadyHeld.toLocaleString()} were already here.`
-            : "."),
+            ? ` (${alreadyHeld.toLocaleString()} already here)`
+            : ""),
       });
       await loadStorageStats();
     } catch (e: any) {
@@ -743,7 +740,7 @@ export function Collections({
         message:
           `Import failed: ${e.message}` +
           (imported > 0
-            ? ` ${imported.toLocaleString()} events were saved; importing the same file again picks up where it stopped.`
+            ? ` (${imported.toLocaleString()} saved; import again to continue)`
             : ""),
       });
     } finally {

@@ -244,9 +244,9 @@ export function estimateRemainingMs(
 
 export function formatRemaining(ms: number): string {
   const seconds = Math.ceil(ms / 1000);
-  if (seconds < 60) return `about ${Math.max(seconds, 1)}s left`;
+  if (seconds < 60) return `${Math.max(seconds, 1)}s left`;
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `about ${minutes} min left`;
+  if (minutes < 60) return `${minutes} min left`;
   const hours = Math.floor(minutes / 60);
-  return `about ${hours} h ${minutes % 60} min left`;
+  return `${hours} h ${minutes % 60} min left`;
 }
