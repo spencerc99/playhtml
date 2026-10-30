@@ -196,7 +196,12 @@ function CollagesPage() {
     <div
       className="collage-board"
       // The studio's own grained paper, tiled across the page.
-      style={{ backgroundImage: `url("${PAGE_GRAIN}")` }}
+      style={
+        {
+          backgroundImage: `url("${PAGE_GRAIN}")`,
+          "--paper-grain": `url("${PAGE_GRAIN}")`,
+        } as CSSProperties
+      }
     >
       <style>{GALLERY_STYLES}</style>
       <nav className="collage-board__nav" aria-label="Site navigation">

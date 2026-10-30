@@ -323,18 +323,15 @@ export const GALLERY_STYLES = `
     box-shadow: 0 1px 3px rgba(90, 78, 65, 0.18);
   }
 
-  /* Grain over the wash, so the colour reads as soaked into paper. */
+  /* The studio's paper grain over the wash, so the colour reads as soaked into paper. */
   .collage-board__card::after {
     content: "";
     position: absolute;
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    background-image:
-      radial-gradient(rgba(60, 50, 40, 0.13) 0.6px, transparent 0.9px),
-      radial-gradient(rgba(60, 50, 40, 0.09) 0.6px, transparent 0.9px);
-    background-size: 5px 5px, 7px 7px;
-    background-position: 0 0, 2px 3px;
+    background-image: var(--paper-grain);
+    background-size: 240px 240px;
     mix-blend-mode: multiply;
   }
 
