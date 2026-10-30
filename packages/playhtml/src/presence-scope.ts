@@ -179,11 +179,11 @@ export function createPresenceScope(options: PresenceScopeOptions): PresenceScop
     const callback = (second ?? first) as (everyone: PresenceEntry<any>[]) => void;
     const keyOrSelect = second ? (first as string | ((p: PagePresence) => unknown)) : undefined;
     const select = selectorFor(keyOrSelect);
-    // A key maps to one wire channel; a selector or the whole object watches all.
-    const channel =
-      typeof keyOrSelect === "string" ? keyOrSelect : ALL_PRESENCE_CHANNELS;
+    // Watch every channel even for a key: joins, leaves, and name or color
+    // changes from people without that key still change the list. The
+    // fingerprint below drops updates that leave the selected view the same.
     let lastFingerprint: string | null = null;
-    return getSource().onPresenceChange(channel, () => {
+    return getSource().onPresenceChange(ALL_PRESENCE_CHANNELS, () => {
       const everyone = everyoneSelected(select);
       const next = presenceFingerprint(
         everyone.map(({ user, presence }) => [user.pid, user.name, user.color, presence]),

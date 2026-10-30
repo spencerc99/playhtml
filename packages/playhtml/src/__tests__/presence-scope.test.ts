@@ -106,6 +106,27 @@ describe("playhtml.page presence", () => {
     expect(callback).toHaveBeenCalledTimes(2);
   });
 
+  it("key subscriptions fire when people without that key join, rename, or leave", () => {
+    const callback = vi.fn();
+    playhtml.page.onPresenceChange("status", callback);
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    receiveRemote({ remote: { identity: mina } });
+    expect(callback).toHaveBeenCalledTimes(2);
+    expect(callback.mock.lastCall![0].map(({ user }: any) => user.pid)).toContain("pk_mina");
+
+    receiveRemote({ remote: { identity: { ...mina, name: "Mina B" } } });
+    expect(callback).toHaveBeenCalledTimes(3);
+
+    getPresenceSocketForRoom(playhtml.roomId).receive({
+      type: "presence-changes",
+      updates: {},
+      removes: { remote: ["identity"] },
+    });
+    expect(callback).toHaveBeenCalledTimes(4);
+    expect(callback.mock.lastCall![0].map(({ user }: any) => user.pid)).not.toContain("pk_mina");
+  });
+
   it("selector subscriptions fire only when the selection changes", () => {
     playhtml.page.setMyPresence({ status: { text: "a", emoji: "x" } });
     const callback = vi.fn();
