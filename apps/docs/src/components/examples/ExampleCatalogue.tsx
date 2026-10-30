@@ -19,11 +19,55 @@ type ExampleCatalogueProps = {
   examples: readonly CatalogueExampleSummary[];
 };
 
-// On "All" with no search, each section shows a short preview so both kinds of
-// results are visible at a glance; "Show all" switches to that section's filter.
+// On "All" with no search, each section previews whole rows so both kinds of
+// results are visible at a glance; "Show all" expands the section in place.
 // Site cards carry a screenshot and run tall, so they preview one row.
-const SITE_PREVIEW_COUNT = 2;
-const EXAMPLE_PREVIEW_COUNT = 4;
+const SITE_PREVIEW_ROWS = 1;
+const EXAMPLE_PREVIEW_ROWS = 2;
+
+// Counts the columns the responsive card grid currently resolves to, so a
+// preview can fill whole rows at any width.
+function useGridColumns(grid: HTMLElement | null): number {
+  const [columns, setColumns] = useState(1);
+
+  useEffect(() => {
+    if (!grid) return;
+
+    const measure = () => {
+      const template = getComputedStyle(grid).gridTemplateColumns;
+      const count = template.split(" ").filter(Boolean).length;
+      setColumns(Math.max(1, count));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(grid);
+    return () => observer.disconnect();
+  }, [grid]);
+
+  return columns;
+}
+
+function ShowAllButton({
+  expanded,
+  total,
+  onToggle,
+}: {
+  expanded: boolean;
+  total: number;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={styles.showAll}
+      aria-expanded={expanded}
+      onClick={onToggle}
+    >
+      {expanded ? "Show less" : `Show all ${total}`}
+      {!expanded && <ArrowIcon />}
+    </button>
+  );
+}
 
 const SOURCE_FILTERS: Array<{ value: SourceFilter; label: string }> = [
   { value: "all", label: "All" },
@@ -156,6 +200,13 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
     "loading",
   );
   const [requestVersion, setRequestVersion] = useState(0);
+  const [sitesExpanded, setSitesExpanded] = useState(false);
+  const [examplesExpanded, setExamplesExpanded] = useState(false);
+  // Callback refs, since each grid mounts only once its results exist.
+  const [sitesGrid, setSitesGrid] = useState<HTMLDivElement | null>(null);
+  const [examplesGrid, setExamplesGrid] = useState<HTMLDivElement | null>(null);
+  const siteColumns = useGridColumns(sitesGrid);
+  const exampleColumns = useGridColumns(examplesGrid);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -200,12 +251,19 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
   );
   const resultCount = visibleExamples.length + visibleSites.length;
   const isPreview = sourceFilter === "all" && query.trim() === "";
-  const shownSites = isPreview
-    ? visibleSites.slice(0, SITE_PREVIEW_COUNT)
-    : visibleSites;
-  const shownExamples = isPreview
-    ? visibleExamples.slice(0, EXAMPLE_PREVIEW_COUNT)
-    : visibleExamples;
+  const sitePreviewCount = siteColumns * SITE_PREVIEW_ROWS;
+  const examplePreviewCount = exampleColumns * EXAMPLE_PREVIEW_ROWS;
+  const sitesCollapsible = isPreview && visibleSites.length > sitePreviewCount;
+  const examplesCollapsible =
+    isPreview && visibleExamples.length > examplePreviewCount;
+  const shownSites =
+    sitesCollapsible && !sitesExpanded
+      ? visibleSites.slice(0, sitePreviewCount)
+      : visibleSites;
+  const shownExamples =
+    examplesCollapsible && !examplesExpanded
+      ? visibleExamples.slice(0, examplePreviewCount)
+      : visibleExamples;
   const sitesAreVisible = sourceFilter !== "examples";
   const showEmptyState =
     resultCount === 0 && !(sitesAreVisible && sitesState === "loading");
@@ -302,18 +360,15 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
               <h2 id="sites-heading" className={styles.groupTitle}>
                 Community sites
               </h2>
-              {isPreview && visibleSites.length > shownSites.length && (
-                <button
-                  type="button"
-                  className={styles.showAll}
-                  onClick={() => setSourceFilter("sites")}
-                >
-                  Show all {visibleSites.length}
-                  <ArrowIcon />
-                </button>
+              {sitesCollapsible && (
+                <ShowAllButton
+                  expanded={sitesExpanded}
+                  total={visibleSites.length}
+                  onToggle={() => setSitesExpanded((value) => !value)}
+                />
               )}
             </div>
-            <div className={styles.cardGrid}>
+            <div ref={setSitesGrid} className={styles.cardGrid}>
               {shownSites.map((site) => (
                 <SiteCard key={site.id} site={site} />
               ))}
@@ -330,18 +385,15 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
               <h2 id="examples-heading" className={styles.groupTitle}>
                 Examples
               </h2>
-              {isPreview && visibleExamples.length > shownExamples.length && (
-                <button
-                  type="button"
-                  className={styles.showAll}
-                  onClick={() => setSourceFilter("examples")}
-                >
-                  Show all {visibleExamples.length}
-                  <ArrowIcon />
-                </button>
+              {examplesCollapsible && (
+                <ShowAllButton
+                  expanded={examplesExpanded}
+                  total={visibleExamples.length}
+                  onToggle={() => setExamplesExpanded((value) => !value)}
+                />
               )}
             </div>
-            <div className={styles.cardGrid}>
+            <div ref={setExamplesGrid} className={styles.cardGrid}>
               {shownExamples.map((example) => (
                 <ExampleCard key={example.id} example={example} />
               ))}
