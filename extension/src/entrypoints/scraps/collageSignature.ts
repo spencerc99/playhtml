@@ -45,11 +45,13 @@ export function signerIdentity(
 
 /** Trims a typed name to what a signature can carry. */
 export function signatureName(text: string): string {
-  return text
+  const name = text
     .replace(/(?![\u200C\u200D])[\p{Cc}\p{Cf}]/gu, "")
     .trim()
     .slice(0, PUBLISHED_COLLAGE_LIMITS.maxSignatureNameLength)
     .trim();
+  // Joiners alone would make an invisible name tag.
+  return name.replace(/[\u200C\u200D]/g, "").trim() ? name : "";
 }
 
 /**

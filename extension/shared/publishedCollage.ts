@@ -700,7 +700,9 @@ function parseSignature(value: unknown): PublishedSignature {
       "its signature",
       PUBLISHED_COLLAGE_LIMITS.maxSignatureNameLength,
     ).trim();
-    if (name.length === 0) fail("its signature has an empty name");
+    if (name.replace(/[\u200C\u200D]/g, "").trim().length === 0) {
+      fail("its signature has an empty name");
+    }
     if (/(?![\u200C\u200D])[\p{Cc}\p{Cf}]/u.test(name)) {
       fail("its signature name has control or format characters");
     }

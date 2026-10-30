@@ -332,6 +332,10 @@ describe("parsePublishedCollage", () => {
     ["a signature colour that is not hex", { color: "hsl(10, 70%, 60%)" }],
     ["an empty signature name", { name: "   ", color: "#ffae00" }],
     [
+      "a signature name of only joiners",
+      { name: "\u200C\u200D", color: "#ffae00" },
+    ],
+    [
       "a signature name with control characters",
       { name: "a\nb", color: "#ffae00" },
     ],
