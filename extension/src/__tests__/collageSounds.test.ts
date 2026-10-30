@@ -37,4 +37,19 @@ describe("collage sounds", () => {
     const sounds = await freshModule();
     expect(() => sounds.playCollageSound("cutout", 0.5)).not.toThrow();
   });
+
+  it("holds no slide while muted", async () => {
+    const AudioContext = vi.fn();
+    vi.stubGlobal("AudioContext", AudioContext);
+    const sounds = await freshModule();
+    sounds.setCollageSoundsMuted(true);
+    expect(sounds.startCollageSlide(0)).toBeNull();
+    expect(AudioContext).not.toHaveBeenCalled();
+  });
+
+  it("holds no slide when the browser has no audio", async () => {
+    vi.stubGlobal("AudioContext", undefined);
+    const sounds = await freshModule();
+    expect(sounds.startCollageSlide(0.5)).toBeNull();
+  });
 });
