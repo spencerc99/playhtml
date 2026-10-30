@@ -273,6 +273,11 @@ const ALT_DRAG_THRESHOLD = 4;
  * was the start of a drag that never got going, so it leaves the selection be.
  */
 const CLICK_MAX_MS = 350;
+/**
+ * How far, in screen pixels, a click may land from the last one and still
+ * count as clicking the same spot again, which reaches one piece further down.
+ */
+const SAME_SPOT_PX = 6;
 /** How long a finger rests on the collage before it opens the pieces-here list. */
 const LONG_PRESS_MS = 500;
 /** How far a resting finger may wander, in screen pixels, and still be held. */
@@ -561,7 +566,14 @@ export function CollageStudio({
     downAt: number;
     selectOnClick: Selection;
     moved: boolean;
+    /**
+     * Where a plain press on a piece landed on screen, kept when it settles as
+     * a click so the next click on that spot can reach further down.
+     */
+    clickSpot?: { x: number; y: number };
   } | null>(null);
+  /** Where the last plain click on a piece landed on screen, if one did. */
+  const lastClickSpotRef = useRef<{ x: number; y: number } | null>(null);
   /** Where the pointer last was over the stage, in frame units. */
   const lastPointerRef = useRef<Point | null>(null);
   const draggingScrapRef = useRef<ScrapItem | null>(null);
@@ -1403,6 +1415,9 @@ export function CollageStudio({
       performance.now() - press.downAt <= CLICK_MAX_MS
     ) {
       setSelection(press.selectOnClick);
+      lastClickSpotRef.current = press.clickSpot ?? null;
+    } else if (press) {
+      lastClickSpotRef.current = null;
     }
     setGesture({ kind: "idle" });
     setGestureReadout(null);
@@ -1927,8 +1942,9 @@ export function CollageStudio({
    * A press is planned the moment it lands (see planSelectionPress): a drag
    * moves what is in hand when the press is inside it, and a click settles on
    * release, because only then is it known that the press was a click and not
-   * the start of a drag. Shift adds or takes away a piece; cmd or ctrl
-   * reaches the next piece down instead.
+   * the start of a drag. Clicking the same spot again reaches one piece
+   * further down. Shift adds or takes away a piece; cmd or ctrl reaches the
+   * next piece down instead.
    */
   const beginMove = (piece: CollagePiece, event: React.PointerEvent) => {
     event.stopPropagation();
@@ -1941,6 +1957,13 @@ export function CollageStudio({
     if (cutoutSession) confirmCutout();
     setHereMenu(null);
     const at = framePoint(event);
+    const deep = event.metaKey || event.ctrlKey;
+    const additive = event.shiftKey;
+    const lastSpot = lastClickSpotRef.current;
+    const sameSpot =
+      lastSpot !== null &&
+      Math.hypot(event.clientX - lastSpot.x, event.clientY - lastSpot.y) <=
+        SAME_SPOT_PX;
     // The element took the press, so when the rotated-box test misses by a
     // rounding hair at an edge, the piece the page hit is the answer.
     const plan = planSelectionPress(
@@ -1948,10 +1971,7 @@ export function CollageStudio({
       at,
       selection,
       multiple ? selectionBox : null,
-      {
-        deep: event.metaKey || event.ctrlKey,
-        additive: event.shiftKey,
-      },
+      { deep, additive, sameSpot },
     ) ?? {
       selectOnDown: selectOnly(piece.id),
       dragIds: [piece.id],
@@ -1965,6 +1985,8 @@ export function CollageStudio({
       downAt: performance.now(),
       selectOnClick: plan.selectOnClick,
       moved: false,
+      clickSpot:
+        deep || additive ? undefined : { x: event.clientX, y: event.clientY },
     };
     setGesture({
       kind: "move",
