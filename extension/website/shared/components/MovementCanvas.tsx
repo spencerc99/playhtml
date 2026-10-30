@@ -541,6 +541,16 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       ),
     };
   });
+  // installationRecordings can toggle at runtime (e.g. adding a second
+  // visualization on the live installation), which shrinks the slider range;
+  // pull a now out-of-range speed back inside it.
+  const recordedScrollTiming = installationRecordings !== undefined;
+  useEffect(() => {
+    setSettings((s) => {
+      const clamped = clampScrollSpeed(s.scrollSpeed, recordedScrollTiming);
+      return clamped === s.scrollSpeed ? s : { ...s, scrollSpeed: clamped };
+    });
+  }, [recordedScrollTiming]);
   const settings = useMemo(
     () => installationRole
       ? { ...selectedSettings, randomizeColors: false }
