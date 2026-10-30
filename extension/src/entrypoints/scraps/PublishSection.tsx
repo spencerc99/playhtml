@@ -80,6 +80,7 @@ export function PublishSection({
   const [choice, setChoice] = useState<SigningChoice>(() => ({
     signing: share ? share.signature !== undefined : !signingWasTurnedOff(),
     name: share?.signature?.name ?? "",
+    withName: share?.signature?.name !== undefined,
   }));
   const [useEverywhere, setUseEverywhere] = useState(false);
   const [changingSignature, setChangingSignature] = useState(false);
@@ -116,6 +117,8 @@ export function PublishSection({
       try {
         await signer.saveName(typed);
         setIdentity({ ...identity, name: typed });
+        // The name was just signed with, so it stays on the stamp.
+        setChoice((current) => ({ ...current, withName: true }));
       } catch (error) {
         console.warn("[collage publish] could not save the name:", error);
       }

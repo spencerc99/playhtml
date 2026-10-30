@@ -1,0 +1,129 @@
+# ABOUTME: Configures the extension API Worker and its local development bindings.
+# ABOUTME: Defines the Worker entrypoint and Durable Object migration.
+name = "playhtml-game-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["global_fetch_strictly_public"]
+
+# Environment variables
+# 
+# For LOCAL DEVELOPMENT:
+#   Create a .dev.vars file (see .dev.vars.example)
+#   wrangler dev will automatically load variables from .dev.vars
+#
+# For PRODUCTION:
+#   Set secrets via: wrangler secret put SUPABASE_URL
+#   Set secrets via: wrangler secret put SUPABASE_SECRET_KEY
+#   Set secrets via: wrangler secret put ADMIN_KEY
+#   Set secrets via: wrangler secret put RESEND_API_KEY
+#   Set secrets via: wrangler secret put CODA_API_TOKEN
+#   Optional:        wrangler secret put RESEND_SEGMENT_ID
+#   Optional:        wrangler secret put INTERNET_MAP_PASSWORD
+#
+# Required variables:
+# - SUPABASE_URL - Your Supabase project URL
+# - SUPABASE_SECRET_KEY - Your Supabase "secret" API key (full database access)
+# - ADMIN_KEY - Required for admin endpoints (stats, export) - protects user data
+# - RESEND_API_KEY - Resend API key for sending welcome emails and adding contacts
+# - CODA_API_TOKEN - Coda API token for adding extension feedback rows
+#
+# Optional variables:
+# - RESEND_SEGMENT_ID - If set, new contacts are tagged with this Resend segment
+#
+# Security model:
+# - POST /events: Public (validated + rate limited)
+# - GET /events/recent: Public (for artwork rendering)
+# - GET /events/stats: ADMIN_KEY required
+# - POST /events/export: ADMIN_KEY required
+# - POST /feedback: Public (validated + rate limited)
+# - GET /internet-map/<bundle>/<file>: ADMIN_KEY or INTERNET_MAP_PASSWORD (private R2 bundles;
+#   the password is optional and only opens map bundles)
+# - POST /collages: Public (validated, size capped + rate limited) collage share
+# - GET /collages/<id>, GET /collages/<id>/img/<n>: Public (unguessable ids)
+# - DELETE /collages/<id>: the delete token handed back when it was shared
+#
+# TODO: Consider adding CORS restrictions to admin endpoints
+
+# Serves the API from workers.dev. Shared collages' pictures are also served
+# from assets.wewere.online, where Cloudflare's edge cache sits in front of
+# them (the cache does nothing on workers.dev). The custom domain is added once
+# in the dashboard (Worker > Settings > Domains & Routes), because creating one
+# needs a Zone > Workers Routes > Write token that CI deploys do not carry;
+# declaring it here keeps deploys from changing it.
+workers_dev = true
+
+[[routes]]
+pattern = "assets.wewere.online"
+custom_domain = true
+
+# Without this, `wrangler dev` hands the Worker every request as if it were
+# for the first route's host, which would make local dev the assets host.
+[dev]
+host = "localhost"
+
+# Note: rate limiting in /subscribe is per-isolate (in-memory Map), so the
+# effective limit is ~5/min × N active isolates. Acceptable at this scale.
+
+# Durable Object: live cursor-event stream hub for the website portrait page.
+[[durable_objects.bindings]]
+name = "LIVE_EVENTS_HUB"
+class_name = "LiveEventsHub"
+
+[[durable_objects.bindings]]
+name = "COMMUTE_TRAIN_DISPATCHER"
+class_name = "CommuteTrainDispatcherObject"
+
+[[ratelimits]]
+name = "COMMUTE_BOARD_RATE_LIMITER"
+namespace_id = "1620187042"
+
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+
+# Public collage share uploads (POST /collages), per client IP.
+# namespace_id must be unique within the Cloudflare account.
+[[ratelimits]]
+name = "COLLAGE_SHARE_RATE_LIMITER"
+namespace_id = "1620187043"
+
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
+[[d1_databases]]
+binding = "WWO_ADMIN_DB"
+database_name = "wwo-admin"
+database_id = "e6d5d996-c301-45d6-8b81-584d9ae5ee43"
+migrations_dir = "migrations"
+
+
+# Ingest asks Clef about new commute destinations as they arrive; this hourly
+# sweep retries any that ingest missed or that failed.
+[triggers]
+crons = ["0 * * * *"]
+
+# Private internet map bundles. They hold participants' full page URLs and
+# titles, so they are served only through the admin-authenticated
+# /internet-map/<bundle>/<file> route, never as public site files.
+# Create once: bunx wrangler r2 bucket create wwo-internet-map
+[[r2_buckets]]
+binding = "INTERNET_MAP_BUNDLES"
+bucket_name = "wwo-internet-map"
+
+# Collages shared as public, view-only links: collages/<id>/collage.json plus
+# collages/<id>/img/<n>. Anyone holding a link can read its collage, so only
+# what the sharer chose to publish is stored here.
+# Must be created once before deploying:
+#   bunx wrangler r2 bucket create wwo-published-collages
+[[r2_buckets]]
+binding = "SHARED_COLLAGES"
+bucket_name = "wwo-published-collages"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["LiveEventsHub"]
+
+[[migrations]]
+tag = "v2"
+new_classes = ["CommuteTrainDispatcherObject"]

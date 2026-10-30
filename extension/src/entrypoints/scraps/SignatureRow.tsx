@@ -24,6 +24,7 @@ export function SignatureRow({
 }: SignatureRowProps) {
   const signature = signatureFor(identity, choice);
   const asksForName = choice.signing && identity.name === undefined;
+  const offersName = choice.signing && identity.name !== undefined;
   return (
     <div className="collage-sign" data-signing={choice.signing}>
       <div className="collage-sign__row">
@@ -46,6 +47,19 @@ export function SignatureRow({
           </span>
         )}
       </div>
+      {offersName && (
+        <label className="collage-sign__everywhere">
+          <input
+            type="checkbox"
+            checked={choice.withName}
+            disabled={disabled}
+            onChange={(event) =>
+              onChoice({ ...choice, withName: event.currentTarget.checked })
+            }
+          />
+          add my name ({identity.name})
+        </label>
+      )}
       {asksForName && (
         <>
           <label className="collage-sign__name">

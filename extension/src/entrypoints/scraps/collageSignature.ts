@@ -26,6 +26,11 @@ export interface SigningChoice {
   signing: boolean;
   /** The name typed while sharing, when the maker has none of their own yet. */
   name: string;
+  /**
+   * Whether a maker with a name of their own puts it on the stamp. Off until
+   * they ask, so a name never reaches a public link without a deliberate tap.
+   */
+  withName: boolean;
 }
 
 /** The maker from a stored identity, or null when it has no usable colour. */
@@ -55,15 +60,20 @@ export function signatureName(text: string): string {
 }
 
 /**
- * The stamp a choice makes. The maker's own name wins; without one, a typed
- * name signs; with neither, the colour alone does.
+ * The stamp a choice makes. A maker's own name signs only when they add it; a
+ * maker without one signs with what they type; otherwise the colour alone.
  */
 export function signatureFor(
   identity: SignerIdentity | null,
   choice: SigningChoice,
 ): PublishedSignature | undefined {
   if (!identity || !choice.signing) return undefined;
-  const name = identity.name ?? signatureName(choice.name);
+  const name =
+    identity.name !== undefined
+      ? choice.withName
+        ? identity.name
+        : ""
+      : signatureName(choice.name);
   return name ? { color: identity.color, name } : { color: identity.color };
 }
 

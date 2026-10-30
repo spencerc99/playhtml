@@ -50,26 +50,43 @@ describe("signatureFor", () => {
   const named = { color: "#ffae00", name: "spencer" };
   const nameless = { color: "#4f8cff" };
 
-  it("signs with the maker's own name", () => {
-    expect(signatureFor(named, { signing: true, name: "" })).toEqual(named);
-    expect(signatureFor(named, { signing: true, name: "other" })).toEqual(
-      named,
-    );
+  it("seals a named maker with their colour until they add their name", () => {
+    expect(
+      signatureFor(named, { signing: true, name: "", withName: false }),
+    ).toEqual({ color: "#ffae00" });
+    expect(
+      signatureFor(named, { signing: true, name: "", withName: true }),
+    ).toEqual(named);
+    expect(
+      signatureFor(named, { signing: true, name: "other", withName: true }),
+    ).toEqual(named);
   });
 
   it("signs a nameless maker with a typed name, or the colour alone", () => {
-    expect(signatureFor(nameless, { signing: true, name: " mira " })).toEqual({
+    expect(
+      signatureFor(nameless, {
+        signing: true,
+        name: " mira ",
+        withName: false,
+      }),
+    ).toEqual({
       color: "#4f8cff",
       name: "mira",
     });
-    expect(signatureFor(nameless, { signing: true, name: "   " })).toEqual({
+    expect(
+      signatureFor(nameless, { signing: true, name: "   ", withName: false }),
+    ).toEqual({
       color: "#4f8cff",
     });
   });
 
   it("leaves the share unsigned when signing is off or no one is known", () => {
-    expect(signatureFor(named, { signing: false, name: "" })).toBeUndefined();
-    expect(signatureFor(null, { signing: true, name: "mira" })).toBeUndefined();
+    expect(
+      signatureFor(named, { signing: false, name: "", withName: true }),
+    ).toBeUndefined();
+    expect(
+      signatureFor(null, { signing: true, name: "mira", withName: true }),
+    ).toBeUndefined();
   });
 
   it("trims a typed name to what a signature carries", () => {
