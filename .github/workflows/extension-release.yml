@@ -374,7 +374,7 @@ jobs:
 
       - name: Tag release
         id: tag
-        if: always() && env.DRY_RUN != 'true' && steps.check.outputs.shipped == 'true'
+        if: ${{ !cancelled() && env.DRY_RUN != 'true' && steps.check.outputs.shipped == 'true' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -390,7 +390,7 @@ jobs:
           fi
 
       - name: Create GitHub release
-        if: always() && env.DRY_RUN != 'true' && steps.tag.outputs.tag_created == 'true'
+        if: ${{ !cancelled() && env.DRY_RUN != 'true' && steps.tag.outputs.tag_created == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -400,7 +400,7 @@ jobs:
             --notes "See https://wewere.online/changelog/ for release notes."
 
       - name: Announce release on Discord
-        if: always() && env.DRY_RUN != 'true' && steps.tag.outputs.tag_created == 'true'
+        if: ${{ !cancelled() && env.DRY_RUN != 'true' && steps.tag.outputs.tag_created == 'true' }}
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
           VERSION: ${{ env.VERSION }}
