@@ -554,12 +554,10 @@ export function startCollageSlide(pan = 0): CollageSlide | null {
         if (stopped) return;
         stopped = true;
         window.clearTimeout(idle);
+        window.clearInterval(flutter);
         settle(0);
         source.stop(ctx.currentTime + 0.3);
-        source.onended = () => {
-          window.clearInterval(flutter);
-          source.disconnect();
-        };
+        source.onended = () => source.disconnect();
       },
     };
   } catch {
