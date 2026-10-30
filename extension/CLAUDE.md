@@ -49,9 +49,13 @@ A narrow fix can still deserve a bullet when its impact is significant and can
 be explained plainly. If the release note needs implementation jargon or makes
 the impact sound larger than it is, omit it.
 
-Changes that ship dark, behind an unreleased feature in `FEATURE_CATALOG`, do
-not get a bullet. The public changelog should never describe a feature users
-cannot reach. Add the bullet in the PR that enables the feature for everyone.
+Changes behind a feature in `FEATURE_CATALOG` follow its stage. A feature at
+the `beta` stage (the closed-beta cohort can reach it) gets a bullet that starts
+with `Beta: `, so beta testers know what's new for them. A feature that is
+`internal` only gets no bullet; the public changelog should never describe a
+feature nobody outside the team can reach. Add the plain bullet (no `Beta: `)
+in the PR that releases the feature to everyone. The stage that counts is the
+production one in the admin dashboard, which can differ from `defaultStage`.
 
 When a change adds, removes, or changes a manifest permission in
 `wxt.config.ts`, update the matching Chrome Web Store reviewer justification in
