@@ -53,6 +53,7 @@ import { COLLAGE_VIEW_STYLES } from "@extension/entrypoints/scraps/collageViewSt
 import type {
   PublishedCollage,
   PublishedCollagePiece,
+  PublishedSignature,
 } from "../../shared/publishedCollage";
 import {
   faviconFor,
@@ -70,6 +71,10 @@ import {
   type ViewerPiece,
 } from "./publishedCollageView";
 import { VIEWER_STYLES } from "./collageViewerStyles";
+import {
+  SIGNATURE_STAMP_STYLES,
+  SignatureStamp,
+} from "@extension/entrypoints/scraps/SignatureStamp";
 
 /** Room above the frame for the mark and the toggle, and below it for the caption. */
 /**
@@ -337,6 +342,40 @@ function HoverLabel({
   );
 }
 
+/** The maker's stamp at the end of the caption; reaching for it says who and when. */
+function Signed({
+  signature,
+  sharedAt,
+}: {
+  signature: PublishedSignature;
+  sharedAt: number | undefined;
+}) {
+  return (
+    <span className="published-collage__signed" tabIndex={0}>
+      <SignatureStamp signature={signature} />
+      <span className="published-collage__signed-tip" role="tooltip">
+        <span>
+          signed by{" "}
+          {signature.name ?? (
+            <>
+              a{" "}
+              <span
+                className="published-collage__signed-dot"
+                style={{ color: signature.color }}
+                aria-hidden="true"
+              >
+                &#9679;
+              </span>{" "}
+              cursor
+            </>
+          )}
+        </span>
+        {sharedAt !== undefined && <span>shared {madeOn(sharedAt)}</span>}
+      </span>
+    </span>
+  );
+}
+
 /** The quiet line on the mat: how much the collage holds, and when it was made. */
 function captionMeta(collage: PublishedCollage, short: boolean): string {
   const count = collage.pieces.length;
@@ -568,6 +607,12 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
               <span className="collage-studio__label published-collage__meta">
                 {captionMeta(collage, narrow)}
               </span>
+              {collage.signature && (
+                <Signed
+                  signature={collage.signature}
+                  sharedAt={collage.sharedAt}
+                />
+              )}
             </>
           }
         >
@@ -834,6 +879,7 @@ function PublishedCollagePage() {
       <style>{COLLAGE_VIEW_STYLES}</style>
       <style>{COLLAGE_PEEK_STYLES}</style>
       <style>{VIEWER_STYLES}</style>
+      <style>{SIGNATURE_STAMP_STYLES}</style>
       {body}
     </>
   );

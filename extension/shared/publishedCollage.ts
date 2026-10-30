@@ -34,6 +34,8 @@ export const PUBLISHED_COLLAGE_LIMITS = {
   /** One captured style value. */
   maxStyleValueLength: 500,
   maxTitleLength: 200,
+  /** The name a collage is signed with. */
+  maxSignatureNameLength: 60,
   maxPageTitleLength: 500,
   maxUrlLength: 2048,
   maxDomainLength: 253,
@@ -242,6 +244,17 @@ export interface PublishedCollage {
   backShows?: PublishedBackShows;
   /** Set by the Worker when it stores the collage. */
   sharedAt?: number;
+  /** Who signed it, as they were when they shared; absent when unsigned. */
+  signature?: PublishedSignature;
+}
+
+/**
+ * A maker's stamp: always their cursor colour, and their name when they gave
+ * one. A colour alone still signs the collage.
+ */
+export interface PublishedSignature {
+  color: string;
+  name?: string;
 }
 
 /** What the Worker answers a successful share with. */
@@ -668,7 +681,32 @@ export function parsePublishedCollage(value: unknown): PublishedCollage {
   if (value.sharedAt !== undefined) {
     collage.sharedAt = bounded(value, "sharedAt", "the collage", 0, 8.64e15);
   }
+  if (value.signature !== undefined) {
+    collage.signature = parseSignature(value.signature);
+  }
   return collage;
+}
+
+function parseSignature(value: unknown): PublishedSignature {
+  if (!isPlainObject(value)) fail("its signature is not an object");
+  if (typeof value.color !== "string" || !HEX_COLOR.test(value.color)) {
+    fail("its signature colour is not a hex color");
+  }
+  const signature: PublishedSignature = { color: value.color.toLowerCase() };
+  if (value.name !== undefined) {
+    const name = text(
+      value,
+      "name",
+      "its signature",
+      PUBLISHED_COLLAGE_LIMITS.maxSignatureNameLength,
+    ).trim();
+    if (name.length === 0) fail("its signature has an empty name");
+    if (/[\u0000-\u001f\u007f]/.test(name)) {
+      fail("its signature name has control characters");
+    }
+    signature.name = name;
+  }
+  return signature;
 }
 
 /**

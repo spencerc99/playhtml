@@ -306,6 +306,37 @@ describe("parsePublishedCollage", () => {
     );
     expect(parsed.pieces[0].source.pageUrl).toBe("");
   });
+
+  it("reads a signature by name and colour, or by colour alone", () => {
+    const named = parsePublishedCollage(
+      collage({
+        signature: { name: "  spencer ", color: "#FFAE00", pid: "x" },
+      }),
+    );
+    expect(named.signature).toEqual({ name: "spencer", color: "#ffae00" });
+    const sealed = parsePublishedCollage(
+      collage({ signature: { color: "#4f8cff" } }),
+    );
+    expect(sealed.signature).toEqual({ color: "#4f8cff" });
+    expect(parsePublishedCollage(collage())).not.toHaveProperty("signature");
+  });
+
+  for (const [name, signature] of [
+    ["a signature without a colour", { name: "spencer" }],
+    ["a signature colour that is not hex", { color: "hsl(10, 70%, 60%)" }],
+    ["an empty signature name", { name: "   ", color: "#ffae00" }],
+    [
+      "a signature name with control characters",
+      { name: "a\nb", color: "#ffae00" },
+    ],
+    ["an overlong signature name", { name: "x".repeat(61), color: "#ffae00" }],
+  ] as const) {
+    it(`rejects ${name}`, () => {
+      expect(() => parsePublishedCollage(collage({ signature }))).toThrow(
+        PublishedCollageError,
+      );
+    });
+  }
 });
 
 describe("picture names", () => {

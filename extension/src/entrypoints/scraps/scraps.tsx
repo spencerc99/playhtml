@@ -519,7 +519,10 @@ export function ScrapsPage() {
         </div>
       )}
 
-      {mode === "create" && !loading && !error && createMode && (
+      {/* An open studio stays mounted while the scraps reload (as they do
+          whenever another tab collects some), or it would reopen as it was
+          when first opened and lose everything since, its link included. */}
+      {mode === "create" && (studioOpen || (!loading && !error)) && createMode && (
         <createMode.CreateMode
           items={items}
           editing={editing}
@@ -542,7 +545,9 @@ export function ScrapsPage() {
         </div>
       )}
 
-      {loading && <div style={centeredMessageStyle}>gathering scraps...</div>}
+      {loading && !(mode === "create" && studioOpen) && (
+        <div style={centeredMessageStyle}>gathering scraps...</div>
+      )}
       {!loading && error && (
         <div style={centeredMessageStyle}>scraps could not be gathered</div>
       )}
