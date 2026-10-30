@@ -224,7 +224,12 @@ const PortraitPage = () => {
         totalTimeMs: dayScreenTime.totalMs,
         hourBuckets: sessionsToHourBuckets(dayScreenTime.sessions),
         cursorDistancePx,
-        dateRange: { oldest: selectedDays.start, newest: selectedDays.end },
+        // Local instants: a bare "YYYY-MM-DD" parses as UTC midnight, which
+        // lands on the previous day west of UTC.
+        dateRange: {
+          oldest: new Date(`${selectedDays.start}T00:00:00`).toISOString(),
+          newest: new Date(`${selectedDays.end}T23:59:59.999`).toISOString(),
+        },
         uniquePageCount: uniqueUrls.size,
       };
     }
