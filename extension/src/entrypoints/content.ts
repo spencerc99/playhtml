@@ -8,7 +8,11 @@ import {
   MILESTONE_TOAST_CSS,
   MILESTONE_TOAST_FONT_URL,
 } from "./content/milestone-toast-styles";
-import { injectShadow, injectShadowReact, type InjectedReactUI } from "./content/inject-ui";
+import {
+  injectShadow,
+  injectShadowReact,
+  type InjectedReactUI,
+} from "./content/inject-ui";
 import { detailForPage } from "./content/pageDetail";
 import {
   MilestoneToast,
@@ -46,6 +50,7 @@ import {
 } from "../features/sessionScraps/sessionScrapsBridge";
 import { watchInstallationContent } from "./content/installationContent";
 import { MILESTONE_TOASTS_ENABLED_KEY } from "../milestones/state";
+import { DENY_LIST_KEY, DenyList, loadDenyList } from "@/storage/denyList";
 
 // Scraps are local-only, so normalize any unsupported stored mode before the
 // collector starts.
@@ -92,7 +97,8 @@ export default defineContentScript({
       private customSiteCleanup: (() => void) | null = null;
       // The extension's own playhtml instance, lazily inited. Shared between the
       // cursor-site path and the headless every-page path for social experiments.
-      private playhtmlInstance: typeof import("playhtml").playhtml | null = null;
+      private playhtmlInstance: typeof import("playhtml").playhtml | null =
+        null;
       // Whether the page runs its own playhtml, resolved once per page so the
       // presence path and the social-experiment path share one detection wait.
       private nativePlayhtmlDetection: Promise<boolean> | null = null;
@@ -1047,9 +1053,8 @@ export default defineContentScript({
       private async ensureGlobalFeatures() {
         if (this.globalCleanup) return; // already running on this page
 
-        const { anyGlobalFeatureActive, initGlobalFeatures } = await import(
-          "../features/global"
-        );
+        const { anyGlobalFeatureActive, initGlobalFeatures } =
+          await import("../features/global");
         if (!(await anyGlobalFeatureActive())) return;
 
         if (!this.playhtmlInstance) {
@@ -1108,9 +1113,8 @@ export default defineContentScript({
 
         // Surface any pending announcements as a toast (no-op if all seen / no match)
         try {
-          const { maybeInjectAnnouncementToast } = await import(
-            "../announcements/inject-toast"
-          );
+          const { maybeInjectAnnouncementToast } =
+            await import("../announcements/inject-toast");
           await maybeInjectAnnouncementToast();
         } catch (err) {
           console.error("[we-were-online] announcement toast failed:", err);
@@ -1118,9 +1122,8 @@ export default defineContentScript({
       }
 
       private async setupPresence() {
-        const { getCustomSiteSettings, initCustomSite } = await import(
-          "../custom-sites"
-        );
+        const { getCustomSiteSettings, initCustomSite } =
+          await import("../custom-sites");
         const customSiteSettings = getCustomSiteSettings();
         if (
           !shouldInitializeCopresence({
@@ -1379,6 +1382,7 @@ export default defineContentScript({
         if (VERBOSE) {
           console.log("[Collections] Initializing collector manager...");
         }
+        // Check if in deny list, if so, don't instantiate collector manager
         collectorManager = new CollectorManager();
 
         // Register collectors
@@ -1404,10 +1408,25 @@ export default defineContentScript({
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();
 
+        // Check if we are on a denied page and run disableCollectors
+        const denyList = new Set(await loadDenyList());
+        const host = window.location.host.toLowerCase();
+        if (denyList.has(host)) {
+          await collectorManager.disableAll();
+          if (VERBOSE) {
+            console.log(
+              `[Collections] Collectors disabled due to host ${host} being in deny list`,
+            );
+          }
+        }
         // Best-effort final flush; browsers may not wait for async unload work.
-        window.addEventListener("beforeunload", () => {
-          void collectorManager?.stopAll().catch(console.error);
-        }, { once: true });
+        window.addEventListener(
+          "beforeunload",
+          () => {
+            void collectorManager?.stopAll().catch(console.error);
+          },
+          { once: true },
+        );
         if (VERBOSE) {
           console.log(
             "[Collections] Collector manager initialized successfully",
@@ -1421,9 +1440,8 @@ export default defineContentScript({
             migrationKey,
           ]);
           if (!migrationResult[migrationKey]) {
-            const { LocalEventStore } = await import(
-              "../storage/LocalEventStore"
-            );
+            const { LocalEventStore } =
+              await import("../storage/LocalEventStore");
             const pageStore = new LocalEventStore();
             const events = await pageStore.getAllEvents();
             if (events.length > 0) {
@@ -1446,22 +1464,17 @@ export default defineContentScript({
       }
     };
 
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => {
-        extensionInstance = new PlayHTMLExtension();
-        extensionInstance.init();
-        initializeCollectors()
-          .catch(console.error)
-          .then(openTrailsFromHash);
-        setupModeChangeListener();
-      });
-    } else {
+    const setup = () => {
       extensionInstance = new PlayHTMLExtension();
       extensionInstance.init();
-      initializeCollectors()
-        .catch(console.error)
-        .then(openTrailsFromHash);
+      initializeCollectors().catch(console.error).then(openTrailsFromHash);
       setupModeChangeListener();
+      setupDenyListChangeListener();
+    };
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", setup);
+    } else {
+      setup();
     }
 
     // Tear down the extension's collaborative-feature resources when the page
@@ -1537,8 +1550,7 @@ export default defineContentScript({
           autoHideMs: MILESTONE_DURATION_MS,
         },
         {
-          hostStyle:
-            "position:fixed;bottom:20px;left:20px;z-index:2147483647;",
+          hostStyle: "position:fixed;bottom:20px;left:20px;z-index:2147483647;",
           css: MILESTONE_TOAST_CSS,
           fontUrl: MILESTONE_TOAST_FONT_URL,
         },
@@ -1548,7 +1560,8 @@ export default defineContentScript({
 
     browser.storage.onChanged.addListener((changes, area) => {
       if (area !== "local" || !changes[MILESTONE_TOASTS_ENABLED_KEY]) return;
-      milestoneToastsEnabled = changes[MILESTONE_TOASTS_ENABLED_KEY].newValue !== false;
+      milestoneToastsEnabled =
+        changes[MILESTONE_TOASTS_ENABLED_KEY].newValue !== false;
       if (!milestoneToastsEnabled) {
         milestoneToastUI?.destroy();
         milestoneToastUI = null;
@@ -1728,6 +1741,44 @@ export default defineContentScript({
         console.warn("[Content] Failed to set up mode change listener", e);
       }
     }
+
+    function setupDenyListChangeListener() {
+      try {
+        browser.storage.onChanged.addListener((changes, area) => {
+          const change = changes[DENY_LIST_KEY];
+          if (area !== "local" || !collectorManager || !change) return;
+          const { oldValue, newValue } = change;
+          const oldList =
+            !oldValue || (oldValue && !Array.isArray(oldValue))
+              ? new Set()
+              : new Set(oldValue);
+          const newList =
+            !newValue || (newValue && !Array.isArray(newValue))
+              ? new Set()
+              : new Set(newValue);
+          const host = window.location.host.toLowerCase();
+          const inOld = oldList.has(host);
+          const inNew = newList.has(host);
+          if (!inOld && inNew) {
+            // Disables collectors without modifying local storage
+            collectorManager.disableAll();
+            if (VERBOSE)
+              console.log(`[Content] Disabled all collectors for host ${host}`);
+          } else if (inOld && !inNew) {
+            collectorManager.enableAll();
+            // handle current location getting removed
+            if (VERBOSE)
+              console.log(
+                `[Content] Reenabled all collectors for host ${host}`,
+              );
+          } else {
+            // otherwise do nothing (either the host was both in the old and new lists and the collectors are already disabled or it was in neither and the collectors should stay on)
+          }
+        });
+      } catch (e) {
+        console.warn("[Content] Failed to set deny list change listener", e);
+      }
+    }
   },
 });
 
@@ -1750,7 +1801,8 @@ function watchScrapsDebugOverlay(collector: ScrapCollector): void {
   browser.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "local") return;
     if (!changes[DEV_MODE_KEY] && !changes[SCRAPS_DEBUG_KEY]) return;
-    if (changes[DEV_MODE_KEY]) devMode = Boolean(changes[DEV_MODE_KEY].newValue);
+    if (changes[DEV_MODE_KEY])
+      devMode = Boolean(changes[DEV_MODE_KEY].newValue);
     if (changes[SCRAPS_DEBUG_KEY]) {
       overlay = Boolean(changes[SCRAPS_DEBUG_KEY].newValue);
     }
