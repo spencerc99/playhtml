@@ -875,8 +875,9 @@ export default defineBackground(() => {
     if (message.type === 'GET_SCRAPS') {
       const limit = message.options?.limit ?? 200
       const cursor = message.options?.cursor
+      const range = message.options?.range
       store
-        .queryEventPage('element', limit, cursor)
+        .queryEventPage('element', limit, cursor, range)
         .then(({ events, nextCursor }) =>
           reply({
             scraps: events.flatMap((event): ScrapRecord[] => {

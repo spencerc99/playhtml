@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
 import { InteractiveToggleDemo } from '@/components/react/InteractiveToggleDemo';
 
 playhtml turns any HTML element into a live, collaborative one with a single attribute. This guide gets you from empty page to a working shared toggle.
@@ -174,9 +174,23 @@ This toggle is shared with everyone reading this page right now. Click it to see
 ## Where to next
 
 - [Core concepts](/docs/concepts/): the four kinds of shared state (element data, page data, presence, events) and when to use each.
-- [Capabilities](/docs/capabilities/): every built-in `can-*` attribute with live demos.
+- [Built-in elements](/docs/capabilities/): every built-in `can-*` attribute with live demos.
 - [Data essentials](/docs/data/data-essentials/): shape, update, and clean up `defaultData`.
 - [Presence & cursors](/docs/data/presence/): multiplayer cursors and ephemeral per-user state.
 - [Shared elements](/docs/advanced/shared-elements/): cross-page and cross-domain state.
 - [Building with AI](/docs/integrations/building-with-ai/): one link or skill that sets up any coding agent.
 - [API reference](/docs/reference/init-options/): the full `playhtml.init()` options table and React API types.
+
+## Join the Community
+
+playhtml is built in the open with a small community of people making strange, playful, social corners of the web. Come hang out to:
+
+- Share what you've made, even if it's tiny or half-finished.
+- Get help when something isn't syncing the way you expect.
+- Swap ideas, request features, and see what others are building.
+
+<LinkCard
+  title="Join the playhtml Discord"
+  description="Share your creations, get help, and meet other people building with playhtml."
+  href="https://discord.com/invite/SKbsSf4ptU"
+/>
