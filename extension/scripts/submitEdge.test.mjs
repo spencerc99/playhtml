@@ -139,3 +139,44 @@ test("uploads, polls, publishes, and polls an Edge submission", async () => {
   );
   expect(requests[3].options.method).toBe("GET");
 });
+
+test("reports the Edge failure reason when publish fails", async () => {
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  let call = 0;
+
+  const submission = submitEdge({
+    env: {
+      EDGE_ZIP: await writeTempZip(),
+      EDGE_PRODUCT_ID: "edge-product-id",
+      EDGE_CLIENT_ID: "edge-client-id",
+      EDGE_API_KEY: "edge-api-key",
+      EDGE_POLL_INTERVAL_MS: "0",
+    },
+    fetchImpl: async () => {
+      call += 1;
+      if (call === 1 || call === 3) {
+        return new Response("", {
+          status: 202,
+          headers: { location: `https://example.test/operations/op-${call}` },
+        });
+      }
+      if (call === 2) {
+        return new Response(JSON.stringify({ status: "Succeeded" }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          status: "Failed",
+          errorCode: "InProgressSubmission",
+          message: "Can't create new submission, an in-progress submission exists.",
+          errors: [{ message: "An in-progress submission already exists." }],
+        }),
+        { status: 200 },
+      );
+    },
+    sleepImpl: async () => {},
+  });
+
+  await expect(submission).rejects.toThrow(
+    "Edge publish failed with status: Failed\nerrorCode: InProgressSubmission\nmessage: Can't create new submission, an in-progress submission exists.\nerror: An in-progress submission already exists.",
+  );
+});

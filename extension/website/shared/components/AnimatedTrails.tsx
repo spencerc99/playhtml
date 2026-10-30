@@ -9,11 +9,12 @@ import React, {
   useMemo,
 } from "react";
 import { TrailState, ClickEffect } from "../types";
-import { RippleEffect } from "./ClickRipple";
+import { RippleEffect, type RippleSettings } from "./ClickRipple";
 import { createClickEffect } from "./clickEffects";
 import { useDebugHover } from "./DebugHover";
 import type { SoundEngine } from "../sound/SoundEngine";
 import type { TrailSoundFrame } from "../sound/types";
+import { articulationBreath } from "../sound/tuning";
 import { getTrailRenderer } from "../styles/trailRenderers";
 import {
   buildStraightPathSegment,
@@ -93,6 +94,60 @@ interface AnimatedTrailsProps {
   };
 }
 
+type RippleUpdate = ClickEffect[] | ((prev: ClickEffect[]) => ClickEffect[]);
+
+interface RippleLayerHandle {
+  set(update: RippleUpdate): void;
+}
+
+const RippleLayer = memo(
+  React.forwardRef<RippleLayerHandle, { settings: RippleSettings }>(
+    ({ settings }, ref) => {
+      const [effects, setEffects] = useState<ClickEffect[]>([]);
+      React.useImperativeHandle(ref, () => ({ set: setEffects }), []);
+      const rippleSettings = useMemo(
+        () => ({
+          clickMinRadius: settings.clickMinRadius,
+          clickMaxRadius: settings.clickMaxRadius,
+          clickCoreRadius: settings.clickCoreRadius,
+          clickMinDuration: settings.clickMinDuration,
+          clickMaxDuration: settings.clickMaxDuration,
+          clickExpansionDuration: settings.clickExpansionDuration,
+          clickStrokeWidth: settings.clickStrokeWidth,
+          clickOpacity: settings.clickOpacity,
+          clickNumRings: settings.clickNumRings,
+          clickRingDelayMs: settings.clickRingDelayMs,
+          clickAnimationStopPoint: settings.clickAnimationStopPoint,
+        }),
+        [
+          settings.clickMinRadius,
+          settings.clickMaxRadius,
+          settings.clickCoreRadius,
+          settings.clickMinDuration,
+          settings.clickMaxDuration,
+          settings.clickExpansionDuration,
+          settings.clickStrokeWidth,
+          settings.clickOpacity,
+          settings.clickNumRings,
+          settings.clickRingDelayMs,
+          settings.clickAnimationStopPoint,
+        ],
+      );
+      return (
+        <>
+          {effects.map((effect) => (
+            <RippleEffect
+              key={effect.id}
+              effect={effect}
+              settings={rippleSettings}
+            />
+          ))}
+        </>
+      );
+    },
+  ),
+);
+
 export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
   ({
     trailStates,
@@ -109,9 +164,12 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
     playbackClock = null,
     settings,
   }) => {
-    const [activeClickEffects, setActiveClickEffects] = useState<ClickEffect[]>(
-      [],
-    );
+    // Ripples live in their own layer so a click re-renders only the ripples,
+    // not the thousands of trail paths and cursors beside them.
+    const rippleLayerRef = useRef<RippleLayerHandle>(null);
+    const setActiveClickEffects = useCallback((update: RippleUpdate) => {
+      rippleLayerRef.current?.set(update);
+    }, []);
 
     const animationRef = useRef<number | undefined>(undefined);
     const timeoutRef = useRef<number | undefined>(undefined);
@@ -549,10 +607,20 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
           );
           if (fade <= 0) continue;
 
+          // The drawing breathes with the sound: a phrased voice swells on
+          // every note and then relaxes, and the same value scales this
+          // trail's opacity and stroke so a fresh gesture is drawn as brightly
+          // as it is heard. Read from the previous frame's tick, which is the
+          // only articulation that exists when the paths are drawn — a frame
+          // of lag at ~60fps is well under what an eye resolves.
+          const articulation = soundEnabled
+            ? soundEngine?.getArticulation(idx)
+            : null;
+          const breath = articulationBreath(articulation);
           const result = handle.update(
             loopedElapsed,
-            trailOpacity,
-            strokeWidth,
+            trailOpacity * breath.opacityScale,
+            strokeWidth * breath.widthScale,
             fade,
           );
 
@@ -797,26 +865,9 @@ export const AnimatedTrails: React.FC<AnimatedTrailsProps> = memo(
             <g dangerouslySetInnerHTML={{ __html: renderer.svgDefs }} />
           )}
         </defs>
-        {showClickRipples &&
-          activeClickEffects.map((effect) => (
-            <RippleEffect
-              key={effect.id}
-              effect={effect}
-              settings={{
-                clickMinRadius: settings.clickMinRadius,
-                clickMaxRadius: settings.clickMaxRadius,
-                clickCoreRadius: settings.clickCoreRadius,
-                clickMinDuration: settings.clickMinDuration,
-                clickMaxDuration: settings.clickMaxDuration,
-                clickExpansionDuration: settings.clickExpansionDuration,
-                clickStrokeWidth: settings.clickStrokeWidth,
-                clickOpacity: settings.clickOpacity,
-                clickNumRings: settings.clickNumRings,
-                clickRingDelayMs: settings.clickRingDelayMs,
-                clickAnimationStopPoint: settings.clickAnimationStopPoint,
-              }}
-            />
-          ))}
+        {showClickRipples && (
+          <RippleLayer ref={rippleLayerRef} settings={settings} />
+        )}
         {debug.enabled && (
           <g style={{ pointerEvents: "stroke" }}>
             {trailStates.map((ts, idx) => {

@@ -218,8 +218,17 @@ export default function App() {
   });
 
   useEffect(() => {
-    const onResize = () =>
+    // On phones the address bar slides away on the first scroll, which
+    // resizes the window taller. Re-measuring then rebuilds every trail at the
+    // new height and visibly stretches the portrait mid-scroll, so touch
+    // screens only re-measure when the width changes (a rotation).
+    const touch = window.matchMedia("(pointer: coarse)");
+    let lastWidth = window.innerWidth;
+    const onResize = () => {
+      if (touch.matches && window.innerWidth === lastWidth) return;
+      lastWidth = window.innerWidth;
       setViewportSize({ width: window.innerWidth, height: window.innerHeight });
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -260,29 +269,20 @@ export default function App() {
           />
         )}
         <RisoTexture />
-        {/* People-count pinned to the bottom of the first screen (the portrait
-            area) and scrolls away with the page — not fixed to the viewport. */}
-        <LiveIndicator
-          connected={connected}
-          peopleCount={activity.people}
-          timezones={activity.timezones}
-          continents={activity.continents}
-          style={{
-            position: "absolute",
-            top: "calc(100vh - 36px)",
-            left: 16,
-            zIndex: 2,
-          }}
-        />
-        {/* Live current date + time in the wordmark style, bottom-right. */}
-        <WordmarkClock
-          style={{
-            position: "absolute",
-            top: "calc(100vh - 40px)",
-            right: 16,
-            zIndex: 2,
-          }}
-        />
+        {/* People-count and live clock pinned to the bottom of the first
+            screen (the portrait area); they scroll away with the page. */}
+        <div className={styles.firstScreenMeta}>
+          <LiveIndicator
+            connected={connected}
+            peopleCount={activity.people}
+            timezones={activity.timezones}
+            continents={activity.continents}
+          />
+          {/* Live current date + time in the wordmark style (desktop only). */}
+          <span className={styles.firstScreenClock}>
+            <WordmarkClock />
+          </span>
+        </div>
       </div>
 
       <div className={styles.content}>
@@ -549,6 +549,27 @@ export default function App() {
                 you settled in, and a cursor portrait from each day.
               </p>
             </div>
+
+            <div className={styles.featureCard}>
+              <BrowserWindow
+                label="your shore · internet scraps"
+                bodyClassName={styles.featureCardFrame}
+              >
+                <img
+                  className={styles.featureCardImage}
+                  src="/home/scraps-all.jpg"
+                  alt="A dense collage of images, buttons, icons, and screenshots collected while browsing, layered across the page"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </BrowserWindow>
+              <h3 className={styles.featureCardTitle}>collect internet scraps</h3>
+              <p className={styles.featureCardBody}>
+                The images, buttons, icons, and cursors you pass become a visual
+                browsing history. Search them, filter by site, and trace any
+                scrap back to the page it came from.
+              </p>
+            </div>
           </div>
 
           <div className={styles.featureRow}>
@@ -598,23 +619,23 @@ export default function App() {
                     <span className={styles.browserDot} />
                     <span className={styles.browserDot} />
                   </span>
-                  <span className={styles.browserLabel}>your shore</span>
-                  <span className={styles.statusChipBeta}>BETA</span>
+                  <span className={styles.browserLabel}>untitled collage</span>
+                  <span className={styles.statusChip}>SOON</span>
                 </div>
                 <div className={styles.comingThumbFrame}>
                   <img
                     className={styles.comingThumb}
-                    src="/home/scraps-all.jpg"
-                    alt="A dense collage of images, buttons, icons, and screenshots collected while browsing, layered across the page"
+                    src="/home/browsing-collage.jpg"
+                    alt="A collage of found browsing materials: leather boots stepping across a sunset painting, chrome pipes and a faucet winding between them, blue tape rolls, and a minion in a sea of cartoon eyeballs"
                     loading="lazy"
                     decoding="async"
                   />
                 </div>
               </div>
-              <h3 className={styles.comingTitle}>internet scraps</h3>
+              <h3 className={styles.comingTitle}>browsing collages</h3>
               <p className={styles.comingBody}>
-                a snapshot of your browsing in the media you pass — images,
-                buttons, icons, cursors.
+                arrange your scraps into collages. every piece remembers the
+                page it came from.
               </p>
             </div>
 

@@ -15,6 +15,7 @@ import "./recipe-example.css";
 
 type RecipeExampleProps = {
   recipe: ExampleRecipe;
+  /** Bare embed for use inside a page's demo frame: no chrome, no background. */
   compact?: boolean;
   frameHeight?: string;
 };
@@ -52,6 +53,7 @@ export function RecipeExample({
       playhtmlUrl,
       roomId,
       showDevPanel: false,
+      transparentBackground: compact,
     });
 
     iframeHostRef.current.replaceChildren(iframe);
@@ -59,7 +61,7 @@ export function RecipeExample({
     return () => {
       iframe.remove();
     };
-  }, [recipe, roomId]);
+  }, [recipe, roomId, compact]);
 
   const playgroundHref = useMemo(() => {
     if (!roomId) return "/docs/play/";

@@ -331,7 +331,8 @@ const PortraitPage = () => {
           left: 0,
           right: 0,
           zIndex: 200,
-          padding: "14px 20px",
+          // Right padding keeps the nav links clear of the canvas sound button.
+          padding: "14px 64px 14px 20px",
           pointerEvents: "auto",
         }}
       >

@@ -1,8 +1,8 @@
 // ABOUTME: Provides copy-paste React sources for the shared counter and guestbook recipes.
 // ABOUTME: Keeps persistent writes in explicit user handlers with bounded list updates.
 
-export const sharedCounterReactSource = `// ABOUTME: Renders one persistent counter shared by every connected browser.
-// ABOUTME: Increments the current value with a merge-safe mutator write.
+export const sharedCounterReactSource = `// Renders one persistent counter shared by every connected browser.
+// Increments the current value with a merge-safe mutator write.
 import { PlayProvider, withSharedState } from "@playhtml/react";
 
 type CounterData = { count: number };
@@ -63,8 +63,8 @@ export default function App() {
 }
 `;
 
-export const sharedGuestbookReactSource = `// ABOUTME: Keeps a bounded guestbook shared across connected browsers.
-// ABOUTME: Stores form drafts locally and writes entries only on submit.
+export const sharedGuestbookReactSource = `// Keeps a bounded guestbook shared across connected browsers.
+// Stores form drafts locally and writes entries only on submit.
 import { useState, type FormEvent } from "react";
 import { PlayProvider, withSharedState } from "@playhtml/react";
 import words from "profane-words";

@@ -2,32 +2,47 @@
 // ABOUTME: Vendored from jackyzha0/internet-map; theme and dev panel are our additions.
 import "./style.css";
 import "./devpanel.css";
-import { loadMap, MapData } from "./data";
+import { loadMap, MapData, MapUnauthorizedError } from "./data";
+import { WORKER_URL } from "@movement/config";
+import { loadAdminToken } from "../../admin/adminToken";
 import { Camera, attachControls } from "./camera";
 import { AsciiRenderer } from "./ascii/renderer";
 import { bakeMap, ROAD_LEVELS } from "./ascii/bake";
 import { LANDMARKS, LM_TREE, LM_WTREE } from "./ascii/tileset";
-import { buildRoadGraph, findRoute, stopsAlong, MODES, Mode, Route } from "./route";
+import { buildRoadGraph, findRoute, meaningfulStops, buildPlaces, MODES, Mode, Route } from "./route";
 import { roadPath, pathCells, GRIDDED } from "./ascii/roadgeom";
 import { setRoadGlyphs, ROAD, PALETTE, BUILD_ALPHA, setPalette } from "./ascii/glyphs";
-import { LabelLayer } from "./ascii/labels";
+import { LabelLayer, prominentHosts } from "./ascii/labels";
 import { buildChrome, fmt } from "./ui/chrome";
 import { MapSearch, SearchPlace } from "./ui/search";
 import { Theme, applyChrome, paletteOf } from "./theme";
 import { DevPanel, initialTheme } from "./devpanel";
 import { computeAnchors } from "./ascii/anchors";
+import { Wayfarer } from "./wayfarer/wayfarer";
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
 
 buildChrome($("#ui"));
 
 const q = new URLSearchParams(location.search);
-// Which map to load. Bundles carry real browsing URLs and are not committed,
-// so they live under the site's public dir and are supplied out of band.
+// Which map to load. Bundles carry real browsing URLs and titles, so they are
+// never committed or deployed as public files. In production they live in a
+// private R2 bucket behind the Worker's admin key; the local dev server reads
+// them from the gitignored public/internet-map/data/ instead.
 // VITE_DATA picks one at build time; ?data= still overrides at runtime.
-const DEFAULT_DATA = (import.meta.env.VITE_DATA as string) || "data-small";
-const DATA = "/internet-map/data/" +
-  (q.get("data") || DEFAULT_DATA).replace(/[^A-Za-z0-9._-]/g, "");
+const DEFAULT_DATA = (import.meta.env.VITE_DATA as string) || "data-full";
+const BUNDLE = (q.get("data") || DEFAULT_DATA).replace(/[^A-Za-z0-9._-]/g, "");
+const LOCAL_BUNDLES = import.meta.env.DEV && q.get("source") !== "worker";
+const DATA = LOCAL_BUNDLES
+  ? "/internet-map/data/" + BUNDLE
+  : `${WORKER_URL}/internet-map/${BUNDLE}`;
+// The map password (a Worker secret that opens map bundles only) is asked for
+// on this page and remembered; a signed-in admin key works too.
+const PASSWORD_KEY = "wwo-internet-map-password";
+const storedPassword = () => {
+  try { return localStorage.getItem(PASSWORD_KEY) || ""; } catch { return ""; }
+};
+const ADMIN_TOKEN = LOCAL_BUNDLES ? "" : storedPassword() || loadAdminToken();
 
 // The theme owns the building palette and alpha ramp, and the bake reads the
 // ramp's LENGTH to pick a shade per cell — so it has to be installed before
@@ -61,13 +76,56 @@ await Promise.all([
   (document as any).fonts.load('15px "MEKDings"'),
 ]).catch(() => {});
 
+const bootFail = (msg: string, askPassword = false) => {
+  const el = $("#bootmsg");
+  el.textContent = msg;
+  ($("#bootbar").parentElement as HTMLElement).style.display = "none";
+  if (!askPassword) return;
+  const form = document.createElement("form");
+  form.id = "bootpw";
+  const input = document.createElement("input");
+  input.type = "password";
+  input.placeholder = "password";
+  input.autocomplete = "current-password";
+  input.setAttribute("aria-label", "map password");
+  const go = document.createElement("button");
+  go.type = "submit";
+  go.textContent = "enter";
+  form.append(input, go);
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!input.value) return;
+    try { localStorage.setItem(PASSWORD_KEY, input.value); } catch {}
+    location.reload();
+  });
+  el.after(form);
+  input.focus();
+};
+
 let data: MapData;
 try {
-  data = await loadMap(DATA, boot);
+  if (!LOCAL_BUNDLES && !ADMIN_TOKEN) throw new MapUnauthorizedError("no password");
+  data = await loadMap(
+    DATA,
+    boot,
+    ADMIN_TOKEN ? { headers: { Authorization: `Bearer ${ADMIN_TOKEN}` } } : {},
+  );
 } catch (err) {
-  $("#bootmsg").textContent =
-    "this deployment has no map data — bundles carry real browsing traces and ship separately";
-  ($("#bootbar").parentElement as HTMLElement).style.display = "none";
+  if (err instanceof MapUnauthorizedError) {
+    // Forget a wrong remembered password so the prompt can take a new one.
+    const triedPassword = storedPassword() !== "";
+    if (triedPassword) {
+      try { localStorage.removeItem(PASSWORD_KEY); } catch {}
+    }
+    bootFail(
+      triedPassword
+        ? "that password didn't work"
+        : "this map holds real browsing traces, so it needs a password",
+      true,
+    );
+  } else {
+    bootFail(`no map bundle named "${BUNDLE}" is uploaded yet`);
+  }
   throw err;
 }
 const { A, labels, head } = data;
@@ -112,7 +170,9 @@ const anchors = q.get("anchors") === "0"
 // The old CFG panel is gone. Place names are off by default; still
 // reachable with ?labels=1 or the L key.
 let showRoads = q.get("roads") !== "0";
-let showLabels = q.get("labels") === "1";
+/** the reader's own choice; walk mode turns names on over the top of it */
+let labelsPref = q.get("labels") === "1";
+let showLabels = labelsPref;
 const labelLayer = new LabelLayer();
 /** the page whose building is under the cursor */
 let hoverPage = -1;
@@ -133,6 +193,9 @@ let landing: { x: number; y: number; r: number; name: string; t0: number } | nul
 
 // ------------------------------------------------------------------ routing
 const roads = buildRoadGraph(A);
+/** sites and their sizes, so a route crosses between places rather than through one */
+const routePlaces = buildPlaces(labels.subs, A.sub_pages as Uint32Array, A.sub_dom as Uint32Array);
+const roadSites = { site: routePlaces.site, roadA: A.road_a as Uint32Array, roadB: A.road_b as Uint32Array };
 let fromPage = -1, toPage = -1;
 let mode: Mode = "fast";
 let routes: Route[] = [];
@@ -210,6 +273,13 @@ const TIER_SUB = 0.4;
 const kAt = ([a, b]: [number, number], medianR: number, t: number) =>
   (a + t * (b - a)) / medianR;
 
+// Aggregate once at load; path/chunk rows should not repeat a host label.
+const hostLabels = prominentHosts({
+  x: anchors.subX, y: anchors.subY, r: A.sub_r as Float32Array,
+  visits: A.sub_visits as Uint32Array, name: i => labels.subs[i],
+}, labels.subs, labels.doms, SUB_DOM, A.sub_pages as Uint32Array,
+  A.dom_visits as Uint32Array);
+
 // ------------------------------------------------------------------ render
 function resize() {
   const dpr = Math.min(devicePixelRatio || 1, 2);
@@ -248,7 +318,7 @@ function paint() {
   // Not while dragging: the candidate sort and the collision test are per
   // frame, and this is the same reason the map itself blits from cache here.
   if (showLabels && !interacting) {
-    // whichever tier is big enough to carry a name at this zoom
+    // Detail tiers take over; prominent hosts accompany domain labels.
     const { tPage, tSub } = lod();
     const src = tPage > TIER_PAGE
       ? { x: A.page_x as Float32Array, y: A.page_y as Float32Array,
@@ -263,13 +333,15 @@ function paint() {
       : { x: anchors.domX, y: anchors.domY,
           r: A.dom_r as Float32Array, visits: A.dom_visits as Uint32Array,
           name: (i: number) => labels.doms[i] };
-    labelLayer.draw(ctx, cam, src, ren.theme.label, ren.theme.labelHalo,
+    labelLayer.draw(ctx, cam, tPage <= TIER_PAGE && tSub <= TIER_SUB
+                    ? [src, hostLabels] : [src], ren.theme.label, ren.theme.labelHalo,
                     ren.cellPx, ren.theme.labelScale);
   }
 
   if (routes.length) drawRoute();
   if (hoverPage >= 0) drawDistrict();
   if (landing) drawLanding();
+  if (wayfarer.active) wayfarer.draw();
   $("#level").textContent = `${baked.cols}\u00d7${baked.rows} · ${ren.cellPx.toFixed(1)}px`
     + (ren.usedCache ? " · cached" : "");
   syncURL();
@@ -420,24 +492,24 @@ function drawLanding() {
   draw();
 }
 
-/** Trace the route over the same polyline roadgeom gave the bake. */
-function drawRoute() {
-  const r = routes.find((x) => x.mode === mode);
-  if (!r || !r.ok) return;
+/**
+ * Paint the cells of some roads in a colour, over the same polyline roadgeom
+ * gave the bake. A stroked vector would read as laid over the map; this reads
+ * as the road itself lit up. Shared by the route overlay and the walker.
+ */
+function paintEdges(edges: number[], fill: string) {
   const M = baked;
   const sxA = A.sub_x as Float32Array, syA = A.sub_y as Float32Array;
   const sgrid = A.sub_grid as Float32Array | undefined;
   const spages = A.sub_pages as Uint32Array | undefined;
   const ra = A.road_a as Uint32Array, rb = A.road_b as Uint32Array;
-
-  // paint the road's own cells: a stroked vector reads as laid over the map
   const cw = M.cellW * cam.k, ch = M.cellH * cam.k;
   ctx.save();
   ctx.textBaseline = "top";
   ctx.font = `${cw / 0.8}px MEKDings, monospace`;
-  ctx.fillStyle = ren.theme.routeInk;
+  ctx.fillStyle = fill;
   const glyph = ROAD.h;
-  for (const e of r.edges) {
+  for (const e of edges) {
     const a = ra[e], b = rb[e];
     const ax = (sxA[a] - M.x0) / M.cellW, ay = (syA[a] - M.y0) / M.cellH;
     const bx = (sxA[b] - M.x0) / M.cellW, by = (syA[b] - M.y0) / M.cellH;
@@ -453,6 +525,21 @@ function drawRoute() {
       else ctx.fillText(glyph, sx2, sy2);
     }
   }
+  ctx.restore();
+}
+
+/** Trace the route: its roads, the walking legs at each end, and the two doors. */
+function drawRoute() {
+  const r = routes.find((x) => x.mode === mode);
+  if (!r || !r.ok) return;
+  const M = baked;
+  const sxA = A.sub_x as Float32Array, syA = A.sub_y as Float32Array;
+  paintEdges(r.edges, ren.theme.routeInk);
+
+  const cw = M.cellW * cam.k, ch = M.cellH * cam.k;
+  ctx.save();
+  ctx.textBaseline = "top";
+  ctx.font = `${cw / 0.8}px MEKDings, monospace`;
 
   // routes run between settlements but you start at a building: the legs on
   // foot, dashed so they read as different travel
@@ -502,6 +589,23 @@ function drawRoute() {
 
 const WALK_GLYPH = "\u00b7";
 
+/**
+ * Where a route stops, by name. A stretch through one host is listed once, by
+ * its host, plus any of its paths notable enough to be stops of their own.
+ */
+function stopNames(r: Route): string[] {
+  const names: string[] = [];
+  let lastHost = -1;
+  for (const st of meaningfulStops(r.nodes, routePlaces)) {
+    const node = r.nodes[st.at];
+    const h = routePlaces.host[node];
+    if (!st.landmark && h === lastHost) continue;
+    names.push(st.landmark ? routePlaces.names[node] : routePlaces.names[node].split("/")[0]);
+    lastHost = h;
+  }
+  return names;
+}
+
 /** The itinerary. All modes are solved so the trade-off is visible. */
 function renderRoutes() {
   const hint = $("#r-hint"), list = $("#r-list"), legs = $("#r-legs");
@@ -528,8 +632,8 @@ function renderRoutes() {
     b.querySelector("b")!.textContent = m.name;
     b.querySelector("span")!.textContent = m.blurb;
     b.querySelector("i")!.textContent =
-      over < 1.005 ? `${r.nodes.length} stops`
-                   : `${r.nodes.length} stops \u00b7 +${Math.round((over - 1) * 100)}%`;
+      over < 1.005 ? `${stopNames(r).length} stops`
+                   : `${stopNames(r).length} stops \u00b7 +${Math.round((over - 1) * 100)}%`;
     b.onclick = () => { mode = r.mode; renderRoutes(); draw(); };
     list.appendChild(b);
   }
@@ -537,13 +641,7 @@ function renderRoutes() {
   const r = routes.find((x) => x.mode === mode);
   legs.innerHTML = "";
   if (r) {
-    const stops = stopsAlong(roads, r, A.sub_x as Float32Array, A.sub_y as Float32Array,
-                             A.sub_pages as Uint32Array);
-    const names: string[] = [];
-    for (const s of stops) {
-      const nm = labels.subs[s].replace(/ \[\d+\]$/, "");
-      if (nm !== names[names.length - 1]) names.push(nm);
-    }
+    const names = stopNames(r);
     const head = document.createElement("div");
     head.className = "lhead";
     head.textContent = `${names.length} stops \u00b7 ${r.nodes.length} places passed`;
@@ -559,6 +657,33 @@ function renderRoutes() {
   }
 }
 renderRoutes();
+
+// ------------------------------------------------------------------ walking
+/**
+ * Third-person mode: a character on the roads, led by the cursor and followed
+ * by the camera. It shares the route ink, the landing mark and the building
+ * picker with the rest of the map, and takes the routes panel's corner.
+ */
+const wayfarer = new Wayfarer({
+  cam, ctx, baked, A, labels, roads,
+  theme: () => ren.theme,
+  draw,
+  paintEdges,
+  buildingAt: (x, y) => buildingAt(x, y),
+  land: (x, y, r, name) => { landing = { x, y, r, name, t0: performance.now() }; },
+  setLabels: (on) => { showLabels = on || labelsPref; },
+  onModeChange: (active) => {
+    document.body.classList.toggle("walking", active);
+    if (!active) { hoverPage = -1; tip.style.display = "none"; }
+  },
+  panel: $("#walk"),
+});
+$("#walkbtn").onclick = () => wayfarer.toggle();
+$("#wk-leave").onclick = () => wayfarer.leave();
+// a handle for tests and the console; nothing in the page relies on it
+(window as any).__wayfarer = wayfarer;
+// The character is drawn as a cursor; ?color= paints it in a given colour.
+if (q.get("color")) wayfarer.setColor(q.get("color"));
 
 // ------------------------------------------------------------------ picking
 /**
@@ -624,9 +749,10 @@ function showTip(i: number, sx: number, sy: number) {
 // ------------------------------------------------------------------ controls
 attachControls(canvas, cam,
   () => { syncURL(); draw(); },
-  (x, y) => hover(x, y),
-  (x, y) => pick(x, y),
-  (active) => { interacting = active; });
+  (x, y) => { if (wayfarer.active) wayfarer.pointerMove(x, y); else hover(x, y); },
+  (x, y) => { if (wayfarer.active) wayfarer.click(x, y); else pick(x, y); },
+  (active) => { interacting = active; },
+  () => !wayfarer.active);
 
 /** Click: origin, destination, then start over. Empty ground clears. */
 function pick(x: number, y: number) {
@@ -641,7 +767,7 @@ function pick(x: number, y: number) {
 function solve() {
   if (fromPage < 0 || toPage < 0) { routes = []; return; }
   const a = PAGE_SUB[fromPage], b = PAGE_SUB[toPage];
-  const all = MODES.map((m) => findRoute(roads, a, b, m.id)).filter((r) => r.ok);
+  const all = MODES.map((m) => findRoute(roads, a, b, m.id, roadSites)).filter((r) => r.ok);
   // The network is nearly a tree — 2.12 roads per settlement, 3,101 cycles
   // over 50,260 places — so most pairs have exactly one route. Listing four
   // identical options would misrepresent that.
@@ -655,6 +781,7 @@ function solve() {
 }
 canvas.addEventListener("pointerleave", () => {
   tip.style.display = "none";
+  wayfarer.pointerLeave();
   if (hoverPage >= 0) { hoverPage = -1; draw(); }
 });
 
@@ -663,8 +790,13 @@ $("#zout").onclick = () => { cam.zoomAt(cam.W / 2, cam.H / 2, 1 / 1.6); draw(); 
 addEventListener("resize", resize);
 addEventListener("keydown", (e) => {
   if (e.key === "Escape") { hoverPage = -1; tip.style.display = "none"; draw(); }
-  if (e.key === "l" || e.key === "L") { showLabels = !showLabels; draw(); }
+  if (e.key === "l" || e.key === "L") { labelsPref = !labelsPref; showLabels = wayfarer.active || labelsPref; draw(); }
   if (e.key === "r" || e.key === "R") { showRoads = !showRoads; draw(); }
+  // W enters walk mode; once walking, the keys belong to the walker (Esc leaves)
+  const typing = (e.target as HTMLElement | null)?.tagName === "INPUT";
+  if ((e.key === "w" || e.key === "W") && !typing && !wayfarer.active && !e.metaKey && !e.ctrlKey) {
+    wayfarer.enter({ page: hoverPage >= 0 ? hoverPage : fromPage });
+  }
 });
 
 
@@ -802,6 +934,8 @@ const labelWindow = (p: SearchPlace): [number, number] => {
   return [lo, Math.max(lo, hi)];
 };
 
+/** set by ?walk=1 with a ?q=, so the walk starts where the search lands */
+let walkOnArrive = false;
 const search = new MapSearch({
   cam,
   places,
@@ -812,10 +946,19 @@ const search = new MapSearch({
     hoverPage = busiestPage(p);
     landing = { x: p.x, y: p.y, r: spreadOf(p), name: p.name, t0: performance.now() };
     draw();
+    if (walkOnArrive) { walkOnArrive = false; wayfarer.enter({ page: hoverPage }); }
   },
 });
 const initialQuery = q.get("q");
-if (initialQuery) search.jump(initialQuery);
+// ?walk=1 starts in walk mode: at the searched place once the flight lands,
+// otherwise wherever the view already is.
+const WALK = q.get("walk") === "1";
+if (initialQuery) {
+  if (WALK) walkOnArrive = true;
+  search.jump(initialQuery);
+} else if (WALK) {
+  wayfarer.enter();
+}
 
 const devPanel = new DevPanel(theme, boot0.preset, { onChange: applyTheme, canvas });
 if (q.get("dev") === "1") devPanel.setOpen(true);

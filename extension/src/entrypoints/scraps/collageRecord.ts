@@ -70,12 +70,29 @@ export interface CollageRecord {
   backShows?: BackShows;
   pieces: CollagePiece[];
   /**
+   * The public view-only link this collage was last shared as, kept so it can
+   * be taken down again. Absent when the collage is not shared. The delete
+   * token is the only way to take the link down, so it never leaves this
+   * device: copies and collage files are made without it.
+   */
+  publication?: CollagePublication;
+  /**
    * The baked picture of this collage, or an explicit note that it has not
    * been drawn yet. A collage is stored the moment its arrangement changes,
    * which can be before a bake has ever succeeded, and the absence is said
    * out loud rather than left as a missing field.
    */
   preview: CollagePreview;
+}
+
+/** A shared link to a collage, and the token that takes it down. */
+export interface CollagePublication {
+  /** The shared collage's id on the Worker. */
+  id: string;
+  deleteToken: string;
+  sharedAt: number;
+  /** The page the link opens. */
+  url: string;
 }
 
 /** What the back lists under each site: the pieces, or the titles of their pages. */
@@ -88,6 +105,32 @@ export function isBackShows(value: unknown): value is BackShows {
 export type CollagePreview =
   | { drawn: true; image: Blob }
   | { drawn: false; reason: string };
+
+/**
+ * A preview read out of IndexedDB, copied into memory so it can be written
+ * back. The Blob IndexedDB hands out is backed by the stored row's file, and a
+ * reopened collage carries it into every save until a re-bake replaces it.
+ * In Firefox the first save back succeeds, but it lets go of the file behind
+ * that Blob, so every later save carrying it fails with an UnknownError ("The
+ * operation failed for reasons unrelated to the database itself...") and the
+ * collage can no longer be saved. An in-memory copy has no tie to the row it
+ * came from. A picture whose bytes can no longer be read is dropped, so the
+ * arrangement still saves and a re-bake draws it again.
+ */
+export async function detachPreview(
+  preview: CollagePreview,
+): Promise<CollagePreview> {
+  if (!preview.drawn) return preview;
+  try {
+    const bytes = await preview.image.arrayBuffer();
+    return {
+      drawn: true,
+      image: new Blob([bytes], { type: preview.image.type }),
+    };
+  } catch {
+    return { drawn: false, reason: "the saved picture could not be read" };
+  }
+}
 
 /** A stored row that could not be read, listed so it can still be deleted. */
 export interface UnreadableCollage {
@@ -346,8 +389,38 @@ export function parseCollageRecord(value: unknown): CollageRecord {
       ? {}
       : { backShows: readBackShows(record.backShows) }),
     pieces: record.pieces.map(parseCollagePiece),
+    ...(record.publication === undefined
+      ? {}
+      : { publication: readPublication(record.publication) }),
     preview,
   };
+}
+
+function readPublication(value: unknown): CollagePublication {
+  if (!value || typeof value !== "object") {
+    throw new Error("Collage publication is not an object");
+  }
+  const publication = value as Record<string, unknown>;
+  return {
+    id: readPublicationString(publication, "id"),
+    deleteToken: readPublicationString(publication, "deleteToken"),
+    sharedAt: readNumber(publication, "sharedAt"),
+    url: readPublicationString(publication, "url"),
+  };
+}
+
+function readPublicationString(source: Record<string, unknown>, key: string): string {
+  const value = source[key];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`Collage publication is missing ${key}`);
+  }
+  return value;
+}
+
+/** The collage without its publication, for anything that leaves this device. */
+export function withoutPublication(record: CollageRecord): CollageRecord {
+  const { publication: _publication, ...rest } = record;
+  return rest;
 }
 
 function readBackShows(value: unknown): BackShows {

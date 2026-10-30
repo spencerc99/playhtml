@@ -93,11 +93,34 @@ const ARROW_DELTAS: Record<string, { dx: number; dy: number }> = {
  * never fire over a title field or any other input.
  */
 export function isTypingTarget(event: KeyEventShape): boolean {
-  const target = event.target;
+  return isTypingElement(event.target);
+}
+
+/** Whether an element takes typing: a text field, a select, or editable text. */
+export function isTypingElement(target: KeyEventShape["target"]): boolean {
   if (!target) return false;
   if (target.isContentEditable) return true;
   const tag = target.tagName?.toUpperCase();
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+/**
+ * Puts down a text field still holding focus once the person has turned to
+ * the collage, so the next cmd+Z undoes the collage and not the field's text.
+ * Safari and Firefox on macOS do not focus a clicked button, so clicking a
+ * scrap onto the paper leaves focus in the drawer's search; a press on the
+ * paper is the other way back from a field. A press that lands on a field
+ * itself is left alone.
+ */
+export function releaseTypingFocus(
+  active: (Element & { blur?: () => void }) | null,
+  pressedOn: KeyEventShape["target"] = null,
+): boolean {
+  if (!active || active === pressedOn) return false;
+  if (isTypingElement(pressedOn)) return false;
+  if (!isTypingElement(active as KeyEventShape["target"])) return false;
+  active.blur?.();
+  return true;
 }
 
 /**
@@ -328,6 +351,7 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
       { keys: "shift on a corner or edge", what: "free the aspect ratio" },
       { keys: "alt on a corner or edge", what: "resize from the center" },
       { keys: "shift while dragging", what: "keep to one axis" },
+      { keys: "cmd while dragging", what: "snap to edges and middles" },
       { keys: "esc", what: "cancel what you started" },
     ],
   },

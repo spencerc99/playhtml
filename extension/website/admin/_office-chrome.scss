@@ -1,0 +1,174 @@
+// ABOUTME: Styles the header and sign-in shared by every WWO admin office page.
+// ABOUTME: Self-contained so tools with their own stylesheet can wear the same office chrome.
+
+$office-mono: "Martian Mono", monospace;
+
+.office-kicker {
+  color: #a34f32;
+  font-family: $office-mono;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+}
+
+.office-header {
+  font-family: $office-mono;
+  color: #202421;
+  min-height: 84px;
+  padding: 16px clamp(20px, 4vw, 56px);
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) auto minmax(110px, 1fr);
+  align-items: center;
+  gap: 24px;
+  border-bottom: 1px solid #b9b7aa;
+  background: rgba(250, 248, 242, 0.92);
+
+  h1 {
+    margin: 2px 0 0;
+    font:
+      600 clamp(20px, 2vw, 28px) "Lora",
+      serif;
+  }
+
+  nav {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px;
+    border: 1px solid #c9c6b9;
+    border-radius: 7px;
+    background: #eeece4;
+
+    a,
+    span {
+      padding: 7px 10px;
+      color: #62665f;
+      font-size: 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    a[aria-current="page"] {
+      border-radius: 4px;
+      background: #fffefa;
+      color: #236859;
+      box-shadow: 0 1px 3px rgba(31, 44, 39, 0.12);
+    }
+
+    span {
+      opacity: 0.5;
+    }
+  }
+
+  &__logout {
+    justify-self: end;
+    padding: 9px 13px;
+    border: 0;
+    background: transparent;
+    color: #6f716b;
+    font: 600 10px $office-mono;
+    cursor: pointer;
+  }
+}
+
+.office-login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+
+  width: auto;
+  margin: 0;
+  font-family: $office-mono;
+  color: #202421;
+
+  &__card {
+    width: min(430px, 100%);
+    border: 1px solid #bbb8aa;
+    border-radius: 9px;
+    background: rgba(255, 254, 250, 0.92);
+    box-shadow: 0 12px 34px rgba(46, 51, 45, 0.07);
+    padding: 36px;
+
+    h1 {
+      margin: 4px 0 8px;
+      font:
+        600 34px "Lora",
+        serif;
+    }
+
+    p {
+      margin: 0 0 24px;
+      color: #666960;
+      font:
+        15px/1.5 "Lora",
+        serif;
+    }
+
+    form {
+      display: grid;
+      gap: 9px;
+    }
+
+    input {
+      padding: 10px 11px;
+      border: 1px solid #aaa99f;
+      border-radius: 5px;
+      outline: none;
+      background: #fffefa;
+      color: #242824;
+      font: 11px $office-mono;
+
+      &:focus {
+        border-color: #357768;
+        box-shadow: 0 0 0 3px rgba(53, 119, 104, 0.12);
+      }
+    }
+
+    button {
+      padding: 9px 13px;
+      border: 1px solid #236859;
+      border-radius: 5px;
+      background: #236859;
+      color: white;
+      font: 600 10px $office-mono;
+      cursor: pointer;
+
+      &:disabled {
+        cursor: default;
+        opacity: 0.45;
+      }
+    }
+
+    .office-login__error {
+      margin: -12px 0 18px;
+      color: #a34f32;
+      font: 600 11px/1.5 $office-mono;
+    }
+
+    label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    a {
+      display: inline-block;
+      margin-top: 24px;
+      color: #236859;
+      font-size: 10px;
+    }
+  }
+}
+
+@media (max-width: 760px) {
+  .office-header {
+    grid-template-columns: 1fr auto;
+
+    nav {
+      grid-column: 1 / -1;
+      order: 3;
+      overflow-x: auto;
+    }
+  }
+}

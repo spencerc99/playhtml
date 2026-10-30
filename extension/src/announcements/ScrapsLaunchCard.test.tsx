@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import browser from "webextension-polyfill";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PILE_CAPACITY, ScrapsLaunchCard } from "./ScrapsLaunchCard";
+import { PILE_CAPACITY, ScrapsLaunchCard, scrapSites } from "./ScrapsLaunchCard";
 import { FLAGS } from "../flags";
 
 function cleanup(root: Root, container: HTMLDivElement) {
@@ -13,12 +13,14 @@ function cleanup(root: Root, container: HTMLDivElement) {
   container.remove();
 }
 
+const WEEK = { startTs: 1_000, endTs: 9_000 };
+
 async function renderCard() {
   const container = document.createElement("div");
   const root = createRoot(container);
   document.body.appendChild(container);
   await act(async () => {
-    root.render(<ScrapsLaunchCard />);
+    root.render(<ScrapsLaunchCard range={WEEK} />);
   });
   return { container, root };
 }
@@ -82,7 +84,7 @@ describe("ScrapsLaunchCard", () => {
     const { container, root } = await renderCard();
 
     try {
-      expect(container.textContent).toContain("internet scraps");
+      expect(container.textContent).toContain("things you came across");
       expect(container.textContent).toContain("WWO now collects images");
       expect(container.textContent).not.toContain("so far");
       expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
@@ -97,7 +99,7 @@ describe("ScrapsLaunchCard", () => {
     }
   });
 
-  it("asks for the newest scraps and shows the reader's own pile", async () => {
+  it("asks for the period's newest scraps and shows the reader's own pile", async () => {
     const scraps = Array.from({ length: 12 }, (_unused, index) =>
       scrapImage(`scrap-${index}`),
     );
@@ -107,11 +109,46 @@ describe("ScrapsLaunchCard", () => {
     try {
       expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
         type: "GET_SCRAPS",
-        options: { limit: PILE_CAPACITY },
+        options: { limit: PILE_CAPACITY, range: WEEK },
       });
       expect(container.textContent).toContain("(12 scraps so far)");
       expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
       expect(container.querySelector(".scraps-launch__strip-chip")).toBeNull();
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("hides the previous period's pile while the next period loads", async () => {
+    mockScraps([scrapImage("this-week")], 2);
+    const { container, root } = await renderCard();
+
+    try {
+      expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
+
+      let releaseNextWeek: (value: unknown) => void = () => {};
+      vi.mocked(browser.runtime.sendMessage).mockImplementation(
+        (message: unknown) =>
+          (message as { type: string }).type === "GET_SCRAP_COUNT"
+            ? Promise.resolve({ total: 2 })
+            : new Promise((resolve) => {
+                releaseNextWeek = resolve;
+              }),
+      );
+      const lastWeek = { startTs: 10_000, endTs: 19_000 };
+      await act(async () => {
+        root.render(<ScrapsLaunchCard range={lastWeek} />);
+      });
+      expect(container.querySelector(".scraps-launch__pile")).toBeNull();
+
+      await act(async () => {
+        releaseNextWeek({ scraps: [scrapImage("last-week")] });
+      });
+      expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+        type: "GET_SCRAPS",
+        options: { limit: PILE_CAPACITY, range: lastWeek },
+      });
     } finally {
       cleanup(root, container);
     }
@@ -142,8 +179,12 @@ describe("ScrapsLaunchCard", () => {
         dismiss?.click();
       });
 
-      expect(container.querySelector(".scraps-launch__title")).toBeNull();
+      expect(container.querySelector(".scraps-launch__text")).toBeNull();
+      expect(container.querySelector("h2")?.textContent).toBe("things you came across");
       expect(container.querySelector(".scraps-launch--compact")).not.toBeNull();
+      expect(
+        container.querySelector(".scraps-launch__sites")?.textContent,
+      ).toBe("from 1 siteexample.com1");
       expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
       expect(
         container.querySelector(".scraps-launch__footer-link")?.textContent,
@@ -188,5 +229,27 @@ describe("ScrapsLaunchCard", () => {
     } finally {
       cleanup(root, container);
     }
+  });
+
+  it("lists the pile's sites with the most scraps first", () => {
+    const at = (domain: string, ts: number, faviconUrl?: string) => ({
+      ...scrapImage(`${domain}-${ts}`),
+      domain,
+      ts,
+      faviconUrl,
+    });
+    expect(
+      scrapSites([
+        at("a.com", 1),
+        at("b.com", 5),
+        at("b.com", 2, "https://b.com/icon.png"),
+        at("c.com", 9),
+        at("a.com", 3),
+      ]),
+    ).toEqual([
+      { domain: "b.com", count: 2, faviconUrl: "https://b.com/icon.png" },
+      { domain: "a.com", count: 2, faviconUrl: undefined },
+      { domain: "c.com", count: 1, faviconUrl: undefined },
+    ]);
   });
 });

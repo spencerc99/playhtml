@@ -38,10 +38,18 @@ interface CollageBackFaceProps {
   front: Blob | null;
   /** Whether the collage is turned over, so this face is the one being read. */
   showing: boolean;
+  /**
+   * Whether to read everything the back needs before it is turned to, so it
+   * is already written when it is. Without it nothing is fetched until then.
+   */
+  prepare?: boolean;
   /** Told when something the back needs could not be read. */
   onProblem: (text: string) => void;
-  /** Told as the title written on the back is edited. */
-  onTitle: (title: string) => void;
+  /**
+   * Told as the title written on the back is edited. Without it the title is
+   * only read, as on a published collage.
+   */
+  onTitle?: (title: string) => void;
 }
 
 /** Where the written title sits on the back, and the type it is set in. */
@@ -88,9 +96,11 @@ export function CollageBackFace({
   look,
   front,
   showing,
+  prepare = false,
   onProblem,
   onTitle,
 }: CollageBackFaceProps) {
+  const wanted = showing || prepare;
   const textRef = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<TitlePlace | null>(null);
   const [assets, setAssets] = useState<BackAssets | null>(null);
@@ -102,9 +112,9 @@ export function CollageBackFace({
   >(() => new Map());
   const [bleed, setBleed] = useState<string | null>(null);
 
-  // Nothing is fetched until the back is actually being read.
+  // Nothing is fetched until the back is being read, or asked to be ready.
   useEffect(() => {
-    if (!showing || assets) return;
+    if (!wanted || assets) return;
     let cancelled = false;
     backAssets()
       .then((loaded) => {
@@ -120,7 +130,7 @@ export function CollageBackFace({
     return () => {
       cancelled = true;
     };
-  }, [assets, onProblem, showing]);
+  }, [assets, onProblem, wanted]);
 
   // The key stands for the list of pages and their favicons, so moving pieces
   // around fetches nothing.
@@ -129,7 +139,7 @@ export function CollageBackFace({
     .map((source) => `${source.pageUrl}\n${source.faviconUrl ?? ""}`)
     .join("\n");
   useEffect(() => {
-    if (!showing) return;
+    if (!wanted) return;
     let cancelled = false;
     void resolveBackFavicons(sources).then((resolved) => {
       if (!cancelled) setFavicons(resolved);
@@ -137,12 +147,12 @@ export function CollageBackFace({
     return () => {
       cancelled = true;
     };
-  }, [showing, sourcesKey]);
+  }, [wanted, sourcesKey]);
 
   // Pieces are drawn small once each and kept, so turning the collage over
   // again, or moving a piece, redraws nothing.
   useEffect(() => {
-    if (!showing) return;
+    if (!wanted) return;
     let cancelled = false;
     void resolveBackThumbnails(content.pieces).then((resolved) => {
       if (!cancelled) setThumbnails(resolved);
@@ -150,7 +160,7 @@ export function CollageBackFace({
     return () => {
       cancelled = true;
     };
-  }, [showing, content.pieces]);
+  }, [wanted, content.pieces]);
 
   useEffect(() => {
     if (!front) {
@@ -193,10 +203,11 @@ export function CollageBackFace({
 
   // The written title is overlaid with a field set in the same place and type,
   // so it is edited where it is read. The markup stays the one the bake draws.
+  const editable = onTitle !== undefined;
   useLayoutEffect(() => {
     const container = textRef.current;
-    setPlace(container && markup ? titlePlace(container) : null);
-  }, [markup]);
+    setPlace(container && markup && editable ? titlePlace(container) : null);
+  }, [editable, markup]);
 
   const card = backPaper(paper, look);
   const ink = backInk(card.color);
@@ -221,7 +232,7 @@ export function CollageBackFace({
             className={`collage-back__text${place ? " collage-back__text--titled" : ""}`}
             dangerouslySetInnerHTML={{ __html: markup }}
           />
-          {place && (
+          {place && onTitle && (
             <textarea
               className="collage-back__title-field"
               value={content.title}

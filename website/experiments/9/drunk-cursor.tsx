@@ -16,6 +16,7 @@ import {
   useCursorPresences,
 } from "@playhtml/react";
 import { playhtml } from "playhtml";
+import { mountExperimentBadge } from "../../components/experimentBadge";
 
 const DRINK_COUNT = 4;
 const WATER_SPAWN_CHANCE = 0.1;
@@ -1077,12 +1078,6 @@ const DrunkCursorController = withSharedState(
           <span className="cursor-bar-sign-text">Cursor Bar</span>
         </div>
 
-        {/* Footer napkin */}
-        <div className="footer-napkin">
-          <a href="https://playhtml.fun">playhtml</a> experiment 9 by{" "}
-          <a href="https://spencer.place/">spencer chang</a>
-        </div>
-
         {/* Countertop with drinks */}
         <div className="countertop">
           {drinks.map((i) => {
@@ -1176,6 +1171,8 @@ const DrunkCursorController = withSharedState(
     );
   },
 );
+
+mountExperimentBadge({ experiment: "EX-09" });
 
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement,

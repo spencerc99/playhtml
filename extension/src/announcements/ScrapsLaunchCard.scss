@@ -4,7 +4,7 @@
 @use "../styles/variables" as *;
 
 .scraps-launch {
-  margin: 0 0 48px;
+  margin: 0;
   border: 1px solid $border-strong;
   border-radius: 6px;
   background: $surface;
@@ -21,21 +21,70 @@
 
 .scraps-launch__footer {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   padding: 8px 14px 9px;
 }
 
-.scraps-launch__footer-label {
-  color: $text-faint;
+.scraps-launch__footer--ruled {
+  border-bottom: 1px dashed $border-strong;
+}
+
+// The sites strip follows the "also from" line on a collage's back: favicon,
+// site, and how many pieces came from it, in mono on one wrapping row.
+.scraps-launch__sites {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 4px;
+  min-width: 0;
   font-family: $font-mono;
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.scraps-launch__sites-label,
+.scraps-launch__sites-more {
+  color: $text-faint;
+  letter-spacing: 0.06em;
+}
+
+.scraps-launch__site {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.scraps-launch__site-favicon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  object-fit: contain;
+}
+
+.scraps-launch__site-favicon--none {
+  box-sizing: border-box;
+  border: 1px solid $border-strong;
+  border-radius: 50%;
+}
+
+.scraps-launch__site-name {
+  overflow: hidden;
+  color: $text;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scraps-launch__site-count {
+  color: $text-faint;
 }
 
 .scraps-launch__footer-link {
+  flex: none;
   color: $accent-rust;
   font-size: 12px;
   font-weight: 700;
@@ -86,14 +135,6 @@
   font-size: 8px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-}
-
-.scraps-launch__title {
-  margin: 0 0 6px;
-  font-family: $font-heading;
-  font-size: 19px;
-  font-weight: 600;
-  color: $text;
 }
 
 .scraps-launch__text {

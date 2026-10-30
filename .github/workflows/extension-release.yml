@@ -168,8 +168,6 @@ jobs:
         if: env.SKIP_CHROME != 'true' || env.SKIP_EDGE != 'true'
         continue-on-error: true
         working-directory: extension
-        env:
-          WXT_TLDRAW_LICENSE_KEY: ${{ secrets.TLDRAW_LICENSE_KEY }}
         run: |
           WXT_OUT_DIR=publish bun run zip
           node scripts/validateExtensionBuild.mjs publish/chrome-mv3
@@ -179,8 +177,6 @@ jobs:
         if: env.SKIP_FIREFOX != 'true'
         continue-on-error: true
         working-directory: extension
-        env:
-          WXT_TLDRAW_LICENSE_KEY: ${{ secrets.TLDRAW_LICENSE_KEY }}
         run: WXT_OUT_DIR=publish bun run zip:firefox
 
       - name: Build Safari zip
@@ -188,8 +184,6 @@ jobs:
         if: env.SKIP_SAFARI != 'true'
         continue-on-error: true
         working-directory: extension
-        env:
-          WXT_TLDRAW_LICENSE_KEY: ${{ secrets.TLDRAW_LICENSE_KEY }}
         run: |
           WXT_OUT_DIR=publish bun run zip:safari
           node scripts/validateExtensionBuild.mjs publish/safari-mv3 safari
@@ -394,7 +388,7 @@ jobs:
       - name: Announce release on Discord
         if: env.DRY_RUN != 'true' && steps.tag.outputs.tag_created == 'true'
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_EXTENSION_RELEASE_WEBHOOK }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
           VERSION: ${{ env.VERSION }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
           CHANGELOG_URL: https://wewere.online/changelog/

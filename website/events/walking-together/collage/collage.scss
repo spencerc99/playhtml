@@ -1,0 +1,49 @@
+// ABOUTME: Styles for the shared table collage around the scraps studio it embeds.
+// ABOUTME: The studio brings its own look; this only places it and draws the shape guide.
+
+.collage-stage {
+  position: absolute;
+  inset: 0;
+  display: block;
+  z-index: 5;
+}
+
+.collage-table {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+// The admin's captured shape, drawn on the paper under the pieces.
+.collage-template {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+
+  polygon,
+  line {
+    fill: rgba(0, 0, 0, 0.03);
+    stroke: rgba(0, 0, 0, 0.35);
+    stroke-width: 3;
+    stroke-dasharray: 4 14;
+    stroke-linecap: round;
+  }
+}
+
+.collage-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  font-size: 28px;
+  color: var(--c-muted);
+  pointer-events: none;
+  text-align: center;
+}
+
+.collage-table-admin {
+  display: inline-flex;
+  gap: 6px;
+}

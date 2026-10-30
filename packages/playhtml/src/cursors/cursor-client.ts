@@ -1915,7 +1915,7 @@ export class CursorClientAwareness {
     // Update options object
     Object.assign(this.options, options);
 
-    if (options.shouldRenderCursor !== undefined) {
+    if ("shouldRenderCursor" in options) {
       for (const [stableId, presence] of this.activeCursorPresenceEntries()) {
         this.updateCursor(stableId, presence);
       }
@@ -1961,6 +1961,29 @@ export class CursorClientAwareness {
     if (cursorElement) {
       cursorElement.style.display = "block";
     }
+  }
+
+  /**
+   * The id of the other person's cursor drawn at a viewport point, so a tap
+   * can pick someone even though cursors ignore pointer events. `slopPx`
+   * widens each cursor's box to a fingertip.
+   */
+  getCursorIdAt(clientX: number, clientY: number, slopPx = 0): string | null {
+    let bestId: string | null = null;
+    let bestDist = Infinity;
+    for (const [id, el] of this.cursors) {
+      if (el.style.display === "none") continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) continue;
+      const dx = Math.max(rect.left - clientX, 0, clientX - rect.right);
+      const dy = Math.max(rect.top - clientY, 0, clientY - rect.bottom);
+      const dist = Math.hypot(dx, dy);
+      if (dist <= slopPx && dist < bestDist) {
+        bestDist = dist;
+        bestId = id;
+      }
+    }
+    return bestId;
   }
 
   destroy(): void {

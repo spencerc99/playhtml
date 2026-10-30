@@ -17,3 +17,9 @@ Once you can reach for the right one, everything else is just attribute names.
 - **Events** (`playhtml.dispatchPlayEvent`): one-off broadcasts with no persisted state. Confetti, chimes, notifications. See [events](/docs/data/events/).
 
 Not sure which one you want? The [decision table on data essentials](/docs/data/data-essentials/#when-to-use-which-primitive) lays out the tradeoffs side by side.
+
+## Every element needs a stable id
+
+Element data is stored under the element's `id`, so the id must stay the same across reloads and browsers. That's how two visitors agree on which element is which. A hand-written `id="my-lamp"` is ideal. If you leave it out, playhtml falls back to hashing the element's HTML, which can differ across browsers and break sync.
+
+For **many elements that share a selector** (a row of magnets, a list of reactions), give each the same markup and add a single `selector-id` attribute instead of inventing unique ids. playhtml indexes the matches by position, so the N-th `.magnet` always gets the N-th slot of state. See [Dynamic elements](/docs/advanced/dynamic-elements/#many-of-a-kind-elements-with-selector-id).

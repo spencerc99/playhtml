@@ -31,8 +31,11 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 - `bun dev-extension`: Extension dev server (WXT hot reload)
 - `bun build-packages`: Build all library packages
 - `bun run lint`: Type-check all packages
+- `bun run format:check -- <file...>`: Check up to 50 explicit source files
+- `bun run format:write -- <file...>`: Format up to 50 explicit source files
 - `bun run smoke:extension-worker`: bundle the extension Worker without deploying or starting a watcher
 - `bun run smoke:extension`: build and load the real extension in isolated headless Chromium with a loopback-only backend
+
 
 Per-package and deploy scripts are in the root `package.json`.
 
@@ -59,7 +62,7 @@ The extension and PartyKit use one Supabase project with different tables. All n
 
 ### Extension Performance
 
-- The `Extension Performance Report` workflow runs extension performance traces in CI.
+- The `Extension Performance Report` workflow runs extension performance traces in CI. The `Library Performance Report` workflow runs the deterministic playhtml client benchmark (`packages/playhtml/bench/`, bundle size plus message/byte/render counts). Both compare the PR to its base, keep one bot comment on the PR up to date, and fail the check when a metric regresses past its threshold (thresholds live in `scripts/compare-*-performance.mjs`). If a regression is intentional, say so in the PR; the check stays red until it's resolved or Spencer overrides it.
 - Do not run `perf:extension:trace` during local agent work. Repeated traces consume local resources and duplicate CI coverage. Check the CI workflow result instead.
 - Run a local trace only when Spencer explicitly requests one. Treat large increases in `TaskDuration`, `ScriptDuration`, `LayoutDuration`, `RecalcStyleDuration`, or `JSHeapUsedSize` as regression signals to investigate.
 

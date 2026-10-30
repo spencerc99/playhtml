@@ -10,6 +10,7 @@ import {
   type PageMetadataSnapshot,
 } from '@playhtml/extension-types';
 import { broadcastLiveEvents } from '../live/broadcast';
+import { suggestIngestedDestinations } from './commute';
 
 // Rate limiting: max events per request
 const MAX_EVENTS_PER_REQUEST = 500;
@@ -36,12 +37,6 @@ interface NavigationLikeData {
   favicon_url?: unknown;
   metadata_hash?: unknown;
   [key: string]: unknown;
-}
-
-interface CurrentMetadataRow {
-  id: string;
-  page_ref: string;
-  metadata_hash: string;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -96,61 +91,25 @@ async function persistPageMetadataHistory(
   }
 
   const sortedSnapshots = [...snapshots].sort((a, b) => a.observed_at_ts - b.observed_at_ts);
-  const refs = [...new Set(sortedSnapshots.map((s) => s.page_ref))];
-  const currentByRef = new Map<string, CurrentMetadataRow>();
-
-  const { data: currentRows, error: currentError } = await supabase
-    .from('page_metadata_history')
-    .select('id, page_ref, metadata_hash')
-    .in('page_ref', refs)
-    .is('valid_to_ts', null);
-
-  if (currentError) {
-    throw currentError;
-  }
-
-  for (const row of (currentRows || []) as CurrentMetadataRow[]) {
-    currentByRef.set(row.page_ref, row);
-  }
-
   let insertedCount = 0;
 
   for (const snapshot of sortedSnapshots) {
-    const current = currentByRef.get(snapshot.page_ref);
-    if (current && current.metadata_hash === snapshot.metadata_hash) {
-      continue;
+    const { data: inserted, error } = await supabase.rpc('record_page_metadata_snapshot', {
+      p_page_ref: snapshot.page_ref,
+      p_canonical_url: snapshot.canonical_url,
+      p_title: snapshot.title,
+      p_favicon_url: snapshot.favicon_url,
+      p_metadata_hash: snapshot.metadata_hash,
+      p_observed_at_ts: new Date(snapshot.observed_at_ts).toISOString(),
+    });
+
+    if (error) {
+      throw error;
     }
 
-    if (current) {
-      const { error: closeError } = await supabase
-        .from('page_metadata_history')
-        .update({ valid_to_ts: new Date(snapshot.observed_at_ts).toISOString() })
-        .eq('id', current.id);
-      if (closeError) {
-        throw closeError;
-      }
+    if (inserted) {
+      insertedCount++;
     }
-
-    const { data: insertedRow, error: insertError } = await supabase
-      .from('page_metadata_history')
-      .insert({
-        page_ref: snapshot.page_ref,
-        canonical_url: snapshot.canonical_url,
-        title: snapshot.title,
-        favicon_url: snapshot.favicon_url,
-        metadata_hash: snapshot.metadata_hash,
-        valid_from_ts: new Date(snapshot.observed_at_ts).toISOString(),
-        valid_to_ts: null,
-      })
-      .select('id, page_ref, metadata_hash')
-      .single();
-
-    if (insertError) {
-      throw insertError;
-    }
-
-    currentByRef.set(snapshot.page_ref, insertedRow as CurrentMetadataRow);
-    insertedCount++;
   }
 
   return insertedCount;
@@ -348,6 +307,14 @@ export async function handleIngest(
         Date.now(),
       ),
     );
+    // New destinations stay scenery until Clef approves them, so ask right away.
+    if (env.AI && typedEvents.some((event) => event.type === 'navigation')) {
+      ctx.waitUntil(
+        suggestIngestedDestinations(env, typedEvents as unknown as CollectionEvent[]).catch(
+          (error) => console.error('[internet-places] ingest suggestion failed:', error),
+        ),
+      );
+    }
 
     return new Response(
       JSON.stringify({ inserted, duplicates, page_metadata_inserted: pageMetadataInserted }),

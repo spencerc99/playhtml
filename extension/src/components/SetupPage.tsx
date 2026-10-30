@@ -221,7 +221,10 @@ export default function SetupPage() {
   const closeSetupTab = async () => {
     const tab = await browser.tabs.getCurrent();
     if (tab?.id === undefined) {
-      throw new Error("Could not find the setup tab");
+      // The iPhone app shows setup in a sheet that is not a browser tab;
+      // closing the page's own window closes the sheet.
+      window.close();
+      return;
     }
     await browser.tabs.remove(tab.id);
   };
@@ -353,7 +356,7 @@ export default function SetupPage() {
                     : "Allow on every website"}
                 </button>
                 <p className="setup-step__website-access-hint">
-                  When Safari asks, choose “Always Allow on Every Website.”
+                  When Safari asks, choose “Always Allow.”
                 </p>
                 {websiteAccess === "error" && (
                   <p className="setup-step__website-access-error">

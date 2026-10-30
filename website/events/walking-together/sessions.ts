@@ -5,6 +5,21 @@
  * credits line under the title. Plain string segments render as text. */
 export type SubtitleSegment = string | { text: string; href: string };
 
+/** Which stage a session page shows. "walk" is the URL chat + cursor prompts;
+ * "collage" is the shared scrap collage. The admin switches between them live. */
+export type SessionStage = "walk" | "collage";
+
+/** Cursor prompts used by the original public workshops. */
+const WORKSHOP_CURSOR_PROMPTS = [
+  "Make a circle together",
+  "Play tag with each other",
+  "Stack all cursors in the center",
+  "Make a zigzag together",
+  "Coordinate by colors",
+  "Split into your preferred corner",
+  "Imagine your cursor as a falling rain drop",
+];
+
 export interface WorkshopSession {
   /** Becomes ?session=<id> on the room. */
   id: string;
@@ -25,6 +40,13 @@ export interface WorkshopSession {
    * `/events/walking-together/` resolves to the live `playhtml.fun-...` room).
    */
   room?: string;
+  /** Group cursor prompts, cycled in order during the walk stage. */
+  prompts: string[];
+  /** When true, the admin can switch the room into the collage stage. */
+  hasCollageStage: boolean;
+  /** When true, people can join the walk and their pages draw as trails
+   * behind the walk stage. */
+  hasJoinWalk: boolean;
 }
 
 export const SESSIONS: WorkshopSession[] = [
@@ -45,6 +67,9 @@ export const SESSIONS: WorkshopSession[] = [
       ", with ",
       { text: "rhizome", href: "https://rhizome.org/" },
     ],
+    prompts: WORKSHOP_CURSOR_PROMPTS,
+    hasCollageStage: false,
+    hasJoinWalk: false,
   },
   {
     id: "2026-06-06-byod",
@@ -56,6 +81,34 @@ export const SESSIONS: WorkshopSession[] = [
       { text: "spencer chang", href: "https://spencer.place" },
       ", at ITP",
     ],
+    prompts: WORKSHOP_CURSOR_PROMPTS,
+    hasCollageStage: false,
+    hasJoinWalk: false,
+  },
+  {
+    // Closed beta testers for playhtml / we were online: warm up with cursor
+    // prompts, walk the web collecting scraps, then collage them together.
+    id: "2026-10-beta-collage-night",
+    label: "walking together (internet walk + collage night)",
+    date: "2026-10-11",
+    archived: false,
+    subtitle: [
+      "with ",
+      { text: "spencer chang", href: "https://spencer.place" },
+      " and the ",
+      { text: "we were online", href: "https://wewere.online" },
+      " beta collectors",
+    ],
+    // Sized for a small group. The last prompt makes the shape that becomes
+    // the collage template.
+    prompts: [
+      "Make a circle",
+      "Play tag",
+      "Make a zigzag together",
+      "Imagine your cursor as a falling rain drop",
+    ],
+    hasCollageStage: true,
+    hasJoinWalk: true,
   },
 ];
 

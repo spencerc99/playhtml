@@ -27,6 +27,10 @@ describe("sessions", () => {
     expect(defaultSession().id).toBe(active[active.length - 1].id);
   });
 
+  it("every session has at least one cursor prompt", () => {
+    for (const s of SESSIONS) expect(s.prompts.length).toBeGreaterThan(0);
+  });
+
   it("findSession returns undefined for unknown id", () => {
     expect(findSession("does-not-exist")).toBeUndefined();
   });

@@ -1,4 +1,4 @@
-// ABOUTME: New-tab card showing a small pile of the reader's newest internet scraps.
+// ABOUTME: New-tab card showing a small pile of the scraps from the period the record shows.
 // ABOUTME: Announces the feature until dismissed, then stays as a compact window onto the pile.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -15,7 +15,7 @@ import "./ScrapsLaunchCard.scss";
 
 export const SCRAPS_LAUNCH_CARD_ID = "scraps-2026-08-newtab";
 
-/** How many of the newest scraps the pile draws from. */
+/** How many of the period's newest scraps the pile draws from. */
 export const PILE_CAPACITY = 50;
 
 /** How many scraps sit ashore in the card at once while the rest drift in. */
@@ -129,10 +129,22 @@ const EXAMPLE_ITEMS: ScrapItem[] = [
   ),
 ];
 
-export function ScrapsLaunchCard() {
+/** The card for the scraps collected within `range`. */
+export function ScrapsLaunchCard({
+  range,
+}: {
+  range: { startTs: number; endTs: number };
+}) {
+  const { startTs, endTs } = range;
   const [available, setAvailable] = useState(false);
   const [textDismissed, setTextDismissed] = useState(false);
-  const [scraps, setScraps] = useState<ScrapRecord[] | null>(null);
+  // The pile is tagged with its range so a previous period's scraps never
+  // show under a newly selected one while that period loads.
+  const [pile, setPile] = useState<{
+    startTs: number;
+    endTs: number;
+    scraps: ScrapRecord[];
+  } | null>(null);
   const [total, setTotal] = useState(0);
 
   useEffect(() => {
@@ -152,7 +164,7 @@ export function ScrapsLaunchCard() {
         const [response, countResponse] = (await Promise.all([
           browser.runtime.sendMessage({
             type: "GET_SCRAPS",
-            options: { limit: PILE_CAPACITY },
+            options: { limit: PILE_CAPACITY, range: { startTs, endTs } },
           }),
           browser.runtime.sendMessage({ type: "GET_SCRAP_COUNT" }),
         ])) as [ScrapsResponse, ScrapCountResponse];
@@ -166,24 +178,28 @@ export function ScrapsLaunchCard() {
         const loaded = Array.isArray(response?.scraps)
           ? groupPhotoEncounters(response.scraps).sort((a, b) => b.ts - a.ts)
           : [];
-        setScraps(loaded);
+        setPile({ startTs, endTs, scraps: loaded });
         setTotal(countResponse.total);
       } catch (loadError: unknown) {
         console.error("[ScrapsLaunchCard] Could not load scraps:", loadError);
-        if (!cancelled) setScraps([]);
+        if (!cancelled) setPile({ startTs, endTs, scraps: [] });
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [startTs, endTs]);
 
   const onDismiss = useCallback(() => {
     setTextDismissed(true);
     void setState(SCRAPS_LAUNCH_CARD_ID, "dismissed");
   }, []);
 
+  const scraps =
+    pile && pile.startTs === startTs && pile.endTs === endTs
+      ? pile.scraps
+      : null;
   if (!available || scraps === null) return null;
   // Once the announcement is dismissed, the card only stays for a real pile.
   if (textDismissed && scraps.length === 0) return null;
@@ -196,6 +212,78 @@ export function ScrapsLaunchCard() {
       scrapsHref={browser.runtime.getURL("scraps.html")}
       onDismiss={onDismiss}
     />
+  );
+}
+
+/** A site the pile's scraps came from, as the bar lists it. */
+export interface ScrapSite {
+  domain: string;
+  count: number;
+  faviconUrl?: string;
+}
+
+/** How many sites the bar names before folding the rest into "+N". */
+const BAR_SITE_LIMIT = 6;
+
+/** The sites behind `scraps`, most scraps first, then most recently seen. */
+export function scrapSites(scraps: ScrapRecord[]): ScrapSite[] {
+  const sites = new Map<string, ScrapSite & { latest: number }>();
+  for (const scrap of scraps) {
+    const site = sites.get(scrap.domain);
+    if (site) {
+      site.count += 1;
+      site.latest = Math.max(site.latest, scrap.ts);
+      site.faviconUrl ??= scrap.faviconUrl;
+    } else {
+      sites.set(scrap.domain, {
+        domain: scrap.domain,
+        count: 1,
+        faviconUrl: scrap.faviconUrl,
+        latest: scrap.ts,
+      });
+    }
+  }
+  return [...sites.values()]
+    .sort((a, b) => b.count - a.count || b.latest - a.latest)
+    .map(({ latest: _latest, ...site }) => site);
+}
+
+/** A site's favicon, or the empty ring the postcard back draws without one. */
+function SiteMark({ faviconUrl }: { faviconUrl?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!faviconUrl || failed) {
+    return <span className="scraps-launch__site-favicon scraps-launch__site-favicon--none" />;
+  }
+  return (
+    <img
+      className="scraps-launch__site-favicon"
+      src={faviconUrl}
+      alt=""
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+/** The sites strip, set like the "also from" line on a collage's back. */
+function ScrapSitesStrip({ sites }: { sites: ScrapSite[] }) {
+  const shown = sites.slice(0, BAR_SITE_LIMIT);
+  const hidden = sites.length - shown.length;
+  return (
+    <div className="scraps-launch__sites">
+      <span className="scraps-launch__sites-label">
+        from {sites.length} {sites.length === 1 ? "site" : "sites"}
+      </span>
+      {shown.map((site) => (
+        <span className="scraps-launch__site" key={site.domain} title={site.domain}>
+          <SiteMark faviconUrl={site.faviconUrl} />
+          <span className="scraps-launch__site-name">{site.domain}</span>
+          <span className="scraps-launch__site-count">{site.count}</span>
+        </span>
+      ))}
+      {hidden > 0 ? (
+        <span className="scraps-launch__sites-more">+{hidden} more</span>
+      ) : null}
+    </div>
   );
 }
 
@@ -218,6 +306,7 @@ export function ScrapsLaunchCardView({
     () => (hasScraps ? scraps.map(toScrapItem) : EXAMPLE_ITEMS),
     [hasScraps, scraps],
   );
+  const sites = useMemo(() => scrapSites(scraps), [scraps]);
   // One arrangement per day, like the scraps page.
   const seed = useMemo(() => Math.floor(Date.now() / 86_400_000), []);
 
@@ -234,18 +323,27 @@ export function ScrapsLaunchCardView({
     </div>
   );
 
+  const heading = (
+    <div className="walking-record__section-heading">
+      <h2 id="scraps-launch-title">things you came across</h2>
+    </div>
+  );
+
   if (textDismissed) {
     return (
       <section
-        className="scraps-launch scraps-launch--compact"
-        aria-label="recent internet scraps"
+        className="walking-record__section scraps-section"
+        aria-labelledby="scraps-launch-title"
       >
-        {pile}
-        <div className="scraps-launch__footer">
-          <span className="scraps-launch__footer-label">recent scraps</span>
-          <a className="scraps-launch__footer-link" href={scrapsHref}>
-            view all {total} →
-          </a>
+        {heading}
+        <div className="scraps-launch scraps-launch--compact">
+          {pile}
+          <div className="scraps-launch__footer">
+            <ScrapSitesStrip sites={sites} />
+            <a className="scraps-launch__footer-link" href={scrapsHref}>
+              view all {total} →
+            </a>
+          </div>
         </div>
       </section>
     );
@@ -260,30 +358,38 @@ export function ScrapsLaunchCardView({
     : "examples from playhtml.fun + wewere.online · collected locally only";
 
   return (
-    <section className="scraps-launch" aria-labelledby="scraps-launch-title">
-      {pile}
+    <section
+      className="walking-record__section scraps-section"
+      aria-labelledby="scraps-launch-title"
+    >
+      {heading}
+      <div className="scraps-launch">
+        {pile}
+        {hasScraps ? (
+          <div className="scraps-launch__footer scraps-launch__footer--ruled">
+            <ScrapSitesStrip sites={sites} />
+          </div>
+        ) : null}
 
-      <div className="scraps-launch__body">
-        <div className="scraps-launch__copy">
-          <span className="scraps-launch__tag">new</span>
-          <h2 className="scraps-launch__title" id="scraps-launch-title">
-            internet scraps
-          </h2>
-          <p className="scraps-launch__text">{body}</p>
-          <p className="scraps-launch__fine-print">{finePrint}</p>
-        </div>
+        <div className="scraps-launch__body">
+          <div className="scraps-launch__copy">
+            <span className="scraps-launch__tag">new</span>
+            <p className="scraps-launch__text">{body}</p>
+            <p className="scraps-launch__fine-print">{finePrint}</p>
+          </div>
 
-        <div className="scraps-launch__actions">
-          <a className="scraps-launch__cta" href={scrapsHref}>
-            view your scraps →
-          </a>
-          <button
-            type="button"
-            className="scraps-launch__dismiss"
-            onClick={onDismiss}
-          >
-            dismiss ×
-          </button>
+          <div className="scraps-launch__actions">
+            <a className="scraps-launch__cta" href={scrapsHref}>
+              view your scraps →
+            </a>
+            <button
+              type="button"
+              className="scraps-launch__dismiss"
+              onClick={onDismiss}
+            >
+              dismiss ×
+            </button>
+          </div>
         </div>
       </div>
     </section>

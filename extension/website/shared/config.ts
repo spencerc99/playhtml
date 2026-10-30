@@ -12,11 +12,27 @@ const DEFAULT_WORKER_URL = "https://playhtml-game-api.spencerc99.workers.dev";
 export const WORKER_URL: string =
   (import.meta.env.VITE_WORKER_URL as string | undefined) ?? DEFAULT_WORKER_URL;
 
+/**
+ * Where shared collages' pictures are read from: the same Worker on a
+ * wewere.online subdomain, so its edge cache sits in front of them.
+ */
+export const ASSETS_URL: string =
+  (import.meta.env.VITE_ASSETS_URL as string | undefined) ??
+  (import.meta.env.VITE_WORKER_URL as string | undefined) ??
+  "https://assets.wewere.online";
+
 export const RECENT_EVENTS_URL = `${WORKER_URL}/events/recent`;
 export const COMMUTE_RECENT_URL = `${WORKER_URL}/commute/recent`;
+/** Admin-only route queue annotated with Clef's calls; the curation desk reads it. */
+export const COMMUTE_REVIEW_URL =
+  (import.meta.env.VITE_COMMUTE_REVIEW_URL as string | undefined) ??
+  `${WORKER_URL}/commute/review`;
 export const COMMUTE_TRAIN_BOARD_URL = `${WORKER_URL}/commute/trains/board`;
 export const DAILY_COUNTS_URL = `${WORKER_URL}/events/daily-counts`;
 export const PAGE_META_URL = `${WORKER_URL}/page-meta`;
+export const PAGE_INSPECTION_URL =
+  (import.meta.env.VITE_PAGE_INSPECTION_URL as string | undefined) ??
+  PAGE_META_URL;
 
 /** WebSocket endpoint for the live movement-event stream. Derived from
  * WORKER_URL by swapping the http(s) scheme for ws(s). */

@@ -72,12 +72,15 @@ export function placeBesidePiece(
   panel: { width: number; height: number },
   scale: number,
   frame: { width: number; height: number },
+  /** Further on-screen room to keep below the piece, for a knob drawn there. */
+  extraBelow = 0,
 ): { left: number; top: number } {
   const clear = (GRIP_REACH + PANEL_GAP) / scale;
+  const clearBelow = clear + extraBelow / scale;
   const width = panel.width / scale;
   const height = panel.height / scale;
   const above = piece.y - clear - height;
-  const top = above >= 0 ? above : piece.y + piece.height + clear;
+  const top = above >= 0 ? above : piece.y + piece.height + clearBelow;
   const centered = piece.x + piece.width / 2 - width / 2;
   const left =
     width >= frame.width

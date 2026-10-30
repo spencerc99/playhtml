@@ -117,16 +117,15 @@ describe("a plain press", () => {
     });
   });
 
-  it("steps one piece down on each click of the piece in hand, wrapping", () => {
-    // A click on the selection reaches into the pile without a modifier.
-    expect(planPress(pile, inThePile, "top", false)?.selectOnClick).toBe(
+  it("keeps the piece in hand when it is clicked again, wherever it lies in the pile", () => {
+    // A buried piece reached from the list stays in hand: a click on it must
+    // not hand the press to the piece lying over it.
+    expect(planPress(pile, inThePile, "top", false)?.selectOnClick).toBe("top");
+    expect(planPress(pile, inThePile, "middle", false)?.selectOnClick).toBe(
       "middle",
     );
-    expect(planPress(pile, inThePile, "middle", false)?.selectOnClick).toBe(
-      "bottom",
-    );
     expect(planPress(pile, inThePile, "bottom", false)?.selectOnClick).toBe(
-      "top",
+      "bottom",
     );
   });
 

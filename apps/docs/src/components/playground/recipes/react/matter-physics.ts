@@ -1,8 +1,8 @@
 // ABOUTME: Exports the copy-paste React source for the collaborative Matter.js recipe.
 // ABOUTME: Keeps the complete App.tsx example available to Starlight code blocks.
 
-export const matterPhysicsReactSource = `// ABOUTME: Runs one shared Matter.js world through PlayHTML's React bindings.
-// ABOUTME: Lets one browser simulate while remote browsers interpolate shared transforms.
+export const matterPhysicsReactSource = `// Runs one shared Matter.js world through PlayHTML's React bindings.
+// Lets one browser simulate while remote browsers interpolate shared transforms.
 // npm install react react-dom playhtml @playhtml/react matter-js
 // npm install --save-dev typescript @types/react @types/react-dom @types/matter-js
 

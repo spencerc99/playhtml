@@ -39,8 +39,12 @@ extension/src/**/*.js.map
 .env
 .dev.vars
 /.dev.vars.supabase
+/private-data/
 
 .claude
+!/.claude/
+/.claude/*
+!/.claude/settings.json
 .codex/
 
 
@@ -49,6 +53,8 @@ extension/web-ext.config.ts
 .output
 extension/dist
 extension/publish
+extension/website/public/commute-audit-data.json
+extension/website/public/commute-evaluation-data.json
 
 internal-docs
 

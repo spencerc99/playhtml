@@ -8,6 +8,7 @@ const Agentation = import.meta.env.DEV
   : null;
 import { createRoot } from "react-dom/client";
 import "../../styles/popup.scss";
+import "../../styles/touchTargets.scss";
 import browser from "webextension-polyfill";
 import { Inventory } from "../../components/Inventory";
 import { InternetPortraitHome } from "../../components/InternetPortraitHome";
@@ -50,12 +51,23 @@ function PlayHTMLPopup() {
     loadPlayerData();
     // Load onboarding state
     (async () => {
-      try {
+      const readOnboarding = async () => {
         const result = await browser.storage.local.get("onboarding_complete");
-        setOnboardingComplete(
+        return (
           result.onboarding_complete === "true" ||
-            result.onboarding_complete === true,
+          result.onboarding_complete === true
         );
+      };
+      try {
+        if (await readOnboarding()) {
+          setOnboardingComplete(true);
+          return;
+        }
+        // On iPhone, the other copy of the extension (Safari's, or the app's)
+        // may already be set up; syncing first takes its setup instead of
+        // asking for it again.
+        await browser.runtime.sendMessage({ type: "SYNC_DEVICES" });
+        setOnboardingComplete(await readOnboarding());
       } catch {
         setOnboardingComplete(false);
       }

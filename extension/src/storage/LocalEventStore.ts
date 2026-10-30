@@ -81,6 +81,12 @@ export interface EventPageCursor {
   id: string;
 }
 
+/** An inclusive span of event timestamps. */
+export interface EventTimeRange {
+  startTs: number;
+  endTs: number;
+}
+
 export interface EventPage {
   events: CollectionEvent[];
   nextCursor: EventPageCursor | null;
@@ -1389,11 +1395,23 @@ export class LocalEventStore {
     type: CollectionEventType,
     limit: number,
     cursor?: EventPageCursor,
+    range?: EventTimeRange,
   ): Promise<EventPage> {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
       throw new Error("Event page limit must be between 1 and 1000");
     }
-    if (cursor && (!Number.isFinite(cursor.ts) || typeof cursor.id !== "string")) {
+    if (
+      range &&
+      (!Number.isFinite(range.startTs) ||
+        !Number.isFinite(range.endTs) ||
+        range.startTs > range.endTs)
+    ) {
+      throw new Error("Invalid event page time range");
+    }
+    if (
+      cursor &&
+      (!Number.isFinite(cursor.ts) || typeof cursor.id !== "string")
+    ) {
       throw new Error("Invalid event page cursor");
     }
     await this.ensureInitialized();
@@ -1405,24 +1423,41 @@ export class LocalEventStore {
       }
       const transaction = this.db.transaction(STORE_NAME, "readonly");
       const index = transaction.objectStore(STORE_NAME).index("typeTsId");
-      const upper = cursor ? [type, cursor.ts, cursor.id] : [type, []];
-      const range = IDBKeyRange.bound([type], upper, false, !!cursor);
-      const request = index.openCursor(range, "prev");
-      const events: CollectionEvent[] = [];
+      const lower = range ? [type, range.startTs] : [type];
+      // `[]` sorts after every id, so the upper key includes all events at endTs.
+      const upper = cursor
+        ? [type, cursor.ts, cursor.id]
+        : range
+          ? [type, range.endTs, []]
+          : [type, []];
+      const keyRange = IDBKeyRange.bound(lower, upper, false, !!cursor);
+      const request = index.openKeyCursor(keyRange, "prev");
+      let advanced = false;
 
       request.onsuccess = () => {
         const position = request.result;
-        if (!position) {
-          resolve({ events, nextCursor: null });
+        if (position && !advanced) {
+          advanced = true;
+          // Find the first omitted key without reading each event's payload.
+          position.advance(limit);
           return;
         }
-        if (events.length === limit) {
+        const hasMore = position !== null;
+        const pageRange = position
+          ? IDBKeyRange.bound(position.key, upper, true, !!cursor)
+          : keyRange;
+        const pageRequest = index.getAll(pageRange, limit);
+        pageRequest.onsuccess = () => {
+          const events = (pageRequest.result as StoredCollectionEvent[])
+            .reverse()
+            .map(toCollectionEvent);
           const last = events[events.length - 1];
-          resolve({ events, nextCursor: { ts: last.ts, id: last.id } });
-          return;
-        }
-        events.push(toCollectionEvent(position.value as StoredCollectionEvent));
-        position.continue();
+          resolve({
+            events,
+            nextCursor: hasMore ? { ts: last.ts, id: last.id } : null,
+          });
+        };
+        pageRequest.onerror = () => reject(pageRequest.error);
       };
       request.onerror = () => reject(request.error);
       transaction.onerror = () => reject(transaction.error);
@@ -2541,6 +2576,26 @@ export class LocalEventStore {
   ): Promise<CollectionEvent[]> {
     await this.ensureSessionStatsBackfilled();
     const stored = await this.addEvents(events);
+    await this.rebuildSessionStats();
+    await this.rebuildAggregateDays();
+    await this.writeDaysBackfillState("complete");
+    this.daysBackfillComplete = true;
+    await this.writeStatsBackfillState("complete");
+    this.statsBackfillComplete = true;
+    return stored;
+  }
+
+  /**
+   * Store history the other copy of the extension on this iPhone recorded,
+   * marked as uploaded because that copy uploads its own. Most passes bring
+   * nothing new, so the aggregates are rebuilt only when something was stored.
+   */
+  async addSyncedEvents(events: CollectionEvent[]): Promise<CollectionEvent[]> {
+    await this.ensureSessionStatsBackfilled();
+    const stored = await this.addEvents(
+      events.map((event) => ({ ...event, uploaded: true })),
+    );
+    if (stored.length === 0) return stored;
     await this.rebuildSessionStats();
     await this.rebuildAggregateDays();
     await this.writeDaysBackfillState("complete");

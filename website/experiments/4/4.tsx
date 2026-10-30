@@ -2,6 +2,7 @@ import "./4.scss";
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { PlayProvider, withSharedState } from "@playhtml/react";
+import { mountExperimentBadge } from "../../components/experimentBadge";
 
 interface ColorChange {
   color: string;
@@ -294,14 +295,6 @@ const ColorController = withSharedState(
             </details>
           </div>
         </div>
-        <footer>
-          <div>
-            <a href="https://playhtml.fun/experiments">playhtml experiment</a>{" "}
-            <a href="https://github.com/spencerc99/playhtml/blob/main/website/experiments/4/">
-              "04"
-            </a>
-          </div>
-        </footer>
       </div>
     );
   }
@@ -335,6 +328,8 @@ const AnimatedCounter = ({ start, end, duration = 1500 }) => {
 };
 
 // Website with a shared color.
+mountExperimentBadge({ experiment: "EX-04" });
+
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(

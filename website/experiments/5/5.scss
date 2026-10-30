@@ -544,27 +544,3 @@ body {
     opacity: 0.4;
   }
 }
-
-footer {
-  position: fixed;
-  padding: 0 1rem;
-  bottom: 0;
-  padding-bottom: 0.5rem;
-  mix-blend-mode: difference;
-  color: white;
-  backdrop-filter: blur(10px);
-  font-size: 1rem;
-  z-index: 10;
-  font-family: monospace;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-
-  a {
-    color: yellow;
-
-    &:hover {
-      text-decoration: dashed;
-    }
-  }
-}

@@ -5,8 +5,10 @@ import type { CropFraction } from "./collageGeometry";
 import {
   applyMaskAlpha,
   cropPixelRegion,
+  cutoutKeeps,
   edgeColorMask,
   featherMask,
+  invertMask,
   regionPlacement,
   scaleMask,
   workingSize,
@@ -25,8 +27,8 @@ export class CutoutError extends Error {
 
 /**
  * A backdrop mask computed over the pixels a crop keeps. Coverage is at the
- * working resolution of that region: 0 where the backdrop was removed, 255
- * where the subject stays.
+ * working resolution of that region: 0 where the cut removed a pixel, 255
+ * where it stays. Which side stays follows the cutout's `keep`.
  */
 interface CutoutMask {
   image: HTMLImageElement;
@@ -68,7 +70,7 @@ function cacheKey(src: string, cutout: PieceCutout, crop: CropFraction): string 
   const edges = [crop.x, crop.y, crop.width, crop.height]
     .map((value) => value.toFixed(6))
     .join(",");
-  return `${cutout.method}:${cutout.tolerance.toFixed(4)}:${edges}:${src}`;
+  return `${cutout.method}:${cutout.tolerance.toFixed(4)}:${cutoutKeeps(cutout)}:${edges}:${src}`;
 }
 
 const masks = new Map<string, Promise<CutoutMask>>();
@@ -184,7 +186,7 @@ function cutoutMask(
       working.width,
       working.height,
     );
-    const coverage = featherMask(
+    const subject = featherMask(
       edgeColorMask(
         { width: working.width, height: working.height, data: sample.data },
         cutout.tolerance,
@@ -192,6 +194,8 @@ function cutoutMask(
       working.width,
       working.height,
     );
+    const coverage =
+      cutoutKeeps(cutout) === "background" ? invertMask(subject) : subject;
     return {
       image,
       region,

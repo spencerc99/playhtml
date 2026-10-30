@@ -81,7 +81,7 @@ it("requests all-site access from a Safari onboarding button", async () => {
   );
   expect(button).toBeDefined();
   expect(container.textContent).toContain(
-    "When Safari asks, choose “Always Allow on Every Website.”",
+    "When Safari asks, choose “Always Allow.”",
   );
 
   await act(async () => {
@@ -132,6 +132,51 @@ it("closes the setup tab after onboarding", async () => {
 
   expect(browser.tabs.getCurrent).toHaveBeenCalledOnce();
   expect(browser.tabs.remove).toHaveBeenCalledWith(1);
+
+  act(() => root.unmount());
+  container.remove();
+});
+
+it("closes its own window when setup is not in a tab", async () => {
+  vi.mocked(browser.tabs.getCurrent).mockResolvedValue(
+    // Inside the iPhone app, setup opens in a sheet, so there is no tab.
+    undefined as unknown as Awaited<ReturnType<typeof browser.tabs.getCurrent>>,
+  );
+  const close = vi.spyOn(window, "close").mockImplementation(() => {});
+  const { default: SetupPage } = await import("../components/SetupPage");
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+
+  await act(async () => {
+    root.render(<SetupPage />);
+    await Promise.resolve();
+  });
+
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Get started")
+      ?.click();
+  });
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Continue")
+      ?.click();
+    await Promise.resolve();
+  });
+  await act(async () => {
+    [...container.querySelectorAll("button")]
+      .find((element) => element.textContent === "Finish setup")
+      ?.click();
+    await Promise.resolve();
+  });
+
+  expect(browser.storage.local.set).toHaveBeenCalledWith(
+    expect.objectContaining({ onboarding_complete: "true" }),
+  );
+  expect(close).toHaveBeenCalledOnce();
+  expect(browser.tabs.remove).not.toHaveBeenCalled();
+  expect(container.textContent).not.toContain("Try again");
 
   act(() => root.unmount());
   container.remove();

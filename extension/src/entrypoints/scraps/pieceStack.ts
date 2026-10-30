@@ -81,14 +81,13 @@ export interface PressPlan {
 }
 
 /**
- * Decides a press. A click on an unselected spot takes the frontmost piece
- * under the pointer. A click on the piece already in hand steps one piece
- * down the pile at that point, wrapping back to the front, so a buried piece
- * can be reached without a modifier. A press that becomes a drag never
- * changes the selection: it moves the piece already in hand whenever the
- * press is inside it, even where another piece lies on top. With deep set
- * (cmd or ctrl held) the press takes the next piece down straight away and a
- * drag moves that one.
+ * Decides a press. A press on an unselected spot takes the frontmost piece
+ * under the pointer. A press inside the piece already in hand keeps it,
+ * whether it ends as a click or a drag, even where another piece lies on top:
+ * a buried piece reached from the list or the keyboard can then be grabbed
+ * without the piece over it taking the press. Clicking away first is how the
+ * piece on top is taken again. With deep set (cmd or ctrl held) the press
+ * takes the next piece down straight away and a drag moves that one.
  */
 export function planPress(
   pieces: readonly CollagePiece[],
@@ -105,8 +104,11 @@ export function planPress(
   }
   const front = stack[0].id;
   if (selectedId && stack.some((piece) => piece.id === selectedId)) {
-    const deeper = deeperPieceAt(pieces, point, selectedId) ?? front;
-    return { selectOnDown: selectedId, dragId: selectedId, selectOnClick: deeper };
+    return {
+      selectOnDown: selectedId,
+      dragId: selectedId,
+      selectOnClick: selectedId,
+    };
   }
   return { selectOnDown: front, dragId: front, selectOnClick: front };
 }

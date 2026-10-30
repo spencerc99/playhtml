@@ -9,6 +9,7 @@ import {
   MILESTONE_TOAST_FONT_URL,
 } from "./content/milestone-toast-styles";
 import { injectShadow, injectShadowReact, type InjectedReactUI } from "./content/inject-ui";
+import { detailForPage } from "./content/pageDetail";
 import {
   MilestoneToast,
   type MilestoneToastData,
@@ -20,12 +21,18 @@ import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
 import { ScrapCollector } from "../collectors/ScrapCollector";
 import {
+  DEV_MODE_KEY,
+  SCRAPS_DEBUG_KEY,
+} from "../features/debugModes/debugModes";
+import {
   collectionModeStorageKey,
   normalizeCollectionMode,
 } from "../collectors/modes";
 import { VERBOSE } from "../config";
 import { getFaviconUrl, getPageTitle } from "../utils/pageMetadata";
 import { isFeatureEnabled } from "../features/featureAccess";
+import { FRAME_ACTIVITY_MESSAGE } from "../features/frameActivity";
+import { parseTrailsLaunch, type TrailsLaunch } from "../utils/trailsLaunch";
 import {
   shouldInitializeCopresence,
   shouldStartExtensionPresence,
@@ -33,6 +40,11 @@ import {
 import { markExtensionInstalled } from "../utils/extensionInstallMarker";
 import { isExtensionPageUrl } from "../utils/extensionPage";
 import { initHostedSlowModeContentBridge } from "../features/slowMode/slowModeHostedContentBridge";
+import { initSessionScrapsContentBridge } from "../features/sessionScraps/sessionScrapsContentBridge";
+import {
+  ALLOW_LOCAL_SESSION_SCRAPS_PAGES,
+  isSessionScrapsPageUrl,
+} from "../features/sessionScraps/sessionScrapsBridge";
 import { watchInstallationContent } from "./content/installationContent";
 import { MILESTONE_TOASTS_ENABLED_KEY } from "../milestones/state";
 
@@ -63,6 +75,8 @@ export default defineContentScript({
     markExtensionInstalled(document.documentElement);
     const removeSlowModeBridge = initHostedSlowModeContentBridge();
     ctx?.onInvalidated(removeSlowModeBridge);
+    const removeSessionScrapsBridge = initSessionScrapsContentBridge();
+    ctx?.onInvalidated(removeSessionScrapsBridge);
     const removeInstallationContent = watchInstallationContent();
     ctx?.onInvalidated(removeInstallationContent);
 
@@ -74,6 +88,7 @@ export default defineContentScript({
       private isInitialized = false;
       private globalCleanup: (() => void) | null = null;
       private emoteCleanup: (() => void) | null = null;
+      private peerTapCleanup: (() => void) | null = null;
       private customSiteCleanup: (() => void) | null = null;
       // The extension's own playhtml instance, lazily inited. Shared between the
       // cursor-site path and the headless every-page path for social experiments.
@@ -996,7 +1011,9 @@ export default defineContentScript({
         const dispatch = () => {
           document.dispatchEvent(
             new CustomEvent("playhtml:configure-identity", {
-              detail: { playerIdentity: this.presencePlayerIdentity },
+              detail: detailForPage({
+                playerIdentity: this.presencePlayerIdentity,
+              }),
             }),
           );
         };
@@ -1112,6 +1129,17 @@ export default defineContentScript({
               customSiteSettings?.cursorsEnabled ?? false,
           })
         ) {
+          // Event pages (the Internet Walk) match walkers to their browsing by
+          // the extension's identity, so they get it even without shared cursors.
+          if (
+            isSessionScrapsPageUrl(
+              window.location.href,
+              ALLOW_LOCAL_SESSION_SCRAPS_PAGES,
+            ) &&
+            (await this.detectNativePlayhtml())
+          ) {
+            this.injectIdentityIntoMainWorld();
+          }
           return;
         }
 
@@ -1171,7 +1199,8 @@ export default defineContentScript({
           // where cursors are enabled, so it lives inside this block. Gated
           // behind its feature gate while it is still in progress.
           const cursorClient = playhtml.cursorClient;
-          if (cursorClient && (await isFeatureEnabled("EMOTES"))) {
+          const emotesEnabled = await isFeatureEnabled("EMOTES");
+          if (cursorClient && emotesEnabled) {
             try {
               const { initEmotes } = await import("../features/emotes");
               this.emoteCleanup = initEmotes({
@@ -1180,6 +1209,22 @@ export default defineContentScript({
               });
             } catch (err) {
               console.error("[we-were-online] initEmotes failed:", err);
+            }
+          }
+          // Phones have no hover or keys, so tapping someone's cursor opens a
+          // card with Follow and the emotes. The menu checks the phone layout
+          // on every tap, so rotating into it works without a reload.
+          if (cursorClient && typeof window.matchMedia === "function") {
+            try {
+              const { initPeerTapMenu } = await import(
+                "../features/PeerTapMenu"
+              );
+              this.peerTapCleanup = initPeerTapMenu({
+                cursorClient,
+                emotesEnabled,
+              });
+            } catch (err) {
+              console.error("[we-were-online] initPeerTapMenu failed:", err);
             }
           }
         }
@@ -1205,6 +1250,8 @@ export default defineContentScript({
         this.customSiteCleanup = null;
         this.emoteCleanup?.();
         this.emoteCleanup = null;
+        this.peerTapCleanup?.();
+        this.peerTapCleanup = null;
         this.globalCleanup?.();
         this.globalCleanup = null;
       }
@@ -1230,7 +1277,7 @@ export default defineContentScript({
     let overlayVisible = false;
     let overlayRevision = 0;
 
-    const toggleHistoricalOverlay = async () => {
+    const toggleHistoricalOverlay = async (launch?: TrailsLaunch) => {
       const currentRevision = ++overlayRevision;
       try {
         overlayVisible = !overlayVisible;
@@ -1252,6 +1299,8 @@ export default defineContentScript({
                 visible: boolean;
                 currentUrl: string;
                 onClose: () => void;
+                initialSource?: TrailsLaunch["source"];
+                initialUiHidden?: boolean;
               }) => InjectedReactUI;
             }
           ).wwoHistoricalOverlay;
@@ -1263,6 +1312,8 @@ export default defineContentScript({
             visible: true,
             currentUrl: window.location.href,
             onClose: () => toggleHistoricalOverlay(),
+            initialSource: launch?.source,
+            initialUiHidden: launch?.uiHidden,
           });
 
           if (VERBOSE) console.log("[HistoricalOverlay] Overlay activated");
@@ -1297,6 +1348,19 @@ export default defineContentScript({
     };
 
     window.addEventListener("popstate", handleNavigation);
+
+    // `#wwo-trails=everyone` opens the overlay on load (or when the hash
+    // changes) so an agent can drive a recording of everyone's trails. Only
+    // people with the internal EVERYONE_TRAILS feature get this switch.
+    const openTrailsFromHash = async () => {
+      const launch = parseTrailsLaunch(window.location.hash);
+      if (!launch || !(await isFeatureEnabled("EVERYONE_TRAILS"))) return;
+      if (overlayVisible) await toggleHistoricalOverlay();
+      await toggleHistoricalOverlay(launch);
+    };
+    window.addEventListener("hashchange", () => {
+      void openTrailsFromHash();
+    });
 
     // Intercept pushState/replaceState for SPA frameworks
     const origPushState = history.pushState.bind(history);
@@ -1334,6 +1398,7 @@ export default defineContentScript({
           await ensureScrapCollectionMode();
           const scrapCollector = new ScrapCollector();
           collectorManager.registerCollector(scrapCollector);
+          watchScrapsDebugOverlay(scrapCollector);
         }
 
         // Initialize manager (loads saved enabled state)
@@ -1385,13 +1450,17 @@ export default defineContentScript({
       document.addEventListener("DOMContentLoaded", () => {
         extensionInstance = new PlayHTMLExtension();
         extensionInstance.init();
-        initializeCollectors().catch(console.error);
+        initializeCollectors()
+          .catch(console.error)
+          .then(openTrailsFromHash);
         setupModeChangeListener();
       });
     } else {
       extensionInstance = new PlayHTMLExtension();
       extensionInstance.init();
-      initializeCollectors().catch(console.error);
+      initializeCollectors()
+        .catch(console.error)
+        .then(openTrailsFromHash);
       setupModeChangeListener();
     }
 
@@ -1513,6 +1582,14 @@ export default defineContentScript({
           toggleHistoricalOverlay();
           sendResponse({ success: true, visible: overlayVisible });
           return true;
+        }
+
+        if (message.type === FRAME_ACTIVITY_MESSAGE) {
+          const navigation = collectorManager?.getCollector("navigation") as
+            | NavigationCollector
+            | undefined;
+          navigation?.noteActivity();
+          return;
         }
 
         if (message.type === "SHOW_MILESTONE") {
@@ -1661,3 +1738,30 @@ export default defineContentScript({
     }
   },
 });
+
+/**
+ * Follows the popup's scraps debug switch, which only counts while developer
+ * mode is on, so open pages show or hide the overlay without a reload.
+ */
+function watchScrapsDebugOverlay(collector: ScrapCollector): void {
+  let devMode = false;
+  let overlay = false;
+  const apply = () => collector.setDebugOverlay(devMode && overlay);
+  browser.storage.local
+    .get([DEV_MODE_KEY, SCRAPS_DEBUG_KEY])
+    .then((stored) => {
+      devMode = Boolean(stored[DEV_MODE_KEY]);
+      overlay = Boolean(stored[SCRAPS_DEBUG_KEY]);
+      apply();
+    })
+    .catch(() => {});
+  browser.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local") return;
+    if (!changes[DEV_MODE_KEY] && !changes[SCRAPS_DEBUG_KEY]) return;
+    if (changes[DEV_MODE_KEY]) devMode = Boolean(changes[DEV_MODE_KEY].newValue);
+    if (changes[SCRAPS_DEBUG_KEY]) {
+      overlay = Boolean(changes[SCRAPS_DEBUG_KEY].newValue);
+    }
+    apply();
+  });
+}
