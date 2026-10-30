@@ -138,7 +138,13 @@ export function ScrapsLaunchCard({
   const { startTs, endTs } = range;
   const [available, setAvailable] = useState(false);
   const [textDismissed, setTextDismissed] = useState(false);
-  const [scraps, setScraps] = useState<ScrapRecord[] | null>(null);
+  // The pile is tagged with its range so a previous period's scraps never
+  // show under a newly selected one while that period loads.
+  const [pile, setPile] = useState<{
+    startTs: number;
+    endTs: number;
+    scraps: ScrapRecord[];
+  } | null>(null);
   const [total, setTotal] = useState(0);
 
   useEffect(() => {
@@ -172,11 +178,11 @@ export function ScrapsLaunchCard({
         const loaded = Array.isArray(response?.scraps)
           ? groupPhotoEncounters(response.scraps).sort((a, b) => b.ts - a.ts)
           : [];
-        setScraps(loaded);
+        setPile({ startTs, endTs, scraps: loaded });
         setTotal(countResponse.total);
       } catch (loadError: unknown) {
         console.error("[ScrapsLaunchCard] Could not load scraps:", loadError);
-        if (!cancelled) setScraps([]);
+        if (!cancelled) setPile({ startTs, endTs, scraps: [] });
       }
     })();
 
@@ -190,6 +196,10 @@ export function ScrapsLaunchCard({
     void setState(SCRAPS_LAUNCH_CARD_ID, "dismissed");
   }, []);
 
+  const scraps =
+    pile && pile.startTs === startTs && pile.endTs === endTs
+      ? pile.scraps
+      : null;
   if (!available || scraps === null) return null;
   // Once the announcement is dismissed, the card only stays for a real pile.
   if (textDismissed && scraps.length === 0) return null;

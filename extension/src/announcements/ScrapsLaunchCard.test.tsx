@@ -119,6 +119,41 @@ describe("ScrapsLaunchCard", () => {
     }
   });
 
+  it("hides the previous period's pile while the next period loads", async () => {
+    mockScraps([scrapImage("this-week")], 2);
+    const { container, root } = await renderCard();
+
+    try {
+      expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
+
+      let releaseNextWeek: (value: unknown) => void = () => {};
+      vi.mocked(browser.runtime.sendMessage).mockImplementation(
+        (message: unknown) =>
+          (message as { type: string }).type === "GET_SCRAP_COUNT"
+            ? Promise.resolve({ total: 2 })
+            : new Promise((resolve) => {
+                releaseNextWeek = resolve;
+              }),
+      );
+      const lastWeek = { startTs: 10_000, endTs: 19_000 };
+      await act(async () => {
+        root.render(<ScrapsLaunchCard range={lastWeek} />);
+      });
+      expect(container.querySelector(".scraps-launch__pile")).toBeNull();
+
+      await act(async () => {
+        releaseNextWeek({ scraps: [scrapImage("last-week")] });
+      });
+      expect(container.querySelector(".scraps-launch__pile")).not.toBeNull();
+      expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+        type: "GET_SCRAPS",
+        options: { limit: PILE_CAPACITY, range: lastWeek },
+      });
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
   it("counts every collected scrap, not only the loaded page", async () => {
     mockScraps([scrapImage("only")], 431);
     const { container, root } = await renderCard();
