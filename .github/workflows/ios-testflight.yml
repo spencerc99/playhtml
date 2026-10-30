@@ -1,5 +1,5 @@
-# ABOUTME: Uploads the iPhone Safari app to TestFlight whenever extension code lands on main.
-# ABOUTME: Internal testers get each build automatically; separate from the store release workflow.
+# ABOUTME: Uploads the iPhone Safari app to TestFlight when an extension release PR merges, or on manual dispatch.
+# ABOUTME: Internal testers get each release automatically; separate from the store release workflow.
 name: iOS TestFlight
 
 on:
@@ -7,22 +7,69 @@ on:
     branches:
       - main
     paths:
-      - "extension/**"
-      - "packages/**"
-      - ".github/workflows/ios-testflight.yml"
+      - "extension/package.json"
   workflow_dispatch:
 
-# A newer push replaces a build still in progress; testers only need the latest.
+# Queue instead of cancelling, so an unrelated package.json edit can't cancel a release upload.
 concurrency:
   group: ${{ github.workflow }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  # Same check as the Extension Release guard: only the merged release PR's
+  # version bump uploads, not other edits to extension/package.json.
+  guard:
+    name: Is this an extension release?
+    runs-on: ubuntu-latest
+    outputs:
+      should_upload: ${{ steps.check.outputs.should_upload }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Decide
+        id: check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "Triggered manually."
+            echo "should_upload=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VERSION=$(node -p "require('./extension/package.json').version")
+          EXPECTED_COMMIT="extension: release v$VERSION"
+          EXPECTED_TITLE="Release: @playhtml/extension v$VERSION"
+
+          MATCHED=""
+          while IFS= read -r LINE; do
+            case "$LINE" in
+              "$EXPECTED_COMMIT"|"$EXPECTED_TITLE"|"$EXPECTED_TITLE ("*)
+                MATCHED="$LINE"
+                break
+                ;;
+            esac
+          done <<EOF
+          $HEAD_MSG
+          EOF
+
+          if [ -n "$MATCHED" ]; then
+            echo "Extension release v$VERSION detected: $MATCHED"
+            echo "should_upload=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Head commit is not extension release v$VERSION. Skipping."
+            echo "should_upload=false" >> "$GITHUB_OUTPUT"
+          fi
+
   testflight:
     name: Build and upload to TestFlight
+    needs: guard
+    if: needs.guard.outputs.should_upload == 'true'
     runs-on: macos-26
     steps:
       - name: Checkout repo

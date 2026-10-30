@@ -75,6 +75,7 @@ import {
   SIGNATURE_STAMP_STYLES,
   SignatureStamp,
 } from "@extension/entrypoints/scraps/SignatureStamp";
+import { pieceUnderPointer, type PieceBox } from "./pieceUnderPointer";
 
 /** Room above the frame for the mark and the toggle, and below it for the caption. */
 /**
@@ -490,6 +491,44 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
     () => shown.map((entry) => entry.piece),
     [shown],
   );
+  const boxes = useMemo<PieceBox[]>(
+    () =>
+      studioPieces.map((piece) => ({
+        x: piece.x,
+        y: piece.y,
+        width: piece.width,
+        height: piece.height,
+        rotation: piece.rotation,
+        z: piece.z,
+        seeThrough:
+          piece.cutout !== undefined ||
+          piece.scrap.kind === "heading" ||
+          piece.scrap.kind === "button",
+      })),
+    [studioPieces],
+  );
+  /** The piece under the pointer, read against the collage's own coordinates. */
+  const pieceAt = (event: React.PointerEvent | React.MouseEvent) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (bounds.width === 0 || bounds.height === 0) return null;
+    return pieceUnderPointer(
+      boxes,
+      ((event.clientX - bounds.left) * frame.width) / bounds.width,
+      ((event.clientY - bounds.top) * frame.height) / bounds.height,
+    );
+  };
+  const hoverAt = (event: React.PointerEvent) => {
+    if (event.pointerType === "touch") return;
+    const index = pieceAt(event);
+    setHovered((current) => {
+      if (index === null) return null;
+      if (current?.index === index) return current;
+      const element = pieceRefs.current.get(index);
+      return element
+        ? { index, rect: element.getBoundingClientRect() }
+        : current;
+    });
+  };
 
   const ranks = useMemo(
     () => revealRanks(pieces, frame, revealFromSearch(window.location.search)),
@@ -641,7 +680,15 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
                   ),
                 }}
               >
-                <div className="collage-frame__pieces">
+                <div
+                  className="collage-frame__pieces"
+                  onPointerMove={hoverAt}
+                  onPointerLeave={() => setHovered(null)}
+                  onClick={(event) => {
+                    const index = pieceAt(event);
+                    if (index !== null) examine(index);
+                  }}
+                >
                   {shown.map(({ piece }, index) => {
                     const source = sourceBoxForCrop(piece, piece.crop);
                     const lifted = hovered?.index === index;
@@ -669,23 +716,10 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
                             top: piece.y,
                             width: piece.width,
                             height: piece.height,
-                            zIndex: lifted ? pieces.length + 1 : piece.z + 1,
+                            zIndex: piece.z + 1,
                             "--piece-rotation": `${piece.rotation}deg`,
                           } as React.CSSProperties
                         }
-                        onPointerEnter={(event) => {
-                          if (event.pointerType === "touch") return;
-                          setHovered({
-                            index,
-                            rect: event.currentTarget.getBoundingClientRect(),
-                          });
-                        }}
-                        onPointerLeave={() =>
-                          setHovered((current) =>
-                            current?.index === index ? null : current,
-                          )
-                        }
-                        onClick={() => examine(index)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
