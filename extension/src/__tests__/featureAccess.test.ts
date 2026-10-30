@@ -30,6 +30,11 @@ describe("parseFeatureOverrides", () => {
 });
 
 describe("parseFeatureAccess", () => {
+  it("reads internal membership and treats older snapshots as non-internal", () => {
+    expect(parseFeatureAccess({ features: {}, internal: true })?.internal).toBe(true);
+    expect(parseFeatureAccess({ features: {} })?.internal).toBe(false);
+  });
+
   it("keeps valid known policies and ignores unknown or malformed entries", () => {
     const access = parseFeatureAccess({
       features: {

@@ -9,6 +9,7 @@ import {
   FEATURE_OVERRIDES_STORAGE_KEY,
   getFeatureState,
   hasExperimentAccess,
+  hasInternalAccess,
   hasPrivateExperimentAccess,
 } from "./featureAccess";
 
@@ -91,4 +92,8 @@ export function useExperimentAccess(): boolean {
 
 export function usePrivateExperimentAccess(): boolean {
   return useExperimentAccessCheck(hasPrivateExperimentAccess);
+}
+
+export function useInternalAccess(): boolean {
+  return useExperimentAccessCheck(hasInternalAccess);
 }

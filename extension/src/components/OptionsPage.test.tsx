@@ -9,6 +9,7 @@ import { OptionsPage } from "./OptionsPage";
 
 const featureState = vi.hoisted(() => ({
   experimentAccess: false,
+  internalAccess: true,
   bagSettingsEnabled: true,
 }));
 
@@ -23,6 +24,7 @@ vi.mock("./DeveloperFeaturesPage", () => ({
 }));
 vi.mock("../features/useFeatureAccess", () => ({
   useExperimentAccess: () => featureState.experimentAccess,
+  useInternalAccess: () => featureState.internalAccess,
   useFeatureState: () => ({ enabled: featureState.bagSettingsEnabled }),
 }));
 vi.mock("../utils/extensionPage", () => ({
@@ -61,6 +63,7 @@ describe("OptionsPage", () => {
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
     featureState.experimentAccess = false;
+    featureState.internalAccess = true;
     featureState.bagSettingsEnabled = true;
     vi.mocked(browser.storage.local.get).mockResolvedValue({});
   });
@@ -99,6 +102,22 @@ describe("OptionsPage", () => {
         "community",
         "your data",
       ]);
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("hides Experiments from people outside the internal cohort", async () => {
+    featureState.internalAccess = false;
+    featureState.experimentAccess = true;
+    const { container, root } = await renderOptions();
+    try {
+      expect(container.querySelector("#experiments")).toBeNull();
+      expect(
+        Array.from(container.querySelectorAll("nav a")).map(
+          (link) => link.textContent,
+        ),
+      ).not.toContain("experiments");
     } finally {
       cleanup(root, container);
     }
