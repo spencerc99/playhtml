@@ -107,6 +107,8 @@ export type FeaturePolicy = {
 
 export type FeatureAccessSnapshot = {
   features: Record<FeatureId, FeaturePolicy>;
+  // True for members of a cohort that receives every unreleased feature.
+  internal: boolean;
   checkedAt: number;
 };
 
