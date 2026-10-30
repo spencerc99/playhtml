@@ -308,14 +308,15 @@ const VOICES: Record<CollageSound, Voice> = {
     noise(ctx, { f: 2600, f2: 6000, q: 0.8, a: 0.01, d: 0.07, v: 0.14, pan });
     tone(ctx, { f: note(10) * jitter(), a: 0.003, d: 0.08, v: 0.04, pan });
   },
-  // Paper scuffing across paper while a piece is carried; louder when faster.
+  // Paper brushing across paper while a piece is carried, kept low and dull so
+  // it sits under the other sounds; a little louder when faster.
   slide: (ctx, pan, level) => {
     noise(ctx, {
-      f: 1300 + Math.random() * 1400,
-      q: 0.7,
-      a: 0.012,
+      f: 800 + Math.random() * 900,
+      q: 0.6,
+      a: 0.025,
       d: 0.05 + Math.random() * 0.03,
-      v: 0.03 + 0.07 * level,
+      v: 0.012 + 0.028 * level,
       pan,
     });
   },

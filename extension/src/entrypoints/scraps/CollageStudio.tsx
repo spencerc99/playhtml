@@ -250,9 +250,9 @@ const ROTATION_SNAP_DEGREES = 15;
  */
 const MOVE_SNAP_REACH = 6;
 /** A carried piece scuffs once per this many screen pixels of travel... */
-const SLIDE_EVERY_PX = 26;
+const SLIDE_EVERY_PX = 40;
 /** ...and no more often than this, in milliseconds. */
-const SLIDE_MIN_MS = 55;
+const SLIDE_MIN_MS = 80;
 /** Pointer speed, in screen pixels per millisecond, that scuffs loudest. */
 const SLIDE_FULL_SPEED = 1.6;
 /** How far a pasted or duplicated piece lands from its original. */
