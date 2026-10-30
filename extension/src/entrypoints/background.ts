@@ -11,7 +11,7 @@ import type {
   WalkingRecordTraceTarget,
 } from '../storage/LocalEventStore'
 import { uploadEvents } from '../storage/sync'
-import { fetchEventsByPid } from '../storage/restore'
+import { restoreEventsFromServer } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
 import type { ScrapEventData, ScrapPosition } from '../collectors/types'
 import { getScrapKey } from '../collectors/scrapUtils'
@@ -24,6 +24,7 @@ import {
   ensurePlayerIdentity,
   getPlayerProfile,
   getPublicPlayerIdentity,
+  getStoredPlayerIdentity,
   recordDiscoveredSite,
 } from '../storage/playerIdentity'
 import { syncStoredPlayerColor } from '../storage/playerColor'
@@ -1310,30 +1311,24 @@ export default defineBackground(() => {
     if (message.type === 'RESTORE_FROM_SERVER') {
       ;(async () => {
         try {
-          const identity = await getPublicPlayerIdentity()
-          const pid = identity?.publicKey
-          if (!pid) {
+          const identity = await getStoredPlayerIdentity()
+          if (!identity) {
             reply({ success: false, error: 'No player identity found' })
             return
           }
           console.log(
             '[Background] RESTORE_FROM_SERVER starting, pid:',
-            pid.slice(0, 20) + '...',
-            'fetching all server events',
+            identity.public.publicKey.slice(0, 20) + '...',
           )
-          const { events, countsByType } = await fetchEventsByPid(pid)
-          console.log(
-            '[Background] Fetched',
-            events.length,
-            'events, writing to IDB...',
+          const { imported, countsByType } = await restoreEventsFromServer(
+            {
+              publicKey: identity.public.publicKey,
+              privateKey: identity.privateKey,
+            },
+            (events) => store.addRestoredEvents(events),
           )
-          await store.addRestoredEvents(events)
           console.log('[Background] RESTORE_FROM_SERVER complete')
-          reply({
-            success: true,
-            imported: events.length,
-            countsByType,
-          })
+          reply({ success: true, imported, countsByType })
         } catch (e) {
           console.error('[Background] RESTORE_FROM_SERVER error:', e)
           reply({ success: false, error: String(e) })

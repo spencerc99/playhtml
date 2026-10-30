@@ -39,7 +39,7 @@ async function loadBackground(addImportedEvents: ReturnType<typeof vi.fn>) {
     LocalEventStore: vi.fn(() => ({ addImportedEvents })),
   }));
   vi.doMock("../storage/sync", () => ({ uploadEvents: vi.fn() }));
-  vi.doMock("../storage/restore", () => ({ fetchEventsByPid: vi.fn() }));
+  vi.doMock("../storage/restore", () => ({ restoreEventsFromServer: vi.fn() }));
   vi.doMock("webextension-polyfill", () => ({
     default: {
       storage: {

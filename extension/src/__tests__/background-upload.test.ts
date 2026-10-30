@@ -62,7 +62,7 @@ describe("background upload flushing", () => {
       uploadEvents,
     }));
     vi.doMock("../storage/restore", () => ({
-      fetchEventsByPid: vi.fn(),
+      restoreEventsFromServer: vi.fn(),
     }));
     vi.doMock("webextension-polyfill", () => ({
       default: {

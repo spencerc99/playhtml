@@ -4,6 +4,7 @@
 import { handleIngest } from './routes/ingest';
 import { handleClefLog } from './routes/clefLog';
 import { handleRecent } from './routes/recent';
+import { handleRestore } from './routes/restore';
 import { handleDailyCounts } from './routes/dailyCounts';
 import { handleStats } from './routes/stats';
 import { handleExport } from './routes/export';
@@ -94,6 +95,12 @@ export default {
     if (path === '/events/recent' && request.method === 'GET') {
       if (!isAllowedOrigin(request)) return forbiddenResponse();
       return handleRecent(request, env);
+    }
+
+    // Signed by the participant's identity key instead of an origin check: the
+    // extension's service worker sends no Origin or Referer on these requests.
+    if (path === '/events/restore' && request.method === 'POST') {
+      return handleRestore(request, env);
     }
 
     if (path === '/commute/recent' && request.method === 'GET') {
