@@ -66,6 +66,7 @@ import {
   parseTimeOfDayFromUrl,
   type TimeOfDayFilter,
 } from "../config";
+import { clampScrollSpeed } from "../utils/settingsSpec";
 import type { DayCounts } from "../types";
 import { DEFAULT_SETTINGS, type MovementSettings } from "./settingsDefaults";
 import {
@@ -530,9 +531,16 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     () => ({ ...DEFAULT_SETTINGS, ...defaultSettings }),
     [defaultSettings],
   );
-  const [selectedSettings, setSettings] = useState(() =>
-    loadSettings(defaultSettings, useStoredSettings),
-  );
+  const [selectedSettings, setSettings] = useState(() => {
+    const loaded = loadSettings(defaultSettings, useStoredSettings);
+    return {
+      ...loaded,
+      scrollSpeed: clampScrollSpeed(
+        loaded.scrollSpeed,
+        installationRecordings !== undefined,
+      ),
+    };
+  });
   const settings = useMemo(
     () => installationRole
       ? { ...selectedSettings, randomizeColors: false }

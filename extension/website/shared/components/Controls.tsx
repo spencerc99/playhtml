@@ -17,6 +17,7 @@ import {
   rankSustainedWindows,
 } from "../utils/hotspots";
 import { buildShareUrl } from "../utils/shareUrl";
+import { scrollSpeedRange } from "../utils/settingsSpec";
 import { parseCleanFromUrl } from "../config";
 import {
   addSavedConfig,
@@ -1807,8 +1808,8 @@ export const Controls: React.FC<ControlsProps> = memo(
               id="scroll-speed"
               type="range"
               aria-describedby={recordedScrollTiming ? "scroll-speed-description" : undefined}
-              min="0.1"
-              max={recordedScrollTiming ? "10" : "2"}
+              min={scrollSpeedRange(recordedScrollTiming).min}
+              max={scrollSpeedRange(recordedScrollTiming).max}
               step="0.1"
               value={settings.scrollSpeed}
               onChange={(e) =>
