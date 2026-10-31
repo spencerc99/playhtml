@@ -209,6 +209,8 @@ import {
   collageSoundsMuted,
   playCollageSound,
   setCollageSoundsMuted,
+  startCollageSlide,
+  type CollageSlide,
   type CollageSound,
 } from "./collageSounds";
 import { snapMove, type SnapGuide } from "./moveSnap";
@@ -249,11 +251,9 @@ const ROTATION_SNAP_DEGREES = 15;
  * another's (or the frame's) before it catches there.
  */
 const MOVE_SNAP_REACH = 6;
-/** A carried piece scuffs once per this many screen pixels of travel... */
-const SLIDE_EVERY_PX = 26;
-/** ...and no more often than this, in milliseconds. */
-const SLIDE_MIN_MS = 55;
-/** Pointer speed, in screen pixels per millisecond, that scuffs loudest. */
+/** How often a carried piece's shuffle reads the pointer's speed, in milliseconds. */
+const SLIDE_SAMPLE_MS = 16;
+/** Pointer speed, in screen pixels per millisecond, that counts as a full-speed drag. */
 const SLIDE_FULL_SPEED = 1.6;
 /** How far a pasted or duplicated piece lands from its original. */
 const COPY_OFFSET = 24;
@@ -1424,7 +1424,9 @@ export function CollageStudio({
     setSnapGuides([]);
     snapTargetsRef.current = null;
     caughtRef.current = null;
+    slideRef.current?.stop();
     slideRef.current = null;
+    slidePaceRef.current = null;
     setHistory((current) => endRun(current));
   }, []);
 
@@ -1629,8 +1631,11 @@ export function CollageStudio({
   } | null>(null);
   /** What the drag last caught on, so a fresh catch clicks once. */
   const caughtRef = useRef<string | null>(null);
-  /** Where and when the last slide scuff played during a carry. */
-  const slideRef = useRef<{ at: Point; time: number } | null>(null);
+  /** The paper shuffle that sounds while pieces are carried. */
+  const slideRef = useRef<CollageSlide | null>(null);
+  /** Where and when the shuffle last read the pointer, to tell its speed. */
+  const slidePaceRef = useRef<{ at: Point; time: number } | null>(null);
+  useEffect(() => () => slideRef.current?.stop(), []);
 
   const carry = useCallback(
     (
@@ -1676,22 +1681,23 @@ export function CollageStudio({
       const pan = (point.x / frame.width) * 2 - 1;
       if (caught && caught !== caughtRef.current) {
         playCollageSound("snap", pan);
+        slideRef.current?.duck();
       }
       caughtRef.current = caught;
       setSnapGuides(guides);
 
-      // A scuff every so often while the pieces travel, louder when faster.
+      // The shuffle follows how fast the pieces travel.
       const now = performance.now();
-      const last = slideRef.current;
+      const last = slidePaceRef.current;
       if (!last) {
-        slideRef.current = { at: point, time: now };
+        slidePaceRef.current = { at: point, time: now };
       } else {
-        const distance =
-          Math.hypot(point.x - last.at.x, point.y - last.at.y) * scale;
         const elapsed = now - last.time;
-        if (distance >= SLIDE_EVERY_PX && elapsed >= SLIDE_MIN_MS) {
-          playCollageSound("slide", pan, distance / elapsed / SLIDE_FULL_SPEED);
-          slideRef.current = { at: point, time: now };
+        if (elapsed >= SLIDE_SAMPLE_MS) {
+          const distance =
+            Math.hypot(point.x - last.at.x, point.y - last.at.y) * scale;
+          slideRef.current?.move(distance / elapsed / SLIDE_FULL_SPEED, pan);
+          slidePaceRef.current = { at: point, time: now };
         }
       }
 
@@ -1752,6 +1758,10 @@ export function CollageStudio({
           if (gesture.kind === "move") {
             sound("pickup", gesture.origins);
             liftedRef.current = frame.width;
+            slideRef.current?.stop();
+            slideRef.current = startCollageSlide(
+              (point.x / frame.width) * 2 - 1,
+            );
           }
         }
       }
