@@ -32,6 +32,7 @@ function defaultFeatureAccess(availableToInternal: boolean): FeatureAccessSnapsh
         ];
       }),
     ) as Record<FeatureId, FeaturePolicy>,
+    internal: availableToInternal,
     checkedAt: 0,
   };
 }
@@ -59,6 +60,9 @@ export function parseFeatureAccess(value: unknown): FeatureAccessSnapshot | null
   }
   return {
     features,
+    // Snapshots stored before the Worker reported this stay non-internal until
+    // the next access refresh.
+    internal: record.internal === true,
     checkedAt: typeof record.checkedAt === "number" ? record.checkedAt : 0,
   };
 }
@@ -90,6 +94,10 @@ export async function hasExperimentAccess(): Promise<boolean> {
   return FEATURE_IDS.some((feature) =>
     access.features[feature].stage !== "released" && access.features[feature].available,
   );
+}
+
+export async function hasInternalAccess(): Promise<boolean> {
+  return (await getFeatureAccess()).internal;
 }
 
 export async function hasPrivateExperimentAccess(): Promise<boolean> {
