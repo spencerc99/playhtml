@@ -277,3 +277,13 @@ test("flags a heap median the base trace did not report", () => {
     /JSHeapUsedSize was not reported by the `base` trace/,
   );
 });
+
+test("drops the sign from a change that rounds to zero", () => {
+  const summary = traceSummary();
+  summary.summary[1].meanMetrics.LayoutDuration = 0.0099;
+
+  assert.match(
+    formatMarkdownReport(compareSummaries(summary)),
+    /\| LayoutDuration \| 0\.010s \| 0\.010s \| 0\.000s \(within noise\) \|/,
+  );
+});

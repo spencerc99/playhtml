@@ -220,6 +220,8 @@ function formatMetricValue(metric, value) {
 
 function formatSignedMetricValue(metric, value) {
   const formatted = formatMetricValue(metric, Math.abs(value));
+  // A change that rounds to zero gets no sign, so it can't read as "-0.000s".
+  if (!/[1-9]/.test(formatted)) return formatted;
   if (value > 0) return `+${formatted}`;
   if (value < 0) return `-${formatted}`;
   return formatted;
