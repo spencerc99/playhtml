@@ -1303,7 +1303,7 @@ export default defineBackground(() => {
           // Report to the settings page at most four times a second, and on every step change.
           let lastStep = ''
           let lastSentAt = 0
-          await store.rebuildStatsAfterImport((progress) => {
+          await store.finishImport((progress) => {
             const now = Date.now()
             if (progress.step === lastStep && now - lastSentAt < 250) return
             lastStep = progress.step

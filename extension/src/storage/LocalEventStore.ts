@@ -409,6 +409,8 @@ export class LocalEventStore {
   private statsBackfillComplete = false;
   private daysBackfillPromise: Promise<void> | null = null;
   private daysBackfillComplete = false;
+  // An import stored events that the aggregates do not count yet.
+  private importStatsStale = false;
   private eventsPendingStatsAfterBackfill: CollectionEvent[] = [];
   private eventIdsPendingStatsAfterBackfill = new Set<string>();
 
@@ -750,13 +752,17 @@ export class LocalEventStore {
   }
 
   private async readDaysBackfillState(): Promise<StatsBackfillState | null> {
+    return this.readBackfillState(DAYS_BACKFILL_STATE_KEY);
+  }
+
+  private async readBackfillState(
+    key: string,
+  ): Promise<StatsBackfillState | null> {
     if (!this.db) return null;
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([STATS_STORE_NAME], "readonly");
-      const request = transaction
-        .objectStore(STATS_STORE_NAME)
-        .get(DAYS_BACKFILL_STATE_KEY);
+      const request = transaction.objectStore(STATS_STORE_NAME).get(key);
       request.onsuccess = () => {
         const state = (request.result as { state?: unknown } | undefined)
           ?.state;
@@ -1231,8 +1237,7 @@ export class LocalEventStore {
       });
     }
 
-    const computed: { agg: DomainStatsAggregate; uniqueUrls: string[] }[] =
-      [];
+    const computed: { agg: DomainStatsAggregate; uniqueUrls: string[] }[] = [];
     for (const { agg, urls, hasNavigation } of groups.values()) {
       const uniqueUrls = hasNavigation ? [...urls] : [];
       agg.uniqueUrlCount = uniqueUrls.length;
@@ -2637,13 +2642,39 @@ export class LocalEventStore {
 
   /**
    * Store one batch of a larger import without touching aggregates. Returns the
-   * newly stored events. Call rebuildStatsAfterImport once the last batch is in.
+   * newly stored events. Call finishImport once the last batch is in, or after
+   * the import fails partway.
    */
   async addImportedEventBatch(
     events: CollectionEvent[],
   ): Promise<CollectionEvent[]> {
+    // Settle both backfills first so marking them stale below cannot start a
+    // second rebuild while the import is still storing batches.
     await this.ensureSessionStatsBackfilled();
-    return this.addEvents(events, { updateStats: false });
+    await this.ensureAggregateDaysBackfilled();
+    const stored = await this.addEvents(events, { updateStats: false });
+    if (stored.length > 0 && !this.importStatsStale) {
+      // Persist the gap so the next start rebuilds if this import never finishes.
+      await this.writeStatsBackfillState("running");
+      await this.writeDaysBackfillState("running");
+      this.importStatsStale = true;
+    }
+    return stored;
+  }
+
+  /**
+   * Rebuild the aggregates if an import, this one or an earlier one that
+   * failed, stored events they do not count yet. Returns whether it rebuilt.
+   */
+  async finishImport(onProgress?: StatsRebuildListener): Promise<boolean> {
+    await this.ensureInitialized();
+    const stale =
+      this.importStatsStale ||
+      (await this.readBackfillState(STATS_BACKFILL_STATE_KEY)) === "running" ||
+      (await this.readDaysBackfillState()) === "running";
+    if (!stale) return false;
+    await this.rebuildStatsAfterImport(onProgress);
+    return true;
   }
 
   /** Recompute every aggregate from the stored events after an import. */
@@ -2656,6 +2687,7 @@ export class LocalEventStore {
     this.daysBackfillComplete = true;
     await this.writeStatsBackfillState("complete");
     this.statsBackfillComplete = true;
+    this.importStatsStale = false;
   }
 
   /**

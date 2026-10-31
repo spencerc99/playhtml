@@ -144,8 +144,7 @@ function ImportProgressBar({ progress }: { progress: ImportProgress }) {
     label =
       `${progress.eventsRead.toLocaleString()} events · ${Math.floor(
         share * 100,
-      )}%` +
-      (remainingMs === null ? "" : ` · ${formatRemaining(remainingMs)}`);
+      )}%` + (remainingMs === null ? "" : ` · ${formatRemaining(remainingMs)}`);
   }
   return (
     <div className="collections__import-progress" role="status">
@@ -689,6 +688,7 @@ export function Collections({
     let imported = 0;
     let alreadyHeld = 0;
     let scrapsAdded = false;
+    let readAll = false;
     setImportProgress({
       phase: "reading",
       bytesRead: 0,
@@ -696,6 +696,20 @@ export function Collections({
       eventsRead: 0,
       startedAt,
     });
+    // Count everything stored so far in the stats. The background skips the
+    // rebuild when nothing is waiting to be counted.
+    const finishImport = async () => {
+      setImportProgress((current) =>
+        current ? { ...current, phase: "finishing" } : current,
+      );
+      stopStatsProgress = listenForStatsProgress();
+      const response = await browser.runtime.sendMessage({
+        type: "FINISH_IMPORT",
+        scrapsAdded,
+      });
+      if (!response?.success)
+        throw new Error(response?.error ?? "Import failed");
+    };
     try {
       await readExportFiles(files, async (events, progress) => {
         if (events.length > 0) {
@@ -711,19 +725,8 @@ export function Collections({
         }
         setImportProgress({ phase: "reading", ...progress, startedAt });
       });
-      setImportProgress((current) =>
-        current ? { ...current, phase: "finishing" } : current,
-      );
-      // Nothing new means the stats are already right.
-      if (imported > 0) {
-        stopStatsProgress = listenForStatsProgress();
-        const response = await browser.runtime.sendMessage({
-          type: "FINISH_IMPORT",
-          scrapsAdded,
-        });
-        if (!response?.success)
-          throw new Error(response?.error ?? "Import failed");
-      }
+      readAll = true;
+      await finishImport();
       setImportProgress(null);
       setTransferStatus({
         type: "success",
@@ -735,6 +738,14 @@ export function Collections({
       });
       await loadStorageStats();
     } catch (e: any) {
+      // Reading stopped partway: still count the batches already saved.
+      if (!readAll && imported > 0) {
+        await finishImport()
+          .then(loadStorageStats)
+          .catch((finishError) =>
+            console.error("Counting imported events failed:", finishError),
+          );
+      }
       setTransferStatus({
         type: "error",
         message:
@@ -1135,7 +1146,9 @@ export function Collections({
                   if (files.length > 0) handleImportFiles(files);
                 }}
               />
-              {importProgress && <ImportProgressBar progress={importProgress} />}
+              {importProgress && (
+                <ImportProgressBar progress={importProgress} />
+              )}
               {transferStatus && (
                 <p
                   className={`collections__transfer-status collections__transfer-status--${transferStatus.type}`}

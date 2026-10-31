@@ -650,6 +650,64 @@ describe("LocalEventStore aggregates", () => {
     });
   });
 
+  it("counts a failed import's saved batches on the next start", async () => {
+    const store = createStore();
+    await store.getAllDomains();
+    await store.addImportedEventBatch([
+      {
+        ...event("partial-focus", "navigation"),
+        ts: 1_000,
+        data: { event: "focus" },
+      },
+      {
+        ...event("partial-blur", "navigation"),
+        ts: 7_000,
+        data: { event: "blur" },
+      },
+    ]);
+    expect(await store.getSessionStats("example.com")).toBeNull();
+    (store as unknown as { db: IDBDatabase | null }).db?.close();
+
+    const restarted = createStore();
+    await restarted.addEvents([
+      {
+        ...event("live-event", "navigation"),
+        ts: 9_000,
+        data: { event: "focus" },
+      },
+    ]);
+    await waitForBackgroundDatabaseWork();
+
+    expect(await restarted.getSessionStats("example.com")).toMatchObject({
+      totalTimeMs: 6_000,
+      eventsByType: { navigation: 3 },
+    });
+  });
+
+  it("rebuilds on a retry that adds nothing when an earlier import stopped partway", async () => {
+    const store = createStore();
+    const focus = {
+      ...event("retry-focus", "navigation"),
+      ts: 1_000,
+      data: { event: "focus" },
+    };
+    const blur = {
+      ...event("retry-blur", "navigation"),
+      ts: 7_000,
+      data: { event: "blur" },
+    };
+
+    await store.addImportedEventBatch([focus, blur]);
+    expect(await store.addImportedEventBatch([focus, blur])).toEqual([]);
+
+    expect(await store.finishImport()).toBe(true);
+    expect(await store.getSessionStats("example.com")).toMatchObject({
+      totalTimeMs: 6_000,
+      eventsByType: { navigation: 2 },
+    });
+    expect(await store.finishImport()).toBe(false);
+  });
+
   it("restores active-day counts after a bulk import rebuilds domain stats", async () => {
     const store = createStore();
     const firstDay = Date.parse("2026-07-20T12:00:00-04:00");

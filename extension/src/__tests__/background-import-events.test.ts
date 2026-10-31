@@ -32,7 +32,7 @@ function elementEvent(id: string): CollectionEvent {
 
 async function loadBackground(
   addImportedEventBatch: ReturnType<typeof vi.fn>,
-  rebuildStatsAfterImport = vi.fn().mockResolvedValue(undefined),
+  finishImport = vi.fn().mockResolvedValue(true),
 ) {
   const onMessageAddListener = vi.fn();
   const sendMessage = vi.fn().mockResolvedValue(undefined);
@@ -40,7 +40,7 @@ async function loadBackground(
   vi.doMock("../storage/LocalEventStore", () => ({
     LocalEventStore: vi.fn(() => ({
       addImportedEventBatch,
-      rebuildStatsAfterImport,
+      finishImport,
     })),
   }));
   vi.doMock("../storage/sync", () => ({ uploadEvents: vi.fn() }));
@@ -158,10 +158,10 @@ describe("background event import", () => {
   });
 
   it("rebuilds stats once when the import finishes and refreshes scraps", async () => {
-    const rebuildStatsAfterImport = vi.fn().mockResolvedValue(undefined);
+    const finishImport = vi.fn().mockResolvedValue(true);
     const { listener, sendMessage } = await loadBackground(
       vi.fn(),
-      rebuildStatsAfterImport,
+      finishImport,
     );
 
     const response = await send(listener, {
@@ -170,7 +170,7 @@ describe("background event import", () => {
     });
 
     expect(response).toEqual({ success: true });
-    expect(rebuildStatsAfterImport).toHaveBeenCalledTimes(1);
+    expect(finishImport).toHaveBeenCalledTimes(1);
     expect(sendMessage).toHaveBeenCalledWith({ type: "SCRAP_PHOTOS_UPDATED" });
   });
 
