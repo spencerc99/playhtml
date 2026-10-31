@@ -197,17 +197,33 @@ function metricsMap(metricsResponse) {
   );
 }
 
+const DURATION_METRICS = [
+  "TaskDuration",
+  "ScriptDuration",
+  "LayoutDuration",
+  "RecalcStyleDuration",
+];
+
 function diffMetrics(before, after) {
-  const names = [
-    "TaskDuration",
-    "ScriptDuration",
-    "LayoutDuration",
-    "RecalcStyleDuration",
-    "JSHeapUsedSize",
-  ];
   return Object.fromEntries(
-    names.map((name) => [name, (after[name] ?? 0) - (before[name] ?? 0)]),
+    DURATION_METRICS.map((name) => [name, (after[name] ?? 0) - (before[name] ?? 0)]),
   );
+}
+
+// Reads the renderer's live JS heap (page plus content script isolated worlds,
+// which share one V8 isolate) after a forced full GC. A before/after delta of
+// JSHeapUsedSize only measures whether V8 happened to collect during the
+// scenario, so it swings run to run and can go negative.
+async function retainedHeapSize(client) {
+  // The second pass collects objects the first pass only made unreachable,
+  // such as those kept alive by finalizers or weak callbacks.
+  await client.send("HeapProfiler.collectGarbage");
+  await client.send("HeapProfiler.collectGarbage");
+  const { JSHeapUsedSize } = metricsMap(await client.send("Performance.getMetrics"));
+  if (typeof JSHeapUsedSize !== "number" || !(JSHeapUsedSize > 0)) {
+    throw new Error(`Performance.getMetrics returned an unusable JSHeapUsedSize: ${JSHeapUsedSize}`);
+  }
+  return JSHeapUsedSize;
 }
 
 function traceSummary(traceText) {
@@ -408,6 +424,10 @@ async function runOne({
     const after = metricsMap(await client.send("Performance.getMetrics"));
     const traceText = await collectTrace(client);
     logPhase("trace collected");
+    // Collect garbage only after the duration metrics and trace are read, so
+    // the forced GC never counts toward TaskDuration or ScriptDuration.
+    const jsHeapUsedSize = await retainedHeapSize(client);
+    logPhase("retained heap measured");
     const tracePath = resolve(outDir, `${safeLabel}-run-${runIndex}.trace.json`);
     await writeFile(tracePath, traceText);
     logPhase("trace written");
@@ -416,7 +436,7 @@ async function runOne({
       label,
       runIndex,
       tracePath,
-      metrics: diffMetrics(before, after),
+      metrics: { ...diffMetrics(before, after), JSHeapUsedSize: jsHeapUsedSize },
       trace: traceSummary(traceText),
     };
   }
@@ -424,6 +444,25 @@ async function runOne({
 
 function mean(values) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
+function spread(values) {
+  return Math.max(...values) - Math.min(...values);
+}
+
+function metricStat(items, stat) {
+  return Object.fromEntries(
+    Object.keys(items[0].metrics).map((metric) => [
+      metric,
+      stat(items.map((item) => item.metrics[metric])),
+    ]),
+  );
 }
 
 function summarize(results) {
@@ -436,12 +475,9 @@ function summarize(results) {
   return [...byLabel.entries()].map(([label, items]) => ({
     label,
     runs: items.length,
-    meanMetrics: Object.fromEntries(
-      Object.keys(items[0].metrics).map((metric) => [
-        metric,
-        mean(items.map((item) => item.metrics[metric])),
-      ]),
-    ),
+    meanMetrics: metricStat(items, mean),
+    medianMetrics: metricStat(items, median),
+    metricSpread: metricStat(items, spread),
     traces: items.map((item) => item.tracePath),
     topRendererEvents: items[0].trace.topRendererEvents,
   }));
