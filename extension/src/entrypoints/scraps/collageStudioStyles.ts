@@ -1495,6 +1495,88 @@ ${COLLAGE_PEEK_STYLES}
     flex: 1 1 auto;
   }
 
+  .collage-history__new {
+    display: flex;
+    gap: 8px;
+  }
+
+  .collage-action--together {
+    border-color: var(--c-accent);
+    color: var(--c-accent-ink);
+  }
+
+  /* A collage made with others: an accent edge and a tag in everyone's
+     colors, so it reads as shared at a glance. */
+  .collage-card--shared {
+    position: relative;
+    border-color: color-mix(in srgb, var(--c-accent) 55%, transparent);
+  }
+
+  .collage-card__thumb--shared {
+    position: relative;
+    overflow: hidden;
+    background: var(--c-frame);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-ink) 8%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .collage-card__thumb--shared img {
+    position: absolute;
+    object-fit: cover;
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--c-ink) 20%, transparent);
+  }
+
+  .collage-card__shared-tag {
+    position: absolute;
+    left: 6px;
+    top: 6px;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 7px 2px 4px;
+    border: 1px solid color-mix(in srgb, var(--c-accent) 45%, transparent);
+    border-radius: 999px;
+    background: var(--c-frame);
+    color: var(--c-accent-ink);
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+  }
+
+  .collage-card__shared-dots {
+    display: inline-flex;
+  }
+
+  .collage-card__shared-dots i {
+    width: 12px;
+    height: 12px;
+    margin-left: -4px;
+    border: 1.5px solid var(--c-frame);
+    border-radius: 50%;
+    box-sizing: border-box;
+  }
+
+  .collage-card__shared-dots i:first-child {
+    margin-left: 0;
+  }
+
+  .collage-card__away {
+    font-family: "Martian Mono", monospace;
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--c-muted);
+  }
+
+  .collage-card__with {
+    display: block;
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.02em;
+    color: var(--c-accent-ink);
+  }
+
 ${COLLAGE_MAT_STYLES}
   /* Views sit at the top-right: the back, and where the pieces came from. */
 ${COLLAGE_VIEW_STYLES}

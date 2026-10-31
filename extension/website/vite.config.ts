@@ -1,14 +1,36 @@
 // ABOUTME: Vite configuration for the wewere.online site (marketing pages + experiments).
 // ABOUTME: Multi-page glob discovery, @movement alias to ./shared, @extension alias for preview pages.
 
-import { defineConfig } from "vite";
+import { defineConfig, type Connect, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { glob } from "glob";
 
+/** A shared collage's editing link, or the link that starts a new one. */
+const SHARED_COLLAGE_EDIT = /^\/collage\/(new|[a-z0-9]+\/edit)\/?(\?.*)?$/;
+
+/** Serves shared collage links from the editing page, as the Pages worker does. */
+function sharedCollageRoutes(): Plugin {
+  const rewrite: Connect.NextHandleFunction = (req, _res, next) => {
+    if (req.url && SHARED_COLLAGE_EDIT.test(req.url)) {
+      req.url = "/collage/edit/index.html";
+    }
+    next();
+  };
+  return {
+    name: "shared-collage-routes",
+    configureServer(server) {
+      server.middlewares.use(rewrite);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(rewrite);
+    },
+  };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), sharedCollageRoutes()],
   resolve: {
     alias: {
       "@movement": path.resolve(__dirname, "./shared"),

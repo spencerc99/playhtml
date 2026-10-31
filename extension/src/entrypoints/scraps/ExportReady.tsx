@@ -1,7 +1,7 @@
 // ABOUTME: On a phone, the finished exports wait here to be saved one tap at a time.
 // ABOUTME: A phone cannot take a download started after a long bake, so each file gets its own save button.
 
-import React, { useEffect, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 export interface ReadyFile {
   file: Blob;
