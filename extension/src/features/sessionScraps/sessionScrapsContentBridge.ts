@@ -21,11 +21,11 @@ export function initSessionScrapsContentBridge(): () => void {
 
   const receivePageMessage = (event: MessageEvent) => {
     if (event.source !== window || !isSessionScrapsRequest(event.data)) return;
-    const { requestId, since, until } = event.data;
+    const { requestId, since, until, scope } = event.data;
     if (handled.has(requestId)) return;
     handled.add(requestId);
     browser.runtime
-      .sendMessage({ type: "GET_SESSION_SCRAPS", since, until })
+      .sendMessage({ type: "GET_SESSION_SCRAPS", since, until, scope })
       .then((answer: SessionScrapsAnswer | null) => {
         // No answer means this page is not allowed; staying silent looks
         // the same to the page as having no extension.

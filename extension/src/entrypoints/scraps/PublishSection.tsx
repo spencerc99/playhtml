@@ -1,7 +1,7 @@
 // ABOUTME: The share popover's link section: uploads the collage as a view-only page, copies its link, and unshares.
 // ABOUTME: Shows "make a link" until the collage is shared, then the link with copy, open, update and unshare.
 
-import React, { useState } from "react";
+import { useState } from "react";
 import type { CollageRecord, CollagePublication } from "./collageRecord";
 import {
   CollagePublishError,
