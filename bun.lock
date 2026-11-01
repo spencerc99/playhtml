@@ -68,7 +68,7 @@
     },
     "extension": {
       "name": "@playhtml/extension",
-      "version": "0.1.28",
+      "version": "0.1.29",
       "dependencies": {
         "@playhtml/common": "workspace:*",
         "@playhtml/extension-types": "workspace:*",
@@ -163,7 +163,7 @@
     },
     "packages/common": {
       "name": "@playhtml/common",
-      "version": "0.10.0",
+      "version": "0.10.1",
       "devDependencies": {
         "typescript": "^5.0.2",
         "vite": "^7.1.2",
@@ -182,7 +182,7 @@
     },
     "packages/playhtml": {
       "name": "playhtml",
-      "version": "2.15.0",
+      "version": "2.15.1",
       "dependencies": {
         "@playhtml/common": "workspace:^",
         "@syncedstore/core": "^0.6.0",
