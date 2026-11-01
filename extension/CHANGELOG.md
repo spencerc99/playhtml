@@ -1,5 +1,11 @@
 # @playhtml/extension
 
+## 0.1.29 (2026-11-01)
+
+- Import a data export of any size in one go, with a progress bar and time left.
+- Pick a range of days, a whole month, or a time of day like "mornings" when looking back at your movement portrait or your scraps.
+
+
 ## 0.1.28 (2026-10-30)
 
 - Time on a site stops counting after a few minutes away from your computer, so a tab left open overnight no longer inflates your history.
