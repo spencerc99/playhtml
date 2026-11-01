@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   dayRangeContains,
   dayRangeLength,
+  eachDay,
   formatDayRange,
   isWholeMonth,
   monthOf,
@@ -31,6 +32,15 @@ describe("day ranges", () => {
 
   it("counts days across a daylight-saving change", () => {
     expect(dayRangeLength({ start: "2026-10-30", end: "2026-11-03" })).toBe(5);
+  });
+
+  it("lists every day of a span, across a month and a clock change", () => {
+    expect(eachDay({ start: "2026-10-30", end: "2026-11-02" })).toEqual([
+      "2026-10-30",
+      "2026-10-31",
+      "2026-11-01",
+      "2026-11-02",
+    ]);
   });
 
   it("covers a whole month, including February", () => {

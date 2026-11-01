@@ -74,6 +74,17 @@ export function sameDayRange(a: DayRange | null, b: DayRange | null): boolean {
   );
 }
 
+/** Every local day in the span, oldest first. */
+export function eachDay(range: DayRange): string[] {
+  const days: string[] = [];
+  const cursor = dayDate(range.start);
+  for (let day = dayKey(cursor); day <= range.end; day = dayKey(cursor)) {
+    days.push(day);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
 /** How many calendar days the span covers, counting days with no data. */
 export function dayRangeLength(range: DayRange): number {
   const ms = dayDate(range.end).getTime() - dayDate(range.start).getTime();

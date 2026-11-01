@@ -18,9 +18,10 @@ import {
   type ArchiveEventBatch,
 } from "../utils/archiveEventBatches";
 import {
-  isSingleDay,
+  eachDay,
   parseDayRange,
   serializeDayRange,
+  singleDay,
   type DayRange,
 } from "../utils/dayRange";
 
@@ -62,20 +63,74 @@ function daysFromKey(daysKey: string): DayRange {
   return days;
 }
 
+/** Events each request of a multi-day span may return, shared across its days. */
+const SPAN_EVENT_BUDGET = 20000;
+/** The fewest events a single day of a long span asks for. */
+const MIN_EVENTS_PER_SPAN_DAY = 250;
+/** Day requests a fixed span fetch keeps in flight at once. */
+const SPAN_REQUEST_CONCURRENCY = 6;
+
+/** The UTC instants where a span of LOCAL days begins and ends. */
+function localDayBounds(days: DayRange): { from: string; to: string } {
+  return {
+    from: new Date(`${days.start}T00:00:00`).toISOString(),
+    to: new Date(`${days.end}T23:59:59.999`).toISOString(),
+  };
+}
+
 /** The UTC bounds to fetch for a span of local days. A single day with a time
  * of day brackets just that window (see `midnightWindowBounds`); any other span
- * fetches its whole days and leaves the time of day to the client filter. */
+ * fetches its whole local days and leaves the time of day to the client filter. */
 function archiveBounds(
   days: DayRange,
   tod: TimeOfDay,
-): { from: string; to: string; timeOfDayWindow: boolean } {
-  if (tod && isSingleDay(days)) {
-    return {
-      ...midnightWindowBounds(days.start, tod.centerMinutes, tod.radiusMinutes),
-      timeOfDayWindow: true,
-    };
+): { from: string; to: string } {
+  if (tod && days.start === days.end) {
+    return midnightWindowBounds(days.start, tod.centerMinutes, tod.radiusMinutes);
   }
-  return { from: days.start, to: `${days.end}T23:59:59Z`, timeOfDayWindow: false };
+  return localDayBounds(days);
+}
+
+/**
+ * The requests that fetch a span of local days for one event type outside
+ * batch playback. Each request is recency-capped, so a single request over a
+ * long span would return only its last few days. Instead every day gets its
+ * own request (its time-of-day window, when one is set) with an equal share
+ * of the budget, so each day of a month is represented.
+ */
+export function archiveSpanRequests(
+  days: DayRange,
+  tod: TimeOfDay,
+): { from: string; to: string; limit: string }[] {
+  const dayKeys = eachDay(days);
+  if (dayKeys.length === 1) {
+    return [{ ...archiveBounds(days, tod), limit: tod ? "20000" : "5000" }];
+  }
+  const limit = String(
+    Math.max(
+      MIN_EVENTS_PER_SPAN_DAY,
+      Math.ceil(SPAN_EVENT_BUDGET / dayKeys.length),
+    ),
+  );
+  return dayKeys.map((day) => ({ ...archiveBounds(singleDay(day), tod), limit }));
+}
+
+/** Runs `task` over every item with at most `limit` running at once, in order. */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  task: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await task(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 async function fetchEventType(
@@ -248,16 +303,17 @@ export function useArchiveEvents(params: {
 
         let fetched: CollectionEvent[] = [];
         if (daysKey) {
-          // Time-of-day capture (e.g. the "midnight moment") on one day:
-          // fetch the tight local window directly. A whole-day fetch is
-          // recency-capped and returns the END of the UTC day, never reaching
-          // early-UTC-day instants like local midnight. A single day without
-          // one keeps the original tighter limit.
-          const days = daysFromKey(daysKey);
-          const { from, to, timeOfDayWindow } = archiveBounds(days, tod);
-          const limit = !timeOfDayWindow && isSingleDay(days) ? "5000" : "20000";
-          const results = await Promise.all(
-            [...typesToFetch].map((type) => fetchOne({ limit, from, to }, type)),
+          // Time-of-day capture (e.g. the "midnight moment"): fetch each
+          // day's tight local window directly. A whole-day fetch is
+          // recency-capped and returns the END of the day, never reaching
+          // instants like local midnight. See archiveSpanRequests for spans.
+          const requests = archiveSpanRequests(daysFromKey(daysKey), tod);
+          const results = await mapWithConcurrency(
+            [...typesToFetch].flatMap((type) =>
+              requests.map((request) => ({ type, request })),
+            ),
+            SPAN_REQUEST_CONCURRENCY,
+            ({ type, request }) => fetchOne(request, type),
           );
           fetched = results.flat();
         } else {
