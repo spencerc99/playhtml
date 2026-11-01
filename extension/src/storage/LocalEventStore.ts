@@ -717,17 +717,18 @@ export class LocalEventStore {
     if (!this.statsBackfillPromise) {
       this.statsBackfillPromise = this.backfillSessionStats()
         .then(async (rebuilt) => {
-          await this.flushEventsPendingStatsAfterBackfill();
           // Rebuilding session stats resets every domain's active-day count.
-          if (!rebuilt) return;
-          await this.rebuildAggregateDays();
-          await this.writeDaysBackfillState("complete");
-          this.daysBackfillComplete = true;
-        })
-        .then(() => this.writeStatsBackfillState("complete"))
-        .then(() => {
+          if (rebuilt) {
+            await this.rebuildAggregateDays();
+            await this.writeDaysBackfillState("complete");
+            this.daysBackfillComplete = true;
+          }
+          await this.flushEventsPendingStatsAfterBackfill();
+          // Mark complete in the same tick the queue empties, so a live event
+          // stored after this updates stats itself instead of joining the queue.
           this.statsBackfillComplete = true;
         })
+        .then(() => this.writeStatsBackfillState("complete"))
         .finally(() => {
           this.statsBackfillPromise = null;
         });
@@ -1080,6 +1081,7 @@ export class LocalEventStore {
         events,
         LocalEventStore.groupEventsByDomain(events),
       );
+      await this.upsertAggregateDays(events);
     }
   }
 

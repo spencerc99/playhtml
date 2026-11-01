@@ -687,6 +687,56 @@ describe("LocalEventStore aggregates", () => {
     });
   });
 
+  it("counts live events recorded while the restart rebuild runs", async () => {
+    const firstDay = Date.parse("2026-07-20T12:00:00-04:00");
+    const secondDay = Date.parse("2026-07-21T12:00:00-04:00");
+    const thirdDay = Date.parse("2026-07-22T12:00:00-04:00");
+    const store = createStore();
+    await store.getAllDomains();
+    await store.addImportedEventBatch([
+      {
+        ...event("partial-focus", "navigation"),
+        ts: firstDay,
+        data: { event: "focus" },
+      },
+    ]);
+    (store as unknown as { db: IDBDatabase | null }).db?.close();
+
+    const restarted = createStore();
+    const internals = restarted as unknown as {
+      rebuildAggregateDays: () => Promise<void>;
+    };
+    const rebuildAggregateDays = internals.rebuildAggregateDays.bind(restarted);
+    let browsedDuringRebuild = false;
+    internals.rebuildAggregateDays = async () => {
+      if (!browsedDuringRebuild) {
+        browsedDuringRebuild = true;
+        await restarted.addEvents([
+          {
+            ...event("during-days-rebuild", "navigation"),
+            ts: thirdDay,
+            data: { event: "focus" },
+          },
+        ]);
+      }
+      return rebuildAggregateDays();
+    };
+    await restarted.addEvents([
+      {
+        ...event("live-event", "navigation"),
+        ts: secondDay,
+        data: { event: "focus" },
+      },
+    ]);
+    await waitForBackgroundDatabaseWork();
+
+    expect(await restarted.getSessionStats("example.com")).toMatchObject({
+      eventsByType: { navigation: 3 },
+      activeDayCount: 3,
+    });
+    expect(browsedDuringRebuild).toBe(true);
+  });
+
   it("rebuilds on a retry that adds nothing when an earlier import stopped partway", async () => {
     const store = createStore();
     const focus = {
