@@ -1,13 +1,11 @@
-// ABOUTME: Day selector panel for the movement page with calendar heatmap.
-// ABOUTME: Collapsed shows current day; expanded shows the shared textured DayGrid plus playback controls.
+// ABOUTME: "When" selector for the movement page: a collapsed pill that opens the shared WhenPanel.
+// ABOUTME: Picks a day span and time of day over the calendar heatmap, plus playback and capture controls.
 
 import React, { useRef, useEffect, useMemo, useState } from "react";
-import {
-  DAY_GRID_WIDTH,
-  DayGrid,
-  formatDateRange,
-  formatSingleDate,
-} from "./DayGrid";
+import type { TimeOfDayFilter } from "../config";
+import type { DayRange } from "../utils/dayRange";
+import { formatDateRange } from "./DayGrid";
+import { describeWhen, WHEN_PANEL_WIDTH, WhenPanel } from "./WhenPanel";
 
 const ACCENT_TEAL = "#4a9a8a";
 const TEXT = "#3d3833";
@@ -16,8 +14,10 @@ const TEXT_FAINT = "rgba(61,56,51,0.35)";
 
 interface DaySelectorProps {
   dayCounts: Map<string, number>;
-  selectedDay: string | null;
-  onSelectDay: (day: string | null) => void;
+  selectedDays: DayRange | null;
+  onSelectDays: (days: DayRange | null) => void;
+  timeOfDay: TimeOfDayFilter | null;
+  onSetTimeOfDay: (timeOfDay: TimeOfDayFilter | null) => void;
   playbackMode: "cycle" | "loop";
   onTogglePlaybackMode: () => void;
   onCapture: () => void;
@@ -25,8 +25,10 @@ interface DaySelectorProps {
 
 export const DaySelector: React.FC<DaySelectorProps> = ({
   dayCounts,
-  selectedDay,
-  onSelectDay,
+  selectedDays,
+  onSelectDays,
+  timeOfDay,
+  onSetTimeOfDay,
   playbackMode,
   onTogglePlaybackMode,
   onCapture,
@@ -48,15 +50,16 @@ export const DaySelector: React.FC<DaySelectorProps> = ({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const collapsedLabel = selectedDay
-    ? formatSingleDate(selectedDay)
-    : sortedDays.length > 0
+  const collapsedLabel = describeWhen(
+    selectedDays,
+    timeOfDay,
+    sortedDays.length > 0
       ? formatDateRange(sortedDays[0], sortedDays[sortedDays.length - 1])
-      : "";
+      : "",
+  );
+  const narrowed = selectedDays !== null || timeOfDay !== null;
 
   if (sortedDays.length === 0) return null;
-
-  const panelWidth = DAY_GRID_WIDTH + 24;
 
   return (
     <div
@@ -78,8 +81,9 @@ export const DaySelector: React.FC<DaySelectorProps> = ({
             backdropFilter: "blur(8px)",
             display: "flex",
             flexDirection: "column",
-            width: panelWidth,
-            maxHeight: "min(400px, calc(100vh - 64px))",
+            width: WHEN_PANEL_WIDTH,
+            maxHeight: "calc(100vh - 32px)",
+            overflowY: "auto",
           }}
         >
           {/* Header */}
@@ -100,7 +104,7 @@ export const DaySelector: React.FC<DaySelectorProps> = ({
                 color: TEXT,
               }}
             >
-              select day
+              when
             </span>
             <button
               onClick={() => setOpen(false)}
@@ -115,11 +119,13 @@ export const DaySelector: React.FC<DaySelectorProps> = ({
             </button>
           </div>
 
-          {/* Scrollable day grid */}
-          <DayGrid
+          <WhenPanel
             dayCounts={dayCounts}
-            selectedDay={selectedDay}
-            onSelectDay={onSelectDay}
+            days={selectedDays}
+            onDays={onSelectDays}
+            timeOfDay={timeOfDay}
+            onTimeOfDay={onSetTimeOfDay}
+            gridStyle={{ flex: "none", maxHeight: "min(300px, 40vh)" }}
           />
 
           {/* Controls row */}
@@ -132,16 +138,6 @@ export const DaySelector: React.FC<DaySelectorProps> = ({
               alignItems: "center",
             }}
           >
-            <button
-              onClick={() => onSelectDay(null)}
-              style={{
-                ...btnStyle,
-                fontWeight: selectedDay === null ? 700 : 400,
-                color: selectedDay === null ? ACCENT_TEAL : undefined,
-              }}
-            >
-              all
-            </button>
             <button onClick={onTogglePlaybackMode} style={btnStyle}>
               {playbackMode === "loop" ? "loop" : "cycle"}
             </button>
@@ -170,7 +166,7 @@ export const DaySelector: React.FC<DaySelectorProps> = ({
               fontFamily: "'Martian Mono', monospace",
               fontSize: 10,
               fontWeight: 500,
-              color: selectedDay ? ACCENT_TEAL : TEXT_MUTED,
+              color: narrowed ? ACCENT_TEAL : TEXT_MUTED,
             }}
           >
             {collapsedLabel}

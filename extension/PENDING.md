@@ -16,3 +16,4 @@ extension/website/public/changelog/media/ and reference them here:
 -->
 
 - Import a data export of any size in one go, with a progress bar and time left.
+- Pick a range of days, a whole month, or a time of day like "mornings" when looking back at your movement portrait or your scraps.

@@ -83,6 +83,44 @@ export function getRecentEventTypeFilter(url: URL): string | null {
   return requestedType === 'all' ? null : requestedType || 'cursor';
 }
 
+/**
+ * Participant ids of the newest events (any type) at or after `since`,
+ * newest first, at most `limit` rows. Selects only the id column so counting
+ * who is browsing never loads event payloads, titles, or colors. Ids repeat
+ * once per event.
+ */
+export async function loadRecentParticipantIds(
+  env: Env,
+  since: number,
+  limit: number,
+): Promise<string[]> {
+  if (limit > SUPABASE_PAGE_SIZE) {
+    throw new Error(`Participant id limit ${limit} exceeds one Supabase page`);
+  }
+
+  const supabase = createSupabaseClient(env);
+  const { data, error } = await supabase
+    .from('collection_events')
+    .select('participant_id')
+    .gte('ts', new Date(since).toISOString())
+    .order('ts', { ascending: false })
+    .limit(limit);
+  if (error) {
+    throw new Error(`Recent participant query failed: ${error.message}`);
+  }
+  if (!Array.isArray(data)) {
+    throw new Error('Recent participant query returned no rows array');
+  }
+
+  return data.map((row) => {
+    const participantId = (row as { participant_id?: unknown }).participant_id;
+    if (typeof participantId !== 'string' || !participantId) {
+      throw new Error('Recent participant row is missing participant_id');
+    }
+    return participantId;
+  });
+}
+
 type PageMeta = { title?: string; favicon_url?: string };
 
 /**
@@ -116,6 +154,84 @@ async function fetchMetaByPageRef(
   }
 
   return metaByRef;
+}
+
+/**
+ * Turns collection_events rows into extension events: re-attaches navigation
+ * titles and favicons from page_metadata_history and each participant's cursor color.
+ */
+export async function toCollectionEvents(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  rows: Record<string, unknown>[],
+): Promise<CollectionEvent[]> {
+  // ── Join page titles from page_metadata_history ───────────────────────────
+  // Titles are stripped from navigation event rows at ingest time and stored
+  // in page_metadata_history keyed by page_ref. Re-attach them here.
+  //
+  // Two lookup strategies, applied per row:
+  //   1. data.page_ref  — present on events ingested after getPageSnapshot() was added
+  //   2. normalize(meta.url) → buildPageRef(...)  — fallback for older events
+  //
+  // We collect all candidate refs in one batch to minimise round-trips.
+
+  // Map from page_ref → the row id(s) that need it, so we can attach titles back.
+  // rowRefMap[rowId] = page_ref to use for that row.
+  const rowRefMap = new Map<string, string>();
+
+  for (const row of rows) {
+    if (row.type !== 'navigation') continue;
+
+    const d = row.data as Record<string, unknown> | null;
+    const storedRef = d?.page_ref as string | undefined;
+
+    if (storedRef) {
+      rowRefMap.set(row.id as string, storedRef);
+    } else if (row.url) {
+      // Older event: no page_ref in data — derive it from the stored URL
+      const fallbackRef = buildPageRef(canonicalizeUrl(row.url as string));
+      rowRefMap.set(row.id as string, fallbackRef);
+    }
+  }
+
+  const allPageRefs = [...new Set(rowRefMap.values())];
+  const metaByRef = await fetchMetaByPageRef(supabase, allPageRefs);
+
+  // ── Look up cursor colors ─────────────────────────────────────────────────
+  const participantIds = [...new Set(rows.map((row) => row.participant_id as string))];
+  const participantColors = await loadParticipantColors(participantIds, ids =>
+    supabase
+      .from('participants')
+      .select('pid, cursor_color')
+      .in('pid', ids),
+  );
+
+  // ── Build response events ─────────────────────────────────────────────────
+  return rows.map((row: Record<string, unknown>) => {
+    const data = (row.data ?? {}) as Record<string, unknown>;
+    const pageRef = rowRefMap.get(row.id as string);
+    const pageMeta = pageRef ? metaByRef.get(pageRef) : undefined;
+    const title = pageMeta?.title;
+    const faviconUrl = pageMeta?.favicon_url;
+
+    return {
+      id: row.id as string,
+      type: row.type as CollectionEvent['type'],
+      ts: new Date(row.ts as string).getTime(),
+      // Merge title and favicon back into data from page_metadata_history
+      data: title || faviconUrl
+        ? { ...data, ...(title ? { title } : {}), ...(faviconUrl ? { favicon_url: faviconUrl } : {}) }
+        : data,
+      meta: {
+        pid: row.participant_id,
+        sid: row.session_id,
+        url: row.url,
+        vw: row.viewport_width,
+        vh: row.viewport_height,
+        tz: row.timezone,
+        cursor_color: participantColors.get(row.participant_id as string) ?? null,
+      } as EventMeta,
+    };
+  });
 }
 
 /**
@@ -183,74 +299,7 @@ export async function handleRecent(
       );
     }
 
-    // ── Join page titles from page_metadata_history ───────────────────────────
-    // Titles are stripped from navigation event rows at ingest time and stored
-    // in page_metadata_history keyed by page_ref. Re-attach them here.
-    //
-    // Two lookup strategies, applied per row:
-    //   1. data.page_ref  — present on events ingested after getPageSnapshot() was added
-    //   2. normalize(meta.url) → buildPageRef(...)  — fallback for older events
-    //
-    // We collect all candidate refs in one batch to minimise round-trips.
-
-    // Map from page_ref → the row id(s) that need it, so we can attach titles back.
-    // rowRefMap[rowId] = page_ref to use for that row.
-    const rowRefMap = new Map<string, string>();
-
-    for (const row of rows) {
-      if (row.type !== 'navigation') continue;
-
-      const d = row.data as Record<string, unknown> | null;
-      const storedRef = d?.page_ref as string | undefined;
-
-      if (storedRef) {
-        rowRefMap.set(row.id as string, storedRef);
-      } else if (row.url) {
-        // Older event: no page_ref in data — derive it from the stored URL
-        const fallbackRef = buildPageRef(canonicalizeUrl(row.url as string));
-        rowRefMap.set(row.id as string, fallbackRef);
-      }
-    }
-
-    const allPageRefs = [...new Set(rowRefMap.values())];
-    const metaByRef = await fetchMetaByPageRef(supabase, allPageRefs);
-
-    // ── Look up cursor colors ─────────────────────────────────────────────────
-    const participantIds = [...new Set(rows.map((row) => row.participant_id as string))];
-    const participantColors = await loadParticipantColors(participantIds, ids =>
-      supabase
-        .from('participants')
-        .select('pid, cursor_color')
-        .in('pid', ids),
-    );
-
-    // ── Build response events ─────────────────────────────────────────────────
-    const allEvents: CollectionEvent[] = rows.map((row: Record<string, unknown>) => {
-      const data = (row.data ?? {}) as Record<string, unknown>;
-      const pageRef = rowRefMap.get(row.id as string);
-      const pageMeta = pageRef ? metaByRef.get(pageRef) : undefined;
-      const title = pageMeta?.title;
-      const faviconUrl = pageMeta?.favicon_url;
-
-      return {
-        id: row.id as string,
-        type: row.type as CollectionEvent['type'],
-        ts: new Date(row.ts as string).getTime(),
-        // Merge title and favicon back into data from page_metadata_history
-        data: title || faviconUrl
-          ? { ...data, ...(title ? { title } : {}), ...(faviconUrl ? { favicon_url: faviconUrl } : {}) }
-          : data,
-        meta: {
-          pid: row.participant_id,
-          sid: row.session_id,
-          url: row.url,
-          vw: row.viewport_width,
-          vh: row.viewport_height,
-          tz: row.timezone,
-          cursor_color: participantColors.get(row.participant_id as string) ?? null,
-        } as EventMeta,
-      };
-    });
+    const allEvents = await toCollectionEvents(supabase, rows);
 
     // Apply require_title filter after the join — drops events where no metadata
     // row exists (e.g. older events ingested before page_metadata_history existed).

@@ -11,6 +11,7 @@ import {
   isElementChannel,
   isLiveChannel,
   isPagePresenceChannel,
+  CURSOR_STALE_MS,
   PRESENCE_STALE_MS,
   safeInvoke,
 } from "./presence-utils";
@@ -280,7 +281,9 @@ export class PeerStore {
   ): Set<PeerNamespace> {
     for (const [connectionId, channels] of this.peers) {
       for (const [channel, value] of Object.entries(channels)) {
-        if (isLiveChannel(value, now, PRESENCE_STALE_MS)) continue;
+        const maxAgeMs =
+          namespaceOf(channel) === "cursor" ? CURSOR_STALE_MS : PRESENCE_STALE_MS;
+        if (isLiveChannel(value, now, maxAgeMs)) continue;
         delete channels[channel];
         touched.add(namespaceOf(channel));
       }

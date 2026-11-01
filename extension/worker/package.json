@@ -10,7 +10,7 @@
     "secret": "wrangler --config wrangler.toml secret",
     "secrets": "wrangler --config wrangler.toml secret list",
     "test": "vitest run",
-    "test:db": "../../supabase/tests/page_metadata_history_atomic.test.sh",
+    "test:db": "../../supabase/tests/page_metadata_history_atomic.test.sh && ../../supabase/tests/participant_events_restore.test.sh",
     "upload-internet-map": "./scripts/upload-internet-map.sh"
   },
   "dependencies": {

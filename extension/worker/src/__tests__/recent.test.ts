@@ -1,12 +1,35 @@
 // ABOUTME: Tests stable pagination for recent extension events.
 // ABOUTME: Verifies live inserts cannot shift later pages onto duplicate rows.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { Env } from '../lib/supabase';
+
+const { createSupabaseClient } = vi.hoisted(() => ({
+  createSupabaseClient: vi.fn(),
+}));
+
+vi.mock('../lib/supabase', () => ({ createSupabaseClient }));
+
 import {
   getEarlierEventFilter,
   getRecentEventTypeFilter,
   loadRecentEventRows,
+  loadRecentParticipantIds,
 } from '../routes/recent';
+
+/** Records the PostgREST query chain and answers it with `result`. */
+function recordParticipantQuery(result: { data: unknown; error: { message: string } | null }) {
+  const calls: Array<[string, ...unknown[]]> = [];
+  const builder = {
+    from: (...args: unknown[]) => { calls.push(['from', ...args]); return builder; },
+    select: (...args: unknown[]) => { calls.push(['select', ...args]); return builder; },
+    gte: (...args: unknown[]) => { calls.push(['gte', ...args]); return builder; },
+    order: (...args: unknown[]) => { calls.push(['order', ...args]); return builder; },
+    limit: (...args: unknown[]) => { calls.push(['limit', ...args]); return Promise.resolve(result); },
+  };
+  createSupabaseClient.mockReturnValue(builder);
+  return calls;
+}
 
 function makeRow(index: number): Record<string, unknown> {
   return {
@@ -80,6 +103,46 @@ describe('recent event pagination', () => {
       ),
     ).toBe(
       'ts.lt."2026-01-01T23:43:21.000Z",and(ts.eq."2026-01-01T23:43:21.000Z",id.lt."event-\\"0999\\"")',
+    );
+  });
+});
+
+describe('recent participant ids', () => {
+  const env = {} as Env;
+
+  it('selects only participant ids of the newest events in the window', async () => {
+    const calls = recordParticipantQuery({
+      data: [{ participant_id: 'one' }, { participant_id: 'two' }, { participant_id: 'one' }],
+      error: null,
+    });
+
+    const ids = await loadRecentParticipantIds(env, Date.UTC(2026, 0, 2, 0, 0, 0), 1000);
+
+    expect(ids).toEqual(['one', 'two', 'one']);
+    expect(calls).toEqual([
+      ['from', 'collection_events'],
+      ['select', 'participant_id'],
+      ['gte', 'ts', '2026-01-02T00:00:00.000Z'],
+      ['order', 'ts', { ascending: false }],
+      ['limit', 1000],
+    ]);
+  });
+
+  it('rejects a limit larger than one Supabase page', async () => {
+    recordParticipantQuery({ data: [], error: null });
+    await expect(loadRecentParticipantIds(env, 0, 1001)).rejects.toThrow(
+      'Participant id limit 1001 exceeds one Supabase page',
+    );
+  });
+
+  it('throws on query errors and rows without a participant id', async () => {
+    recordParticipantQuery({ data: null, error: { message: 'timeout' } });
+    await expect(loadRecentParticipantIds(env, 0, 10)).rejects.toThrow(
+      'Recent participant query failed: timeout',
+    );
+    recordParticipantQuery({ data: [{ participant_id: null }], error: null });
+    await expect(loadRecentParticipantIds(env, 0, 10)).rejects.toThrow(
+      'Recent participant row is missing participant_id',
     );
   });
 });
