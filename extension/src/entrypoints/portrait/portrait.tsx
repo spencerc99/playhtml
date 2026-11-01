@@ -29,6 +29,7 @@ import {
 import type { PortraitCardProps } from "../../components/PortraitCard";
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
 import { portraitDayFromSearch } from "../../utils/portraitDay";
+import { singleDay, type DayRange } from "@movement/utils/dayRange";
 import { calculateCursorDistance } from "../../utils/cursorDistance";
 
 /** Convert sessions to hour buckets (total ms per hour-of-day) for PortraitCard */
@@ -47,9 +48,10 @@ const PortraitPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [hovering, setHovering] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<string | null>(() =>
-    portraitDayFromSearch(window.location.search),
-  );
+  const [selectedDays, setSelectedDays] = useState<DayRange | null>(() => {
+    const day = portraitDayFromSearch(window.location.search);
+    return day ? singleDay(day) : null;
+  });
   const [dayCounts, setDayCounts] = useState<DayCounts>(new Map());
   const [activeVisualizations, setActiveVisualizations] = useState<string[]>(
     DEFAULT_ACTIVE_VISUALIZATIONS,
@@ -58,7 +60,7 @@ const PortraitPage = () => {
   const exportContainerRef = useRef<HTMLDivElement>(null);
 
   const loadEvents = useCallback(
-    async (day?: string | null) => {
+    async (days?: DayRange | null) => {
       setLoading(true);
       setError(null);
       try {
@@ -69,10 +71,10 @@ const PortraitPage = () => {
           return;
         }
         options.types = Array.from(requiredTypes);
-        if (day) {
-          options.startTs = new Date(day + "T00:00:00").getTime();
-          options.endTs = new Date(day + "T23:59:59.999").getTime();
-          delete options.limit; // Fetch all events for the selected day
+        if (days) {
+          options.startTs = new Date(days.start + "T00:00:00").getTime();
+          options.endTs = new Date(days.end + "T23:59:59.999").getTime();
+          delete options.limit; // Fetch all events for the selected days
         }
         const res: any = await browser.runtime.sendMessage({
           type: "GET_ALL_EVENTS",
@@ -95,8 +97,8 @@ const PortraitPage = () => {
   );
 
   useEffect(() => {
-    loadEvents(selectedDay);
-  }, [loadEvents, selectedDay]);
+    loadEvents(selectedDays);
+  }, [loadEvents, selectedDays]);
 
   // Fetch accurate per-day event counts (full scan, not capped like events)
   useEffect(() => {
@@ -148,13 +150,13 @@ const PortraitPage = () => {
   } | null>(null);
 
   useEffect(() => {
-    if (selectedDay) {
+    if (selectedDays) {
       // Day filter: global aggregate doesn't support date ranges, so
       // fall back to GET_SCREEN_TIME with date bounds.
       setGlobalStats(null);
       setDayScreenTime(null);
-      const startTs = new Date(selectedDay + "T00:00:00").getTime();
-      const endTs = new Date(selectedDay + "T23:59:59.999").getTime();
+      const startTs = new Date(selectedDays.start + "T00:00:00").getTime();
+      const endTs = new Date(selectedDays.end + "T23:59:59.999").getTime();
       browser.runtime
         .sendMessage({ type: "GET_SCREEN_TIME", options: { startTs, endTs } })
         .then((res: any) => {
@@ -187,14 +189,14 @@ const PortraitPage = () => {
       .catch((e: unknown) =>
         console.error("[Portrait] GET_GLOBAL_STATS error:", e),
       );
-  }, [selectedDay]);
+  }, [selectedDays]);
 
   // Build portrait card props from whichever data source is available.
   const portraitStats = useMemo((): PortraitCardProps | null => {
     const cursorDistancePx = calculateCursorDistance(events);
 
     // Unfiltered: use pre-computed global aggregate
-    if (globalStats && !selectedDay) {
+    if (globalStats && !selectedDays) {
       return {
         domain: "",
         totalTimeMs: globalStats.totalTimeMs,
@@ -212,7 +214,7 @@ const PortraitPage = () => {
     }
 
     // Day-filtered: use GET_SCREEN_TIME result for accurate per-day stats
-    if (selectedDay && dayScreenTime) {
+    if (selectedDays && dayScreenTime) {
       const uniqueUrls = new Set<string>();
       for (const evt of events) {
         if (evt.meta?.url) uniqueUrls.add(evt.meta.url);
@@ -222,9 +224,12 @@ const PortraitPage = () => {
         totalTimeMs: dayScreenTime.totalMs,
         hourBuckets: sessionsToHourBuckets(dayScreenTime.sessions),
         cursorDistancePx,
-        dateRange: selectedDay
-          ? { oldest: selectedDay, newest: selectedDay }
-          : null,
+        // Local instants: a bare "YYYY-MM-DD" parses as UTC midnight, which
+        // lands on the previous day west of UTC.
+        dateRange: {
+          oldest: new Date(`${selectedDays.start}T00:00:00`).toISOString(),
+          newest: new Date(`${selectedDays.end}T23:59:59.999`).toISOString(),
+        },
         uniquePageCount: uniqueUrls.size,
       };
     }
@@ -240,7 +245,7 @@ const PortraitPage = () => {
       cursorDistancePx,
       dateRange: null,
     };
-  }, [events, globalStats, dayScreenTime, selectedDay]);
+  }, [events, globalStats, dayScreenTime, selectedDays]);
 
   // Compute trail states for frozen export
   const viewportSize = useMemo(() => ({ width: 800, height: 1000 }), []);
@@ -420,8 +425,8 @@ const PortraitPage = () => {
         error={error}
         fetchEvents={loadEvents}
         dayCounts={dayCounts}
-        selectedDay={selectedDay}
-        onSelectDay={setSelectedDay}
+        selectedDays={selectedDays}
+        onSelectDays={setSelectedDays}
         activeVisualizations={activeVisualizations}
         onSetActiveVisualizations={setActiveVisualizations}
         defaultSoundEnabled

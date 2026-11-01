@@ -17,6 +17,15 @@ import {
   type ArchiveBatchQueue,
   type ArchiveEventBatch,
 } from "../utils/archiveEventBatches";
+import {
+  dayRangeLength,
+  eachDay,
+  MAX_LINKED_SPAN_DAYS,
+  parseDayRange,
+  serializeDayRange,
+  singleDay,
+  type DayRange,
+} from "../utils/dayRange";
 
 const EVENTS_URL = RECENT_EVENTS_URL;
 const RETRY_BACKOFFS_MS = [400, 1200];
@@ -47,6 +56,88 @@ function midnightWindowBounds(
   const from = new Date(localMidnight.getTime() + startMin * 60_000);
   const to = new Date(localMidnight.getTime() + endMin * 60_000);
   return { from: from.toISOString(), to: to.toISOString() };
+}
+
+/** The days a serialized span names; a key this hook built always parses. */
+function daysFromKey(daysKey: string): DayRange {
+  const days = parseDayRange(daysKey);
+  if (!days) throw new Error(`Unreadable archive day span: ${daysKey}`);
+  return days;
+}
+
+/** Events each request of a multi-day span may return, shared across its days. */
+const SPAN_EVENT_BUDGET = 20000;
+/** The fewest events a single day of a long span asks for. */
+const MIN_EVENTS_PER_SPAN_DAY = 250;
+/** Day requests a fixed span fetch keeps in flight at once. */
+const SPAN_REQUEST_CONCURRENCY = 6;
+
+/** The UTC instants where a span of LOCAL days begins and ends. */
+function localDayBounds(days: DayRange): { from: string; to: string } {
+  return {
+    from: new Date(`${days.start}T00:00:00`).toISOString(),
+    to: new Date(`${days.end}T23:59:59.999`).toISOString(),
+  };
+}
+
+/** The UTC bounds to fetch for a span of local days. A single day with a time
+ * of day brackets just that window (see `midnightWindowBounds`); any other span
+ * fetches its whole local days and leaves the time of day to the client filter. */
+function archiveBounds(
+  days: DayRange,
+  tod: TimeOfDay,
+): { from: string; to: string } {
+  if (tod && days.start === days.end) {
+    return midnightWindowBounds(days.start, tod.centerMinutes, tod.radiusMinutes);
+  }
+  return localDayBounds(days);
+}
+
+/**
+ * The requests that fetch a span of local days for one event type outside
+ * batch playback. Each request is recency-capped, so a single request over a
+ * long span would return only its last few days. Instead every day gets its
+ * own request (its time-of-day window, when one is set) with an equal share
+ * of the budget, so each day of a month is represented.
+ */
+export function archiveSpanRequests(
+  days: DayRange,
+  tod: TimeOfDay,
+): { from: string; to: string; limit: string }[] {
+  if (dayRangeLength(days) > MAX_LINKED_SPAN_DAYS) {
+    throw new Error(
+      `Archive span ${days.start}..${days.end} is longer than ${MAX_LINKED_SPAN_DAYS} days`,
+    );
+  }
+  const dayKeys = eachDay(days);
+  if (dayKeys.length === 1) {
+    return [{ ...archiveBounds(days, tod), limit: tod ? "20000" : "5000" }];
+  }
+  const limit = String(
+    Math.max(
+      MIN_EVENTS_PER_SPAN_DAY,
+      Math.ceil(SPAN_EVENT_BUDGET / dayKeys.length),
+    ),
+  );
+  return dayKeys.map((day) => ({ ...archiveBounds(singleDay(day), tod), limit }));
+}
+
+/** Runs `task` over every item with at most `limit` running at once, in order. */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  task: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await task(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 async function fetchEventType(
@@ -101,19 +192,23 @@ export interface ArchiveEventsState {
  * event types populated for installations; batch mode prefetches the next older
  * page and wraps to the newest matching page after history is exhausted. */
 export function useArchiveEvents(params: {
-  selectedDay: string | null;
+  selectedDays: DayRange | null;
   timeOfDay: TimeOfDay;
   serverDomain: string;
   activeVisualizations: string[];
   batchPlayback?: boolean;
 }): ArchiveEventsState {
   const {
-    selectedDay,
+    selectedDays,
     timeOfDay,
     serverDomain,
     activeVisualizations,
     batchPlayback = false,
   } = params;
+
+  // A string stands in for the span in effect dependencies, so a caller that
+  // rebuilds an equal span each render doesn't trigger a refetch.
+  const daysKey = selectedDays ? serializeDayRange(selectedDays) : null;
 
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -166,7 +261,7 @@ export function useArchiveEvents(params: {
 
   const fetchEvents = useCallback(
     async (
-      day: string | null | undefined,
+      daysKey: string | null | undefined,
       vizIds: string[],
       domain: string = "",
       forceRefresh = false,
@@ -181,7 +276,7 @@ export function useArchiveEvents(params: {
 
       // Force refresh when the filter context (day+domain+time-of-day) changed
       const todKey = tod ? `${tod.centerMinutes}:${tod.radiusMinutes}` : "none";
-      const fetchKey = `${day ?? "all"}|${domain}|${todKey}`;
+      const fetchKey = `${daysKey ?? "all"}|${domain}|${todKey}`;
       if (fetchKey !== lastFetchKeyRef.current) {
         forceRefresh = true;
         fetchedTypesRef.current = new Set();
@@ -214,36 +309,18 @@ export function useArchiveEvents(params: {
           fetchEventType(extraParams, type, domain);
 
         let fetched: CollectionEvent[] = [];
-        if (day && tod) {
-          // Time-of-day capture (e.g. the "midnight moment"): fetch the tight
-          // local time-of-day window directly. A whole-day fetch is recency-
-          // capped and returns the END of the UTC day, never reaching early-
-          // UTC-day instants like local midnight — so we must bracket the
-          // window's exact UTC bounds instead.
-          const { from, to } = midnightWindowBounds(
-            day,
-            tod.centerMinutes,
-            tod.radiusMinutes,
-          );
-          const results = await Promise.all(
-            [...typesToFetch].map((type) =>
-              fetchOne({ limit: "20000", from, to }, type),
+        if (daysKey) {
+          // Time-of-day capture (e.g. the "midnight moment"): fetch each
+          // day's tight local window directly. A whole-day fetch is
+          // recency-capped and returns the END of the day, never reaching
+          // instants like local midnight. See archiveSpanRequests for spans.
+          const requests = archiveSpanRequests(daysFromKey(daysKey), tod);
+          const results = await mapWithConcurrency(
+            [...typesToFetch].flatMap((type) =>
+              requests.map((request) => ({ type, request })),
             ),
-          );
-          fetched = results.flat();
-        } else if (day) {
-          // Single-day fetch: scope tightly with the original limit.
-          const results = await Promise.all(
-            [...typesToFetch].map((type) =>
-              fetchOne(
-                {
-                  limit: "5000",
-                  from: day,
-                  to: `${day}T23:59:59Z`,
-                },
-                type,
-              ),
-            ),
+            SPAN_REQUEST_CONCURRENCY,
+            ({ type, request }) => fetchOne(request, type),
           );
           fetched = results.flat();
         } else {
@@ -295,7 +372,7 @@ export function useArchiveEvents(params: {
   const fetchArchiveBatch = useCallback(
     async (
       beforeMs: number | null,
-      day: string | null,
+      daysKey: string | null,
       tod: TimeOfDay,
       domain: string,
       vizIds: string[],
@@ -305,13 +382,9 @@ export function useArchiveEvents(params: {
         return createArchiveEventBatch([], [], ARCHIVE_BATCH_SIZE, null);
       }
       const anchorType = selectArchiveAnchorType(requiredTypes);
-      const timeOfDayBounds =
-        day && tod
-          ? midnightWindowBounds(day, tod.centerMinutes, tod.radiusMinutes)
-          : null;
-      const lowerBound = timeOfDayBounds?.from ?? day;
-      const upperBound =
-        timeOfDayBounds?.to ?? (day ? `${day}T23:59:59Z` : null);
+      const bounds = daysKey ? archiveBounds(daysFromKey(daysKey), tod) : null;
+      const lowerBound = bounds?.from ?? null;
+      const upperBound = bounds?.to ?? null;
       const anchorParams: Record<string, string> = {
         limit: String(ARCHIVE_BATCH_SIZE),
       };
@@ -367,7 +440,7 @@ export function useArchiveEvents(params: {
     [],
   );
 
-  // Refetch when the day, server-side domain, time-of-day window, or active
+  // Refetch when the days, server-side domain, time-of-day window, or active
   // visualizations change. time-of-day must refetch because the midnight window
   // is fetched server-side (a tight from/to bracket), not just filtered
   // client-side; active-viz changes fetch any missing event types. A single
@@ -376,9 +449,9 @@ export function useArchiveEvents(params: {
   // resolution rebuilt the trail set and restarted the animation mid-reveal.
   useEffect(() => {
     if (batchPlayback) return;
-    fetchEvents(selectedDay, activeVisualizations, serverDomain, false, timeOfDay);
+    fetchEvents(daysKey, activeVisualizations, serverDomain, false, timeOfDay);
   }, [
-    selectedDay,
+    daysKey,
     serverDomain,
     timeOfDay,
     activeVisualizations,
@@ -404,7 +477,7 @@ export function useArchiveEvents(params: {
 
     fetchArchiveBatch(
       null,
-      selectedDay,
+      daysKey,
       timeOfDay,
       serverDomain,
       activeVisualizations,
@@ -427,7 +500,7 @@ export function useArchiveEvents(params: {
       });
   }, [
     batchPlayback,
-    selectedDay,
+    daysKey,
     timeOfDay,
     serverDomain,
     activeVisualizations,
@@ -448,7 +521,7 @@ export function useArchiveEvents(params: {
     const prefetch = async () => {
       let next = await fetchArchiveBatch(
         current.nextBeforeMs,
-        selectedDay,
+        daysKey,
         timeOfDay,
         serverDomain,
         activeVisualizations,
@@ -456,7 +529,7 @@ export function useArchiveEvents(params: {
       if (next.events.length === 0 && current.nextBeforeMs !== null) {
         next = await fetchArchiveBatch(
           null,
-          selectedDay,
+          daysKey,
           timeOfDay,
           serverDomain,
           activeVisualizations,
@@ -495,7 +568,7 @@ export function useArchiveEvents(params: {
     batchPlayback,
     batchQueue,
     prefetchRetryVersion,
-    selectedDay,
+    daysKey,
     timeOfDay,
     serverDomain,
     activeVisualizations,
@@ -523,10 +596,10 @@ export function useArchiveEvents(params: {
     }
     fetchedTypesRef.current = new Set();
     lastFetchKeyRef.current = "";
-    fetchEvents(selectedDay, activeVisualizations, serverDomain, true, timeOfDay);
+    fetchEvents(daysKey, activeVisualizations, serverDomain, true, timeOfDay);
   }, [
     batchPlayback,
-    selectedDay,
+    daysKey,
     serverDomain,
     activeVisualizations,
     timeOfDay,
