@@ -113,6 +113,7 @@ import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
 import { ExportMenu } from "./ExportMenu";
 import { ShareButton } from "./ShareButton";
+import type { CollageSigner } from "./collageSignature";
 import {
   CollageMat,
   MAT,
@@ -383,6 +384,9 @@ interface CollageStudioProps {
   /** Whether the export menu offers a view-only link. The host decides, since
    * feature access reads extension storage the walk page can't reach. */
   canPublish?: boolean;
+  /** Who is sharing, so a shared collage can be signed. The host provides it
+   * for the same reason as canPublish. */
+  signer?: CollageSigner;
   /**
    * A collage other people edit at the same time. The studio then reports
    * each settled edit instead of saving, takes in everyone else's edits, and
@@ -442,6 +446,7 @@ export function CollageStudio({
   onLeave,
   autosaveTimers,
   canPublish = false,
+  signer,
   shared,
 }: CollageStudioProps) {
   const initial = useMemo<readonly CollagePiece[]>(
@@ -3108,6 +3113,7 @@ export function CollageStudio({
                   workerUrl={WORKER_URL}
                   materialFor={publishPieceMaterial}
                   coverFor={publishCollageCover}
+                  signer={signer}
                   onShared={(next) => {
                     if (!mountedRef.current) {
                       // The studio closed while the link uploaded: store its
