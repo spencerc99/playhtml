@@ -651,17 +651,19 @@ describe("LocalEventStore aggregates", () => {
   });
 
   it("counts a failed import's saved batches on the next start", async () => {
+    const firstDay = Date.parse("2026-07-20T12:00:00-04:00");
+    const secondDay = Date.parse("2026-07-21T12:00:00-04:00");
     const store = createStore();
     await store.getAllDomains();
     await store.addImportedEventBatch([
       {
         ...event("partial-focus", "navigation"),
-        ts: 1_000,
+        ts: firstDay,
         data: { event: "focus" },
       },
       {
         ...event("partial-blur", "navigation"),
-        ts: 7_000,
+        ts: firstDay + 6_000,
         data: { event: "blur" },
       },
     ]);
@@ -672,7 +674,7 @@ describe("LocalEventStore aggregates", () => {
     await restarted.addEvents([
       {
         ...event("live-event", "navigation"),
-        ts: 9_000,
+        ts: secondDay,
         data: { event: "focus" },
       },
     ]);
@@ -681,6 +683,7 @@ describe("LocalEventStore aggregates", () => {
     expect(await restarted.getSessionStats("example.com")).toMatchObject({
       totalTimeMs: 6_000,
       eventsByType: { navigation: 3 },
+      activeDayCount: 2,
     });
   });
 

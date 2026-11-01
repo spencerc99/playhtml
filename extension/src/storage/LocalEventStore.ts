@@ -716,7 +716,14 @@ export class LocalEventStore {
 
     if (!this.statsBackfillPromise) {
       this.statsBackfillPromise = this.backfillSessionStats()
-        .then(() => this.flushEventsPendingStatsAfterBackfill())
+        .then(async (rebuilt) => {
+          await this.flushEventsPendingStatsAfterBackfill();
+          // Rebuilding session stats resets every domain's active-day count.
+          if (!rebuilt) return;
+          await this.rebuildAggregateDays();
+          await this.writeDaysBackfillState("complete");
+          this.daysBackfillComplete = true;
+        })
         .then(() => this.writeStatsBackfillState("complete"))
         .then(() => {
           this.statsBackfillComplete = true;
@@ -1097,8 +1104,9 @@ export class LocalEventStore {
    * One-time backfill: compute session aggregates from existing navigation events.
    * Skips if domain_stats already has data (idempotent).
    */
-  private async backfillSessionStats(): Promise<void> {
-    if (!this.db) return;
+  /** Rebuild session stats unless they are already complete. Returns whether it rebuilt. */
+  private async backfillSessionStats(): Promise<boolean> {
+    if (!this.db) return false;
 
     const backfillState = await new Promise<{
       state: StatsBackfillState | null;
@@ -1146,10 +1154,11 @@ export class LocalEventStore {
       backfillState.state === "complete" ||
       (backfillState.state === null && backfillState.statsCount > 0)
     ) {
-      return;
+      return false;
     }
 
     await this.rebuildSessionStats();
+    return true;
   }
 
   private async rebuildSessionStats(
