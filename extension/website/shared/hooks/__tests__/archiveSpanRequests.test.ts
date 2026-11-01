@@ -62,4 +62,10 @@ describe("archiveSpanRequests", () => {
     expect(requests).toHaveLength(365);
     expect(requests[0].limit).toBe("250");
   });
+
+  it("refuses a span longer than a linked span may be", () => {
+    expect(() =>
+      archiveSpanRequests({ start: "2000-01-01", end: "9999-12-31" }, null),
+    ).toThrow(/longer than 366 days/);
+  });
 });

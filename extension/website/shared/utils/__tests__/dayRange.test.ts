@@ -90,5 +90,7 @@ describe("day ranges", () => {
     );
     expect(parseDayRange("2026-10-03..soon")).toBeUndefined();
     expect(parseDayRange("yesterday")).toBeUndefined();
+    expect(parseDayRange("2026-02-30")).toBeUndefined();
+    expect(parseDayRange("2026-10-03..2026-13-01")).toBeUndefined();
   });
 });

@@ -18,7 +18,9 @@ import {
   type ArchiveEventBatch,
 } from "../utils/archiveEventBatches";
 import {
+  dayRangeLength,
   eachDay,
+  MAX_LINKED_SPAN_DAYS,
   parseDayRange,
   serializeDayRange,
   singleDay,
@@ -102,6 +104,11 @@ export function archiveSpanRequests(
   days: DayRange,
   tod: TimeOfDay,
 ): { from: string; to: string; limit: string }[] {
+  if (dayRangeLength(days) > MAX_LINKED_SPAN_DAYS) {
+    throw new Error(
+      `Archive span ${days.start}..${days.end} is longer than ${MAX_LINKED_SPAN_DAYS} days`,
+    );
+  }
   const dayKeys = eachDay(days);
   if (dayKeys.length === 1) {
     return [{ ...archiveBounds(days, tod), limit: tod ? "20000" : "5000" }];

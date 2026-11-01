@@ -136,11 +136,18 @@ export function formatDayRange(range: DayRange, withYear = false): string {
   return `${startText} – ${MONTHS[end.getMonth()]} ${end.getDate()}${year}`;
 }
 
-/** Reads `2026-10-03` or `2026-10-03..2026-10-11`; anything else is undefined. */
+/** The longest span a link may name, so a hand-edited URL can't ask for centuries. */
+export const MAX_LINKED_SPAN_DAYS = 366;
+
+/** Whether a "YYYY-MM-DD" key names a real calendar day (not Feb 30). */
+function isRealDay(day: string): boolean {
+  return DAY_KEY.test(day) && dayKey(dayDate(day)) === day;
+}
+
+/** Reads `2026-10-03` or `2026-10-03..2026-10-11` of real days; anything else is undefined. */
 export function parseDayRange(raw: string): DayRange | undefined {
   const [start, end = start, ...rest] = raw.split("..");
-  if (rest.length > 0 || !DAY_KEY.test(start) || !DAY_KEY.test(end))
-    return undefined;
+  if (rest.length > 0 || !isRealDay(start) || !isRealDay(end)) return undefined;
   return spanBetween(start, end);
 }
 
