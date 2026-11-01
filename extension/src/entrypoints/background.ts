@@ -29,7 +29,7 @@ import {
 } from '../storage/playerIdentity'
 import { syncStoredPlayerColor } from '../storage/playerColor'
 import { VERBOSE } from '../config'
-import { gzipEventExport, gunzipToString } from '../utils/dataTransfer'
+import { gzipEventExport } from '../utils/dataTransfer'
 import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
 import {
   loadState,
@@ -1267,30 +1267,48 @@ export default defineBackground(() => {
       return true
     }
 
-    if (message.type === 'IMPORT_EVENTS') {
+    if (message.type === 'IMPORT_EVENT_BATCH') {
       ;(async () => {
         try {
-          const json = await gunzipToString(
-            new Uint8Array(message.data as number[]),
-          )
-          const parsed = JSON.parse(json)
-          if (parsed.version !== 1)
-            throw new Error('Unsupported export version')
-          const events = parsed.events as CollectionEvent[]
-          const stored = await store.addImportedEvents(events)
-          const imported = stored.length
-          const alreadyHeld = events.length - imported
-          if (
-            stored.some((event) => event.type === 'element') &&
-            imported > 0
-          ) {
+          const events = message.events as CollectionEvent[]
+          const stored = await store.addImportedEventBatch(events)
+          reply({
+            success: true,
+            imported: stored.length,
+            alreadyHeld: events.length - stored.length,
+            scrapsAdded: stored.some((event) => event.type === 'element'),
+          })
+        } catch (e) {
+          console.error('[Background] IMPORT_EVENT_BATCH error:', e)
+          reply({ success: false, error: String(e) })
+        }
+      })()
+      return true
+    }
+
+    if (message.type === 'FINISH_IMPORT') {
+      ;(async () => {
+        try {
+          // Report to the settings page at most four times a second, and on every step change.
+          let lastStep = ''
+          let lastSentAt = 0
+          await store.finishImport((progress) => {
+            const now = Date.now()
+            if (progress.step === lastStep && now - lastSentAt < 250) return
+            lastStep = progress.step
+            lastSentAt = now
+            browser.runtime
+              .sendMessage({ type: 'IMPORT_STATS_PROGRESS', ...progress })
+              .catch(() => {})
+          })
+          if (message.scrapsAdded) {
             await browser.runtime
               .sendMessage({ type: 'SCRAP_PHOTOS_UPDATED' })
               .catch(() => {})
           }
-          reply({ success: true, imported, alreadyHeld })
+          reply({ success: true })
         } catch (e) {
-          console.error('[Background] IMPORT_EVENTS error:', e)
+          console.error('[Background] FINISH_IMPORT error:', e)
           reply({ success: false, error: String(e) })
         }
       })()

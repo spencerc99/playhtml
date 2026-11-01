@@ -58,6 +58,21 @@ interface AggregateUrl {
   url: string;
 }
 
+/**
+ * Where a full stats rebuild is: adding every event up per site and page,
+ * saving the totals, then counting active days.
+ */
+export interface StatsRebuildProgress {
+  step: "adding" | "saving" | "days";
+  done: number;
+  total: number;
+}
+
+type StatsRebuildListener = (progress: StatsRebuildProgress) => void;
+
+/** Events between progress reports during a rebuild. */
+const REBUILD_PROGRESS_EVERY = 25_000;
+
 export interface AggregateDay {
   domain: string;
   localDayKey: string;
@@ -394,6 +409,8 @@ export class LocalEventStore {
   private statsBackfillComplete = false;
   private daysBackfillPromise: Promise<void> | null = null;
   private daysBackfillComplete = false;
+  // An import stored events that the aggregates do not count yet.
+  private importStatsStale = false;
   private eventsPendingStatsAfterBackfill: CollectionEvent[] = [];
   private eventIdsPendingStatsAfterBackfill = new Set<string>();
 
@@ -699,11 +716,19 @@ export class LocalEventStore {
 
     if (!this.statsBackfillPromise) {
       this.statsBackfillPromise = this.backfillSessionStats()
-        .then(() => this.flushEventsPendingStatsAfterBackfill())
-        .then(() => this.writeStatsBackfillState("complete"))
-        .then(() => {
+        .then(async (rebuilt) => {
+          // Rebuilding session stats resets every domain's active-day count.
+          if (rebuilt) {
+            await this.rebuildAggregateDays();
+            await this.writeDaysBackfillState("complete");
+            this.daysBackfillComplete = true;
+          }
+          await this.flushEventsPendingStatsAfterBackfill();
+          // Mark complete in the same tick the queue empties, so a live event
+          // stored after this updates stats itself instead of joining the queue.
           this.statsBackfillComplete = true;
         })
+        .then(() => this.writeStatsBackfillState("complete"))
         .finally(() => {
           this.statsBackfillPromise = null;
         });
@@ -735,13 +760,17 @@ export class LocalEventStore {
   }
 
   private async readDaysBackfillState(): Promise<StatsBackfillState | null> {
+    return this.readBackfillState(DAYS_BACKFILL_STATE_KEY);
+  }
+
+  private async readBackfillState(
+    key: string,
+  ): Promise<StatsBackfillState | null> {
     if (!this.db) return null;
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([STATS_STORE_NAME], "readonly");
-      const request = transaction
-        .objectStore(STATS_STORE_NAME)
-        .get(DAYS_BACKFILL_STATE_KEY);
+      const request = transaction.objectStore(STATS_STORE_NAME).get(key);
       request.onsuccess = () => {
         const state = (request.result as { state?: unknown } | undefined)
           ?.state;
@@ -854,21 +883,37 @@ export class LocalEventStore {
     });
   }
 
-  private async rebuildAggregateDays(): Promise<void> {
+  private async rebuildAggregateDays(
+    onProgress?: StatsRebuildListener,
+  ): Promise<void> {
     if (!this.db) return;
     await this.writeDaysBackfillState("running");
 
     const days = await new Promise<AggregateDay[]>((resolve, reject) => {
       const transaction = this.db!.transaction([STORE_NAME], "readonly");
       const index = transaction.objectStore(STORE_NAME).index("type");
-      const request = index.openCursor(IDBKeyRange.only("navigation"));
+      const range = IDBKeyRange.only("navigation");
+      const request = index.openCursor(range);
       const aggregated = new Map<string, AggregateDay>();
+      let total = 0;
+      let done = 0;
+      if (onProgress) {
+        const countRequest = index.count(range);
+        countRequest.onsuccess = () => {
+          total = countRequest.result;
+          onProgress({ step: "days", done, total });
+        };
+      }
 
       request.onsuccess = () => {
         const cursor = request.result;
         if (!cursor) {
           resolve([...aggregated.values()]);
           return;
+        }
+        done++;
+        if (onProgress && done % REBUILD_PROGRESS_EVERY === 0) {
+          onProgress({ step: "days", done, total });
         }
 
         const event = toCollectionEvent(cursor.value as StoredCollectionEvent);
@@ -1032,11 +1077,51 @@ export class LocalEventStore {
       this.eventsPendingStatsAfterBackfill = [];
       this.eventIdsPendingStatsAfterBackfill.clear();
 
-      await this.updateDomainStats(
-        events,
-        LocalEventStore.groupEventsByDomain(events),
-      );
+      const eventsByDomain = LocalEventStore.groupEventsByDomain(events);
+      await this.updateDomainStats(events, eventsByDomain);
+      await this.upsertAggregateDays(events);
+      // A days rebuild running alongside may have stored a day for a domain
+      // whose aggregate did not exist yet, so set counts from the stored days.
+      await this.recountActiveDays([
+        ...new Set(
+          LocalEventStore.aggregateDaysForEvents(events).map(
+            (day) => day.domain,
+          ),
+        ),
+      ]);
     }
+  }
+
+  private async recountActiveDays(domains: string[]): Promise<void> {
+    if (domains.length === 0 || !this.db) return;
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = this.db!.transaction(
+        [AGGREGATE_DAYS_STORE_NAME, STATS_STORE_NAME],
+        "readwrite",
+      );
+      const daysStore = transaction.objectStore(AGGREGATE_DAYS_STORE_NAME);
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      for (const domain of domains) {
+        // Day keys are [domain, localDayKey]; an empty array sorts after any string.
+        const countRequest = daysStore.count(
+          IDBKeyRange.bound([domain], [domain, []]),
+        );
+        countRequest.onsuccess = () => {
+          const request = statsStore.get(domainStatsKey(domain));
+          request.onsuccess = () => {
+            const aggregate = request.result as
+              | DomainStatsAggregate
+              | undefined;
+            if (!aggregate) return;
+            aggregate.activeDayCount = countRequest.result;
+            statsStore.put(aggregate);
+          };
+        };
+      }
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
   }
 
   private async writeStatsBackfillState(
@@ -1060,8 +1145,9 @@ export class LocalEventStore {
    * One-time backfill: compute session aggregates from existing navigation events.
    * Skips if domain_stats already has data (idempotent).
    */
-  private async backfillSessionStats(): Promise<void> {
-    if (!this.db) return;
+  /** Rebuild session stats unless they are already complete. Returns whether it rebuilt. */
+  private async backfillSessionStats(): Promise<boolean> {
+    if (!this.db) return false;
 
     const backfillState = await new Promise<{
       state: StatsBackfillState | null;
@@ -1109,13 +1195,16 @@ export class LocalEventStore {
       backfillState.state === "complete" ||
       (backfillState.state === null && backfillState.statsCount > 0)
     ) {
-      return;
+      return false;
     }
 
     await this.rebuildSessionStats();
+    return true;
   }
 
-  private async rebuildSessionStats(): Promise<void> {
+  private async rebuildSessionStats(
+    onProgress?: StatsRebuildListener,
+  ): Promise<void> {
     if (!this.db) return;
 
     await this.writeStatsBackfillState("running");
@@ -1124,67 +1213,88 @@ export class LocalEventStore {
       console.log("[LocalEventStore] Starting domain stats backfill...");
     }
 
-    // Walk ALL events to build complete aggregates (counts, timestamps, URLs, sessions)
-    const allEvents = await new Promise<CollectionEvent[]>(
-      (resolve, reject) => {
-        const tx = this.db!.transaction([STORE_NAME], "readonly");
-        const store = tx.objectStore(STORE_NAME);
-        const events: CollectionEvent[] = [];
-        const req = store.openCursor();
-
-        req.onsuccess = () => {
-          const cursor = req.result;
-          if (cursor) {
-            const evt = toCollectionEvent(
-              cursor.value as StoredCollectionEvent,
-            );
-            if (!this.eventIdsPendingStatsAfterBackfill.has(evt.id)) {
-              events.push(evt);
-            }
-            cursor.continue();
-          } else {
-            resolve(events);
-          }
-        };
-        req.onerror = () => reject(req.error);
-      },
-    );
-
-    // Group events by aggregate key (global + domain-level + page-level)
-    const keyToEvents = new Map<
+    // Walk every event once in time order and add it straight into its
+    // global, domain and page aggregates. Only the aggregates are held in
+    // memory, never the events, so the size of the history does not matter.
+    // The ts index orders ties by id, matching a stable sort of store order.
+    const groups = new Map<
       string,
-      { domain: string; events: CollectionEvent[] }
+      {
+        agg: DomainStatsAggregate;
+        urls: Set<string>;
+        hasNavigation: boolean;
+      }
     >();
-
-    // Global aggregate: all events regardless of domain
-    keyToEvents.set(GLOBAL_STATS_KEY, { domain: "", events: [] });
-
-    for (const evt of allEvents) {
-      keyToEvents.get(GLOBAL_STATS_KEY)!.events.push(evt);
-
-      const dom = (evt as any).domain || extractDomain(evt.meta?.url);
-      if (!dom) continue;
-
-      // Domain-level
-      const dKey = domainStatsKey(dom);
-      if (!keyToEvents.has(dKey)) {
-        keyToEvents.set(dKey, { domain: dom, events: [] });
+    const addTo = (key: string, domain: string, evt: CollectionEvent) => {
+      let group = groups.get(key);
+      if (!group) {
+        group = {
+          agg: LocalEventStore.emptyAggregate(key, domain),
+          urls: new Set(),
+          hasNavigation: false,
+        };
+        groups.set(key, group);
       }
-      keyToEvents.get(dKey)!.events.push(evt);
+      if (evt.type === "navigation") group.hasNavigation = true;
+      if (evt.meta?.url) group.urls.add(evt.meta.url);
+      LocalEventStore.applyEventsToAggregate(group.agg, [evt]);
+    };
 
-      // Page-level
-      const nUrl =
-        (evt as any).normalizedUrl || normalizeUrl(evt.meta?.url ?? "");
-      if (nUrl) {
-        const pKey = pageStatsKey(dom, nUrl);
-        if (!keyToEvents.has(pKey)) {
-          keyToEvents.set(pKey, { domain: dom, events: [] });
+    await new Promise<void>((resolve, reject) => {
+      const tx = this.db!.transaction([STORE_NAME], "readonly");
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.index("ts").openCursor();
+      let total = 0;
+      let added = 0;
+      if (onProgress) {
+        const countReq = store.count();
+        countReq.onsuccess = () => {
+          total = countReq.result;
+          onProgress({ step: "adding", done: added, total });
+        };
+      }
+
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) {
+          resolve();
+          return;
         }
-        keyToEvents.get(pKey)!.events.push(evt);
-      }
+        const evt = toCollectionEvent(cursor.value as StoredCollectionEvent);
+        if (!this.eventIdsPendingStatsAfterBackfill.has(evt.id)) {
+          addTo(GLOBAL_STATS_KEY, "", evt);
+          const dom = (evt as any).domain || extractDomain(evt.meta?.url);
+          if (dom) {
+            addTo(domainStatsKey(dom), dom, evt);
+            const nUrl =
+              (evt as any).normalizedUrl || normalizeUrl(evt.meta?.url ?? "");
+            if (nUrl) addTo(pageStatsKey(dom, nUrl), dom, evt);
+          }
+        }
+        added++;
+        if (onProgress && added % REBUILD_PROGRESS_EVERY === 0) {
+          onProgress({ step: "adding", done: added, total });
+        }
+        cursor.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+    if (!groups.has(GLOBAL_STATS_KEY)) {
+      groups.set(GLOBAL_STATS_KEY, {
+        agg: LocalEventStore.emptyAggregate(GLOBAL_STATS_KEY, ""),
+        urls: new Set(),
+        hasNavigation: false,
+      });
     }
 
-    // Compute and write aggregates
+    const computed: { agg: DomainStatsAggregate; uniqueUrls: string[] }[] = [];
+    for (const { agg, urls, hasNavigation } of groups.values()) {
+      const uniqueUrls = hasNavigation ? [...urls] : [];
+      agg.uniqueUrlCount = uniqueUrls.length;
+      computed.push({ agg, uniqueUrls });
+    }
+
+    onProgress?.({ step: "saving", done: 0, total: computed.length });
     const tx = this.db!.transaction(
       [STATS_STORE_NAME, AGGREGATE_URLS_STORE_NAME],
       "readwrite",
@@ -1194,17 +1304,11 @@ export class LocalEventStore {
     statsStore.clear();
     aggregateUrlsStore.clear();
 
-    for (const [key, { domain, events }] of keyToEvents) {
-      const agg = LocalEventStore.emptyAggregate(key, domain);
-      // Sort events by timestamp so session pairing works correctly
-      events.sort((a, b) => a.ts - b.ts);
-      const uniqueUrls = LocalEventStore.uniqueUrlsForEvents(events);
-      agg.uniqueUrlCount = uniqueUrls.length;
-      LocalEventStore.applyEventsToAggregate(agg, events);
+    for (const { agg, uniqueUrls } of computed) {
       statsStore.put(agg);
       for (const url of uniqueUrls) {
         aggregateUrlsStore.put({
-          aggregateKey: key,
+          aggregateKey: agg.key,
           url,
         } satisfies AggregateUrl);
       }
@@ -1221,7 +1325,7 @@ export class LocalEventStore {
 
     if (VERBOSE) {
       console.log(
-        `[LocalEventStore] Backfilled domain stats for ${keyToEvents.size} keys`,
+        `[LocalEventStore] Backfilled domain stats for ${groups.size} keys`,
       );
     }
   }
@@ -2427,12 +2531,18 @@ export class LocalEventStore {
    * Add a batch of events using ID upserts and canonical scrap deduplication.
    * Incrementally updates aggregates for accepted events.
    */
-  async addEvents(events: CollectionEvent[]): Promise<CollectionEvent[]> {
+  async addEvents(
+    events: CollectionEvent[],
+    options: { updateStats?: boolean } = {},
+  ): Promise<CollectionEvent[]> {
     await this.ensureInitialized();
 
     if (events.length === 0) return [];
 
-    const canUpdateStats = await this.canUpdateStatsIncrementally();
+    // An import skips per-batch aggregate work and rebuilds once at the end.
+    const updateStats = options.updateStats ?? true;
+    const canUpdateStats =
+      !updateStats || (await this.canUpdateStatsIncrementally());
 
     const storedEventsById = new Map<string, StoredCollectionEvent>();
     for (const event of events) {
@@ -2545,6 +2655,7 @@ export class LocalEventStore {
       );
       return eventsForStats;
     }
+    if (!updateStats) return eventsForStats;
 
     // Update domain aggregates in a separate transaction so a stats
     // failure never blocks event storage
@@ -2574,15 +2685,59 @@ export class LocalEventStore {
   async addImportedEvents(
     events: CollectionEvent[],
   ): Promise<CollectionEvent[]> {
+    const stored = await this.addImportedEventBatch(events);
+    await this.rebuildStatsAfterImport();
+    return stored;
+  }
+
+  /**
+   * Store one batch of a larger import without touching aggregates. Returns the
+   * newly stored events. Call finishImport once the last batch is in, or after
+   * the import fails partway.
+   */
+  async addImportedEventBatch(
+    events: CollectionEvent[],
+  ): Promise<CollectionEvent[]> {
+    // Settle both backfills first so marking them stale below cannot start a
+    // second rebuild while the import is still storing batches.
     await this.ensureSessionStatsBackfilled();
-    const stored = await this.addEvents(events);
-    await this.rebuildSessionStats();
-    await this.rebuildAggregateDays();
+    await this.ensureAggregateDaysBackfilled();
+    const stored = await this.addEvents(events, { updateStats: false });
+    if (stored.length > 0 && !this.importStatsStale) {
+      // Persist the gap so the next start rebuilds if this import never finishes.
+      await this.writeStatsBackfillState("running");
+      await this.writeDaysBackfillState("running");
+      this.importStatsStale = true;
+    }
+    return stored;
+  }
+
+  /**
+   * Rebuild the aggregates if an import, this one or an earlier one that
+   * failed, stored events they do not count yet. Returns whether it rebuilt.
+   */
+  async finishImport(onProgress?: StatsRebuildListener): Promise<boolean> {
+    await this.ensureInitialized();
+    const stale =
+      this.importStatsStale ||
+      (await this.readBackfillState(STATS_BACKFILL_STATE_KEY)) === "running" ||
+      (await this.readDaysBackfillState()) === "running";
+    if (!stale) return false;
+    await this.rebuildStatsAfterImport(onProgress);
+    return true;
+  }
+
+  /** Recompute every aggregate from the stored events after an import. */
+  async rebuildStatsAfterImport(
+    onProgress?: StatsRebuildListener,
+  ): Promise<void> {
+    await this.rebuildSessionStats(onProgress);
+    await this.rebuildAggregateDays(onProgress);
     await this.writeDaysBackfillState("complete");
     this.daysBackfillComplete = true;
     await this.writeStatsBackfillState("complete");
     this.statsBackfillComplete = true;
-    return stored;
+    this.importStatsStale = false;
   }
 
   /**
