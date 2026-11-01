@@ -717,6 +717,16 @@ describe("LocalEventStore aggregates", () => {
             ts: thirdDay,
             data: { event: "focus" },
           },
+          {
+            ...event("first-visit-during-days-rebuild", "navigation"),
+            ts: thirdDay,
+            data: { event: "focus" },
+            domain: "new.example",
+            meta: {
+              ...event("first-visit-during-days-rebuild", "navigation").meta,
+              url: "https://new.example/page",
+            },
+          },
         ]);
       }
       return rebuildAggregateDays();
@@ -733,6 +743,10 @@ describe("LocalEventStore aggregates", () => {
     expect(await restarted.getSessionStats("example.com")).toMatchObject({
       eventsByType: { navigation: 3 },
       activeDayCount: 3,
+    });
+    expect(await restarted.getSessionStats("new.example")).toMatchObject({
+      eventsByType: { navigation: 1 },
+      activeDayCount: 1,
     });
     expect(browsedDuringRebuild).toBe(true);
   });

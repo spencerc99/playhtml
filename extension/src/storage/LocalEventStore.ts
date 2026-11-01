@@ -1077,12 +1077,51 @@ export class LocalEventStore {
       this.eventsPendingStatsAfterBackfill = [];
       this.eventIdsPendingStatsAfterBackfill.clear();
 
-      await this.updateDomainStats(
-        events,
-        LocalEventStore.groupEventsByDomain(events),
-      );
+      const eventsByDomain = LocalEventStore.groupEventsByDomain(events);
+      await this.updateDomainStats(events, eventsByDomain);
       await this.upsertAggregateDays(events);
+      // A days rebuild running alongside may have stored a day for a domain
+      // whose aggregate did not exist yet, so set counts from the stored days.
+      await this.recountActiveDays([
+        ...new Set(
+          LocalEventStore.aggregateDaysForEvents(events).map(
+            (day) => day.domain,
+          ),
+        ),
+      ]);
     }
+  }
+
+  private async recountActiveDays(domains: string[]): Promise<void> {
+    if (domains.length === 0 || !this.db) return;
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = this.db!.transaction(
+        [AGGREGATE_DAYS_STORE_NAME, STATS_STORE_NAME],
+        "readwrite",
+      );
+      const daysStore = transaction.objectStore(AGGREGATE_DAYS_STORE_NAME);
+      const statsStore = transaction.objectStore(STATS_STORE_NAME);
+      for (const domain of domains) {
+        // Day keys are [domain, localDayKey]; an empty array sorts after any string.
+        const countRequest = daysStore.count(
+          IDBKeyRange.bound([domain], [domain, []]),
+        );
+        countRequest.onsuccess = () => {
+          const request = statsStore.get(domainStatsKey(domain));
+          request.onsuccess = () => {
+            const aggregate = request.result as
+              | DomainStatsAggregate
+              | undefined;
+            if (!aggregate) return;
+            aggregate.activeDayCount = countRequest.result;
+            statsStore.put(aggregate);
+          };
+        };
+      }
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
   }
 
   private async writeStatsBackfillState(
