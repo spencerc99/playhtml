@@ -72,6 +72,7 @@ import {
   parseTimeOfDayFromUrl,
   type TimeOfDayFilter,
 } from "../config";
+import { clampScrollSpeed } from "../utils/settingsSpec";
 import type { DayCounts } from "../types";
 import { DEFAULT_SETTINGS, type MovementSettings } from "./settingsDefaults";
 import {
@@ -536,9 +537,26 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     () => ({ ...DEFAULT_SETTINGS, ...defaultSettings }),
     [defaultSettings],
   );
-  const [selectedSettings, setSettings] = useState(() =>
-    loadSettings(defaultSettings, useStoredSettings),
-  );
+  const [selectedSettings, setSettings] = useState(() => {
+    const loaded = loadSettings(defaultSettings, useStoredSettings);
+    return {
+      ...loaded,
+      scrollSpeed: clampScrollSpeed(
+        loaded.scrollSpeed,
+        installationRecordings !== undefined,
+      ),
+    };
+  });
+  // installationRecordings can toggle at runtime (e.g. adding a second
+  // visualization on the live installation), which shrinks the slider range;
+  // pull a now out-of-range speed back inside it.
+  const recordedScrollTiming = installationRecordings !== undefined;
+  useEffect(() => {
+    setSettings((s) => {
+      const clamped = clampScrollSpeed(s.scrollSpeed, recordedScrollTiming);
+      return clamped === s.scrollSpeed ? s : { ...s, scrollSpeed: clamped };
+    });
+  }, [recordedScrollTiming]);
   const settings = useMemo(
     () => installationRole
       ? { ...selectedSettings, randomizeColors: false }
@@ -1690,6 +1708,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     <div className="internet-movement">
       <Controls
         visible={controlsVisible}
+        recordedScrollTiming={installationRecordings !== undefined}
         settings={settings}
         settingsDefaults={settingsDefaults}
         setSettings={setSettingsFromControls}
