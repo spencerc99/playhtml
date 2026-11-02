@@ -28,4 +28,6 @@ export const PINNED_COLLAGES: readonly PinnedCollage[] = [
   { id: "TTmQjpbr6KXvePqO7lEwpQ", by: JCLAHOOT },
   // "the way out"
   { id: "6K99LF2Gld4NBGL67CXdTg", by: SPENCER },
+  // "construction"
+  { id: "aXkOxC_W_o3LSzntBf8MAw", by: SPENCER },
 ];
