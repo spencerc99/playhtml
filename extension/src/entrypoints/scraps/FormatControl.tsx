@@ -1,7 +1,7 @@
 // ABOUTME: The collage's document settings: its fixed size and the paper it is made on.
 // ABOUTME: Two small buttons in the bottom bar (size, paper) and the zoom, opening one popover.
 
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   COLLAGE_FORMATS,
   FORMAT_NAMES,

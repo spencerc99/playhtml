@@ -1,7 +1,6 @@
 // ABOUTME: A quiet popover listing the studio's keyboard shortcuts.
 // ABOUTME: Sits above the toolbar in the page's own paper-and-mono language.
 
-import React from "react";
 import { STUDIO_SHORTCUTS } from "./studioKeymap";
 
 export function KeysPopover({ onClose }: { onClose: () => void }) {

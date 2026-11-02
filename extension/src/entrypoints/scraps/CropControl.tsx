@@ -1,7 +1,6 @@
 // ABOUTME: The small panel shown while a piece is being cropped: back to the whole picture, or done.
 // ABOUTME: It takes the piece strip's place beside the piece until the crop is committed.
 
-import React from "react";
 import type { CollagePiece } from "./collageRecord";
 import {
   isFullCrop,

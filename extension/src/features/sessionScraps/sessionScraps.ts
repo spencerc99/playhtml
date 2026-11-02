@@ -125,3 +125,43 @@ export function selectSessionScraps(
     },
   };
 }
+
+/**
+ * The most scraps a shared collage page's drawer receives from the whole
+ * library: the newest ones, enough to browse without shipping a history.
+ */
+export const LIBRARY_SCRAP_LIMIT = 2000;
+
+/**
+ * The newest image scraps from anywhere in the history, for the drawer of a
+ * shared collage. Same trimming as a session: web images only, the page's
+ * origin only, and the same picture seen twice counts once.
+ */
+export function selectLibraryScraps(
+  newestFirst: readonly SessionScrapCandidate[],
+  limit = LIBRARY_SCRAP_LIMIT,
+): SessionScrapsAnswer {
+  const seen = new Set<string>();
+  const scraps: SessionScrap[] = [];
+  for (const scrap of newestFirst) {
+    if (!isWebImage(scrap.src)) continue;
+    const key = scrap.contentHash ?? scrap.src;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    scraps.push({
+      id: scrap.id,
+      src: scrap.src,
+      pageUrl: pageOrigin(scrap.pageUrl),
+      ...(scrap.alt ? { alt: scrap.alt } : {}),
+      width: scrap.naturalWidth,
+      height: scrap.naturalHeight,
+      capturedAt: scrap.ts,
+    });
+    if (scraps.length >= limit) break;
+  }
+  if (scraps.length === 0) return { scraps, window: null };
+  return {
+    scraps,
+    window: { start: scraps[scraps.length - 1].capturedAt, end: scraps[0].capturedAt },
+  };
+}

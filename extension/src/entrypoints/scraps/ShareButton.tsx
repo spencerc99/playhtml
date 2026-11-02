@@ -1,7 +1,7 @@
 // ABOUTME: The studio's "share to view" button, beside "export", opening a popover that makes a view-only link.
 // ABOUTME: The popover holds the publish section: make the link, then copy, open, update or unshare it.
 
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PublishSection, type PublishSectionProps } from "./PublishSection";
 
 export function ShareButton(props: PublishSectionProps) {

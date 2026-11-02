@@ -32,7 +32,6 @@ import {
   snapDegrees,
   sourceBoxForCrop,
   type CropFraction,
-  type PieceBox,
   type Point,
   type ResizeCorner,
 } from "./collageGeometry";

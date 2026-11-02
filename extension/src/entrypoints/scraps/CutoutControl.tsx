@@ -1,7 +1,6 @@
 // ABOUTME: The edge control for a background cutout, shown while the cutout is being tuned.
 // ABOUTME: It takes the piece strip's place beside the piece until it is done.
 
-import React from "react";
 import type { CollagePiece } from "./collageRecord";
 import { useBesidePiece } from "./PieceActions";
 

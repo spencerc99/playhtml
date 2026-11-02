@@ -40,6 +40,7 @@ import { markExtensionInstalled } from "../utils/extensionInstallMarker";
 import { isExtensionPageUrl } from "../utils/extensionPage";
 import { initHostedSlowModeContentBridge } from "../features/slowMode/slowModeHostedContentBridge";
 import { initSessionScrapsContentBridge } from "../features/sessionScraps/sessionScrapsContentBridge";
+import { initSharedCollageContentBridge } from "../features/sharedCollages/sharedCollageContentBridge";
 import {
   ALLOW_LOCAL_SESSION_SCRAPS_PAGES,
   isSessionScrapsPageUrl,
@@ -77,6 +78,8 @@ export default defineContentScript({
     ctx?.onInvalidated(removeSlowModeBridge);
     const removeSessionScrapsBridge = initSessionScrapsContentBridge();
     ctx?.onInvalidated(removeSessionScrapsBridge);
+    const removeSharedCollageBridge = initSharedCollageContentBridge();
+    ctx?.onInvalidated(removeSharedCollageBridge);
     const removeInstallationContent = watchInstallationContent();
     ctx?.onInvalidated(removeInstallationContent);
 
