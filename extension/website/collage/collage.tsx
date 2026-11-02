@@ -71,6 +71,7 @@ import {
   type ViewerPiece,
 } from "./publishedCollageView";
 import { VIEWER_STYLES } from "./collageViewerStyles";
+import { VIEWER_CREDIT_STYLES, ViewerCredit } from "./ViewerCredit";
 import {
   SIGNATURE_STAMP_STYLES,
   SignatureStamp,
@@ -788,6 +789,8 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
         <HoverLabel piece={pieces[hovered.index]} rect={hovered.rect} />
       )}
 
+      {!chromeHidden && <ViewerCredit />}
+
       {examining &&
         examinedItem &&
         examinedPiece &&
@@ -916,6 +919,7 @@ function PublishedCollagePage() {
       <style>{COLLAGE_PEEK_STYLES}</style>
       <style>{VIEWER_STYLES}</style>
       <style>{SIGNATURE_STAMP_STYLES}</style>
+      <style>{VIEWER_CREDIT_STYLES}</style>
       {body}
     </>
   );
