@@ -41,7 +41,7 @@ test("flags increases past both the relative and absolute threshold", () => {
     base,
     {
       ...base,
-      bundle_gz_kb: 67.0, // +2.8%, +1.8 KB
+      bundle_gz_kb: 70.0, // +7.4%, +4.8 KB
       stream_bytes: 17900, // +0.5%, under 10%
       fanout_renders: 200, // +100%
       init_qsa_calls: 20, // fewer scans
@@ -67,6 +67,14 @@ test("small bundle growth under the absolute threshold is not flagged", () => {
   const comparison = compareResults(
     { bundle_gz_kb: 10 },
     { bundle_gz_kb: 10.4 },
+  );
+  assert.equal(statusOf(comparison, "bundle_gz_kb"), "ok");
+});
+
+test("a typical feature-sized bundle increase is not flagged", () => {
+  const comparison = compareResults(
+    { bundle_gz_kb: 65.3 },
+    { bundle_gz_kb: 66.8 }, // +2.3%, +1.5 KB
   );
   assert.equal(statusOf(comparison, "bundle_gz_kb"), "ok");
 });
