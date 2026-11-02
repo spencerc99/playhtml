@@ -8,6 +8,7 @@ import { CollageStudio } from "./CollageStudio";
 import { COLLAGE_STUDIO_STYLES } from "./collageStudioStyles";
 import type { CollageRecord } from "./collageRecord";
 import { useSettledFeatureState } from "../../features/useFeatureAccess";
+import { extensionSigner } from "./extensionSigner";
 
 interface CreateModeProps {
   items: ScrapItem[];
@@ -54,6 +55,7 @@ export function CreateMode({
             onSaved={onSaved}
             onLeave={onLeave}
             canPublish={shareLinks?.enabled === true}
+            signer={extensionSigner}
           />
         )}
       </div>

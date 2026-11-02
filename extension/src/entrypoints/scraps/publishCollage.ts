@@ -15,6 +15,7 @@ import {
   type PublishedCollagePiece,
   type PublishedPieceContent,
   type PublishedPieceSource,
+  type PublishedSignature,
 } from "../../../shared/publishedCollage";
 import type { CropFraction } from "./collageGeometry";
 import type {
@@ -155,6 +156,7 @@ export async function buildPublishedCollage(
   >,
   materialFor: PieceMaterialResolver,
   coverFor?: CollageCoverBaker,
+  signature?: PublishedSignature,
 ): Promise<BuiltPublication> {
   const limits = PUBLISHED_COLLAGE_LIMITS;
   if (record.pieces.length === 0) {
@@ -248,6 +250,7 @@ export async function buildPublishedCollage(
       ? { createdAt: record.createdAt }
       : {}),
     ...(record.backShows ? { backShows: record.backShows } : {}),
+    ...(signature ? { signature: { ...signature } } : {}),
   };
   // The Worker checks the same rules; failing here says so before uploading.
   try {

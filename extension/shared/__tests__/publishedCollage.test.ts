@@ -306,6 +306,55 @@ describe("parsePublishedCollage", () => {
     );
     expect(parsed.pieces[0].source.pageUrl).toBe("");
   });
+
+  it("reads a signature by name and colour, or by colour alone", () => {
+    const named = parsePublishedCollage(
+      collage({
+        signature: { name: "  spencer ", color: "#FFAE00", pid: "x" },
+      }),
+    );
+    expect(named.signature).toEqual({ name: "spencer", color: "#ffae00" });
+    const sealed = parsePublishedCollage(
+      collage({ signature: { color: "#4f8cff" } }),
+    );
+    expect(sealed.signature).toEqual({ color: "#4f8cff" });
+    const joined = parsePublishedCollage(
+      collage({
+        signature: { color: "#4f8cff", name: "\u{1F469}\u200D\u{1F4BB}" },
+      }),
+    );
+    expect(joined.signature?.name).toBe("\u{1F469}\u200D\u{1F4BB}");
+    expect(parsePublishedCollage(collage())).not.toHaveProperty("signature");
+  });
+
+  for (const [name, signature] of [
+    ["a signature without a colour", { name: "spencer" }],
+    ["a signature colour that is not hex", { color: "hsl(10, 70%, 60%)" }],
+    ["an empty signature name", { name: "   ", color: "#ffae00" }],
+    [
+      "a signature name of only joiners",
+      { name: "\u200C\u200D", color: "#ffae00" },
+    ],
+    [
+      "a signature name with control characters",
+      { name: "a\nb", color: "#ffae00" },
+    ],
+    [
+      "a signature name with a direction override",
+      { name: "ari\u202Ekcis", color: "#ffae00" },
+    ],
+    [
+      "a signature name with a zero-width character",
+      { name: "spen\u200Bcer", color: "#ffae00" },
+    ],
+    ["an overlong signature name", { name: "x".repeat(61), color: "#ffae00" }],
+  ] as const) {
+    it(`rejects ${name}`, () => {
+      expect(() => parsePublishedCollage(collage({ signature }))).toThrow(
+        PublishedCollageError,
+      );
+    });
+  }
 });
 
 describe("picture names", () => {
