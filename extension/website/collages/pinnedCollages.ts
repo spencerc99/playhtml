@@ -22,4 +22,8 @@ const SPENCER: CollageMaker = { name: "spencer", color: "#ffae00" };
 export const PINNED_COLLAGES: readonly PinnedCollage[] = [
   { id: "TpNCMd88MOQVtAeRT9Lvlw", by: SPENCER },
   { id: "iLhZ4UrzUPxNCfM7vICBwA", by: SPENCER },
+  // "Internet shrine"
+  { id: "TTmQjpbr6KXvePqO7lEwpQ", by: SPENCER },
+  // "the way out"
+  { id: "6K99LF2Gld4NBGL67CXdTg", by: SPENCER },
 ];
