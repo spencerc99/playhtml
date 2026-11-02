@@ -270,6 +270,28 @@ export function ScrapsPage() {
     return () => browser.runtime.onMessage.removeListener(onMessage);
   }, []);
 
+  // On iPhone, Safari's copy of the extension and the app's share scraps.
+  // Opening the page brings in what the other one collected or deleted since
+  // their last sync, then lists the scraps again. Elsewhere nothing syncs.
+  useEffect(() => {
+    let cancelled = false;
+    browser.runtime
+      .sendMessage({ type: "SYNC_DEVICES" })
+      .then((result) => {
+        const synced =
+          typeof result === "object" && result !== null && "synced" in result
+            ? result.synced === true
+            : false;
+        if (synced && !cancelled) setRevision((value) => value + 1);
+      })
+      .catch((syncError) => {
+        console.warn("Could not sync scraps with this iPhone's other copy:", syncError);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     requestGeneration.current += 1;
@@ -413,10 +435,12 @@ export function ScrapsPage() {
           .scraps-heading { top: 48px; width: calc(100vw - 32px); }
           .scraps-stage { inset: 104px 0 0; }
           .scraps-history-error { top: 120px; }
+          /* An open collage takes the screen; its own back link returns to the list. */
+          .scraps-heading--studio { display: none; }
         }
       `}</style>
       <header
-        className="scraps-heading"
+        className={`scraps-heading${mode === "create" && studioOpen ? " scraps-heading--studio" : ""}`}
         style={{
           position: "absolute",
           left: "50%",

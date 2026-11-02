@@ -110,40 +110,46 @@ describe("drawing order", () => {
 
 describe("a plain press", () => {
   it("takes the frontmost piece when nothing is in hand", () => {
-    expect(planPress(pile, inThePile, null, false)).toEqual({
+    expect(planPress(pile, inThePile, null, { deep: false, sameSpot: false })).toEqual({
       selectOnDown: "top",
       dragId: "top",
       selectOnClick: "top",
     });
   });
 
-  it("keeps the piece in hand when it is clicked again, wherever it lies in the pile", () => {
-    // A buried piece reached from the list stays in hand: a click on it must
-    // not hand the press to the piece lying over it.
-    expect(planPress(pile, inThePile, "top", false)?.selectOnClick).toBe("top");
-    expect(planPress(pile, inThePile, "middle", false)?.selectOnClick).toBe(
-      "middle",
-    );
-    expect(planPress(pile, inThePile, "bottom", false)?.selectOnClick).toBe(
-      "bottom",
-    );
+  it("takes the piece on top on a click, even when a buried piece is in hand", () => {
+    // A buried piece reached from the list must not stop the piece lying over
+    // it from being clicked.
+    const plainClick = { deep: false, sameSpot: false };
+    expect(planPress(pile, inThePile, "top", plainClick)?.selectOnClick).toBe("top");
+    expect(planPress(pile, inThePile, "middle", plainClick)?.selectOnClick).toBe("top");
+    expect(planPress(pile, inThePile, "bottom", plainClick)?.selectOnClick).toBe("top");
+  });
+
+  it("walks one piece further down on each click on the same spot, then wraps", () => {
+    const again = { deep: false, sameSpot: true };
+    expect(planPress(pile, inThePile, "top", again)?.selectOnClick).toBe("middle");
+    expect(planPress(pile, inThePile, "middle", again)?.selectOnClick).toBe("bottom");
+    expect(planPress(pile, inThePile, "bottom", again)?.selectOnClick).toBe("top");
+    // The press still keeps the piece in hand, so a drag moves it.
+    expect(planPress(pile, inThePile, "middle", again)?.dragId).toBe("middle");
   });
 
   it("never changes the selection when the press on the piece in hand drags", () => {
     // Clicking the top piece and pressing again to drag it must keep it.
-    const plan = planPress(pile, inThePile, "top", false);
+    const plan = planPress(pile, inThePile, "top", { deep: false, sameSpot: false });
     expect(plan?.selectOnDown).toBe("top");
     expect(plan?.dragId).toBe("top");
   });
 
   it("drags the piece in hand even where another lies on top of it", () => {
-    const plan = planPress(pile, inThePile, "bottom", false);
+    const plan = planPress(pile, inThePile, "bottom", { deep: false, sameSpot: false });
     expect(plan?.selectOnDown).toBe("bottom");
     expect(plan?.dragId).toBe("bottom");
   });
 
   it("takes the frontmost piece when the selection is elsewhere", () => {
-    expect(planPress(pile, inThePile, "apart", false)).toEqual({
+    expect(planPress(pile, inThePile, "apart", { deep: false, sameSpot: false })).toEqual({
       selectOnDown: "top",
       dragId: "top",
       selectOnClick: "top",
@@ -151,33 +157,33 @@ describe("a plain press", () => {
   });
 
   it("plans nothing on bare frame", () => {
-    expect(planPress(pile, { x: 900, y: 900 }, "top", false)).toBeNull();
+    expect(planPress(pile, { x: 900, y: 900 }, "top", { deep: false, sameSpot: false })).toBeNull();
   });
 
   it("respects rotation when choosing what is in front", () => {
     // A turned piece in front whose rotated box leaves this corner uncovered.
     const turned = piece({ id: "turned", z: 9, rotation: 45 });
     const plain = piece({ id: "plain", z: 0 });
-    expect(planPress([plain, turned], { x: 3, y: 3 }, null, false)?.dragId).toBe(
+    expect(planPress([plain, turned], { x: 3, y: 3 }, null, { deep: false, sameSpot: false })?.dragId).toBe(
       "plain",
     );
     expect(
-      planPress([plain, turned], { x: 50, y: 50 }, null, false)?.dragId,
+      planPress([plain, turned], { x: 50, y: 50 }, null, { deep: false, sameSpot: false })?.dragId,
     ).toBe("turned");
   });
 });
 
 describe("a deep press (cmd or ctrl)", () => {
   it("takes the next piece down and wraps back to the front", () => {
-    expect(planPress(pile, inThePile, "top", true)?.selectOnDown).toBe("middle");
-    expect(planPress(pile, inThePile, "middle", true)?.selectOnDown).toBe(
+    expect(planPress(pile, inThePile, "top", { deep: true, sameSpot: false })?.selectOnDown).toBe("middle");
+    expect(planPress(pile, inThePile, "middle", { deep: true, sameSpot: false })?.selectOnDown).toBe(
       "bottom",
     );
-    expect(planPress(pile, inThePile, "bottom", true)?.selectOnDown).toBe("top");
+    expect(planPress(pile, inThePile, "bottom", { deep: true, sameSpot: false })?.selectOnDown).toBe("top");
   });
 
   it("drags and keeps the piece it reached", () => {
-    expect(planPress(pile, inThePile, "top", true)).toEqual({
+    expect(planPress(pile, inThePile, "top", { deep: true, sameSpot: false })).toEqual({
       selectOnDown: "middle",
       dragId: "middle",
       selectOnClick: "middle",
@@ -191,7 +197,7 @@ describe("a deep press (cmd or ctrl)", () => {
 
   it("never reorders the stack", () => {
     const before = pile.map((p) => ({ id: p.id, z: p.z }));
-    planPress(pile, inThePile, "top", true);
+    planPress(pile, inThePile, "top", { deep: true, sameSpot: false });
     expect(pile.map((p) => ({ id: p.id, z: p.z }))).toEqual(before);
   });
 });

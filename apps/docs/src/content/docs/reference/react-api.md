@@ -61,7 +61,7 @@ interface WithSharedStateConfig<T, V> {
 - **`defaultData`**: required. The initial value of `data`. Survives reload.
 - **`live`**: optional. Initial ephemeral value for this user on this element. It does _not_ persist.
 - **`id`**: optional. Stable id for the element. If omitted, playhtml derives one from the rendered DOM; see [Dynamic elements](/docs/advanced/dynamic-elements/) for why stable ids matter.
-- **`tagInfo`**: optional. Marks the element as one of the built-in capabilities (e.g. `[TagType.CanToggle]`). See [Capabilities](/docs/capabilities/).
+- **`tagInfo`**: optional. Marks the element as one of the built-in capabilities (e.g. `[TagType.CanToggle]`). For a built-in capability, prefer its wrapper component (`CanToggleElement`, `CanMoveElement`, ...). See [Capabilities](/docs/capabilities/).
 
 `defaultData`, `live`, and `myDefaultAwareness` accept values, not functions that
 receive DOM elements. They are available on the first render. Derive them from
@@ -136,8 +136,7 @@ interface CanPlayElementProps<T, V> {
 
 ```tsx
 <CanPlayElement
-  tagInfo={[TagType.CanToggle]}
-  id="my-lamp"
+  id="my-switch"
   defaultData={{ on: false }}
 >
   {({ data, setData }) => (
@@ -228,14 +227,26 @@ These props let an element participate in [cross-page / cross-site sharing](/doc
 
 ```tsx
 // Source — publishes its toggle state for any page to consume
-<CanToggleElement id="lamp" shared>
-  <button>lamp</button>
+<CanToggleElement id="light" shared>
+  <div className="light" />
 </CanToggleElement>
 
-// Consumer — mirrors the lamp from another page, read-only via the toggle's readOnly prop
-<CanToggleElement dataSource="playhtml.fun/#lamp" readOnly>
-  <button>lamp (mirror)</button>
+// Consumer — mirrors the light from another page, read-only via the toggle's readOnly prop
+<CanToggleElement dataSource="playhtml.fun/#light" readOnly>
+  <div className="light" />
 </CanToggleElement>
+```
+
+Both divs get the `toggled` class when the light is on. Style both states so the change is visible:
+
+```css
+.light {
+  width: 80px; height: 80px; border-radius: 50%;
+  background: gold; filter: brightness(0.4);
+}
+.light.toggled {
+  filter: brightness(1.2) drop-shadow(0 0 24px gold);
+}
 ```
 
 ## Loading options
@@ -256,13 +267,14 @@ interface LoadingOptions {
 
 ```tsx
 <CanPlayElement
-  tagInfo={[TagType.CanToggle]}
-  id="lamp"
+  id="my-switch"
   defaultData={{ on: false }}
   loading={{ behavior: "animate", style: "pulse" }}
 >
   {({ data, setData }) => (
-    <button onClick={() => setData({ on: !data.on })}>lamp</button>
+    <button onClick={() => setData({ on: !data.on })}>
+      {data.on ? "on" : "off"}
+    </button>
   )}
 </CanPlayElement>
 ```

@@ -476,6 +476,75 @@ describe("GET /collages/<id>", () => {
   });
 });
 
+describe("the assets subdomain", () => {
+  function edgeCacheStub() {
+    const kept = new Map<string, Response>();
+    const cache = {
+      match: vi.fn(async (request: Request) => kept.get(request.url)?.clone()),
+      put: vi.fn(async (request: Request, response: Response) => {
+        kept.set(request.url, response);
+      }),
+    };
+    vi.stubGlobal("caches", { default: cache });
+    return { cache, kept };
+  }
+
+  it("serves pictures and covers, and nothing else", async () => {
+    const { env } = makeEnv();
+    const { id } = (await (await share(env)).json()) as { id: string };
+    const image = await worker.fetch(
+      new Request(`https://assets.wewere.online/collages/${id}/img/1`),
+      env,
+      ctx,
+    );
+    expect(image.status).toBe(200);
+    expect(new Uint8Array(await image.arrayBuffer())).toEqual(GIF);
+    for (const request of [
+      new Request(`https://assets.wewere.online/collages/${id}`),
+      new Request("https://assets.wewere.online/collages", { method: "POST" }),
+      new Request("https://assets.wewere.online/events/recent"),
+      new Request(`https://assets.wewere.online/collages/${id}/img/1`, {
+        method: "DELETE",
+      }),
+    ]) {
+      const res = await worker.fetch(request, env, ctx);
+      expect(res.status, `${request.method} ${request.url}`).toBe(404);
+    }
+  });
+
+  it("keeps pictures at the edge for a day, and serves later reads from there", async () => {
+    const { cache, kept } = edgeCacheStub();
+    try {
+      const { env } = makeEnv();
+      const { id } = (await (await share(env)).json()) as { id: string };
+      const waits: Promise<unknown>[] = [];
+      const edgeCtx = {
+        waitUntil: (promise: Promise<unknown>) => waits.push(promise),
+      } as unknown as ExecutionContext;
+      const url = `https://assets.wewere.online/collages/${id}/img/1`;
+
+      const first = await worker.fetch(new Request(url), env, edgeCtx);
+      expect(new Uint8Array(await first.arrayBuffer())).toEqual(GIF);
+      await Promise.all(waits);
+      expect(cache.put).toHaveBeenCalledTimes(1);
+      expect(kept.get(url)?.headers.get("Cache-Control")).toBe(
+        "public, max-age=86400",
+      );
+
+      const get = vi.spyOn(env.SHARED_COLLAGES, "get");
+      const second = await worker.fetch(new Request(url), env, edgeCtx);
+      expect(get).not.toHaveBeenCalled();
+      expect(second.headers.get("Cache-Control")).toBe(
+        "public, max-age=31536000, immutable",
+      );
+      expect(second.headers.get("Access-Control-Allow-Origin")).toBe("*");
+      expect(new Uint8Array(await second.arrayBuffer())).toEqual(GIF);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe("collage covers", () => {
   const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46]);
 

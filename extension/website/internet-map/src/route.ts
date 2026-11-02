@@ -56,7 +56,7 @@ export const MODES: { id: Mode; name: string; blurb: string }[] = [
 ];
 
 /** Edge cost per mode: fast divides by traffic, quiet and scenic multiply. */
-function costFn(g: RoadGraph, mode: Mode): (e: number) => number {
+function modeCost(g: RoadGraph, mode: Mode): (e: number) => number {
   const { len, busy } = g;
   switch (mode) {
     case "short": return (e) => len[e];
@@ -64,6 +64,50 @@ function costFn(g: RoadGraph, mode: Mode): (e: number) => number {
     case "quiet": return (e) => len[e] * (0.5 + 3.5 * busy[e]);
     case "scenic": return (e) => len[e] * (0.5 + 2.5 * busy[e]) * 0.9;
   }
+}
+
+/**
+ * A road between two neighbourhoods of the same site costs this much more.
+ * Most traffic inside a big site is people clicking from one of its pages to
+ * the next, so its busiest roads run deep through it; a route that follows
+ * them spends its whole length in one place. Where another way exists, this
+ * tips the route towards the one that crosses between places instead.
+ */
+export const SAME_SITE_COST = 2.5;
+
+function costFn(g: RoadGraph, mode: Mode, sites?: SiteIndex): (e: number) => number {
+  const base = modeCost(g, mode);
+  if (!sites) return base;
+  const { site, roadA, roadB } = sites;
+  return (e) => (site[roadA[e]] === site[roadB[e]] ? SAME_SITE_COST : 1) * base(e);
+}
+
+/**
+ * The hostname each settlement belongs to, as an id. A label is
+ * "host/path [n]": a big host is split into several neighbourhoods by path,
+ * and a busy path further into numbered chunks.
+ */
+export function hostIds(subs: string[]): Int32Array {
+  const ids = new Int32Array(subs.length);
+  const seen = new Map<string, number>();
+  for (let i = 0; i < subs.length; i++) {
+    const h = subs[i].replace(/ \[\d+\]$/, "").split("/")[0];
+    let v = seen.get(h);
+    if (v === undefined) { v = seen.size; seen.set(h, v); }
+    ids[i] = v;
+  }
+  return ids;
+}
+
+/**
+ * What routing needs to know to prefer crossing between places: which site
+ * (registrable domain) each settlement belongs to, so docs.google.com and
+ * mail.google.com, or reddit.com and old.reddit.com, count as one place.
+ */
+export interface SiteIndex {
+  site: ArrayLike<number>;
+  roadA: Uint32Array;
+  roadB: Uint32Array;
 }
 
 export interface Route {
@@ -76,12 +120,13 @@ export interface Route {
 }
 
 /** Dijkstra with a binary heap. The graph is ~50k nodes, so this is instant. */
-export function findRoute(g: RoadGraph, from: number, to: number, mode: Mode): Route {
+export function findRoute(g: RoadGraph, from: number, to: number, mode: Mode,
+                          sites?: SiteIndex): Route {
   const n = g.start.length - 1;
   const empty: Route = { mode, nodes: [], edges: [], length: 0, busiest: 0, ok: false };
   if (from === to || from < 0 || to < 0 || from >= n || to >= n) return empty;
 
-  const cost = costFn(g, mode);
+  const cost = costFn(g, mode, sites);
   const dist = new Float64Array(n).fill(Infinity);
   const prev = new Int32Array(n).fill(-1);
   const prevEdge = new Int32Array(n).fill(-1);
@@ -139,32 +184,88 @@ export function findRoute(g: RoadGraph, from: number, to: number, mode: Mode): R
 }
 
 
+/** Per-settlement facts the stop picker weighs, built once at load. */
+export interface Places {
+  /** the site each settlement belongs to (its domain, as sub_dom gives it) */
+  site: ArrayLike<number>;
+  /** the hostname each settlement belongs to, for naming stops */
+  host: Int32Array;
+  /** pages in each settlement */
+  pages: ArrayLike<number>;
+  /** pages in each site, over all its neighbourhoods */
+  sitePages: Float64Array;
+  /** each settlement's label without its chunk marker: "host/path" */
+  names: string[];
+}
+
+/** `site` defaults to the hostname when no domain grouping is given. */
+export function buildPlaces(subs: string[], pages: ArrayLike<number>,
+                            site?: ArrayLike<number>): Places {
+  const host = hostIds(subs);
+  const by = site ?? host;
+  let ns = 0;
+  for (let i = 0; i < by.length; i++) if (by[i] >= ns) ns = by[i] + 1;
+  const sitePages = new Float64Array(ns);
+  for (let i = 0; i < by.length; i++) sitePages[by[i]] += pages[i] || 0;
+  return { site: by, host, pages, sitePages,
+           names: subs.map((s) => s.replace(/ \[\d+\]$/, "")) };
+}
+
+export interface Stop {
+  /** index into the route's nodes */
+  at: number;
+  /** a path inside a host notable enough to stop at on the way through it */
+  landmark: boolean;
+}
+
 /**
- * Where the journey stops. Driving past a building is not visiting it, so a
- * stop is an end, a place big enough to be a destination, or a junction where
- * the route leaves one road for another.
+ * A neighbourhood a route passes through inside one site (a path, or another
+ * subdomain) is a stop of its own only when it is a real part of that site:
+ * at least this share of the site's pages, and this many pages outright. Most
+ * of a big site's neighbourhoods are a handful of pages each and fail both.
  */
-export function stopsAlong(
-  g: RoadGraph, r: Route, sx: Float32Array, sy: Float32Array,
-  pages: Uint32Array, minPages = 60, turnDeg = 40,
-): number[] {
-  const n = r.nodes.length;
-  if (n < 2) return r.nodes.slice();
-  const deg = (i: number) => g.start[i + 1] - g.start[i];
-  const out: number[] = [r.nodes[0]];
-  const turn = Math.cos((turnDeg * Math.PI) / 180);
-  for (let k = 1; k < n - 1; k++) {
-    const p = r.nodes[k - 1], c = r.nodes[k], q = r.nodes[k + 1];
-    const notable = pages[c] >= minPages;
-    let corner = false;
-    if (deg(c) >= 3) {
-      const ax = sx[c] - sx[p], ay = sy[c] - sy[p];
-      const bx = sx[q] - sx[c], by = sy[q] - sy[c];
-      const la = Math.hypot(ax, ay) || 1, lb = Math.hypot(bx, by) || 1;
-      corner = (ax * bx + ay * by) / (la * lb) < turn;
+export const LANDMARK_SHARE = 0.15;
+export const LANDMARK_MIN_PAGES = 40;
+/** however big the site, a stretch through it stops at no more than this many of its parts */
+export const LANDMARKS_PER_HOST = 2;
+
+/**
+ * The stops that make a journey, as indices into its nodes.
+ *
+ * A route is a run of settlements, and long stretches of it can belong to the
+ * same site: one path after another, or back and forth between two of its
+ * subdomains, which reads as standing still. So each stretch through a site
+ * is cut down to where the route enters it, where it leaves, and in between
+ * only the parts notable enough to visit for their own sake. Every other stop
+ * is a new place.
+ */
+export function meaningfulStops(nodes: number[], P: Places): Stop[] {
+  const out: Stop[] = [];
+  const n = nodes.length;
+  for (let i = 0; i < n;) {
+    const h = P.site[nodes[i]];
+    let j = i;
+    while (j + 1 < n && P.site[nodes[j + 1]] === h) j++;
+    out.push({ at: i, landmark: false });
+    if (j - i > 1) {
+      const floor = Math.max(LANDMARK_MIN_PAGES, LANDMARK_SHARE * P.sitePages[h]);
+      const ends = new Set([P.names[nodes[i]], P.names[nodes[j]]]);
+      // one stop per path: a busy path split into chunks is still one place
+      const byName = new Map<string, number>();
+      for (let m = i + 1; m < j; m++) {
+        const nm = P.names[nodes[m]];
+        if ((P.pages[nodes[m]] || 0) < floor || ends.has(nm)) continue;
+        const prev = byName.get(nm);
+        if (prev === undefined || P.pages[nodes[m]] > P.pages[nodes[prev]]) byName.set(nm, m);
+      }
+      const picks = [...byName.values()]
+        .sort((a, b) => (P.pages[nodes[b]] as number) - (P.pages[nodes[a]] as number))
+        .slice(0, LANDMARKS_PER_HOST)
+        .sort((a, b) => a - b);
+      for (const m of picks) out.push({ at: m, landmark: true });
     }
-    if (notable || corner) out.push(c);
+    if (j > i) out.push({ at: j, landmark: false });
+    i = j + 1;
   }
-  out.push(r.nodes[n - 1]);
   return out;
 }

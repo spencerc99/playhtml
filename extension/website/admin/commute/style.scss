@@ -793,7 +793,7 @@ fieldset {
 
 .scope-options {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .scope-option {
@@ -835,6 +835,39 @@ fieldset {
   font-size: 7px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.scope-pattern .scope-path {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.pattern-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+  font-size: 11px;
+
+  > span {
+    color: rgba($ink, 0.55);
+  }
+
+  button {
+    display: inline-flex;
+    gap: 6px;
+    align-items: baseline;
+    padding: 4px 8px;
+    border: 1px solid $line;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+
+    &[aria-pressed="true"] {
+      border-color: $ink;
+    }
+  }
 }
 
 .scope-path {

@@ -1,11 +1,15 @@
 // ABOUTME: Defines Internet Commute curation decisions, evidence, and portable artifacts.
-// ABOUTME: Normalizes page, hostname, and site identities consistently with the Worker catalog.
+// ABOUTME: Normalizes page, pattern, path, hostname, and site identities consistently with the Worker catalog.
 
 import {
   INTERNET_PLACE_PLACEMENTS,
   INTERNET_PLACE_REASONS,
+  getCoveringInternetPlacePolicies,
   getInternetPlaceLookupKeys,
   normalizeInternetPlace,
+  suggestUrlPatterns,
+  URL_PATTERN_WILDCARD,
+  type UrlPatternSuggestion,
   type InternetPlacePlacement,
   type InternetPlaceScope,
 } from "../../../shared/internetPlaceCatalog";
@@ -185,7 +189,7 @@ export function parseCommuteReviewResponse(
           id: item.domain,
           domain: item.domain,
           currentDisposition: "scenery" as const,
-          ...(annotated ? { need: null } : {}),
+          ...(readReview(item) ?? (annotated ? { need: null } : {})),
         })),
     ],
   };
@@ -242,10 +246,44 @@ export function getDefaultPathTarget(item: CommuteReviewItem): string | null {
   return keys.at(-1)?.placeKey ?? null;
 }
 
+/**
+ * Wildcard patterns for a page, inferred from URLs already seen on its
+ * hostname. Empty until the site shows a repeating shape.
+ */
+export function getPatternSuggestions(
+  item: CommuteReviewItem,
+  seenUrls: Iterable<string>,
+): UrlPatternSuggestion[] {
+  return item.url ? suggestUrlPatterns(item.url, seenUrls) : [];
+}
+
+/**
+ * A pattern rule defaults to the narrowest inferred pattern; with none, to
+ * the page's path with its last segment as `*`, ready to edit.
+ */
+export function getDefaultPatternTarget(
+  item: CommuteReviewItem,
+  seenUrls: Iterable<string> = [],
+): string | null {
+  const suggested = getPatternSuggestions(item, seenUrls)[0];
+  if (suggested) return suggested.pattern;
+  const deepestPath = getInternetPlaceLookupKeys(item.url ?? item.domain).find(
+    (key) => key.scope === "path",
+  );
+  if (!deepestPath) return null;
+  const [hostname, ...segments] = deepestPath.placeKey.split("/");
+  return [hostname, ...segments.slice(0, -1), URL_PATTERN_WILDCARD].join("/");
+}
+
 export function getReviewTarget(
   item: CommuteReviewItem,
   scope: CurationScope,
 ): string {
+  if (scope === "pattern") {
+    const target = getDefaultPatternTarget(item);
+    if (!target) throw new Error("This page has no path to match.");
+    return target;
+  }
   if (scope === "path") {
     const target = getDefaultPathTarget(item);
     if (!target) throw new Error("This page has no path to match.");
@@ -323,19 +361,11 @@ export function getDecisionsForReviewItem(
   places: CuratedPlace[],
   item: CommuteReviewItem,
 ): CuratedPlace[] {
-  const lookups: Array<{ scope: CurationScope; placeKey: string }> = item.url
-    ? getInternetPlaceLookupKeys(item.url)
-    : (["hostname", "site"] as const).map((scope) => ({
-        scope,
-        placeKey: getReviewTarget(item, scope),
-      }));
-  return lookups.flatMap((lookup) =>
-    places.filter(
-      (place) =>
-        getDecisionKey(place.scope, place.place) ===
-        getDecisionKey(lookup.scope, lookup.placeKey),
-    ),
-  );
+  // A domain-only row stands for its homepage, as the Worker's review queue does.
+  return getCoveringInternetPlacePolicies(
+    places.map((place) => ({ scope: place.scope, placeKey: place.place, place })),
+    item.url ?? `https://${item.domain}/`,
+  ).map(({ place }) => place);
 }
 
 /**
@@ -351,6 +381,101 @@ export function getDecisionToReplace(
   return getDecisionsForReviewItem(places, item).find(
     (place) => place.scope === scope,
   );
+}
+
+function getReviewUrl(item: CommuteReviewItem): string {
+  return item.url ?? `https://${item.domain}/`;
+}
+
+function getCandidateKey(
+  scope: CurationScope,
+  target: string,
+): string | undefined {
+  try {
+    return normalizeInternetPlace(target, scope);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether a rule at `scope` for `target` would apply to this row's page. */
+export function decisionCoversItem(
+  item: CommuteReviewItem,
+  scope: CurationScope,
+  target: string,
+): boolean {
+  const placeKey = getCandidateKey(scope, target);
+  if (!placeKey) return false;
+  return (
+    getCoveringInternetPlacePolicies([{ scope, placeKey }], getReviewUrl(item))
+      .length > 0
+  );
+}
+
+/**
+ * The exact-page rule a wider decision clears. Without this, a page rule left
+ * over from an earlier call keeps winning and the new decision looks unsaved.
+ * Nothing is cleared when the new rule would not cover this page, or when it
+ * is a note without a placement, since a note never routes the page.
+ */
+export function getPageRuleToClear(
+  places: CuratedPlace[],
+  item: CommuteReviewItem,
+  scope: CurationScope,
+  target: string,
+  placement: CurationPlacement | undefined,
+): CuratedPlace | undefined {
+  if (
+    !placement ||
+    scope === "page" ||
+    !decisionCoversItem(item, scope, target)
+  ) {
+    return undefined;
+  }
+  return getDecisionsForReviewItem(places, item).find(
+    (place) => place.scope === "page",
+  );
+}
+
+/**
+ * The rule that would still decide this page after saving at `scope` for
+ * `target`, so the desk can say so before saving. Compares the real rules
+ * left after the save, including narrower rules at the same scope. Notes
+ * without a placement never route a page, so they are left out.
+ */
+export function getRuleThatStillWins(
+  places: CuratedPlace[],
+  item: CommuteReviewItem,
+  scope: CurationScope,
+  target: string,
+  placement: CurationPlacement | undefined,
+): CuratedPlace | undefined {
+  const placeKey = getCandidateKey(scope, target);
+  if (!placeKey || !placement) return undefined;
+  const removed = new Set(
+    [
+      getDecisionToReplace(places, item, scope)?.id,
+      getPageRuleToClear(places, item, scope, target, placement)?.id,
+    ].filter(Boolean),
+  );
+  const candidateKey = getDecisionKey(scope, placeKey);
+  const candidate: { scope: CurationScope; placeKey: string; place?: CuratedPlace } = {
+    scope,
+    placeKey,
+  };
+  const remaining = places
+    .filter(
+      (place) =>
+        Boolean(place.placement) &&
+        !removed.has(place.id) &&
+        getDecisionKey(place.scope, place.place) !== candidateKey,
+    )
+    .map((place) => ({ scope: place.scope, placeKey: place.place, place }));
+  const winner = getCoveringInternetPlacePolicies(
+    [...remaining, candidate],
+    getReviewUrl(item),
+  )[0];
+  return winner && winner !== candidate ? winner.place : undefined;
 }
 
 export function canPrefillSuggestion({

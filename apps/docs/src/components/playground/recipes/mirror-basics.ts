@@ -1,7 +1,11 @@
 // ABOUTME: Defines canonical can-mirror recipes for form state and direct children.
-// ABOUTME: Keeps the vanilla-first DOM examples shared by docs embeds and the playground.
+// ABOUTME: Vanilla versions use can-mirror; the React versions keep the same state in shared data.
 import { recipeDocument } from "./recipe-document";
 import type { ExampleRecipe } from "./types";
+import {
+  emojiMirrorReactSource,
+  growingListMirrorReactSource,
+} from "./react/mirror-basics";
 
 const sharedStyles = `    :root {
       color: #1c1c1c;
@@ -23,6 +27,10 @@ export const emojiMirrorRecipe: ExampleRecipe = {
   capabilities: ["can-mirror"],
   difficulty: "starter",
   docsHref: "/docs/examples/emoji-mirror/",
+  react: {
+    install: "npm install playhtml @playhtml/react",
+    code: emojiMirrorReactSource,
+  },
   html: recipeDocument({
     title: "Emoji-only mirrored textarea",
     styles: `${sharedStyles}
@@ -74,6 +82,10 @@ export const growingListMirrorRecipe: ExampleRecipe = {
   capabilities: ["can-mirror"],
   difficulty: "starter",
   docsHref: "/docs/examples/growing-list-mirror/",
+  react: {
+    install: "npm install playhtml @playhtml/react",
+    code: growingListMirrorReactSource,
+  },
   html: recipeDocument({
     title: "Growing mirrored list",
     styles: `${sharedStyles}

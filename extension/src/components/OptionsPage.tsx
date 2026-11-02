@@ -11,7 +11,7 @@ import {
   DataCollectionSection,
   DeveloperModeSection,
   YourDataSection,
-  DenyListSection
+  DenyListSection,
 } from "./Collections";
 import { DeveloperFeaturesSection } from "./DeveloperFeaturesPage";
 import { FeatureGate } from "./FeatureGate";
@@ -30,6 +30,7 @@ import { MILESTONE_TOASTS_ENABLED_KEY } from "../milestones/state";
 import {
   useExperimentAccess,
   useFeatureState,
+  useInternalAccess,
 } from "../features/useFeatureAccess";
 import "./OptionsPage.scss";
 
@@ -185,12 +186,17 @@ export function OptionsPage() {
   >("idle");
   const colorInputRef = useRef<HTMLInputElement>(null);
   const experimentAccess = useExperimentAccess();
+  const internalAccess = useInternalAccess();
   const bagSettingsEnabled = useFeatureState("BAG_SETTINGS").enabled;
   const isSafari = isSafariExtensionPageUrl(window.location.href);
 
-  const sections = bagSettingsEnabled
-    ? SECTIONS
-    : SECTIONS.filter(({ id }) => id !== "bag-settings");
+  // Experiment rollout is managed from the WWO admin, so only internal
+  // cohort members see the experiments controls.
+  const sections = SECTIONS.filter(
+    ({ id }) =>
+      (id !== "bag-settings" || bagSettingsEnabled) &&
+      (id !== "experiments" || internalAccess),
+  );
 
   useEffect(() => {
     Promise.all([
@@ -206,14 +212,16 @@ export function OptionsPage() {
         const savedColor = playerIdentity?.playerStyle.colorPalette[0];
         if (savedColor) setColor(savedColor);
         setNewTabTakeover(stored[NEWTAB_TAKEOVER_KEY] !== false);
-        setMilestoneToastsEnabled(stored[MILESTONE_TOASTS_ENABLED_KEY] !== false);
+        setMilestoneToastsEnabled(
+          stored[MILESTONE_TOASTS_ENABLED_KEY] !== false,
+        );
         const savedEmail = stored.setup_email;
         if (typeof savedEmail === "string" && savedEmail.length > 0) {
           setSetupEmail(savedEmail);
           setEmailDraft(savedEmail);
         }
       })
-      .catch(() => { });
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -228,7 +236,7 @@ export function OptionsPage() {
           const savedColor = playerIdentity?.playerStyle.colorPalette[0];
           if (savedColor) setColor(savedColor);
         })
-        .catch(() => { });
+        .catch(() => {});
     };
     browser.storage.onChanged.addListener(handleStorageChange);
     return () => browser.storage.onChanged.removeListener(handleStorageChange);
@@ -417,8 +425,8 @@ export function OptionsPage() {
                 <p>Open your history page in every new tab.</p>
                 {isSafari && (
                   <p className="options-page__mono-note">
-                    Safari doesn't let extensions change the new tab — bookmark or
-                    pin the history page to keep it a click away.
+                    Safari doesn't let extensions change the new tab — bookmark
+                    or pin the history page to keep it a click away.
                   </p>
                 )}
               </div>
@@ -473,54 +481,59 @@ export function OptionsPage() {
           </FeatureGate>
         )}
 
-        <section id="experiments" className="options-page__section">
-          <h1>Experiments</h1>
-          <div className="options-page__card">
-            {experimentAccess && <DeveloperFeaturesSection />}
-            <div
-              className={`options-page__access-request${experimentAccess ? " options-page__access-request--divided" : ""
+        {internalAccess && (
+          <section id="experiments" className="options-page__section">
+            <h1>Experiments</h1>
+            <div className="options-page__card">
+              {experimentAccess && <DeveloperFeaturesSection />}
+              <div
+                className={`options-page__access-request${
+                  experimentAccess
+                    ? " options-page__access-request--divided"
+                    : ""
                 }`}
-            >
-              <h2>Request early access</h2>
-              <p>
-                Request early access to new experimental features to make the
-                internet feel more shared and alive. Experiments turn on once
-                you have access, and you can turn off any you do not want.
-                Leaving an email also signs you up for occasional project
-                updates.
-              </p>
-              {accessRequestStatus === "sent" ? (
-                <strong>Request sent</strong>
-              ) : (
-                <form onSubmit={requestExperimentAccess}>
-                  <input
-                    type="email"
-                    value={emailDraft}
-                    onChange={(event) => setEmailDraft(event.target.value)}
-                    placeholder="Email for a reply (optional)"
-                  />
-                  <button
-                    type="submit"
-                    className="options-page__request-button"
-                    disabled={!identity || accessRequestStatus === "sending"}
-                  >
-                    {accessRequestStatus === "sending"
-                      ? "Sending…"
-                      : "Request early access"}
-                  </button>
-                </form>
-              )}
-              {accessRequestStatus === "error" && (
-                <small role="alert">
-                  Couldn’t send the request. Please try again.
-                </small>
-              )}
+              >
+                <h2>Request early access</h2>
+                <p>
+                  Request early access to new experimental features to make the
+                  internet feel more shared and alive. Experiments turn on once
+                  you have access, and you can turn off any you do not want.
+                  Leaving an email also signs you up for occasional project
+                  updates.
+                </p>
+                {accessRequestStatus === "sent" ? (
+                  <strong>Request sent</strong>
+                ) : (
+                  <form onSubmit={requestExperimentAccess}>
+                    <input
+                      type="email"
+                      value={emailDraft}
+                      onChange={(event) => setEmailDraft(event.target.value)}
+                      placeholder="Email for a reply (optional)"
+                    />
+                    <button
+                      type="submit"
+                      className="options-page__request-button"
+                      disabled={!identity || accessRequestStatus === "sending"}
+                    >
+                      {accessRequestStatus === "sending"
+                        ? "Sending…"
+                        : "Request early access"}
+                    </button>
+                  </form>
+                )}
+                {accessRequestStatus === "error" && (
+                  <small role="alert">
+                    Couldn’t send the request. Please try again.
+                  </small>
+                )}
+              </div>
+              <div className="options-page__developer-mode options-page__developer-mode--divided">
+                <DeveloperModeSection />
+              </div>
             </div>
-            <div className="options-page__developer-mode options-page__developer-mode--divided">
-              <DeveloperModeSection />
-            </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         <section id="community" className="options-page__section">
           <h1>Community</h1>
@@ -595,7 +608,7 @@ export function OptionsPage() {
         <section id="deny-list" className="options-page__section">
           <h1>Deny list</h1>
           <div className="options-page__card options-page__collections-card">
-            <DenyListSection/>
+            <DenyListSection />
           </div>
         </section>
       </main>

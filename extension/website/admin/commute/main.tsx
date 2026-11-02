@@ -11,7 +11,6 @@ import React, {
 } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  COMMUTE_RECENT_URL,
   COMMUTE_REVIEW_URL,
   PAGE_INSPECTION_URL,
 } from "@movement/config";
@@ -27,12 +26,17 @@ import {
   type CurationPlacement,
   getDecisionForReviewItem,
   getDecisionToReplace,
+  decisionCoversItem,
+  getPageRuleToClear,
+  getRuleThatStillWins,
   getDecisionsForReviewItem,
   getQueueGroup,
   QUEUE_GROUPS,
   type QueueGroup,
   getDefaultPathTarget,
   getReviewTarget,
+  getDefaultPatternTarget,
+  getPatternSuggestions,
   mergeCatalogEvidence,
   needsHumanReview,
   REVIEW_NEED_LABELS,
@@ -58,7 +62,10 @@ import {
   type ReserveReviewItem,
   type ReserveSourceMode,
 } from "./reserveCatalog";
-import { normalizeInternetPlace } from "../../../shared/internetPlaceCatalog";
+import {
+  matchesUrlPattern,
+  normalizeInternetPlace,
+} from "../../../shared/internetPlaceCatalog";
 import { AdminHeader, AdminLogin, useAdminToken } from "../adminAuth";
 import "./style.scss";
 
@@ -72,11 +79,18 @@ const PLACEMENT_LABELS: Record<CurationPlacement, string> = {
 
 const SCOPE_LABELS: Record<CurationScope, string> = {
   page: "Exact page",
+  pattern: "URL pattern",
   path: "Pages under a path",
   hostname: "This hostname",
   site: "Entire site",
 };
-const CURATION_SCOPES: CurationScope[] = ["page", "path", "hostname", "site"];
+const CURATION_SCOPES: CurationScope[] = [
+  "page",
+  "pattern",
+  "path",
+  "hostname",
+  "site",
+];
 const RESERVE_CATALOG_URL = "/internet-commute-reserve-catalog.json";
 
 type ReviewView = "observed" | "live" | "reserve";
@@ -321,6 +335,7 @@ export function App({
   >("loading");
   const [scope, setScope] = useState<CurationScope>("hostname");
   const [pathTarget, setPathTarget] = useState("");
+  const [patternTarget, setPatternTarget] = useState("");
   const [placement, setPlacement] = useState<CurationPlacement | undefined>();
   const [reason, setReason] = useState("");
   const [comment, setComment] = useState("");
@@ -336,6 +351,7 @@ export function App({
     itemId: string;
     saved: CuratedPlace;
     replaced?: CuratedPlace;
+    cleared?: CuratedPlace;
   } | null>(null);
   // Group each row was in when you decided it, so it stays put until refresh.
   const [decidedThisVisit, setDecidedThisVisit] = useState(
@@ -365,6 +381,17 @@ export function App({
     () => mergeCatalogEvidence(liveItems, evidenceItems),
     [evidenceItems, liveItems],
   );
+  // Every URL the desk knows about; pattern suggestions compare a page against these.
+  const seenUrls = useMemo(() => {
+    const urls = new Set<string>();
+    for (const item of allObservedItems) if (item.url) urls.add(item.url);
+    for (const entry of clefLog?.entries ?? [])
+      if (entry.kind === "page") urls.add(entry.pageKey);
+    for (const place of places) if (place.scope === "page") urls.add(place.place);
+    return [...urls];
+  }, [allObservedItems, clefLog, places]);
+  const seenUrlsRef = useRef(seenUrls);
+  seenUrlsRef.current = seenUrls;
   const observedItems = useMemo(
     () =>
       allObservedItems,
@@ -506,10 +533,10 @@ export function App({
     setQueueStatus("loading");
     setDecidedThisVisit(new Map());
     try {
-      const response = await fetch(COMMUTE_REVIEW_URL ?? COMMUTE_RECENT_URL, {
+      const response = await fetch(COMMUTE_REVIEW_URL, {
         headers: {
           Accept: "application/json",
-          ...(COMMUTE_REVIEW_URL ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
       });
       if (!response.ok)
@@ -615,7 +642,9 @@ export function App({
       if (
         target instanceof HTMLTextAreaElement ||
         target instanceof HTMLSelectElement ||
-        target instanceof HTMLButtonElement ||
+        // A clicked row keeps focus; its shortcuts still belong to the desk.
+        (target instanceof HTMLButtonElement &&
+          !target.classList.contains("place-card__select")) ||
         (target instanceof HTMLInputElement &&
           target.type !== "radio" &&
           target.type !== "checkbox")
@@ -696,6 +725,11 @@ export function App({
       priorDecision?.scope === "path"
         ? priorDecision.place
         : (getDefaultPathTarget(selectedItem) ?? ""),
+    );
+    setPatternTarget(
+      priorDecision?.scope === "pattern"
+        ? priorDecision.place
+        : (getDefaultPatternTarget(selectedItem, seenUrlsRef.current) ?? ""),
     );
     setPlacement(priorDecision?.placement ?? cachedSuggestion?.placement);
     setReason(
@@ -817,17 +851,31 @@ export function App({
     return () => window.clearTimeout(suggestionTimer);
   }, [inspectionById, onUnauthorized, places, selectedItem, token]);
 
+  /** The place the form would save for this row, or nothing when it is incomplete. */
+  function getFormTarget(item: ReviewItem): string | undefined {
+    if (scope === "path") return pathTarget.trim() || undefined;
+    if (scope === "pattern") return patternTarget.trim() || undefined;
+    try {
+      return getReviewTarget(item, scope);
+    } catch {
+      return undefined;
+    }
+  }
+
   async function fileDecision(event: FormEvent) {
     event.preventDefault();
     if (!selectedItem) return;
     if (!placement && !comment.trim()) return;
     if (scope === "path" && !pathTarget.trim()) return;
+    if (scope === "pattern" && !patternTarget.trim()) return;
     await saveDecision({
       scope,
       target:
         scope === "path"
           ? pathTarget.trim()
-          : getReviewTarget(selectedItem, scope),
+          : scope === "pattern"
+            ? patternTarget.trim()
+            : getReviewTarget(selectedItem, scope),
       placement,
       reason,
       comment,
@@ -853,13 +901,21 @@ export function App({
 
   async function undoLastDecision() {
     if (!lastDecision || saving) return;
-    const { itemId, saved, replaced } = lastDecision;
+    const { itemId, saved, replaced, cleared } = lastDecision;
     setSaving(true);
     setCatalogError("");
     try {
+      if (replaced && cleared) {
+        // Two rules come back. The page rule goes first, so a failure after it
+        // leaves a state the next Z can finish.
+        const restoredPage = await saveCatalogPolicy(token, cleared);
+        setPlaces((current) => upsertCuratedPlace(current, restoredPage));
+        setLastDecision({ ...lastDecision, cleared: undefined });
+      }
       // Restoring with `saved` as the previous rule swaps them in one request.
+      const restoring = replaced ?? cleared;
       let restored: CuratedPlace | undefined;
-      if (replaced) restored = await saveCatalogPolicy(token, replaced, saved);
+      if (restoring) restored = await saveCatalogPolicy(token, restoring, saved);
       else await deleteCatalogPolicy(token, saved);
       setPlaces((current) => {
         const without = current.filter((place) => place.id !== saved.id);
@@ -909,25 +965,56 @@ export function App({
     });
     setSaving(true);
     setCatalogError("");
+    const item = selectedItem;
+    const pageRule = getPageRuleToClear(
+      places,
+      item,
+      decisionScope,
+      target,
+      decisionPlacement,
+    );
+    // The Worker swaps one earlier rule out in the same request as the save.
+    const swapped = priorDecision ?? pageRule;
+    let saved: CuratedPlace;
     try {
-      const saved = await saveCatalogPolicy(token, decision, priorDecision);
-      const otherPlaces = priorDecision
-        ? places.filter((place) => place.id !== priorDecision.id)
-        : places;
-      setPlaces(upsertCuratedPlace(otherPlaces, saved));
-      setLastDecision({
-        itemId: selectedItem.id,
-        saved,
-        replaced: priorDecision,
-      });
-      const groupBefore = groupById.get(selectedItem.id);
-      if (groupBefore && groupBefore !== "decided") {
-        setDecidedThisVisit((groups) =>
-          new Map(groups).set(selectedItem.id, groupBefore),
-        );
-      }
+      saved = await saveCatalogPolicy(token, decision, swapped);
     } catch (error) {
       handleCatalogError(error);
+      setSaving(false);
+      return;
+    }
+    // A wider call replaces this page's own rule, which would otherwise win.
+    let cleared = swapped === pageRule ? pageRule : undefined;
+    let clearError: unknown;
+    if (pageRule && !cleared) {
+      try {
+        await deleteCatalogPolicy(token, pageRule);
+        cleared = pageRule;
+      } catch (error) {
+        clearError = error;
+      }
+    }
+    setPlaces(
+      upsertCuratedPlace(
+        places.filter(
+          (place) =>
+            place.id !== priorDecision?.id && place.id !== cleared?.id,
+        ),
+        saved,
+      ),
+    );
+    setLastDecision({
+      itemId: item.id,
+      saved,
+      replaced: priorDecision,
+      cleared,
+    });
+    const groupBefore = groupById.get(item.id);
+    if (groupBefore && groupBefore !== "decided") {
+      setDecidedThisVisit((groups) => new Map(groups).set(item.id, groupBefore));
+    }
+    if (clearError) {
+      handleCatalogError(clearError);
       setSaving(false);
       return;
     }
@@ -984,6 +1071,18 @@ export function App({
   const coveringDecisions = selectedItem
     ? getDecisionsForReviewItem(places, selectedItem)
     : [];
+  const patternSuggestions = selectedItem
+    ? getPatternSuggestions(selectedItem, seenUrls)
+    : [];
+  const patternReach = (() => {
+    if (scope !== "pattern" || !patternTarget.trim()) return null;
+    try {
+      const pattern = normalizeInternetPlace(patternTarget, "pattern");
+      return seenUrls.filter((url) => matchesUrlPattern(pattern, url)).length;
+    } catch (error) {
+      return error instanceof Error ? error.message : "Invalid pattern";
+    }
+  })();
   const selectedInspection = selectedItem
     ? inspectionById.get(selectedItem.id)
     : undefined;
@@ -1339,8 +1438,8 @@ export function App({
                 <div className="scope-options">
                   {CURATION_SCOPES.map((value) => {
                     const disabled =
-                      (value === "page" && !selectedItem.url) ||
-                      (value === "path" && !getDefaultPathTarget(selectedItem));
+                      ((value === "path" || value === "pattern") &&
+                        !getDefaultPathTarget(selectedItem));
                     return (
                       <label
                         className={`scope-option${disabled ? " scope-option--disabled" : ""}`}
@@ -1363,7 +1462,10 @@ export function App({
                             : value === "path"
                               ? pathTarget ||
                                 getReviewTarget(selectedItem, value)
-                              : getReviewTarget(selectedItem, value)}
+                              : value === "pattern"
+                                ? patternTarget ||
+                                  getReviewTarget(selectedItem, value)
+                                : getReviewTarget(selectedItem, value)}
                         </small>
                       </label>
                     );
@@ -1390,6 +1492,45 @@ export function App({
                       Saving at a different scope adds a rule, so this page can
                       differ from the rest of the site.
                     </p>
+                  </div>
+                )}
+                {scope === "pattern" && (
+                  <div className="scope-pattern">
+                    <label className="scope-path">
+                      <span>Pattern (* is one path segment)</span>
+                      <input
+                        type="text"
+                        value={patternTarget}
+                        onChange={(event) => {
+                          markFormEdited();
+                          setPatternTarget(event.target.value);
+                        }}
+                      />
+                    </label>
+                    <p className="decision-help">
+                      {typeof patternReach === "number"
+                        ? `Covers ${patternReach} page${patternReach === 1 ? "" : "s"} seen so far.`
+                        : patternReach}
+                    </p>
+                    {patternSuggestions.length > 0 && (
+                      <div className="pattern-suggestions">
+                        <span>Seen on this site</span>
+                        {patternSuggestions.map((suggestion) => (
+                          <button
+                            type="button"
+                            key={suggestion.pattern}
+                            aria-pressed={patternTarget === suggestion.pattern}
+                            onClick={() => {
+                              markFormEdited();
+                              setPatternTarget(suggestion.pattern);
+                            }}
+                          >
+                            <code>{suggestion.pattern}</code>
+                            <small>{suggestion.matches.length} pages</small>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
                 {scope === "path" && (
@@ -1508,6 +1649,36 @@ export function App({
                   placeholder="Why this is ambiguous, or what broader rule it suggests…"
                 />
               </label>
+
+              {(() => {
+                const target = getFormTarget(selectedItem);
+                if (!target) return null;
+                const covers = decisionCoversItem(selectedItem, scope, target);
+                const pageRule = getPageRuleToClear(
+                  places,
+                  selectedItem,
+                  scope,
+                  target,
+                  placement,
+                );
+                const winner = getRuleThatStillWins(
+                  places,
+                  selectedItem,
+                  scope,
+                  target,
+                  placement,
+                );
+                if (covers && !pageRule && !winner) return null;
+                return (
+                  <p className="decision-help rule-shadow">
+                    {!covers && "This rule does not include this page. "}
+                    {pageRule &&
+                      `Replaces this page's own rule (${pageRule.placement ? PLACEMENT_LABELS[pageRule.placement] : "note only"}). `}
+                    {winner &&
+                      `Your ${SCOPE_LABELS[winner.scope].toLowerCase()} rule (${winner.place}) still decides this page: ${winner.placement ? PLACEMENT_LABELS[winner.placement] : "note only"}.`}
+                  </p>
+                );
+              })()}
 
               <div className="form-actions">
                 <button

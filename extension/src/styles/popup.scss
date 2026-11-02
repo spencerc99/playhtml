@@ -10,6 +10,16 @@ body {
   height: 500px;
 }
 
+// iOS Safari shows the popup as a sheet as wide as the phone, so a fixed
+// desktop popup size leaves a gap at the edge.
+@media (hover: none) and (pointer: coarse) {
+  body {
+    width: 100%;
+    height: auto;
+    min-height: 100vh;
+  }
+}
+
 #root {
   width: 100%;
   height: 100%;

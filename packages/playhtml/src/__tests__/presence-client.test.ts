@@ -2,6 +2,7 @@
 // ABOUTME: and rebuilds per-channel PresenceView maps from page-scoped peers.
 
 import { describe, expect, it, vi } from "vitest";
+import { PRESENCE_KEEPALIVE_MS, PRESENCE_STALE_MS } from "../presence-utils";
 import type { PlayerIdentity, PresenceView } from "@playhtml/common";
 import { RealtimePresenceTransport } from "../presence-transport";
 import { PresenceClient } from "../presence-client";
@@ -654,7 +655,7 @@ describe("PresenceClient", () => {
 
       // No further message from the ghost; the sweep drops the stale channel,
       // and with only an unstamped identity left the peer row is pruned.
-      vi.advanceTimersByTime(31_000);
+      vi.advanceTimersByTime(PRESENCE_STALE_MS + 1_000);
       const status = (client.getPresences().get("pk_ghost") as any)?.status;
       expect(status).toBeUndefined();
       expect(error).toHaveBeenCalledWith(
@@ -692,6 +693,34 @@ describe("PresenceClient", () => {
     }
   });
 
+  it("pauses the keepalive while the tab is hidden and re-stamps when it returns", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    let visibility: DocumentVisibilityState = "hidden";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibility,
+    });
+    try {
+      const { client, parsedSent } = createClient();
+      client.setMyPresence("status", { text: "idle" });
+      await vi.advanceTimersByTimeAsync(1200);
+      const countUpdates = () =>
+        parsedSent().filter((m) => m.type === "presence-update").length;
+      const updatesWhileHidden = countUpdates();
+
+      await vi.advanceTimersByTimeAsync(PRESENCE_KEEPALIVE_MS * 3);
+      expect(countUpdates()).toBe(updatesWhileHidden);
+
+      visibility = "visible";
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(countUpdates()).toBeGreaterThan(updatesWhileHidden);
+    } finally {
+      delete (document as { visibilityState?: unknown }).visibilityState;
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps a quiet-but-connected self alive via the keepalive re-stamp", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
@@ -705,7 +734,7 @@ describe("PresenceClient", () => {
       // No further user action, but the keepalive re-publishes to refresh `at`
       // so peers don't expire this idle-but-connected client. (Documented
       // asymmetry vs cursors, which fade to identity-only instead.)
-      await vi.advanceTimersByTimeAsync(11_000);
+      await vi.advanceTimersByTimeAsync(PRESENCE_KEEPALIVE_MS + 1_000);
       const updatesAfterKeepalive = parsedSent().filter(
         (m) => m.type === "presence-update",
       ).length;

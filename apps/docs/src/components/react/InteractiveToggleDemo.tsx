@@ -1,7 +1,6 @@
-// Docs on/off toggle button. Uses the canonical CanToggleElement pattern
-// (same shape as packages/react/examples/SharedLamp.tsx). `standalone` is
-// required because the docs site initializes playhtml globally from
-// HeadOverride.astro rather than wrapping islands in <PlayProvider>.
+// Docs live demo for can-toggle: one on/off switch shared by every reader.
+// `standalone` is needed because the docs site initializes playhtml from
+// HeadOverride.astro instead of wrapping islands in <PlayProvider>.
 import React from "react";
 import { CanToggleElement } from "@playhtml/react";
 
@@ -13,7 +12,8 @@ export function InteractiveToggleDemo({
   return (
     <CanToggleElement standalone>
       {({ data }) => {
-        const on = typeof data === "object" ? data.on : !!data;
+        // Older rooms stored a bare boolean instead of { on }.
+        const on = typeof data === "object" ? data.on : Boolean(data);
         return (
           <button
             id={id}

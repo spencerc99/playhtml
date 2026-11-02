@@ -56,7 +56,7 @@ export function resolveFeatureState(
   }
 
   return {
-    enabled: FEATURE_CATALOG[feature].startsOff !== true,
+    enabled: true,
     available: true,
     stage: policy.stage,
     source: "available",

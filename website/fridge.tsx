@@ -17,6 +17,7 @@ import { PlayProvider } from "../packages/react/src";
 import { canDeleteFridgeWord, DeleteWordLimit } from "./fridgeDeletion";
 import { getDefaultFridgeWordId } from "./fridgeWordIdentity";
 import { useLocation } from "./useLocation";
+import { mountExperimentBadge } from "./components/experimentBadge";
 
 // Detect mobile viewport
 function useIsMobile() {
@@ -1234,5 +1235,7 @@ function Main() {
     </PlayProvider>
   );
 }
+
+mountExperimentBadge({ experiment: "EX-03" });
 
 createRoot(document.getElementById("fridge") as HTMLElement).render(<Main />);

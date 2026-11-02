@@ -1,5 +1,5 @@
-// ABOUTME: Verifies in the built collage studio that a held buried piece keeps the press and undo never reaches the search.
-// ABOUTME: Seeds local scraps, places two overlapping pieces, and drives clicks, drags, shift presses and cmd+Z.
+// ABOUTME: Verifies in the built collage studio that a held buried piece keeps a drag, a click takes the piece on top,
+// ABOUTME: clicking the same spot again walks down the pile, and undo never reaches the search.
 
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -142,11 +142,18 @@ try {
   await page.waitForTimeout(150);
   assert.deepEqual(await held(), [0], "the list hands over the buried piece");
 
-  // A quick click on it, where the other piece lies on top, keeps it.
+  // A quick click where the other piece lies on top takes that piece, so
+  // what is visibly on top can always be clicked.
   await page.mouse.click(overlap.x, overlap.y);
   await page.waitForTimeout(150);
-  assert.deepEqual(await held(), [0], "clicking the held buried piece keeps it");
-  await page.screenshot({ path: `${evidence}/2-buried-piece-kept-on-click.png` });
+  assert.deepEqual(await held(), [1], "a click over the held buried piece takes the piece on top");
+  await page.screenshot({ path: `${evidence}/2-click-takes-piece-on-top.png` });
+
+  // Reach the buried piece again for the drags.
+  await page.mouse.click(overlap.x, overlap.y, { button: "right" });
+  await page.locator(".collage-here__pick").nth(1).click();
+  await page.waitForTimeout(150);
+  assert.deepEqual(await held(), [0]);
 
   // A press that drags moves the buried piece, not the one on top.
   const lowerBefore = await boxOf(0);
@@ -196,6 +203,28 @@ try {
   await page.waitForTimeout(150);
   assert.deepEqual(await held(), [1], "after letting go, a click takes the piece on top");
   await page.screenshot({ path: `${evidence}/5-top-after-click-away.png` });
+
+  // Clicking the same spot again walks down the pile, then wraps to the top.
+  await page.mouse.click(overlap.x, overlap.y);
+  await page.waitForTimeout(150);
+  assert.deepEqual(await held(), [0], "a second click on the same spot takes the piece beneath");
+  await page.screenshot({ path: `${evidence}/6-click-again-goes-deeper.png` });
+  await page.mouse.click(overlap.x + 2, overlap.y + 1);
+  await page.waitForTimeout(150);
+  assert.deepEqual(await held(), [1], "a third click wraps back to the piece on top");
+
+  // A click somewhere else on the buried piece, then back on the overlap,
+  // starts again from the top.
+  await page.mouse.click(overlap.x, overlap.y);
+  await page.waitForTimeout(150);
+  assert.deepEqual(await held(), [0]);
+  const lowerOnly = await pieces.nth(0).boundingBox();
+  await page.mouse.click(lowerOnly.x + 8, lowerOnly.y + 8);
+  await page.waitForTimeout(150);
+  assert.deepEqual(await held(), [0], "a click on the piece where nothing covers it keeps it");
+  await page.mouse.click(overlap.x, overlap.y);
+  await page.waitForTimeout(150);
+  assert.deepEqual(await held(), [1], "a click on a new spot takes the piece on top");
 
   assert.deepEqual(errors, []);
   console.log(`PASS (evidence in ${evidence})`);

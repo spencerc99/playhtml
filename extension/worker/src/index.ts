@@ -4,6 +4,7 @@
 import { handleIngest } from './routes/ingest';
 import { handleClefLog } from './routes/clefLog';
 import { handleRecent } from './routes/recent';
+import { handleRestore } from './routes/restore';
 import { handleDailyCounts } from './routes/dailyCounts';
 import { handleStats } from './routes/stats';
 import { handleExport } from './routes/export';
@@ -61,6 +62,15 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     
+    // The assets subdomain serves shared collages' pictures and nothing else.
+    if (url.hostname.startsWith('assets.')) {
+      const route = matchPublishedCollageRoute(path);
+      if (request.method !== 'GET' || (route?.kind !== 'image' && route?.kind !== 'cover')) {
+        return new Response('Not found', { status: 404 });
+      }
+      return handlePublishedCollages(request, env, route, ctx);
+    }
+
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -85,6 +95,12 @@ export default {
     if (path === '/events/recent' && request.method === 'GET') {
       if (!isAllowedOrigin(request)) return forbiddenResponse();
       return handleRecent(request, env);
+    }
+
+    // Signed by the participant's identity key instead of an origin check: the
+    // extension's service worker sends no Origin or Referer on these requests.
+    if (path === '/events/restore' && request.method === 'POST') {
+      return handleRestore(request, env);
     }
 
     if (path === '/commute/recent' && request.method === 'GET') {
@@ -253,7 +269,7 @@ export default {
     // Shared collages: public, view-only links made from the scraps studio.
     const publishedCollageRoute = matchPublishedCollageRoute(path);
     if (publishedCollageRoute) {
-      return handlePublishedCollages(request, env, publishedCollageRoute);
+      return handlePublishedCollages(request, env, publishedCollageRoute, ctx);
     }
 
     // Health check

@@ -135,13 +135,13 @@ export interface SelectionPressPlan {
  * With several pieces held, a press anywhere inside the box around them keeps
  * the hand so a drag moves them all: on a held piece, on an unheld piece lying
  * over one, or on an unheld piece that only sits inside the box. A click there
- * without a drag keeps just the held piece at that spot, or the frontmost
- * piece when none is held there. A press outside the box takes the frontmost
- * piece alone.
+ * without a drag keeps just the frontmost piece at that spot. A press outside
+ * the box takes the frontmost piece alone.
  *
  * With one piece or none held, the single-piece rules apply (see planPress):
- * a press on the held piece keeps it, and cmd or ctrl reaches the next piece
- * down straight away.
+ * a drag from the held piece moves it, a click takes the frontmost piece, a
+ * click again on the same spot reaches one piece further down, and cmd or
+ * ctrl reaches the next piece down straight away.
  */
 export function planSelectionPress(
   pieces: readonly CollagePiece[],
@@ -149,7 +149,12 @@ export function planSelectionPress(
   selection: Selection,
   /** The box around the hand when several pieces are held, else null. */
   groupBox: Bounds | null,
-  modifiers: { deep: boolean; additive: boolean },
+  modifiers: {
+    deep: boolean;
+    additive: boolean;
+    /** The press lands where the last plain click on a piece landed. */
+    sameSpot: boolean;
+  },
 ): SelectionPressPlan | null {
   const stack = piecesUnder(pieces, point);
   if (stack.length === 0) return null;
@@ -178,7 +183,7 @@ export function planSelectionPress(
       return {
         selectOnDown: selection,
         dragIds: selection.ids,
-        selectOnClick: selectOnly((heldHere ?? stack[0]).id),
+        selectOnClick: selectOnly(stack[0].id),
       };
     }
   }
@@ -187,7 +192,7 @@ export function planSelectionPress(
     pieces,
     point,
     selection.ids.length === 1 ? selection.ids[0] : selection.primary,
-    modifiers.deep,
+    { deep: modifiers.deep, sameSpot: modifiers.sameSpot },
   );
   if (!single) return null;
   return {

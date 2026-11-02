@@ -139,6 +139,26 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
   }
 
+  /* Create mode sits under the page's heading and its browse / create switch. */
+  .collage-create-area {
+    position: absolute;
+    inset: 96px 0 0;
+    z-index: 2;
+  }
+
+  /* A phone stacks the heading taller, so the list of collages starts lower;
+     once a collage is open the heading steps away and the studio takes the
+     screen from just under the page links. */
+  @media (max-width: 620px) {
+    .collage-create-area {
+      top: 124px;
+    }
+
+    .collage-create-area--studio {
+      top: 48px;
+    }
+  }
+
   /* On a phone the drawer docks under the collage, so the collage and the
      scraps to add to it are on screen together. */
   .collage-studio--phone {
@@ -153,6 +173,74 @@ export const COLLAGE_STUDIO_STYLES = `
      a marquee, and two fingers pinch, so the page must not scroll or zoom. */
   .collage-studio--phone .collage-frame-area__stage {
     touch-action: none;
+    /* Holding a finger down opens the pieces-here list, not the system's
+       text selection or its menu for the picture under it. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Each tool beside a piece is big enough for a fingertip. */
+  .collage-studio--phone .collage-piece-actions .collage-glyph {
+    width: 36px;
+    height: 36px;
+  }
+
+  .collage-studio--phone .collage-piece-actions__rule {
+    height: 22px;
+    margin: 0 2px;
+  }
+
+  /* The knob under a selection that turns it, on a touch screen. */
+  .collage-rotate-stem {
+    position: absolute;
+    z-index: 10001;
+    width: 1.5px;
+    margin-left: -0.75px;
+    transform-origin: top center;
+    background: var(--c-accent);
+    pointer-events: none;
+  }
+
+  .collage-rotate-knob {
+    position: absolute;
+    z-index: 10003;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1.5px solid var(--c-accent);
+    border-radius: 50%;
+    background: var(--c-surface);
+    color: var(--c-accent-ink);
+    transform-origin: center;
+    touch-action: none;
+  }
+
+  /* A fingertip takes the knob from well around it. */
+  .collage-rotate-knob::after {
+    content: "";
+    position: absolute;
+    inset: -12px;
+    border-radius: 50%;
+  }
+
+  /* A held finger must not raise the system's copy and look-up menu or
+     start selecting text over the collage. */
+  .collage-studio--phone .collage-frame-area {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* A held finger must not raise the system's copy and look-up menu or
+     start selecting text over the collage. */
+  .collage-studio--phone .collage-frame-area {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
 
   /* Two classes, so this outranks the drawer's own side-docked size and
@@ -220,7 +308,9 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-studio--sheet .collage-mat__caption,
   .collage-studio--sheet .collage-selection-edge,
   .collage-studio--sheet .collage-handle,
-  .collage-studio--sheet .collage-grip {
+  .collage-studio--sheet .collage-grip,
+  .collage-studio--sheet .collage-rotate-knob,
+  .collage-studio--sheet .collage-rotate-stem {
     visibility: hidden;
   }
 
@@ -256,12 +346,15 @@ export const COLLAGE_STUDIO_STYLES = `
 
   /* The grab bar at the top of a docked drawer: flick it up or down, or tap
      it to raise and lower the drawer. */
+  /* Tall enough for a thumb to land on without aiming; the bar drawn in it
+     stays small. */
   .collage-tray__handle {
     flex: 0 0 auto;
     align-self: center;
-    width: 64px;
-    height: 18px;
-    margin: -4px 0 2px;
+    /* Far wider and taller than the bar it draws, so a thumb finds it. */
+    width: min(100%, 220px);
+    height: 30px;
+    margin: -10px 0 -4px;
     padding: 0;
     border: 0;
     background: transparent;
@@ -864,6 +957,27 @@ ${PIECE_MATERIAL_STYLES}
     pointer-events: none;
   }
 
+  /* A ring under a finger that has rested long enough: dragging from bare
+     paper now draws a box, and lifting from a piece lists the pieces there. */
+  .collage-hold-mark {
+    position: absolute;
+    z-index: 10003;
+    border-style: solid;
+    border-color: var(--c-accent);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    animation: collage-hold-mark 180ms ease-out;
+  }
+
+  @keyframes collage-hold-mark {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.4);
+    }
+  }
+
   /* Every piece stacked under the pointer, so a buried one can be picked by
      eye rather than by clicking down through the pile. */
   .collage-here {
@@ -1157,34 +1271,6 @@ ${COLLAGE_PEEK_STYLES}
     font-size: 9px;
     line-height: 1.6;
     letter-spacing: 0.02em;
-  }
-
-  .collage-editor-switch {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-  }
-
-  .collage-editor-switch .collage-studio__label {
-    margin-right: 3px;
-  }
-
-  .collage-editor-switch .collage-chip:disabled {
-    opacity: 0.45;
-    cursor: default;
-  }
-
-  /* Why the regular editor opened when the tldraw one was chosen. */
-  .collage-engine-notice {
-    position: absolute;
-    left: 50%;
-    bottom: 52px;
-    z-index: 10002;
-    margin: 0;
-    transform: translateX(-50%);
-    border: 1px solid rgba(61, 56, 51, 0.12);
-    border-radius: 4px;
-    pointer-events: none;
   }
 
   .collage-notice--quiet {

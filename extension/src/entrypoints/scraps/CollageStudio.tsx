@@ -24,6 +24,7 @@ import {
   dragEdge,
   edgeGrabOffset,
   lockToAxis,
+  rotatePoint,
   rotationToPointer,
   sameCrop,
   scaleAboutCenter,
@@ -84,12 +85,8 @@ import {
   writeDrawerPreference,
   type DrawerPreference,
 } from "./drawerPreference";
+import { collageFromDraft } from "./collageDraft";
 import { PieceActions } from "./PieceActions";
-import {
-  EditorSwitch,
-  collageToHandOver,
-  type EditorSwitchChoice,
-} from "./EditorSwitch";
 import { KeysButton, SoundButton, StudioTools, StudioViews } from "./StudioTools";
 import { FormatControl } from "./FormatControl";
 import {
@@ -180,9 +177,15 @@ import {
   removePieces,
   replacePieces,
 } from "./pieceGroup";
-import { handleZones, type HandleZone } from "./handleZones";
+import {
+  handleZones,
+  ROTATE_KNOB_REACH,
+  ROTATE_KNOB_SIZE,
+  type HandleZone,
+} from "./handleZones";
 import { pinchChange, pinchedPieces, type FingerPair } from "./pinchGesture";
 import { usePhoneLayout } from "./phoneLayout";
+import { ExportReady, downloadFile, type ReadyFile } from "./ExportReady";
 import {
   toolSessionActive,
   visiblePanel,
@@ -206,6 +209,8 @@ import {
   collageSoundsMuted,
   playCollageSound,
   setCollageSoundsMuted,
+  startCollageSlide,
+  type CollageSlide,
   type CollageSound,
 } from "./collageSounds";
 import { snapMove, type SnapGuide } from "./moveSnap";
@@ -226,17 +231,29 @@ const PLACED_MAX_SIDE = 220;
  * the same size whether the drawer is lowered or raised into a sheet.
  */
 const PHONE_PLACED_FRAME_SHARE = 0.4;
+/**
+ * How far apart tapped scraps fan out on a phone, as a share of the frame's
+ * shorter side. Pieces there come in large, so the desktop spacing would
+ * stack them into one pile that has to be pulled apart by hand.
+ */
+const PHONE_FAN_STEP_SHARE = 0.18;
+/**
+ * How long a finger rests on bare paper before a drag from it draws a
+ * selection box, and how far it may wander meanwhile, in screen pixels. The
+ * same touch-and-hold Freeform, Pages and Keynote use: a quick swipe there
+ * selects nothing.
+ */
+const PHONE_BOX_HOLD_MS = 400;
+const PHONE_BOX_HOLD_SLOP = 8;
 const ROTATION_SNAP_DEGREES = 15;
 /**
  * How near, in screen pixels, a carried piece's edge or middle comes to
  * another's (or the frame's) before it catches there.
  */
 const MOVE_SNAP_REACH = 6;
-/** A carried piece scuffs once per this many screen pixels of travel... */
-const SLIDE_EVERY_PX = 26;
-/** ...and no more often than this, in milliseconds. */
-const SLIDE_MIN_MS = 55;
-/** Pointer speed, in screen pixels per millisecond, that scuffs loudest. */
+/** How often a carried piece's shuffle reads the pointer's speed, in milliseconds. */
+const SLIDE_SAMPLE_MS = 16;
+/** Pointer speed, in screen pixels per millisecond, that counts as a full-speed drag. */
 const SLIDE_FULL_SPEED = 1.6;
 /** How far a pasted or duplicated piece lands from its original. */
 const COPY_OFFSET = 24;
@@ -256,6 +273,17 @@ const ALT_DRAG_THRESHOLD = 4;
  * was the start of a drag that never got going, so it leaves the selection be.
  */
 const CLICK_MAX_MS = 350;
+/**
+ * How far, in screen pixels, a click may land from the last one and still
+ * count as clicking the same spot again, which reaches one piece further down.
+ */
+const SAME_SPOT_PX = 6;
+/** How long a finger rests on the collage before it opens the pieces-here list. */
+const LONG_PRESS_MS = 500;
+/** How far a resting finger may wander, in screen pixels, and still be held. */
+const LONG_PRESS_SLOP = 10;
+/** Across the ring under a finger that has rested long enough, in pixels. */
+const HOLD_MARK_SIZE = 44;
 
 /** What a scaling drag took hold of: a corner or an edge of the box. */
 type ScaleGrip =
@@ -352,8 +380,6 @@ interface CollageStudioProps {
   onLeave: () => void;
   /** Timers the autosave runs on, so a test can drive the schedule directly. */
   autosaveTimers?: AutosaveTimers;
-  /** The choice of editor, offered to people with experiment access. */
-  editorSwitch?: EditorSwitchChoice;
   /** Whether the export menu offers a view-only link. The host decides, since
    * feature access reads extension storage the walk page can't reach. */
   canPublish?: boolean;
@@ -415,7 +441,6 @@ export function CollageStudio({
   onSaved,
   onLeave,
   autosaveTimers,
-  editorSwitch,
   canPublish = false,
   shared,
 }: CollageStudioProps) {
@@ -468,6 +493,8 @@ export function CollageStudio({
    */
   const [raised, setRaised] = useState(false);
   const sheet = phone && raised && !drawer.collapsed;
+  /** Exports waiting on a phone for a tap to save each one. */
+  const [readyFiles, setReadyFiles] = useState<ReadyFile[] | null>(null);
   const mat = sheet ? 0 : phone ? PHONE_MAT : MAT;
   const matCaption = sheet ? 0 : phone ? PHONE_MAT_CAPTION : MAT_CAPTION;
   const topBand = sheet ? STAGE_PADDING : STAGE_TOP_BAND;
@@ -539,7 +566,14 @@ export function CollageStudio({
     downAt: number;
     selectOnClick: Selection;
     moved: boolean;
+    /**
+     * Where a plain press on a piece landed on screen, kept when it settles as
+     * a click so the next click on that spot can reach further down.
+     */
+    clickSpot?: { x: number; y: number };
   } | null>(null);
+  /** Where the last plain click on a piece landed on screen, if one did. */
+  const lastClickSpotRef = useRef<{ x: number; y: number } | null>(null);
   /** Where the pointer last was over the stage, in frame units. */
   const lastPointerRef = useRef<Point | null>(null);
   const draggingScrapRef = useRef<ScrapItem | null>(null);
@@ -1381,13 +1415,18 @@ export function CollageStudio({
       performance.now() - press.downAt <= CLICK_MAX_MS
     ) {
       setSelection(press.selectOnClick);
+      lastClickSpotRef.current = press.clickSpot ?? null;
+    } else if (press) {
+      lastClickSpotRef.current = null;
     }
     setGesture({ kind: "idle" });
     setGestureReadout(null);
     setSnapGuides([]);
     snapTargetsRef.current = null;
     caughtRef.current = null;
+    slideRef.current?.stop();
     slideRef.current = null;
+    slidePaceRef.current = null;
     setHistory((current) => endRun(current));
   }, []);
 
@@ -1592,8 +1631,11 @@ export function CollageStudio({
   } | null>(null);
   /** What the drag last caught on, so a fresh catch clicks once. */
   const caughtRef = useRef<string | null>(null);
-  /** Where and when the last slide scuff played during a carry. */
-  const slideRef = useRef<{ at: Point; time: number } | null>(null);
+  /** The paper shuffle that sounds while pieces are carried. */
+  const slideRef = useRef<CollageSlide | null>(null);
+  /** Where and when the shuffle last read the pointer, to tell its speed. */
+  const slidePaceRef = useRef<{ at: Point; time: number } | null>(null);
+  useEffect(() => () => slideRef.current?.stop(), []);
 
   const carry = useCallback(
     (
@@ -1639,22 +1681,23 @@ export function CollageStudio({
       const pan = (point.x / frame.width) * 2 - 1;
       if (caught && caught !== caughtRef.current) {
         playCollageSound("snap", pan);
+        slideRef.current?.duck();
       }
       caughtRef.current = caught;
       setSnapGuides(guides);
 
-      // A scuff every so often while the pieces travel, louder when faster.
+      // The shuffle follows how fast the pieces travel.
       const now = performance.now();
-      const last = slideRef.current;
+      const last = slidePaceRef.current;
       if (!last) {
-        slideRef.current = { at: point, time: now };
+        slidePaceRef.current = { at: point, time: now };
       } else {
-        const distance =
-          Math.hypot(point.x - last.at.x, point.y - last.at.y) * scale;
         const elapsed = now - last.time;
-        if (distance >= SLIDE_EVERY_PX && elapsed >= SLIDE_MIN_MS) {
-          playCollageSound("slide", pan, distance / elapsed / SLIDE_FULL_SPEED);
-          slideRef.current = { at: point, time: now };
+        if (elapsed >= SLIDE_SAMPLE_MS) {
+          const distance =
+            Math.hypot(point.x - last.at.x, point.y - last.at.y) * scale;
+          slideRef.current?.move(distance / elapsed / SLIDE_FULL_SPEED, pan);
+          slidePaceRef.current = { at: point, time: now };
         }
       }
 
@@ -1715,6 +1758,10 @@ export function CollageStudio({
           if (gesture.kind === "move") {
             sound("pickup", gesture.origins);
             liftedRef.current = frame.width;
+            slideRef.current?.stop();
+            slideRef.current = startCollageSlide(
+              (point.x / frame.width) * 2 - 1,
+            );
           }
         }
       }
@@ -1905,8 +1952,9 @@ export function CollageStudio({
    * A press is planned the moment it lands (see planSelectionPress): a drag
    * moves what is in hand when the press is inside it, and a click settles on
    * release, because only then is it known that the press was a click and not
-   * the start of a drag. Shift adds or takes away a piece; cmd or ctrl
-   * reaches the next piece down instead.
+   * the start of a drag. Clicking the same spot again reaches one piece
+   * further down. Shift adds or takes away a piece; cmd or ctrl reaches the
+   * next piece down instead.
    */
   const beginMove = (piece: CollagePiece, event: React.PointerEvent) => {
     event.stopPropagation();
@@ -1919,6 +1967,13 @@ export function CollageStudio({
     if (cutoutSession) confirmCutout();
     setHereMenu(null);
     const at = framePoint(event);
+    const deep = event.metaKey || event.ctrlKey;
+    const additive = event.shiftKey;
+    const lastSpot = lastClickSpotRef.current;
+    const sameSpot =
+      lastSpot !== null &&
+      Math.hypot(event.clientX - lastSpot.x, event.clientY - lastSpot.y) <=
+        SAME_SPOT_PX;
     // The element took the press, so when the rotated-box test misses by a
     // rounding hair at an edge, the piece the page hit is the answer.
     const plan = planSelectionPress(
@@ -1926,10 +1981,7 @@ export function CollageStudio({
       at,
       selection,
       multiple ? selectionBox : null,
-      {
-        deep: event.metaKey || event.ctrlKey,
-        additive: event.shiftKey,
-      },
+      { deep, additive, sameSpot },
     ) ?? {
       selectOnDown: selectOnly(piece.id),
       dragIds: [piece.id],
@@ -1943,6 +1995,8 @@ export function CollageStudio({
       downAt: performance.now(),
       selectOnClick: plan.selectOnClick,
       moved: false,
+      clickSpot:
+        deep || additive ? undefined : { x: event.clientX, y: event.clientY },
     };
     setGesture({
       kind: "move",
@@ -2010,6 +2064,42 @@ export function CollageStudio({
       });
       return;
     }
+    // A finger on bare paper is usually reaching past the pieces, so a tap
+    // there lets go of what is in hand and a quick swipe does nothing. Only a
+    // finger held still first draws a selection box.
+    if (phone && event.pointerType === "touch") {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      pressRef.current = {
+        at,
+        downAt: performance.now(),
+        selectOnClick: EMPTY_SELECTION,
+        moved: false,
+      };
+      cancelBoxHold();
+      boxHoldRef.current = {
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        timer: window.setTimeout(() => {
+          boxHoldRef.current = null;
+          const press = pressRef.current;
+          if (!press || press.moved) return;
+          // From here the finger's travel draws the box, and letting go
+          // keeps what it took rather than counting as a tap.
+          press.moved = true;
+          setSelection(EMPTY_SELECTION);
+          setHoldMark(at);
+          setGesture({
+            kind: "marquee",
+            start: at,
+            end: at,
+            base: EMPTY_SELECTION,
+            additive: false,
+          });
+        }, PHONE_BOX_HOLD_MS),
+      };
+      return;
+    }
     setSelection(plan.base);
     pressRef.current = {
       at,
@@ -2027,11 +2117,85 @@ export function CollageStudio({
   };
 
   /**
+   * A finger resting still on a piece and then lifted stands in for the
+   * right-click a mouse has: it opens the list of pieces under that spot,
+   * which is also where a locked piece is let go again. The list waits for
+   * the lift so a second finger can still tap more pieces into the hand
+   * meanwhile. A ring under the finger shows the rest has counted, here and
+   * when a finger resting on bare paper is ready to draw a box.
+   */
+  const longPressRef = useRef<{
+    timer: number;
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    /** Once the finger has rested on pieces: what lifting it would list. */
+    here?: { at: Point; pieceIds: string[] };
+  } | null>(null);
+  const [holdMark, setHoldMark] = useState<Point | null>(null);
+  const gestureRef = useRef(gesture);
+  gestureRef.current = gesture;
+  const cancelLongPress = () => {
+    const held = longPressRef.current;
+    setHoldMark(null);
+    if (!held) return;
+    window.clearTimeout(held.timer);
+    longPressRef.current = null;
+  };
+  useEffect(() => () => cancelLongPress(), []);
+  const startLongPress = (event: React.PointerEvent) => {
+    if (over || toolActive || transform) return;
+    const { clientX, clientY, pointerId } = event;
+    const timer = window.setTimeout(() => {
+      const held = longPressRef.current;
+      if (!held || held.pointerId !== pointerId) return;
+      const at = framePoint({ clientX, clientY });
+      const stack = piecesUnder(pieces, at);
+      if (stack.length === 0) {
+        longPressRef.current = null;
+        return;
+      }
+      held.here = { at, pieceIds: stack.map((piece) => piece.id) };
+      setHoldMark(at);
+    }, LONG_PRESS_MS);
+    longPressRef.current = { timer, pointerId, clientX, clientY };
+  };
+
+  /** Lifting a finger that rested on pieces opens the list of them. */
+  const openHeldList = () => {
+    const here = longPressRef.current?.here;
+    if (!here) return;
+    const running = gestureRef.current;
+    if (running.kind === "move" && pressRef.current?.moved) {
+      editPieces(running.origins, "move");
+    }
+    pressRef.current = null;
+    setGesture({ kind: "idle" });
+    setGestureReadout(null);
+    setHistory((current) => endRun(current));
+    setHereMenu(here);
+  };
+
+  /**
    * Fingers on the stage, by pointer, where each last was on screen. They are
    * followed as the events pass down to whatever each finger landed on, so a
    * second finger can turn a one-finger drag into a pinch.
    */
   const touchesRef = useRef(new Map<number, { clientX: number; clientY: number }>());
+  /** A finger resting on bare paper, waiting to see if it is held long enough to draw a box. */
+  const boxHoldRef = useRef<{
+    pointerId: number;
+    clientX: number;
+    clientY: number;
+    timer: number;
+  } | null>(null);
+  const cancelBoxHold = () => {
+    if (boxHoldRef.current) window.clearTimeout(boxHoldRef.current.timer);
+    boxHoldRef.current = null;
+  };
+  useEffect(() => cancelBoxHold, []);
+  /** Second fingers that tapped a piece into the selection, whose lift is theirs alone. */
+  const addingFingersRef = useRef(new Set<number>());
   const fingerPair = (): FingerPair | null => {
     const [first, second] = [...touchesRef.current.values()];
     if (!first || !second) return null;
@@ -2051,8 +2215,29 @@ export function CollageStudio({
       clientX: event.clientX,
       clientY: event.clientY,
     });
+    cancelLongPress();
+    if (touchesRef.current.size === 1) startLongPress(event);
     if (touchesRef.current.size !== 2) return;
+    cancelBoxHold();
     if (over || toolActive || transform || selectedPieces.length === 0) return;
+    // Holding one piece still and tapping another with a second finger adds
+    // it to the selection, as in Freeform; a second finger on a held piece or
+    // on bare paper starts a pinch instead.
+    const press = pressRef.current;
+    if (gesture.kind === "move" && press && !press.moved) {
+      const tapped = topPieceUnder(reachable, framePoint(event));
+      if (tapped && !isSelected(selection, tapped.id)) {
+        event.stopPropagation();
+        const ids = [...selection.ids, tapped.id];
+        const next = selectMany(ids);
+        setSelection(next);
+        press.selectOnClick = next;
+        setGesture({ ...gesture, origins: piecesById(pieces, ids) });
+        addingFingersRef.current.add(event.pointerId);
+        touchesRef.current.delete(event.pointerId);
+        return;
+      }
+    }
     const start = fingerPair();
     if (!start) return;
     // The second finger belongs to the pinch, not to the piece under it.
@@ -2064,11 +2249,32 @@ export function CollageStudio({
 
   const onStageTouchMove = (event: React.PointerEvent) => {
     if (event.pointerType !== "touch") return;
+    if (addingFingersRef.current.has(event.pointerId)) {
+      event.stopPropagation();
+      return;
+    }
     if (!touchesRef.current.has(event.pointerId)) return;
+    const held = longPressRef.current;
+    if (
+      held &&
+      Math.hypot(event.clientX - held.clientX, event.clientY - held.clientY) >
+        LONG_PRESS_SLOP
+    ) {
+      cancelLongPress();
+    }
     touchesRef.current.set(event.pointerId, {
       clientX: event.clientX,
       clientY: event.clientY,
     });
+    const hold = boxHoldRef.current;
+    if (
+      hold &&
+      hold.pointerId === event.pointerId &&
+      Math.hypot(event.clientX - hold.clientX, event.clientY - hold.clientY) >
+        PHONE_BOX_HOLD_SLOP
+    ) {
+      cancelBoxHold();
+    }
     if (gesture.kind !== "pinch") return;
     event.stopPropagation();
     const now = fingerPair();
@@ -2083,6 +2289,14 @@ export function CollageStudio({
   const onStageTouchEnd = (event: React.PointerEvent) => {
     if (event.pointerType !== "touch") return;
     touchesRef.current.delete(event.pointerId);
+    if (longPressRef.current?.pointerId === event.pointerId) openHeldList();
+    cancelLongPress();
+    if (boxHoldRef.current?.pointerId === event.pointerId) cancelBoxHold();
+    // The tapping finger's lift must not end the drag the first finger holds.
+    if (addingFingersRef.current.delete(event.pointerId)) {
+      event.stopPropagation();
+      return;
+    }
     if (gesture.kind !== "pinch") return;
     // Lifting either finger settles the pinch; the finger left down does
     // nothing until it is lifted too.
@@ -2155,14 +2369,20 @@ export function CollageStudio({
     onLeave();
   };
 
-  /** Hands the browser a file to save under the given name. */
-  const saveFile = (file: Blob, name: string) => {
-    const url = URL.createObjectURL(file);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = name;
-    link.click();
-    URL.revokeObjectURL(url);
+  /**
+   * Hands the browser a file to save under the given name. A phone only lets
+   * a file be saved straight from a tap, and an export is long done baking
+   * by then, so there the file waits in a panel with its own save button.
+   */
+  const saveFile = (file: Blob, name: string, label?: string) => {
+    if (phone) {
+      setReadyFiles((current) => [
+        ...(current ?? []).filter((ready) => ready.name !== name),
+        { file, name, label },
+      ]);
+      return;
+    }
+    downloadFile(file, name);
   };
 
   /**
@@ -2173,6 +2393,7 @@ export function CollageStudio({
     if (pieces.length === 0) return;
     setExporting(true);
     setNotice(null);
+    setReadyFiles(null);
     const name = collageExportName(title);
     try {
       const front = await bakeCollage({
@@ -2190,8 +2411,8 @@ export function CollageStudio({
         thumbnails: await resolveBackThumbnails(backContent.pieces),
         look: backLook,
       });
-      saveFile(front, `${name} front.png`);
-      saveFile(back, `${name} back.png`);
+      saveFile(front, `${name} front.png`, "front · png");
+      saveFile(back, `${name} back.png`, "back · png");
     } catch (error) {
       // An export is asked for out loud, so it fails out loud, naming the
       // pieces that would have left holes in the picture.
@@ -2224,6 +2445,7 @@ export function CollageStudio({
     }
     setVideoProgress(0);
     setNotice(null);
+    setReadyFiles(null);
     try {
       const { bakeCollageVideo } = await import("./collageVideo");
       const video = await bakeCollageVideo({
@@ -2248,9 +2470,10 @@ export function CollageStudio({
   };
 
   /** Saves the collage as a file that opens it again in another browser. */
-  const downloadFile = async () => {
+  const downloadCollageFile = async () => {
     flush();
-    const record = collageToHandOver({
+    setReadyFiles(null);
+    const record = collageFromDraft({
       draft: draftRef.current,
       standing: autosave.standing,
       opened: editing,
@@ -2328,7 +2551,20 @@ export function CollageStudio({
           if (over) turnOver();
           releaseTypingFocus(document.activeElement);
           // Clicked scraps fan out from the middle so each one stays grabbable.
-          addPiece(item, fanOutPlacement(pieces.length, frame));
+          const shorter = Math.min(frame.width, frame.height);
+          addPiece(
+            item,
+            fanOutPlacement(
+              pieces.length,
+              frame,
+              phone
+                ? {
+                    step: shorter * PHONE_FAN_STEP_SHARE,
+                    inset: (shorter * PHONE_PLACED_FRAME_SHARE) / 2,
+                  }
+                : undefined,
+            ),
+          );
         }}
         onDragStart={(item, event) => {
           draggingScrapRef.current = item;
@@ -2371,7 +2607,9 @@ export function CollageStudio({
             caption={
               over ? (
                 <span className="collage-studio__label">
-                  turned over · T or esc to turn back
+                  {phone
+                    ? "turned over · tap front / back to turn back"
+                    : "turned over · T or esc to turn back"}
                 </span>
               ) : shared ? (
                 shared.caption ?? (
@@ -2542,6 +2780,7 @@ export function CollageStudio({
                     label="selection"
                     scale={scale}
                     inView={inView}
+                    knob={phone}
                     onGrip={beginGrip}
                   />
                 )}
@@ -2570,6 +2809,20 @@ export function CollageStudio({
                     />
                   ))}
 
+                {holdMark && !marqueeArea && (
+                  <div
+                    className="collage-hold-mark"
+                    aria-hidden="true"
+                    style={{
+                      left: holdMark.x,
+                      top: holdMark.y,
+                      width: HOLD_MARK_SIZE / scale,
+                      height: HOLD_MARK_SIZE / scale,
+                      borderWidth: 2 / scale,
+                    }}
+                  />
+                )}
+
                 {marqueeArea && (
                   <div
                     className="collage-marquee"
@@ -2590,6 +2843,7 @@ export function CollageStudio({
                     label="piece"
                     scale={scale}
                     inView={inView}
+                    knob={phone}
                     onGrip={beginGrip}
                   />
                 )}
@@ -2686,6 +2940,7 @@ export function CollageStudio({
                     pieces={hereStack}
                     at={hereMenu.at}
                     scale={scale}
+                    frame={frame}
                     selectedId={selection.primary}
                     onPick={(pieceId) => {
                       selectPiece(pieceId);
@@ -2745,6 +3000,10 @@ export function CollageStudio({
                     onLock={lockSelection}
                     onDuplicate={() => duplicatePieces(selectedPieces)}
                     onRemove={removeSelected}
+                    lockHint={phone ? "hold the spot to unlock" : undefined}
+                    extraBelow={
+                      phone ? ROTATE_KNOB_REACH + ROTATE_KNOB_SIZE / 2 : 0
+                    }
                   />
                 )}
 
@@ -2819,20 +3078,6 @@ export function CollageStudio({
             />
           )}
           <span className="collage-bar__spacer" />
-          {editorSwitch && !shared && (
-            <EditorSwitch
-              choice={editorSwitch}
-              handOver={() => {
-                flush();
-                return collageToHandOver({
-                  draft: draftRef.current,
-                  standing: autosave.standing,
-                  opened: editing,
-                  preview: autosave.preview,
-                });
-              }}
-            />
-          )}
           {standing.text && !shared && (
             <p
               className={`collage-standing${
@@ -2905,7 +3150,7 @@ export function CollageStudio({
               onPicture={() => void download()}
               video={animates ? videoSupport : undefined}
               onVideo={() => void downloadVideo()}
-              onFile={() => void downloadFile()}
+              onFile={() => void downloadCollageFile()}
             />
           </span>
           {confirmingLeave ? (
@@ -2928,6 +3173,14 @@ export function CollageStudio({
           ) : null}
         </div>
 
+        {readyFiles && readyFiles.length > 0 && (
+          <ExportReady
+            files={readyFiles}
+            onClose={() => setReadyFiles(null)}
+            onProblem={(text) => setNotice({ tone: "problem", text })}
+          />
+        )}
+
         {notice && (
           <p
             className={`collage-notice${notice.tone === "quiet" ? " collage-notice--quiet" : ""}`}
@@ -2946,6 +3199,7 @@ function PieceHandles({
   label,
   scale,
   inView,
+  knob = false,
   onGrip,
 }: {
   /** The box the handles sit on: one piece, or the box around several. */
@@ -2956,9 +3210,23 @@ function PieceHandles({
   scale: number;
   /** The part of the stage in view, in frame units, once it is measured. */
   inView: Bounds | null;
+  /** Draws a knob under the selection that turns it, for a finger. */
+  knob?: boolean;
   onGrip: (zone: HandleZone, event: React.PointerEvent) => void;
 }) {
   const zones = handleZones(box, scale, inView);
+  const center = boxCenter(box);
+  const radians = (box.rotation * Math.PI) / 180;
+  const knobAt = rotatePoint(
+    { x: center.x, y: box.y + box.height + ROTATE_KNOB_REACH / scale },
+    center,
+    radians,
+  );
+  const stemFrom = rotatePoint(
+    { x: center.x, y: box.y + box.height },
+    center,
+    radians,
+  );
   return (
     <>
       <div
@@ -3026,6 +3294,56 @@ function PieceHandles({
           />
         );
       })}
+      {knob && (
+        <>
+          <div
+            aria-hidden="true"
+            className="collage-rotate-stem"
+            style={{
+              left: stemFrom.x,
+              top: stemFrom.y,
+              height: ROTATE_KNOB_REACH,
+              transform: `scale(${1 / scale}) rotate(${box.rotation}deg)`,
+            }}
+          />
+          <button
+            type="button"
+            aria-label={`Turn ${label}`}
+            data-grip="rotate-knob"
+            className="collage-rotate-knob"
+            style={{
+              left: knobAt.x,
+              top: knobAt.y,
+              transform: `translate(-50%, -50%) scale(${1 / scale})`,
+            }}
+            onPointerDown={(event) =>
+              onGrip(
+                {
+                  kind: "rotate",
+                  corner: "bottom-right",
+                  center: knobAt,
+                  width: 0,
+                  height: 0,
+                  rotation: box.rotation,
+                  cursor: "grab",
+                },
+                event,
+              )
+            }
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <path
+                d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v2.4h-2.4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </>
+      )}
     </>
   );
 }

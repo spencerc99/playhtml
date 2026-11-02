@@ -98,8 +98,12 @@ describe('feature access control', () => {
   it('keeps every seeded experiment unavailable to the public', async () => {
     const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
     expect(response.status).toBe(200);
-    const body = await response.json() as { features: Record<string, { stage: string; available: boolean }> };
+    const body = await response.json() as {
+      features: Record<string, { stage: string; available: boolean }>;
+      internal: boolean;
+    };
 
+    expect(body.internal).toBe(false);
     expect(body.features.COPRESENCE).toEqual({ stage: 'internal', available: false });
     expect(body.features.INVENTORY).toEqual({ stage: 'internal', available: false });
     expect(body.features.COMMUTE).toEqual({ stage: 'beta', available: false });
@@ -111,7 +115,11 @@ describe('feature access control', () => {
     expect((await addToCohort([PUBLIC_ID], 'internal')).status).toBe(201);
 
     const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
-    const body = await response.json() as { features: Record<string, { available: boolean }> };
+    const body = await response.json() as {
+      features: Record<string, { available: boolean }>;
+      internal: boolean;
+    };
+    expect(body.internal).toBe(true);
     expect(body.features.COMMUTE.available).toBe(true);
     expect(body.features.BOTTLES.available).toBe(true);
     expect(body.features.EMOTES.available).toBe(true);
@@ -188,7 +196,11 @@ describe('feature access control', () => {
     expect((await addToCohort([PUBLIC_ID], 'closed-beta')).status).toBe(201);
 
     const response = await handleFeatureAccessCheck(workerEnv, PUBLIC_ID);
-    const body = await response.json() as { features: Record<string, { available: boolean }> };
+    const body = await response.json() as {
+      features: Record<string, { available: boolean }>;
+      internal: boolean;
+    };
+    expect(body.internal).toBe(false);
     expect(body.features.COMMUTE.available).toBe(true);
     expect(body.features.SCRAPS.available).toBe(true);
     expect(body.features.BOTTLES.available).toBe(false);

@@ -97,13 +97,39 @@ export const VIEWER_STYLES = `
     transform: rotate(var(--piece-rotation));
     cursor: zoom-in;
     outline: none;
-    transition: transform 160ms ease, filter 160ms ease;
+    transition: filter 220ms ease;
   }
 
+  /* The opening reveal: a piece waits unseen for its picture and its turn,
+     then is set down onto the paper. Fill backwards only, so the hover lift
+     still works once it has landed. */
+  .published-collage__piece--waiting {
+    opacity: 0;
+  }
+
+  .published-collage__piece--arrived {
+    animation: published-collage-set-down 460ms cubic-bezier(0.2, 0.8, 0.2, 1)
+      backwards;
+  }
+
+  @keyframes published-collage-set-down {
+    from {
+      opacity: 0;
+      transform: rotate(var(--piece-rotation)) translateY(-14px) scale(1.06);
+      filter: drop-shadow(0 12px 16px rgba(40, 34, 28, 0.22));
+    }
+    to {
+      opacity: 1;
+      transform: rotate(var(--piece-rotation));
+      filter: drop-shadow(0 0 0 rgba(40, 34, 28, 0));
+    }
+  }
+
+  /* Hovering only lets a piece cast a faint shadow where it sits, so looking
+     around the collage never shuffles it. */
   .published-collage__piece--lifted,
   .published-collage__piece:focus-visible {
-    transform: rotate(var(--piece-rotation)) scale(1.035);
-    filter: drop-shadow(0 8px 14px rgba(40, 34, 28, 0.28));
+    filter: drop-shadow(0 2px 5px rgba(40, 34, 28, 0.22));
   }
 
   .published-collage__piece:focus-visible {
@@ -132,6 +158,15 @@ export const VIEWER_STYLES = `
     font-size: 10px;
     line-height: 1.45;
     pointer-events: none;
+    /* A short wait before the label shows, so sweeping across the collage stays quiet. */
+    animation: published-collage-label-in 180ms ease 220ms backwards;
+  }
+
+  @keyframes published-collage-label-in {
+    from {
+      opacity: 0;
+      transform: translateY(-3px);
+    }
   }
 
   .published-collage__hover-where {
@@ -206,6 +241,11 @@ export const VIEWER_STYLES = `
   @media (prefers-reduced-motion: reduce) {
     .published-collage__piece {
       transition: none;
+    }
+
+    .published-collage__piece--arrived,
+    .published-collage__hover {
+      animation: none;
     }
   }
 `;

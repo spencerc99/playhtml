@@ -116,6 +116,13 @@ describe("placing a panel beside a piece", () => {
     );
   });
 
+  it("keeps further room below for a knob drawn under the piece", () => {
+    const piece = { x: 400, y: 10, width: 200, height: 100 };
+    expect(placeBesidePiece(piece, panel, 0.5, frame, 40).top).toBe(
+      10 + 100 + (GRIP_REACH + PANEL_GAP + 40) / 0.5,
+    );
+  });
+
   it("stays inside the frame at the edges", () => {
     const piece = { x: -50, y: 300, width: 100, height: 100 };
     expect(placeBesidePiece(piece, panel, 1, frame).left).toBe(0);
