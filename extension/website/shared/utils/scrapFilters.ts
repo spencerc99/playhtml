@@ -3,12 +3,13 @@
 
 import type { ScrapItem } from "../components/ScrapCollage";
 import type { TimeOfDayFilter } from "../config";
+import { dayRangeContains, type DayRange } from "./dayRange";
 import { eventMatchesAnyFilter, type FilterChip } from "./eventUtils";
 import { localDayKey, timeOfDayMatches } from "./timeOfDay";
 
-/** A local calendar day and a recurring local time-of-day window, either optional. */
+/** A span of local calendar days and a recurring local time-of-day window, either optional. */
 export interface ScrapWhenFilter {
-  day: string | null;
+  days: DayRange | null;
   timeOfDay: TimeOfDayFilter | null;
 }
 
@@ -17,10 +18,10 @@ export interface ScrapPlace extends FilterChip {
   exclude?: boolean;
 }
 
-export const ANY_TIME: ScrapWhenFilter = { day: null, timeOfDay: null };
+export const ANY_TIME: ScrapWhenFilter = { days: null, timeOfDay: null };
 
 export function isAnyTime(when: ScrapWhenFilter): boolean {
-  return when.day === null && when.timeOfDay === null;
+  return when.days === null && when.timeOfDay === null;
 }
 
 /** The outline a scrap has in the collage, read roughly from its own proportions. */
@@ -118,8 +119,8 @@ export function scrapSightings(item: ScrapItem): number[] {
 }
 
 /**
- * Whether one sighting of the scrap falls on the day and inside the time of
- * day, both in the viewer's local time. The same sighting has to satisfy
+ * Whether one sighting of the scrap falls within the days and inside the time
+ * of day, both in the viewer's local time. The same sighting has to satisfy
  * both, so "Tuesday, evenings" means seen on a Tuesday evening.
  */
 export function matchesScrapWhen(
@@ -129,7 +130,7 @@ export function matchesScrapWhen(
   if (isAnyTime(when)) return true;
   return scrapSightings(item).some(
     (ts) =>
-      (when.day === null || localDayKey(ts) === when.day) &&
+      (when.days === null || dayRangeContains(when.days, localDayKey(ts))) &&
       (when.timeOfDay === null || timeOfDayMatches(ts, when.timeOfDay)),
   );
 }

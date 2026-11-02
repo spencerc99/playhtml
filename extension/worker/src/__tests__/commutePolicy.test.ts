@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { CollectionEvent } from '@playhtml/extension-types';
-import { buildCommuteResponse } from '../routes/commutePolicy';
+import { buildCommuteResponse, getActivePeopleSince } from '../routes/commutePolicy';
 
 function event(
   id: string,
@@ -1656,42 +1656,16 @@ describe('buildCommuteResponse', () => {
   it('returns an aggregate active-person count without participant identifiers', () => {
     const response = buildCommuteResponse(
       [],
-      [
-        event(
-          'recent-one',
-          'cursor',
-          'https://private.example/one',
-          950_000,
-          'person-one',
-        ),
-        event(
-          'recent-two',
-          'keyboard',
-          'https://private.example/two',
-          900_000,
-          'person-two',
-        ),
-        event(
-          'duplicate',
-          'cursor',
-          'https://private.example/three',
-          850_000,
-          'person-one',
-        ),
-        event(
-          'old',
-          'cursor',
-          'https://private.example/four',
-          700_000,
-          'person-three',
-        ),
-      ],
+      ['person-one', 'person-two', 'person-one'],
       1_000_000,
     );
 
     expect(response.activePeople).toBe(2);
     expect(JSON.stringify(response)).not.toContain('person-one');
-    expect(JSON.stringify(response)).not.toContain('private.example/one');
+  });
+
+  it('counts people active in the two minutes before the build', () => {
+    expect(getActivePeopleSince(1_000_000)).toBe(880_000);
   });
 });
 

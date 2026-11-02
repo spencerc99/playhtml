@@ -11,6 +11,10 @@ import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicat
 
 Presence is per-person state that only exists while someone is on the page: "Ana is typing", "Sam is hovering the lamp", "Jo's cursor is here". When a person leaves, their presence is gone, and someone who arrives later never sees it.
 
+A tab left in the background counts as leaving after a couple of minutes: its presence drops out of everyone else's view, and comes back as soon as the tab is visible again. A cursor that stops moving fades out after about 30 seconds.
+
+For the full API surface (`User`, `playhtml.page`, element presence, cursor types), see the [Presence & identity reference](/docs/reference/presence/).
+
 playhtml splits presence into three parts:
 
 - **Who is here:** [`playhtml.users`](/docs/data/presence/users/) gives each person's name and color.

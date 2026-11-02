@@ -1,5 +1,5 @@
 // ABOUTME: Verifies source-aware filtering without dropping photo encounter history.
-// ABOUTME: Covers kept and hidden domain/path scopes, saved-text search, local day / time-of-day sightings, and shape buckets.
+// ABOUTME: Covers kept and hidden domain/path scopes, saved-text search, local day-span / time-of-day sightings, and shape buckets.
 import { describe, expect, it } from "vitest";
 import type { ScrapItem } from "../../components/ScrapCollage";
 import { groupPhotoEncounters } from "../scrapPhotoGroups";
@@ -11,6 +11,7 @@ import {
   scrapDays,
   scrapShape,
 } from "../scrapFilters";
+import { singleDay } from "../dayRange";
 
 const photo: ScrapItem = {
   id: "a",
@@ -131,25 +132,55 @@ describe("scrap day and time-of-day filters", () => {
   it("matches a photo on any day it was seen, in local time", () => {
     expect(matchesScrapWhen(seenTwice, ANY_TIME)).toBe(true);
     expect(
-      matchesScrapWhen(seenTwice, { day: "2026-09-01", timeOfDay: null }),
+      matchesScrapWhen(seenTwice, {
+        days: singleDay("2026-09-01"),
+        timeOfDay: null,
+      }),
     ).toBe(true);
     expect(
-      matchesScrapWhen(seenTwice, { day: "2026-09-02", timeOfDay: null }),
+      matchesScrapWhen(seenTwice, {
+        days: singleDay("2026-09-02"),
+        timeOfDay: null,
+      }),
     ).toBe(false);
     expect(
-      matchesScrapWhen(seenTwice, { day: "2026-09-03", timeOfDay: null }),
+      matchesScrapWhen(seenTwice, {
+        days: singleDay("2026-09-03"),
+        timeOfDay: null,
+      }),
     ).toBe(true);
   });
 
-  it("needs one sighting to fall on both the day and the time of day", () => {
-    expect(matchesScrapWhen(seenTwice, { day: null, timeOfDay: morning })).toBe(
-      true,
-    );
+  it("matches a photo seen on any day inside a span", () => {
     expect(
-      matchesScrapWhen(seenTwice, { day: "2026-09-03", timeOfDay: morning }),
+      matchesScrapWhen(seenTwice, {
+        days: { start: "2026-09-02", end: "2026-09-04" },
+        timeOfDay: null,
+      }),
+    ).toBe(true);
+    expect(
+      matchesScrapWhen(seenTwice, {
+        days: { start: "2026-09-04", end: "2026-09-30" },
+        timeOfDay: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("needs one sighting to fall on both the day and the time of day", () => {
+    expect(
+      matchesScrapWhen(seenTwice, { days: null, timeOfDay: morning }),
+    ).toBe(true);
+    expect(
+      matchesScrapWhen(seenTwice, {
+        days: singleDay("2026-09-03"),
+        timeOfDay: morning,
+      }),
     ).toBe(false);
     expect(
-      matchesScrapWhen(seenTwice, { day: "2026-09-03", timeOfDay: lateNight }),
+      matchesScrapWhen(seenTwice, {
+        days: singleDay("2026-09-03"),
+        timeOfDay: lateNight,
+      }),
     ).toBe(true);
   });
 
@@ -163,10 +194,16 @@ describe("scrap day and time-of-day filters", () => {
     };
     const midnight = { centerMinutes: 0, radiusMinutes: 30 };
     expect(
-      matchesScrapWhen(button, { day: "2026-09-05", timeOfDay: midnight }),
+      matchesScrapWhen(button, {
+        days: singleDay("2026-09-05"),
+        timeOfDay: midnight,
+      }),
     ).toBe(true);
     expect(
-      matchesScrapWhen(button, { day: "2026-09-04", timeOfDay: null }),
+      matchesScrapWhen(button, {
+        days: singleDay("2026-09-04"),
+        timeOfDay: null,
+      }),
     ).toBe(false);
   });
 

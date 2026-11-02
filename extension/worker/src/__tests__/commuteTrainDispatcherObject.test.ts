@@ -137,15 +137,23 @@ describe('selectCommuteTrainCommunalStops', () => {
       200,
       200,
     ]);
-    expect(new Set(assignments.slice(0, 4).map(({ trainId }) => trainId))).toEqual(
-      new Set([assignments[0].trainId]),
+    // Each request awaits its own D1 policy lookup, so boarding order is not
+    // request order. Group by train instead of assuming which rider is fifth.
+    const trains = new Map<string, CommuteTrainAssignment[]>();
+    for (const assignment of assignments) {
+      trains.set(assignment.trainId, [...(trains.get(assignment.trainId) ?? []), assignment]);
+    }
+    const [fullTrain, nextTrain] = [...trains.values()].sort(
+      (left, right) => right.length - left.length,
     );
-    expect(assignments[4].trainId).not.toBe(assignments[0].trainId);
-    expect(assignments[0].stops.map(({ domain }) => domain)).toEqual([
+    expect(trains.size).toBe(2);
+    expect(fullTrain).toHaveLength(4);
+    expect(nextTrain).toHaveLength(1);
+    expect(fullTrain[0].stops.map(({ domain }) => domain)).toEqual([
       'first-one.example',
       'first-two.example',
     ]);
-    expect(assignments[4].stops.map(({ domain }) => domain)).toEqual([
+    expect(nextTrain[0].stops.map(({ domain }) => domain)).toEqual([
       'second-one.example',
       'second-two.example',
     ]);

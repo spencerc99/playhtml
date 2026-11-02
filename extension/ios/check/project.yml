@@ -1,0 +1,42 @@
+# ABOUTME: XcodeGen spec for the iPhone app's end-to-end check: a UI test that taps through the installed app.
+# ABOUTME: scripts/checkSafariIOSApp.sh generates the project from this into publish/ and runs it on a Simulator.
+name: WWOAppCheck
+options:
+  deploymentTarget:
+    iOS: "18.4"
+settings:
+  base:
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    SWIFT_VERSION: "5.0"
+    GENERATE_INFOPLIST_FILE: YES
+targets:
+  # UI tests need an app to run under. This one does nothing; the test
+  # drives the real we were online app by its bundle id.
+  WWOAppCheckHost:
+    type: application
+    platform: iOS
+    sources: [Host]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: online.wewere.app.check-host
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+  WWOAppCheck:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Check]
+    dependencies:
+      - target: WWOAppCheckHost
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: online.wewere.app.check
+        TEST_TARGET_NAME: WWOAppCheckHost
+schemes:
+  WWOAppCheck:
+    build:
+      targets:
+        WWOAppCheckHost: all
+        WWOAppCheck: [test]
+    test:
+      targets: [WWOAppCheck]

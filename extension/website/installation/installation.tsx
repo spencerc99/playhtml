@@ -9,7 +9,7 @@ import {
 } from "../shared/components/registry";
 import {
   parseVizFromUrl,
-  parseDayFromUrl,
+  parseDaysFromUrl,
   parseTimeOfDayFromUrl,
 } from "../shared/config";
 import { useInstallationEvents } from "../shared/hooks/useInstallationEvents";
@@ -24,14 +24,14 @@ import { useInstallationClock } from "../shared/hooks/useInstallationClock";
 const Installation = () => {
   // URL is the single source of truth for an installation screen — no in-page
   // controls, so these never change after mount.
-  const selectedDay = parseDayFromUrl() ?? null;
+  const [selectedDays] = useState(() => parseDaysFromUrl() ?? null);
   const timeOfDay = parseTimeOfDayFromUrl() ?? null;
   const [activeVisualizations] = useState<string[]>(
     () => parseVizFromUrl() ?? DEFAULT_ACTIVE_VISUALIZATIONS,
   );
 
   const { events, loading, error, refresh } = useInstallationEvents({
-    selectedDay,
+    selectedDays,
     timeOfDay,
     serverDomain: "",
     activeVisualizations,

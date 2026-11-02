@@ -1,0 +1,285 @@
+// ABOUTME: Styles the floating playhtml experiment badge and its about card.
+// ABOUTME: Uses the playhtml site tokens (see apps/docs docs-extras.css) so it matches home and docs.
+
+.playhtml-experiment-badge {
+  --badge-offset: 12px;
+  --badge-ink: #1c1c1c;
+  --badge-ink-2: #3b3b3b;
+  --badge-muted: #6a6a66;
+  --badge-paper: #f4efe5;
+  --badge-paper-warm: #ebe4d5;
+  --badge-line: rgba(28, 28, 28, 0.18);
+  --badge-accent: #274b9e;
+  --badge-accent-deep: #1c3875;
+  --badge-accent-wash: rgba(39, 75, 158, 0.08);
+  --badge-mustard: #e8a63a;
+  --badge-brick: 2px 2px 0 0 var(--badge-ink);
+  --badge-font-body: "Play", ui-sans-serif, system-ui, sans-serif;
+  --badge-font-display:
+    "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --badge-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+  position: fixed;
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: calc(100vw - 2 * var(--badge-offset));
+  color: var(--badge-ink);
+  font-family: var(--badge-font-body);
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+  pointer-events: none;
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  &--bottom-right {
+    right: var(--badge-offset);
+    bottom: var(--badge-offset);
+  }
+
+  &--bottom-left {
+    left: var(--badge-offset);
+    bottom: var(--badge-offset);
+    align-items: flex-start;
+  }
+
+  &--top-right {
+    top: var(--badge-offset);
+    right: var(--badge-offset);
+    flex-direction: column-reverse;
+  }
+
+  &--top-left {
+    top: var(--badge-offset);
+    left: var(--badge-offset);
+    flex-direction: column-reverse;
+    align-items: flex-start;
+  }
+}
+
+.playhtml-experiment-badge__toggle {
+  position: relative;
+  display: block;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  filter: drop-shadow(0 2px 6px rgba(29, 26, 23, 0.22));
+  transition:
+    transform 0.25s ease,
+    filter 0.25s ease;
+
+  &:hover {
+    transform: rotate(-12deg) scale(1.06);
+    filter: drop-shadow(0 4px 10px rgba(29, 26, 23, 0.3));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--badge-accent);
+    outline-offset: 3px;
+  }
+
+  .playhtml-experiment-badge.is-open & {
+    transform: rotate(-12deg);
+  }
+}
+
+.playhtml-experiment-badge__logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+
+.playhtml-experiment-badge__number {
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  transform: translateX(-50%);
+  padding: 1px 5px;
+  border: 1.5px solid var(--badge-ink);
+  border-radius: 3px;
+  background: var(--badge-paper);
+  color: var(--badge-ink);
+  font-family: var(--badge-font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.playhtml-experiment-badge__panel {
+  width: 300px;
+  max-width: 100%;
+  overflow: hidden;
+  border: 2px solid var(--badge-ink);
+  border-radius: 6px;
+  background: var(--badge-paper);
+  box-shadow: 4px 4px 0 0 var(--badge-ink);
+  pointer-events: auto;
+  animation: playhtml-experiment-badge-in 0.18s ease-out;
+
+  &[hidden] {
+    display: none;
+  }
+
+  p,
+  h2 {
+    margin: 0;
+  }
+}
+
+.playhtml-experiment-badge__body {
+  padding: 14px 16px 12px;
+}
+
+.playhtml-experiment-badge__meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.playhtml-experiment-badge__chip {
+  padding: 1px 6px;
+  border: 1.5px solid var(--badge-ink);
+  border-radius: 3px;
+  background: var(--badge-mustard);
+  color: var(--badge-ink);
+  font-family: var(--badge-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.playhtml-experiment-badge__title {
+  min-width: 0;
+  color: var(--badge-ink);
+  font-family: var(--badge-font-display);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.playhtml-experiment-badge__description {
+  margin-top: 3px !important;
+  color: var(--badge-ink);
+}
+
+.playhtml-experiment-badge__related {
+  margin-top: 3px !important;
+  font-size: 13px;
+}
+
+.playhtml-experiment-badge__about {
+  margin-top: 10px !important;
+  color: var(--badge-ink-2);
+  font-size: 13px;
+}
+
+.playhtml-experiment-badge__credit {
+  margin-top: 6px !important;
+  color: var(--badge-muted);
+  font-size: 12px;
+}
+
+.playhtml-experiment-badge__inline {
+  color: var(--badge-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+
+  &:hover {
+    color: var(--badge-accent-deep);
+  }
+}
+
+.playhtml-experiment-badge__bar {
+  display: flex;
+  border-top: 2px solid var(--badge-ink);
+}
+
+.playhtml-experiment-badge__links {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.playhtml-experiment-badge__link {
+  padding: 9px 4px;
+  border-right: 1.5px solid var(--badge-ink);
+  color: var(--badge-ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  transition: background 120ms cubic-bezier(0.2, 0.8, 0.3, 1);
+
+  &:last-child {
+    border-right-width: 2px;
+  }
+
+  &:hover,
+  &:focus-visible {
+    background: var(--badge-accent-wash);
+    color: var(--badge-accent-deep);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--badge-accent);
+    outline-offset: -4px;
+  }
+}
+
+.playhtml-experiment-badge__source {
+  display: flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  background: var(--badge-accent);
+  color: var(--badge-paper);
+  transition: background 120ms cubic-bezier(0.2, 0.8, 0.3, 1);
+
+  &:hover,
+  &:focus-visible {
+    background: var(--badge-accent-deep);
+    color: var(--badge-paper);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--badge-paper);
+    outline-offset: -5px;
+  }
+
+  svg {
+    display: block;
+  }
+}
+
+@keyframes playhtml-experiment-badge-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playhtml-experiment-badge__toggle,
+  .playhtml-experiment-badge__panel {
+    animation: none;
+    transition: none;
+  }
+}

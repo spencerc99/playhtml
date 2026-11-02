@@ -42,3 +42,24 @@ test("uploads to TestFlight from its own script, not the macOS release", async (
   expect(script).toContain("-exportArchive");
   expect(script).not.toContain("publish/safari-app\"");
 });
+
+test("installs our own home screen, with links that leave the app", async () => {
+  const script = await readFile(
+    path.join(process.cwd(), "scripts/packageSafariIOS.sh"),
+    "utf8",
+  );
+  const css = await readFile(path.join(process.cwd(), "ios/app/Style.css"), "utf8");
+  const html = await readFile(path.join(process.cwd(), "ios/app/Main.html"), "utf8");
+  const controller = await readFile(
+    path.join(process.cwd(), "ios/app/ViewController.swift"),
+    "utf8",
+  );
+
+  expect(script).toContain("cp ios/app/Main.html");
+  expect(script).toContain("cp ios/app/ViewController.swift");
+  expect(css).toContain("/*@@FONTS@@*/");
+  // Inlined fonts arrive as data: URLs, which the page's own policy must allow.
+  expect(html).toContain("font-src 'self' data:");
+  expect(html).toContain('href="https://wewere.online/commute"');
+  expect(controller).toContain("UIApplication.shared.open(url)");
+});

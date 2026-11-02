@@ -58,6 +58,12 @@ vi.mock("y-partyserver/provider", () => {
         this.roomname = room;
         this.options = options;
         this.doc = doc;
+        // Benchmarks pin the doc's client id: Yjs picks a random one, and its
+        // varint length changes how many bytes every update takes.
+        const fixedClientId = (globalThis as any).PLAYHTML_TEST_DOC_CLIENT_ID;
+        if (this.doc && typeof fixedClientId === "number") {
+          this.doc.clientID = fixedClientId;
+        }
         this.ws = {
           send: vi.fn(),
           addEventListener: vi.fn(),

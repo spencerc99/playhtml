@@ -622,6 +622,159 @@ describe("LocalEventStore aggregates", () => {
     }
   });
 
+  it("stores batches of an import without counting them until the import finishes", async () => {
+    const store = createStore();
+    const focus = {
+      ...event("batch-focus", "navigation"),
+      ts: 1_000,
+      data: { event: "focus" },
+    };
+    const blur = {
+      ...event("batch-blur", "navigation"),
+      ts: 7_000,
+      data: { event: "blur" },
+    };
+
+    expect(await store.addImportedEventBatch([blur])).toHaveLength(1);
+    expect(await store.addImportedEventBatch([focus, blur])).toEqual([
+      expect.objectContaining({ id: "batch-focus" }),
+    ]);
+    expect(await store.getSessionStats("example.com")).toBeNull();
+
+    await store.rebuildStatsAfterImport();
+
+    expect(await store.getSessionStats("example.com")).toMatchObject({
+      totalTimeMs: 6_000,
+      sessionCount: 1,
+      eventsByType: { navigation: 2 },
+    });
+  });
+
+  it("counts a failed import's saved batches on the next start", async () => {
+    const firstDay = Date.parse("2026-07-20T12:00:00-04:00");
+    const secondDay = Date.parse("2026-07-21T12:00:00-04:00");
+    const store = createStore();
+    await store.getAllDomains();
+    await store.addImportedEventBatch([
+      {
+        ...event("partial-focus", "navigation"),
+        ts: firstDay,
+        data: { event: "focus" },
+      },
+      {
+        ...event("partial-blur", "navigation"),
+        ts: firstDay + 6_000,
+        data: { event: "blur" },
+      },
+    ]);
+    expect(await store.getSessionStats("example.com")).toBeNull();
+    (store as unknown as { db: IDBDatabase | null }).db?.close();
+
+    const restarted = createStore();
+    await restarted.addEvents([
+      {
+        ...event("live-event", "navigation"),
+        ts: secondDay,
+        data: { event: "focus" },
+      },
+    ]);
+    await waitForBackgroundDatabaseWork();
+
+    expect(await restarted.getSessionStats("example.com")).toMatchObject({
+      totalTimeMs: 6_000,
+      eventsByType: { navigation: 3 },
+      activeDayCount: 2,
+    });
+  });
+
+  it("counts live events recorded while the restart rebuild runs", async () => {
+    const firstDay = Date.parse("2026-07-20T12:00:00-04:00");
+    const secondDay = Date.parse("2026-07-21T12:00:00-04:00");
+    const thirdDay = Date.parse("2026-07-22T12:00:00-04:00");
+    const store = createStore();
+    await store.getAllDomains();
+    await store.addImportedEventBatch([
+      {
+        ...event("partial-focus", "navigation"),
+        ts: firstDay,
+        data: { event: "focus" },
+      },
+    ]);
+    (store as unknown as { db: IDBDatabase | null }).db?.close();
+
+    const restarted = createStore();
+    const internals = restarted as unknown as {
+      rebuildAggregateDays: () => Promise<void>;
+    };
+    const rebuildAggregateDays = internals.rebuildAggregateDays.bind(restarted);
+    let browsedDuringRebuild = false;
+    internals.rebuildAggregateDays = async () => {
+      if (!browsedDuringRebuild) {
+        browsedDuringRebuild = true;
+        await restarted.addEvents([
+          {
+            ...event("during-days-rebuild", "navigation"),
+            ts: thirdDay,
+            data: { event: "focus" },
+          },
+          {
+            ...event("first-visit-during-days-rebuild", "navigation"),
+            ts: thirdDay,
+            data: { event: "focus" },
+            domain: "new.example",
+            meta: {
+              ...event("first-visit-during-days-rebuild", "navigation").meta,
+              url: "https://new.example/page",
+            },
+          },
+        ]);
+      }
+      return rebuildAggregateDays();
+    };
+    await restarted.addEvents([
+      {
+        ...event("live-event", "navigation"),
+        ts: secondDay,
+        data: { event: "focus" },
+      },
+    ]);
+    await waitForBackgroundDatabaseWork();
+
+    expect(await restarted.getSessionStats("example.com")).toMatchObject({
+      eventsByType: { navigation: 3 },
+      activeDayCount: 3,
+    });
+    expect(await restarted.getSessionStats("new.example")).toMatchObject({
+      eventsByType: { navigation: 1 },
+      activeDayCount: 1,
+    });
+    expect(browsedDuringRebuild).toBe(true);
+  });
+
+  it("rebuilds on a retry that adds nothing when an earlier import stopped partway", async () => {
+    const store = createStore();
+    const focus = {
+      ...event("retry-focus", "navigation"),
+      ts: 1_000,
+      data: { event: "focus" },
+    };
+    const blur = {
+      ...event("retry-blur", "navigation"),
+      ts: 7_000,
+      data: { event: "blur" },
+    };
+
+    await store.addImportedEventBatch([focus, blur]);
+    expect(await store.addImportedEventBatch([focus, blur])).toEqual([]);
+
+    expect(await store.finishImport()).toBe(true);
+    expect(await store.getSessionStats("example.com")).toMatchObject({
+      totalTimeMs: 6_000,
+      eventsByType: { navigation: 2 },
+    });
+    expect(await store.finishImport()).toBe(false);
+  });
+
   it("restores active-day counts after a bulk import rebuilds domain stats", async () => {
     const store = createStore();
     const firstDay = Date.parse("2026-07-20T12:00:00-04:00");
@@ -1438,6 +1591,45 @@ describe("LocalEventStore pending uploads", () => {
       ).toEqual({ events: [], nextCursor: null });
     },
   );
+
+  it("pages only the events inside a time range", async () => {
+    const store = createStore();
+    await store.addEvents([
+      { ...scrapEvent("after", "https://assets.example/after.png"), ts: 5_000 },
+      { ...scrapEvent("end-a", "https://assets.example/end-a.png"), ts: 4_000 },
+      { ...scrapEvent("end-b", "https://assets.example/end-b.png"), ts: 4_000 },
+      { ...buttonScrapEvent("middle"), ts: 3_000 },
+      { ...scrapEvent("start", "https://assets.example/start.png"), ts: 2_000 },
+      {
+        ...scrapEvent("before", "https://assets.example/before.png"),
+        ts: 1_000,
+      },
+      { ...event("cursor", "cursor"), ts: 3_000 },
+    ]);
+    const range = { startTs: 2_000, endTs: 4_000 };
+
+    const first = await store.queryEventPage("element", 3, undefined, range);
+    const second = await store.queryEventPage(
+      "element",
+      3,
+      first.nextCursor!,
+      range,
+    );
+
+    expect(first.events.map(({ id }) => id)).toEqual([
+      "end-b",
+      "end-a",
+      "middle",
+    ]);
+    expect(second.events.map(({ id }) => id)).toEqual(["start"]);
+    expect(second.nextCursor).toBeNull();
+    await expect(
+      store.queryEventPage("element", 3, undefined, {
+        startTs: 4_000,
+        endTs: 2_000,
+      }),
+    ).rejects.toThrow("Invalid event page time range");
+  });
 
   it("deletes scrap events by id and leaves other events alone", async () => {
     const store = createStore();

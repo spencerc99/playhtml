@@ -8,7 +8,7 @@ import {
   getCursorHotspot,
   getCursorScaleFactor,
 } from "../cursors";
-import { type TrailRenderer } from "../styles/trailRenderers";
+import { clearPathGeometry, type TrailRenderer } from "../styles/trailRenderers";
 import {
   buildFreehandPathSegment,
   type FinishedTrailOrderEntry,
@@ -205,6 +205,14 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
       if (group && lastGroupOpacityRef.current !== "0") {
         group.setAttribute("opacity", "0");
         lastGroupOpacityRef.current = "0";
+        clearPathGeometry(pathRef.current);
+        clearPathGeometry(haloRef.current);
+        clearPathGeometry(activePathRef.current);
+        clearPathGeometry(activeHaloRef.current);
+        finishedFrameRef.current = null;
+        finishedFrameSizeRef.current = null;
+        lastPathDataRef.current = "";
+        lastActivePathDataRef.current = "";
       }
     }, []);
 

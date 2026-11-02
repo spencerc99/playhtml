@@ -270,6 +270,28 @@ export function ScrapsPage() {
     return () => browser.runtime.onMessage.removeListener(onMessage);
   }, []);
 
+  // On iPhone, Safari's copy of the extension and the app's share scraps.
+  // Opening the page brings in what the other one collected or deleted since
+  // their last sync, then lists the scraps again. Elsewhere nothing syncs.
+  useEffect(() => {
+    let cancelled = false;
+    browser.runtime
+      .sendMessage({ type: "SYNC_DEVICES" })
+      .then((result) => {
+        const synced =
+          typeof result === "object" && result !== null && "synced" in result
+            ? result.synced === true
+            : false;
+        if (synced && !cancelled) setRevision((value) => value + 1);
+      })
+      .catch((syncError) => {
+        console.warn("Could not sync scraps with this iPhone's other copy:", syncError);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     requestGeneration.current += 1;

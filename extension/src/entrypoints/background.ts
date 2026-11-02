@@ -11,7 +11,7 @@ import type {
   WalkingRecordTraceTarget,
 } from '../storage/LocalEventStore'
 import { uploadEvents } from '../storage/sync'
-import { fetchEventsByPid } from '../storage/restore'
+import { restoreEventsFromServer } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
 import type { ScrapEventData, ScrapPosition } from '../collectors/types'
 import { getScrapKey } from '../collectors/scrapUtils'
@@ -24,13 +24,13 @@ import {
   ensurePlayerIdentity,
   getPlayerProfile,
   getPublicPlayerIdentity,
+  getStoredPlayerIdentity,
   recordDiscoveredSite,
 } from '../storage/playerIdentity'
 import { syncStoredPlayerColor } from '../storage/playerColor'
 import { VERBOSE } from '../config'
-import { gzipEventExport, gunzipToString } from '../utils/dataTransfer'
+import { gzipEventExport } from '../utils/dataTransfer'
 import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
-import { FRAME_ACTIVITY_MESSAGE } from '../features/frameActivity'
 import {
   loadState,
   saveState,
@@ -75,6 +75,12 @@ import {
   updateSlowModeRide,
 } from '../features/slowMode/slowMode'
 import { initSlowModeInterception } from '../features/slowMode/slowModeBackground'
+import {
+  DEVICE_SYNC_ALARM,
+  DEVICE_SYNC_PERIOD_MINUTES,
+  recordScrapDeletions,
+} from '../sync/deviceSync'
+import { sharedContainer, syncDevices } from '../sync/deviceSyncRuntime'
 import { isHostedCommuteUrl } from '../features/slowMode/slowModeHostedBridge'
 import {
   ALLOW_LOCAL_SESSION_SCRAPS_PAGES,
@@ -381,6 +387,8 @@ async function runLocalRetention(
   }
 }
 
+let identityInitialization: Promise<void> | null = null
+
 export default defineBackground(() => {
   // Storage durability is provided by the `unlimitedStorage` permission
   // declared in wxt.config.ts — Chromium's quota manager exempts extensions
@@ -420,12 +428,18 @@ export default defineBackground(() => {
         console.warn('Failed to record extension install time', e)
       })
       // First time installation - setup default identity
-      initializePlayerIdentity().then(() => initializeIdentityServices())
-      // Open setup page in a new tab
-      const url = browser.runtime.getURL('setup.html')
-      browser.tabs.create({ url }).catch((e) => {
-        console.warn('Failed to open setup page on install', e)
-      })
+      initializePlayerIdentity()
+        .then(() => runDeviceSyncPass())
+        .then((synced) => {
+          initializeIdentityServices()
+          // On iPhone, the other copy of the extension may already be set up;
+          // taking its identity means there is nothing left to set up here.
+          if (synced?.adoptedIdentity) return
+          const url = browser.runtime.getURL('setup.html')
+          browser.tabs.create({ url }).catch((e) => {
+            console.warn('Failed to open setup page on install', e)
+          })
+        })
     } else if (details.reason === 'update') {
       // Extension updated — ensure key is upgraded, then sync
       initializePlayerIdentity().then(() => initializeIdentityServices())
@@ -448,6 +462,19 @@ export default defineBackground(() => {
     delayInMinutes: 1,
     periodInMinutes: 10,
   })
+  sharedContainer()
+    .then(async (shared) => {
+      if (!shared) return
+      browser.alarms.create(DEVICE_SYNC_ALARM, {
+        delayInMinutes: 1,
+        periodInMinutes: DEVICE_SYNC_PERIOD_MINUTES,
+      })
+      // The identity is settled first, so a sync that takes the other side's
+      // identity is never overwritten by one minted here a moment later.
+      await initializePlayerIdentity()
+      return runDeviceSyncPass({ skipIfRanWithinMs: 2 * 60 * 1000 })
+    })
+    .catch((e) => console.warn('[Background] device sync startup error:', e))
   if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
     browser.alarms.create(LOCAL_RETENTION_ALARM, {
       periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
@@ -467,6 +494,11 @@ export default defineBackground(() => {
 
     if (alarm.name === IMAGE_COPY_BACKFILL_ALARM) {
       await imageCopier.backfill()
+      return
+    }
+
+    if (alarm.name === DEVICE_SYNC_ALARM) {
+      await runDeviceSyncPass()
       return
     }
 
@@ -511,13 +543,19 @@ export default defineBackground(() => {
     }, 1000)
   }
 
-  // Ensure player identity has an ECDSA keypair.
-  async function initializePlayerIdentity() {
-    try {
-      await ensurePlayerIdentity()
-    } catch (error) {
-      console.error('Failed to initialize player identity:', error)
-    }
+  // Ensure player identity has an ECDSA keypair. Single-flight, because
+  // install and the startup device sync both ask at once, and two callers
+  // would each mint a different identity.
+  function initializePlayerIdentity() {
+    identityInitialization ??= ensurePlayerIdentity()
+      .then(() => undefined)
+      .catch((error) => {
+        console.error('Failed to initialize player identity:', error)
+      })
+      .finally(() => {
+        identityInitialization = null
+      })
+    return identityInitialization
   }
 
   // Sync participant identity color to server on startup.
@@ -558,6 +596,30 @@ export default defineBackground(() => {
     ])
   }
 
+  // Shares identity, history, scraps and collages with the other copy of the
+  // extension on this iPhone (Safari's, or the one inside the app). A no-op
+  // everywhere else.
+  async function runDeviceSyncPass(
+    options: { skipIfRanWithinMs?: number } = {},
+  ) {
+    try {
+      const result = await syncDevices(store, options)
+      if (!result) return null
+      if (result.adoptedIdentity) await initializeIdentityServices()
+      if (result.importedScraps.length > 0) {
+        imageCopier.noteCollected(result.importedScraps)
+        await imageFingerprints.process(result.importedScraps).catch(() => {})
+        await browser.runtime
+          .sendMessage({ type: 'SCRAP_PHOTOS_UPDATED' })
+          .catch(() => {})
+      }
+      return result
+    } catch (e) {
+      console.warn('[Background] device sync failed:', e)
+      return null
+    }
+  }
+
   updateExperimentBadge().catch(() => {})
 
   browser.storage.onChanged?.addListener((changes, areaName) => {
@@ -567,6 +629,11 @@ export default defineBackground(() => {
         changes[FEATURE_OVERRIDES_STORAGE_KEY])
     ) {
       updateExperimentBadge().catch(() => {})
+    }
+    // Finishing setup here is what the other copy of the extension on this
+    // iPhone waits for, so it hears now rather than on the next alarm.
+    if (areaName === 'local' && changes.onboarding_complete?.newValue) {
+      runDeviceSyncPass().catch(() => {})
     }
   })
 
@@ -589,17 +656,6 @@ export default defineBackground(() => {
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = sendResponse as (response?: any) => void
-    if (message.type === FRAME_ACTIVITY_MESSAGE) {
-      // Forward an embedded frame's activity to the tab's top frame, where the
-      // navigation collector keeps the screen-time clock
-      const tabId = sender.tab?.id
-      if (tabId !== undefined && sender.frameId !== 0) {
-        browser.tabs
-          .sendMessage(tabId, { type: FRAME_ACTIVITY_MESSAGE }, { frameId: 0 })
-          .catch(() => {})
-      }
-      return
-    }
     if (message.type === 'GET_SLOW_MODE_HOSTED_RIDE') {
       if (
         typeof message.rideId !== 'string' ||
@@ -808,8 +864,9 @@ export default defineBackground(() => {
     if (message.type === 'GET_SCRAPS') {
       const limit = message.options?.limit ?? 200
       const cursor = message.options?.cursor
+      const range = message.options?.range
       store
-        .queryEventPage('element', limit, cursor)
+        .queryEventPage('element', limit, cursor, range)
         .then(({ events, nextCursor }) =>
           reply({
             scraps: events.flatMap((event): ScrapRecord[] => {
@@ -860,11 +917,33 @@ export default defineBackground(() => {
       }
       store
         .deleteScrapEvents(ids)
-        .then((deleted) => reply({ deleted }))
+        .then(async (deleted) => {
+          await recordScrapDeletions(ids).catch((e) =>
+            console.warn('[Background] could not record scrap deletions:', e),
+          )
+          reply({ deleted })
+          // Tells the other copy of the extension on this iPhone right away.
+          runDeviceSyncPass().catch(() => {})
+        })
         .catch((e) => {
           console.error('[Background] DELETE_SCRAPS error:', e)
           reply({ error: String(e) })
         })
+      return true
+    }
+
+    // Pages ask before showing what may have changed on the other copy of the
+    // extension on this iPhone: the popup before offering setup, and the
+    // scraps page before listing scraps. Elsewhere there is nothing to sync.
+    if (message.type === 'SYNC_DEVICES') {
+      runDeviceSyncPass()
+        .then((result) =>
+          reply({
+            synced: result !== null,
+            adoptedIdentity: result?.adoptedIdentity ?? false,
+          }),
+        )
+        .catch((e) => reply({ error: String(e) }))
       return true
     }
 
@@ -1188,30 +1267,48 @@ export default defineBackground(() => {
       return true
     }
 
-    if (message.type === 'IMPORT_EVENTS') {
+    if (message.type === 'IMPORT_EVENT_BATCH') {
       ;(async () => {
         try {
-          const json = await gunzipToString(
-            new Uint8Array(message.data as number[]),
-          )
-          const parsed = JSON.parse(json)
-          if (parsed.version !== 1)
-            throw new Error('Unsupported export version')
-          const events = parsed.events as CollectionEvent[]
-          const stored = await store.addImportedEvents(events)
-          const imported = stored.length
-          const alreadyHeld = events.length - imported
-          if (
-            stored.some((event) => event.type === 'element') &&
-            imported > 0
-          ) {
+          const events = message.events as CollectionEvent[]
+          const stored = await store.addImportedEventBatch(events)
+          reply({
+            success: true,
+            imported: stored.length,
+            alreadyHeld: events.length - stored.length,
+            scrapsAdded: stored.some((event) => event.type === 'element'),
+          })
+        } catch (e) {
+          console.error('[Background] IMPORT_EVENT_BATCH error:', e)
+          reply({ success: false, error: String(e) })
+        }
+      })()
+      return true
+    }
+
+    if (message.type === 'FINISH_IMPORT') {
+      ;(async () => {
+        try {
+          // Report to the settings page at most four times a second, and on every step change.
+          let lastStep = ''
+          let lastSentAt = 0
+          await store.finishImport((progress) => {
+            const now = Date.now()
+            if (progress.step === lastStep && now - lastSentAt < 250) return
+            lastStep = progress.step
+            lastSentAt = now
+            browser.runtime
+              .sendMessage({ type: 'IMPORT_STATS_PROGRESS', ...progress })
+              .catch(() => {})
+          })
+          if (message.scrapsAdded) {
             await browser.runtime
               .sendMessage({ type: 'SCRAP_PHOTOS_UPDATED' })
               .catch(() => {})
           }
-          reply({ success: true, imported, alreadyHeld })
+          reply({ success: true })
         } catch (e) {
-          console.error('[Background] IMPORT_EVENTS error:', e)
+          console.error('[Background] FINISH_IMPORT error:', e)
           reply({ success: false, error: String(e) })
         }
       })()
@@ -1221,30 +1318,24 @@ export default defineBackground(() => {
     if (message.type === 'RESTORE_FROM_SERVER') {
       ;(async () => {
         try {
-          const identity = await getPublicPlayerIdentity()
-          const pid = identity?.publicKey
-          if (!pid) {
+          const identity = await getStoredPlayerIdentity()
+          if (!identity) {
             reply({ success: false, error: 'No player identity found' })
             return
           }
           console.log(
             '[Background] RESTORE_FROM_SERVER starting, pid:',
-            pid.slice(0, 20) + '...',
-            'fetching all server events',
+            identity.public.publicKey.slice(0, 20) + '...',
           )
-          const { events, countsByType } = await fetchEventsByPid(pid)
-          console.log(
-            '[Background] Fetched',
-            events.length,
-            'events, writing to IDB...',
+          const { imported, countsByType } = await restoreEventsFromServer(
+            {
+              publicKey: identity.public.publicKey,
+              privateKey: identity.privateKey,
+            },
+            (events) => store.addRestoredEvents(events),
           )
-          await store.addRestoredEvents(events)
           console.log('[Background] RESTORE_FROM_SERVER complete')
-          reply({
-            success: true,
-            imported: events.length,
-            countsByType,
-          })
+          reply({ success: true, imported, countsByType })
         } catch (e) {
           console.error('[Background] RESTORE_FROM_SERVER error:', e)
           reply({ success: false, error: String(e) })

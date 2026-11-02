@@ -484,28 +484,6 @@ kbd {
   font-weight: 700;
 }
 
-footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 8px 10px;
-  border: 2px solid #000;
-  border-top: 0;
-  color: #000;
-  background: #f1f1ec;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-footer p {
-  margin: 0;
-}
-
-footer a {
-  color: #00e;
-}
-
 @media (max-width: 820px) {
   .page-shell {
     width: calc(100% - 8px);
@@ -548,15 +526,6 @@ footer a {
 
   .snapshot-gallery {
     grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
-  }
-
-  footer {
-    display: block;
-  }
-
-  footer a {
-    display: inline-block;
-    margin-top: 8px;
   }
 }
 

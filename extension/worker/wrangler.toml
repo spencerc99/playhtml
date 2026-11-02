@@ -100,10 +100,10 @@ migrations_dir = "migrations"
 [ai]
 binding = "AI"
 
-# Ingest asks Clef about new commute destinations as they arrive; this hourly
-# sweep retries any that ingest missed or that failed.
+# Asks Clef about commute candidates it has not judged yet. A new page waits
+# up to 15 minutes before Clef can approve it.
 [triggers]
-crons = ["0 * * * *"]
+crons = ["*/15 * * * *"]
 
 # Private internet map bundles. They hold participants' full page URLs and
 # titles, so they are served only through the admin-authenticated
