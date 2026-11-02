@@ -50,7 +50,7 @@ import {
 } from "../features/sessionScraps/sessionScrapsBridge";
 import { watchInstallationContent } from "./content/installationContent";
 import { MILESTONE_TOASTS_ENABLED_KEY } from "../milestones/state";
-import { DENY_LIST_KEY, DenyList, loadDenyList } from "@/storage/denyList";
+import { DENY_LIST_KEY, DenyList, loadDenyList } from "../storage/denyList";
 
 // Scraps are local-only, so normalize any unsupported stored mode before the
 // collector starts.

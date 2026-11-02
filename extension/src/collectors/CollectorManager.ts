@@ -16,7 +16,7 @@ import {
   INSTALLATION_PACE,
   watchInstallationMode,
 } from "../features/installationMode";
-import { loadDenyList } from "@/storage/denyList";
+import { loadDenyList } from "../storage/denyList";
 
 const STORAGE_KEY = "collection_enabled_collectors";
 const DENY_LIST_KEY = "deny-list";

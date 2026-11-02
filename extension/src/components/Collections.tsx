@@ -1,7 +1,7 @@
 // ABOUTME: Data collection settings screen for managing collector modes (off/local/shared)
 // ABOUTME: Also handles keyboard privacy level and filter substring settings
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import browser from "webextension-polyfill";
 import { isExtensionPageUrl } from "../utils/extensionPage";
 import type { CollectorStatus } from "../collectors/types";
@@ -28,7 +28,7 @@ import {
 } from "../utils/keyboardRedaction";
 import { useVisibleCollectorTypes } from "./useVisibleCollectorTypes";
 import "./Collections.scss";
-import { DENY_LIST_KEY, loadDenyList, saveDenyList } from "@/storage/denyList";
+import { DENY_LIST_KEY, loadDenyList, saveDenyList } from "../storage/denyList";
 
 interface CollectionsProps {
   onBack?: () => void;
@@ -896,10 +896,6 @@ export function Collections({
     }
   };
 
-  if (isLoading && visibleSection === "all") {
-    return <div className="collections__loading">Loading collections...</div>;
-  }
-
   const denyListRef = useRef<HTMLDivElement>(null);
 
   const writeDenyListToStorage = async function(denyList: { text: string, editing: boolean }[]) {
@@ -908,9 +904,7 @@ export function Collections({
 
   const loadDenyListFromStorage = async function() {
     const denyList = await loadDenyList();
-    setDenyList(denyList.values().map(t => {
-      return { text: t, editing: false };
-    }).toArray());
+    setDenyList(Array.from(denyList, (t) => ({ text: t, editing: false })));
   };
 
   const startEditingDenyListEntry = useCallback((id: number) => {
@@ -949,6 +943,10 @@ export function Collections({
     writeDenyListToStorage(newDenyList);
     setDenyList(newDenyList)
   }, [denyList])
+
+  if (isLoading && visibleSection === "all") {
+    return <div className="collections__loading">Loading collections...</div>;
+  }
 
   // Intended ordering:
   // on open options page:
@@ -1272,7 +1270,7 @@ export function Collections({
             <div>
               <form onSubmit={ev => {
                 ev.preventDefault();
-                const newDenyInput: HTMLInputElement | null = ev.target.querySelector('input[name="new-deny-entry"]');
+                const newDenyInput: HTMLInputElement | null = ev.currentTarget.querySelector('input[name="new-deny-entry"]');
                 if (newDenyInput) {
                   let entry: string;
                   try {
@@ -1301,7 +1299,8 @@ export function Collections({
                           <>
                             <div>
                               <form id={`collections__deny-list-edit-entry-form-${i}`} onSubmit={ev => {
-                                commitDenyListEntry(i, ev.target);
+                                ev.preventDefault();
+                                commitDenyListEntry(i, ev.currentTarget);
                               }}>
                                 <input type="url" defaultValue={s.text} />
                                 <input type="submit" hidden />

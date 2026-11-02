@@ -1,3 +1,5 @@
+import browser from "webextension-polyfill";
+
 export const DENY_LIST_KEY = "deny-list";
 export type DenyListEntry = string;
 export type DenyList = Set<DenyListEntry>;
