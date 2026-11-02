@@ -7,7 +7,9 @@ import {
   CollagePublishError,
   buildPublishedCollage,
   deletePublishedCollage,
+  publicationContentKey,
   publishedSource,
+  updatePublishedCollage,
   publishFormData,
   uploadPublishedCollage,
   type PublishedPieceMaterial,
@@ -395,6 +397,70 @@ describe("upload and take-down", () => {
         refused as unknown as typeof fetch,
       ),
     ).rejects.toThrow("nope");
+  });
+
+  it("updates a link in place with its token, keeping its address", async () => {
+    const built = await buildPublishedCollage(record([piece()]), resolver());
+    const share = {
+      id: "AbCdEfGhIjKlMnOpQrStU_",
+      deleteToken: "tok",
+      url: "https://wewere.online/collage/?id=AbCdEfGhIjKlMnOpQrStU_",
+      sharedAt: 1,
+    };
+    const fetcher = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ id: share.id, url: share.url, revision: 3 }),
+          { status: 200 },
+        ),
+    );
+    const next = await updatePublishedCollage(
+      "https://w",
+      share,
+      built,
+      () => 99,
+      fetcher as unknown as typeof fetch,
+    );
+    expect(next).toEqual({ ...share, updatedAt: 99 });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe(`https://w/collages/${share.id}`);
+    expect(init.method).toBe("PUT");
+    expect(init.headers).toEqual({ Authorization: "Bearer tok" });
+    expect((init.body as FormData).get("img/0")).toBeInstanceOf(Blob);
+
+    const refused = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "Too many" }), { status: 429 }),
+    );
+    await expect(
+      updatePublishedCollage(
+        "https://w",
+        share,
+        built,
+        Date.now,
+        refused as unknown as typeof fetch,
+      ),
+    ).rejects.toThrow("Too many");
+  });
+
+  it("fingerprints what a link shows, so an unchanged collage is not sent again", () => {
+    const base = record([piece()]);
+    const key = publicationContentKey(base, { color: "#ffae00" });
+    expect(key).toMatch(/^[0-9a-f]{16}$/);
+    expect(publicationContentKey({ ...base }, { color: "#ffae00" })).toBe(key);
+    expect(
+      publicationContentKey(
+        { ...base, title: "another" },
+        { color: "#ffae00" },
+      ),
+    ).not.toBe(key);
+    expect(
+      publicationContentKey(base, { color: "#ffae00", name: "spencer" }),
+    ).not.toBe(key);
+    expect(publicationContentKey(base, undefined)).not.toBe(key);
   });
 
   it("builds a form with one part per picture", async () => {

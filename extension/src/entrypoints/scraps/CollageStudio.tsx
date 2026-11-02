@@ -653,8 +653,19 @@ export function CollageStudio({
       format,
       backShows,
       publication: publication?.id ?? null,
+      // A link catching up is stored too, so it is not sent again on reopen.
+      publicationKey: publication?.contentKey ?? null,
     }),
-    [pieces, title, paper.color, paper.grain, format, backShows, publication?.id],
+    [
+      pieces,
+      title,
+      paper.color,
+      paper.grain,
+      format,
+      backShows,
+      publication?.id,
+      publication?.contentKey,
+    ],
   );
   const firstChangeRef = useRef(true);
   useEffect(() => {
@@ -3130,6 +3141,7 @@ export function CollageStudio({
                   materialFor={publishPieceMaterial}
                   coverFor={publishCollageCover}
                   signer={signer}
+                  changedAt={changedAt}
                   onShared={(next) => {
                     if (!mountedRef.current) {
                       // The studio closed while the link uploaded: store its

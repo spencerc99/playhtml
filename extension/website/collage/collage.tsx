@@ -484,7 +484,9 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
   // Markup is sanitized here, every time the collage is shown.
   const shown = useMemo(
     () =>
-      viewerPieces(collage, (ref) => publishedImageUrl(ASSETS_URL, id, ref)),
+      viewerPieces(collage, (ref) =>
+        publishedImageUrl(ASSETS_URL, id, ref, collage.revision),
+      ),
     [collage, id],
   );
   const studioPieces = useMemo(

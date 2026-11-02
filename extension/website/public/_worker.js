@@ -80,7 +80,10 @@ async function collagePage(request, env, page) {
     title: name,
     description: `a collage of ${countOf(collage.pieces.length, "piece", "pieces")} from ${countOf(sites, "site", "sites")}, on we were online`,
     url: url.toString(),
-    image: hasCover ? `${assetsOrigin}/collages/${id}/cover` : null,
+    // An updated share's cover lives under its revision.
+    image: hasCover
+      ? `${assetsOrigin}/collages/${id}/cover${Number.isInteger(collage.revision) ? `?v=${collage.revision}` : ""}`
+      : null,
   });
   const response = new HTMLRewriter()
     .on("title", {

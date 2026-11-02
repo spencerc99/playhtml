@@ -1,13 +1,15 @@
 // ABOUTME: The share popover's link section: uploads the collage as a view-only page, copies its link, and unshares.
-// ABOUTME: Shows "make a link" until the collage is shared, then the link with copy, open, update and unshare.
-// ABOUTME: Both ask whether to sign it, stamping the share with the maker's cursor colour and name.
+// ABOUTME: Once shared, the link updates itself in place a few seconds after the collage or its signature stops changing.
+// ABOUTME: Both states ask whether to sign it, stamping the share with the maker's cursor colour and name.
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { CollageRecord, CollagePublication } from "./collageRecord";
 import {
   CollagePublishError,
   buildPublishedCollage,
   deletePublishedCollage,
+  publicationContentKey,
+  updatePublishedCollage,
   uploadPublishedCollage,
   type CollageCoverBaker,
   type PieceMaterialResolver,
@@ -43,9 +45,19 @@ export interface PublishSectionProps {
   onProblem: (text: string) => void;
   /** Who is sharing, for the signature; without one, shares go unsigned. */
   signer?: CollageSigner;
+  /** When the stored collage last changed; a shared link catches up after it. */
+  changedAt?: number | null;
 }
 
-type Busy = "idle" | "sharing" | "unsharing";
+type Busy = "idle" | "sharing" | "updating" | "unsharing";
+
+/** How long the collage stays still before its link updates. */
+export const LINK_SETTLE_MS = 4000;
+/**
+ * The least time between two updates of one link, inside what the share
+ * server allows (ten a minute per link).
+ */
+export const LINK_UPDATE_GAP_MS = 8000;
 
 const LINE = {
   fill: "none",
@@ -80,6 +92,7 @@ export function PublishSection({
   onUnshared,
   onProblem,
   signer,
+  changedAt = null,
 }: PublishSectionProps) {
   const [busy, setBusy] = useState<Busy>("idle");
   const [copied, setCopied] = useState(false);
@@ -91,6 +104,9 @@ export function PublishSection({
     withName: share?.signature ? share.signature.name !== undefined : true,
   }));
   const [changingSignature, setChangingSignature] = useState(false);
+  /** When the link last went up, so updates keep inside the server's limit. */
+  const lastUpdateRef = useRef(0);
+  const [stale, setStale] = useState(false);
 
   useEffect(() => {
     if (!signer) return;
@@ -137,14 +153,20 @@ export function PublishSection({
     setCopied(false);
     try {
       const signature = await signNow();
+      const snapshot = record();
       const built = await buildPublishedCollage(
-        record(),
+        snapshot,
         materialFor,
         coverFor,
         signature,
       );
       const next = await uploadPublishedCollage(workerUrl, built);
-      onShared(signature ? { ...next, signature } : next);
+      lastUpdateRef.current = Date.now();
+      onShared({
+        ...next,
+        ...(signature ? { signature } : {}),
+        contentKey: publicationContentKey(snapshot, signature),
+      });
       setCopied(await copyText(next.url));
     } catch (error) {
       onProblem(`could not share — ${reason(error)}`);
@@ -167,38 +189,61 @@ export function PublishSection({
   };
 
   /**
-   * Sharing again replaces the old link. The new one goes up first, so a failed
-   * upload leaves the old link working; the old one comes down only after.
+   * Brings the link up to date in place: same address, same token. A failed
+   * update leaves the link showing what it showed, and tries again on the
+   * next change.
    */
-  const reshareNow = async () => {
-    if (!share) return;
-    const old = share;
-    setBusy("sharing");
-    setCopied(false);
+  const updateNow = async (current: CollagePublication) => {
+    setBusy("updating");
+    lastUpdateRef.current = Date.now();
     try {
       const signature = await signNow();
+      const snapshot = record();
       const built = await buildPublishedCollage(
-        record(),
+        snapshot,
         materialFor,
         coverFor,
         signature,
       );
-      const next = await uploadPublishedCollage(workerUrl, built);
-      onShared(signature ? { ...next, signature } : next);
-      setChangingSignature(false);
-      setCopied(await copyText(next.url));
-      deletePublishedCollage(workerUrl, old).catch((error: unknown) =>
-        console.warn(
-          "[collage publish] could not take the old link down:",
-          error,
-        ),
-      );
+      const next = await updatePublishedCollage(workerUrl, current, built);
+      const { signature: _old, ...rest } = next;
+      onShared({
+        ...rest,
+        ...(signature ? { signature } : {}),
+        contentKey: publicationContentKey(snapshot, signature),
+      });
     } catch (error) {
       onProblem(`could not update the link — ${reason(error)}`);
     } finally {
       setBusy("idle");
     }
   };
+
+  // A shared link follows the collage: once it and its signature have been
+  // still for a moment, the link catches up. Nothing runs until the maker is
+  // known, so a link is never re-signed as anonymous while they load.
+  const ready = !signer || identity !== null;
+  useEffect(() => {
+    if (!share || !ready || !canShare) {
+      setStale(false);
+      return;
+    }
+    const key = publicationContentKey(record(), signatureFor(identity, choice));
+    if (key === share.contentKey) {
+      setStale(false);
+      return;
+    }
+    setStale(true);
+    if (busy !== "idle") return;
+    const wait = Math.max(
+      LINK_SETTLE_MS,
+      lastUpdateRef.current + LINK_UPDATE_GAP_MS - Date.now(),
+    );
+    const timer = window.setTimeout(() => void updateNow(share), wait);
+    return () => window.clearTimeout(timer);
+    // updateNow and record read the latest values when they run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [share, ready, canShare, changedAt, choice, identity, busy]);
 
   const signatureRow = identity && (
     <SignatureRow
@@ -244,15 +289,15 @@ export function PublishSection({
           ) : (
             "not signed"
           )}
-          {!changingSignature && (
-            <button
-              type="button"
-              className="collage-share__change"
-              onClick={() => setChangingSignature(true)}
-            >
-              change
-            </button>
-          )}
+          {/* A change goes up with the link's next update, like any edit. */}
+          <button
+            type="button"
+            className="collage-share__change"
+            aria-expanded={changingSignature}
+            onClick={() => setChangingSignature((value) => !value)}
+          >
+            {changingSignature ? "done" : "change"}
+          </button>
         </p>
       )}
       {changingSignature && signatureRow}
@@ -293,16 +338,14 @@ export function PublishSection({
           </svg>
         </a>
       </div>
-      <div className="collage-export__row">
-        <button
-          type="button"
-          className="collage-action"
-          disabled={busy !== "idle" || !canShare}
-          title="Replace the link with one showing the collage as it is now"
-          onClick={() => void reshareNow()}
-        >
-          {busy === "sharing" ? "updating…" : "update"}
-        </button>
+      <div className="collage-export__row collage-share__foot">
+        <span className="collage-studio__label" aria-live="polite">
+          {busy === "updating"
+            ? "updating…"
+            : stale
+              ? "changes go up in a moment"
+              : "up to date"}
+        </span>
         <button
           type="button"
           className="collage-action collage-action--danger"
