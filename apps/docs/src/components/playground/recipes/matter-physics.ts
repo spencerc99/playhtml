@@ -177,7 +177,7 @@ export const matterPhysicsRecipe: ExampleRecipe = {
 
   <script type="module">
     import Matter from "https://esm.sh/matter-js@0.20.0";
-    import { playhtml } from "playhtml";
+    import { playhtml } from "https://unpkg.com/playhtml@latest";
 
     const { Bodies, Body, Composite, Engine, Sleeping } = Matter;
     const WORLD_WIDTH = 640;
@@ -486,7 +486,7 @@ export const matterPhysicsRecipe: ExampleRecipe = {
         controllerId: "",
         bodies: structuredClone(INITIAL_BODIES),
       },
-      updateElement: ({ data }) => applySharedState(data),
+      update: ({ data }) => applySharedState(data),
       onMount: (context) => {
         getData = context.getData;
         setData = context.setData;

@@ -120,6 +120,36 @@ describe("CursorCollector", () => {
       expect(call.event).toBe("move");
     });
 
+    it("emits move events when a finger drags on a touch screen", async () => {
+      collector.enable();
+
+      const touchMove = (x: number, y: number) => {
+        const event = new Event("touchmove", { bubbles: true });
+        Object.defineProperty(event, "touches", {
+          value: [{ clientX: x, clientY: y, target: document.body }],
+        });
+        document.dispatchEvent(event);
+      };
+      touchMove(0, 0);
+      touchMove(40, 60);
+
+      await advanceTime(250);
+
+      expect(emitCallback).toHaveBeenCalled();
+      const call = emitCallback.mock.calls[0][0] as CursorEventData;
+      expect(call.event).toBe("move");
+      expect(call.x).toBeGreaterThan(0);
+      expect(call.y).toBeGreaterThan(0);
+    });
+
+    it("stops listening to touch drags when disabled", () => {
+      const removeSpy = vi.spyOn(document, "removeEventListener");
+      collector.enable();
+      collector.disable();
+      expect(removeSpy).toHaveBeenCalledWith("touchmove", expect.any(Function));
+      removeSpy.mockRestore();
+    });
+
     it("throttles movement sampling to 250ms", async () => {
       collector.enable();
 

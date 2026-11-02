@@ -38,6 +38,7 @@ import type { ScreenTimeSession } from "../../storage/LocalEventStore";
 import { getPublicPlayerIdentity } from "../../storage/playerIdentity";
 import { NEWTAB_TAKEOVER_KEY } from "../../features/newtab/takeover";
 import { isSafariExtensionPageUrl } from "../../utils/extensionPage";
+import { usePhoneLayout } from "../scraps/phoneLayout";
 import {
   createMovementLoadingPreview,
   isMovementLoadingPreview,
@@ -379,6 +380,7 @@ function NewTabTakeoverToggle() {
   const [enabled, setEnabled] = useState(false);
   // Safari has no new tab override, so there is no preference to offer.
   const isSafari = isSafariExtensionPageUrl(window.location.href);
+  const phone = usePhoneLayout();
 
   useEffect(() => {
     if (isSafari) return;
@@ -392,6 +394,10 @@ function NewTabTakeoverToggle() {
     setEnabled(next);
     browser.storage.local.set({ [NEWTAB_TAKEOVER_KEY]: next }).catch(() => {});
   };
+
+  // A phone browser has no new tab page to take over, and a floating note
+  // would sit on top of the record.
+  if (phone) return null;
 
   if (isSafari) {
     return (

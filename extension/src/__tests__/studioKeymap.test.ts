@@ -1,11 +1,12 @@
 // ABOUTME: Tests which studio command each key press invokes.
 // ABOUTME: Guards that typing is never interrupted and modes own their keys.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   RESERVED_ACCELERATORS,
   acceleratorName,
   isTypingTarget,
+  releaseTypingFocus,
   studioCommandFor,
   STUDIO_SHORTCUTS,
   type KeyEventShape,
@@ -623,5 +624,38 @@ describe("several pieces in hand", () => {
     expect(studioCommandFor(press("d", { metaKey: true }), SEVERAL)).toEqual({
       kind: "duplicate",
     });
+  });
+});
+
+describe("turning from a text field to the collage", () => {
+  function field(tagName: string) {
+    const blur = vi.fn();
+    return { el: { tagName, blur } as unknown as Element & { blur: () => void }, blur };
+  }
+
+  it("puts down the drawer's search when a scrap is placed with focus still in it", () => {
+    const search = field("INPUT");
+    expect(releaseTypingFocus(search.el)).toBe(true);
+    expect(search.blur).toHaveBeenCalledOnce();
+  });
+
+  it("puts down a focused field when the collage is pressed", () => {
+    const search = field("INPUT");
+    expect(releaseTypingFocus(search.el, { tagName: "DIV" })).toBe(true);
+    expect(search.blur).toHaveBeenCalledOnce();
+  });
+
+  it("leaves a field alone when the press lands on a field", () => {
+    const title = field("INPUT");
+    expect(releaseTypingFocus(title.el, title.el as never)).toBe(false);
+    expect(releaseTypingFocus(title.el, { tagName: "TEXTAREA" })).toBe(false);
+    expect(title.blur).not.toHaveBeenCalled();
+  });
+
+  it("leaves focus on a button or the page alone", () => {
+    const button = field("BUTTON");
+    expect(releaseTypingFocus(button.el)).toBe(false);
+    expect(button.blur).not.toHaveBeenCalled();
+    expect(releaseTypingFocus(null)).toBe(false);
   });
 });

@@ -81,7 +81,7 @@ vi.mock("../storage/sync", () => ({
 }));
 
 vi.mock("../storage/restore", () => ({
-  fetchEventsByPid: vi.fn().mockResolvedValue([]),
+  restoreEventsFromServer: vi.fn(),
 }));
 
 describe("background local retention", () => {

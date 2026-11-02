@@ -1,0 +1,166 @@
+# ABOUTME: Runs the playhtml client benchmark on main and the PR, then comments the comparison.
+# ABOUTME: Fails when bundle size, render or traffic counts regress past the threshold so it can gate merges.
+
+name: Library Performance Report
+
+# No workflow-level path filter: a required check that never starts blocks merging,
+# so every PR starts this job and "Detect library changes" skips the benchmark when
+# nothing relevant changed.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  compare:
+    name: Compare library benchmark
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Explicit bash gives `-eo pipefail`, so a crashing benchmark piped into
+    # `tail` still fails its step.
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect library changes
+        id: changes
+        run: |
+          echo "OUT_DIR=$RUNNER_TEMP/library-performance" >> "$GITHUB_ENV"
+          # Compare against where the PR branched from, so commits that landed on
+          # main after it don't count as this PR's change.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "BASE_SHA=$(git merge-base "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")" >> "$GITHUB_ENV"
+          fi
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          pattern='^(packages/playhtml/|packages/react/|packages/common/src/|scripts/compare-library-performance|\.github/workflows/library-performance\.yml$|package\.json$|bun\.lock$)'
+          # Read the diff into a variable: under pipefail, `grep -q` exiting early
+          # would kill `git diff` and read as "no match".
+          changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}")"
+          if grep -Eq "$pattern" <<< "$changed"; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "No library changes in this PR, so the benchmark did not run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Setup Node.js
+        if: steps.changes.outputs.relevant == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup Bun
+        if: steps.changes.outputs.relevant == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # The head benchmark files (and test setup) are reused on base so both sides
+      # measure the same thing. If they don't run against base (new APIs), base's own benchmark is used.
+      - name: Benchmark head
+        if: steps.changes.outputs.relevant == 'true'
+        run: |
+          mkdir -p "$OUT_DIR"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git checkout --detach "${{ github.event.pull_request.head.sha }}"
+          fi
+          bun install --frozen-lockfile
+          bun build-packages
+          rm -rf "$RUNNER_TEMP/head-bench" "$RUNNER_TEMP/head-react-bench"
+          cp -R packages/playhtml/bench "$RUNNER_TEMP/head-bench"
+          cp -R packages/react/bench "$RUNNER_TEMP/head-react-bench"
+          cp packages/playhtml/vitest.setup.ts "$RUNNER_TEMP/head-vitest.setup.ts"
+          rm -rf "$RUNNER_TEMP/head-bench/out" "$RUNNER_TEMP/head-react-bench/out"
+          (cd packages/playhtml && node bench/run.mjs head) | tail -n 1 > "$OUT_DIR/head.json"
+          cat "$OUT_DIR/head.json"
+
+      - name: Benchmark base
+        if: steps.changes.outputs.relevant == 'true'
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git checkout --detach "$BASE_SHA"
+          else
+            git checkout --detach HEAD^
+          fi
+          bun install --frozen-lockfile
+          bun build-packages
+          rm -rf packages/playhtml/bench packages/react/bench
+          cp -R "$RUNNER_TEMP/head-bench" packages/playhtml/bench
+          cp -R "$RUNNER_TEMP/head-react-bench" packages/react/bench
+          cp "$RUNNER_TEMP/head-vitest.setup.ts" packages/playhtml/vitest.setup.ts
+          if ! (cd packages/playhtml && node bench/run.mjs base) | tail -n 1 > "$OUT_DIR/base.json"; then
+            echo "Head benchmark did not run on base; using base's own benchmark."
+            rm -rf packages/playhtml/bench packages/react/bench
+            git checkout -- packages/playhtml/bench packages/playhtml/vitest.setup.ts
+            git checkout -- packages/react/bench 2>/dev/null || true
+            (cd packages/playhtml && node bench/run.mjs base) | tail -n 1 > "$OUT_DIR/base.json"
+          fi
+          cat "$OUT_DIR/base.json"
+
+      - name: Restore head checkout
+        if: always() && steps.changes.outputs.relevant == 'true'
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git checkout -f --detach "${{ github.event.pull_request.head.sha }}"
+          else
+            git checkout -f --detach "${{ github.sha }}"
+          fi
+
+      - name: Write performance report
+        if: always() && steps.changes.outputs.relevant == 'true'
+        run: |
+          mkdir -p "$OUT_DIR"
+          status=0
+          if [ -s "$OUT_DIR/base.json" ] && [ -s "$OUT_DIR/head.json" ]; then
+            node scripts/compare-library-performance.mjs \
+              --base "$OUT_DIR/base.json" \
+              --head "$OUT_DIR/head.json" \
+              --out-dir "$OUT_DIR" \
+              --fail-on-regression || status=$?
+          else
+            {
+              echo "<!-- library-performance-report -->"
+              echo "# Library Performance Report"
+              echo ""
+              echo "**Result:** the benchmark did not finish, so nothing was compared. See the workflow logs."
+            } > "$OUT_DIR/report.md"
+            status=1
+          fi
+          {
+            cat "$OUT_DIR/report.md"
+            echo ""
+            echo "[Workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          } > "$OUT_DIR/comment.md"
+          cat "$OUT_DIR/report.md" >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      # Fork PRs get a read-only token, so they only see the Actions summary.
+      - name: Comment on pull request
+        if: >-
+          always() &&
+          steps.changes.outputs.relevant == 'true' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const stickyPrComment = require("./.github/scripts/sticky-pr-comment.cjs");
+            await stickyPrComment({
+              github,
+              context,
+              marker: "<!-- library-performance-report -->",
+              bodyPath: `${process.env.OUT_DIR}/comment.md`,
+            });

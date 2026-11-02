@@ -1,9 +1,5 @@
 # Unreleased
 
-- Partial typing legibility now keeps or hides whole words, and playback shows text as recorded.
-- Internet scraps opens faster with large collections while search and filters still find older scraps.
-- You can now hide scraps from sites you don't want to see in the scraps site filter.
-
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
 watches this file: when there are bullets, it opens (or updates) a release PR
@@ -19,4 +15,6 @@ extension/website/public/changelog/media/ and reference them here:
 ![video: Demo title](/changelog/media/file.mp4)
 -->
 
-- Notices in the popup now go away once you open them, and on their own after a few views.
+- Import a data export of any size in one go, with a progress bar and time left.
+- Pick a range of days, a whole month, or a time of day like "mornings" when looking back at your movement portrait or your scraps.
+- Partial typing legibility now keeps or hides whole words, and playback shows text as recorded.

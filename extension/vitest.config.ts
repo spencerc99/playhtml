@@ -49,6 +49,7 @@ export default defineConfig({
       "scripts/**/*.test.mjs",
       "website/**/*.test.ts",
       "website/**/*.test.tsx",
+      "shared/**/*.test.ts",
     ],
   },
 });

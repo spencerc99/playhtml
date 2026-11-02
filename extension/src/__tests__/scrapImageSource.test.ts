@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   forgetScrapImageSrc,
   provideLocalScrapImages,
+  prioritizeScrapPreviews,
   resolveScrapImageSrc,
+  resolveScrapPreviewSrc,
 } from "@movement/utils/scrapImageSource";
 
 const held = new Map<string, string>();
@@ -68,5 +70,71 @@ describe("resolveScrapImageSrc", () => {
     expect(await resolveScrapImageSrc("https://a.test/late.png")).toBe(
       "blob:late",
     );
+  });
+});
+
+describe("tile previews", () => {
+  it("keeps original resolution separate and falls back to held originals", async () => {
+    const originals = new Map([
+      ["a", "blob:original-a"],
+      ["b", "blob:original-b"],
+    ]);
+    const previews = new Map([["a", "blob:preview-a"]]);
+    provideLocalScrapImages(
+      async () => originals,
+      async () => previews,
+    );
+    expect(await resolveScrapPreviewSrc("a")).toBe("blob:preview-a");
+    expect(await resolveScrapImageSrc("a")).toBe("blob:original-a");
+    expect(await resolveScrapPreviewSrc("b")).toBe("blob:original-b");
+    previews.set("b", "blob:preview-b");
+    expect(await resolveScrapPreviewSrc("b")).toBe("blob:preview-b");
+  });
+
+  it("settles each preview independently and drops caches when providers change", async () => {
+    let finishSlow!: () => void;
+    provideLocalScrapImages(
+      async () => new Map(),
+      async (srcs) => {
+        if (srcs.includes("slow"))
+          await new Promise<void>((resolve) => {
+            finishSlow = resolve;
+          });
+        return new Map(srcs.map((src) => [src, `blob:preview-${src}`]));
+      },
+    );
+    const slow = resolveScrapPreviewSrc("slow");
+    expect(await resolveScrapPreviewSrc("fast")).toBe("blob:preview-fast");
+    finishSlow();
+    expect(await slow).toBe("blob:preview-slow");
+    provideLocalScrapImages(
+      async () => new Map([["fast", "blob:new-original"]]),
+    );
+    expect(await resolveScrapPreviewSrc("fast")).toBe("blob:new-original");
+  });
+});
+
+describe("preview priorities", () => {
+  it("reports current sources independently of existing resolution and resets the provider", async () => {
+    const priorities: string[][] = [];
+    let finish!: (value: Map<string, string>) => void;
+    provideLocalScrapImages(
+      async () => new Map(),
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      (srcs) => priorities.push([...srcs]),
+    );
+    const pending = resolveScrapPreviewSrc("queued");
+    await Promise.resolve();
+    prioritizeScrapPreviews(["queued"]);
+    prioritizeScrapPreviews([]);
+    expect(priorities).toEqual([["queued"], []]);
+    finish(new Map([["queued", "blob:preview"]]));
+    expect(await pending).toBe("blob:preview");
+    provideLocalScrapImages(async () => new Map());
+    prioritizeScrapPreviews(["other"]);
+    expect(priorities).toHaveLength(2);
   });
 });

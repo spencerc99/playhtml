@@ -57,8 +57,9 @@ const apart = piece({ id: "apart", z: 3, x: 400, y: 400 });
 const pieces = [bottom, middle, top, apart];
 const inThePile = { x: 50, y: 50 };
 const onApart = { x: 450, y: 450 };
-const plain = { deep: false, additive: false };
-const shift = { deep: false, additive: true };
+const plain = { deep: false, additive: false, sameSpot: false };
+const again = { deep: false, additive: false, sameSpot: true };
+const shift = { deep: false, additive: true, sameSpot: false };
 
 describe("the hand", () => {
   it("adds a piece with shift and makes it the primary", () => {
@@ -135,11 +136,33 @@ describe("a press with one piece or none held", () => {
     });
   });
 
-  it("clicking the held piece again steps one down the pile", () => {
+  it("clicking the held piece on top keeps it", () => {
     const plan = planSelectionPress(pieces, inThePile, selectOnly("top"), null, plain);
     expect(plan?.selectOnDown).toEqual(selectOnly("top"));
     expect(plan?.dragIds).toEqual(["top"]);
-    expect(plan?.selectOnClick).toEqual(selectOnly("middle"));
+    expect(plan?.selectOnClick).toEqual(selectOnly("top"));
+  });
+
+  it("keeps a buried held piece for a drag but takes the piece on top on a click", () => {
+    const plan = planSelectionPress(pieces, inThePile, selectOnly("bottom"), null, plain);
+    expect(plan).toEqual({
+      selectOnDown: selectOnly("bottom"),
+      dragIds: ["bottom"],
+      selectOnClick: selectOnly("top"),
+    });
+  });
+
+  it("clicking the same spot again reaches one piece further down", () => {
+    const fromTop = planSelectionPress(pieces, inThePile, selectOnly("top"), null, again);
+    expect(fromTop?.selectOnClick).toEqual(selectOnly("middle"));
+    expect(fromTop?.dragIds).toEqual(["top"]);
+    const fromBottom = planSelectionPress(pieces, inThePile, selectOnly("bottom"), null, again);
+    expect(fromBottom?.selectOnClick).toEqual(selectOnly("top"));
+  });
+
+  it("takes the piece on top again after a click away", () => {
+    const plan = planSelectionPress(pieces, inThePile, EMPTY_SELECTION, null, plain);
+    expect(plan?.selectOnClick).toEqual(selectOnly("top"));
   });
 
   it("drags the held piece even where another lies on top", () => {
@@ -152,6 +175,7 @@ describe("a press with one piece or none held", () => {
     const plan = planSelectionPress(pieces, inThePile, selectOnly("top"), null, {
       deep: true,
       additive: false,
+      sameSpot: false,
     });
     expect(plan?.selectOnDown).toEqual(selectOnly("middle"));
     expect(plan?.dragIds).toEqual(["middle"]);
@@ -182,6 +206,17 @@ describe("a shift press", () => {
     expect(plan?.dragIds).toEqual(["apart", "top"]);
     expect(plan?.selectOnClick).toEqual(selectOnly("top"));
   });
+
+  it("over a buried held piece drags the hand without adding the piece on top", () => {
+    const plan = planSelectionPress(pieces, inThePile, selectOnly("bottom"), null, shift);
+    expect(plan?.selectOnDown).toEqual(selectOnly("bottom"));
+    expect(plan?.dragIds).toEqual(["bottom"]);
+  });
+
+  it("over a buried held piece adds the piece on top on a click", () => {
+    const plan = planSelectionPress(pieces, inThePile, selectOnly("bottom"), null, shift);
+    expect(plan?.selectOnClick).toEqual({ ids: ["bottom", "top"], primary: "top" });
+  });
 });
 
 describe("a press with several held", () => {
@@ -207,7 +242,7 @@ describe("a press with several held", () => {
     const buried = selectMany(["bottom", "apart"]);
     const plan = planSelectionPress(pieces, inThePile, buried, null, plain);
     expect(plan?.dragIds).toEqual(["bottom", "apart"]);
-    // A click there takes the piece the eye sees on top.
+    // A click there takes the piece lying over it, as it does with one held.
     expect(plan?.selectOnClick).toEqual(selectOnly("top"));
   });
 
@@ -229,6 +264,7 @@ describe("a press with several held", () => {
     const plan = planSelectionPress(pieces, inThePile, selectMany(["apart", "top"]), null, {
       deep: true,
       additive: false,
+      sameSpot: false,
     });
     expect(plan?.selectOnDown).toEqual(selectOnly("middle"));
     expect(plan?.dragIds).toEqual(["middle"]);
@@ -321,6 +357,7 @@ describe("a press on an unheld piece inside the box around several", () => {
     const plan = planSelectionPress(spread, onBetween, held, groupBox, {
       deep: true,
       additive: false,
+      sameSpot: false,
     });
     expect(plan?.selectOnDown).toEqual(selectOnly("between"));
   });
@@ -374,13 +411,13 @@ describe("locked pieces", () => {
       plain,
     );
     expect(plan?.selectOnDown).toEqual(selectOnly("top"));
-    // ...and stepping down past it skips the locked piece entirely.
+    // ...and a cmd press stepping down past it skips the locked piece entirely.
     const deeper = planSelectionPress(
       selectablePieces(withLock),
       inThePile,
       selectOnly("top"),
       null,
-      plain,
+      { deep: true, additive: false, sameSpot: false },
     );
     expect(deeper?.selectOnClick).toEqual(selectOnly("bottom"));
   });

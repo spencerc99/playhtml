@@ -9,7 +9,7 @@ import { LiveIndicator } from "../../shared/components/LiveIndicator";
 import type { CollectionEvent } from "../../shared/types";
 import { latestDrawableCursorEventId } from "../../shared/utils/cursorInstallation";
 import {
-  parseDayFromUrl,
+  parseDaysFromUrl,
   parseTimeOfDayFromUrl,
   parseVizFromUrl,
 } from "../../shared/config";
@@ -134,7 +134,7 @@ const LiveInstallation = () => {
     }),
     [profile],
   );
-  const selectedDay = parseDayFromUrl() ?? null;
+  const [selectedDays] = useState(() => parseDaysFromUrl() ?? null);
   const timeOfDay = parseTimeOfDayFromUrl() ?? null;
   const [activeVisualizations, setActiveVisualizations] = useState<string[]>(
     () =>
@@ -143,7 +143,7 @@ const LiveInstallation = () => {
       ),
   );
   const hybrid = useHybridInstallationEvents({
-    selectedDay,
+    selectedDays,
     timeOfDay,
     serverDomain: "",
     activeVisualizations,

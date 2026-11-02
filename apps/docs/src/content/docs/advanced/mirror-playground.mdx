@@ -11,6 +11,8 @@ It does not recursively watch arbitrary descendant DOM mutations. If a nested li
 
 This page hosts the common edge cases, one section each. Open it in two browser windows side by side and poke at each demo.
 
+These demos are Vanilla HTML only. `can-mirror` syncs DOM that you change by hand, and React renders its own DOM, so in React you keep the same state in shared data with `withSharedState`. The [can-mirror examples on Custom elements](/docs/custom-elements/#can-mirror) show both versions side by side.
+
 ## Mirror boundary
 
 `can-mirror` updates:
@@ -31,7 +33,7 @@ This page hosts the common edge cases, one section each. Open it in two browser 
 
 The synced `data-playhtml-hover` attribute lets CSS target the hover state from across the network. Hover over the box in one tab and it turns green in every other tab.
 
-<div className="ph-mirror-sample">
+<div className="ph-mirror-sample" data-label="DEMO — :hover">
   <div can-mirror id="pg-mirror-hover" className="pg-hover-box">
     Hover me
   </div>
@@ -52,7 +54,7 @@ The synced `data-playhtml-hover` attribute lets CSS target the hover state from 
 
 Click the input and the blue outline shows for every client until you blur.
 
-<div className="ph-mirror-sample">
+<div className="ph-mirror-sample" data-label="DEMO — :focus">
   <input
     can-mirror
     id="pg-mirror-focus"
@@ -66,13 +68,13 @@ Click the input and the blue outline shows for every client until you blur.
 
 Type and the value replicates.
 
-<div className="ph-mirror-sample">
+<div className="ph-mirror-sample" data-label="DEMO — text input">
   <input can-mirror id="pg-mirror-text" type="text" placeholder="Type here..." />
 </div>
 
 ## Textarea
 
-<div className="ph-mirror-sample">
+<div className="ph-mirror-sample" data-label="DEMO — textarea">
   <textarea
     can-mirror
     id="pg-mirror-textarea"
@@ -84,7 +86,7 @@ Type and the value replicates.
 
 ## Checkbox
 
-<div className="ph-mirror-sample">
+<div className="ph-mirror-sample" data-label="DEMO — checkbox">
   <div can-mirror id="pg-mirror-checkbox">
     <label>
       <input type="checkbox" /> I agree to the terms
@@ -94,7 +96,7 @@ Type and the value replicates.
 
 ## Radio buttons
 
-<div className="ph-mirror-sample">
+<div className="ph-mirror-sample" data-label="DEMO — radio buttons">
   <div can-mirror id="pg-mirror-radio">
     <label>
       <input type="radio" name="pg-color" value="red" /> Red
@@ -112,7 +114,7 @@ Type and the value replicates.
 
 ## Select (dropdown)
 
-<div className="ph-mirror-sample">
+<div className="ph-mirror-sample" data-label="DEMO — select">
   <select can-mirror id="pg-mirror-select">
     <option value="apple">Apple</option>
     <option value="banana">Banana</option>
@@ -123,7 +125,7 @@ Type and the value replicates.
 
 ## Range slider
 
-<div className="ph-mirror-sample">
+<div className="ph-mirror-sample" data-label="DEMO — range slider">
   <input
     can-mirror
     id="pg-mirror-range"
@@ -137,7 +139,7 @@ Type and the value replicates.
 
 ## Color picker
 
-<div className="ph-mirror-sample">
+<div className="ph-mirror-sample" data-label="DEMO — color picker">
   <input
     can-mirror
     id="pg-mirror-color"
@@ -150,7 +152,7 @@ Type and the value replicates.
 
 Expand and collapse, and the native `open` attribute mirrors automatically.
 
-<div className="ph-mirror-sample">
+<div className="ph-mirror-sample" data-label="DEMO — details">
   <details can-mirror id="pg-mirror-details">
     <summary>Click to expand</summary>
     <p>
@@ -164,7 +166,7 @@ Expand and collapse, and the native `open` attribute mirrors automatically.
 
 Type, paste, and delete inside the contenteditable element. Browser input events sync the editable contents to every client. Try pressing `Enter` inside the list to add items; delete them by selecting and pressing `Backspace`.
 
-<div className="ph-mirror-sample">
+<div className="ph-mirror-sample" data-label="DEMO — contenteditable">
   <div
     can-mirror
     id="pg-mirror-editable"
@@ -176,7 +178,7 @@ Type, paste, and delete inside the contenteditable element. Browser input events
   </div>
 </div>
 
-<div className="ph-mirror-sample">
+<div className="ph-mirror-sample" data-label="DEMO — contenteditable list">
   <ul
     can-mirror
     id="pg-mirror-editable-list"
@@ -193,7 +195,7 @@ Type, paste, and delete inside the contenteditable element. Browser input events
 
 A single `can-mirror` wrapping a form with heterogeneous inputs, all of them sync together.
 
-<div className="ph-mirror-sample">
+<div className="ph-mirror-sample" data-label="DEMO — mixed form">
   <div can-mirror id="pg-mirror-mixedform" className="pg-mixed-form">
     <div>
       <label>

@@ -124,7 +124,7 @@ describe("background scrap queries", () => {
       LocalEventStore: vi.fn(() => ({ queryEventPage })),
     }));
     vi.doMock("../storage/sync", () => ({ uploadEvents: vi.fn() }));
-    vi.doMock("../storage/restore", () => ({ fetchEventsByPid: vi.fn() }));
+    vi.doMock("../storage/restore", () => ({ restoreEventsFromServer: vi.fn() }));
     vi.doMock("webextension-polyfill", () => ({
       default: {
         storage: {
@@ -162,7 +162,7 @@ describe("background scrap queries", () => {
       expect(handled).toBe(true);
     });
 
-    expect(queryEventPage).toHaveBeenCalledWith("element", 200, undefined);
+    expect(queryEventPage).toHaveBeenCalledWith("element", 200, undefined, undefined);
     expect(response).toEqual({
       nextCursor: null,
       scraps: [
@@ -275,7 +275,7 @@ describe("background scrap queries", () => {
       LocalEventStore: vi.fn(() => ({ queryEventPage })),
     }));
     vi.doMock("../storage/sync", () => ({ uploadEvents: vi.fn() }));
-    vi.doMock("../storage/restore", () => ({ fetchEventsByPid: vi.fn() }));
+    vi.doMock("../storage/restore", () => ({ restoreEventsFromServer: vi.fn() }));
     vi.doMock("webextension-polyfill", () => ({
       default: {
         storage: {
@@ -328,7 +328,7 @@ describe("background scrap queries", () => {
       "https://example.com/first-place",
       "https://example.com/second-place",
     ]);
-    expect(queryEventPage).toHaveBeenNthCalledWith(2, "element", 1, pageCursor);
+    expect(queryEventPage).toHaveBeenNthCalledWith(2, "element", 1, pageCursor, undefined);
   });
   it("requests a bounded first page when no limit is requested", async () => {
     const allEvents = Array.from({ length: 6000 }, (_, index) =>
@@ -348,7 +348,7 @@ describe("background scrap queries", () => {
       LocalEventStore: vi.fn(() => ({ queryEventPage })),
     }));
     vi.doMock("../storage/sync", () => ({ uploadEvents: vi.fn() }));
-    vi.doMock("../storage/restore", () => ({ fetchEventsByPid: vi.fn() }));
+    vi.doMock("../storage/restore", () => ({ restoreEventsFromServer: vi.fn() }));
     vi.doMock("webextension-polyfill", () => ({
       default: {
         storage: {
@@ -384,7 +384,7 @@ describe("background scrap queries", () => {
       listener({ type: "GET_SCRAPS" }, {}, resolve);
     });
 
-    expect(queryEventPage).toHaveBeenCalledWith("element", 200, undefined);
+    expect(queryEventPage).toHaveBeenCalledWith("element", 200, undefined, undefined);
     expect(response.scraps).toHaveLength(200);
   });
 
@@ -397,7 +397,7 @@ describe("background scrap queries", () => {
       LocalEventStore: vi.fn(() => ({ countEventsOfType })),
     }));
     vi.doMock("../storage/sync", () => ({ uploadEvents: vi.fn() }));
-    vi.doMock("../storage/restore", () => ({ fetchEventsByPid: vi.fn() }));
+    vi.doMock("../storage/restore", () => ({ restoreEventsFromServer: vi.fn() }));
     vi.doMock("webextension-polyfill", () => ({
       default: {
         storage: {

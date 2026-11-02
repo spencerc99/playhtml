@@ -5,6 +5,45 @@ import type { TimeOfDayFilter } from "../config";
 
 const MINUTES_PER_DAY = 1440;
 
+export interface QuarterDay {
+  label: string;
+  plural: string;
+  window: TimeOfDayFilter;
+}
+
+/** Quarter-day windows in local time, offered as one-tap times of day, midnight first. */
+export const QUARTER_DAYS: readonly QuarterDay[] = [
+  {
+    label: "night",
+    plural: "nights",
+    window: { centerMinutes: 180, radiusMinutes: 180 },
+  },
+  {
+    label: "morning",
+    plural: "mornings",
+    window: { centerMinutes: 540, radiusMinutes: 180 },
+  },
+  {
+    label: "afternoon",
+    plural: "afternoons",
+    window: { centerMinutes: 900, radiusMinutes: 180 },
+  },
+  {
+    label: "evening",
+    plural: "evenings",
+    window: { centerMinutes: 1260, radiusMinutes: 180 },
+  },
+];
+
+/** The quarter of the day a window is exactly, if it is one. */
+export function quarterDayOf(window: TimeOfDayFilter): QuarterDay | undefined {
+  return QUARTER_DAYS.find(
+    (quarter) =>
+      quarter.window.centerMinutes === window.centerMinutes &&
+      quarter.window.radiusMinutes === window.radiusMinutes,
+  );
+}
+
 /** The viewer's local calendar day for a timestamp, as "YYYY-MM-DD". */
 export function localDayKey(ts: number): string {
   const d = new Date(ts);

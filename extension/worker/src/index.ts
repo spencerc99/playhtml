@@ -2,7 +2,9 @@
 // ABOUTME: Routes HTTP requests to event, participant, subscribe, and feedback handlers.
 
 import { handleIngest } from './routes/ingest';
+import { handleClefLog } from './routes/clefLog';
 import { handleRecent } from './routes/recent';
+import { handleRestore } from './routes/restore';
 import { handleDailyCounts } from './routes/dailyCounts';
 import { handleStats } from './routes/stats';
 import { handleExport } from './routes/export';
@@ -16,7 +18,11 @@ import {
   handleQuarantineStrip,
   handleQuarantineRip,
 } from './routes/quarantine';
-import { handleCommute } from './routes/commute';
+import {
+  handleCommute,
+  handleCommuteReview,
+  suggestCommuteDestinations,
+} from './routes/commute';
 import { handleCommuteTrainBoard } from './routes/commuteTrains';
 import {
   handleAccessRequest,
@@ -29,9 +35,18 @@ import {
   handleFeatureAccessCheck,
 } from './routes/accessControl';
 import {
+  handleInternetPlaceCatalog,
+  handleInternetPlaceEvidenceImport,
+  handleInternetPlacePolicyDelete,
+  handleInternetPlacePolicyPut,
+} from './routes/internetPlaceCatalog';
+import { handleInternetPlaceSuggestion } from './routes/internetPlaceSuggestion';
+import {
   handleAdminInstallationReload,
   handleInstallationControl,
 } from './routes/installationControl';
+import { handleInternetMapFile } from './routes/internetMap';
+import { handlePublishedCollages, matchPublishedCollageRoute } from './routes/publishedCollages';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
 import type { Env } from './lib/supabase';
 
@@ -47,6 +62,15 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     
+    // The assets subdomain serves shared collages' pictures and nothing else.
+    if (url.hostname.startsWith('assets.')) {
+      const route = matchPublishedCollageRoute(path);
+      if (request.method !== 'GET' || (route?.kind !== 'image' && route?.kind !== 'cover')) {
+        return new Response('Not found', { status: 404 });
+      }
+      return handlePublishedCollages(request, env, route, ctx);
+    }
+
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -73,10 +97,54 @@ export default {
       return handleRecent(request, env);
     }
 
+    // Signed by the participant's identity key instead of an origin check: the
+    // extension's service worker sends no Origin or Referer on these requests.
+    if (path === '/events/restore' && request.method === 'POST') {
+      return handleRestore(request, env);
+    }
+
     if (path === '/commute/recent' && request.method === 'GET') {
       // This response is reduced to public destinations, domain-only scenery,
       // and aggregate counts. Extension-page GETs can omit Origin and Referer.
       return handleCommute(request, env);
+    }
+
+    if (path === '/commute/review' && request.method === 'GET') {
+      if (!isAllowedOrigin(request)) return forbiddenResponse();
+      return handleCommuteReview(request, env);
+    }
+
+    if (path === '/admin/internet-places' && request.method === 'GET') {
+      return handleInternetPlaceCatalog(request, env);
+    }
+
+    if (
+      path === '/admin/internet-places/evidence' &&
+      request.method === 'POST'
+    ) {
+      return handleInternetPlaceEvidenceImport(request, env);
+    }
+
+    if (path === '/admin/internet-places/clef-log' && request.method === 'GET') {
+      return handleClefLog(request, env);
+    }
+
+    if (path === '/admin/internet-places/policy' && request.method === 'PUT') {
+      return handleInternetPlacePolicyPut(request, env);
+    }
+
+    if (
+      path === '/admin/internet-places/policy' &&
+      request.method === 'DELETE'
+    ) {
+      return handleInternetPlacePolicyDelete(request, env);
+    }
+
+    if (
+      path === '/admin/internet-places/suggestion' &&
+      request.method === 'POST'
+    ) {
+      return handleInternetPlaceSuggestion(request, env);
     }
 
     if (path === '/commute/trains/board' && request.method === 'POST') {
@@ -128,6 +196,11 @@ export default {
 
     if (path === '/access-requests' && request.method === 'POST') {
       return handleAccessRequest(request, env);
+    }
+
+    // Admin-only: map bundles carry participants' full browsing URLs.
+    if (path.startsWith('/internet-map/') && request.method === 'GET') {
+      return handleInternetMapFile(request, env, path);
     }
 
     if (path === '/admin/access-control' && request.method === 'GET') {
@@ -193,6 +266,12 @@ export default {
       return handleParticipantUpsert(request, env, decodeURIComponent(participantMatch[1]));
     }
 
+    // Shared collages: public, view-only links made from the scraps studio.
+    const publishedCollageRoute = matchPublishedCollageRoute(path);
+    if (publishedCollageRoute) {
+      return handlePublishedCollages(request, env, publishedCollageRoute, ctx);
+    }
+
     // Health check
     if (path === '/health' && request.method === 'GET') {
       return new Response(JSON.stringify({ status: 'ok' }), {
@@ -202,5 +281,14 @@ export default {
     
     // 404 for unknown routes
     return new Response('Not Found', { status: 404 });
+  },
+
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      suggestCommuteDestinations(env).then(
+        (saved) => console.log(`[internet-places] Clef suggested ${saved} new destinations`),
+        (error) => console.error('[internet-places] suggestion sweep failed:', error),
+      ),
+    );
   },
 };

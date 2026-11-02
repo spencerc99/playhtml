@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import ReactDOM from "react-dom/client";
 import { PlayProvider, withSharedState, usePlayContext } from "@playhtml/react";
+import { mountExperimentBadge } from "../../components/experimentBadge";
 
 interface Star {
   id: string;
@@ -629,9 +630,6 @@ const Main = withSharedState(
         <div className="title">
           <h1>when cursors meet</h1>
           <p>find others to hold hands</p>
-          <p>
-            <a href="/">playhtml</a> <a href="/experiments">experiment</a> 7
-          </p>
         </div>
 
         {/* Stars background */}
@@ -708,6 +706,8 @@ const Main = withSharedState(
     );
   }
 );
+
+mountExperimentBadge({ experiment: "EX-07" });
 
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement

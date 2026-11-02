@@ -25,6 +25,14 @@ export const ROTATE_GRIP_SIZE = 22;
  * beside the selection keeps at least this far off so it never covers them.
  */
 export const GRIP_REACH = ROTATE_GRIP_SIZE;
+/**
+ * On a touch screen the turn gets a drawn knob, since a finger has no cursor
+ * to find the grips past the corners: its middle sits this far below the
+ * selection, in screen pixels, at the end of a short stem.
+ */
+export const ROTATE_KNOB_REACH = 36;
+/** The knob's size on screen; a finger takes it from well around that. */
+export const ROTATE_KNOB_SIZE = 26;
 
 export const BOX_EDGES: readonly BoxEdge[] = ["top", "right", "bottom", "left"];
 export const BOX_CORNERS: readonly ResizeCorner[] = [

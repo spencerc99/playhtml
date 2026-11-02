@@ -16,6 +16,8 @@ test("packages only the macOS Safari app", async () => {
   );
   expect(script).toContain("s/${GENERATED_APP_BUNDLE_ID}/${SAFARI_BUNDLE_ID}/g");
   expect(script).toContain("public.app-category.lifestyle");
+  expect(script).toContain("plutil -insert ITSAppUsesNonExemptEncryption");
+  expect(script).toContain("-bool NO");
   expect(script).toContain('"MACOSX_DEPLOYMENT_TARGET=${MACOS_DEPLOYMENT_TARGET}"');
   expect(script).toContain('if [ -n "${APPLE_TEAM_ID:-}" ]; then');
   expect(script).toContain("SIGNING_CONFIGURATION_COUNT");

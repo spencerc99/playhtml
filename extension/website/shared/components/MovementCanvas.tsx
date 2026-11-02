@@ -28,6 +28,12 @@ import { FaviconPortrait } from "./FaviconPortrait";
 import { DaySelector } from "./DaySelector";
 import { ActivityStrip } from "./ActivityStrip";
 import { timeOfDayMatches } from "../utils/timeOfDay";
+import {
+  isSingleDay,
+  serializeDayRange,
+  singleDay,
+  type DayRange,
+} from "../utils/dayRange";
 import { StatsConsole } from "./StatsConsole";
 import { DebugHoverProvider } from "./DebugHover";
 import {
@@ -433,8 +439,8 @@ interface MovementCanvasProps {
   /** Called when user requests a data refresh (e.g. double-tap R or Controls button) */
   fetchEvents: () => void;
   dayCounts?: DayCounts;
-  selectedDay?: string | null;
-  onSelectDay?: (day: string | null) => void;
+  selectedDays?: DayRange | null;
+  onSelectDays?: (days: DayRange | null) => void;
   /** Recurring time-of-day filter, owned by the parent so it can drive the
    * fetch (the archive must fetch the local-midnight window, which a
    * client-only filter can't request). When omitted, MovementCanvas keeps its
@@ -500,8 +506,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   error,
   fetchEvents,
   dayCounts,
-  selectedDay = null,
-  onSelectDay,
+  selectedDays = null,
+  onSelectDays,
   timeOfDay: timeOfDayProp,
   onSetTimeOfDay,
   filters: filtersProp,
@@ -744,6 +750,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
             trailVoices: settings.soundTrailVoices,
             swells: settings.soundSwells,
             choralTimbre: settings.soundChoralTimbre,
+            phrasing: settings.soundPhrasing,
             chordRotation: settings.soundChordRotation,
             energyArc: settings.soundEnergyArc,
             trailArrivals: settings.soundTrailArrivals,
@@ -795,6 +802,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       trailVoices: settings.soundTrailVoices,
       swells: settings.soundSwells,
       choralTimbre: settings.soundChoralTimbre,
+      phrasing: settings.soundPhrasing,
       chordRotation: settings.soundChordRotation,
       energyArc: settings.soundEnergyArc,
       trailArrivals: settings.soundTrailArrivals,
@@ -809,6 +817,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
     settings.soundTrailVoices,
     settings.soundSwells,
     settings.soundChoralTimbre,
+    settings.soundPhrasing,
     settings.soundChordRotation,
     settings.soundEnergyArc,
     settings.soundTrailArrivals,
@@ -887,14 +896,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       });
       const link = document.createElement("a");
       const vizLabel = formatVizLabel(activeVisualizations);
-      link.download = `[INT-MV] ${vizLabel}-${selectedDay ?? "all"}-${Date.now()}.png`;
+      link.download = `[INT-MV] ${vizLabel}-${selectedDays ? serializeDayRange(selectedDays) : "all"}-${Date.now()}.png`;
       link.href = canvas.toDataURL("image/png");
       link.click();
       playShutterSound();
     } finally {
       setCaptureCleanOverride(false);
     }
-  }, [selectedDay, activeVisualizations]);
+  }, [selectedDays, activeVisualizations]);
 
   // The URL is now the source of truth for the current configuration — any
   // change to settings, viz selection, or the canvas time range is mirrored
@@ -2132,7 +2141,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
                 edgeOpacity: settings.navigationEdgeOpacity,
                 maxParallelEdges: settings.navigationMaxParallelEdges,
                 segmentByDay: settings.navigationRadialSegmentByDay ?? true,
-                playbackMode: selectedDay ? dayPlaybackMode : "cycle",
+                playbackMode: selectedDays ? dayPlaybackMode : "cycle",
                 blob: {
                   samples: settings.navigationRadialBlobSamples,
                   curveTension: settings.navigationRadialBlobCurveTension,
@@ -2173,8 +2182,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         <ActivityStrip
           events={events}
           dayCounts={dayCounts}
-          selectedDay={selectedDay}
-          onSelectDay={onSelectDay}
+          selectedDay={
+            selectedDays && isSingleDay(selectedDays) ? selectedDays.start : null
+          }
+          onSelectDay={
+            onSelectDays &&
+            ((day) => onSelectDays(day === null ? null : singleDay(day)))
+          }
           selectedRange={selectedTimeRange}
           onSelectRange={setSelectedTimeRange}
           timeOfDay={timeOfDay}
@@ -2183,11 +2197,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
         />
       )}
 
-      {!printMode && dayCounts && onSelectDay && (
+      {!printMode && dayCounts && onSelectDays && (
         <DaySelector
           dayCounts={dayCounts}
-          selectedDay={selectedDay}
-          onSelectDay={onSelectDay}
+          selectedDays={selectedDays}
+          onSelectDays={onSelectDays}
+          timeOfDay={timeOfDay}
+          onSetTimeOfDay={setTimeOfDay}
           playbackMode={dayPlaybackMode}
           onTogglePlaybackMode={handleTogglePlaybackMode}
           onCapture={handleCapture}

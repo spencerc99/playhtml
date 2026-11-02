@@ -12,6 +12,9 @@ Browser extension that collects anonymous browsing behavior (cursor movements, n
 - `bun run test`: Run Vitest tests
 - `bun run zip`: Package for Chrome Web Store
 - `bun run zip:safari`: Package for Safari Web Extension Packager
+- `bun run ios:safari`: Build Safari and open an iOS app project in Xcode for running on an iPhone (local prototype only, macOS + Xcode required; `APPLE_TEAM_ID` sets signing). `bun run ios:safari:simulator` instead compiles it for the Simulator with a local ad-hoc signature, which Safari needs before it will turn the extension on. Output lives in `publish/safari-ios-app` and never touches the macOS release.
+- `bun run ios:safari:check`: End-to-end check of the iPhone app and Safari (`--skip-build` reuses the last build, `--only <TestClass>` runs one test). It uses its own Simulator, "WWO App Check", wiped before each test, because Safari keeps the extension's data when the app is reinstalled. Two UI tests (`ios/check/`, generated with `xcodegen`): `AppBrowserCheck` taps through the home screen, the in-app browser, typing an address, the presence pill, the popup, setup, the trails overlay and a relaunch; `SafariSyncCheck` turns the extension on in Settings, sets it up in Safari, then checks the app skips setup, shows Safari's scraps, and that a scrap deleted in the app disappears from Safari while the app's scraps appear there. The script then reads both sides' files in the shared App Group folder and checks they hold one identity. Needs network access; screenshots and recordings land in `publish/ios-app-check/screenshots`.
+- `scripts/uploadSafariIOS.sh`: Archive the iOS app and upload it to TestFlight (same `APPLE_*` variables as the release, plus `BUILD_NUMBER`). The `iOS TestFlight` workflow runs it when an extension release PR merges (the same version-bump check as `Extension Release`), so internal testers get each release; run it by hand from the Actions tab ("Run workflow") for a build in between. The app icon comes from `ios/AppIcon-1024.png` (1024px, no transparency). The app's own home screen lives in `ios/app/` (`Main.html`, `Style.css`, `ViewController.swift`); the packaging script copies it over the packager's placeholder and inlines the extension's fonts into `Style.css`. Its links open in the app's own browser, which on iOS 18.4+ loads the bundled extension through `WKWebExtensionController` (content scripts, the toolbar popup as a sheet, and the extension's own pages); its storage is separate from Safari's. A service-worker background never starts in an app's `WKWebExtension`, so the packaging script rewrites the iOS manifest to a non-persistent background script (this also applies to Safari on iOS). Older iOS opens Safari instead. Launch with `-wwoOpen <url>` (for example `xcrun simctl launch <device> online.wewere.app -wwoOpen https://en.wikipedia.org/wiki/Cat`) to open the browser straight to a page.
 
 Worker backend (in `worker/`):
 - `cd worker && wrangler dev`: Local API server (localhost:8787)
@@ -46,9 +49,13 @@ A narrow fix can still deserve a bullet when its impact is significant and can
 be explained plainly. If the release note needs implementation jargon or makes
 the impact sound larger than it is, omit it.
 
-Changes that ship dark, behind an unreleased feature in `FEATURE_CATALOG`, do
-not get a bullet. The public changelog should never describe a feature users
-cannot reach. Add the bullet in the PR that enables the feature for everyone.
+Changes behind a feature in `FEATURE_CATALOG` follow its stage. A feature at
+the `beta` stage (the closed-beta cohort can reach it) gets a bullet that starts
+with `Beta: `, so beta testers know what's new for them. A feature that is
+`internal` only gets no bullet; the public changelog should never describe a
+feature nobody outside the team can reach. Add the plain bullet (no `Beta: `)
+in the PR that releases the feature to everyone. The stage that counts is the
+production one in the admin dashboard, which can differ from `defaultStage`.
 
 When a change adds, removes, or changes a manifest permission in
 `wxt.config.ts`, update the matching Chrome Web Store reviewer justification in
@@ -395,7 +402,7 @@ Playwright `chromium` channel.
 
 - `src/config.ts`: `VERBOSE` debug logging flag
 - `src/flags.ts`: Feature flags (`COPRESENCE: true`)
-- `wxt.config.ts`: Manifest v3, permissions (storage, tabs, http/https host access), React module, ASCII charset output for Chrome compliance
+- `wxt.config.ts`: Manifest v3, permissions (storage, tabs, `<all_urls>` host access; http/https on Safari), React module, ASCII charset output for Chrome compliance
 
 ## Testing
 

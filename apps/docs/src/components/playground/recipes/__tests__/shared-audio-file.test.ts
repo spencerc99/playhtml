@@ -25,9 +25,7 @@ describe("sharedAudioFileRecipe", () => {
 
     expect(registerIndex).toBeGreaterThan(-1);
     expect(registerIndex).toBeLessThan(initIndex);
-    expect(source.indexOf("updateElement:", registerIndex)).toBeLessThan(
-      initIndex,
-    );
+    expect(source.indexOf("update:", registerIndex)).toBeLessThan(initIndex);
     expect(source.indexOf("onClick:", registerIndex)).toBeLessThan(initIndex);
     expect(source.indexOf("onMount:", registerIndex)).toBeLessThan(initIndex);
   });
@@ -37,13 +35,15 @@ describe("sharedAudioFileRecipe", () => {
     const registerStart = source.indexOf(
       'playhtml.register("shared-audio-player", {',
     );
-    const updateStart = source.indexOf("updateElement:", registerStart);
+    const updateStart = source.indexOf("update:", registerStart);
     const clickStart = source.indexOf("onClick:", registerStart);
     const mountStart = source.indexOf("onMount:", registerStart);
     const initStart = source.indexOf("await playhtml.init");
 
     expect(source.slice(updateStart, clickStart)).not.toContain("setData(");
     expect(source.slice(mountStart, initStart)).not.toContain("setData(");
-    expect(source.slice(clickStart, mountStart).match(/setData\(/g)).toHaveLength(2);
+    expect(
+      source.slice(clickStart, mountStart).match(/setData\(/g),
+    ).toHaveLength(2);
   });
 });

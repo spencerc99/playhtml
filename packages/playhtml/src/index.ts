@@ -22,7 +22,6 @@ import {
   clonePlain,
   observeElementChanges,
   type ElementUser,
-  type User,
 } from "@playhtml/common";
 import { listSharedElements as devListSharedElements } from "./shared-elements";
 import {
@@ -223,8 +222,6 @@ let currentCursorRoomId = "";
 // onPresenceChange subscriptions) captured before navigation keep working.
 let presenceFacade: PresenceFacade | null = null;
 let usersAPI: UsersAPI | null = null;
-let usersElementRenderUnsubscribe: (() => void) | null = null;
-let lastElementUsersFingerprint: string | null = null;
 
 // Stable indirection between the page presence client's "cursor" channel and
 // whichever cursor client currently exists. The cursor client is torn down and
@@ -1130,7 +1127,8 @@ function buildElementAwarenessClient(): void {
   }
   // Identity re-joins are owned by the shared transport (see
   // acquirePresenceTransport); element awareness re-keys peers from the
-  // transport's identity channel, so it needs no self-change wiring of its own.
+  // transport's identity channel. Its identity-aware fingerprint is the one
+  // render invalidation path for element live-user changes.
 }
 
 function teardownElementAwarenessClient(): void {
@@ -1705,10 +1703,6 @@ async function initPlayHTMLOnce() {
     onCursorPresencesChange: (callback) => cursorPresenceHub.subscribe(callback),
   });
   connectUsersPresenceTransport(room);
-  lastElementUsersFingerprint = null;
-  usersElementRenderUnsubscribe = usersAPI.onChange(
-    renderElementsWithLiveUsers,
-  );
 
   // Initialize cursor tracking immediately after provider creation
   buildCursors({
@@ -1825,20 +1819,15 @@ function markElementAsReady(element: HTMLElement): void {
   element.removeAttribute("aria-live");
 }
 
-// Finds every capability element with one document scan and groups them by
-// capability attribute, each group in document order. An element with several
-// capabilities appears in each of their groups.
+// Groups HTML capability elements in document order within each capability.
+// Separate attribute selectors avoid testing unrelated nodes against every tag.
 function getPlayElementsByTag(): Map<TagType | string, HTMLElement[]> {
-  const tags = getTagTypes();
-  const byTag = new Map<TagType | string, HTMLElement[]>(
-    tags.map((tag) => [tag, []]),
-  );
-  const selector = tags.map((tag) => `[${tag}]`).join(",");
-  for (const element of document.querySelectorAll(selector)) {
-    if (!isHTMLElement(element)) continue;
-    for (const tag of tags) {
-      if (element.hasAttribute(tag)) byTag.get(tag)!.push(element);
-    }
+  const byTag = new Map<TagType | string, HTMLElement[]>();
+  for (const tag of getTagTypes()) {
+    byTag.set(
+      tag,
+      Array.from(document.querySelectorAll(`[${tag}]`)).filter(isHTMLElement),
+    );
   }
   return byTag;
 }
@@ -1973,7 +1962,7 @@ function getElementUsers<V>(
   byStableId: Map<string, V>,
   selfLive: V | undefined,
 ): ElementUser<V>[] {
-  if (!usersAPI) return [];
+  if (!usersAPI || (byStableId.size === 0 && selfLive === undefined)) return [];
 
   const liveByUser = new Map(byStableId);
   if (selfLive !== undefined) {
@@ -1987,26 +1976,6 @@ function getElementUsers<V>(
     result.push({ user, live });
   }
   return result;
-}
-
-function renderElementsWithLiveUsers(users: User[]): void {
-  const fingerprint = JSON.stringify(
-    [...users].sort((a, b) => a.pid.localeCompare(b.pid)),
-  );
-  if (fingerprint === lastElementUsersFingerprint) return;
-  lastElementUsersFingerprint = fingerprint;
-
-  for (const handlers of elementHandlers.values()) {
-    for (const handler of handlers.values()) {
-      if (
-        handler.selfAwareness === undefined &&
-        handler.awarenessByStableId.size === 0
-      ) {
-        continue;
-      }
-      safeInvoke(() => handler.render(), "element users render");
-    }
-  }
 }
 
 function isCorrectElementInitializer(
@@ -2414,9 +2383,6 @@ export async function resetPlayHTML(): Promise<void> {
     teardownCursors();
     disconnectUsersPresenceTransport();
     teardownMainProvider();
-    usersElementRenderUnsubscribe?.();
-    usersElementRenderUnsubscribe = null;
-    lastElementUsersFingerprint = null;
     try { usersAPI?.destroy(); } catch {}
     usersAPI = null;
 

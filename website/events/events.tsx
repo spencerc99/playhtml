@@ -163,7 +163,7 @@ export const Guestbook = withSharedState(
           <span>
             <b
               style={{
-                color: window?.cursors.color || "black",
+                color: window.cursors?.color || "black",
               }}
             >
               {name || "Anonymous"}

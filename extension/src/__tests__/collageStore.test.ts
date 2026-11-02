@@ -24,6 +24,7 @@ import type {
 const DB_NAME = "scrap_collages_db";
 const originalIndexedDB = globalThis.indexedDB;
 const originalIDBKeyRange = globalThis.IDBKeyRange;
+const originalBlob = globalThis.Blob;
 
 function scrap(overrides: Partial<ScrapItem> = {}): ScrapItem {
   return {
@@ -124,6 +125,9 @@ beforeEach(async () => {
     value: fakeIDBKeyRange,
     configurable: true,
   });
+  // A loaded preview is copied into a fresh Blob, which has to be one
+  // fake-indexeddb can store again, as a browser's would be.
+  globalThis.Blob = StructuredCloneableBlob as unknown as typeof Blob;
   await deleteCollageDatabase();
 });
 
@@ -135,6 +139,7 @@ afterEach(async () => {
     value: originalIDBKeyRange,
     configurable: true,
   });
+  globalThis.Blob = originalBlob;
 });
 
 describe("collageStore", () => {
@@ -156,6 +161,19 @@ describe("collageStore", () => {
     });
     expect(loaded?.pieces[0].scrap.pageUrl).toBe("https://example.test/a");
     expect(await (loaded?.preview.drawn ? loaded.preview.image.text() : undefined)).toBe("fake png bytes");
+  });
+
+  it("saves a reopened collage again, picture and all, after its row is replaced", async () => {
+    await saveCollage(record());
+    const reopened = await loadCollage("collage_1");
+    assert(reopened);
+    await saveCollage({ ...reopened, title: "First edit", updatedAt: 7_000 });
+    await saveCollage({ ...reopened, title: "Second edit", updatedAt: 8_000 });
+    const loaded = await loadCollage("collage_1");
+    expect(loaded?.title).toBe("Second edit");
+    expect(
+      await (loaded?.preview.drawn ? loaded.preview.image.text() : undefined),
+    ).toBe("fake png bytes");
   });
 
   it("reports a collage that was never saved as absent", async () => {

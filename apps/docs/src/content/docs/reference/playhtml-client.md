@@ -294,7 +294,7 @@ Registers a listener for a custom event type. Returns a unique string `id` that 
 // PlayEvent shape:
 interface PlayEvent<T = any> {
   type: string;
-  onEvent: (eventPayload: { eventPayload: T }) => void;
+  onEvent: (eventPayload: T) => void; // the payload passed to dispatchPlayEvent
 }
 ```
 

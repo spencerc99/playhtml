@@ -581,37 +581,6 @@ a {
   }
 }
 
-// Footer napkin - small, compact
-.footer-napkin {
-  position: fixed;
-  bottom: 10px;
-  right: 10px;
-  z-index: 200;
-
-  // Napkin style
-  background: linear-gradient(135deg, #f5f0e6 0%, #ebe4d4 50%, #ddd5c3 100%);
-  padding: 4px 8px;
-  border-radius: 2px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  transform: rotate(1deg);
-
-  font-family: "Comic Sans MS", "Marker Felt", cursive;
-  font-size: 12px;
-  color: #5c4033;
-  white-space: nowrap;
-
-  a {
-    color: #8b4513;
-    text-decoration: none;
-    font-weight: bold;
-
-    &:hover {
-      text-decoration: underline;
-      color: #a0522d;
-    }
-  }
-}
-
 // Welcome modal - first visit
 .welcome-modal-overlay {
   position: fixed;

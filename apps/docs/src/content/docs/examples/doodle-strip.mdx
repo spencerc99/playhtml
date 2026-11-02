@@ -1,0 +1,41 @@
+---
+title: "Shared doodle strip"
+description: "Draw a tiny face and add it to a shared strip capped at 20 doodles."
+sidebar:
+  hidden: true
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { doodleStripRecipe } from "@/components/playground/recipes/doodle-strip";
+
+Draw on the pad, then add your doodle to a row everyone shares. Strokes stay
+in your browser. Only the finished 64×64 image goes into shared data.
+
+<RecipeExample recipe={doodleStripRecipe} client:load />
+
+<RecipeCodeTabs recipe={doodleStripRecipe} />
+
+## Share results, not every stroke
+
+The canvas is ordinary local state. Writing every pointer move to shared data
+would sync hundreds of tiny updates per doodle. Instead, "Add to row" turns the
+canvas into a small PNG data URL and pushes one entry:
+
+```js
+strip.setData((data) => {
+  data.doodles.push({ id: crypto.randomUUID(), src });
+  if (data.doodles.length > MAX_DOODLES) {
+    data.doodles.splice(0, data.doodles.length - MAX_DOODLES);
+  }
+});
+```
+
+## Keep the list bounded
+
+Shared data persists, so a list that only grows keeps getting slower to load.
+The strip keeps the newest 20 doodles. Shared arrays support `splice`, not
+`shift`, so trim from the front with `splice`.
+
+See [Data essentials](/docs/data/data-essentials/) for mutator writes and list
+limits.

@@ -2,6 +2,7 @@
 // ABOUTME: Reads, writes, and deletes whole collage records including their baked preview.
 
 import {
+  detachPreview,
   parseCollageRecord,
   summarizeCollage,
   type CollageEntry,
@@ -59,7 +60,7 @@ export async function loadCollage(id: string): Promise<CollageRecord | null> {
   const stored = await withStore<unknown>("readonly", (store) => store.get(id));
   if (stored === undefined) return null;
   const record = parseCollageRecord(await settleShape(stored));
-  return record;
+  return { ...record, preview: await detachPreview(record.preview) };
 }
 
 /**

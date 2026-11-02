@@ -53,8 +53,7 @@ import { LampToggleDemo } from "../../components/react/LampToggleDemo";
   <Tabs syncKey="framework">
     <TabItem label="Vanilla HTML">
 ```html
-<img can-toggle id="lamp" src="https://playhtml.fun/noguchi-hanging-lamp.png" />
-<div style="width: 100px; height: 100px;" can-move>🛋️</div>
+<div id="couch" can-move style="display: inline-block; font-size: 80px">🛋️</div>
 <script type="module">
   import { playhtml } from "https://unpkg.com/playhtml";
   playhtml.init();
@@ -64,15 +63,12 @@ import { LampToggleDemo } from "../../components/react/LampToggleDemo";
     <TabItem label="React">
 ```tsx
 // npm install playhtml @playhtml/react
-import { PlayProvider, CanToggleElement, CanMoveElement } from "@playhtml/react";
+import { PlayProvider, CanMoveElement } from "@playhtml/react";
 
 <PlayProvider>
-  <CanMoveElement style={{ width: "100px", height: "100px" }}>
-    <div>🛋️</div>
+  <CanMoveElement>
+    <div id="couch" style={{ display: "inline-block", fontSize: 80 }}>🛋️</div>
   </CanMoveElement>
-  <CanToggleElement>
-    <img id="lamp" src="https://playhtml.fun/noguchi-hanging-lamp.png" />
-  </CanToggleElement>
 </PlayProvider>
 ```
     </TabItem>

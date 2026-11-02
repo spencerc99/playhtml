@@ -75,6 +75,7 @@ export interface NavigationEventData {
   from_url?: string;         // for beforeunload: URL being left
   state?: unknown;           // for popstate: history state
   visibility_state?: string; // for focus/blur: 'visible' or 'hidden'
+  idle?: boolean;            // for blur: emitted because the visible tab went idle
   page_ref?: string;         // stable ref derived from canonical URL
   canonical_url?: string;    // URL normalized for page identity
   title?: string;            // captured page title snapshot

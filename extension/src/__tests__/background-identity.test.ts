@@ -46,7 +46,7 @@ describe("background identity messages", () => {
       uploadEvents: vi.fn(),
     }));
     vi.doMock("../storage/restore", () => ({
-      fetchEventsByPid: vi.fn(),
+      restoreEventsFromServer: vi.fn(),
     }));
     vi.doMock("webextension-polyfill", () => ({
       default: {

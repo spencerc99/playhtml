@@ -194,6 +194,17 @@ function removePathAttribute(
   applied[attributeName] = undefined;
 }
 
+// Drops a path's geometry while it is hidden. A hidden trail otherwise keeps
+// its full outline string alive in the DOM and in the applied-attribute cache
+// for as long as the component is mounted, which across a long dataset grows
+// to every trail ever drawn.
+export function clearPathGeometry(pathEl: SVGPathElement | null): void {
+  if (!pathEl) return;
+  removePathAttribute(pathEl, "d");
+  pathEl.removeAttribute("d");
+  pathEl.style.display = "none";
+}
+
 function getMonochromeStyle(cursorType: string | undefined): MonochromeStyle {
   switch (cursorType) {
     case "pointer":

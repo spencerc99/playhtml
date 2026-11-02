@@ -32,6 +32,11 @@ const ENV: Env = {
     limit: async () => ({ success: true }),
   },
   WWO_ADMIN_DB: {} as D1Database,
+  INTERNET_MAP_BUNDLES: {} as R2Bucket,
+  SHARED_COLLAGES: {} as R2Bucket,
+  COLLAGE_SHARE_RATE_LIMITER: {
+    limit: async () => ({ success: true }),
+  },
 };
 
 function makeRequest(body: unknown, ip = '1.2.3.4'): Request {

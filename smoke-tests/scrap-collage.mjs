@@ -123,7 +123,8 @@ const SOLID_JPEG_BASE64 =
 /**
  * Each page carries one of every collected scrap kind: a photo, a styled
  * button with an inner icon, a heading, and an element with a custom cursor.
- * Its standalone inline svg icon checks that icons are no longer collected. The button's background is a gradient and its font-family is
+ * Its standalone inline svg icon is collected as an icon scrap; the svg inside
+ * the button is not, since it belongs to the button. The button's background is a gradient and its font-family is
  * quoted, so the bake's XML escaping is exercised with real captured styles.
  *
  * A second button is light text outlined on a dark section, carrying no
@@ -441,10 +442,10 @@ try {
   for (const kind of ["image", "button", "heading", "cursor"]) {
     assert.ok(byKind[kind] > 0, `expected at least one ${kind} scrap`);
   }
-  assert.equal(byKind["svg-icon"], undefined, "standalone icons are no longer collected");
+  assert.ok(byKind["svg-icon"] > 0, "expected the standalone badge to be kept as an icon scrap");
 
-  // Icons collected before collection stopped still live in people's
-  // archives, so one is stored the way the old collector wrote it.
+  // Icons collected before #563 briefly stopped collection live in people's
+  // archives in the same stored shape, so one more is seeded that way.
   await worker.evaluate(async () => {
     const db = await new Promise((ok, bad) => {
       const r = indexedDB.open("collection_events_db");

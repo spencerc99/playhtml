@@ -1,7 +1,8 @@
 // ABOUTME: Tests collage record parsing, stacking order, and source-page provenance.
 // ABOUTME: Guards that a stored collage round-trips and that provenance dedupes by page.
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Blob as NodeBlob } from "node:buffer";
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import { rotatePoint } from "../entrypoints/scraps/collageGeometry";
 import {
@@ -10,6 +11,7 @@ import {
   collageProvenance,
   commitCropSession,
   cropSessionStart,
+  detachPreview,
   duplicateCollage,
   movePieceBackward,
   movePieceForward,
@@ -511,5 +513,43 @@ describe("copying a collage", () => {
     expect(source.title).toBe("  a good one  ");
     expect(source.pieces[0].id).toBe("piece_a");
     expect(source.updatedAt).toBe(2_000);
+  });
+});
+
+describe("detaching a stored preview", () => {
+  // jsdom's Blob cannot be read back, so these run on Node's, as a browser's would.
+  const jsdomBlob = globalThis.Blob;
+  beforeEach(() => {
+    globalThis.Blob = NodeBlob as unknown as typeof Blob;
+  });
+  afterEach(() => {
+    globalThis.Blob = jsdomBlob;
+  });
+
+  it("copies the picture into a new blob with the same bytes and type", async () => {
+    const stored = new Blob(["png bytes"], { type: "image/png" });
+    const detached = await detachPreview({ drawn: true, image: stored });
+    expect(detached.drawn).toBe(true);
+    if (!detached.drawn) return;
+    expect(detached.image).not.toBe(stored);
+    expect(detached.image.type).toBe("image/png");
+    expect(await detached.image.text()).toBe("png bytes");
+  });
+
+  it("drops a picture whose bytes can no longer be read", async () => {
+    const gone = {
+      type: "image/png",
+      arrayBuffer: () =>
+        Promise.reject(new DOMException("file is gone", "NotFoundError")),
+    } as unknown as Blob;
+    expect(await detachPreview({ drawn: true, image: gone })).toEqual({
+      drawn: false,
+      reason: "the saved picture could not be read",
+    });
+  });
+
+  it("leaves an undrawn preview as it is", async () => {
+    const undrawn = { drawn: false as const, reason: "not drawn yet" };
+    expect(await detachPreview(undrawn)).toBe(undrawn);
   });
 });
