@@ -17,3 +17,4 @@ extension/website/public/changelog/media/ and reference them here:
 
 - Import a data export of any size in one go, with a progress bar and time left.
 - Pick a range of days, a whole month, or a time of day like "mornings" when looking back at your movement portrait or your scraps.
+- Collage sounds now play in Safari, and moving a piece forward or back rings higher or lower to match where it sits in the stack.

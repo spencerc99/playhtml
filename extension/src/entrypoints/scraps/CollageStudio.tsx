@@ -136,6 +136,7 @@ import { PiecesHereMenu } from "./PiecesHereMenu";
 import {
   neighborInStack,
   piecesUnder,
+  stackHeight,
   stackOrder,
   topPieceUnder,
 } from "./pieceStack";
@@ -208,10 +209,12 @@ import {
 import {
   collageSoundsMuted,
   playCollageSound,
+  primeCollageSounds,
   setCollageSoundsMuted,
   startCollageSlide,
   type CollageSlide,
   type CollageSound,
+  type StackMove,
 } from "./collageSounds";
 import { snapMove, type SnapGuide } from "./moveSnap";
 import {
@@ -874,7 +877,11 @@ export function CollageStudio({
 
   /** Plays an action's sound, panned toward where the pieces sit in the frame. */
   const sound = useCallback(
-    (name: CollageSound, at: readonly CollagePiece[] = []) => {
+    (
+      name: CollageSound,
+      at: readonly CollagePiece[] = [],
+      stack?: StackMove,
+    ) => {
       const pan =
         at.length === 0
           ? 0
@@ -883,7 +890,7 @@ export function CollageStudio({
               frame.width) *
               2 -
             1;
-      playCollageSound(name, pan);
+      playCollageSound(name, pan, stack);
     },
     [frame.width],
   );
@@ -916,6 +923,8 @@ export function CollageStudio({
   const liftedRef = useRef<number | null>(null);
 
   const [soundOn, setSoundOn] = useState(() => !collageSoundsMuted());
+  // Safari starts audio only inside a gesture, so wake it on the first one.
+  useEffect(() => primeCollageSounds(), []);
   const toggleSound = useCallback(() => {
     setSoundOn((on) => {
       setCollageSoundsMuted(on);
@@ -1095,10 +1104,17 @@ export function CollageStudio({
         front: moveGroupToFront,
         back: moveGroupToBack,
       }[to];
-      commit(move(pieces, selection.ids));
+      const next = move(pieces, selection.ids);
+      commit(next);
+      // Pitched to where the pieces sit in the pile, so stepping one up
+      // through a stack climbs a scale.
       sound(
         to === "forward" || to === "front" ? "layerUp" : "layerDown",
         selectedPieces,
+        {
+          from: stackHeight(pieces, selection.ids),
+          to: stackHeight(next, selection.ids),
+        },
       );
     },
     [commit, pieces, selectedPieces, selection, sound],
