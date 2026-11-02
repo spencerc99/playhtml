@@ -9,6 +9,7 @@ import {
   redactPII,
   redactNonWhitespace,
   redactWithLegibility,
+  redactTypingSequence,
 } from "../utils/keyboardRedaction";
 
 describe("parseLegibility", () => {
@@ -85,6 +86,45 @@ describe("redactNonWhitespace", () => {
 });
 
 describe("redactWithLegibility", () => {
+  it("keeps or hides entire whitespace-delimited words, including punctuation", () => {
+    const words = [
+      "hello,",
+      "world!",
+      "don't",
+      "café",
+      "日本語",
+      "hello-world",
+    ];
+    for (const pct of [5, 25, 50, 75, 95]) {
+      const output = redactWithLegibility(words.join(" "), pct, 42).split(" ");
+      output.forEach((word, index) => {
+        expect([
+          words[index],
+          REDACTION_CHAR.repeat(words[index].length),
+        ]).toContain(word);
+      });
+    }
+  });
+
+  it("keeps a word's decision as more letters are typed", () => {
+    for (const seed of [1, 7, 42]) {
+      const prefix = redactWithLegibility("hello wor", 50, seed);
+      expect(
+        redactWithLegibility("hello world", 50, seed).startsWith(prefix),
+      ).toBe(true);
+    }
+  });
+
+  it("reveals approximately the selected percentage of words", () => {
+    const words = Array.from({ length: 10000 }, (_, i) => `word${i}`);
+    for (const pct of [25, 50, 75]) {
+      const output = redactWithLegibility(words.join(" "), pct, 42).split(" ");
+      const visible =
+        output.filter((word) => !word.includes(REDACTION_CHAR)).length / 100;
+      expect(Math.abs(visible - pct)).toBeLessThan(2);
+    }
+  });
+
   it("at 0% redacts all non-whitespace (matches redactNonWhitespace)", () => {
     expect(redactWithLegibility("hello world", 0, 0)).toBe(
       redactNonWhitespace("hello world"),
@@ -149,5 +189,50 @@ describe("redactWithLegibility", () => {
 
   it("handles empty string", () => {
     expect(redactWithLegibility("", 50, 0)).toBe("");
+  });
+});
+
+describe("redactTypingSequence", () => {
+  it("keeps a corrected word's redaction consistent across actions", () => {
+    const sequence = [
+      { action: "type" as const, text: "hello worlq", timestamp: 0 },
+      { action: "backspace" as const, deletedCount: 1, timestamp: 10 },
+      { action: "type" as const, text: "d again", timestamp: 20 },
+    ];
+    for (let seed = 0; seed < 30; seed++) {
+      const output = redactTypingSequence(sequence, 50, seed);
+      const replay = output[0].text!.slice(0, -1) + output[2].text;
+      expect(replay).toBe(redactWithLegibility("hello world again", 50, seed));
+      expect(output[1]).toEqual(sequence[1]);
+    }
+    expect(sequence[0].text).toBe("hello worlq");
+  });
+
+  it("redacts PII assembled across an edit, including earlier recorded letters", () => {
+    const output = redactTypingSequence(
+      [
+        { action: "type", text: "email hi@spencer.x", timestamp: 0 },
+        { action: "backspace", deletedCount: 1, timestamp: 10 },
+        { action: "type", text: "place now", timestamp: 20 },
+      ],
+      100,
+      1,
+    );
+    expect(output[0].text).not.toContain("hi@spencer");
+    expect(output[2].text).toBe(`${REDACTION_CHAR.repeat(5)} now`);
+  });
+
+  it("redacts sensitive text even when it is later erased", () => {
+    const output = redactTypingSequence(
+      [
+        { action: "type", text: "hi@spencer.place", timestamp: 0 },
+        { action: "backspace", deletedCount: 16, timestamp: 10 },
+        { action: "type", text: "hello", timestamp: 20 },
+      ],
+      100,
+      1,
+    );
+    expect(output[0].text).toBe(REDACTION_CHAR.repeat(16));
+    expect(output[2].text).toBe("hello");
   });
 });

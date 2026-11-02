@@ -1208,7 +1208,6 @@ export function HistoricalOverlay({
                 textboxOpacity: 0.2,
                 keyboardShowCaret: true,
                 keyboardAnimationSpeed: 0.5,
-                keyboardLegibilityPct: 100,
                 maxConcurrentTyping: 15,
               }}
             />
