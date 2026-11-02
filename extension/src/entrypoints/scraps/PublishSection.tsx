@@ -107,6 +107,8 @@ export function PublishSection({
   /** When the link last went up, so updates keep inside the server's limit. */
   const lastUpdateRef = useRef(0);
   const [stale, setStale] = useState(false);
+  /** The content that last failed to go up; it is not retried until it changes. */
+  const [failedKey, setFailedKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!signer) return;
@@ -196,9 +198,11 @@ export function PublishSection({
   const updateNow = async (current: CollagePublication) => {
     setBusy("updating");
     lastUpdateRef.current = Date.now();
+    let key: string | null = null;
     try {
       const signature = await signNow();
       const snapshot = record();
+      key = publicationContentKey(snapshot, signature);
       const built = await buildPublishedCollage(
         snapshot,
         materialFor,
@@ -210,9 +214,11 @@ export function PublishSection({
       onShared({
         ...rest,
         ...(signature ? { signature } : {}),
-        contentKey: publicationContentKey(snapshot, signature),
+        contentKey: key,
       });
+      setFailedKey(null);
     } catch (error) {
+      setFailedKey(key);
       onProblem(`could not update the link — ${reason(error)}`);
     } finally {
       setBusy("idle");
@@ -234,7 +240,12 @@ export function PublishSection({
       return;
     }
     setStale(true);
-    if (busy !== "idle") return;
+    if (busy !== "idle" || key === failedKey) return;
+    // An edit after a failed update clears it, so the status stops saying so.
+    if (failedKey !== null) {
+      setFailedKey(null);
+      return;
+    }
     const wait = Math.max(
       LINK_SETTLE_MS,
       lastUpdateRef.current + LINK_UPDATE_GAP_MS - Date.now(),
@@ -243,7 +254,7 @@ export function PublishSection({
     return () => window.clearTimeout(timer);
     // updateNow and record read the latest values when they run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [share, ready, canShare, changedAt, choice, identity, busy]);
+  }, [share, ready, canShare, changedAt, choice, identity, busy, failedKey]);
 
   const signatureRow = identity && (
     <SignatureRow
@@ -342,9 +353,11 @@ export function PublishSection({
         <span className="collage-studio__label" aria-live="polite">
           {busy === "updating"
             ? "updating…"
-            : stale
-              ? "changes go up in a moment"
-              : "up to date"}
+            : stale && failedKey !== null
+              ? "not updated · edit to retry"
+              : stale
+                ? "changes go up in a moment"
+                : "up to date"}
         </span>
         <button
           type="button"
