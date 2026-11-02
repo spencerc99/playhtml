@@ -96,6 +96,13 @@ export interface CollagePublication {
   url: string;
   /** How it was signed when shared; absent when it went unsigned. */
   signature?: PublishedSignature;
+  /** When the link last caught up with the collage, if it ever updated. */
+  updatedAt?: number;
+  /**
+   * A fingerprint of what the link shows, so the studio knows when the
+   * collage has moved on from it. Absent on links shared before updates.
+   */
+  contentKey?: string;
 }
 
 /** What the back lists under each site: the pieces, or the titles of their pages. */
@@ -341,7 +348,9 @@ export function parseCollagePiece(value: unknown): CollagePiece {
     flipX: readBoolean(piece, "flipX"),
     flipY: readBoolean(piece, "flipY"),
     // Collages saved before cutouts existed simply have no field to read.
-    ...(piece.cutout === undefined ? {} : { cutout: parseCutout(piece.cutout) }),
+    ...(piece.cutout === undefined
+      ? {}
+      : { cutout: parseCutout(piece.cutout) }),
     // Likewise a piece that was never locked carries no lock.
     ...(piece.locked === undefined ? {} : { locked: readLocked(piece.locked) }),
   };
@@ -412,6 +421,12 @@ function readPublication(value: unknown): CollagePublication {
     ...(publication.signature === undefined
       ? {}
       : { signature: readPublicationSignature(publication.signature) }),
+    ...(typeof publication.updatedAt === "number"
+      ? { updatedAt: publication.updatedAt }
+      : {}),
+    ...(typeof publication.contentKey === "string"
+      ? { contentKey: publication.contentKey }
+      : {}),
   };
 }
 
@@ -432,7 +447,10 @@ function readPublicationSignature(value: unknown): PublishedSignature {
   };
 }
 
-function readPublicationString(source: Record<string, unknown>, key: string): string {
+function readPublicationString(
+  source: Record<string, unknown>,
+  key: string,
+): string {
   const value = source[key];
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`Collage publication is missing ${key}`);
@@ -572,10 +590,7 @@ export function commitCropSession(
 }
 
 /** Mirrors what a piece shows, leaving its box and its crop alone. */
-export function flipPiece(
-  piece: CollagePiece,
-  axis: "x" | "y",
-): CollagePiece {
+export function flipPiece(piece: CollagePiece, axis: "x" | "y"): CollagePiece {
   return axis === "x"
     ? { ...piece, flipX: !piece.flipX }
     : { ...piece, flipY: !piece.flipY };
@@ -589,9 +604,7 @@ export function flipPiece(
 export function pieceMaterialTransform(piece: CollagePiece): string {
   const scaleX = piece.flipX ? -1 : 1;
   const scaleY = piece.flipY ? -1 : 1;
-  return scaleX === 1 && scaleY === 1
-    ? "none"
-    : `scale(${scaleX}, ${scaleY})`;
+  return scaleX === 1 && scaleY === 1 ? "none" : `scale(${scaleX}, ${scaleY})`;
 }
 
 /** Restores a cropped piece to its whole source, around the same center. */
@@ -612,7 +625,9 @@ export function clearCrop(piece: CollagePiece): CollagePiece {
 }
 
 /** Reassigns z so the stack is a dense 0..n-1 run in its current order. */
-export function normalizeStack(pieces: readonly CollagePiece[]): CollagePiece[] {
+export function normalizeStack(
+  pieces: readonly CollagePiece[],
+): CollagePiece[] {
   return [...pieces]
     .sort((a, b) => a.z - b.z)
     .map((piece, index) => ({ ...piece, z: index }));

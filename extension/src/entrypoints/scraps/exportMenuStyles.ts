@@ -104,6 +104,10 @@ export const EXPORT_MENU_STYLES = `
     border-color: color-mix(in srgb, var(--c-ink) 40%, transparent);
   }
 
+  .collage-share__foot {
+    justify-content: space-between;
+  }
+
   .collage-share__icon {
     display: inline-flex;
     align-items: center;

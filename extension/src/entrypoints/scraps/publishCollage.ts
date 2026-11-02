@@ -339,6 +339,72 @@ export async function uploadPublishedCollage(
 }
 
 /**
+ * A fingerprint of what a link would show: the collage and its signature.
+ * Equal fingerprints mean the link is already up to date.
+ */
+export function publicationContentKey(
+  record: Pick<
+    CollageRecord,
+    "title" | "frame" | "paper" | "pieces" | "backShows"
+  >,
+  signature: PublishedSignature | undefined,
+): string {
+  const text = JSON.stringify([
+    record.title,
+    record.frame,
+    record.paper,
+    record.backShows,
+    record.pieces,
+    signature ?? null,
+  ]);
+  // Two 32-bit multiplicative hashes side by side: a 64-bit key, without an async crypto call.
+  let a = 0x811c9dc5;
+  let b = 0x9747b28c;
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    a = Math.imul(a ^ code, 0x01000193);
+    b = Math.imul(b ^ code, 0x5bd1e995);
+  }
+  return `${(a >>> 0).toString(16).padStart(8, "0")}${(b >>> 0)
+    .toString(16)
+    .padStart(8, "0")}`;
+}
+
+/**
+ * Replaces a shared collage in place, keeping its link and token. Answers with
+ * the share as the collage record keeps it from now on.
+ */
+export async function updatePublishedCollage(
+  workerUrl: string,
+  share: CollagePublication,
+  built: BuiltPublication,
+  now: () => number = Date.now,
+  fetcher: typeof fetch = fetch,
+): Promise<CollagePublication> {
+  let response: Response;
+  try {
+    response = await fetcher(
+      `${workerUrl}/collages/${encodeURIComponent(share.id)}`,
+      {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${share.deleteToken}` },
+        body: publishFormData(built),
+      },
+    );
+  } catch {
+    throw new CollagePublishError("the share server could not be reached");
+  }
+  if (!response.ok) throw new CollagePublishError(await errorText(response));
+  const body = (await response.json()) as Record<string, unknown>;
+  if (body.id !== share.id || typeof body.revision !== "number") {
+    throw new CollagePublishError(
+      "the share server answered something unexpected",
+    );
+  }
+  return { ...share, updatedAt: now() };
+}
+
+/**
  * Takes a shared link down. A link already gone counts as taken down, so a
  * collage whose link was removed elsewhere can still be marked unshared.
  */

@@ -11,7 +11,10 @@ import {
   publishedCollageViewerUrl,
   type PublishedCollage,
 } from "../../shared/publishedCollage";
-import { loadPublishedCollage } from "../collage/publishedCollageView";
+import {
+  loadPublishedCollage,
+  publishedCoverUrl,
+} from "../collage/publishedCollageView";
 import { CHANGELOG_URL, LIVE_PORTRAIT_URL } from "../src/navigation";
 import {
   PINNED_COLLAGES,
@@ -127,7 +130,7 @@ function PinnedCard({ pinned, at }: { pinned: Pinned; at: number }) {
         >
           <img
             className="collage-board__cover"
-            src={`${ASSETS_URL}/collages/${encodeURIComponent(id)}/cover`}
+            src={publishedCoverUrl(ASSETS_URL, id, collage.revision)}
             alt={`${title}, a collage`}
             crossOrigin="anonymous"
             decoding="async"

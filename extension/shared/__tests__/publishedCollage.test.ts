@@ -307,6 +307,14 @@ describe("parsePublishedCollage", () => {
     expect(parsed.pieces[0].source.pageUrl).toBe("");
   });
 
+  it("reads the revision an update gave it, and refuses one that cannot be", () => {
+    expect(parsePublishedCollage(collage({ revision: 3 })).revision).toBe(3);
+    expect(parsePublishedCollage(collage()).revision).toBeUndefined();
+    for (const revision of [0, 1.5, -2, "2", 1e10]) {
+      expect(() => parsePublishedCollage(collage({ revision }))).toThrow();
+    }
+  });
+
   it("reads a signature by name and colour, or by colour alone", () => {
     const named = parsePublishedCollage(
       collage({
