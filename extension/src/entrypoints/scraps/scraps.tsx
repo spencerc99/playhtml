@@ -527,6 +527,9 @@ export function ScrapsPage() {
         </div>
       )}
 
+      {/* An open studio stays mounted while the scraps reload (as they do
+          whenever another tab collects some), or it would reopen as it was
+          when first opened and lose everything since, its link included. */}
       {mode === "create" && ready && createMode && (
         <createMode.CreateMode
           items={items}

@@ -48,9 +48,7 @@ export function ShareButton(props: PublishSectionProps) {
         style={open ? undefined : { display: "none" }}
       >
         <section className="collage-export__section" aria-label="Link">
-          <p className="collage-studio__label">
-            a view-only page — anyone with the link can look, not edit.
-          </p>
+          <p className="collage-studio__label">anyone with the link can view</p>
           <PublishSection {...props} />
         </section>
       </div>

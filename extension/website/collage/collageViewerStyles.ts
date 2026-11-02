@@ -87,6 +87,49 @@ export const VIEWER_STYLES = `
     white-space: nowrap;
   }
 
+  /* The maker's stamp, with who and when shown on hover or focus. */
+  .published-collage__signed {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    outline: none;
+  }
+
+  .published-collage__signed-tip {
+    position: absolute;
+    right: -6px;
+    bottom: calc(100% + 8px);
+    z-index: 10010;
+    display: flex;
+    flex-direction: column;
+    padding: 6px 8px;
+    border: 1px solid color-mix(in srgb, var(--c-ink) 22%, transparent);
+    border-radius: 3px;
+    background: var(--c-surface);
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--c-ink) 18%, transparent);
+    color: var(--c-ink);
+    font-family: "Martian Mono", ui-monospace, monospace;
+    font-size: 10px;
+    line-height: 1.45;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 140ms ease, visibility 140ms;
+    pointer-events: none;
+  }
+
+  .published-collage__signed:hover .published-collage__signed-tip,
+  .published-collage__signed:focus-visible .published-collage__signed-tip {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .published-collage__signed:focus-visible .signature-stamp {
+    outline: 2px solid var(--c-accent);
+    outline-offset: 2px;
+  }
+
   .published-collage__problem {
     margin: 0;
     color: #b0452c;
