@@ -1073,18 +1073,18 @@ ${PIECE_MATERIAL_STYLES}
     background: var(--c-frame);
   }
 
-  .collage-here__thumb > * {
-    max-width: 100%;
-    max-height: 100%;
+  /* The piece as it looks now, shrunk to fit; its own box clips the crop. */
+  .collage-piece-look {
+    position: relative;
+    display: block;
+    overflow: hidden;
   }
 
-  .collage-here__thumb img,
-  .collage-here__thumb svg {
-    width: auto;
-    height: auto;
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
+  .collage-piece-look__piece {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: left top;
   }
 
   .collage-here__what {

@@ -5,7 +5,10 @@ import { describe, expect, it } from "vitest";
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import {
   applyCrop,
+  commitCropSession,
   flipPiece,
+  materialBox,
+  mirrorCrop,
   pieceMaterialTransform,
   type CollagePiece,
 } from "../entrypoints/scraps/collageRecord";
@@ -108,5 +111,55 @@ describe("pieceMaterialTransform", () => {
     expect(pieceMaterialTransform(piece({ rotation: 90, flipX: true }))).toBe(
       "scale(-1, 1)",
     );
+  });
+});
+
+describe("materialBox", () => {
+  const cropped = () =>
+    applyCrop(piece(), { x: 0, y: 0, width: 0.5, height: 1 });
+
+  it("is the plain source box on an unflipped piece", () => {
+    const shown = cropped();
+    expect(materialBox(shown)).toEqual({
+      x: shown.x,
+      y: shown.y,
+      width: shown.width * 2,
+      height: shown.height,
+    });
+  });
+
+  it("mirrors the source about the piece's box, so the crop still shows", () => {
+    // The left half is kept. Mirrored about the piece's own middle, the whole
+    // source extends to the left instead, and the box still shows that half.
+    const flipped = flipPiece(cropped(), "x");
+    const box = materialBox(flipped);
+    expect(box.x).toBeCloseTo(flipped.x - flipped.width);
+    expect(box.x + box.width).toBeCloseTo(flipped.x + flipped.width);
+  });
+});
+
+describe("mirrorCrop", () => {
+  it("is its own inverse", () => {
+    const crop = { x: 0.1, y: 0.2, width: 0.3, height: 0.4 };
+    const flips = { flipX: true, flipY: true };
+    const back = mirrorCrop(mirrorCrop(crop, flips), flips);
+    expect(back.x).toBeCloseTo(crop.x);
+    expect(back.y).toBeCloseTo(crop.y);
+  });
+});
+
+describe("cropping a flipped piece", () => {
+  it("keeps the part kept on screen where it sat on screen", () => {
+    const flipped = flipPiece(piece(), "x");
+    // The left half of the source shows on the right of a mirrored piece.
+    const cropped = commitCropSession(flipped, {
+      x: 0,
+      y: 0,
+      width: 0.5,
+      height: 1,
+    });
+    expect(cropped.crop).toEqual({ x: 0, y: 0, width: 0.5, height: 1 });
+    expect(cropped.x).toBeCloseTo(flipped.x + flipped.width / 2);
+    expect(cropped.width).toBeCloseTo(flipped.width / 2);
   });
 });

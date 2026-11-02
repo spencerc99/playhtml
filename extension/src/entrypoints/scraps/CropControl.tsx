@@ -2,12 +2,8 @@
 // ABOUTME: It takes the piece strip's place beside the piece until the crop is committed.
 
 import React from "react";
-import type { CollagePiece } from "./collageRecord";
-import {
-  isFullCrop,
-  sourceBoxForCrop,
-  type CropFraction,
-} from "./collageGeometry";
+import { materialBox, type CollagePiece } from "./collageRecord";
+import { isFullCrop, type CropFraction } from "./collageGeometry";
 import { useBesidePiece } from "./PieceActions";
 
 interface CropControlProps {
@@ -31,7 +27,7 @@ export function CropControl({
 }: CropControlProps) {
   // While cropping, the whole source is on show, so the panel sits beside
   // that rather than beside the piece's kept box.
-  const shown = { ...piece, ...sourceBoxForCrop(piece, piece.crop) };
+  const shown = { ...piece, ...materialBox(piece) };
   const placement = useBesidePiece(shown, scale, frame);
   return (
     <div

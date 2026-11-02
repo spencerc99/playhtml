@@ -2,7 +2,7 @@
 // ABOUTME: Converts between the in-memory studio state and the stored record.
 
 import type { ScrapItem } from "@movement/components/ScrapCollage";
-import type { CropFraction } from "./collageGeometry";
+import type { CropFraction, PieceBox } from "./collageGeometry";
 import {
   FULL_CROP,
   boxForInnerRect,
@@ -542,12 +542,15 @@ export function composeCropOnto(
   piece: CollagePiece,
   fromSource: CropFraction,
 ): CollagePiece {
-  const source = sourceBoxForCrop(piece, piece.crop);
+  // Worked out where the piece is seen, so a mirrored piece keeps the part
+  // that was kept on screen where it sat on screen.
+  const source = materialBox(piece);
+  const shown = mirrorCrop(fromSource, piece);
   const box = {
-    x: source.x + fromSource.x * source.width,
-    y: source.y + fromSource.y * source.height,
-    width: source.width * fromSource.width,
-    height: source.height * fromSource.height,
+    x: source.x + shown.x * source.width,
+    y: source.y + shown.y * source.height,
+    width: source.width * shown.width,
+    height: source.height * shown.height,
   };
   const before = rotatePoint(
     { x: box.x, y: box.y },
@@ -597,9 +600,35 @@ export function flipPiece(piece: CollagePiece, axis: "x" | "y"): CollagePiece {
 }
 
 /**
- * The CSS transform that draws a piece's material: the mirror happens inside
- * the box, so a flipped piece keeps its position, its rotation and the crop
- * window it was given.
+ * A crop as it is seen on a mirrored piece, or a seen crop back to the source:
+ * mirroring twice is no mirror, so the one function goes both ways.
+ */
+export function mirrorCrop(
+  crop: CropFraction,
+  piece: Pick<CollagePiece, "flipX" | "flipY">,
+): CropFraction {
+  return {
+    x: piece.flipX ? 1 - crop.x - crop.width : crop.x,
+    y: piece.flipY ? 1 - crop.y - crop.height : crop.y,
+    width: crop.width,
+    height: crop.height,
+  };
+}
+
+/**
+ * Where a piece's whole source is drawn, in frame coordinates, before it is
+ * mirrored about its own middle by `pieceMaterialTransform`. The mirror turns
+ * about the piece's box, never the whole source's, so flipping a cropped piece
+ * mirrors what the crop kept rather than sliding other material into view.
+ */
+export function materialBox(piece: CollagePiece): PieceBox {
+  return sourceBoxForCrop(piece, mirrorCrop(piece.crop, piece));
+}
+
+/**
+ * The CSS transform that draws a piece's material at its `materialBox`: the
+ * mirror happens inside the box, so a flipped piece keeps its position, its
+ * rotation and the crop window it was given.
  */
 export function pieceMaterialTransform(piece: CollagePiece): string {
   const scaleX = piece.flipX ? -1 : 1;

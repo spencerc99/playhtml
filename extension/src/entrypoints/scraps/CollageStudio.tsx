@@ -30,7 +30,6 @@ import {
   scaleAboutCenter,
   scaleFromPointer,
   snapDegrees,
-  sourceBoxForCrop,
   type CropFraction,
   type PieceBox,
   type Point,
@@ -45,6 +44,7 @@ import {
   createPieceId,
   normalizeStack,
   flipPiece,
+  materialBox,
   pieceMaterialTransform,
   type BackShows,
   type CollagePiece,
@@ -171,6 +171,9 @@ import {
 } from "./groupGeometry";
 import {
   copiesOnTop,
+  duplicateTrail,
+  nextDuplicateOffset,
+  type DuplicateTrail,
   moveGroupBackward,
   moveGroupForward,
   moveGroupToBack,
@@ -218,6 +221,7 @@ import {
   type StackMove,
 } from "./collageSounds";
 import { snapMove, type SnapGuide } from "./moveSnap";
+import { frameExport } from "./frameExport";
 import {
   isEmptyChange,
   piecesChange,
@@ -375,6 +379,31 @@ type CropState = {
   /** The crop the piece had on entry, restored when the session is cancelled. */
   before: CropFraction;
 };
+
+const SNAP_LEARNED_KEY = "wwo-collage-snap-learned";
+
+/** The slip shown while carrying pieces, until snapping has been found. */
+const SNAP_HINT = `hold ${
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent)
+    ? "cmd"
+    : "ctrl"
+} to snap`;
+
+function readSnapLearned(): boolean {
+  try {
+    return window.localStorage.getItem(SNAP_LEARNED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function rememberSnapLearned(): void {
+  try {
+    window.localStorage.setItem(SNAP_LEARNED_KEY, "1");
+  } catch {
+    // Without storage the hint simply shows again next time.
+  }
+}
 
 interface CollageStudioProps {
   scraps: readonly ScrapItem[];
@@ -540,6 +569,12 @@ export function CollageStudio({
   const [gesture, setGesture] = useState<Gesture>({ kind: "idle" });
   /** What the slip above the selected piece says while a gesture runs. */
   const [gestureReadout, setGestureReadout] = useState<string | null>(null);
+  /**
+   * Whether the slip names the snapping key while pieces are carried. It shows
+   * until the person has snapped once, then stays out of the way for good.
+   */
+  const [snapHint, setSnapHint] = useState(false);
+  const snapLearnedRef = useRef(readSnapLearned());
   const [clipboard, setClipboard] = useState<readonly CollagePiece[] | null>(
     null,
   );
@@ -1076,9 +1111,25 @@ export function CollageStudio({
    * Lays copies of the given pieces on top of the stack and takes them in
    * hand. A run label lets an alt-drag's copy and its move undo together.
    */
+  const duplicateTrailRef = useRef<DuplicateTrail | null>(null);
   const duplicatePieces = useCallback(
-    (originals: readonly CollagePiece[], runLabel: string | null = null) => {
-      const copies = copiesOnTop(pieces, originals, COPY_OFFSET, createPieceId);
+    (
+      originals: readonly CollagePiece[],
+      runLabel: string | null = null,
+      repeatStep = true,
+    ) => {
+      // Like Figma: duplicating the last copies again, after dragging them
+      // into place, steps on by however far they were dragged.
+      const offset = repeatStep
+        ? nextDuplicateOffset(
+            pieces,
+            originals,
+            duplicateTrailRef.current,
+            COPY_OFFSET,
+          )
+        : COPY_OFFSET;
+      const copies = copiesOnTop(pieces, originals, offset, createPieceId);
+      duplicateTrailRef.current = duplicateTrail(originals, copies);
       commit([...pieces, ...copies], runLabel);
       setSelection(selectMany(copies.map((copy) => copy.id)));
       sound("duplicate", copies);
@@ -1710,6 +1761,11 @@ export function CollageStudio({
             ? `${snap.caught.x}|${snap.caught.y}`
             : null;
       }
+      if (snapping && !snapLearnedRef.current) {
+        snapLearnedRef.current = true;
+        rememberSnapLearned();
+      }
+      setSnapHint(!snapping && !snapLearnedRef.current);
       const pan = (point.x / frame.width) * 2 - 1;
       if (caught && caught !== caughtRef.current) {
         playCollageSound("snap", pan);
@@ -1742,7 +1798,10 @@ export function CollageStudio({
   // and cmd or ctrl starts or stops snapping, without waiting for the pointer
   // to move again.
   useEffect(() => {
-    if (gesture.kind !== "move") return;
+    if (gesture.kind !== "move") {
+      setSnapHint(false);
+      return;
+    }
     const { origins, grabbedAt } = gesture;
     const onModifier = (event: KeyboardEvent) => {
       if (!["Shift", "Meta", "Control"].includes(event.key)) return;
@@ -1860,7 +1919,9 @@ export function CollageStudio({
           Math.hypot(point.x - grabbedAt.x, point.y - grabbedAt.y) >
             ALT_DRAG_THRESHOLD
         ) {
-          const copies = duplicatePieces(origins, "move");
+          // An alt-drag's copy follows the pointer rather than a remembered
+          // step, and a later duplicate of it repeats where it was dragged.
+          const copies = duplicatePieces(origins, "move", false);
           setGesture({ kind: "move", origins: copies, grabbedAt });
           return;
         }
@@ -2417,9 +2478,43 @@ export function CollageStudio({
     downloadFile(file, name);
   };
 
+  /** The caption the mat carries under an exported picture or flip. */
+  const exportCaption = () => ({
+    title: title.trim(),
+    detail: `${pieces.length} piece${pieces.length === 1 ? "" : "s"} · made ${madeOn(createdAtRef.current)}`,
+  });
+
+  /** Bakes the front, and the back that shows that very front through it. */
+  const bakeSides = async () => {
+    const front = await bakeCollage({
+      frame,
+      pieces,
+      paper: paper.color,
+      grain: paper.grain,
+    });
+    const back = await bakeCollageBack({
+      frame,
+      paper,
+      content: backContent,
+      front,
+      favicons: await resolveBackFavicons(collageProvenance(backContent.pieces)),
+      thumbnails: await resolveBackThumbnails(backContent.pieces),
+      look: backLook,
+    });
+    return { front, back };
+  };
+
+  /** Names what went wrong with an export, and the pieces that could not be drawn. */
+  const exportProblem = (what: string, error: unknown) =>
+    error instanceof CollageBakeError
+      ? `could not export${what ? ` ${what}` : ""} — these could not be drawn: ${error.failures
+          .map((failure) => failure.label)
+          .join(", ")}`
+      : `could not export${what ? ` ${what}` : ""} — ${error instanceof Error ? error.message : String(error)}`;
+
   /**
-   * Exports the front and the back as two pictures of the same size. The back
-   * shows this very front through its paper, so the pair always agree.
+   * Exports the front and the back as two pictures of the same size, each on
+   * the mat the studio shows it on, with the caption along the bottom.
    */
   const download = async () => {
     if (pieces.length === 0) return;
@@ -2428,35 +2523,43 @@ export function CollageStudio({
     setReadyFiles(null);
     const name = collageExportName(title);
     try {
-      const front = await bakeCollage({
-        frame,
-        pieces,
-        paper: paper.color,
-        grain: paper.grain,
-      });
-      const back = await bakeCollageBack({
-        frame,
-        paper,
-        content: backContent,
-        front,
-        favicons: await resolveBackFavicons(collageProvenance(backContent.pieces)),
-        thumbnails: await resolveBackThumbnails(backContent.pieces),
-        look: backLook,
-      });
-      saveFile(front, `${name} front.png`, "front · png");
-      saveFile(back, `${name} back.png`, "back · png");
+      const { front, back } = await bakeSides();
+      const caption = exportCaption();
+      const [frontFile, backFile] = await Promise.all([
+        frameExport(front, caption),
+        frameExport(back, caption),
+      ]);
+      saveFile(frontFile, `${name} front.png`, "front · png");
+      saveFile(backFile, `${name} back.png`, "back · png");
     } catch (error) {
       // An export is asked for out loud, so it fails out loud, naming the
       // pieces that would have left holes in the picture.
-      const text =
-        error instanceof CollageBakeError
-          ? `could not export — these could not be drawn: ${error.failures
-              .map((failure) => failure.label)
-              .join(", ")}`
-          : `could not export — ${error instanceof Error ? error.message : String(error)}`;
-      setNotice({ tone: "problem", text });
+      setNotice({ tone: "problem", text: exportProblem("", error) });
     } finally {
       setExporting(false);
+    }
+  };
+
+  /** Exports the framed collage turning from its front to its back and over again. */
+  const downloadFlip = async () => {
+    if (pieces.length === 0) return;
+    setVideoProgress(0);
+    setNotice(null);
+    setReadyFiles(null);
+    try {
+      const { front, back } = await bakeSides();
+      const { bakeFlipVideo } = await import("./collageFlipVideo");
+      const video = await bakeFlipVideo({
+        front,
+        back,
+        caption: exportCaption(),
+        onProgress: (done, total) => setVideoProgress(done / total),
+      });
+      saveFile(video, `${collageExportName(title)} flip.mp4`, "flip · mp4");
+    } catch (error) {
+      setNotice({ tone: "problem", text: exportProblem("the flip", error) });
+    } finally {
+      setVideoProgress(null);
     }
   };
 
@@ -2543,7 +2646,7 @@ export function CollageStudio({
   // Modal transforms and handle drags speak through the same slip.
   const readout = transform
     ? `${transform.kind} ${transform.readout}`
-    : gestureReadout;
+    : (gestureReadout ?? (snapHint && !phone ? SNAP_HINT : null));
   const standing = standingWords(autosave.standing);
 
   const cropping = crop
@@ -2730,7 +2833,7 @@ export function CollageStudio({
                     piece mostly off the frame can still be grabbed and scaled. */}
                 <div className="collage-frame__pieces" data-marquee-ground="">
                 {ordered.map((piece) => {
-                  const source = sourceBoxForCrop(piece, piece.crop);
+                  const source = materialBox(piece);
                   const held = isSelected(selection, piece.id);
                   const hidden = crop?.pieceId === piece.id;
                   const offFrame =
@@ -3182,6 +3285,11 @@ export function CollageStudio({
                   : null
               }
               onPicture={() => void download()}
+              onFlip={
+                typeof VideoEncoder === "undefined"
+                  ? undefined
+                  : () => void downloadFlip()
+              }
               video={animates ? videoSupport : undefined}
               onVideo={() => void downloadVideo()}
               onFile={() => void downloadCollageFile()}

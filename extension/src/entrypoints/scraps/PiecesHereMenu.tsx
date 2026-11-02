@@ -2,9 +2,9 @@
 // ABOUTME: Right-clicking a pile is how a buried piece is picked out by eye.
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ScrapContent } from "@movement/components/ScrapCollage";
 import type { CollagePiece } from "./collageRecord";
 import { GLYPHS } from "./PieceActions";
+import { PieceLook } from "./PieceMaterial";
 
 interface PiecesHereMenuProps {
   /** The pieces under the pointer, frontmost first. */
@@ -117,13 +117,7 @@ export function PiecesHereMenu({
             onClick={() => onPick(piece.id)}
           >
             <span className="collage-here__thumb" aria-hidden="true">
-              <ScrapContent
-                item={piece.scrap}
-                loaded={true}
-                onLoad={() => {}}
-                onError={() => {}}
-                letteringChecker={false}
-              />
+              <PieceLook piece={piece} size={28} />
             </span>
             <span className="collage-here__what">
               <span className="collage-here__kind">{scrapKindName(piece)}</span>

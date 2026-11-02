@@ -107,8 +107,9 @@ export interface PressPlan {
  * whatever is visibly on top can always be clicked. Clicking again on the
  * same spot walks one piece further down the pile each time, wrapping back to
  * the front after the bottom, as Figma's click-through does. With deep set
- * (cmd or ctrl held) the press takes the next piece down straight away and a
- * drag moves that one.
+ * (cmd or ctrl held) a click takes the next piece down straight away, but a
+ * drag still carries the piece in hand (or the frontmost one), because cmd
+ * held through a drag means snapping, not reaching into the pile.
  */
 export function planPress(
   pieces: readonly CollagePiece[],
@@ -118,13 +119,18 @@ export function planPress(
 ): PressPlan | null {
   const stack = piecesUnder(pieces, point);
   if (stack.length === 0) return null;
-  if (modifiers.deep) {
-    const deeper = deeperPieceAt(pieces, point, selectedId);
-    if (!deeper) return null;
-    return { selectOnDown: deeper, dragId: deeper, selectOnClick: deeper };
-  }
   const front = stack[0].id;
-  if (selectedId && stack.some((piece) => piece.id === selectedId)) {
+  const heldHere =
+    selectedId !== null && stack.some((piece) => piece.id === selectedId);
+  if (modifiers.deep) {
+    const kept = heldHere ? selectedId : front;
+    return {
+      selectOnDown: kept,
+      dragId: kept,
+      selectOnClick: deeperPieceAt(pieces, point, selectedId) ?? front,
+    };
+  }
+  if (heldHere) {
     return {
       selectOnDown: selectedId,
       dragId: selectedId,
