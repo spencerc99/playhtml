@@ -4,14 +4,18 @@
 import React, { useRef } from "react";
 import {
   dragCropGrip,
-  sourceBoxForCrop,
   toLocalPoint,
   type CropFraction,
   type CropGrip,
   type PieceBox,
   type Point,
 } from "./collageGeometry";
-import type { CollagePiece } from "./collageRecord";
+import {
+  materialBox,
+  mirrorCrop,
+  pieceMaterialTransform,
+  type CollagePiece,
+} from "./collageRecord";
 import { PieceMaterial } from "./PieceMaterial";
 
 /** Where each grip sits on the crop box, as a fraction of its own size. */
@@ -37,7 +41,9 @@ interface CropSessionProps {
 
 /**
  * While cropping, the piece is drawn at its whole source box so the material
- * outside the crop is visible to drag back in.
+ * outside the crop is visible to drag back in. A mirrored piece is shown
+ * mirrored, so the crop is drawn on the piece as it looks; the box being
+ * dragged is mirrored back to the source as it changes.
  */
 export function CropSession({
   piece,
@@ -51,7 +57,9 @@ export function CropSession({
   // redrawn the source shows uncut; the cut is redone against the new crop
   // once the session commits.
   const { cutout: _cutout, ...uncut } = piece;
-  const source = sourceBoxForCrop(piece, piece.crop);
+  const source = materialBox(piece);
+  const shown = mirrorCrop(crop, piece);
+  const mirror = pieceMaterialTransform(piece);
   const sourceBox: PieceBox = {
     x: source.x,
     y: source.y,
@@ -60,10 +68,10 @@ export function CropSession({
   };
 
   const kept = {
-    left: crop.x * source.width,
-    top: crop.y * source.height,
-    width: crop.width * source.width,
-    height: crop.height * source.height,
+    left: shown.x * source.width,
+    top: shown.y * source.height,
+    width: shown.width * source.width,
+    height: shown.height * source.height,
   };
 
   const beginDrag = (grip: CropGrip, event: React.PointerEvent) => {
@@ -80,11 +88,14 @@ export function CropSession({
     if (!drag) return;
     const local = toLocalPoint(framePoint(event), sourceBox, piece.rotation);
     onChange(
-      dragCropGrip(
-        crop,
-        drag.grip,
-        { x: local.x - drag.last.x, y: local.y - drag.last.y },
-        source,
+      mirrorCrop(
+        dragCropGrip(
+          shown,
+          drag.grip,
+          { x: local.x - drag.last.x, y: local.y - drag.last.y },
+          source,
+        ),
+        piece,
       ),
     );
     dragRef.current = { grip: drag.grip, last: local };
@@ -113,7 +124,7 @@ export function CropSession({
         onCommit();
       }}
     >
-      <div className="collage-crop__source">
+      <div className="collage-crop__source" style={{ transform: mirror }}>
         <PieceMaterial piece={uncut} />
       </div>
       <div className="collage-crop__shade" />
@@ -130,6 +141,7 @@ export function CropSession({
               top: -kept.top,
               width: source.width,
               height: source.height,
+              transform: mirror,
             }}
           >
             <PieceMaterial piece={uncut} />

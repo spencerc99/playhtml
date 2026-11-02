@@ -18,7 +18,6 @@ import {
 import { useChromeToggle } from "@movement/hooks/useChromeToggle";
 import { COLLAGE_STYLES } from "@movement/components/ScrapCollage";
 import { paperBackground } from "@extension/entrypoints/scraps/paperGrain";
-import { sourceBoxForCrop } from "@extension/entrypoints/scraps/collageGeometry";
 import { PieceMaterial } from "@extension/entrypoints/scraps/PieceMaterial";
 import { CollageBackFace } from "@extension/entrypoints/scraps/CollageBackFace";
 import {
@@ -35,6 +34,7 @@ import {
 import { StudioViews } from "@extension/entrypoints/scraps/StudioTools";
 import { COLLAGE_PIECE_TOOL_STYLES } from "@extension/entrypoints/scraps/collagePieceToolStyles";
 import {
+  materialBox,
   pieceMaterialTransform,
   type CollagePiece,
 } from "@extension/entrypoints/scraps/collageRecord";
@@ -645,7 +645,7 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
                   }}
                 >
                   {shown.map(({ piece }, index) => {
-                    const source = sourceBoxForCrop(piece, piece.crop);
+                    const source = materialBox(piece);
                     const lifted = hovered?.index === index;
                     const published = pieces[index];
                     return (

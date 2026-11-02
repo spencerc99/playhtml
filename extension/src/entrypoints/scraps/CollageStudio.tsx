@@ -30,7 +30,6 @@ import {
   scaleAboutCenter,
   scaleFromPointer,
   snapDegrees,
-  sourceBoxForCrop,
   type CropFraction,
   type PieceBox,
   type Point,
@@ -45,6 +44,7 @@ import {
   createPieceId,
   normalizeStack,
   flipPiece,
+  materialBox,
   pieceMaterialTransform,
   type BackShows,
   type CollagePiece,
@@ -375,6 +375,31 @@ type CropState = {
   before: CropFraction;
 };
 
+const SNAP_LEARNED_KEY = "wwo-collage-snap-learned";
+
+/** The slip shown while carrying pieces, until snapping has been found. */
+const SNAP_HINT = `hold ${
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent)
+    ? "cmd"
+    : "ctrl"
+} to snap`;
+
+function readSnapLearned(): boolean {
+  try {
+    return window.localStorage.getItem(SNAP_LEARNED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function rememberSnapLearned(): void {
+  try {
+    window.localStorage.setItem(SNAP_LEARNED_KEY, "1");
+  } catch {
+    // Without storage the hint simply shows again next time.
+  }
+}
+
 interface CollageStudioProps {
   scraps: readonly ScrapItem[];
   /** The collage being edited, or null when starting a fresh one. */
@@ -535,6 +560,12 @@ export function CollageStudio({
   const [gesture, setGesture] = useState<Gesture>({ kind: "idle" });
   /** What the slip above the selected piece says while a gesture runs. */
   const [gestureReadout, setGestureReadout] = useState<string | null>(null);
+  /**
+   * Whether the slip names the snapping key while pieces are carried. It shows
+   * until the person has snapped once, then stays out of the way for good.
+   */
+  const [snapHint, setSnapHint] = useState(false);
+  const snapLearnedRef = useRef(readSnapLearned());
   const [clipboard, setClipboard] = useState<readonly CollagePiece[] | null>(
     null,
   );
@@ -1694,6 +1725,11 @@ export function CollageStudio({
             ? `${snap.caught.x}|${snap.caught.y}`
             : null;
       }
+      if (snapping && !snapLearnedRef.current) {
+        snapLearnedRef.current = true;
+        rememberSnapLearned();
+      }
+      setSnapHint(!snapping && !snapLearnedRef.current);
       const pan = (point.x / frame.width) * 2 - 1;
       if (caught && caught !== caughtRef.current) {
         playCollageSound("snap", pan);
@@ -1726,7 +1762,10 @@ export function CollageStudio({
   // and cmd or ctrl starts or stops snapping, without waiting for the pointer
   // to move again.
   useEffect(() => {
-    if (gesture.kind !== "move") return;
+    if (gesture.kind !== "move") {
+      setSnapHint(false);
+      return;
+    }
     const { origins, grabbedAt } = gesture;
     const onModifier = (event: KeyboardEvent) => {
       if (!["Shift", "Meta", "Control"].includes(event.key)) return;
@@ -2527,7 +2566,7 @@ export function CollageStudio({
   // Modal transforms and handle drags speak through the same slip.
   const readout = transform
     ? `${transform.kind} ${transform.readout}`
-    : gestureReadout;
+    : (gestureReadout ?? (snapHint && !phone ? SNAP_HINT : null));
   const standing = standingWords(autosave.standing);
 
   const cropping = crop
@@ -2714,7 +2753,7 @@ export function CollageStudio({
                     piece mostly off the frame can still be grabbed and scaled. */}
                 <div className="collage-frame__pieces" data-marquee-ground="">
                 {ordered.map((piece) => {
-                  const source = sourceBoxForCrop(piece, piece.crop);
+                  const source = materialBox(piece);
                   const held = isSelected(selection, piece.id);
                   const hidden = crop?.pieceId === piece.id;
                   const offFrame =
