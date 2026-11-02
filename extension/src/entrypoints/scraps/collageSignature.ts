@@ -27,8 +27,8 @@ export interface SigningChoice {
   /** The name typed while sharing, when the maker has none of their own yet. */
   name: string;
   /**
-   * Whether a maker with a name of their own puts it on the stamp. Off until
-   * they ask, so a name never reaches a public link without a deliberate tap.
+   * Whether a maker with a name of their own puts it on the stamp. On unless
+   * they untick it, or the share was last sealed with the colour alone.
    */
   withName: boolean;
 }

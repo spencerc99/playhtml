@@ -47,6 +47,14 @@ export interface PublishSectionProps {
 
 type Busy = "idle" | "sharing" | "unsharing";
 
+const LINE = {
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.3,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+
 async function copyText(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
@@ -80,9 +88,8 @@ export function PublishSection({
   const [choice, setChoice] = useState<SigningChoice>(() => ({
     signing: share ? share.signature !== undefined : !signingWasTurnedOff(),
     name: share?.signature?.name ?? "",
-    withName: share?.signature?.name !== undefined,
+    withName: share?.signature ? share.signature.name !== undefined : true,
   }));
-  const [useEverywhere, setUseEverywhere] = useState(false);
   const [changingSignature, setChangingSignature] = useState(false);
 
   useEffect(() => {
@@ -101,7 +108,7 @@ export function PublishSection({
     };
   }, [signer]);
 
-  /** The stamp this share carries, saving a typed name everywhere if asked. */
+  /** The stamp this share carries; a typed name becomes the maker's name everywhere. */
   const signNow = async () => {
     const signature = signatureFor(identity, choice);
     if (identity) rememberSigning(choice.signing);
@@ -111,7 +118,6 @@ export function PublishSection({
       signature &&
       identity &&
       identity.name === undefined &&
-      useEverywhere &&
       typed
     ) {
       try {
@@ -199,8 +205,6 @@ export function PublishSection({
       identity={identity}
       choice={choice}
       onChoice={setChoice}
-      useEverywhere={useEverywhere}
-      onUseEverywhere={setUseEverywhere}
       disabled={busy !== "idle"}
     />
   );
@@ -217,7 +221,7 @@ export function PublishSection({
             title="Make a view-only link anyone can open"
             onClick={() => void shareNow()}
           >
-            {busy === "sharing" ? "sharing…" : "make a view-only link"}
+            {busy === "sharing" ? "sharing…" : "make a link"}
           </button>
         </div>
       </>
@@ -252,29 +256,44 @@ export function PublishSection({
         </p>
       )}
       {changingSignature && signatureRow}
-      <input
-        className="collage-share__url"
-        readOnly
-        value={share.url}
-        aria-label="Shared link"
-        onFocus={(event) => event.currentTarget.select()}
-      />
-      <div className="collage-export__row">
+      {/* The link copies itself when clicked; copy and open sit inside its field. */}
+      <div className="collage-share__link">
+        <input
+          className="collage-share__url"
+          readOnly
+          value={share.url}
+          aria-label="Shared link"
+          title="Click to copy"
+          onFocus={(event) => event.currentTarget.select()}
+          onClick={() => void copyText(share.url).then(setCopied)}
+        />
         <button
           type="button"
-          className="collage-action"
+          className="collage-share__icon"
+          aria-label="Copy link"
+          title="Copy link"
           onClick={() => void copyText(share.url).then(setCopied)}
         >
-          copy
+          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+            <rect x="5.5" y="5.5" width="8" height="8" rx="1" {...LINE} />
+            <path d="M10.5 3.5v-1h-8v8h1" {...LINE} />
+          </svg>
         </button>
         <a
-          className="collage-action"
+          className="collage-share__icon"
           href={share.url}
           target="_blank"
           rel="noopener noreferrer"
+          aria-label="Open link"
+          title="Open link"
         >
-          open
+          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+            <path d="M9 2.5h4.5V7M13.5 2.5 7 9" {...LINE} />
+            <path d="M11.5 9.5v4h-9v-9h4" {...LINE} />
+          </svg>
         </a>
+      </div>
+      <div className="collage-export__row">
         <button
           type="button"
           className="collage-action"

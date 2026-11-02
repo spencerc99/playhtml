@@ -1,5 +1,5 @@
 // ABOUTME: The share popover's "sign it" row: a switch, the stamp it will make, and a name field when there is none.
-// ABOUTME: Signing works with the cursor colour alone; a typed name can also become the maker's name everywhere.
+// ABOUTME: Signing works with the cursor colour alone; a typed name also becomes the maker's we were online name.
 
 import type { SignerIdentity, SigningChoice } from "./collageSignature";
 import { signatureFor } from "./collageSignature";
@@ -9,8 +9,6 @@ export interface SignatureRowProps {
   identity: SignerIdentity;
   choice: SigningChoice;
   onChoice: (choice: SigningChoice) => void;
-  useEverywhere: boolean;
-  onUseEverywhere: (value: boolean) => void;
   disabled?: boolean;
 }
 
@@ -18,8 +16,6 @@ export function SignatureRow({
   identity,
   choice,
   onChoice,
-  useEverywhere,
-  onUseEverywhere,
   disabled = false,
 }: SignatureRowProps) {
   const signature = signatureFor(identity, choice);
@@ -61,30 +57,20 @@ export function SignatureRow({
         </label>
       )}
       {asksForName && (
-        <>
-          <label className="collage-sign__name">
-            <span className="collage-studio__label">as</span>
-            <input
-              type="text"
-              value={choice.name}
-              placeholder="your name (optional)"
-              maxLength={60}
-              disabled={disabled}
-              onChange={(event) =>
-                onChoice({ ...choice, name: event.currentTarget.value })
-              }
-            />
-          </label>
-          <label className="collage-sign__everywhere">
-            <input
-              type="checkbox"
-              checked={useEverywhere}
-              disabled={disabled || choice.name.trim() === ""}
-              onChange={(event) => onUseEverywhere(event.currentTarget.checked)}
-            />
-            also use it as my we were online name
-          </label>
-        </>
+        <label className="collage-sign__name">
+          <span className="collage-studio__label">as</span>
+          <input
+            type="text"
+            value={choice.name}
+            placeholder="your name (optional)"
+            title="Also becomes your we were online name"
+            maxLength={60}
+            disabled={disabled}
+            onChange={(event) =>
+              onChoice({ ...choice, name: event.currentTarget.value })
+            }
+          />
+        </label>
       )}
     </div>
   );
