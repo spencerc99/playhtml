@@ -33,6 +33,24 @@ export function stackOrder(pieces: readonly CollagePiece[]): CollagePiece[] {
 }
 
 /**
+ * How high the frontmost of the chosen pieces sits in the whole stack, from 0
+ * (the very back) to 1 (the very front). A lone piece sits halfway.
+ */
+export function stackHeight(
+  pieces: readonly CollagePiece[],
+  ids: readonly string[],
+): number {
+  if (pieces.length < 2) return 0.5;
+  const chosen = new Set(ids);
+  const order = stackOrder(pieces);
+  let top = -1;
+  order.forEach((piece, index) => {
+    if (chosen.has(piece.id)) top = index;
+  });
+  return top < 0 ? 0.5 : top / (order.length - 1);
+}
+
+/**
  * Every piece under a point, frontmost first. That is the order a person reads
  * a stack in, and the order a deep click walks down through.
  */
@@ -82,22 +100,25 @@ export interface PressPlan {
 
 /**
  * Decides a press. A press on an unselected spot takes the frontmost piece
- * under the pointer. A press inside the piece already in hand keeps it,
- * whether it ends as a click or a drag, even where another piece lies on top:
- * a buried piece reached from the list or the keyboard can then be grabbed
- * without the piece over it taking the press. Clicking away first is how the
- * piece on top is taken again. With deep set (cmd or ctrl held) the press
- * takes the next piece down straight away and a drag moves that one.
+ * under the pointer. A press inside the piece already in hand keeps it for a
+ * drag, even where another piece lies on top, so a buried piece reached from
+ * the list or the keyboard can be moved without the piece over it taking the
+ * press. A click there without a drag takes the frontmost piece instead, so
+ * whatever is visibly on top can always be clicked. Clicking again on the
+ * same spot walks one piece further down the pile each time, wrapping back to
+ * the front after the bottom, as Figma's click-through does. With deep set
+ * (cmd or ctrl held) the press takes the next piece down straight away and a
+ * drag moves that one.
  */
 export function planPress(
   pieces: readonly CollagePiece[],
   point: Point,
   selectedId: string | null,
-  deep: boolean,
+  modifiers: { deep: boolean; sameSpot: boolean },
 ): PressPlan | null {
   const stack = piecesUnder(pieces, point);
   if (stack.length === 0) return null;
-  if (deep) {
+  if (modifiers.deep) {
     const deeper = deeperPieceAt(pieces, point, selectedId);
     if (!deeper) return null;
     return { selectOnDown: deeper, dragId: deeper, selectOnClick: deeper };
@@ -107,7 +128,9 @@ export function planPress(
     return {
       selectOnDown: selectedId,
       dragId: selectedId,
-      selectOnClick: selectedId,
+      selectOnClick: modifiers.sameSpot
+        ? (deeperPieceAt(pieces, point, selectedId) ?? front)
+        : front,
     };
   }
   return { selectOnDown: front, dragId: front, selectOnClick: front };

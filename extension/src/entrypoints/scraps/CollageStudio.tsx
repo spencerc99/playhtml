@@ -137,6 +137,7 @@ import { PiecesHereMenu } from "./PiecesHereMenu";
 import {
   neighborInStack,
   piecesUnder,
+  stackHeight,
   stackOrder,
   topPieceUnder,
 } from "./pieceStack";
@@ -209,8 +210,12 @@ import {
 import {
   collageSoundsMuted,
   playCollageSound,
+  primeCollageSounds,
   setCollageSoundsMuted,
+  startCollageSlide,
+  type CollageSlide,
   type CollageSound,
+  type StackMove,
 } from "./collageSounds";
 import { snapMove, type SnapGuide } from "./moveSnap";
 import {
@@ -250,11 +255,9 @@ const ROTATION_SNAP_DEGREES = 15;
  * another's (or the frame's) before it catches there.
  */
 const MOVE_SNAP_REACH = 6;
-/** A carried piece scuffs once per this many screen pixels of travel... */
-const SLIDE_EVERY_PX = 26;
-/** ...and no more often than this, in milliseconds. */
-const SLIDE_MIN_MS = 55;
-/** Pointer speed, in screen pixels per millisecond, that scuffs loudest. */
+/** How often a carried piece's shuffle reads the pointer's speed, in milliseconds. */
+const SLIDE_SAMPLE_MS = 16;
+/** Pointer speed, in screen pixels per millisecond, that counts as a full-speed drag. */
 const SLIDE_FULL_SPEED = 1.6;
 /** How far a pasted or duplicated piece lands from its original. */
 const COPY_OFFSET = 24;
@@ -274,6 +277,11 @@ const ALT_DRAG_THRESHOLD = 4;
  * was the start of a drag that never got going, so it leaves the selection be.
  */
 const CLICK_MAX_MS = 350;
+/**
+ * How far, in screen pixels, a click may land from the last one and still
+ * count as clicking the same spot again, which reaches one piece further down.
+ */
+const SAME_SPOT_PX = 6;
 /** How long a finger rests on the collage before it opens the pieces-here list. */
 const LONG_PRESS_MS = 500;
 /** How far a resting finger may wander, in screen pixels, and still be held. */
@@ -566,7 +574,14 @@ export function CollageStudio({
     downAt: number;
     selectOnClick: Selection;
     moved: boolean;
+    /**
+     * Where a plain press on a piece landed on screen, kept when it settles as
+     * a click so the next click on that spot can reach further down.
+     */
+    clickSpot?: { x: number; y: number };
   } | null>(null);
+  /** Where the last plain click on a piece landed on screen, if one did. */
+  const lastClickSpotRef = useRef<{ x: number; y: number } | null>(null);
   /** Where the pointer last was over the stage, in frame units. */
   const lastPointerRef = useRef<Point | null>(null);
   const draggingScrapRef = useRef<ScrapItem | null>(null);
@@ -867,7 +882,11 @@ export function CollageStudio({
 
   /** Plays an action's sound, panned toward where the pieces sit in the frame. */
   const sound = useCallback(
-    (name: CollageSound, at: readonly CollagePiece[] = []) => {
+    (
+      name: CollageSound,
+      at: readonly CollagePiece[] = [],
+      stack?: StackMove,
+    ) => {
       const pan =
         at.length === 0
           ? 0
@@ -876,7 +895,7 @@ export function CollageStudio({
               frame.width) *
               2 -
             1;
-      playCollageSound(name, pan);
+      playCollageSound(name, pan, stack);
     },
     [frame.width],
   );
@@ -909,6 +928,8 @@ export function CollageStudio({
   const liftedRef = useRef<number | null>(null);
 
   const [soundOn, setSoundOn] = useState(() => !collageSoundsMuted());
+  // Safari starts audio only inside a gesture, so wake it on the first one.
+  useEffect(() => primeCollageSounds(), []);
   const toggleSound = useCallback(() => {
     setSoundOn((on) => {
       setCollageSoundsMuted(on);
@@ -1088,10 +1109,17 @@ export function CollageStudio({
         front: moveGroupToFront,
         back: moveGroupToBack,
       }[to];
-      commit(move(pieces, selection.ids));
+      const next = move(pieces, selection.ids);
+      commit(next);
+      // Pitched to where the pieces sit in the pile, so stepping one up
+      // through a stack climbs a scale.
       sound(
         to === "forward" || to === "front" ? "layerUp" : "layerDown",
         selectedPieces,
+        {
+          from: stackHeight(pieces, selection.ids),
+          to: stackHeight(next, selection.ids),
+        },
       );
     },
     [commit, pieces, selectedPieces, selection, sound],
@@ -1408,13 +1436,18 @@ export function CollageStudio({
       performance.now() - press.downAt <= CLICK_MAX_MS
     ) {
       setSelection(press.selectOnClick);
+      lastClickSpotRef.current = press.clickSpot ?? null;
+    } else if (press) {
+      lastClickSpotRef.current = null;
     }
     setGesture({ kind: "idle" });
     setGestureReadout(null);
     setSnapGuides([]);
     snapTargetsRef.current = null;
     caughtRef.current = null;
+    slideRef.current?.stop();
     slideRef.current = null;
+    slidePaceRef.current = null;
     setHistory((current) => endRun(current));
   }, []);
 
@@ -1619,8 +1652,11 @@ export function CollageStudio({
   } | null>(null);
   /** What the drag last caught on, so a fresh catch clicks once. */
   const caughtRef = useRef<string | null>(null);
-  /** Where and when the last slide scuff played during a carry. */
-  const slideRef = useRef<{ at: Point; time: number } | null>(null);
+  /** The paper shuffle that sounds while pieces are carried. */
+  const slideRef = useRef<CollageSlide | null>(null);
+  /** Where and when the shuffle last read the pointer, to tell its speed. */
+  const slidePaceRef = useRef<{ at: Point; time: number } | null>(null);
+  useEffect(() => () => slideRef.current?.stop(), []);
 
   const carry = useCallback(
     (
@@ -1666,22 +1702,23 @@ export function CollageStudio({
       const pan = (point.x / frame.width) * 2 - 1;
       if (caught && caught !== caughtRef.current) {
         playCollageSound("snap", pan);
+        slideRef.current?.duck();
       }
       caughtRef.current = caught;
       setSnapGuides(guides);
 
-      // A scuff every so often while the pieces travel, louder when faster.
+      // The shuffle follows how fast the pieces travel.
       const now = performance.now();
-      const last = slideRef.current;
+      const last = slidePaceRef.current;
       if (!last) {
-        slideRef.current = { at: point, time: now };
+        slidePaceRef.current = { at: point, time: now };
       } else {
-        const distance =
-          Math.hypot(point.x - last.at.x, point.y - last.at.y) * scale;
         const elapsed = now - last.time;
-        if (distance >= SLIDE_EVERY_PX && elapsed >= SLIDE_MIN_MS) {
-          playCollageSound("slide", pan, distance / elapsed / SLIDE_FULL_SPEED);
-          slideRef.current = { at: point, time: now };
+        if (elapsed >= SLIDE_SAMPLE_MS) {
+          const distance =
+            Math.hypot(point.x - last.at.x, point.y - last.at.y) * scale;
+          slideRef.current?.move(distance / elapsed / SLIDE_FULL_SPEED, pan);
+          slidePaceRef.current = { at: point, time: now };
         }
       }
 
@@ -1742,6 +1779,10 @@ export function CollageStudio({
           if (gesture.kind === "move") {
             sound("pickup", gesture.origins);
             liftedRef.current = frame.width;
+            slideRef.current?.stop();
+            slideRef.current = startCollageSlide(
+              (point.x / frame.width) * 2 - 1,
+            );
           }
         }
       }
@@ -1932,8 +1973,9 @@ export function CollageStudio({
    * A press is planned the moment it lands (see planSelectionPress): a drag
    * moves what is in hand when the press is inside it, and a click settles on
    * release, because only then is it known that the press was a click and not
-   * the start of a drag. Shift adds or takes away a piece; cmd or ctrl
-   * reaches the next piece down instead.
+   * the start of a drag. Clicking the same spot again reaches one piece
+   * further down. Shift adds or takes away a piece; cmd or ctrl reaches the
+   * next piece down instead.
    */
   const beginMove = (piece: CollagePiece, event: React.PointerEvent) => {
     event.stopPropagation();
@@ -1946,6 +1988,13 @@ export function CollageStudio({
     if (cutoutSession) confirmCutout();
     setHereMenu(null);
     const at = framePoint(event);
+    const deep = event.metaKey || event.ctrlKey;
+    const additive = event.shiftKey;
+    const lastSpot = lastClickSpotRef.current;
+    const sameSpot =
+      lastSpot !== null &&
+      Math.hypot(event.clientX - lastSpot.x, event.clientY - lastSpot.y) <=
+        SAME_SPOT_PX;
     // The element took the press, so when the rotated-box test misses by a
     // rounding hair at an edge, the piece the page hit is the answer.
     const plan = planSelectionPress(
@@ -1953,10 +2002,7 @@ export function CollageStudio({
       at,
       selection,
       multiple ? selectionBox : null,
-      {
-        deep: event.metaKey || event.ctrlKey,
-        additive: event.shiftKey,
-      },
+      { deep, additive, sameSpot },
     ) ?? {
       selectOnDown: selectOnly(piece.id),
       dragIds: [piece.id],
@@ -1970,6 +2016,8 @@ export function CollageStudio({
       downAt: performance.now(),
       selectOnClick: plan.selectOnClick,
       moved: false,
+      clickSpot:
+        deep || additive ? undefined : { x: event.clientX, y: event.clientY },
     };
     setGesture({
       kind: "move",

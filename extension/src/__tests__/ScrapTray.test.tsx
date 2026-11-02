@@ -265,24 +265,22 @@ describe("ScrapTray day and time-of-day filters", () => {
     Array.from(container.querySelectorAll(".collage-tray__slot")).map(
       (slot) => slot.getAttribute("aria-label"),
     );
+  const timeOfDay = (label: string) =>
+    container.querySelector<HTMLButtonElement>(
+      `[role="group"][aria-label="Time of day"] button[aria-label^="${label},"]`,
+    )!;
+  const dayCell = (day: string) =>
+    container.querySelector<HTMLElement>(`[data-day="${day}"]`)!;
 
   it("narrows to a day, then a time of day, and resets both", () => {
     expect(chip("when").textContent).toContain("any time");
 
     act(() => chip("when").click());
-    act(() =>
-      container.querySelector<HTMLElement>('[data-day="2026-09-02"]')!.click(),
-    );
+    act(() => dayCell("2026-09-02").click());
     expect(countLine()).toBe("2 of 4 · reset");
     expect(chip("when").textContent).toContain("Sep 2");
 
-    act(() =>
-      Array.from(
-        container.querySelectorAll<HTMLButtonElement>(".scrap-filters__time"),
-      )
-        .find((button) => button.textContent === "morning")!
-        .click(),
-    );
+    act(() => timeOfDay("morning").click());
     expect(countLine()).toBe("1 of 4 · reset");
     expect(slots()).toEqual(["are.na — Morning two"]);
     expect(chip("when").textContent).toContain("Sep 2 · morning");
@@ -304,24 +302,34 @@ describe("ScrapTray day and time-of-day filters", () => {
       );
     expect(days()).toEqual(["2026-09-01", "2026-09-02"]);
 
-    act(() =>
-      Array.from(
-        container.querySelectorAll<HTMLButtonElement>(".scrap-filters__time"),
-      )
-        .find((button) => button.textContent === "night")!
-        .click(),
-    );
+    act(() => timeOfDay("night").click());
     // 23:15 sits outside 00:00–06:00, so nothing matches, but both days stay.
     expect(countLine()).toBe("0 of 4 · reset");
     expect(days()).toEqual(["2026-09-01", "2026-09-02"]);
 
+    act(() => chip("clear").click());
+    expect(countLine()).toBe("4 to draw from");
+  });
+
+  it("spans two clicked days, then takes a whole month from its header", () => {
+    act(() => chip("when").click());
+    act(() => dayCell("2026-09-01").click());
+    expect(countLine()).toBe("2 of 4 · reset");
+    act(() => dayCell("2026-09-02").click());
+    expect(countLine()).toBe("4 of 4 · reset");
+    expect(chip("when").textContent).toContain("Sep 1 – 2");
+    expect(dayCell("2026-09-01").getAttribute("aria-pressed")).toBe("true");
+    expect(dayCell("2026-09-02").getAttribute("aria-pressed")).toBe("true");
+
     act(() =>
-      Array.from(
-        container.querySelectorAll<HTMLButtonElement>(".scrap-filters__link"),
-      )
-        .find((button) => button.textContent === "clear")!
+      container
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="All of September 2026"]',
+        )!
         .click(),
     );
-    expect(countLine()).toBe("4 to draw from");
+    expect(chip("when").textContent).toContain("September 2026");
+    act(() => chip("7 days").click());
+    expect(countLine()).toBe("0 of 4 · reset");
   });
 });

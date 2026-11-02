@@ -11,6 +11,8 @@ import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicat
 
 Presence is used for anything that is real-time and ephemeral (meaning it doesn't stick around after you leave). For example, cursors only matter when you are actually on the page. When you leave, they are gone and there's no record of them.
 
+A tab left in the background counts as leaving after a couple of minutes: its channels and live element data drop out of everyone else's view, and come back as soon as the tab is visible again. A cursor that stops moving fades out after about 30 seconds.
+
 For the full API surface (`PlayerIdentity`, `PresenceAPI`, element users, cursor types), see the [Presence & identity reference](/docs/reference/presence/).
 
 When you want things to stay after refreshing, use [persistent data](/docs/data/data-essentials/) and use [events](/docs/data/events/) for real-time events that don't rely on updating data. 

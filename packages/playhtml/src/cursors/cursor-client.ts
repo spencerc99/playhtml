@@ -19,7 +19,7 @@ import { CursorChat } from "./chat";
 import { resolveCursorContainer } from "./container";
 import { getCursorNetworkIntervalMs } from "./cursor-network-pacing";
 import { CursorPresenceStore } from "./cursor-presence-store";
-import { PRESENCE_STALE_MS } from "../presence-utils";
+import { CURSOR_STALE_MS } from "../presence-utils";
 import type { RealtimePresenceTransport } from "../presence-transport";
 
 
@@ -507,6 +507,9 @@ export class CursorClientAwareness {
   // cancelled if a new update arrives for the same stableId (e.g. when one
   // tab disconnects but another tab of the same user is still active).
   private pendingRemovals: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  // Set while the room has no one else in it and the latest cursor state has
+  // not been published.
+  private hasUnsentCursor = false;
 
   // Cursor client no longer owns identity mutation/persistence — it reads the
   // live reference from the users module, which is the sole mutator.
@@ -641,6 +644,16 @@ export class CursorClientAwareness {
     // fold and on its periodic sweep), so freshness is guaranteed here — just
     // re-render from the current folded state.
     this.renderPresenceStore();
+    // Someone joined a room we had been alone in: send the cursor we held back.
+    if (this.hasUnsentCursor && this.hasRemotePeers()) {
+      this.updateCursorAwareness();
+    }
+  }
+
+  /** True when another person (not just our own other tabs) is in the room. */
+  private hasRemotePeers(): boolean {
+    for (const _entry of this.cursorPresenceEntries()) return true;
+    return false;
   }
 
   private handlePresenceControlMessage(message: PresenceServerMessage): void {
@@ -730,7 +743,7 @@ export class CursorClientAwareness {
     now: number,
   ): boolean {
     if (!Number.isFinite(presence.lastSeen)) return false;
-    return now - Number(presence.lastSeen) <= PRESENCE_STALE_MS;
+    return now - Number(presence.lastSeen) <= CURSOR_STALE_MS;
   }
 
   private rebuildSpatialGrid(): void {
@@ -1237,6 +1250,17 @@ export class CursorClientAwareness {
     }
 
     const lastSeen = Date.now();
+    // Nobody else is here to see the cursor, so hold it back instead of
+    // streaming it at frame rate to an empty room. onPeerCursorChange sends it
+    // when someone joins.
+    if (!this.hasRemotePeers()) {
+      this.hasUnsentCursor = true;
+      this.lastUpdate = performance.now();
+      this.checkProximityOptimized();
+      this.notifyCursorPresenceListeners();
+      return;
+    }
+    this.hasUnsentCursor = false;
     const cursorPresence: CursorPresence = {
       cursor: this.currentCursor,
       playerIdentity: this.playerIdentity,

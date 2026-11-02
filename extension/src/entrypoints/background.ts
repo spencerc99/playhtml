@@ -11,7 +11,7 @@ import type {
   WalkingRecordTraceTarget,
 } from '../storage/LocalEventStore'
 import { uploadEvents } from '../storage/sync'
-import { fetchEventsByPid } from '../storage/restore'
+import { restoreEventsFromServer } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
 import type { ScrapEventData, ScrapPosition } from '../collectors/types'
 import { getScrapKey } from '../collectors/scrapUtils'
@@ -24,13 +24,13 @@ import {
   ensurePlayerIdentity,
   getPlayerProfile,
   getPublicPlayerIdentity,
+  getStoredPlayerIdentity,
   recordDiscoveredSite,
 } from '../storage/playerIdentity'
 import { syncStoredPlayerColor } from '../storage/playerColor'
 import { VERBOSE } from '../config'
-import { gzipEventExport, gunzipToString } from '../utils/dataTransfer'
+import { gzipEventExport } from '../utils/dataTransfer'
 import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
-import { FRAME_ACTIVITY_MESSAGE } from '../features/frameActivity'
 import {
   loadState,
   saveState,
@@ -656,17 +656,6 @@ export default defineBackground(() => {
   // Cross-site messaging coordination
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const reply = sendResponse as (response?: any) => void
-    if (message.type === FRAME_ACTIVITY_MESSAGE) {
-      // Forward an embedded frame's activity to the tab's top frame, where the
-      // navigation collector keeps the screen-time clock
-      const tabId = sender.tab?.id
-      if (tabId !== undefined && sender.frameId !== 0) {
-        browser.tabs
-          .sendMessage(tabId, { type: FRAME_ACTIVITY_MESSAGE }, { frameId: 0 })
-          .catch(() => {})
-      }
-      return
-    }
     if (message.type === 'GET_SLOW_MODE_HOSTED_RIDE') {
       if (
         typeof message.rideId !== 'string' ||
@@ -1278,30 +1267,48 @@ export default defineBackground(() => {
       return true
     }
 
-    if (message.type === 'IMPORT_EVENTS') {
+    if (message.type === 'IMPORT_EVENT_BATCH') {
       ;(async () => {
         try {
-          const json = await gunzipToString(
-            new Uint8Array(message.data as number[]),
-          )
-          const parsed = JSON.parse(json)
-          if (parsed.version !== 1)
-            throw new Error('Unsupported export version')
-          const events = parsed.events as CollectionEvent[]
-          const stored = await store.addImportedEvents(events)
-          const imported = stored.length
-          const alreadyHeld = events.length - imported
-          if (
-            stored.some((event) => event.type === 'element') &&
-            imported > 0
-          ) {
+          const events = message.events as CollectionEvent[]
+          const stored = await store.addImportedEventBatch(events)
+          reply({
+            success: true,
+            imported: stored.length,
+            alreadyHeld: events.length - stored.length,
+            scrapsAdded: stored.some((event) => event.type === 'element'),
+          })
+        } catch (e) {
+          console.error('[Background] IMPORT_EVENT_BATCH error:', e)
+          reply({ success: false, error: String(e) })
+        }
+      })()
+      return true
+    }
+
+    if (message.type === 'FINISH_IMPORT') {
+      ;(async () => {
+        try {
+          // Report to the settings page at most four times a second, and on every step change.
+          let lastStep = ''
+          let lastSentAt = 0
+          await store.finishImport((progress) => {
+            const now = Date.now()
+            if (progress.step === lastStep && now - lastSentAt < 250) return
+            lastStep = progress.step
+            lastSentAt = now
+            browser.runtime
+              .sendMessage({ type: 'IMPORT_STATS_PROGRESS', ...progress })
+              .catch(() => {})
+          })
+          if (message.scrapsAdded) {
             await browser.runtime
               .sendMessage({ type: 'SCRAP_PHOTOS_UPDATED' })
               .catch(() => {})
           }
-          reply({ success: true, imported, alreadyHeld })
+          reply({ success: true })
         } catch (e) {
-          console.error('[Background] IMPORT_EVENTS error:', e)
+          console.error('[Background] FINISH_IMPORT error:', e)
           reply({ success: false, error: String(e) })
         }
       })()
@@ -1311,30 +1318,24 @@ export default defineBackground(() => {
     if (message.type === 'RESTORE_FROM_SERVER') {
       ;(async () => {
         try {
-          const identity = await getPublicPlayerIdentity()
-          const pid = identity?.publicKey
-          if (!pid) {
+          const identity = await getStoredPlayerIdentity()
+          if (!identity) {
             reply({ success: false, error: 'No player identity found' })
             return
           }
           console.log(
             '[Background] RESTORE_FROM_SERVER starting, pid:',
-            pid.slice(0, 20) + '...',
-            'fetching all server events',
+            identity.public.publicKey.slice(0, 20) + '...',
           )
-          const { events, countsByType } = await fetchEventsByPid(pid)
-          console.log(
-            '[Background] Fetched',
-            events.length,
-            'events, writing to IDB...',
+          const { imported, countsByType } = await restoreEventsFromServer(
+            {
+              publicKey: identity.public.publicKey,
+              privateKey: identity.privateKey,
+            },
+            (events) => store.addRestoredEvents(events),
           )
-          await store.addRestoredEvents(events)
           console.log('[Background] RESTORE_FROM_SERVER complete')
-          reply({
-            success: true,
-            imported: events.length,
-            countsByType,
-          })
+          reply({ success: true, imported, countsByType })
         } catch (e) {
           console.error('[Background] RESTORE_FROM_SERVER error:', e)
           reply({ success: false, error: String(e) })

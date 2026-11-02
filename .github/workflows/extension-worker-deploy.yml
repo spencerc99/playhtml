@@ -96,12 +96,20 @@ jobs:
           headers="$(mktemp)"
           trap 'rm -f "$headers"' EXIT
           rider_token="github_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
-          response="$(curl --fail-with-body --silent --show-error \
+          # The deploy restarts the dispatcher Durable Object, so the first
+          # requests after it can fail briefly. Retry before calling it broken,
+          # and print the last response body so a real failure is diagnosable.
+          if ! response="$(curl --fail-with-body --silent --show-error \
+            --retry 5 --retry-delay 6 --retry-all-errors \
             --dump-header "$headers" \
             --header "Origin: https://wewere.online" \
             --header "Content-Type: application/json" \
             --data "{\"riderToken\":\"$rider_token\",\"requestedStop\":{\"kind\":\"none\"}}" \
-            "$BOARDING_URL")"
+            "$BOARDING_URL")"; then
+            echo "Production boarding failed after retries. Last response:"
+            echo "$response"
+            exit 1
+          fi
 
           if ! awk 'BEGIN { IGNORECASE = 1 } /^access-control-allow-origin: \*/ { found = 1 } END { exit !found }' "$headers"; then
             echo "Production boarding response is missing the expected CORS header"

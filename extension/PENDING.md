@@ -15,6 +15,6 @@ extension/website/public/changelog/media/ and reference them here:
 ![video: Demo title](/changelog/media/file.mp4)
 -->
 
-- Time on a site stops counting after a few minutes away from your computer, so a tab left open overnight no longer inflates your history.
-- the scraps on your history page now show what you came across in the week, month, or year you're looking at, not just your latest finds.
-- Beta: share a scrap collage as a view-only link anyone can open, from the share button in the collage studio.
+- Import a data export of any size in one go, with a progress bar and time left.
+- Pick a range of days, a whole month, or a time of day like "mornings" when looking back at your movement portrait or your scraps.
+- Collage sounds now play in Safari, and moving a piece forward or back rings higher or lower to match where it sits in the stack.

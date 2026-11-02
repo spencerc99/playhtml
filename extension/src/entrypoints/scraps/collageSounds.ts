@@ -3,7 +3,6 @@
 
 export type CollageSound =
   | "pickup"
-  | "slide"
   | "place"
   | "snap"
   | "rotate"
@@ -36,6 +35,8 @@ let context: AudioContext | null = null;
 let master: GainNode | null = null;
 let reverbSend: GainNode | null = null;
 let noiseBuffer: AudioBuffer | null = null;
+/** Noise long enough that a held slide never audibly repeats its loop. */
+let longNoiseBuffer: AudioBuffer | null = null;
 let mutedCache: boolean | null = null;
 
 export function collageSoundsMuted(): boolean {
@@ -60,7 +61,8 @@ export function setCollageSoundsMuted(muted: boolean): void {
 
 function audio(): AudioContext | null {
   if (context) {
-    if (context.state === "suspended") void context.resume();
+    // Safari also reports "interrupted" after the tab or app loses audio focus.
+    if (context.state !== "running") void context.resume().catch(() => {});
     return context;
   }
   const Ctor =
@@ -100,8 +102,69 @@ function audio(): AudioContext | null {
   for (let i = 0; i < noiseData.length; i++)
     noiseData[i] = Math.random() * 2 - 1;
 
+  longNoiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 6, ctx.sampleRate);
+  const longNoiseData = longNoiseBuffer.getChannelData(0);
+  for (let i = 0; i < longNoiseData.length; i++)
+    longNoiseData[i] = Math.random() * 2 - 1;
+
   context = ctx;
+  // Safari can make a context already suspended, even inside a gesture.
+  if (ctx.state !== "running") void ctx.resume().catch(() => {});
   return ctx;
+}
+
+/** Events Safari counts as a person's gesture, so audio may start inside them. */
+const UNLOCK_EVENTS = [
+  "pointerdown",
+  "pointerup",
+  "touchend",
+  "keydown",
+  "click",
+];
+let unlockInstalled = false;
+
+function stopListening() {
+  for (const type of UNLOCK_EVENTS)
+    document.removeEventListener(type, unlock, true);
+  unlockInstalled = false;
+}
+
+function unlock() {
+  if (collageSoundsMuted()) return;
+  try {
+    const ctx = audio();
+    if (!ctx) return;
+    // A silent blip started inside the gesture wakes audio on iOS for good.
+    const blip = ctx.createBufferSource();
+    blip.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+    blip.connect(ctx.destination);
+    blip.start(0);
+    if (ctx.state === "running") stopListening();
+    else
+      ctx.addEventListener?.(
+        "statechange",
+        () => {
+          if (ctx.state === "running") stopListening();
+        },
+        { once: true },
+      );
+  } catch {
+    // Sound is decoration; a refused audio context never stops an edit.
+  }
+}
+
+/**
+ * Lets the next tap, click or key start audio. Chrome remembers any earlier
+ * gesture, but Safari starts audio only from inside one, and a lift sounds on
+ * a pointer move, which is not a gesture. So the context is made and woken on
+ * a gesture and kept running for the sounds that follow. Call it when the
+ * studio opens; it stays listening until audio is running.
+ */
+export function primeCollageSounds(): void {
+  if (unlockInstalled || typeof document === "undefined") return;
+  unlockInstalled = true;
+  for (const type of UNLOCK_EVENTS)
+    document.addEventListener(type, unlock, { capture: true, passive: true });
 }
 
 /** A small random pitch offset, in cents, so repeats are never identical. */
@@ -301,23 +364,57 @@ function shear(ctx: AudioContext, at: number, length: number, pan: number) {
 const lift = (ctx: AudioContext, at: number, pan: number) =>
   noise(ctx, { f: 1800, f2: 5000, q: 0.8, a: 0.04, d: 0.06, v: 0.1, at, pan });
 
-type Voice = (ctx: AudioContext, pan: number, level: number) => void;
+/**
+ * Where a restacked piece sat in the pile and where it landed, each from 0
+ * (the bottom) to 1 (the top).
+ */
+export interface StackMove {
+  from: number;
+  to: number;
+}
+
+type Voice = (ctx: AudioContext, pan: number, stack?: StackMove) => void;
+
+/** The bell's note for a height in the pile: low at the bottom, high on top. */
+const stackNote = (height: number) =>
+  note(2 + Math.round(Math.max(0, Math.min(1, height)) * 11));
+
+/**
+ * A restack: paper sliding up or down the pile, then a bell pitched to where
+ * the piece now sits, with a quiet grace note from where it was, so climbing a
+ * pile one step at a time plays a rising scale. Without a pile position it
+ * falls back to a fixed high or low note.
+ */
+function restack(
+  ctx: AudioContext,
+  pan: number,
+  up: boolean,
+  stack: StackMove | undefined,
+) {
+  noise(ctx, {
+    f: up ? 2000 : 3000,
+    f2: up ? 4000 : 1400,
+    a: 0.01,
+    d: 0.05,
+    v: 0.1,
+    pan,
+  });
+  if (!stack) {
+    bell(ctx, note(up ? 10 : 4), 0, 0.07, 0.25, pan);
+    return;
+  }
+  const from = stackNote(stack.from);
+  const to = stackNote(stack.to);
+  if (from !== to) {
+    tone(ctx, { f: from, a: 0.002, d: 0.06, v: 0.035, pan, wet: 0.3 });
+  }
+  bell(ctx, to, from !== to ? 0.045 : 0, 0.07, 0.25, pan);
+}
 
 const VOICES: Record<CollageSound, Voice> = {
   pickup: (ctx, pan) => {
     noise(ctx, { f: 2600, f2: 6000, q: 0.8, a: 0.01, d: 0.07, v: 0.14, pan });
     tone(ctx, { f: note(10) * jitter(), a: 0.003, d: 0.08, v: 0.04, pan });
-  },
-  // Paper scuffing across paper while a piece is carried; louder when faster.
-  slide: (ctx, pan, level) => {
-    noise(ctx, {
-      f: 1300 + Math.random() * 1400,
-      q: 0.7,
-      a: 0.012,
-      d: 0.05 + Math.random() * 0.03,
-      v: 0.03 + 0.07 * level,
-      pan,
-    });
   },
   // A tap on the table: a thunk with a short wooden pluck.
   place: (ctx, pan) => {
@@ -427,14 +524,8 @@ const VOICES: Record<CollageSound, Voice> = {
     noise(ctx, { f: 1200, f2: 5000, q: 1, a: 0.12, d: 0.03, v: 0.12 });
     [5, 7, 9].forEach((n, i) => bell(ctx, note(n), 0.04 + i * 0.055, 0.09));
   },
-  layerUp: (ctx, pan) => {
-    noise(ctx, { f: 2000, f2: 4000, a: 0.01, d: 0.05, v: 0.1, pan });
-    bell(ctx, note(10), 0, 0.07, 0.25, pan);
-  },
-  layerDown: (ctx, pan) => {
-    noise(ctx, { f: 3000, f2: 1400, a: 0.01, d: 0.05, v: 0.1, pan });
-    bell(ctx, note(4), 0, 0.07, 0.25, pan);
-  },
+  layerUp: (ctx, pan, stack) => restack(ctx, pan, true, stack),
+  layerDown: (ctx, pan, stack) => restack(ctx, pan, false, stack),
   paper: (ctx) => {
     for (let i = 0; i < 5; i++) {
       noise(ctx, {
@@ -451,25 +542,127 @@ const VOICES: Record<CollageSound, Voice> = {
 
 /**
  * Plays one collage action's sound. `pan` runs from -1 (left) to 1 (right),
- * usually where the piece sits in the frame. `level` (0 to 1) scales the
- * sounds that vary with effort, like a slide's speed. Call it only from a
- * person's own action: browsers start audio only after a gesture.
+ * usually where the piece sits in the frame. `stack` pitches a restack to the
+ * piece's place in the pile. Call it only from a person's own action: browsers
+ * start audio only after a gesture.
  */
 export function playCollageSound(
   sound: CollageSound,
   pan = 0,
-  level = 1,
+  stack?: StackMove,
 ): void {
   if (collageSoundsMuted()) return;
   try {
     const ctx = audio();
     if (!ctx) return;
-    VOICES[sound](
-      ctx,
-      Math.max(-0.8, Math.min(0.8, pan)),
-      Math.max(0, Math.min(1, level)),
-    );
+    VOICES[sound](ctx, Math.max(-0.8, Math.min(0.8, pan)), stack);
   } catch {
     // Sound is decoration; a refused or broken audio context never stops an edit.
+  }
+}
+
+/** A carried piece's paper shuffle, held for the length of one drag. */
+export interface CollageSlide {
+  /**
+   * Follows the pointer: `speed` (0 to 1) of full drag speed, `pan` from -1
+   * (left) to 1 (right). The shuffle settles to silence when moves stop
+   * arriving.
+   */
+  move(speed: number, pan: number): void;
+  /** Steps aside for a moment so a snap sits on its own. */
+  duck(): void;
+  /** Fades out and releases the sound. */
+  stop(): void;
+}
+
+/** How deep the shuffle's grain cuts, from 0 (smooth) to 1 (silent gaps). */
+const SLIDE_GRAIN = 0.7;
+/** How often the grain changes, in milliseconds: the shuffle's cadence. */
+const SLIDE_GRAIN_MS = 40;
+/** How long without a move before the shuffle falls quiet, in milliseconds. */
+const SLIDE_IDLE_MS = 90;
+
+/**
+ * Starts the paper shuffle for a drag: only the light top of a sheet sliding
+ * on paper, with a fine grain and a level that eases off a little when fast so
+ * quick drags never pile up. Returns null while muted or without audio. Call
+ * it only from a person's own action, and stop it when the drag ends.
+ */
+export function startCollageSlide(pan = 0): CollageSlide | null {
+  if (collageSoundsMuted()) return null;
+  try {
+    const ctx = audio();
+    if (!ctx || !longNoiseBuffer) return null;
+    const source = ctx.createBufferSource();
+    const highpass = ctx.createBiquadFilter();
+    const lowpass = ctx.createBiquadFilter();
+    const grain = ctx.createGain();
+    const level = ctx.createGain();
+    const duck = ctx.createGain();
+    const panner = ctx.createStereoPanner();
+    source.buffer = longNoiseBuffer;
+    source.loop = true;
+    highpass.type = "highpass";
+    highpass.frequency.value = 2200;
+    highpass.Q.value = 0.7;
+    lowpass.type = "lowpass";
+    lowpass.frequency.value = 6000;
+    lowpass.Q.value = 0.4;
+    level.gain.value = 0;
+    panner.pan.value = Math.max(-0.6, Math.min(0.6, pan));
+    source.connect(highpass);
+    highpass.connect(lowpass);
+    lowpass.connect(grain);
+    grain.connect(level);
+    level.connect(duck);
+    duck.connect(panner);
+    panner.connect(master!);
+    source.start(0, Math.random() * longNoiseBuffer.duration);
+
+    const flutter = window.setInterval(() => {
+      grain.gain.setTargetAtTime(
+        1 - SLIDE_GRAIN * Math.random(),
+        ctx.currentTime,
+        0.012,
+      );
+    }, SLIDE_GRAIN_MS);
+    let idle: number | undefined;
+    let stopped = false;
+
+    const settle = (target: number) =>
+      level.gain.setTargetAtTime(target, ctx.currentTime, 0.03);
+
+    return {
+      move(speed, nextPan) {
+        if (stopped) return;
+        const s = Math.max(0, Math.min(1, speed));
+        settle(s > 0.02 ? 0.028 - 0.006 * s : 0);
+        panner.pan.setTargetAtTime(
+          Math.max(-0.6, Math.min(0.6, nextPan)),
+          ctx.currentTime,
+          0.2,
+        );
+        window.clearTimeout(idle);
+        idle = window.setTimeout(() => settle(0), SLIDE_IDLE_MS);
+      },
+      duck() {
+        if (stopped) return;
+        const t = ctx.currentTime;
+        duck.gain.setTargetAtTime(0.3, t, 0.008);
+        duck.gain.setTargetAtTime(1, t + 0.06, 0.06);
+      },
+      stop() {
+        if (stopped) return;
+        stopped = true;
+        window.clearTimeout(idle);
+        window.clearInterval(flutter);
+        settle(0);
+        source.stop(ctx.currentTime + 0.3);
+        source.onended = () => source.disconnect();
+      },
+    };
+  } catch {
+    // Sound is decoration; a refused or broken audio context never stops an edit.
+    return null;
   }
 }

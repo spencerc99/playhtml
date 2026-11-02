@@ -166,7 +166,7 @@ export async function handleFeatureAccessCheck(
     grantedFeatureIds,
   });
 
-  return jsonResponse(200, { features });
+  return jsonResponse(200, { features, internal: grantsAllUnreleased });
 }
 
 export async function handleAdminAccessOverview(

@@ -6,7 +6,7 @@ import type {
   CommuteResponse,
 } from '@playhtml/extension-types';
 import type { Env } from '../lib/supabase';
-import { buildCommuteResponse } from './commutePolicy';
+import { buildCommuteResponse, getActivePeopleSince } from './commutePolicy';
 import {
   applyInternetPlacePolicies,
   loadInternetPlacePolicies,
@@ -27,27 +27,38 @@ import {
   resolveInternetPlacePolicy,
   type InternetPlacePolicy,
 } from '../../../shared/internetPlaceCatalog';
-import { handleRecent } from './recent';
+import { handleRecent, loadRecentParticipantIds } from './recent';
 import { getAdminAuthError } from '../lib/adminAuth';
+import { createTimedMemo } from '../lib/timedMemo';
 
 const NAVIGATION_LIMIT = 2000;
-const ACTIVITY_LIMIT = 1000;
+// Counts people among the newest events of any type inside the active window.
+const ACTIVE_PEOPLE_EVENT_LIMIT = 1000;
+// Every open commute polls the public route; one isolate builds it at most
+// once per window and shares that build with every request in between.
+const COMMUTE_RESPONSE_TTL_MS = 30_000;
+const COMMUTE_RESPONSE_ABANDON_LOAD_MS = 20_000;
+const COMMUTE_EVENTS_BASE_URL = 'https://commute.internal/';
 const REVIEW_NAVIGATION_LIMIT = 10_000;
 const REVIEW_DESTINATION_LIMIT = 200;
 const REVIEW_SCENERY_LIMIT = 200;
 const CATALOG_CANDIDATE_LIMIT = 200;
 const COMMUTE_DESTINATION_LIMIT = 50;
-const SWEEP_SUGGESTION_LIMIT = 50;
-// Caps Clef calls per upload so a burst of traffic can't fan out into hundreds.
-const INGEST_SUGGESTION_LIMIT = 5;
+// Caps Clef calls per sweep. The sweep runs every 15 minutes, so this bounds
+// Clef to about 1,400 page checks and 1,400 name checks a day.
+const SWEEP_SUGGESTION_LIMIT = 15;
+
+const commuteResponseMemo = createTimedMemo<CommuteResponse>({
+  ttlMs: COMMUTE_RESPONSE_TTL_MS,
+  abandonLoadAfterMs: COMMUTE_RESPONSE_ABANDON_LOAD_MS,
+});
 
 async function fetchRecentEvents(
-  request: Request,
   env: Env,
   type: 'navigation' | 'all',
   limit: number,
 ): Promise<CollectionEvent[]> {
-  const url = new URL('/events/recent', request.url);
+  const url = new URL('/events/recent', COMMUTE_EVENTS_BASE_URL);
   url.searchParams.set('type', type);
   url.searchParams.set('limit', limit.toString());
   if (type === 'navigation') {
@@ -67,13 +78,15 @@ async function fetchRecentEvents(
 }
 
 export async function handleCommute(
-  request: Request,
+  _request: Request,
   env: Env,
 ): Promise<Response> {
   try {
-    const response = await getCommuteResponse(request, env, Date.now());
+    const response = await getCommuteResponse(env);
 
-    return new Response(JSON.stringify(response), {
+    // Riders estimate the server clock from generatedAt, so it is stamped when
+    // the response is sent rather than when the shared route was built.
+    return new Response(JSON.stringify({ ...response, generatedAt: Date.now() }), {
       headers: {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
@@ -102,7 +115,6 @@ export async function handleCommuteReview(
   if (authError) return authError;
   try {
     const navigationEvents = await fetchRecentEvents(
-      request,
       env,
       'navigation',
       REVIEW_NAVIGATION_LIMIT,
@@ -138,16 +150,28 @@ export async function handleCommuteReview(
   }
 }
 
-export async function getCommuteResponse(
-  request: Request,
+/**
+ * The public, policy-checked commute route. Built at most once per isolate
+ * every COMMUTE_RESPONSE_TTL_MS; concurrent callers share one build.
+ */
+export function getCommuteResponse(env: Env): Promise<CommuteResponse> {
+  return commuteResponseMemo.get(() => buildPublicCommuteResponse(env, Date.now()));
+}
+
+/** Drops the isolate's shared commute route so the next caller rebuilds it. */
+export function clearCommuteResponseMemo(): void {
+  commuteResponseMemo.clear();
+}
+
+async function buildPublicCommuteResponse(
   env: Env,
   now: number,
 ): Promise<CommuteResponse> {
-  const [navigationEvents, activityEvents] = await Promise.all([
-    fetchRecentEvents(request, env, 'navigation', NAVIGATION_LIMIT),
-    fetchRecentEvents(request, env, 'all', ACTIVITY_LIMIT),
+  const [navigationEvents, activeParticipantIds] = await Promise.all([
+    fetchRecentEvents(env, 'navigation', NAVIGATION_LIMIT),
+    loadRecentParticipantIds(env, getActivePeopleSince(now), ACTIVE_PEOPLE_EVENT_LIMIT),
   ]);
-  const candidates = buildCommuteResponse(navigationEvents, activityEvents, now, {
+  const candidates = buildCommuteResponse(navigationEvents, activeParticipantIds, now, {
     destinations: CATALOG_CANDIDATE_LIMIT,
   });
   const policies = await loadInternetPlacePolicies(env.WWO_ADMIN_DB, candidates);
@@ -197,16 +221,15 @@ function unreviewedDestinations(
 }
 
 /**
- * Scheduled backup sweep: asks Clef about live destinations that ingest
- * missed or that failed, so the gate can let approved pages through.
+ * Scheduled sweep: asks Clef about the commute's live candidates that it has
+ * not judged yet, so the gate can let approved pages through. Only pages that
+ * could appear in a commute are asked about; most visited pages never do.
  */
 export async function suggestCommuteDestinations(
   env: Env,
   now = Date.now(),
 ): Promise<number> {
-  const request = new Request('https://commute.internal/');
   const navigationEvents = await fetchRecentEvents(
-    request,
     env,
     'navigation',
     NAVIGATION_LIMIT,
@@ -222,35 +245,6 @@ export async function suggestCommuteDestinations(
       SWEEP_SUGGESTION_LIMIT,
     ),
     checkSceneryNames(env, unreviewedSceneryNames(candidates, policies), SWEEP_SUGGESTION_LIMIT),
-  ]);
-  return pages + names;
-}
-
-/**
- * Asks Clef about the destinations in a freshly ingested batch, so a new page
- * is usually approved or held within seconds of the visit instead of waiting
- * for the scheduled sweep.
- */
-export async function suggestIngestedDestinations(
-  env: Env,
-  events: CollectionEvent[],
-  now = Date.now(),
-): Promise<number> {
-  if (!env.AI) return 0;
-  const navigationEvents = events.filter((event) => event.type === 'navigation');
-  if (navigationEvents.length === 0) return 0;
-  const candidates = buildCommuteResponse(navigationEvents, [], now, {
-    destinations: CATALOG_CANDIDATE_LIMIT,
-  });
-  if (candidates.destinations.length === 0 && candidates.scenery.length === 0) return 0;
-  const policies = await loadInternetPlacePolicies(env.WWO_ADMIN_DB, candidates);
-  const [pages, names] = await Promise.all([
-    suggestUnreviewedPlaces(
-      env,
-      unreviewedDestinations(candidates, policies),
-      INGEST_SUGGESTION_LIMIT,
-    ),
-    checkSceneryNames(env, unreviewedSceneryNames(candidates, policies), INGEST_SUGGESTION_LIMIT),
   ]);
   return pages + names;
 }

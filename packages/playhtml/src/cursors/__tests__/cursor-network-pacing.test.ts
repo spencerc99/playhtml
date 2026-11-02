@@ -14,6 +14,14 @@ function makeIdentity(publicKey: string, color: string) {
   } as any;
 }
 
+// Cursors are only published when someone else is in the room.
+function addRemotePeer(transport: { emit: (message: any) => void }) {
+  transport.emit({
+    type: "presence-sync",
+    peers: { "conn-remote": { identity: makeIdentity("remote", "#00ff00") } },
+  });
+}
+
 function dispatchMouseMove(x: number, y: number) {
   document.dispatchEvent(
     new MouseEvent("mousemove", {
@@ -59,6 +67,7 @@ describe("cursor network pacing", () => {
       enabled: true,
       playerIdentity: makeIdentity("local", "#ff0000"),
     });
+    addRemotePeer(transport);
 
     dispatchMouseMove(10, 20);
     vi.advanceTimersByTime(Math.ceil(1000 / 60));
@@ -71,6 +80,46 @@ describe("cursor network pacing", () => {
         page: "/",
       }),
     });
+
+    client.destroy();
+  });
+
+  it("holds the cursor back while alone and sends it when someone joins", () => {
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
+
+    dispatchMouseMove(10, 20);
+    vi.advanceTimersByTime(Math.ceil(1000 / 60));
+    dispatchMouseMove(30, 40);
+    vi.advanceTimersByTime(Math.ceil(1000 / 60));
+    expect(transport.updates).toHaveLength(0);
+
+    addRemotePeer(transport);
+
+    expect(transport.updates).toHaveLength(1);
+    expect(transport.updates[0].value).toMatchObject({
+      cursor: { x: 30, y: 40, pointer: "mouse" },
+    });
+
+    client.destroy();
+  });
+
+  it("does not count the player's own other tabs as someone else in the room", () => {
+    const { client, transport } = createTransportCursorClient({
+      enabled: true,
+      playerIdentity: makeIdentity("local", "#ff0000"),
+    });
+    transport.emit({
+      type: "presence-sync",
+      peers: { "conn-other-tab": { identity: makeIdentity("local", "#ff0000") } },
+    });
+
+    dispatchMouseMove(10, 20);
+    vi.advanceTimersByTime(Math.ceil(1000 / 60));
+
+    expect(transport.updates).toHaveLength(0);
 
     client.destroy();
   });
@@ -285,6 +334,7 @@ describe("cursor network pacing", () => {
       enabled: true,
       playerIdentity: makeIdentity("local", "#ff0000"),
     });
+    addRemotePeer(transport);
     transport.emit({ type: "presence-rate", channel: "cursor", hz: 10 });
     transport.updates = [];
 
@@ -328,6 +378,7 @@ describe("cursor network pacing", () => {
       enabled: true,
       playerIdentity: identity,
     });
+    addRemotePeer(transport);
     try {
       dispatchMouseMove(10, 20);
       vi.advanceTimersByTime(Math.ceil(1000 / 60));
@@ -397,6 +448,7 @@ describe("cursor network pacing", () => {
       enabled: true,
       playerIdentity: makeIdentity("local", "#ff0000"),
     });
+    addRemotePeer(transport);
     transport.updates = [];
 
     const colors: string[] = [];
@@ -465,6 +517,7 @@ describe("cursor network pacing", () => {
       enabled: true,
       playerIdentity: makeIdentity("local", "#ff0000"),
     });
+    addRemotePeer(transport);
     const hitTest = vi.mocked(document.elementFromPoint);
     hitTest.mockClear();
     dispatchMouseMove(10, 20);
@@ -485,6 +538,7 @@ describe("cursor network pacing", () => {
       enabled: true,
       playerIdentity: makeIdentity("local", "#ff0000"),
     });
+    addRemotePeer(transport);
     transport.emit({ type: "presence-rate", channel: "cursor", hz: 5 });
     dispatchMouseMove(10, 20);
     vi.advanceTimersByTime(20);
