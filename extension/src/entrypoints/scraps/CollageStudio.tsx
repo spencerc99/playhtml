@@ -217,6 +217,7 @@ import {
   type StackMove,
 } from "./collageSounds";
 import { snapMove, type SnapGuide } from "./moveSnap";
+import { frameExport } from "./frameExport";
 import {
   isEmptyChange,
   piecesChange,
@@ -2444,7 +2445,7 @@ export function CollageStudio({
    * Exports the front and the back as two pictures of the same size. The back
    * shows this very front through its paper, so the pair always agree.
    */
-  const download = async () => {
+  const download = async (framed: boolean) => {
     if (pieces.length === 0) return;
     setExporting(true);
     setNotice(null);
@@ -2466,8 +2467,20 @@ export function CollageStudio({
         thumbnails: await resolveBackThumbnails(backContent.pieces),
         look: backLook,
       });
-      saveFile(front, `${name} front.png`, "front · png");
-      saveFile(back, `${name} back.png`, "back · png");
+      // Framed, both sides sit on the mat the studio shows them on, with the
+      // caption along the bottom, so the picture says what it is.
+      const caption = {
+        title: title.trim(),
+        detail: `${pieces.length} piece${pieces.length === 1 ? "" : "s"} · made ${madeOn(createdAtRef.current)}`,
+      };
+      const [frontFile, backFile] = framed
+        ? await Promise.all([
+            frameExport(front, caption),
+            frameExport(back, caption),
+          ])
+        : [front, back];
+      saveFile(frontFile, `${name} front.png`, "front · png");
+      saveFile(backFile, `${name} back.png`, "back · png");
     } catch (error) {
       // An export is asked for out loud, so it fails out loud, naming the
       // pieces that would have left holes in the picture.
@@ -3202,7 +3215,7 @@ export function CollageStudio({
                     `mp4 · ${Math.round(videoProgress * 100)}%`
                   : null
               }
-              onPicture={() => void download()}
+              onPicture={(framed) => void download(framed)}
               video={animates ? videoSupport : undefined}
               onVideo={() => void downloadVideo()}
               onFile={() => void downloadCollageFile()}

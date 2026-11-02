@@ -8,7 +8,8 @@ interface ExportMenuProps {
   hasPieces: boolean;
   /** What the button says while an export runs, or null when none does. */
   running: string | null;
-  onPicture: () => void;
+  /** Exports both sides, on the studio's mat with its caption or bare. */
+  onPicture: (framed: boolean) => void;
   /** The video section, shown only when a piece animates. */
   video?: { ok: true } | { ok: false; reason: string };
   onVideo: () => void;
@@ -73,9 +74,19 @@ export function ExportMenu({
                 type="button"
                 className="collage-action"
                 disabled={busy || !hasPieces}
-                onClick={run(onPicture)}
+                title="Front and back, on the mat with the collage's name"
+                onClick={run(() => onPicture(true))}
               >
-                png · front and back
+                png · framed
+              </button>
+              <button
+                type="button"
+                className="collage-action"
+                disabled={busy || !hasPieces}
+                title="Front and back, just the paper"
+                onClick={run(() => onPicture(false))}
+              >
+                png · paper only
               </button>
             </div>
           </section>
