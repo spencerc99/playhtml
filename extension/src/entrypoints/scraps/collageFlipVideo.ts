@@ -129,7 +129,8 @@ export async function bakeFlipVideo(options: FlipVideoOptions): Promise<Blob> {
         context.shadowOffsetY = win.width * 0.012 * turned;
         context.drawImage(face, -win.width / 2, -win.height / 2, win.width, win.height);
         context.restore();
-        if (turned === 0) paintPaperEdge(context, win, win.width);
+        // sin(pi) is not exactly 0, so a resting back needs a tolerance too.
+        if (turned < 1e-6) paintPaperEdge(context, win, win.width);
 
         await source.add(timeS, 1 / COLLAGE_VIDEO_FPS);
         options.onProgress?.(index + 1, total);
