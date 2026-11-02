@@ -8,8 +8,10 @@ interface ExportMenuProps {
   hasPieces: boolean;
   /** What the button says while an export runs, or null when none does. */
   running: string | null;
-  /** Exports both sides, on the studio's mat with its caption or bare. */
-  onPicture: (framed: boolean) => void;
+  /** Exports both sides, each on the studio's mat with its caption. */
+  onPicture: () => void;
+  /** Exports the framed collage turning front to back, where video can be made. */
+  onFlip?: () => void;
   /** The video section, shown only when a piece animates. */
   video?: { ok: true } | { ok: false; reason: string };
   onVideo: () => void;
@@ -20,6 +22,7 @@ export function ExportMenu({
   hasPieces,
   running,
   onPicture,
+  onFlip,
   video,
   onVideo,
   onFile,
@@ -74,25 +77,28 @@ export function ExportMenu({
                 type="button"
                 className="collage-action"
                 disabled={busy || !hasPieces}
-                title="Front and back, on the mat with the collage's name"
-                onClick={run(() => onPicture(true))}
+                onClick={run(onPicture)}
               >
-                png · framed
-              </button>
-              <button
-                type="button"
-                className="collage-action"
-                disabled={busy || !hasPieces}
-                title="Front and back, just the paper"
-                onClick={run(() => onPicture(false))}
-              >
-                png · paper only
+                png · front and back
               </button>
             </div>
           </section>
-          {video && (
+          {(video || onFlip) && (
             <section className="collage-export__section" aria-label="Video">
               <p className="collage-studio__label">video</p>
+              <div className="collage-export__row">
+                {onFlip && (
+                  <button
+                    type="button"
+                    className="collage-action"
+                    disabled={busy || !hasPieces}
+                    onClick={run(onFlip)}
+                  >
+                    mp4 · turning front to back
+                  </button>
+                )}
+              </div>
+              {video && (
               <div className="collage-export__row">
                 <button
                   type="button"
@@ -104,6 +110,7 @@ export function ExportMenu({
                   mp4 · the moving pieces
                 </button>
               </div>
+              )}
             </section>
           )}
           <section className="collage-export__section" aria-label="File">

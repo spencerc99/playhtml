@@ -43,6 +43,84 @@ function fitText(
   return `${cut.trimEnd()}…`;
 }
 
+/** Where the paper sits on the mat, and how big the whole mat is, in pixels. */
+export interface MatLayout {
+  width: number;
+  height: number;
+  window: { x: number; y: number; width: number; height: number };
+}
+
+/** The mat for a sheet of paper this many pixels across and down. */
+export function matLayout(paperWidth: number, paperHeight: number): MatLayout {
+  const mat = Math.round(paperWidth * MAT_SHARE);
+  const band = Math.round(paperWidth * CAPTION_SHARE);
+  return {
+    width: paperWidth + mat * 2,
+    height: paperHeight + mat + band,
+    window: { x: mat, y: mat, width: paperWidth, height: paperHeight },
+  };
+}
+
+/**
+ * Paints the mat and its caption onto a context the size of `layout`. The
+ * paper's window is left as bare mat, for the caller to draw a face into.
+ */
+export async function paintMat(
+  context: CanvasRenderingContext2D,
+  layout: MatLayout,
+  caption: ExportCaption,
+): Promise<void> {
+  const { window: paper } = layout;
+  const mat = paper.x;
+  context.fillStyle = MAT_COLOR;
+  context.fillRect(0, 0, layout.width, layout.height);
+
+  const titleSize = Math.max(12, Math.round(paper.width * 0.019));
+  const smallSize = Math.max(8, Math.round(paper.width * 0.0115));
+  await captionFonts(titleSize);
+  const baseline = (paper.y + paper.height + layout.height) / 2;
+  context.save();
+  context.textBaseline = "middle";
+
+  // The signature sits at the right end, the details just before it.
+  context.textAlign = "right";
+  context.fillStyle = MUTED;
+  context.font = `italic 500 ${Math.round(smallSize * 1.25)}px Lora, Georgia, serif`;
+  const signature = "we were online";
+  const right = layout.width - mat;
+  context.fillText(signature, right, baseline);
+  const signatureWidth = context.measureText(signature).width;
+
+  context.font = `400 ${smallSize}px "Martian Mono", monospace`;
+  const detail = `${caption.detail}  ·  `;
+  context.fillText(detail, right - signatureWidth, baseline);
+  const used = signatureWidth + context.measureText(detail).width;
+
+  if (caption.title) {
+    context.textAlign = "left";
+    context.fillStyle = INK;
+    context.font = `500 ${titleSize}px Lora, Georgia, serif`;
+    const room = paper.width - used - mat;
+    if (room > titleSize * 2) {
+      context.fillText(fitText(context, caption.title, room), mat, baseline);
+    }
+  }
+  context.restore();
+}
+
+/** The same hairline the studio draws where the paper meets the mat. */
+export function paintPaperEdge(
+  context: CanvasRenderingContext2D,
+  box: { x: number; y: number; width: number; height: number },
+  paperWidth: number,
+): void {
+  context.save();
+  context.strokeStyle = RULE;
+  context.lineWidth = Math.max(1, paperWidth / 800);
+  context.strokeRect(box.x, box.y, box.width, box.height);
+  context.restore();
+}
+
 /**
  * The picture set in the studio's mat: an even border on three sides and a
  * deeper band along the bottom carrying the caption, sized to the picture so a
@@ -54,56 +132,21 @@ export async function frameExport(
 ): Promise<Blob> {
   const image = await createImageBitmap(picture);
   try {
-    const mat = Math.round(image.width * MAT_SHARE);
-    const band = Math.round(image.width * CAPTION_SHARE);
+    const layout = matLayout(image.width, image.height);
     const canvas = document.createElement("canvas");
-    canvas.width = image.width + mat * 2;
-    canvas.height = image.height + mat + band;
+    canvas.width = layout.width;
+    canvas.height = layout.height;
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Could not draw the framed picture");
-
-    context.fillStyle = MAT_COLOR;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(image, mat, mat);
-    // The same hairline the studio draws where the paper meets the mat.
-    context.strokeStyle = RULE;
-    context.lineWidth = Math.max(1, image.width / 800);
-    context.strokeRect(mat, mat, image.width, image.height);
-
-    const titleSize = Math.max(12, Math.round(image.width * 0.019));
-    const smallSize = Math.max(8, Math.round(image.width * 0.0115));
-    await captionFonts(titleSize);
-    const baseline = image.height + mat + band / 2;
-    context.textBaseline = "middle";
-
-    // The signature sits at the right end, the details just before it.
-    context.textAlign = "right";
-    context.fillStyle = MUTED;
-    context.font = `italic 500 ${Math.round(smallSize * 1.25)}px Lora, Georgia, serif`;
-    const signature = "we were online";
-    const right = canvas.width - mat;
-    context.fillText(signature, right, baseline);
-    const signatureWidth = context.measureText(signature).width;
-
-    context.font = `400 ${smallSize}px "Martian Mono", monospace`;
-    const detail = `${caption.detail}  ·  `;
-    context.fillText(detail, right - signatureWidth, baseline);
-    const used = signatureWidth + context.measureText(detail).width;
-
-    if (caption.title) {
-      context.textAlign = "left";
-      context.fillStyle = INK;
-      context.font = `500 ${titleSize}px Lora, Georgia, serif`;
-      const room = image.width - used - mat;
-      if (room > titleSize * 2) {
-        context.fillText(fitText(context, caption.title, room), mat, baseline);
-      }
-    }
-
+    await paintMat(context, layout, caption);
+    context.drawImage(image, layout.window.x, layout.window.y);
+    paintPaperEdge(context, layout.window, image.width);
     return await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob(
         (blob) =>
-          blob ? resolve(blob) : reject(new Error("Could not encode the framed picture")),
+          blob
+            ? resolve(blob)
+            : reject(new Error("Could not encode the framed picture")),
         "image/png",
       ),
     );

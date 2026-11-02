@@ -170,6 +170,9 @@ import {
 } from "./groupGeometry";
 import {
   copiesOnTop,
+  duplicateTrail,
+  nextDuplicateOffset,
+  type DuplicateTrail,
   moveGroupBackward,
   moveGroupForward,
   moveGroupToBack,
@@ -1092,9 +1095,25 @@ export function CollageStudio({
    * Lays copies of the given pieces on top of the stack and takes them in
    * hand. A run label lets an alt-drag's copy and its move undo together.
    */
+  const duplicateTrailRef = useRef<DuplicateTrail | null>(null);
   const duplicatePieces = useCallback(
-    (originals: readonly CollagePiece[], runLabel: string | null = null) => {
-      const copies = copiesOnTop(pieces, originals, COPY_OFFSET, createPieceId);
+    (
+      originals: readonly CollagePiece[],
+      runLabel: string | null = null,
+      repeatStep = true,
+    ) => {
+      // Like Figma: duplicating the last copies again, after dragging them
+      // into place, steps on by however far they were dragged.
+      const offset = repeatStep
+        ? nextDuplicateOffset(
+            pieces,
+            originals,
+            duplicateTrailRef.current,
+            COPY_OFFSET,
+          )
+        : COPY_OFFSET;
+      const copies = copiesOnTop(pieces, originals, offset, createPieceId);
+      duplicateTrailRef.current = duplicateTrail(originals, copies);
       commit([...pieces, ...copies], runLabel);
       setSelection(selectMany(copies.map((copy) => copy.id)));
       sound("duplicate", copies);
@@ -1884,7 +1903,9 @@ export function CollageStudio({
           Math.hypot(point.x - grabbedAt.x, point.y - grabbedAt.y) >
             ALT_DRAG_THRESHOLD
         ) {
-          const copies = duplicatePieces(origins, "move");
+          // An alt-drag's copy follows the pointer rather than a remembered
+          // step, and a later duplicate of it repeats where it was dragged.
+          const copies = duplicatePieces(origins, "move", false);
           setGesture({ kind: "move", origins: copies, grabbedAt });
           return;
         }
@@ -2441,58 +2462,88 @@ export function CollageStudio({
     downloadFile(file, name);
   };
 
+  /** The caption the mat carries under an exported picture or flip. */
+  const exportCaption = () => ({
+    title: title.trim(),
+    detail: `${pieces.length} piece${pieces.length === 1 ? "" : "s"} · made ${madeOn(createdAtRef.current)}`,
+  });
+
+  /** Bakes the front, and the back that shows that very front through it. */
+  const bakeSides = async () => {
+    const front = await bakeCollage({
+      frame,
+      pieces,
+      paper: paper.color,
+      grain: paper.grain,
+    });
+    const back = await bakeCollageBack({
+      frame,
+      paper,
+      content: backContent,
+      front,
+      favicons: await resolveBackFavicons(collageProvenance(backContent.pieces)),
+      thumbnails: await resolveBackThumbnails(backContent.pieces),
+      look: backLook,
+    });
+    return { front, back };
+  };
+
+  /** Names what went wrong with an export, and the pieces that could not be drawn. */
+  const exportProblem = (what: string, error: unknown) =>
+    error instanceof CollageBakeError
+      ? `could not export${what ? ` ${what}` : ""} — these could not be drawn: ${error.failures
+          .map((failure) => failure.label)
+          .join(", ")}`
+      : `could not export${what ? ` ${what}` : ""} — ${error instanceof Error ? error.message : String(error)}`;
+
   /**
-   * Exports the front and the back as two pictures of the same size. The back
-   * shows this very front through its paper, so the pair always agree.
+   * Exports the front and the back as two pictures of the same size, each on
+   * the mat the studio shows it on, with the caption along the bottom.
    */
-  const download = async (framed: boolean) => {
+  const download = async () => {
     if (pieces.length === 0) return;
     setExporting(true);
     setNotice(null);
     setReadyFiles(null);
     const name = collageExportName(title);
     try {
-      const front = await bakeCollage({
-        frame,
-        pieces,
-        paper: paper.color,
-        grain: paper.grain,
-      });
-      const back = await bakeCollageBack({
-        frame,
-        paper,
-        content: backContent,
-        front,
-        favicons: await resolveBackFavicons(collageProvenance(backContent.pieces)),
-        thumbnails: await resolveBackThumbnails(backContent.pieces),
-        look: backLook,
-      });
-      // Framed, both sides sit on the mat the studio shows them on, with the
-      // caption along the bottom, so the picture says what it is.
-      const caption = {
-        title: title.trim(),
-        detail: `${pieces.length} piece${pieces.length === 1 ? "" : "s"} · made ${madeOn(createdAtRef.current)}`,
-      };
-      const [frontFile, backFile] = framed
-        ? await Promise.all([
-            frameExport(front, caption),
-            frameExport(back, caption),
-          ])
-        : [front, back];
+      const { front, back } = await bakeSides();
+      const caption = exportCaption();
+      const [frontFile, backFile] = await Promise.all([
+        frameExport(front, caption),
+        frameExport(back, caption),
+      ]);
       saveFile(frontFile, `${name} front.png`, "front · png");
       saveFile(backFile, `${name} back.png`, "back · png");
     } catch (error) {
       // An export is asked for out loud, so it fails out loud, naming the
       // pieces that would have left holes in the picture.
-      const text =
-        error instanceof CollageBakeError
-          ? `could not export — these could not be drawn: ${error.failures
-              .map((failure) => failure.label)
-              .join(", ")}`
-          : `could not export — ${error instanceof Error ? error.message : String(error)}`;
-      setNotice({ tone: "problem", text });
+      setNotice({ tone: "problem", text: exportProblem("", error) });
     } finally {
       setExporting(false);
+    }
+  };
+
+  /** Exports the framed collage turning from its front to its back and over again. */
+  const downloadFlip = async () => {
+    if (pieces.length === 0) return;
+    setVideoProgress(0);
+    setNotice(null);
+    setReadyFiles(null);
+    try {
+      const { front, back } = await bakeSides();
+      const { bakeFlipVideo } = await import("./collageFlipVideo");
+      const video = await bakeFlipVideo({
+        front,
+        back,
+        caption: exportCaption(),
+        onProgress: (done, total) => setVideoProgress(done / total),
+      });
+      saveFile(video, `${collageExportName(title)} flip.mp4`, "flip · mp4");
+    } catch (error) {
+      setNotice({ tone: "problem", text: exportProblem("the flip", error) });
+    } finally {
+      setVideoProgress(null);
     }
   };
 
@@ -3215,7 +3266,12 @@ export function CollageStudio({
                     `mp4 · ${Math.round(videoProgress * 100)}%`
                   : null
               }
-              onPicture={(framed) => void download(framed)}
+              onPicture={() => void download()}
+              onFlip={
+                typeof VideoEncoder === "undefined"
+                  ? undefined
+                  : () => void downloadFlip()
+              }
               video={animates ? videoSupport : undefined}
               onVideo={() => void downloadVideo()}
               onFile={() => void downloadCollageFile()}
