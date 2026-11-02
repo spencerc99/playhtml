@@ -1,4 +1,4 @@
-// ABOUTME: Captures visible images, controls, headings, and cursor artwork as internet scraps.
+// ABOUTME: Captures visible images (including CSS background images), controls, icons, headings, and cursor artwork as internet scraps.
 // ABOUTME: Applies per-kind filtering, visibility timing, sanitization, and page-session limits.
 
 import { BaseCollector } from "./BaseCollector";
@@ -9,6 +9,12 @@ import {
   isBareTextButton,
   serializeSvg,
 } from "./scrapUtils";
+import {
+  createScrapDebugOverlay,
+  scrapDebugRequested,
+  type ScrapDebugSink,
+  type ScrapDebugStatus,
+} from "./scrapDebugOverlay";
 import type {
   ButtonScrapData,
   CursorScrapData,
@@ -16,6 +22,7 @@ import type {
   HeadingStyleProperty,
   ScrapEventData,
   ScrapPosition,
+  SvgIconScrapData,
 } from "./types";
 import { getFaviconUrl } from "../utils/pageMetadata";
 import { extractDomain } from "../utils/urlNormalization";
@@ -28,13 +35,65 @@ const MAX_BUTTON_WIDTH = 480;
 const MAX_BUTTON_HEIGHT = 160;
 const MIN_BUTTON_TEXT_LENGTH = 1;
 const MAX_BUTTON_TEXT_LENGTH = 60;
+/**
+ * Icons are a rare find: only a few per page, and nothing smaller than a
+ * glyph a person would notice on its own.
+ */
+const MIN_SVG_SIZE = 16;
+const MAX_SVG_SIZE = 400;
+const MAX_SVG_ICONS_PER_PAGE = 8;
+const MAX_SVG_MARKUP_BYTES = 20 * 1024;
 const MIN_HEADING_TEXT_LENGTH = 2;
 const MAX_HEADING_TEXT_LENGTH = 120;
 const VISIBILITY_DELAY_MS = 1000;
 const CURSOR_CHECK_INTERVAL_MS = 500;
 const MAX_IMAGES_PER_PAGE = 50;
+/** How many elements painting a background image are watched per page. */
+const MAX_BACKGROUND_CANDIDATES_PER_PAGE = 200;
+/** Elements whose computed background is read per idle slice. */
+const BACKGROUND_SCAN_CHUNK = 400;
+/** Elements whose computed background is read per page, across all scans. */
+const MAX_BACKGROUND_SCANNED_ELEMENTS = 8000;
+/**
+ * Elements re-read per page after a `class` or `style` change, kept apart from
+ * the first pass so a page that restyles constantly cannot starve it.
+ */
+const MAX_BACKGROUND_RESCANNED_ELEMENTS = 4000;
+/** Times one element's own restyling may trigger a re-read. */
+const MAX_BACKGROUND_RESCANS_PER_ELEMENT = 20;
+/** Attributes whose change can swap the background an element paints. */
+const BACKGROUND_ATTRIBUTES = ["class", "style"];
+/** Bounds the verdicts remembered for a debug overlay switched on later. */
+const MAX_DEBUG_LOG_ENTRIES = 1000;
+/**
+ * Lazy loaders and image grids (Google Images among them) paint a placeholder
+ * first and swap the real picture in by changing `src`, so a swap puts the
+ * image back up for capture.
+ */
+const IMAGE_SOURCE_ATTRIBUTES = ["src", "srcset"];
+/** Elements whose background never holds a photo worth keeping. */
+const BACKGROUND_SKIP_TAGS = new Set([
+  "HEAD",
+  "SCRIPT",
+  "STYLE",
+  "NOSCRIPT",
+  "TEMPLATE",
+  "LINK",
+  "META",
+  "IMG",
+  "PICTURE",
+  "SOURCE",
+  "VIDEO",
+  "AUDIO",
+  "IFRAME",
+  "CANVAS",
+  "BR",
+  "WBR",
+]);
 const MAX_BUTTONS_PER_PAGE = 20;
-const MAX_HEADINGS_PER_PAGE = 20;
+const MAX_HEADINGS_PER_PAGE = 5;
+/** Section titles (h3) are plentiful, so they get one of the page's heading slots at most. */
+const MAX_H3_HEADINGS_PER_PAGE = 1;
 const MAX_BUTTON_SVG_BYTES = 8 * 1024;
 const BUTTON_SELECTOR =
   'button, input[type="submit"], input[type="button"], [role="button"]';
@@ -52,6 +111,7 @@ const COLLAPSED_CLIP_PATTERN = /^rect\(\s*0(?:px)?[\s,]+0(?:px)?[\s,]+0(?:px)?[\
 const CANVAS_BACKDROP_COLOR = "rgb(255, 255, 255)";
 const GRADIENT_PATTERN =
   /^(?:repeating-)?(?:linear|radial|conic)-gradient\(/i;
+const BACKGROUND_URL_PATTERN = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi;
 const CURSOR_URL_PATTERN =
   /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)\s*(?:([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s+([+-]?(?:\d+(?:\.\d*)?|\.\d+)))?/i;
 
@@ -98,6 +158,24 @@ const HEADING_STYLE_PROPERTIES: readonly HeadingStyleProperty[] = [
   "lineHeight",
 ];
 
+export interface ImageSize {
+  width: number;
+  height: number;
+}
+
+/** Loads an image URL just to learn its intrinsic size, or undefined if it fails. */
+export type ImageMeasurer = (url: string) => Promise<ImageSize | undefined>;
+
+export interface ScrapCollectorOptions {
+  measureImage?: ImageMeasurer;
+}
+
+interface BackgroundScanItem {
+  element: Element;
+  /** Re-read even if already scanned, because its styling changed. */
+  rescan: boolean;
+}
+
 interface CursorImage {
   url: string;
   hotspotX?: number;
@@ -113,18 +191,49 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   private visibilityTimers = new Map<Element, number>();
   private observedImages = new Set<HTMLImageElement>();
   private observedButtons = new Set<Element>();
+  private observedSvgIcons = new Set<SVGSVGElement>();
   private observedHeadings = new Set<Element>();
+  /** Elements painting a background image, with the image they paint. */
+  private observedBackgrounds = new Map<Element, string>();
+  private scannedBackgroundElements = new WeakSet<Element>();
+  private backgroundScanQueue: BackgroundScanItem[] = [];
+  private pendingBackgroundRescans = new Set<Element>();
+  private backgroundRescanCounts = new WeakMap<Element, number>();
+  private backgroundRescannedCount = 0;
+  private backgroundScanHandle?: number;
+  private backgroundScannedCount = 0;
+  private backgroundCandidateCount = 0;
   private loadHandlers = new Map<HTMLImageElement, () => void>();
   private seenCanonicalImageKeys = new Set<string>();
   private seenCanonicalButtonKeys = new Set<string>();
+  private seenCanonicalSvgKeys = new Set<string>();
   private seenCanonicalHeadingKeys = new Set<string>();
   private seenCanonicalCursorKeys = new Set<string>();
   private imageCaptureCount = 0;
   private buttonCaptureCount = 0;
+  private svgCaptureCount = 0;
   private headingCaptureCount = 0;
+  private h3CaptureCount = 0;
   private lastCursorCheckAt = Number.NEGATIVE_INFINITY;
+  private readonly measureImage: ImageMeasurer;
+  private debugOverlay?: ScrapDebugSink;
+  private debugOverlayRequested = false;
+  /** Latest verdict per image candidate, kept so the overlay can be switched on mid-page. */
+  private debugLog = new Map<
+    Element,
+    { status: ScrapDebugStatus; reason: string }
+  >();
+
+  constructor(options: ScrapCollectorOptions = {}) {
+    super();
+    this.measureImage = options.measureImage ?? measureImageUrl;
+  }
 
   start(): void {
+    if (this.debugOverlayRequested || scrapDebugRequested()) {
+      this.debugOverlay = createScrapDebugOverlay();
+    }
+
     this.intersectionObserver = new IntersectionObserver(
       (entries) => this.handleIntersections(entries),
       { threshold: 0.5 },
@@ -136,12 +245,27 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     document.querySelectorAll(BUTTON_SELECTOR).forEach((button) => {
       this.observeButtonCandidate(button);
     });
+    document.querySelectorAll("svg").forEach((svg) => {
+      this.observeSvgCandidate(svg);
+    });
     document.querySelectorAll(HEADING_SELECTOR).forEach((heading) => {
       this.observeHeadingCandidate(heading);
     });
 
+    if (document.body) this.queueBackgroundScan(document.body);
+
     this.mutationObserver = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
+        if (mutation.type === "attributes") {
+          if (IMAGE_SOURCE_ATTRIBUTES.includes(mutation.attributeName ?? "")) {
+            if (mutation.target instanceof HTMLImageElement) {
+              this.reobserveImage(mutation.target);
+            }
+          } else if (mutation.target instanceof Element) {
+            this.queueBackgroundRescan(mutation.target);
+          }
+          continue;
+        }
         for (const node of mutation.addedNodes) {
           if (!(node instanceof Element)) continue;
           this.discoverCandidates(node);
@@ -153,6 +277,10 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       this.mutationObserver.observe(document.body, {
         childList: true,
         subtree: true,
+        // A lazy loader or carousel often swaps a background by changing an
+        // existing element's class or style rather than adding a node.
+        attributes: true,
+        attributeFilter: [...BACKGROUND_ATTRIBUTES, ...IMAGE_SOURCE_ATTRIBUTES],
       });
     }
 
@@ -162,6 +290,9 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   }
 
   stop(): void {
+    this.debugOverlay?.destroy();
+    this.debugOverlay = undefined;
+    this.debugLog.clear();
     this.intersectionObserver?.disconnect();
     this.mutationObserver?.disconnect();
     this.intersectionObserver = undefined;
@@ -172,6 +303,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       clearTimeout(timer);
     }
     this.visibilityTimers.clear();
+    this.cancelBackgroundScan();
 
     for (const [image, handler] of this.loadHandlers) {
       image.removeEventListener("load", handler);
@@ -179,15 +311,41 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     this.loadHandlers.clear();
     this.observedImages.clear();
     this.observedButtons.clear();
+    this.observedSvgIcons.clear();
     this.observedHeadings.clear();
+    this.observedBackgrounds.clear();
+    this.scannedBackgroundElements = new WeakSet();
+    this.backgroundScannedCount = 0;
+    this.backgroundRescannedCount = 0;
+    this.backgroundRescanCounts = new WeakMap();
+    this.backgroundCandidateCount = 0;
     this.seenCanonicalImageKeys.clear();
     this.seenCanonicalButtonKeys.clear();
+    this.seenCanonicalSvgKeys.clear();
     this.seenCanonicalHeadingKeys.clear();
     this.seenCanonicalCursorKeys.clear();
     this.imageCaptureCount = 0;
     this.buttonCaptureCount = 0;
+    this.svgCaptureCount = 0;
     this.headingCaptureCount = 0;
+    this.h3CaptureCount = 0;
     this.lastCursorCheckAt = Number.NEGATIVE_INFINITY;
+  }
+
+  /** Shows or hides the debug overlay on a running page, replaying verdicts already made. */
+  setDebugOverlay(enabled: boolean): void {
+    this.debugOverlayRequested = enabled;
+    const running = this.intersectionObserver !== undefined;
+    if (!enabled) {
+      this.debugOverlay?.destroy();
+      this.debugOverlay = undefined;
+      return;
+    }
+    if (!running || this.debugOverlay) return;
+    this.debugOverlay = createScrapDebugOverlay();
+    for (const [element, { status, reason }] of this.debugLog) {
+      this.debugOverlay.note(element, status, reason);
+    }
   }
 
   private discoverCandidates(node: Element): void {
@@ -196,6 +354,9 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     }
     if (node.matches(BUTTON_SELECTOR)) {
       this.observeButtonCandidate(node);
+    }
+    if (node instanceof SVGSVGElement) {
+      this.observeSvgCandidate(node);
     }
     if (node.matches(HEADING_SELECTOR)) {
       this.observeHeadingCandidate(node);
@@ -207,21 +368,172 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     node.querySelectorAll(BUTTON_SELECTOR).forEach((button) => {
       this.observeButtonCandidate(button);
     });
+    node.querySelectorAll("svg").forEach((svg) => {
+      this.observeSvgCandidate(svg);
+    });
     node.querySelectorAll(HEADING_SELECTOR).forEach((heading) => {
       this.observeHeadingCandidate(heading);
     });
+    this.queueBackgroundScan(node);
+  }
+
+  /**
+   * CSS background images cannot be found with a selector, so each element's
+   * computed `background-image` is read in idle slices, bounded per page so a
+   * huge document costs a fixed number of style reads.
+   */
+  private queueBackgroundScan(root: Element): void {
+    if (!this.backgroundScanEnabled()) return;
+    this.backgroundScanQueue.push({ element: root, rescan: false });
+    this.scheduleBackgroundScan();
+  }
+
+  /**
+   * Re-reads an element whose `class` or `style` changed, and its subtree,
+   * since an ancestor's class can decide its descendants' backgrounds.
+   */
+  private queueBackgroundRescan(element: Element): void {
+    if (
+      !this.backgroundScanEnabled() ||
+      this.backgroundRescannedCount >= MAX_BACKGROUND_RESCANNED_ELEMENTS ||
+      this.pendingBackgroundRescans.has(element)
+    ) {
+      return;
+    }
+    const rescans = this.backgroundRescanCounts.get(element) ?? 0;
+    if (rescans >= MAX_BACKGROUND_RESCANS_PER_ELEMENT) return;
+    this.backgroundRescanCounts.set(element, rescans + 1);
+    this.pendingBackgroundRescans.add(element);
+    this.backgroundScanQueue.push({ element, rescan: true });
+    this.scheduleBackgroundScan();
+  }
+
+  private backgroundScanEnabled(): boolean {
+    return (
+      this.imageCaptureCount < MAX_IMAGES_PER_PAGE &&
+      this.backgroundCandidateCount < MAX_BACKGROUND_CANDIDATES_PER_PAGE &&
+      this.backgroundScannedCount < MAX_BACKGROUND_SCANNED_ELEMENTS
+    );
+  }
+
+  private scheduleBackgroundScan(): void {
+    if (this.backgroundScanHandle !== undefined) return;
+    const run = () => {
+      this.backgroundScanHandle = undefined;
+      this.runBackgroundScan();
+    };
+    this.backgroundScanHandle =
+      typeof window.requestIdleCallback === "function"
+        ? window.requestIdleCallback(run, { timeout: 2000 })
+        : window.setTimeout(run, 50);
+  }
+
+  private cancelBackgroundScan(): void {
+    if (this.backgroundScanHandle !== undefined) {
+      if (typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(this.backgroundScanHandle);
+      } else {
+        clearTimeout(this.backgroundScanHandle);
+      }
+      this.backgroundScanHandle = undefined;
+    }
+    this.backgroundScanQueue = [];
+    this.pendingBackgroundRescans.clear();
+  }
+
+  private runBackgroundScan(): void {
+    if (!this.enabled) {
+      this.backgroundScanQueue = [];
+      this.pendingBackgroundRescans.clear();
+      return;
+    }
+    let budget = BACKGROUND_SCAN_CHUNK;
+    while (budget > 0 && this.backgroundScanQueue.length > 0) {
+      if (!this.backgroundScanEnabled()) {
+        this.backgroundScanQueue = [];
+        this.pendingBackgroundRescans.clear();
+        return;
+      }
+      const { element, rescan } = this.backgroundScanQueue.pop()!;
+      if (rescan) {
+        this.pendingBackgroundRescans.delete(element);
+        if (this.backgroundRescannedCount >= MAX_BACKGROUND_RESCANNED_ELEMENTS) {
+          continue;
+        }
+      } else if (this.scannedBackgroundElements.has(element)) {
+        continue;
+      }
+      this.scannedBackgroundElements.add(element);
+      if (!element.isConnected || BACKGROUND_SKIP_TAGS.has(element.tagName)) {
+        continue;
+      }
+      if (element.matches(EXTENSION_UI_SELECTOR)) continue;
+      // An SVG paints its own pictures, which the icon path handles.
+      if (element instanceof SVGElement) continue;
+
+      budget--;
+      if (rescan) {
+        this.backgroundRescannedCount++;
+      } else {
+        this.backgroundScannedCount++;
+      }
+      this.observeBackgroundCandidate(element);
+
+      for (let index = element.children.length - 1; index >= 0; index--) {
+        this.backgroundScanQueue.push({ element: element.children[index], rescan });
+      }
+    }
+    if (this.backgroundScanQueue.length > 0) this.scheduleBackgroundScan();
+  }
+
+  private observeBackgroundCandidate(element: Element): void {
+    const url = backgroundImageUrl(getComputedStyle(element).backgroundImage);
+    if (!url) {
+      if (this.observedBackgrounds.delete(element)) this.releaseBackground(element);
+      return;
+    }
+    if (this.observedBackgrounds.has(element)) {
+      this.observedBackgrounds.set(element, url);
+      return;
+    }
+    if (this.backgroundCandidateCount >= MAX_BACKGROUND_CANDIDATES_PER_PAGE) {
+      this.debugNote(
+        element,
+        "skipped",
+        `background cap (${MAX_BACKGROUND_CANDIDATES_PER_PAGE})`,
+      );
+      return;
+    }
+    this.observedBackgrounds.set(element, url);
+    this.backgroundCandidateCount++;
+    this.intersectionObserver?.observe(element);
+    this.debugNote(element, "pending", "background, waiting to be half on screen");
+  }
+
+  /** Stops watching an element that no longer paints a background, unless it is also another kind of candidate. */
+  private releaseBackground(element: Element): void {
+    if (
+      this.observedImages.has(element as HTMLImageElement) ||
+      this.observedButtons.has(element) ||
+      this.observedHeadings.has(element)
+    ) {
+      return;
+    }
+    this.clearVisibilityTimer(element);
+    this.intersectionObserver?.unobserve(element);
   }
 
   private observeImageCandidate(image: HTMLImageElement): void {
-    if (
-      this.imageCaptureCount >= MAX_IMAGES_PER_PAGE ||
-      this.observedImages.has(image) ||
-      this.loadHandlers.has(image)
-    ) {
+    if (this.imageCaptureCount >= MAX_IMAGES_PER_PAGE) {
+      this.debugNote(image, "skipped", `page cap (${MAX_IMAGES_PER_PAGE})`);
+      return;
+    }
+    if (this.observedImages.has(image) || this.loadHandlers.has(image)) {
       return;
     }
 
     if (!image.complete) {
+      this.debugNote(image, "pending", "loading");
       const handleLoad = () => {
         this.loadHandlers.delete(image);
         if (this.enabled) {
@@ -235,6 +547,46 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
 
     this.observedImages.add(image);
     this.intersectionObserver?.observe(image);
+    this.debugNote(image, "pending", "waiting to be half on screen");
+  }
+
+  private debugNote(
+    element: Element,
+    status: ScrapDebugStatus,
+    reason: string,
+  ): void {
+    if (this.debugLog.size >= MAX_DEBUG_LOG_ENTRIES && !this.debugLog.has(element)) {
+      for (const logged of this.debugLog.keys()) {
+        if (!logged.isConnected) this.debugLog.delete(logged);
+      }
+      if (this.debugLog.size >= MAX_DEBUG_LOG_ENTRIES) return;
+    }
+    this.debugLog.set(element, { status, reason });
+    this.debugOverlay?.note(element, status, reason);
+  }
+
+  /** Whether the element is an image candidate, the only kind the debug overlay shows. */
+  private isImageCandidate(element: Element): boolean {
+    return (
+      this.observedImages.has(element as HTMLImageElement) ||
+      this.observedBackgrounds.has(element)
+    );
+  }
+
+  /** Watches an image again after its source changed, dropping any wait on the old picture. */
+  private reobserveImage(image: HTMLImageElement): void {
+    if (this.observedImages.delete(image)) {
+      this.clearVisibilityTimer(image);
+      if (!this.observedBackgrounds.has(image)) {
+        this.intersectionObserver?.unobserve(image);
+      }
+    }
+    const handleLoad = this.loadHandlers.get(image);
+    if (handleLoad) {
+      image.removeEventListener("load", handleLoad);
+      this.loadHandlers.delete(image);
+    }
+    this.observeImageCandidate(image);
   }
 
   private observeButtonCandidate(button: Element): void {
@@ -246,6 +598,19 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     }
     this.observedButtons.add(button);
     this.intersectionObserver?.observe(button);
+  }
+
+  private observeSvgCandidate(svg: SVGSVGElement): void {
+    if (
+      this.svgCaptureCount >= MAX_SVG_ICONS_PER_PAGE ||
+      this.observedSvgIcons.has(svg) ||
+      svg.closest(BUTTON_SELECTOR) ||
+      svg.closest(EXTENSION_UI_SELECTOR)
+    ) {
+      return;
+    }
+    this.observedSvgIcons.add(svg);
+    this.intersectionObserver?.observe(svg);
   }
 
   private observeHeadingCandidate(heading: Element): void {
@@ -263,13 +628,21 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   private handleIntersections(entries: IntersectionObserverEntry[]): void {
     for (const entry of entries) {
       const candidate = entry.target;
-      const isVisible = entry.isIntersecting && entry.intersectionRatio >= 0.5;
+      const isVisible =
+        entry.isIntersecting &&
+        (entry.intersectionRatio >= 0.5 || fillsHalfTheViewport(entry));
 
       if (!isVisible) {
+        if (this.visibilityTimers.has(candidate) && this.isImageCandidate(candidate)) {
+          this.debugNote(candidate, "pending", "left the screen before 1s");
+        }
         this.clearVisibilityTimer(candidate);
         continue;
       }
       if (this.visibilityTimers.has(candidate)) continue;
+      if (this.isImageCandidate(candidate)) {
+        this.debugNote(candidate, "pending", "on screen, waiting 1s");
+      }
 
       const timer = window.setTimeout(() => {
         this.visibilityTimers.delete(candidate);
@@ -277,7 +650,9 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
         this.intersectionObserver?.unobserve(candidate);
         this.observedImages.delete(candidate as HTMLImageElement);
         this.observedButtons.delete(candidate);
+        this.observedSvgIcons.delete(candidate as SVGSVGElement);
         this.observedHeadings.delete(candidate);
+        this.observedBackgrounds.delete(candidate);
       }, VISIBILITY_DELAY_MS);
       this.visibilityTimers.set(candidate, timer);
     }
@@ -291,12 +666,21 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   }
 
   private captureCandidate(candidate: Element): void {
+    // A button or heading can also paint a background image; both are kept.
+    if (this.observedBackgrounds.has(candidate)) {
+      void this.captureBackgroundImage(candidate);
+    }
+
     if (this.observedImages.has(candidate as HTMLImageElement)) {
       this.captureImage(candidate as HTMLImageElement);
       return;
     }
     if (this.observedButtons.has(candidate)) {
       this.captureButton(candidate);
+      return;
+    }
+    if (this.observedSvgIcons.has(candidate as SVGSVGElement)) {
+      this.captureSvgIcon(candidate as SVGSVGElement);
       return;
     }
     if (this.observedHeadings.has(candidate)) {
@@ -343,25 +727,37 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
   }
 
   private captureImage(image: HTMLImageElement): void {
-    if (!this.enabled || this.imageCaptureCount >= MAX_IMAGES_PER_PAGE) return;
+    if (!this.enabled) return;
+    const skip = (reason: string) => this.debugNote(image, "skipped", reason);
+    if (this.imageCaptureCount >= MAX_IMAGES_PER_PAGE) {
+      return skip(`page cap (${MAX_IMAGES_PER_PAGE})`);
+    }
 
     const src = image.currentSrc || image.src;
-    if (!src || src.startsWith("data:") || src.startsWith("blob:")) return;
+    if (!src) return skip("no src");
+    if (src.startsWith("data:")) return skip("inline data: image");
+    if (src.startsWith("blob:")) return skip("blob: image");
 
     const bounds = image.getBoundingClientRect();
     if (
       bounds.width < MIN_IMAGE_DISPLAY_SIZE ||
       bounds.height < MIN_IMAGE_DISPLAY_SIZE
     ) {
-      return;
+      return skip(
+        `shown ${Math.round(bounds.width)}x${Math.round(bounds.height)}, under ${MIN_IMAGE_DISPLAY_SIZE}px`,
+      );
     }
     if (
       image.naturalWidth < MIN_IMAGE_NATURAL_SIZE ||
       image.naturalHeight < MIN_IMAGE_NATURAL_SIZE
     ) {
-      return;
+      return skip(
+        `file ${image.naturalWidth}x${image.naturalHeight}, under ${MIN_IMAGE_NATURAL_SIZE}px`,
+      );
     }
-    if (!isEffectivelyVisible(image, getComputedStyle(image))) return;
+    if (!isEffectivelyVisible(image, getComputedStyle(image))) {
+      return skip("hidden by its styles or an ancestor's");
+    }
 
     const data: ScrapEventData = {
       kind: "image",
@@ -381,7 +777,9 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       Date.now(),
       Intl.DateTimeFormat().resolvedOptions().timeZone,
     )!;
-    if (this.seenCanonicalImageKeys.has(canonicalKey)) return;
+    if (this.seenCanonicalImageKeys.has(canonicalKey)) {
+      return skip("already kept on this page today");
+    }
 
     const faviconUrl = getFaviconUrl();
     this.seenCanonicalImageKeys.add(canonicalKey);
@@ -390,9 +788,112 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
       ...data,
       ...(faviconUrl ? { faviconUrl } : {}),
     });
+    this.debugNote(image, "kept", `${image.naturalWidth}x${image.naturalHeight}`);
 
     if (this.imageCaptureCount >= MAX_IMAGES_PER_PAGE) {
-      this.stopObservingImages();
+      this.stopObservingImages(image);
+    }
+  }
+
+  /**
+   * A CSS background image kept as an image scrap, under the same size, visibility
+   * and identity rules as an `<img>`, so the same picture seen both ways is one
+   * scrap. Its intrinsic size is not on the element, so the image is loaded
+   * (normally from cache) to learn it.
+   */
+  private async captureBackgroundImage(element: Element): Promise<void> {
+    if (!this.enabled) return;
+    const skip = (reason: string) =>
+      this.debugNote(element, "skipped", `background: ${reason}`);
+    if (this.imageCaptureCount >= MAX_IMAGES_PER_PAGE) {
+      return skip(`page cap (${MAX_IMAGES_PER_PAGE})`);
+    }
+
+    // Read now rather than trusting the scan, so the scrap is the picture that
+    // was actually on screen if the page swapped it in the meantime.
+    const computedStyle = getComputedStyle(element);
+    const url = backgroundImageUrl(computedStyle.backgroundImage);
+    if (!url) return skip("no longer painted");
+
+    const bounds = element.getBoundingClientRect();
+    if (
+      bounds.width < MIN_IMAGE_DISPLAY_SIZE ||
+      bounds.height < MIN_IMAGE_DISPLAY_SIZE
+    ) {
+      return skip(
+        `shown ${Math.round(bounds.width)}x${Math.round(bounds.height)}, under ${MIN_IMAGE_DISPLAY_SIZE}px`,
+      );
+    }
+    if (!isEffectivelyVisible(element, computedStyle)) {
+      return skip("hidden by its styles or an ancestor's");
+    }
+
+    // Identity rests on the source alone, so a picture already kept on this
+    // page skips the load.
+    const encounterKey = (data: ScrapEventData) =>
+      getScrapEncounterKey(
+        this.pageDomain(),
+        data,
+        window.location.href,
+        Date.now(),
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+      )!;
+    const sourceOnly: ScrapEventData = {
+      kind: "image",
+      src: url,
+      naturalWidth: 0,
+      naturalHeight: 0,
+      displayWidth: 0,
+      displayHeight: 0,
+      pageTitle: "",
+    };
+    if (this.seenCanonicalImageKeys.has(encounterKey(sourceOnly))) {
+      return skip("already kept on this page today");
+    }
+
+    const size = await this.measureImage(url);
+    if (!size) return skip("image failed to load");
+    if (
+      size.width < MIN_IMAGE_NATURAL_SIZE ||
+      size.height < MIN_IMAGE_NATURAL_SIZE
+    ) {
+      return skip(
+        `file ${size.width}x${size.height}, under ${MIN_IMAGE_NATURAL_SIZE}px`,
+      );
+    }
+    if (!this.enabled) return;
+    if (this.imageCaptureCount >= MAX_IMAGES_PER_PAGE) {
+      return skip(`page cap (${MAX_IMAGES_PER_PAGE})`);
+    }
+
+    const alt = backgroundAlt(element);
+    const data: ScrapEventData = {
+      kind: "image",
+      src: url,
+      ...(alt ? { alt } : {}),
+      naturalWidth: size.width,
+      naturalHeight: size.height,
+      displayWidth: bounds.width,
+      displayHeight: bounds.height,
+      pageTitle: document.title,
+      position: this.elementPosition(bounds),
+    };
+    const canonicalKey = encounterKey(data);
+    if (this.seenCanonicalImageKeys.has(canonicalKey)) {
+      return skip("already kept on this page today");
+    }
+
+    const faviconUrl = getFaviconUrl();
+    this.seenCanonicalImageKeys.add(canonicalKey);
+    this.imageCaptureCount++;
+    this.emit({
+      ...data,
+      ...(faviconUrl ? { faviconUrl } : {}),
+    });
+    this.debugNote(element, "kept", `background ${size.width}x${size.height}`);
+
+    if (this.imageCaptureCount >= MAX_IMAGES_PER_PAGE) {
+      this.stopObservingImages(element);
     }
   }
 
@@ -503,6 +1004,60 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     });
   }
 
+  private captureSvgIcon(svg: SVGSVGElement): void {
+    if (
+      !this.enabled ||
+      this.svgCaptureCount >= MAX_SVG_ICONS_PER_PAGE ||
+      svg.closest(BUTTON_SELECTOR)
+    ) {
+      return;
+    }
+
+    const bounds = svg.getBoundingClientRect();
+    if (
+      bounds.width < MIN_SVG_SIZE ||
+      bounds.width > MAX_SVG_SIZE ||
+      bounds.height < MIN_SVG_SIZE ||
+      bounds.height > MAX_SVG_SIZE
+    ) {
+      return;
+    }
+
+    const computedStyle = getComputedStyle(svg);
+    if (!isEffectivelyVisible(svg, computedStyle)) return;
+
+    const markup = serializeSvg(svg, {
+      width: bounds.width,
+      height: bounds.height,
+      color: computedStyle.color,
+      maxBytes: MAX_SVG_MARKUP_BYTES,
+    });
+    if (!markup) return;
+
+    const data: SvgIconScrapData = {
+      kind: "svg-icon",
+      markup,
+      width: bounds.width,
+      height: bounds.height,
+      pageTitle: document.title,
+      position: this.elementPosition(bounds),
+    };
+    const canonicalKey = getCanonicalScrapKey(this.pageDomain(), data);
+    if (this.seenCanonicalSvgKeys.has(canonicalKey)) return;
+
+    const faviconUrl = getFaviconUrl();
+    this.seenCanonicalSvgKeys.add(canonicalKey);
+    this.svgCaptureCount++;
+    this.emit({
+      ...data,
+      ...(faviconUrl ? { faviconUrl } : {}),
+    });
+
+    if (this.svgCaptureCount >= MAX_SVG_ICONS_PER_PAGE) {
+      this.stopObservingSvgIcons();
+    }
+  }
+
   private captureHeading(heading: Element): void {
     if (
       !this.enabled ||
@@ -514,6 +1069,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
 
     const level = headingLevel(heading);
     if (level === undefined) return;
+    if (level === 3 && this.h3CaptureCount >= MAX_H3_HEADINGS_PER_PAGE) return;
 
     const text = normalizeHeadingText(heading);
     if (
@@ -543,6 +1099,7 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     const faviconUrl = getFaviconUrl();
     this.seenCanonicalHeadingKeys.add(canonicalKey);
     this.headingCaptureCount++;
+    if (level === 3) this.h3CaptureCount++;
     this.emit({
       ...data,
       ...(faviconUrl ? { faviconUrl } : {}),
@@ -611,7 +1168,17 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     };
   }
 
-  private stopObservingImages(): void {
+  private stopObservingImages(captured: Element): void {
+    // Logged even with no overlay up, so turning it on later replays the cap.
+    const leftovers = new Set<Element>([
+      ...this.observedImages,
+      ...this.loadHandlers.keys(),
+      ...this.observedBackgrounds.keys(),
+    ]);
+    leftovers.delete(captured);
+    for (const element of leftovers) {
+      this.debugNote(element, "skipped", `page cap (${MAX_IMAGES_PER_PAGE})`);
+    }
     for (const image of this.observedImages) {
       this.clearVisibilityTimer(image);
       this.intersectionObserver?.unobserve(image);
@@ -621,6 +1188,16 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     }
     this.loadHandlers.clear();
     this.observedImages.clear();
+    for (const element of this.observedBackgrounds.keys()) {
+      // A button or heading painting a background keeps its own observation.
+      if (this.observedButtons.has(element) || this.observedHeadings.has(element)) {
+        continue;
+      }
+      this.clearVisibilityTimer(element);
+      this.intersectionObserver?.unobserve(element);
+    }
+    this.observedBackgrounds.clear();
+    this.cancelBackgroundScan();
   }
 
   private stopObservingButtons(): void {
@@ -631,6 +1208,14 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     this.observedButtons.clear();
   }
 
+  private stopObservingSvgIcons(): void {
+    for (const svg of this.observedSvgIcons) {
+      this.clearVisibilityTimer(svg);
+      this.intersectionObserver?.unobserve(svg);
+    }
+    this.observedSvgIcons.clear();
+  }
+
   private stopObservingHeadings(): void {
     for (const heading of this.observedHeadings) {
       this.clearVisibilityTimer(heading);
@@ -638,6 +1223,59 @@ export class ScrapCollector extends BaseCollector<ScrapEventData> {
     }
     this.observedHeadings.clear();
   }
+}
+
+/**
+ * The topmost image layer of a computed `background-image`, or undefined when
+ * it paints only gradients or an inline data/blob image, which `<img>` capture
+ * skips too.
+ */
+export function backgroundImageUrl(backgroundImage: string): string | undefined {
+  if (!backgroundImage || !backgroundImage.includes("url(")) return undefined;
+  BACKGROUND_URL_PATTERN.lastIndex = 0;
+  const match = BACKGROUND_URL_PATTERN.exec(backgroundImage);
+  BACKGROUND_URL_PATTERN.lastIndex = 0;
+  if (!match) return undefined;
+  const url = (match[1] ?? match[2] ?? match[3] ?? "").trim();
+  if (!url || url.startsWith("data:") || url.startsWith("blob:")) return undefined;
+  return url;
+}
+
+/** The label a site gave an element standing in for a picture, if any. */
+function backgroundAlt(element: Element): string | undefined {
+  const label = element.getAttribute("aria-label") ?? element.getAttribute("title");
+  const trimmed = label?.replace(/\s+/g, " ").trim();
+  return trimmed || undefined;
+}
+
+/**
+ * Whether a visible element covers at least half the viewport. A hero or page
+ * background taller than the screen can never be half on screen, but filling
+ * the screen is plainly seen.
+ */
+function fillsHalfTheViewport(entry: IntersectionObserverEntry): boolean {
+  const visible = entry.intersectionRect;
+  if (!visible) return false;
+  const root = entry.rootBounds;
+  const viewportArea =
+    (root?.width ?? window.innerWidth) * (root?.height ?? window.innerHeight);
+  return viewportArea > 0 && visible.width * visible.height >= viewportArea * 0.5;
+}
+
+/** Loads an image off-page to read its intrinsic size; the cache usually has it. */
+function measureImageUrl(url: string): Promise<ImageSize | undefined> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    const finish = (size: ImageSize | undefined) => {
+      image.onload = null;
+      image.onerror = null;
+      resolve(size);
+    };
+    image.onload = () =>
+      finish({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => finish(undefined);
+    image.src = url;
+  });
 }
 
 /** A heading keeps its type and text color only; it saves no background. */

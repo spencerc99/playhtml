@@ -39,6 +39,7 @@ describe("the shipped arrangement", () => {
       swells: true,
       choralTimbre: true,
       cursorInstruments: true,
+      phrasing: true,
       soloistVoice: "presence",
       traceability: 0.51,
       volume: 0.49,

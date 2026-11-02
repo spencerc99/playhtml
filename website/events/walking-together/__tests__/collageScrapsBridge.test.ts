@@ -10,7 +10,8 @@ import {
   SESSION_SCRAPS_RESPONSE,
   SESSION_SCRAPS_SOURCE,
 } from "../collage/scrapsBridge";
-import { newestFirst, toScrapInput } from "../collage/ScrapsPanel";
+import { newestFirst } from "../collage/sessionScraps";
+import { sessionScrapItem } from "../collage/studioBridge";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -91,23 +92,39 @@ describe("requestSessionScraps", () => {
   });
 });
 
-describe("toScrapInput", () => {
-  it("carries the page and the known image size to the table", () => {
+describe("sessionScrapItem", () => {
+  it("keeps the page and the known image size", () => {
     expect(
-      toScrapInput({
-        id: "s",
-        src: "https://x.test/s.png",
-        pageUrl: "https://x.test/page",
-        width: 400,
-        height: 300,
-        capturedAt: 0,
-      }),
-    ).toEqual({
+      sessionScrapItem(
+        {
+          id: "s",
+          src: "https://x.test/s.png",
+          pageUrl: "https://x.test/page?token=abc",
+          width: 400,
+          height: 300,
+          capturedAt: 7,
+        },
+        null,
+      ),
+    ).toMatchObject({
+      kind: "image",
       src: "https://x.test/s.png",
-      pageUrl: "https://x.test/page",
+      pageUrl: "https://x.test/page?token=abc",
+      domain: "x.test",
       naturalWidth: 400,
       naturalHeight: 300,
+      ts: 7,
     });
+  });
+
+  it("prefers a measured size, and has a shape even without one", () => {
+    const scrap = { id: "s", src: "https://x.test/s.png", capturedAt: 0 };
+    expect(sessionScrapItem(scrap, { width: 10, height: 20 })).toMatchObject({
+      naturalWidth: 10,
+      naturalHeight: 20,
+    });
+    const guessed = sessionScrapItem(scrap, null);
+    expect(guessed.kind === "image" && guessed.naturalWidth > 0).toBe(true);
   });
 });
 

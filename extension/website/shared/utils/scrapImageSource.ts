@@ -12,26 +12,49 @@ export type LocalImageLookup = (
 ) => Promise<Map<string, string>>;
 
 let lookup: LocalImageLookup | null = null;
+let previewLookup: LocalImageLookup | null = null;
+let prioritizePreviews: ((srcs: readonly string[]) => void) | null = null;
+const previewResolved = new Map<string, string>();
+const previewPending = new Map<string, Promise<string>>();
 const resolved = new Map<string, string>();
 const pending = new Map<string, Promise<string>>();
 let batch: { srcs: Set<string>; run: Promise<Map<string, string>> } | null =
   null;
 
 /** Lets a surface that holds local copies serve them in place of image URLs. */
-export function provideLocalScrapImages(next: LocalImageLookup): void {
+export function provideLocalScrapImages(
+  next: LocalImageLookup,
+  previews?: LocalImageLookup,
+  prioritize?: (srcs: readonly string[]) => void,
+): void {
   lookup = next;
+  previewLookup = previews ?? null;
+  prioritizePreviews = prioritize ?? null;
   resolved.clear();
   pending.clear();
+  previewResolved.clear();
+  previewPending.clear();
+  batch = null;
+}
+
+/** Gives queued preview work the sources currently displayed by the collage. */
+export function prioritizeScrapPreviews(srcs: readonly string[]): void {
+  prioritizePreviews?.(srcs);
 }
 
 /** Drops a remembered answer, so the next lookup sees a copy stored since. */
 export function forgetScrapImageSrc(src: string): void {
   resolved.delete(src);
   pending.delete(src);
+  previewResolved.delete(src);
+  previewPending.delete(src);
 }
 
 /** Gathers lookups made in the same tick into one read. */
-function lookUp(src: string, from: LocalImageLookup): Promise<Map<string, string>> {
+function lookUp(
+  src: string,
+  from: LocalImageLookup,
+): Promise<Map<string, string>> {
   if (!batch) {
     const srcs = new Set<string>();
     const run = Promise.resolve().then(() => {
@@ -72,31 +95,74 @@ export function resolveScrapImageSrc(src: string): Promise<string> {
   return answer;
 }
 
+/** Resolves tile previews independently so one slow image never holds the whole batch. */
+export function resolveScrapPreviewSrc(src: string): Promise<string> {
+  const from = previewLookup;
+  if (!from || !src) return resolveScrapImageSrc(src);
+  const known = previewResolved.get(src);
+  if (known !== undefined) return Promise.resolve(known);
+  const inFlight = previewPending.get(src);
+  if (inFlight) return inFlight;
+  let hasPreview = false;
+  const answer = from([src])
+    .then((found) => {
+      const preview = found.get(src);
+      hasPreview = preview !== undefined;
+      return preview ?? resolveScrapImageSrc(src);
+    })
+    .catch((error: unknown) => {
+      console.warn("[scrap images] local preview lookup failed:", error);
+      return resolveScrapImageSrc(src);
+    })
+    .then((display) => {
+      if (previewPending.get(src) === answer) {
+        previewPending.delete(src);
+        if (hasPreview) previewResolved.set(src, display);
+      }
+      return display;
+    });
+  previewPending.set(src, answer);
+  return answer;
+}
+
 /**
  * The display source for a scrap image, or `null` while a surface with local
  * copies is still looking one up, so a dead URL is never shown first.
  */
-export function useScrapImageSrc(src: string | undefined): string | null {
+export function useScrapImageSrc(
+  src: string | undefined,
+  preview = false,
+): string | null {
   const immediate = (): string | null => {
     if (src === undefined) return null;
-    if (!lookup || !src) return src;
+    if (!src) return src;
+    if (preview && previewLookup) return previewResolved.get(src) ?? null;
+    if (!lookup) return src;
     return resolved.get(src) ?? null;
   };
-  const [state, setState] = useState<{ for: string | undefined; display: string | null }>(
-    () => ({ for: src, display: immediate() }),
-  );
-  const display = state.for === src ? state.display : immediate();
+  const [state, setState] = useState<{
+    for: string | undefined;
+    preview: boolean;
+    display: string | null;
+  }>(() => ({ for: src, preview, display: immediate() }));
+  const display =
+    state.for === src && state.preview === preview
+      ? state.display
+      : immediate();
 
   useEffect(() => {
     if (src === undefined || display !== null) return;
     let cancelled = false;
-    void resolveScrapImageSrc(src).then((next) => {
-      if (!cancelled) setState({ for: src, display: next });
+    const answer = preview
+      ? resolveScrapPreviewSrc(src)
+      : resolveScrapImageSrc(src);
+    void answer.then((next) => {
+      if (!cancelled) setState({ for: src, preview, display: next });
     });
     return () => {
       cancelled = true;
     };
-  }, [src, display]);
+  }, [src, preview, display]);
 
   return display;
 }

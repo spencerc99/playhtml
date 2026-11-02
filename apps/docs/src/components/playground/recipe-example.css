@@ -38,13 +38,23 @@
 }
 
 .ph-recipe-example--compact {
+  /* Compact embeds sit inside a page's demo frame, which supplies the
+     border, shadow, and background. */
   width: 100%;
-  margin: 1rem 0 1.5rem;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .ph-recipe-example--compact .ph-recipe-example__frame {
   height: var(--ph-recipe-frame-height, 22rem);
   min-height: 0;
+  background: transparent;
+}
+
+.ph-recipe-example--compact .ph-recipe-example__frame iframe {
+  background: transparent;
 }
 
 .ph-recipe-example__frame iframe {

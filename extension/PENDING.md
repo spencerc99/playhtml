@@ -1,7 +1,5 @@
 # Unreleased
 
-- Drag across the scraps archive to select a group of scraps and delete them together.
-
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
 watches this file: when there are bullets, it opens (or updates) a release PR
@@ -16,3 +14,6 @@ extension/website/public/changelog/media/ and reference them here:
 ![Screenshot title](/changelog/media/file.png)
 ![video: Demo title](/changelog/media/file.mp4)
 -->
+
+- Import a data export of any size in one go, with a progress bar and time left.
+- Pick a range of days, a whole month, or a time of day like "mornings" when looking back at your movement portrait or your scraps.

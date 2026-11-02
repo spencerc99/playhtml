@@ -20,15 +20,24 @@ Every capability in playhtml is a single HTML attribute. Slap it on an element, 
 
 This page has live demos and both framework forms. For attribute names, data shapes, and options, see the [capabilities reference](/docs/reference/capabilities/).
 
-:::tip[Every playhtml element needs a stable id]
-The `id` is the key an element's synced data is stored under, so it must be **stable across reloads and browsers**. That's how two visitors agree on which element is which. A hand-written `id="my-lamp"` is ideal. If you omit it, playhtml falls back to hashing the element's HTML, which can differ across browsers and break sync.
+<div class="ph-know">
+<p class="ph-know-label">Two things to know</p>
 
-For **many elements that share a selector** (a row of magnets, a list of reactions), give each the same markup and add a single `selector-id` attribute instead of inventing unique ids. playhtml indexes the matches by position, so the N-th `.magnet` always gets the N-th slot of state. See [Dynamic elements](/docs/advanced/dynamic-elements/#many-of-a-kind-elements-with-selector-id).
-:::
+<details>
+<summary>Every element needs a stable <code>id</code></summary>
 
-:::tip[Shift-click to reset]
-The built-in interactive capabilities (`can-move`, `can-spin`, `can-toggle`, and `can-grow`) support **shift-clicking** an element to reset it to its default state. Because the state is shared, this resets it for everyone in the room (a moved element snaps back to its origin, a spun one to 0°, a toggle to off, a grown one to scale 1). Custom `can-play` elements can opt into this with the [`resetShortcut`](/docs/custom-elements/#reset-shortcut) option.
-:::
+The `id` is the key an element's synced data is stored under, so keep it the same across reloads and browsers. A hand-written `id="my-lamp"` is ideal. For a row of identical elements, use `selector-id` instead. See [Core concepts](/docs/concepts/#every-element-needs-a-stable-id).
+
+</details>
+
+<details>
+<summary>Shift-click resets data</summary>
+
+Shift-clicking a `can-move`, `can-spin`, `can-toggle`, or `can-grow` element resets it to its default state for everyone in the room (back to its origin, 0°, off, or scale 1). Custom `can-play` elements can opt in with the [`resetShortcut`](/docs/custom-elements/#reset-shortcut) option.
+
+</details>
+</div>
+
 
 Every section below has the same shape:
 
@@ -42,7 +51,7 @@ Every section below has the same shape:
 
 **Use it for:** drag-and-drop affordances such as fridge magnets, game pieces, arrangeable stickers, a puzzle.
 
-<div class="ph-demo-slot" data-label="LIVE DEMO — can-move">
+<div class="ph-demo-slot" data-label="DEMO — can-move">
   <RecipeExample
     recipe={canMoveRecipe}
     compact
@@ -156,7 +165,7 @@ import { CanMoveElement } from "@playhtml/react";
 
 **Use it for:** shared switches, lamps, "is-this-thing-open" signs, per-element read/unread state. The [playhtml homepage](https://playhtml.fun) uses this on the wordmark letters and the hanging lamp; click either to flip it for everyone.
 
-<div class="ph-demo-slot" data-label="LIVE DEMO — can-toggle">
+<div class="ph-demo-slot" data-label="DEMO — can-toggle">
   <RecipeExample
     recipe={canToggleRecipe}
     compact
@@ -168,38 +177,34 @@ import { CanMoveElement } from "@playhtml/react";
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```html
-<button id="my-switch" class="switch" can-toggle>off</button>
+<button id="my-switch" class="switch" can-toggle>
+  <span class="off-label">off</span>
+  <span class="on-label">on</span>
+</button>
 
 <style>
-  .switch.toggled { background: #6cd97e; }
-  .switch.toggled::after { content: "on"; }
+  /* can-toggle adds the "toggled" class while the switch is on */
+  .switch.toggled { background: #274b9e; color: white; }
+  .on-label,
+  .switch.toggled .off-label { display: none; }
+  .switch.toggled .on-label { display: inline; }
 </style>
 ```
-
-`can-toggle` adds the `toggled` class when the element is on.
   </TabItem>
   <TabItem label="React">
 ```tsx
 import { CanToggleElement } from "@playhtml/react";
 
 <CanToggleElement>
-  {({ data, setData }) => {
-    const on = data.on;
-    return (
-      <button
-        id="my-switch"
-        type="button"
-        className={on ? "is-on" : "is-off"}
-        aria-pressed={on}
-      >
-        {on ? "on" : "off"}
-      </button>
-    );
-  }}
+  {({ data }) => (
+    <button id="my-switch" className="switch">
+      {data.on ? "on" : "off"}
+    </button>
+  )}
 </CanToggleElement>
 ```
 
-`CanToggleElement` already wires up the click handler. Don't add your own `onClick`, or you'll toggle twice per click. Render declaratively from `data`.
+`CanToggleElement` adds the same `toggled` class and already handles the click. Don't add your own `onClick`, or the switch flips twice per click.
 
   </TabItem>
 </Tabs>
@@ -210,7 +215,7 @@ import { CanToggleElement } from "@playhtml/react";
 
 **Use it for:** zoomable images, inflating a balloon or sticker, growing a banner over time.
 
-<div class="ph-demo-slot" data-label="LIVE DEMO — can-grow">
+<div class="ph-demo-slot" data-label="DEMO — can-grow">
   <GrowBalloonDemo client:only="react" />
 </div>
 
@@ -222,12 +227,11 @@ import { CanToggleElement } from "@playhtml/react";
   </TabItem>
   <TabItem label="React">
 ```tsx
-import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "playhtml";
+import { CanGrowElement } from "@playhtml/react";
 
-<CanPlayElement tagInfo={[TagType.CanGrow]} id="balloon" defaultData={{ scale: 1 }}>
-  {() => <img src="/water-balloon.png" alt="" />}
-</CanPlayElement>
+<CanGrowElement>
+  <img id="balloon" src="/water-balloon.png" alt="" />
+</CanGrowElement>
 ```
   </TabItem>
 </Tabs>
@@ -238,7 +242,7 @@ import { TagType } from "playhtml";
 
 **Use it for:** wheels, dials, gauges, spinnable stickers or album covers, "what's your answer" wheels.
 
-<div class="ph-demo-slot" data-label="LIVE DEMO — can-spin">
+<div class="ph-demo-slot" data-label="DEMO — can-spin">
   <SpinWheelDemo client:only="react" />
 </div>
 
@@ -250,12 +254,11 @@ import { TagType } from "playhtml";
   </TabItem>
   <TabItem label="React">
 ```tsx
-import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "playhtml";
+import { CanSpinElement } from "@playhtml/react";
 
-<CanPlayElement tagInfo={[TagType.CanSpin]} id="wheel" defaultData={{ rotation: 0 }}>
-  {() => <img src="/bike-wheel.webp" alt="" />}
-</CanPlayElement>
+<CanSpinElement>
+  <img id="wheel" src="/bike-wheel.webp" alt="" />
+</CanSpinElement>
 ```
   </TabItem>
 </Tabs>
@@ -266,7 +269,7 @@ import { TagType } from "playhtml";
 
 **Use it for:** "who's looking at this right now" affordances, social read-receipts, zero-latency shared hover effects.
 
-<div class="ph-demo-slot" data-label="LIVE DEMO — can-hover">
+<div class="ph-demo-slot" data-label="DEMO — can-hover">
   <RecipeExample
     recipe={canHoverRecipe}
     compact
@@ -311,28 +314,31 @@ import { CanHoverElement } from "@playhtml/react";
   </TabItem>
 </Tabs>
 
-If you want the hover effect to reflect *who* is hovering (for example, tint the element with each viewer's color) rather than a plain on/off, render the element's `users`. Live user data clears when readers leave and does not persist:
+If you want the hover effect to reflect *who* is hovering (for example, tint the element with each hovering viewer's color) rather than a plain on/off, pass a function child and read `users`. Each entry's `live.hover` says whether that viewer is hovering right now. It clears when they leave and does not persist:
 
 ```tsx
-import { CanPlayElement } from "@playhtml/react";
-import { TagType } from "playhtml";
+import { CanHoverElement } from "@playhtml/react";
 
-<CanPlayElement
-  tagInfo={[TagType.CanHover]}
-  id="hover-pad"
-  defaultData={{}}
-  live={{ hovering: false }}
->
-  {({ users }) => (
-    <div
-      style={{
-        background: `linear-gradient(45deg, ${users.map(({ user }) => user.color).join(", ")})`,
-      }}
-    >
-      hover me
-    </div>
-  )}
-</CanPlayElement>
+<CanHoverElement>
+  {({ users }) => {
+    const colors = users
+      .filter(({ live }) => live?.hover)
+      .map(({ user }) => user.color);
+    return (
+      <div
+        id="hover-pad"
+        style={{
+          background:
+            colors.length > 1
+              ? `linear-gradient(45deg, ${colors.join(", ")})`
+              : colors[0],
+        }}
+      >
+        hover me
+      </div>
+    );
+  }}
+</CanHoverElement>
 ```
 
 ## can-duplicate
@@ -341,39 +347,35 @@ import { TagType } from "playhtml";
 
 **Use it for:** user-generated galleries, seed-from-template UIs, stamps, "leave your mark" patterns.
 
-<div class="ph-demo-slot" data-label="LIVE DEMO — can-duplicate">
+<div class="ph-demo-slot" data-label="DEMO — can-duplicate">
   <DuplicateRabbitDemo client:only="react" />
 </div>
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```html
-<img id="bunny-template" src="/pixel-bunny.png" alt="" />
-<button can-duplicate="bunny-template" id="clone-btn">clone a bunny</button>
+<div id="bunny-meadow">
+  <img id="bunny-template" src="/pixel-bunny.png" alt="" />
+</div>
+<button id="clone-btn" can-duplicate="bunny-template" can-duplicate-to="bunny-meadow">
+  clone a bunny
+</button>
+<button id="clear-btn">clear</button>
 
-<script>
-  // The "reset" button sweeps every spawned rabbit from shared state.
-  // Clones get an id of the form "bunny-template-<random>", so match on that prefix.
-  document.getElementById("reset-btn").addEventListener("click", () => {
-    document.querySelectorAll("[id^='bunny-template-']").forEach((el) => {
-      playhtml.deleteElementData("can-duplicate", el.id);
-      el.remove();
-    });
+<script type="module">
+  import { playhtml } from "https://unpkg.com/playhtml@latest";
+  playhtml.init();
+
+  // The clone button stores its clones' ids, and each clone's id starts with
+  // "bunny-template-". Clear both to empty the meadow for everyone.
+  document.getElementById("clear-btn").addEventListener("click", () => {
+    document.querySelectorAll("[id^='bunny-template-']").forEach((el) => el.remove());
+    playhtml.deleteElementData("can-duplicate", "clone-btn");
   });
 </script>
-<button id="reset-btn">reset</button>
 ```
 
-By default, clones are inserted right after the template (or the previous clone). Add **`can-duplicate-to`** (an element id or CSS selector) to drop every clone into a specific container instead:
-
-```html
-<button
-  can-duplicate="bunny-template"
-  can-duplicate-to="#bunny-pen"
-  id="clone-btn"
->clone a bunny</button>
-<div id="bunny-pen"></div>
-```
+Clones go into the **`can-duplicate-to`** container (an element id or CSS selector). Without it, each clone is inserted right after the template, or after the previous clone.
   </TabItem>
   <TabItem label="React">
 ```tsx
@@ -383,18 +385,19 @@ import { CanDuplicateElement } from "@playhtml/react";
 // CanDuplicateElement takes refs, not selectors. `elementToDuplicate` is the
 // template that gets cloned; `canDuplicateTo` is the React equivalent of the
 // can-duplicate-to attribute. Both elements need a stable `id`.
-function BunnyField() {
-  const template = useRef<HTMLDivElement>(null);
-  const field = useRef<HTMLDivElement>(null);
+function BunnyMeadow() {
+  const template = useRef<HTMLImageElement>(null);
+  const meadow = useRef<HTMLDivElement>(null);
 
   return (
-    <div>
-      <div id="bunny-template" ref={template}>🐰</div>
-      <div id="bunny-field" ref={field} />
-      <CanDuplicateElement elementToDuplicate={template} canDuplicateTo={field}>
-        <button>clone a bunny</button>
+    <>
+      <div id="bunny-meadow" ref={meadow}>
+        <img id="bunny-template" ref={template} src="/pixel-bunny.png" alt="" />
+      </div>
+      <CanDuplicateElement elementToDuplicate={template} canDuplicateTo={meadow}>
+        <button id="clone-btn">clone a bunny</button>
       </CanDuplicateElement>
-    </div>
+    </>
   );
 }
 ```

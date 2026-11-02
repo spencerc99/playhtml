@@ -2,6 +2,7 @@ import "./5.scss";
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { PlayProvider, withSharedState } from "@playhtml/react";
+import { mountExperimentBadge } from "../../components/experimentBadge";
 
 interface Minute {
   colors: string[];
@@ -626,17 +627,6 @@ const Main = withSharedState(
           {renderGrid()}
         </div>
 
-        <footer className={isFullscreen ? "hidden" : ""}>
-          <div>
-            sequel to <a href="https://clock.spencer.place">minute faces</a>
-          </div>
-          <div>
-            <a href="https://playhtml.fun/experiments">playhtml experiment</a>{" "}
-            <a href="https://github.com/spencerc99/playhtml/blob/main/website/experiments/5/">
-              "05"
-            </a>
-          </div>
-        </footer>
       </div>
     );
   }
@@ -678,6 +668,8 @@ const AnimatedCounter = ({
 };
 
 // Website with a shared color.
+mountExperimentBadge({ experiment: "EX-05" });
+
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(

@@ -9,6 +9,7 @@ import { getTrailRenderer } from "../styles/trailRenderers";
 import { RippleEffect, type RippleSettings } from "./ClickRipple";
 import {
   collectDueClickEffects,
+  createClickEffect,
   retainClickEffectsForActiveTrails,
   type LiveClickEffect,
 } from "./clickEffects";
@@ -223,6 +224,12 @@ interface LiveTrailsProps {
   cinematicNextSignal?: number;
   showClickRipples?: boolean;
   soundEngine?: SoundEngine | null;
+  /** Keep settled trails on screen for as long as they are in `trailStates`,
+   * instead of fading them out a minute after they stop growing. */
+  keepSettled?: boolean;
+  /** Trails that arrive appear already drawn and settled, with their click
+   * marks in place, instead of tracing in. For showing a finished record. */
+  startDrawn?: boolean;
   /** Called with trail ids once they have fully faded out and been removed, so
    * the owner can free their accumulated events. */
   onTrailsRemoved?: (ids: string[]) => void;
@@ -243,6 +250,8 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     cinematicNextSignal = 0,
     showClickRipples = false,
     soundEngine = null,
+    keepSettled = false,
+    startDrawn = false,
     onTrailsRemoved,
     settings,
   }) => {
@@ -288,6 +297,10 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
     }, [settings.strokeWidth, settings.trailOpacity]);
 
     const frozenRef = useRef(frozen);
+    const keepSettledRef = useRef(keepSettled);
+    keepSettledRef.current = keepSettled;
+    const startDrawnRef = useRef(startDrawn);
+    startDrawnRef.current = startDrawn;
     useEffect(() => {
       frozenRef.current = frozen;
     }, [frozen]);
@@ -387,7 +400,8 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
             live !== undefined &&
             d !== undefined &&
             live.trail.points.length > d.total;
-          const dimExpired = shouldDepartTrail(d, now, resumed);
+          const dimExpired =
+            !keepSettledRef.current && shouldDepartTrail(d, now, resumed);
           if (live && !dimExpired) {
             // Still live — refresh geometry and ease back if it was departing.
             const visibility =
@@ -442,7 +456,8 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
           for (const entry of prev) {
             const tid = entry.trail.trail.id;
             const d = draws.get(tid);
-            const dimExpired = shouldDepartTrail(d, now);
+            const dimExpired =
+              !keepSettledRef.current && shouldDepartTrail(d, now);
             const departing = entry.visibility?.toOpacity === 0;
             if (dimExpired && !departing) {
               next.push({
@@ -610,6 +625,42 @@ export const LiveTrails: React.FC<LiveTrailsProps> = memo(
               activeFromVariedPoint: null,
               activeDimmedAt: null,
             };
+            if (startDrawnRef.current) {
+              // Skip the trace: anchor the clock so it reads as finished and
+              // already dimmed, and lay down every click mark where it landed.
+              draw.seenAt = clockMs - drawDuration;
+              draw.drawProgress = 1;
+              draw.caughtUpAt = clockMs;
+              draw.settled = true;
+              draw.settledAt = clockMs;
+              draw.dimmedAt = clockMs - DIM_FADE_MS;
+              if (showClickRipplesRef.current) {
+                const spawned = new Set<string>();
+                spawnedClickKeysByTrailRef.current.set(key, spawned);
+                const color = rendererRef.current.getClickColor(ts.trail.color);
+                // Started long enough ago that every ring rests at its full size.
+                const startTime = Date.now() - 60_000;
+                const effects = ts.clicksWithProgress.map((click, index) => {
+                  const id = `${key}|${click.ts}|${index}`;
+                  spawned.add(id);
+                  return {
+                    ...createClickEffect({
+                      id,
+                      x: click.x,
+                      y: click.y,
+                      color,
+                      startTime,
+                      trailIndex: 0,
+                      holdDuration: click.duration,
+                    }),
+                    trailId: key,
+                  };
+                });
+                if (effects.length > 0) {
+                  setActiveClickEffects((active) => [...active, ...effects]);
+                }
+              }
+            }
             drawMap.set(key, draw);
           } else {
             advanceDrawState(

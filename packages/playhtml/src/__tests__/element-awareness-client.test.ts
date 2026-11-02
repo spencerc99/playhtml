@@ -2,6 +2,7 @@
 // ABOUTME: rebuilds per-element awareness maps from page-scoped presence peers.
 
 import { describe, expect, it, vi } from "vitest";
+import { PRESENCE_STALE_MS } from "../presence-utils";
 import { MAX_PRESENCE_VALUE_BYTES } from "@playhtml/common";
 import { RealtimePresenceTransport } from "../presence-transport";
 import {
@@ -547,7 +548,7 @@ describe("ElementAwarenessClient", () => {
       );
 
       // No further message from the ghost; after the window the sweep drops it.
-      vi.advanceTimersByTime(31_000);
+      vi.advanceTimersByTime(PRESENCE_STALE_MS + 1_000);
       expect(emitted.at(-1)!.has("can-play:card")).toBe(false);
       expect(error).toHaveBeenCalledWith(
         expect.stringContaining("presence transport unreachable"),

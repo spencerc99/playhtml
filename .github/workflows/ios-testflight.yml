@@ -1,0 +1,150 @@
+# ABOUTME: Uploads the iPhone Safari app to TestFlight when an extension release PR merges, or on manual dispatch.
+# ABOUTME: Internal testers get each release automatically; separate from the store release workflow.
+name: iOS TestFlight
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "extension/package.json"
+  workflow_dispatch:
+
+# Queue instead of cancelling, so an unrelated package.json edit can't cancel a release upload.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Same check as the Extension Release guard: only the merged release PR's
+  # version bump uploads, not other edits to extension/package.json.
+  guard:
+    name: Is this an extension release?
+    runs-on: ubuntu-latest
+    outputs:
+      should_upload: ${{ steps.check.outputs.should_upload }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Decide
+        id: check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "Triggered manually."
+            echo "should_upload=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VERSION=$(node -p "require('./extension/package.json').version")
+          EXPECTED_COMMIT="extension: release v$VERSION"
+          EXPECTED_TITLE="Release: @playhtml/extension v$VERSION"
+
+          MATCHED=""
+          while IFS= read -r LINE; do
+            case "$LINE" in
+              "$EXPECTED_COMMIT"|"$EXPECTED_TITLE"|"$EXPECTED_TITLE ("*)
+                MATCHED="$LINE"
+                break
+                ;;
+            esac
+          done <<EOF
+          $HEAD_MSG
+          EOF
+
+          if [ -n "$MATCHED" ]; then
+            echo "Extension release v$VERSION detected: $MATCHED"
+            echo "should_upload=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Head commit is not extension release v$VERSION. Skipping."
+            echo "should_upload=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  testflight:
+    name: Build and upload to TestFlight
+    needs: guard
+    if: needs.guard.outputs.should_upload == 'true'
+    runs-on: macos-26
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build packages
+        run: bun run build-packages
+
+      - name: Build Safari extension
+        working-directory: extension
+        run: |
+          WXT_OUT_DIR=publish bun run build:safari
+          node scripts/validateExtensionBuild.mjs publish/safari-mv3 safari
+
+      - name: Prepare App Store Connect key
+        id: apple-key
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          if [ -z "$APPLE_API_KEY_ID" ] || [ -z "$APPLE_API_PRIVATE_KEY" ]; then
+            echo "APPLE_API_KEY_ID and APPLE_API_PRIVATE_KEY are required."
+            exit 1
+          fi
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_PRIVATE_KEY" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "path=$KEY_PATH" >> "$GITHUB_OUTPUT"
+
+      # Fresh runners have an empty keychain, so without this Xcode creates a new
+      # Apple Development certificate on every run and the account hits Apple's
+      # certificate cap. Importing one stored certificate lets every run reuse it.
+      # Renew APPLE_SIGNING_CERT_P12 when that certificate expires.
+      - name: Import signing certificate
+        env:
+          APPLE_SIGNING_CERT_P12: ${{ secrets.APPLE_SIGNING_CERT_P12 }}
+          APPLE_SIGNING_CERT_PASSWORD: ${{ secrets.APPLE_SIGNING_CERT_PASSWORD }}
+        run: |
+          if [ -z "$APPLE_SIGNING_CERT_P12" ] || [ -z "$APPLE_SIGNING_CERT_PASSWORD" ]; then
+            echo "APPLE_SIGNING_CERT_P12 and APPLE_SIGNING_CERT_PASSWORD are required."
+            exit 1
+          fi
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          CERT_PATH="$RUNNER_TEMP/signing.p12"
+          printf '%s' "$APPLE_SIGNING_CERT_P12" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT_PATH" -P "$APPLE_SIGNING_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$CERT_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Archive and upload to TestFlight
+        working-directory: extension
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_PATH: ${{ steps.apple-key.outputs.path }}
+          # Re-runs keep the run number, so the attempt keeps each upload unique.
+          BUILD_NUMBER: ${{ github.run_number }}.${{ github.run_attempt }}
+        run: scripts/uploadSafariIOS.sh --skip-build

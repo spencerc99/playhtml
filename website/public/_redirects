@@ -1,0 +1,2 @@
+# Agents look for llms.txt at the site root; the guide lives with the docs.
+/llms.txt /docs/llms.txt 301

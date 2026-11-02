@@ -28,7 +28,12 @@ function buildItems(count: number): ScrapItem[] {
           naturalWidth: 400,
           naturalHeight: 300,
         }
-      : { ...base, kind: "button" as const, text: `Scrap ${index}`, styles: {} };
+      : {
+          ...base,
+          kind: "button" as const,
+          text: `Scrap ${index}`,
+          styles: {},
+        };
   });
 }
 
@@ -100,6 +105,84 @@ describe("ScrapCollage controls", () => {
   const tiles = () =>
     container.querySelectorAll<HTMLElement>("[data-scrap-key]");
 
+  it("remembers completed images when their tiles remount between views", () => {
+    render();
+    const image = container.querySelector<HTMLImageElement>(
+      ".scrap-collage__image",
+    )!;
+    const key =
+      image.closest<HTMLElement>("[data-scrap-key]")!.dataset.scrapKey!;
+    act(() => image.dispatchEvent(new Event("load")));
+    expect(image.classList.contains("scrap-collage__developed")).toBe(true);
+    const view = container.querySelector(".scrap-collage__view-switch")!;
+    act(() =>
+      view.querySelector<HTMLButtonElement>("button:last-child")!.click(),
+    );
+    act(() =>
+      view.querySelector<HTMLButtonElement>("button:first-child")!.click(),
+    );
+    const remounted = Array.from(tiles()).find(
+      (tile) => tile.dataset.scrapKey === key,
+    )!;
+    expect(
+      remounted
+        .querySelector(".scrap-collage__image")!
+        .classList.contains("scrap-collage__developed"),
+    ).toBe(true);
+    expect(
+      remounted.querySelector(".scrap-collage__swatch--settled"),
+    ).not.toBeNull();
+  });
+
+  it("makes every visible image source available without a startup gate", () => {
+    render();
+    const images = Array.from(
+      container.querySelectorAll<HTMLImageElement>(
+        ".scrap-collage__image, .scrap-collage__cursor",
+      ),
+    );
+    expect(images.length).toBeGreaterThan(6);
+    expect(images.every((image) => image.hasAttribute("src"))).toBe(true);
+    expect(images.every((image) => !image.hasAttribute("decoding"))).toBe(true);
+  });
+
+  it("shows the initial shore immediately and animates later arrivals", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    const attributes = vi.spyOn(Element.prototype, "setAttribute");
+    try {
+      render();
+      expect(tiles().length).toBe(responsiveTargetCount(1_600, 1_000));
+      expect(
+        attributes.mock.calls.some(
+          ([name, value]) =>
+            name === "class" &&
+            value.includes("scrap-collage__tile--washing-in"),
+        ),
+      ).toBe(false);
+      attributes.mockClear();
+      const shuffle = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("shuffle"),
+      )!;
+      act(() => shuffle.click());
+      expect(
+        attributes.mock.calls.some(
+          ([name, value]) =>
+            name === "class" &&
+            value.includes("scrap-collage__tile--washing-in"),
+        ),
+      ).toBe(true);
+    } finally {
+      attributes.mockRestore();
+    }
+  });
+
   it.each(["button", "svg-icon", "cursor"] as const)(
     "finds earlier %s occurrences before deduplication",
     (kind) => {
@@ -159,9 +242,7 @@ describe("ScrapCollage controls", () => {
       expect(tiles()[0].dataset.scrapKey).toBe("earlier");
       act(() =>
         container
-          .querySelector<HTMLButtonElement>(
-            '[aria-label="Clear search"]',
-          )!
+          .querySelector<HTMLButtonElement>('[aria-label="Clear search"]')!
           .click(),
       );
       act(() =>
@@ -276,8 +357,8 @@ describe("ScrapCollage controls", () => {
     ).toBeNull();
     expect(container.querySelector(".scrap-collage__filter--cycle")).toBeNull();
     expect(
-      Array.from(container.querySelectorAll("button")).some(
-        (button) => button.textContent?.endsWith("shuffle"),
+      Array.from(container.querySelectorAll("button")).some((button) =>
+        button.textContent?.endsWith("shuffle"),
       ),
     ).toBe(false);
   });
@@ -292,7 +373,12 @@ describe("ScrapCollage controls", () => {
     });
 
   const fewItems = (): ScrapItem[] => {
-    const base = (id: string, pageUrl: string, pageTitle: string, ts: number) => ({
+    const base = (
+      id: string,
+      pageUrl: string,
+      pageTitle: string,
+      ts: number,
+    ) => ({
       id,
       key: id,
       pageUrl,
@@ -376,9 +462,9 @@ describe("ScrapCollage controls", () => {
       );
     });
     expect(search.value).toBe("");
-    expect(
-      container.querySelector('input[aria-label="Search scraps"]'),
-    ).toBe(search);
+    expect(container.querySelector('input[aria-label="Search scraps"]')).toBe(
+      search,
+    );
   });
 
   it("summarises picked sites on the from chip and pins them in the popover", () => {
@@ -424,7 +510,9 @@ describe("ScrapCollage controls", () => {
     expect(count("example.com")).toBe("1");
 
     act(() => chip("type").click());
-    expect(container.querySelector(".scrap-filters__popover--places")).toBeNull();
+    expect(
+      container.querySelector(".scrap-filters__popover--places"),
+    ).toBeNull();
     const kindCount = (kind: string) =>
       container.querySelector(
         `[data-scrap-kind="${kind}"] .scrap-filters__count`,

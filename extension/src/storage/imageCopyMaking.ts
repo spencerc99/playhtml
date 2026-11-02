@@ -10,6 +10,7 @@ import {
   isAnimatedImage,
 } from "./imageCopyPolicy";
 import type { NewImageCopy } from "./ScrapImageCopies";
+import { previewFromBitmap } from "./scrapImagePreview";
 
 const DOWNLOAD_TIMEOUT_MS = 20_000;
 
@@ -123,7 +124,9 @@ export async function downloadImage(
 }
 
 /** The SHA-256 of the downloaded bytes, the same fingerprint scraps carry. */
-export async function contentHash(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+export async function contentHash(
+  bytes: Uint8Array<ArrayBuffer>,
+): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, "0"),
@@ -180,10 +183,7 @@ async function decode(src: string, original: Blob): Promise<ImageBitmap> {
  * as markup.
  */
 export async function makeImageCopy(src: string): Promise<NewImageCopy> {
-  const { bytes, mimeType } = await downloadImage(
-    src,
-    COPY_DOWNLOAD_MAX_BYTES,
-  );
+  const { bytes, mimeType } = await downloadImage(src, COPY_DOWNLOAD_MAX_BYTES);
   const hash = await contentHash(bytes);
   const original = new Blob([bytes], { type: mimeType });
 
@@ -194,15 +194,31 @@ export async function makeImageCopy(src: string): Promise<NewImageCopy> {
   const bitmap = await decode(src, original);
   try {
     const { width, height } = bitmap;
+    const animated = isAnimatedImage(bytes);
     const form = copyForm({
       byteLength: bytes.byteLength,
       mimeType,
-      animated: isAnimatedImage(bytes),
+      animated,
       width,
       height,
     });
+    const preview = animated
+      ? undefined
+      : await previewFromBitmap(bitmap).catch((error: unknown) => {
+          console.warn("[scrap images] preview could not be made:", error);
+          return undefined;
+        });
     if (form === "original") {
-      return { src, hash, blob: original, form, mimeType, width, height };
+      return {
+        src,
+        hash,
+        blob: original,
+        form,
+        mimeType,
+        width,
+        height,
+        preview,
+      };
     }
     const drawn = await drawToFit(src, bitmap);
     // A browser without a WebP encoder hands back PNG, which can come out
@@ -220,6 +236,7 @@ export async function makeImageCopy(src: string): Promise<NewImageCopy> {
         mimeType,
         width,
         height,
+        preview,
       };
     }
     return {
@@ -230,6 +247,7 @@ export async function makeImageCopy(src: string): Promise<NewImageCopy> {
       mimeType: drawn.blob.type,
       width: drawn.width,
       height: drawn.height,
+      preview,
     };
   } finally {
     bitmap.close();

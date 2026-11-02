@@ -342,6 +342,348 @@ describe("ScrapCollector", () => {
     expect(emitted("image")).toHaveLength(1);
   });
 
+  it("keeps thumbnails that differ only by their identifying query", () => {
+    const first = createImage({
+      src: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcA&s=10",
+    });
+    const second = createImage({
+      src: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcB&s=10",
+    });
+    const resized = createImage({
+      src: "https://cdn.example.com/photo.jpg?w=400",
+    });
+    const sameResized = createImage({
+      src: "https://cdn.example.com/photo.jpg?w=800&q=70",
+    });
+
+    collector.enable();
+    showForCapture([first, second, resized, sameResized]);
+
+    expect(
+      emitted("image").map((data) => (data as { src: string }).src),
+    ).toEqual([
+      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcA&s=10",
+      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcB&s=10",
+      "https://cdn.example.com/photo.jpg?w=400",
+    ]);
+  });
+
+  it("captures the real picture once a lazy loader swaps out a placeholder", async () => {
+    const image = createImage({
+      src: "data:image/gif;base64,R0lGODlhAQABAAAAACw=",
+      naturalWidth: 1,
+      naturalHeight: 1,
+    });
+
+    collector.enable();
+    showForCapture([image]);
+    expect(emitted("image")).toHaveLength(0);
+    expect(observer().observed.has(image)).toBe(false);
+
+    Object.defineProperties(image, {
+      currentSrc: { value: "https://example.com/real.jpg", configurable: true },
+      naturalWidth: { value: 400, configurable: true },
+      naturalHeight: { value: 300, configurable: true },
+    });
+    image.setAttribute("src", "https://example.com/real.jpg");
+    await Promise.resolve();
+    expect(observer().observed.has(image)).toBe(true);
+
+    showForCapture([image]);
+    expect(emitted("image")).toEqual([
+      expect.objectContaining({ src: "https://example.com/real.jpg" }),
+    ]);
+  });
+
+  it("shows and hides the debug overlay on a running page", () => {
+    collector.enable();
+    expect(document.querySelector("#wwo-scraps-debug")).toBeNull();
+
+    collector.setDebugOverlay(true);
+    expect(document.querySelectorAll("#wwo-scraps-debug")).toHaveLength(1);
+
+    collector.setDebugOverlay(false);
+    expect(document.querySelector("#wwo-scraps-debug")).toBeNull();
+  });
+
+  it("records page-cap verdicts for a debug overlay turned on later", () => {
+    const images = Array.from({ length: 51 }, (_, index) =>
+      createImage({ src: `https://example.com/capped-${index}.jpg` }),
+    );
+
+    collector.enable();
+    showForCapture(images.slice(0, 50));
+
+    const debugLog = (
+      collector as unknown as {
+        debugLog: Map<Element, { status: string; reason: string }>;
+      }
+    ).debugLog;
+    expect(debugLog.get(images[50])).toEqual({
+      status: "skipped",
+      reason: "page cap (50)",
+    });
+    expect(debugLog.get(images[49])?.status).toBe("kept");
+  });
+
+  it("opens a debug overlay requested before collection starts", () => {
+    collector.setDebugOverlay(true);
+    expect(document.querySelector("#wwo-scraps-debug")).toBeNull();
+
+    collector.enable();
+    expect(document.querySelectorAll("#wwo-scraps-debug")).toHaveLength(1);
+
+    collector.disable();
+    expect(document.querySelector("#wwo-scraps-debug")).toBeNull();
+  });
+
+  describe("background images", () => {
+    const sizes = new Map<string, { width: number; height: number }>();
+    const measureImage = vi.fn(async (url: string) => sizes.get(url));
+
+    beforeEach(() => {
+      sizes.clear();
+      measureImage.mockClear();
+      collector = new ScrapCollector({ measureImage });
+      collector.setEmitCallback(emitCallback);
+    });
+
+    function createBackground(
+      backgroundImage: string,
+      size: ElementSize = {},
+      tag = "div",
+    ): HTMLElement {
+      const element = document.createElement(tag);
+      element.setAttribute("data-background-image", backgroundImage);
+      setRenderedSize(element, size);
+      document.body.appendChild(element);
+      return element;
+    }
+
+    async function scanAndCapture(elements: Element[]): Promise<void> {
+      vi.advanceTimersByTime(100);
+      showForCapture(elements);
+      await vi.runAllTimersAsync();
+    }
+
+    it("keeps a CSS background image as an image scrap", async () => {
+      sizes.set("https://example.com/hero.jpg", { width: 1600, height: 900 });
+      const hero = createBackground('url("https://example.com/hero.jpg")', {
+        width: 400,
+        height: 225,
+      });
+      hero.setAttribute("aria-label", "A field at dusk");
+
+      collector.enable();
+      await scanAndCapture([hero]);
+
+      expect(measureImage).toHaveBeenCalledWith("https://example.com/hero.jpg");
+      expect(emitted("image")).toEqual([
+        expect.objectContaining({
+          kind: "image",
+          src: "https://example.com/hero.jpg",
+          alt: "A field at dusk",
+          naturalWidth: 1600,
+          naturalHeight: 900,
+          displayWidth: 400,
+          displayHeight: 225,
+        }),
+      ]);
+    });
+
+    it("uses the topmost image layer and ignores gradients and inline images", async () => {
+      sizes.set("https://example.com/top.png", { width: 300, height: 300 });
+      const layered = createBackground(
+        'linear-gradient(red, blue), url("https://example.com/top.png"), url("https://example.com/under.png")',
+      );
+      const gradient = createBackground("linear-gradient(red, blue)");
+      const inline = createBackground('url("data:image/png;base64,abc")');
+
+      collector.enable();
+      expect(observer().observed.has(gradient)).toBe(false);
+      vi.advanceTimersByTime(100);
+      expect(observer().observed.has(gradient)).toBe(false);
+      expect(observer().observed.has(inline)).toBe(false);
+      await scanAndCapture([layered]);
+
+      expect(emitted("image").map((data) => (data as { src: string }).src)).toEqual([
+        "https://example.com/top.png",
+      ]);
+    });
+
+    it("applies the image size filters to backgrounds", async () => {
+      sizes.set("https://example.com/tiny-natural.png", { width: 16, height: 16 });
+      sizes.set("https://example.com/small-box.png", { width: 400, height: 400 });
+      const tinyNatural = createBackground('url("https://example.com/tiny-natural.png")');
+      const smallBox = createBackground('url("https://example.com/small-box.png")', {
+        width: 40,
+        height: 40,
+      });
+      const broken = createBackground('url("https://example.com/missing.png")');
+
+      collector.enable();
+      await scanAndCapture([tinyNatural, smallBox, broken]);
+
+      expect(emitted("image")).toEqual([]);
+      expect(measureImage).not.toHaveBeenCalledWith("https://example.com/small-box.png");
+    });
+
+    it("treats a background and an img of the same picture as one scrap", async () => {
+      sizes.set("https://example.com/same.jpg", { width: 800, height: 600 });
+      const image = createImage({ src: "https://example.com/same.jpg" });
+      const background = createBackground('url("https://example.com/same.jpg?w=800")');
+
+      collector.enable();
+      await scanAndCapture([image, background]);
+
+      expect(emitted("image")).toHaveLength(1);
+    });
+
+    it("finds backgrounds on elements added after collection starts", async () => {
+      sizes.set("https://example.com/late.jpg", { width: 500, height: 500 });
+      collector.enable();
+      vi.advanceTimersByTime(100);
+
+      const wrapper = document.createElement("section");
+      const late = createBackground('url("https://example.com/late.jpg")');
+      wrapper.appendChild(late);
+      document.body.appendChild(wrapper);
+      await Promise.resolve();
+      vi.advanceTimersByTime(100);
+
+      expect(observer().observed.has(late)).toBe(true);
+      await scanAndCapture([late]);
+      expect(emitted("image")).toHaveLength(1);
+    });
+
+    it("captures a page-filling background that is never half on screen", async () => {
+      sizes.set("https://example.com/page.jpg", { width: 1200, height: 1200 });
+      const page = createBackground('url("https://example.com/page.jpg")', {
+        width: 1024,
+        height: 5000,
+      });
+
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      observer().trigger([page], 0.15);
+      // The mock entry carries no intersection rect, so it is not yet visible.
+      vi.advanceTimersByTime(1000);
+      await vi.runAllTimersAsync();
+      expect(emitted("image")).toEqual([]);
+
+      const callback = (observer() as unknown as {
+        callback: IntersectionObserverCallback;
+      }).callback;
+      callback(
+        [
+          {
+            target: page,
+            isIntersecting: true,
+            intersectionRatio: 0.15,
+            intersectionRect: { width: 1024, height: 768 },
+            rootBounds: { width: 1024, height: 768 },
+          } as unknown as IntersectionObserverEntry,
+        ],
+        observer() as unknown as IntersectionObserver,
+      );
+      vi.advanceTimersByTime(1000);
+      await vi.runAllTimersAsync();
+      expect(emitted("image")).toHaveLength(1);
+    });
+
+    /** Restyles an element the way a lazy loader would, via its class. */
+    async function restyle(
+      element: Element,
+      backgroundImage: string,
+      className: string,
+    ): Promise<void> {
+      element.setAttribute("data-background-image", backgroundImage);
+      element.setAttribute("class", className);
+      await Promise.resolve();
+      vi.advanceTimersByTime(100);
+    }
+
+    it("enrolls an existing element once a class change gives it a background", async () => {
+      sizes.set("https://example.com/lazy.jpg", { width: 600, height: 400 });
+      const lazy = createBackground("none");
+
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      expect(observer().observed.has(lazy)).toBe(false);
+
+      await restyle(lazy, 'url("https://example.com/lazy.jpg")', "loaded");
+      expect(observer().observed.has(lazy)).toBe(true);
+      await scanAndCapture([lazy]);
+      expect(emitted("image").map((data) => (data as { src: string }).src)).toEqual([
+        "https://example.com/lazy.jpg",
+      ]);
+    });
+
+    it("rescans descendants when an ancestor's class decides their background", async () => {
+      sizes.set("https://example.com/slide.jpg", { width: 600, height: 400 });
+      const carousel = document.createElement("div");
+      const slide = createBackground("none");
+      carousel.appendChild(slide);
+      document.body.appendChild(carousel);
+
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      slide.setAttribute("data-background-image", 'url("https://example.com/slide.jpg")');
+      carousel.setAttribute("class", "is-ready");
+      await Promise.resolve();
+      vi.advanceTimersByTime(100);
+
+      expect(observer().observed.has(slide)).toBe(true);
+    });
+
+    it("keeps the picture on screen at capture, not the one first scanned", async () => {
+      sizes.set("https://example.com/placeholder.jpg", { width: 600, height: 400 });
+      sizes.set("https://example.com/real.jpg", { width: 600, height: 400 });
+      const swapped = createBackground('url("https://example.com/placeholder.jpg")');
+
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      // Swapped without a class or style change the observer would see.
+      swapped.setAttribute("data-background-image", 'url("https://example.com/real.jpg")');
+      await scanAndCapture([swapped]);
+
+      expect(emitted("image").map((data) => (data as { src: string }).src)).toEqual([
+        "https://example.com/real.jpg",
+      ]);
+    });
+
+    it("stops watching an element whose background is removed", async () => {
+      const fading = createBackground('url("https://example.com/gone.jpg")');
+      collector.enable();
+      vi.advanceTimersByTime(100);
+      expect(observer().observed.has(fading)).toBe(true);
+
+      await restyle(fading, "none", "plain");
+      expect(observer().observed.has(fading)).toBe(false);
+    });
+
+    it("skips the image load for a picture already kept on the page", async () => {
+      sizes.set("https://example.com/twice.jpg", { width: 600, height: 400 });
+      const first = createBackground('url("https://example.com/twice.jpg")');
+      const second = createBackground('url("https://example.com/twice.jpg")');
+
+      collector.enable();
+      await scanAndCapture([first]);
+      await scanAndCapture([second]);
+
+      expect(measureImage).toHaveBeenCalledTimes(1);
+      expect(emitted("image")).toHaveLength(1);
+    });
+
+    it("stops reading backgrounds once the collector is disabled", () => {
+      createBackground('url("https://example.com/off.jpg")');
+      collector.enable();
+      collector.disable();
+      vi.advanceTimersByTime(100);
+      expect(measureImage).not.toHaveBeenCalled();
+    });
+  });
+
   it("filters button text and displayed-size bounds", () => {
     const noText = createButton({ text: "" });
     const tooLong = createButton({ text: "x".repeat(61) });
@@ -581,17 +923,108 @@ describe("ScrapCollector", () => {
     expect(buttonScrap.innerSvg).toBeUndefined();
   });
 
-  it("does not capture standalone SVG icons", () => {
+  it("captures a standalone SVG icon", () => {
     const svg = createSvg();
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", "M0 0h8v8z");
     svg.appendChild(path);
 
     collector.enable();
-    expect(observer().observed.has(svg)).toBe(false);
     showForCapture([svg]);
 
+    const scraps = emitted("svg-icon");
+    expect(scraps).toHaveLength(1);
+    expect(scraps[0]).toMatchObject({ kind: "svg-icon", width: 24, height: 24 });
+    const markup = scraps[0].kind === "svg-icon" ? scraps[0].markup : "";
+    expect(markup).toContain('d="M0 0h8v8z"');
+  });
+
+  it("skips SVG icons with unresolvable use references, oversized markup, or out-of-range sizes", () => {
+    const unresolved = createSvg();
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", "#missing");
+    unresolved.appendChild(use);
+    const oversized = createSvg();
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.textContent = "x".repeat(21 * 1024);
+    oversized.appendChild(text);
+    const tooSmall = createSvg({ width: 15, height: 24 });
+    const tooLarge = createSvg({ width: 401, height: 24 });
+    for (const svg of [tooSmall, tooLarge]) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", "M0 0h4v4z");
+      svg.appendChild(path);
+    }
+
+    collector.enable();
+    showForCapture([unresolved, oversized, tooSmall, tooLarge]);
+
     expect(emitted("svg-icon")).toHaveLength(0);
+  });
+
+  it("deduplicates serialized SVG icons and caps them at eight per page", () => {
+    const duplicateOne = createSvg();
+    const duplicateTwo = createSvg();
+    for (const svg of [duplicateOne, duplicateTwo]) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", "M0 0h1v1z");
+      svg.appendChild(path);
+    }
+    const uniqueIcons = Array.from({ length: 10 }, (_, index) => {
+      const svg = createSvg();
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", `M${index + 1} 0h1v1z`);
+      svg.appendChild(path);
+      return svg;
+    });
+
+    collector.enable();
+    showForCapture([duplicateOne, duplicateTwo, ...uniqueIcons]);
+
+    expect(emitted("svg-icon")).toHaveLength(8);
+    const duplicateMarkup = emitted("svg-icon").filter(
+      (data) =>
+        data.kind === "svg-icon" && data.markup.includes("M0 0h1v1z"),
+    );
+    expect(duplicateMarkup).toHaveLength(1);
+    expect(observer().observed.has(uniqueIcons[9])).toBe(false);
+  });
+
+  it("captures a same-geometry icon rendered at different sizes once per page", () => {
+    const small = createSvg({ width: 24, height: 24 });
+    small.setAttribute("viewBox", "0 0 24 24");
+    const large = createSvg({ width: 40, height: 40 });
+    large.setAttribute("viewBox", "0 0 24 24");
+    for (const svg of [small, large]) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", "M2 2h20v20z");
+      svg.appendChild(path);
+    }
+
+    collector.enable();
+    showForCapture([small, large]);
+
+    expect(emitted("svg-icon")).toHaveLength(1);
+    expect(emitted("svg-icon")[0]).toMatchObject({
+      kind: "svg-icon",
+      width: 24,
+      height: 24,
+    });
+  });
+
+  it("does not capture an SVG inside the extension's own UI", () => {
+    const host = document.createElement("div");
+    host.id = "wwo-overlay";
+    document.body.appendChild(host);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    setRenderedSize(svg, { width: 24, height: 24 });
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M0 0h8v8z");
+    svg.appendChild(path);
+    host.appendChild(svg);
+
+    collector.enable();
+    expect(observer().observed.has(svg)).toBe(false);
   });
 
   it("embeds in-document references used by a button's inline SVG", () => {
@@ -920,17 +1353,17 @@ describe("ScrapCollector", () => {
     );
   });
 
-  it("deduplicates headings by wording regardless of level and caps them at twenty", () => {
+  it("deduplicates headings by wording regardless of level and caps them at five", () => {
     const asH1 = createHeading({ level: 1, text: "Same Wording" });
     const asH3 = createHeading({ level: 3, text: "same wording" });
-    const uniqueHeadings = Array.from({ length: 20 }, (_, index) =>
+    const uniqueHeadings = Array.from({ length: 6 }, (_, index) =>
       createHeading({ text: `Heading number ${index}` }),
     );
 
     collector.enable();
     showForCapture([asH1, asH3, ...uniqueHeadings]);
 
-    expect(emitted("heading")).toHaveLength(20);
+    expect(emitted("heading")).toHaveLength(5);
     expect(
       emitted("heading").filter(
         (data) =>
@@ -938,7 +1371,23 @@ describe("ScrapCollector", () => {
           data.text.toLowerCase() === "same wording",
       ),
     ).toHaveLength(1);
-    expect(observer().observed.has(uniqueHeadings[19])).toBe(false);
+    expect(observer().observed.has(uniqueHeadings[5])).toBe(false);
+  });
+
+  it("gives h3 section titles at most one of the page's heading slots", () => {
+    const sections = Array.from({ length: 3 }, (_, index) =>
+      createHeading({ level: 3, text: `Section ${index}` }),
+    );
+    const titles = Array.from({ length: 3 }, (_, index) =>
+      createHeading({ level: 2, text: `Title ${index}` }),
+    );
+
+    collector.enable();
+    showForCapture([...sections, ...titles]);
+
+    expect(
+      emitted("heading").map((data) => (data as { text: string }).text),
+    ).toEqual(["Section 0", "Title 0", "Title 1", "Title 2"]);
   });
 
   it("discovers headings added to the page after collection starts", async () => {
@@ -1281,8 +1730,16 @@ describe("ScrapCollector", () => {
         left: 12,
         top: 30,
       });
+      const svg = createSvg({ width: 24, height: 24, left: 8, top: 4 });
+      const path = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path",
+      );
+      path.setAttribute("d", "M0 0h4v4z");
+      svg.appendChild(path);
+
       collector.enable();
-      showForCapture([image, button, heading]);
+      showForCapture([image, button, heading, svg]);
 
       expect(emitted("image")[0].position).toEqual({
         pageX: 290,
@@ -1299,6 +1756,12 @@ describe("ScrapCollector", () => {
       expect(emitted("heading")[0].position).toEqual({
         pageX: 252,
         pageY: 660,
+        pageWidth: 1024,
+        pageHeight: 2000,
+      });
+      expect(emitted("svg-icon")[0].position).toEqual({
+        pageX: 60,
+        pageY: 616,
         pageWidth: 1024,
         pageHeight: 2000,
       });

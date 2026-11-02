@@ -1,26 +1,17 @@
-// ABOUTME: Tests the table collage piece helpers: ordering, placement, and gesture math.
+// ABOUTME: Tests the table collage piece helpers: ordering, domains, and live drafts.
 // ABOUTME: Also covers the shape-template conversion from cursor positions.
 
 import { describe, it, expect } from "vitest";
 import {
   domainOf,
-  initialWidth,
-  isOnTop,
-  makePiece,
-  MAX_PIECE_WIDTH,
-  MIN_PIECE_WIDTH,
-  movedTransform,
-  normalizeDegrees,
   orderAroundCentroid,
-  pageOrigin,
+  pageLink,
   piecesOf,
-  remoteDragTransforms,
-  rotateResizeTransform,
+  remoteDrafts,
   sortedPieces,
   sourceDomain,
   templatePointsFromCursors,
   topZ,
-  transformChanged,
   type Piece,
   type Pieces,
 } from "../collage/pieces";
@@ -65,169 +56,18 @@ describe("piece ordering and limits", () => {
     expect(topZ({})).toBe(0);
     expect(topZ(map(piece("a", { z: 3 }), piece("b", { z: 7 })))).toBe(7);
   });
-
-  it("isOnTop only when strictly above every other piece", () => {
-    const pieces = map(piece("a", { z: 3 }), piece("b", { z: 3 }));
-    expect(isOnTop(pieces, "a")).toBe(false);
-    expect(isOnTop(map(piece("a", { z: 4 }), piece("b", { z: 3 })), "a")).toBe(
-      true,
-    );
-    expect(isOnTop(pieces, "missing")).toBe(false);
-  });
-});
-
-describe("makePiece", () => {
-  const placer = { pid: "pk_a", name: "alice", color: "#0a0" };
-  const options = { id: "new", now: 42, random: () => 0.5 };
-
-  it("keeps only the origin of the page a scrap came from", () => {
-    const p = makePiece(
-      {
-        src: "https://x.test/a.png",
-        pageUrl: "https://docs.example.com/d/secret-id/edit?token=abc#heading",
-        aspect: 0.5,
-      },
-      placer,
-      { x: 0.5, y: 0.5 },
-      {},
-      16 / 9,
-      options,
-    );
-    expect(p.pageUrl).toBe("https://docs.example.com");
-    expect(sourceDomain(p)).toBe("docs.example.com");
-    expect(pageOrigin("javascript:alert(1)")).toBe("");
-    expect(pageOrigin(undefined)).toBe("");
-  });
-
-  it("lands on top, at the point, with the placer attached", () => {
-    const p = makePiece(
-      { src: "https://x.test/a.png", aspect: 0.5 },
-      placer,
-      { x: 0.25, y: 0.75 },
-      map(piece("a", { z: 9 })),
-      16 / 9,
-      options,
-    );
-    expect(p).toMatchObject({
-      id: "new",
-      x: 0.25,
-      y: 0.75,
-      z: 10,
-      placedByPid: "pk_a",
-      placedByName: "alice",
-      placedByColor: "#0a0",
-      placedAt: 42,
-      aspect: 0.5,
-      pageUrl: "",
-      rotation: 0,
-    });
-  });
-
-  it("clamps the point onto the table and falls back on a bad aspect", () => {
-    const p = makePiece(
-      { src: "https://x.test/a.png", aspect: NaN },
-      placer,
-      { x: -1, y: 3 },
-      {},
-      1,
-      options,
-    );
-    expect(p.x).toBe(0);
-    expect(p.y).toBe(1);
-    expect(p.aspect).toBeGreaterThan(0);
-  });
-
-  it("tilts a little either way", () => {
-    const lo = makePiece({ src: "s", aspect: 1 }, placer, { x: 0, y: 0 }, {}, 1, {
-      ...options,
-      random: () => 0,
-    });
-    const hi = makePiece({ src: "s", aspect: 1 }, placer, { x: 0, y: 0 }, {}, 1, {
-      ...options,
-      random: () => 0.999,
-    });
-    expect(lo.rotation).toBe(-6);
-    expect(hi.rotation).toBeLessThanOrEqual(6);
-    expect(hi.rotation).toBeGreaterThan(5);
-  });
-
-  it("shrinks tall images so they fit on the table", () => {
-    const wide = initialWidth(0.5, 16 / 9);
-    const tall = initialWidth(4, 16 / 9);
-    expect(wide).toBeCloseTo(0.16);
-    expect(tall).toBeLessThan(wide);
-    // Height as a fraction of the table stays within 40%.
-    expect(tall * 4 * (16 / 9)).toBeLessThanOrEqual(0.4 + 1e-9);
-    expect(initialWidth(1000, 1)).toBe(MIN_PIECE_WIDTH);
-  });
-});
-
-describe("gesture math", () => {
-  const start = { x: 0.5, y: 0.5, width: 0.2, rotation: 10 };
-
-  it("moves by a relative delta and keeps the center on the table", () => {
-    expect(movedTransform(start, { dx: 0.1, dy: -0.2 })).toMatchObject({
-      x: 0.6,
-      y: 0.3,
-      width: 0.2,
-      rotation: 10,
-    });
-    expect(movedTransform(start, { dx: 2, dy: -2 })).toMatchObject({
-      x: 1,
-      y: 0,
-    });
-  });
-
-  it("turning the corner a quarter turn at the same distance rotates 90deg", () => {
-    const t = rotateResizeTransform(
-      start,
-      { x: 100, y: 100 },
-      { x: 150, y: 100 },
-      { x: 100, y: 150 },
-    );
-    expect(t.rotation).toBeCloseTo(100);
-    expect(t.width).toBeCloseTo(0.2);
-    expect(t.x).toBe(0.5);
-  });
-
-  it("pulling the corner twice as far doubles the width without turning", () => {
-    const t = rotateResizeTransform(
-      start,
-      { x: 0, y: 0 },
-      { x: 30, y: 40 },
-      { x: 60, y: 80 },
-    );
-    expect(t.width).toBeCloseTo(0.4);
-    expect(t.rotation).toBeCloseTo(10);
-  });
-
-  it("clamps size and ignores a pointer on the center", () => {
-    const huge = rotateResizeTransform(
-      start,
-      { x: 0, y: 0 },
-      { x: 1, y: 1 },
-      { x: 500, y: 500 },
-    );
-    expect(huge.width).toBe(MAX_PIECE_WIDTH);
-    expect(
-      rotateResizeTransform(start, { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 0 }),
-    ).toEqual(start);
-  });
-
-  it("normalizes angles into (-180, 180]", () => {
-    expect(normalizeDegrees(190)).toBe(-170);
-    expect(normalizeDegrees(-190)).toBe(170);
-    expect(normalizeDegrees(180)).toBe(180);
-    expect(normalizeDegrees(540)).toBe(180);
-  });
-
-  it("transformChanged ignores float noise", () => {
-    expect(transformChanged(start, { ...start, x: 0.50000001 })).toBe(false);
-    expect(transformChanged(start, { ...start, rotation: 11 })).toBe(true);
-  });
 });
 
 describe("domains", () => {
+  it("keeps the web page a scrap came from", () => {
+    expect(pageLink("https://blog.example.com/posts/1?page=2")).toBe(
+      "https://blog.example.com/posts/1?page=2",
+    );
+    expect(pageLink("https://blog.example.com")).toBe("https://blog.example.com/");
+    expect(pageLink("javascript:alert(1)")).toBe("");
+    expect(pageLink(undefined)).toBe("");
+  });
+
   it("strips www and tolerates junk", () => {
     expect(domainOf("https://www.example.com/a")).toBe("example.com");
     expect(domainOf("not a url")).toBe("");
@@ -289,16 +129,44 @@ describe("shape template", () => {
   });
 });
 
-describe("remote drag previews", () => {
-  it("collects other people's in-progress drags and skips mine", () => {
-    const transform = { x: 0.1, y: 0.2, width: 0.3, rotation: 4 };
+describe("remote drafts", () => {
+  it("lays other people's changes over the stored pieces and skips mine", () => {
+    const stored = { p1: piece("p1", { x: 0.5, y: 0.5 }) };
     expect(
-      remoteDragTransforms([
-        { user: { isMe: false }, live: { drag: { id: "p1", transform } } },
-        { user: { isMe: true }, live: { drag: { id: "p2", transform } } },
-        { user: { isMe: false }, live: { drag: null } },
-        { user: { isMe: false }, live: undefined },
-      ]),
-    ).toEqual({ p1: transform });
+      remoteDrafts(
+        [
+          { user: { isMe: false }, live: { draft: [{ id: "p1", set: { x: 0.1 } }] } },
+          { user: { isMe: true }, live: { draft: [{ id: "p1", set: { y: 0.9 } }] } },
+          { user: { isMe: false }, live: { draft: null } },
+          { user: { isMe: false }, live: undefined },
+        ],
+        stored,
+      ),
+    ).toEqual({ p1: { ...stored.p1, x: 0.1 } });
+  });
+
+  it("keeps a field someone else changed while the drag is going", () => {
+    // The stored piece already has another person's new turn.
+    const stored = { p1: piece("p1", { rotation: 45 }) };
+    const drafts = remoteDrafts(
+      [{ user: { isMe: false }, live: { draft: [{ id: "p1", set: { x: 0.2 }, unset: ["crop"] }] } }],
+      stored,
+    );
+    expect(drafts.p1.rotation).toBe(45);
+    expect(drafts.p1.x).toBe(0.2);
+  });
+
+  it("shows a piece new to the table whole", () => {
+    const fresh = piece("p9");
+    expect(
+      remoteDrafts([{ user: { isMe: false }, live: { draft: [{ id: "p9", set: fresh }] } }], {}),
+    ).toEqual({ p9: fresh });
+  });
+
+  it("skips presence from an older page", () => {
+    const old = { drag: { id: "p1" } } as unknown as { draft: null };
+    const wholePieces = { draft: [piece("p1")] } as unknown as { draft: null };
+    expect(remoteDrafts([{ user: { isMe: false }, live: old }], {})).toEqual({});
+    expect(remoteDrafts([{ user: { isMe: false }, live: wholePieces }], {})).toEqual({});
   });
 });

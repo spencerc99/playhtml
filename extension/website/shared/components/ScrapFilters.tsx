@@ -29,10 +29,13 @@ import {
   type ScrapShape,
   type ScrapWhenFilter,
 } from "../utils/scrapFilters";
-import type { TimeOfDayFilter } from "../config";
-import { formatTimeOfDay, localDayKey } from "../utils/timeOfDay";
-import { DAY_GRID_WIDTH, DayGrid } from "./DayGrid";
-import { TimeOfDayInputs } from "./TimeOfDayInputs";
+import { formatDayRange } from "../utils/dayRange";
+import {
+  formatTimeOfDay,
+  localDayKey,
+  quarterDayOf,
+} from "../utils/timeOfDay";
+import { WHEN_PANEL_WIDTH, WhenPanel } from "./WhenPanel";
 
 export { ANY_TIME, isAnyTime, type ScrapPlace, type ScrapWhenFilter };
 
@@ -124,14 +127,6 @@ const kinds: { kind: KindOption; label: string }[] = [
   { kind: "cursor", label: "cursors" },
 ];
 
-/** Quarter-day windows in local time, offered as starting points for the time of day. */
-const timesOfDay: { label: string; window: TimeOfDayFilter }[] = [
-  { label: "night", window: { centerMinutes: 180, radiusMinutes: 180 } },
-  { label: "morning", window: { centerMinutes: 540, radiusMinutes: 180 } },
-  { label: "afternoon", window: { centerMinutes: 900, radiusMinutes: 180 } },
-  { label: "evening", window: { centerMinutes: 1260, radiusMinutes: 180 } },
-];
-
 /** Whether a scrap passes every filter at once, shared by each surface that filters scraps. */
 export function scrapPassesFilters(
   item: ScrapItem,
@@ -155,23 +150,14 @@ function matchesShape(item: ScrapItem, shape: ScrapShapeFilter): boolean {
   return itemShape !== null && shape.includes(itemShape);
 }
 
-/** The chip's short summary of a day and time-of-day filter, naming a quarter-day window when it is one. */
+/** The chip's short summary of a day span and time-of-day filter, naming a quarter-day window when it is one. */
 export function formatScrapWhen(when: ScrapWhenFilter): string {
-  const { day, timeOfDay } = when;
+  const { days, timeOfDay } = when;
   const parts = [
-    day === null
-      ? null
-      : new Date(`${day}T00:00:00`).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        }),
+    days === null ? null : formatDayRange(days),
     timeOfDay === null
       ? null
-      : (timesOfDay.find(
-          (option) =>
-            option.window.centerMinutes === timeOfDay.centerMinutes &&
-            option.window.radiusMinutes === timeOfDay.radiusMinutes,
-        )?.label ?? formatTimeOfDay(timeOfDay)),
+      : (quarterDayOf(timeOfDay)?.label ?? formatTimeOfDay(timeOfDay)),
   ].filter((part): part is string => part !== null);
   return parts.length === 0 ? "any time" : parts.join(" · ");
 }
@@ -206,6 +192,30 @@ interface Props {
 
 type Panel = "places" | "type" | "shape" | "when";
 
+/**
+ * A phone: a finger on a screen too narrow for the chips to sit beside the
+ * search field. There the chips fold behind one "filters" chip, so the search
+ * and the scraps under it keep the room.
+ */
+const PHONE_QUERY = "(pointer: coarse) and (max-width: 619px)";
+
+function usePhoneFilters(): boolean {
+  const matches = () =>
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(PHONE_QUERY).matches;
+  const [phone, setPhone] = useState(matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(PHONE_QUERY);
+    const update = () => setPhone(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return phone;
+}
+
 const countEach = (group: ScrapItem[]) => group.length;
 
 export function ScrapFilters({
@@ -229,6 +239,8 @@ export function ScrapFilters({
 }: Props) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [draft, setDraft] = useState("");
+  const phone = usePhoneFilters();
+  const [chipsOpen, setChipsOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const placeAnchor = useRef<HTMLSpanElement>(null);
   const typeAnchor = useRef<HTMLSpanElement>(null);
@@ -256,6 +268,7 @@ export function ScrapFilters({
     );
   // Sites are listed by when a scrap was last met there, newest first.
   const domains = useMemo(() => {
+    if (panel !== "places") return [];
     const lastSeen = new Map<string, number>();
     for (const item of items) {
       for (const location of scrapLocations(item)) {
@@ -267,7 +280,7 @@ export function ScrapFilters({
     return Array.from(lastSeen.keys()).sort(
       (a, b) => lastSeen.get(b)! - lastSeen.get(a)! || a.localeCompare(b),
     );
-  }, [items]);
+  }, [items, panel]);
   // Counts answer "how many would I see if I picked this", so each facet
   // honours the other filters but not its own.
   const domainCounts = useMemo(() => {
@@ -903,79 +916,44 @@ export function ScrapFilters({
             className={`scrap-filters__popover scrap-filters__popover--when scrap-filters__popover--${placement}`}
             aria-label="When found"
           >
-            <div className="scrap-filters__heading">
-              <span>day</span>
-              <button
-                type="button"
-                className="scrap-filters__link"
-                onClick={() => onWhen(ANY_TIME)}
-              >
-                clear
-              </button>
-            </div>
-            {dayCounts.size === 0 ? (
-              <p className="scrap-filters__empty">no days yet</p>
-            ) : (
-              <DayGrid
-                dayCounts={dayCounts}
-                selectedDay={when.day}
-                onSelectDay={(day) => onWhen({ ...when, day })}
-                style={{
-                  flex: "none",
-                  maxHeight: "min(170px, 28vh)",
-                  padding: 0,
-                }}
-              />
-            )}
-            <div className="scrap-filters__heading scrap-filters__heading--time">
-              <span>time of day</span>
-            </div>
-            <div className="scrap-filters__times">
-              {timesOfDay.map((option) => {
-                const on =
-                  when.timeOfDay !== null &&
-                  when.timeOfDay.centerMinutes ===
-                    option.window.centerMinutes &&
-                  when.timeOfDay.radiusMinutes === option.window.radiusMinutes;
-                return (
-                  <button
-                    key={option.label}
-                    type="button"
-                    className="scrap-filters__time"
-                    aria-pressed={on}
-                    title={formatTimeOfDay(option.window)}
-                    onClick={() =>
-                      onWhen({ ...when, timeOfDay: on ? null : option.window })
-                    }
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-            {when.timeOfDay !== null && (
-              <div
-                className="scrap-filters__window"
-                title="Recurring time-of-day window (local time), across every day"
-              >
-                <TimeOfDayInputs
-                  value={when.timeOfDay}
-                  onChange={(timeOfDay) => onWhen({ ...when, timeOfDay })}
-                />
-                <button
-                  type="button"
-                  className="scrap-filters__clear"
-                  aria-label="Clear time of day"
-                  onClick={() => onWhen({ ...when, timeOfDay: null })}
-                >
-                  ×
-                </button>
-              </div>
-            )}
+            <WhenPanel
+              dayCounts={dayCounts}
+              days={when.days}
+              onDays={(days) => onWhen({ ...when, days })}
+              timeOfDay={when.timeOfDay}
+              onTimeOfDay={(timeOfDay) => onWhen({ ...when, timeOfDay })}
+              gridStyle={{ flex: "none", maxHeight: "min(220px, 30vh)" }}
+            />
           </section>
         </>
       )}
     </span>
+  );
+
+  const activeFilters =
+    (places.length > 0 ? 1 : 0) +
+    (kind.length > 0 ? 1 : 0) +
+    (shape.length > 0 ? 1 : 0) +
+    (isAnyTime(when) ? 0 : 1);
+  const filtersToggle = (
+    <button
+      type="button"
+      className="scrap-filters__chip scrap-filters__toggle"
+      aria-expanded={chipsOpen}
+      aria-pressed={activeFilters > 0}
+      onClick={() => {
+        if (chipsOpen) close();
+        setChipsOpen(!chipsOpen);
+      }}
+    >
+      <span className="scrap-filters__key">filters</span>
+      {activeFilters > 0 && (
+        <span className="scrap-filters__value">{activeFilters}</span>
+      )}
+      <span className="scrap-filters__more" aria-hidden="true">
+        {chipsOpen ? "\u25B4" : "\u25BE"}
+      </span>
+    </button>
   );
 
   return (
@@ -993,7 +971,25 @@ export function ScrapFilters({
       }}
     >
       <style>{styles}</style>
-      {layout === "drawer" ? (
+      {phone ? (
+        <>
+          <div className="scrap-filters__row">
+            {searchField}
+            {filtersToggle}
+            {searchAccessory}
+          </div>
+          {chipsOpen && (
+            <div className="scrap-filters__row">
+              {placesChip}
+              {typeChip}
+              {shapeChip}
+              {whenChip}
+              <span className="scrap-filters__spacer" />
+              {chipsAccessory}
+            </div>
+          )}
+        </>
+      ) : layout === "drawer" ? (
         <>
           <div className="scrap-filters__row">
             {searchField}
@@ -1062,16 +1058,8 @@ const styles = `
 .scrap-filters__popover--type { width:200px; }
 .scrap-filters__popover--shape { width:auto; }
 .scrap-filters--bar .scrap-filters__popover--shape { right:0; }
-.scrap-filters__popover--when { width:${DAY_GRID_WIDTH + 22}px; }
+.scrap-filters__popover--when { width:${WHEN_PANEL_WIDTH + 2}px; padding:0; overflow:hidden; }
 .scrap-filters--bar .scrap-filters__popover--when { right:0; }
-.scrap-filters__heading--time { margin-top:10px; }
-.scrap-filters__times { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
-.scrap-filters .scrap-filters__time { height:22px; padding:0 6px; border:1px solid rgba(61,56,51,.18); border-radius:999px; background:#faf9f6; font-size:9px; }
-.scrap-filters .scrap-filters__time:hover { border-color:rgba(61,56,51,.38); }
-.scrap-filters .scrap-filters__time[aria-pressed=true] { border-color:rgba(74,154,138,.55); background:rgba(74,154,138,.1); color:#2f6b60; }
-.scrap-filters .scrap-filters__time:focus-visible { outline:none; border-color:#4a9a8a; box-shadow:0 0 0 3px rgba(74,154,138,.16); }
-.scrap-filters__window { display:flex; align-items:center; gap:4px; margin-top:8px; font-size:10px; }
-.scrap-filters__window .scrap-filters__clear { margin-left:auto; }
 .scrap-filters [role=button][data-day]:focus-visible { outline:2px solid #4a9a8a; outline-offset:-2px; }
 .scrap-filters__caret { position:absolute; left:50%; z-index:4; box-sizing:border-box; width:9px; height:9px; border:1px solid rgba(61,56,51,.2); background:#f5f0e8; transform:translateX(-50%) rotate(45deg); }
 .scrap-filters__caret--above { bottom:calc(100% + 7.5px); border-top-color:transparent; border-left-color:transparent; }
@@ -1119,4 +1107,18 @@ const styles = `
   .scrap-filters .scrap-filters__hide { width:40px; height:40px; }
   .scrap-filters input { font-size:16px; }
 }
+/* On a phone the bar sits under a thumb on a small screen, so it is compact:
+   one search line, with the chips behind the filters chip. The input keeps
+   16px text so Safari does not zoom the page to type, and the hint under it
+   stays small. */
+@media (pointer:coarse) and (max-width:619px) {
+  .scrap-filters { gap:6px; }
+  .scrap-filters__row { flex-wrap:wrap; gap:5px; }
+  .scrap-filters__chip { min-height:32px; padding:0 10px; }
+  .scrap-filters__search, .scrap-filters--bar .scrap-filters__search { min-height:34px; flex:1 1 0; min-width:0; }
+  .scrap-filters input::placeholder { font-size:11px; }
+  .scrap-filters .scrap-filters__option { min-height:36px; }
+  .scrap-filters .scrap-filters__hide { width:36px; height:36px; }
+}
+.scrap-filters__toggle[aria-pressed=true] { border-color:rgba(74,154,138,.55); background:rgba(74,154,138,.1); color:#2f6b60; }
 `;

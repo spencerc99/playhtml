@@ -8,6 +8,10 @@ import {
   canToggleReactSource,
 } from "../built-in-capabilities";
 import {
+  emojiMirrorReactSource,
+  growingListMirrorReactSource,
+} from "../mirror-basics";
+import {
   sharedCounterReactSource,
   sharedGuestbookReactSource,
 } from "../shared-state-basics";
@@ -18,6 +22,8 @@ const sources = [
   canHoverReactSource,
   sharedCounterReactSource,
   sharedGuestbookReactSource,
+  emojiMirrorReactSource,
+  growingListMirrorReactSource,
 ];
 
 describe("basic React recipe sources", () => {
@@ -39,7 +45,7 @@ describe("basic React recipe sources", () => {
       expect(source).toContain('from "@playhtml/react"');
       expect(source).toContain("<PlayProvider");
       expect(source).toContain("export default function App()");
-      expect(source).toMatch(/id="[^"]+"/);
+      expect(source).toMatch(/id(="|: ")[^"]+"/);
     }
   });
 
@@ -59,16 +65,16 @@ describe("basic React recipe sources", () => {
     expect(canMoveReactSource).toContain('id="ph-cap-hat"');
     expect(canMoveReactSource).toContain('id="ph-cap-cat"');
     expect(canMoveReactSource).toContain(
-      'https://playhtml.fun/docs/yankees-hat.png',
+      "https://playhtml.fun/docs/yankees-hat.png",
     );
     expect(canMoveReactSource).toContain(
-      'https://playhtml.fun/docs/long-cat.png',
+      "https://playhtml.fun/docs/long-cat.png",
     );
     expect(canToggleReactSource).toContain('id="ph-docs-toggle-demo"');
     expect(canHoverReactSource).toContain('id="ph-cap-hover-pad"');
     expect(sharedCounterReactSource).toContain('id="ph-docs-counter"');
-    expect(sharedGuestbookReactSource).toContain(
-      'id="ph-cap-docs-guestbook"',
-    );
+    expect(sharedGuestbookReactSource).toContain('id="ph-cap-docs-guestbook"');
+    expect(emojiMirrorReactSource).toContain('id: "emoji-pad"');
+    expect(growingListMirrorReactSource).toContain('id: "guestbook"');
   });
 });

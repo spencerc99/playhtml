@@ -10,8 +10,10 @@ import {
 } from '@playhtml/extension-types';
 import { getDomain, getDomainWithoutSuffix, getSubdomain } from 'tldts';
 
+/** How recently someone must have sent any event to count as browsing now. */
 const ACTIVE_PEOPLE_WINDOW_MS = 2 * 60_000;
 const DESTINATION_LIMIT = 50;
+const PREFERRED_STOPS_PER_RIDER = 2;
 const BASE_SCENERY_LIMIT = 100;
 const MAX_SCENERY_LIMIT = 200;
 const NAVIGATION_EVENTS_PER_SCENERY_ITEM = 5;
@@ -24,12 +26,14 @@ const MOVIE_TV_STREAMING_DOMAINS = [
   'directv.com',
   'discoveryplus.com',
   'disneyplus.com',
+  'f1tv.formula1.com',
   'fubo.tv',
   'hoopladigital.com',
   'hulu.com',
   'kanopy.com',
   'max.com',
   'mubi.com',
+  'nepu.to',
   'netflix.com',
   'paramountplus.com',
   'peacocktv.com',
@@ -45,6 +49,7 @@ const MOVIE_TV_STREAMING_DOMAINS = [
   'tv.apple.com',
   'video.amazon.com',
   'viki.com',
+  'voir-anime.to',
   'watch.plex.tv',
 ];
 
@@ -82,6 +87,7 @@ const AI_SCENERY_ONLY_DOMAINS = [
 ];
 
 const SCENERY_ONLY_DOMAINS = [
+  '1cloudfile.com',
   'accounts.google.com',
   ...AI_SCENERY_ONLY_DOMAINS,
   'ai.joinhandshake.com',
@@ -89,8 +95,10 @@ const SCENERY_ONLY_DOMAINS = [
   'app.flourish.studio',
   'app.joinhandshake.com',
   'app.mural.co',
+  'app.notion.com',
   'app.slack.com',
   'apply.commonapp.org',
+  'beartracks.ualberta.ca',
   'bing.com',
   'bsky.app',
   'calendar.google.com',
@@ -101,9 +109,12 @@ const SCENERY_ONLY_DOMAINS = [
   'duckduckgo.com',
   'ecosia.org',
   'ellipsus.com',
+  'experience.elluciancloud.com',
   'facebook.com',
   'figma.com',
   'form.typeform.com',
+  'fluxer.app',
+  'gradescope.com',
   'joinoasis.com',
   'jotform.com',
   'linkedin.com',
@@ -115,6 +126,7 @@ const SCENERY_ONLY_DOMAINS = [
   'myaccount.google.com',
   'mygju.gju.edu.jo',
   'myjobs.indeed.com',
+  'myworkdayjobs.com',
   'notion.so',
   'onedrive.live.com',
   'onlyfans.com',
@@ -129,6 +141,7 @@ const SCENERY_ONLY_DOMAINS = [
   'proton.me',
   'safelinks.protection.outlook.com',
   'search.brave.com',
+  'schoology.com',
   'smartapply.indeed.com',
   'snapchat.com',
   'startpage.com',
@@ -142,6 +155,7 @@ const SCENERY_ONLY_DOMAINS = [
   'vk.com',
   'web.telegram.org',
   'x.com',
+  'zipgrade.com',
 ];
 
 const GENERIC_BUSINESS_HOMEPAGE_DOMAINS = [
@@ -153,14 +167,21 @@ const GENERIC_BUSINESS_HOMEPAGE_DOMAINS = [
   'garmin.com',
   'microsoft.com',
   'ouraring.com',
+  'netsuite.com',
   'paypal.com',
+  'phcode.io',
   'shopify.com',
   'stripe.com',
+  'threads.com',
   'vercel.com',
   'wayfair.com',
 ];
 
-const MEANINGFUL_TITLE_REQUIRED_DOMAINS = ['itch.io', 'wordpress.com'];
+const MEANINGFUL_TITLE_REQUIRED_DOMAINS = [
+  'itch.io',
+  'vercel.app',
+  'wordpress.com',
+];
 
 const GENERIC_PATHS = new Set([
   '/browse',
@@ -192,22 +213,35 @@ const AUTHENTICATION_HOST_LABELS = new Set([
 
 const NEVER_SHOW_SUBDOMAIN_LABELS = new Set(['tracking']);
 
+const NEVER_SHOW_PORTS = new Set([
+  '2082',
+  '2083',
+  '2086',
+  '2087',
+  '2095',
+  '2096',
+]);
+
 const SCENERY_ONLY_SUBDOMAIN_LABELS = new Set([
   'account',
   'accounts',
   'admin',
   'apply',
+  'banner',
   'candidate',
   'dashboard',
+  'docs',
   'file',
   'files',
   'fs',
+  'help',
   'inside',
   'intranet',
   'mail',
   'my',
   'portal',
   'profile',
+  'support',
 ]);
 
 const AUTHENTICATION_PATH_SEGMENTS = new Set([
@@ -228,13 +262,16 @@ const SCENERY_ONLY_PATH_SEGMENTS = new Set([
   'download',
   'editor',
   'inbox',
+  'legal',
   'myschedule',
   'mypolicy',
   'outbound',
   'publish',
   'redirect',
+  'registrationhistory',
   'redir',
   'settings',
+  'studentregistrationssb',
   'statements',
 ]);
 
@@ -261,8 +298,13 @@ const PRIVATE_ROUTE_SEGMENTS = new Set([
 const AUTHENTICATION_PATH_MARKERS = [
   'oauth2callback',
   'saml2acs',
+  'signon',
   'signinoidc',
   'simplesaml',
+];
+
+const SCENERY_ONLY_PATH_PATTERNS = [
+  /^\/d2l\/(?:le\/)?content(?:\/|$)/i,
 ];
 
 const RAW_ASSET_EXTENSIONS = new Set([
@@ -393,7 +435,8 @@ function hasHostLabel(domain: string, labels: Set<string>): boolean {
   return domain.split('.').some((label) => labels.has(comparableLabel(label)));
 }
 
-function isNeverShownHost(
+function isNeverShownSurface(
+  url: URL,
   domain: string,
   registrableDomain: string | null,
 ): boolean {
@@ -403,7 +446,9 @@ function isNeverShownHost(
     domain.endsWith('.local') ||
     registrableDomain === null ||
     hasHostLabel(domain, AUTHENTICATION_HOST_LABELS) ||
-    hasSubdomainLabel(domain, NEVER_SHOW_SUBDOMAIN_LABELS)
+    hasSubdomainLabel(domain, NEVER_SHOW_SUBDOMAIN_LABELS) ||
+    NEVER_SHOW_PORTS.has(url.port) ||
+    /(?:^|\/)cpsess\d+(?:\/|$)/i.test(url.pathname)
   );
 }
 
@@ -458,6 +503,10 @@ function hasAuthenticationPath(pathname: string): boolean {
 
 function hasBlockedPath(pathname: string, domain: string): boolean {
   const normalizedPathname = pathname.toLowerCase();
+  if (SCENERY_ONLY_PATH_PATTERNS.some((pattern) => pattern.test(pathname))) {
+    return true;
+  }
+
   if (
     [...GENERIC_PATHS].some(
       (path) =>
@@ -513,6 +562,18 @@ function getMeaningfulTitle(
   return comparableDomains.has(comparableLabel(normalizedTitle))
     ? null
     : normalizedTitle;
+}
+
+function hasUtilitySurfaceTitle(title: string | null): boolean {
+  const normalizedTitle = title?.replace(/\s+/g, ' ').trim() ?? '';
+  return (
+    /^(?:log[ -]?in|sign[ -]?in|authentication required|single sign[ -]?on)(?:\s*[-–—|].*)?$/i.test(
+      normalizedTitle,
+    ) ||
+    /\b(?:help cent(?:er|re)|help for existing users|support & learning|support portal|developer documentation)\b/i.test(
+      normalizedTitle,
+    )
+  );
 }
 
 function sanitizeContentUrl(url: URL): string {
@@ -709,7 +770,15 @@ function hasPersonBoundRoute(url: URL, domain: string): boolean {
     (domainMatches(domain, 'last.fm') &&
       /^\/user\/[^/]+(?:\/|$)/.test(url.pathname)) ||
     (domainMatches(domain, 'artfight.net') &&
-      /^\/~[^/]+(?:\/|$)/.test(url.pathname))
+      /^\/~[^/]+(?:\/|$)/.test(url.pathname)) ||
+    (domainMatches(domain, 'steamcommunity.com') &&
+      /^\/(?:id|profiles)\/[^/]+(?:\/|$)/.test(url.pathname)) ||
+    (domainMatches(domain, 'goodreads.com') &&
+      /^\/user\/show\/[^/]+(?:\/|$)/.test(url.pathname)) ||
+    (getDomainWithoutSuffix(domain, { allowPrivateDomains: true }) ===
+      'fragrantica' && /^\/@[^/]+(?:\/|$)/.test(url.pathname)) ||
+    (domainMatches(domain, 'social.lol') &&
+      /^\/@[^/]+(?:\/|$)/.test(url.pathname))
   );
 }
 
@@ -754,14 +823,20 @@ function isExcludedDestinationSurface(url: URL, domain: string): boolean {
   );
 }
 
-function sanitizePublicDestinationUrl(rawUrl: string): string | null {
+export function sanitizePublicDestinationUrl(rawUrl: string): string | null {
   try {
+    const original = new URL(rawUrl);
+    if (original.username || original.password) return null;
     const url = new URL(canonicalizeUrl(rawUrl));
     if (url.protocol !== 'https:' && url.protocol !== 'http:') {
       return null;
     }
 
     const domain = normalizeDomain(url.hostname);
+    if (
+      isNeverShownSurface(url, domain, getRegistrableDomain(domain)) ||
+      hasAuthenticationPath(url.pathname)
+    ) return null;
     if (isExcludedDestinationSurface(url, domain)) return null;
 
     const platformUrl = getPlatformDestinationUrl(url, domain);
@@ -794,7 +869,7 @@ function toCandidate(event: CollectionEvent): NavigationCandidate | null {
       !registrableDomain ||
       url.username ||
       url.password ||
-      isNeverShownHost(domain, registrableDomain) ||
+      isNeverShownSurface(url, domain, registrableDomain) ||
       hasAuthenticationPath(url.pathname)
     ) {
       return null;
@@ -852,10 +927,15 @@ function buildScenery(
 
 function buildDestinations(
   candidates: NavigationCandidate[],
+  limit = DESTINATION_LIMIT,
 ): CommuteDestination[] {
   const destinations: CommuteDestination[] = [];
   const seenRegistrableDomains = new Set<string>();
   const stopsByRider = new Map<string, number>();
+  const deferredCandidates: Array<{
+    candidate: NavigationCandidate;
+    destination: CommuteDestination;
+  }> = [];
   const rankedCandidates = [...candidates].sort((first, second) => {
     const visitDifference =
       first.recentDomainVisits - second.recentDomainVisits;
@@ -865,7 +945,11 @@ function buildDestinations(
 
   for (const candidate of rankedCandidates) {
     const url = sanitizePublicDestinationUrl(candidate.url);
-    if (!url || seenRegistrableDomains.has(candidate.registrableDomain)) {
+    if (
+      !url ||
+      hasUtilitySurfaceTitle(candidate.title) ||
+      seenRegistrableDomains.has(candidate.registrableDomain)
+    ) {
       continue;
     }
 
@@ -879,49 +963,54 @@ function buildDestinations(
       continue;
     }
 
-    const riderStopCount = stopsByRider.get(candidate.pid) ?? 0;
-    if (riderStopCount >= 2) continue;
-
-    destinations.push({
+    const destination = {
       id: url,
       url,
       domain: candidate.domain,
       title,
       visitedAt: candidate.visitedAt,
       hue: candidate.hue,
-    });
+    };
+    const riderStopCount = stopsByRider.get(candidate.pid) ?? 0;
+    if (riderStopCount >= PREFERRED_STOPS_PER_RIDER) {
+      deferredCandidates.push({ candidate, destination });
+      continue;
+    }
+
+    destinations.push(destination);
     seenRegistrableDomains.add(candidate.registrableDomain);
     stopsByRider.set(candidate.pid, riderStopCount + 1);
-    if (destinations.length === DESTINATION_LIMIT) break;
+    if (destinations.length === limit) break;
+  }
+
+  for (const { candidate, destination } of deferredCandidates) {
+    if (destinations.length === limit) break;
+    if (seenRegistrableDomains.has(candidate.registrableDomain)) continue;
+    destinations.push(destination);
+    seenRegistrableDomains.add(candidate.registrableDomain);
   }
 
   return destinations;
 }
 
-function countActivePeople(
-  activityEvents: CollectionEvent[],
-  now: number,
-): number {
-  const cutoff = now - ACTIVE_PEOPLE_WINDOW_MS;
-  const activePeople = new Set<string>();
+/** Earliest event time that still counts someone as browsing at `now`. */
+export function getActivePeopleSince(now: number): number {
+  return now - ACTIVE_PEOPLE_WINDOW_MS;
+}
 
-  for (const event of activityEvents) {
-    if (
-      !event.meta?.pid ||
-      Math.min(event.ts, now) < cutoff
-    ) {
-      continue;
-    }
-    activePeople.add(event.meta.pid);
-  }
-
-  return activePeople.size;
+/**
+ * Counts distinct people among participant ids already limited to the
+ * active window, so the response carries a number instead of identifiers.
+ */
+function countActivePeople(activeParticipantIds: string[]): number {
+  return new Set(activeParticipantIds).size;
 }
 
 export function buildCommuteResponse(
   navigationEvents: CollectionEvent[],
-  activityEvents: CollectionEvent[],
+  activeParticipantIds: string[],
   now = Date.now(),
+  limits?: { destinations?: number; scenery?: number },
 ): CommuteResponse {
   const newestFirst = navigationEvents
     .map(toCandidate)
@@ -943,8 +1032,11 @@ export function buildCommuteResponse(
 
   return {
     generatedAt: now,
-    activePeople: countActivePeople(activityEvents, now),
-    scenery: buildScenery(candidates, getSceneryLimit(candidates.length)),
-    destinations: buildDestinations(candidates),
+    activePeople: countActivePeople(activeParticipantIds),
+    scenery: buildScenery(
+      candidates,
+      limits?.scenery ?? getSceneryLimit(candidates.length),
+    ),
+    destinations: buildDestinations(candidates, limits?.destinations),
   };
 }

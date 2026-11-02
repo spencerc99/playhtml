@@ -6,9 +6,10 @@ sidebar:
 ---
 
 import { Aside } from "@astrojs/starlight/components";
+import DemoCodeLink from "@/components/DemoCodeLink.astro";
 import { SmileyRow } from "@/components/react/capability-demos/SmileyRow";
 import { DocsSpinner } from "@/components/react/capability-demos/DocsSpinner";
-import { InteractiveToggleDemo } from "@/components/react/InteractiveToggleDemo";
+import { SharedSwitchDemo } from "@/components/react/SharedSwitchDemo";
 import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
 import { RecipeExample } from "@/components/playground/RecipeExample";
 import {
@@ -29,14 +30,14 @@ This page covers both. **Vanilla HTML** has the full range — `can-mirror`, `ca
 
 This page runs a few live `can-play` demos in its margins — a doodle strip here, a [guestbook](#play-guestbook) and a [prize wheel](#play-spinner) further down, and a tally on every code block you copy from. Open the page in a second tab to watch them sync.
 
-<div id="play-doodle" class="ph-canplay-inline" data-label="can-play · doodle strip">
+<div id="play-doodle" class="ph-canplay-inline" data-label="DEMO — doodle strip">
   <div class="ph-canplay-inline__head">
-    <span class="ph-canplay-inline__kicker">CAN-PLAY · doodle strip</span>
     <p class="ph-canplay-inline__caption">
       Draw a tiny 64×64 face. It joins the strip for everyone reading this page. Capped at 20.
     </p>
   </div>
   <SmileyRow client:only="react" />
+  <DemoCodeLink href="/docs/examples/doodle-strip/" />
 </div>
 
 ## Vanilla HTML
@@ -53,7 +54,7 @@ Use it when the state you want to share is the DOM itself: a shared textarea, a 
 
 A textarea that filters to emoji characters on input. The filtered value mirrors to everyone.
 
-<div class="ph-demo-slot" data-label="LIVE DEMO — can-mirror: emoji textarea">
+<div class="ph-demo-slot" data-label="DEMO — can-mirror: emoji textarea">
   <RecipeExample
     recipe={emojiMirrorRecipe}
     compact
@@ -63,13 +64,15 @@ A textarea that filters to emoji characters on input. The filtered value mirrors
 </div>
 
 ```html
-<textarea can-mirror id="emoji-pad" rows="4" placeholder="emojis only..."></textarea>
+<textarea id="emoji-pad" rows="4" placeholder="emojis only..." can-mirror></textarea>
 
-<script>
+<script type="module">
   const emojiOnly = /\p{Extended_Pictographic}/gu;
-  document.getElementById("emoji-pad").addEventListener("input", (e) => {
-    const match = e.target.value.match(emojiOnly);
-    e.target.value = match ? match.join("") : "";
+  const emojiPad = document.getElementById("emoji-pad");
+
+  // Drop anything that isn't an emoji. can-mirror shares the filtered value.
+  emojiPad.addEventListener("input", () => {
+    emojiPad.value = (emojiPad.value.match(emojiOnly) ?? []).join("");
   });
 </script>
 ```
@@ -78,7 +81,7 @@ A textarea that filters to emoji characters on input. The filtered value mirrors
 
 Click "+" to append a new `<li>`. The list itself has `can-mirror`, so the direct child addition mirrors and new readers see the whole list, not just the latest.
 
-<div class="ph-demo-slot" data-label="LIVE DEMO — can-mirror: growing list">
+<div class="ph-demo-slot" data-label="DEMO — can-mirror: growing list">
   <RecipeExample
     recipe={growingListMirrorRecipe}
     compact
@@ -88,14 +91,19 @@ Click "+" to append a new `<li>`. The list itself has `can-mirror`, so the direc
 </div>
 
 ```html
-<ul can-mirror id="guestbook">
+<ul id="guestbook" can-mirror>
   <li>first</li>
 </ul>
-<button onclick="
-  document.getElementById('guestbook').appendChild(
-    Object.assign(document.createElement('li'), { textContent: new Date().toLocaleTimeString() })
-  );
-">add entry</button>
+<button id="guestbook-add">add entry</button>
+
+<script type="module">
+  // Appending a direct child is enough: can-mirror shares it with everyone.
+  document.getElementById("guestbook-add").addEventListener("click", () => {
+    const item = document.createElement("li");
+    item.textContent = new Date().toLocaleTimeString();
+    document.getElementById("guestbook").append(item);
+  });
+</script>
 ```
 
 If a mirrored child also has its own playhtml capability, keep giving it a stable `id`. The element that creates it locally can still call `playhtml.setupPlayElement(child)` right after insertion; copies that arrive through `can-mirror` are wired automatically. If that child should mirror its own nested DOM changes later, put `can-mirror` on the child too.
@@ -132,7 +140,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 <div id="counter"></div>
 
 <script type="module">
-  import { playhtml } from "playhtml";
+  import { playhtml } from "https://unpkg.com/playhtml@latest";
 
   playhtml.register("counter", {
     defaultData: { count: 0 },
@@ -152,9 +160,8 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 
 `setData` takes either a **mutator** that edits a draft in place (`setData(d => { d.count += 1 })`, merge-friendly across clients — preferred for counters, lists, nested fields) or a **replacement value** (`setData({ count: 5 })`, last-write-wins). See [Data essentials](/docs/data/data-essentials/) for the merge rules.
 
-<div id="play-counter" class="ph-canplay-inline" data-label="can-play · counter">
+<div id="play-counter" class="ph-canplay-inline" data-label="DEMO — counter">
   <div class="ph-canplay-inline__head">
-    <span class="ph-canplay-inline__kicker">CAN-PLAY · counter</span>
     <p class="ph-canplay-inline__caption">
       Click to add one. The count is shared — everyone reading this page bumps the same number.
     </p>
@@ -175,7 +182,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 <button id="switch">off</button>
 
 <script type="module">
-  import { playhtml } from "playhtml";
+  import { playhtml } from "https://unpkg.com/playhtml@latest";
 
   playhtml.register("switch", {
     defaultData: { on: false },
@@ -194,14 +201,13 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 </script>
 ```
 
-<div id="play-toggle" class="ph-canplay-inline" data-label="can-play · toggle">
+<div id="play-toggle" class="ph-canplay-inline" data-label="DEMO — toggle">
   <div class="ph-canplay-inline__head">
-    <span class="ph-canplay-inline__kicker">CAN-PLAY · toggle</span>
     <p class="ph-canplay-inline__caption">
       Click to flip it on/off for everyone.
     </p>
   </div>
-  <InteractiveToggleDemo client:only="react" />
+  <SharedSwitchDemo client:only="react" />
 </div>
 
 #### Users and live per-user state
@@ -212,7 +218,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 <div id="online"></div>
 
 <script type="module">
-  import { playhtml } from "playhtml";
+  import { playhtml } from "https://unpkg.com/playhtml@latest";
 
   playhtml.register("online", {
     live: { status: "here" },
@@ -233,14 +239,14 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 </script>
 ```
 
-<div id="play-presence" class="ph-canplay-inline" data-label="can-play · presence">
+<div id="play-presence" class="ph-canplay-inline" data-label="DEMO — presence">
   <div class="ph-canplay-inline__head">
-    <span class="ph-canplay-inline__kicker">CAN-PLAY · presence</span>
     <p class="ph-canplay-inline__caption">
       Everyone online shows up as a colored dot — yours is highlighted.
     </p>
   </div>
   <OnlineIndicatorDemo client:only="react" />
+  <DemoCodeLink href="/docs/examples/online-indicator/" />
 </div>
 
 #### Reset shortcut
@@ -288,7 +294,7 @@ The element is an empty mount point; everything you see is rendered from state. 
 <div id="counter"></div>
 
 <script type="module">
-  import { playhtml, html } from "playhtml";
+  import { playhtml, html } from "https://unpkg.com/playhtml@latest";
 
   playhtml.register("counter", {
     defaultData: { count: 0 },
@@ -346,9 +352,8 @@ form.addEventListener("submit", (e) => {
 });
 ```
 
-<div id="play-guestbook" class="ph-canplay-inline" data-label="can-play · guestbook">
+<div id="play-guestbook" class="ph-canplay-inline" data-label="DEMO — guestbook">
   <div class="ph-canplay-inline__head">
-    <span class="ph-canplay-inline__kicker">CAN-PLAY · guestbook</span>
     <p class="ph-canplay-inline__caption">
       Drop a note about what you're learning or building. The list is shared, capped at 20, oldest entries fall off.
     </p>
@@ -370,7 +375,7 @@ form.addEventListener("submit", (e) => {
 <div id="note-2" can-note data-color="pink"></div>
 
 <script type="module">
-  import { playhtml, html } from "playhtml";
+  import { playhtml, html } from "https://unpkg.com/playhtml@latest";
   playhtml.define("can-note", {
     defaultData: (el) => ({ text: "", color: el.dataset.color }),
     view: ({ data, setData }) => html`
@@ -408,14 +413,14 @@ playhtml.register("timer", {
 });
 ```
 
-<div id="play-spinner" class="ph-canplay-inline ph-canplay-inline--final" data-label="can-play · prize wheel">
+<div id="play-spinner" class="ph-canplay-inline ph-canplay-inline--final" data-label="DEMO — prize wheel">
   <div class="ph-canplay-inline__head">
-    <span class="ph-canplay-inline__kicker">CAN-PLAY · prize wheel</span>
     <p class="ph-canplay-inline__caption">
       Spin to pick a docs page to read next. The wheel's spin seed is shared, so everyone here sees it land on the same label.
     </p>
   </div>
   <DocsSpinner client:only="react" />
+  <DemoCodeLink href="/docs/examples/prize-wheel/" />
 </div>
 
 #### Composition: views that render other elements

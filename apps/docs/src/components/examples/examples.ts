@@ -49,28 +49,6 @@ const docsDemoSummaries: CatalogueExampleSummary[] = [
     kind: "docs-demo",
   },
   {
-    id: "doodle-strip-demo",
-    title: "Shared doodle strip",
-    description:
-      "Draw a tiny face and add it to a shared strip capped at 20 doodles.",
-    tags: ["drawing", "canvas", "shared list"],
-    capabilities: ["can-play"],
-    difficulty: "intermediate",
-    docsHref: "/docs/custom-elements/#play-doodle",
-    kind: "docs-demo",
-  },
-  {
-    id: "shared-prize-wheel-demo",
-    title: "Shared prize wheel",
-    description:
-      "Run one seeded animation so every reader lands on the same result.",
-    tags: ["animation", "requestUpdate", "shared seed"],
-    capabilities: ["can-play"],
-    difficulty: "advanced",
-    docsHref: "/docs/custom-elements/#play-spinner",
-    kind: "docs-demo",
-  },
-  {
     id: "mirror-controls-playground",
     title: "Native controls mirror playground",
     description:
@@ -79,39 +57,6 @@ const docsDemoSummaries: CatalogueExampleSummary[] = [
     capabilities: ["can-mirror"],
     difficulty: "advanced",
     docsHref: "/docs/advanced/mirror-playground/#hover",
-    kind: "docs-demo",
-  },
-  {
-    id: "rain-event-demo",
-    title: "Send a rain event",
-    description:
-      "Trigger a temporary rain effect for everyone currently connected.",
-    tags: ["events", "animation", "transient"],
-    capabilities: [],
-    difficulty: "intermediate",
-    docsHref: "/docs/data/events/#rain-event-demo",
-    kind: "docs-demo",
-  },
-  {
-    id: "live-reactions-demo",
-    title: "Live reactions",
-    description:
-      "Broadcast short-lived emoji reactions without storing shared state.",
-    tags: ["events", "emoji", "transient"],
-    capabilities: [],
-    difficulty: "intermediate",
-    docsHref: "/docs/data/events/#live-reactions-demo",
-    kind: "docs-demo",
-  },
-  {
-    id: "online-indicator-demo",
-    title: "Online presence indicator",
-    description:
-      "Show one live colored dot for each reader currently on the page.",
-    tags: ["presence", "online", "React"],
-    capabilities: [],
-    difficulty: "intermediate",
-    docsHref: "/docs/data/presence/#online-indicator-demo",
     kind: "docs-demo",
   },
 ];

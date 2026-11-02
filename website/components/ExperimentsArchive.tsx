@@ -20,6 +20,7 @@ import {
   pruneExperimentTraces,
   type ExperimentTrace,
 } from "../utils/experimentsArchiveLogic";
+import { experiments } from "../utils/experimentsCatalog";
 
 interface ExperimentArchiveEntry {
   number: string;
@@ -80,94 +81,6 @@ function isRandomExperimentEvent(
     typeof event.selectedHref === "string"
   );
 }
-
-const experiments: ExperimentArchiveEntry[] = [
-  {
-    number: "EX-01",
-    name: "one color",
-    description: "A shared color field",
-    href: "/experiments/one/",
-    image: "/experiments/index-previews/ex-01.png",
-    actionLabel: "Open",
-  },
-  {
-    number: "EX-02",
-    name: "cursor party",
-    description: "Dance with other cursors",
-    href: "/experiments/two/",
-    image: "/experiments/index-previews/ex-02.png",
-    actionLabel: "Open",
-  },
-  {
-    number: "EX-03",
-    name: "the poems we found",
-    description: "A huge collective fridge poetry game",
-    href: "/fridge",
-    image: "/experiments/index-previews/ex-03.png",
-    actionLabel: "Open",
-    recommended: true,
-  },
-  {
-    number: "EX-04",
-    name: "every color",
-    description: "Every color added by someone",
-    href: "/experiments/4/",
-    image: "/experiments/index-previews/ex-04.png",
-    actionLabel: "Open",
-    recommended: true,
-  },
-  {
-    number: "EX-05",
-    name: "minute faces (together)",
-    description: "A day colored minute by minute",
-    href: "/experiments/5/",
-    image: "/experiments/index-previews/ex-05.png",
-    actionLabel: "Open",
-    recommended: true,
-  },
-  {
-    number: "EX-06",
-    name: "screen sizes",
-    description: "Every screen size visited",
-    href: "/experiments/6/",
-    image: "/experiments/index-previews/ex-06.png",
-    actionLabel: "Open",
-  },
-  {
-    number: "EX-07",
-    name: "when cursors meet",
-    description: "Hold hands through the browser",
-    href: "/experiments/7/",
-    image: "/experiments/index-previews/ex-07.png",
-    actionLabel: "Open",
-  },
-  {
-    number: "EX-08",
-    name: "grid paper",
-    description: "A shared sheet of paper",
-    href: "/experiments/8/",
-    image: "/experiments/index-previews/ex-08.png",
-    actionLabel: "Open",
-  },
-  {
-    number: "EX-09",
-    name: "cursor bar",
-    description: "Rewind after a long day scrolling",
-    href: "/experiments/9/",
-    image: "/experiments/index-previews/ex-09.png",
-    actionLabel: "Open",
-    recommended: true,
-  },
-  {
-    number: "EX-10",
-    name: "cinderblock yard",
-    description: "Build heavy structures together",
-    href: "/experiments/cinderblock/",
-    image: "/experiments/index-previews/ex-10.png",
-    actionLabel: "Open",
-    recommended: true,
-  },
-];
 
 const pastEvents: ExperimentArchiveEntry[] = [
   {

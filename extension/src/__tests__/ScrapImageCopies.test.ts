@@ -17,6 +17,8 @@ import {
   unpinCollage,
   readImageCopyMeta,
   writeImageCopyMeta,
+  readImagePreviewInputs,
+  storeImagePreview,
 } from "../storage/ScrapImageCopies";
 
 const DB_NAME = "scrap_image_copies_db";
@@ -67,6 +69,128 @@ afterEach(async () => {
 });
 
 describe("ScrapImageCopies", () => {
+  it("stores previews separately, shares them by content, and preserves originals", async () => {
+    await store("https://a.test/1.png", "same", 100);
+    await store("https://b.test/1.png", "same", 100);
+    expect(await storeImagePreview("same", bytes(20))).toBe(true);
+    const found = await readImagePreviewInputs([
+      "https://a.test/1.png",
+      "https://b.test/1.png",
+    ]);
+    expect([...found.values()].map((entry) => entry.preview?.size)).toEqual([
+      20, 20,
+    ]);
+    const originals = await readImageCopies(["https://a.test/1.png"]);
+    expect(originals.get("https://a.test/1.png")?.size).toBe(100);
+    expect(await trimImageCopies(120)).toEqual({ evicted: 0, totalBytes: 120 });
+    expect(await trimImageCopies(119)).toEqual({ evicted: 0, totalBytes: 100 });
+    expect(
+      (await readImagePreviewInputs(["https://a.test/1.png"])).get(
+        "https://a.test/1.png",
+      )?.preview,
+    ).toBeUndefined();
+    expect(await hasImageCopy("https://a.test/1.png")).toBe(true);
+    expect(await trimImageCopies(99)).toEqual({ evicted: 1, totalBytes: 0 });
+    expect(await readImagePreviewInputs(["https://a.test/1.png"])).toEqual(
+      new Map(),
+    );
+    expect(await storeImagePreview("same", bytes(20))).toBe(false);
+  });
+
+  it("writes eagerly derived previews alongside copies without replacing full bytes", async () => {
+    await storeImageCopy({
+      src: "https://a.test/1.png",
+      hash: "one",
+      blob: bytes(100),
+      preview: bytes(20),
+      form: "reduced",
+      mimeType: "image/webp",
+      width: 1000,
+      height: 800,
+    });
+    expect(
+      (await readImagePreviewInputs(["https://a.test/1.png"])).get(
+        "https://a.test/1.png",
+      )?.preview?.size,
+    ).toBe(20);
+    expect(
+      (await readImageCopies(["https://a.test/1.png"])).get(
+        "https://a.test/1.png",
+      )?.size,
+    ).toBe(100);
+    expect(await trimImageCopies(120)).toEqual({ evicted: 0, totalBytes: 120 });
+  });
+
+  it("upgrades old copies without changing their data or pins", async () => {
+    await new Promise<void>((resolve, reject) => {
+      const request = fakeIndexedDB.open(DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        const database = request.result;
+        const copies = database.createObjectStore("copies", {
+          keyPath: "hash",
+        });
+        copies.put({
+          hash: "old",
+          byteLength: 100,
+          storedAt: 1,
+          form: "reduced",
+          mimeType: "image/webp",
+          width: 1200,
+          height: 800,
+        });
+        database
+          .createObjectStore("blobs", { keyPath: "hash" })
+          .put({ hash: "old", blob: bytes(100) });
+        const sources = database.createObjectStore("sources", {
+          keyPath: "src",
+        });
+        sources.createIndex("hash", "hash");
+        sources.put({ src: "https://a.test/old.png", hash: "old" });
+        database
+          .createObjectStore("pins", { keyPath: "collageId" })
+          .put({ collageId: "saved", srcs: ["https://a.test/old.png"] });
+        database.createObjectStore("meta", { keyPath: "key" });
+      };
+      request.onsuccess = () => {
+        request.result.close();
+        resolve();
+      };
+      request.onerror = () => reject(request.error);
+    });
+    expect(
+      (await readImageCopies(["https://a.test/old.png"])).get(
+        "https://a.test/old.png",
+      )?.size,
+    ).toBe(100);
+    expect(await storeImagePreview("old", bytes(20))).toBe(true);
+    expect(await trimImageCopies(0)).toEqual({ evicted: 0, totalBytes: 100 });
+  });
+
+  it("removes previews before originals and can recreate discarded previews", async () => {
+    await store("https://a.test/old.png", "old", 100);
+    await store("https://a.test/new.png", "new", 100);
+    await storeImagePreview("old", bytes(20));
+    await storeImagePreview("new", bytes(20));
+    expect(await trimImageCopies(225)).toEqual({ evicted: 0, totalBytes: 220 });
+    const inputs = await readImagePreviewInputs([
+      "https://a.test/old.png",
+      "https://a.test/new.png",
+    ]);
+    expect(inputs.get("https://a.test/old.png")?.preview).toBeUndefined();
+    expect(inputs.get("https://a.test/new.png")?.preview?.size).toBe(20);
+    expect(await storeImagePreview("old", bytes(10))).toBe(true);
+    expect(await trimImageCopies(230)).toEqual({ evicted: 0, totalBytes: 230 });
+    expect(
+      (
+        await readImageCopies([
+          "https://a.test/old.png",
+          "https://a.test/new.png",
+        ])
+      ).size,
+    ).toBe(2);
+    expect(await trimImageCopies(199)).toEqual({ evicted: 1, totalBytes: 100 });
+  });
+
   it("shares one copy between URLs that carry the same image", async () => {
     expect(await store("https://a.test/1.png", "same", 100)).toBe(true);
     expect(await store("https://b.test/mirror.png", "same", 100)).toBe(false);

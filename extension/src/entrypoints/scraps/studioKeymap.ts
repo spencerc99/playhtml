@@ -351,6 +351,7 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
       { keys: "shift on a corner or edge", what: "free the aspect ratio" },
       { keys: "alt on a corner or edge", what: "resize from the center" },
       { keys: "shift while dragging", what: "keep to one axis" },
+      { keys: "cmd while dragging", what: "snap to edges and middles" },
       { keys: "esc", what: "cancel what you started" },
     ],
   },
@@ -380,7 +381,8 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
   {
     group: "reach a buried piece",
     entries: [
-      { keys: "cmd + click", what: "take the next piece down" },
+      { keys: "click again", what: "take the next piece down" },
+      { keys: "cmd + click", what: "take the next piece down at once" },
       { keys: ", / .", what: "step down / up the stack" },
       { keys: "right-click", what: "list every piece here" },
     ],

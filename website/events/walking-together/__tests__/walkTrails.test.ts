@@ -4,12 +4,15 @@
 import { describe, it, expect } from "vitest";
 import type { CollectionEvent } from "@movement/types";
 import {
+  freezeSteps,
   MAX_STEPS_PER_WALKER,
   stepLabel,
   stepsByWalker,
   stepUrl,
   stopPoint,
   walkerTrailState,
+  spreadLabels,
+  walkSteps,
   type Walkers,
 } from "../walk/walkTrails";
 
@@ -90,6 +93,39 @@ describe("stepsByWalker", () => {
   });
 });
 
+describe("ending the walk", () => {
+  it("draws the frozen snapshot once ended, whatever arrives later", () => {
+    const before = stepsByWalker(
+      [nav("maya", "https://a.example", 2000), nav("maya", "https://b.example", 3000)],
+      walkers,
+      isEventPage,
+    );
+    const frozen = freezeSteps(before);
+    // A later page, even one stamped earlier by a walker's slow clock.
+    const after = stepsByWalker(
+      [
+        nav("maya", "https://a.example", 2000),
+        nav("maya", "https://b.example", 3000),
+        nav("maya", "https://after.example", 2500),
+      ],
+      walkers,
+      isEventPage,
+    );
+    expect(walkSteps({ endedAt: 4000, frozen }, after).maya.map((s) => s.url)).toEqual([
+      "a.example",
+      "b.example",
+    ]);
+    expect(walkSteps({}, after)).toBe(after);
+  });
+
+  it("freezes a plain copy of each walker's stops", () => {
+    const steps = { maya: [{ url: "a.example", label: "a.example", ts: 1 }] };
+    const frozen = freezeSteps(steps);
+    expect(frozen).toEqual(steps);
+    expect(frozen.maya).not.toBe(steps.maya);
+  });
+});
+
 describe("stopPoint", () => {
   it("puts the same URL in the same place, in the side bands", () => {
     expect(stopPoint("special.fish")).toEqual(stopPoint("special.fish"));
@@ -147,5 +183,23 @@ describe("walkerTrailState", () => {
     expect(three.variedPoints.slice(0, two.variedPoints.length - 1)).toEqual(
       two.variedPoints.slice(0, -1),
     );
+  });
+});
+
+describe("spreadLabels", () => {
+  const label = (key: string, x: number, y: number) => ({ key, x, y, width: 100, height: 20 });
+
+  it("leaves labels that don't touch where they are", () => {
+    expect(spreadLabels([label("a", 0, 0), label("b", 0, 40)])).toEqual({
+      a: { x: 0, y: 0 },
+      b: { x: 0, y: 40 },
+    });
+  });
+
+  it("steps a covered label down, then up, until it is clear", () => {
+    const spots = spreadLabels([label("a", 0, 0), label("b", 0, 0), label("c", 0, 0)]);
+    expect(spots.a).toEqual({ x: 0, y: 0 });
+    expect(spots.b).toEqual({ x: 0, y: 20 });
+    expect(spots.c).toEqual({ x: 0, y: -20 });
   });
 });

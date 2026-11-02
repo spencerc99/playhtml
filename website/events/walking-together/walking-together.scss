@@ -273,18 +273,17 @@ input {
   }
 }
 
-// The walk's link chat, docked as a foldable side pane during the collage.
-// It floats over the table instead of shrinking it, so every scrap stays where
-// everyone else sees it.
+// The walk's link chat, docked as a foldable pane on the right during the
+// collage, below the studio's view buttons and clear of its scrap drawer.
 .walk-chat-dock--open,
 .walk-chat-dock--closed {
   position: fixed;
-  top: 1em;
-  left: 1em;
+  top: 64px;
+  right: 1em;
   z-index: 20;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 0.35em;
   width: min(340px, calc(100vw - 2em));
   pointer-events: none;
@@ -306,7 +305,6 @@ input {
     width: 100%;
     height: 100%;
     font-size: 12px;
-    box-shadow: 0 6px 18px rgba(61, 56, 51, 0.14);
   }
 }
 
@@ -314,5 +312,9 @@ input {
   padding: 4px 8px;
   font-family: $mono-font;
   font-size: 11px;
-  background: rgba(255, 253, 248, 0.92);
+}
+
+// Alt+A hides every admin control for a clean screen share (adminControls.ts).
+[data-admin-hidden] [data-admin-control] {
+  display: none !important;
 }

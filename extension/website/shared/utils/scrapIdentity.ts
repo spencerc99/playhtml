@@ -44,10 +44,49 @@ function svgGeometryHash(markup: string): string {
   return String(hashString(normalizeWhitespace(shapeMarkup)));
 }
 
+/**
+ * Query parameters that only resize, re-encode or cache-bust an image. Any
+ * other parameter can be the image's identity, as with Google's thumbnail
+ * server (`/images?q=tbn:...`) or a `/_next/image?url=...` proxy.
+ */
+const PRESENTATION_IMAGE_PARAMS = new Set([
+  "w",
+  "h",
+  "width",
+  "height",
+  "q",
+  "quality",
+  "fit",
+  "crop",
+  "auto",
+  "fm",
+  "format",
+  "dpr",
+  "resize",
+  "scale",
+  "v",
+  "ver",
+  "version",
+  "cb",
+  "cache",
+  "_",
+  "ixlib",
+  "ixid",
+  "itok",
+]);
+
 export function canonicalImageKey(src: string): string {
   try {
     const url = new URL(src);
-    url.search = "";
+    if (url.protocol !== "http:" && url.protocol !== "https:") return src;
+    const kept = [...url.searchParams].filter(
+      ([name, value]) =>
+        !PRESENTATION_IMAGE_PARAMS.has(name.toLowerCase()) ||
+        // Google's thumbnail server names the image itself in `q`.
+        (name === "q" && value.startsWith("tbn:")),
+    );
+    kept.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    url.search = new URLSearchParams(kept).toString();
     url.hash = "";
     return url.toString();
   } catch {
