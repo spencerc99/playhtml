@@ -10,6 +10,7 @@ import {
   piecesUnder,
   planPress,
   spreadTags,
+  stackHeight,
   stackOrder,
   topPieceUnder,
   type TagBox,
@@ -276,5 +277,28 @@ describe("keeping two source tags off each other", () => {
   it("keeps every tag it was given, in order", () => {
     const spread = spreadTags([tag("a", 0, 0), tag("b", 0, 2)]);
     expect(spread.map((t) => t.pieceId)).toEqual(["a", "b"]);
+  });
+});
+
+describe("stackHeight", () => {
+  const pile = [
+    piece({ id: "a", z: 0 }),
+    piece({ id: "b", z: 1 }),
+    piece({ id: "c", z: 2 }),
+  ];
+
+  it("runs from 0 at the back to 1 at the front", () => {
+    expect(stackHeight(pile, ["a"])).toBe(0);
+    expect(stackHeight(pile, ["b"])).toBe(0.5);
+    expect(stackHeight(pile, ["c"])).toBe(1);
+  });
+
+  it("reads a group by its frontmost piece", () => {
+    expect(stackHeight(pile, ["a", "b"])).toBe(0.5);
+  });
+
+  it("puts a lone piece, or nothing chosen, halfway", () => {
+    expect(stackHeight([pile[0]], ["a"])).toBe(0.5);
+    expect(stackHeight(pile, ["missing"])).toBe(0.5);
   });
 });

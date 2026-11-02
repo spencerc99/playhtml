@@ -33,6 +33,24 @@ export function stackOrder(pieces: readonly CollagePiece[]): CollagePiece[] {
 }
 
 /**
+ * How high the frontmost of the chosen pieces sits in the whole stack, from 0
+ * (the very back) to 1 (the very front). A lone piece sits halfway.
+ */
+export function stackHeight(
+  pieces: readonly CollagePiece[],
+  ids: readonly string[],
+): number {
+  if (pieces.length < 2) return 0.5;
+  const chosen = new Set(ids);
+  const order = stackOrder(pieces);
+  let top = -1;
+  order.forEach((piece, index) => {
+    if (chosen.has(piece.id)) top = index;
+  });
+  return top < 0 ? 0.5 : top / (order.length - 1);
+}
+
+/**
  * Every piece under a point, frontmost first. That is the order a person reads
  * a stack in, and the order a deep click walks down through.
  */
