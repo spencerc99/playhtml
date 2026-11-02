@@ -176,18 +176,23 @@ describe("a plain press", () => {
 
 describe("a deep press (cmd or ctrl)", () => {
   it("takes the next piece down and wraps back to the front", () => {
-    expect(planPress(pile, inThePile, "top", { deep: true, sameSpot: false })?.selectOnDown).toBe("middle");
-    expect(planPress(pile, inThePile, "middle", { deep: true, sameSpot: false })?.selectOnDown).toBe(
+    expect(planPress(pile, inThePile, "top", { deep: true, sameSpot: false })?.selectOnClick).toBe("middle");
+    expect(planPress(pile, inThePile, "middle", { deep: true, sameSpot: false })?.selectOnClick).toBe(
       "bottom",
     );
-    expect(planPress(pile, inThePile, "bottom", { deep: true, sameSpot: false })?.selectOnDown).toBe("top");
+    expect(planPress(pile, inThePile, "bottom", { deep: true, sameSpot: false })?.selectOnClick).toBe("top");
   });
 
-  it("drags and keeps the piece it reached", () => {
+  it("still drags the piece in hand, since cmd while dragging snaps", () => {
     expect(planPress(pile, inThePile, "top", { deep: true, sameSpot: false })).toEqual({
-      selectOnDown: "middle",
-      dragId: "middle",
+      selectOnDown: "top",
+      dragId: "top",
       selectOnClick: "middle",
+    });
+    expect(planPress(pile, inThePile, "apart", { deep: true, sameSpot: false })).toEqual({
+      selectOnDown: "top",
+      dragId: "top",
+      selectOnClick: "top",
     });
   });
 
