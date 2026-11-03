@@ -34,6 +34,8 @@ export const PUBLISHED_COLLAGE_LIMITS = {
   /** One captured style value. */
   maxStyleValueLength: 500,
   maxTitleLength: 200,
+  /** The name a collage is signed with. */
+  maxSignatureNameLength: 60,
   maxPageTitleLength: 500,
   maxUrlLength: 2048,
   maxDomainLength: 253,
@@ -242,6 +244,23 @@ export interface PublishedCollage {
   backShows?: PublishedBackShows;
   /** Set by the Worker when it stores the collage. */
   sharedAt?: number;
+  /**
+   * Set by the Worker each time the maker updates the link in place, counting
+   * from 1. Its pictures are served under that revision, so a browser never
+   * mixes an old picture into a newer collage. Absent until the first update.
+   */
+  revision?: number;
+  /** Who signed it, as they were when they shared; absent when unsigned. */
+  signature?: PublishedSignature;
+}
+
+/**
+ * A maker's stamp: always their cursor colour, and their name when they gave
+ * one. A colour alone still signs the collage.
+ */
+export interface PublishedSignature {
+  color: string;
+  name?: string;
 }
 
 /** What the Worker answers a successful share with. */
@@ -249,6 +268,13 @@ export interface PublishedCollageCreated {
   id: string;
   deleteToken: string;
   url: string;
+}
+
+/** What the Worker answers an in-place update with. */
+export interface PublishedCollageUpdated {
+  id: string;
+  url: string;
+  revision: number;
 }
 
 /** A shared collage that cannot be read, with the reason it names. */
@@ -264,6 +290,14 @@ export const PUBLISHED_COLLAGE_ID = /^[A-Za-z0-9_-]{22}$/;
 
 const IMAGE_REF = /^img\/(0|[1-9][0-9]{0,2})$/;
 const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+/** Revisions are written as `?v=<n>` on picture links, so they stay small. */
+export const MAX_REVISION = 999_999_999;
+
+/** The `?v=<n>` a picture link carries for a revision, or "" before the first update. */
+export function publishedRevisionQuery(revision: number | undefined): string {
+  return revision === undefined ? "" : `?v=${revision}`;
+}
 
 export function isPublishedCollageId(value: unknown): value is string {
   return typeof value === "string" && PUBLISHED_COLLAGE_ID.test(value);
@@ -668,7 +702,40 @@ export function parsePublishedCollage(value: unknown): PublishedCollage {
   if (value.sharedAt !== undefined) {
     collage.sharedAt = bounded(value, "sharedAt", "the collage", 0, 8.64e15);
   }
+  if (value.revision !== undefined) {
+    const revision = bounded(value, "revision", "the collage", 1, MAX_REVISION);
+    if (!Number.isInteger(revision))
+      fail(`the collage has revision ${revision}, not a whole number`);
+    collage.revision = revision;
+  }
+  if (value.signature !== undefined) {
+    collage.signature = parseSignature(value.signature);
+  }
   return collage;
+}
+
+function parseSignature(value: unknown): PublishedSignature {
+  if (!isPlainObject(value)) fail("its signature is not an object");
+  if (typeof value.color !== "string" || !HEX_COLOR.test(value.color)) {
+    fail("its signature colour is not a hex color");
+  }
+  const signature: PublishedSignature = { color: value.color.toLowerCase() };
+  if (value.name !== undefined) {
+    const name = text(
+      value,
+      "name",
+      "its signature",
+      PUBLISHED_COLLAGE_LIMITS.maxSignatureNameLength,
+    ).trim();
+    if (name.replace(/[\u200C\u200D]/g, "").trim().length === 0) {
+      fail("its signature has an empty name");
+    }
+    if (/(?![\u200C\u200D])[\p{Cc}\p{Cf}]/u.test(name)) {
+      fail("its signature name has control or format characters");
+    }
+    signature.name = name;
+  }
+  return signature;
 }
 
 /**

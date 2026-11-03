@@ -123,6 +123,10 @@ describe("viewerPieces", () => {
 
   it("draws a picture as an image filling its source, with the full page URL", () => {
     expect(imageUrl("img/0")).toBe(`https://w/collages/${ID}/img/0`);
+    // An updated share serves its pictures under its revision.
+    expect(publishedImageUrl("https://w", ID, "img/0", 4)).toBe(
+      `https://w/collages/${ID}/img/0?v=4`,
+    );
     const collage = parsePublishedCollage(collageJson([piece(), piece()]));
     const [, shown] = viewerPieces(collage, imageUrl);
     expect(shown.piece).toMatchObject({

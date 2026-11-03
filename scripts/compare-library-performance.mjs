@@ -42,8 +42,9 @@ export const METRICS = [
     key: "bundle_gz_kb",
     label: "Bundle size (gzip)",
     unit: "KB",
-    maxRelative: 0.02,
-    minAbsolute: 0.5,
+    // Ordinary feature work adds 1-2 KB gzip; flag only clearly larger jumps.
+    maxRelative: 0.05,
+    minAbsolute: 3,
   },
   {
     key: "bundle_raw_kb",

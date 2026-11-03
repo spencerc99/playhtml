@@ -76,6 +76,13 @@ export function ScrapsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
+  /**
+   * True once the archive has been gathered. Scraps collected in another tab
+   * gather it again, and the page keeps showing what it has meanwhile: taking
+   * the studio down for the reload would reopen it on the collage it was
+   * first opened with, which looked like every newer piece had vanished.
+   */
+  const [gathered, setGathered] = useState(false);
   const [mode, setMode] = useState<ScrapsMode>("browse");
   const [editing, setEditing] = useState<CollageRecord | null>(null);
   const [studioOpen, setStudioOpen] = useState(false);
@@ -123,6 +130,7 @@ export function ScrapsPage() {
   );
   // Deleting before the whole archive has loaded would miss older encounters
   // of the same scrap, which would then reappear once they arrive.
+  const ready = gathered || (!loading && !error);
   const archiveComplete = !loading && !error && nextCursor === null && !historyError;
   const [createMode, setCreateMode] = useState<
     typeof import("./CreateMode") | null
@@ -297,7 +305,6 @@ export function ScrapsPage() {
     requestGeneration.current += 1;
     setLoading(true);
     setHistoryError(null);
-    setRecords([]);
     setNextCursor(null);
     const loadScraps = async () => {
       try {
@@ -312,6 +319,7 @@ export function ScrapsPage() {
           setRecords(response.scraps);
           setNextCursor(response.nextCursor);
           setError(null);
+          setGathered(true);
         }
       } catch (loadError) {
         const message =
@@ -496,7 +504,7 @@ export function ScrapsPage() {
         )}
       </header>
 
-      {mode === "browse" && !loading && !error && items.length > 0 && (
+      {mode === "browse" && ready && items.length > 0 && (
         <div
           className="scraps-stage"
           style={{
@@ -519,7 +527,10 @@ export function ScrapsPage() {
         </div>
       )}
 
-      {mode === "create" && !loading && !error && createMode && (
+      {/* An open studio stays mounted while the scraps reload (as they do
+          whenever another tab collects some), or it would reopen as it was
+          when first opened and lose everything since, its link included. */}
+      {mode === "create" && ready && createMode && (
         <createMode.CreateMode
           items={items}
           editing={editing}
@@ -536,17 +547,17 @@ export function ScrapsPage() {
           onLeave={closeStudio}
         />
       )}
-      {mode === "create" && !loading && !error && !createMode && (
+      {mode === "create" && ready && !createMode && (
         <div style={centeredMessageStyle}>
           {createError ? "collage tools could not be opened" : "opening collage tools..."}
         </div>
       )}
 
-      {loading && <div style={centeredMessageStyle}>gathering scraps...</div>}
-      {!loading && error && (
+      {!ready && loading && <div style={centeredMessageStyle}>gathering scraps...</div>}
+      {!ready && !loading && error && (
         <div style={centeredMessageStyle}>scraps could not be gathered</div>
       )}
-      {mode === "browse" && !loading && !error && items.length === 0 && (
+      {mode === "browse" && ready && !loading && items.length === 0 && (
         <div style={centeredMessageStyle}>
           nothing has washed up yet - browse a while
         </div>

@@ -10,6 +10,7 @@ import {
   piecesUnder,
   planPress,
   spreadTags,
+  stackHeight,
   stackOrder,
   topPieceUnder,
   type TagBox,
@@ -175,18 +176,23 @@ describe("a plain press", () => {
 
 describe("a deep press (cmd or ctrl)", () => {
   it("takes the next piece down and wraps back to the front", () => {
-    expect(planPress(pile, inThePile, "top", { deep: true, sameSpot: false })?.selectOnDown).toBe("middle");
-    expect(planPress(pile, inThePile, "middle", { deep: true, sameSpot: false })?.selectOnDown).toBe(
+    expect(planPress(pile, inThePile, "top", { deep: true, sameSpot: false })?.selectOnClick).toBe("middle");
+    expect(planPress(pile, inThePile, "middle", { deep: true, sameSpot: false })?.selectOnClick).toBe(
       "bottom",
     );
-    expect(planPress(pile, inThePile, "bottom", { deep: true, sameSpot: false })?.selectOnDown).toBe("top");
+    expect(planPress(pile, inThePile, "bottom", { deep: true, sameSpot: false })?.selectOnClick).toBe("top");
   });
 
-  it("drags and keeps the piece it reached", () => {
+  it("still drags the piece in hand, since cmd while dragging snaps", () => {
     expect(planPress(pile, inThePile, "top", { deep: true, sameSpot: false })).toEqual({
-      selectOnDown: "middle",
-      dragId: "middle",
+      selectOnDown: "top",
+      dragId: "top",
       selectOnClick: "middle",
+    });
+    expect(planPress(pile, inThePile, "apart", { deep: true, sameSpot: false })).toEqual({
+      selectOnDown: "top",
+      dragId: "top",
+      selectOnClick: "top",
     });
   });
 
@@ -276,5 +282,28 @@ describe("keeping two source tags off each other", () => {
   it("keeps every tag it was given, in order", () => {
     const spread = spreadTags([tag("a", 0, 0), tag("b", 0, 2)]);
     expect(spread.map((t) => t.pieceId)).toEqual(["a", "b"]);
+  });
+});
+
+describe("stackHeight", () => {
+  const pile = [
+    piece({ id: "a", z: 0 }),
+    piece({ id: "b", z: 1 }),
+    piece({ id: "c", z: 2 }),
+  ];
+
+  it("runs from 0 at the back to 1 at the front", () => {
+    expect(stackHeight(pile, ["a"])).toBe(0);
+    expect(stackHeight(pile, ["b"])).toBe(0.5);
+    expect(stackHeight(pile, ["c"])).toBe(1);
+  });
+
+  it("reads a group by its frontmost piece", () => {
+    expect(stackHeight(pile, ["a", "b"])).toBe(0.5);
+  });
+
+  it("puts a lone piece, or nothing chosen, halfway", () => {
+    expect(stackHeight([pile[0]], ["a"])).toBe(0.5);
+    expect(stackHeight(pile, ["missing"])).toBe(0.5);
   });
 });

@@ -74,16 +74,59 @@ export const EXPORT_MENU_STYLES = `
     gap: 5px;
   }
 
-  .collage-share__url {
-    box-sizing: border-box;
-    width: 100%;
-    padding: 4px 6px;
+  .collage-share__link {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-right: 2px;
     border: 1px solid color-mix(in srgb, var(--c-ink) 18%, transparent);
     border-radius: 3px;
+  }
+
+  .collage-share__url {
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 4px 6px;
+    border: 0;
     background: transparent;
     color: var(--c-ink);
     font-family: "Martian Mono", monospace;
     font-size: 9px;
+    cursor: copy;
+  }
+
+  .collage-share__url:focus {
+    outline: none;
+  }
+
+  .collage-share__link:focus-within {
+    border-color: color-mix(in srgb, var(--c-ink) 40%, transparent);
+  }
+
+  .collage-share__foot {
+    justify-content: space-between;
+  }
+
+  .collage-share__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: none;
+    color: var(--c-muted);
+    cursor: pointer;
+  }
+
+  .collage-share__icon:hover,
+  .collage-share__icon:focus-visible {
+    background: color-mix(in srgb, var(--c-ink) 8%, transparent);
+    color: var(--c-ink);
   }
 
   .collage-export a.collage-action {

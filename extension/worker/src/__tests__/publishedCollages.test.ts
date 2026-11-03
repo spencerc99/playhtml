@@ -1,4 +1,4 @@
-// ABOUTME: Tests the published-collage routes: strict upload checks, storage layout, serving and token deletes.
+// ABOUTME: Tests the published-collage routes: strict upload checks, storage layout, serving, token deletes and updates.
 // ABOUTME: Runs the handlers against an in-memory stand-in for the R2 bucket and the rate limiter.
 
 import { describe, expect, it, vi } from "vitest";
@@ -53,6 +53,7 @@ function fakeBucket() {
       if (!stored) return null;
       return {
         body: new Response(stored.bytes as Uint8Array<ArrayBuffer>).body,
+        json: async () => JSON.parse(new TextDecoder().decode(stored.bytes)),
         httpMetadata: { contentType: stored.contentType },
         customMetadata: stored.customMetadata,
       };
@@ -139,14 +140,18 @@ function uploadRequest(
   body: unknown,
   images: Record<string, Uint8Array | string>,
   headers: Record<string, string> = {},
+  target: { method: string; path: string } = {
+    method: "POST",
+    path: "/collages",
+  },
 ) {
   const form = new FormData();
   form.set("collage", typeof body === "string" ? body : JSON.stringify(body));
   for (const [name, bytes] of Object.entries(images)) {
     form.set(name, new Blob([bytes as BlobPart], { type: "image/png" }), name);
   }
-  return new Request("https://worker.test/collages", {
-    method: "POST",
+  return new Request(`https://worker.test${target.path}`, {
+    method: target.method,
     body: form,
     headers: { "CF-Connecting-IP": "203.0.113.9", ...headers },
   });
@@ -659,6 +664,158 @@ describe("DELETE /collages/<id>", () => {
     await worker.fetch(del(id, deleteToken), env, ctx);
     expect((await worker.fetch(del(id, deleteToken), env, ctx)).status).toBe(
       404,
+    );
+  });
+});
+
+describe("PUT /collages/<id>", () => {
+  const BMP_LIKE_PNG = new Uint8Array([...PNG, 1, 2, 3]);
+
+  function put(
+    id: string,
+    token: string | undefined,
+    body: unknown = collage([piece("img/0")]),
+    images: Record<string, Uint8Array | string> = { "img/0": BMP_LIKE_PNG },
+  ) {
+    return worker.fetch(
+      uploadRequest(
+        body,
+        images,
+        token ? { Authorization: `Bearer ${token}` } : {},
+        { method: "PUT", path: `/collages/${id}` },
+      ),
+      env0(),
+      ctx,
+    );
+  }
+  let current: Env;
+  const env0 = () => current;
+
+  async function shared() {
+    const made = makeEnv();
+    current = made.env;
+    const created = (await (await share(made.env)).json()) as {
+      id: string;
+      deleteToken: string;
+    };
+    return { ...made, ...created };
+  }
+
+  async function read(id: string) {
+    const res = await worker.fetch(
+      new Request(`https://worker.test/collages/${id}`),
+      current,
+      ctx,
+    );
+    return (await res.json()) as {
+      title: string;
+      pieces: unknown[];
+      revision?: number;
+      sharedAt?: number;
+    };
+  }
+
+  it("replaces the collage in place, serving its pictures under a new revision", async () => {
+    const { id, deleteToken } = await shared();
+    const before = await read(id);
+
+    const res = await put(id, deleteToken, {
+      ...collage([piece("img/0")]),
+      title: "changed",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      id,
+      url: `https://wewere.online/collage/?id=${id}`,
+      revision: 1,
+    });
+
+    const after = await read(id);
+    expect(after.title).toBe("changed");
+    expect(after.pieces).toHaveLength(1);
+    expect(after.revision).toBe(1);
+    expect(after.sharedAt).toBe(before.sharedAt);
+
+    const fresh = await worker.fetch(
+      new Request(`https://worker.test/collages/${id}/img/0?v=1`),
+      current,
+      ctx,
+    );
+    expect(new Uint8Array(await fresh.arrayBuffer())).toEqual(BMP_LIKE_PNG);
+    // The first share's pictures stay a revision, for a page that just loaded it.
+    const old = await worker.fetch(
+      new Request(`https://worker.test/collages/${id}/img/0`),
+      current,
+      ctx,
+    );
+    expect(new Uint8Array(await old.arrayBuffer())).toEqual(PNG);
+  });
+
+  it("clears the revision before last, and keeps counting", async () => {
+    const { id, deleteToken, bucket } = await shared();
+    await put(id, deleteToken);
+    await put(id, deleteToken);
+    const keys = () =>
+      [...bucket.objects.keys()].filter((key) => key.includes(id)).sort();
+    expect(keys()).toEqual([
+      `collages/${id}/collage.json`,
+      `collages/${id}/r1/img/0`,
+      `collages/${id}/r2/img/0`,
+    ]);
+    await put(id, deleteToken);
+    expect(keys()).toEqual([
+      `collages/${id}/collage.json`,
+      `collages/${id}/r2/img/0`,
+      `collages/${id}/r3/img/0`,
+    ]);
+    expect((await read(id)).revision).toBe(3);
+  });
+
+  it("ignores a revision the upload claims for itself", async () => {
+    const { id, deleteToken } = await shared();
+    await put(id, deleteToken, { ...collage([piece("img/0")]), revision: 40 });
+    expect((await read(id)).revision).toBe(1);
+  });
+
+  it("refuses a missing or wrong token, and an unknown share", async () => {
+    const { id, deleteToken } = await shared();
+    expect((await put(id, undefined)).status).toBe(401);
+    expect((await put(id, "not-the-token")).status).toBe(403);
+    expect((await read(id)).title).toBe("my collage");
+    expect((await put("A".repeat(22), deleteToken)).status).toBe(404);
+  });
+
+  it("rate limits updates per share", async () => {
+    const { id, deleteToken, limit } = await shared();
+    await put(id, deleteToken);
+    expect(limit).toHaveBeenLastCalledWith({ key: `update:${id}` });
+  });
+
+  it("answers 404 for a picture link with a revision that cannot be one", async () => {
+    const { id } = await shared();
+    for (const query of ["?v=0", "?v=abc", "?v=1e3", "?v=-1"]) {
+      const res = await worker.fetch(
+        new Request(`https://worker.test/collages/${id}/img/0${query}`),
+        current,
+        ctx,
+      );
+      expect(res.status).toBe(404);
+    }
+  });
+
+  it("deletes every revision when the share is taken down", async () => {
+    const { id, deleteToken, bucket } = await shared();
+    await put(id, deleteToken);
+    await worker.fetch(
+      new Request(`https://worker.test/collages/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${deleteToken}` },
+      }),
+      current,
+      ctx,
+    );
+    expect([...bucket.objects.keys()].some((key) => key.includes(id))).toBe(
+      false,
     );
   });
 });

@@ -61,7 +61,8 @@ export function setCollageSoundsMuted(muted: boolean): void {
 
 function audio(): AudioContext | null {
   if (context) {
-    if (context.state === "suspended") void context.resume();
+    // Safari also reports "interrupted" after the tab or app loses audio focus.
+    if (context.state !== "running") void context.resume().catch(() => {});
     return context;
   }
   const Ctor =
@@ -107,7 +108,63 @@ function audio(): AudioContext | null {
     longNoiseData[i] = Math.random() * 2 - 1;
 
   context = ctx;
+  // Safari can make a context already suspended, even inside a gesture.
+  if (ctx.state !== "running") void ctx.resume().catch(() => {});
   return ctx;
+}
+
+/** Events Safari counts as a person's gesture, so audio may start inside them. */
+const UNLOCK_EVENTS = [
+  "pointerdown",
+  "pointerup",
+  "touchend",
+  "keydown",
+  "click",
+];
+let unlockInstalled = false;
+
+function stopListening() {
+  for (const type of UNLOCK_EVENTS)
+    document.removeEventListener(type, unlock, true);
+  unlockInstalled = false;
+}
+
+function unlock() {
+  if (collageSoundsMuted()) return;
+  try {
+    const ctx = audio();
+    if (!ctx) return;
+    // A silent blip started inside the gesture wakes audio on iOS for good.
+    const blip = ctx.createBufferSource();
+    blip.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+    blip.connect(ctx.destination);
+    blip.start(0);
+    if (ctx.state === "running") stopListening();
+    else
+      ctx.addEventListener?.(
+        "statechange",
+        () => {
+          if (ctx.state === "running") stopListening();
+        },
+        { once: true },
+      );
+  } catch {
+    // Sound is decoration; a refused audio context never stops an edit.
+  }
+}
+
+/**
+ * Lets the next tap, click or key start audio. Chrome remembers any earlier
+ * gesture, but Safari starts audio only from inside one, and a lift sounds on
+ * a pointer move, which is not a gesture. So the context is made and woken on
+ * a gesture and kept running for the sounds that follow. Call it when the
+ * studio opens; it stays listening until audio is running.
+ */
+export function primeCollageSounds(): void {
+  if (unlockInstalled || typeof document === "undefined") return;
+  unlockInstalled = true;
+  for (const type of UNLOCK_EVENTS)
+    document.addEventListener(type, unlock, { capture: true, passive: true });
 }
 
 /** A small random pitch offset, in cents, so repeats are never identical. */
@@ -307,7 +364,52 @@ function shear(ctx: AudioContext, at: number, length: number, pan: number) {
 const lift = (ctx: AudioContext, at: number, pan: number) =>
   noise(ctx, { f: 1800, f2: 5000, q: 0.8, a: 0.04, d: 0.06, v: 0.1, at, pan });
 
-type Voice = (ctx: AudioContext, pan: number) => void;
+/**
+ * Where a restacked piece sat in the pile and where it landed, each from 0
+ * (the bottom) to 1 (the top).
+ */
+export interface StackMove {
+  from: number;
+  to: number;
+}
+
+type Voice = (ctx: AudioContext, pan: number, stack?: StackMove) => void;
+
+/** The bell's note for a height in the pile: low at the bottom, high on top. */
+const stackNote = (height: number) =>
+  note(2 + Math.round(Math.max(0, Math.min(1, height)) * 11));
+
+/**
+ * A restack: paper sliding up or down the pile, then a bell pitched to where
+ * the piece now sits, with a quiet grace note from where it was, so climbing a
+ * pile one step at a time plays a rising scale. Without a pile position it
+ * falls back to a fixed high or low note.
+ */
+function restack(
+  ctx: AudioContext,
+  pan: number,
+  up: boolean,
+  stack: StackMove | undefined,
+) {
+  noise(ctx, {
+    f: up ? 2000 : 3000,
+    f2: up ? 4000 : 1400,
+    a: 0.01,
+    d: 0.05,
+    v: 0.1,
+    pan,
+  });
+  if (!stack) {
+    bell(ctx, note(up ? 10 : 4), 0, 0.07, 0.25, pan);
+    return;
+  }
+  const from = stackNote(stack.from);
+  const to = stackNote(stack.to);
+  if (from !== to) {
+    tone(ctx, { f: from, a: 0.002, d: 0.06, v: 0.035, pan, wet: 0.3 });
+  }
+  bell(ctx, to, from !== to ? 0.045 : 0, 0.07, 0.25, pan);
+}
 
 const VOICES: Record<CollageSound, Voice> = {
   pickup: (ctx, pan) => {
@@ -422,14 +524,8 @@ const VOICES: Record<CollageSound, Voice> = {
     noise(ctx, { f: 1200, f2: 5000, q: 1, a: 0.12, d: 0.03, v: 0.12 });
     [5, 7, 9].forEach((n, i) => bell(ctx, note(n), 0.04 + i * 0.055, 0.09));
   },
-  layerUp: (ctx, pan) => {
-    noise(ctx, { f: 2000, f2: 4000, a: 0.01, d: 0.05, v: 0.1, pan });
-    bell(ctx, note(10), 0, 0.07, 0.25, pan);
-  },
-  layerDown: (ctx, pan) => {
-    noise(ctx, { f: 3000, f2: 1400, a: 0.01, d: 0.05, v: 0.1, pan });
-    bell(ctx, note(4), 0, 0.07, 0.25, pan);
-  },
+  layerUp: (ctx, pan, stack) => restack(ctx, pan, true, stack),
+  layerDown: (ctx, pan, stack) => restack(ctx, pan, false, stack),
   paper: (ctx) => {
     for (let i = 0; i < 5; i++) {
       noise(ctx, {
@@ -446,15 +542,20 @@ const VOICES: Record<CollageSound, Voice> = {
 
 /**
  * Plays one collage action's sound. `pan` runs from -1 (left) to 1 (right),
- * usually where the piece sits in the frame. Call it only from a person's own
- * action: browsers start audio only after a gesture.
+ * usually where the piece sits in the frame. `stack` pitches a restack to the
+ * piece's place in the pile. Call it only from a person's own action: browsers
+ * start audio only after a gesture.
  */
-export function playCollageSound(sound: CollageSound, pan = 0): void {
+export function playCollageSound(
+  sound: CollageSound,
+  pan = 0,
+  stack?: StackMove,
+): void {
   if (collageSoundsMuted()) return;
   try {
     const ctx = audio();
     if (!ctx) return;
-    VOICES[sound](ctx, Math.max(-0.8, Math.min(0.8, pan)));
+    VOICES[sound](ctx, Math.max(-0.8, Math.min(0.8, pan)), stack);
   } catch {
     // Sound is decoration; a refused or broken audio context never stops an edit.
   }

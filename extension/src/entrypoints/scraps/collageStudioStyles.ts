@@ -4,6 +4,8 @@
 import { COLLAGE_PIECE_TOOL_STYLES } from "./collagePieceToolStyles";
 import { COLLAGE_VIEW_STYLES } from "./collageViewStyles";
 import { EXPORT_MENU_STYLES } from "./exportMenuStyles";
+import { SIGNATURE_ROW_STYLES } from "./SignatureRow";
+import { SIGNATURE_STAMP_STYLES } from "./SignatureStamp";
 import {
   COLLAGE_MAT_STYLES,
   COLLAGE_SHEET_STYLES,
@@ -1071,18 +1073,18 @@ ${PIECE_MATERIAL_STYLES}
     background: var(--c-frame);
   }
 
-  .collage-here__thumb > * {
-    max-width: 100%;
-    max-height: 100%;
+  /* The piece as it looks now, shrunk to fit; its own box clips the crop. */
+  .collage-piece-look {
+    position: relative;
+    display: block;
+    overflow: hidden;
   }
 
-  .collage-here__thumb img,
-  .collage-here__thumb svg {
-    width: auto;
-    height: auto;
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
+  .collage-piece-look__piece {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: left top;
   }
 
   .collage-here__what {
@@ -1499,6 +1501,8 @@ ${COLLAGE_MAT_STYLES}
   /* Views sit at the top-right: the back, and where the pieces came from. */
 ${COLLAGE_VIEW_STYLES}
 ${EXPORT_MENU_STYLES}
+${SIGNATURE_ROW_STYLES}
+${SIGNATURE_STAMP_STYLES}
   .collage-setting:focus-visible,
   .collage-keys-button:focus-visible {
     outline: 2px solid var(--c-accent);
