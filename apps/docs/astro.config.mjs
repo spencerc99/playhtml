@@ -137,6 +137,7 @@ export default defineConfig({
           label: "Building blocks",
           items: [
             { label: "Built-in elements", slug: "capabilities" },
+            { label: "Ready-made elements", slug: "ready-made-elements" },
             { label: "Custom elements", slug: "custom-elements" },
             { label: "Data essentials", slug: "data/data-essentials" },
             { label: "Page-level data", slug: "data/page-data" },
