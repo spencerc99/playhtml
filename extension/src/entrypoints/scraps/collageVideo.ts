@@ -1,5 +1,5 @@
 // ABOUTME: Renders a collage with animated pieces frame by frame and encodes it as an H.264 MP4.
-// ABOUTME: Draws each piece with the still bake's routine, swapping in the frame an animation shows at each moment.
+// ABOUTME: Draws each piece with the still bake's routine, on the same mat and caption as the picture exports.
 
 import {
   BufferTarget,
@@ -38,11 +38,20 @@ import {
   type DecodedAnimation,
 } from "./imageAnimation";
 import type { CollageFrame } from "./collageRecord";
+import {
+  matLayout,
+  paintMat,
+  paintPaperEdge,
+  type ExportCaption,
+  type MatLayout,
+} from "./frameExport";
 
 /** Seconds between key frames, so the video seeks and loops cleanly. */
 const KEY_FRAME_INTERVAL_S = 1;
 
 export interface VideoBakeOptions extends Omit<BakeOptions, "scale"> {
+  /** The caption the mat carries, as on the picture exports. */
+  caption: ExportCaption;
   /** Told after each frame is encoded. */
   onProgress?: (done: number, total: number) => void;
 }
@@ -124,16 +133,25 @@ async function animatePiece(prepared: PreparedPiece): Promise<AnimatedPiece | nu
   }
 }
 
-/** The largest size in the list the browser's H.264 encoder will take. */
-async function encodableSize(frame: CollageFrame): Promise<VideoSize> {
-  for (const size of videoSizeCandidates(frame)) {
+const even = (value: number) => Math.max(2, Math.round(value / 2) * 2);
+
+/**
+ * The largest paper size in the list whose matted video the browser's H.264
+ * encoder will take, and the mat around it, its sides rounded to even pixels.
+ */
+async function encodableSize(
+  frame: CollageFrame,
+): Promise<{ paper: VideoSize; layout: MatLayout }> {
+  for (const paper of videoSizeCandidates(frame)) {
+    const mat = matLayout(paper.width, paper.height);
+    const layout = { ...mat, width: even(mat.width), height: even(mat.height) };
     const accepted = await canEncodeVideo("avc", {
-      width: size.width,
-      height: size.height,
+      width: layout.width,
+      height: layout.height,
       quality: QUALITY_HIGH,
       frameRate: COLLAGE_VIDEO_FPS,
     });
-    if (accepted) return size;
+    if (accepted) return { paper, layout };
   }
   throw new Error("this browser cannot encode H.264 video at the collage's size");
 }
@@ -173,7 +191,7 @@ export async function bakeCollageVideo(options: VideoBakeOptions): Promise<Blob>
       [...animated.values()].map((piece) => piece.animation.timeline),
     );
     const total = videoFrameCount(durationMs);
-    const size = await encodableSize(frame);
+    const { paper: size, layout } = await encodableSize(frame);
 
     // The paper and grain never change, so they are laid once and copied in.
     const paper = collageCanvas(frame, size.width, size.height);
@@ -183,7 +201,25 @@ export async function bakeCollageVideo(options: VideoBakeOptions): Promise<Blob>
       options.paper,
       options.grain ?? false,
     );
-    const { canvas, context } = collageCanvas(frame, size.width, size.height);
+    const { canvas: face, context } = collageCanvas(
+      frame,
+      size.width,
+      size.height,
+    );
+
+    // The mat and caption never change either; each frame's paper is set in it.
+    const mat = document.createElement("canvas");
+    mat.width = layout.width;
+    mat.height = layout.height;
+    const matContext = mat.getContext("2d");
+    if (!matContext) throw new Error("no 2d context to draw the mat");
+    await paintMat(matContext, layout, options.caption);
+    const canvas = document.createElement("canvas");
+    canvas.width = layout.width;
+    canvas.height = layout.height;
+    const framed = canvas.getContext("2d");
+    if (!framed) throw new Error("no 2d context to draw the video");
+    const win = layout.window;
 
     const target = new BufferTarget();
     const output = new Output({
@@ -207,6 +243,9 @@ export async function bakeCollageVideo(options: VideoBakeOptions): Promise<Blob>
           const image = moving ? await moving.imageAt(timeMs) : entry.still;
           drawPiece(context, entry.piece, entry.source, image);
         }
+        framed.drawImage(mat, 0, 0);
+        framed.drawImage(face, win.x, win.y, win.width, win.height);
+        paintPaperEdge(framed, win, win.width);
         await source.add(timeMs / 1000, 1 / COLLAGE_VIDEO_FPS);
         options.onProgress?.(index + 1, total);
       }

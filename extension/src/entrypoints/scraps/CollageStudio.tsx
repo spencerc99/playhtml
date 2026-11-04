@@ -2546,8 +2546,8 @@ export function CollageStudio({
         frameExport(front, caption),
         frameExport(back, caption),
       ]);
-      saveFile(frontFile, `${name} front.png`, "front · png");
-      saveFile(backFile, `${name} back.png`, "back · png");
+      saveFile(frontFile, `${name} front.jpg`, "front · jpg");
+      saveFile(backFile, `${name} back.jpg`, "back · jpg");
     } catch (error) {
       // An export is asked for out loud, so it fails out loud, naming the
       // pieces that would have left holes in the picture.
@@ -2605,6 +2605,7 @@ export function CollageStudio({
         pieces,
         paper: paper.color,
         grain: paper.grain,
+        caption: exportCaption(),
         onProgress: (done, total) => setVideoProgress(done / total),
       });
       saveFile(video, `${collageExportName(title)}.mp4`);
