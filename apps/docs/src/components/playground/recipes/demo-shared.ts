@@ -319,13 +319,13 @@ function critterFor(pid) {
   return CRITTERS[hash % CRITTERS.length];
 }`;
 
-export const sharedLampSrc = "https://playhtml.fun/lamps/Akari-1N.png";
+export const sharedStampSrc = "https://playhtml.fun/playhtml-logo.png";
 
-export const sharedLampCss = `main { display: grid; gap: 0.75rem; justify-items: center; text-align: center; }
-.lamp { width: 110px; cursor: pointer; transition: filter 0.3s; }
-/* can-toggle adds .clicked while the lamp is on. */
-.lamp.clicked {
-  filter: brightness(1.2) saturate(1.6)
-    drop-shadow(0 0 50px rgba(247, 220, 156, 0.85));
+export const sharedStampCss = `main {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  text-align: center;
 }
+.stamp { width: 120px; cursor: grab; }
 p { margin: 0; max-width: 18rem; font-size: 0.85rem; line-height: 1.5; }`;

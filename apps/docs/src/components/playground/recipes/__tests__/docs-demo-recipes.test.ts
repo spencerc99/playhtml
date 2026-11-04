@@ -10,7 +10,7 @@ import { onlineIndicatorRecipe } from "../online-indicator";
 import { pageStatusRecipe, yourNameRecipe } from "../people-basics";
 import { pageColorRecipe } from "../page-color";
 import { prizeWheelRecipe } from "../prize-wheel";
-import { sharedLampRecipe } from "../shared-lamp";
+import { sharedStampRecipe } from "../shared-stamp";
 
 const recipes = [
   doodleStripRecipe,
@@ -20,7 +20,7 @@ const recipes = [
   pageStatusRecipe,
   customCursorsRecipe,
   pageColorRecipe,
-  sharedLampRecipe,
+  sharedStampRecipe,
   rainEventRecipe,
   liveReactionsRecipe,
 ];
