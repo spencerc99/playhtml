@@ -131,37 +131,10 @@
             }
 
             import("https://unpkg.com/playhtml@latest").then(({ playhtml }) => {
-              // Renders the saved story words as text (never markup).
-              const renderStory = ({ data }) => {
-                if (data.length > 0) {
-                  const lastDate = new Date(data[data.length - 1].ts);
-                  lastUpdatedTime.innerText =
-                    lastDate.toLocaleTimeString() +
-                    " on " +
-                    lastDate.toLocaleDateString();
-                }
-
-                storyContent.replaceChildren(
-                  ...data.flatMap(({ word, color }, index) => {
-                    const wordElement = document.createElement("span");
-                    wordElement.className = "word";
-                    wordElement.style.setProperty(
-                      "--word-color",
-                      getColorVar(color)
-                    );
-                    wordElement.textContent = String(word);
-
-                    return index === 0
-                      ? [wordElement]
-                      : [document.createTextNode("\n"), wordElement];
-                  })
-                );
-              };
-
               playhtml.register("wordInput", {
                 defaultData: [],
-                defaultPresence: null,
-                onMount: ({ setData, getData, setMyPresence }) => {
+                myDefaultAwareness: null,
+                onMount: ({ setData, getData, setMyAwareness }) => {
                   const onSubmit = () => {
                     submitBtn.disabled = true;
                     if (!isValidWord(input.value)) {
@@ -188,7 +161,7 @@
                     };
                     setData([...existingStory, newEntry]);
                     input.value = "";
-                    setMyPresence(null);
+                    setMyAwareness(null);
                     submitBtn.disabled = false;
                   };
 
@@ -200,19 +173,26 @@
                   });
                   input.addEventListener("input", (event) => {
                     if (event.target.value === "") {
-                      setMyPresence(null);
+                      setMyAwareness(null);
                     } else {
-                      setMyPresence(getUserColor());
+                      setMyAwareness(getUserColor());
                     }
                   });
                 },
-                update: ({ data, everyone }) => {
-                  // people here but not typing have their presence set to null
-                  const typingColors = everyone
-                    .filter((person) => !person.isMe && person.presence)
-                    .map((person) => person.presence);
+                updateElementAwareness: ({ awareness, myAwareness }) => {
+                  // people active on the site but not typing will be set to null
+                  const activeUsers = awareness.filter((c) => Boolean(c));
+                  const otherActiveUsers = [...activeUsers];
+                  const myIndex = otherActiveUsers.findIndex(
+                    (c) => c === myAwareness
+                  );
+
+                  // remove first instance of myAwareness to get everyone else and handle duplicates
+                  if (myIndex !== -1) {
+                    otherActiveUsers.splice(myIndex, 1);
+                  }
                   const typingUsers = [];
-                  for (const color of typingColors) {
+                  for (const color of otherActiveUsers) {
                     typingUsers.push(`<div  class="typingIndicator" style="--word-color:${getColorVar(
                       color
                     )}">
@@ -223,8 +203,32 @@
                   }
                   typingIndicators.innerHTML = typingUsers.join("\n");
 
-                  activeUsersCount.innerText = everyone.length;
-                  renderStory({ data });
+                  activeUsersCount.innerText = awareness.length;
+                },
+                updateElement: ({ data }) => {
+                  if (data.length > 0) {
+                    const lastDate = new Date(data[data.length - 1].ts);
+                    lastUpdatedTime.innerText =
+                      lastDate.toLocaleTimeString() +
+                      " on " +
+                      lastDate.toLocaleDateString();
+                  }
+
+                  storyContent.replaceChildren(
+                    ...data.flatMap(({ word, color }, index) => {
+                      const wordElement = document.createElement("span");
+                      wordElement.className = "word";
+                      wordElement.style.setProperty(
+                        "--word-color",
+                        getColorVar(color)
+                      );
+                      wordElement.textContent = String(word);
+
+                      return index === 0
+                        ? [wordElement]
+                        : [document.createTextNode("\n"), wordElement];
+                    })
+                  );
                 },
               });
               playhtml.init({ room: window.location.pathname });
