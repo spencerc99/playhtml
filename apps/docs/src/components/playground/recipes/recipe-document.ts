@@ -10,6 +10,8 @@ type RecipeDocumentOptions = {
   imports?: string;
   /** Extra `playhtml.init` options, such as `events`, as indented source. */
   initOptions?: string;
+  /** Source that runs after `playhtml.init` resolves, such as `createPageData`. */
+  afterInit?: string;
 };
 
 /** The page shell most recipes share: cream paper, centered content. */
@@ -37,6 +39,7 @@ export function recipeDocument({
   script,
   imports = "playhtml",
   initOptions,
+  afterInit,
 }: RecipeDocumentOptions): string {
   const init = initOptions
     ? `{\n      developmentMode: true,\n${initOptions}\n    }`
@@ -59,7 +62,7 @@ ${body}
 
 ${script}
 
-    await playhtml.init(${init});
+    await playhtml.init(${init});${afterInit ? `\n\n${afterInit}` : ""}
   </script>
 </body>
 </html>`;

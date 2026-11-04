@@ -7,8 +7,38 @@ sidebar:
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
+import DemoCodeLink from '@/components/DemoCodeLink.astro';
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import { sharedLampRecipe } from "@/components/playground/recipes/shared-lamp";
 
 Shared elements let you share data between different pages on the same site, and even across different domains. The same state can be rendered with different markup and styles on each page. You define a shared element on a source page, then reference it on a consumer page by its domain and path (the playhtml room it's assigned to).
+
+## Try it
+
+This lamp's source lives on [spencer.place](https://spencer.place). The playhtml homepage and this page each reference it with `data-source="spencer.place#lamp-akari"`. Click it here, and it turns on for everyone on all three sites.
+
+<div id="shared-lamp-demo" className="ph-demo-slot" data-label="DEMO — shared lamp">
+  <RecipeExample
+    recipe={sharedLampRecipe}
+    compact
+    frameHeight="15rem"
+    client:load
+  />
+  <DemoCodeLink href="/docs/examples/shared-lamp/" />
+</div>
+
+Here is the same lamp on two sites side by side. Each site draws it with its own markup and styles; only the on/off state is shared.
+
+{/* TODO(spencer): replace this placeholder with the recording, saved as apps/docs/public/shared-lamp-sites.mp4:
+<video className="ph-shared-lamp-video" src="/docs/shared-lamp-sites.mp4" controls muted loop playsinline>
+  Your browser doesn't support embedded video. <a href="/docs/shared-lamp-sites.mp4">Watch the shared lamp video</a>.
+</video>
+*/}
+<div className="ph-demo-slot" data-label="VIDEO — one lamp, two sites">
+  <p className="ph-demo-slot__placeholder">Video coming soon: the lamp toggling on spencer.place and playhtml.fun at the same time.</p>
+</div>
+
+## Set it up
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
@@ -113,7 +143,7 @@ The prop names map to the HTML attributes: `shared` → `shared`, `dataSource` �
   </TabItem>
 </Tabs>
 
-#### Troubleshooting
+## Troubleshooting
 
 - **Nothing shows up / stays local only**: ensure `data-source` is correct and the capability matches the source element's capability.
 - **Consumer doesn't update the source**: check if the source is `shared="read-only"` or the consumer has `data-source-read-only`.

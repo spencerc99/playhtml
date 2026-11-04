@@ -8,10 +8,14 @@ body { margin: 0; }
 #root { display: grid; min-height: 100vh; padding: 1.5rem; place-items: center; }`;
 
 /** The `App` export that renders `component` inside a PlayProvider. */
-export function appShell(component: string, css: string): string {
+export function appShell(
+  component: string,
+  css: string,
+  initOptions = "{ developmentMode: true }",
+): string {
   return `export default function App() {
   return (
-    <PlayProvider initOptions={{ developmentMode: true }}>
+    <PlayProvider initOptions={${initOptions}}>
       <main>
         <${component} />
       </main>

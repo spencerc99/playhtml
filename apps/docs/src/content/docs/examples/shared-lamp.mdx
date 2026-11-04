@@ -1,0 +1,41 @@
+---
+title: "One lamp, many sites"
+description: "Toggle a lamp that is shared with spencer.place and the playhtml homepage."
+sidebar:
+  hidden: true
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { sharedLampRecipe } from "@/components/playground/recipes/shared-lamp";
+
+This lamp's source lives on [spencer.place](https://spencer.place). The
+[playhtml homepage](https://playhtml.fun) shows the same lamp. Click it here and
+it turns on there too, for everyone.
+
+<RecipeExample recipe={sharedLampRecipe} client:load />
+
+<RecipeCodeTabs recipe={sharedLampRecipe} />
+
+## Point at the source
+
+The source page marks its lamp with `shared`:
+
+```html
+<!-- on spencer.place -->
+<img id="lamp-akari" src="lamp.png" shared can-toggle />
+```
+
+Any other page reads and writes the same state with `data-source` and the same
+capability. Its markup and styles can be different:
+
+```html
+<!-- anywhere else -->
+<img class="lamp" src="lamp.png" data-source="spencer.place#lamp-akari" can-toggle />
+```
+
+`can-toggle` adds the `clicked` class while the lamp is on, so each site styles
+"on" however it likes.
+
+See [Shared elements](/docs/advanced/shared-elements/) for read-only sources and
+the full `data-source` syntax.

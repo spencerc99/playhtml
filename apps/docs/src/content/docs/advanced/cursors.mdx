@@ -6,6 +6,9 @@ sidebar:
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
+import DemoCodeLink from '@/components/DemoCodeLink.astro';
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import { customCursorsRecipe } from "@/components/playground/recipes/custom-cursors";
 
 Turn on cursors and everyone on the page sees each other's pointers move live, labeled with their names and colors.
 
@@ -147,6 +150,42 @@ getCursorStyle: (presence) => {
 }
 ```
 
+### `onCustomCursorRender`
+
+Draw other people's cursors yourself. playhtml calls it once for each person's cursor with their `pid` and an empty element. Fill in the element and return it, or return `null` to keep the default arrow. playhtml still moves the element and adds the name tag.
+
+**Type:** `(pid: string, element: HTMLElement) => HTMLElement | null`
+
+In this demo, everyone else's cursor is an emoji in a ring of their color. Open this page in a second window and move your mouse inside the box in both.
+
+<div id="custom-cursor-demo" className="ph-demo-slot" data-label="DEMO — custom cursors">
+  <RecipeExample
+    recipe={customCursorsRecipe}
+    compact
+    frameHeight="18rem"
+    client:load
+  />
+  <DemoCodeLink href="/docs/examples/custom-cursors/" />
+</div>
+
+```javascript
+cursors: {
+  enabled: true,
+  onCustomCursorRender: (pid, element) => {
+    // Look up who the cursor belongs to for their color.
+    const person = playhtml.people.everyone.find((p) => p.pid === pid);
+    const critter = document.createElement("div");
+    critter.className = "critter";
+    critter.textContent = "🐝";
+    critter.style.borderColor = person?.color ?? "black";
+    element.replaceChildren(critter);
+    return element;
+  },
+}
+```
+
+The element is built once per person, so read anything that changes often (like position) from [`getCursorStyle`](#getcursorstyle) or [`usePeople("cursor")`](#reading-everyones-cursors) instead.
+
 ### Other Options
 
 ```javascript
@@ -184,11 +223,6 @@ cursors: {
   // CSS cursor applied to the page while cursors are active
   cursorStyle: "none",
 
-  // Custom cursor rendering
-  onCustomCursorRender: (pid, element) => {
-    // Return custom element or null for default
-    return null;
-  }
 }
 ```
 

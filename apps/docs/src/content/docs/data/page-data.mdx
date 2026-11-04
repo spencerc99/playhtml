@@ -6,8 +6,28 @@ sidebar:
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
+import DemoCodeLink from '@/components/DemoCodeLink.astro';
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import { pageColorRecipe } from "@/components/playground/recipes/page-color";
 
 Page data is a persistent data channel keyed by a name, with no DOM element required. Good for counters, vote tallies, link trackers, anything page-shaped instead of element-shaped.
+
+## Try it
+
+The background color below is one page data channel named `"page-color"`. The swatches in the top and bottom corners are separate elements, and both write that same channel. No element owns the color; the page does. It's saved, so it's still there when you reload.
+
+<div id="page-data-demo" className="ph-demo-slot" data-label="DEMO — page color">
+  <RecipeExample
+    recipe={pageColorRecipe}
+    compact
+    opaque
+    frameHeight="16rem"
+    client:load
+  />
+  <DemoCodeLink href="/docs/examples/page-color/" />
+</div>
+
+## Create a channel
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
