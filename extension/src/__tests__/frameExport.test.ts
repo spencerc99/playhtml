@@ -7,7 +7,7 @@ import {
 
 describe("exportPaperSize", () => {
   it("shrinks a 2x bake so the whole mat fits the longest side", () => {
-    const paper = exportPaperSize(3000, 2100);
+    const paper = exportPaperSize(4000, 2800);
     const mat = matLayout(paper.width, paper.height);
     expect(Math.max(mat.width, mat.height)).toBeLessThanOrEqual(
       EXPORT_MAX_SIDE + 1,

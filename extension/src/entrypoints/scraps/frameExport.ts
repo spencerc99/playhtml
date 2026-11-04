@@ -122,9 +122,9 @@ export function paintPaperEdge(
 }
 
 /** The longest side an exported picture may have, mat included, in pixels. */
-export const EXPORT_MAX_SIDE = 2400;
+export const EXPORT_MAX_SIDE = 3000;
 /** JPEG quality for exported pictures: high enough that nothing shows. */
-const EXPORT_QUALITY = 0.9;
+const EXPORT_QUALITY = 0.95;
 
 /** The paper's size in an export, shrunk so the whole mat fits `maxSide`. */
 export function exportPaperSize(
