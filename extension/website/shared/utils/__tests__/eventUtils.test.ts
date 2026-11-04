@@ -7,6 +7,7 @@ import {
   deriveSessionColor,
   getColorForEvent,
   getColorForParticipant,
+  parseColorToHsl,
 } from "../eventUtils";
 
 function event(
@@ -53,5 +54,13 @@ describe("getColorForEvent", () => {
     expect(getColorForEvent(source)).toBe(
       getColorForParticipant(source.meta.pid),
     );
+  });
+});
+
+describe("parseColorToHsl", () => {
+  it("reads see-through hex colors by their RGB part", () => {
+    expect(parseColorToHsl("#52b1e080")).toEqual(parseColorToHsl("#52b1e0"));
+    expect(parseColorToHsl("#0f08")).toEqual(parseColorToHsl("#00ff00"));
+    expect(parseColorToHsl("#52b1e0")).not.toBeNull();
   });
 });

@@ -20,7 +20,12 @@ function parseColor(input: string): [number, number, number] | null {
 
   if (s.startsWith("#")) {
     let hex = s.slice(1);
-    if (hex.length === 3) hex = hex.split("").map((c) => c + c).join("");
+    if (hex.length === 3 || hex.length === 4) {
+      hex = hex.split("").map((c) => c + c).join("");
+    }
+    // #rrggbbaa: see-through person colors. Alpha doesn't affect the
+    // background-distance or plate math, so only the RGB part is read.
+    if (hex.length === 8) hex = hex.slice(0, 6);
     if (hex.length !== 6) return null;
     return [
       parseInt(hex.slice(0, 2), 16) / 255,
