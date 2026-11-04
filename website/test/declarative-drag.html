@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>playhtml · declarative dragging</title>
+  </head>
+  <body>
+    <header class="dd-header">
+      <h1>declarative dragging</h1>
+      <p>
+        Each toy lists the states a drag can reach. The engine renders those
+        states, works out where the piece would land in each, and follows your
+        pointer. Others see the drag live; the room saves once, on drop. Open
+        this page in two windows.
+      </p>
+    </header>
+    <main id="dd-examples"></main>
+    <script type="module" src="./declarative-drag/main.ts"></script>
+  </body>
+</html>
