@@ -87,6 +87,8 @@ Everyone on the page right now, including you, in join order. Each read builds a
 
 You, as a `Person`. Assigning `me.name` or `me.color` saves the change and shows it to everyone (and updates your cursor, if cursors are on). `me.presence` is your current page presence; it's read-only, so write with `setMyPresence`.
 
+Names are trimmed and cut to 32 characters, and a blank name clears it. `me.color` takes any CSS color (`"#3b82f6"`, `"rgb(59 130 246 / 50%)"`, `"tomato"`); anything else throws an error and keeps the old color.
+
 ```js
 playhtml.people.me.name = "Ana";
 playhtml.people.me.color = "#3b82f6";
