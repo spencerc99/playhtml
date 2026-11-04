@@ -35,9 +35,9 @@ import {
 /** How far above and below the view thumbnails are kept mounted, in pixels. */
 const OVERSCAN = 400;
 /** Room a full label needs above a slot before it drops below it instead. */
-const LABEL_ROOM = 56;
+const LABEL_ROOM = 24;
 /** The widest a label gets, from the peek label's own max-width. */
-const LABEL_WIDTH = 240;
+const LABEL_WIDTH = 160;
 
 /**
  * Where the drawer sits: beside the collage, at the width it was dragged to,

@@ -31,40 +31,6 @@ const ASSUMED_TAG = { width: 120, height: 16 };
 /** How close two pieces sit on screen before their tints must differ. */
 const NEAR_ON_SCREEN = 48;
 
-function scrapKindName(scrap: ScrapItem): string {
-  switch (scrap.kind) {
-    case "image":
-      return "picture";
-    case "button":
-      return "button";
-    case "svg-icon":
-      return "icon";
-    case "heading":
-      return "heading";
-    case "cursor":
-      return "cursor";
-  }
-}
-
-function seenOn(ts: number): string {
-  return new Date(ts).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-/** Keeps a long page title to a length a slip of paper can carry. */
-function shortened(title: string, limit = 42): string {
-  const trimmed = title.trim();
-  if (trimmed.length <= limit) return trimmed;
-  return `${trimmed.slice(0, limit - 1)}…`;
-}
-
-/**
- * What a label says about a scrap: where it came from, the page's title, what
- * kind of thing it is and when it was first seen.
- */
 /** Who added a scrap, leading its label in their cursor's color. */
 export function OwnerLine({ owner }: { owner: PieceOwner }) {
   return (
@@ -75,6 +41,9 @@ export function OwnerLine({ owner }: { owner: PieceOwner }) {
   );
 }
 
+/**
+ * What a label says about a scrap: the site's icon and where it came from.
+ */
 export function ProvenanceLines({
   scrap,
   owner,
@@ -86,7 +55,6 @@ export function ProvenanceLines({
   // Favicons are stored data like any other URL, so only a plain web address
   // is ever loaded.
   const favicon = scrap.faviconUrl ? webPageHref(scrap.faviconUrl) : null;
-  const title = shortened(scrap.pageTitle ?? "");
   return (
     <>
       {owner && <OwnerLine owner={owner} />}
@@ -100,13 +68,7 @@ export function ProvenanceLines({
             height={10}
           />
         )}
-        {scrap.domain}
-      </span>
-      <span className="collage-peek__more">
-        {title && <span className="collage-peek__line">{title}</span>}
-        <span className="collage-peek__line">
-          {scrapKindName(scrap)} &#183; first seen {seenOn(scrap.ts)}
-        </span>
+        <span className="collage-peek__site">{scrap.domain}</span>
       </span>
     </>
   );
