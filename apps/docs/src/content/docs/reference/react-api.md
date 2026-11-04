@@ -350,7 +350,7 @@ const { cursors } = usePlayContext();
 // cursors.name: string
 ```
 
-See [Cursors](/docs/data/presence/cursors/) for the full cursor configuration surface.
+See [Cursors](/docs/advanced/cursors/) for the full cursor configuration surface.
 
 ### Event API
 

@@ -2,7 +2,7 @@
 title: "Cursors"
 description: "Show everyone's cursors live, and read them to draw your own."
 sidebar:
-  order: 3
+  order: 7
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
@@ -299,47 +299,9 @@ No one has a `cursor` when cursors are disabled. `page` is the page that cursor 
 
 ## Your name and color
 
-Your cursor shows your name and color. Set them on `playhtml.people.me`; the change is saved, shows up for everyone, and works whether or not cursors are on. See [Names and colors](/docs/data/presence/users/).
+Your cursor shows your name and color from `playhtml.people.me`. Set them there; the change is saved and shows up for everyone. See [names and colors](/docs/data/presence/#names-and-colors).
 
-<Tabs syncKey="framework">
-  <TabItem label="Vanilla HTML">
-```js
-playhtml.people.me.color = "#ff0000";
-playhtml.people.me.name = "Ana";
-```
-  </TabItem>
-  <TabItem label="React">
-```tsx
-import { playhtml, usePeople } from "@playhtml/react";
-
-function CursorSettings() {
-  const { me } = usePeople();
-
-  return (
-    <div>
-      <input
-        type="color"
-        value={me.color}
-        onChange={(e) => {
-          playhtml.people.me.color = e.target.value;
-        }}
-      />
-      <input
-        type="text"
-        value={me.name ?? ""}
-        onChange={(e) => {
-          playhtml.people.me.name = e.target.value;
-        }}
-        placeholder="Your name"
-      />
-    </div>
-  );
-}
-```
-
-To change cursor options such as `room` or `shouldRenderCursor` at runtime, use `configureCursors` from `usePlayContext()`.
-  </TabItem>
-</Tabs>
+To change cursor options such as `room` or `shouldRenderCursor` at runtime in React, use `configureCursors` from `usePlayContext()`.
 
 ## Legacy global API (`window.cursors`)
 

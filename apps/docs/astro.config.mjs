@@ -14,6 +14,8 @@ export default defineConfig({
   // Pages removed or merged elsewhere; keep old links working.
   redirects: {
     "/using-react": "/docs/getting-started/",
+    "/data/presence/users": "/docs/data/presence/#names-and-colors",
+    "/data/presence/cursors": "/docs/advanced/cursors/",
   },
   outDir: path.resolve(repoRoot, "site-dist/docs"),
   // Shiki's dual-theme mode. Starlight's Expressive Code integration is
@@ -99,7 +101,7 @@ export default defineConfig({
       //   Examples     → examples index (top-level link, above the path)
       //   Start        → getting-started, concepts
       //   Building blocks → capabilities, custom-elements, data-essentials,
-      //                     page-data, presence/* (nested), events
+      //                     presence (people), page-data, events
       //   Advanced     → autogenerate (advanced/)
       //   Integrations → autogenerate (integrations/)
       //   Reference    → autogenerate (reference/)
@@ -139,15 +141,8 @@ export default defineConfig({
             { label: "Built-in elements", slug: "capabilities" },
             { label: "Custom elements", slug: "custom-elements" },
             { label: "Data essentials", slug: "data/data-essentials" },
+            { label: "People and presence", slug: "data/presence" },
             { label: "Page-level data", slug: "data/page-data" },
-            {
-              label: "People",
-              items: [
-                { label: "People and presence", slug: "data/presence" },
-                { label: "Names and colors", slug: "data/presence/users" },
-                { label: "Cursors", slug: "data/presence/cursors" },
-              ],
-            },
             { label: "Events", slug: "data/events" },
           ],
         },

@@ -7,7 +7,7 @@ sidebar:
 
 Every playhtml element owns a piece of shared data, keyed by the element's `id`. When you change an element, its data updates and syncs to everyone else on the page — the element with the same `id` on their side updates to match. This page covers how to shape that data, write to it correctly, and clean it up when elements go away.
 
-![Two browsers open to the same page. Each interactive element (a lamp with can-toggle, a hat with can-move, a wheel with can-spin, a balloon with can-grow) has its own data object keyed by element id, saved by the playhtml server. A change on one page syncs through the server and the matching element updates on the other page. Above the elements, a "people here" panel shows each person's presence, which is not saved: Ana is marked as you on her page, and Sam shows a typing indicator on both pages.](/docs/how-playhtml-works.png)
+![Two browsers open to the same page. Each interactive element (a lamp with can-toggle, a hat with can-move, a wheel with can-spin, a balloon with can-grow) has its own data object keyed by element id, saved by the playhtml server. A change on one page syncs through the server and the matching element updates on the other page. Above the elements, a "people here" panel shows each person's presence, which is gone when they leave: Ana is marked as you on her page, and Sam shows a typing indicator on both pages.](/docs/how-playhtml-works.png)
 
 ## When to use which primitive
 
@@ -20,7 +20,7 @@ playhtml has a few ways to move state between readers. Pick by **lifetime** firs
 | "Who is here right now?" / "How many readers?" | [People](/docs/data/presence/) (`playhtml.people.everyone`) | No | Per person |
 | "Who's typing?" / a live status for the whole page | [Page presence](/docs/data/presence/#page-presence) (`playhtml.people.setMyPresence`) | No | Per person |
 | "Who's hovering this card?" / state about one element | [Element presence](/docs/data/presence/#element-presence) (`defaultPresence`, `setMyPresence`) | No | Per person, one element |
-| "Where is everyone's cursor?" | [Cursors](/docs/data/presence/cursors/) (`person.presence.cursor`) | No | Per person |
+| "Where is everyone's cursor?" | [Cursors](/docs/advanced/cursors/) (`person.presence.cursor`) | No | Per person |
 | Confetti burst, chime, notification | [Events](/docs/data/events/) (`dispatchPlayEvent`) | No (fires once) | Broadcast |
 | "How many people reacted to this post?" | Element data (a `count` field) | Yes | One element |
 

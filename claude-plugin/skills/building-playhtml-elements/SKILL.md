@@ -184,7 +184,7 @@ playhtml.people.everyone.length; // people here (window.cursors still works but 
 playhtml.people.onChange("cursor", (everyone) => { /* person.presence.cursor */ });
 ```
 
-See https://playhtml.fun/docs/data/presence/cursors/ for full API.
+See https://playhtml.fun/docs/advanced/cursors/ for full API.
 
 ## Common Mistakes
 

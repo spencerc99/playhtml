@@ -21,17 +21,93 @@ import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicat
 }
 ```
 
-**Presence** is per-person state that only exists while someone is here: "Ana is typing", "Sam is hovering the lamp", "Jo's cursor is here". Everyone can see it, only that person can change it, and when they leave it's gone. Someone who arrives later never sees it. A person's name and color, on the other hand, are saved and follow them from visit to visit (see [names and colors](/docs/data/presence/users/)).
+**Presence** is per-person state that only exists while someone is here: "Ana is typing", "Sam is hovering the lamp", "Jo's cursor is here". Everyone can see it, only that person can change it, and when they leave it's gone. Someone who arrives later never sees it. A person's name and color, on the other hand, are saved and follow them from visit to visit (see [names and colors](#names-and-colors)).
 
 Presence lives in three places, and they all use the same names (`everyone`, `me`, `setMyPresence`):
 
-- **[On the page](#page-presence):** `playhtml.people`. One presence object per person, shared by everything on the page. [Cursors](/docs/data/presence/cursors/) live here too, at `person.presence.cursor`.
+- **[On the page](#page-presence):** `playhtml.people`. One presence object per person, shared by everything on the page. [Cursors](#cursors) live here too, at `person.presence.cursor`.
 - **[On an element](#element-presence):** inside an element, `everyone` is the people using it, each with their presence on that element.
 - **[In a room](#presence-rooms):** `playhtml.createPresenceRoom(name).people`, for presence shared across pages.
 
 When you want something to stay after a refresh, use [saved data](/docs/data/data-essentials/). For one-off moments that don't change any state (a burst of confetti), use [events](/docs/data/events/).
 
 A tab left in the background counts as leaving after a couple of minutes: its presence drops out of everyone else's view, and comes back as soon as the tab is visible again. A cursor that stops moving fades out after about 30 seconds.
+
+## Names and colors
+
+Each person's `pid`, `name`, and `color` are saved: they follow a person from visit to visit, and they work whether or not cursors are enabled.
+
+- `pid` is a stable id for this person in this browser. Use it as a React `key` or to match someone across features.
+- `name` is whatever they've set, or `undefined`.
+- `color` is always set. playhtml picks one the first time someone visits.
+
+`people.me` is you. Setting `me.name` or `me.color` saves the change and shows it to everyone (and updates your cursor, if cursors are on).
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```html
+<input id="my-name" placeholder="your name" />
+<input id="my-color" type="color" />
+<ul id="roster"></ul>
+
+<script type="module">
+  import { playhtml } from "https://unpkg.com/playhtml@latest";
+
+  await playhtml.init();
+  const nameInput = document.getElementById("my-name");
+  const colorInput = document.getElementById("my-color");
+  nameInput.value = playhtml.people.me.name ?? "";
+  colorInput.value = playhtml.people.me.color;
+  nameInput.addEventListener("change", () => (playhtml.people.me.name = nameInput.value));
+  colorInput.addEventListener("input", () => (playhtml.people.me.color = colorInput.value));
+
+  // Calls back now, then when someone joins, leaves, or changes their name or color
+  playhtml.people.onChange((everyone) => {
+    document.getElementById("roster").replaceChildren(
+      ...everyone.map((person) => {
+        const item = document.createElement("li");
+        item.textContent = person.name ?? "anonymous";
+        item.style.color = person.color;
+        return item;
+      }),
+    );
+  });
+</script>
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { playhtml, usePeople } from "@playhtml/react";
+
+function Roster() {
+  const { everyone, me } = usePeople();
+
+  return (
+    <>
+      <input
+        value={me.name ?? ""}
+        onChange={(e) => (playhtml.people.me.name = e.target.value)}
+      />
+      <input
+        type="color"
+        value={me.color}
+        onChange={(e) => (playhtml.people.me.color = e.target.value)}
+      />
+      <ul>
+        {everyone.map((person) => (
+          <li key={person.pid} style={{ color: person.color }}>
+            {person.name ?? "anonymous"}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+```
+
+Before playhtml has connected, `usePeople().me` has an empty `pid` and `color`.
+  </TabItem>
+</Tabs>
 
 ## Page presence
 
@@ -93,7 +169,7 @@ playhtml.people.setMyPresence("status", null);      // remove it
 
 Each key is replaced whole: `setMyPresence("status", { icon: "wave" })` replaces your entire `status`. If two separate features on your page both use presence, give their keys distinct names (`chatTyping`, `lobbyReady`) so they don't collide. `cursor` is set by playhtml, so you can't use it as a key.
 
-Presence is for **state changes**, not per-frame streams. Each person's page presence writes are rate limited (about 20 per second), and extra writes are dropped. Pointer position is already shared for you by [cursors](/docs/data/presence/cursors/). For scroll position or similar, throttle your writes.
+Presence is for **state changes**, not per-frame streams. Each person's page presence writes are rate limited (about 20 per second), and extra writes are dropped. Pointer position is already shared for you by [cursors](#cursors). For scroll position or similar, throttle your writes.
 
 ### Watching only what you need
 
@@ -208,6 +284,21 @@ function Lobby() {
   </TabItem>
 </Tabs>
 
+## Cursors
+
+Turn on cursors with `playhtml.init({ cursors: { enabled: true } })` and everyone sees each other's pointers, in their colors and with their names. Each person's cursor is page presence that playhtml fills in for you, at `person.presence.cursor` (`{ x, y, pointer, zone, page }`, or missing when their pointer isn't on the page).
+
+```js
+playhtml.people.onChange("cursor", (everyone) => {
+  for (const person of everyone) {
+    const { cursor } = person.presence;
+    if (cursor) drawDot(cursor.x, cursor.y, person.color);
+  }
+});
+```
+
+Cursor moves are skipped by `onChange` unless you pass `"cursor"`, since they happen many times a second. In React, `usePeople("cursor")` does the same. Rooms, cursor styles, chat, proximity, and anchoring cursors to a zoomable canvas are covered in [Cursors](/docs/advanced/cursors/).
+
 ## Try it live
 
 <div id="online-indicator-demo" className="ph-demo-slot" data-label="DEMO — online indicator">
@@ -221,7 +312,7 @@ Each dot is one reader; the yellow-glowing dot is **you**. Pick a color and watc
 
 ## Migrating from earlier versions
 
-Earlier versions split this across `playhtml.users`, a channel-based `playhtml.presence`, and element `live` values. They all still work, but new code should use the names above.
+Earlier versions split this across `playhtml.users`, a channel-based `playhtml.presence`, and element `live` values. They all still work, but new code should use the names above. `playhtml.users.getAll()` returns the same people as `people.everyone`, without `presence`. `window.cursors.color` and `window.cursors.name` also still work as aliases for `people.me.color` and `people.me.name` (see [the legacy cursor API](/docs/advanced/cursors/#legacy-global-api-windowcursors)).
 
 | Before | Now |
 | --- | --- |

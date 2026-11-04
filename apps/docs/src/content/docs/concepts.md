@@ -34,7 +34,7 @@ Presence comes in two places, and both use the same names:
 - **On the page:** `playhtml.people.setMyPresence("status", "typing")`, read from each person's `presence.status`. Cursors are page presence that playhtml fills in for you, at `person.presence.cursor`.
 - **On an element:** inside an element, `everyone`, `me`, and `setMyPresence` describe the people using that element and their presence on it. "Who's hovering this card" is element presence.
 
-See [people and presence](/docs/data/presence/) and [cursors](/docs/data/presence/cursors/).
+See [people and presence](/docs/data/presence/) and [cursors](/docs/advanced/cursors/).
 
 ## Events: moments
 

@@ -445,7 +445,7 @@ The earlier channel-based presence object. It keeps working, but use [`people`](
 
 **Type:** `CursorClientAwareness | null`
 
-Low-level cursor client, or `null` if cursors are disabled. Most config belongs in `init({ cursors: … })`, and cursor positions are easier to read from each person's `presence.cursor` in [`people`](#people). See [Cursors](/docs/data/presence/cursors/).
+Low-level cursor client, or `null` if cursors are disabled. Most config belongs in `init({ cursors: … })`, and cursor positions are easier to read from each person's `presence.cursor` in [`people`](#people). See [Cursors](/docs/advanced/cursors/).
 
 ---
 

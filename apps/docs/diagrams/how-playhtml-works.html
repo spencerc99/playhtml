@@ -109,18 +109,33 @@
   }
   /* people here: presence, per person, not saved */
   .people {
-    border: 1.5px dashed #d9b9a3;
-    background: #fffaf6;
+    border: 2px dashed #c4724e;
+    background: #fbede4;
     border-radius: 10px;
     padding: 10px 14px 12px;
-    margin-bottom: 12px;
+    margin-bottom: 16px;
   }
   .people-head {
     display: flex; justify-content: space-between; align-items: baseline;
     font-size: 12px; color: var(--text-muted); margin-bottom: 6px;
   }
   .people-head .label { font-weight: 600; color: var(--text); font-size: 13px; }
-  .people-head .kind { font-family: "SFMono-Regular", ui-monospace, Menlo, monospace; font-size: 11px; color: #c4724e; }
+  .pill {
+    font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 9px; white-space: nowrap;
+  }
+  .pill.live { background: #c4724e; color: #fff; }
+  .pill.saved { background: var(--accent); color: #fff; }
+  .group-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; font-weight: 600; margin-bottom: 8px;
+  }
+  .data-group {
+    border: 2px solid #b5e0cf;
+    background: #edf7f2;
+    border-radius: 10px;
+    padding: 10px 12px 12px;
+  }
+  .data-group .el { border-color: #cfe9de; }
   .person { display: flex; align-items: center; gap: 8px; font-size: 14px; height: 28px; }
   .person .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 10px; }
   .person .name { font-weight: 600; }
@@ -183,10 +198,12 @@
       <div class="page">
         <div class="page-head"><h3>Your page</h3><span class="who">Ana</span></div>
         <div class="people">
-          <div class="people-head"><span class="label">people here</span><span class="kind">presence</span></div>
+          <div class="people-head"><span class="label">people here</span><span class="pill live">presence: gone when they leave</span></div>
           <div class="person"><span class="dot a"></span><span class="name">Ana</span><span class="you a">you</span><span class="status"><span class="pres">{ status: "here" }</span></span></div>
           <div class="person"><span class="dot b"></span><span class="name">Sam</span><span class="status"><span class="typing"><i></i><i></i><i></i></span><span class="pres">{ status: "typing" }</span></span></div>
         </div>
+        <div class="data-group">
+        <div class="group-head"><span>element data</span><span class="pill saved">saved: stays after everyone leaves</span></div>
         <div class="el">
           <div class="el-art"><img src="/noguchi-hanging-lamp.png" alt="" /></div>
           <div class="el-meta">
@@ -218,16 +235,19 @@
             <div class="el-cap">can-grow</div>
             <div class="el-data">{ scale: 1.5 }</div>
           </div>
+        </div>
         </div>
       </div>
 
       <div class="page">
         <div class="page-head"><h3>Someone else's page</h3><span class="who">Sam</span></div>
         <div class="people">
-          <div class="people-head"><span class="label">people here</span><span class="kind">presence</span></div>
+          <div class="people-head"><span class="label">people here</span><span class="pill live">presence: gone when they leave</span></div>
           <div class="person"><span class="dot a"></span><span class="name">Ana</span><span class="status"><span class="pres">{ status: "here" }</span></span></div>
           <div class="person"><span class="dot b"></span><span class="name">Sam</span><span class="you b">you</span><span class="status"><span class="typing"><i></i><i></i><i></i></span><span class="pres">{ status: "typing" }</span></span></div>
         </div>
+        <div class="data-group">
+        <div class="group-head"><span>element data</span><span class="pill saved">saved: stays after everyone leaves</span></div>
         <div class="el">
           <div class="el-art"><img src="/noguchi-hanging-lamp.png" alt="" /></div>
           <div class="el-meta">
@@ -260,13 +280,10 @@
             <div class="el-data">{ scale: 1.5 }</div>
           </div>
         </div>
+        </div>
       </div>
     </div>
 
-    <div class="legend">
-      <span><span class="sw solid"></span>element data: saved, by element id</span>
-      <span><span class="sw dashed"></span>presence: per person, gone when they leave</span>
-    </div>
   </div>
 </body>
 </html>

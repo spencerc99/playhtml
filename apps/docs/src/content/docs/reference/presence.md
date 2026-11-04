@@ -7,7 +7,7 @@ sidebar:
 
 Presence is per-person state: it clears when someone leaves and does not replay for people who arrive later. Use [saved data](/docs/data/data-essentials/) when values should survive a reload.
 
-For usage examples, see [people and presence](/docs/data/presence/). For cursor rendering and `CursorOptions`, see [Cursors](/docs/data/presence/cursors/) and [init options](/docs/reference/init-options/#cursors).
+For usage examples, see [people and presence](/docs/data/presence/). For cursor rendering and `CursorOptions`, see [Cursors](/docs/advanced/cursors/) and [init options](/docs/reference/init-options/#cursors).
 
 ---
 

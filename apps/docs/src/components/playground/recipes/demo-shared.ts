@@ -29,7 +29,7 @@ export const doodleStripCss = `main { display: grid; gap: 0.75rem; justify-items
 const prizePages = `const PAGES = [
   { label: "Toggle a lamp", href: "https://playhtml.fun/docs/capabilities/#can-toggle" },
   { label: "Drag a hat", href: "https://playhtml.fun/docs/capabilities/#can-move" },
-  { label: "See cursors", href: "https://playhtml.fun/docs/data/presence/cursors/" },
+  { label: "See cursors", href: "https://playhtml.fun/docs/advanced/cursors/" },
   { label: "Summon rain", href: "https://playhtml.fun/docs/data/events/" },
   { label: "Shape data", href: "https://playhtml.fun/docs/data/data-essentials/" },
   { label: "Write React", href: "https://playhtml.fun/docs/using-react/" },
