@@ -6,6 +6,7 @@ sidebar:
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { LoadingStateDemo } from '@/components/react/LoadingStateDemo';
 
 When a page opens, playhtml has to fetch the room's shared data before elements can show it. Until then, an element would show its default data (a counter at `0`, a toggle off). playhtml marks elements as loading during that wait so people don't act on a default that's about to change.
 
@@ -33,6 +34,12 @@ Three attributes control it. They work on any playhtml element.
 | `loading-behavior` | `animate`, `hidden`, `none` | `animate` fades the element in and out. `hidden` keeps it invisible until the data is in. `none` turns all loading treatment off, and the element is clickable right away. |
 | `loading-style` | `breathing`, `pulse`, `fade`, `none` | Which look to use. `breathing` is the gentle fade the built-in elements use. `pulse` is a faster blink. `fade` holds the element at low opacity. `none` shows the element as normal. |
 | `loading-class` | any class name | Adds your own class while loading, so you can style the placeholder yourself. |
+
+Try each option below. The button uses playhtml's real loading styles. Switch between loading and loaded, and try clicking it while it loads.
+
+<div class="ph-demo-slot" data-label="DEMO — loading styles">
+  <LoadingStateDemo client:only="react" />
+</div>
 
 Each choice trades something:
 
