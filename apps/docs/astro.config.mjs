@@ -14,6 +14,7 @@ export default defineConfig({
   // Pages removed or merged elsewhere; keep old links working.
   redirects: {
     "/using-react": "/docs/getting-started/",
+    "/data/data-essentials": "/docs/concepts/",
     "/data/presence/users": "/docs/data/presence/#names-and-colors",
     "/data/presence/cursors": "/docs/advanced/cursors/",
   },
@@ -100,7 +101,7 @@ export default defineConfig({
       //
       //   Examples     → examples index (top-level link, above the path)
       //   Start        → getting-started, concepts
-      //   Building blocks → data-essentials, capabilities, custom-elements,
+      //   Building blocks → capabilities, custom-elements,
       //                     presence (people), page-data, events
       //   Advanced     → autogenerate (advanced/)
       //   Integrations → autogenerate (integrations/)
@@ -138,7 +139,6 @@ export default defineConfig({
         {
           label: "Building blocks",
           items: [
-            { label: "Data essentials", slug: "data/data-essentials" },
             { label: "Built-in elements", slug: "capabilities" },
             { label: "Custom elements", slug: "custom-elements" },
             { label: "People and presence", slug: "data/presence" },

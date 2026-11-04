@@ -29,7 +29,7 @@ Presence lives in three places, and they all use the same names (`everyone`, `me
 - **[On an element](#element-presence):** inside an element, `everyone` is the people using it, each with their presence on that element.
 - **[In a room](#presence-rooms):** `playhtml.createPresenceRoom(name).people`, for presence shared across pages.
 
-When you want something to stay after a refresh, use [saved data](/docs/data/data-essentials/). For one-off moments that don't change any state (a burst of confetti), use [events](/docs/data/events/).
+When you want something to stay after a refresh, use [saved data](/docs/concepts/). For one-off moments that don't change any state (a burst of confetti), use [events](/docs/data/events/).
 
 A tab left in the background counts as leaving after a couple of minutes: its presence drops out of everyone else's view, and comes back as soon as the tab is visible again. A cursor that stops moving fades out after about 30 seconds.
 
@@ -333,4 +333,4 @@ Earlier versions split this across `playhtml.users`, a channel-based `playhtml.p
 
 Presence is for the live sense of other people on the page. If you find yourself reaching for `localStorage` or a refresh-survivor, you want data, not presence.
 
-Not sure which one fits? The full decision table, covering element data, page data, presence, cursors, and events, is on [data essentials](/docs/data/data-essentials/#when-to-use-which-primitive). For the full API, see the [people and presence reference](/docs/reference/presence/).
+Not sure which one fits? The full decision table, covering element data, page data, presence, cursors, and events, is on [core concepts](/docs/concepts/#when-to-use-which-primitive). For the full API, see the [people and presence reference](/docs/reference/presence/).

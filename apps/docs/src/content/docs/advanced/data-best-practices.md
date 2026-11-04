@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-The details behind [data essentials](/docs/data/data-essentials/): how `setData` merges, how to shape data so it stays small and conflict-free, the mistakes that cause loops or bloat, and how to clean up data you no longer need.
+The details behind [core concepts](/docs/concepts/): how `setData` merges, how to shape data so it stays small and conflict-free, the mistakes that cause loops or bloat, and how to clean up data you no longer need.
 
 ## Updating data: mutator vs replacement
 
