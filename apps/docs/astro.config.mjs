@@ -144,6 +144,11 @@ export default defineConfig({
             { label: "People and presence", slug: "data/presence" },
             { label: "Page-level data", slug: "data/page-data" },
             { label: "Events", slug: "data/events" },
+            // These two live under advanced/ (URLs unchanged) but are useful
+            // to everyone, so they're listed here and hidden from the
+            // Advanced autogenerate with `sidebar.hidden` in frontmatter.
+            { label: "Shared elements", slug: "advanced/shared-elements" },
+            { label: "Development mode", slug: "advanced/development" },
           ],
         },
         { label: "Advanced", autogenerate: { directory: "advanced" } },
