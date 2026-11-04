@@ -8,6 +8,7 @@ sidebar:
 playhtml shares two things between everyone on a page: **the things on the page** (a lamp that's on, a hat that's been dragged, a vote count) and **the people looking at it** (who's here, what color they are, what they're doing right now). Everyone visiting the same url shares one room, so whatever you change shows up for everyone else too.
 
 ![A page running playhtml with four callouts: element data bound to a specific element, page data read by name anywhere on the page, people with their cursors and what they're doing right now, and one-off events. Element and page data are saved; people's presence and events are live only. Faded pages behind show that everyone on the same url shares one room.](/docs/how-playhtml-works-overview.png)
+
 ## Things on the page: shared data
 
 Shared data is saved. It survives reloads, and someone who opens the page tomorrow sees it.
@@ -21,14 +22,16 @@ Each element's data is stored under its `id`, so the element with the same `id` 
 
 ## People: who's here and what they're doing
 
-`playhtml.people.everyone` is everyone on the page right now, including you. Each person looks like this:
+People is used to reference the actual users on a page and data about them. For example, `playhtml.people.everyone` is everyone on the page right now, including you. Each person looks like this:
 
 ```js
-{ pid, name, color, isMe, presence }
+{
+  (pid, name, color, isMe, presence);
+}
 ```
 
-- **`name` and `color`** are who someone is. They follow a person from visit to visit, and you set your own with `playhtml.people.me.name = "Ana"`.
-- **`presence`** is what someone is doing right now: typing, hovering the lamp, ready to start. Everyone can see it, only that person can set it, and it disappears when they leave.
+- **`name` and `color`** are personal properties that save across visits.
+- **`presence`** contains any properties that are transient and only save while someone is on the page. For example, someone's live status, if they're typing, etc. Everyone can see it, each person can only set their own, and it disappears when they leave.
 
 Presence lives on the page or on one element, and both use the same names:
 
@@ -45,11 +48,11 @@ For presence shared across several pages, use a [presence room](/docs/data/prese
 
 An element can hold three kinds of state, and they differ in who sees them and how long they last:
 
-| | Who sees it | How long it lasts | Write it with | Read it as |
-| --- | --- | --- | --- | --- |
-| **data** | Everyone | Saved, survives reloads | `setData` | `data` |
-| **presence** | Everyone | Until you leave | `setMyPresence` | `me.presence`, and each person's `presence` in `everyone` |
-| **localData** | Only you, in this tab | Until you reload | `setLocalData` | `localData` |
+|               | Who sees it           | How long it lasts       | Write it with   | Read it as                                                |
+| ------------- | --------------------- | ----------------------- | --------------- | --------------------------------------------------------- |
+| **data**      | Everyone              | Saved, survives reloads | `setData`       | `data`                                                    |
+| **presence**  | Everyone              | Until you leave         | `setMyPresence` | `me.presence`, and each person's `presence` in `everyone` |
+| **localData** | Only you, in this tab | Until you reload        | `setLocalData`  | `localData`                                               |
 
 A lamp's on/off is data. Who's hovering it is presence. Whether your settings panel is open is local data.
 
@@ -57,21 +60,16 @@ A lamp's on/off is data. Who's hovering it is presence. Whether your settings pa
 
 Pick by **lifetime** first ("should this survive a reload?"), then by **scope** ("does this belong to one element, the whole page, or one person?").
 
-| Want | Use | Survives reload | Scope |
-|---|---|---|---|
-| A toggle, position, count, or any state tied to one element | [Element data](/docs/custom-elements/) (`defaultData` / `can-play`) | Yes | One element |
-| A page-wide counter, prompt, or vote not tied to a DOM node | [Page data](/docs/data/page-data/) (`playhtml.createPageData`) | Yes | One page |
-| "Who is here right now?" / "How many readers?" | [People](/docs/data/presence/) (`playhtml.people.everyone`) | No | Per person |
-| "Who's typing?" / a live status for the whole page | [Page presence](/docs/data/presence/#page-presence) (`playhtml.people.setMyPresence`) | No | Per person |
-| "Who's hovering this card?" / state about one element | [Element presence](/docs/data/presence/#element-presence) (`defaultPresence`, `setMyPresence`) | No | Per person, one element |
-| "Where is everyone's cursor?" | [Cursors](/docs/advanced/cursors/) (`person.presence.cursor`) | No | Per person |
-| Confetti burst, chime, notification | [Events](/docs/data/events/) (`dispatchPlayEvent`) | No (fires once) | Broadcast |
-| "How many people reacted to this post?" | Element data (a `count` field) | Yes | One element |
-
-Two rules that catch most mistakes:
-
-- **If a new reader opening the page should see the state, it's persistent data.** If they shouldn't, it's presence or an event.
-- **If you're reaching for `localStorage` to make state survive a reload, you wanted persistent data.** Use `localStorage` for _per-user_ preferences that should _not_ sync; see [per-user preferences](/docs/advanced/data-best-practices/#8-use-localstorage-for-per-user-preferences).
+| Want                                                        | Use                                                                                            | Survives reload | Scope                   |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | --------------- | ----------------------- |
+| A toggle, position, count, or any state tied to one element | [Element data](/docs/custom-elements/) (`defaultData` / `can-play`)                            | Yes             | One element             |
+| A page-wide counter, prompt, or vote not tied to a DOM node | [Page data](/docs/data/page-data/) (`playhtml.createPageData`)                                 | Yes             | One page                |
+| "Who is here right now?" / "How many readers?"              | [People](/docs/data/presence/) (`playhtml.people.everyone`)                                    | No              | Per person              |
+| "Who's typing?" / a live status for the whole page          | [Page presence](/docs/data/presence/#page-presence) (`playhtml.people.setMyPresence`)          | No              | Per person              |
+| "Who's hovering this card?" / state about one element       | [Element presence](/docs/data/presence/#element-presence) (`defaultPresence`, `setMyPresence`) | No              | Per person, one element |
+| "Where is everyone's cursor?"                               | [Cursors](/docs/advanced/cursors/) (`person.presence.cursor`)                                  | No              | Per person              |
+| Confetti burst, chime, notification                         | [Events](/docs/data/events/) (`dispatchPlayEvent`)                                             | No (fires once) | Broadcast               |
+| "How many people reacted to this post?"                     | Element data (a `count` field)                                                                 | Yes             | One element             |
 
 ## Writing and shaping data
 

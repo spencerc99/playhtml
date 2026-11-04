@@ -5,11 +5,11 @@ sidebar:
   order: 2
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
-import DemoCodeLink from '@/components/DemoCodeLink.astro';
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+import DemoCodeLink from "@/components/DemoCodeLink.astro";
 import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
 
-People is **who's here right now, and what they're doing**. Everyone on the page, you included, is a person with a name and a color, which are saved and follow them from visit to visit. Each person also has **presence**: small bits of live state like "typing", "hovering the lamp", or where their cursor is. Everyone can see a person's presence, but only that person can change it, and it's gone when they leave. Use people for "3 people here" counts, rosters, typing indicators, cursors, and showing who's using an element right now.
+People refers to **who's here right now, and what they're doing**. Each person has **presence**: small bits of live state that can be seen by everyone, can only be changed by each individual, and goes away when they leave. Use people for "3 people here" counts, rosters, typing indicators, cursors, and showing who's using an element right now.
 
 `playhtml.people` is everyone on the page right now. Each person looks like this:
 
@@ -47,6 +47,8 @@ Each person's `pid`, `name`, and `color` are saved, and they work whether or not
 
 `people.me` is you. Setting `me.name` or `me.color` saves the change and shows it to everyone (and updates your cursor, if cursors are on).
 
+These are the only "profile" properties that we have for each person currently that saves across visits. In the future, we might allow for customizing these (message us if you have suggestions or things you'd use it for!).
+
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```html
@@ -77,7 +79,8 @@ Each person's `pid`, `name`, and `color` are saved, and they work whether or not
     );
   });
 </script>
-```
+
+````
   </TabItem>
   <TabItem label="React">
 ```tsx
@@ -107,9 +110,10 @@ function Roster() {
     </>
   );
 }
-```
+````
 
 Before playhtml has connected, `usePeople().me` has an empty `pid` and `color`.
+
   </TabItem>
 </Tabs>
 
@@ -125,9 +129,9 @@ playhtml.people.setMyPresence("status", { text: "focused", icon: "target" });
 
 // Read everyone (including you; isMe marks you)
 for (const person of playhtml.people.everyone) {
-  person.name;             // "Ana"
-  person.color;            // "#3b82f6"
-  person.presence.status;  // { text, icon } or undefined
+person.name; // "Ana"
+person.color; // "#3b82f6"
+person.presence.status; // { text, icon } or undefined
 }
 
 // Your own
@@ -135,9 +139,10 @@ playhtml.people.me.presence.status;
 
 // Fires now, then whenever someone joins, leaves, or changes their status
 const unsubscribe = playhtml.people.onChange("status", (everyone) => {
-  renderStatusList(everyone);
+renderStatusList(everyone);
 });
-```
+
+````
   </TabItem>
   <TabItem label="React">
 ```tsx
@@ -158,17 +163,18 @@ function StatusList() {
     </>
   );
 }
-```
+````
 
 `usePeople()` returns `{ everyone, me, setMyPresence }`. The same object is on `usePlayContext().people`, which re-renders whenever anyone's presence changes.
+
   </TabItem>
 </Tabs>
 
 ### Setting and clearing
 
 ```js
-playhtml.people.setMyPresence("status", "typing");  // set a key
-playhtml.people.setMyPresence("status", null);      // remove it
+playhtml.people.setMyPresence("status", "typing"); // set a key
+playhtml.people.setMyPresence("status", null); // remove it
 ```
 
 Each key is replaced whole: `setMyPresence("status", { icon: "wave" })` replaces your entire `status`. If two separate features on your page both use presence, give their keys distinct names (`chatTyping`, `lobbyReady`) so they don't collide. `cursor` is set by playhtml, so you can't use it as a key.
@@ -180,10 +186,10 @@ Presence is for **state changes**, not per-frame streams. Each person's page pre
 `onChange` fires when someone joins or leaves, changes their name or color, or changes their presence. Pass a key or a list of keys first to ignore changes to other keys:
 
 ```js
-playhtml.people.onChange(callback);                      // any presence change
-playhtml.people.onChange("status", callback);            // only status
-playhtml.people.onChange(["status", "mood"], callback);  // either one
-playhtml.people.onChange("cursor", callback);            // cursor moves too
+playhtml.people.onChange(callback); // any presence change
+playhtml.people.onChange("status", callback); // only status
+playhtml.people.onChange(["status", "mood"], callback); // either one
+playhtml.people.onChange("cursor", callback); // cursor moves too
 ```
 
 Cursor moves are skipped unless you pass `"cursor"`, since they happen many times a second. `usePeople(keys)` takes the same keys.
@@ -213,7 +219,8 @@ Use element presence when the signal belongs to one element, like "who has joine
 
   playhtml.init();
 </script>
-```
+
+````
   </TabItem>
   <TabItem label="React">
 ```tsx
@@ -227,7 +234,8 @@ Use element presence when the signal belongs to one element, like "who has joine
     );
   }}
 </CanPlayElement>
-```
+````
+
   </TabItem>
 </Tabs>
 
@@ -241,11 +249,13 @@ You can also read and watch an element's presence from elsewhere on the page thr
 
 ```js
 const lamp = playhtml.getHandle("lamp");
-lamp.everyone;                 // people with the lamp on screen
-lamp.me.presence;              // your presence on the lamp
+lamp.everyone; // people with the lamp on screen
+lamp.me.presence; // your presence on the lamp
 lamp.setMyPresence({ hovering: true });
 lamp.onEveryoneChange("hovering", (everyone) => {
-  badge.textContent = everyone.filter((person) => person.presence.hovering).length;
+  badge.textContent = everyone.filter(
+    (person) => person.presence.hovering,
+  ).length;
 });
 ```
 
@@ -263,7 +273,8 @@ const unsubscribe = room.people.onChange("status", renderLobby);
 
 // When you're done (e.g. the person leaves the lobby), tear it down:
 room.destroy();
-```
+
+````
 
 Always call `destroy()` when the room is no longer needed; it closes the connection and clears your presence for everyone else.
   </TabItem>
@@ -280,9 +291,10 @@ function Lobby() {
     </button>
   );
 }
-```
+````
 
 [`usePresenceRoom(name)`](/docs/reference/react-api/#usepresenceroom) joins the room and tears it down for you on unmount. To re-render when the room changes, subscribe with `room.people.onChange` in an effect.
+
   </TabItem>
 </Tabs>
 
@@ -303,7 +315,11 @@ Cursor moves are skipped by `onChange` unless you pass `"cursor"`, since they ha
 
 ## Try it live
 
-<div id="online-indicator-demo" className="ph-demo-slot" data-label="DEMO — online indicator">
+<div
+  id="online-indicator-demo"
+  className="ph-demo-slot"
+  data-label="DEMO — online indicator"
+>
   <OnlineIndicatorDemo client:only="react" />
   <DemoCodeLink href="/docs/examples/online-indicator/" />
 </div>
@@ -316,20 +332,20 @@ Each dot is one reader; the yellow-glowing dot is **you**. Pick a color and watc
 
 Earlier versions split this across `playhtml.users`, a channel-based `playhtml.presence`, and element `live` values. They all still work, but new code should use the names above. `playhtml.users.getAll()` returns the same people as `people.everyone`, without `presence`. `window.cursors.color` and `window.cursors.name` also still work as aliases for `people.me.color` and `people.me.name` (see [the legacy cursor API](/docs/advanced/cursors/#legacy-global-api-windowcursors)).
 
-| Before | Now |
-| --- | --- |
-| `playhtml.users.getAll()` | `playhtml.people.everyone` |
-| `playhtml.users.me.name = "Ana"` | `playhtml.people.me.name = "Ana"` |
-| `playhtml.users.onChange(cb)` | `playhtml.people.onChange(cb)` |
-| `playhtml.presence.setMyPresence("status", v)` | `playhtml.people.setMyPresence("status", v)` |
-| `playhtml.presence.getPresences()` | `playhtml.people.everyone` (read `person.presence`) |
-| `playhtml.presence.onPresenceChange("status", cb)` | `playhtml.people.onChange("status", cb)` |
-| `playhtml.presence.onPresenceChange("cursor", cb)` | `playhtml.people.onChange("cursor", cb)` |
-| `room.presence.setMyPresence(...)` | `room.people.setMyPresence(...)` |
+| Before                                                       | Now                                                    |
+| ------------------------------------------------------------ | ------------------------------------------------------ |
+| `playhtml.users.getAll()`                                    | `playhtml.people.everyone`                             |
+| `playhtml.users.me.name = "Ana"`                             | `playhtml.people.me.name = "Ana"`                      |
+| `playhtml.users.onChange(cb)`                                | `playhtml.people.onChange(cb)`                         |
+| `playhtml.presence.setMyPresence("status", v)`               | `playhtml.people.setMyPresence("status", v)`           |
+| `playhtml.presence.getPresences()`                           | `playhtml.people.everyone` (read `person.presence`)    |
+| `playhtml.presence.onPresenceChange("status", cb)`           | `playhtml.people.onChange("status", cb)`               |
+| `playhtml.presence.onPresenceChange("cursor", cb)`           | `playhtml.people.onChange("cursor", cb)`               |
+| `room.presence.setMyPresence(...)`                           | `room.people.setMyPresence(...)`                       |
 | `useUsers()`, `usePresence("status")`, `usePlayerIdentity()` | `usePeople()`, `usePeople("status")`, `usePeople().me` |
-| element `live: {...}` / `myDefaultAwareness` | `defaultPresence: {...}` |
-| element `live`, `users: [{ user, live }]` | `me.presence`, `everyone` (each person's `presence`) |
-| element `setLive(v)` / `setMyAwareness(v)` | `setMyPresence(v)` |
+| element `live: {...}` / `myDefaultAwareness`                 | `defaultPresence: {...}`                               |
+| element `live`, `users: [{ user, live }]`                    | `me.presence`, `everyone` (each person's `presence`)   |
+| element `setLive(v)` / `setMyAwareness(v)`                   | `setMyPresence(v)`                                     |
 
 ## When to use data instead
 
