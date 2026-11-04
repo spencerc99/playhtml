@@ -72,8 +72,6 @@ import { CanMirrorDataQueue } from "./canMirrorDataQueue";
 import { resolveRoomHost } from "./roomHost";
 import {
   INITIAL_LIFECYCLE,
-  canNavigate,
-  hasInitStarted,
   hasRoomSynced,
   isConfigLocked,
   isLifecycleLoading,
@@ -1409,7 +1407,7 @@ async function resetCurrentRoomFromServer(): Promise<void> {
   }
   teardownMainProvider();
   teardownCursors();
-  transition({ type: "switchRoom", room: __currentRoomId });
+  transition({ type: "connect", room: __currentRoomId });
   trackedElementAwarenessKeys.clear();
   recreateStore();
 
@@ -1480,12 +1478,14 @@ function setupExtensionIdentityListener(): void {
 }
 
 async function runHandleNavigation(): Promise<void> {
-  // Nothing to navigate from before the first setup, after resetPlayHTML, or
-  // when another instance owns the connection.
-  if (!canNavigate(lifecycle)) return;
+  // Navigation only runs once the first setup created the navigation
+  // controller (a delegated instance never creates one). A reset while the
+  // cursor module loaded leaves nothing to navigate.
+  if (lifecycle.phase === "idle") return;
   if (configuredOptions?.cursors?.enabled) {
     await loadCursorModule();
-    if (!canNavigate(lifecycle)) return;
+    // Re-read after the await: a reset may have run meanwhile.
+    if ((lifecycle as Lifecycle).phase === "idle") return;
   }
 
   const nextRoomInput =
@@ -1544,7 +1544,7 @@ async function runHandleNavigation(): Promise<void> {
     teardownElementAwarenessClient();
     teardownPresenceClient();
     disconnectUsersPresenceTransport();
-    transition({ type: "switchRoom", room: newMainRoom });
+    transition({ type: "connect", room: newMainRoom });
     applyElementAwareness(new Map());
     // Re-init the doc for the new room: page AND element data are room-scoped,
     // and the doc is reused across rooms, so a fresh doc resets both to the new
@@ -1626,7 +1626,7 @@ function configurePlayHTML(options: InitOptions = {}): void {
 }
 
 function initPlayHTML(options: InitOptions = {}) {
-  if (hasInitStarted(lifecycle)) {
+  if (lifecycle.phase !== "idle") {
     // Already bootstrapping/running. init() here means "ensure running" — the
     // connection is already in flight. Still funnel options through applyConfig
     // so a conflicting late config warns (and a matching/empty one is a quiet
@@ -1650,12 +1650,10 @@ function initPlayHTML(options: InitOptions = {}) {
     const error = new Error(
       "playhtml is already set up by an incompatible instance. Make sure @playhtml/react and playhtml use matching versions.",
     );
-    transition({ type: "initCalled" });
     transition({ type: "fail", error });
     return readyPromise;
   }
 
-  transition({ type: "initCalled" });
   // Capture config (honoring any earlier configure() call — applyConfig is a
   // no-op if config is already locked) before bootstrapping.
   applyConfig(options);

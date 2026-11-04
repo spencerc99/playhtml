@@ -4,7 +4,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   INITIAL_LIFECYCLE,
-  canNavigate,
   hasRoomSynced,
   isConfigLocked,
   isLifecycleLoading,
@@ -20,74 +19,67 @@ function run(events: LifecycleEvent[]): Lifecycle {
 
 describe("lifecycle transitions", () => {
   it("walks the first connection from idle to ready", () => {
-    const starting = run([{ type: "initCalled" }]);
-    expect(starting.phase).toBe("starting");
-    expect(isConfigLocked(starting)).toBe(false);
+    expect(isConfigLocked(INITIAL_LIFECYCLE)).toBe(false);
 
-    const connecting = nextLifecycle(starting, { type: "connect", room: "a" });
-    expect(isConfigLocked(connecting)).toBe(true);
-    expect(hasRoomSynced(connecting)).toBe(false);
-    expect(canNavigate(connecting)).toBe(false);
+    const loading = run([{ type: "connect", room: "a" }]);
+    expect(isConfigLocked(loading)).toBe(true);
+    expect(hasRoomSynced(loading)).toBe(false);
 
-    const synced = nextLifecycle(connecting, { type: "providerSynced" });
+    const synced = nextLifecycle(loading, { type: "providerSynced" });
     expect(hasRoomSynced(synced)).toBe(true);
     expect(isLifecycleLoading(synced)).toBe(true);
 
     const ready = nextLifecycle(synced, { type: "elementsReady" });
     expect(ready).toEqual({ phase: "ready", room: "a" });
     expect(isLifecycleLoading(ready)).toBe(false);
-    expect(canNavigate(ready)).toBe(true);
   });
 
-  it("is loading and unsynced again while switching rooms", () => {
+  it("is loading and unsynced again after reconnecting to a new room", () => {
     const switching = run([
-      { type: "initCalled" },
       { type: "connect", room: "a" },
       { type: "providerSynced" },
       { type: "elementsReady" },
-      { type: "switchRoom", room: "b" },
+      { type: "connect", room: "b" },
     ]);
-    expect(switching).toEqual({ phase: "switching", room: "b", synced: false });
+    expect(switching).toEqual({ phase: "loading", room: "b", synced: false });
     expect(isLifecycleLoading(switching)).toBe(true);
     expect(hasRoomSynced(switching)).toBe(false);
-    expect(canNavigate(switching)).toBe(true);
     expect(isConfigLocked(switching)).toBe(true);
+  });
+
+  it("restarts the sync when a reset reconnects mid-load", () => {
+    const reset = run([
+      { type: "connect", room: "a" },
+      { type: "providerSynced" },
+      { type: "connect", room: "a" },
+    ]);
+    expect(reset).toEqual({ phase: "loading", room: "a", synced: false });
   });
 
   it("does not mark ready before the room has synced", () => {
     const early = run([
-      { type: "initCalled" },
       { type: "connect", room: "a" },
       { type: "elementsReady" },
     ]);
-    expect(early.phase).toBe("connecting");
-  });
-
-  it("restarts the first sync when a reset lands mid-connect", () => {
-    const reset = run([
-      { type: "initCalled" },
-      { type: "connect", room: "a" },
-      { type: "providerSynced" },
-      { type: "switchRoom", room: "a" },
-    ]);
-    expect(reset).toEqual({ phase: "connecting", room: "a", synced: false });
-    expect(canNavigate(reset)).toBe(false);
+    expect(early.phase).toBe("loading");
   });
 
   it("ignores events that do not apply to the phase", () => {
-    expect(run([{ type: "switchRoom", room: "b" }])).toBe(INITIAL_LIFECYCLE);
     expect(run([{ type: "providerSynced" }])).toBe(INITIAL_LIFECYCLE);
-    expect(run([{ type: "fail", error: new Error("x") }])).toBe(
-      INITIAL_LIFECYCLE,
+    expect(run([{ type: "elementsReady" }])).toBe(INITIAL_LIFECYCLE);
+    expect(run([{ type: "delegate" }, { type: "connect", room: "a" }])).toEqual(
+      {
+        phase: "delegated",
+        settled: false,
+      },
     );
   });
 
-  it("leaves navigation to the owning instance when delegated", () => {
+  it("mirrors the owning instance when delegated", () => {
     const delegated = run([{ type: "delegate" }]);
     expect(isLifecycleLoading(delegated)).toBe(true);
     const settled = nextLifecycle(delegated, { type: "delegateSettled" });
     expect(isLifecycleLoading(settled)).toBe(false);
-    expect(canNavigate(settled)).toBe(false);
     expect(isConfigLocked(settled)).toBe(false);
   });
 });
