@@ -12,7 +12,8 @@ can be regenerated.
   The "core concepts" overview: one page with what playhtml shares
   (element data, page data, people and their presence, events) called out.
 - `how-playhtml-works.html` → `../public/how-playhtml-works.png`
-  The element-data detail: two pages with the same elements, synced by id.
+  The data detail: two pages with the same elements synced by id, plus each
+  page's "people here" presence panel.
 
 ## Regenerating a PNG
 

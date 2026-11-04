@@ -30,7 +30,7 @@
     background: var(--bg);
   }
   .server {
-    width: 320px;
+    width: 360px;
     margin: 0 auto 8px;
     background: var(--server-bg);
     border: 1px solid var(--server-border);
@@ -107,13 +107,53 @@
     color: var(--text-muted);
     margin-top: 2px;
   }
+  /* people here: presence, per person, not saved */
+  .people {
+    border: 1.5px dashed #d9b9a3;
+    background: #fffaf6;
+    border-radius: 10px;
+    padding: 10px 14px 12px;
+    margin-bottom: 12px;
+  }
+  .people-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 12px; color: var(--text-muted); margin-bottom: 6px;
+  }
+  .people-head .label { font-weight: 600; color: var(--text); font-size: 13px; }
+  .people-head .kind { font-family: "SFMono-Regular", ui-monospace, Menlo, monospace; font-size: 11px; color: #c4724e; }
+  .person { display: flex; align-items: center; gap: 8px; font-size: 14px; height: 28px; }
+  .person .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 10px; }
+  .person .name { font-weight: 600; }
+  .person .you {
+    font-size: 11px; font-weight: 600; color: #fff; border-radius: 999px; padding: 1px 7px;
+  }
+  .person .status { margin-left: auto; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+  .person .pres { font-family: "SFMono-Regular", ui-monospace, Menlo, monospace; font-size: 11px; color: var(--text-muted); }
+  .typing {
+    display: inline-flex; gap: 3px; align-items: center;
+    background: #efe9e0; border-radius: 999px; padding: 5px 8px;
+  }
+  .typing i { width: 5px; height: 5px; border-radius: 50%; background: #8a8279; display: block; }
+  .typing i:nth-child(2) { opacity: .65; }
+  .typing i:nth-child(3) { opacity: .35; }
+  .a { background: #5b8db8; }
+  .b { background: #c4724e; }
+
+  .legend {
+    display: flex; justify-content: center; gap: 28px; margin-top: 18px;
+    font-size: 12px; color: var(--text-muted);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .legend .sw { width: 22px; height: 14px; border-radius: 4px; }
+  .legend .sw.solid { background: var(--surface); border: 1px solid var(--border); }
+  .legend .sw.dashed { background: #fffaf6; border: 1.5px dashed #d9b9a3; }
 </style>
 </head>
 <body>
   <div id="capture">
     <div class="server">
       <h2>playhtml server</h2>
-      <p>stores + syncs by element id</p>
+      <p>saves data by element id, relays presence</p>
     </div>
     <script>
       var base = location.href.replace(/[^/]*$/, "");
@@ -141,7 +181,12 @@
 
     <div class="pages">
       <div class="page">
-        <div class="page-head"><h3>Your page</h3><span class="who">user A</span></div>
+        <div class="page-head"><h3>Your page</h3><span class="who">Ana</span></div>
+        <div class="people">
+          <div class="people-head"><span class="label">people here</span><span class="kind">presence</span></div>
+          <div class="person"><span class="dot a"></span><span class="name">Ana</span><span class="you a">you</span><span class="status"><span class="pres">{ status: "here" }</span></span></div>
+          <div class="person"><span class="dot b"></span><span class="name">Sam</span><span class="status"><span class="typing"><i></i><i></i><i></i></span><span class="pres">{ status: "typing" }</span></span></div>
+        </div>
         <div class="el">
           <div class="el-art"><img src="/noguchi-hanging-lamp.png" alt="" /></div>
           <div class="el-meta">
@@ -177,7 +222,12 @@
       </div>
 
       <div class="page">
-        <div class="page-head"><h3>Someone else's page</h3><span class="who">user B</span></div>
+        <div class="page-head"><h3>Someone else's page</h3><span class="who">Sam</span></div>
+        <div class="people">
+          <div class="people-head"><span class="label">people here</span><span class="kind">presence</span></div>
+          <div class="person"><span class="dot a"></span><span class="name">Ana</span><span class="status"><span class="pres">{ status: "here" }</span></span></div>
+          <div class="person"><span class="dot b"></span><span class="name">Sam</span><span class="you b">you</span><span class="status"><span class="typing"><i></i><i></i><i></i></span><span class="pres">{ status: "typing" }</span></span></div>
+        </div>
         <div class="el">
           <div class="el-art"><img src="/noguchi-hanging-lamp.png" alt="" /></div>
           <div class="el-meta">
@@ -211,6 +261,11 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="legend">
+      <span><span class="sw solid"></span>element data: saved, by element id</span>
+      <span><span class="sw dashed"></span>presence: per person, gone when they leave</span>
     </div>
   </div>
 </body>
