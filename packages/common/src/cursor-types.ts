@@ -90,31 +90,49 @@ export function playerIdentityToUser(
 }
 
 /**
- * Returns `color` as a lowercase `#rrggbb` hex string when it's a hex, `hsl()`,
- * or `rgb()` color, so it works anywhere, including `<input type="color">`,
- * which only accepts hex. Alpha is dropped. Other CSS colors (like `"red"`) are
- * returned unchanged.
+ * Returns `color` as a lowercase hex string when it's a hex, `hsl()`, or
+ * `rgb()` color: `#rrggbb` for opaque colors, so they work in
+ * `<input type="color">` (which only accepts that form), and `#rrggbbaa` when
+ * the color is see-through, so alpha is kept. Other CSS colors (like `"red"`)
+ * are returned unchanged.
  */
 export function toHexColor(color: string): string {
   const value = color.trim().toLowerCase();
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(value);
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(value);
   if (hex) {
-    const digits = hex[1];
-    return digits.length === 3
-      ? `#${digits[0]}${digits[0]}${digits[1]}${digits[1]}${digits[2]}${digits[2]}`
-      : value;
+    const digits =
+      hex[1].length <= 4
+        ? [...hex[1]].map((digit) => digit + digit).join("")
+        : hex[1];
+    return digits.length === 8 && digits.endsWith("ff")
+      ? `#${digits.slice(0, 6)}`
+      : `#${digits}`;
   }
   const toHex = (channel: number) =>
     Math.round(Math.min(255, Math.max(0, channel)))
       .toString(16)
       .padStart(2, "0");
+  // Appends an alpha byte only when the color is see-through.
+  const withAlpha = (rgbHex: string, alpha: string | undefined) => {
+    if (alpha === undefined) return rgbHex;
+    const amount = alpha.endsWith("%")
+      ? parseFloat(alpha) / 100
+      : parseFloat(alpha);
+    const byte = toHex(Math.min(1, Math.max(0, amount)) * 255);
+    return byte === "ff" ? rgbHex : `${rgbHex}${byte}`;
+  };
   const rgb =
-    /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[,/]\s*[\d.]+%?\s*)?\)$/.exec(
+    /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[,/]\s*([\d.]+%?)\s*)?\)$/.exec(
       value,
     );
-  if (rgb) return `#${toHex(+rgb[1])}${toHex(+rgb[2])}${toHex(+rgb[3])}`;
+  if (rgb) {
+    return withAlpha(
+      `#${toHex(+rgb[1])}${toHex(+rgb[2])}${toHex(+rgb[3])}`,
+      rgb[4],
+    );
+  }
   const hsl =
-    /^hsla?\(\s*(-?[\d.]+)(?:deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%\s*(?:[,/]\s*[\d.]+%?\s*)?\)$/.exec(
+    /^hsla?\(\s*(-?[\d.]+)(?:deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%\s*(?:[,/]\s*([\d.]+%?)\s*)?\)$/.exec(
       value,
     );
   if (hsl) {
@@ -134,7 +152,10 @@ export function toHexColor(color: string): string {
       if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
       return p;
     };
-    return `#${toHex(channel(hue + 1 / 3) * 255)}${toHex(channel(hue) * 255)}${toHex(channel(hue - 1 / 3) * 255)}`;
+    return withAlpha(
+      `#${toHex(channel(hue + 1 / 3) * 255)}${toHex(channel(hue) * 255)}${toHex(channel(hue - 1 / 3) * 255)}`,
+      hsl[4],
+    );
   }
   return color;
 }

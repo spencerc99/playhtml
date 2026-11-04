@@ -16,16 +16,26 @@ describe("toHexColor", () => {
   test("converts hsl in comma, space and alpha forms", () => {
     expect(toHexColor("hsl(0, 100%, 50%)")).toBe("#ff0000");
     expect(toHexColor("hsl(120 100% 25%)")).toBe("#008000");
-    expect(toHexColor("hsla(240, 100%, 50%, 0.5)")).toBe("#0000ff");
-    expect(toHexColor("hsl(200deg 70% 60% / 50%)")).toBe("#52b1e0");
+    expect(toHexColor("hsla(240, 100%, 50%, 1)")).toBe("#0000ff");
+    expect(toHexColor("hsl(200deg 70% 60%)")).toBe("#52b1e0");
     expect(toHexColor("hsl(-120, 100%, 50%)")).toBe("#0000ff");
     expect(toHexColor("hsl(210, 70%, 60%)")).toBe("#5299e0");
   });
 
   test("converts rgb and clamps out-of-range channels", () => {
     expect(toHexColor("rgb(255, 128, 0)")).toBe("#ff8000");
-    expect(toHexColor("rgba(10 20 30 / 0.4)")).toBe("#0a141e");
+    expect(toHexColor("rgba(10 20 30 / 100%)")).toBe("#0a141e");
     expect(toHexColor("rgb(300, -1, 0)")).toBe("rgb(300, -1, 0)");
+  });
+
+  test("keeps alpha as #rrggbbaa when the color is see-through", () => {
+    expect(toHexColor("hsla(240, 100%, 50%, 0.5)")).toBe("#0000ff80");
+    expect(toHexColor("hsl(200deg 70% 60% / 50%)")).toBe("#52b1e080");
+    expect(toHexColor("rgba(10 20 30 / 0.4)")).toBe("#0a141e66");
+    expect(toHexColor("rgba(0, 0, 0, 0)")).toBe("#00000000");
+    expect(toHexColor("#0F08")).toBe("#00ff0088");
+    expect(toHexColor("#112233CC")).toBe("#112233cc");
+    expect(toHexColor("#112233ff")).toBe("#112233");
   });
 
   test("returns other colors unchanged", () => {
