@@ -213,10 +213,10 @@ const Main = withSharedState(
     defaultData: {
       sizes: {} as Record<string, ScreenSize>,
     } as ScreenSizeData,
-    myDefaultAwareness: undefined as undefined | { currentSize: string },
+    defaultPresence: undefined as undefined | { currentSize: string },
     id: "screen-symphony-2",
   },
-  ({ data, setData, setMyAwareness }) => {
+  ({ data, setData, setMyPresence }) => {
     const { isLoading } = usePlayContext();
     const [currentSize, setCurrentSize] = useState({ width: 0, height: 0 });
     const [isResizing, setIsResizing] = useState(false);
@@ -239,7 +239,7 @@ const Main = withSharedState(
       setCurrentSize({ width, height });
 
       const sizeKey = getScreenSizeKey(width, height);
-      setMyAwareness({ currentSize: sizeKey });
+      setMyPresence({ currentSize: sizeKey });
 
       // Only register this device once after sync is complete
       if (!isLoading) {
@@ -292,10 +292,10 @@ const Main = withSharedState(
         const height = window.innerHeight;
         setCurrentSize({ width, height });
 
-        // Debounce the final registration and awareness update
+        // Debounce the final registration and presence update
         resizeTimeoutRef.current = setTimeout(() => {
           const sizeKey = getScreenSizeKey(width, height);
-          setMyAwareness({ currentSize: sizeKey });
+          setMyPresence({ currentSize: sizeKey });
           setIsResizing(false);
         }, 500); // Wait 500ms after user stops resizing
       };

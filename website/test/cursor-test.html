@@ -260,14 +260,12 @@
       }
 
       function updateCursorInfo() {
-        if (window.cursors) {
-          cursorInfoElement.innerHTML = `
-                    Color: <span style="color: ${window.cursors.color}">●</span> ${window.cursors.color}<br>
-                    Name: ${window.cursors.name}<br>
-                    Active Users: ${window.cursors.allColors.length}<br>
-                    All Colors: ${window.cursors.allColors.length}
+        const { me, everyone } = playhtml.people;
+        cursorInfoElement.innerHTML = `
+                    Color: <span style="color: ${me.color}">●</span> ${me.color}<br>
+                    Name: ${me.name}<br>
+                    People here: ${everyone.length}
                 `;
-        }
       }
 
       function addProximityEvent(type, otherPlayer) {
@@ -505,7 +503,7 @@
 
       // Global functions for buttons
       window.changeColor = function () {
-        if (window.cursors) {
+        {
           const colors = [
             "#ff6b6b",
             "#4ecdc4",
@@ -517,14 +515,13 @@
             "#f7dc6f",
           ];
           const randomColor = colors[Math.floor(Math.random() * colors.length)];
-          // Cursor identity is exposed through settable properties, not methods.
-          window.cursors.color = randomColor;
-          // updateCursorInfo will be called via the event listener
+          playhtml.people.me.color = randomColor;
+          // updateCursorInfo will be called via people.onChange
         }
       };
 
       window.changeName = function () {
-        if (window.cursors) {
+        {
           const names = [
             "Luna",
             "Nova",
@@ -536,8 +533,8 @@
             "Echo",
           ];
           const randomName = names[Math.floor(Math.random() * names.length)];
-          window.cursors.name = randomName;
-          // updateCursorInfo will be called via the event listener
+          playhtml.people.me.name = randomName;
+          // updateCursorInfo will be called via people.onChange
         }
       };
 
@@ -569,31 +566,12 @@
         updateStatus("✅ Connected! Move your cursor around");
         console.log("PlayHTML initialized with cursor tracking");
         console.log("Cursor system:", playhtml.cursorSystem);
-        console.log("Window cursors API:", window.cursors);
+        console.log("People API:", playhtml.people);
+        console.log("My color:", playhtml.people.me.color);
+        console.log("My name:", playhtml.people.me.name);
 
-        // Demo the window API
-        if (window.cursors) {
-          console.log("Current cursor color:", window.cursors.color);
-          console.log("Current cursor name:", window.cursors.name);
-
-          // Listen to changes
-          window.cursors.on("allColors", (colors) => {
-            updateCursorInfo();
-          });
-
-          window.cursors.on("color", (color) => {
-            console.log("Color changed:", color);
-            updateCursorInfo();
-          });
-
-          window.cursors.on("name", (name) => {
-            console.log("Name changed:", name);
-            updateCursorInfo();
-          });
-
-          // Initial display
-          updateCursorInfo();
-        }
+        // Re-render on joins, leaves, and name or color changes
+        playhtml.people.onChange(() => updateCursorInfo());
       } catch (error) {
         console.error("Failed to initialize PlayHTML:", error);
         updateStatus("❌ Failed to initialize: " + error.message);

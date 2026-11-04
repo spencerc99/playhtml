@@ -13,12 +13,12 @@ const storyHtml = readFileSync(
 const colorHelperSource = storyHtml.match(
   /(function convertHexToRGB\(hex\) \{[\s\S]*?)(?=\n\s*if \(getUserColor)/,
 )?.[1];
-const updateElementSource = storyHtml.match(
-  /updateElement:\s*(\(\{ data \}\) => \{[\s\S]*?\n\s*\}),\n\s*\}\);/,
+const renderStorySource = storyHtml.match(
+  /const renderStory = (\(\{ data \}\) => \{[\s\S]*?\n\s*\});/,
 )?.[1];
 
-function getUpdateElement() {
-  if (!colorHelperSource || !updateElementSource) {
+function getRenderStory() {
+  if (!colorHelperSource || !renderStorySource) {
     throw new Error("Could not find the one-word story renderer");
   }
 
@@ -26,7 +26,7 @@ function getUpdateElement() {
     "storyContent",
     "lastUpdatedTime",
     `${colorHelperSource}
-return ${updateElementSource};`,
+return ${renderStorySource};`,
   )(
     document.getElementById("storyContent"),
     document.getElementById("lastUpdatedTime"),
@@ -43,7 +43,7 @@ describe("one-word story rendering", () => {
     const storyContent = document.getElementById("storyContent");
     const hostileWord = "<svg/onload=alert()>";
 
-    getUpdateElement()({
+    getRenderStory()({
       data: [
         { word: "together", color: "#112233", ts: 0 },
         { word: hostileWord, color: "#abcdef", ts: 1 },

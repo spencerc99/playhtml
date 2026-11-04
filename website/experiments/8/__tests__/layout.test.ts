@@ -11,7 +11,7 @@ import {
   getTrailingCellCount,
   getTypingCursorPosition,
   isScrollAtEnd,
-  shouldPublishTypingAwareness,
+  shouldPublishTypingPresence,
 } from "../layout";
 
 describe("experiment 8 layout", () => {
@@ -87,28 +87,25 @@ describe("experiment 8 layout", () => {
     const myCursor = { color: "purple", cursorPos: 5 };
 
     expect(
-      getRemoteTypingCursors({
-        awareness: [
-          myCursor,
-          { color: "orange", cursorPos: 8 },
-          { color: "broken" },
-        ],
-        myAwareness: myCursor,
-      })
+      getRemoteTypingCursors([
+        { isMe: true, presence: myCursor },
+        { isMe: false, presence: { color: "orange", cursorPos: 8 } },
+        { isMe: false, presence: { color: "broken" } },
+      ])
     ).toEqual([{ color: "orange", cursorPos: 8 }]);
   });
 
-  it("publishes typing awareness only when it changes", () => {
+  it("publishes typing presence only when it changes", () => {
     const current = { color: "purple", cursorPos: 5 };
 
     expect(
-      shouldPublishTypingAwareness({
+      shouldPublishTypingPresence({
         current,
         next: { color: "purple", cursorPos: 5 },
       })
     ).toBe(false);
     expect(
-      shouldPublishTypingAwareness({
+      shouldPublishTypingPresence({
         current,
         next: { color: "purple", cursorPos: 6 },
       })

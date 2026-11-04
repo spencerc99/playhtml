@@ -6,9 +6,9 @@ import {
   PlayProvider,
   withSharedState,
   usePageData,
-  usePlayerIdentity,
 } from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
+import { getMe, useMe } from "../../utils/useMe";
 import {
   resolveSession,
   roomForCurrentPage,
@@ -30,20 +30,6 @@ import {
 import "./walking-together.scss";
 
 installAdminControlsToggle();
-
-// playhtml exposes `window.cursors` with `name`/`color` as settable
-// properties (getters + setters), not setName/setColor methods. Assigning an
-// empty string to `color` throws — we only ever assign a real picker value.
-interface CursorParty {
-  color: string;
-  name: string | undefined;
-}
-
-declare global {
-  interface Window {
-    cursors?: CursorParty;
-  }
-}
 
 interface SharedURL {
   url: string;
@@ -95,7 +81,8 @@ export function UserSetup() {
     "username",
     null,
     (newName) => {
-      if (window.cursors) window.cursors.name = newName ?? "";
+      const me = getMe();
+      if (me) me.name = newName ?? "";
     },
   );
 
@@ -132,7 +119,7 @@ const RosterAdmin = withSharedState(
   // in-place migration needed. Any legacy `entries` array is simply abandoned.
   { defaultData: { participants: {} as Roster } },
   ({ data, setData }) => {
-    const { pid, name, color } = usePlayerIdentity();
+    const { pid, name, color } = useMe();
     const [showPortrait, setShowPortrait] = useState(false);
 
     // Read the latest roster through a ref so the upsert effect keys ONLY on
@@ -216,7 +203,7 @@ export const URLChat = withSharedState(
   },
   ({ data, setData }) => {
     const [inputUrl, setInputUrl] = React.useState("");
-    const { name, color } = usePlayerIdentity();
+    const { name, color } = useMe();
     const admin = isAdmin(name, color);
     const urlListRef = React.useRef<HTMLDivElement>(null);
     const urls: SharedURL[] = Array.isArray(data.urls) ? data.urls : [];
@@ -237,8 +224,8 @@ export const URLChat = withSharedState(
 
       const newUrl: SharedURL = {
         url: inputUrl,
-        userName: window.cursors?.name || "Anonymous",
-        userColor: window.cursors?.color || "#000000",
+        userName: getMe()?.name || "Anonymous",
+        userColor: getMe()?.color || "#000000",
         timestamp: Date.now(),
       };
 
@@ -329,7 +316,7 @@ export const GroupActivityDisplay = withSharedState(
     },
   },
   ({ data, setData }) => {
-    const { name, color } = usePlayerIdentity();
+    const { name, color } = useMe();
     const admin = isAdmin(name, color);
 
     // The countdown animates LOCALLY for everyone, derived from the shared
@@ -478,7 +465,7 @@ function StageSwitch({ session }: { session: WorkshopSession }) {
     STAGE_DATA_NAME,
     { stage: "walk" },
   );
-  const { name, color } = usePlayerIdentity();
+  const { name, color } = useMe();
   const admin = isAdmin(name, color);
   const stage: SessionStage = session.hasCollageStage
     ? stageData.stage

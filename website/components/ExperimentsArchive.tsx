@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 import { PlayContext, withSharedState } from "@playhtml/react";
+import { playhtml } from "playhtml";
 import "./ExperimentsArchive.scss";
 import {
   TraceRetentionMs,
@@ -274,7 +275,6 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
     const {
       cursors,
       dispatchPlayEvent,
-      getMyPlayerIdentity,
       isLoading,
       registerPlayEventListener,
       removePlayEventListener,
@@ -441,7 +441,7 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
             return;
           }
 
-          const myUserId = getMyPlayerIdentity()?.publicKey ?? null;
+          const myUserId = playhtml.people?.me.pid ?? null;
           startRandomizer(
             payload,
             payload.userId === myUserId ||
@@ -455,7 +455,6 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
       };
     }, [
       isLoading,
-      getMyPlayerIdentity,
       registerPlayEventListener,
       removePlayEventListener,
       startRandomizer,
@@ -512,7 +511,7 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
 
         const payload: RandomExperimentEvent = {
           eventId: `random-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          userId: getMyPlayerIdentity()?.publicKey ?? null,
+          userId: playhtml.people?.me.pid ?? null,
           color: myColor,
           sequence: sequence.map((experiment) => experiment.number),
           selectedNumber: selectedExperiment.number,
@@ -525,7 +524,7 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
           eventPayload: payload,
         });
       },
-      [dispatchPlayEvent, getMyPlayerIdentity, isLoading, myColor],
+      [dispatchPlayEvent, isLoading, myColor],
     );
 
     return (
