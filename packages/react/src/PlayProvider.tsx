@@ -138,6 +138,10 @@ interface Props {
   pathname?: string;
 }
 
+// Matches playhtml's LOADING_CHANGE_EVENT. Spelled out rather than imported so
+// an older playhtml without the export does not register an "undefined" event.
+const LOADING_CHANGE_EVENT = "playhtml:loading-change";
+
 export function PlayProvider({
   children,
   initOptions,
@@ -207,6 +211,20 @@ export function PlayProvider({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // A room switch (client-side navigation to a new room, or a server room
+  // reset) makes playhtml load again; follow it so hasSynced is false until
+  // the new room's data is in, not just until the first room synced.
+  useEffect(() => {
+    const onLoadingChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ isLoading?: unknown }>).detail;
+      if (typeof detail?.isLoading !== "boolean") return;
+      setHasSynced(!detail.isLoading);
+    };
+    document.addEventListener(LOADING_CHANGE_EVENT, onLoadingChange);
+    return () =>
+      document.removeEventListener(LOADING_CHANGE_EVENT, onLoadingChange);
   }, []);
 
   const configureCursors = (options: Partial<CursorOptions>) => {

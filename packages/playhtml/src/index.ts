@@ -70,6 +70,17 @@ import { PresenceFacade } from "./presence-facade";
 import { safeInvoke } from "./presence-utils";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
 import { resolveRoomHost } from "./roomHost";
+import {
+  INITIAL_LIFECYCLE,
+  canNavigate,
+  hasInitStarted,
+  hasRoomSynced,
+  isConfigLocked,
+  isLifecycleLoading,
+  nextLifecycle,
+  type Lifecycle,
+  type LifecycleEvent,
+} from "./lifecycle";
 
 export {
   formatStateLeafValue,
@@ -652,10 +663,9 @@ function onMessage(data: string) {
   }
 }
 
-let hasSynced = false;
-let firstSetup = true;
-let isLoading = true;
-let initStarted = false;
+// The one source of truth for where this instance is in its life (see
+// lifecycle.ts). Readiness flags are derived from it, never stored beside it.
+let lifecycle: Lifecycle = INITIAL_LIFECYCLE;
 let readyResolve: () => void = () => {};
 let readyReject: (error: unknown) => void = () => {};
 
@@ -669,6 +679,38 @@ function createReadyPromise(): Promise<void> {
 }
 
 let readyPromise: Promise<void> = createReadyPromise();
+
+/** Dispatched on document whenever `playhtml.isLoading` flips. */
+export const LOADING_CHANGE_EVENT = "playhtml:loading-change";
+
+/**
+ * Moves the lifecycle and keeps `ready` in step with it: a fresh pending
+ * promise each time loading starts again (a room switch), resolved when it
+ * ends, rejected when init fails.
+ */
+function transition(event: LifecycleEvent): void {
+  const previous = lifecycle;
+  const next = nextLifecycle(previous, event);
+  if (next === previous) return;
+  lifecycle = next;
+
+  const wasLoading = isLifecycleLoading(previous);
+  const nowLoading = isLifecycleLoading(next);
+  if (next.phase === "failed") {
+    readyReject(next.error);
+  } else if (wasLoading && !nowLoading) {
+    readyResolve();
+  } else if (!wasLoading && nowLoading) {
+    readyPromise = createReadyPromise();
+  }
+  if (wasLoading !== nowLoading && typeof document !== "undefined") {
+    document.dispatchEvent(
+      new CustomEvent(LOADING_CHANGE_EVENT, {
+        detail: { isLoading: nowLoading },
+      }),
+    );
+  }
+}
 
 function isPromiseLike(value: unknown): value is Promise<void> {
   return (
@@ -816,9 +858,6 @@ const mainProviderSyncWaiters = new Set<(error?: Error) => void>();
 // applyConfig). Bootstrap reads everything it needs from here, so config has a
 // single source of truth regardless of which call site declared it.
 let configuredOptions: InitOptions | null = null;
-// True once bootstrap has read config and started connecting. Config is frozen
-// from this point — a later configure()/init(options) warns instead of applying.
-let hasBootstrapped = false;
 
 /**
  * Normalize a config value into a stable, comparable form that captures only
@@ -938,7 +977,7 @@ function applyConfig(options: InitOptions): void {
   if (isEmptyConfig(options)) return;
 
   // Real config arriving after connection can't be applied — warn and ignore.
-  if (hasBootstrapped) {
+  if (isConfigLocked(lifecycle)) {
     console.warn(
       "[playhtml] Ignoring config passed after playhtml already connected. " +
         "Declare it before init() — e.g. with playhtml.configure(...) in a script " +
@@ -974,13 +1013,6 @@ function applyConfig(options: InitOptions): void {
       registerPlayEventListener(eventType, event);
     }
   }
-}
-
-/** Mark that bootstrap has begun reading config. After this, config is frozen:
- * a configure()/init(options) that arrives later warns rather than silently
- * doing nothing — config genuinely can't change once connected. */
-function lockConfigForBootstrap(): void {
-  hasBootstrapped = true;
 }
 
 /**
@@ -1285,7 +1317,7 @@ function storeResetEpochForRoom(room: string, resetEpoch: number): void {
 
 function waitForMainProviderSync(timeoutMs?: number): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    if (hasSynced) {
+    if (hasRoomSynced(lifecycle)) {
       resolve();
       return;
     }
@@ -1315,9 +1347,13 @@ function waitForMainProviderSync(timeoutMs?: number): Promise<void> {
 }
 
 function handleMainProviderSync(connected: boolean): void {
-  if (!connected) console.error("Issue connecting to yjs...");
-  if (hasSynced) return;
-  hasSynced = true;
+  if (!connected) {
+    console.error("Issue connecting to yjs...");
+    return;
+  }
+  if (hasRoomSynced(lifecycle)) return;
+  transition({ type: "providerSynced" });
+  if (!hasRoomSynced(lifecycle)) return;
   const waiters = [...mainProviderSyncWaiters];
   mainProviderSyncWaiters.clear();
   waiters.forEach((finish) => finish());
@@ -1373,7 +1409,7 @@ async function resetCurrentRoomFromServer(): Promise<void> {
   }
   teardownMainProvider();
   teardownCursors();
-  hasSynced = false;
+  transition({ type: "switchRoom", room: __currentRoomId });
   trackedElementAwarenessKeys.clear();
   recreateStore();
 
@@ -1398,6 +1434,7 @@ async function resetCurrentRoomFromServer(): Promise<void> {
   refreshPageDataChannels(getPageDataDeps());
   reinitializeElements();
   markAllElementsAsReady();
+  transition({ type: "elementsReady" });
   cursorClient?.refreshContainer?.();
   cursorClient?.refreshCursorStyles?.();
   dispatchNavigated(__currentRoomId);
@@ -1443,11 +1480,12 @@ function setupExtensionIdentityListener(): void {
 }
 
 async function runHandleNavigation(): Promise<void> {
-  // firstSetup is true before init and after resetPlayHTML — skip nav in both.
-  if (firstSetup) return;
+  // Nothing to navigate from before the first setup, after resetPlayHTML, or
+  // when another instance owns the connection.
+  if (!canNavigate(lifecycle)) return;
   if (configuredOptions?.cursors?.enabled) {
     await loadCursorModule();
-    if (firstSetup) return;
+    if (!canNavigate(lifecycle)) return;
   }
 
   const nextRoomInput =
@@ -1506,7 +1544,7 @@ async function runHandleNavigation(): Promise<void> {
     teardownElementAwarenessClient();
     teardownPresenceClient();
     disconnectUsersPresenceTransport();
-    hasSynced = false;
+    transition({ type: "switchRoom", room: newMainRoom });
     applyElementAwareness(new Map());
     // Re-init the doc for the new room: page AND element data are room-scoped,
     // and the doc is reused across rooms, so a fresh doc resets both to the new
@@ -1564,6 +1602,7 @@ async function runHandleNavigation(): Promise<void> {
     setupElements();
   }
   markAllElementsAsReady();
+  transition({ type: "elementsReady" });
 
   cursorClient?.refreshContainer?.();
   cursorClient?.refreshCursorStyles?.();
@@ -1587,7 +1626,7 @@ function configurePlayHTML(options: InitOptions = {}): void {
 }
 
 function initPlayHTML(options: InitOptions = {}) {
-  if (initStarted) {
+  if (hasInitStarted(lifecycle)) {
     // Already bootstrapping/running. init() here means "ensure running" — the
     // connection is already in flight. Still funnel options through applyConfig
     // so a conflicting late config warns (and a matching/empty one is a quiet
@@ -1599,32 +1638,30 @@ function initPlayHTML(options: InitOptions = {}) {
   const existingPlayhtml = (window as any).playhtml;
   if (existingPlayhtml) {
     if (isPromiseLike(existingPlayhtml.ready)) {
+      transition({ type: "delegate" });
       readyPromise = existingPlayhtml.ready;
       readyPromise.then(
-        () => {
-          isLoading = false;
-        },
+        () => transition({ type: "delegateSettled" }),
         () => {},
       );
-      initStarted = true;
       return readyPromise;
     }
 
     const error = new Error(
       "playhtml is already set up by an incompatible instance. Make sure @playhtml/react and playhtml use matching versions.",
     );
-    readyReject(error);
-    initStarted = true;
+    transition({ type: "initCalled" });
+    transition({ type: "fail", error });
     return readyPromise;
   }
 
-  initStarted = true;
+  transition({ type: "initCalled" });
   // Capture config (honoring any earlier configure() call — applyConfig is a
   // no-op if config is already locked) before bootstrapping.
   applyConfig(options);
   const initPromise = initPlayHTMLOnce();
   initPromise.catch((error) => {
-    readyReject(error);
+    transition({ type: "fail", error });
   });
   return initPromise;
 }
@@ -1638,9 +1675,6 @@ function initPlayHTML(options: InitOptions = {}) {
  * to the same room.
  */
 async function initPlayHTMLOnce() {
-  // Connection is about to read config; freeze it. A later configure() now
-  // warns instead of silently no-op'ing — config can't change post-connect.
-  lockConfigForBootstrap();
   const host = configuredOptions?.host;
   const cursors = configuredOptions?.cursors ?? {};
   // The cursor client downloads while the main socket connects.
@@ -1665,6 +1699,9 @@ async function initPlayHTMLOnce() {
   const partykitHost = getPartykitHost(host);
   __currentRoomId = room;
   __currentHost = partykitHost;
+  // Connection is about to read config; freeze it. A later configure() now
+  // warns instead of silently no-op'ing — config can't change post-connect.
+  transition({ type: "connect", room });
 
   console.log(
     `࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂࿂
@@ -1747,8 +1784,7 @@ async function initPlayHTMLOnce() {
 
   // Mark all elements as ready after sync completes and elements are set up
   markAllElementsAsReady();
-  isLoading = false;
-  readyResolve();
+  transition({ type: "elementsReady" });
 
   // Fetch simple permissions for referenced shared elements so clients can block writes locally
   if (sharedReferences.length > 0) {
@@ -2183,7 +2219,7 @@ function reinitializeElements(): void {
 }
 
 function setupElementsFromDocument(reinitializeExisting: boolean): void {
-  if (!hasSynced) {
+  if (!hasRoomSynced(lifecycle)) {
     return;
   }
 
@@ -2221,7 +2257,8 @@ function setupElementsFromDocument(reinitializeExisting: boolean): void {
     );
   }
 
-  if (!firstSetup) {
+  // The rest runs once per instance: the first setup wires navigation.
+  if (navigationController) {
     return;
   }
 
@@ -2232,8 +2269,6 @@ function setupElementsFromDocument(reinitializeExisting: boolean): void {
     await runHandleNavigation();
   });
   detachNavListeners = attachNavigationListeners(navigationController);
-
-  firstSetup = false;
 }
 
 function getPageDataDeps() {
@@ -2251,7 +2286,7 @@ function getPageDataDeps() {
 }
 
 function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
-  if (!hasSynced) {
+  if (!hasRoomSynced(lifecycle)) {
     throw new Error("playhtml.createPageData is not available before init()");
   }
   watchPlayMapReplacement();
@@ -2259,7 +2294,7 @@ function createPageData<T>(name: string, defaultValue: T): PageDataChannel<T> {
 }
 
 function createPresenceRoom(name: string): PresenceRoom {
-  if (!hasSynced) {
+  if (!hasRoomSynced(lifecycle)) {
     throw new Error("playhtml.createPresenceRoom is not available before init()");
   }
 
@@ -2343,7 +2378,7 @@ export interface PlayHTMLComponents {
  * isolation (beforeEach resets) only.
  */
 export async function resetPlayHTML(): Promise<void> {
-  if (firstSetup && !initStarted) return;
+  if (lifecycle.phase === "idle") return;
 
   try {
     canMirrorDataQueue.clear();
@@ -2411,11 +2446,8 @@ export async function resetPlayHTML(): Promise<void> {
     delete (window as any).playhtml;
     delete document.documentElement.dataset.playhtml;
 
-    hasSynced = false;
+    lifecycle = INITIAL_LIFECYCLE;
     trackedElementAwarenessKeys.clear();
-    firstSetup = true;
-    isLoading = true;
-    initStarted = false;
     readyPromise = createReadyPromise();
     __currentRoomId = "";
     __currentHost = "";
@@ -2428,10 +2460,9 @@ export async function resetPlayHTML(): Promise<void> {
     roomResetPromise = null;
     pendingRoomResetEpoch = null;
     configuredOptions = null;
-    hasBootstrapped = false;
   } finally {
-    // firstSetup = true (set above) is the canonical "not initialized"
-    // flag — runHandleNavigation checks it to skip nav after reset.
+    // lifecycle = idle (set above) is the canonical "not initialized" state —
+    // runHandleNavigation checks it to skip nav after reset.
   }
 }
 
@@ -2440,7 +2471,7 @@ export const playhtml: PlayHTMLComponents = {
   init: initPlayHTML,
   configure: configurePlayHTML,
   get isLoading() {
-    return isLoading;
+    return isLifecycleLoading(lifecycle);
   },
   get ready() {
     return readyPromise;
@@ -2503,7 +2534,7 @@ function maybeSetupTag(tag: TagType | string): void {
     return;
   }
 
-  if (!hasSynced) {
+  if (!hasRoomSynced(lifecycle)) {
     return;
   }
 
@@ -2595,7 +2626,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
     return;
   }
 
-  if (!hasSynced) {
+  if (!hasRoomSynced(lifecycle)) {
     return;
   }
 
@@ -2913,7 +2944,7 @@ function setupPlayElement(
   }
 
   if (tags.size > 0) {
-    if (hasSynced) {
+    if (hasRoomSynced(lifecycle)) {
       // If already synced, element will be ready immediately
       markElementAsReady(element);
     } else {
@@ -3190,7 +3221,7 @@ function registerPlayElement<T = any, U = any, V = any>(
 
   validateRegisteredInitializer(elementId, init as ElementInitializer);
   elementInitializersById.set(elementId, init as ElementInitializer);
-  if (hasSynced) {
+  if (hasRoomSynced(lifecycle)) {
     observeRegisteredElements();
   }
   if (element && isHTMLElement(element)) {
@@ -3198,7 +3229,7 @@ function registerPlayElement<T = any, U = any, V = any>(
   }
   if (
     configuredOptions?.developmentMode &&
-    hasSynced &&
+    hasRoomSynced(lifecycle) &&
     !element
   ) {
     console.warn(
@@ -3237,7 +3268,7 @@ function registerCapability(
   validateCapability(capabilityName, init);
   capabilitiesToInitializer[capabilityName] = init;
   // Upgrade any elements already on the page (no-op before init()).
-  if (hasSynced) {
+  if (hasRoomSynced(lifecycle)) {
     const els = Array.from(
       document.querySelectorAll(`[${capabilityName}]`),
     ).filter(isHTMLElement);
@@ -3355,7 +3386,7 @@ function setupViewDescendants(root: HTMLElement): void {
  * @param elementId - The element ID
  */
 function deleteElementData(tag: string, elementId: string): void {
-  if (!hasSynced) {
+  if (!hasRoomSynced(lifecycle)) {
     console.warn(
       `[PLAYHTML] Cannot remove element data before sync: ${tag}:${elementId}`,
     );

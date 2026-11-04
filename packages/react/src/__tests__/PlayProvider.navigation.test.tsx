@@ -1,10 +1,11 @@
 // ABOUTME: Tests for PlayProvider's SPA-navigation integrations —
 // ABOUTME: ref-to-container conversion and pathname-driven navigation.
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { useRef, useState, type RefObject } from "react";
 import { PlayProvider } from "../PlayProvider";
 import playhtml from "../playhtml-singleton";
+import { usePlayContext } from "../usePlayContext";
 
 describe("PlayProvider cursor container ref", () => {
   beforeEach(() => {
@@ -101,5 +102,42 @@ describe("PlayProvider pathname prop", () => {
 
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+describe("PlayProvider hasSynced across a room switch", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    delete (window as any).playhtml;
+    delete document.documentElement.dataset.playhtml;
+    vi.mocked(playhtml.init).mockClear();
+    vi.mocked(playhtml.init).mockResolvedValue(undefined as any);
+  });
+
+  it("goes false while playhtml loads a new room and true once it is in", async () => {
+    function SyncedFlag() {
+      const { hasSynced } = usePlayContext();
+      return <span data-testid="synced">{String(hasSynced)}</span>;
+    }
+    const { getByTestId } = render(
+      <PlayProvider initOptions={{ host: "http://localhost:1999" } as any}>
+        <SyncedFlag />
+      </PlayProvider>,
+    );
+    const setLoading = (isLoading: boolean) =>
+      act(() => {
+        document.dispatchEvent(
+          new CustomEvent("playhtml:loading-change", { detail: { isLoading } }),
+        );
+      });
+
+    setLoading(false);
+    expect(getByTestId("synced").textContent).toBe("true");
+
+    setLoading(true);
+    expect(getByTestId("synced").textContent).toBe("false");
+
+    setLoading(false);
+    expect(getByTestId("synced").textContent).toBe("true");
   });
 });

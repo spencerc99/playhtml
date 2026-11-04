@@ -83,7 +83,9 @@ See [init() options](/docs/reference/init-options/) for all available options.
 
 **Type:** `Promise<void>` _(read-only)_
 
-Resolves when the initial sync is complete and elements are active. Rejects if the connection fails.
+Resolves when the room has synced and elements are active. Rejects if the connection fails.
+
+When client-side navigation moves to a different room (see [`handleNavigation()`](#handlenavigation)), `ready` is replaced by a new promise that resolves once the new room has synced. Read `playhtml.ready` again after navigating rather than holding on to an old one.
 
 ```js
 playhtml.init();
@@ -99,14 +101,16 @@ console.log("synced:", playhtml.roomId);
 
 **Type:** `boolean` _(read-only)_
 
-`true` from the time `init()` is called until the initial sync completes; `false` thereafter. Useful for showing a loading indicator.
+`true` from the time `init()` is called until the room has synced and elements are active. It turns `true` again while client-side navigation loads a different room, and back to `false` once that room is in. Useful for showing a loading indicator.
+
+Each time it flips, playhtml dispatches a `playhtml:loading-change` event on `document` with `detail.isLoading`.
 
 ```js
 if (playhtml.isLoading) {
   document.body.classList.add("loading");
 }
-playhtml.ready.then(() => {
-  document.body.classList.remove("loading");
+document.addEventListener("playhtml:loading-change", (event) => {
+  document.body.classList.toggle("loading", event.detail.isLoading);
 });
 ```
 

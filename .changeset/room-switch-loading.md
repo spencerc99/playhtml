@@ -1,0 +1,6 @@
+---
+"playhtml": minor
+"@playhtml/react": patch
+---
+
+`playhtml.isLoading` and `playhtml.ready` now follow room switches. When client-side navigation moves to a different room (or the server resets the room), `isLoading` turns `true` and `ready` becomes a new promise until the new room has synced, instead of reporting the old room as ready while the new one is still loading. playhtml also dispatches a `playhtml:loading-change` event on `document` whenever `isLoading` flips. In React, `usePlayContext().isLoading` follows the same switch.
