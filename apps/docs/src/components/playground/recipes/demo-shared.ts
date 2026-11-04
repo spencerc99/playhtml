@@ -317,6 +317,15 @@ function critterFor(pid) {
   let hash = 0;
   for (const char of pid) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   return CRITTERS[hash % CRITTERS.length];
+}
+
+// Your own pointer as a CSS cursor: the same emoji and ring others see.
+function critterCursor(emoji, color) {
+  const svg = \`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+    <circle cx="16" cy="16" r="13" fill="white" stroke="\${color}" stroke-width="3" />
+    <text x="16" y="21.5" font-size="15" text-anchor="middle">\${emoji}</text>
+  </svg>\`;
+  return \`url("data:image/svg+xml,\${encodeURIComponent(svg)}") 16 16, auto\`;
 }`;
 
 export const sharedStampSrc = "https://playhtml.fun/playhtml-logo.png";

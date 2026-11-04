@@ -3,12 +3,15 @@
 import { critterCursorCss, critterHelpers } from "../demo-shared";
 import { appShell } from "./app-shell";
 
-const typedHelpers = critterHelpers.replace(
-  "function critterFor(pid)",
-  "function critterFor(pid: string): string",
-);
+const typedHelpers = critterHelpers
+  .replace("function critterFor(pid)", "function critterFor(pid: string): string")
+  .replace(
+    "function critterCursor(emoji, color)",
+    "function critterCursor(emoji: string, color: string): string",
+  );
 
-export const customCursorsReactSource = `import { playhtml } from "playhtml";
+export const customCursorsReactSource = `import { useEffect } from "react";
+import { playhtml } from "playhtml";
 import { PlayProvider, usePeople } from "@playhtml/react";
 
 ${typedHelpers}
@@ -28,9 +31,15 @@ function renderCursor(pid: string, element: HTMLElement): HTMLElement {
 
 function CritterPad() {
   const { me } = usePeople();
+  // onCustomCursorRender only draws other people. Draw your own pointer
+  // with CSS so you see what everyone else sees.
+  useEffect(() => {
+    document.body.style.cursor = critterCursor(critterFor(me.pid), me.color);
+  }, [me.pid, me.color]);
+
   return (
     <div className="critter-pad">
-      <p>Others see your cursor as {critterFor(me.pid)}</p>
+      <p>You're {critterFor(me.pid)} to everyone here.</p>
       <p>Open this page in a second window and move your mouse in both.</p>
     </div>
   );

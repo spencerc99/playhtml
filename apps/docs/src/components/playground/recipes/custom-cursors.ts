@@ -20,9 +20,11 @@ function renderCursor(pid, element) {
   return element;
 }`;
 
-const afterInit = `document.getElementById("my-critter").textContent = critterFor(
-  playhtml.people.me.pid,
-);`;
+const afterInit = `// onCustomCursorRender only draws other people. Draw your own pointer
+// with CSS so you see what everyone else sees.
+const me = playhtml.people.me;
+document.getElementById("my-critter").textContent = critterFor(me.pid);
+document.body.style.cursor = critterCursor(critterFor(me.pid), me.color);`;
 
 export const customCursorsRecipe: ExampleRecipe = {
   id: "custom-cursors",
@@ -42,7 +44,7 @@ export const customCursorsRecipe: ExampleRecipe = {
     styles: `${recipeBaseStyles}
 ${indent(critterCursorCss, 4)}`,
     body: `  <main class="critter-pad">
-    <p>Others see your cursor as <span id="my-critter"></span></p>
+    <p>You're <span id="my-critter"></span> to everyone here.</p>
     <p>Open this page in a second window and move your mouse in both.</p>
   </main>`,
     script: indent(script, 4),

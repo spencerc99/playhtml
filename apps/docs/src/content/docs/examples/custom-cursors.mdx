@@ -41,6 +41,19 @@ await playhtml.init({
 
 Return `null` to keep the default arrow for someone.
 
+## Your own pointer
+
+`onCustomCursorRender` only draws other people. To show your own pointer the
+same way, set a CSS cursor image on the page after init:
+
+```js
+const me = playhtml.people.me;
+document.body.style.cursor = critterCursor(critterFor(me.pid), me.color);
+```
+
+`critterCursor` draws the emoji and ring into an SVG data URL. A CSS cursor
+moves with no lag, but it has to be an image, so it can't hold a live element.
+
 ## Same emoji everywhere
 
 `critterFor` hashes the `pid` into an index, so a person keeps one emoji across
