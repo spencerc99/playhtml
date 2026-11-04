@@ -277,3 +277,25 @@ describe("users", () => {
     ).toEqual(["#111111", "#222222"]);
   });
 });
+
+describe("users colors", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("reports older hsl and rgb colors as hex", () => {
+    const { users, transport } = makeUsers(
+      makeIdentity("self", "hsl(0, 100%, 50%)"),
+    );
+    expect(users.me.color).toBe("#ff0000");
+
+    transport.emit({
+      type: "presence-sync",
+      peers: { tab1: { identity: makeIdentity("remote", "rgb(0, 128, 255)") } },
+    });
+    const colors = Object.fromEntries(
+      users.getAll().map((user) => [user.pid, user.color]),
+    );
+    expect(colors).toEqual({ self: "#ff0000", remote: "#0080ff" });
+  });
+});

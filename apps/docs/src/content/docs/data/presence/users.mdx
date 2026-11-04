@@ -27,6 +27,8 @@ playhtml.users.me.name = "Bob";
 playhtml.users.me.color = "#ff0000";
 ```
 
+Colors always read back as a lowercase hex string like `"#3b82f6"`, so you can pass them straight to `<input type="color">`. If you set a color as `hsl()` or `rgb()`, it reads back as hex. Named colors like `"red"` read back as you set them.
+
 When cursors are enabled, `window.cursors.color` and `window.cursors.name` are aliases for these fields (see [Cursors](/docs/data/presence/cursors/#global-cursor-api)). `playhtml.users` is the primary API and does not require cursors.
 
 ## `getAll()` and `onChange()`
@@ -37,7 +39,7 @@ When cursors are enabled, `window.cursors.color` and `window.cursors.name` are a
 for (const user of playhtml.users.getAll()) {
   user.pid;    // string, stable per-user id
   user.name;   // string | undefined
-  user.color;  // string
+  user.color;  // string, hex like "#3b82f6"
   user.isMe;   // boolean
 }
 ```

@@ -4,6 +4,7 @@
 import {
   generatePersistentPlayerIdentity,
   savePlayerIdentityToStorage,
+  toHexColor,
   User,
   type CursorPresenceView,
   type PlayerIdentity,
@@ -19,7 +20,10 @@ interface UsersDeps {
   ) => (() => void) | undefined;
 }
 
-/** Returns primary color from player identity; throws if missing (no default). */
+/**
+ * Returns primary color from player identity as hex (older identities may have
+ * saved hsl/rgb); throws if missing (no default).
+ */
 function getPrimaryColor(identity: PlayerIdentity): string {
   const color = identity.playerStyle?.colorPalette?.[0];
   if (color == null || color === "") {
@@ -27,7 +31,7 @@ function getPrimaryColor(identity: PlayerIdentity): string {
       "[playhtml] Player identity must have playerStyle.colorPalette[0] (primary color).",
     );
   }
-  return color;
+  return toHexColor(color);
 }
 
 /** Validates identity has publicKey and primary color; throws if not. */
