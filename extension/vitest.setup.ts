@@ -29,6 +29,19 @@ Object.defineProperty(document.documentElement, "scrollTop", {
   writable: true,
 });
 
+// jsdom's Blob has no arrayBuffer(). Newer Node versions build a fetch
+// Response's blob from the global Blob, which jsdom replaces, so add the method.
+if (typeof Blob.prototype.arrayBuffer !== "function") {
+  Blob.prototype.arrayBuffer = function (this: Blob) {
+    return new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(this);
+    });
+  };
+}
+
 // Mock devicePixelRatio
 Object.defineProperty(window, "devicePixelRatio", { value: 1, writable: true });
 
