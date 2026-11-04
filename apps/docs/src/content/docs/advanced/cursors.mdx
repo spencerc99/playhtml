@@ -1,13 +1,15 @@
 ---
 title: "Cursors"
-description: "Enable shared cursor presence for visitors."
+description: "Show everyone's cursors live, and read them to draw your own."
 sidebar:
-  order: 3
+  order: 7
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-playhtml can track cursors out of the box. When enabled, visitors see each other's cursors live, along with their colors and names.
+Turn on cursors and everyone on the page sees each other's pointers move live, labeled with their names and colors.
+
+A cursor is part of a person's [presence](/docs/data/presence/): it's at `person.presence.cursor` on each person in `playhtml.people.everyone`. playhtml sets it for you, so you never write it yourself.
 
 ## Basic Setup
 
@@ -44,7 +46,7 @@ import { PlayProvider } from "@playhtml/react";
 
 ### `room`
 
-Controls which users see each other's cursors. By default, cursors are scoped to the current page.
+Controls which people see each other's cursors. By default, cursors are scoped to the current page.
 
 **Type:** `"page" | "domain" | "section" | (context) => string`
 
@@ -52,19 +54,19 @@ Controls which users see each other's cursors. By default, cursors are scoped to
 // Page-specific (default)
 cursors: {
   enabled: true,
-  room: "page"  // Only users on /blog/post see each other
+  room: "page"  // Only people on /blog/post see each other
 }
 
 // Domain-wide
 cursors: {
   enabled: true,
-  room: "domain"  // All users across yoursite.com see each other
+  room: "domain"  // Everyone across yoursite.com sees each other
 }
 
 // Section-wide
 cursors: {
   enabled: true,
-  room: "section"  // All users in /blog/* see each other
+  room: "section"  // Everyone in /blog/* sees each other
 }
 
 // Custom function
@@ -99,8 +101,8 @@ cursors: {
 
 **Presence data includes:**
 - `presence.page` - The page path the cursor is on
-- `presence.cursor` - Current cursor position `{ x, y, pointer }`, or `null` when the user is present but not publishing a cursor position
-- `presence.playerIdentity` - User info `{ name, playerStyle: { colorPalette } }`
+- `presence.cursor` - Current cursor position `{ x, y, pointer }`, or `null` when the person is here but their pointer isn't on the page
+- `presence.user` - Who the cursor belongs to: `{ pid, name, color, isMe }`
 - `presence.message` - Chat message (if chat enabled)
 - `presence.lastSeen` - Timestamp
 
@@ -151,7 +153,7 @@ getCursorStyle: (presence) => {
 cursors: {
   enabled: true,
 
-  // Custom player identity
+  // Seed your identity (advanced; most sites set playhtml.people.me instead)
   playerIdentity: {
     publicKey: "alice",
     name: "Alice",
@@ -162,11 +164,12 @@ cursors: {
 
   // Proximity detection
   proximityThreshold: 150,  // pixels
-  onProximityEntered: (playerIdentity, positions, angle) => {
-    console.log("User nearby!", playerIdentity.name);
+  // The first argument (playerIdentity) is deprecated; use the fourth, `user`
+  onProximityEntered: (_identity, positions, angle, user) => {
+    console.log("Someone nearby!", user.name);
   },
-  onProximityLeft: (connectionId) => {
-    console.log("User left proximity");
+  onProximityLeft: (pid) => {
+    console.log("Someone left proximity", pid);
   },
 
   // Visibility threshold (hide distant cursors)
@@ -182,7 +185,7 @@ cursors: {
   cursorStyle: "none",
 
   // Custom cursor rendering
-  onCustomCursorRender: (connectionId, element) => {
+  onCustomCursorRender: (pid, element) => {
     // Return custom element or null for default
     return null;
   }
@@ -252,132 +255,75 @@ The [`website/fridge.tsx`](https://github.com/spencerc99/playhtml/blob/main/webs
 </PlayProvider>
 ```
 
-The transform itself (e.g. `translate(panX, panY) scale(scale)`) is applied however you like: inline `style.transform`, a CSS class, or a CSS variable. playhtml just reads it.
+The transform itself (e.g. `translate(panX, panY) scale(scale)`) is applied however you like: inline `style.transform`, a CSS class, or a CSS variable. playhtml only reads it.
 
-## Global Cursor API
+## Reading everyone's cursors
 
-Cursors expose a global `window.cursors` object.
+To draw your own cursor layer (a mini-map, trails, a "who's looking where" overlay), read each person's `presence.cursor`. Cursor moves happen many times a second, so `onChange` skips them unless you ask for `"cursor"`.
 
-`window.cursors` predates [`playhtml.users`](/docs/data/presence/users/). Its identity fields are the same data, not a second copy: `color` and `name` are aliases for `playhtml.users.me.color` and `playhtml.users.me.name`, and `allColors` is derived from the room's users. Reading or writing through either API gives identical results. We recommend `playhtml.users` for new code because it works whether or not cursors are enabled. `window.cursors` remains supported.
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```js
+// Each cursor is { x, y, pointer, zone, page }, or missing if that
+// person's pointer isn't on the page.
+for (const person of playhtml.people.everyone) {
+  const { cursor } = person.presence;
+  if (cursor) drawDot(cursor.x, cursor.y, person.color);
+}
 
-### Properties
-
-```javascript
-// Get all user colors (across the room).
-// Same data as playhtml.users.getAll().map(u => u.color), deduplicated.
-const colors = window.cursors.allColors;  // ["#3b82f6", "#8b5cf6", ...]
-
-// Get/set your color (alias for playhtml.users.me.color)
-window.cursors.color;  // "#3b82f6"
-window.cursors.color = "#ff0000";
-
-// Get/set your name (alias for playhtml.users.me.name)
-window.cursors.name;  // "Alice"
-window.cursors.name = "Bob";
+// Fires now, then on every cursor move
+const unsubscribe = playhtml.people.onChange("cursor", redrawMiniMap);
 ```
-
-### Events
-
-Listen for changes to cursor state. These events fire for the same changes as [`playhtml.users.onChange`](/docs/data/presence/users/). The difference is shape: `users.onChange` delivers the whole roster, and these deliver one value per event.
-
-```javascript
-// Listen for color changes
-window.cursors.on('allColors', (colors) => {
-  console.log(`${colors.length} users online`);
-});
-
-window.cursors.on('color', (myColor) => {
-  console.log(`My color changed to ${myColor}`);
-});
-
-window.cursors.on('name', (myName) => {
-  console.log(`My name changed to ${myName}`);
-});
-
-// Stop listening
-window.cursors.off('allColors', callback);
-```
-
-### Example: User Count Display
-
-```html
-<div id="user-count"><span>0</span> online</div>
-
-<script>
-  const updateCount = () => {
-    const count = window.cursors?.allColors?.length || 0;
-    document.querySelector('#user-count span').textContent = count;
-  };
-
-  window.cursors?.on('allColors', updateCount);
-  updateCount();
-</script>
-```
-
-## React Integration
-
-### Using in Components
-
+  </TabItem>
+  <TabItem label="React">
 ```tsx
-import { usePlayContext } from "@playhtml/react";
+import { usePeople } from "@playhtml/react";
 
-function UserCount() {
-  const { cursors } = usePlayContext();
-
-  return (
-    <div>{cursors.allColors.length} users online</div>
-  );
+function MiniMap() {
+  // Re-renders on every cursor move
+  const { everyone } = usePeople("cursor");
+  return everyone.map((person) => {
+    const { cursor } = person.presence;
+    return cursor ? (
+      <Dot key={person.pid} x={cursor.x} y={cursor.y} color={person.color} />
+    ) : null;
+  });
 }
 ```
 
-The `cursors` object from `usePlayContext()` provides:
-- `cursors.allColors` - Array of all user colors
-- `cursors.color` - Your current color
-- `cursors.name` - Your current name
+Call `usePeople("cursor")` in the component that draws cursors, not high in your tree, since it re-renders on every move.
+  </TabItem>
+</Tabs>
 
-These values update automatically when users join, leave, or change their settings. They are the same data the users hooks return. We recommend [`usePlayerIdentity()`](/docs/data/presence/users/) for your own identity and [`useUsers()`](/docs/data/presence/users/) for the roster; both work without cursors enabled.
+No one has a `cursor` when cursors are disabled. `page` is the page that cursor is on, which matters when cursors are shared across a whole domain.
 
-### Configuring Cursors Dynamically
+## Your name and color
 
-```tsx
-import { usePlayContext } from "@playhtml/react";
+Your cursor shows your name and color from `playhtml.people.me`. Set them there; the change is saved and shows up for everyone. See [names and colors](/docs/data/presence/#names-and-colors).
 
-function CursorSettings() {
-  const { configureCursors, getMyPlayerIdentity } = usePlayContext();
+To change cursor options such as `room` or `shouldRenderCursor` at runtime in React, use `configureCursors` from `usePlayContext()`.
 
-  const changeColor = (color: string) => {
-    // This updates window.cursors.color
-    window.cursors.color = color;
-  };
+## Legacy global API (`window.cursors`)
 
-  const changeName = (name: string) => {
-    // This updates window.cursors.name
-    window.cursors.name = name;
-  };
+`window.cursors` came before `playhtml.people` and keeps working, so existing pages don't need to change. New code should use `playhtml.people`, which works whether or not cursors are enabled. The two read the same data:
 
-  return (
-    <div>
-      <input
-        type="color"
-        value={getMyPlayerIdentity().color}
-        onChange={(e) => changeColor(e.target.value)}
-      />
-      <input
-        type="text"
-        value={getMyPlayerIdentity().name || ""}
-        onChange={(e) => changeName(e.target.value)}
-        placeholder="Your name"
-      />
-    </div>
-  );
-}
-```
+| `window.cursors` | `playhtml.people` |
+| --- | --- |
+| `window.cursors.allColors` | `playhtml.people.everyone.map((p) => p.color)` |
+| `window.cursors.color = "red"` | `playhtml.people.me.color = "red"` |
+| `window.cursors.name` | `playhtml.people.me.name` |
+| `window.cursors.on("allColors", cb)` | `playhtml.people.onChange(cb)` (joins, leaves, name and color changes) |
+| `window.cursors.on("color", cb)` / `on("name", cb)` | `playhtml.people.onChange(cb)`, then read `playhtml.people.me` |
+
+`allColors` is deduplicated, so two people with the same color count once. To count people, use `playhtml.people.everyone.length`.
+
+`usePlayContext().cursors` (`allColors`, `color`, `name`) is the older React form of the same data and also keeps working.
 
 ## Common Patterns
 
 ### Domain-Wide Count, Page-Specific Cursors
 
-Show total users across your entire site while only displaying cursors from the current page:
+Show how many people are on your whole site while only displaying cursors from the current page:
 
 ```javascript
 playhtml.init({
@@ -391,8 +337,8 @@ playhtml.init({
   }
 });
 
-// Access global count
-const totalUsers = window.cursors.allColors.length;
+// Domain-wide count: everyone on any page of the site
+const total = playhtml.people.everyone.length;
 ```
 
 **React:**
@@ -413,8 +359,8 @@ const totalUsers = window.cursors.allColors.length;
 </PlayProvider>
 
 function UserCount() {
-  const { cursors } = usePlayContext();
-  return <div>{cursors.allColors.length} online</div>;
+  const { everyone } = usePeople();
+  return <div>{everyone.length} online</div>;
 }
 ```
 
@@ -459,7 +405,7 @@ playhtml.init({
 
 ### Section-Specific Presence
 
-Show cursors only to users in the same section of your site (e.g., all `/blog/*` pages):
+Show cursors only to people in the same section of your site (e.g., all `/blog/*` pages):
 
 ```javascript
 playhtml.init({
@@ -494,12 +440,12 @@ playhtml.init({
 
 ### Cursors not appearing
 - Check that `enabled: true` is set
-- Verify the room configuration - users must be in the same room to see each other
+- Verify the room configuration: people must be in the same room to see each other
 - Check browser console for connection errors
 
-### User count is wrong
-- Make sure you're reading `window.cursors.allColors.length` after initialization
-- Listen for the `allColors` event to get updates
+### People count is wrong
+- Count with `playhtml.people.everyone.length` (or `usePeople().everyone.length`), not `window.cursors.allColors.length`, which drops people who share a color
+- Subscribe with `playhtml.people.onChange` to get updates
 - Check that the `room` setting matches your intent (page vs domain)
 
 ### Cursors from wrong pages appearing
@@ -512,6 +458,5 @@ playhtml.init({
 - Check browser console for CSS errors
 
 ### React hooks not updating
-- Ensure `PlayProvider` is rendered before components using `usePlayContext()`
-- The `cursors` object updates automatically - no manual subscription needed
-- Use `getMyPlayerIdentity()` for immediate reads, not reactive values
+- Ensure `PlayProvider` is rendered above components using `usePlayContext()` or `usePeople()`
+- `usePeople()` skips cursor moves; use `usePeople("cursor")` to re-render on them

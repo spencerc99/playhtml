@@ -2,7 +2,7 @@
 title: "Page-level data"
 description: "createPageData: named persistent channels that aren't tied to any element."
 sidebar:
-  order: 2
+  order: 4
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
@@ -62,13 +62,13 @@ or array directly to replace it.
 The vanilla channel handle exposes four methods (`usePageData` wraps these for you):
 
 - **`getData()`**: read the current value synchronously.
-- **`setData(value | updater)`**: write. Pass a replacement value, mutate an object/array draft in place, or return the next primitive value from an updater; see [data essentials](/docs/data/data-essentials/).
+- **`setData(value | updater)`**: write. Pass a replacement value, mutate an object/array draft in place, or return the next primitive value from an updater; see [data best practices](/docs/advanced/data-best-practices/#updating-data-mutator-vs-replacement).
 - **`onUpdate(cb)`**: subscribe to changes. Returns an unsubscribe function.
 - **`destroy()`**: detach the channel and its observers. Call this when the channel is no longer needed (e.g. on teardown) to avoid leaking the subscription.
 
 `onUpdate` batches synchronous writes into one callback with the final value.
 
-When you should reach for `createPageData` vs. element data, presence, or events: see the [decision table on data essentials](/docs/data/data-essentials/#when-to-use-which-primitive).
+When you should reach for `createPageData` vs. element data, presence, or events: see the [decision table in core concepts](/docs/concepts/#when-to-use-which-primitive).
 
 ## Navigation
 

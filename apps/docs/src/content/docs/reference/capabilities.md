@@ -283,15 +283,15 @@ No built-in reset shortcut. Deleting all clones (as above) is the equivalent.
 
 ## `can-hover`
 
-Surfaces hover state from any visitor on the page. This is **presence-only** — state is not persisted and clears when a user leaves.
+Surfaces hover state from any visitor on the page. This is **presence-only** — state is not persisted and clears when that person leaves.
 
 **Guide page:** [can-hover](/docs/capabilities/#can-hover)
 
 ### Data
 
-`can-hover` stores no persistent shared data. Hover state is transmitted as ephemeral live user data scoped to this element.
+`can-hover` stores no persistent shared data. Hover state is element presence: each person's `{ hover: boolean }` on this element, gone when they leave.
 
-**Awareness shape (per visitor):** `{ hover: boolean }`
+**Presence shape (per person):** `{ hover: boolean }`
 
 ### DOM effect
 
@@ -334,7 +334,7 @@ Syncs an element's **attributes**, **direct child list**, and **form / contented
 | Contenteditable content | Yes, via `input` and `change` events |
 | Descendant mutations (arbitrary depth) | **No** — `can-mirror` only observes the element itself, not its subtree |
 
-Ephemeral attributes (`data-playhtml-hover`, `data-playhtml-focus`) are not stored in the shared snapshot. They are driven by live user state instead.
+Ephemeral attributes (`data-playhtml-hover`, `data-playhtml-focus`) are not stored in the shared snapshot. They are driven by presence instead.
 
 ### Data
 

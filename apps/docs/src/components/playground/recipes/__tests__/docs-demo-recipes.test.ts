@@ -6,12 +6,15 @@ import { doodleStripRecipe } from "../doodle-strip";
 import { liveReactionsRecipe, rainEventRecipe } from "../events-basics";
 import { exampleRecipes } from "../index";
 import { onlineIndicatorRecipe } from "../online-indicator";
+import { pageStatusRecipe, yourNameRecipe } from "../people-basics";
 import { prizeWheelRecipe } from "../prize-wheel";
 
 const recipes = [
   doodleStripRecipe,
   prizeWheelRecipe,
   onlineIndicatorRecipe,
+  yourNameRecipe,
+  pageStatusRecipe,
   rainEventRecipe,
   liveReactionsRecipe,
 ];
@@ -22,6 +25,13 @@ const DEPRECATED = [
   "setMyAwareness",
   "awareness",
   "playerIdentity",
+  "setLive",
+  "getPresences",
+  "playhtml.presence.",
+  "usePresence(",
+  "live:",
+  "myPresence",
+  "useUsers(",
 ];
 
 function moduleScript(html: string): string {

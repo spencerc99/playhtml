@@ -2,10 +2,9 @@
 // ABOUTME: Marks article section headings without indexing interactive component content.
 
 import React, { useEffect, useState } from 'react';
-import { playhtml, withSharedState } from '@playhtml/react';
-import type { User } from 'playhtml';
+import { withSharedState } from '@playhtml/react';
 
-type RailAwareness = { scroll: number };
+type RailPresence = { scroll: number };
 
 type SectionTick = {
   key: string;
@@ -45,26 +44,13 @@ function computeSectionTicks(): SectionTick[] {
   return ticks;
 }
 
-export const DocsScrollRail = withSharedState<{}, RailAwareness>(
+export const DocsScrollRail = withSharedState<{}, RailPresence>(
   {
     defaultData: {},
-    myDefaultAwareness: { scroll: 0 },
+    defaultPresence: { scroll: 0 },
   },
-  ({ awarenessByStableId, myAwareness, setMyAwareness }) => {
-    const [users, setUsers] = useState<User[]>([]);
+  ({ everyone, me, setMyPresence }) => {
     const [sections, setSections] = useState<SectionTick[]>([]);
-
-    useEffect(() => {
-      let disposed = false;
-      let unsubscribe: (() => void) | undefined;
-      playhtml.ready.then(() => {
-        if (!disposed) unsubscribe = playhtml.users.onChange(setUsers);
-      });
-      return () => {
-        disposed = true;
-        unsubscribe?.();
-      };
-    }, []);
 
     useEffect(() => {
       if (typeof window === 'undefined') return;
@@ -77,13 +63,13 @@ export const DocsScrollRail = withSharedState<{}, RailAwareness>(
             document.documentElement.scrollHeight - window.innerHeight;
           const raw = max > 0 ? window.scrollY / max : 0;
           const scroll = Math.min(1, Math.max(0, raw));
-          setMyAwareness({ scroll });
+          setMyPresence({ scroll });
           ticking = false;
         });
       };
       window.addEventListener('scroll', onScroll, { passive: true });
       return () => window.removeEventListener('scroll', onScroll);
-    }, [setMyAwareness]);
+    }, [setMyPresence]);
 
     // Section-tick computation. Run on mount, on window resize, and on
     // body size changes (catches font/image reflow + dynamic islands).
@@ -129,11 +115,9 @@ export const DocsScrollRail = withSharedState<{}, RailAwareness>(
       };
     }, []);
 
-    const others = users.filter(
-      (user) => !user.isMe && awarenessByStableId.has(user.pid)
-    );
-    const myScroll = myAwareness?.scroll ?? 0;
-    const myColor = users.find((user) => user.isMe)?.color ?? FALLBACK_COLOR;
+    const others = everyone.filter((person) => !person.isMe);
+    const myScroll = me.presence?.scroll ?? 0;
+    const myColor = me.color || FALLBACK_COLOR;
 
     return (
       <div id="ph-docs-scroll-rail" className="ph-rail" role="presentation">
@@ -150,14 +134,14 @@ export const DocsScrollRail = withSharedState<{}, RailAwareness>(
           />
         ))}
         {/* Other readers' positions. */}
-        {others.map((user, i) => (
+        {others.map((person, i) => (
           <span
-            key={user.pid}
+            key={person.pid}
             className="ph-rail__dot"
             style={
               {
-                top: `${Math.round((awarenessByStableId.get(user.pid)!.scroll) * 100)}%`,
-                ['--ph-dot-color' as any]: user.color,
+                top: `${Math.round(person.presence.scroll * 100)}%`,
+                ['--ph-dot-color' as any]: person.color,
                 ['--ph-dot-delay' as any]: `${(i * 0.37) % 3}s`,
               } as React.CSSProperties
             }

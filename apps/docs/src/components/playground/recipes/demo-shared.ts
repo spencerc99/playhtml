@@ -29,9 +29,9 @@ export const doodleStripCss = `main { display: grid; gap: 0.75rem; justify-items
 const prizePages = `const PAGES = [
   { label: "Toggle a lamp", href: "https://playhtml.fun/docs/capabilities/#can-toggle" },
   { label: "Drag a hat", href: "https://playhtml.fun/docs/capabilities/#can-move" },
-  { label: "See cursors", href: "https://playhtml.fun/docs/data/presence/cursors/" },
+  { label: "See cursors", href: "https://playhtml.fun/docs/advanced/cursors/" },
   { label: "Summon rain", href: "https://playhtml.fun/docs/data/events/" },
-  { label: "Shape data", href: "https://playhtml.fun/docs/data/data-essentials/" },
+  { label: "Shape data", href: "https://playhtml.fun/docs/advanced/data-best-practices/" },
   { label: "Write React", href: "https://playhtml.fun/docs/using-react/" },
 ];
 const SLICE = 360 / PAGES.length;
@@ -183,4 +183,67 @@ export const liveReactionsCss = `.reactions {
 }
 @keyframes float-up {
   to { opacity: 0; transform: translateY(-140px) scale(0.8); }
+}`;
+
+export const yourNameCss = `.me {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.25rem;
+}
+.dot {
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid #1c1c1c;
+  border-radius: 50%;
+}
+label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}`;
+
+export const pageStatusCss = `.picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.picker button {
+  padding: 0.35rem 0.75rem;
+  border: 1.5px solid #1c1c1c;
+  border-radius: 999px;
+  background: white;
+  font: inherit;
+  cursor: pointer;
+}
+/* Your current status is highlighted. */
+.picker button[aria-pressed="true"] {
+  background: #e8a63a;
+}
+.people {
+  display: grid;
+  gap: 0.35rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.people li {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.6rem;
+  border: 1.5px solid #1c1c1c;
+  border-radius: 6px;
+  background: white;
+}
+.people .dot {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid #1c1c1c;
+  border-radius: 50%;
+}
+.people .status {
+  margin-left: auto;
+  color: #6a6a66;
 }`;

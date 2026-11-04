@@ -55,15 +55,15 @@ describe("element users", () => {
 
     for (const live of [false, 0, null]) {
       handle.setLive(live);
-      expect(update.mock.calls.at(-1)![0].users).toEqual([
-        {
-          user: expect.objectContaining({
-            pid: playhtml.users.me.pid,
-            isMe: true,
-          }),
-          live,
-        },
+      expect(update.mock.calls.at(-1)![0].everyone).toEqual([
+        expect.objectContaining({
+          pid: playhtml.users.me.pid,
+          isMe: true,
+          presence: live,
+        }),
       ]);
+      // 2.15 entries exposed the value as `live`; it stays as an alias.
+      expect(update.mock.calls.at(-1)![0].users[0].live).toBe(live);
     }
   });
 
@@ -87,12 +87,16 @@ describe("element users", () => {
         },
       },
     });
-    expect(update.mock.calls.at(-1)![0].users).toEqual([
-      {
-        user: { pid: "remote-user", name: "Mina", color: "blue", isMe: false },
-        live: false,
-      },
+    expect(update.mock.calls.at(-1)![0].everyone).toEqual([
+      { pid: "remote-user", name: "Mina", color: "blue", isMe: false, presence: false },
     ]);
+    // 2.15 entries were `{ user, live }`; both still read through.
+    expect(update.mock.calls.at(-1)![0].users[0].user).toEqual({
+      pid: "remote-user",
+      name: "Mina",
+      color: "blue",
+      isMe: false,
+    });
 
     socket.receive({
       type: "presence-changes",

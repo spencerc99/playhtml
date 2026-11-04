@@ -2,7 +2,7 @@
 title: "Events"
 description: "Broadcast one-off signals with dispatchPlayEvent, no persisted data."
 sidebar:
-  order: 4
+  order: 3
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
@@ -24,7 +24,7 @@ Reach for events when the answer to "should this still be here if I reload?" is 
 
 A good rule: if you'd feel bad showing the signal to someone who just arrived, it's an event.
 
-Comparing all four primitives side by side: see the [decision table on data essentials](/docs/data/data-essentials/#when-to-use-which-primitive).
+Comparing all four primitives side by side: see the [decision table in core concepts](/docs/concepts/#when-to-use-which-primitive).
 
 ## The API
 
@@ -133,6 +133,6 @@ Same primitive, different shape: each click below sends a short-lived emoji burs
 
 ## Related
 
-- [Data essentials](/docs/data/data-essentials/): the three data types, and when events are the wrong tool
+- [Core concepts](/docs/concepts/): the kinds of shared state, and when events are the wrong tool
 - [Presence](/docs/data/presence/): for "who's here" instead of "someone just did this"
 - [`playhtml.init()` options](/docs/reference/init-options/#events): the full `events` config reference
