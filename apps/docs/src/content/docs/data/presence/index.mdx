@@ -8,6 +8,8 @@ sidebar:
 import { Tabs, TabItem } from "@astrojs/starlight/components";
 import DemoCodeLink from "@/components/DemoCodeLink.astro";
 import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
+import { YourNameDemo } from "@/components/react/data-demos/YourNameDemo";
+import { PageStatusDemo } from "@/components/react/data-demos/PageStatusDemo";
 
 People refers to **who's here right now, and what they're doing**. Each person has **presence**: small bits of live state that can be seen by everyone, can only be changed by each individual, and goes away when they leave. Use people for "3 people here" counts, rosters, typing indicators, cursors, and showing who's using an element right now.
 
@@ -59,11 +61,18 @@ These are the only "profile" properties that we have for each person currently t
 <script type="module">
   import { playhtml } from "https://unpkg.com/playhtml@latest";
 
+  // <input type="color"> only takes hex, but default colors are hsl()
+  function toHex(color) {
+    const context = document.createElement("canvas").getContext("2d");
+    context.fillStyle = color;
+    return context.fillStyle;
+  }
+
   await playhtml.init();
   const nameInput = document.getElementById("my-name");
   const colorInput = document.getElementById("my-color");
   nameInput.value = playhtml.people.me.name ?? "";
-  colorInput.value = playhtml.people.me.color;
+  colorInput.value = toHex(playhtml.people.me.color);
   nameInput.addEventListener("change", () => (playhtml.people.me.name = nameInput.value));
   colorInput.addEventListener("input", () => (playhtml.people.me.color = colorInput.value));
 
@@ -86,6 +95,13 @@ These are the only "profile" properties that we have for each person currently t
 ```tsx
 import { playhtml, usePeople } from "@playhtml/react";
 
+// <input type="color"> only takes hex, but default colors are hsl()
+function toHex(color: string) {
+  const context = document.createElement("canvas").getContext("2d")!;
+  context.fillStyle = color;
+  return context.fillStyle;
+}
+
 function Roster() {
   const { everyone, me } = usePeople();
 
@@ -97,7 +113,7 @@ function Roster() {
       />
       <input
         type="color"
-        value={me.color}
+        value={me.color ? toHex(me.color) : "#000000"}
         onChange={(e) => (playhtml.people.me.color = e.target.value)}
       />
       <ul>
@@ -117,6 +133,12 @@ Before playhtml has connected, `usePeople().me` has an empty `pid` and `color`.
   </TabItem>
 </Tabs>
 
+<div id="your-name-demo" className="ph-demo-slot" data-label="DEMO — your name and color">
+  <YourNameDemo client:only="react" />
+</div>
+
+This is you on this site. Change your name or color and it's saved for your next visit, and your cursor updates for everyone.
+
 ## Page presence
 
 Each person has one presence object for the page. `setMyPresence(key, value)` sets one key of yours, so separate features can each own a key without overwriting each other. Everyone reads it back on each person in `everyone`, including you.
@@ -129,9 +151,9 @@ playhtml.people.setMyPresence("status", { text: "focused", icon: "target" });
 
 // Read everyone (including you; isMe marks you)
 for (const person of playhtml.people.everyone) {
-person.name; // "Ana"
-person.color; // "#3b82f6"
-person.presence.status; // { text, icon } or undefined
+  person.name; // "Ana"
+  person.color; // "#3b82f6"
+  person.presence.status; // { text, icon } or undefined
 }
 
 // Your own
@@ -169,6 +191,12 @@ function StatusList() {
 
   </TabItem>
 </Tabs>
+
+<div id="page-status-demo" className="ph-demo-slot" data-label="DEMO — page status">
+  <PageStatusDemo client:only="react" />
+</div>
+
+Pick a status and everyone on this page sees it next to your name. Pick it again to clear it. Open the page in an incognito window to see a second person; close that window and they drop off the list.
 
 ### Setting and clearing
 
@@ -238,6 +266,17 @@ Use element presence when the signal belongs to one element, like "who has joine
 
   </TabItem>
 </Tabs>
+
+<div
+  id="online-indicator-demo"
+  className="ph-demo-slot"
+  data-label="DEMO — online indicator"
+>
+  <OnlineIndicatorDemo client:only="react" />
+  <DemoCodeLink href="/docs/examples/online-indicator/" />
+</div>
+
+Each dot is one person with this demo on screen, and the glowing dot is **you**. The color is your element presence, separate from your saved color: pick one and everyone sees your dot change, but it resets when you leave. Open the page in an incognito window to see a second dot.
 
 On an element:
 
@@ -312,21 +351,6 @@ playhtml.people.onChange("cursor", (everyone) => {
 ```
 
 Cursor moves are skipped by `onChange` unless you pass `"cursor"`, since they happen many times a second. In React, `usePeople("cursor")` does the same. Rooms, cursor styles, chat, proximity, and anchoring cursors to a zoomable canvas are covered in [Cursors](/docs/advanced/cursors/).
-
-## Try it live
-
-<div
-  id="online-indicator-demo"
-  className="ph-demo-slot"
-  data-label="DEMO — online indicator"
->
-  <OnlineIndicatorDemo client:only="react" />
-  <DemoCodeLink href="/docs/examples/online-indicator/" />
-</div>
-
-Each dot is one reader; the yellow-glowing dot is **you**. Pick a color and watch yours change for everyone else. Open this page in a second tab and you'll see two dots. Close a tab and the dot disappears. This is element presence: no saving, no replay.
-
-> Looking for a "live reactions" bursting button? That's an [event](/docs/data/events/), not presence. The docs for events have a live demo.
 
 ## Migrating from earlier versions
 
