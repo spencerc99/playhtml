@@ -24,10 +24,14 @@ Each element's data is stored under its `id`, so the element with the same `id` 
 
 People is used to reference the actual users on a page and data about them. For example, `playhtml.people.everyone` is everyone on the page right now, including you. Each person looks like this:
 
-```js
-{
-  (pid, name, color, isMe, presence);
-}
+```ts
+type Person = {
+  pid: string;
+  name?: string;
+  color: string;
+  isMe: boolean;
+  presence: object;
+};
 ```
 
 - **`name` and `color`** are personal properties that save across visits.
