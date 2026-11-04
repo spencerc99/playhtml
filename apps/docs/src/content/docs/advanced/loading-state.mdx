@@ -13,7 +13,7 @@ Loading lasts until the room syncs, usually well under a second. It starts again
 
 ## What playhtml does while loading
 
-Every playhtml element gets these until its room's data is in:
+An element with loading treatment gets these until its room's data is in:
 
 - The `playhtml-loading` class.
 - `aria-busy="true"`, so screen readers know the content is about to change.
@@ -22,7 +22,7 @@ Every playhtml element gets these until its room's data is in:
 How the element looks depends on its kind:
 
 - **Built-in elements** (`can-move`, `can-toggle`, `can-spin`, and the rest) fade in and out gently.
-- **Custom elements** (`can-play`, `withSharedState`) show nothing special by default, because playhtml can't know what a sensible placeholder is for your element. Set one of the options below.
+- **Custom elements** (`can-play`, `withSharedState`) get no loading treatment by default, because playhtml can't know what a sensible placeholder is for your element. They are clickable right away. Setting any of the options below turns loading treatment on.
 
 ## Choosing how an element looks while loading
 

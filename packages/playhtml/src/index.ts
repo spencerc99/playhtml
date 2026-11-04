@@ -1809,7 +1809,14 @@ function isHTMLElement(ele: any): ele is HTMLElement {
 
 // Loading state management functions
 function getDefaultLoadingBehavior(element: HTMLElement): string {
-  if (element.hasAttribute("can-play")) return "none"; // No auto-loading for can-play
+  if (element.hasAttribute("can-play")) {
+    // Custom elements get no loading treatment unless they ask for one:
+    // setting a loading style or class opts them in.
+    return element.hasAttribute("loading-style") ||
+      element.hasAttribute("loading-class")
+      ? "animate"
+      : "none";
+  }
   return "animate"; // can-move, can-toggle, can-spin, can-grow, etc.
 }
 
