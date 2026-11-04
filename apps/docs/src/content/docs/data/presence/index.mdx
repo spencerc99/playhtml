@@ -45,7 +45,7 @@ Each person's `pid`, `name`, and `color` are saved, and they work whether or not
 
 - `pid` is a stable id for this person in this browser. Use it as a React `key` or to match someone across features.
 - `name` is whatever they've set, or `undefined`.
-- `color` is always set. playhtml picks one the first time someone visits. It reads back as a lowercase hex string like `"#3b82f6"`, so you can pass it straight to `<input type="color">`. A color you set as `hsl()` or `rgb()` also reads back as hex. A see-through color keeps its alpha as `#rrggbbaa` (color inputs can't show those). Named colors like `"red"` read back as you set them.
+- `color` is always set. playhtml picks one the first time someone visits.
 
 `people.me` is you. Setting `me.name` or `me.color` saves the change and shows it to everyone (and updates your cursor, if cursors are on).
 
