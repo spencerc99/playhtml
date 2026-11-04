@@ -1,0 +1,146 @@
+---
+title: "Loading state"
+description: "What elements look like before their shared data arrives, how to change it, and how to show your own loading UI."
+sidebar:
+  order: 4
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+When a page opens, playhtml has to fetch the room's shared data before elements can show it. Until then, an element would show its default data (a counter at `0`, a toggle off). playhtml marks elements as loading during that wait so people don't act on a default that's about to change.
+
+Loading lasts until the room syncs, usually well under a second. It starts again whenever [navigation](/docs/advanced/navigation/) moves to a different room.
+
+## What playhtml does while loading
+
+Every playhtml element gets these until its room's data is in:
+
+- The `playhtml-loading` class.
+- `aria-busy="true"`, so screen readers know the content is about to change.
+- `pointer-events: none`, so nobody clicks or drags an element that's about to change.
+
+How the element looks depends on its kind:
+
+- **Built-in elements** (`can-move`, `can-toggle`, `can-spin`, and the rest) fade in and out gently.
+- **Custom elements** (`can-play`, `withSharedState`) show nothing special by default, because playhtml can't know what a sensible placeholder is for your element. Set one of the options below.
+
+## Choosing how an element looks while loading
+
+Three attributes control it. They work on any playhtml element.
+
+| Attribute | Values | What it does |
+| --- | --- | --- |
+| `loading-behavior` | `animate`, `hidden`, `none` | `animate` fades the element in and out. `hidden` keeps it invisible until the data is in. `none` turns all loading treatment off, and the element is clickable right away. |
+| `loading-style` | `breathing`, `pulse`, `fade`, `none` | Which look to use. `breathing` is the gentle fade the built-in elements use. `pulse` is a faster blink. `fade` holds the element at low opacity. `none` shows the element as normal. |
+| `loading-class` | any class name | Adds your own class while loading, so you can style the placeholder yourself. |
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+
+```html
+<!-- Invisible until its data is in, so nobody sees the default -->
+<div id="scoreboard" can-play loading-behavior="hidden"></div>
+
+<!-- A toggle that pulses instead of breathing -->
+<button id="lamp" can-toggle loading-style="pulse">lamp</button>
+
+<!-- Your own placeholder style -->
+<div id="guestbook" can-play loading-class="is-placeholder"></div>
+
+<style>
+  .is-placeholder {
+    background: repeating-linear-gradient(45deg, #eee 0 8px, #f6f6f6 8px 16px);
+  }
+</style>
+```
+
+  </TabItem>
+  <TabItem label="React">
+
+Pass the same options as `loading`: `behavior`, `style`, and `customClass`.
+
+```tsx
+import { withSharedState } from "@playhtml/react";
+
+export const Scoreboard = withSharedState(
+  {
+    defaultData: { score: 0 },
+    loading: { behavior: "hidden" },
+  },
+  ({ data }) => <div>{data.score}</div>,
+);
+```
+
+On a `CanPlayElement`, use the `loading` prop: `loading={{ behavior: "animate", style: "pulse" }}`.
+
+  </TabItem>
+</Tabs>
+
+You can also style loading elements with plain CSS. Target `.playhtml-loading` or `[aria-busy="true"]`:
+
+```css
+.playhtml-loading {
+  filter: grayscale(1);
+}
+```
+
+## Showing your own loading UI
+
+To render something different while the page loads, such as a "connecting…" line or a skeleton, read playhtml's loading state directly.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+
+`playhtml.isLoading` is `true` until the room's data is in. A `playhtml:loading-change` event fires on `document` each time it changes:
+
+```html
+<p id="status">connecting…</p>
+
+<script type="module">
+  import { playhtml } from "playhtml";
+
+  const status = document.getElementById("status");
+  const render = () => {
+    status.hidden = !playhtml.isLoading;
+  };
+
+  document.addEventListener("playhtml:loading-change", render);
+  playhtml.init();
+  render();
+</script>
+```
+
+To run code once the data is in, wait for `playhtml.ready`:
+
+```js
+await playhtml.ready;
+console.log("data is in");
+```
+
+  </TabItem>
+  <TabItem label="React">
+
+`usePlayContext().isLoading` is `true` until the room's data is in, and the component re-renders when it changes:
+
+```tsx
+import { usePlayContext } from "@playhtml/react";
+
+export function ConnectionStatus() {
+  const { isLoading } = usePlayContext();
+  return isLoading ? <p>connecting…</p> : null;
+}
+```
+
+Hooks that read shared data, like `usePageData`, return the default until loading ends. Check `isLoading` before acting on that value, for example before counting a visit.
+
+  </TabItem>
+</Tabs>
+
+## When loading starts again
+
+Loading isn't only at page open. When client-side navigation moves to a different room, the new room's data has to load too:
+
+- `isLoading` turns `true` again, `playhtml:loading-change` fires, and elements get their loading treatment.
+- `playhtml.ready` becomes a new promise for the new room. Read `playhtml.ready` again instead of reusing one you saved earlier.
+
+Navigating within the same room doesn't trigger loading. See [Navigation & SPAs](/docs/advanced/navigation/#waiting-for-the-new-room) for how rooms are picked.
