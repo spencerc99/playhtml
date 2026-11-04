@@ -72,6 +72,7 @@ export const COLLAGE_PEEK_STYLES = `
     display: flex;
     align-items: center;
     gap: 3px;
+    min-width: 0;
     white-space: nowrap;
   }
 
@@ -99,19 +100,21 @@ export const COLLAGE_PEEK_STYLES = `
     object-fit: contain;
   }
 
-  .collage-peek__more {
-    display: flex;
-    flex-direction: column;
-    padding-top: 1px;
-    border-top: 1px solid color-mix(in srgb, var(--c-ink) 14%, transparent);
+  .collage-peek__domain {
+    flex: none;
+  }
+
+  /* A short preview of the page's title, after the site, in a quieter ink. */
+  .collage-peek__title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--c-muted);
   }
 
-  .collage-peek__line {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .collage-peek__title::before {
+    content: "\\00B7";
+    margin: 0 4px 0 1px;
   }
 
 `;

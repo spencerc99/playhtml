@@ -81,10 +81,10 @@ describe("ProvenancePeek", () => {
     const [hovered, other] = tags;
     expect(hovered.textContent).toContain("spencer.place");
     expect(hovered.textContent).toContain("Notes");
-    expect(hovered.textContent).toContain("picture · first seen");
+    expect(hovered.textContent).not.toContain("first seen");
     expect(other.textContent).toContain("example.test");
     expect(other.textContent).toContain("Gallery");
-    expect(other.textContent).toContain("picture · first seen");
+    expect(other.textContent).not.toContain("picture");
     expect(hovered.className).toBe(other.className);
   });
 });
