@@ -250,6 +250,9 @@ export function viewerPieces(
       z: published.z,
       flipX: published.flipX,
       flipY: published.flipY,
+      ...(published.letteringWidth === undefined
+        ? {}
+        : { letteringWidth: published.letteringWidth }),
     };
     if (published.content) {
       const scrap = contentScrap(published.content, base);

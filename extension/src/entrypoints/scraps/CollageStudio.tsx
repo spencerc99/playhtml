@@ -12,6 +12,7 @@ import React, {
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import {
   FULL_CROP,
+  isFullCrop,
   boxCenter,
   cornerPoint,
   type Bounds,
@@ -111,6 +112,7 @@ import {
 import { loadCollage, saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
+import { rewrapHeadingFromSide } from "./pieceLettering";
 import { ExportMenu } from "./ExportMenu";
 import { ShareButton } from "./ShareButton";
 import type { CollageSigner } from "./collageSignature";
@@ -2003,6 +2005,26 @@ export function CollageStudio({
           keepAspect: !event.shiftKey,
           aboutCenter: event.altKey,
         };
+        // A heading pulled from a side keeps its type size and rewraps its
+        // words to the new width, growing downward to hold the lines.
+        if (
+          grip.kind === "edge" &&
+          (grip.edge === "left" || grip.edge === "right") &&
+          before.scrap.kind === "heading" &&
+          isFullCrop(before.crop)
+        ) {
+          const rewrapped = rewrapHeadingFromSide({
+            box: before,
+            scrap: before.scrap,
+            letteringWidth: before.letteringWidth,
+            edge: grip.edge,
+            pointer: reach.pointer,
+            aboutCenter: event.altKey,
+          });
+          editPieces([{ ...before, ...rewrapped }], `resize:${before.id}`);
+          setGestureReadout(`wrap ${Math.round(rewrapped.letteringWidth)}px`);
+          return;
+        }
         const drag =
           grip.kind === "corner"
             ? dragCorner({ ...reach, corner: grip.corner })

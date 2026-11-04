@@ -19,3 +19,4 @@ extension/website/public/changelog/media/ and reference them here:
 - Pick a range of days, a whole month, or a time of day like "mornings" when looking back at your movement portrait or your scraps.
 - Collage sounds now play in Safari, and moving a piece forward or back rings higher or lower to match where it sits in the stack.
 - Collage pieces no longer vanish when you come back from another tab, flipping a cropped piece keeps the crop, the crop view and the right-click piece list show pieces as they look now, a hint shows how to snap while dragging, duplicating again repeats how far you moved the last copy, exported pictures come framed with the collage's name, and a new video export shows the collage turning from front to back.
+- Headings in a collage now wrap onto more lines when you pull them narrower from a side, and pale headings no longer bring their dark backing onto the collage.

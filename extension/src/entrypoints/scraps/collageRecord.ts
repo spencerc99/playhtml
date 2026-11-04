@@ -49,6 +49,12 @@ export interface CollagePiece {
   /** How this piece's backdrop was removed, absent when it was left alone. */
   cutout?: PieceCutout;
   /**
+   * The width a heading's words wrap to, in the heading's own type size, once
+   * it has been pulled wider or narrower from a side. Absent while the words
+   * keep the lines they arrived with.
+   */
+  letteringWidth?: number;
+  /**
    * Present when the piece is held in place: clicks pass through it to what is
    * beneath. It is only reached again from the list of pieces under a point.
    */
@@ -309,6 +315,12 @@ function readNumber(source: Record<string, unknown>, key: string): number {
   return value;
 }
 
+function readPositive(source: Record<string, unknown>, key: string): number {
+  const value = readNumber(source, key);
+  if (value <= 0) throw new Error(`Collage piece ${key} is not positive`);
+  return value;
+}
+
 function readBoolean(source: Record<string, unknown>, key: string): boolean {
   const value = source[key];
   if (typeof value !== "boolean") {
@@ -351,6 +363,10 @@ export function parseCollagePiece(value: unknown): CollagePiece {
     ...(piece.cutout === undefined
       ? {}
       : { cutout: parseCutout(piece.cutout) }),
+    // A heading that was never rewrapped keeps the lines it arrived with.
+    ...(piece.letteringWidth === undefined
+      ? {}
+      : { letteringWidth: readPositive(piece, "letteringWidth") }),
     // Likewise a piece that was never locked carries no lock.
     ...(piece.locked === undefined ? {} : { locked: readLocked(piece.locked) }),
   };
