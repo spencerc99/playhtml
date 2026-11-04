@@ -79,7 +79,7 @@ export function ExportMenu({
                 disabled={busy || !hasPieces}
                 onClick={run(onPicture)}
               >
-                png · front and back
+                jpg · front and back
               </button>
             </div>
           </section>
