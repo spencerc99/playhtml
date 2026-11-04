@@ -34,6 +34,12 @@ Three attributes control it. They work on any playhtml element.
 | `loading-style` | `breathing`, `pulse`, `fade`, `none` | Which look to use. `breathing` is the gentle fade the built-in elements use. `pulse` is a faster blink. `fade` holds the element at low opacity. `none` shows the element as normal. |
 | `loading-class` | any class name | Adds your own class while loading, so you can style the placeholder yourself. |
 
+Each choice trades something:
+
+- `animate` shows the default value while loading, but makes it clear the value isn't final.
+- `hidden` never shows the default. The element still takes up its space, so the page has a blank gap until the data is in.
+- `none` makes the element usable right away, but people can see and click the default value before the real data arrives.
+
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 
