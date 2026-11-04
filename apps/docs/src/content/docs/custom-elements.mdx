@@ -124,7 +124,7 @@ If a mirrored child also has its own playhtml capability, keep giving it a stabl
 
 ### can-play
 
-Register an element with its starting data, event handlers, and renderer in one initializer object. Pass the element itself when you already have it, or pass its id before it exists. Both `playhtml.register(element, initializer)` and `playhtml.register(id, initializer)` work before or after `playhtml.init()`. playhtml calls `update` whenever shared data or a user's live value changes.
+Register an element with its starting data, event handlers, and renderer in one initializer object. Pass the element itself when you already have it, or pass its id before it exists. Both `playhtml.register(element, initializer)` and `playhtml.register(id, initializer)` work before or after `playhtml.init()`. playhtml calls `update` whenever shared data or someone's presence on the element changes.
 
 The [Element API reference](/docs/reference/element-api/#initializer) lists every initializer field and callback context.
 
@@ -212,7 +212,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 
 #### Element presence
 
-`presence` is your value for this element. It does not persist. `setMyPresence` changes it, and everyone's current value appears in `everyone` beside their identity (your own is also `myPresence`). The same `update` function renders shared `data` and presence changes. See [Presence](/docs/data/presence/#element-presence).
+Presence is each person's own value for this element: everyone can see it, only they can change it, and it's gone when they leave. `defaultPresence` is the starting value. `everyone` lists everyone with the element on screen (each with `pid`, `name`, `color`, `isMe`, and their `presence`), `me` is you, and `setMyPresence` sets your value. The same `update` function renders shared `data` and presence changes. See [people and presence](/docs/data/presence/#element-presence).
 
 ```html
 <div id="online"></div>
@@ -221,14 +221,14 @@ Most capabilities can share the same element. Each keeps its own data and behavi
   import { playhtml } from "https://unpkg.com/playhtml@latest";
 
   playhtml.register("online", {
-    presence: { status: "here" },
+    defaultPresence: { status: "here" },
     update: ({ element, everyone }) => {
       element.replaceChildren(
-        ...everyone.map(({ user }) => {
+        ...everyone.map((person) => {
           const dot = document.createElement("span");
-          dot.className = "dot";
-          dot.style.background = user.color;
-          dot.title = user.name ?? "Anonymous";
+          dot.className = person.isMe ? "dot me" : "dot";
+          dot.style.background = person.color;
+          dot.title = person.name ?? "Anonymous";
           return dot;
         }),
       );
@@ -309,7 +309,7 @@ The element is an empty mount point; everything you see is rendered from state. 
 </script>
 ```
 
-`register` returns a **handle** (`getElement`, `getData`, `setData`, `setLocalData`, `getMyPresence`, `getEveryone`, `setMyPresence`, `onPresenceChange`, `requestUpdate`, `unregister`) for reads/writes from outside the view.
+`register` returns a **handle** (`getElement`, `getData`, `setData`, `setLocalData`, `everyone`, `me`, `setMyPresence`, `onEveryoneChange`, `requestUpdate`, `unregister`) for reads/writes from outside the view.
 
 #### Local UI state
 
@@ -456,7 +456,7 @@ playhtml.register("chats", {
 
 ## React
 
-In React there's a single, declarative path: **`withSharedState`**. It wraps a component and hands it shared `data`, element `live` data, and `users`. JSX re-renders on every data or user change. There's no imperative `update` to hand-write and no separate view API — JSX _is_ the declarative view.
+In React there's a single, declarative path: **`withSharedState`**. It wraps a component and hands it shared `data`, plus `everyone`, `me`, and `setMyPresence` for presence on the element. JSX re-renders on every data or presence change. There's no imperative `update` to hand-write and no separate view API — JSX _is_ the declarative view.
 
 ### A click counter
 
@@ -545,16 +545,23 @@ export const Guestbook = withSharedState(
 
 ### Element presence
 
-`presence` seeds your value; `setMyPresence` replaces it for everyone; `everyone` lists each person with their identity and current `presence`.
+`defaultPresence` is your starting value, `setMyPresence` sets yours, and `everyone` lists each person with their `name`, `color`, and `presence` on this element.
 
 ```tsx
 export const Online = withSharedState(
-  { defaultData: {}, presence: { ready: false } },
-  ({ everyone }) => (
+  { defaultData: {}, defaultPresence: { ready: false } },
+  ({ everyone, me, setMyPresence }) => (
     <div className="row">
-      {everyone.map(({ user }) => (
-        <span key={user.pid} className="dot" style={{ background: user.color }} />
+      {everyone.map((person) => (
+        <span
+          key={person.pid}
+          className="dot"
+          style={{ background: person.color, opacity: person.presence.ready ? 1 : 0.4 }}
+        />
       ))}
+      <button onClick={() => setMyPresence({ ready: !me.presence.ready })}>
+        {me.presence.ready ? "not ready" : "ready"}
+      </button>
     </div>
   ),
 );
@@ -635,5 +642,5 @@ const Chats = withSharedState(
 - Every `ElementInitializer` property: [Element API (`can-play`)](/docs/reference/element-api/)
 - Vanilla registration API: [`register` / `define` / `view`](/docs/reference/view-api/)
 - The `playhtml` object (setup, events, page data): [playhtml client](/docs/reference/playhtml-client/)
-- Presence & identity: [reference](/docs/reference/presence/)
+- People and presence: [reference](/docs/reference/presence/)
 - React: [`@playhtml/react` API](/docs/reference/react-api/)

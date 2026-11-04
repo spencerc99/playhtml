@@ -141,10 +141,10 @@ export default defineConfig({
             { label: "Data essentials", slug: "data/data-essentials" },
             { label: "Page-level data", slug: "data/page-data" },
             {
-              label: "Presence",
+              label: "People",
               items: [
-                { label: "Presence", slug: "data/presence" },
-                { label: "Users", slug: "data/presence/users" },
+                { label: "People and presence", slug: "data/presence" },
+                { label: "Names and colors", slug: "data/presence/users" },
                 { label: "Cursors", slug: "data/presence/cursors" },
               ],
             },

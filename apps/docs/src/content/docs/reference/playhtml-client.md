@@ -34,7 +34,7 @@ await playhtml.init();
 | Custom elements | `register`, `define`, `getHandle` |
 | Events | `dispatchPlayEvent`, `registerPlayEventListener`, `removePlayEventListener` |
 | Page data | `createPageData` |
-| Users & presence | `users`, `page`, `createPresenceRoom`, `cursorClient`, `presence` (deprecated) |
+| People & presence | `people`, `createPresenceRoom`, `cursorClient`, `users` and `presence` (deprecated) |
 | Inspection | `roomId`, `host`, `syncedStore`, `listSharedElements` |
 
 ---
@@ -374,51 +374,34 @@ Throws if called before `init()` completes sync.
 
 ---
 
-## Presence
+## People & presence
 
-Presence tracks who is in the room and what they are doing. See [Presence & identity](/docs/reference/presence/) for types and API details. Usage guide: [Presence](/docs/data/presence/).
+`people` is who's on the page and what each of them is doing right now. See [People & presence](/docs/reference/presence/) for types and API details. Usage guide: [People and presence](/docs/data/presence/).
 
-### `users`
+### `people`
 
-**Type:** `{ me, getAll(), onChange(cb), cursors }`
+**Type:** [`People`](/docs/reference/presence/#playhtmlpeople)
 
-Who is in the room, as [`User`](/docs/reference/presence/#user) objects (`pid`, `name`, `color`, `isMe`), whether or not cursors are enabled. This is the place to read or set identity. Throws if accessed before `init()` completes. Usage guide: [Users](/docs/data/presence/users/).
+Everyone on the page, including you, as [`Person`](/docs/reference/presence/#person) objects (`pid`, `name`, `color`, `isMe`, `presence`), whether or not cursors are enabled. This is the place to read or set your name and color, and to set your page presence. Throws if accessed before `init()` completes.
 
 ```js
 await playhtml.ready;
 
-playhtml.users.me.name = "Alice";
+playhtml.people.me.name = "Alice";
+playhtml.people.setMyPresence("status", "typing");
 
-const everyone = playhtml.users.getAll(); // [{ pid, name, color, isMe }, ...]
-const unsubscribe = playhtml.users.onChange((users) => {
-  console.log(`${users.length} people here`);
+playhtml.people.everyone; // [{ pid, name, color, isMe, presence }, ...]
+const unsubscribe = playhtml.people.onChange("status", (everyone) => {
+  renderStatusRow(everyone);
 });
-
-// Everyone's cursors: [{ user, cursor, zone, page }]
-playhtml.users.cursors.onChange(drawCursors);
 ```
 
----
-
-### `page`
-
-**Type:** [`PresenceScope`](/docs/reference/presence/#page-presence-playhtmlpage)
-
-Page presence: what each person on the page is doing right now. Each person has one presence object; `setMyPresence` merges keys into yours. Throws if accessed before `init()` completes.
-
-```js
-await playhtml.ready;
-
-playhtml.page.setMyPresence({ status: "typing" });
-playhtml.page.getEveryone();                         // [{ user, presence }]
-playhtml.page.onPresenceChange("status", renderStatusRow);
-```
-
-| Method | Description |
+| Member | Description |
 |---|---|
-| `getEveryone(key?)` | Everyone's presence (including yours), in join order. With a key, each `presence` is that key's value. |
-| `setMyPresence(partial)` | Merges top-level keys into your presence. `null` removes a key. |
-| `onPresenceChange(keyOrSelect?, callback)` | Calls back right away and whenever the watched part changes. Returns an unsubscribe function. |
+| `everyone` | Everyone here (including you), in join order. `getAll()` returns the same list. |
+| `me` | You. Assign `me.name` or `me.color` to change them for everyone. `me.presence` is your page presence. |
+| `setMyPresence(key, value)` | Sets one key of your presence. `null` removes it. |
+| `onChange(keys?, callback)` | Calls back right away and on joins, leaves, name or color changes, and presence changes (only the given keys, if any). Cursor moves only with `"cursor"`. Returns an unsubscribe function. |
 
 ---
 
@@ -426,13 +409,13 @@ playhtml.page.onPresenceChange("status", renderStatusRow);
 
 **Signature:** `createPresenceRoom(name: string): PresenceRoom`
 
-Creates a separate presence scope (sidebar, lobby, shared document) with the same methods as [`page`](#page), plus `destroy()`. Call `destroy()` when done.
+Creates a separate presence scope (sidebar, lobby, shared document). `room.people` has the same API as [`people`](#people), without cursors. Call `room.destroy()` when done.
 
 ```js
 await playhtml.ready;
 
 const sidebar = playhtml.createPresenceRoom("sidebar");
-sidebar.setMyPresence({ focus: { section: "comments" } });
+sidebar.people.setMyPresence("focus", { section: "comments" });
 
 // Tear down when done
 sidebar.destroy();
@@ -442,11 +425,19 @@ Throws if called before `init()` completes sync.
 
 ---
 
+### `users` (deprecated)
+
+**Type:** `{ me, getAll(), onChange(cb) }`
+
+The earlier identity API. It keeps working: `users.me` is the same as `people.me` without `presence`, and `users.getAll()` returns everyone without `presence`. Use [`people`](#people).
+
+---
+
 ### `presence` (deprecated)
 
 **Type:** `PresenceAPI`
 
-The earlier channel-based presence object. It keeps working, but use [`page`](#page) for presence, [`users.me`](#users) for identity, and [`users.cursors`](#users) for cursors. See the [migration table](/docs/data/presence/#migrating-from-playhtmlpresence).
+The earlier channel-based presence object. It keeps working, but use [`people`](#people). See the [migration table](/docs/data/presence/#migrating-from-earlier-versions).
 
 ---
 
@@ -454,7 +445,7 @@ The earlier channel-based presence object. It keeps working, but use [`page`](#p
 
 **Type:** `CursorClientAwareness | null`
 
-Low-level cursor client, or `null` if cursors are disabled. Most config belongs in `init({ cursors: … })`, and cursor data is easier to read from [`users.cursors`](#users). See [Cursors](/docs/data/presence/cursors/).
+Low-level cursor client, or `null` if cursors are disabled. Most config belongs in `init({ cursors: … })`, and cursor positions are easier to read from each person's `presence.cursor` in [`people`](#people). See [Cursors](/docs/data/presence/cursors/).
 
 ---
 

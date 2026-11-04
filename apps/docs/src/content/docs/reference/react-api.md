@@ -52,18 +52,18 @@ withSharedState<T, V, P>(
 ```tsx
 interface WithSharedStateConfig<T, V> {
   defaultData: T;
-  presence?: V;
+  defaultPresence?: V;
   id?: string;
   tagInfo?: TagType[];
 }
 ```
 
 - **`defaultData`**: required. The initial value of `data`. Survives reload.
-- **`presence`**: optional. Your starting [presence](/docs/data/presence/#element-presence) on this element: per-person state that clears when you leave. It does _not_ persist.
+- **`defaultPresence`**: optional. Your starting [presence](/docs/data/presence/#element-presence) on this element: per-person state that clears when you leave. It does _not_ persist.
 - **`id`**: optional. Stable id for the element. If omitted, playhtml derives one from the rendered DOM; see [Dynamic elements](/docs/advanced/dynamic-elements/) for why stable ids matter.
 - **`tagInfo`**: optional. Marks the element as one of the built-in capabilities (e.g. `[TagType.CanToggle]`). For a built-in capability, prefer its wrapper component (`CanToggleElement`, `CanMoveElement`, ...). See [Capabilities](/docs/capabilities/).
 
-`defaultData` and `presence` accept values, not functions that
+`defaultData` and `defaultPresence` accept values, not functions that
 receive DOM elements. They are available on the first render. Derive them from
 React props with a [props-dependent config](#props-dependent-config).
 
@@ -73,16 +73,16 @@ React props with a [props-dependent config](#props-dependent-config).
 interface ReactElementEventHandlerData<T, V> {
   data: T;
   setData: (data: T | ((draft: T) => void)) => void;
-  myPresence?: V;
-  everyone: Array<{ user: User; presence: V }>;
-  setMyPresence: (data: V) => void;
+  everyone: Person<V>[];  // { pid, name, color, isMe, presence }
+  me: Person<V>;
+  setMyPresence: (next: V | ((draft: V) => V | void)) => void;
   ref: React.RefObject<HTMLElement>;
 }
 ```
 
 `setData` accepts either a replacement value or a mutator function. See [Data essentials](/docs/data/data-essentials/) for the merge semantics.
 
-`myPresence`, `everyone`, and `setMyPresence` are this element's [presence](/docs/data/presence/#element-presence). Use them for signals tied to this element that should disappear when the person leaves. `everyone` lists everyone with the element on screen (including you), each with their current `presence`. The 2.15 names `live`, `users`, and `setLive` still work.
+`everyone`, `me`, and `setMyPresence` are this element's [presence](/docs/data/presence/#element-presence). Use them for signals tied to this element that should disappear when the person leaves. `everyone` lists everyone with the element on screen (including you), each with their current `presence` on it; your own is `me.presence`. `setMyPresence` takes a new value or a mutator, like `setData`. The 2.15 names `live`, `users`, and `setLive` still work.
 
 ### Props-dependent config
 
@@ -109,7 +109,7 @@ Defaults seed shared state; changing props does not overwrite saved state.
 Component form of `withSharedState`. Useful when you want JSX children (render-prop style) instead of wrapping a component, or when you need ref access to a specific element.
 
 Pass computed values directly, such as `defaultData={{ count: initialCount }}`.
-The same value-only rule applies to `presence`.
+The same value-only rule applies to `defaultPresence`.
 DOM-dependent default functions belong to the
 [vanilla element API](/docs/reference/element-api/#defaultdata).
 
@@ -117,7 +117,7 @@ DOM-dependent default functions belong to the
 interface CanPlayElementProps<T, V> {
   id?: string;
   defaultData: T;
-  presence?: V;
+  defaultPresence?: V;
   tagInfo?: TagType[];
   standalone?: boolean;
   loading?: LoadingOptions;
@@ -129,7 +129,7 @@ interface CanPlayElementProps<T, V> {
 ```
 
 - **`id`**: required if the top-level child is a React Fragment. Otherwise defaults to the child's id, or a hash of the child's content. A stable id matters for cross-browser sync; see [Dynamic elements](/docs/advanced/dynamic-elements/).
-- **`presence`**: optional. Your starting presence on this element. It clears when you leave.
+- **`defaultPresence`**: optional. Your starting presence on this element. It clears when you leave.
 - **`standalone`**: when `true`, the element initializes playhtml itself if no `PlayProvider` is present. Use it for one-off components mounted outside your provider tree (e.g. an Astro island). A no-op when a provider already exists.
 - **`loading`**: controls the loading affordance shown before the element's first sync. See [Loading options](#loading-options).
 - **`dataSource`**, **`shared`**, **`dataSourceReadOnly`**: wire the element to a shared source across pages or sites. See [Shared data props](#shared-data-props) and the [Shared elements](/docs/advanced/shared-elements/) guide.
@@ -193,7 +193,7 @@ Each built-in capability has a typed wrapper. All of them accept the shared `dat
 | `<CanToggleElement>` | `can-toggle` | `readOnly?: boolean`: render the toggle read-only (sets `data-source-read-only`). |
 | `<CanSpinElement>` | `can-spin` | none |
 | `<CanGrowElement>` | `can-grow` | none |
-| `<CanHoverElement>` | `can-hover` | sets `[data-playhtml-hover]` on its child while any user hovers; style that attribute instead of `:hover`. |
+| `<CanHoverElement>` | `can-hover` | sets `[data-playhtml-hover]` on its child while anyone hovers; style that attribute instead of `:hover`. |
 | `<CanDuplicateElement>` | `can-duplicate` | `elementToDuplicate: RefObject<HTMLElement>` (required), `canDuplicateTo?: RefObject<HTMLElement>`. |
 
 `CanDuplicateElement` takes refs rather than selector strings, since React owns the DOM:
@@ -286,11 +286,17 @@ Access the playhtml context from any descendant of `PlayProvider`.
 ```tsx
 interface PlayContextInfo {
   isLoading: boolean;
+  people: {
+    everyone: Person[];
+    me: Person;
+    setMyPresence: (key: string, value: unknown) => void;
+  };
+  /** @deprecated Use people (or usePeople()) */
   cursors: CursorEvents;
-  /** @deprecated Use useCursors() */
+  /** @deprecated Use usePeople("cursor") */
   cursorPresences: Map<string, CursorPresenceView>;
   configureCursors: (opts: Partial<CursorOptions>) => void;
-  /** @deprecated Use useMe() */
+  /** @deprecated Use people.me */
   getMyPlayerIdentity: () => PlayerIdentity | null;
   registerPlayEventListener: (type: string, handler: PlayEvent) => string;
   removePlayEventListener: (type: string, id: string) => void;
@@ -298,7 +304,20 @@ interface PlayContextInfo {
 }
 ```
 
-Most consumers don't read the raw context. Prefer the dedicated hooks ([`usePagePresence`](#usepagepresence), [`usePageData`](#usepagedata), [`useCursors`](#usecursors), [`useMe`](#useme), [`useUsers`](#useusers)) which subscribe and re-render for you.
+For data, prefer the dedicated hooks ([`usePeople`](#usepeople), [`usePageData`](#usepagedata)), which subscribe and re-render for you.
+
+### `people`
+
+The people on this page: `everyone`, `me`, and `setMyPresence(key, value)`, the same object [`usePeople()`](#usepeople) returns. A component that reads `usePlayContext()` re-renders when someone joins, leaves, or changes their name, color, or presence. Cursor moves don't re-render it; use `usePeople("cursor")` for those.
+
+```tsx
+const { people } = usePlayContext();
+people.everyone.length;      // how many people are here
+people.me.presence.status;   // your status
+people.setMyPresence("status", "away");
+```
+
+Before sync, `everyone` is empty and `me.pid` is `""`.
 
 ### `isLoading`
 
@@ -320,9 +339,9 @@ useEffect(() => {
 
 Use a ref guard plus the mutator form for this kind of write, and don't include the field you write in the dependency list.
 
-### `cursors`
+### `cursors` (deprecated)
 
-A reactive view of the cursor system. Components using this re-render when colors or identities change.
+The older view of names and colors. Use `people` instead: `people.everyone.map((p) => p.color)` for `allColors`, and `people.me` for `color` and `name`. Components using this re-render when colors or identities change.
 
 ```tsx
 const { cursors } = usePlayContext();
@@ -349,39 +368,31 @@ Usually you'll wrap these in a hook to bind a listener to the component's lifecy
 
 All hooks must be used inside a `PlayProvider`. Each is safe to call before playhtml has finished initializing: it returns an empty/default value, and any setter warns and no-ops until sync completes, then wires up automatically. You never need to gate them on a loading flag yourself.
 
-### `usePagePresence`
+### `usePeople`
 
-Read and write [page presence](/docs/data/presence/#page-presence): what each person on the page is doing right now. Re-renders only when the part you watch changes.
+The people on this page, the React form of [`playhtml.people`](/docs/reference/presence/#playhtmlpeople): who's here and what each of them is doing right now.
 
 ```tsx
-function usePagePresence(): {
-  myPresence: PagePresence | undefined;
-  everyone: PresenceEntry<PagePresence>[];
-  setMyPresence: (partial: PagePresence) => void; // merges keys
-};
-function usePagePresence<V>(key: string): {
-  myPresence: V | undefined;
-  everyone: PresenceEntry<V | undefined>[];
-  setMyPresence: (value: V | null) => void;     // writes just this key
-};
-function usePagePresence<S>(select: (presence: PagePresence) => S): {
-  myPresence: S | undefined;
-  everyone: PresenceEntry<S>[];
-  setMyPresence: (partial: PagePresence) => void;
+function usePeople(keys?: string | string[]): {
+  everyone: Person[];   // { pid, name, color, isMe, presence }, including you
+  me: Person;           // you
+  setMyPresence: (key: string, value: unknown) => void; // null clears a key
 };
 ```
 
 ```tsx
-const { myPresence, everyone, setMyPresence } = usePagePresence<{ text: string }>("status");
-setMyPresence({ text: "focused" });
-everyone.map(({ user, presence }) => `${user.name}: ${presence?.text}`);
+const { everyone, me, setMyPresence } = usePeople("status");
+setMyPresence("status", { text: "focused" });
+everyone.map((person) => `${person.name}: ${person.presence.status?.text}`);
 ```
 
-`everyone` includes you (`user.isMe`) in join order. A selector can close over props; it is read again on each change.
+Re-renders when someone joins, leaves, or changes their name, color, or presence. Pass a key or a list of keys to re-render only when those keys change. Cursor moves are skipped unless you pass `"cursor"`. `everyone` is in join order. Before sync, `everyone` is empty and `me.pid` is `""`.
+
+To set your name or color, assign to `playhtml.people.me.name` / `.color`.
 
 ### `usePresence` (deprecated)
 
-The earlier channel-based hook, returning `{ presences, setMyPresence, me }`. It keeps working; use [`usePagePresence(key)`](#usepagepresence) and [`useMe()`](#useme) instead.
+The earlier channel-based hook, returning `{ presences, setMyPresence, myIdentity }`. It keeps working; use [`usePeople(key)`](#usepeople) instead.
 
 ### `usePageData`
 
@@ -422,26 +433,18 @@ function usePresenceRoom(name: string): PresenceRoom | null;
 
 ```tsx
 const room = usePresenceRoom("lobby");
-room?.setMyPresence({ status: { text: "ready" } });
+room?.people.setMyPresence("status", { text: "ready" });
 ```
 
 The room and its connection are torn down automatically when the component unmounts or `name` changes.
 
-### `useCursors`
-
-Everyone's cursors, the React form of [`playhtml.users.cursors`](/docs/reference/presence/#cursors-userscursors). Re-renders on every cursor move, so call it in the component that draws cursors. Empty when cursors are disabled.
-
-```tsx
-function useCursors(): CursorEntry[]; // [{ user, cursor, zone, page }]
-```
-
 ### `useCursorPresences` (deprecated)
 
-Returns a `pid`-keyed `Map` of cursor views. Use [`useCursors()`](#usecursors) instead.
+Returns a `pid`-keyed `Map` of cursor views. Use [`usePeople("cursor")`](#usepeople) and read `person.presence.cursor` instead.
 
 ### `useCursorZone`
 
-Register an element as a cursor zone. When the local user's cursor is inside it, other clients render the cursor positioned relative to their own copy of the same element (matched by element id). This anchors cursors to a shared widget rather than absolute page coordinates.
+Register an element as a cursor zone. When your cursor is inside it, other clients render the cursor positioned relative to their own copy of the same element (matched by element id). This anchors cursors to a shared widget rather than absolute page coordinates.
 
 ```tsx
 function useCursorZone(
@@ -456,57 +459,13 @@ useCursorZone(ref);
 return <div ref={ref} id="shared-canvas" />; // the element needs a stable id
 ```
 
-### `useUsers`
+### `useUsers` (deprecated)
 
-Reactive version of `playhtml.users.getAll()`. Returns the live array of everyone in the room and re-renders your component on join/leave/identity changes. Works without `cursors: { enabled: true }`.
-
-```tsx
-function useUsers(): User[];
-```
-
-```tsx
-interface User {
-  pid: string;
-  name?: string;
-  color: string;
-  isMe: boolean;
-}
-```
-
-```tsx
-import { useUsers } from "@playhtml/react";
-
-function OnlineCount() {
-  const users = useUsers();
-  return <div>{users.length} online</div>;
-}
-```
-
-See [Users](/docs/data/presence/users/) for the full identity API.
-
-### `useMe`
-
-Your own `User` (`pid`, `name`, `color`, `isMe: true`), the reactive form of `playhtml.users.me`. Returns `null` until sync. Works without `cursors: { enabled: true }`.
-
-```tsx
-function useMe(): User | null;
-```
-
-```tsx
-import { useMe } from "@playhtml/react";
-
-function Profile() {
-  const me = useMe();
-  if (!me) return null;
-  return <div style={{ color: me.color }}>{me.name ?? "anonymous"}</div>;
-}
-```
-
-Values update reactively. With the "we were online" extension installed, `color` and `pid` reflect the extension's injected identity. To change your name or color, assign to `playhtml.users.me`. See [Users](/docs/data/presence/users/).
+Returns everyone as `{ pid, name, color, isMe }`, without presence. Use [`usePeople().everyone`](#usepeople).
 
 ### `usePlayerIdentity` (deprecated)
 
-Use [`useMe`](#useme). `usePlayerIdentity()` returns `{ color, pid, name }` with `pid` `undefined` until sync, and remains available for existing code.
+Returns `{ color, pid, name }`, with `pid` `undefined` until sync. Use [`usePeople().me`](#usepeople).
 
 ## `TagType`
 

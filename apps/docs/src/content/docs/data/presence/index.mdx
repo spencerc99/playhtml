@@ -1,6 +1,6 @@
 ---
-title: "Presence"
-description: "Per-person state that disappears when people leave: who's here, what they're doing, where their cursor is."
+title: "People and presence"
+description: "Who's here, and what each person is doing right now: on the page, on an element, or in a room."
 sidebar:
   order: 3
 ---
@@ -9,59 +9,70 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 import DemoCodeLink from '@/components/DemoCodeLink.astro';
 import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
 
-Presence is per-person state that only exists while someone is on the page: "Ana is typing", "Sam is hovering the lamp", "Jo's cursor is here". When a person leaves, their presence is gone, and someone who arrives later never sees it.
+`playhtml.people` is everyone on the page right now, including you. Each person carries who they are and what they're doing:
+
+```js
+{
+  pid: "a1b2…",       // a stable id for this person
+  name: "Ana",        // their name (may be undefined)
+  color: "#3b82f6",   // their color
+  isMe: false,        // true for you
+  presence: { status: "typing" },  // what they're doing right now
+}
+```
+
+**Presence** is per-person state that only exists while someone is here: "Ana is typing", "Sam is hovering the lamp", "Jo's cursor is here". Everyone can see it, only that person can change it, and when they leave it's gone. Someone who arrives later never sees it. A person's name and color, on the other hand, are saved and follow them from visit to visit (see [names and colors](/docs/data/presence/users/)).
+
+Presence lives in three places, and they all use the same names (`everyone`, `me`, `setMyPresence`):
+
+- **[On the page](#page-presence):** `playhtml.people`. One presence object per person, shared by everything on the page. [Cursors](/docs/data/presence/cursors/) live here too, at `person.presence.cursor`.
+- **[On an element](#element-presence):** inside an element, `everyone` is the people using it, each with their presence on that element.
+- **[In a room](#presence-rooms):** `playhtml.createPresenceRoom(name).people`, for presence shared across pages.
+
+When you want something to stay after a refresh, use [saved data](/docs/data/data-essentials/). For one-off moments that don't change any state (a burst of confetti), use [events](/docs/data/events/).
 
 A tab left in the background counts as leaving after a couple of minutes: its presence drops out of everyone else's view, and comes back as soon as the tab is visible again. A cursor that stops moving fades out after about 30 seconds.
 
-For the full API surface (`User`, `playhtml.page`, element presence, cursor types), see the [Presence & identity reference](/docs/reference/presence/).
-
-playhtml splits presence into three parts:
-
-- **Who is here:** [`playhtml.users`](/docs/data/presence/users/) gives each person's name and color.
-- **Where they are:** [cursors](/docs/data/presence/cursors/) (`playhtml.users.cursors`).
-- **What they are doing:** presence values you set, on the page (`playhtml.page`) or on one element.
-
-When you want something to stay after a refresh, use [persistent data](/docs/data/data-essentials/). For one-off moments that don't change any state (a burst of confetti), use [events](/docs/data/events/).
-
-For the full API surface (`User`, `PresenceEntry`, `playhtml.page`, cursor types), see the [Presence & identity reference](/docs/reference/presence/).
-
 ## Page presence
 
-Each person has one presence object for the page. `setMyPresence` merges the keys you pass into yours, so separate features can each own a key without overwriting each other. Everyone reads it back as a list of `{ user, presence }`, including you.
+Each person has one presence object for the page. `setMyPresence(key, value)` sets one key of yours, so separate features can each own a key without overwriting each other. Everyone reads it back on each person in `everyone`, including you.
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```js
-// Set a key on your presence (other keys are kept)
-playhtml.page.setMyPresence({ status: { text: "focused", icon: "target" } });
+// Set one key of your presence (other keys are kept)
+playhtml.people.setMyPresence("status", { text: "focused", icon: "target" });
 
-// Read everyone (including you; user.isMe marks you)
-for (const { user, presence } of playhtml.page.getEveryone()) {
-  user.name;        // "Ana"
-  user.color;       // "#3b82f6"
-  presence.status;  // { text, icon } or undefined
+// Read everyone (including you; isMe marks you)
+for (const person of playhtml.people.everyone) {
+  person.name;             // "Ana"
+  person.color;            // "#3b82f6"
+  person.presence.status;  // { text, icon } or undefined
 }
 
-// Watch one key: fires now, then only when someone's status changes
-const unsubscribe = playhtml.page.onPresenceChange("status", (everyone) => {
-  renderStatusList(everyone); // each entry's presence is just their status
+// Your own
+playhtml.people.me.presence.status;
+
+// Fires now, then whenever someone joins, leaves, or changes their status
+const unsubscribe = playhtml.people.onChange("status", (everyone) => {
+  renderStatusList(everyone);
 });
 ```
   </TabItem>
   <TabItem label="React">
 ```tsx
-import { usePagePresence } from "@playhtml/react";
+import { usePeople } from "@playhtml/react";
 
 function StatusList() {
-  // Watches one key; setMyPresence writes just that key.
-  const { myPresence, everyone, setMyPresence } = usePagePresence<{ text: string }>("status");
+  // Re-renders only when someone joins, leaves, or changes their status
+  const { everyone, setMyPresence } = usePeople("status");
 
   return (
     <>
-      <button onClick={() => setMyPresence({ text: "focused" })}>focus</button>
-      {everyone.map(({ user, presence }) => (
-        <span key={user.pid} style={{ color: user.color }}>
-          {presence?.text ?? "…"}
+      <button onClick={() => setMyPresence("status", { text: "focused" })}>focus</button>
+      {everyone.map((person) => (
+        <span key={person.pid} style={{ color: person.color }}>
+          {person.presence.status?.text ?? "…"}
         </span>
       ))}
     </>
@@ -69,36 +80,37 @@ function StatusList() {
 }
 ```
 
-The component re-renders only when someone's `status` changes.
+`usePeople()` returns `{ everyone, me, setMyPresence }`. The same object is on `usePlayContext().people`, which re-renders whenever anyone's presence changes.
   </TabItem>
 </Tabs>
-
-### Watching exactly what you need
-
-Subscriptions take what to watch first, and fire only when that part changes:
-
-```js
-playhtml.page.onPresenceChange(callback);                        // the whole presence object
-playhtml.page.onPresenceChange("status", callback);              // one key
-playhtml.page.onPresenceChange((p) => p.status?.text, callback); // a selection
-```
-
-`usePagePresence()` takes the same three forms. With a selector, return a string, number, or small object so changes elsewhere in someone's presence don't trigger your callback.
 
 ### Setting and clearing
 
 ```js
-playhtml.page.setMyPresence({ status: "typing" });  // set a key
-playhtml.page.setMyPresence({ status: null });      // remove a key
+playhtml.people.setMyPresence("status", "typing");  // set a key
+playhtml.people.setMyPresence("status", null);      // remove it
 ```
 
-Top-level keys merge, but values inside a key replace: `setMyPresence({ status: { icon: "wave" } })` replaces the whole `status`. If two separate features on your page both use presence, give their keys distinct names (`chatTyping`, `lobbyReady`) so they don't collide.
+Each key is replaced whole: `setMyPresence("status", { icon: "wave" })` replaces your entire `status`. If two separate features on your page both use presence, give their keys distinct names (`chatTyping`, `lobbyReady`) so they don't collide. `cursor` is set by playhtml, so you can't use it as a key.
 
-Presence is for **state changes**, not per-frame streams. Each person's page presence writes are rate limited (about 20 per second), and extra writes are dropped. For pointer position, use [cursors](/docs/data/presence/cursors/). For scroll position or similar, throttle your writes.
+Presence is for **state changes**, not per-frame streams. Each person's page presence writes are rate limited (about 20 per second), and extra writes are dropped. Pointer position is already shared for you by [cursors](/docs/data/presence/cursors/). For scroll position or similar, throttle your writes.
+
+### Watching only what you need
+
+`onChange` fires when someone joins or leaves, changes their name or color, or changes their presence. Pass a key or a list of keys first to ignore changes to other keys:
+
+```js
+playhtml.people.onChange(callback);                      // any presence change
+playhtml.people.onChange("status", callback);            // only status
+playhtml.people.onChange(["status", "mood"], callback);  // either one
+playhtml.people.onChange("cursor", callback);            // cursor moves too
+```
+
+Cursor moves are skipped unless you pass `"cursor"`, since they happen many times a second. `usePeople(keys)` takes the same keys.
 
 ## Element presence
 
-Use element presence when the signal belongs to one playhtml element, like "who has joined this widget" or "which choice is this reader previewing here". Give the element a starting `presence`, change yours with `setMyPresence`, and render everyone from `everyone`.
+Use element presence when the signal belongs to one element, like "who has joined this widget" or "which choice is this reader previewing here". It sits next to the element's `data`: give the element a `defaultPresence`, change yours with `setMyPresence`, and render from `everyone` and `me`.
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
@@ -109,12 +121,12 @@ Use element presence when the signal belongs to one playhtml element, like "who 
   import { playhtml } from "https://unpkg.com/playhtml@latest";
 
   playhtml.register("ready-count", {
-    presence: { ready: false },
-    onClick: (_event, { myPresence, setMyPresence }) => {
-      setMyPresence({ ready: !myPresence.ready });
+    defaultPresence: { ready: false },
+    onClick: (_event, { me, setMyPresence }) => {
+      setMyPresence({ ready: !me.presence.ready });
     },
     update: ({ element, everyone }) => {
-      const ready = everyone.filter(({ presence }) => presence.ready).length;
+      const ready = everyone.filter((person) => person.presence.ready).length;
       element.textContent = `${ready} of ${everyone.length} ready`;
     },
   });
@@ -125,11 +137,11 @@ Use element presence when the signal belongs to one playhtml element, like "who 
   </TabItem>
   <TabItem label="React">
 ```tsx
-<CanPlayElement id="ready-count" defaultData={{}} presence={{ ready: false }}>
-  {({ myPresence, everyone, setMyPresence }) => {
-    const ready = everyone.filter(({ presence }) => presence.ready).length;
+<CanPlayElement id="ready-count" defaultData={{}} defaultPresence={{ ready: false }}>
+  {({ everyone, me, setMyPresence }) => {
+    const ready = everyone.filter((person) => person.presence.ready).length;
     return (
-      <button onClick={() => setMyPresence({ ready: !myPresence.ready })}>
+      <button onClick={() => setMyPresence({ ready: !me.presence.ready })}>
         {ready} of {everyone.length} ready
       </button>
     );
@@ -139,33 +151,39 @@ Use element presence when the signal belongs to one playhtml element, like "who 
   </TabItem>
 </Tabs>
 
-On an element, `everyone` means everyone who has that element on screen, each starting at the element's `presence` value. `setMyPresence` on an element replaces your value (the page merges, because many features share it; an element owns its value).
+On an element:
 
-You can also read and watch an element's presence from elsewhere on the page through its handle:
+- `everyone` is everyone who has that element on screen, each starting at the element's `defaultPresence`. Each person has the same `pid`, `name`, and `color` as on the page; only `presence` differs.
+- `me` is you, with your presence on this element at `me.presence`.
+- `setMyPresence` sets your whole value, like `setData`: pass the new value, or a function that edits a copy of yours (`setMyPresence((p) => { p.ready = true })`). An element owns its presence value, so there are no keys to merge.
+
+You can also read and watch an element's presence from elsewhere on the page through its handle, with the same names:
 
 ```js
 const lamp = playhtml.getHandle("lamp");
-lamp.getEveryone();                              // [{ user, presence }]
-lamp.onPresenceChange((p) => p.hovering, (everyone) => {
-  badge.textContent = everyone.filter(({ presence }) => presence).length;
+lamp.everyone;                 // people with the lamp on screen
+lamp.me.presence;              // your presence on the lamp
+lamp.setMyPresence({ hovering: true });
+lamp.onEveryoneChange("hovering", (everyone) => {
+  badge.textContent = everyone.filter((person) => person.presence.hovering).length;
 });
 ```
 
 Tabs in the same browser share one identity and appear as one person. To test with two people, open the second copy in an incognito window or another browser profile.
 
-## Isolated presence rooms
+## Presence rooms
 
-Page presence covers everyone on the page. When you want presence **scoped to something other than the page** (a lobby, a document, a game table that several pages share), create a presence room. A room has the same presence API as `playhtml.page`.
+Page presence covers everyone on the page. When you want presence **scoped to something other than the page** (a lobby, a document, a game table that several pages share), create a presence room. `room.people` has the same API as `playhtml.people`, except cursors, which stay on the page.
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```js
 const room = playhtml.createPresenceRoom("lobby-42");
 
-room.setMyPresence({ status: { text: "ready" } });
-const unsubscribe = room.onPresenceChange("status", renderLobby);
+room.people.setMyPresence("status", { text: "ready" });
+const unsubscribe = room.people.onChange("status", renderLobby);
 
-// When you're done (e.g. the user leaves the lobby), tear it down:
+// When you're done (e.g. the person leaves the lobby), tear it down:
 room.destroy();
 ```
 
@@ -179,14 +197,14 @@ function Lobby() {
   const room = usePresenceRoom("lobby-42");
   if (!room) return null; // null until joined
   return (
-    <button onClick={() => room.setMyPresence({ ready: true })}>
-      {room.getEveryone().length} in the lobby
+    <button onClick={() => room.people.setMyPresence("ready", true)}>
+      {room.people.everyone.length} in the lobby
     </button>
   );
 }
 ```
 
-[`usePresenceRoom(name)`](/docs/reference/react-api/#usepresenceroom) joins the room and tears it down for you on unmount.
+[`usePresenceRoom(name)`](/docs/reference/react-api/#usepresenceroom) joins the room and tears it down for you on unmount. To re-render when the room changes, subscribe with `room.people.onChange` in an effect.
   </TabItem>
 </Tabs>
 
@@ -197,26 +215,31 @@ function Lobby() {
   <DemoCodeLink href="/docs/examples/online-indicator/" />
 </div>
 
-Each dot is one reader; the yellow-glowing dot is **you**. Pick a color and watch yours change for everyone else. Open this page in a second tab and you'll see two dots. Close a tab and the dot disappears. This is presence: no persistence, no replay.
+Each dot is one reader; the yellow-glowing dot is **you**. Pick a color and watch yours change for everyone else. Open this page in a second tab and you'll see two dots. Close a tab and the dot disappears. This is element presence: no saving, no replay.
 
 > Looking for a "live reactions" bursting button? That's an [event](/docs/data/events/), not presence. The docs for events have a live demo.
 
-## Migrating from `playhtml.presence`
+## Migrating from earlier versions
 
-Earlier versions used a channel-based `playhtml.presence` object and element `live` values. They still work, but new code should use the API above.
+Earlier versions split this across `playhtml.users`, a channel-based `playhtml.presence`, and element `live` values. They all still work, but new code should use the names above.
 
 | Before | Now |
 | --- | --- |
-| `playhtml.presence.setMyPresence("status", v)` | `playhtml.page.setMyPresence({ status: v })` |
-| `playhtml.presence.getPresences()` | `playhtml.page.getEveryone()` |
-| `playhtml.presence.onPresenceChange("status", cb)` | `playhtml.page.onPresenceChange("status", cb)` |
-| `playhtml.presence.onPresenceChange("cursor", cb)` | `playhtml.users.cursors.onChange(cb)` |
-| `usePresence("status")` | `usePagePresence("status")` |
-| `room.presence.setMyPresence(...)` | `room.setMyPresence({ ... })` |
-| element `live`, `setLive`, `users` | `presence`, `setMyPresence`, `everyone` (your own value is `myPresence`) |
+| `playhtml.users.getAll()` | `playhtml.people.everyone` |
+| `playhtml.users.me.name = "Ana"` | `playhtml.people.me.name = "Ana"` |
+| `playhtml.users.onChange(cb)` | `playhtml.people.onChange(cb)` |
+| `playhtml.presence.setMyPresence("status", v)` | `playhtml.people.setMyPresence("status", v)` |
+| `playhtml.presence.getPresences()` | `playhtml.people.everyone` (read `person.presence`) |
+| `playhtml.presence.onPresenceChange("status", cb)` | `playhtml.people.onChange("status", cb)` |
+| `playhtml.presence.onPresenceChange("cursor", cb)` | `playhtml.people.onChange("cursor", cb)` |
+| `room.presence.setMyPresence(...)` | `room.people.setMyPresence(...)` |
+| `useUsers()`, `usePresence("status")`, `usePlayerIdentity()` | `usePeople()`, `usePeople("status")`, `usePeople().me` |
+| element `live: {...}` / `myDefaultAwareness` | `defaultPresence: {...}` |
+| element `live`, `users: [{ user, live }]` | `me.presence`, `everyone` (each person's `presence`) |
+| element `setLive(v)` / `setMyAwareness(v)` | `setMyPresence(v)` |
 
 ## When to use data instead
 
 Presence is for the live sense of other people on the page. If you find yourself reaching for `localStorage` or a refresh-survivor, you want data, not presence.
 
-Not sure which primitive fits? The full decision table, covering element data, page data, presence, cursors, and events, is on [data essentials](/docs/data/data-essentials/#when-to-use-which-primitive).
+Not sure which one fits? The full decision table, covering element data, page data, presence, cursors, and events, is on [data essentials](/docs/data/data-essentials/#when-to-use-which-primitive). For the full API, see the [people and presence reference](/docs/reference/presence/).

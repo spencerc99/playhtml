@@ -9,8 +9,8 @@ can be regenerated.
 ## Files
 
 - `how-playhtml-works-overview.html` → `../public/how-playhtml-works-overview.png`
-  The "core concepts" overview: one page with the four kinds of shared state
-  (element data, page data, presence, events) called out.
+  The "core concepts" overview: one page with what playhtml shares
+  (element data, page data, people and their presence, events) called out.
 - `how-playhtml-works.html` → `../public/how-playhtml-works.png`
   The element-data detail: two pages with the same elements, synced by id.
 

@@ -218,21 +218,22 @@
       const peopleHere = document.getElementById("peopleHere");
       const peopleHereCount = document.getElementById("peopleHereCount");
 
-      function renderUsers(users) {
+      function renderPeople(everyone) {
         peopleHereCount.textContent =
-          users.length === 1 ? "1 person here" : `${users.length} people here`;
+          everyone.length === 1 ? "1 person here" : `${everyone.length} people here`;
         peopleHere.replaceChildren(
-          ...users.map((user) => {
+          ...everyone.map((person) => {
             const item = document.createElement("li");
-            item.textContent = user.name ?? "anonymous";
-            item.style.color = user.color;
+            item.textContent = person.name ?? "anonymous";
+            item.style.color = person.color;
             return item;
           })
         );
       }
 
-      playhtml.users.onChange(renderUsers);
-      renderUsers(playhtml.users.getAll());
+      // Calls back now, then whenever someone joins, leaves, or changes
+      // their name or color. playhtml.people is ready once init() resolves.
+      playhtml.ready.then(() => playhtml.people.onChange(renderPeople));
 
       // Reaction button — a custom collaborative element built with the `view`
       // API: register a render function and playhtml re-renders it whenever the
@@ -249,10 +250,10 @@
           }
           return { count: Number(initialCount) };
         },
-        presence: { hovering: false },
+        defaultPresence: { hovering: false },
         view: ({ data, everyone, setData, setMyPresence }) => {
           const hasReacted = Boolean(localStorage.getItem("reacted-reaction"));
-          const peopleHovering = everyone.filter(({ presence }) => presence.hovering).length;
+          const peopleHovering = everyone.filter((person) => person.presence.hovering).length;
           const react = () => {
             if (localStorage.getItem("reacted-reaction")) {
               setData((d) => { d.count -= 1; });

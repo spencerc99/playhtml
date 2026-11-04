@@ -1,5 +1,5 @@
 // ABOUTME: Provides the copy-paste React source for the online indicator recipe.
-// ABOUTME: Reads every reader's color from `everyone` and sets your own with setMyPresence.
+// ABOUTME: Reads every reader's color from `everyone` and sets yours with setMyPresence.
 import { onlineIndicatorCss } from "../demo-shared";
 import { appShell } from "./app-shell";
 
@@ -7,18 +7,19 @@ export const onlineIndicatorReactSource = `import { PlayProvider, withSharedStat
 
 const DEFAULT_COLOR = "#4a6a3e";
 
-// \`presence\` is your value for this element. It never persists, and every
-// reader's current value arrives in \`everyone\` next to their identity.
+// Each person here has a presence on this element: a value everyone can
+// see, gone when they leave. Yours starts at \`defaultPresence\`, and
+// \`everyone\` lists each person (name, color, isMe) with theirs.
 const OnlineIndicator = withSharedState(
-  { id: "online", defaultData: {}, presence: { color: DEFAULT_COLOR } },
-  ({ myPresence, setMyPresence, everyone }) => (
+  { id: "online", defaultData: {}, defaultPresence: { color: DEFAULT_COLOR } },
+  ({ everyone, me, setMyPresence }) => (
     <div>
       <div className="dots">
-        {everyone.map(({ user, presence }) => (
+        {everyone.map((person) => (
           <span
-            key={user.pid}
-            className={user.isMe ? "dot me" : "dot"}
-            style={{ background: presence?.color ?? user.color }}
+            key={person.pid}
+            className={person.isMe ? "dot me" : "dot"}
+            style={{ background: person.presence.color }}
           />
         ))}
       </div>
@@ -29,7 +30,7 @@ const OnlineIndicator = withSharedState(
         your color
         <input
           type="color"
-          value={myPresence?.color ?? DEFAULT_COLOR}
+          value={me.presence.color}
           onChange={(event) => setMyPresence({ color: event.target.value })}
         />
       </label>

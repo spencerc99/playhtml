@@ -23,7 +23,7 @@ If the person says to surprise them or to use your judgment, you may make those 
 
 Along with any open experience decisions above, if the request is ambiguous on ANY of these, **stop and ask**:
 
-1. **Persistence**: Should data survive page refresh? (`defaultData`=yes, `presence`=no)
+1. **Persistence**: Should data survive page refresh? (`defaultData`=yes, presence=no)
 2. **Shared vs per-user**: Should all users see the same state, or does each user have their own?
 3. **Vanilla HTML or React?**
 
@@ -34,11 +34,11 @@ These determine which API and data type to use. Getting them wrong means a rewri
 | Type | Persists? | Syncs? | Use for |
 |------|-----------|--------|---------|
 | `defaultData` | Yes | Yes | Positions, counts, messages, toggles |
-| `presence` (element) / `playhtml.page` | No | Yes | Per-person typing, ready, hover, or selection state |
+| presence: `defaultPresence` (element) / `playhtml.people.setMyPresence` (page) | No | Yes | Per-person typing, ready, hover, or selection state |
 | `dispatchPlayEvent` | No | One-shot | Confetti, notifications |
 | `localStorage` | Yes | No | Per-user flags ("has reacted") |
 
-Identity: everything that describes a person is a `User` (`{ pid, name, color, isMe }`). Read yourself with `playhtml.users.me` / `useMe()`, the room with `playhtml.users.getAll()` / `useUsers()`, and key per-user data by `pid`. Presence lists are `{ user, presence }[]` named `everyone` (includes you; filter `!user.isMe` for others). Page presence: `playhtml.page.setMyPresence({ key: v })` (merges keys), `getEveryone(key?)`, `onPresenceChange(key | select, cb)`; React `usePagePresence(key)`. Cursors: `playhtml.users.cursors.getAll()` / `useCursors()`. Deprecated but working: `playhtml.presence`, `usePresence`, element `live`/`users`/`setLive`, `p.playerIdentity`, `getMyIdentity()`, `usePlayerIdentity()`.
+People: every person is a `Person` (`{ pid, name, color, isMe, presence }`). `playhtml.people.everyone` is everyone on the page including you (filter `!person.isMe` for others); `playhtml.people.me` is you (assign `me.name` / `me.color` to save and show them). Key per-person data by `pid`. Page presence: `playhtml.people.setMyPresence(key, value)` sets one key (`null` clears it), `playhtml.people.onChange(keys?, cb)` fires now and on changes (skips cursor moves unless `"cursor"` is in keys). Cursors are at `person.presence.cursor`. `playhtml.people` is available after `playhtml.ready`. Rooms: `playhtml.createPresenceRoom(name).people`, same API. React: `usePeople(keys?)` → `{ everyone, me, setMyPresence }`, also on `usePlayContext().people`. Elements use the same names: `defaultPresence`, and `everyone` / `me` / `setMyPresence(value | mutator)` in callbacks and on handles (`handle.onEveryoneChange(keys?, cb)`). Deprecated but working: `playhtml.users`, `User`, `playhtml.presence`, `useUsers`, `usePresence`, `useCursorPresences`, `usePlayerIdentity`, element `live`/`users`/`setLive`.
 
 ## Critical Rules
 
@@ -54,8 +54,8 @@ import { playhtml } from "https://unpkg.com/playhtml@latest";
 const el = document.getElementById("myElement");
 playhtml.register(el, {
   defaultData: { count: 0 },                           // REQUIRED
-  presence: { ready: false },
-  update: ({ element, data, myPresence, everyone }) => { ... },  // REQUIRED
+  defaultPresence: { ready: false },                   // optional, per-person, not saved
+  update: ({ element, data, everyone, me }) => { ... },  // REQUIRED
   onClick: (e, { data, setData }) => { ... },
   onDrag: (e, { data, setData, localData, setLocalData }) => { ... },
   onDragStart: (e, { setLocalData }) => { ... },
@@ -92,9 +92,9 @@ const Counter = withSharedState(
   )
 );
 
-// Component receives: data, setData, myPresence, everyone, setMyPresence, ref
+// Component receives: data, setData, everyone, me, setMyPresence, ref (pass defaultPresence for presence)
 // For events: usePlayContext() → { dispatchPlayEvent, registerPlayEventListener }
-// For cursors: usePlayContext() → { cursors, configureCursors }
+// For people and cursors: usePeople() or usePlayContext().people → { everyone, me, setMyPresence }
 ```
 
 ## setData — Two Forms
@@ -179,7 +179,9 @@ Use instead of `can-play` when they fit: `can-move`, `can-toggle`, `can-spin`, `
 
 ```javascript
 playhtml.init({ cursors: { enabled: true, room: "page" } }); // "page"|"domain"|"section"
-playhtml.users.getAll().length; // user count (window.cursors still works but is legacy)
+await playhtml.ready;
+playhtml.people.everyone.length; // people here (window.cursors still works but is legacy)
+playhtml.people.onChange("cursor", (everyone) => { /* person.presence.cursor */ });
 ```
 
 See https://playhtml.fun/docs/data/presence/cursors/ for full API.
@@ -188,7 +190,7 @@ See https://playhtml.fun/docs/data/presence/cursors/ for full API.
 
 1. **Direct element-property setup** (vanilla): Use `playhtml.register(elementOrId, initializer)` so setup does not depend on assigning callbacks to a DOM node before initialization.
 2. **Missing `id`**: No id = no sync. Silent failure.
-3. **Wrong data type**: `presence` for persistent data (it disappears on disconnect) or `defaultData` for ephemeral user state (it leaves stale data). Refer to the Data Types table.
+3. **Wrong data type**: presence for persistent data (it disappears on disconnect) or `defaultData` for ephemeral user state (it leaves stale data). Refer to the Data Types table.
 4. **Bad array mutations**: In mutator form, the draft is a Yjs CRDT proxy. Use `push()`/`splice()` only — `shift()`, `pop()`, and `items[i] = x` don't sync correctly.
 5. **Replacement form loses fields**: `setData({ x: 5 })` erases `y`. Use replacement only for whole-value writes, or use mutator form for field-level changes.
 6. **Deep nesting**: CRDTs work best with flat data. Avoid deeply nested objects.

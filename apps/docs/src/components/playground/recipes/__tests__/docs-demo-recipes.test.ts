@@ -26,6 +26,9 @@ const DEPRECATED = [
   "getPresences",
   "playhtml.presence.",
   "usePresence(",
+  "live:",
+  "myPresence",
+  "useUsers(",
 ];
 
 function moduleScript(html: string): string {

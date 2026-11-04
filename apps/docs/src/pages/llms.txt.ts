@@ -18,7 +18,7 @@ Read this whole file before writing playhtml code. The guide below covers the AP
 - [Built-in elements](${DOCS}/capabilities/): can-move, can-toggle, can-spin, can-grow, can-duplicate, can-hover, can-mirror
 - [Custom elements](${DOCS}/custom-elements/): can-play with playhtml.register
 - [Data essentials](${DOCS}/data/data-essentials/): shaping and writing shared data safely
-- [Presence and cursors](${DOCS}/data/presence/): per-user state and multiplayer cursors
+- [People and presence](${DOCS}/data/presence/): who's here (\`playhtml.people\`), what each person is doing right now, and cursors
 - [Events](${DOCS}/data/events/): one-shot broadcasts like confetti
 - [React API](${DOCS}/reference/react-api/)
 - [Examples](${DOCS}/examples/)

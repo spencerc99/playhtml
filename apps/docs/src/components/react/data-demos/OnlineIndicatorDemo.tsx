@@ -10,19 +10,19 @@ export const OnlineIndicatorDemo = withSharedState(
   {
     id: "docs-presence-indicator",
     defaultData: {},
-    presence: { color: DEFAULT_COLOR },
+    defaultPresence: { color: DEFAULT_COLOR },
   },
-  ({ myPresence, setMyPresence, everyone }) => (
+  ({ everyone, me, setMyPresence }) => (
     <div className="ph-online-indicator">
       <div
         className="ph-online-indicator__row"
         aria-label={`${everyone.length} online`}
       >
-        {everyone.map(({ user, presence }) => (
+        {everyone.map((person) => (
           <span
-            key={user.pid}
-            className={`ph-online-indicator__dot${user.isMe ? " is-me" : ""}`}
-            style={{ background: presence?.color ?? user.color }}
+            key={person.pid}
+            className={`ph-online-indicator__dot${person.isMe ? " is-me" : ""}`}
+            style={{ background: person.presence?.color ?? person.color }}
             aria-hidden="true"
           />
         ))}
@@ -35,7 +35,7 @@ export const OnlineIndicatorDemo = withSharedState(
           <span>your color</span>
           <input
             type="color"
-            value={myPresence?.color ?? DEFAULT_COLOR}
+            value={me.presence?.color ?? DEFAULT_COLOR}
             onChange={(event) => setMyPresence({ color: event.target.value })}
           />
         </label>

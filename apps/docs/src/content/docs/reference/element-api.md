@@ -11,7 +11,13 @@ The `ElementInitializer` configures a custom collaborative element. Use the same
 2. **`playhtml.define(name, initializer)`** for a reusable capability
 3. **`extraCapabilities`** in `playhtml.init()` for capabilities declared during initialization
 
-The initializer has three state buckets: shared **`data`**, per-tab **`localData`**, and per-person **`presence`** that clears when someone leaves.
+An element holds three kinds of state:
+
+| | Who sees it | How long it lasts | Default | Write it with | Read it as |
+| --- | --- | --- | --- | --- | --- |
+| **data** | Everyone | Saved | `defaultData` | `setData` | `data` |
+| **presence** | Everyone | Until that person leaves | `defaultPresence` | `setMyPresence` | `me.presence`, each person's `presence` in `everyone` |
+| **localData** | Only you, in this tab | Until you reload | `defaultLocalData` | `setLocalData` | `localData` |
 
 For usage examples, see [Custom elements](/docs/custom-elements/).
 
@@ -26,14 +32,14 @@ Passed to `update`, `view`, `onClick`, `onDrag`, and `onDragStart`:
 ```js
 {
   data,                // shared synced state (read-only snapshot)
-  localData,           // per-user, per-tab; not synced
-  myPresence,          // your presence value for this element
-  everyone,            // [{ user: { pid, name, color, isMe }, presence }], including you
+  localData,           // yours alone, in this tab; not synced
+  everyone,            // [{ pid, name, color, isMe, presence }] for this element, including you
+  me,                  // you: { pid, name, color, isMe: true, presence }
   element,             // the HTMLElement
 
   setData,             // (next) mutator fn or replacement object
   setLocalData,        // (next) mutator fn or replacement; re-renders view
-  setMyPresence,         // (next) replace your presence value for this element
+  setMyPresence,       // (next) your new presence value, or a mutator fn like setData
   requestUpdate,       // () re-run view now; no-op without view
 }
 ```
@@ -50,8 +56,8 @@ Do not call `setData`, `setLocalData`, or `setMyPresence` during a `view` render
 {
   getData,             // () => current shared data
   getLocalData,        // () => current local data
-  getMyPresence,       // () => your current presence value
-  getEveryone,         // () => everyone's presence for this element
+  getEveryone,         // () => everyone, with their presence on this element
+  getMe,               // () => you, with your current presence at .presence
   getElement,          // () => the HTMLElement
 
   setData,             // same setters as ctx
@@ -77,7 +83,7 @@ Everything you can put in an initializer for `register`, `define`, or `extraCapa
   defaultLocalData: undefined,
 
   // Your starting presence value for this element. Clears when you leave.
-  presence: undefined,
+  defaultPresence: undefined,
 
   // --- render path: provide update OR view, not both ---
 
@@ -146,13 +152,18 @@ const initializer = {
 
 ---
 
-## `presence`
+## `defaultPresence`
 
-Your starting [presence](/docs/data/presence/#element-presence) value for this element. It clears when you leave. Everyone sees it in `everyone`, paired with your identity. `setMyPresence` replaces your value.
+Your starting [presence](/docs/data/presence/#element-presence) value for this element. It clears when you leave. Everyone sees it on your entry in `everyone`, and you read it back as `me.presence`. `setMyPresence` sets your value: pass the whole value, or a function that edits a copy of it.
 
 ```js
 const initializer = {
-  presence: { ready: false },
+  defaultPresence: { ready: false },
+  onClick: (_event, { setMyPresence }) => {
+    setMyPresence((presence) => {
+      presence.ready = !presence.ready;
+    });
+  },
 };
 ```
 
@@ -160,7 +171,7 @@ const initializer = {
 
 ## `update`
 
-Imperative update path. playhtml calls it on mount and whenever shared `data` or anyone's presence on this element changes. Write the DOM from `ctx.data`, `ctx.myPresence`, and `ctx.everyone`.
+Imperative update path. playhtml calls it on mount and whenever shared `data` or anyone's presence on this element changes. Write the DOM from `ctx.data`, `ctx.everyone`, and `ctx.me`.
 
 Mutually exclusive with `view`. Do not call `setData` inside `update` — that creates a write loop. See [Data essentials](/docs/data/data-essentials/) rule 7.
 
@@ -187,7 +198,7 @@ See [Registration API](/docs/reference/view-api/) for `register`, `define`, help
 
 ## Deprecated compatibility names
 
-`updateElement`, `updateElementAwareness`, `live`, `myDefaultAwareness`, `users`, `setLive`, `getLive`, `getUsers`, `awareness`, `awarenessByStableId`, `myAwareness`, `setMyAwareness`, and `getAwareness` remain available for existing elements. New code should use `update`, `presence`, `myPresence`, `everyone`, `setMyPresence`, `getMyPresence`, and `getEveryone`. Supplying both names from an alias pair, such as `update` and `updateElement`, is an error.
+`updateElement`, `updateElementAwareness`, `live`, `myDefaultAwareness`, `users`, `setLive`, `getLive`, `getUsers`, `awareness`, `awarenessByStableId`, `myAwareness`, `setMyAwareness`, and `getAwareness` remain available for existing elements. New code should use `update`, `defaultPresence`, `everyone`, `me`, `setMyPresence`, `getEveryone`, and `getMe`. Supplying both names from an alias pair, such as `update` and `updateElement`, is an error.
 
 ---
 
@@ -230,7 +241,7 @@ const initializer = {
 
     playhtml.ready.then(() => {
       if (cancelled) return;
-      const viewers = playhtml.users.getAll().length;
+      const viewers = playhtml.people.everyone.length;
       setData((data) => {
         data.viewerCount = viewers;
       });
@@ -321,7 +332,7 @@ When the same element also has a built-in capability such as `can-move`, each ca
 
 Direct assignments such as `element.defaultData = …` and `element.updateElement = …` remain supported so existing sites and React integrations keep working. Do not use them in new vanilla code. Move every initializer field into the object passed to `register`.
 
-The compatibility path reads these keys from the element: `defaultData`, `defaultLocalData`, `presence`, `live`, `myDefaultAwareness`, `update`, `updateElement`, `view`, `updateElementAwareness`, `onClick`, `onDrag`, `onDragStart`, `onMount`, `resetShortcut`, `debounceMs`, and `isValidElementForTag`.
+The compatibility path reads these keys from the element: `defaultData`, `defaultLocalData`, `defaultPresence`, `live`, `myDefaultAwareness`, `update`, `updateElement`, `view`, `updateElementAwareness`, `onClick`, `onDrag`, `onDragStart`, `onMount`, `resetShortcut`, `debounceMs`, and `isValidElementForTag`.
 
 If existing code assigns those properties and calls `setupPlayElement(element)`, replace both steps with `register(element, initializer)`. `setupPlayElement` remains supported for dynamically added built-in and defined capabilities.
 
@@ -332,7 +343,7 @@ If existing code assigns those properties and calls `setupPlayElement(element)`,
 At registration time, playhtml checks:
 
 - `defaultData` and `update` / `view` are provided together
-- `presence`, when present, is paired with `update` / `view`, and only one of `presence`, `live`, and `myDefaultAwareness` is set
+- `defaultPresence`, when present, is paired with `update` / `view`, and only one of `defaultPresence`, `live`, and `myDefaultAwareness` is set
 - At least one renderer exists: `update` or `view`
 - `register` / `define` throw if both `view` and `update` are set, if both `update` and `updateElement` are set, or if `view` is combined with `onClick` / `onDrag` / `onDragStart`
 

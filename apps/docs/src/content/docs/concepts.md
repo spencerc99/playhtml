@@ -1,20 +1,56 @@
 ---
 title: "Core concepts"
-description: "The four kinds of shared state in playhtml: element data, page data, presence, and events."
+description: "What playhtml shares: data about the things on your page, the people looking at it, and one-off events."
 sidebar:
   order: 2
 ---
 
-playhtml gives a page four kinds of shared state. Some stay attached to a specific element, some belong to the page as a whole; some are saved forever, some are live only while people are here. Everyone visiting the same url shares one room, so whichever kind you reach for, it shows up for everyone else too.
+playhtml shares two things between everyone on a page: **the things on the page** (a lamp that's on, a hat that's been dragged, a vote count) and **the people looking at it** (who's here, what color they are, what they're doing right now). Everyone visiting the same url shares one room, so whatever you change shows up for everyone else too.
 
-![A page running playhtml with four kinds of shared state called out: element data bound to a specific element, page data read by name anywhere on the page, live presence cursors, and one-off events. Element and page data persist; presence and events are ephemeral. Faded pages behind show that everyone on the same url shares one room.](/docs/how-playhtml-works-overview.png)
+![A page running playhtml with four callouts: element data bound to a specific element, page data read by name anywhere on the page, people with their cursors and what they're doing right now, and one-off events. Element and page data are saved; people's presence and events are live only. Faded pages behind show that everyone on the same url shares one room.](/docs/how-playhtml-works-overview.png)
 
-Once you can reach for the right one, everything else is just attribute names.
+Once you can tell which one you need, everything else is attribute and function names.
 
-- **Element data** (`defaultData` / [`can-play`](/docs/capabilities/)): persistent state scoped to a single DOM element. A toggle's on/off, a draggable's position, a shared count. Survives reload. See [data essentials](/docs/data/data-essentials/) for shape, updates, and cleanup.
-- **Page data** (`playhtml.createPageData`): persistent state keyed by a name, not tied to any element. A page-level counter, a shared prompt, an open vote. See [page-level data](/docs/data/page-data/).
-- **Presence** (`playhtml.users`, `playhtml.page`, cursors, element `presence`): who is here plus per-person state: "who's online", "who's typing", "where's my cursor". Each list pairs a person's identity with their value as `{ user, presence }`. Disappears when people leave. See [presence](/docs/data/presence/) and [cursors](/docs/data/presence/cursors/).
-- **Events** (`playhtml.dispatchPlayEvent`): one-off broadcasts with no persisted state. Confetti, chimes, notifications. See [events](/docs/data/events/).
+## Things on the page: shared data
+
+Shared data is saved. It survives reloads, and someone who opens the page tomorrow sees it.
+
+- **Element data** (`defaultData` / [`can-play`](/docs/capabilities/)) belongs to one element: a toggle's on/off, a draggable's position, a shared count. See [data essentials](/docs/data/data-essentials/).
+- **Page data** (`playhtml.createPageData`) has a name instead of an element: a page-wide counter, a shared prompt, an open vote. See [page-level data](/docs/data/page-data/).
+
+## People: who's here and what they're doing
+
+`playhtml.people.everyone` is everyone on the page right now, including you. Each person looks like this:
+
+```js
+{ pid, name, color, isMe, presence }
+```
+
+- **`name` and `color`** are who someone is. They follow a person from visit to visit, and you set your own with `playhtml.people.me.name = "Ana"`.
+- **`presence`** is what someone is doing right now: typing, hovering the lamp, ready to start. Everyone can see it, only that person can set it, and it disappears when they leave.
+
+Presence comes in two places, and both use the same names:
+
+- **On the page:** `playhtml.people.setMyPresence("status", "typing")`, read from each person's `presence.status`. Cursors are page presence that playhtml fills in for you, at `person.presence.cursor`.
+- **On an element:** inside an element, `everyone`, `me`, and `setMyPresence` describe the people using that element and their presence on it. "Who's hovering this card" is element presence.
+
+See [people and presence](/docs/data/presence/) and [cursors](/docs/data/presence/cursors/).
+
+## Events: moments
+
+**Events** (`playhtml.dispatchPlayEvent`) are one-off broadcasts that change nothing: confetti, a chime, a notification. Whoever is here when it fires sees it; nobody else ever does. See [events](/docs/data/events/).
+
+## Inside one element
+
+An element can hold three kinds of state, and they differ in who sees them and how long they last:
+
+| | Who sees it | How long it lasts | Write it with | Read it as |
+| --- | --- | --- | --- | --- |
+| **data** | Everyone | Saved, survives reloads | `setData` | `data` |
+| **presence** | Everyone | Until you leave | `setMyPresence` | `me.presence`, and each person's `presence` in `everyone` |
+| **localData** | Only you, in this tab | Until you reload | `setLocalData` | `localData` |
+
+A lamp's on/off is data. Who's hovering it is presence. Whether your settings panel is open is local data.
 
 Not sure which one you want? The [decision table on data essentials](/docs/data/data-essentials/#when-to-use-which-primitive) lays out the tradeoffs side by side.
 

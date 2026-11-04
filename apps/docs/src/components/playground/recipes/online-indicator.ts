@@ -1,20 +1,21 @@
 // ABOUTME: Defines the online indicator recipe: one colored dot per reader on the page.
-// ABOUTME: Each reader's color is element presence, so it clears when they leave.
+// ABOUTME: Each reader's color is their presence on the element, so it clears when they leave.
 import { onlineIndicatorCss } from "./demo-shared";
 import { indent, recipeBaseStyles, recipeDocument } from "./recipe-document";
 import { onlineIndicatorReactSource } from "./react/online-indicator";
 import type { ExampleRecipe } from "./types";
 
-const script = `// \`presence\` is your value for this element. It never persists, and every
-// reader's current value arrives in \`everyone\` next to their identity.
+const script = `// Each person here has a presence on this element: a value everyone can
+// see, gone when they leave. Yours starts at \`defaultPresence\`, and
+// \`everyone\` lists each person (name, color, isMe) with theirs.
 const online = playhtml.register("online", {
-  presence: { color: "#4a6a3e" },
+  defaultPresence: { color: "#4a6a3e" },
   update: ({ element, everyone }) => {
     element.querySelector(".dots").replaceChildren(
-      ...everyone.map(({ user, presence }) => {
+      ...everyone.map((person) => {
         const dot = document.createElement("span");
-        dot.className = user.isMe ? "dot me" : "dot";
-        dot.style.background = presence?.color ?? user.color;
+        dot.className = person.isMe ? "dot me" : "dot";
+        dot.style.background = person.presence.color;
         return dot;
       }),
     );

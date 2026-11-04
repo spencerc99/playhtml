@@ -1,92 +1,70 @@
 ---
-title: "Users"
-description: "Durable user identity: name and color for everyone in the room."
+title: "Names and colors"
+description: "Who someone is: a name and color that are saved and follow them from visit to visit."
 sidebar:
   order: 2
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-`playhtml.users` is where you read and set who someone is: their name and color. It works whether or not cursors are enabled.
+Every person in [`playhtml.people`](/docs/data/presence/) has a `pid`, a `name`, and a `color`. Unlike [presence](/docs/data/presence/), these are saved: they follow a person from visit to visit, and they work whether or not cursors are enabled.
 
-Every API that describes a person uses the same [`User`](/docs/reference/presence/#user) shape: `{ pid, name, color, isMe }`. `pid` is a stable id for this browser, and it is also the key in presence and cursor maps.
+- `pid` is a stable id for this person in this browser. Use it as a React `key` or to match someone across features.
+- `name` is whatever they've set, or `undefined`.
+- `color` is always set. playhtml picks one the first time someone visits.
+- `isMe` is `true` for you.
 
-It helps to keep three things apart. **Users** is who people are: durable identity that persists across visits. [**Presence**](/docs/data/presence/) is what they're doing right now: live, ephemeral channels that clear when they leave. **Cursors** render both as the pointer and label you see moving around the page.
+## `people.me`
 
-## `users.me`
-
-Your own identity. Reading it gives you a flat object; writing to its fields persists the change and publishes it to everyone else in the room.
-
-```js
-playhtml.users.me.name;   // "Alice"
-playhtml.users.me.color;  // "#3b82f6"
-playhtml.users.me.pid;    // a stable per-user id
-
-// Persist and publish a new name
-playhtml.users.me.name = "Bob";
-
-// Persist and publish a new color (also updates your cursor, if cursors are enabled)
-playhtml.users.me.color = "#ff0000";
-```
-
-Older pages use `window.cursors.color` and `window.cursors.name`. Those still work as aliases for these fields when cursors are enabled (see [the legacy cursor API](/docs/data/presence/cursors/#legacy-global-api-windowcursors)), but new code should use `playhtml.users`, which does not require cursors.
-
-## `getAll()` and `onChange()`
-
-`getAll()` returns an array of everyone currently in the room, including yourself, flagged with `isMe`. This works without cursors enabled.
+You. Reading `me` gives you the same fields as everyone else; setting `me.name` or `me.color` saves the change and shows it to everyone.
 
 ```js
-for (const user of playhtml.users.getAll()) {
-  user.pid;    // string, stable per-user id
-  user.name;   // string | undefined
-  user.color;  // string
-  user.isMe;   // boolean
-}
+playhtml.people.me.name;   // "Alice"
+playhtml.people.me.color;  // "#3b82f6"
+playhtml.people.me.pid;    // a stable id
+
+// Save and show a new name
+playhtml.people.me.name = "Bob";
+
+// Save and show a new color (also updates your cursor, if cursors are enabled)
+playhtml.people.me.color = "#ff0000";
 ```
 
-`onChange(callback)` subscribes to join, leave, and identity changes (yours or anyone else's) and returns an unsubscribe function:
+Your presence is on `me` too, at `me.presence`.
 
-```js
-const unsubscribe = playhtml.users.onChange((users) => {
-  console.log(`${users.length} people here`);
-});
+## A live roster
 
-// Later
-unsubscribe();
-```
-
-### Example: a live roster
+`playhtml.people.onChange(callback)` calls back now and whenever someone joins, leaves, or changes their name, color, or presence. It returns an unsubscribe function.
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```js
-function renderRoster(users) {
+function renderRoster(everyone) {
   const list = document.querySelector("#roster");
   list.innerHTML = "";
-  for (const user of users) {
+  for (const person of everyone) {
     const item = document.createElement("li");
-    item.textContent = user.name ?? "anonymous";
-    item.style.color = user.color;
+    item.textContent = person.name ?? "anonymous";
+    item.style.color = person.color;
     list.appendChild(item);
   }
 }
 
-playhtml.users.onChange(renderRoster);
-renderRoster(playhtml.users.getAll());
+const unsubscribe = playhtml.people.onChange(renderRoster);
 ```
   </TabItem>
   <TabItem label="React">
 ```tsx
-import { useUsers } from "@playhtml/react";
+import { usePeople } from "@playhtml/react";
 
 function Roster() {
-  const users = useUsers();
+  const { everyone } = usePeople();
 
   return (
     <ul>
-      {users.map((user) => (
-        <li key={user.pid} style={{ color: user.color }}>
-          {user.name ?? "anonymous"}
+      {everyone.map((person) => (
+        <li key={person.pid} style={{ color: person.color }}>
+          {person.name ?? "anonymous"}
         </li>
       ))}
     </ul>
@@ -96,35 +74,56 @@ function Roster() {
   </TabItem>
 </Tabs>
 
-## React
+## A name and color picker
 
-### `useUsers()`
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```html
+<input id="my-name" placeholder="your name" />
+<input id="my-color" type="color" />
 
-Reactive version of `getAll()`. Re-renders your component whenever someone joins, leaves, or changes their identity.
+<script type="module">
+  import { playhtml } from "https://unpkg.com/playhtml@latest";
 
-```tsx
-import { useUsers } from "@playhtml/react";
+  await playhtml.init();
+  const nameInput = document.getElementById("my-name");
+  const colorInput = document.getElementById("my-color");
+  nameInput.value = playhtml.people.me.name ?? "";
+  colorInput.value = playhtml.people.me.color;
 
-function OnlineCount() {
-  const users = useUsers();
-  return <div>{users.length} online</div>;
-}
+  nameInput.addEventListener("change", () => (playhtml.people.me.name = nameInput.value));
+  colorInput.addEventListener("input", () => (playhtml.people.me.color = colorInput.value));
+</script>
 ```
-
-### `useMe()`
-
-Reactive version of `users.me`. Returns your `User`, or `null` until playhtml has synced. It does not require cursors to be enabled.
-
+  </TabItem>
+  <TabItem label="React">
 ```tsx
-import { useMe } from "@playhtml/react";
+import { playhtml, usePeople } from "@playhtml/react";
 
 function Profile() {
-  const me = useMe();
-  if (!me) return null;
-  return <div style={{ color: me.color }}>{me.name ?? "anonymous"}</div>;
+  const { me } = usePeople();
+  return (
+    <>
+      <input
+        value={me.name ?? ""}
+        onChange={(e) => (playhtml.people.me.name = e.target.value)}
+      />
+      <input
+        type="color"
+        value={me.color}
+        onChange={(e) => (playhtml.people.me.color = e.target.value)}
+      />
+    </>
+  );
 }
 ```
 
-`usePlayerIdentity()` is the older form of this hook and is deprecated.
+Before playhtml has connected, `usePeople().me` has an empty `pid` and `color`.
+  </TabItem>
+</Tabs>
 
-See the [React API reference](/docs/reference/react-api/#useusers) for full signatures.
+## Earlier names
+
+`playhtml.users` (`me`, `getAll()`, `onChange()`) and the `User` type are the earlier form of this API. They keep working: `users.getAll()` returns the same people as `people.everyone`, without `presence`. In React, `useUsers()` and `usePlayerIdentity()` keep working too; use `usePeople()` in new code. `window.cursors.color` and `window.cursors.name` are also still aliases for `people.me.color` and `people.me.name` (see [the legacy cursor API](/docs/data/presence/cursors/#legacy-global-api-windowcursors)).
+
+See the [people and presence reference](/docs/reference/presence/) for full signatures.
