@@ -142,6 +142,23 @@ The default auto-detection handles this because Astro fires `popstate`. You only
 ## Events
 
 - `playhtml:navigated`: fires on `document` after each successful navigation handling, with `event.detail.room` set to the current room ID.
+- `playhtml:loading-change`: fires on `document` whenever `playhtml.isLoading` changes, with `event.detail.isLoading`.
+
+## Waiting for the new room
+
+When navigation moves to a different room, playhtml has to load that room's data before its elements are live. While it loads:
+
+- `playhtml.isLoading` is `true`, and in React so is `usePlayContext().isLoading`.
+- `playhtml.ready` is a new promise that resolves once the new room has synced.
+
+Read `playhtml.ready` again after navigating instead of reusing a promise you saved earlier, because the saved one already resolved for the old room:
+
+```js
+await playhtml.handleNavigation();
+await playhtml.ready; // the new room's data is in
+```
+
+Navigating within the same room changes neither.
 
 ## Handles held across navigation
 
