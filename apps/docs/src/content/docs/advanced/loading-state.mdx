@@ -31,8 +31,8 @@ Three attributes control it. They work on any playhtml element.
 
 | Attribute | Values | What it does |
 | --- | --- | --- |
-| `loading-behavior` | `animate`, `hidden`, `none` | `animate` fades the element in and out. `hidden` keeps it invisible until the data is in. `none` turns all loading treatment off, and the element is clickable right away. |
-| `loading-style` | `breathing`, `pulse`, `fade`, `none` | Which look to use. `breathing` is the gentle fade the built-in elements use. `pulse` is a faster blink. `fade` holds the element at low opacity. `none` shows the element as normal. |
+| `loading-behavior` | `animate`, `hidden`, `none` | `animate` fades the element in and out. `hidden` keeps it invisible until the data is in. `none` turns all loading treatment off: no class, no `aria-busy`, and the element looks normal. |
+| `loading-style` | `breathing`, `pulse`, `fade`, `none` | Which look to use. `breathing` is the gentle fade the built-in elements use. `pulse` is a faster blink. `fade` holds the element at low opacity. `none` shows the element as normal, but it keeps the `playhtml-loading` class and `aria-busy`, so you can style it yourself. |
 | `loading-class` | any class name | Adds your own class while loading, so you can style the placeholder yourself. |
 
 Try each option below. The button uses playhtml's real loading styles. Switch between loading and loaded, and try clicking it while it loads.
@@ -45,7 +45,7 @@ Each choice trades something:
 
 - `animate` shows the default value while loading, but makes it clear the value isn't final.
 - `hidden` never shows the default. The element still takes up its space, so the page has a blank gap until the data is in.
-- `none` makes the element usable right away, but people can see and click the default value before the real data arrives.
+- `none` shows the element as normal right away. People see the default value, and clicking it does nothing until the data is in.
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">

@@ -91,7 +91,7 @@ export function LoadingStateDemo() {
             ? behavior === "hidden"
               ? "Loading: hidden until the data is in."
               : clickable
-                ? "Loading, but clickable: clicks change the default value."
+                ? "Loading, but clickable: clicks do nothing until the data is in."
                 : "Loading: clicks are ignored until the data is in."
             : "Loaded: click to add a heart."}
         </p>
