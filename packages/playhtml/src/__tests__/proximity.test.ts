@@ -72,6 +72,7 @@ describe("proximity detection", () => {
       expect.objectContaining({ publicKey: "remote" }),
       { ours: { x: 100, y: 100 }, theirs: { x: 120, y: 120 } },
       Math.PI / 4,
+      expect.objectContaining({ pid: "remote", isMe: false }),
     );
     expect(left).toHaveBeenCalledWith("remote");
     client.destroy();
@@ -100,6 +101,7 @@ describe("proximity detection", () => {
       expect.objectContaining({ publicKey: "near" }),
       { ours: { x: 100, y: 100 }, theirs: { x: 110, y: 110 } },
       Math.PI / 4,
+      expect.objectContaining({ pid: "near", isMe: false }),
     );
     client.destroy();
   });

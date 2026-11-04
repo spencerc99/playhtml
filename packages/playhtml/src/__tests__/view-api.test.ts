@@ -368,7 +368,7 @@ describe("rail 2: validation", () => {
         myDefaultAwareness: {},
         update: () => {},
       } as any),
-    ).toThrow(/both `live` and `myDefaultAwareness`/);
+    ).toThrow(/defines `live` and `myDefaultAwareness`/);
   });
 
   it("throws when view and updateElement are both provided", () => {

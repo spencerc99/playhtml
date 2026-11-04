@@ -13,7 +13,7 @@ import {
   CanDuplicateElement,
   usePageData,
   withSharedState,
-  useUsers,
+  usePeople,
 } from "@playhtml/react";
 
 const ShootingStarEventType = "shootingStar";
@@ -69,16 +69,16 @@ function ShootingStar() {
 }
 
 function PeopleHere() {
-  const users = useUsers();
+  const { everyone } = usePeople();
 
   return (
     <section style={{ color: "#2800ff" }}>
       <h2>people here</h2>
-      <p>{users.length === 1 ? "1 person here" : `${users.length} people here`}</p>
+      <p>{everyone.length === 1 ? "1 person here" : `${everyone.length} people here`}</p>
       <ul>
-        {users.map((user) => (
-          <li key={user.pid} style={{ color: user.color }}>
-            {user.name ?? "anonymous"}
+        {everyone.map((person) => (
+          <li key={person.pid} style={{ color: person.color }}>
+            {person.name ?? "anonymous"}
           </li>
         ))}
       </ul>
@@ -91,9 +91,9 @@ function PeopleHere() {
 const ReactionButton = withSharedState(
   ({ initialCount }: { initialCount: number }) => ({
     defaultData: { count: initialCount },
-    live: { hovering: false },
+    defaultPresence: { hovering: false },
   }),
-  ({ data, users, setData, setLive, ref }) => {
+  ({ data, everyone, setData, setMyPresence, ref }) => {
     const [hasReacted, setHasReacted] = useState(false);
 
     useEffect(() => {
@@ -105,8 +105,8 @@ const ReactionButton = withSharedState(
     return (
       <button
         id="reaction-button"
-        onPointerEnter={() => setLive({ hovering: true })}
-        onPointerLeave={() => setLive({ hovering: false })}
+        onPointerEnter={() => setMyPresence({ hovering: true })}
+        onPointerLeave={() => setMyPresence({ hovering: false })}
         onClick={() => {
           if (hasReacted) {
             setData((draft) => {
@@ -129,7 +129,7 @@ const ReactionButton = withSharedState(
         className={`reaction ${hasReacted ? "reacted" : ""}`}
         style={{ fontSize: "24px", padding: "10px 20px", margin: "10px 0" }}
       >
-        💖 <span>{data.count}</span> · {users.filter(({ live }) => live.hovering).length} here
+        💖 <span>{data.count}</span> · {everyone.filter((person) => person.presence.hovering).length} here
       </button>
     );
   }

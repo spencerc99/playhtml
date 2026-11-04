@@ -1,32 +1,11 @@
 ---
-title: "Data essentials"
-description: "How to shape, update, and clean up the data attached to a playhtml element."
+title: "Data best practices"
+description: "Writing, shaping, and cleaning up shared data: mutator vs replacement, shape tips, anti-patterns, and cleanup."
 sidebar:
   order: 1
 ---
 
-Every playhtml element owns a piece of shared data, keyed by the element's `id`. When you change an element, its data updates and syncs to everyone else on the page — the element with the same `id` on their side updates to match. This page covers how to shape that data, write to it correctly, and clean it up when elements go away.
-
-![Two browsers open to the same page. Each interactive element — a lamp with can-toggle, a hat with can-move, a wheel with can-spin, a balloon with can-grow — has its own data object keyed by element id. A change on one page syncs through the playhtml server and the matching element updates on the other page.](/docs/how-playhtml-works.png)
-
-## When to use which primitive
-
-playhtml has four primitives for moving state between readers. Pick by **lifetime** first ("should this survive a reload?"), then by **scope** ("does this belong to one element, the whole page, or one user?").
-
-| Want | Use | Survives reload | Scope |
-|---|---|---|---|
-| A toggle, position, count, or any state tied to one element | [Element data](/docs/data/data-essentials/) (`defaultData` / `can-play`) | Yes | One element |
-| A page-wide counter, prompt, or vote not tied to a DOM node | [Page data](/docs/data/page-data/) (`playhtml.createPageData`) | Yes | One page |
-| "Who is connected right now?" / "How many readers?" | [Presence](/docs/data/presence/) (`playhtml.presence.getPresences()`) | No | Per-user |
-| "Who's typing in this input?" / live status | [Custom presence channel](/docs/data/presence/#custom-channels) or element live data | No | Per-user |
-| "Where is everyone's cursor?" | [Cursors](/docs/data/presence/cursors/) | No | Per-user |
-| Confetti burst, chime, notification | [Events](/docs/data/events/) (`dispatchPlayEvent`) | No (fires once) | Broadcast |
-| "How many people reacted to this post?" | Element data (a `count` field) | Yes | One element |
-
-Two rules that catch most mistakes:
-
-- **If a new reader opening the page should see the state, it's persistent data.** If they shouldn't, it's presence or an event.
-- **If you're reaching for `localStorage` to make state survive a reload, you wanted persistent data.** Use `localStorage` for _per-user_ preferences that should _not_ sync; see [rule 8 below](#8-use-localstorage-for-per-user-preferences).
+The details behind [core concepts](/docs/concepts/): how `setData` merges, how to shape data so it stays small and conflict-free, the mistakes that cause loops or bloat, and how to clean up data you no longer need.
 
 ## Updating data: mutator vs replacement
 
@@ -60,7 +39,7 @@ For counters and `+/-` changes, prefer the mutator form. It updates the draft at
 
 ### Supported array operations in mutator form
 
-The mutator form is backed by a CRDT, which means a specific subset of array operations are safe. Everything else either silently no-ops or throws.
+The mutator form merges edits from different people, so only some array operations are safe. Everything else either silently does nothing or throws.
 
 **Supported:**
 
@@ -135,21 +114,23 @@ defaultData: { count: 5, isEven: false }
 
 Common offenders: formatted date strings, totals/averages, filtered/sorted arrays, boolean flags derived from other fields.
 
-### 3. Pick the right data type
+### 3. Pick the right kind of state
 
-playhtml gives you three places to put state. Use the one that matches the lifetime you actually want.
+An element can hold three kinds of state. Use the one that matches who should see it and how long it should last.
 
-| Type | Survives reload | Use for |
-|---|---|---|
-| Persistent (`defaultData`) | Yes | Positions, counts, messages, settings, toggles |
-| Presence, including element live data | No | Who's online, typing indicators, colors, per-user cursor data |
-| Events | No (fire once) | Confetti bursts, notifications, chimes |
+| | Who sees it | How long it lasts | Use for |
+|---|---|---|---|
+| **data** (`defaultData`, `setData`) | Everyone | Saved, survives reloads | Positions, counts, messages, settings, toggles |
+| **presence** (`defaultPresence`, `setMyPresence`) | Everyone | Until you leave | Who's hovering, who's ready, a typing indicator |
+| **localData** (`defaultLocalData`, `setLocalData`) | Only you, in this tab | Until you reload | An open panel, a draft, a selection |
 
-If someone refreshes the page and expects the state to still be there, it's persistent data. If a new reader opening the page for the first time should _not_ see a historical replay, it's presence or an event.
+For moments that change nothing (confetti, a chime), use an [event](/docs/data/events/).
+
+If someone refreshes the page and expects the state to still be there, it's data. If a new reader opening the page for the first time should _not_ see it, it's presence or an event.
 
 ### 4. Don't update on high-frequency DOM events
 
-Syncing on every `mousemove` or `scroll` will flood the socket and eat your PartyKit bill. Three options, in order of preference:
+Syncing on every `mousemove` or `scroll` floods the connection and slows the page for everyone. Three options, in order of preference:
 
 **Use built-in handlers.** `onDrag`, `onMount` already debounce:
 
@@ -223,7 +204,7 @@ defaultData: { isHovering: false }
 element.addEventListener("mouseenter", () => element.classList.add("hover"));
 ```
 
-If you _do_ want collaborative hover, use [`can-hover`](/docs/capabilities/). That's its reason to exist, and it uses presence (not persistent data) internally.
+If you _do_ want collaborative hover, use [`can-hover`](/docs/capabilities/). That's its reason to exist, and it uses presence (not saved data), so a hover disappears when that person leaves.
 
 ### 7. Never write shared data from code that re-runs when that data changes
 
@@ -241,26 +222,27 @@ const Roster = withSharedState({ defaultData: { entries: [] } }, ({ data, setDat
 });
 ```
 
-Each write changes `data.entries`, which re-runs the effect, which writes again. Worse, because the data is a CRDT, **two readers writing concurrently both land**. With the **replacement form** (`setData({ entries: [...] })`) over an **array**, concurrent writes append rather than overwrite, so the loop never converges to a stable value the guard can catch. A single buggy element like this grew one production room to 1.2 million CRDT operations / 23 MB and took the room offline.
+Each write changes `data.entries`, which re-runs the effect, which writes again. Worse, **two readers writing at the same time both land**. With the **replacement form** (`setData({ entries: [...] })`) over an **array**, concurrent writes append rather than overwrite, so the loop never settles on a stable value a guard could catch. One element like this can grow a page's saved data until the page stops loading.
 
 **The strongest fix is the data model: store collections that must stay unique as a keyed map, and upsert in place with the mutator form.**
 
 ```tsx
 // entries is keyed by id, not an array
 const Roster = withSharedState({ defaultData: { entries: {} } }, ({ data, setData }) => {
-  const me = useMe(); // { id, name } — the only thing that should trigger a write
+  const { me } = usePeople(); // { pid, name, ... } — the only thing that should trigger a write
   const ref = useRef(data.entries);
   ref.current = data.entries;
 
   useEffect(() => {
-    const existing = ref.current[me.id];
+    if (!me.pid) return; // not connected yet
+    const existing = ref.current[me.pid];
     if (existing && existing.name === me.name) return; // already correct
     // Keyed mutator write — assigning entries[id] overwrites in place. Writing
     // the same id N times can never duplicate, and concurrent writes from two
     // clients merge cleanly (maps are last-write-wins per key). Idempotent by
     // construction — the loop, even if it fired, could not grow the doc.
-    setData((draft) => { draft.entries[me.id] = me; });
-  }, [me.id, me.name]); // depends on local identity, NOT on data.entries
+    setData((draft) => { draft.entries[me.pid] = { name: me.name }; });
+  }, [me.pid, me.name]); // depends on your identity, NOT on data.entries
   return <div />;
 });
 ```
@@ -276,7 +258,7 @@ The same rule applies to vanilla `update`: never call `setData` from inside `upd
 
 ### 8. Use `localStorage` for per-user preferences
 
-Some state is personal: "has this user already reacted", collapsed sections, display-name choice, notification settings. That data should _not_ sync.
+Some state is personal and should outlast a reload: "has this person already reacted", collapsed sections, notification settings. That data should _not_ sync. (Your name and color are already saved for you: set `playhtml.people.me.name`.)
 
 ```js
 const reactedKey = `reacted-${elementId}`;
@@ -324,7 +306,7 @@ When you delete an element at runtime, its playhtml data stays behind by default
 playhtml.deleteElementData("can-move", elementId);
 ```
 
-This removes the SyncedStore entry, observer subscriptions, and element handlers.
+This removes the element's saved data and stops playhtml from tracking it.
 
 Example, a fridge magnet app deleting words:
 
@@ -389,5 +371,5 @@ When reviewing a new element's data shape:
 - Does any effect/callback write shared data **and** depend on that data? (write loop; see rule 7)
 - Am I about to update on a high-frequency DOM event?
 - Is there a built-in `can-*` capability that already does this?
-- Should this live in presence / events instead of persistent data?
+- Should this live in presence or an event instead of saved data?
 - Are there per-user preferences that want `localStorage`?

@@ -149,7 +149,7 @@ Turn this on in development builds, not production. A dedicated guide covering t
 
 **Type:** `CursorOptions` &nbsp; **Default:** `undefined` (cursors disabled)
 
-Opt into multiplayer cursors, presence identity, chat, and proximity detection. The full set of cursor options is documented on the [Cursors](/docs/data/presence/cursors/) page; this is the top-level shape:
+Opt into multiplayer cursors, presence identity, chat, and proximity detection. The full set of cursor options is documented on the [Cursors](/docs/advanced/cursors/) page; this is the top-level shape:
 
 ```ts
 interface CursorOptions {
@@ -162,20 +162,21 @@ interface CursorOptions {
     | React.RefObject<HTMLElement>;
   shouldRenderCursor?: (presence) => boolean;
   getCursorStyle?: (presence) => Partial<CSSStyleDeclaration>;
-  playerIdentity?: PlayerIdentity;
+  playerIdentity?: PlayerIdentity; // advanced: seed your identity
   proximityThreshold?: number;
-  onProximityEntered?: (identity, positions, angle) => void;
-  onProximityLeft?: (connectionId) => void;
+  // `identity` is deprecated; use the fourth `user` argument
+  onProximityEntered?: (identity, positions, angle, user) => void;
+  onProximityLeft?: (pid) => void;
   visibilityThreshold?: number;
   enableChat?: boolean;
-  onCustomCursorRender?: (connectionId, element) => Element | null;
+  onCustomCursorRender?: (pid, element) => Element | null;
 }
 ```
 
 Set `container` for either of two reasons:
 
 1. **Surviving SPA navigation.** If your framework swaps `document.body` on route changes (Astro ViewTransitions, htmx boost, Turbo), mark the container with the framework's persist directive (e.g. `transition:persist`). See [navigation](/docs/advanced/navigation/).
-2. **Anchoring cursors to a transformed canvas.** If the container has its own CSS `transform` (pannable / zoomable wrapper), playhtml stores cursor coords in the container's local space so collaborators with different pan/zoom agree on a cursor's content position. See [Anchoring cursors to a transformed canvas](/docs/data/presence/cursors/#anchoring-cursors-to-a-transformed-canvas) and the [fridge demo](https://github.com/spencerc99/playhtml/blob/main/website/fridge.tsx).
+2. **Anchoring cursors to a transformed canvas.** If the container has its own CSS `transform` (pannable / zoomable wrapper), playhtml stores cursor coords in the container's local space so collaborators with different pan/zoom agree on a cursor's content position. See [Anchoring cursors to a transformed canvas](/docs/advanced/cursors/#anchoring-cursors-to-a-transformed-canvas) and the [fridge demo](https://github.com/spencerc99/playhtml/blob/main/website/fridge.tsx).
 
 Minimal opt-in:
 
@@ -195,7 +196,7 @@ playhtml.init({
 });
 ```
 
-See [Cursors](/docs/data/presence/cursors/) for the full config reference and recipes.
+See [Cursors](/docs/advanced/cursors/) for the full config reference and recipes.
 
 ## React equivalent
 

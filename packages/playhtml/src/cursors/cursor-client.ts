@@ -9,6 +9,7 @@ import {
   type PresenceServerMessage,
   PROXIMITY_THRESHOLD,
   CursorEvents,
+  playerIdentityToUser,
   type User,
   toHexColor,
 } from "@playhtml/common";
@@ -819,15 +820,18 @@ export class CursorClientAwareness {
             presence.playerIdentity,
             positions,
             angle,
+            presence.playerIdentity
+              ? playerIdentityToUser(presence.playerIdentity, false)
+              : undefined,
           );
         }
       }
     }
 
     // Check for users who left proximity
-    for (const connectionId of this.proximityUsers) {
-      if (!currentProximity.has(connectionId)) {
-        this.options.onProximityLeft?.(connectionId);
+    for (const pid of this.proximityUsers) {
+      if (!currentProximity.has(pid)) {
+        this.options.onProximityLeft?.(pid);
       }
     }
 
@@ -1531,16 +1535,16 @@ export class CursorClientAwareness {
     playerIdentity: PlayerIdentity,
     pointer: string = "mouse",
     message?: string | null,
-    connectionId?: string,
+    pid?: string,
     cursorData?: CursorPresence,
   ): HTMLElement {
     const element = document.createElement("div");
     element.className = "playhtml-cursor-other playhtml-cursor-fade-in";
 
     // Check for custom cursor renderer first
-    if (connectionId && this.options.onCustomCursorRender) {
+    if (pid && this.options.onCustomCursorRender) {
       const customElement = this.options.onCustomCursorRender(
-        connectionId,
+        pid,
         element,
       );
       if (customElement) {
@@ -1974,15 +1978,15 @@ export class CursorClientAwareness {
     this.zones.delete(elementId);
   }
 
-  hideCursor(connectionId: string): void {
-    const cursorElement = this.cursors.get(connectionId);
+  hideCursor(pid: string): void {
+    const cursorElement = this.cursors.get(pid);
     if (cursorElement) {
       cursorElement.style.display = "none";
     }
   }
 
-  showCursor(connectionId: string): void {
-    const cursorElement = this.cursors.get(connectionId);
+  showCursor(pid: string): void {
+    const cursorElement = this.cursors.get(pid);
     if (cursorElement) {
       cursorElement.style.display = "block";
     }
@@ -2126,6 +2130,7 @@ export class CursorClientAwareness {
             pointer: this.currentCursor.pointer,
           }
         : null,
+      user: playerIdentityToUser(this.playerIdentity, true),
       playerIdentity: this.playerIdentity,
       zone: this.currentZone,
       page,
@@ -2143,6 +2148,7 @@ export class CursorClientAwareness {
               pointer: presence.cursor.pointer,
             }
           : null,
+        user: playerIdentityToUser(presence.playerIdentity, false),
         playerIdentity: presence.playerIdentity,
         zone: presence.zone,
         // Expose the reader's pathname so consumers can group presences by

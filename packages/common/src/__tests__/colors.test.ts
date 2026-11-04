@@ -1,7 +1,11 @@
 // ABOUTME: Verifies person colors convert to hex and new identities save hex colors.
 // ABOUTME: Native color inputs only accept #rrggbb, so hsl/rgb colors must be normalized.
 import { describe, expect, test } from "vitest";
-import { generatePlayerIdentity, toHexColor } from "../cursor-types";
+import {
+  generatePlayerIdentity,
+  playerIdentityToUser,
+  toHexColor,
+} from "../cursor-types";
 
 describe("toHexColor", () => {
   test("keeps 6-digit hex and expands 3-digit hex, lowercased", () => {
@@ -37,5 +41,19 @@ describe("generatePlayerIdentity", () => {
       expect(colorPalette).toHaveLength(3);
       for (const color of colorPalette) expect(color).toMatch(/^#[0-9a-f]{6}$/);
     }
+  });
+});
+
+describe("playerIdentityToUser", () => {
+  test("reports an older hsl color as hex and keeps a missing color empty", () => {
+    const user = playerIdentityToUser(
+      { publicKey: "pk", playerStyle: { colorPalette: ["hsl(0, 100%, 50%)"] } },
+      false,
+    );
+    expect(user.color).toBe("#ff0000");
+    expect(
+      playerIdentityToUser({ publicKey: "pk", playerStyle: { colorPalette: [] } }, false)
+        .color,
+    ).toBe("");
   });
 });

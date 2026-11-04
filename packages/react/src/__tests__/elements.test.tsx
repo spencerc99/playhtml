@@ -622,6 +622,43 @@ describe("CanPlayElement with built-in capabilities", () => {
     expect(renderedContext.setLive).toBeTypeOf("function");
   });
 
+  it("exposes everyone and me through the React render context", () => {
+    vi.spyOn(playhtml, "setupPlayElement").mockImplementation(() => {});
+    vi.spyOn(playhtml, "removePlayElement").mockImplementation(() => {});
+
+    let renderedContext: any;
+    const { container } = render(
+      <CanPlayElement defaultData={{}} defaultPresence={{ active: true }}>
+        {(context) => {
+          renderedContext = context;
+          return <div id="people-child" />;
+        }}
+      </CanPlayElement>,
+    );
+    expect(renderedContext.me.presence).toEqual({ active: true });
+    expect(renderedContext.everyone).toEqual([]);
+    const element = container.querySelector("[can-play]") as HTMLElement;
+    const alice = { pid: "alice", color: "blue", isMe: false, presence: { active: false } };
+    const me = { pid: "me", color: "red", isMe: true, presence: { active: true } };
+
+    act(() => {
+      (element as any).updateElement({
+        data: {},
+        localData: undefined,
+        everyone: [alice, me],
+        me,
+        element,
+        setData: vi.fn(),
+        setLocalData: vi.fn(),
+        setMyPresence: vi.fn(),
+      });
+    });
+
+    expect(renderedContext.everyone).toEqual([alice, me]);
+    expect(renderedContext.me).toEqual(me);
+    expect(renderedContext.setMyPresence).toBeTypeOf("function");
+  });
+
   it("works without a capability updateElement (pure can-play)", () => {
     const { container } = render(
       <CanPlayElement defaultData={{ count: 0 }}>
