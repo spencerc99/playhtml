@@ -61,18 +61,11 @@ These are the only "profile" properties that we have for each person currently t
 <script type="module">
   import { playhtml } from "https://unpkg.com/playhtml@latest";
 
-  // <input type="color"> only takes hex, but default colors are hsl()
-  function toHex(color) {
-    const context = document.createElement("canvas").getContext("2d");
-    context.fillStyle = color;
-    return context.fillStyle;
-  }
-
   await playhtml.init();
   const nameInput = document.getElementById("my-name");
   const colorInput = document.getElementById("my-color");
   nameInput.value = playhtml.people.me.name ?? "";
-  colorInput.value = toHex(playhtml.people.me.color);
+  colorInput.value = playhtml.people.me.color;
   nameInput.addEventListener("change", () => (playhtml.people.me.name = nameInput.value));
   colorInput.addEventListener("input", () => (playhtml.people.me.color = colorInput.value));
 
@@ -95,13 +88,6 @@ These are the only "profile" properties that we have for each person currently t
 ```tsx
 import { playhtml, usePeople } from "@playhtml/react";
 
-// <input type="color"> only takes hex, but default colors are hsl()
-function toHex(color: string) {
-  const context = document.createElement("canvas").getContext("2d")!;
-  context.fillStyle = color;
-  return context.fillStyle;
-}
-
 function Roster() {
   const { everyone, me } = usePeople();
 
@@ -113,7 +99,7 @@ function Roster() {
       />
       <input
         type="color"
-        value={me.color ? toHex(me.color) : "#000000"}
+        value={me.color}
         onChange={(e) => (playhtml.people.me.color = e.target.value)}
       />
       <ul>

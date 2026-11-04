@@ -82,20 +82,96 @@ export function playerIdentityToUser(
 ): User {
   const user: User = {
     pid: identity.publicKey,
-    color: identity.playerStyle?.colorPalette?.[0] ?? "",
+    color: toHexColor(identity.playerStyle?.colorPalette?.[0] ?? ""),
     isMe,
   };
   if (identity.name !== undefined) user.name = identity.name;
   return user;
 }
 
+/**
+ * Returns `color` as a lowercase hex string when it's a hex, `hsl()`, or
+ * `rgb()` color: `#rrggbb` for opaque colors, so they work in
+ * `<input type="color">` (which only accepts that form), and `#rrggbbaa` when
+ * the color is see-through, so alpha is kept. Other CSS colors (like `"red"`)
+ * are returned unchanged.
+ */
+export function toHexColor(color: string): string {
+  const value = color.trim().toLowerCase();
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(value);
+  if (hex) {
+    const digits =
+      hex[1].length <= 4
+        ? [...hex[1]].map((digit) => digit + digit).join("")
+        : hex[1];
+    return digits.length === 8 && digits.endsWith("ff")
+      ? `#${digits.slice(0, 6)}`
+      : `#${digits}`;
+  }
+  const toHex = (channel: number) =>
+    Math.round(Math.min(255, Math.max(0, channel)))
+      .toString(16)
+      .padStart(2, "0");
+  // Appends an alpha byte only when the color is see-through.
+  const withAlpha = (rgbHex: string, alpha: string | undefined) => {
+    if (alpha === undefined) return rgbHex;
+    const amount = alpha.endsWith("%")
+      ? parseFloat(alpha) / 100
+      : parseFloat(alpha);
+    const byte = toHex(Math.min(1, Math.max(0, amount)) * 255);
+    return byte === "ff" ? rgbHex : `${rgbHex}${byte}`;
+  };
+  const rgb =
+    /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[,/]\s*([\d.]+%?)\s*)?\)$/.exec(
+      value,
+    );
+  if (rgb) {
+    return withAlpha(
+      `#${toHex(+rgb[1])}${toHex(+rgb[2])}${toHex(+rgb[3])}`,
+      rgb[4],
+    );
+  }
+  const hsl =
+    /^hsla?\(\s*(-?[\d.]+)(?:deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%\s*(?:[,/]\s*([\d.]+%?)\s*)?\)$/.exec(
+      value,
+    );
+  if (hsl) {
+    const hue = (((+hsl[1] % 360) + 360) % 360) / 360;
+    const saturation = Math.min(100, +hsl[2]) / 100;
+    const lightness = Math.min(100, +hsl[3]) / 100;
+    const q =
+      lightness < 0.5
+        ? lightness * (1 + saturation)
+        : lightness + saturation - lightness * saturation;
+    const p = 2 * lightness - q;
+    const channel = (t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    return withAlpha(
+      `#${toHex(channel(hue + 1 / 3) * 255)}${toHex(channel(hue) * 255)}${toHex(channel(hue - 1 / 3) * 255)}`,
+      hsl[4],
+    );
+  }
+  return color;
+}
+
+// Default person colors are tuned in HSL (fixed saturation and lightness, any
+// hue) and saved as hex, so they work in native color inputs.
+function defaultColor(hue: number): string {
+  return toHexColor(`hsl(${hue % 360}, 70%, 60%)`);
+}
+
 // Constants
 export const PROXIMITY_THRESHOLD = 150; // pixels
 
-/** Returns a random HSL color string (used as default primary color when none exists). */
+/** Returns a random hex color (used as default primary color when none exists). */
 function randomPrimaryColor(): string {
-  const hue = Math.floor(Math.random() * 360);
-  return `hsl(${hue}, 70%, 60%)`;
+  return defaultColor(Math.floor(Math.random() * 360));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -159,9 +235,9 @@ export function generatePlayerIdentity(): PlayerIdentity {
 
   const hue = Math.floor(Math.random() * 360);
   const colorPalette = [
-    `hsl(${hue}, 70%, 60%)`,
-    `hsl(${(hue + 120) % 360}, 70%, 60%)`,
-    `hsl(${(hue + 240) % 360}, 70%, 60%)`,
+    defaultColor(hue),
+    defaultColor(hue + 120),
+    defaultColor(hue + 240),
   ];
 
   return {

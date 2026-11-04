@@ -5,13 +5,6 @@ import { appShell } from "./app-shell";
 
 export const yourNameReactSource = `import { PlayProvider, playhtml, usePeople } from "@playhtml/react";
 
-// <input type="color"> only takes hex, but default colors are hsl()
-function toHex(color: string) {
-  const context = document.createElement("canvas").getContext("2d")!;
-  context.fillStyle = color;
-  return context.fillStyle;
-}
-
 function YourNameAndColor() {
   // Re-renders when anyone joins, leaves, or changes their name or color.
   const { me } = usePeople();
@@ -36,7 +29,7 @@ function YourNameAndColor() {
         color
         <input
           type="color"
-          value={me.color ? toHex(me.color) : "#000000"}
+          value={me.color}
           onChange={(event) => (playhtml.people.me.color = event.target.value)}
         />
       </label>

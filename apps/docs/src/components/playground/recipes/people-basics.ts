@@ -8,14 +8,7 @@ import {
 } from "./react/people-basics";
 import type { ExampleRecipe } from "./types";
 
-const yourNameScript = `// <input type="color"> only takes hex, but default colors are hsl()
-function toHex(color) {
-  const context = document.createElement("canvas").getContext("2d");
-  context.fillStyle = color;
-  return context.fillStyle;
-}
-
-const card = document.getElementById("me");
+const yourNameScript = `const card = document.getElementById("me");
 const nameInput = document.getElementById("my-name");
 const colorInput = document.getElementById("my-color");
 
@@ -31,7 +24,7 @@ playhtml.ready.then(() => {
     if (document.activeElement !== nameInput) {
       nameInput.value = people.me.name ?? "";
     }
-    colorInput.value = toHex(people.me.color);
+    colorInput.value = people.me.color;
   });
 
   // Setting me.name or me.color saves it for your next visit and shows it

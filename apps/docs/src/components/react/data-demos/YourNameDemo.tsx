@@ -4,14 +4,6 @@ import React, { useEffect, useState } from "react";
 import { playhtml } from "playhtml";
 import { usePagePeople } from "./usePagePeople";
 
-// <input type="color"> only takes hex, but default colors are hsl().
-function toHex(color: string): string {
-  const context = document.createElement("canvas").getContext("2d");
-  if (!context) return "#000000";
-  context.fillStyle = color;
-  return context.fillStyle;
-}
-
 export function YourNameDemo(): React.ReactElement {
   const everyone = usePagePeople();
   const me = everyone.find((person) => person.isMe);
@@ -58,7 +50,7 @@ export function YourNameDemo(): React.ReactElement {
           <span>color</span>
           <input
             type="color"
-            value={me ? toHex(me.color) : "#000000"}
+            value={me?.color ?? "#000000"}
             disabled={!me}
             onChange={(event) =>
               (playhtml.people.me.color = event.target.value)

@@ -11,6 +11,7 @@ import {
   CursorEvents,
   playerIdentityToUser,
   type User,
+  toHexColor,
 } from "@playhtml/common";
 import { SpatialGrid } from "./spatial-grid";
 import { getPresencePage } from "./presence-page";
@@ -34,7 +35,7 @@ type RemoteCursorPresence = CursorPresence & {
   playerIdentity: PlayerIdentity;
 };
 
-/** Returns primary color from player identity; throws if missing (no default). */
+/** Returns primary color from player identity as hex; throws if missing (no default). */
 function getPrimaryColor(identity: PlayerIdentity): string {
   const color = identity.playerStyle?.colorPalette?.[0];
   if (color == null || color === "") {
@@ -42,7 +43,7 @@ function getPrimaryColor(identity: PlayerIdentity): string {
       "[playhtml] Player identity must have playerStyle.colorPalette[0] (primary color).",
     );
   }
-  return color;
+  return toHexColor(color);
 }
 
 /** Validates identity has publicKey and primary color; throws if not. */
