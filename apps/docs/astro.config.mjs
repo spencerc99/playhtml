@@ -100,7 +100,7 @@ export default defineConfig({
       //
       //   Examples     → examples index (top-level link, above the path)
       //   Start        → getting-started, concepts
-      //   Building blocks → capabilities, custom-elements, data-essentials,
+      //   Building blocks → data-essentials, capabilities, custom-elements,
       //                     presence (people), page-data, events
       //   Advanced     → autogenerate (advanced/)
       //   Integrations → autogenerate (integrations/)
@@ -138,9 +138,9 @@ export default defineConfig({
         {
           label: "Building blocks",
           items: [
+            { label: "Data essentials", slug: "data/data-essentials" },
             { label: "Built-in elements", slug: "capabilities" },
             { label: "Custom elements", slug: "custom-elements" },
-            { label: "Data essentials", slug: "data/data-essentials" },
             { label: "People and presence", slug: "data/presence" },
             { label: "Page-level data", slug: "data/page-data" },
             { label: "Events", slug: "data/events" },

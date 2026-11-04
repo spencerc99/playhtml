@@ -9,7 +9,7 @@ const SEGMENTS: ReadonlyArray<{ label: string; href: string }> = [
   { label: "Drag a hat", href: "/docs/capabilities/#can-move" },
   { label: "See cursors", href: "/docs/advanced/cursors/" },
   { label: "Summon rain", href: "/docs/data/events/" },
-  { label: "Shape data", href: "/docs/data/data-essentials/" },
+  { label: "Shape data", href: "/docs/advanced/data-best-practices/" },
   { label: "Write React", href: "/docs/getting-started/" },
 ];
 

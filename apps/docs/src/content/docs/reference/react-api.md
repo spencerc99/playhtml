@@ -80,7 +80,7 @@ interface ReactElementEventHandlerData<T, V> {
 }
 ```
 
-`setData` accepts either a replacement value or a mutator function. See [Data essentials](/docs/data/data-essentials/) for the merge semantics.
+`setData` accepts either a replacement value or a mutator function. See [data best practices](/docs/advanced/data-best-practices/#updating-data-mutator-vs-replacement) for the merge semantics.
 
 `everyone`, `me`, and `setMyPresence` are this element's [presence](/docs/data/presence/#element-presence). Use them for signals tied to this element that should disappear when the person leaves. `everyone` lists everyone with the element on screen (including you), each with their current `presence` on it; your own is `me.presence`. `setMyPresence` takes a new value or a mutator, like `setData`. The 2.15 names `live`, `users`, and `setLive` still work.
 

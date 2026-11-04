@@ -62,7 +62,7 @@ or array directly to replace it.
 The vanilla channel handle exposes four methods (`usePageData` wraps these for you):
 
 - **`getData()`**: read the current value synchronously.
-- **`setData(value | updater)`**: write. Pass a replacement value, mutate an object/array draft in place, or return the next primitive value from an updater; see [data essentials](/docs/data/data-essentials/).
+- **`setData(value | updater)`**: write. Pass a replacement value, mutate an object/array draft in place, or return the next primitive value from an updater; see [data best practices](/docs/advanced/data-best-practices/#updating-data-mutator-vs-replacement).
 - **`onUpdate(cb)`**: subscribe to changes. Returns an unsubscribe function.
 - **`destroy()`**: detach the channel and its observers. Call this when the channel is no longer needed (e.g. on teardown) to avoid leaking the subscription.
 

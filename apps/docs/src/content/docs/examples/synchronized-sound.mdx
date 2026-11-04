@@ -54,7 +54,7 @@ When someone presses **Play loop**, the example stores a wall-clock start time. 
 
 The local scheduler looks ahead by a short interval and recalculates each upcoming beat from the shared start time. This corrects ordinary JavaScript timer drift instead of letting timing errors accumulate. It is appropriate for shared music controls and playful sound effects, but it is not sample-accurate audio networking: device clock differences and network delay can still produce a small offset.
 
-Shared writes happen only when a person presses **Play**, **Pause**, or **Restart**. The animation and audio-scheduling loop reads the current data without writing it back, so a remote update cannot start a self-triggering write loop. See [Data essentials](/docs/data/data-essentials/) for the shared-data rules used here.
+Shared writes happen only when a person presses **Play**, **Pause**, or **Restart**. The animation and audio-scheduling loop reads the current data without writing it back, so a remote update cannot start a self-triggering write loop. See [data best practices](/docs/advanced/data-best-practices/) for the shared-data rules used here.
 
 ## Test in two windows
 

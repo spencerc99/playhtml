@@ -158,7 +158,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 </script>
 ```
 
-`setData` takes either a **mutator** that edits a draft in place (`setData(d => { d.count += 1 })`, merge-friendly across clients — preferred for counters, lists, nested fields) or a **replacement value** (`setData({ count: 5 })`, last-write-wins). See [Data essentials](/docs/data/data-essentials/) for the merge rules.
+`setData` takes either a **mutator** that edits a draft in place (`setData(d => { d.count += 1 })`, merge-friendly across clients — preferred for counters, lists, nested fields) or a **replacement value** (`setData({ count: 5 })`, last-write-wins). See [data best practices](/docs/advanced/data-best-practices/#updating-data-mutator-vs-replacement) for the merge rules.
 
 <div id="play-counter" class="ph-canplay-inline" data-label="DEMO — counter">
   <div class="ph-canplay-inline__head">
@@ -452,7 +452,7 @@ playhtml.register("chats", {
 - **Renders must be pure.** Don't call `setData` / `setLocalData` / `setMyPresence` while rendering — it's an infinite re-render loop. playhtml rejects such writes with a console error. Drive writes from `@event` handlers or `onMount`.
 - **Key lists by a stable id**, never index or timestamp.
 - **Security:** interpolated text and attribute values are auto-escaped (and `unsafeHTML` is deliberately not exported). Two sharp edges remain about a binding's *content*: `style` from a user-controlled string is CSS-injectable (prefer `styleMap`), and `href`/`src` from user data isn't URL-sanitized (validate the scheme).
-- **Changing the shape of already-live data** needs a migration or a new field name — see [Data essentials](/docs/data/data-essentials/).
+- **Changing the shape of already-live data** needs a migration or a new field name — see [data best practices](/docs/advanced/data-best-practices/).
 
 ## React
 
@@ -473,7 +473,7 @@ export const Counter = withSharedState(
 );
 ```
 
-`setData` takes either a **mutator** that edits a draft in place (`setData(d => { d.count += 1 })`, merge-friendly across clients — preferred for counters, lists, nested fields) or a **replacement value** (`setData({ count: 5 })`, last-write-wins). See [Data essentials](/docs/data/data-essentials/) for the merge rules.
+`setData` takes either a **mutator** that edits a draft in place (`setData(d => { d.count += 1 })`, merge-friendly across clients — preferred for counters, lists, nested fields) or a **replacement value** (`setData({ count: 5 })`, last-write-wins). See [data best practices](/docs/advanced/data-best-practices/#updating-data-mutator-vs-replacement) for the merge rules.
 
 [▶ Live demo ↑](#play-counter)
 

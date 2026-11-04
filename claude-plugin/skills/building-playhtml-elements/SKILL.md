@@ -158,7 +158,7 @@ useEffect(() => {
 
 Two reinforcing rules: (1) prefer keyed-map + mutator upsert over array + replacement rewrite; (2) read the data through a ref so the effect depends on local identity, not the shared collection. If you truly need an array, you must both read via ref AND dedupe-by-id into a Map before writing — but a keyed map is almost always the right shape.
 
-Rule of thumb: **write shared data from explicit user events, not from reactive callbacks.** If you must write from a callback, prove it converges. Full explanation: https://playhtml.fun/docs/data/data-essentials/#7-never-write-shared-data-from-code-that-re-runs-when-that-data-changes
+Rule of thumb: **write shared data from explicit user events, not from reactive callbacks.** If you must write from a callback, prove it converges. Full explanation: https://playhtml.fun/docs/advanced/data-best-practices/#7-never-write-shared-data-from-code-that-re-runs-when-that-data-changes
 
 ## Changing the SHAPE of already-live persisted data → migrate or clear (and flag it)
 

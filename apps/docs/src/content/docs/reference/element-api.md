@@ -46,7 +46,7 @@ Passed to `update`, `view`, `onClick`, `onDrag`, and `onDragStart`:
 
 The older `live`, `users`, `setLive`, `awareness`, `awarenessByStableId`, `myAwareness`, and `setMyAwareness` fields remain available as compatibility aliases.
 
-Do not call `setData`, `setLocalData`, or `setMyPresence` during a `view` render — playhtml logs an error and ignores the write. `setData` merge rules: [Data essentials](/docs/data/data-essentials/).
+Do not call `setData`, `setLocalData`, or `setMyPresence` during a `view` render — playhtml logs an error and ignores the write. `setData` merge rules: [data best practices](/docs/advanced/data-best-practices/#updating-data-mutator-vs-replacement).
 
 ### `onMount` context
 
@@ -173,7 +173,7 @@ const initializer = {
 
 Imperative update path. playhtml calls it on mount and whenever shared `data` or anyone's presence on this element changes. Write the DOM from `ctx.data`, `ctx.everyone`, and `ctx.me`.
 
-Mutually exclusive with `view`. Do not call `setData` inside `update` — that creates a write loop. See [Data essentials](/docs/data/data-essentials/) rule 7.
+Mutually exclusive with `view`. Do not call `setData` inside `update` — that creates a write loop. See [data best practices](/docs/advanced/data-best-practices/#7-never-write-shared-data-from-code-that-re-runs-when-that-data-changes).
 
 ```js
 const initializer = {
