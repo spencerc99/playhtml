@@ -4,10 +4,10 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import type { CollectionEvent, DayCounts } from "../types";
 import type { TimeOfDayFilter } from "../config";
+import { TimeOfDayInputs } from "./TimeOfDayInputs";
 import {
   computeHotspots,
   computeSustainScores,
-  type HotspotBucket,
 } from "../utils/hotspots";
 
 interface ActivityStripProps {
@@ -33,24 +33,6 @@ interface ActivityStripProps {
   leftOffset: number;
   rightOffset?: number;
   bottomOffset?: number;
-}
-
-/** minutes-from-midnight → "HH:MM" (for the time-of-day input value). */
-function minutesToHHMM(mins: number): string {
-  const m = ((Math.round(mins) % 1440) + 1440) % 1440;
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-}
-
-/** "HH:MM" → minutes-from-midnight, or null if unparseable. */
-function hhmmToMinutes(value: string): number | null {
-  const m = value.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const mm = Number(m[2]);
-  if (h > 23 || mm > 59) return null;
-  return h * 60 + mm;
 }
 
 const TEAL_RGB: [number, number, number] = [74, 154, 138];
@@ -238,12 +220,6 @@ export const ActivityStrip: React.FC<ActivityStripProps> = ({
       const entries = Array.from(dayCounts.entries())
         .map(([day, count]) => ({ day, count }))
         .sort((a, b) => a.day.localeCompare(b.day));
-      const filled: Array<{
-        day: string;
-        ms: number;
-        events: number;
-        pids: number;
-      }> = [];
       // Per-day rows: total events from dayCounts, sampled events + pids
       // from the loaded slice. We compute a "density" score that gives a
       // multi-day view where days with proportionally more unique people
@@ -369,10 +345,8 @@ export const ActivityStrip: React.FC<ActivityStripProps> = ({
         allowedTypes,
       });
       if (buckets.length === 0) return [];
-      const max = buckets.reduce((m, b) => Math.max(m, b.uniquePids), 0);
       const sustain = computeSustainScores(buckets, 4);
       const maxSustain = sustain.reduce((m, s) => Math.max(m, s), 0);
-      void max; // satisfies linter when only sustain drives saturation
       return buckets.map((b, i) => ({
         startMs: b.startMs,
         endMs: b.endMs,
@@ -386,7 +360,6 @@ export const ActivityStrip: React.FC<ActivityStripProps> = ({
     const bucketMs = ZOOM_BUCKET_MS[zoom as "hours" | "15m"];
     const buckets = computeHotspots(events, { bucketMs, allowedTypes });
     if (buckets.length === 0) return [];
-    const max = buckets.reduce((m, b) => Math.max(m, b.uniquePids), 0);
     const sustain = computeSustainScores(buckets, 5);
     const maxSustain = sustain.reduce((m, s) => Math.max(m, s), 0);
     return buckets.map((b, i) => ({
@@ -624,50 +597,7 @@ export const ActivityStrip: React.FC<ActivityStripProps> = ({
               style={{ display: "flex", gap: 4, alignItems: "center", marginRight: 4 }}
               title="Recurring time-of-day window (local time), across every day in view"
             >
-              <input
-                type="time"
-                value={minutesToHHMM(timeOfDay.centerMinutes)}
-                onChange={(e) => {
-                  const mins = hhmmToMinutes(e.target.value);
-                  if (mins !== null)
-                    onSetTimeOfDay({ ...timeOfDay, centerMinutes: mins });
-                }}
-                style={{
-                  font: "inherit",
-                  fontSize: 10,
-                  padding: "1px 3px",
-                  border: "1px solid rgba(61,56,51,0.25)",
-                  borderRadius: 3,
-                  background: "rgba(255,255,255,0.6)",
-                  color: TEXT,
-                }}
-              />
-              <span style={{ color: TEXT_MUTED }}>±</span>
-              <input
-                type="number"
-                min={1}
-                max={720}
-                value={timeOfDay.radiusMinutes}
-                onChange={(e) => {
-                  const r = Number(e.target.value);
-                  if (Number.isFinite(r) && r > 0)
-                    onSetTimeOfDay({
-                      ...timeOfDay,
-                      radiusMinutes: Math.min(720, r),
-                    });
-                }}
-                style={{
-                  font: "inherit",
-                  fontSize: 10,
-                  width: 38,
-                  padding: "1px 3px",
-                  border: "1px solid rgba(61,56,51,0.25)",
-                  borderRadius: 3,
-                  background: "rgba(255,255,255,0.6)",
-                  color: TEXT,
-                }}
-              />
-              <span style={{ color: TEXT_MUTED }}>min</span>
+              <TimeOfDayInputs value={timeOfDay} onChange={onSetTimeOfDay} />
               <button
                 type="button"
                 onClick={() => onSetTimeOfDay(null)}

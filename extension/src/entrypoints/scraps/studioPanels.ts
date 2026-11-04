@@ -1,0 +1,100 @@
+// ABOUTME: Decides the one floating panel the studio shows over the collage at a time.
+// ABOUTME: A running tool owns the space, so nothing else can open on top of its controls.
+
+import type { PieceBox } from "./collageGeometry";
+import { GRIP_REACH } from "./handleZones";
+import type { StudioMode } from "./studioKeymap";
+
+/**
+ * The floating panels that can sit over the collage. At most one is ever on
+ * screen: "crop" and "cutout" are tool sessions, "piecesHere" is the stack
+ * menu, and "pieceActions" is the strip of tools beside the selected piece.
+ */
+export type StudioPanel =
+  | "none"
+  | "crop"
+  | "cutout"
+  | "piecesHere"
+  | "pieceActions";
+
+export interface PanelState {
+  /**
+   * The one session the studio is in. "back" is the collage turned over;
+   * "rotate" and "scale" are a modal transform following the pointer.
+   */
+  mode: StudioMode;
+  piecesHereOpen: boolean;
+  /** A drag, resize or rotate from a handle is under way. */
+  gestureRunning: boolean;
+  /** The source tags are held up over every piece. */
+  peekHeld: boolean;
+  hasSelection: boolean;
+}
+
+/**
+ * The panel that is visible, by priority. A tool session outranks everything,
+ * because its controls are the only way to finish it; the stack menu was asked
+ * for on purpose, so it outranks the piece strip; the strip is the resting
+ * state and stands aside while anything moves or the tags are up.
+ */
+export function visiblePanel(state: PanelState): StudioPanel {
+  switch (state.mode) {
+    case "back":
+    case "rotate":
+    case "scale":
+      return "none";
+    case "crop":
+      return "crop";
+    case "cutout":
+      return "cutout";
+    case "idle":
+      break;
+  }
+  if (state.piecesHereOpen) return "piecesHere";
+  if (state.gestureRunning || state.peekHeld) return "none";
+  if (state.hasSelection) return "pieceActions";
+  return "none";
+}
+
+/**
+ * Whether a tool session holds the collage, in which case the stack menu may
+ * not open and the hover outline stays down.
+ */
+export function toolSessionActive(state: PanelState): boolean {
+  return state.mode !== "idle" && state.mode !== "back";
+}
+
+/** How far from the piece a panel sits, in on-screen pixels. */
+export const PANEL_GAP = 10;
+
+/**
+ * Where a panel floating beside a piece goes, in frame coordinates. It sits
+ * above the piece, clear of the grips that reach out past its corners, drops
+ * below (just as clear) when there is no room above, and is kept inside the
+ * frame. The panel and the grips are drawn at their own on-screen size, so
+ * both are converted through the zoom.
+ */
+export function placeBesidePiece(
+  piece: PieceBox,
+  panel: { width: number; height: number },
+  scale: number,
+  frame: { width: number; height: number },
+  /** Further on-screen room to keep below the piece, for a knob drawn there. */
+  extraBelow = 0,
+): { left: number; top: number } {
+  const clear = (GRIP_REACH + PANEL_GAP) / scale;
+  const clearBelow = clear + extraBelow / scale;
+  const width = panel.width / scale;
+  const height = panel.height / scale;
+  const above = piece.y - clear - height;
+  const top = above >= 0 ? above : piece.y + piece.height + clearBelow;
+  const centered = piece.x + piece.width / 2 - width / 2;
+  const left =
+    width >= frame.width
+      ? 0
+      : Math.min(Math.max(centered, 0), frame.width - width);
+  return {
+    left,
+    top: Math.min(Math.max(top, 0), Math.max(frame.height - height, 0)),
+  };
+}

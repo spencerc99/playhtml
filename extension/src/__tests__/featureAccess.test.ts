@@ -7,11 +7,13 @@ import {
   FEATURE_ACCESS_STORAGE_KEY,
   getFeatureAccess,
   getFeatureOverrides,
+  getFeatureState,
   hasExperimentAccess,
   hasPrivateExperimentAccess,
   parseFeatureAccess,
   parseFeatureOverrides,
   refreshFeatureAccess,
+  setFeatureOverride,
 } from "../features/featureAccess";
 
 vi.mock("@movement/config", () => ({ WORKER_URL: "https://worker.example" }));
@@ -28,6 +30,11 @@ describe("parseFeatureOverrides", () => {
 });
 
 describe("parseFeatureAccess", () => {
+  it("reads internal membership and treats older snapshots as non-internal", () => {
+    expect(parseFeatureAccess({ features: {}, internal: true })?.internal).toBe(true);
+    expect(parseFeatureAccess({ features: {} })?.internal).toBe(false);
+  });
+
   it("keeps valid known policies and ignores unknown or malformed entries", () => {
     const access = parseFeatureAccess({
       features: {
@@ -65,13 +72,13 @@ describe("refreshFeatureAccess", () => {
     expect(fetch).toHaveBeenCalledWith("https://worker.example/feature-access/pk_test");
     expect(browser.storage.local.set).toHaveBeenCalledWith({
       [FEATURE_ACCESS_STORAGE_KEY]: expect.objectContaining({ checkedAt: 456 }),
-      ["wwoFeatureOverrides"]: {},
     });
   });
 
-  it("clears a local choice when server access is revoked", async () => {
+  it("keeps local choices when server access is revoked", async () => {
+    vi.mocked(browser.storage.local.set).mockClear();
     vi.mocked(browser.storage.local.get).mockResolvedValue({
-      wwoFeatureOverrides: { COMMUTE: true, SCRAPS: true },
+      wwoFeatureOverrides: { COMMUTE: false, SCRAPS: true },
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
       features: {
@@ -81,9 +88,41 @@ describe("refreshFeatureAccess", () => {
     }), { status: 200 })));
 
     await refreshFeatureAccess("pk_test");
-    expect(browser.storage.local.set).toHaveBeenCalledWith(expect.objectContaining({
-      wwoFeatureOverrides: { SCRAPS: true },
-    }));
+    expect(browser.storage.local.set).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(browser.storage.local.set).mock.calls[0][0]).not.toHaveProperty(
+      "wwoFeatureOverrides",
+    );
+  });
+
+  it("keeps an opt-out through a revoke and re-grant of access", async () => {
+    const store: Record<string, unknown> = {};
+    vi.mocked(browser.storage.local.get).mockImplementation(async (key) => (
+      typeof key === "string" && key in store ? { [key]: store[key] } : {}
+    ));
+    vi.mocked(browser.storage.local.set).mockImplementation(async (items) => {
+      Object.assign(store, items);
+    });
+    const serveAccess = (available: boolean) => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+        features: { COMMUTE: { stage: "beta", available } },
+      }), { status: 200 })));
+    };
+
+    serveAccess(true);
+    await refreshFeatureAccess("pk_test");
+    expect(await getFeatureState("COMMUTE")).toMatchObject({ enabled: true, source: "available" });
+
+    await setFeatureOverride("COMMUTE", false);
+    expect(await getFeatureState("COMMUTE")).toMatchObject({ enabled: false, source: "choice" });
+
+    serveAccess(false);
+    await refreshFeatureAccess("pk_test");
+    expect(await getFeatureState("COMMUTE")).toMatchObject({ enabled: false, source: "unavailable" });
+
+    serveAccess(true);
+    await refreshFeatureAccess("pk_test");
+    expect(await getFeatureOverrides()).toEqual({ COMMUTE: false });
+    expect(await getFeatureState("COMMUTE")).toMatchObject({ enabled: false, source: "choice" });
   });
 
   it("does not overwrite the cache when the server check fails", async () => {

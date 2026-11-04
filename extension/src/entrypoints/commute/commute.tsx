@@ -16,7 +16,6 @@ import trainIceUrl from "../../assets/train-ice.png";
 import {
   PlayProvider,
   usePlayContext,
-  usePresence,
   useUsers,
   withSharedState,
 } from "@playhtml/react";
@@ -32,6 +31,7 @@ import {
   type CommuteStop,
 } from "./commuteStops";
 import { estimateServerTimeOffset } from "./commuteService";
+import { startVisibleInterval } from "../../utils/visibleInterval";
 import {
   DEPARTURE_SECONDS,
   getSlowModePlatformPhase,
@@ -212,14 +212,14 @@ function useRecentRoute(): RecentRoute {
           : current,
       );
     }, COMMUTE_ROUTE_TIMEOUT_MS);
-    const refreshTimer = window.setInterval(
+    const stopRefreshing = startVisibleInterval(
       () => void load(),
       COMMUTE_REFRESH_MS,
     );
     return () => {
       controller.abort();
       window.clearTimeout(routeTimeout);
-      window.clearInterval(refreshTimer);
+      stopRefreshing();
     };
   }, []);
 
@@ -305,6 +305,7 @@ function useCommuteTrain(
           refreshTimer = window.setTimeout(() => void board(), 3_000);
         } else {
           setConnection((current) => ({ ...current, status: "error" }));
+          refreshTimer = window.setTimeout(() => void board(), 3_000);
         }
       }
     };
@@ -1148,7 +1149,11 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
     const canExit = doorOpen && !props.atOrigin;
 
     return (
-      <section id={props.id} className="train-car-wrap" ref={ref}>
+      <section
+        id={props.id}
+        className="train-car-wrap"
+        ref={ref as React.RefObject<HTMLElement>}
+      >
         <section
           className={`train-car train-car--${props.phase}`}
           aria-label="Internet commute carriage"

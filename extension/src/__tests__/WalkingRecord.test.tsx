@@ -106,6 +106,7 @@ function trailState(
   return {
     trail: {
       id,
+      pid: id,
       points: [
         { x: 10, y: 10, ts: 1_000 },
         { x: 20, y: 20, ts: 2_000 },

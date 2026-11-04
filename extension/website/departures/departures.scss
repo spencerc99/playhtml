@@ -1,0 +1,22 @@
+// ABOUTME: Page layout for the departures board page.
+// ABOUTME: Centers the board on the warm linen site background.
+
+body {
+  margin: 0;
+  background: #faf7f2;
+}
+
+.departures-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  box-sizing: border-box;
+}
+
+.departures-error {
+  color: #c4724e;
+  font-family: monospace;
+}

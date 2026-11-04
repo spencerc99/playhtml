@@ -1,5 +1,47 @@
 # Change Log
 
+## 2.15.1
+
+### Patch Changes
+
+- 429e950: Avoid rendering live elements twice when a user's name, color, or identity changes.
+- bd63ccf: Elements and page data keep syncing when several people create them at the same moment. Before, if a shared element first appeared on multiple pages at once (for example, a React `withSharedState` component that mounts after shared state changes), some pages would stop seeing updates and their own changes would not reach anyone else. The same could happen to a `createPageData` channel opened on several pages at once. Those pages now switch to the shared copy and stay in sync.
+- 3c05934: The cursor client can now tell you whose cursor is drawn at a point on screen (`getCursorIdAt(x, y, slop)`). Other people's cursors ignore pointer events, so this lets a tap or click pick a person, for example to open a menu next to their cursor on a phone.
+- 1ab8866: Less network traffic and a smaller download. `setData` on a list now sends only the items that changed, so editing one entry in a long list no longer resends the whole list or grows the room's saved history by a full copy each time. Rapid `setData` calls, such as updates on every pointer move, are batched into at most 20 messages a second; the first change still goes out right away. The build is minified with source maps, and the cursor code only downloads on pages that enable cursors, which cuts the default download from 110 KB to 65 KB gzipped.
+- b619ac1: Fix the `PlayEvent.onEvent` type so listeners receive the dispatched `eventPayload` directly, matching what playhtml already passes at runtime. Typed listeners such as `onEvent: ({ emoji }: { emoji: string }) => ...` now type-check without casts.
+- ab3a57c: Reduce page setup and navigation work on pages with many elements unrelated to PlayHTML.
+- d294c84: Clearing a cursor render filter with `configure({ shouldRenderCursor: undefined })` now shows previously hidden remote cursors right away instead of waiting for their next movement.
+- 95d2dbc: Avoid rebuilding the room's user list when updating elements without local or remote live state.
+- bfe0120: Reconnects are steadier. After a room is reset, a reconnecting page now always sends the room's latest reset marker, even when the browser blocks localStorage, and a fresh page that joins with an older marker stays connected instead of reloading its room. Presence reconnects are spread out over a few seconds after a server restart, and other people's cursors stay put through a brief reconnect instead of fading out and back in.
+- Updated dependencies [1ab8866]
+- Updated dependencies [b619ac1]
+  - @playhtml/common@0.10.1
+
+## 2.15.0
+
+### Minor Changes
+
+- 35088f1: Add the element `live`, `users`, `setLive`, and `update` APIs so one renderer can combine shared state with current per-user values and identity. Existing awareness and `updateElement` names remain available as deprecated compatibility aliases.
+
+### Patch Changes
+
+- 9f3e2c3: Avoid opening a redundant collaborative-document connection when cursors use a dedicated presence room, preventing repeated reconnections and unnecessary request load.
+- 74e4d35: Make `playhtml.register(elementOrId, initializer)` the recommended vanilla API for custom elements using either `updateElement` or `view`. Callers can pass an existing HTML element or register by id before the element exists. Registered initializers bind through the standard setup path without being copied onto DOM elements, while direct element-property configuration remains supported for compatibility.
+- db2f919: Allow nullable page data to be cleared with `setData(null)` or an updater returning `null` after holding an object or array. Subscribers receive the cleared value, and the channel can be populated again.
+- 8301126: Switch shared rooms after client-side navigation commits the destination URL, so pushState and replaceState updates use the destination page's data.
+- ad66821: Page-data channels can now update primitive roots with functional updates that return the next value.
+- 23e3b32: Avoid reinitializing bound elements during repeated page scans and limit local awareness updates to the element that changed, reducing navigation and presence overhead on pages with many PlayHTML elements.
+- 6c0a07e: Use the realtime presence transport for user discovery across cursor settings, tabs, and reconnects. Prevent a previous self identity appearing as another visitor after an identity change, and keep multi-tab identity selection consistent. Presence subscriptions refresh when participants change identity, existing user-list subscribers receive room changes when another subscriber joins, and element presence clears departed-room participants after navigation.
+- 9c4cbed: Coalesce synchronous primitive page-data notifications and skip user-list updates when only cursor position changes, reducing repeated work for data and presence subscribers.
+- 6c0a07e: Clear loading indicators on elements registered before initialization so they become interactive when shared data is ready.
+- fb24e9b: Preserve the embedding page's room namespace for `srcdoc` examples so stable element IDs reconnect to their existing shared data.
+- Updated dependencies [35088f1]
+- Updated dependencies [74e4d35]
+- Updated dependencies [c549849]
+- Updated dependencies [ad66821]
+- Updated dependencies [75c1cce]
+  - @playhtml/common@0.10.0
+
 ## 2.14.1
 
 ### Patch Changes

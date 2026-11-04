@@ -9,6 +9,7 @@ import { OptionsPage } from "./OptionsPage";
 
 const featureState = vi.hoisted(() => ({
   experimentAccess: false,
+  internalAccess: true,
   bagSettingsEnabled: true,
 }));
 
@@ -23,6 +24,7 @@ vi.mock("./DeveloperFeaturesPage", () => ({
 }));
 vi.mock("../features/useFeatureAccess", () => ({
   useExperimentAccess: () => featureState.experimentAccess,
+  useInternalAccess: () => featureState.internalAccess,
   useFeatureState: () => ({ enabled: featureState.bagSettingsEnabled }),
 }));
 vi.mock("../utils/extensionPage", () => ({
@@ -61,6 +63,7 @@ describe("OptionsPage", () => {
       globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
     featureState.experimentAccess = false;
+    featureState.internalAccess = true;
     featureState.bagSettingsEnabled = true;
     vi.mocked(browser.storage.local.get).mockResolvedValue({});
   });
@@ -104,6 +107,22 @@ describe("OptionsPage", () => {
     }
   });
 
+  it("hides Experiments from people outside the internal cohort", async () => {
+    featureState.internalAccess = false;
+    featureState.experimentAccess = true;
+    const { container, root } = await renderOptions();
+    try {
+      expect(container.querySelector("#experiments")).toBeNull();
+      expect(
+        Array.from(container.querySelectorAll("nav a")).map(
+          (link) => link.textContent,
+        ),
+      ).not.toContain("experiments");
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
   it("keeps bag settings feature-gated in its existing position", async () => {
     featureState.bagSettingsEnabled = false;
     const { container, root } = await renderOptions();
@@ -140,6 +159,27 @@ describe("OptionsPage", () => {
       await act(async () => colorButton?.click());
 
       expect(clickColorInput).toHaveBeenCalledOnce();
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("loads and saves the milestone popup preference", async () => {
+    vi.mocked(browser.storage.local.get).mockResolvedValue({
+      milestoneToastsEnabled: false,
+    });
+    const { container, root } = await renderOptions();
+    try {
+      const checkbox = Array.from(container.querySelectorAll("label")).find(
+        (label) => label.textContent?.includes("show milestone popups"),
+      )?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+
+      expect(checkbox?.checked).toBe(false);
+      await act(async () => checkbox?.click());
+      expect(checkbox?.checked).toBe(true);
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
+        milestoneToastsEnabled: true,
+      });
     } finally {
       cleanup(root, container);
     }

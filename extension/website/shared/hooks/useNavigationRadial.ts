@@ -177,7 +177,7 @@ export function useNavigationRadial(
       color: domainColors.get(centerDomain) ?? RISO_COLORS[0],
     });
 
-    otherDomains.forEach((domain, idx) => {
+    otherDomains.forEach((domain) => {
       const seed = hashString(domain);
       const x = margin + seededRandom(seed, 0) * usableW;
       const y = margin + seededRandom(seed, 1) * usableH;

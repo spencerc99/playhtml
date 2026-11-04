@@ -14,6 +14,8 @@ import {
   usePlayerIdentity,
   useUsers,
   useCursorZone,
+  usePeople,
+  usePlayContext,
   playhtml,
 } from "../index";
 import type { PlayerIdentity } from "playhtml";
@@ -26,6 +28,13 @@ const mockedPlayhtml = (globalThis as any).MOCKED_PLAYHTML as {
   resolveReady: () => void;
   createPresenceRoom: ReturnType<typeof vi.fn>;
   presence: unknown;
+  resetMockPeople: () => void;
+  setMockPlayerIdentity: (next: {
+    publicKey?: string;
+    name?: string;
+    playerStyle?: { colorPalette: string[]; cursorStyle?: string };
+    createdAt?: number;
+  }) => void;
 };
 
 describe("usePresence", () => {
@@ -102,6 +111,35 @@ describe("usePresence", () => {
       });
     });
     expect(captured!.presences.get("me")).not.toHaveProperty("x");
+  });
+
+  it("re-derives myIdentity on a later identity change instead of freezing at sync completion", async () => {
+    let captured: ReturnType<typeof usePresence<"selection">> | null = null;
+
+    function TestComponent() {
+      captured = usePresence("selection");
+      return <div />;
+    }
+
+    render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+
+    await waitFor(() => {
+      expect(captured!.myIdentity).not.toBeNull();
+    });
+    expect(captured!.myIdentity?.publicKey).toBe("me");
+
+    // Simulates the "we were online" extension injecting identity post-sync.
+    act(() => {
+      mockedPlayhtml.setMockPlayerIdentity({ publicKey: "injected-pid" });
+    });
+
+    await waitFor(() => {
+      expect(captured!.myIdentity?.publicKey).toBe("injected-pid");
+    });
   });
 });
 
@@ -478,5 +516,83 @@ describe("useCursorZone", () => {
     expect(unregisterCursorZone).toHaveBeenCalledWith("zone-a");
     expect(registerCursorZone).toHaveBeenCalledWith(element, secondOptions);
     expect(registerCursorZone).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("usePeople", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockedPlayhtml.resetMockPeople();
+  });
+
+  it("is empty with a placeholder me before sync, then lists people and writes one key", async () => {
+    const seen: Array<{ count: number; pid: string; status: unknown }> = [];
+    let setter: ((key: string, value: unknown) => void) | null = null;
+
+    function TestComponent() {
+      const { everyone, me, setMyPresence } = usePeople("status");
+      setter = setMyPresence;
+      seen.push({ count: everyone.length, pid: me.pid, status: me.presence.status });
+      return null;
+    }
+
+    render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+    expect(seen[0]).toEqual({ count: 0, pid: "", status: undefined });
+
+    await waitFor(() => expect(seen.at(-1)!.count).toBe(1));
+    expect(seen.at(-1)!.pid).toBe("mock-pid");
+
+    act(() => setter!("status", "typing"));
+    expect(seen.at(-1)!.status).toBe("typing");
+    expect((playhtml as any).people.setMyPresence).toHaveBeenLastCalledWith("status", "typing");
+  });
+
+  it("setMyPresence warns and no-ops before sync", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let setter: ((key: string, value: unknown) => void) | null = null;
+    function TestComponent() {
+      setter = usePeople().setMyPresence;
+      return null;
+    }
+    render(
+      <PlayContext.Provider value={{ isLoading: true } as any}>
+        <TestComponent />
+      </PlayContext.Provider>,
+    );
+    setter!("status", "typing");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("usePeople().setMyPresence"));
+  });
+});
+
+describe("usePlayContext().people", () => {
+  beforeEach(() => {
+    mockedPlayhtml.resetMockPeople();
+  });
+
+  it("carries everyone, me, and setMyPresence after sync", async () => {
+    const seen: Array<{ count: number; status: unknown }> = [];
+    let setter: ((key: string, value: unknown) => void) | null = null;
+
+    function TestComponent() {
+      const { people } = usePlayContext();
+      setter = people.setMyPresence;
+      seen.push({ count: people.everyone.length, status: people.me.presence.status });
+      return null;
+    }
+
+    render(
+      <PlayProvider>
+        <TestComponent />
+      </PlayProvider>,
+    );
+    expect(seen[0]).toEqual({ count: 0, status: undefined });
+    await waitFor(() => expect(seen.at(-1)!.count).toBe(1));
+
+    act(() => setter!("status", "away"));
+    await waitFor(() => expect(seen.at(-1)!.status).toBe("away"));
   });
 });

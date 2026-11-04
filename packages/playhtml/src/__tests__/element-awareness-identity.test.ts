@@ -1,71 +1,42 @@
-// ABOUTME: Verifies element awareness publishes stable player identity metadata.
-// ABOUTME: Keeps presence-only users keyed by public identity instead of Yjs client id.
+// ABOUTME: Verifies element awareness and identity share the page presence transport.
+// ABOUTME: Keeps presence-only users keyed by public identity when cursors are disabled.
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getStableIdForAwareness } from "../awareness-utils";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { elementHandlers, playhtml, resetPlayHTML } from "../index";
-import { getPresenceSocketForRoom, sentMessages } from "./presence-test-utils";
-
-function getCurrentProvider(): any {
-  const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as any[];
-  const provider = providers?.[providers.length - 1];
-  if (!provider) throw new Error("Expected test provider");
-  return provider;
-}
+import { getPresenceSocketForRoom, sentChannelUpdates, sentMessages } from "./presence-test-utils";
 
 describe("element awareness identity", () => {
   beforeEach(async () => {
     document.body.innerHTML = "";
-    (globalThis as any).PLAYHTML_TEST_PROVIDERS = [];
     await resetPlayHTML();
-    await playhtml.init({
-      cursors: { enabled: false },
-    });
+    await playhtml.init({ cursors: { enabled: false } });
     await new Promise((resolve) => queueMicrotask(resolve));
   });
+  afterEach(async () => { document.body.innerHTML = ""; await resetPlayHTML(); });
 
-  afterEach(async () => {
-    document.body.innerHTML = "";
-    await resetPlayHTML();
-    vi.unstubAllGlobals();
-  });
-
-  it("writes player identity before publishing element awareness", async () => {
-    vi.stubGlobal("WebSocket", undefined);
-    document.body.innerHTML = "";
-    (globalThis as any).PLAYHTML_TEST_PROVIDERS = [];
-    await resetPlayHTML();
-    await playhtml.init({
-      cursors: { enabled: false },
-    });
-    await new Promise((resolve) => queueMicrotask(resolve));
-
+  it("joins with identity before publishing element awareness", async () => {
     const el = document.createElement("div");
     el.id = "presence-only";
     el.setAttribute("can-toggle", "");
     document.body.appendChild(el);
     await playhtml.setupPlayElementForTag(el, "can-toggle");
+    elementHandlers.get("can-toggle")!.get("presence-only")!
+      .setMyAwareness({ active: true } as any);
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const handler = elementHandlers.get("can-toggle")!.get("presence-only")!;
-    handler.setMyAwareness({ active: true } as any);
-
-    const awareness = getCurrentProvider().awareness;
-    const state = awareness.getLocalState();
-    const stableId = getStableIdForAwareness(state, awareness.clientID);
-
-    expect(state.__playhtml_identity__).toMatchObject({
-      publicKey: playhtml.presence.getMyIdentity().publicKey,
+    const socket = getPresenceSocketForRoom(playhtml.roomId);
+    const messages = sentMessages(socket);
+    expect(messages.findIndex(({ type }) => type === "presence-join")).toBeLessThan(
+      messages.findIndex(({ type, channel }) => type === "presence-update" && channel === "element:shard:0"),
+    );
+    expect(sentChannelUpdates(socket, "element:shard:0").at(-1)).toMatchObject({
+      entries: [["can-toggle", "presence-only", { active: true }]],
     });
-    expect(stableId).toBe(playhtml.presence.getMyIdentity().publicKey);
   });
 
-  it("joins the page presence room with the persistent identity", async () => {
-    const socket = getPresenceSocketForRoom(playhtml.roomId);
-    const join = sentMessages(socket).find(
-      (message) => message.type === "presence-join",
-    );
-    expect(join.identity.publicKey).toBe(
-      playhtml.presence.getMyIdentity().publicKey,
-    );
+  it("joins the page room with the persistent identity", () => {
+    const join = sentMessages(getPresenceSocketForRoom(playhtml.roomId))
+      .find(({ type }) => type === "presence-join");
+    expect(join.identity.publicKey).toBe(playhtml.users.me.pid);
   });
 });

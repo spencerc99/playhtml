@@ -104,10 +104,23 @@ export const CURSOR_INSTRUMENTS: Record<string, InstrumentConfig> = {
  * Get the instrument config for a cursor type.
  * Falls back to DEFAULT_INSTRUMENT for unknown types.
  */
+/**
+ * Cursor values that name the same pointer as one we already voice.
+ *
+ * `auto` is the single most common value in recorded browsing — it is what a
+ * page leaves the cursor at when it never sets one — and it means the same
+ * arrow `default` does. Mapping it explicitly rather than letting it fall
+ * through keeps it tied to the arrow's timbre if `DEFAULT_INSTRUMENT` ever
+ * diverges from the `default` entry.
+ */
+const CURSOR_ALIASES: Record<string, string> = {
+  "all-scroll": "move",
+  auto: "default",
+};
+
 export function getInstrument(cursorType: string | undefined): InstrumentConfig {
   if (!cursorType) return DEFAULT_INSTRUMENT;
-  // Normalize aliases
-  const normalized = cursorType === "all-scroll" ? "move" : cursorType;
+  const normalized = CURSOR_ALIASES[cursorType] ?? cursorType;
   return CURSOR_INSTRUMENTS[normalized] ?? DEFAULT_INSTRUMENT;
 }
 

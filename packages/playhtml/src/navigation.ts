@@ -48,22 +48,22 @@ export function attachNavigationListeners(
   const onPopState = () => {
     void ctrl.trigger();
   };
-  const onNavigate = () => {
+  const onCurrentEntryChange = () => {
     void ctrl.trigger();
   };
 
   window.addEventListener("popstate", onPopState);
 
-  // Navigation API (Chromium 102+). Feature-detect.
+  // Read the URL after the navigation commits, including pushState/replaceState.
   const nav = (window as any).navigation;
   if (nav && typeof nav.addEventListener === "function") {
-    nav.addEventListener("navigate", onNavigate);
+    nav.addEventListener("currententrychange", onCurrentEntryChange);
   }
 
   return () => {
     window.removeEventListener("popstate", onPopState);
     if (nav && typeof nav.removeEventListener === "function") {
-      nav.removeEventListener("navigate", onNavigate);
+      nav.removeEventListener("currententrychange", onCurrentEntryChange);
     }
   };
 }

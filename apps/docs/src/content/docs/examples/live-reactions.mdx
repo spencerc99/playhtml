@@ -1,0 +1,44 @@
+---
+title: "Live reactions"
+description: "Broadcast short-lived emoji reactions without storing shared state."
+sidebar:
+  hidden: true
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { liveReactionsRecipe } from "@/components/playground/recipes/events-basics";
+
+Click an emoji and it floats up for everyone on the page. Reactions are events,
+so they show up only for people here right now and are never stored.
+
+<RecipeExample recipe={liveReactionsRecipe} client:load />
+
+<RecipeCodeTabs recipe={liveReactionsRecipe} />
+
+## Send a payload
+
+`eventPayload` travels with the event, and `onEvent` receives it:
+
+```js
+playhtml.dispatchPlayEvent({
+  type: "reaction",
+  eventPayload: { emoji: "🎉" },
+});
+
+// Every browser on the page, including yours, runs this.
+function burst({ emoji }) {
+  // float the emoji up
+}
+
+playhtml.init({
+  events: {
+    reaction: { type: "reaction", onEvent: burst },
+  },
+});
+```
+
+Each burst is a CSS animation that removes itself when it ends, so nothing
+piles up.
+
+See [Events](/docs/data/events/) for when to use events instead of shared data.

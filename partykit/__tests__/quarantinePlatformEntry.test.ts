@@ -33,8 +33,10 @@ const quarantineKvStub = {
   },
 };
 
+const TEST_ADMIN_TOKEN = "test-admin-token";
+
 mock.module("cloudflare:workers", () => ({
-  env: { QUARANTINE_CONTROL: quarantineKvStub },
+  env: { QUARANTINE_CONTROL: quarantineKvStub, ADMIN_TOKEN: TEST_ADMIN_TOKEN },
   DurableObject: class {
     constructor(
       public ctx: unknown,
@@ -195,6 +197,34 @@ describe("alarm entry point", () => {
     expect(storage.alarm).toBe(loadRetryAfter);
   });
 
+  test("a due save retry is kept (not dropped) when the room is mid-maintenance instead of ready", async () => {
+    const { server, storage } = createServer();
+    storage.values.set("documentSaveRetry", { retryAt: Date.now() - 1 });
+
+    // Simulate a concurrent admin operation (restoreFromSnapshot/hard-reset)
+    // holding the write lock when the retry's alarm fires.
+    (server as any).documentMaintenanceInProgress = true;
+
+    await server.alarm();
+
+    // The retry marker must survive so the next alarm tries again — clearing
+    // it here would silently drop the save forever if no further edit occurs.
+    expect(storage.values.has("documentSaveRetry")).toBe(true);
+    expect((storage.values.get("documentSaveRetry") as { retryAt: number }).retryAt).toBeGreaterThan(
+      Date.now()
+    );
+    expect(storage.alarm).not.toBeNull();
+  });
+
+  test("a due save retry is cleared and the document persisted once the room is ready", async () => {
+    const { server, storage } = createServer();
+    storage.values.set("documentSaveRetry", { retryAt: Date.now() - 1 });
+
+    await server.alarm();
+
+    expect(storage.values.has("documentSaveRetry")).toBe(false);
+  });
+
   test("a KV-quarantined room does not hydrate when its alarm fires", async () => {
     const { server } = createServer();
     kvStore.set("quarantine:example-room", "operator stop");
@@ -243,7 +273,7 @@ describe("alarm entry point", () => {
 
     await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -320,7 +350,7 @@ describe("persistence recovery admission", () => {
 
     await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -339,7 +369,7 @@ describe("persistence recovery admission", () => {
 
     await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -517,7 +547,7 @@ describe("fetch entry point", () => {
 
     const response = await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -535,7 +565,7 @@ describe("fetch entry point", () => {
 
     await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -543,7 +573,7 @@ describe("fetch entry point", () => {
 
     const response = await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -565,7 +595,7 @@ describe("fetch entry point", () => {
 
     await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -573,7 +603,7 @@ describe("fetch entry point", () => {
 
     const response = await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-set",
+        `https://example.com/parties/main/example-room/admin/quarantine-set?token=${TEST_ADMIN_TOKEN}`,
         {
           method: "POST",
           body: JSON.stringify({ reason: "operator stop" }),
@@ -594,7 +624,7 @@ describe("fetch entry point", () => {
 
     await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );
@@ -603,7 +633,7 @@ describe("fetch entry point", () => {
 
     const cleared = await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-clear",
+        `https://example.com/parties/main/example-room/admin/quarantine-clear?token=${TEST_ADMIN_TOKEN}`,
         { method: "POST" }
       )
     );
@@ -615,7 +645,7 @@ describe("fetch entry point", () => {
 
     const status = await server.fetch(
       new Request(
-        "https://example.com/parties/main/example-room/admin/quarantine-status",
+        `https://example.com/parties/main/example-room/admin/quarantine-status?token=${TEST_ADMIN_TOKEN}`,
         { method: "GET" }
       )
     );

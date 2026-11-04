@@ -16,7 +16,11 @@ export default defineConfig({
       ...(browser === "safari" ? [] : ["idle", "webNavigation"]),
       "unlimitedStorage",
     ],
-    host_permissions: ["http://*/*", "https://*/*"],
+    // tabs.captureVisibleTab (portrait "save image") only accepts the literal
+    // <all_urls> host permission or activeTab; http/https patterns are refused.
+    // Safari keeps the narrower origins its website-access flow requests.
+    host_permissions:
+      browser === "safari" ? ["http://*/*", "https://*/*"] : ["<all_urls>"],
     action: {
       default_title: "we were online",
     },
@@ -31,7 +35,12 @@ export default defineConfig({
     },
     web_accessible_resources: [
       {
-        resources: ["content-scripts/content.css", "inventory/*"],
+        resources: [
+          "content-scripts/content.css",
+          "installation.js",
+          "historical-overlay.js",
+          "inventory/*",
+        ],
         matches: ["<all_urls>"],
       },
     ],

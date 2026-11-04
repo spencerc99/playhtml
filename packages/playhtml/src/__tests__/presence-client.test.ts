@@ -2,6 +2,7 @@
 // ABOUTME: and rebuilds per-channel PresenceView maps from page-scoped peers.
 
 import { describe, expect, it, vi } from "vitest";
+import { PRESENCE_KEEPALIVE_MS, PRESENCE_STALE_MS } from "../presence-utils";
 import type { PlayerIdentity, PresenceView } from "@playhtml/common";
 import { RealtimePresenceTransport } from "../presence-transport";
 import { PresenceClient } from "../presence-client";
@@ -72,6 +73,77 @@ function selfOf(presences: Map<string, PresenceView>): PresenceView {
 }
 
 describe("PresenceClient", () => {
+  it.each([false, true])("notifies self identity changes with channel set=%s", (hasChannel) => {
+    const identity = remoteIdentity("self-key");
+    const { client, socket, transport } = createClient(identity);
+    if (hasChannel) client.setMyPresence("status", "Clicked");
+    const listener = vi.fn();
+    client.onPresenceChange("status", listener);
+    listener.mockClear();
+
+    identity.publicKey = "adopted-key";
+    identity.name = "Alicia";
+    transport.join({ identity });
+    socket.receive({
+      type: "presence-changes",
+      updates: { "self-connection": { identity } },
+      removes: {},
+    });
+    expect(listener).toHaveBeenCalledOnce();
+    const self = selfOf(listener.mock.calls[0][0]);
+    expect(self.playerIdentity).toMatchObject({ publicKey: "adopted-key", name: "Alicia" });
+    expect((self as any).status).toBe(hasChannel ? "Clicked" : undefined);
+    listener.mockClear();
+    identity.name = "Alice";
+    transport.join({ identity });
+    socket.receive({
+      type: "presence-changes",
+      updates: { "self-connection": { identity } },
+      removes: {},
+    });
+    expect(listener).toHaveBeenCalledOnce();
+    expect(selfOf(listener.mock.calls[0][0]).playerIdentity?.name).toBe("Alice");
+    client.destroy();
+    transport.destroy();
+  });
+
+  it("notifies identity-only changes for a remote channel participant", () => {
+    const { client, socket, transport } = createClient();
+    socket.receive({
+      type: "presence-sync",
+      peers: {
+        remote: { identity: remoteIdentity("remote-key"), "presence:status": "Clicked" },
+      },
+    });
+    const listener = vi.fn();
+    client.onPresenceChange("status", listener);
+    listener.mockClear();
+    socket.receive({
+      type: "presence-changes",
+      updates: { remote: { identity: { ...remoteIdentity("remote-key"), name: "Alicia" } } },
+      removes: {},
+    });
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener.mock.calls[0][0].get("remote-key").playerIdentity.name).toBe("Alicia");
+    listener.mockClear();
+    socket.receive({
+      type: "presence-changes",
+      updates: { remote: { cursor: { x: 10, y: 20 } } },
+      removes: {},
+    });
+    expect(listener).not.toHaveBeenCalled();
+    socket.receive({
+      type: "presence-changes",
+      updates: { remote: { identity: remoteIdentity("adopted-remote-key") } },
+      removes: {},
+    });
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener.mock.calls[0][0].has("remote-key")).toBe(false);
+    expect(listener.mock.calls[0][0].get("adopted-remote-key").status).toBe("Clicked");
+    client.destroy();
+    transport.destroy();
+  });
+
   it("joins with identity on construction", () => {
     const { parsedSent } = createClient();
     expect(parsedSent()[0]).toMatchObject({
@@ -112,6 +184,11 @@ describe("PresenceClient", () => {
     const presences = client.getPresences();
     expect(presences.size).toBe(1);
     expect(presences.get("pk_local")!.isMe).toBe(true);
+    expect(presences.get("pk_local")!.user).toEqual({
+      pid: "pk_local",
+      color: "red",
+      isMe: true,
+    });
   });
 
   it("rebuilds a remote peer's presence keyed by identity publicKey", () => {
@@ -129,6 +206,7 @@ describe("PresenceClient", () => {
     const remote = presences.get("pk_remote")!;
     expect(remote.isMe).toBe(false);
     expect(remote.playerIdentity!.publicKey).toBe("pk_remote");
+    expect(remote.user).toEqual({ pid: "pk_remote", color: "blue", isMe: false });
     expect((remote as any).status).toEqual({ text: "typing" });
   });
 
@@ -315,6 +393,7 @@ describe("PresenceClient", () => {
     const remote = client.getPresences().get("pk_remote")!;
     expect(remote.cursor).toEqual({ x: 10, y: 20, pointer: "mouse" });
     expect(remote.playerIdentity!.publicKey).toBe("pk_remote");
+    expect(remote.user).toEqual({ pid: "pk_remote", color: "blue", isMe: false });
     expect(remote.isMe).toBe(false);
   });
 
@@ -533,7 +612,7 @@ describe("PresenceClient", () => {
 
   it("rejects writing a reserved presence field name", () => {
     const { client } = createClient();
-    for (const reserved of ["playerIdentity", "cursor", "isMe"]) {
+    for (const reserved of ["user", "playerIdentity", "cursor", "isMe"]) {
       expect(() => client.setMyPresence(reserved, { spoof: true })).toThrow(
         /reserved presence field/,
       );
@@ -583,7 +662,7 @@ describe("PresenceClient", () => {
 
       // No further message from the ghost; the sweep drops the stale channel,
       // and with only an unstamped identity left the peer row is pruned.
-      vi.advanceTimersByTime(31_000);
+      vi.advanceTimersByTime(PRESENCE_STALE_MS + 1_000);
       const status = (client.getPresences().get("pk_ghost") as any)?.status;
       expect(status).toBeUndefined();
       expect(error).toHaveBeenCalledWith(
@@ -621,6 +700,34 @@ describe("PresenceClient", () => {
     }
   });
 
+  it("pauses the keepalive while the tab is hidden and re-stamps when it returns", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    let visibility: DocumentVisibilityState = "hidden";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibility,
+    });
+    try {
+      const { client, parsedSent } = createClient();
+      client.setMyPresence("status", { text: "idle" });
+      await vi.advanceTimersByTimeAsync(1200);
+      const countUpdates = () =>
+        parsedSent().filter((m) => m.type === "presence-update").length;
+      const updatesWhileHidden = countUpdates();
+
+      await vi.advanceTimersByTimeAsync(PRESENCE_KEEPALIVE_MS * 3);
+      expect(countUpdates()).toBe(updatesWhileHidden);
+
+      visibility = "visible";
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(countUpdates()).toBeGreaterThan(updatesWhileHidden);
+    } finally {
+      delete (document as { visibilityState?: unknown }).visibilityState;
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps a quiet-but-connected self alive via the keepalive re-stamp", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
@@ -634,7 +741,7 @@ describe("PresenceClient", () => {
       // No further user action, but the keepalive re-publishes to refresh `at`
       // so peers don't expire this idle-but-connected client. (Documented
       // asymmetry vs cursors, which fade to identity-only instead.)
-      await vi.advanceTimersByTimeAsync(11_000);
+      await vi.advanceTimersByTimeAsync(PRESENCE_KEEPALIVE_MS + 1_000);
       const updatesAfterKeepalive = parsedSent().filter(
         (m) => m.type === "presence-update",
       ).length;

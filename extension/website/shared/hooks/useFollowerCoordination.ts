@@ -51,6 +51,11 @@ export interface FollowerCoordination {
   pickSubject: PickSubject;
 }
 
+interface FollowerCoordinationDefaults {
+  role?: "master" | "follower" | null;
+  followerId?: string | null;
+}
+
 /** Lowest-progress pick — prefer a trail early in its draw so the camera rides
  * most of it. Matches the camera's built-in default; used when this window
  * isn't coordinating. */
@@ -74,14 +79,16 @@ function pickLowestProgress(
 /** Wires the claims BroadcastChannel keyed off `?role=follower`. Inert for any
  * other window: `pickSubject` just does lowest-progress and no channel opens, so
  * the archive/portrait pages and a single-window auto-pick are unaffected. */
-export function useFollowerCoordination(): FollowerCoordination {
-  const roleRef = useRef(parseInstallationRoleFromUrl());
+export function useFollowerCoordination(
+  defaults: FollowerCoordinationDefaults = {},
+): FollowerCoordination {
+  const roleRef = useRef(parseInstallationRoleFromUrl(defaults.role));
   const isFollower = roleRef.current === "follower";
 
   // Stable window id: the URL-set follower id, or a random one generated once
   // so an id-less follower still participates (and two id-less windows diverge).
   const idRef = useRef<string>(
-    parseFollowerIdFromUrl() ??
+    parseFollowerIdFromUrl(defaults.followerId) ??
       `f-${Math.random().toString(36).slice(2, 8)}`,
   );
 

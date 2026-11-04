@@ -71,9 +71,12 @@ export function persistPresenceConnectionState<T>(
   persist: (state: T) => void,
 ): void {
   try {
+    // Native serialization enforces the full attachment limit, including PartyServer metadata.
     persist(next);
   } catch {
     persist(previous);
-    throw new Error("Presence state exceeds server storage limit");
+    throw new Error(
+      "Presence state could not be stored; the full connection attachment must fit within 16,384 serialized bytes",
+    );
   }
 }

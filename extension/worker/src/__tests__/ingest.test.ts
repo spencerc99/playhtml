@@ -9,14 +9,11 @@ const collectionEvents = {
   select: vi.fn(),
 };
 
-const pageMetadataHistory = {
+const metadataHistoryRpc = vi.fn();
+
+const participants = {
   select: vi.fn(),
   in: vi.fn(),
-  is: vi.fn(),
-  update: vi.fn(),
-  eq: vi.fn(),
-  insert: vi.fn(),
-  single: vi.fn(),
 };
 
 vi.mock('../lib/supabase', () => ({
@@ -25,11 +22,12 @@ vi.mock('../lib/supabase', () => ({
       if (table === 'collection_events') {
         return collectionEvents;
       }
-      if (table === 'page_metadata_history') {
-        return pageMetadataHistory;
+      if (table === 'participants') {
+        return participants;
       }
       throw new Error(`Unexpected table: ${table}`);
     }),
+    rpc: metadataHistoryRpc,
   })),
 }));
 
@@ -41,12 +39,22 @@ const ENV: Env = {
   ADMIN_KEY: 'a',
   RESEND_API_KEY: 'r',
   CODA_API_TOKEN: 'c',
-  LIVE_EVENTS_HUB: {} as DurableObjectNamespace,
+  LIVE_EVENTS_HUB: {
+    idFromName: () => ({}) as DurableObjectId,
+    get: () => ({
+      fetch: async () => new Response(null, { status: 204 }),
+    }),
+  } as unknown as DurableObjectNamespace,
   COMMUTE_TRAIN_DISPATCHER: {} as DurableObjectNamespace,
   COMMUTE_BOARD_RATE_LIMITER: {
     limit: async () => ({ success: true }),
   },
   WWO_ADMIN_DB: {} as D1Database,
+  INTERNET_MAP_BUNDLES: {} as R2Bucket,
+  SHARED_COLLAGES: {} as R2Bucket,
+  COLLAGE_SHARE_RATE_LIMITER: {
+    limit: async () => ({ success: true }),
+  },
 };
 
 const waitUntil = vi.fn();
@@ -60,18 +68,25 @@ function makeRequest(events: unknown[]): Request {
   });
 }
 
-function makeNavigationEvent(id: string) {
+function makeNavigationEvent(
+  id: string,
+  {
+    ts = 1_700_000_000_000,
+    title = 'Example',
+    metadataHash = 'hash-1',
+  }: { ts?: number; title?: string; metadataHash?: string } = {},
+) {
   return {
     id,
     type: 'navigation',
-    ts: 1_700_000_000_000,
+    ts,
     data: {
       event: 'focus',
       page_ref: 'page-1',
       canonical_url: 'https://example.com/',
-      title: 'Example',
+      title,
       favicon_url: 'https://example.com/favicon.ico',
-      metadata_hash: 'hash-1',
+      metadata_hash: metadataHash,
     },
     meta: {
       pid: 'pid',
@@ -88,13 +103,9 @@ describe('handleIngest', () => {
   beforeEach(() => {
     collectionEvents.upsert.mockReset();
     collectionEvents.select.mockReset();
-    pageMetadataHistory.select.mockReset();
-    pageMetadataHistory.in.mockReset();
-    pageMetadataHistory.is.mockReset();
-    pageMetadataHistory.update.mockReset();
-    pageMetadataHistory.eq.mockReset();
-    pageMetadataHistory.insert.mockReset();
-    pageMetadataHistory.single.mockReset();
+    metadataHistoryRpc.mockReset();
+    participants.select.mockReset();
+    participants.in.mockReset();
     waitUntil.mockReset();
 
     collectionEvents.upsert.mockReturnValue({
@@ -104,18 +115,9 @@ describe('handleIngest', () => {
     });
     collectionEvents.select.mockResolvedValue({ data: [{ id: 'event-1' }], error: null });
 
-    pageMetadataHistory.select.mockReturnValue(pageMetadataHistory);
-    pageMetadataHistory.in.mockReturnValue(pageMetadataHistory);
-    pageMetadataHistory.is.mockResolvedValue({ data: [], error: null });
-    pageMetadataHistory.insert.mockReturnValue(pageMetadataHistory);
-    pageMetadataHistory.single.mockResolvedValue({
-      data: {
-        id: 'metadata-1',
-        page_ref: 'page-1',
-        metadata_hash: 'hash-1',
-      },
-      error: null,
-    });
+    metadataHistoryRpc.mockResolvedValue({ data: true, error: null });
+    participants.select.mockReturnValue(participants);
+    participants.in.mockResolvedValue({ data: [] });
   });
 
   it('accepts event upserts without selecting inserted row ids', async () => {
@@ -144,5 +146,92 @@ describe('handleIngest', () => {
       duplicates: 0,
       page_metadata_inserted: 1,
     });
+  });
+
+  it('ignores an older retry that would overwrite the current metadata', async () => {
+    metadataHistoryRpc.mockResolvedValue({ data: false, error: null });
+
+    const res = await handleIngest(
+      makeRequest([
+        makeNavigationEvent('retried-event', {
+          metadataHash: 'hash-retried',
+        }),
+      ]),
+      ENV,
+      CTX,
+    );
+
+    expect(res.status).toBe(200);
+    expect(metadataHistoryRpc).toHaveBeenCalledWith(
+      'record_page_metadata_snapshot',
+      expect.objectContaining({ p_metadata_hash: 'hash-retried' }),
+    );
+    await expect(res.json()).resolves.toMatchObject({ page_metadata_inserted: 0 });
+  });
+
+  it('keeps metadata snapshots in observation order within one request', async () => {
+    const res = await handleIngest(
+      makeRequest([
+        makeNavigationEvent('newest-event', {
+          ts: 1_700_000_000_200,
+          title: 'Newest title',
+          metadataHash: 'hash-newest',
+        }),
+        makeNavigationEvent('older-event', {
+          ts: 1_700_000_000_100,
+          title: 'Older title',
+          metadataHash: 'hash-older',
+        }),
+      ]),
+      ENV,
+      CTX,
+    );
+
+    expect(res.status).toBe(200);
+    expect(metadataHistoryRpc).toHaveBeenCalledTimes(2);
+    expect(metadataHistoryRpc).toHaveBeenNthCalledWith(
+      1,
+      'record_page_metadata_snapshot',
+      expect.objectContaining({ p_metadata_hash: 'hash-older' }),
+    );
+    expect(metadataHistoryRpc).toHaveBeenNthCalledWith(
+      2,
+      'record_page_metadata_snapshot',
+      expect.objectContaining({ p_metadata_hash: 'hash-newest' }),
+    );
+  });
+
+  it('does not duplicate history when a navigation event id is retried', async () => {
+    const event = makeNavigationEvent('duplicate-event');
+    metadataHistoryRpc
+      .mockResolvedValueOnce({ data: true, error: null })
+      .mockResolvedValueOnce({ data: false, error: null });
+
+    const res = await handleIngest(makeRequest([event, event]), ENV, CTX);
+
+    expect(res.status).toBe(200);
+    expect(metadataHistoryRpc).toHaveBeenCalledTimes(2);
+    await expect(res.json()).resolves.toMatchObject({ page_metadata_inserted: 1 });
+  });
+
+  it('sends concurrent snapshots through the metadata RPC', async () => {
+    await Promise.all([
+      handleIngest(
+        makeRequest([
+          makeNavigationEvent('concurrent-first', { metadataHash: 'hash-first' }),
+        ]),
+        ENV,
+        CTX,
+      ),
+      handleIngest(
+        makeRequest([
+          makeNavigationEvent('concurrent-second', { metadataHash: 'hash-second' }),
+        ]),
+        ENV,
+        CTX,
+      ),
+    ]);
+
+    expect(metadataHistoryRpc).toHaveBeenCalledTimes(2);
   });
 });

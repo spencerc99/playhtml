@@ -12,7 +12,6 @@ export { PAGE_TAG };
 
 interface PageDataDeps {
   ensureProxy: <T>(tag: string, id: string, defaultData: T) => T;
-  getProxy: (tag: string, id: string) => unknown;
   // doc + store are read through getters so a channel handle held across a room
   // change (which recreates both) sees the CURRENT doc/store, not a stale one
   // captured at channel-creation time.
@@ -32,13 +31,15 @@ function pageDataObserverKey(name: string): string {
 type PageDataObserver = ((...args: unknown[]) => void) & {
   target?: any;
   mode?: "deep" | "shallow";
+  parentTarget?: any;
+  parentObserver?: (...args: unknown[]) => void;
 };
 
 function applyPageDataUpdate<T>(data: PageDataSetter<T>, value: T): T {
   if (typeof data !== "function") return data as T;
   if (value !== null && typeof value === "object") {
-    (data as (draft: T) => void)(value);
-    return value;
+    const result = (data as (draft: T) => T | void)(value);
+    return result === null ? result : value;
   }
   return (data as (value: T) => T)(value);
 }
@@ -62,6 +63,7 @@ function detachPageDataObserver(name: string, deps: PageDataDeps): void {
   if (!observer) return;
   if (observer.mode === "deep") observer.target?.unobserveDeep(observer);
   if (observer.mode === "shallow") observer.target?.unobserve(observer);
+  observer.parentTarget?.unobserve(observer.parentObserver);
   deps.yObserverByKey.delete(observerKey);
 }
 
@@ -93,9 +95,19 @@ function attachPageDataObserver<T>(
   };
   if (yVal && typeof (yVal as any).observeDeep === "function") {
     const observer = notify as PageDataObserver;
+    const pageData = getYjsValue(getStorePlay()[PAGE_TAG]);
+    const parentObserver = ((event: { keysChanged?: Set<string> }) => {
+      if (!event.keysChanged?.has(name)) return;
+      notify();
+      detachPageDataObserver(name, deps);
+      attachPageDataObserver(name, deps, listeners);
+    }) as PageDataObserver;
     observer.target = yVal;
     observer.mode = "deep";
+    observer.parentTarget = pageData;
+    observer.parentObserver = parentObserver;
     (yVal as any).observeDeep(observer);
+    (pageData as any).observe(parentObserver);
     yObserverByKey.set(observerKey, observer);
     return;
   }
@@ -103,12 +115,33 @@ function attachPageDataObserver<T>(
   const pageData = getYjsValue(getStorePlay()[PAGE_TAG]);
   if (!pageData || typeof (pageData as any).observe !== "function") return;
   const observer = ((event: { keysChanged?: Set<string> }) => {
-    if (event.keysChanged?.has(name)) notify();
+    if (!event.keysChanged?.has(name)) return;
+    notify();
+    const nextValue = getStorePlay()[PAGE_TAG]?.[name];
+    const nextYVal = getYjsValue(nextValue);
+    if (nextYVal && typeof (nextYVal as any).observeDeep === "function") {
+      detachPageDataObserver(name, deps);
+      attachPageDataObserver(name, deps, listeners);
+    }
   }) as PageDataObserver;
   observer.target = pageData;
   observer.mode = "shallow";
   (pageData as any).observe(observer);
   yObserverByKey.set(observerKey, observer);
+}
+
+/**
+ * Re-attaches every open channel after the page-data map itself was replaced
+ * (another client created it at the same moment and won the merge). The old
+ * observers sit on the discarded map and would never fire again.
+ */
+export function rebindPageDataChannels(deps: PageDataDeps): void {
+  for (const [name, listeners] of deps.channelListeners) {
+    detachPageDataObserver(name, deps);
+    deps.proxyByTagAndId.get(PAGE_TAG)?.delete(name);
+    attachPageDataObserver(name, deps, listeners);
+    notifyPageDataListeners(name, deps, listeners);
+  }
 }
 
 export function refreshPageDataChannels(deps: PageDataDeps): void {
@@ -129,7 +162,7 @@ export function createPageDataChannel<T>(
   deps: PageDataDeps,
 ): PageDataChannel<T> {
   const {
-    ensureProxy, getProxy, getDoc, getStorePlay, proxyByTagAndId,
+    ensureProxy, getDoc, getStorePlay, proxyByTagAndId,
     channelRefCounts, channelListeners,
   } = deps;
   // Read live each use so we follow a room-change store/doc swap.
@@ -178,45 +211,50 @@ export function createPageDataChannel<T>(
 
     setData(data: PageDataSetter<T>): void {
       if (destroyed) throw new Error(`PageDataChannel "${name}" has been destroyed`);
-      // Re-acquire the proxy if it's gone (e.g. a room change cleared page-data
-      // out from under this still-alive handle). ensureProxy re-seeds the
-      // default into a fresh value and attachObserver re-attaches the deep
-      // observer, wired to this channel's preserved listener set — so the
-      // handle keeps both writing AND notifying after the reset.
-      let currentProxy = getProxy(PAGE_TAG, name) as T | undefined;
+      // Read the live value, not a cached proxy: another client creating this
+      // channel at the same moment can replace the value in a merge.
+      // If it's gone (e.g. a room change cleared page-data out from under this
+      // still-alive handle), ensureProxy re-seeds the default into a fresh
+      // value and attachObserver re-attaches the deep observer, wired to this
+      // channel's preserved listener set — so the handle keeps both writing AND
+      // notifying after the reset.
+      let currentProxy = storePlay()[PAGE_TAG]?.[name] as T | undefined;
       if (currentProxy === undefined) {
         currentProxy = ensureProxy<T>(PAGE_TAG, name, defaultValue) as T;
         attachObserver();
+      } else {
+        proxyByTagAndId.get(PAGE_TAG)?.set(name, currentProxy);
       }
       const proxy = currentProxy;
       const isObjectRoot = proxy !== null && typeof proxy === "object";
       const currentValue = isObjectRoot
         ? proxy
         : storePlay()[PAGE_TAG]?.[name] as T;
+      let nextValue = currentValue;
       if (typeof data === "function" && isObjectRoot) {
         doc().transact(() => {
-          applyPageDataUpdate(data as PageDataSetter<T>, proxy);
+          nextValue = applyPageDataUpdate<T>(data, proxy);
         });
-        return;
+        if (nextValue === proxy) return;
+      } else {
+        nextValue = applyPageDataUpdate(data, currentValue);
       }
 
-      const nextValue = applyPageDataUpdate(data, currentValue);
-
-      if (isObjectRoot) {
+      if (
+        isObjectRoot && nextValue !== null && typeof nextValue === "object" &&
+        Array.isArray(proxy) === Array.isArray(nextValue)
+      ) {
         doc().transact(() => {
           deepReplaceIntoProxy(proxy, nextValue);
         });
         return;
       }
 
-      detachPageDataObserver(name, deps);
       doc().transact(() => {
         storePlay()[PAGE_TAG] ??= {};
         storePlay()[PAGE_TAG]![name] = clonePlain(nextValue);
         proxyByTagAndId.get(PAGE_TAG)?.set(name, storePlay()[PAGE_TAG]![name]);
       });
-      attachObserver();
-      notifyPageDataListeners(name, deps, listeners);
     },
 
     onUpdate(callback: (data: T) => void): () => void {

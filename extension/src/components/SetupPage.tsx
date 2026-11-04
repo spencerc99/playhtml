@@ -221,7 +221,10 @@ export default function SetupPage() {
   const closeSetupTab = async () => {
     const tab = await browser.tabs.getCurrent();
     if (tab?.id === undefined) {
-      throw new Error("Could not find the setup tab");
+      // The iPhone app shows setup in a sheet that is not a browser tab;
+      // closing the page's own window closes the sheet.
+      window.close();
+      return;
     }
     await browser.tabs.remove(tab.id);
   };
@@ -299,6 +302,10 @@ export default function SetupPage() {
             className="setup-step"
             onSubmit={(event) => {
               event.preventDefault();
+              // Read the field directly: browser autofill can fill it without
+              // an input event, which a React-controlled value would discard.
+              const submitted = new FormData(event.currentTarget).get("email");
+              setEmail(typeof submitted === "string" ? submitted : "");
               setStep("configure");
             }}
           >
@@ -349,7 +356,7 @@ export default function SetupPage() {
                     : "Allow on every website"}
                 </button>
                 <p className="setup-step__website-access-hint">
-                  When Safari asks, choose “Always Allow on Every Website.”
+                  When Safari asks, choose “Always Allow.”
                 </p>
                 {websiteAccess === "error" && (
                   <p className="setup-step__website-access-error">
@@ -373,9 +380,9 @@ export default function SetupPage() {
               </label>
               <input
                 id="updates-email"
+                name="email"
                 type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                defaultValue={email}
                 placeholder="you@example.com"
                 autoComplete="email"
                 aria-describedby="updates-email-help"

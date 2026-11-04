@@ -3,7 +3,11 @@
 
 import React, { useEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import type { ScrapItem } from "@movement/components/ScrapCollage";
+import {
+  headingDisplayFontSize,
+  ScrapBackdrop,
+  type ScrapItem,
+} from "@movement/components/ScrapCollage";
 import { buildItems } from "../scraps-preview/demoScraps";
 
 const PHYSICS = {
@@ -164,6 +168,21 @@ function buildLayouts(items: ScrapItem[]): ScrapLayout[] {
             width,
             height,
             radius: longEdge * 0.45,
+            spawnOrder: seededRandom(item.key, 1),
+          };
+        }
+        case "heading": {
+          const fontSize = headingDisplayFontSize(item.styles, item.text);
+          const width = clamp(
+            90,
+            280,
+            20 + item.text.trim().length * fontSize * 0.55,
+          );
+          return {
+            item,
+            width,
+            height: 44,
+            radius: (width / 2) * 0.75,
             spawnOrder: seededRandom(item.key, 1),
           };
         }
@@ -437,19 +456,21 @@ function ScrapContent({ item }: { item: ScrapItem }) {
       );
     case "button":
       return (
-        <span
-          className="scrap-crate__button"
-          style={item.styles as React.CSSProperties}
-        >
-          {item.innerSvg && (
-            <span
-              className="scrap-crate__button-icon"
-              aria-hidden="true"
-              dangerouslySetInnerHTML={{ __html: item.innerSvg }}
-            />
-          )}
-          {item.text}
-        </span>
+        <ScrapBackdrop color={item.backdropColor}>
+          <span
+            className="scrap-crate__button"
+            style={item.styles as React.CSSProperties}
+          >
+            {item.innerSvg && (
+              <span
+                className="scrap-crate__button-icon"
+                aria-hidden="true"
+                dangerouslySetInnerHTML={{ __html: item.innerSvg }}
+              />
+            )}
+            {item.text}
+          </span>
+        </ScrapBackdrop>
       );
     case "svg-icon":
       return (
@@ -458,6 +479,18 @@ function ScrapContent({ item }: { item: ScrapItem }) {
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: item.markup }}
         />
+      );
+    case "heading":
+      return (
+        <span
+          className="scrap-crate__heading"
+          style={{
+            ...(item.styles as React.CSSProperties),
+            fontSize: headingDisplayFontSize(item.styles, item.text),
+          }}
+        >
+          {item.text}
+        </span>
       );
     case "cursor":
       return (
@@ -727,6 +760,21 @@ const PAGE_STYLES = `
     max-height: 100%;
   }
 
+  .scrap-crate__heading {
+    box-sizing: border-box;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    padding: 0 4px;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
   .scrap-crate__cursor {
     display: block;
     width: 100%;
@@ -817,6 +865,7 @@ export function ScrapsPilePage() {
       images: items.filter((item) => item.kind === "image").length,
       buttons: items.filter((item) => item.kind === "button").length,
       icons: items.filter((item) => item.kind === "svg-icon").length,
+      headings: items.filter((item) => item.kind === "heading").length,
       cursors: items.filter((item) => item.kind === "cursor").length,
     }),
     [items],
@@ -1177,6 +1226,7 @@ export function ScrapsPilePage() {
             <li className="scrap-crate__chip">images {counts.images}</li>
             <li className="scrap-crate__chip">buttons {counts.buttons}</li>
             <li className="scrap-crate__chip">icons {counts.icons}</li>
+            <li className="scrap-crate__chip">headings {counts.headings}</li>
             <li className="scrap-crate__chip">cursors {counts.cursors}</li>
           </ul>
         </div>

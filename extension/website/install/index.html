@@ -1,0 +1,191 @@
+<!doctype html>
+<!-- ABOUTME: Short-URL install page for putting the extension on installation machines by hand. -->
+<!-- ABOUTME: Serves the current unpacked build from public/wwo-extension.zip; refresh both together. -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <title>install — we were online</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,600;0,700;1,600&family=Atkinson+Hyperlegible:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      * {
+        margin: 0;
+      }
+      body {
+        background: #faf7f2;
+        color: #3d3833;
+        font-family: "Atkinson Hyperlegible", -apple-system, BlinkMacSystemFont,
+          sans-serif;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        padding: 56px 28px 72px;
+      }
+      main {
+        max-width: 660px;
+        margin: 0 auto;
+      }
+      .wordmark {
+        font-family: "Lora", Georgia, serif;
+        font-style: italic;
+        font-weight: 600;
+        color: #8a8279;
+        margin-bottom: 22px;
+      }
+      h1 {
+        font-family: "Lora", Georgia, serif;
+        font-weight: 700;
+        font-size: clamp(30px, 5vw, 40px);
+        line-height: 1.15;
+        margin-bottom: 12px;
+      }
+      .lead {
+        color: #6b6359;
+        margin-bottom: 30px;
+      }
+      .download {
+        display: inline-block;
+        background: #3d3833;
+        color: #faf7f2;
+        text-decoration: none;
+        padding: 14px 24px;
+        border-radius: 999px;
+        font-size: 18px;
+      }
+      .download:hover {
+        background: #2a2724;
+      }
+      .size {
+        color: #8a8279;
+        font-size: 13.5px;
+        margin: 10px 0 36px;
+      }
+      ol {
+        padding-left: 0;
+        list-style: none;
+        counter-reset: step;
+        display: grid;
+        gap: 16px;
+        margin-bottom: 36px;
+      }
+      li {
+        counter-increment: step;
+        display: flex;
+        gap: 14px;
+        align-items: baseline;
+      }
+      li > span {
+        flex: 1;
+      }
+      li::before {
+        content: counter(step);
+        flex: none;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        border: 1px solid rgba(194, 65, 12, 0.5);
+        color: #c2410c;
+        font-size: 13px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transform: translateY(3px);
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.92em;
+        background: rgba(61, 56, 51, 0.07);
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+      kbd {
+        font-family: inherit;
+        font-size: 0.92em;
+        border: 1px solid rgba(61, 56, 51, 0.28);
+        border-bottom-width: 2px;
+        border-radius: 5px;
+        padding: 1px 6px;
+      }
+      .notes {
+        border-top: 1px solid rgba(61, 56, 51, 0.14);
+        padding-top: 22px;
+        color: #7c746b;
+        font-size: 14px;
+        display: grid;
+        gap: 10px;
+      }
+      a {
+        color: #2f7f70;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="wordmark">we were online</p>
+      <h1>put the extension on this computer</h1>
+      <p class="lead">
+        For installation machines, before the store version is out. Takes about
+        two minutes.
+      </p>
+
+      <a class="download" href="/wwo-extension.zip" download
+        >Download the extension</a
+      >
+      <p class="size">wwo-extension.zip — about 2 MB, Chrome and Edge</p>
+
+      <ol>
+        <li><span>
+          Unzip it, and move the <code>chrome-mv3</code> folder somewhere it can
+          stay — Documents, not Downloads. Chrome loads it from that exact path
+          every time it starts.
+</span></li>
+        <li><span>
+          Open <code>chrome://extensions</code> and turn on
+          <b>Developer mode</b> (top right).
+</span></li>
+        <li><span>
+          Click <b>Load unpacked</b> and choose the <code>chrome-mv3</code>
+          folder.
+</span></li>
+        <li><span>
+          Finish the extension's setup. Set cursor collection to
+          <b>shared</b> — local-only never reaches the screens — and pick this
+          machine's cursor color.
+</span></li>
+        <li><span>
+          Open the extension's Settings, press
+          <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>8</kbd>, and check
+          <b>Installation mode</b>. The frame, the live trace, and the sound
+          start on the next page you load.
+</span></li>
+      </ol>
+
+      <div class="notes">
+        <p>
+          This build does not update itself. To update: download again, replace
+          the folder's contents, and press the reload arrow on the extension's
+          card in <code>chrome://extensions</code>.
+        </p>
+        <p>
+          Each machine gets its own participant identity and color the first
+          time it runs, so its marks are its own.
+        </p>
+        <p>
+          <a href="/">wewere.online</a> ·
+          <a href="/portrait/">the live portrait</a>
+        </p>
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,38 @@
+<!-- ABOUTME: Exercises the click installation renderer with deterministic events. -->
+<!-- ABOUTME: Exposes scene controls for real-browser rendering and replay checks. -->
+<html><body style="margin:0;background:white"><div id="root" style="position:relative;width:100vw;height:100vh"></div>
+<script type="module">
+import React from "react";
+import { createRoot } from "react-dom/client";
+import { AnimatedClicks } from "../../extension/website/shared/components/AnimatedClicks.tsx";
+import { ClickCanvas } from "../../extension/website/shared/components/ClickCanvas.tsx";
+import { RippleEffect } from "../../extension/website/shared/components/ClickRipple.tsx";
+import { getClickResidueOpacity } from "../../extension/website/shared/components/clickResidue.ts";
+import { CLICK_DEFAULTS } from "../../extension/website/shared/components/clickDefaults.ts";
+import { ClickMarkCache } from "../../extension/website/shared/components/clickMarkCache.ts";
+import { ClickCanvasRenderer } from "../../extension/website/shared/components/clickCanvasRenderer.ts";
+const root = createRoot(document.getElementById("root"));
+window.defaultSettings = CLICK_DEFAULTS;
+window.completions = [];
+window.renderScene = (effects, options = {}, mode = "canvas") => {
+  const settings = { ...CLICK_DEFAULTS, clickNumRings: 6, ...options };
+  const complete = id => window.completions.push(id);
+  root.render(mode === "canvas" ? React.createElement(ClickCanvas, { effects, settings, onComplete: complete }) :
+    React.createElement("svg", {width: "100%", height: "100%", style: {position:"absolute",top:0,left:0}},
+      effects.map((effect, index) => React.createElement("g", { key: effect.id, opacity: getClickResidueOpacity(index,effects.length,effect.completed), style:{transition:"opacity 200ms linear"}},
+        React.createElement(RippleEffect, {effect,settings,onComplete:complete})))));
+};
+window.playClicks = (clicks, options = {}, duration = 100000) => {
+  root.render(React.createElement(AnimatedClicks, { key: crypto.randomUUID(), scheduledClicks: clicks,
+    settings:{...CLICK_DEFAULTS,animationSpeed:1,clickNumRings:1,...options}, timeRange:{duration} }));
+};
+window.clearClicks = () => root.render(null);
+window.createDrawing = () => {
+  const canvas=document.createElement("canvas");
+  const drawing=new ClickCanvasRenderer(canvas,id=>window.completions.push(id));
+  window.drawing=drawing;
+  window.drawingCanvas=canvas;
+};
+window.createCache = () => new ClickMarkCache();
+window.ready=true;
+</script></body></html>

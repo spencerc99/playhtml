@@ -198,9 +198,6 @@ function buildMessages(
     const shapeClass =
       SHAPE_CLASSES[hashString(event.id) % SHAPE_CLASSES.length];
 
-    // Use time-of-day as timestamp in time mode for display
-    const displayTs = sortMode === "time" ? timeOfDayMs(event.ts) : event.ts;
-
     // Determine clustering: same domain within threshold
     const prevDomain = i > 0 ? filtered[i - 1].domain : null;
     const nextDomain = i < filtered.length - 1 ? filtered[i + 1].domain : null;

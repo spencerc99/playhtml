@@ -29,6 +29,13 @@
     }
   }
 
+  &__intro p {
+    margin: 0 0 4px;
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
   &__back {
     display: block;
     padding: 0;

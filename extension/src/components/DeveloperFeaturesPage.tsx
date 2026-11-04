@@ -48,6 +48,25 @@ export function DeveloperFeaturesPage({ onBack, embedded = false }: Props) {
     load().catch(() => {});
   }, [load]);
 
+  // Choices persist across access changes, so only count the ones for
+  // experiments this page currently shows.
+  const visibleChoiceCount = states
+    ? FEATURE_IDS.filter(
+        (feature) =>
+          overrides[feature] !== undefined &&
+          states[feature].available &&
+          states[feature].stage !== "released" &&
+          !FEATURE_CATALOG[feature].chosenWhereUsed,
+      ).length
+    : 0;
+
+  const intro = (
+    <p>
+      Experiments available to you are on. Turn off any you do not want; your
+      choices only affect this browser.
+    </p>
+  );
+
   const toggleFeature = async (feature: FeatureId) => {
     if (!states) return;
     await setFeatureOverride(feature, !states[feature].enabled);
@@ -65,18 +84,18 @@ export function DeveloperFeaturesPage({ onBack, embedded = false }: Props) {
           )}
           <span className="developer-features__eyebrow">WWO EXPERIMENTS</span>
           <h1>Experiments</h1>
-          <p>
-            Turn on the experiments available to you. Your choices only affect
-            this browser.
-          </p>
+          {intro}
         </header>
       )}
+      {embedded && <div className="developer-features__intro">{intro}</div>}
 
       <main className="developer-features__list">
         {states &&
           FEATURE_IDS.filter(
             (feature) =>
-              states[feature].available && states[feature].stage !== "released",
+              states[feature].available &&
+              states[feature].stage !== "released" &&
+              !FEATURE_CATALOG[feature].chosenWhereUsed,
           ).map((feature) => {
             const definition = FEATURE_CATALOG[feature];
             const state = states[feature];
@@ -106,7 +125,7 @@ export function DeveloperFeaturesPage({ onBack, embedded = false }: Props) {
 
       <footer className="developer-features__footer">
         <button
-          disabled={Object.keys(overrides).length === 0}
+          disabled={visibleChoiceCount === 0}
           onClick={async () => {
             await clearFeatureOverrides();
             await load();
@@ -114,7 +133,7 @@ export function DeveloperFeaturesPage({ onBack, embedded = false }: Props) {
         >
           Reset choices
         </button>
-        <span>{Object.keys(overrides).length} choices</span>
+        <span>{visibleChoiceCount} choices</span>
       </footer>
     </div>
   );

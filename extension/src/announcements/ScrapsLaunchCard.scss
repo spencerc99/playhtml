@@ -4,50 +4,101 @@
 @use "../styles/variables" as *;
 
 .scraps-launch {
-  margin: 0 0 48px;
+  margin: 0;
   border: 1px solid $border-strong;
   border-radius: 6px;
   background: $surface;
   overflow: hidden;
 }
 
-.scraps-launch__strip {
+.scraps-launch__pile {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  height: 120px;
-  padding: 0 22px;
+  height: var(--scraps-pile-height, 300px);
   background: #fdfbf6;
   border-bottom: 1px dashed $border-strong;
   overflow: hidden;
 }
 
-.scraps-launch__piece {
-  flex: 0 0 auto;
-  transform-origin: center;
+.scraps-launch__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 14px 9px;
 }
 
-.scraps-launch__piece--image {
-  max-height: 76px;
+.scraps-launch__footer--ruled {
+  border-bottom: 1px dashed $border-strong;
+}
+
+// The sites strip follows the "also from" line on a collage's back: favicon,
+// site, and how many pieces came from it, in mono on one wrapping row.
+.scraps-launch__sites {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 4px;
+  min-width: 0;
+  font-family: $font-mono;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.scraps-launch__sites-label,
+.scraps-launch__sites-more {
+  color: $text-faint;
+  letter-spacing: 0.06em;
+}
+
+.scraps-launch__site {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.scraps-launch__site-favicon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
   object-fit: contain;
-  image-rendering: auto;
 }
 
-.scraps-launch__piece--button {
-  padding: 5px 11px;
-  border-radius: 5px;
-  color: #fff;
-  font-family: $font-body;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
+.scraps-launch__site-favicon--none {
+  box-sizing: border-box;
+  border: 1px solid $border-strong;
+  border-radius: 50%;
+}
+
+.scraps-launch__site-name {
+  overflow: hidden;
+  color: $text;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  box-shadow: 0 1px 2px rgba(90, 78, 65, 0.18);
+}
+
+.scraps-launch__site-count {
+  color: $text-faint;
+}
+
+.scraps-launch__footer-link {
+  flex: none;
+  color: $accent-rust;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: rgba(196, 114, 78, 0.4);
+  text-underline-offset: 3px;
+
+  &:hover {
+    text-decoration-color: $accent-rust;
+  }
 }
 
 .scraps-launch__strip-chip {
+  z-index: 3;
   position: absolute;
   right: 10px;
   bottom: 8px;
@@ -84,14 +135,6 @@
   font-size: 8px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-}
-
-.scraps-launch__title {
-  margin: 0 0 6px;
-  font-family: $font-heading;
-  font-size: 19px;
-  font-weight: 600;
-  color: $text;
 }
 
 .scraps-launch__text {

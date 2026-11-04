@@ -1,4 +1,4 @@
-// ABOUTME: Resolves extension features from server policy and local opt-in choices.
+// ABOUTME: Resolves extension features from server policy and local opt-out choices.
 // ABOUTME: Persists the last valid entitlement snapshot so access survives transient Worker failures.
 
 import browser from "webextension-polyfill";
@@ -32,6 +32,7 @@ function defaultFeatureAccess(availableToInternal: boolean): FeatureAccessSnapsh
         ];
       }),
     ) as Record<FeatureId, FeaturePolicy>,
+    internal: availableToInternal,
     checkedAt: 0,
   };
 }
@@ -59,6 +60,9 @@ export function parseFeatureAccess(value: unknown): FeatureAccessSnapshot | null
   }
   return {
     features,
+    // Snapshots stored before the Worker reported this stay non-internal until
+    // the next access refresh.
+    internal: record.internal === true,
     checkedAt: typeof record.checkedAt === "number" ? record.checkedAt : 0,
   };
 }
@@ -90,6 +94,10 @@ export async function hasExperimentAccess(): Promise<boolean> {
   return FEATURE_IDS.some((feature) =>
     access.features[feature].stage !== "released" && access.features[feature].available,
   );
+}
+
+export async function hasInternalAccess(): Promise<boolean> {
+  return (await getFeatureAccess()).internal;
 }
 
 export async function hasPrivateExperimentAccess(): Promise<boolean> {
@@ -161,17 +169,11 @@ export async function refreshFeatureAccess(publicId: string): Promise<FeatureAcc
     throw new Error("Feature access check returned an invalid response");
   }
 
+  // Local choices are kept even when access is revoked: an override for an
+  // unavailable feature is inert because resolveFeatureState checks
+  // availability first, and keeping it means an opt-out still holds if access
+  // is granted again.
   const snapshot = { ...result, checkedAt: Date.now() };
-  const overrides = await getFeatureOverrides();
-  const availableOverrides = Object.fromEntries(
-    Object.entries(overrides).filter(([feature]) => {
-      const policy = snapshot.features[feature as FeatureId];
-      return policy.available && policy.stage !== "released";
-    }),
-  ) as FeatureOverrides;
-  await browser.storage.local.set({
-    [FEATURE_ACCESS_STORAGE_KEY]: snapshot,
-    [FEATURE_OVERRIDES_STORAGE_KEY]: availableOverrides,
-  });
+  await browser.storage.local.set({ [FEATURE_ACCESS_STORAGE_KEY]: snapshot });
   return snapshot;
 }

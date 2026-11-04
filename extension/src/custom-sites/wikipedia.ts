@@ -5,6 +5,8 @@ import type { PresenceView } from "@playhtml/common";
 import type { CustomSiteDeps } from "./index";
 import { FollowManager } from "../features/FollowManager";
 
+const LOBBY_HEARTBEAT_MS = 60_000;
+
 export interface WikiPresenceFields {
   navigatingTo?: { url: string; title: string } | null;
   following?: string | null;
@@ -314,7 +316,12 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
       lobby.presence.setMyPresence("online", null);
     };
     publishLobbyPage();
-    const lobbyHeartbeat = window.setInterval(publishLobbyPage, 10_000);
+    // Re-stamps the page well inside the pill's LOBBY_PAGE_TTL_MS. Hidden tabs
+    // skip it so they stop keeping the lobby room awake; becoming visible
+    // publishes again through the visibilitychange listener.
+    const lobbyHeartbeat = window.setInterval(() => {
+      if (document.visibilityState === "visible") publishLobbyPage();
+    }, LOBBY_HEARTBEAT_MS);
     window.addEventListener("focus", publishLobbyPage);
     window.addEventListener("pagehide", clearLobbyPresence);
     document.addEventListener("visibilitychange", publishLobbyPage);

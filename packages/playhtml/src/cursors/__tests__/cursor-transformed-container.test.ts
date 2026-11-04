@@ -1,8 +1,7 @@
 // ABOUTME: Verifies cursor coords round-trip through a transformed container.
 // ABOUTME: Stubs DOMMatrixReadOnly because jsdom doesn't ship it.
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import * as Y from "yjs";
-import { CursorClientAwareness } from "../cursor-client";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { createTransportCursorClient } from "../../__tests__/presence-test-utils";
 
 // Minimal DOMMatrixReadOnly polyfill for tests. Supports the affine subset
 // (translate + scale) that the fridge uses; that's all the production code
@@ -19,7 +18,9 @@ class TestMatrix {
     // Accept "matrix(a, b, c, d, e, f)" — the form getComputedStyle returns.
     const match = /matrix\(([^)]+)\)/.exec(init);
     if (match) {
-      const [a, b, c, d, e, f] = match[1].split(",").map((s) => parseFloat(s.trim()));
+      const [a, b, c, d, e, f] = match[1]
+        .split(",")
+        .map((s) => parseFloat(s.trim()));
       Object.assign(this, { a, b, c, d, e, f });
       return;
     }
@@ -44,44 +45,23 @@ class TestMatrix {
     return m;
   }
   transformPoint(p: { x: number; y: number }): { x: number; y: number } {
-    return { x: this.a * p.x + this.c * p.y + this.e, y: this.b * p.x + this.d * p.y + this.f };
+    return {
+      x: this.a * p.x + this.c * p.y + this.e,
+      y: this.b * p.x + this.d * p.y + this.f,
+    };
   }
 }
 
-function makeFakeProvider() {
-  const doc = new Y.Doc();
-  const listeners: Array<(args: any) => void> = [];
-  const awareness: any = {
-    _states: new Map<number, Record<string, unknown>>(),
-    getStates() {
-      return this._states;
-    },
-    setLocalState() {},
-    setLocalStateField(field: string, value: unknown) {
-      const local = (this._states.get(this.clientID) as Record<string, unknown>) ?? {};
-      local[field] = value;
-      this._states.set(this.clientID, local);
-    },
-    getLocalState() {
-      return this._states.get(this.clientID) ?? null;
-    },
-    on(_event: string, cb: (args: any) => void) {
-      listeners.push(cb);
-    },
-    off() {},
-    emit(args: any) {
-      listeners.forEach((cb) => cb(args));
-    },
-    clientID: 1,
-    doc,
-  };
-  return { doc, awareness, on() {}, off() {} } as any;
-}
-
 describe("transformed cursor container", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
   beforeEach(() => {
     document.body.innerHTML = "";
-    document.head.querySelectorAll("#playhtml-cursor-styles").forEach((n) => n.remove());
+    document.head
+      .querySelectorAll("#playhtml-cursor-styles")
+      .forEach((n) => n.remove());
     vi.stubGlobal("DOMMatrixReadOnly", TestMatrix);
   });
 
@@ -92,13 +72,25 @@ describe("transformed cursor container", () => {
 
     // Stub the parts of the DOM that aren't implemented in jsdom.
     container.getBoundingClientRect = () =>
-      ({ left: 100, top: 50, width: 0, height: 0, right: 0, bottom: 0, x: 100, y: 50, toJSON() {} }) as DOMRect;
+      ({
+        left: 100,
+        top: 50,
+        width: 0,
+        height: 0,
+        right: 0,
+        bottom: 0,
+        x: 100,
+        y: 50,
+        toJSON() {},
+      }) as DOMRect;
     vi.spyOn(window, "getComputedStyle").mockImplementation(
-      () => ({ transform: "translate(20px, 30px) scale(2)" }) as CSSStyleDeclaration,
+      () =>
+        ({
+          transform: "translate(20px, 30px) scale(2)",
+        }) as CSSStyleDeclaration,
     );
 
-    const provider = makeFakeProvider();
-    const client = new CursorClientAwareness(provider, {
+    const { client } = createTransportCursorClient({
       enabled: true,
       coordinateMode: "absolute",
       container: "#fridge-content",
@@ -130,8 +122,7 @@ describe("transformed cursor container", () => {
   });
 
   it("falls through to default coords when the container is document.body", () => {
-    const provider = makeFakeProvider();
-    const client = new CursorClientAwareness(provider, {
+    const { client } = createTransportCursorClient({
       enabled: true,
       coordinateMode: "absolute",
       // container undefined → resolves to document.body → identity branch

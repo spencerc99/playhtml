@@ -1,0 +1,509 @@
+---
+title: "Cursors"
+description: "Show everyone's cursors live, and read them to draw your own."
+sidebar:
+  order: 7
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import DemoCodeLink from '@/components/DemoCodeLink.astro';
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import { customCursorsRecipe } from "@/components/playground/recipes/custom-cursors";
+
+Turn on cursors and everyone on the page sees each other's pointers move live, labeled with their names and colors.
+
+A cursor is part of a person's [presence](/docs/data/presence/): it's at `person.presence.cursor` on each person in `playhtml.people.everyone`. playhtml sets it for you, so you never write it yourself.
+
+## Basic Setup
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```javascript
+import { playhtml } from "https://unpkg.com/playhtml@latest";
+
+playhtml.init({
+  cursors: {
+    enabled: true,
+  }
+});
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { PlayProvider } from "@playhtml/react";
+
+<PlayProvider
+  initOptions={{
+    cursors: {
+      enabled: true,
+    }
+  }}
+>
+  {/* your app */}
+</PlayProvider>
+```
+  </TabItem>
+</Tabs>
+
+## Configuration Options
+
+### `room`
+
+Controls which people see each other's cursors. By default, cursors are scoped to the current page.
+
+**Type:** `"page" | "domain" | "section" | (context) => string`
+
+```javascript
+// Page-specific (default)
+cursors: {
+  enabled: true,
+  room: "page"  // Only people on /blog/post see each other
+}
+
+// Domain-wide
+cursors: {
+  enabled: true,
+  room: "domain"  // Everyone across yoursite.com sees each other
+}
+
+// Section-wide
+cursors: {
+  enabled: true,
+  room: "section"  // Everyone in /blog/* sees each other
+}
+
+// Custom function
+cursors: {
+  enabled: true,
+  room: ({ domain, pathname, search }) => {
+    // Custom logic
+    if (pathname.startsWith('/workspace/')) {
+      return `${domain}-workspace`;
+    }
+    return `${domain}${pathname}`;
+  }
+}
+```
+
+### `shouldRenderCursor`
+
+Filter which cursors are visible. Useful for showing domain-wide presence while only rendering same-page cursors.
+
+**Type:** `(presence: CursorPresence) => boolean`
+
+```javascript
+cursors: {
+  enabled: true,
+  room: "domain",  // Connect everyone
+  shouldRenderCursor: (presence) => {
+    // Only render cursors from the same page
+    return presence.page === window.location.pathname;
+  }
+}
+```
+
+**Presence data includes:**
+- `presence.page` - The page path the cursor is on
+- `presence.cursor` - Current cursor position `{ x, y, pointer }`, or `null` when the person is here but their pointer isn't on the page
+- `presence.user` - Who the cursor belongs to: `{ pid, name, color, isMe }`
+- `presence.message` - Chat message (if chat enabled)
+- `presence.lastSeen` - Timestamp
+
+### `getCursorStyle`
+
+Customize cursor appearance based on presence data.
+
+**Type:** `(presence: CursorPresence) => Partial<CSSStyleDeclaration> | Record<string, string>`
+
+```javascript
+cursors: {
+  enabled: true,
+  room: "domain",
+  getCursorStyle: (presence) => {
+    // Fade cursors from other pages
+    if (presence.page !== window.location.pathname) {
+      return {
+        opacity: '0.4',
+        filter: 'blur(3px)'
+      };
+    }
+    return {};
+  }
+}
+```
+
+**Example: Distance-based styling**
+
+```javascript
+getCursorStyle: (presence) => {
+  if (!presence.cursor) return {};
+
+  const distance = Math.sqrt(
+    Math.pow(presence.cursor.x - myX, 2) +
+    Math.pow(presence.cursor.y - myY, 2)
+  );
+
+  if (distance > 500) {
+    return { opacity: '0.3' };
+  }
+  return {};
+}
+```
+
+### `onCustomCursorRender`
+
+Draw other people's cursors yourself. playhtml calls it once for each person's cursor with their `pid` and an empty element. Fill in the element and return it, or return `null` to keep the default arrow. playhtml still moves the element and adds the name tag.
+
+**Type:** `(pid: string, element: HTMLElement) => HTMLElement | null`
+
+In this demo, everyone else's cursor is an emoji in a ring of their color. Open this page in a second window and move your mouse inside the box in both.
+
+<div id="custom-cursor-demo" className="ph-demo-slot" data-label="DEMO — custom cursors">
+  <RecipeExample
+    recipe={customCursorsRecipe}
+    compact
+    frameHeight="18rem"
+    client:load
+  />
+  <DemoCodeLink href="/docs/examples/custom-cursors/" />
+</div>
+
+`onCustomCursorRender` only draws other people. Your own pointer stays the browser's cursor, so the demo also sets a CSS `cursor` image to give you the same emoji everyone else sees:
+
+```javascript
+await playhtml.init({
+  cursors: {
+    enabled: true,
+    // Everyone else's cursor: an emoji in a ring of their color.
+    onCustomCursorRender: (pid, element) => {
+      const person = playhtml.people.everyone.find((p) => p.pid === pid);
+      const critter = document.createElement("div");
+      critter.className = "critter";
+      critter.textContent = "🐝";
+      critter.style.borderColor = person?.color ?? "black";
+      element.replaceChildren(critter);
+      return element;
+    },
+  },
+});
+
+// Your own pointer: the same emoji and ring, as a CSS cursor image.
+const { color } = playhtml.people.me;
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+  <circle cx="16" cy="16" r="13" fill="white" stroke="${color}" stroke-width="3" />
+  <text x="16" y="21.5" font-size="15" text-anchor="middle">🐝</text>
+</svg>`;
+document.body.style.cursor =
+  `url("data:image/svg+xml,${encodeURIComponent(svg)}") 16 16, auto`;
+```
+
+The element is built once per person, so read anything that changes often (like position) from [`getCursorStyle`](#getcursorstyle) or [`usePeople("cursor")`](#reading-everyones-cursors) instead.
+
+### Other Options
+
+```javascript
+cursors: {
+  enabled: true,
+
+  // Seed your identity (advanced; most sites set playhtml.people.me instead)
+  playerIdentity: {
+    publicKey: "alice",
+    name: "Alice",
+    playerStyle: {
+      colorPalette: ["#3b82f6", "#8b5cf6", "#ec4899"]
+    }
+  },
+
+  // Proximity detection
+  proximityThreshold: 150,  // pixels
+  // The first argument (playerIdentity) is deprecated; use the fourth, `user`
+  onProximityEntered: (_identity, positions, angle, user) => {
+    console.log("Someone nearby!", user.name);
+  },
+  onProximityLeft: (pid) => {
+    console.log("Someone left proximity", pid);
+  },
+
+  // Visibility threshold (hide distant cursors)
+  visibilityThreshold: 1000,  // pixels
+
+  // Enable chat
+  enableChat: true,
+
+  // Coordinate space cursors are stored and broadcast in
+  coordinateMode: "relative",  // "relative" (default) or "absolute"
+
+  // CSS cursor applied to the page while cursors are active
+  cursorStyle: "none",
+
+}
+```
+
+**`coordinateMode`**: how cursor positions are stored and shared:
+
+- `"relative"` (default): positions are viewport percentages, so a cursor lands on the same _relative_ spot for every viewer regardless of window size. Best for documents and most pages.
+- `"absolute"`: positions are document pixels. Use this when collaborators share an identical fixed-size layout and you want pixel-for-pixel agreement.
+
+For a pannable / zoomable canvas, you usually don't set `coordinateMode` directly. Pass a transformed [`container`](#container) instead, which stores cursors in that container's local space.
+
+**`cursorStyle`**: a CSS `cursor` value applied to the page while cursors are enabled (e.g. `"none"` to hide the native pointer in favor of the rendered one).
+
+### `container`
+
+Where playhtml mounts cursor DOM (and the cursor stylesheet). Defaults to `document.body`. Two reasons to set it:
+
+1. **Surviving SPA navigation.** If your framework swaps `document.body` on route changes (Astro ViewTransitions, htmx boost, Turbo), pass a container you mark as persistent so cursors aren't destroyed. See [navigation](/docs/advanced/navigation/).
+2. **Anchoring cursors to a pannable / zoomable canvas.** If the container has its own CSS `transform` (e.g. you implement pinch-zoom and pan by setting `transform: translate(...) scale(...)` on a wrapper), playhtml stores cursor coordinates in that container's local space, so two viewers with different pan/zoom agree on which content a cursor is hovering. See the next section.
+
+**Type:** `HTMLElement | string | (() => HTMLElement | null) | React.RefObject<HTMLElement>`
+
+## Anchoring cursors to a transformed canvas
+
+If your page implements its own pan and zoom by applying a CSS transform to a wrapper element, the default cursor behavior doesn't do what you want: cursors are stored in viewport pixels, so when one user pans, their cursor for everyone else lands at the wrong word / shape / cell. The fix is one option:
+
+```js
+playhtml.init({
+  cursors: {
+    enabled: true,
+    container: ".canvas",  // your transformed wrapper
+  },
+});
+```
+
+When `container` resolves to a non-`document.body` element, playhtml reads its live transform matrix from `getComputedStyle()` on every pointer event:
+
+- **Storage** is the container's local (pre-transform) coordinate space. Two clients with different pan/zoom now agree on cursor positions.
+- **Rendering** mounts cursors inside the container with `position: absolute`. The container's own CSS transform composes them into each viewer's viewport pixels for free: no JavaScript per-frame repositioning, no resize-event nudging.
+
+### Requirements
+
+- The container must be `position: relative` (or any non-`static` position) so absolute children anchor to it.
+- The container should use **`transform-origin: 0 0`**. This is the standard for canvas-style apps; with any other origin, cursor positions will be shifted by the origin offset. If you need a different visual origin, pre-bake the offset into the matrix's translate component instead of changing `transform-origin`.
+- Only 2D affine transforms are supported (translate, scale, rotate, skew). 3D transforms aren't read.
+- Local-cursor proximity / visibility math, the cursor SVG icon, and `getCursorStyle` continue to work unchanged.
+
+### Example: Fridge Poetry
+
+The [`website/fridge.tsx`](https://github.com/spencerc99/playhtml/blob/main/website/fridge.tsx) demo (live at [playhtml.fun/fridge](https://playhtml.fun/fridge)) uses this pattern. Each user pans and pinch-zooms `.content` independently. With `container: ".content"`, when one user hovers the word "love," every other user sees their cursor glued to "love" in their own view, regardless of their own pan or zoom state.
+
+```tsx
+<PlayProvider
+  initOptions={{
+    cursors: {
+      enabled: true,
+      container: ".content",
+    },
+  }}
+>
+  <div className="content">
+    {/* pan/zoom transform applied here via React state */}
+    {words.map(w => <FridgeWord key={w.id} {...w} />)}
+  </div>
+</PlayProvider>
+```
+
+The transform itself (e.g. `translate(panX, panY) scale(scale)`) is applied however you like: inline `style.transform`, a CSS class, or a CSS variable. playhtml only reads it.
+
+## Reading everyone's cursors
+
+To draw your own cursor layer (a mini-map, trails, a "who's looking where" overlay), read each person's `presence.cursor`. Cursor moves happen many times a second, so `onChange` skips them unless you ask for `"cursor"`.
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+```js
+// Each cursor is { x, y, pointer, zone, page }, or missing if that
+// person's pointer isn't on the page.
+for (const person of playhtml.people.everyone) {
+  const { cursor } = person.presence;
+  if (cursor) drawDot(cursor.x, cursor.y, person.color);
+}
+
+// Fires now, then on every cursor move
+const unsubscribe = playhtml.people.onChange("cursor", redrawMiniMap);
+```
+  </TabItem>
+  <TabItem label="React">
+```tsx
+import { usePeople } from "@playhtml/react";
+
+function MiniMap() {
+  // Re-renders on every cursor move
+  const { everyone } = usePeople("cursor");
+  return everyone.map((person) => {
+    const { cursor } = person.presence;
+    return cursor ? (
+      <Dot key={person.pid} x={cursor.x} y={cursor.y} color={person.color} />
+    ) : null;
+  });
+}
+```
+
+Call `usePeople("cursor")` in the component that draws cursors, not high in your tree, since it re-renders on every move.
+  </TabItem>
+</Tabs>
+
+No one has a `cursor` when cursors are disabled. `page` is the page that cursor is on, which matters when cursors are shared across a whole domain.
+
+## Your name and color
+
+Your cursor shows your name and color from `playhtml.people.me`. Set them there; the change is saved and shows up for everyone. See [names and colors](/docs/data/presence/#names-and-colors).
+
+To change cursor options such as `room` or `shouldRenderCursor` at runtime in React, use `configureCursors` from `usePlayContext()`.
+
+## Legacy global API (`window.cursors`)
+
+`window.cursors` came before `playhtml.people` and keeps working, so existing pages don't need to change. New code should use `playhtml.people`, which works whether or not cursors are enabled. The two read the same data:
+
+| `window.cursors` | `playhtml.people` |
+| --- | --- |
+| `window.cursors.allColors` | `playhtml.people.everyone.map((p) => p.color)` |
+| `window.cursors.color = "red"` | `playhtml.people.me.color = "red"` |
+| `window.cursors.name` | `playhtml.people.me.name` |
+| `window.cursors.on("allColors", cb)` | `playhtml.people.onChange(cb)` (joins, leaves, name and color changes) |
+| `window.cursors.on("color", cb)` / `on("name", cb)` | `playhtml.people.onChange(cb)`, then read `playhtml.people.me` |
+
+`allColors` is deduplicated, so two people with the same color count once. To count people, use `playhtml.people.everyone.length`.
+
+`usePlayContext().cursors` (`allColors`, `color`, `name`) is the older React form of the same data and also keeps working.
+
+## Common Patterns
+
+### Domain-Wide Count, Page-Specific Cursors
+
+Show how many people are on your whole site while only displaying cursors from the current page:
+
+```javascript
+playhtml.init({
+  cursors: {
+    enabled: true,
+    room: "domain",  // All pages share presence
+    shouldRenderCursor: (presence) => {
+      // Only render same-page cursors
+      return presence.page === window.location.pathname;
+    }
+  }
+});
+
+// Domain-wide count: everyone on any page of the site
+const total = playhtml.people.everyone.length;
+```
+
+**React:**
+
+```tsx
+<PlayProvider
+  initOptions={{
+    cursors: {
+      enabled: true,
+      room: "domain",
+      shouldRenderCursor: (presence) =>
+        presence.page === window.location.pathname
+    }
+  }}
+>
+  <UserCount />  {/* Shows domain-wide count */}
+  {/* Cursors only appear from same page */}
+</PlayProvider>
+
+function UserCount() {
+  const { everyone } = usePeople();
+  return <div>{everyone.length} online</div>;
+}
+```
+
+### Ghost Cursors from Other Pages
+
+Show cursors from all pages but make cross-page cursors appear as "ghosts":
+
+```javascript
+playhtml.init({
+  cursors: {
+    enabled: true,
+    room: "domain",
+    getCursorStyle: (presence) => {
+      if (presence.page !== window.location.pathname) {
+        return {
+          opacity: '0.4',
+          filter: 'blur(3px)'
+        };
+      }
+      return {};
+    }
+  }
+});
+```
+
+**React:**
+
+```tsx
+<PlayProvider
+  initOptions={{
+    cursors: {
+      enabled: true,
+      room: "domain",
+      getCursorStyle: (presence) =>
+        presence.page !== window.location.pathname
+          ? { opacity: '0.4', filter: 'blur(3px)' }
+          : {}
+    }
+  }}
+/>
+```
+
+### Section-Specific Presence
+
+Show cursors only to people in the same section of your site (e.g., all `/blog/*` pages):
+
+```javascript
+playhtml.init({
+  cursors: {
+    enabled: true,
+    room: "section"  // Groups by first path segment
+  }
+});
+```
+
+### Workspace Rooms
+
+Create custom groupings based on your app's logic:
+
+```javascript
+playhtml.init({
+  cursors: {
+    enabled: true,
+    room: ({ domain, pathname }) => {
+      // Extract workspace ID from URL
+      const match = pathname.match(/\/workspace\/(\w+)/);
+      if (match) {
+        return `${domain}-workspace-${match[1]}`;
+      }
+      return `${domain}${pathname}`;
+    }
+  }
+});
+```
+
+## Troubleshooting
+
+### Cursors not appearing
+- Check that `enabled: true` is set
+- Verify the room configuration: people must be in the same room to see each other
+- Check browser console for connection errors
+
+### People count is wrong
+- Count with `playhtml.people.everyone.length` (or `usePeople().everyone.length`), not `window.cursors.allColors.length`, which drops people who share a color
+- Subscribe with `playhtml.people.onChange` to get updates
+- Check that the `room` setting matches your intent (page vs domain)
+
+### Cursors from wrong pages appearing
+- Use `shouldRenderCursor` to filter by `presence.page`
+- Verify that `presence.page` matches your expectations
+
+### Styling not applying
+- `getCursorStyle` returns must be valid CSS property values
+- Styles are applied via `Object.assign(element.style, ...)`
+- Check browser console for CSS errors
+
+### React hooks not updating
+- Ensure `PlayProvider` is rendered above components using `usePlayContext()` or `usePeople()`
+- `usePeople()` skips cursor moves; use `usePeople("cursor")` to re-render on them

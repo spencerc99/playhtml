@@ -30,7 +30,7 @@
     background: var(--bg);
   }
   .server {
-    width: 320px;
+    width: 360px;
     margin: 0 auto 8px;
     background: var(--server-bg);
     border: 1px solid var(--server-border);
@@ -107,13 +107,68 @@
     color: var(--text-muted);
     margin-top: 2px;
   }
+  /* people here: presence, per person, not saved */
+  .people {
+    border: 2px dashed #c4724e;
+    background: #fbede4;
+    border-radius: 10px;
+    padding: 10px 14px 12px;
+    margin-bottom: 16px;
+  }
+  .people-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 12px; color: var(--text-muted); margin-bottom: 6px;
+  }
+  .people-head .label { font-weight: 600; color: var(--text); font-size: 13px; }
+  .pill {
+    font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 9px; white-space: nowrap;
+  }
+  .pill.live { background: #c4724e; color: #fff; }
+  .pill.saved { background: var(--accent); color: #fff; }
+  .group-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; font-weight: 600; margin-bottom: 8px;
+  }
+  .data-group {
+    border: 2px solid #b5e0cf;
+    background: #edf7f2;
+    border-radius: 10px;
+    padding: 10px 12px 12px;
+  }
+  .data-group .el { border-color: #cfe9de; }
+  .person { display: flex; align-items: center; gap: 8px; font-size: 14px; height: 28px; }
+  .person .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 10px; }
+  .person .name { font-weight: 600; }
+  .person .you {
+    font-size: 11px; font-weight: 600; color: #fff; border-radius: 999px; padding: 1px 7px;
+  }
+  .person .status { margin-left: auto; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+  .person .pres { font-family: "SFMono-Regular", ui-monospace, Menlo, monospace; font-size: 11px; color: var(--text-muted); }
+  .typing {
+    display: inline-flex; gap: 3px; align-items: center;
+    background: #efe9e0; border-radius: 999px; padding: 5px 8px;
+  }
+  .typing i { width: 5px; height: 5px; border-radius: 50%; background: #8a8279; display: block; }
+  .typing i:nth-child(2) { opacity: .65; }
+  .typing i:nth-child(3) { opacity: .35; }
+  .a { background: #5b8db8; }
+  .b { background: #c4724e; }
+
+  .legend {
+    display: flex; justify-content: center; gap: 28px; margin-top: 18px;
+    font-size: 12px; color: var(--text-muted);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .legend .sw { width: 22px; height: 14px; border-radius: 4px; }
+  .legend .sw.solid { background: var(--surface); border: 1px solid var(--border); }
+  .legend .sw.dashed { background: #fffaf6; border: 1.5px dashed #d9b9a3; }
 </style>
 </head>
 <body>
   <div id="capture">
     <div class="server">
       <h2>playhtml server</h2>
-      <p>stores + syncs by element id</p>
+      <p>saves data by element id, relays presence</p>
     </div>
     <script>
       var base = location.href.replace(/[^/]*$/, "");
@@ -141,7 +196,14 @@
 
     <div class="pages">
       <div class="page">
-        <div class="page-head"><h3>Your page</h3><span class="who">user A</span></div>
+        <div class="page-head"><h3>Your page</h3><span class="who">Ana</span></div>
+        <div class="people">
+          <div class="people-head"><span class="label">people here</span><span class="pill live">presence: gone when they leave</span></div>
+          <div class="person"><span class="dot a"></span><span class="name">Ana</span><span class="you a">you</span><span class="status"><span class="pres">{ status: "here" }</span></span></div>
+          <div class="person"><span class="dot b"></span><span class="name">Sam</span><span class="status"><span class="typing"><i></i><i></i><i></i></span><span class="pres">{ status: "typing" }</span></span></div>
+        </div>
+        <div class="data-group">
+        <div class="group-head"><span>element data</span><span class="pill saved">saved: stays after everyone leaves</span></div>
         <div class="el">
           <div class="el-art"><img src="/noguchi-hanging-lamp.png" alt="" /></div>
           <div class="el-meta">
@@ -173,11 +235,27 @@
             <div class="el-cap">can-grow</div>
             <div class="el-data">{ scale: 1.5 }</div>
           </div>
+        </div>
+        <div class="el">
+          <div class="el-art"><svg viewBox="0 0 52 52" width="48" height="48" aria-hidden="true"><rect x="7" y="9" width="38" height="36" rx="3" fill="#f3e3c3" stroke="#8a6a3e" stroke-width="1.5"/><line x1="26" y1="9" x2="26" y2="45" stroke="#8a6a3e" stroke-width="1.5"/><g stroke="#b59c72" stroke-width="1.4" stroke-linecap="round"><line x1="11" y1="17" x2="22" y2="17"/><line x1="11" y1="23" x2="20" y2="23"/><line x1="11" y1="29" x2="22" y2="29"/><line x1="30" y1="17" x2="41" y2="17"/><line x1="30" y1="23" x2="38" y2="23"/></g><path d="M30 31 q3 -4 5 0 t5 0" fill="none" stroke="#5b8db8" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+          <div class="el-meta">
+            <div class="el-id">#guestbook</div>
+            <div class="el-cap">can-play</div>
+            <div class="el-data">{ entries: [{ name: "Ana", text: "hi!" }, …12 more] }</div>
+          </div>
+        </div>
         </div>
       </div>
 
       <div class="page">
-        <div class="page-head"><h3>Someone else's page</h3><span class="who">user B</span></div>
+        <div class="page-head"><h3>Someone else's page</h3><span class="who">Sam</span></div>
+        <div class="people">
+          <div class="people-head"><span class="label">people here</span><span class="pill live">presence: gone when they leave</span></div>
+          <div class="person"><span class="dot a"></span><span class="name">Ana</span><span class="status"><span class="pres">{ status: "here" }</span></span></div>
+          <div class="person"><span class="dot b"></span><span class="name">Sam</span><span class="you b">you</span><span class="status"><span class="typing"><i></i><i></i><i></i></span><span class="pres">{ status: "typing" }</span></span></div>
+        </div>
+        <div class="data-group">
+        <div class="group-head"><span>element data</span><span class="pill saved">saved: stays after everyone leaves</span></div>
         <div class="el">
           <div class="el-art"><img src="/noguchi-hanging-lamp.png" alt="" /></div>
           <div class="el-meta">
@@ -210,8 +288,18 @@
             <div class="el-data">{ scale: 1.5 }</div>
           </div>
         </div>
+        <div class="el">
+          <div class="el-art"><svg viewBox="0 0 52 52" width="48" height="48" aria-hidden="true"><rect x="7" y="9" width="38" height="36" rx="3" fill="#f3e3c3" stroke="#8a6a3e" stroke-width="1.5"/><line x1="26" y1="9" x2="26" y2="45" stroke="#8a6a3e" stroke-width="1.5"/><g stroke="#b59c72" stroke-width="1.4" stroke-linecap="round"><line x1="11" y1="17" x2="22" y2="17"/><line x1="11" y1="23" x2="20" y2="23"/><line x1="11" y1="29" x2="22" y2="29"/><line x1="30" y1="17" x2="41" y2="17"/><line x1="30" y1="23" x2="38" y2="23"/></g><path d="M30 31 q3 -4 5 0 t5 0" fill="none" stroke="#5b8db8" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+          <div class="el-meta">
+            <div class="el-id">#guestbook</div>
+            <div class="el-cap">can-play</div>
+            <div class="el-data">{ entries: [{ name: "Ana", text: "hi!" }, …12 more] }</div>
+          </div>
+        </div>
+        </div>
       </div>
     </div>
+
   </div>
 </body>
 </html>

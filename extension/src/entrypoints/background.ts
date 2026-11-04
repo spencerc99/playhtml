@@ -1,15 +1,19 @@
 // ABOUTME: Background service worker — holds the extension-origin event store and
 // ABOUTME: coordinates event writes, uploads, and data reads for all extension surfaces
 import browser from 'webextension-polyfill'
+import { scrapEncounterDay } from '@movement/utils/scrapEncounterDay'
+import type { ScrapSource } from '@movement/utils/scrapPhotoGroups'
 import { LocalEventStore } from '../storage/LocalEventStore'
+import { ImageFingerprints } from '../storage/imageFingerprints'
+import { ImageCopier } from '../storage/ImageCopier'
 import type {
   QueryOptions,
   WalkingRecordTraceTarget,
 } from '../storage/LocalEventStore'
 import { uploadEvents } from '../storage/sync'
-import { fetchEventsByPid } from '../storage/restore'
+import { restoreEventsFromServer } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
-import type { ScrapEventData } from '../collectors/types'
+import type { ScrapEventData, ScrapPosition } from '../collectors/types'
 import { getScrapKey } from '../collectors/scrapUtils'
 import {
   collectionModeStorageKey,
@@ -20,11 +24,12 @@ import {
   ensurePlayerIdentity,
   getPlayerProfile,
   getPublicPlayerIdentity,
+  getStoredPlayerIdentity,
   recordDiscoveredSite,
 } from '../storage/playerIdentity'
 import { syncStoredPlayerColor } from '../storage/playerColor'
 import { VERBOSE } from '../config'
-import { gzipString, gunzipToString } from '../utils/dataTransfer'
+import { gzipEventExport } from '../utils/dataTransfer'
 import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
 import {
   loadState,
@@ -33,6 +38,7 @@ import {
   resetDailyIfNeeded,
   isOnCooldown,
   recordToastShown,
+  MILESTONE_TOASTS_ENABLED_KEY,
 } from '../milestones/state'
 import {
   checkAllMilestones,
@@ -69,7 +75,23 @@ import {
   updateSlowModeRide,
 } from '../features/slowMode/slowMode'
 import { initSlowModeInterception } from '../features/slowMode/slowModeBackground'
+import {
+  DEVICE_SYNC_ALARM,
+  DEVICE_SYNC_PERIOD_MINUTES,
+  recordScrapDeletions,
+} from '../sync/deviceSync'
+import { sharedContainer, syncDevices } from '../sync/deviceSyncRuntime'
 import { isHostedCommuteUrl } from '../features/slowMode/slowModeHostedBridge'
+import {
+  ALLOW_LOCAL_SESSION_SCRAPS_PAGES,
+  isSessionScrapsPageUrl,
+} from '../features/sessionScraps/sessionScrapsBridge'
+import {
+  SESSION_LOOKBACK_MS,
+  selectSessionScraps,
+  type SessionScrapCandidate,
+  type SessionScrapsAnswer,
+} from '../features/sessionScraps/sessionScraps'
 
 function replyWithWikipediaHandle(
   request: Promise<string>,
@@ -83,6 +105,9 @@ function replyWithWikipediaHandle(
 }
 
 interface ScrapRecordBase {
+  sources?: ScrapSource[]
+  encounterCount?: number
+  encounterDay?: string
   id: string
   key: string
   domain: string
@@ -90,6 +115,7 @@ interface ScrapRecordBase {
   ts: number
   pageTitle: string
   faviconUrl?: string
+  position?: ScrapPosition
 }
 
 export type ScrapRecord = ScrapRecordBase &
@@ -97,6 +123,7 @@ export type ScrapRecord = ScrapRecordBase &
     | {
         kind: 'image'
         src: string
+        contentHash?: string
         alt?: string
         naturalWidth: number
         naturalHeight: number
@@ -106,12 +133,20 @@ export type ScrapRecord = ScrapRecordBase &
         text: string
         styles: Record<string, string>
         innerSvg?: string
+        backdropColor?: string
       }
     | {
         kind: 'svg-icon'
         markup: string
         width: number
         height: number
+      }
+    | {
+        kind: 'heading'
+        text: string
+        level: 1 | 2 | 3
+        styles: Record<string, string>
+        backdropColor?: never
       }
     | {
         kind: 'cursor'
@@ -122,6 +157,36 @@ export type ScrapRecord = ScrapRecordBase &
   )
 
 const FEATURE_ACCESS_REFRESH_ALARM = 'refreshFeatureAccess'
+const IMAGE_COPY_BACKFILL_ALARM = 'copyScrapImages'
+
+/**
+ * Image scraps from the lookback window, newest first, narrowed to one
+ * browsing session for a hosted collage page.
+ */
+async function readSessionScraps(
+  since: number | undefined,
+  until: number | undefined,
+): Promise<SessionScrapsAnswer> {
+  const now = Date.now()
+  const floor = now - SESSION_LOOKBACK_MS
+  const candidates: SessionScrapCandidate[] = []
+  let cursor: { ts: number; id: string } | undefined
+  for (;;) {
+    const page = await store.queryEventPage('element', 500, cursor)
+    let reachedFloor = false
+    for (const event of page.events) {
+      if (event.ts < floor) {
+        reachedFloor = true
+        break
+      }
+      const scrap = toScrapRecord(event)
+      if (scrap?.kind === 'image') candidates.push(scrap)
+    }
+    if (reachedFloor || !page.nextCursor) break
+    cursor = page.nextCursor
+  }
+  return selectSessionScraps(candidates, { now, since, until })
+}
 
 function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
   const kind = (event.data as { kind?: unknown } | null)?.kind
@@ -129,6 +194,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
     kind !== 'image' &&
     kind !== 'button' &&
     kind !== 'svg-icon' &&
+    kind !== 'heading' &&
     kind !== 'cursor'
   ) {
     return undefined
@@ -146,6 +212,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
     ts: event.ts,
     pageTitle: data.pageTitle,
     ...(data.faviconUrl ? { faviconUrl: data.faviconUrl } : {}),
+    ...(data.position ? { position: data.position } : {}),
   }
 
   switch (data.kind) {
@@ -154,6 +221,8 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
         ...base,
         kind: data.kind,
         src: data.src,
+        encounterDay: scrapEncounterDay(event.ts, event.meta.tz),
+        ...(data.contentHash ? { contentHash: data.contentHash } : {}),
         ...(data.alt ? { alt: data.alt } : {}),
         naturalWidth: data.naturalWidth,
         naturalHeight: data.naturalHeight,
@@ -165,6 +234,7 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
         text: data.text,
         styles: data.styles,
         ...(data.innerSvg ? { innerSvg: data.innerSvg } : {}),
+        ...(data.backdropColor ? { backdropColor: data.backdropColor } : {}),
       }
     case 'svg-icon':
       return {
@@ -173,6 +243,14 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
         markup: data.markup,
         width: data.width,
         height: data.height,
+      }
+    case 'heading':
+      return {
+        ...base,
+        kind: data.kind,
+        text: data.text,
+        level: data.level,
+        styles: data.styles,
       }
     case 'cursor':
       return {
@@ -186,6 +264,8 @@ function toScrapRecord(event: CollectionEvent): ScrapRecord | undefined {
 }
 
 const store = new LocalEventStore()
+const imageFingerprints = new ImageFingerprints(store)
+const imageCopier = new ImageCopier(store)
 
 const LOCAL_RAW_EVENT_RETENTION_ENABLED = false
 const LOCAL_RAW_EVENT_RETENTION_DAYS = 30
@@ -307,6 +387,8 @@ async function runLocalRetention(
   }
 }
 
+let identityInitialization: Promise<void> | null = null
+
 export default defineBackground(() => {
   // Storage durability is provided by the `unlimitedStorage` permission
   // declared in wxt.config.ts — Chromium's quota manager exempts extensions
@@ -346,12 +428,18 @@ export default defineBackground(() => {
         console.warn('Failed to record extension install time', e)
       })
       // First time installation - setup default identity
-      initializePlayerIdentity().then(() => initializeIdentityServices())
-      // Open setup page in a new tab
-      const url = browser.runtime.getURL('setup.html')
-      browser.tabs.create({ url }).catch((e) => {
-        console.warn('Failed to open setup page on install', e)
-      })
+      initializePlayerIdentity()
+        .then(() => runDeviceSyncPass())
+        .then((synced) => {
+          initializeIdentityServices()
+          // On iPhone, the other copy of the extension may already be set up;
+          // taking its identity means there is nothing left to set up here.
+          if (synced?.adoptedIdentity) return
+          const url = browser.runtime.getURL('setup.html')
+          browser.tabs.create({ url }).catch((e) => {
+            console.warn('Failed to open setup page on install', e)
+          })
+        })
     } else if (details.reason === 'update') {
       // Extension updated — ensure key is upgraded, then sync
       initializePlayerIdentity().then(() => initializeIdentityServices())
@@ -368,6 +456,25 @@ export default defineBackground(() => {
   // additionally fire on navigation — see scheduleMilestoneCheck.
   browser.alarms.create('checkMilestones', { periodInMinutes: 5 })
   browser.alarms.create(FEATURE_ACCESS_REFRESH_ALARM, { periodInMinutes: 60 })
+  // Copies images for scraps collected before local copies existed. The pass
+  // finishes once; later alarms only read that it is done.
+  browser.alarms.create(IMAGE_COPY_BACKFILL_ALARM, {
+    delayInMinutes: 1,
+    periodInMinutes: 10,
+  })
+  sharedContainer()
+    .then(async (shared) => {
+      if (!shared) return
+      browser.alarms.create(DEVICE_SYNC_ALARM, {
+        delayInMinutes: 1,
+        periodInMinutes: DEVICE_SYNC_PERIOD_MINUTES,
+      })
+      // The identity is settled first, so a sync that takes the other side's
+      // identity is never overwritten by one minted here a moment later.
+      await initializePlayerIdentity()
+      return runDeviceSyncPass({ skipIfRanWithinMs: 2 * 60 * 1000 })
+    })
+    .catch((e) => console.warn('[Background] device sync startup error:', e))
   if (LOCAL_RAW_EVENT_RETENTION_ENABLED) {
     browser.alarms.create(LOCAL_RETENTION_ALARM, {
       periodInMinutes: LOCAL_RETENTION_ALARM_PERIOD_MINUTES,
@@ -382,6 +489,16 @@ export default defineBackground(() => {
 
     if (alarm.name === FEATURE_ACCESS_REFRESH_ALARM) {
       await refreshExperimentAccess().catch(() => {})
+      return
+    }
+
+    if (alarm.name === IMAGE_COPY_BACKFILL_ALARM) {
+      await imageCopier.backfill()
+      return
+    }
+
+    if (alarm.name === DEVICE_SYNC_ALARM) {
+      await runDeviceSyncPass()
       return
     }
 
@@ -426,13 +543,19 @@ export default defineBackground(() => {
     }, 1000)
   }
 
-  // Ensure player identity has an ECDSA keypair.
-  async function initializePlayerIdentity() {
-    try {
-      await ensurePlayerIdentity()
-    } catch (error) {
-      console.error('Failed to initialize player identity:', error)
-    }
+  // Ensure player identity has an ECDSA keypair. Single-flight, because
+  // install and the startup device sync both ask at once, and two callers
+  // would each mint a different identity.
+  function initializePlayerIdentity() {
+    identityInitialization ??= ensurePlayerIdentity()
+      .then(() => undefined)
+      .catch((error) => {
+        console.error('Failed to initialize player identity:', error)
+      })
+      .finally(() => {
+        identityInitialization = null
+      })
+    return identityInitialization
   }
 
   // Sync participant identity color to server on startup.
@@ -473,6 +596,30 @@ export default defineBackground(() => {
     ])
   }
 
+  // Shares identity, history, scraps and collages with the other copy of the
+  // extension on this iPhone (Safari's, or the one inside the app). A no-op
+  // everywhere else.
+  async function runDeviceSyncPass(
+    options: { skipIfRanWithinMs?: number } = {},
+  ) {
+    try {
+      const result = await syncDevices(store, options)
+      if (!result) return null
+      if (result.adoptedIdentity) await initializeIdentityServices()
+      if (result.importedScraps.length > 0) {
+        imageCopier.noteCollected(result.importedScraps)
+        await imageFingerprints.process(result.importedScraps).catch(() => {})
+        await browser.runtime
+          .sendMessage({ type: 'SCRAP_PHOTOS_UPDATED' })
+          .catch(() => {})
+      }
+      return result
+    } catch (e) {
+      console.warn('[Background] device sync failed:', e)
+      return null
+    }
+  }
+
   updateExperimentBadge().catch(() => {})
 
   browser.storage.onChanged?.addListener((changes, areaName) => {
@@ -482,6 +629,11 @@ export default defineBackground(() => {
         changes[FEATURE_OVERRIDES_STORAGE_KEY])
     ) {
       updateExperimentBadge().catch(() => {})
+    }
+    // Finishing setup here is what the other copy of the extension on this
+    // iPhone waits for, so it hears now rather than on the next alarm.
+    if (areaName === 'local' && changes.onboarding_complete?.newValue) {
+      runDeviceSyncPass().catch(() => {})
     }
   })
 
@@ -641,7 +793,22 @@ export default defineBackground(() => {
       const events = (message.events || []) as CollectionEvent[]
       store
         .addEvents(events)
-        .then(() => {
+        .then((inserted) => {
+          imageCopier.noteCollected(inserted)
+          void imageFingerprints
+            .process(inserted)
+            .then(({ checked }) => {
+              if (checked > 0)
+                return browser.runtime
+                  .sendMessage({ type: 'SCRAP_PHOTOS_UPDATED' })
+                  .catch(() => {})
+            })
+            .catch((error) =>
+              console.warn(
+                '[Background] Photo fingerprint update failed:',
+                error,
+              ),
+            )
           // A navigation focus is the canonical "user is now looking at this
           // domain" signal — the moment a domain-visit milestone could fire
           // with the right tab in front. Trigger an immediate check (cooldown
@@ -695,21 +862,98 @@ export default defineBackground(() => {
     }
 
     if (message.type === 'GET_SCRAPS') {
-      const limit = (message.options?.limit ?? 5000) as number
+      const limit = message.options?.limit ?? 200
+      const cursor = message.options?.cursor
+      const range = message.options?.range
       store
-        .queryByType('element', { limit })
-        .then((events) =>
-          events
-            .sort((first, second) => second.ts - first.ts)
-            .flatMap((event): ScrapRecord[] => {
+        .queryEventPage('element', limit, cursor, range)
+        .then(({ events, nextCursor }) =>
+          reply({
+            scraps: events.flatMap((event): ScrapRecord[] => {
               const scrap = toScrapRecord(event)
               return scrap ? [scrap] : []
             }),
+            nextCursor,
+          }),
         )
-        .then((scraps) => reply({ scraps }))
         .catch((e) => {
           console.error('[Background] GET_SCRAPS error:', e)
-          reply({ scraps: [] })
+          reply({ scraps: [], error: String(e) })
+        })
+      return true
+    }
+
+    if (message.type === 'GET_SESSION_SCRAPS') {
+      if (
+        !sender.tab?.url ||
+        !isSessionScrapsPageUrl(sender.tab.url, ALLOW_LOCAL_SESSION_SCRAPS_PAGES)
+      ) {
+        reply(null)
+        return
+      }
+      readSessionScraps(
+        typeof message.since === 'number' ? message.since : undefined,
+        typeof message.until === 'number' ? message.until : undefined,
+      )
+        .then(reply)
+        .catch((e) => {
+          console.error('[Background] GET_SESSION_SCRAPS error:', e)
+          reply(null)
+        })
+      return true
+    }
+
+    if (message.type === 'DELETE_SCRAPS') {
+      // Only the extension's own pages may delete; a content script runs
+      // beside arbitrary sites and has no reason to.
+      if (!sender.url?.startsWith(browser.runtime.getURL('/'))) {
+        reply({ error: 'DELETE_SCRAPS is only accepted from extension pages' })
+        return true
+      }
+      const ids: unknown = message.ids
+      if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
+        reply({ error: 'DELETE_SCRAPS needs a list of scrap ids' })
+        return true
+      }
+      store
+        .deleteScrapEvents(ids)
+        .then(async (deleted) => {
+          await recordScrapDeletions(ids).catch((e) =>
+            console.warn('[Background] could not record scrap deletions:', e),
+          )
+          reply({ deleted })
+          // Tells the other copy of the extension on this iPhone right away.
+          runDeviceSyncPass().catch(() => {})
+        })
+        .catch((e) => {
+          console.error('[Background] DELETE_SCRAPS error:', e)
+          reply({ error: String(e) })
+        })
+      return true
+    }
+
+    // Pages ask before showing what may have changed on the other copy of the
+    // extension on this iPhone: the popup before offering setup, and the
+    // scraps page before listing scraps. Elsewhere there is nothing to sync.
+    if (message.type === 'SYNC_DEVICES') {
+      runDeviceSyncPass()
+        .then((result) =>
+          reply({
+            synced: result !== null,
+            adoptedIdentity: result?.adoptedIdentity ?? false,
+          }),
+        )
+        .catch((e) => reply({ error: String(e) }))
+      return true
+    }
+
+    if (message.type === 'GET_SCRAP_COUNT') {
+      store
+        .countEventsOfType('element')
+        .then((total) => reply({ total }))
+        .catch((e) => {
+          console.error('[Background] GET_SCRAP_COUNT error:', e)
+          reply({ error: String(e) })
         })
       return true
     }
@@ -780,8 +1024,8 @@ export default defineBackground(() => {
           const dateRange =
             agg?.firstVisit && agg?.lastVisit
               ? {
-                  oldest: new Date(agg.firstVisit).toLocaleDateString(),
-                  newest: new Date(agg.lastVisit).toLocaleDateString(),
+                  oldest: new Date(agg.firstVisit).toISOString(),
+                  newest: new Date(agg.lastVisit).toISOString(),
                 }
               : null
 
@@ -1009,13 +1253,11 @@ export default defineBackground(() => {
         try {
           const events = await store.getAllEvents()
           const identity = await getPublicPlayerIdentity()
-          const payload = JSON.stringify({
-            version: 1,
-            exportedAt: Date.now(),
+          const compressed = await gzipEventExport(
             events,
             identity,
-          })
-          const compressed = await gzipString(payload)
+            Date.now(),
+          )
           reply({ success: true, data: Array.from(compressed) })
         } catch (e) {
           console.error('[Background] EXPORT_EVENTS error:', e)
@@ -1025,20 +1267,48 @@ export default defineBackground(() => {
       return true
     }
 
-    if (message.type === 'IMPORT_EVENTS') {
+    if (message.type === 'IMPORT_EVENT_BATCH') {
       ;(async () => {
         try {
-          const json = await gunzipToString(
-            new Uint8Array(message.data as number[]),
-          )
-          const parsed = JSON.parse(json)
-          if (parsed.version !== 1)
-            throw new Error('Unsupported export version')
-          const events = parsed.events as CollectionEvent[]
-          await store.addImportedEvents(events)
-          reply({ success: true, imported: events.length })
+          const events = message.events as CollectionEvent[]
+          const stored = await store.addImportedEventBatch(events)
+          reply({
+            success: true,
+            imported: stored.length,
+            alreadyHeld: events.length - stored.length,
+            scrapsAdded: stored.some((event) => event.type === 'element'),
+          })
         } catch (e) {
-          console.error('[Background] IMPORT_EVENTS error:', e)
+          console.error('[Background] IMPORT_EVENT_BATCH error:', e)
+          reply({ success: false, error: String(e) })
+        }
+      })()
+      return true
+    }
+
+    if (message.type === 'FINISH_IMPORT') {
+      ;(async () => {
+        try {
+          // Report to the settings page at most four times a second, and on every step change.
+          let lastStep = ''
+          let lastSentAt = 0
+          await store.finishImport((progress) => {
+            const now = Date.now()
+            if (progress.step === lastStep && now - lastSentAt < 250) return
+            lastStep = progress.step
+            lastSentAt = now
+            browser.runtime
+              .sendMessage({ type: 'IMPORT_STATS_PROGRESS', ...progress })
+              .catch(() => {})
+          })
+          if (message.scrapsAdded) {
+            await browser.runtime
+              .sendMessage({ type: 'SCRAP_PHOTOS_UPDATED' })
+              .catch(() => {})
+          }
+          reply({ success: true })
+        } catch (e) {
+          console.error('[Background] FINISH_IMPORT error:', e)
           reply({ success: false, error: String(e) })
         }
       })()
@@ -1048,30 +1318,24 @@ export default defineBackground(() => {
     if (message.type === 'RESTORE_FROM_SERVER') {
       ;(async () => {
         try {
-          const identity = await getPublicPlayerIdentity()
-          const pid = identity?.publicKey
-          if (!pid) {
+          const identity = await getStoredPlayerIdentity()
+          if (!identity) {
             reply({ success: false, error: 'No player identity found' })
             return
           }
           console.log(
             '[Background] RESTORE_FROM_SERVER starting, pid:',
-            pid.slice(0, 20) + '...',
-            'fetching all server events',
+            identity.public.publicKey.slice(0, 20) + '...',
           )
-          const { events, countsByType } = await fetchEventsByPid(pid)
-          console.log(
-            '[Background] Fetched',
-            events.length,
-            'events, writing to IDB...',
+          const { imported, countsByType } = await restoreEventsFromServer(
+            {
+              publicKey: identity.public.publicKey,
+              privateKey: identity.privateKey,
+            },
+            (events) => store.addRestoredEvents(events),
           )
-          await store.addRestoredEvents(events)
           console.log('[Background] RESTORE_FROM_SERVER complete')
-          reply({
-            success: true,
-            imported: events.length,
-            countsByType,
-          })
+          reply({ success: true, imported, countsByType })
         } catch (e) {
           console.error('[Background] RESTORE_FROM_SERVER error:', e)
           reply({ success: false, error: String(e) })
@@ -1082,6 +1346,9 @@ export default defineBackground(() => {
   })
 
   async function runMilestoneCheck() {
+    const preference = await browser.storage.local.get(MILESTONE_TOASTS_ENABLED_KEY)
+    if (preference[MILESTONE_TOASTS_ENABLED_KEY] === false) return
+
     let state = await loadState()
     const today = todayString()
     state = resetDailyIfNeeded(state, today)
@@ -1185,6 +1452,9 @@ export default defineBackground(() => {
       const tabDomain = extractDomain(tab.url ?? null)
       if (tabDomain !== milestone.domain) return
     }
+
+    const currentPreference = await browser.storage.local.get(MILESTONE_TOASTS_ENABLED_KEY)
+    if (currentPreference[MILESTONE_TOASTS_ENABLED_KEY] === false) return
 
     const finalState = recordToastShown(updatedState, today)
     await saveState(finalState)

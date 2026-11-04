@@ -66,6 +66,41 @@ export const EMOTES_CSS = `
   font-size: 0.55rem;
 }
 
+.emote-wheel--pair .emote-item {
+  width: 42px;
+  height: 42px;
+  border: 1.5px solid #1c1c1c;
+  background: #f4efe5;
+  box-shadow: 2px 3px 0 rgba(28, 28, 28, 0.34);
+  color: #1c1c1c;
+  opacity: 1;
+}
+.emote-wheel--pair .emote-item:first-of-type {
+  background: #f7e5b9;
+}
+.emote-wheel--pair .emote-item:last-of-type {
+  background: #dce6d5;
+}
+.emote-wheel--pair .emote-item:hover {
+  background: #f4efe5;
+  color: #274b9e;
+  box-shadow: 3px 4px 0 rgba(28, 28, 28, 0.42);
+}
+.emote-wheel--pair .emote-item .key {
+  right: -5px;
+  bottom: -5px;
+  display: grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  border: 1px solid #1c1c1c;
+  border-radius: 50%;
+  background: #f4efe5;
+  box-shadow: 1px 1px 0 rgba(28, 28, 28, 0.3);
+  opacity: 1;
+  line-height: 1;
+}
+
 @keyframes emote-wheel-open {
   from { opacity: 0; transform: scale(0.8); }
   to { opacity: 1; transform: scale(1); }

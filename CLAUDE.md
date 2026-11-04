@@ -26,12 +26,16 @@ playhtml is a collaborative, interactive HTML library that allows elements to be
 - `bun run doctor`: check whether dependencies, WXT metadata, and package build outputs are ready
 - `bun dev`: Website dev server (Vite)
 - `bun dev-server`: PartyKit dev server for real-time sync
+- `bun run dev-server:presence`: presence-only PartyKit server without Supabase persistence
 - `PLAYHTML_PARTYKIT_PORT=2000 bun dev-server`: PartyKit dev server on a non-default port
 - `bun dev-extension`: Extension dev server (WXT hot reload)
 - `bun build-packages`: Build all library packages
 - `bun run lint`: Type-check all packages
+- `bun run format:check -- <file...>`: Check up to 50 explicit source files
+- `bun run format:write -- <file...>`: Format up to 50 explicit source files
 - `bun run smoke:extension-worker`: bundle the extension Worker without deploying or starting a watcher
 - `bun run smoke:extension`: build and load the real extension in isolated headless Chromium with a loopback-only backend
+
 
 Per-package and deploy scripts are in the root `package.json`.
 
@@ -58,7 +62,7 @@ The extension and PartyKit use one Supabase project with different tables. All n
 
 ### Extension Performance
 
-- The `Extension Performance Report` workflow runs extension performance traces in CI.
+- The `Extension Performance Report` workflow runs extension performance traces in CI. The `Library Performance Report` workflow runs the deterministic playhtml client benchmark (`packages/playhtml/bench/`, bundle size plus message/byte/render counts). Both compare the PR to its base, keep one bot comment on the PR up to date, and fail the check when a metric regresses past its threshold (thresholds live in `scripts/compare-*-performance.mjs`). If a regression is intentional, say so in the PR; the check stays red until it's resolved or Spencer overrides it.
 - Do not run `perf:extension:trace` during local agent work. Repeated traces consume local resources and duplicate CI coverage. Check the CI workflow result instead.
 - Run a local trace only when Spencer explicitly requests one. Treat large increases in `TaskDuration`, `ScriptDuration`, `LayoutDuration`, `RecalcStyleDuration`, or `JSHeapUsedSize` as regression signals to investigate.
 
@@ -117,8 +121,9 @@ Astro + Starlight site at `apps/docs/`, served under `/docs/` in production via 
 
 - `setData()` for persistent, synced state changes
 - `setLocalData()` for temporary, local-only state
-- `setMyAwareness()` for user presence/cursor data
-- **NEVER write shared data (`setData`) from a callback that re-runs when that data changes** (e.g. a React `useEffect` depending on `data.x` that also calls `setData`, or `setData` inside `updateElement`). It loops forever, and because the data is a CRDT, concurrent writes append instead of overwrite — so it never converges. This crashed a production room (1.2M ops / 23 MB). Write from explicit user events; if you must write from a reactive callback, read the data through a ref (don't depend on it) and make the write idempotent (key by unique id, last-write-wins). Full guidance: the `building-playhtml-elements` skill in `claude-plugin/skills/` and https://playhtml.fun/docs/data/data-essentials/ (rule 7).
+- People and presence: `playhtml.people` (`everyone`, `me`, `setMyPresence(key, value)`, `onChange(keys?, cb)`) is everyone on the page as `Person` (`{ pid, name, color, isMe, presence }`); cursors are at `person.presence.cursor`. Elements use the same names: `defaultPresence`, `everyone` / `me` / `setMyPresence` in callbacks and on handles. React: `usePeople(keys?)` and `usePlayContext().people`. `playhtml.users`/`User`, `playhtml.presence`, `live`/`setLive`/`users`, and `awareness` names are deprecated aliases that keep working
+- Identity: public APIs use `Person` and `pid`. `PlayerIdentity`/`publicKey` are the lower-level stored form; don't expose them in new public API or docs
+- **NEVER write shared data (`setData`) from a callback that re-runs when that data changes** (e.g. a React `useEffect` depending on `data.x` that also calls `setData`, or `setData` inside `updateElement`). It loops forever, and because the data is a CRDT, concurrent writes append instead of overwrite — so it never converges. This crashed a production room (1.2M ops / 23 MB). Write from explicit user events; if you must write from a reactive callback, read the data through a ref (don't depend on it) and make the write idempotent (key by unique id, last-write-wins). Full guidance: the `building-playhtml-elements` skill in `claude-plugin/skills/` and https://playhtml.fun/docs/advanced/data-best-practices/ (rule 7).
 - **When changing the SHAPE of persisted shared data for something already live, you MUST migrate or clear the old data — and flag this to Spencer.** `defaultData` only seeds brand-new elements; rooms that already have persisted data load it as-is, so a shape change (array→map, renamed field, new required field) means existing rooms hydrate the OLD shape into NEW code. That mismatch crashes the page (e.g. a keyed write `data.entries[pid]=…` against a room whose `entries` is still a legacy Y.Array throws and blanks the page). Options, in order of preference: (1) write to a NEW field name and abandon the old one (no migration, always-clean writes); (2) defensively handle both shapes at read AND write (null-safe reads, initialize-if-absent, in-place migrate — fragile, test against real legacy data); (3) clear the room's persisted data (delete the `documents` row). This ONLY applies when the data is already live/persisted — brand-new features have no old data to worry about. Note: our load/soak tests do NOT catch this — they bypass page code and start from empty rooms, so a data-shape change must be verified by loading the real page against a room pre-seeded with the old shape.
 
 When building or modifying playhtml elements, follow the `building-playhtml-elements` skill in `claude-plugin/skills/building-playhtml-elements/SKILL.md` — it captures the full set of footguns (config-before-init, missing ids, write loops, array-mutation rules).
@@ -161,6 +166,7 @@ When building or modifying playhtml elements, follow the `building-playhtml-elem
 ## Documentation
 
 - `apps/docs/`: Public developer-facing and user-facing documentation. All user-visible docs live here as Astro + Starlight pages. DO NOT PUT PLANS IN HERE.
+- **Whenever you write or edit anything in `apps/docs/`, follow the `writing-developer-docs` skill** (`claude-plugin/skills/writing-developer-docs/SKILL.md`): read it before drafting and run its checklist before you commit.
 - Package behavior changes should be reflected in `apps/docs/` when they affect how users write HTML, React components, CSS, shared data, setup code, or troubleshooting steps.
 - **Never leak internal-only language or concerns into `apps/docs/`.** These docs are for users building on playhtml, not for maintainers of playhtml. Do NOT reference our own internal tooling, infra, or process: load/soak tests, the `documents` table or Supabase, PartyKit deploy/staging, internal incident history ("this crashed a production room"), CRDT/Yjs internals, or repo-internal terms. Keep the framing "here's how to use this," not "here's how we operate it." If a caveat genuinely matters to a user (e.g. data persists per room), state the user-facing consequence and the user-facing fix — never the internal mechanism or our testing gaps. Internal concerns belong in `internal-docs/`, the `building-playhtml-elements` skill, or code comments.
 - `internal-docs/`: Internal planning and decision records (gitignored, not committed). Specs go in `internal-docs/specs/`, plans go in `internal-docs/plans/`. Date-prefix files (e.g., `2026-03-13-feature-name.md`).

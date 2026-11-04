@@ -75,6 +75,7 @@ export interface NavigationEventData {
   from_url?: string;         // for beforeunload: URL being left
   state?: unknown;           // for popstate: history state
   visibility_state?: string; // for focus/blur: 'visible' or 'hidden'
+  idle?: boolean;            // for blur: emitted because the visible tab went idle
   page_ref?: string;         // stable ref derived from canonical URL
   canonical_url?: string;    // URL normalized for page identity
   title?: string;            // captured page title snapshot
@@ -107,7 +108,21 @@ export interface ViewportEventData {
   quantity?: number;      // number of events that occurred during debounce window
 }
 
+/**
+ * Where a scrap sat on the page it was taken from. Document coordinates in
+ * pixels, alongside the document's scroll size, so a scrap can be placed back
+ * on a map of the page it came from. Absent on scraps captured before the
+ * extension recorded it.
+ */
+export interface ScrapPosition {
+  pageX: number;
+  pageY: number;
+  pageWidth: number;
+  pageHeight: number;
+}
+
 export interface ImageScrapData {
+  contentHash?: string;
   kind: "image";
   src: string;
   alt?: string;
@@ -117,6 +132,7 @@ export interface ImageScrapData {
   displayHeight: number;
   pageTitle: string;
   faviconUrl?: string;
+  position?: ScrapPosition;
 }
 
 export interface ButtonScrapData {
@@ -124,8 +140,11 @@ export interface ButtonScrapData {
   text: string;
   styles: Record<string, string>;
   innerSvg?: string;
+  /** Flat color the element was seen against, when its own does not cover it. */
+  backdropColor?: string;
   pageTitle: string;
   faviconUrl?: string;
+  position?: ScrapPosition;
 }
 
 export interface SvgIconScrapData {
@@ -135,6 +154,33 @@ export interface SvgIconScrapData {
   height: number;
   pageTitle: string;
   faviconUrl?: string;
+  position?: ScrapPosition;
+}
+
+/** The typographic properties a heading keeps; it carries no background. */
+export type HeadingStyleProperty =
+  | "fontFamily"
+  | "fontSize"
+  | "fontWeight"
+  | "fontStyle"
+  | "color"
+  | "letterSpacing"
+  | "textTransform"
+  | "lineHeight";
+
+/**
+ * A heading is words-material: it keeps its type and its own text color, and
+ * saves no background of any kind, so it has no backdrop to record either.
+ */
+export interface HeadingScrapData {
+  kind: "heading";
+  text: string;
+  level: 1 | 2 | 3;
+  styles: Partial<Record<HeadingStyleProperty, string>>;
+  backdropColor?: never;
+  pageTitle: string;
+  faviconUrl?: string;
+  position?: ScrapPosition;
 }
 
 export interface CursorScrapData {
@@ -144,12 +190,14 @@ export interface CursorScrapData {
   hotspotY?: number;
   pageTitle: string;
   faviconUrl?: string;
+  position?: ScrapPosition;
 }
 
 export type ScrapEventData =
   | ImageScrapData
   | ButtonScrapData
   | SvgIconScrapData
+  | HeadingScrapData
   | CursorScrapData;
 
 /**

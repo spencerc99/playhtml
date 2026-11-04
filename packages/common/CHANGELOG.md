@@ -1,5 +1,25 @@
 # @playhtml/common
 
+## 0.10.1
+
+### Patch Changes
+
+- 1ab8866: Less network traffic and a smaller download. `setData` on a list now sends only the items that changed, so editing one entry in a long list no longer resends the whole list or grows the room's saved history by a full copy each time. Rapid `setData` calls, such as updates on every pointer move, are batched into at most 20 messages a second; the first change still goes out right away. The build is minified with source maps, and the cursor code only downloads on pages that enable cursors, which cuts the default download from 110 KB to 65 KB gzipped.
+- b619ac1: Fix the `PlayEvent.onEvent` type so listeners receive the dispatched `eventPayload` directly, matching what playhtml already passes at runtime. Typed listeners such as `onEvent: ({ emoji }: { emoji: string }) => ...` now type-check without casts.
+
+## 0.10.0
+
+### Minor Changes
+
+- 35088f1: Add the element `live`, `users`, `setLive`, and `update` APIs so one renderer can combine shared state with current per-user values and identity. Existing awareness and `updateElement` names remain available as deprecated compatibility aliases.
+
+### Patch Changes
+
+- 74e4d35: Make `playhtml.register(elementOrId, initializer)` the recommended vanilla API for custom elements using either `updateElement` or `view`. Callers can pass an existing HTML element or register by id before the element exists. Registered initializers bind through the standard setup path without being copied onto DOM elements, while direct element-property configuration remains supported for compatibility.
+- c549849: Fix a `can-grow` element leaking document-level keydown/keyup listeners when it's removed from the DOM while hovered (e.g. an SPA route change or React unmount that doesn't fire `mouseleave` first). The listeners are now cleaned up on unmount regardless of hover state.
+- ad66821: Page-data channels can now update primitive roots with functional updates that return the next value.
+- 75c1cce: Avoid redundant shared-data writes when incoming object and array values are unchanged, preventing unnecessary collaborative document history growth.
+
 ## 0.9.0
 
 ### Minor Changes

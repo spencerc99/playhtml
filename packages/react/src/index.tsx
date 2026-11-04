@@ -9,12 +9,21 @@ import {
   useRef,
   useState,
 } from "react";
-import { ElementAwarenessEventHandlerData, ElementInitializer, TagType, elementHandlers, getIdForElement } from "playhtml";
+import {
+  ElementAwarenessEventHandlerData,
+  ElementInitializer,
+  ElementPerson,
+  Person,
+  TagType,
+  elementHandlers,
+  getIdForElement,
+} from "playhtml";
 import playhtml from "./playhtml-singleton";
 import {
   cloneThroughFragments,
   getCurrentElementHandler,
   isReactFragment,
+  requireDefaultValue,
 } from "./utils";
 import type {
   ReactElementInitializer,
@@ -259,45 +268,42 @@ export function CanPlayElement<T extends object, V = any>({
   const ref = useRef<HTMLElement>(null);
   const registeredBindingRef = useRef<ElementBinding | undefined>(undefined);
   const warningKeysRef = useRef<Set<string>>(new Set());
-  const { defaultData, myDefaultAwareness } = elementProps;
-  const resolveDefaultData = (fnOrValue: T | ((el: HTMLElement) => T)) =>
-    typeof fnOrValue === "function"
-      ? // @ts-ignore
-        (fnOrValue as (el: HTMLElement) => T)(ref.current as HTMLElement)
-      : (fnOrValue as T);
-  const resolveDefaultAwareness = (
-    fnOrValue?: V | ((el: HTMLElement) => V),
-  ): V | undefined =>
-    typeof fnOrValue === "function"
-      ? // @ts-ignore
-        (fnOrValue as (el: HTMLElement) => V)(ref.current as HTMLElement)
-      : fnOrValue;
+  const {
+    defaultData,
+    defaultPresence: configuredPresence,
+    live: configuredLive,
+    myDefaultAwareness,
+  } = elementProps;
+  requireDefaultValue(defaultData, "defaultData");
+  requireDefaultValue(configuredPresence, "defaultPresence");
+  requireDefaultValue(configuredLive, "live");
+  requireDefaultValue(myDefaultAwareness, "myDefaultAwareness");
 
-  const [data, setData] = useState<T | undefined>(
-    defaultData !== undefined
-      ? resolveDefaultData(defaultData as T | ((el: HTMLElement) => T))
-      : undefined,
-  );
-  const initialAwareness = resolveDefaultAwareness(
-    myDefaultAwareness as V | ((el: HTMLElement) => V) | undefined,
-  );
+  const initialLive = configuredPresence ?? configuredLive ?? myDefaultAwareness;
+  const [data, setData] = useState<T | undefined>(() => defaultData);
   const [awareness, setAwareness] = useState<V[]>(
-    initialAwareness ? [initialAwareness] : [],
+    initialLive === undefined ? [] : [initialLive],
   );
   const [awarenessByStableId, setAwarenessByStableId] = useState<
     Map<string, V>
   >(new Map());
-  const [myAwareness, setMyAwareness] = useState<V | undefined>(
-    initialAwareness,
-  );
+  const [live, setLive] = useState<V | undefined>(() => initialLive);
+  const [users, setUsers] = useState<ElementPerson<V>[]>([]);
+  const [me, setMe] = useState<Person<V>>(() => ({
+    pid: "",
+    color: "",
+    isMe: true,
+    presence: initialLive as V,
+  }));
 
-  // Capture the capability's original updateElement/updateElementAwareness so we can
-  // compose them with the React state updater below. These come from the built-in
+  // Capture the capability's original render callbacks so we can compose them
+  // with the React state updater below. These come from the built-in
   // TagTypeToElement definitions (e.g. CanMove applies element.style.transform).
   // They arrive as extra runtime props via {...TagTypeToElement[TagType.CanMove]} but
   // are omitted from the CanPlayProps type since React components don't normally use them.
-  const capabilityUpdateElement = (elementProps as any).updateElement as
-    | ElementInitializer["updateElement"]
+  const capabilityUpdate = ((elementProps as any).update ??
+    (elementProps as any).updateElement) as
+    | ElementInitializer["update"]
     | undefined;
   const capabilityUpdateElementAwareness = (elementProps as any)
     .updateElementAwareness as
@@ -319,16 +325,26 @@ export function CanPlayElement<T extends object, V = any>({
         ? prev
         : handlerData.awarenessByStableId
     );
-    setMyAwareness((prev) =>
-      isDeepEqual(prev, handlerData.myAwareness)
+    setLive((prev) =>
+      isDeepEqual(prev, handlerData.live)
         ? prev
-        : handlerData.myAwareness
+        : (handlerData.live as V | undefined)
     );
+    setUsers((prev) =>
+      isDeepEqual(prev, handlerData.everyone ?? handlerData.users ?? [])
+        ? prev
+        : ((handlerData.everyone ?? handlerData.users ?? []) as ElementPerson<V>[])
+    );
+    if (handlerData.me) {
+      setMe((prev) =>
+        isDeepEqual(prev, handlerData.me) ? prev : (handlerData.me as Person<V>)
+      );
+    }
   };
 
   const updateElement: ElementInitializer["updateElement"] = (handlerData) => {
     syncReactState(handlerData as ElementAwarenessEventHandlerData);
-    capabilityUpdateElement?.(handlerData);
+    capabilityUpdate?.(handlerData);
   };
 
   const updateElementAwareness: ElementInitializer["updateElementAwareness"] = (
@@ -368,12 +384,18 @@ export function CanPlayElement<T extends object, V = any>({
     if (ref.current) {
       const element = ref.current;
       for (const [key, value] of Object.entries(elementProps)) {
-        // Skip updateElement/updateElementAwareness — they are set below as
-        // composed versions that include both React state updates and DOM updates.
-        if (key === "updateElement" || key === "updateElementAwareness") continue;
+        // Skip render callbacks. Composed versions below include both React
+        // state updates and built-in DOM updates.
+        if (
+          key === "update" ||
+          key === "updateElement" ||
+          key === "updateElementAwareness"
+        ) continue;
         // @ts-ignore
         element[key] = value;
       }
+      // @ts-ignore
+      delete element.update;
       // @ts-ignore
       element.updateElement = updateElement;
       // @ts-ignore
@@ -433,6 +455,10 @@ export function CanPlayElement<T extends object, V = any>({
   const renderedChildren = children({
     // @ts-ignore
     data,
+    everyone: users,
+    me,
+    live,
+    users,
     awareness,
     awarenessByStableId,
     setData: (newData: T | ((draft: T) => void)) => {
@@ -460,10 +486,16 @@ export function CanPlayElement<T extends object, V = any>({
       }
       handler.setData(newData);
     },
-    setMyAwareness: (newLocalAwareness) => {
-      getRegisteredHandler()?.setMyAwareness(newLocalAwareness);
+    setMyPresence: (next) => {
+      getRegisteredHandler()?.setMyPresence(next);
     },
-    myAwareness,
+    setLive: (next) => {
+      getRegisteredHandler()?.replaceMyPresence(next);
+    },
+    setMyAwareness: (next) => {
+      getRegisteredHandler()?.replaceMyPresence(next);
+    },
+    myAwareness: live,
     ref,
   });
 
@@ -616,10 +648,12 @@ export function withSharedState<T extends object, V = any, P = any>(
 
 export { playhtml };
 export { PlayProvider, PlayContext } from "./PlayProvider";
+export type { PlayContextInfo, PlayContextPeople } from "./PlayProvider";
 export { usePlayContext } from "./usePlayContext";
 export {
   useCursorPresences,
   useCursorZone,
+  usePeople,
   usePresence,
   usePageData,
   usePresenceRoom,

@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["src/__tests__/usePresence.types.ts"],
+  "include": ["src/__tests__/usePresence.types.ts", "src/__tests__/defaults.types.tsx"],
   "exclude": []
 }

@@ -6,6 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const storageGet = vi.hoisted(() => vi.fn());
 const storageSet = vi.hoisted(() => vi.fn());
 const runtimeSendMessage = vi.hoisted(() => vi.fn());
+const maybeInjectAnnouncementToast = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined),
+);
 const publicIdentityResponse = vi.hoisted(() => ({
   value: {
     publicKey: "pk_test",
@@ -61,6 +64,19 @@ vi.mock("../collectors/KeyboardCollector", () => ({
   KeyboardCollector: class {},
 }));
 
+vi.mock("../announcements/inject-toast", () => ({
+  maybeInjectAnnouncementToast,
+}));
+
+async function waitForContentInitialization(): Promise<void> {
+  await vi.waitFor(() => {
+    expect(maybeInjectAnnouncementToast).toHaveBeenCalledOnce();
+    expect(storageGet).toHaveBeenCalledWith([
+      `migration_v1_done_${window.location.hostname}`,
+    ]);
+  });
+}
+
 describe("content internal development features", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -93,6 +109,7 @@ describe("content internal development features", () => {
 
     storageSet.mockReset();
     storageSet.mockResolvedValue(undefined);
+    maybeInjectAnnouncementToast.mockClear();
 
     runtimeSendMessage.mockReset();
     runtimeSendMessage.mockImplementation((message: { type?: string }) => {
@@ -126,8 +143,7 @@ describe("content internal development features", () => {
         domain: window.location.hostname,
       });
     });
-    await Promise.resolve();
-    await Promise.resolve();
+    await waitForContentInitialization();
 
     expect(storageGet).toHaveBeenCalledWith("wwoFeatureAccess");
     expect(storageGet).not.toHaveBeenCalledWith(["gameInventory"]);
@@ -172,6 +188,8 @@ describe("content internal development features", () => {
       contentScript.main();
 
       await vi.waitFor(() => expect(injected).toHaveBeenCalledOnce());
+      await waitForContentInitialization();
+      expect(injected).toHaveBeenCalledOnce();
       const event = injected.mock.calls[0][0] as CustomEvent;
       expect(event.detail).toEqual({
         playerIdentity: {

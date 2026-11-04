@@ -1,7 +1,7 @@
 // ABOUTME: Entry point for the Internet Keypresses visualization
 // ABOUTME: Fetches keyboard events with pagination and domain filtering, passes them to KeypressesGrid
 import "./keypresses.scss";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { CollectionEvent } from "../shared/types";
 import { KeypressesGrid } from "../shared/components/KeypressesGrid";

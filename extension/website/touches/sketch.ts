@@ -69,7 +69,7 @@ const HAND_HOLD_MS = 1000;
 // comes from CLICK_DEFAULTS so the rings stack tightly like the archive's
 // clicks; only ring count and timing are this page's own, and these fade
 // away instead of persisting.
-const RIPPLE_RINGS = 8;
+const RIPPLE_RINGS: number = 8;
 const RIPPLE_STAGGER_MS = 50;
 const RIPPLE_EXPANSION_MS = 1300;
 const NIGHT_BG: [number, number, number] = [16, 13, 19];

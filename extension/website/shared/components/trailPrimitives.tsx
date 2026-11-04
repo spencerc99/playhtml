@@ -8,7 +8,7 @@ import {
   getCursorHotspot,
   getCursorScaleFactor,
 } from "../cursors";
-import { type TrailRenderer } from "../styles/trailRenderers";
+import { clearPathGeometry, type TrailRenderer } from "../styles/trailRenderers";
 import {
   buildFreehandPathSegment,
   type FinishedTrailOrderEntry,
@@ -20,9 +20,6 @@ export const EVICTION_FADE_MS = 3000;
 // Finished trails dim to this opacity over COMPLETION_FADE_MS
 export const COMPLETED_OPACITY = 0.5;
 export const COMPLETION_FADE_MS = 3000;
-
-// How many points to show behind the cursor while drawing
-export const TAIL_LENGTH = 1000;
 
 // Compute visible points and path data for a trail at a given elapsed time.
 // strokeSize is baked into the freehand outline geometry, so the path must be
@@ -58,9 +55,7 @@ export function computeTrailFrame(
   const headIndex = Math.floor(exactVariedPosition);
   const headFraction = exactVariedPosition - headIndex;
 
-  const tailStart = isFinished
-    ? Math.max(0, totalVariedPoints - TAIL_LENGTH)
-    : Math.max(0, headIndex - TAIL_LENGTH + 1);
+  const tailStart = 0;
   const tailEnd = Math.min(headIndex, totalVariedPoints - 1);
 
   let interpolatedHead: { x: number; y: number } | undefined;
@@ -210,6 +205,14 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
       if (group && lastGroupOpacityRef.current !== "0") {
         group.setAttribute("opacity", "0");
         lastGroupOpacityRef.current = "0";
+        clearPathGeometry(pathRef.current);
+        clearPathGeometry(haloRef.current);
+        clearPathGeometry(activePathRef.current);
+        clearPathGeometry(activeHaloRef.current);
+        finishedFrameRef.current = null;
+        finishedFrameSizeRef.current = null;
+        lastPathDataRef.current = "";
+        lastActivePathDataRef.current = "";
       }
     }, []);
 
@@ -276,6 +279,7 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
           }
 
           const { trailProgress, cursorPosition } = frame;
+          const drawnColor = trailState.trail.color;
           const baseFrame = activeSegment
             ? computeTrailFrame(
                 trailState,
@@ -295,7 +299,7 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
                 lastTrailOpacityRef.current !== trailOpacity ||
                 lastStrokeWidthRef.current !== strokeWidth ||
                 lastCursorTypeRef.current !== frame.cursorType ||
-                lastTrailColorRef.current !== trailState.trail.color
+                lastTrailColorRef.current !== drawnColor
               ) {
                 renderer.updatePath({
                   pathEl,
@@ -305,7 +309,7 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
                   strokeWidth,
                   cursorType: frame.cursorType,
                   trailProgress,
-                  trailColor: trailState.trail.color,
+                  trailColor: drawnColor,
                   fixedMonoStrokeWidth,
                 });
                 lastPathDataRef.current = pathData;
@@ -313,7 +317,7 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
                 lastTrailOpacityRef.current = trailOpacity;
                 lastStrokeWidthRef.current = strokeWidth;
                 lastCursorTypeRef.current = frame.cursorType;
-                lastTrailColorRef.current = trailState.trail.color;
+                lastTrailColorRef.current = drawnColor;
               }
             } else {
               pathEl.style.display = "none";
@@ -337,7 +341,7 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
                 lastActiveOpacityRef.current !== activeSegment.opacity ||
                 lastStrokeWidthRef.current !== strokeWidth ||
                 lastCursorTypeRef.current !== frame.cursorType ||
-                lastTrailColorRef.current !== trailState.trail.color
+                lastTrailColorRef.current !== drawnColor
               ) {
                 renderer.updatePath({
                   pathEl: activePathEl,
@@ -347,7 +351,7 @@ export const TrailPath = React.forwardRef<ImperativeTrailHandle, TrailPathProps>
                   strokeWidth,
                   cursorType: frame.cursorType,
                   trailProgress,
-                  trailColor: trailState.trail.color,
+                  trailColor: drawnColor,
                   fixedMonoStrokeWidth,
                 });
                 lastActivePathDataRef.current = activePathData;

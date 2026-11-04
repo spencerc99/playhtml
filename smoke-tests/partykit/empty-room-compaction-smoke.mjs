@@ -9,7 +9,6 @@ import {
   inspectRoom as inspectPartyRoom,
   loadSmokeEnv,
   sleep,
-  waitForProviderStatus,
   waitForRoomReset,
   waitForSync,
 } from "./shared.mjs";
@@ -110,11 +109,18 @@ if (after.documentSize >= before.documentSize) {
   );
 }
 
+// A stale client with history is told to reset and held open, not closed, so
+// clients that cannot handle the reset do not fall into a reconnect loop.
 const staleProvider = connectSmokeRoom(doc);
 const staleResetEpoch = await waitForRoomReset(staleProvider);
 console.log(`stale reconnect received room-reset resetEpoch=${staleResetEpoch}`);
-await waitForProviderStatus(staleProvider, "disconnected");
-console.log("stale reconnect was disconnected");
+const heldInspect = await inspectRoom();
+if (heldInspect.connections !== 0) {
+  throw new Error(
+    `expected the held stale client to be excluded from connections, got ${heldInspect.connections}`
+  );
+}
+console.log("stale reconnect was held outside the room");
 staleProvider.destroy();
 
 const freshDoc = new Y.Doc();

@@ -1,0 +1,17 @@
+<!-- ABOUTME: Forwards the old commute curation desk address to its home in the admin office. -->
+<!-- ABOUTME: Keeps bookmarks working after the desk moved under /admin/commute/. -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta http-equiv="refresh" content="0; url=/admin/commute/" />
+    <title>Commute curation moved — we were online</title>
+    <script>
+      window.location.replace("/admin/commute/" + window.location.search + window.location.hash);
+    </script>
+  </head>
+  <body>
+    <p>The commute curation desk moved to <a href="/admin/commute/">/admin/commute/</a>.</p>
+  </body>
+</html>

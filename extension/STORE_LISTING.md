@@ -23,6 +23,12 @@ practices tab.
 Slow Mode uses webNavigation to detect completed top-level navigations. When the user has enabled Slow Mode and a navigation meets their distance, cooldown, and chance settings, the extension redirects the tab through Internet Commute. The extension ignores subframe navigations.
 ```
 
+### Host permission (`<all_urls>`)
+
+```
+The extension runs on the websites the user visits to record their cursor, scroll, and navigation traces and to draw their portrait over the page. Saving a page portrait as an image uses tabs.captureVisibleTab, which Chrome only allows with the <all_urls> host permission. The extension does not read or change page content beyond drawing its own overlay.
+```
+
 ### `idle`
 
 ```

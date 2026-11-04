@@ -1,4 +1,4 @@
-// ABOUTME: Per-announcement seen-state stored in browser.storage.local.
+// ABOUTME: Per-announcement seen-state and popup view counts in browser.storage.local.
 // ABOUTME: Forward-only state machine: undefined → "toast-shown" → "dismissed".
 
 import browser from "webextension-polyfill";
@@ -8,10 +8,18 @@ import { scrapsAvailable } from "../scraps-availability";
 export type AnnouncementState = "toast-shown" | "dismissed";
 
 const KEY_PREFIX = "announcement_seen_";
+const VIEWS_KEY_PREFIX = "announcement_views_";
 const INSTALL_TS_KEY = "announcement_install_ts";
+
+// A popup postcard retires itself after this many popup opens that showed it.
+export const POSTCARD_VIEW_LIMIT = 3;
 
 function key(id: string): string {
   return `${KEY_PREFIX}${id}`;
+}
+
+function viewsKey(id: string): string {
+  return `${VIEWS_KEY_PREFIX}${id}`;
 }
 
 export async function getState(
@@ -35,6 +43,31 @@ export async function setState(
   if (current === "dismissed") return;
   if (current === "toast-shown" && next === "toast-shown") return;
   await browser.storage.local.set({ [key(id)]: next });
+}
+
+// Absent means the postcard has never been shown in the popup.
+export async function getPostcardViews(id: string): Promise<number> {
+  const stored = (await browser.storage.local.get(viewsKey(id))) as Record<
+    string,
+    unknown
+  >;
+  const v = stored[viewsKey(id)];
+  if (v === undefined) return 0;
+  if (typeof v !== "number" || !Number.isInteger(v) || v < 0) {
+    throw new Error(
+      `announcement view count for "${id}" is not a non-negative integer: ${String(v)}`,
+    );
+  }
+  return v;
+}
+
+// Counts one popup open that showed this postcard. Reaching the limit
+// dismisses it, so it never comes back in the popup or as a page toast.
+export async function recordPostcardView(id: string): Promise<number> {
+  const views = (await getPostcardViews(id)) + 1;
+  await browser.storage.local.set({ [viewsKey(id)]: views });
+  if (views >= POSTCARD_VIEW_LIMIT) await setState(id, "dismissed");
+  return views;
 }
 
 function urlMatches(a: Announcement, url: string): boolean {

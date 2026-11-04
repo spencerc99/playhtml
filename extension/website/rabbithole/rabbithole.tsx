@@ -2,7 +2,7 @@
 // ABOUTME: Fetches navigation events from the server, optionally filtered to Wikipedia only or all titled pages.
 
 import "./rabbithole.scss";
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import ReactDOM from "react-dom/client";
 import { RabbitHoleVisualization, WikiTitle } from "../shared/components/RabbitHoleVisualization";
 import { RECENT_EVENTS_URL } from "../shared/config";

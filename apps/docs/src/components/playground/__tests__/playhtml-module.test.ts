@@ -24,17 +24,18 @@ describe("makePlayhtmlModuleUrl", () => {
     const moduleSources = collectModuleSources(moduleUrl);
 
     expect(moduleUrl).toMatch(/^data:text\/javascript;base64,/);
-    expect(moduleSources.length).toBeGreaterThan(3);
+    // Entry, shared chunk, leaf editor, development tools, and cursor client.
+    expect(moduleSources.length).toBeGreaterThanOrEqual(5);
     expect(moduleSources).toSatisfy((sources: string[]) =>
       sources.every(
         (source) =>
-          !/(?:from\s+|import\()\s*["']\.\//.test(source) &&
+          !/(?:from\s*|import\()\s*["']\.\//.test(source) &&
           !source.includes('"./leafEditor.es.js"'),
       ),
     );
     expect(moduleSources).toSatisfy((sources: string[]) =>
       sources.some((source) =>
-        source.includes("globalThis.__playhtmlListSharedElements = "),
+        source.includes("globalThis.__playhtmlSharedChunk = "),
       ),
     );
   });

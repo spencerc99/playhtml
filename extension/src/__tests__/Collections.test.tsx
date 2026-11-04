@@ -51,9 +51,10 @@ describe("Collections", () => {
           stats: {
             totalEvents: 128430,
             estimatedSizeBytes: 1536,
+            estimatedSizeBytesByType: { element: 5242880 },
             localUsageBytes: 3145728,
             oldestEvent: Date.now(),
-            countsByType: { cursor: 88210, keyboard: 8108 },
+            countsByType: { cursor: 88210, keyboard: 8108, element: 2819 },
           },
         };
       }
@@ -83,6 +84,7 @@ describe("Collections", () => {
       expect(storageIndex).toBeGreaterThanOrEqual(0);
       expect(eventsIndex).toBeGreaterThanOrEqual(0);
       expect(sizeIndex).toBeGreaterThanOrEqual(0);
+      expect(text).toContain("5.0 MBinternet scraps");
       expect(storageIndex).toBeGreaterThan(titleIndex);
       expect(storageIndex).toBeGreaterThan(keyboardIndex);
       expect(exportIndex).toBeGreaterThan(sizeIndex);
@@ -105,6 +107,7 @@ describe("Collections", () => {
           stats: {
             totalEvents: 0,
             estimatedSizeBytes: 0,
+            estimatedSizeBytesByType: {},
             localUsageBytes: 2048,
             oldestEvent: 0,
             countsByType: {},
@@ -123,6 +126,36 @@ describe("Collections", () => {
       expect(text).toContain("2.0 KBlocal storage");
       expect(text).toContain("0events");
       expect(text).toContain("0 Bevent data");
+    } finally {
+      cleanupRoot(root, container);
+    }
+  });
+
+  it("renders storage stats from a background worker without per-type sizes", async () => {
+    vi.mocked(browser.runtime.sendMessage).mockImplementation(async (message) => {
+      if (message?.type === "GET_STORAGE_STATS") {
+        return {
+          success: true,
+          stats: {
+            totalEvents: 12,
+            estimatedSizeBytes: 1536,
+            localUsageBytes: 2048,
+            oldestEvent: Date.now(),
+            countsByType: { cursor: 12 },
+          },
+        };
+      }
+      return { success: true };
+    });
+
+    const { container, root } = await renderCollections();
+
+    try {
+      const text = container.textContent ?? "";
+
+      expect(text).toContain("12events");
+      expect(text).toContain("1.5 KBevent data");
+      expect(text).not.toContain("internet scraps");
     } finally {
       cleanupRoot(root, container);
     }

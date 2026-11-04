@@ -22,6 +22,7 @@ export abstract class BaseCollector<T = unknown> {
   protected enabled: boolean = false;
   protected paused: boolean = false;
   protected sampleRate: number = 100; // ms between samples (default)
+
   
   // Callbacks for emitting events
   private onEmitCallback?: (event: T) => void | Promise<void>;
@@ -107,6 +108,14 @@ export abstract class BaseCollector<T = unknown> {
   /**
    * Set the callback for real-time events (live streaming)
    */
+  /**
+   * Milliseconds between archival samples. Installation machines lower this so
+   * the screens read as live; ordinary browsing keeps the collector's default.
+   */
+  setSampleRate(rateMs: number): void {
+    this.sampleRate = Math.max(16, rateMs);
+  }
+
   setRealTimeCallback(callback: (data: T) => void): void {
     this.onRealTimeCallback = callback;
   }

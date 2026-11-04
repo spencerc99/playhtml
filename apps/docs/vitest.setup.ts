@@ -42,12 +42,23 @@ vi.mock("y-partyserver/provider", () => {
       awareness: any;
       private listeners: Record<string, Function[]> = {};
       private clientId: number = 1;
+      doc: any;
+      _updateHandler?: (update: Uint8Array, origin: unknown) => void;
 
-      constructor() {
+      constructor(_host: string, _room: string, doc?: any) {
         this.ws = {
           send: vi.fn(),
           addEventListener: vi.fn(),
         } as any;
+        // Mirrors y-partyserver's provider: local doc updates are sent through
+        // `_updateHandler`, which skips updates the provider itself applied.
+        this.doc = doc;
+        if (doc && typeof doc.on === "function") {
+          this._updateHandler = (update, origin) => {
+            if (origin !== this) this.ws?.send(update as any);
+          };
+          doc.on("update", this._updateHandler);
+        }
         const states = new Map<number, any>();
         const local = { state: {} as any };
         this.awareness = {
@@ -77,6 +88,9 @@ vi.mock("y-partyserver/provider", () => {
       }
 
       destroy() {
+        if (this.doc && this._updateHandler) {
+          this.doc.off("update", this._updateHandler);
+        }
         this.listeners = {};
       }
     },

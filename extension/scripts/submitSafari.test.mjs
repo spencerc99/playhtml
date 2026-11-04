@@ -16,6 +16,8 @@ test("packages only the macOS Safari app", async () => {
   );
   expect(script).toContain("s/${GENERATED_APP_BUNDLE_ID}/${SAFARI_BUNDLE_ID}/g");
   expect(script).toContain("public.app-category.lifestyle");
+  expect(script).toContain("plutil -insert ITSAppUsesNonExemptEncryption");
+  expect(script).toContain("-bool NO");
   expect(script).toContain('"MACOSX_DEPLOYMENT_TARGET=${MACOS_DEPLOYMENT_TARGET}"');
   expect(script).toContain('if [ -n "${APPLE_TEAM_ID:-}" ]; then');
   expect(script).toContain("SIGNING_CONFIGURATION_COUNT");
@@ -34,8 +36,12 @@ test("uses the App Store version independently from other extension stores", asy
     readFile(path.join(process.cwd(), "../.github/workflows/extension-release.yml"), "utf8"),
   ]);
 
-  expect(script).toContain('VERSION="${VERSION:-1.0}"');
-  expect(releaseScript).toContain('SAFARI_VERSION="${SAFARI_VERSION:-1.0}"');
+  expect(script).toContain(': "${VERSION:?VERSION is required for a Safari upload}"');
+  expect(releaseScript).toContain('SAFARI_VERSION=$(node scripts/safariRelease.mjs prepare)');
   expect(releaseScript).toContain('VERSION="$SAFARI_VERSION" scripts/submitSafari.sh');
-  expect(workflow).toContain("VERSION: ${{ vars.SAFARI_VERSION || '1.0' }}");
+  expect(releaseScript).toContain('VERSION="$SAFARI_VERSION" node scripts/safariRelease.mjs complete');
+  expect(workflow).toContain("VERSION: ${{ steps.safari-version.outputs.version }}");
+  expect(workflow).toContain("run: node scripts/safariRelease.mjs complete");
+  expect(workflow).toContain("review-safari-build:");
+  expect(workflow).toContain("env.REVIEW_SAFARI_BUILD == ''");
 });

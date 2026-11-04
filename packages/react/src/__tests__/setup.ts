@@ -31,6 +31,18 @@ function notifyUsersChange() {
   for (const cb of usersChangeListeners) cb(snapshot);
 }
 
+// Mutable so tests can simulate an identity change (e.g. the extension
+// injecting identity post-sync) and assert usePresence().myIdentity updates.
+const mockPlayerIdentity = {
+  publicKey: "me",
+  name: "Me" as string | undefined,
+  playerStyle: {
+    colorPalette: ["#fff"] as string[],
+    cursorStyle: undefined as string | undefined,
+  },
+  createdAt: undefined as number | undefined,
+};
+
 function mockGetAllUsers(): Array<Record<string, unknown>> {
   return [
     {
@@ -67,6 +79,60 @@ const mockUsers = {
     usersChangeListeners.add(callback);
     callback(mockGetAllUsers());
     return () => usersChangeListeners.delete(callback);
+  }),
+};
+
+// Mock people: the local person with a presence object, key-form writes, and
+// onChange(keys?, callback) that replays immediately and skips unchanged keys.
+let mockMyPresence: Record<string, unknown> = {};
+const peopleListeners = new Set<() => void>();
+
+function mockEveryone(): Array<Record<string, unknown>> {
+  return mockGetAllUsers().map((user) => ({
+    ...user,
+    presence: user.isMe ? { ...mockMyPresence } : {},
+  }));
+}
+
+const mockPeople = {
+  get everyone() {
+    return mockEveryone();
+  },
+  getAll: () => mockEveryone(),
+  get me() {
+    return mockEveryone()[0];
+  },
+  setMyPresence: vi.fn((key: string, value: unknown) => {
+    const next = { ...mockMyPresence };
+    if (value === null || value === undefined) delete next[key];
+    else next[key] = value;
+    mockMyPresence = next;
+    for (const listener of peopleListeners) listener();
+  }),
+  onChange: vi.fn((first: any, second?: any) => {
+    const callback = second ?? first;
+    const keys: string[] | null = second ? (typeof first === "string" ? [first] : first) : null;
+    let last: string | null = null;
+    const listener = () => {
+      const everyone = mockEveryone();
+      const watched = everyone.map((person: any) => [
+        person.pid,
+        person.name,
+        person.color,
+        keys ? keys.map((key) => person.presence[key] ?? null) : person.presence,
+      ]);
+      const fingerprint = JSON.stringify(watched);
+      if (fingerprint === last) return;
+      last = fingerprint;
+      callback(everyone);
+    };
+    peopleListeners.add(listener);
+    usersChangeListeners.add(listener);
+    listener();
+    return () => {
+      peopleListeners.delete(listener);
+      usersChangeListeners.delete(listener);
+    };
   }),
 };
 
@@ -155,9 +221,23 @@ const mockedPlayhtml = {
         return () => set!.delete(callback);
       },
     ),
-    getMyIdentity: vi.fn(() => ({ stableId: "me", name: "Me", color: "#fff" })),
+    getMyIdentity: vi.fn(() => ({
+      publicKey: mockPlayerIdentity.publicKey,
+      name: mockPlayerIdentity.name,
+      playerStyle: { ...mockPlayerIdentity.playerStyle },
+      createdAt: mockPlayerIdentity.createdAt,
+    })),
   },
   users: mockUsers,
+  people: mockPeople,
+  resetMockPeople: () => {
+    mockMyPresence = {};
+    peopleListeners.clear();
+  },
+  setMockPlayerIdentity: (next: Partial<typeof mockPlayerIdentity>) => {
+    Object.assign(mockPlayerIdentity, next);
+    notifyUsersChange();
+  },
   createPageData: vi.fn((_name: string, defaultValue: unknown) => {
     let data = defaultValue;
     const listeners = new Set<(d: unknown) => void>();

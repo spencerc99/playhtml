@@ -5,9 +5,18 @@
 const ALLOWED_ORIGINS = new Set([
   'https://wewere.online',
   'https://www.wewere.online',
+  // Event pages on playhtml.fun (e.g. the walking-together walk) draw
+  // walkers' live trails from /events/recent and /stream.
+  'https://playhtml.fun',
+  'https://www.playhtml.fun',
 ]);
 
-const WEBSITE_PAGES_HOST = 'we-were-online-website.pages.dev';
+/** Cloudflare Pages projects whose production and preview deployments may
+ * read the events API. */
+const PAGES_HOSTS = [
+  'we-were-online-website.pages.dev',
+  'playhtml.pages.dev',
+];
 
 /** Dev origins matched by host (any port). */
 const DEV_HOSTS = new Set(['localhost', '127.0.0.1']);
@@ -20,8 +29,9 @@ function originIsAllowed(origin: string): boolean {
     if (EXTENSION_PROTOCOLS.has(url.protocol) && url.hostname) return true;
     if (
       url.protocol === 'https:' &&
-      (url.hostname === WEBSITE_PAGES_HOST ||
-        url.hostname.endsWith(`.${WEBSITE_PAGES_HOST}`))
+      PAGES_HOSTS.some(
+        (host) => url.hostname === host || url.hostname.endsWith(`.${host}`),
+      )
     ) {
       return true;
     }

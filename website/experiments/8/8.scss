@@ -290,23 +290,8 @@ body {
   }
 }
 
-.experiment-attribution {
-  margin: 0;
-  color: #666;
-  font-size: 0.7rem;
-  text-align: center;
-
-  a {
-    color: inherit;
-  }
-}
-
 @media (max-width: 620px) {
   .bottom-bar {
     gap: 0.75rem;
-  }
-
-  .experiment-attribution {
-    font-size: 0.6rem;
   }
 }

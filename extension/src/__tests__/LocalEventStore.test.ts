@@ -126,17 +126,22 @@ async function openVersion7Database(
   });
 }
 
-async function openVersion11Database(
+async function openScrapDatabase(
   seedEvents: CollectionEvent[],
+  version = 11,
 ): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = fakeIndexedDB.open(DB_NAME, 11);
+    const request = fakeIndexedDB.open(DB_NAME, version);
     request.onupgradeneeded = () => {
       const db = request.result;
       const eventStore = db.createObjectStore(STORE_NAME, { keyPath: "id" });
       eventStore.createIndex("ts", "ts", { unique: false });
       eventStore.createIndex("type", "type", { unique: false });
       eventStore.createIndex("uploadState", "uploadState", { unique: false });
+      if (version >= 12)
+        eventStore.createIndex("canonicalScrapKey", "canonicalScrapKey", {
+          unique: false,
+        });
       eventStore.createIndex("domain", "domain", { unique: false });
       eventStore.createIndex("normalizedUrl", "normalizedUrl", {
         unique: false,
@@ -503,7 +508,7 @@ describe("LocalEventStore aggregates", () => {
 
     const upgradedDatabase = await new Promise<IDBDatabase>(
       (resolve, reject) => {
-        const request = fakeIndexedDB.open(DB_NAME, 13);
+        const request = fakeIndexedDB.open(DB_NAME, 16);
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       },
@@ -615,6 +620,159 @@ describe("LocalEventStore aggregates", () => {
         lastVisit: 7_000,
       });
     }
+  });
+
+  it("stores batches of an import without counting them until the import finishes", async () => {
+    const store = createStore();
+    const focus = {
+      ...event("batch-focus", "navigation"),
+      ts: 1_000,
+      data: { event: "focus" },
+    };
+    const blur = {
+      ...event("batch-blur", "navigation"),
+      ts: 7_000,
+      data: { event: "blur" },
+    };
+
+    expect(await store.addImportedEventBatch([blur])).toHaveLength(1);
+    expect(await store.addImportedEventBatch([focus, blur])).toEqual([
+      expect.objectContaining({ id: "batch-focus" }),
+    ]);
+    expect(await store.getSessionStats("example.com")).toBeNull();
+
+    await store.rebuildStatsAfterImport();
+
+    expect(await store.getSessionStats("example.com")).toMatchObject({
+      totalTimeMs: 6_000,
+      sessionCount: 1,
+      eventsByType: { navigation: 2 },
+    });
+  });
+
+  it("counts a failed import's saved batches on the next start", async () => {
+    const firstDay = Date.parse("2026-07-20T12:00:00-04:00");
+    const secondDay = Date.parse("2026-07-21T12:00:00-04:00");
+    const store = createStore();
+    await store.getAllDomains();
+    await store.addImportedEventBatch([
+      {
+        ...event("partial-focus", "navigation"),
+        ts: firstDay,
+        data: { event: "focus" },
+      },
+      {
+        ...event("partial-blur", "navigation"),
+        ts: firstDay + 6_000,
+        data: { event: "blur" },
+      },
+    ]);
+    expect(await store.getSessionStats("example.com")).toBeNull();
+    (store as unknown as { db: IDBDatabase | null }).db?.close();
+
+    const restarted = createStore();
+    await restarted.addEvents([
+      {
+        ...event("live-event", "navigation"),
+        ts: secondDay,
+        data: { event: "focus" },
+      },
+    ]);
+    await waitForBackgroundDatabaseWork();
+
+    expect(await restarted.getSessionStats("example.com")).toMatchObject({
+      totalTimeMs: 6_000,
+      eventsByType: { navigation: 3 },
+      activeDayCount: 2,
+    });
+  });
+
+  it("counts live events recorded while the restart rebuild runs", async () => {
+    const firstDay = Date.parse("2026-07-20T12:00:00-04:00");
+    const secondDay = Date.parse("2026-07-21T12:00:00-04:00");
+    const thirdDay = Date.parse("2026-07-22T12:00:00-04:00");
+    const store = createStore();
+    await store.getAllDomains();
+    await store.addImportedEventBatch([
+      {
+        ...event("partial-focus", "navigation"),
+        ts: firstDay,
+        data: { event: "focus" },
+      },
+    ]);
+    (store as unknown as { db: IDBDatabase | null }).db?.close();
+
+    const restarted = createStore();
+    const internals = restarted as unknown as {
+      rebuildAggregateDays: () => Promise<void>;
+    };
+    const rebuildAggregateDays = internals.rebuildAggregateDays.bind(restarted);
+    let browsedDuringRebuild = false;
+    internals.rebuildAggregateDays = async () => {
+      if (!browsedDuringRebuild) {
+        browsedDuringRebuild = true;
+        await restarted.addEvents([
+          {
+            ...event("during-days-rebuild", "navigation"),
+            ts: thirdDay,
+            data: { event: "focus" },
+          },
+          {
+            ...event("first-visit-during-days-rebuild", "navigation"),
+            ts: thirdDay,
+            data: { event: "focus" },
+            domain: "new.example",
+            meta: {
+              ...event("first-visit-during-days-rebuild", "navigation").meta,
+              url: "https://new.example/page",
+            },
+          },
+        ]);
+      }
+      return rebuildAggregateDays();
+    };
+    await restarted.addEvents([
+      {
+        ...event("live-event", "navigation"),
+        ts: secondDay,
+        data: { event: "focus" },
+      },
+    ]);
+    await waitForBackgroundDatabaseWork();
+
+    expect(await restarted.getSessionStats("example.com")).toMatchObject({
+      eventsByType: { navigation: 3 },
+      activeDayCount: 3,
+    });
+    expect(await restarted.getSessionStats("new.example")).toMatchObject({
+      eventsByType: { navigation: 1 },
+      activeDayCount: 1,
+    });
+    expect(browsedDuringRebuild).toBe(true);
+  });
+
+  it("rebuilds on a retry that adds nothing when an earlier import stopped partway", async () => {
+    const store = createStore();
+    const focus = {
+      ...event("retry-focus", "navigation"),
+      ts: 1_000,
+      data: { event: "focus" },
+    };
+    const blur = {
+      ...event("retry-blur", "navigation"),
+      ts: 7_000,
+      data: { event: "blur" },
+    };
+
+    await store.addImportedEventBatch([focus, blur]);
+    expect(await store.addImportedEventBatch([focus, blur])).toEqual([]);
+
+    expect(await store.finishImport()).toBe(true);
+    expect(await store.getSessionStats("example.com")).toMatchObject({
+      totalTimeMs: 6_000,
+      eventsByType: { navigation: 2 },
+    });
+    expect(await store.finishImport()).toBe(false);
   });
 
   it("restores active-day counts after a bulk import rebuilds domain stats", async () => {
@@ -1257,17 +1415,19 @@ describe("LocalEventStore storage stats", () => {
       { ...event("cursor-1", "cursor"), ts: 100 },
       { ...event("cursor-2", "cursor"), ts: 200 },
       { ...event("keyboard-1", "keyboard"), ts: 300 },
+      { ...scrapEvent("scrap-1"), ts: 400 },
     ]);
 
     const stats = await store.getStorageStats();
 
     expect(stats).toMatchObject({
-      totalEvents: 3,
+      totalEvents: 4,
       oldestEvent: 100,
-      newestEvent: 300,
-      countsByType: { cursor: 2, keyboard: 1 },
+      newestEvent: 400,
+      countsByType: { cursor: 2, keyboard: 1, element: 1 },
     });
     expect(stats.estimatedSizeBytes).toBeGreaterThan(0);
+    expect(stats.estimatedSizeBytesByType.element).toBeGreaterThan(0);
   });
 });
 
@@ -1375,6 +1535,164 @@ describe("LocalEventStore pending uploads", () => {
     expect(events.map((storedEvent) => storedEvent.id)).toEqual([
       "scrap-last",
       "scrap-middle",
+    ]);
+  });
+
+  it("pages one event type by timestamp and id without skipping equal timestamps", async () => {
+    const store = createStore();
+    await store.addEvents([
+      { ...scrapEvent("a", "https://assets.example/a.png"), ts: 3_000 },
+      { ...scrapEvent("b", "https://assets.example/b.png"), ts: 3_000 },
+      { ...scrapEvent("c", "https://assets.example/c.png"), ts: 3_000 },
+      { ...buttonScrapEvent("d"), ts: 2_000 },
+      { ...scrapEvent("e", "https://assets.example/e.png"), ts: 1_000 },
+      { ...event("cursor", "cursor"), ts: 4_000 },
+    ]);
+
+    const first = await store.queryEventPage("element", 2);
+    const second = await store.queryEventPage("element", 2, first.nextCursor!);
+    const third = await store.queryEventPage("element", 2, second.nextCursor!);
+
+    expect(first.events.map(({ id }) => id)).toEqual(["c", "b"]);
+    expect(second.events.map(({ id }) => id)).toEqual(["a", "d"]);
+    expect(third.events.map(({ id }) => id)).toEqual(["e"]);
+    expect(third.nextCursor).toBeNull();
+    expect(
+      new Set(
+        [...first.events, ...second.events, ...third.events].map(
+          ({ id }) => id,
+        ),
+      ).size,
+    ).toBe(5);
+  });
+
+  it.each([1, 2, 3, 4])(
+    "finishes bounded pages of size %i without a spurious cursor",
+    async (limit) => {
+      const store = createStore();
+      await store.addEvents([
+        { ...scrapEvent("a", "https://assets.example/a.png"), ts: 3_000 },
+        { ...scrapEvent("b", "https://assets.example/b.png"), ts: 3_000 },
+        { ...scrapEvent("c", "https://assets.example/c.png"), ts: 3_000 },
+        { ...event("cursor", "cursor"), ts: 4_000 },
+      ]);
+      const ids: string[] = [];
+      let cursor: { ts: number; id: string } | undefined;
+      do {
+        const page = await store.queryEventPage("element", limit, cursor);
+        expect(page.events.length).toBeLessThanOrEqual(limit);
+        ids.push(...page.events.map(({ id }) => id));
+        cursor = page.nextCursor ?? undefined;
+        if (ids.length === 3) expect(page.nextCursor).toBeNull();
+      } while (cursor);
+      expect(ids).toEqual(["c", "b", "a"]);
+      expect(
+        await store.queryEventPage("element", limit, { ts: 3_000, id: "a" }),
+      ).toEqual({ events: [], nextCursor: null });
+    },
+  );
+
+  it("pages only the events inside a time range", async () => {
+    const store = createStore();
+    await store.addEvents([
+      { ...scrapEvent("after", "https://assets.example/after.png"), ts: 5_000 },
+      { ...scrapEvent("end-a", "https://assets.example/end-a.png"), ts: 4_000 },
+      { ...scrapEvent("end-b", "https://assets.example/end-b.png"), ts: 4_000 },
+      { ...buttonScrapEvent("middle"), ts: 3_000 },
+      { ...scrapEvent("start", "https://assets.example/start.png"), ts: 2_000 },
+      {
+        ...scrapEvent("before", "https://assets.example/before.png"),
+        ts: 1_000,
+      },
+      { ...event("cursor", "cursor"), ts: 3_000 },
+    ]);
+    const range = { startTs: 2_000, endTs: 4_000 };
+
+    const first = await store.queryEventPage("element", 3, undefined, range);
+    const second = await store.queryEventPage(
+      "element",
+      3,
+      first.nextCursor!,
+      range,
+    );
+
+    expect(first.events.map(({ id }) => id)).toEqual([
+      "end-b",
+      "end-a",
+      "middle",
+    ]);
+    expect(second.events.map(({ id }) => id)).toEqual(["start"]);
+    expect(second.nextCursor).toBeNull();
+    await expect(
+      store.queryEventPage("element", 3, undefined, {
+        startTs: 4_000,
+        endTs: 2_000,
+      }),
+    ).rejects.toThrow("Invalid event page time range");
+  });
+
+  it("deletes scrap events by id and leaves other events alone", async () => {
+    const store = createStore();
+    await store.addEvents([
+      scrapEvent("keep", "https://assets.example/keep.png"),
+      scrapEvent("drop", "https://assets.example/drop.png"),
+      buttonScrapEvent("drop-button"),
+      event("cursor", "cursor"),
+    ]);
+
+    const deleted = await store.deleteScrapEvents([
+      "drop",
+      "drop-button",
+      "cursor",
+      "missing",
+    ]);
+
+    expect(deleted).toBe(2);
+    const remaining = await store.queryEventPage("element", 10);
+    expect(remaining.events.map(({ id }) => id)).toEqual(["keep"]);
+    expect(await store.countEventsOfType("cursor")).toBe(1);
+  });
+
+  it("counts one event type without reading the others", async () => {
+    const store = createStore();
+    await store.addEvents([
+      scrapEvent("a", "https://assets.example/a.png"),
+      scrapEvent("b", "https://assets.example/b.png"),
+      buttonScrapEvent("c"),
+      event("cursor", "cursor"),
+    ]);
+
+    expect(await store.countEventsOfType("element")).toBe(3);
+    expect(await store.countEventsOfType("cursor")).toBe(1);
+    expect(await store.countEventsOfType("keyboard")).toBe(0);
+  });
+
+  it("upgrades version 14 history in place for indexed pages", async () => {
+    const database = await openScrapDatabase(
+      [
+        {
+          ...scrapEvent("earlier", "https://assets.example/earlier.png"),
+          ts: 1_000,
+        },
+        {
+          ...scrapEvent("later", "https://assets.example/later.png"),
+          ts: 2_000,
+        },
+      ],
+      14,
+    );
+    database.close();
+
+    const store = createStore();
+    const first = await store.queryEventPage("element", 1);
+    const second = await store.queryEventPage("element", 1, first.nextCursor!);
+
+    expect(first.events.map(({ id }) => id)).toEqual(["later"]);
+    expect(second.events.map(({ id }) => id)).toEqual(["earlier"]);
+    expect(second.nextCursor).toBeNull();
+    expect((await store.getAllEvents()).map(({ id }) => id).sort()).toEqual([
+      "earlier",
+      "later",
     ]);
   });
 
@@ -1505,6 +1823,124 @@ describe("LocalEventStore pending uploads", () => {
 });
 
 describe("LocalEventStore scrap deduplication", () => {
+  it("retains the same photo on distinct source pages but suppresses repeat visits", async () => {
+    const store = createStore();
+    const first = scrapEvent("first-place");
+    const second = {
+      ...scrapEvent("second-place"),
+      meta: { ...first.meta, url: "https://example.com/another?q=1" },
+    };
+    const third = {
+      ...scrapEvent("third-place"),
+      meta: { ...first.meta, url: "https://example.com/another?q=2" },
+    };
+    await store.addEvents([first, second, third]);
+    await store.addEvents([
+      {
+        ...second,
+        id: "repeat",
+        meta: { ...second.meta, url: `${second.meta.url}#section` },
+      },
+    ]);
+    expect(
+      (await store.queryByType("element")).map(({ id }) => id).sort(),
+    ).toEqual(["first-place", "second-place", "third-place"]);
+  });
+
+  it("keeps one encounter per source page and local calendar day", async () => {
+    const store = createStore();
+    const first = {
+      ...scrapEvent("day-one"),
+      ts: Date.parse("2026-09-16T23:30:00-07:00"),
+    };
+    first.meta = { ...first.meta, tz: "America/Los_Angeles" };
+    const repeat = {
+      ...first,
+      id: "same-day",
+      ts: Date.parse("2026-09-16T23:59:00-07:00"),
+    };
+    const nextDay = {
+      ...first,
+      id: "day-two",
+      ts: Date.parse("2026-09-17T00:01:00-07:00"),
+    };
+    await store.addEvents([first, repeat, nextDay]);
+    await store.addEvents([first, nextDay]);
+    expect(
+      (await store.queryByType("element")).map(({ id }) => id).sort(),
+    ).toEqual(["day-one", "day-two"]);
+    expect((await store.getGlobalStats())?.eventsByType.element).toBe(2);
+  });
+
+  it.each([12, 13])(
+    "migrates persisted image identities from version %i without fetching or removing encounters",
+    async (version) => {
+      const archived = {
+        ...scrapEvent("archived"),
+        canonicalScrapKey:
+          version === 12
+            ? "https://assets.example/image.png"
+            : JSON.stringify([
+                "https://assets.example/image.png",
+                "https://example.com/page",
+              ]),
+      };
+      const database = await openScrapDatabase([archived], version);
+      database.close();
+      const store = createStore();
+      await store.addEvents([
+        scrapEvent("repeat"),
+        {
+          ...scrapEvent("elsewhere"),
+          meta: { ...archived.meta, url: "https://other.example/photo" },
+        },
+      ]);
+      expect(
+        (await store.queryByType("element")).map(({ id }) => id).sort(),
+      ).toEqual(["archived", "elsewhere"]);
+      await store.ensureHistoricalStats();
+    },
+  );
+
+  it("updates fingerprints without dropping source records or changing counts", async () => {
+    const store = createStore();
+    await store.addEvents([
+      scrapEvent("a"),
+      scrapEvent("b", "https://assets.example/copy.png"),
+    ]);
+    expect(
+      await store.setImageContentHash(
+        "a",
+        "https://assets.example/image.png",
+        "a".repeat(64),
+      ),
+    ).toBe(true);
+    expect(
+      await store.setImageContentHash(
+        "missing",
+        "https://assets.example/image.png",
+        "a".repeat(64),
+      ),
+    ).toBe(false);
+    expect(
+      await store.setImageContentHash(
+        "b",
+        "https://wrong.example/image",
+        "a".repeat(64),
+      ),
+    ).toBe(false);
+    expect(await store.queryByType("element")).toHaveLength(2);
+    expect((await store.getGlobalStats())?.eventsByType.element).toBe(2);
+    const records = await store.queryByType("element");
+    expect(
+      (records.find(({ id }) => id === "a")?.data as { contentHash: string })
+        .contentHash,
+    ).toBe("a".repeat(64));
+    expect(records.find(({ id }) => id === "b")?.data).not.toHaveProperty(
+      "contentHash",
+    );
+  });
+
   it("stores one canonical scrap and counts only the accepted event", async () => {
     const store = createStore();
 
@@ -1575,7 +2011,7 @@ describe("LocalEventStore scrap deduplication", () => {
       "archived-duplicate",
       "https://assets.example/image.png?cache=2",
     );
-    const version11Database = await openVersion11Database([
+    const version11Database = await openScrapDatabase([
       archivedFirst,
       archivedDuplicate,
     ]);
@@ -1603,7 +2039,13 @@ describe("LocalEventStore scrap deduplication", () => {
       new Promise<number>((resolve, reject) => {
         const request = eventStore
           .index("canonicalScrapKey")
-          .count("https://assets.example/image.png");
+          .count(
+            JSON.stringify([
+              "https://assets.example/image.png",
+              "https://example.com/page",
+              "1969-12-31",
+            ]),
+          );
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       }),
@@ -1612,10 +2054,9 @@ describe("LocalEventStore scrap deduplication", () => {
 
   it("preserves upload state and canonical keys in a skipped version 8 upgrade", async () => {
     const archivedScrap = scrapEvent("archived");
-    const version8Database = await openVersion8Database(
-      { ...aggregate() },
-      [archivedScrap],
-    );
+    const version8Database = await openVersion8Database({ ...aggregate() }, [
+      archivedScrap,
+    ]);
     version8Database.close();
 
     const store = createStore();
@@ -1634,7 +2075,11 @@ describe("LocalEventStore scrap deduplication", () => {
       ),
     ).resolves.toMatchObject({
       uploadState: "pending",
-      canonicalScrapKey: "https://assets.example/image.png",
+      canonicalScrapKey: JSON.stringify([
+        "https://assets.example/image.png",
+        "https://example.com/page",
+        "1969-12-31",
+      ]),
     });
 
     await store.addEvents([

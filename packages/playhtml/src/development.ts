@@ -898,10 +898,7 @@ export function setupDevUI(
   function updateStatusCounts() {
     let clients = 1;
     try {
-      const provider = playhtml.cursorClient?.getProvider();
-      if (provider) {
-        clients = provider.awareness.getStates().size;
-      }
+      clients = playhtml.users.getAll().length;
     } catch {}
     clientCountNode.textContent = `${clients} client${clients !== 1 ? "s" : ""}`;
 

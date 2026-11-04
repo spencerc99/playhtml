@@ -24,11 +24,11 @@ export const ANNOUNCEMENTS: Announcement[] = [
     id: "scraps-2026-08",
     shippedAt: Date.parse("2026-08-16T00:00:00Z"),
     title: "internet scraps",
-    body: "the little things you pass while wandering - images, buttons, icons, cursors - now wash up on a shore of your own.",
+    body: "the things you come across while browsing—images, buttons, headings, etc—are now collected locally. Go back to see a snapshot of your browsing.",
     popupOnly: true,
     requiresFeature: "scraps",
     cta: {
-      label: "visit your shore →",
+      label: "view scraps →",
       extensionPath: "scraps.html",
     },
   },
