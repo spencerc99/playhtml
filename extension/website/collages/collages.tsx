@@ -221,10 +221,21 @@ function CollagesPage() {
       </nav>
 
       <header className="collage-board__header">
-        <h1 className="collage-board__heading">collages</h1>
-        <p className="collage-board__lede">
-          things people found online, pinned up together
-        </p>
+        <div className="collage-board__band">
+          <span className="collage-board__streak" aria-hidden="true" />
+          <h1 className="collage-board__heading">browsing collages</h1>
+        </div>
+        <div className="collage-board__shares" aria-hidden="true">
+          {Array.from({ length: SHARE_PILLS }, (_, i) => (
+            <span
+              key={i}
+              className="collage-board__share"
+              style={{ opacity: 1 - i * 0.11 }}
+            >
+              Share
+            </span>
+          ))}
+        </div>
         <div className="collage-board__note" aria-hidden="true">
           <img
             className="collage-board__tape"
@@ -232,7 +243,7 @@ function CollagesPage() {
             alt=""
             style={{ width: 92, left: 54, top: -14, transform: "rotate(5deg)" }}
           />
-          <span>every scrap still links back to where it was found</span>
+          <span>every scrap links back to where it was found</span>
         </div>
         <div className="collage-board__cta">
           <img
@@ -247,29 +258,11 @@ function CollagesPage() {
               transform: "rotate(-7deg)",
             }}
           />
-          <a href="/">pin up your own &#187;</a>
+          <a href="/">make your own &#187;</a>
         </div>
       </header>
 
-      <section className="collage-board__section" aria-labelledby="favorites">
-        <div className="collage-board__band">
-          <span className="collage-board__streak" aria-hidden="true" />
-          <h2 id="favorites" className="collage-board__favorites">
-            favorites
-          </h2>
-        </div>
-        <div className="collage-board__shares" aria-hidden="true">
-          {Array.from({ length: SHARE_PILLS }, (_, i) => (
-            <span
-              key={i}
-              className="collage-board__share"
-              style={{ opacity: 1 - i * 0.11 }}
-            >
-              Share
-            </span>
-          ))}
-        </div>
-
+      <section className="collage-board__section" aria-label="collages">
         {pinned === null ? (
           <p className="collage-board__status" role="status">
             pinning up the collages...
