@@ -32,7 +32,7 @@ const ASSUMED_TAG = { width: 120, height: 16 };
 const NEAR_ON_SCREEN = 48;
 
 /** Keeps a long page title to a length a slip of paper can carry. */
-function shortened(title: string, limit = 28): string {
+function shortened(title: string, limit = 32): string {
   const trimmed = title.trim();
   if (trimmed.length <= limit) return trimmed;
   return `${trimmed.slice(0, limit - 1)}…`;
@@ -49,8 +49,8 @@ export function OwnerLine({ owner }: { owner: PieceOwner }) {
 }
 
 /**
- * What a label says about a scrap, on one line: the site's icon, where it came
- * from and a short preview of the page's title.
+ * What a label says about a scrap, in two short lines: the site's icon and
+ * where it came from, then a short preview of the page's title.
  */
 export function ProvenanceLines({
   scrap,
@@ -77,9 +77,9 @@ export function ProvenanceLines({
             height={10}
           />
         )}
-        <span className="collage-peek__domain">{scrap.domain}</span>
-        {title && <span className="collage-peek__title">{title}</span>}
+        {scrap.domain}
       </span>
+      {title && <span className="collage-peek__title">{title}</span>}
     </>
   );
 }

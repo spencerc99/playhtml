@@ -72,7 +72,6 @@ export const COLLAGE_PEEK_STYLES = `
     display: flex;
     align-items: center;
     gap: 3px;
-    min-width: 0;
     white-space: nowrap;
   }
 
@@ -100,21 +99,13 @@ export const COLLAGE_PEEK_STYLES = `
     object-fit: contain;
   }
 
-  .collage-peek__domain {
-    flex: none;
-  }
-
-  /* A short preview of the page's title, after the site, in a quieter ink. */
+  /* A short preview of the page's title, under the site, in a quieter ink. */
   .collage-peek__title {
-    min-width: 0;
+    display: block;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--c-muted);
-  }
-
-  .collage-peek__title::before {
-    content: "\\00B7";
-    margin: 0 4px 0 1px;
   }
 
 `;
