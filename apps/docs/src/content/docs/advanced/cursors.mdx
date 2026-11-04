@@ -7,7 +7,7 @@ sidebar:
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-playhtml can track cursors out of the box. When enabled, visitors see each other's cursors live, along with their colors and names.
+Turn on cursors and everyone on the page sees each other's pointers move live, labeled with their names and colors.
 
 A cursor is part of a person's [presence](/docs/data/presence/): it's at `person.presence.cursor` on each person in `playhtml.people.everyone`. playhtml sets it for you, so you never write it yourself.
 
@@ -255,7 +255,7 @@ The [`website/fridge.tsx`](https://github.com/spencerc99/playhtml/blob/main/webs
 </PlayProvider>
 ```
 
-The transform itself (e.g. `translate(panX, panY) scale(scale)`) is applied however you like: inline `style.transform`, a CSS class, or a CSS variable. playhtml just reads it.
+The transform itself (e.g. `translate(panX, panY) scale(scale)`) is applied however you like: inline `style.transform`, a CSS class, or a CSS variable. playhtml only reads it.
 
 ## Reading everyone's cursors
 

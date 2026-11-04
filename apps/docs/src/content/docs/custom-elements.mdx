@@ -212,7 +212,13 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 
 #### Element presence
 
-Presence is each person's own value for this element: everyone can see it, only they can change it, and it's gone when they leave. `defaultPresence` is the starting value. `everyone` lists everyone with the element on screen (each with `pid`, `name`, `color`, `isMe`, and their `presence`), `me` is you, and `setMyPresence` sets your value. The same `update` function renders shared `data` and presence changes. See [people and presence](/docs/data/presence/#element-presence).
+Presence is each person's own value for this element. Everyone can see it, only they can change it, and it's gone when they leave.
+
+- `defaultPresence` is the starting value.
+- `everyone` is everyone with the element on screen, each with `pid`, `name`, `color`, `isMe`, and their `presence`.
+- `me` is you, and `setMyPresence` sets your value.
+
+The same `update` function renders both shared `data` and presence changes. See [people and presence](/docs/data/presence/#element-presence).
 
 ```html
 <div id="online"></div>
@@ -456,7 +462,7 @@ playhtml.register("chats", {
 
 ## React
 
-In React there's a single, declarative path: **`withSharedState`**. It wraps a component and hands it shared `data`, plus `everyone`, `me`, and `setMyPresence` for presence on the element. JSX re-renders on every data or presence change. There's no imperative `update` to hand-write and no separate view API — JSX _is_ the declarative view.
+In React, use **`withSharedState`**. It wraps a component and passes it shared `data`, plus `everyone`, `me`, and `setMyPresence` for presence on the element. The component re-renders on every data or presence change, so there's no `update` function or separate view API to write.
 
 ### A click counter
 

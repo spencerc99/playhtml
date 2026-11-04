@@ -9,7 +9,7 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 import DemoCodeLink from '@/components/DemoCodeLink.astro';
 import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
 
-People is **who's here right now, and what they're doing**. Everyone on the page (you included) shows up as a person with a saved name and color, plus their **presence**: small bits of live state like "typing", "hovering the lamp", or where their cursor is. Everyone can see a person's presence, only that person can change it, and it disappears when they leave, so someone who arrives later never sees it. Use it for "3 people here" counts, rosters, typing indicators, cursors, and showing who's using an element right now.
+People is **who's here right now, and what they're doing**. Everyone on the page, you included, is a person with a name and a color, which are saved and follow them from visit to visit. Each person also has **presence**: small bits of live state like "typing", "hovering the lamp", or where their cursor is. Everyone can see a person's presence, but only that person can change it, and it's gone when they leave. Use people for "3 people here" counts, rosters, typing indicators, cursors, and showing who's using an element right now.
 
 `playhtml.people` is everyone on the page right now. Each person looks like this:
 
@@ -23,8 +23,6 @@ People is **who's here right now, and what they're doing**. Everyone on the page
 }
 ```
 
-Presence is gone when someone leaves, but their name and color are saved and follow them from visit to visit (see [names and colors](#names-and-colors)).
-
 Presence lives in three places, and they all use the same names (`everyone`, `me`, `setMyPresence`):
 
 - **[On the page](#page-presence):** `playhtml.people`. One presence object per person, shared by everything on the page. [Cursors](#cursors) live here too, at `person.presence.cursor`.
@@ -33,11 +31,15 @@ Presence lives in three places, and they all use the same names (`everyone`, `me
 
 When you want something to stay after a refresh, use [saved data](/docs/concepts/). For one-off moments that don't change any state (a burst of confetti), use [events](/docs/data/events/).
 
-A tab left in the background counts as leaving after a couple of minutes: its presence drops out of everyone else's view, and comes back as soon as the tab is visible again. A cursor that stops moving fades out after about 30 seconds.
+A few things to know:
+
+- A tab left in the background counts as leaving after a couple of minutes. Its presence comes back as soon as the tab is visible again.
+- A cursor that stops moving fades out after about 30 seconds.
+- Tabs in the same browser share one identity and show up as one person. To test with two people, open the second copy in an incognito window or another browser profile.
 
 ## Names and colors
 
-Each person's `pid`, `name`, and `color` are saved: they follow a person from visit to visit, and they work whether or not cursors are enabled.
+Each person's `pid`, `name`, and `color` are saved, and they work whether or not cursors are on.
 
 - `pid` is a stable id for this person in this browser. Use it as a React `key` or to match someone across features.
 - `name` is whatever they've set, or `undefined`.
@@ -247,8 +249,6 @@ lamp.onEveryoneChange("hovering", (everyone) => {
 });
 ```
 
-Tabs in the same browser share one identity and appear as one person. To test with two people, open the second copy in an incognito window or another browser profile.
-
 ## Presence rooms
 
 Page presence covers everyone on the page. When you want presence **scoped to something other than the page** (a lobby, a document, a game table that several pages share), create a presence room. `room.people` has the same API as `playhtml.people`, except cursors, which stay on the page.
@@ -333,6 +333,4 @@ Earlier versions split this across `playhtml.users`, a channel-based `playhtml.p
 
 ## When to use data instead
 
-Presence is for the live sense of other people on the page. If you find yourself reaching for `localStorage` or a refresh-survivor, you want data, not presence.
-
-Not sure which one fits? The full decision table, covering element data, page data, presence, cursors, and events, is on [core concepts](/docs/concepts/#when-to-use-which-primitive). For the full API, see the [people and presence reference](/docs/reference/presence/).
+If the state should still be there after a reload, or for someone who arrives later, use data, not presence. The full decision table, covering element data, page data, presence, cursors, and events, is on [core concepts](/docs/concepts/#when-to-use-which-primitive). For the full API, see the [people and presence reference](/docs/reference/presence/).

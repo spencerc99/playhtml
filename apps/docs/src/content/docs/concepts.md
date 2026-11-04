@@ -8,9 +8,6 @@ sidebar:
 playhtml shares two things between everyone on a page: **the things on the page** (a lamp that's on, a hat that's been dragged, a vote count) and **the people looking at it** (who's here, what color they are, what they're doing right now). Everyone visiting the same url shares one room, so whatever you change shows up for everyone else too.
 
 ![A page running playhtml with four callouts: element data bound to a specific element, page data read by name anywhere on the page, people with their cursors and what they're doing right now, and one-off events. Element and page data are saved; people's presence and events are live only. Faded pages behind show that everyone on the same url shares one room.](/docs/how-playhtml-works-overview.png)
-
-Once you can tell which one you need, everything else is attribute and function names.
-
 ## Things on the page: shared data
 
 Shared data is saved. It survives reloads, and someone who opens the page tomorrow sees it.
@@ -33,14 +30,14 @@ Each element's data is stored under its `id`, so the element with the same `id` 
 - **`name` and `color`** are who someone is. They follow a person from visit to visit, and you set your own with `playhtml.people.me.name = "Ana"`.
 - **`presence`** is what someone is doing right now: typing, hovering the lamp, ready to start. Everyone can see it, only that person can set it, and it disappears when they leave.
 
-Presence comes in two places, and both use the same names:
+Presence lives on the page or on one element, and both use the same names:
 
 - **On the page:** `playhtml.people.setMyPresence("status", "typing")`, read from each person's `presence.status`. Cursors are page presence that playhtml fills in for you, at `person.presence.cursor`.
 - **On an element:** inside an element, `everyone`, `me`, and `setMyPresence` describe the people using that element and their presence on it. "Who's hovering this card" is element presence.
 
-See [people and presence](/docs/data/presence/) and [cursors](/docs/advanced/cursors/).
+For presence shared across several pages, use a [presence room](/docs/data/presence/#presence-rooms). See [people and presence](/docs/data/presence/) and [cursors](/docs/advanced/cursors/).
 
-## Events: moments
+## Events: one-off moments
 
 **Events** (`playhtml.dispatchPlayEvent`) are one-off broadcasts that change nothing: confetti, a chime, a notification. Whoever is here when it fires sees it; nobody else ever does. See [events](/docs/data/events/).
 
@@ -56,11 +53,9 @@ An element can hold three kinds of state, and they differ in who sees them and h
 
 A lamp's on/off is data. Who's hovering it is presence. Whether your settings panel is open is local data.
 
-Not sure which one you want? The [table below](#when-to-use-which-primitive) lays out the tradeoffs side by side.
-
 ## When to use which primitive
 
-playhtml has a few ways to move state between readers. Pick by **lifetime** first ("should this survive a reload?"), then by **scope** ("does this belong to one element, the whole page, or one person?").
+Pick by **lifetime** first ("should this survive a reload?"), then by **scope** ("does this belong to one element, the whole page, or one person?").
 
 | Want | Use | Survives reload | Scope |
 |---|---|---|---|
