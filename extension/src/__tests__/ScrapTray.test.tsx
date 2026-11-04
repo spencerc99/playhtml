@@ -92,7 +92,7 @@ describe("ScrapTray filters", () => {
 
     act(() => slot.focus());
     expect(label()!.textContent).toContain("spencer.place");
-    expect(label()!.textContent).toContain("Notes");
+    expect(label()!.textContent).not.toContain("Notes");
     expect(label()!.textContent).not.toContain("first seen");
 
     act(() => slot.blur());

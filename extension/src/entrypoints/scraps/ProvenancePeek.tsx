@@ -31,13 +31,6 @@ const ASSUMED_TAG = { width: 120, height: 16 };
 /** How close two pieces sit on screen before their tints must differ. */
 const NEAR_ON_SCREEN = 48;
 
-/** Keeps a long page title to a length a slip of paper can carry. */
-function shortened(title: string, limit = 32): string {
-  const trimmed = title.trim();
-  if (trimmed.length <= limit) return trimmed;
-  return `${trimmed.slice(0, limit - 1)}…`;
-}
-
 /** Who added a scrap, leading its label in their cursor's color. */
 export function OwnerLine({ owner }: { owner: PieceOwner }) {
   return (
@@ -49,8 +42,7 @@ export function OwnerLine({ owner }: { owner: PieceOwner }) {
 }
 
 /**
- * What a label says about a scrap, in two short lines: the site's icon and
- * where it came from, then a short preview of the page's title.
+ * What a label says about a scrap: the site's icon and where it came from.
  */
 export function ProvenanceLines({
   scrap,
@@ -63,7 +55,6 @@ export function ProvenanceLines({
   // Favicons are stored data like any other URL, so only a plain web address
   // is ever loaded.
   const favicon = scrap.faviconUrl ? webPageHref(scrap.faviconUrl) : null;
-  const title = shortened(scrap.pageTitle ?? "");
   return (
     <>
       {owner && <OwnerLine owner={owner} />}
@@ -77,9 +68,8 @@ export function ProvenanceLines({
             height={10}
           />
         )}
-        {scrap.domain}
+        <span className="collage-peek__site">{scrap.domain}</span>
       </span>
-      {title && <span className="collage-peek__title">{title}</span>}
     </>
   );
 }
