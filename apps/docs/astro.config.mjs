@@ -102,7 +102,7 @@ export default defineConfig({
       //   Examples     → examples index (top-level link, above the path)
       //   Start        → getting-started, concepts
       //   Building blocks → capabilities, custom-elements,
-      //                     presence (people), page-data, events
+      //                     presence (people), events, page-data
       //   Advanced     → autogenerate (advanced/)
       //   Integrations → autogenerate (integrations/)
       //   Reference    → autogenerate (reference/)
@@ -142,8 +142,8 @@ export default defineConfig({
             { label: "Built-in elements", slug: "capabilities" },
             { label: "Custom elements", slug: "custom-elements" },
             { label: "People and presence", slug: "data/presence" },
-            { label: "Page-level data", slug: "data/page-data" },
             { label: "Events", slug: "data/events" },
+            { label: "Page-level data", slug: "data/page-data" },
             // These two live under advanced/ (URLs unchanged) but are useful
             // to everyone, so they're listed here and hidden from the
             // Advanced autogenerate with `sidebar.hidden` in frontmatter.

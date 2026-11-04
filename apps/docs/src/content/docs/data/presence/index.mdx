@@ -2,14 +2,16 @@
 title: "People and presence"
 description: "Who's here, and what each person is doing right now: on the page, on an element, or in a room."
 sidebar:
-  order: 3
+  order: 2
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 import DemoCodeLink from '@/components/DemoCodeLink.astro';
 import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicatorDemo";
 
-`playhtml.people` is everyone on the page right now, including you. Each person carries who they are and what they're doing:
+People is **who's here right now, and what they're doing**. Everyone on the page (you included) shows up as a person with a saved name and color, plus their **presence**: small bits of live state like "typing", "hovering the lamp", or where their cursor is. Everyone can see a person's presence, only that person can change it, and it disappears when they leave, so someone who arrives later never sees it. Use it for "3 people here" counts, rosters, typing indicators, cursors, and showing who's using an element right now.
+
+`playhtml.people` is everyone on the page right now. Each person looks like this:
 
 ```js
 {
@@ -21,7 +23,7 @@ import { OnlineIndicatorDemo } from "@/components/react/data-demos/OnlineIndicat
 }
 ```
 
-**Presence** is per-person state that only exists while someone is here: "Ana is typing", "Sam is hovering the lamp", "Jo's cursor is here". Everyone can see it, only that person can change it, and when they leave it's gone. Someone who arrives later never sees it. A person's name and color, on the other hand, are saved and follow them from visit to visit (see [names and colors](#names-and-colors)).
+Presence is gone when someone leaves, but their name and color are saved and follow them from visit to visit (see [names and colors](#names-and-colors)).
 
 Presence lives in three places, and they all use the same names (`everyone`, `me`, `setMyPresence`):
 
