@@ -1,0 +1,63 @@
+---
+title: "Custom cursors"
+description: "Draw everyone else's cursor as an emoji in their color with onCustomCursorRender."
+sidebar:
+  hidden: true
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { customCursorsRecipe } from "@/components/playground/recipes/custom-cursors";
+
+Everyone else's cursor shows up as an emoji in a ring of their color. Each
+person gets the same emoji on every screen. Open this page in a second window
+to see it.
+
+<RecipeExample recipe={customCursorsRecipe} client:load />
+
+<RecipeCodeTabs recipe={customCursorsRecipe} />
+
+## Draw the cursor
+
+Pass `onCustomCursorRender` with your cursor options. playhtml calls it once
+per person with their `pid` and an empty element. Fill the element and return
+it. playhtml positions it and adds the name tag:
+
+```js
+function renderCursor(pid, element) {
+  const person = playhtml.people.everyone.find((p) => p.pid === pid);
+  const critter = document.createElement("div");
+  critter.className = "critter";
+  critter.textContent = critterFor(pid);
+  critter.style.setProperty("--color", person?.color ?? "#1c1c1c");
+  element.replaceChildren(critter);
+  return element;
+}
+
+await playhtml.init({
+  cursors: { enabled: true, onCustomCursorRender: renderCursor },
+});
+```
+
+Return `null` to keep the default arrow for someone.
+
+## Your own pointer
+
+`onCustomCursorRender` only draws other people. To show your own pointer the
+same way, set a CSS cursor image on the page after init:
+
+```js
+const me = playhtml.people.me;
+document.body.style.cursor = critterCursor(critterFor(me.pid), me.color);
+```
+
+`critterCursor` draws the emoji and ring into an SVG data URL. A CSS cursor
+moves with no lag, but it has to be an image, so it can't hold a live element.
+
+## Same emoji everywhere
+
+`critterFor` hashes the `pid` into an index, so a person keeps one emoji across
+every screen and every visit without saving anything.
+
+See [Cursors](/docs/advanced/cursors/#oncustomcursorrender) for the other
+cursor options.

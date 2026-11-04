@@ -1,0 +1,50 @@
+---
+title: "Shared page color"
+description: "Store one page-wide background color in a named page channel that any code can write."
+sidebar:
+  hidden: true
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { pageColorRecipe } from "@/components/playground/recipes/page-color";
+
+The page's background color is shared. Pick a swatch in either corner and the
+whole page changes color for everyone. The color is saved, so it's still there
+for the next visitor.
+
+<RecipeExample recipe={pageColorRecipe} client:load />
+
+<RecipeCodeTabs recipe={pageColorRecipe} />
+
+## The page owns the color
+
+The color doesn't belong to any element, so it lives in a page data channel
+named `"page-color"`. Create it after `playhtml.init` resolves. A channel can
+hold a plain value like a string:
+
+```js
+await playhtml.init();
+
+const pageColor = playhtml.createPageData("page-color", "#f4efe5");
+```
+
+## Write from either corner
+
+The top and bottom swatches are separate elements. Both write the same
+channel by name, and one `onUpdate` paints the page:
+
+```js
+swatch.addEventListener("click", () => {
+  pageColor.setData(swatch.dataset.color);
+});
+
+pageColor.onUpdate((color) => {
+  document.body.style.background = color;
+});
+```
+
+If two people pick at the same moment, the last pick wins. That's what you
+want for one color.
+
+See [Page-level data](/docs/data/page-data/) for the full channel API.

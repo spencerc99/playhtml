@@ -1911,6 +1911,14 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   line-height: 1.5;
 }
 
+/* Shared elements: the video of one lamp toggling on two sites. */
+.ph-shared-lamp-video {
+  display: block;
+  width: 100%;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+}
+
 .ph-online-indicator {
   display: flex;
   flex-direction: column;

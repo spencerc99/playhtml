@@ -17,6 +17,8 @@ type RecipeExampleProps = {
   recipe: ExampleRecipe;
   /** Bare embed for use inside a page's demo frame: no chrome, no background. */
   compact?: boolean;
+  /** Keep the recipe's own page background in compact mode, for recipes that paint the page. */
+  opaque?: boolean;
   frameHeight?: string;
 };
 
@@ -30,6 +32,7 @@ export function resolveExampleRoomId(url: URL): string {
 export function RecipeExample({
   recipe,
   compact = false,
+  opaque = false,
   frameHeight,
 }: RecipeExampleProps) {
   const iframeHostRef = useRef<HTMLDivElement | null>(null);
@@ -53,7 +56,7 @@ export function RecipeExample({
       playhtmlUrl,
       roomId,
       showDevPanel: false,
-      transparentBackground: compact,
+      transparentBackground: compact && !opaque,
     });
 
     iframeHostRef.current.replaceChildren(iframe);
@@ -61,7 +64,7 @@ export function RecipeExample({
     return () => {
       iframe.remove();
     };
-  }, [recipe, roomId, compact]);
+  }, [recipe, roomId, compact, opaque]);
 
   const playgroundHref = useMemo(() => {
     if (!roomId) return "/docs/play/";
