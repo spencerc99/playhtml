@@ -221,6 +221,19 @@ import {
   type StackMove,
 } from "./collageSounds";
 import { snapMove, type SnapGuide } from "./moveSnap";
+import {
+  cropOf,
+  cutoutOf,
+  endSession,
+  IDLE_SESSION,
+  studioModeOf,
+  transformOf,
+  turnedOver,
+  updateSession,
+  type CropState,
+  type ModalTransform,
+  type StudioSession,
+} from "./studioSession";
 import { frameExport } from "./frameExport";
 import {
   isEmptyChange,
@@ -361,24 +374,6 @@ type Gesture =
       /** Where both fingers were then, in frame units. */
       start: FingerPair;
     };
-
-/** A rotate or scale driven by pointer movement with no button held. */
-type ModalTransform = {
-  kind: "rotate" | "scale";
-  /** The pieces in hand as they were when the transform began, for cancelling back. */
-  before: readonly CollagePiece[];
-  /** What the pieces turn or grow about: the piece's center or the group's. */
-  center: Point;
-  anchor: Point;
-  readout: string;
-};
-
-type CropState = {
-  pieceId: string;
-  crop: CropFraction;
-  /** The crop the piece had on entry, restored when the session is cancelled. */
-  before: CropFraction;
-};
 
 const SNAP_LEARNED_KEY = "wwo-collage-snap-learned";
 
@@ -535,8 +530,36 @@ export function CollageStudio({
   const mat = sheet ? 0 : phone ? PHONE_MAT : MAT;
   const matCaption = sheet ? 0 : phone ? PHONE_MAT_CAPTION : MAT_CAPTION;
   const topBand = sheet ? STAGE_PADDING : STAGE_TOP_BAND;
-  /** Whether the collage is turned over to its back, where the sources are. */
-  const [over, setOver] = useState(false);
+  /**
+   * The one session the studio is in: a crop, a cutout, a modal rotate or
+   * scale, or the collage turned over to its back, where the sources are.
+   * Holding them as one value means starting one always ends the last.
+   */
+  const [session, setSession] = useState<StudioSession>(IDLE_SESSION);
+  const over = session.kind === "back";
+  const crop = cropOf(session);
+  const transform = transformOf(session);
+  const cutoutSession = cutoutOf(session);
+  const mode: StudioMode = studioModeOf(session);
+  /** Moves the running crop's edges; does nothing once the crop has ended. */
+  const setCrop = useCallback(
+    (next: CropState) =>
+      setSession((current) => updateSession(current, { kind: "crop", crop: next })),
+    [],
+  );
+  /** Updates the running transform; does nothing once it has ended. */
+  const setTransform = useCallback(
+    (next: ModalTransform) =>
+      setSession((current) =>
+        updateSession(current, { kind: "transform", transform: next }),
+      ),
+    [],
+  );
+  const endRunning = useCallback(
+    (kind: StudioSession["kind"]) =>
+      setSession((current) => endSession(current, kind)),
+    [],
+  );
   const [backLook, setBackLook] = useState<BackLook>(BACK_LOOK);
   /** The front as the back shows it through the paper. */
   const [bleed, setBleed] = useState<Blob | null>(null);
@@ -556,16 +579,6 @@ export function CollageStudio({
     [],
   );
 
-  const [crop, setCrop] = useState<CropState | null>(null);
-  const [transform, setTransform] = useState<ModalTransform | null>(null);
-  /**
-   * The picture whose cutout edge is being tuned, and the cutout it had when
-   * the control opened, restored if the session is cancelled.
-   */
-  const [cutoutSession, setCutoutSession] = useState<{
-    pieceId: string;
-    before: PieceCutout | undefined;
-  } | null>(null);
   const [gesture, setGesture] = useState<Gesture>({ kind: "idle" });
   /** What the slip above the selected piece says while a gesture runs. */
   const [gestureReadout, setGestureReadout] = useState<string | null>(null);
@@ -734,16 +747,6 @@ export function CollageStudio({
     flush();
   }, [publication?.id, flush, shared]);
 
-  const mode: StudioMode = over
-    ? "back"
-    : crop
-    ? "crop"
-    : transform
-      ? transform.kind
-      : cutoutSession
-        ? "cutout"
-        : "idle";
-
   // A shared collage trades edits with everyone else. Pieces this person is
   // dragging, turning, scaling or cutting out go out as a draft others can
   // watch, and are written once the edit settles. Everyone else's writes fold
@@ -864,10 +867,7 @@ export function CollageStudio({
   // One decision picks the floating panel on screen, so a tool's own controls
   // can never be covered by the piece strip or the stack menu.
   const panelState: PanelState = {
-    turnedOver: over,
-    cropping: crop !== null,
-    transforming: transform !== null,
-    cuttingOut: cutoutSession !== null,
+    mode,
     piecesHereOpen: hereStack.length > 0,
     gestureRunning: gesture.kind !== "idle",
     peekHeld: (peek.held || sourcesOn) && !over,
@@ -880,10 +880,10 @@ export function CollageStudio({
   // hand, however that happened, the session is over and keeps what it made.
   useEffect(() => {
     if (cutoutSession && cutoutSession.pieceId !== selectedId) {
-      setCutoutSession(null);
+      endRunning("cutout");
       setHistory((current) => endRun(current));
     }
-  }, [cutoutSession, selectedId]);
+  }, [cutoutSession, endRunning, selectedId]);
 
   /** Commits an arrangement, coalescing a continuous run into one undo step. */
   const commit = useCallback(
@@ -1100,12 +1100,20 @@ export function CollageStudio({
     if (removable.length === 0) return;
     commit(removePieces(pieces, removable));
     setSelection(EMPTY_SELECTION);
-    setCrop(null);
+    endRunning("crop");
     sound(
       "delete",
       selectedPieces.filter((piece) => removable.includes(piece.id)),
     );
-  }, [commit, pieces, selectedPieces, selection, shared?.removalRefusal, sound]);
+  }, [
+    commit,
+    endRunning,
+    pieces,
+    selectedPieces,
+    selection,
+    shared?.removalRefusal,
+    sound,
+  ]);
 
   /**
    * Lays copies of the given pieces on top of the stack and takes them in
@@ -1187,16 +1195,6 @@ export function CollageStudio({
     [commit, pieces, selectedPieces, selection, sound],
   );
 
-  const enterCrop = useCallback(() => {
-    if (!selected) return;
-    setTransform(null);
-    setCrop({
-      pieceId: selected.id,
-      crop: cropSessionStart(selected),
-      before: selected.crop,
-    });
-  }, [selected]);
-
   /**
    * Commits the crop session. The piece keeps its place because the crop
    * composes onto the source and the box is re-anchored about the rotation.
@@ -1208,10 +1206,10 @@ export function CollageStudio({
       editPiece(crop.pieceId, (piece) => commitCropSession(piece, crop.crop));
       sound("crop", [target]);
     }
-    setCrop(null);
-  }, [crop, editPiece, pieces, sound]);
+    endRunning("crop");
+  }, [crop, editPiece, endRunning, pieces, sound]);
 
-  const cancelCrop = useCallback(() => setCrop(null), []);
+  const cancelCrop = useCallback(() => endRunning("crop"), [endRunning]);
 
   /**
    * Whether the running crop has changed the piece. The crop lives outside
@@ -1223,67 +1221,16 @@ export function CollageStudio({
     return Boolean(target && !sameCrop(target.crop, crop.crop));
   }, [crop, pieces]);
 
-  const beginTransform = useCallback(
-    (kind: "rotate" | "scale") => {
-      if (!selectionBox) return;
-      setCrop(null);
-      const center = boxCenter(selectionBox);
-      // Until the pointer moves, the transform reads from the selection's
-      // edge so a scale starts at exactly one. A group turns by how far the
-      // pointer goes round from where it was, so it starts where it stands.
-      const edge = { x: center.x + selectionBox.width / 2, y: center.y };
-      const pointer = lastPointerRef.current;
-      const anchor =
-        kind === "rotate" &&
-        multiple &&
-        pointer &&
-        Math.hypot(pointer.x - center.x, pointer.y - center.y) > 1
-          ? pointer
-          : edge;
-      if (kind === "rotate") sound("rotate", selectedPieces);
-      setTransform({
-        kind,
-        before: selectedPieces,
-        center,
-        anchor,
-        readout: kind === "rotate" ? "0 deg" : "100%",
-      });
-    },
-    [multiple, selectedPieces, selectionBox, sound],
-  );
-
   const confirmTransform = useCallback(() => {
-    setTransform(null);
+    endRunning("transform");
     setHistory((current) => endRun(current));
-  }, []);
+  }, [endRunning]);
 
   const cancelTransform = useCallback(() => {
     if (!transform) return;
     editPieces(transform.before, "transform");
-    setTransform(null);
-  }, [editPieces, transform]);
-
-  /**
-   * Opens the cutout's edge control on the selected picture, cutting its
-   * background away first if it still has one. The whole session, from the
-   * first cut through every change of edge, is one undo step.
-   */
-  const beginCutout = useCallback(() => {
-    if (!selected || selected.scrap.kind !== "image") return;
-    setCutoutSession({ pieceId: selected.id, before: selected.cutout });
-    if (!selected.cutout) {
-      sound("cutout", [selected]);
-      const cutout: PieceCutout = {
-        method: "edge-color",
-        tolerance: DEFAULT_CUTOUT_TOLERANCE,
-      };
-      editPiece(
-        selected.id,
-        (piece) => ({ ...piece, cutout }),
-        `cutout:${selected.id}`,
-      );
-    }
-  }, [editPiece, selected, sound]);
+    endRunning("transform");
+  }, [editPieces, endRunning, transform]);
 
   const reshapeCutout = useCallback(
     (change: (cutout: PieceCutout) => PieceCutout) => {
@@ -1309,9 +1256,9 @@ export function CollageStudio({
   );
 
   const confirmCutout = useCallback(() => {
-    setCutoutSession(null);
+    endRunning("cutout");
     setHistory((current) => endRun(current));
-  }, []);
+  }, [endRunning]);
 
   /** Puts the piece back the way it was when the edge control opened. */
   const cancelCutout = useCallback(() => {
@@ -1336,18 +1283,99 @@ export function CollageStudio({
   }, [confirmCutout, cutoutSession, editPiece]);
 
   /**
+   * Puts down whatever session is running, keeping what it made: a crop is
+   * committed, a cutout keeps its edge and a transform stays where it is.
+   * Every way into another session goes through here first.
+   */
+  const settleSession = useCallback(() => {
+    if (crop) commitCrop();
+    else if (cutoutSession) confirmCutout();
+    else if (transform) confirmTransform();
+  }, [commitCrop, confirmCutout, confirmTransform, crop, cutoutSession, transform]);
+
+  const enterCrop = useCallback(() => {
+    if (!selected) return;
+    settleSession();
+    setSession({
+      kind: "crop",
+      crop: {
+        pieceId: selected.id,
+        crop: cropSessionStart(selected),
+        before: selected.crop,
+      },
+    });
+  }, [selected, settleSession]);
+
+  const beginTransform = useCallback(
+    (kind: "rotate" | "scale") => {
+      if (!selectionBox) return;
+      settleSession();
+      const center = boxCenter(selectionBox);
+      // Until the pointer moves, the transform reads from the selection's
+      // edge so a scale starts at exactly one. A group turns by how far the
+      // pointer goes round from where it was, so it starts where it stands.
+      const edge = { x: center.x + selectionBox.width / 2, y: center.y };
+      const pointer = lastPointerRef.current;
+      const anchor =
+        kind === "rotate" &&
+        multiple &&
+        pointer &&
+        Math.hypot(pointer.x - center.x, pointer.y - center.y) > 1
+          ? pointer
+          : edge;
+      if (kind === "rotate") sound("rotate", selectedPieces);
+      setSession({
+        kind: "transform",
+        transform: {
+          kind,
+          before: selectedPieces,
+          center,
+          anchor,
+          readout: kind === "rotate" ? "0 deg" : "100%",
+        },
+      });
+    },
+    [multiple, selectedPieces, selectionBox, settleSession, sound],
+  );
+
+  /**
+   * Opens the cutout's edge control on the selected picture, cutting its
+   * background away first if it still has one. The whole session, from the
+   * first cut through every change of edge, is one undo step.
+   */
+  const beginCutout = useCallback(() => {
+    if (!selected || selected.scrap.kind !== "image") return;
+    settleSession();
+    setSession({
+      kind: "cutout",
+      cutout: { pieceId: selected.id, before: selected.cutout },
+    });
+    if (!selected.cutout) {
+      sound("cutout", [selected]);
+      const cutout: PieceCutout = {
+        method: "edge-color",
+        tolerance: DEFAULT_CUTOUT_TOLERANCE,
+      };
+      editPiece(
+        selected.id,
+        (piece) => ({ ...piece, cutout }),
+        `cutout:${selected.id}`,
+      );
+    }
+  }, [editPiece, selected, settleSession, sound]);
+
+  /**
    * Turns the collage over or face up again. Whatever was in hand is put
    * down first, so the back is only ever read and nothing is edited behind it.
    */
   const turnOver = useCallback(() => {
-    if (transform) confirmTransform();
-    if (crop) commitCrop();
+    settleSession();
     setSelection(EMPTY_SELECTION);
     setHoveredId(null);
     setHereMenu(null);
     setGesture({ kind: "idle" });
-    setOver((value) => !value);
-  }, [commitCrop, confirmTransform, crop, transform]);
+    setSession((current) => turnedOver(current));
+  }, [settleSession]);
 
   const backContent = useMemo<CollageBackContent>(
     () => ({
@@ -1519,20 +1547,9 @@ export function CollageStudio({
    * a drag stops where it is and no longer follows the pointer.
    */
   const finishRunning = useCallback(() => {
-    if (crop) commitCrop();
-    else if (cutoutSession) confirmCutout();
-    else if (transform) confirmTransform();
+    settleSession();
     if (gesture.kind !== "idle") endGesture();
-  }, [
-    commitCrop,
-    confirmCutout,
-    confirmTransform,
-    crop,
-    cutoutSession,
-    endGesture,
-    gesture.kind,
-    transform,
-  ]);
+  }, [endGesture, gesture.kind, settleSession]);
 
   /** Steps back or forward through the history, with a sound when it moves. */
   const stepHistory = useCallback(
@@ -2082,7 +2099,7 @@ export function CollageStudio({
     };
     (event.target as Element).setPointerCapture?.(event.pointerId);
     setSelection(plan.selectOnDown);
-    setCrop(null);
+    endRunning("crop");
     pressRef.current = {
       at,
       downAt: performance.now(),
