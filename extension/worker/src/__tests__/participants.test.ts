@@ -25,6 +25,11 @@ const ENV: Env = {
     limit: async () => ({ success: true }),
   } as Env['COMMUTE_BOARD_RATE_LIMITER'],
   WWO_ADMIN_DB: {} as D1Database,
+  INTERNET_MAP_BUNDLES: {} as R2Bucket,
+  SHARED_COLLAGES: {} as R2Bucket,
+  COLLAGE_SHARE_RATE_LIMITER: {
+    limit: async () => ({ success: true }),
+  },
 };
 
 function toBase64(bytes: ArrayBuffer): string {
