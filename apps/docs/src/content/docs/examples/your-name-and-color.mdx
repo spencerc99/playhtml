@@ -1,0 +1,43 @@
+---
+title: "Your name and color"
+description: "Show your saved name and color, and let readers change them for everyone."
+sidebar:
+  hidden: true
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { yourNameRecipe } from "@/components/playground/recipes/people-basics";
+
+Every reader has a name and a color that playhtml saves for them. This example shows yours and lets you change them. The change is saved for your next visit and shows up for everyone else on the page.
+
+<RecipeExample recipe={yourNameRecipe} client:load />
+
+<RecipeCodeTabs recipe={yourNameRecipe} />
+
+## Read yours
+
+`playhtml.people.me` is you. Read it once playhtml is ready, and use `onChange` to update when it changes:
+
+```js
+playhtml.ready.then(() => {
+  playhtml.people.onChange(() => {
+    render(playhtml.people.me.name ?? "anonymous", playhtml.people.me.color);
+  });
+});
+```
+
+In React, `usePeople().me` re-renders for you.
+
+## Change yours
+
+Set `me.name` or `me.color` from a user event. It saves and reaches everyone right away:
+
+```js
+playhtml.people.me.name = "Ana";
+playhtml.people.me.color = "#3b82f6";
+```
+
+Default colors are `hsl()` strings, and a color input only accepts hex, so the example converts with a small `toHex` helper.
+
+See [names and colors](/docs/data/presence/#names-and-colors) for the full API.
