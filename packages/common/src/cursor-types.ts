@@ -19,13 +19,15 @@ export type PlayerIdentity = {
 
 export const MAX_PLAYER_IDENTITY_COLORS = 16;
 export const MAX_PLAYER_IDENTITY_STRING_LENGTH = 512;
+/** Longest person name, in characters, after trimming. */
+export const MAX_PERSON_NAME_LENGTH = 32;
 
 const PLAYER_IDENTITY_CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 
 export type CursorZonePosition = {
-  zoneId: string;       // matches element.id of the zone element
-  relX: number;         // 0-1, percentage within zone element's bounding box
-  relY: number;         // 0-1
+  zoneId: string; // matches element.id of the zone element
+  relX: number; // 0-1, percentage within zone element's bounding box
+  relY: number; // 0-1
 };
 
 export type CursorPresence = {
@@ -85,8 +87,54 @@ export function playerIdentityToUser(
     color: toHexColor(identity.playerStyle?.colorPalette?.[0] ?? ""),
     isMe,
   };
-  if (identity.name !== undefined) user.name = identity.name;
+  const name = normalizePersonName(identity.name);
+  if (name !== undefined) user.name = name;
   return user;
+}
+
+/**
+ * Trims a person name and cuts it to MAX_PERSON_NAME_LENGTH characters
+ * (whole characters, so emoji aren't split). Blank or non-string names
+ * become undefined.
+ */
+export function normalizePersonName(name: unknown): string | undefined {
+  if (typeof name !== "string") return undefined;
+  const trimmed = name.trim();
+  if (!trimmed) return undefined;
+  const chars = Array.from(trimmed);
+  return chars.length > MAX_PERSON_NAME_LENGTH
+    ? chars.slice(0, MAX_PERSON_NAME_LENGTH).join("").trimEnd()
+    : trimmed;
+}
+
+// Valid CSS but not a color a person can have.
+const NON_PERSON_COLOR_KEYWORDS = new Set([
+  "inherit",
+  "initial",
+  "unset",
+  "revert",
+  "revert-layer",
+  "currentcolor",
+]);
+
+/**
+ * Returns true if `color` is a CSS color a person can use: hex, rgb(a),
+ * hsl(a), or anything else the browser accepts as a color (like "red" or
+ * "oklch(...)"). Wide keywords like "inherit" are rejected. Without a browser
+ * CSS engine, only hex/rgb/hsl and plain color words are accepted.
+ */
+export function isValidPersonColor(color: unknown): color is string {
+  if (typeof color !== "string") return false;
+  const value = color.trim().toLowerCase();
+  if (!value || value.length > MAX_PLAYER_IDENTITY_STRING_LENGTH) return false;
+  if (PLAYER_IDENTITY_CONTROL_CHARACTERS.test(value)) return false;
+  if (NON_PERSON_COLOR_KEYWORDS.has(value)) return false;
+  if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/.test(toHexColor(value))) return true;
+  const css = (
+    globalThis as { CSS?: { supports?: (p: string, v: string) => boolean } }
+  ).CSS;
+  if (typeof css?.supports === "function") return css.supports("color", value);
+  return /^[a-z]+$/.test(value);
 }
 
 /**
@@ -249,24 +297,20 @@ export function generatePlayerIdentity(): PlayerIdentity {
   };
 }
 
-/** Returns true if identity has a non-empty primary color. */
+/** Returns true if identity has a valid primary color. */
 function hasValidPrimaryColor(identity: PlayerIdentity): boolean {
-  const color = identity.playerStyle?.colorPalette?.[0];
-  return typeof color === "string" && color.length > 0;
+  return isValidPersonColor(identity.playerStyle?.colorPalette?.[0]);
 }
 
 export function savePlayerIdentityToStorage(identity: PlayerIdentity): void {
   try {
-    localStorage.setItem(
-      PLAYER_IDENTITY_STORAGE_KEY,
-      JSON.stringify(identity),
-    );
+    localStorage.setItem(PLAYER_IDENTITY_STORAGE_KEY, JSON.stringify(identity));
   } catch (e) {
     console.warn("Failed to save player identity to localStorage:", e);
   }
 }
 
-/** Ensures identity has a primary color, assigning one when missing. */
+/** Ensures identity has a valid primary color, assigning one when missing or invalid. */
 function ensurePrimaryColor(identity: PlayerIdentity): boolean {
   if (!hasValidPrimaryColor(identity)) {
     if (!identity.playerStyle) identity.playerStyle = { colorPalette: [] };

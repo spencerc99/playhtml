@@ -49,6 +49,8 @@ Each person's `pid`, `name`, and `color` are saved, and they work whether or not
 
 `people.me` is you. Setting `me.name` or `me.color` saves the change and shows it to everyone (and updates your cursor, if cursors are on).
 
+Names are trimmed and cut to 32 characters, and a blank name clears it. `me.color` takes any CSS color (`"#3b82f6"`, `"rgb(59 130 246 / 50%)"`, `"tomato"`); anything else throws an error and keeps the old color.
+
 These are the only "profile" properties that we have for each person currently that saves across visits. In the future, we might allow for customizing these (message us if you have suggestions or things you'd use it for!).
 
 <Tabs syncKey="framework">
