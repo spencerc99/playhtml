@@ -18,28 +18,50 @@ export * from "./presence-protocol";
  */
 export type ViewTemplate = unknown;
 
-/** One person's presence on an element or a page, paired with who they are. */
-export interface PresenceEntry<V = any> {
+/**
+ * A person: who they are (`pid`, `name`, `color`, `isMe`) plus what they're
+ * doing right now in this place (`presence`). On the page, `presence` holds
+ * page presence keys (and `cursor`, set by playhtml); on an element, it is
+ * that element's presence value.
+ */
+export interface Person<P = PagePresence> extends User {
+  presence: P;
+}
+
+/**
+ * @deprecated Element `everyone` entries are `Person`s. The `user` and `live`
+ * fields still work on them as hidden aliases.
+ */
+export interface ElementUser<V = any> {
   user: User;
-  presence: V;
-  /** @deprecated Use `presence`. */
   live: V;
 }
 
-/** @deprecated Use `PresenceEntry`. */
-export type ElementUser<V = any> = PresenceEntry<V>;
+/** An element's person entry: a `Person` that also answers the old `{ user, live }` shape. */
+export type ElementPerson<V = any> = Person<V> & {
+  /** @deprecated Read `pid`, `name`, `color`, `isMe` on the person directly. */
+  readonly user: User;
+  /** @deprecated Use `presence`. */
+  readonly live: V;
+};
+
+/**
+ * Sets your presence on an element: pass the whole value, or a function that
+ * edits a copy of your current value (like `setData`).
+ */
+export type ElementPresenceSetter<V> = (next: V | ((draft: V) => V | void)) => void;
 
 export interface ElementInitializer<T = any, U = any, V = any> {
   defaultData?: T | ((element: HTMLElement) => T);
   defaultLocalData?: U | ((element: HTMLElement) => U);
   /**
    * Your starting presence on this element: per-person state everyone can
-   * see, which disappears when you leave. Read it back as `myPresence`.
+   * see, which disappears when you leave. Read it back as `me.presence`.
    */
-  presence?: V | ((element: HTMLElement) => V);
-  /** @deprecated Use `presence`. */
+  defaultPresence?: V | ((element: HTMLElement) => V);
+  /** @deprecated Use `defaultPresence`. */
   live?: V | ((element: HTMLElement) => V);
-  /** @deprecated Use `presence`. */
+  /** @deprecated Use `defaultPresence`. */
   myDefaultAwareness?: V | ((element: HTMLElement) => V);
   /**
    * Imperative update path. Receives the current state and mutates the DOM.
@@ -114,19 +136,22 @@ export interface ElementData<T = any, U = any, V = any>
 export interface ElementEventHandlerData<T = any, U = any, V = any> {
   data: T;
   localData: U;
-  /** Your presence on this element. */
-  myPresence: V | undefined;
-  /** Everyone with this element on screen (including you), in join order. */
-  everyone: PresenceEntry<V>[];
-  /** @deprecated Use `myPresence`. */
+  /**
+   * Everyone with presence on this element (including you), in join order.
+   * Each person's `presence` is their value for this element.
+   */
+  everyone: ElementPerson<V>[];
+  /** You, with your presence on this element in `me.presence`. */
+  me: Person<V>;
+  /** @deprecated Use `me.presence`. */
   live: V | undefined;
   /** @deprecated Use `everyone`. */
-  users: PresenceEntry<V>[];
-  /** @deprecated Use `everyone.map(({ presence }) => presence)`. */
+  users: ElementPerson<V>[];
+  /** @deprecated Use `everyone.map((person) => person.presence)`. */
   awareness: V[];
   /** @deprecated Use `everyone`. */
   awarenessByStableId: Map<string, V>;
-  /** @deprecated Use `myPresence`. */
+  /** @deprecated Use `me.presence`. */
   myAwareness?: V;
   element: HTMLElement;
   /**
@@ -147,8 +172,11 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
   setData: (data: T | ((draft: T) => void)) => void;
   // TODO: should probably rename to "setTemporaryData" and use setLocalData to set indexeddb data
   setLocalData: (data: U | ((draft: U) => void)) => void;
-  /** Replaces your presence on this element. */
-  setMyPresence: (data: V) => void;
+  /**
+   * Sets your presence on this element. Pass the whole value, or a function
+   * that edits a copy of your current value: `setMyPresence((p) => { p.x = 1 })`.
+   */
+  setMyPresence: ElementPresenceSetter<V>;
   /** @deprecated Use `setMyPresence`. */
   setLive: (data: V) => void;
   /** @deprecated Use `setMyPresence`. */
@@ -168,18 +196,20 @@ export interface ElementAwarenessEventHandlerData<T = any, U = any, V = any>
 export interface ElementSetupData<T = any, U = any, V = any> {
   getData: () => T;
   getLocalData: () => U;
-  getMyPresence: () => V | undefined;
-  getEveryone: () => PresenceEntry<V>[];
-  /** @deprecated Use `getMyPresence`. */
+  /** Everyone with presence on this element right now (see `everyone`). */
+  getEveryone: () => ElementPerson<V>[];
+  /** You, with your current presence on this element. */
+  getMe: () => Person<V>;
+  /** @deprecated Use `getMe().presence`. */
   getLive: () => V | undefined;
   /** @deprecated Use `getEveryone`. */
-  getUsers: () => PresenceEntry<V>[];
+  getUsers: () => ElementPerson<V>[];
   /** @deprecated Use `getEveryone`. */
   getAwareness: () => V[];
   getElement: () => HTMLElement;
   setData: (data: T | ((draft: T) => void)) => void;
   setLocalData: (data: U | ((draft: U) => void)) => void;
-  setMyPresence: (data: V) => void;
+  setMyPresence: ElementPresenceSetter<V>;
   /** @deprecated Use `setMyPresence`. */
   setLive: (data: V) => void;
   /** @deprecated Use `setMyPresence`. */
@@ -434,7 +464,7 @@ export * from "./sharedElements";
 
 // Export cursor types
 export * from "./cursor-types";
-import type { Cursor, PlayerIdentity, User } from "./cursor-types";
+import type { Cursor, CursorZonePosition, PlayerIdentity, User } from "./cursor-types";
 
 export type PageDataSetter<T> = [T] extends [object]
   ? T | ((draft: T) => void)
@@ -447,7 +477,7 @@ export interface PageDataChannel<T> {
   destroy(): void;
 }
 
-/** @deprecated Use `PresenceEntry` from `playhtml.page.getEveryone()`. */
+/** @deprecated Use `playhtml.people.everyone` (a list of `Person`). */
 export type PresenceView<T extends Record<string, unknown> = Record<string, unknown>> = {
   /** Who this presence belongs to. */
   user?: User;
@@ -457,41 +487,71 @@ export type PresenceView<T extends Record<string, unknown> = Record<string, unkn
   isMe: boolean;
 } & T;
 
-/** A page's (or presence room's) presence: one object per person. */
-export type PagePresence = Record<string, unknown>;
+/**
+ * Where someone's cursor is, as `person.presence.cursor` on the page. Set by
+ * playhtml when cursors are on; you can't set it yourself.
+ */
+export type PersonCursor = Cursor & {
+  /** The cursor zone the pointer is in, if any. */
+  zone?: CursorZonePosition | null;
+  /** The page this cursor is on. */
+  page?: string;
+};
 
 /**
- * Presence on the page or a presence room. Each person has one presence
- * object; `setMyPresence` merges top-level keys into yours. Subscriptions take
- * what to watch first: nothing (the whole object), a key, or a selector.
+ * A person's presence on the page or in a presence room: one object per
+ * person, with any keys you set (`status`, `typing`, ...). On the page,
+ * `cursor` is set by playhtml when cursors are on.
  */
-export interface PresenceScope {
-  /** Everyone here (including you), in join order. */
-  getEveryone(): PresenceEntry<PagePresence>[];
-  /** Everyone here, with `presence` narrowed to one key. */
-  getEveryone<V = unknown>(key: string): PresenceEntry<V | undefined>[];
-  /**
-   * Merges top-level keys into your presence. `null` or `undefined` removes a
-   * key. Values inside a key replace. Meant for state changes, not per-frame
-   * streams: writes are rate limited (use cursors for pointer position).
-   */
-  setMyPresence(partial: PagePresence): void;
-  /** @deprecated Pass an object: `setMyPresence({ [channel]: data })`. */
-  setMyPresence(channel: string, data: unknown): void;
-  onPresenceChange(
-    callback: (everyone: PresenceEntry<PagePresence>[]) => void,
-  ): () => void;
-  onPresenceChange<V = unknown>(
-    key: string,
-    callback: (everyone: PresenceEntry<V | undefined>[]) => void,
-  ): () => void;
-  onPresenceChange<S>(
-    select: (presence: PagePresence) => S,
-    callback: (everyone: PresenceEntry<S>[]) => void,
-  ): () => void;
+export type PagePresence = Record<string, unknown> & {
+  cursor?: PersonCursor;
+};
+
+/** You, as `people.me`: a `Person` whose `name` and `color` you can set. */
+export interface Me extends Person<PagePresence> {
+  readonly pid: string;
+  /** Your name. Setting it saves it and shows it to everyone. */
+  name: string | undefined;
+  /** Your color. Setting it saves it and shows it to everyone. */
+  color: string;
+  readonly isMe: true;
+  /** Your current presence here (read-only; write with `setMyPresence`). */
+  readonly presence: PagePresence;
 }
 
-/** @deprecated Use `playhtml.page` (a `PresenceScope`). */
+/** What `people.onChange` watches: one presence key, or a list of keys. */
+export type PresenceKeys = string | readonly string[];
+
+/**
+ * The people on the page (`playhtml.people`) or in a presence room
+ * (`room.people`): who's here, who you are, and what everyone is doing.
+ */
+export interface People {
+  /** Everyone here (including you), in join order. */
+  readonly everyone: Person[];
+  /** You. Set `me.name` or `me.color` to change how others see you. */
+  readonly me: Me;
+  /** Same as `everyone`. */
+  getAll(): Person[];
+  /**
+   * Sets one key of your presence. `null` removes it. Meant for state
+   * changes, not per-frame streams: writes are rate limited.
+   */
+  setMyPresence(key: string, value: unknown): void;
+  /**
+   * Calls back with `everyone` now and whenever someone joins, leaves,
+   * changes name or color, or changes their presence. Cursor moves are
+   * skipped unless you watch `"cursor"`.
+   */
+  onChange(callback: (everyone: Person[]) => void): () => void;
+  /**
+   * Watches only some presence keys (plus joins, leaves, and name or color
+   * changes). Pass `"cursor"` to get cursor moves.
+   */
+  onChange(keys: PresenceKeys, callback: (everyone: Person[]) => void): () => void;
+}
+
+/** @deprecated Use `playhtml.people`. */
 export interface PresenceAPI {
   setMyPresence(channel: string, data: unknown): void;
   getPresences(): Map<string, PresenceView>;
@@ -499,12 +559,14 @@ export interface PresenceAPI {
     channel: string,
     callback: (presences: Map<string, PresenceView>) => void,
   ): () => void;
-  /** @deprecated Use `playhtml.users.me`. */
+  /** @deprecated Use `playhtml.people.me`. */
   getMyIdentity(): PlayerIdentity;
 }
 
-export interface PresenceRoom extends PresenceScope {
-  /** @deprecated Call `setMyPresence`, `getEveryone`, and `onPresenceChange` on the room itself. */
+export interface PresenceRoom {
+  /** The people in this room: the same API as `playhtml.people`, scoped to the room. */
+  people: People;
+  /** @deprecated Use `room.people`. */
   presence: PresenceAPI;
   destroy: () => void;
 }
@@ -878,7 +940,7 @@ export const TagTypeToElement: DefaultTagInitializers = {
   // so users don't need to manually rewrite their hover styles.
   [TagType.CanHover]: {
     defaultData: {},
-    presence: { hover: false },
+    defaultPresence: { hover: false },
     onMount: ({ getElement, setMyPresence }) => {
       const element = getElement();
       element.addEventListener("mouseenter", () => {
@@ -891,7 +953,7 @@ export const TagTypeToElement: DefaultTagInitializers = {
       });
     },
     update: ({ element, everyone }) => {
-      const anyHover = everyone.some(({ presence }) => presence?.hover);
+      const anyHover = everyone.some((person) => person.presence?.hover);
       if (anyHover) {
         element.setAttribute("data-playhtml-hover", "");
       } else {

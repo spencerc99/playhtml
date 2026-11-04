@@ -1,18 +1,17 @@
 // ABOUTME: Custom React hooks for playhtml functionality
-// ABOUTME: Cursor, presence, page-data, and presence-room hooks that safely no-op pre-sync
+// ABOUTME: People, cursor, page-data, and presence-room hooks that safely no-op pre-sync
 
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import type * as React from "react";
 import { PlayContext } from "./PlayProvider";
 import playhtml from "./playhtml-singleton";
 import {
-  CursorEntry,
   CursorPresenceView,
   PageDataChannel,
-  PagePresence,
-  PresenceEntry,
   PageDataSetter,
+  Person,
   PlayerIdentity,
+  PresenceKeys,
   PresenceRoom,
   PresenceView,
   User,
@@ -75,23 +74,9 @@ function isPresenceRoomNotReadyError(error: unknown): boolean {
 }
 
 /**
- * Everyone's cursors (`[{ user, cursor, zone, page }]`), the React form of
- * `playhtml.users.cursors`. Re-renders on every cursor move, so read it in the
- * component that draws cursors, not high in the tree. Empty when cursors are
- * disabled or before playhtml has synced.
- */
-export function useCursors(): CursorEntry[] {
-  const { isLoading } = useContext(PlayContext);
-  return usePlayhtmlSubscription<CursorEntry[]>(
-    isLoading,
-    () => [],
-    (setCursors) => playhtml.users.cursors.onChange(setCursors),
-    [],
-  );
-}
-
-/**
- * @deprecated Use `useCursors()`, which returns `[{ user, cursor, zone, page }]`.
+ * @deprecated Use `usePeople("cursor")` and read `person.presence.cursor`.
+ *
+ * Cursor presences from the playhtml context, as a Map of pid -> CursorPresenceView.
  */
 export function useCursorPresences(): Map<string, CursorPresenceView> {
   const { isLoading } = useContext(PlayContext);
@@ -133,8 +118,8 @@ export function useCursorZone(
 }
 
 /**
- * @deprecated Use `usePagePresence(key)`, which returns
- * `{ myPresence, everyone, setMyPresence }`, plus `useMe()` for your user.
+ * @deprecated Use `usePeople(key)`: read `person.presence[key]` on each person
+ * in `everyone`, and write with `setMyPresence(key, value)`.
  *
  * Subscribe to a presence channel. Safe to call before playhtml has initialized:
  * returns an empty map, a setter that warns and no-ops, and `null` identity
@@ -151,9 +136,6 @@ export function usePresence<
 ): {
   presences: SelectedPresences<Channel, Payload>;
   setMyPresence: (data: Payload) => void;
-  /** Your own user (`pid`, `name`, `color`, `isMe`). `null` until sync. */
-  me: User | null;
-  /** @deprecated Use `me`. */
   myIdentity: PlayerIdentity | null;
 } {
   const { isLoading } = useContext(PlayContext);
@@ -201,86 +183,7 @@ export function usePresence<
     return playhtml.users.onChange(readIdentity);
   }, [isLoading]);
 
-  const me = useMe();
-
-  return { presences, setMyPresence, me, myIdentity };
-}
-
-type PagePresenceResult<M, E, W> = {
-  /** Your own (selected) page presence. */
-  myPresence: M | undefined;
-  /** Everyone on the page (including you), in join order. */
-  everyone: PresenceEntry<E>[];
-  /** Writes your presence. Warns and no-ops before playhtml has synced. */
-  setMyPresence: (value: W) => void;
-};
-
-/**
- * Page presence: what each person on the page is doing right now. Re-renders
- * only when the part you watch changes.
- *
- * - `usePagePresence()` watches each person's whole presence object;
- *   `setMyPresence(partial)` merges top-level keys into yours.
- * - `usePagePresence("status")` watches one key; `setMyPresence(value)` writes
- *   just that key (`null` clears it).
- * - `usePagePresence((p) => p.status?.text)` watches a selection (read the
- *   rest with `setMyPresence(partial)`). The selector is read on each change, so
- *   it may close over props.
- */
-export function usePagePresence(): PagePresenceResult<
-  PagePresence,
-  PagePresence,
-  PagePresence
->;
-export function usePagePresence<V = unknown>(
-  key: string,
-): PagePresenceResult<V, V | undefined, V | null>;
-export function usePagePresence<S>(
-  select: (presence: PagePresence) => S,
-): PagePresenceResult<S, S, PagePresence>;
-export function usePagePresence(
-  keyOrSelect?: string | ((presence: PagePresence) => unknown),
-): PagePresenceResult<any, any, any> {
-  const { isLoading } = useContext(PlayContext);
-  const selectRef = useRef(keyOrSelect);
-  selectRef.current = keyOrSelect;
-  const key = typeof keyOrSelect === "string" ? keyOrSelect : undefined;
-  const hasSelector = typeof keyOrSelect === "function";
-
-  const everyone = usePlayhtmlSubscription<PresenceEntry<unknown>[]>(
-    isLoading,
-    () => [],
-    (setEveryone) => {
-      if (key !== undefined) {
-        return playhtml.page.onPresenceChange(key, setEveryone);
-      }
-      if (hasSelector) {
-        return playhtml.page.onPresenceChange(
-          (presence: PagePresence) =>
-            (selectRef.current as (presence: PagePresence) => unknown)(presence),
-          setEveryone,
-        );
-      }
-      return playhtml.page.onPresenceChange(setEveryone);
-    },
-    [key, hasSelector],
-  );
-
-  const setMyPresence = useCallback(
-    (value: unknown) => {
-      if (isLoading) {
-        warnPreInit("usePagePresence().setMyPresence");
-        return;
-      }
-      playhtml.page.setMyPresence(
-        key !== undefined ? { [key]: value } : (value as PagePresence),
-      );
-    },
-    [isLoading, key],
-  );
-
-  const myPresence = everyone.find(({ user }) => user.isMe)?.presence;
-  return { myPresence, everyone, setMyPresence };
+  return { presences, setMyPresence, myIdentity };
 }
 
 /**
@@ -395,6 +298,9 @@ const EMPTY_PLAYER_IDENTITY = {
 };
 
 /**
+ * @deprecated Use `usePeople().me` (`pid`, `name`, `color`). Set your name or
+ * color with `playhtml.people.me.name = "..."`.
+ *
  * Read the local player's identity — color, participant id (PID), and name —
  * from `playhtml.users`. Values update reactively:
  * `playhtml.users` notifies on any self identity change, including when the
@@ -404,7 +310,6 @@ const EMPTY_PLAYER_IDENTITY = {
  * Backed by the users module, so it works without `cursors: { enabled: true }`.
  * Returns empty/undefined values until playhtml has synced.
  */
-/** @deprecated Use `useMe()`, which returns the same fields as a `User`. */
 export function usePlayerIdentity(): {
   color: string;
   pid: string | undefined;
@@ -435,50 +340,9 @@ export function usePlayerIdentity(): {
   return identity;
 }
 
-function sameUser(a: User | null, b: User): boolean {
-  return (
-    a !== null &&
-    a.pid === b.pid &&
-    a.name === b.name &&
-    a.color === b.color
-  );
-}
-
 /**
- * Your own user (`pid`, `name`, `color`, `isMe: true`), the React form of
- * `playhtml.users.me`. Works without `cursors: { enabled: true }`. Returns
- * `null` until playhtml has synced. Write identity fields through
- * `playhtml.users.me`.
- */
-export function useMe(): User | null {
-  const { isLoading } = useContext(PlayContext);
-  const [me, setMe] = useState<User | null>(null);
-
-  useEffect(() => {
-    if (isLoading) {
-      setMe(null);
-      return;
-    }
-    const readMe = () => {
-      const self = playhtml.users.me;
-      const next: User = {
-        pid: self.pid,
-        name: self.name,
-        color: self.color,
-        isMe: true,
-      };
-      // users.onChange fires on every presence tick; only re-render when the
-      // identity itself changed.
-      setMe((prev) => (sameUser(prev, next) ? prev : next));
-    };
-    readMe();
-    return playhtml.users.onChange(readMe);
-  }, [isLoading]);
-
-  return me;
-}
-
-/**
+ * @deprecated Use `usePeople().everyone`, which also carries each person's presence.
+ *
  * Subscribe to all known users — the union of main-room awareness identities
  * and (when cursors are enabled) cursor-room identities. Self is always
  * present. Returns an empty array until playhtml has synced.
@@ -491,4 +355,56 @@ export function useUsers(): User[] {
     (setUsers) => playhtml.users.onChange(setUsers),
     [],
   );
+}
+
+const PRE_SYNC_ME: Person = { pid: "", color: "", isMe: true, presence: {} };
+
+/**
+ * The people on this page, the React form of `playhtml.people`:
+ *
+ * - `everyone`: each person (`pid`, `name`, `color`, `isMe`) with their page
+ *   `presence`, in join order.
+ * - `me`: you, from `everyone`.
+ * - `setMyPresence(key, value)`: sets one key of your presence (`null` clears it).
+ *
+ * Re-renders when someone joins, leaves, or changes name, color, or presence.
+ * Pass a key or a list of keys to re-render only when those keys change, and
+ * pass `"cursor"` to re-render on cursor moves (they're skipped otherwise).
+ *
+ * Before playhtml has synced, `everyone` is empty, `me` has an empty `pid`,
+ * and `setMyPresence` warns and does nothing. Set your name or color with
+ * `playhtml.people.me.name = "..."`.
+ */
+export function usePeople(keys?: PresenceKeys): {
+  everyone: Person[];
+  me: Person;
+  setMyPresence: (key: string, value: unknown) => void;
+} {
+  const { isLoading } = useContext(PlayContext);
+  const keysDependency =
+    keys === undefined ? "" : JSON.stringify(typeof keys === "string" ? [keys] : keys);
+
+  const everyone = usePlayhtmlSubscription<Person[]>(
+    isLoading,
+    () => [],
+    (setEveryone) =>
+      keys === undefined
+        ? playhtml.people.onChange(setEveryone)
+        : playhtml.people.onChange(keys, setEveryone),
+    [keysDependency],
+  );
+
+  const setMyPresence = useCallback(
+    (key: string, value: unknown) => {
+      if (isLoading) {
+        warnPreInit("usePeople().setMyPresence");
+        return;
+      }
+      playhtml.people.setMyPresence(key, value);
+    },
+    [isLoading],
+  );
+
+  const me = everyone.find((person) => person.isMe) ?? PRE_SYNC_ME;
+  return { everyone, me, setMyPresence };
 }

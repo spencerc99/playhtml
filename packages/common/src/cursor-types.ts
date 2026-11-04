@@ -55,15 +55,6 @@ export type CursorPresenceView = {
   page?: string;
 };
 
-/** One person's cursor, from `playhtml.users.cursors`. */
-export interface CursorEntry {
-  user: User;
-  cursor: Cursor | null;
-  zone?: CursorZonePosition | null;
-  /** The page this cursor is on. */
-  page?: string;
-}
-
 // Event payloads for cursor-related global API updates
 export interface CursorEvents {
   allColors: string[];
@@ -71,9 +62,8 @@ export interface CursorEvents {
   name: string | undefined;
 }
 
-// Flat view of a participant's durable identity, as returned by
-// playhtml.users.getAll() / playhtml.users.onChange(). `pid` is the stable
-// publicKey; `color` is playerStyle.colorPalette[0].
+// Who someone is: their stable `pid` (the identity publicKey), `name`, and
+// `color` (playerStyle.colorPalette[0]). A `Person` adds their `presence`.
 export type User = {
   pid: string;
   name?: string;

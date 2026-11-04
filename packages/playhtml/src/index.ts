@@ -21,7 +21,8 @@ import {
   deepReplaceIntoProxy,
   clonePlain,
   observeElementChanges,
-  type ElementUser,
+  type ElementPerson,
+  type Person,
 } from "@playhtml/common";
 import { listSharedElements as devListSharedElements } from "./shared-elements";
 import {
@@ -44,10 +45,10 @@ import { getPresencePage } from "./cursors/presence-page";
 import { createUsersAPI, defaultSeedIdentity } from "./users";
 import type { UsersAPI } from "./users";
 import type {
+  People,
   PresenceAPI,
-  PresenceEntry,
+  PresenceKeys,
   PresenceRoom,
-  PresenceScope,
 } from "@playhtml/common";
 import {
   findSharedElementsOnPage,
@@ -73,11 +74,7 @@ import {
 } from "./element-awareness";
 import { PresenceClient } from "./presence-client";
 import { PresenceFacade } from "./presence-facade";
-import {
-  createPresenceEntry,
-  createPresenceScope,
-  presenceFingerprint,
-} from "./presence-scope";
+import { createElementPerson, createPeople, presenceFingerprint } from "./people";
 import { safeInvoke } from "./presence-utils";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
 import { resolveRoomHost } from "./roomHost";
@@ -232,7 +229,7 @@ let currentCursorRoomId = "";
 // facade re-attaches active subscriptions to each new inner so references (and
 // onPresenceChange subscriptions) captured before navigation keep working.
 let presenceFacade: PresenceFacade | null = null;
-let pagePresenceScope: PresenceScope | null = null;
+let pagePeople: People | null = null;
 // Element presence subscribers (from handles), keyed by element id so they
 // survive the element binding late, unbinding, and rebinding.
 const elementPresenceListeners = new Map<string, Set<() => void>>();
@@ -251,8 +248,13 @@ function warnDeprecated(oldName: string, replacement: string): void {
   console.warn(`[playhtml] ${oldName} is deprecated. Use ${replacement} instead.`);
 }
 
-function getUserOrder(): string[] {
-  return usersAPI?.getAll().map((user) => user.pid) ?? [];
+function getSelfIdentity() {
+  if (!usersAPI) throw new Error("[playhtml] people are not available before init()");
+  return usersAPI.me;
+}
+
+function isDevMode(): boolean {
+  return configuredOptions?.developmentMode ?? false;
 }
 let usersAPI: UsersAPI | null = null;
 
@@ -1758,10 +1760,13 @@ async function initPlayHTMLOnce() {
   // object playhtml.presence returns survives room rebuilds.
   presenceFacade = new PresenceFacade(buildInnerPresenceAPI());
   const facade = presenceFacade;
-  pagePresenceScope = createPresenceScope({
+  pagePeople = createPeople({
     getSource: () => facade,
-    getUserOrder,
-    isDevMode: () => configuredOptions?.developmentMode ?? false,
+    getSelf: getSelfIdentity,
+    getUsers: () => usersAPI?.getAll() ?? [],
+    onUsersChange: (callback) => usersAPI?.onChange(() => callback()) ?? (() => {}),
+    getCursorPresences: () => cursorPresenceHub.getPresences(),
+    isDevMode,
   });
 
   // extraCapabilities and events were applied by applyConfig when config was
@@ -1951,7 +1956,7 @@ function createPlayElementData<T extends TagType, TData = any>(
       : ensureElementProxy<TData>(tag, elementId, initialData as TData);
   const publishedLive = getElementAwareness(tag, elementId);
   const configuredLive =
-    tagInfo.presence ?? tagInfo.live ?? tagInfo.myDefaultAwareness;
+    tagInfo.defaultPresence ?? tagInfo.live ?? tagInfo.myDefaultAwareness;
   const initialLive =
     publishedLive ??
     (configuredLive instanceof Function
@@ -1960,7 +1965,7 @@ function createPlayElementData<T extends TagType, TData = any>(
 
   const elementData: ElementData = {
     ...tagInfo,
-    presence: initialLive,
+    defaultPresence: initialLive,
     live: undefined,
     myDefaultAwareness: undefined,
     devMode: configuredOptions?.developmentMode ?? false,
@@ -2008,7 +2013,7 @@ function createPlayElementData<T extends TagType, TData = any>(
 function getElementUsers<V>(
   byStableId: Map<string, V>,
   selfLive: V | undefined,
-): ElementUser<V>[] {
+): ElementPerson<V>[] {
   if (!usersAPI || (byStableId.size === 0 && selfLive === undefined)) return [];
 
   const liveByUser = new Map(byStableId);
@@ -2016,13 +2021,26 @@ function getElementUsers<V>(
     liveByUser.set(usersAPI.me.pid, selfLive);
   }
 
-  const result: ElementUser<V>[] = [];
+  const result: ElementPerson<V>[] = [];
   for (const user of usersAPI.getAll()) {
     const presence = liveByUser.get(user.pid);
     if (presence === undefined) continue;
-    result.push(createPresenceEntry(user, presence));
+    result.push(createElementPerson(user, presence));
   }
   return result;
+}
+
+/** You on an element: your identity plus your presence there. */
+function getElementMe<V>(selfLive: V | undefined): Person<V> {
+  const self = usersAPI?.me;
+  const person = {
+    pid: self?.pid ?? "",
+    color: self?.color ?? "",
+    isMe: true,
+    presence: selfLive as V,
+  } as Person<V>;
+  if (self?.name !== undefined) person.name = self.name;
+  return person;
 }
 
 function isCorrectElementInitializer(
@@ -2050,7 +2068,7 @@ function getElementInitializerValidationIssues(
   const hasUpdateElement = typeof tagInfo.updateElement === "function";
   const hasView = typeof tagInfo.view === "function";
   const hasNormalUpdate = hasUpdate || hasUpdateElement || hasView;
-  const presenceDefaults = (["presence", "live", "myDefaultAwareness"] as const).filter(
+  const presenceDefaults = (["defaultPresence", "live", "myDefaultAwareness"] as const).filter(
     (key) => tagInfo[key] !== undefined,
   );
   const hasLive = presenceDefaults.some((key) => key !== "myDefaultAwareness");
@@ -2074,11 +2092,11 @@ function getElementInitializerValidationIssues(
   if (hasDefaultData && !hasNormalUpdate) {
     issues.push("defaultData requires update, updateElement, or view");
   } else if (!hasDefaultData && !hasLive && !hasMyDefaultAwareness && hasNormalUpdate) {
-    issues.push("update, updateElement, or view requires defaultData or presence");
+    issues.push("update, updateElement, or view requires defaultData or defaultPresence");
   }
 
   if (hasLive && !hasNormalUpdate) {
-    issues.push("presence requires update, updateElement, or view");
+    issues.push("defaultPresence requires update, updateElement, or view");
   }
 
   if (hasMyDefaultAwareness && !hasNormalUpdate && !hasUpdateElementAwareness) {
@@ -2102,7 +2120,7 @@ function getCustomElementProps(element: HTMLElement) {
   const keys: (keyof ElementInitializer)[] = [
     "defaultData",
     "defaultLocalData",
-    "presence",
+    "defaultPresence",
     "live",
     "myDefaultAwareness",
     "update",
@@ -2332,16 +2350,19 @@ function createPresenceRoom(name: string): PresenceRoom {
     getIdentity: resolveMyIdentity,
     getPage: getPresencePage,
   });
-  const scope = createPresenceScope({
+  const people = createPeople({
     getSource: () => presence,
-    getUserOrder,
-    isDevMode: () => configuredOptions?.developmentMode ?? false,
+    getSelf: getSelfIdentity,
+    isDevMode,
   });
 
   let destroyed = false;
   return {
-    ...scope,
-    presence,
+    people,
+    get presence() {
+      warnDeprecated("room.presence", "room.people");
+      return presence;
+    },
     destroy: () => {
       if (destroyed) return;
       destroyed = true;
@@ -2376,11 +2397,15 @@ export interface PlayHTMLComponents {
   registerPlayEventListener: typeof registerPlayEventListener;
   removePlayEventListener: typeof removePlayEventListener;
   cursorClient: CursorClientAwareness | null;
-  /** @deprecated Use `playhtml.page` for presence and `playhtml.users` for identity and cursors. */
+  /** @deprecated Use `playhtml.people`. */
   presence: PresenceAPI;
-  /** Page presence: what each person is doing right now. Available after init(). */
-  page: PresenceScope;
-  users: Pick<UsersAPI, "me" | "getAll" | "onChange" | "cursors">;
+  /**
+   * The people on this page: who's here (`everyone`), who you are (`me`), and
+   * what everyone is doing (`presence`, including cursors). Available after init().
+   */
+  people: People;
+  /** @deprecated Use `playhtml.people`. */
+  users: Pick<UsersAPI, "me" | "getAll" | "onChange">;
   createPageData: typeof createPageData;
   createPresenceRoom: typeof createPresenceRoom;
   // Debug / Dev helpers
@@ -2480,7 +2505,7 @@ export async function resetPlayHTML(): Promise<void> {
     __currentRoomId = "";
     __currentHost = "";
     presenceFacade = null;
-    pagePresenceScope = null;
+    pagePeople = null;
     // The facade is discarded here without unsubscribing its cursor-channel
     // subscriptions (unlike navigation, which re-attaches via setInner), so
     // clear the hub's subscriber set too — otherwise stale wrappers pointing at
@@ -2532,14 +2557,14 @@ export const playhtml: PlayHTMLComponents = {
     if (!presenceFacade) {
       throw new Error("playhtml.presence is not available before init()");
     }
-    warnDeprecated("playhtml.presence", "playhtml.page (presence) and playhtml.users (identity, cursors)");
+    warnDeprecated("playhtml.presence", "playhtml.people");
     return presenceFacade;
   },
-  get page() {
-    if (!pagePresenceScope) {
-      throw new Error("playhtml.page is not available before init()");
+  get people() {
+    if (!pagePeople) {
+      throw new Error("playhtml.people is not available before init()");
     }
-    return pagePresenceScope;
+    return pagePeople;
   },
   get users() {
     if (!usersAPI) {
@@ -2731,6 +2756,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
   } else {
     const handler = new ElementHandler(elementData, {
       getUsers: getElementUsers,
+      getMe: getElementMe,
       onPresenceChange: () => notifyElementPresenceListeners(elementId),
       ...(tag === TagType.CanMirror
         ? { scheduleSetupDataWrite: (write) => canMirrorDataQueue.queue(write) }
@@ -3081,20 +3107,29 @@ export interface PlayElementHandle<T = any, U = any, V = any> {
   getData(): T | undefined;
   setData(next: T | ((draft: T) => void)): void;
   setLocalData(next: U | ((draft: U) => void)): void;
-  /** Your presence on this element, or undefined until it binds. */
-  getMyPresence(): V | undefined;
-  /** Everyone with this element on screen (including you), in join order. */
-  getEveryone(): PresenceEntry<V>[];
-  /** Replaces your presence on this element. */
-  setMyPresence(next: V): void;
   /**
-   * Subscribes to presence on this element. Replays immediately, then fires
-   * only when the (selected) presence changes. Works before the element binds.
+   * Everyone with presence on this element (including you), in join order.
+   * Each person's `presence` is their value for this element. Empty until the
+   * element binds.
    */
-  onPresenceChange(callback: (everyone: PresenceEntry<V>[]) => void): () => void;
-  onPresenceChange<S>(
-    select: (presence: V) => S,
-    callback: (everyone: PresenceEntry<S>[]) => void,
+  readonly everyone: ElementPerson<V>[];
+  /** You, with your presence on this element in `me.presence` (undefined until it binds). */
+  readonly me: Person<V | undefined>;
+  /**
+   * Sets your presence on this element: the whole value, or a function that
+   * edits a copy of your current value (like `setData`).
+   */
+  setMyPresence(next: V | ((draft: V) => V | void)): void;
+  /**
+   * Calls back with `everyone` now and whenever someone's presence on this
+   * element changes, or someone joins or leaves it. Pass a key or a list of
+   * keys first to fire only when those keys change. Works before the element
+   * binds.
+   */
+  onEveryoneChange(callback: (everyone: ElementPerson<V>[]) => void): () => void;
+  onEveryoneChange(
+    keys: PresenceKeys,
+    callback: (everyone: ElementPerson<V>[]) => void,
   ): () => void;
   /** @deprecated Use `setMyPresence`. */
   setLive(next: V): void;
@@ -3118,15 +3153,15 @@ function validateRegisteredInitializer(
       `[playhtml] "${name}" defines both \`update\` and \`updateElement\`. Pick one imperative renderer.`,
     );
   }
-  const presenceDefaults = (["presence", "live", "myDefaultAwareness"] as const).filter(
+  const presenceDefaults = (["defaultPresence", "live", "myDefaultAwareness"] as const).filter(
     (key) => init[key] !== undefined,
   );
   if (presenceDefaults.length > 1) {
     throw new Error(
-      `[playhtml] "${name}" defines ${presenceDefaults.map((key) => `\`${key}\``).join(" and ")}. Pick one presence default (\`presence\`).`,
+      `[playhtml] "${name}" defines ${presenceDefaults.map((key) => `\`${key}\``).join(" and ")}. Pick one presence default (\`defaultPresence\`).`,
     );
   }
-  if (init.myDefaultAwareness !== undefined) warnDeprecated("myDefaultAwareness", "presence");
+  if (init.myDefaultAwareness !== undefined) warnDeprecated("myDefaultAwareness", "defaultPresence");
   if (init.updateElement) warnDeprecated("updateElement", "update");
   if (init.updateElementAwareness) warnDeprecated("updateElementAwareness", "update");
   if (init.view && (init.update || init.updateElement)) {
@@ -3214,31 +3249,40 @@ function createPlayElementHandle(
       if (!handler) return warnUnboundHandleWrite("setLocalData", elementId);
       handler.setLocalData(next);
     },
-    getMyPresence: () => findHandlerForElementId(elementId, tag)?.selfAwareness,
-    getEveryone: () => findHandlerForElementId(elementId, tag)?.getEveryone() ?? [],
+    get everyone() {
+      return findHandlerForElementId(elementId, tag)?.getEveryone() ?? [];
+    },
+    get me() {
+      return getElementMe(findHandlerForElementId(elementId, tag)?.selfAwareness);
+    },
     setMyPresence: (next) => {
       const handler = findHandlerForElementId(elementId, tag);
       if (!handler) return warnUnboundHandleWrite("setMyPresence", elementId);
       handler.setMyPresence(next);
     },
-    onPresenceChange: (
-      first: ((presence: any) => unknown) | ((everyone: PresenceEntry<any>[]) => void),
-      second?: (everyone: PresenceEntry<any>[]) => void,
+    onEveryoneChange: (
+      first: PresenceKeys | ((everyone: ElementPerson<any>[]) => void),
+      second?: (everyone: ElementPerson<any>[]) => void,
     ) => {
-      const callback = (second ?? first) as (everyone: PresenceEntry<any>[]) => void;
-      const select = second
-        ? (first as (presence: any) => unknown)
-        : (presence: unknown) => presence;
+      const callback = (second ?? first) as (everyone: ElementPerson<any>[]) => void;
+      const keys = second
+        ? typeof first === "string"
+          ? [first]
+          : Array.from(first as readonly string[])
+        : null;
+      const select = (presence: unknown) => {
+        if (!keys) return presence;
+        if (presence === null || typeof presence !== "object") return presence;
+        return keys.map((key) => (presence as Record<string, unknown>)[key] ?? null);
+      };
       let lastFingerprint: string | null = null;
       const listener = () => {
-        const everyone = (findHandlerForElementId(elementId, tag)?.getEveryone() ?? []).map(
-          ({ user, presence }) => createPresenceEntry(user, select(presence)),
-        );
+        const everyone = findHandlerForElementId(elementId, tag)?.getEveryone() ?? [];
         const next = presenceFingerprint(
-          everyone.map(({ user, presence }) => [user.pid, user.name, user.color, presence]),
+          everyone.map((person) => [person.pid, person.name, person.color, select(person.presence)]),
         );
         if (next === lastFingerprint) return;
-        if (safeInvoke(() => callback(everyone), "element presence subscriber")) {
+        if (safeInvoke(() => callback(everyone), "element people subscriber")) {
           lastFingerprint = next;
         }
       };
@@ -3257,13 +3301,13 @@ function createPlayElementHandle(
     setLive: (next) => {
       const handler = findHandlerForElementId(elementId, tag);
       if (!handler) return warnUnboundHandleWrite("setLive", elementId);
-      handler.setMyPresence(next);
+      handler.replaceMyPresence(next);
     },
     setMyAwareness: (next) => {
       warnDeprecated("setMyAwareness", "setMyPresence");
       const handler = findHandlerForElementId(elementId, tag);
       if (!handler) return warnUnboundHandleWrite("setMyAwareness", elementId);
-      handler.setMyPresence(next);
+      handler.replaceMyPresence(next);
     },
     requestUpdate: () => {
       const handler = findHandlerForElementId(elementId, tag);
@@ -3615,15 +3659,18 @@ export type {
   CursorPresence,
   CursorEvents,
   CursorPresenceView,
-  CursorEntry,
+  ElementPerson,
+  ElementPresenceSetter,
+  Me,
   PagePresence,
-  PresenceEntry,
+  People,
+  Person,
+  PersonCursor,
+  PresenceKeys,
   PresenceRoom,
-  PresenceScope,
   PresenceView,
   User,
 } from "@playhtml/common";
-export type { UsersCursorsAPI } from "./users";
 
 // Re-export a curated subset of lit-html for `view` authoring, so
 // script-tag and module users can `import { html, repeat } from "playhtml"`.

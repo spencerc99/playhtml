@@ -138,9 +138,7 @@ describe("element awareness sync", () => {
 
     expect(updates.at(-1).live).toEqual({ active: true });
     expect(updates.at(-1).users).not.toContainEqual(
-      expect.objectContaining({
-        user: expect.objectContaining({ pid: "pk_remote_user" }),
-      }),
+      expect.objectContaining({ pid: "pk_remote_user" }),
     );
 
     const updateCountBeforeIdentity = updates.length;
@@ -159,13 +157,11 @@ describe("element awareness sync", () => {
     });
 
     expect(updates.length).toBe(updateCountBeforeIdentity + 1);
-    expect(updates.at(-1).users).toContainEqual({
-      user: {
-        pid: "pk_remote_user",
-        name: "Mina",
-        color: "blue",
-        isMe: false,
-      },
+    expect(updates.at(-1).everyone).toContainEqual({
+      pid: "pk_remote_user",
+      name: "Mina",
+      color: "blue",
+      isMe: false,
       presence: { active: false },
     });
 
@@ -185,13 +181,11 @@ describe("element awareness sync", () => {
     });
 
     expect(updates.length).toBe(updateCount + 1);
-    expect(updates.at(-1).users).toContainEqual({
-      user: {
-        pid: "pk_remote_user",
-        name: "Jo",
-        color: "purple",
-        isMe: false,
-      },
+    expect(updates.at(-1).everyone).toContainEqual({
+      pid: "pk_remote_user",
+      name: "Jo",
+      color: "purple",
+      isMe: false,
       presence: { active: false },
     });
   });
@@ -212,10 +206,9 @@ describe("element awareness sync", () => {
     playhtml.users.me.name = "Ada";
 
     expect(update).toHaveBeenCalledTimes(1);
-    expect(update.mock.lastCall?.[0].users).toContainEqual({
-      user: expect.objectContaining({ name: "Ada", isMe: true }),
-      presence: { active: true },
-    });
+    expect(update.mock.lastCall?.[0].everyone).toContainEqual(
+      expect.objectContaining({ name: "Ada", isMe: true, presence: { active: true } }),
+    );
   });
 
   it("publishes element awareness through the page room when cursors use another room", async () => {

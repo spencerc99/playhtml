@@ -16,13 +16,13 @@ import { SingleChildOrPlayable, renderSingleChildOrPlayable, requireDefaultValue
 
 function capabilityDefaults<T, U, V>(initializer: ElementInitializer<T, U, V>) {
   const defaultData = requireDefaultValue(initializer.defaultData, "defaultData");
-  const presence = requireDefaultValue(initializer.presence, "presence");
+  const defaultPresence = requireDefaultValue(initializer.defaultPresence, "defaultPresence");
   const live = requireDefaultValue(initializer.live, "live");
   const myDefaultAwareness = requireDefaultValue(initializer.myDefaultAwareness, "myDefaultAwareness");
   if (defaultData === undefined) {
-    return { ...initializer, defaultData: undefined, presence, live, myDefaultAwareness };
+    return { ...initializer, defaultData: undefined, defaultPresence, live, myDefaultAwareness };
   }
-  return { ...initializer, defaultData, presence, live, myDefaultAwareness };
+  return { ...initializer, defaultData, defaultPresence, live, myDefaultAwareness };
 }
 
 /**

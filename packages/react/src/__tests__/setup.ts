@@ -54,64 +54,7 @@ function mockGetAllUsers(): Array<Record<string, unknown>> {
   ];
 }
 
-// Mock page presence: one presence object for the local user, merged by
-// setMyPresence, with key/selector subscriptions that replay immediately.
-let mockPagePresence: Record<string, unknown> = {};
-const pagePresenceListeners = new Set<() => void>();
-
-function mockPageEveryone(select: (presence: Record<string, unknown>) => unknown) {
-  return [{ user: mockGetAllUsers()[0], presence: select(mockPagePresence) }];
-}
-
-function toSelector(keyOrSelect?: string | ((presence: Record<string, unknown>) => unknown)) {
-  if (keyOrSelect === undefined) return (presence: Record<string, unknown>) => presence;
-  if (typeof keyOrSelect === "string") {
-    return (presence: Record<string, unknown>) => presence[keyOrSelect];
-  }
-  return keyOrSelect;
-}
-
-const mockPage = {
-  getEveryone: vi.fn((key?: string) => mockPageEveryone(toSelector(key))),
-  setMyPresence: vi.fn((partial: Record<string, unknown>) => {
-    const next = { ...mockPagePresence };
-    for (const [key, value] of Object.entries(partial)) {
-      if (value === null || value === undefined) delete next[key];
-      else next[key] = value;
-    }
-    mockPagePresence = next;
-    for (const listener of pagePresenceListeners) listener();
-  }),
-  onPresenceChange: vi.fn((first: any, second?: any) => {
-    const callback = second ?? first;
-    const select = toSelector(second ? first : undefined);
-    let last: string | null = null;
-    const listener = () => {
-      const everyone = mockPageEveryone(select);
-      const fingerprint = JSON.stringify(everyone.map((entry) => entry.presence) ?? null);
-      if (fingerprint === last) return;
-      last = fingerprint;
-      callback(everyone);
-    };
-    pagePresenceListeners.add(listener);
-    listener();
-    return () => pagePresenceListeners.delete(listener);
-  }),
-};
-
-// Mock cursors: tests push snapshots through setMockCursors.
-let mockCursors: Array<Record<string, unknown>> = [];
-const cursorListeners = new Set<(cursors: Array<Record<string, unknown>>) => void>();
-
 const mockUsers = {
-  cursors: {
-    getAll: vi.fn(() => mockCursors),
-    onChange: vi.fn((callback: (cursors: Array<Record<string, unknown>>) => void) => {
-      cursorListeners.add(callback);
-      callback(mockCursors);
-      return () => cursorListeners.delete(callback);
-    }),
-  },
   me: {
     get pid() {
       return mockSelfIdentity.pid;
@@ -136,6 +79,60 @@ const mockUsers = {
     usersChangeListeners.add(callback);
     callback(mockGetAllUsers());
     return () => usersChangeListeners.delete(callback);
+  }),
+};
+
+// Mock people: the local person with a presence object, key-form writes, and
+// onChange(keys?, callback) that replays immediately and skips unchanged keys.
+let mockMyPresence: Record<string, unknown> = {};
+const peopleListeners = new Set<() => void>();
+
+function mockEveryone(): Array<Record<string, unknown>> {
+  return mockGetAllUsers().map((user) => ({
+    ...user,
+    presence: user.isMe ? { ...mockMyPresence } : {},
+  }));
+}
+
+const mockPeople = {
+  get everyone() {
+    return mockEveryone();
+  },
+  getAll: () => mockEveryone(),
+  get me() {
+    return mockEveryone()[0];
+  },
+  setMyPresence: vi.fn((key: string, value: unknown) => {
+    const next = { ...mockMyPresence };
+    if (value === null || value === undefined) delete next[key];
+    else next[key] = value;
+    mockMyPresence = next;
+    for (const listener of peopleListeners) listener();
+  }),
+  onChange: vi.fn((first: any, second?: any) => {
+    const callback = second ?? first;
+    const keys: string[] | null = second ? (typeof first === "string" ? [first] : first) : null;
+    let last: string | null = null;
+    const listener = () => {
+      const everyone = mockEveryone();
+      const watched = everyone.map((person: any) => [
+        person.pid,
+        person.name,
+        person.color,
+        keys ? keys.map((key) => person.presence[key] ?? null) : person.presence,
+      ]);
+      const fingerprint = JSON.stringify(watched);
+      if (fingerprint === last) return;
+      last = fingerprint;
+      callback(everyone);
+    };
+    peopleListeners.add(listener);
+    usersChangeListeners.add(listener);
+    listener();
+    return () => {
+      peopleListeners.delete(listener);
+      usersChangeListeners.delete(listener);
+    };
   }),
 };
 
@@ -232,14 +229,10 @@ const mockedPlayhtml = {
     })),
   },
   users: mockUsers,
-  page: mockPage,
-  resetMockPagePresence: () => {
-    mockPagePresence = {};
-    pagePresenceListeners.clear();
-  },
-  setMockCursors: (next: Array<Record<string, unknown>>) => {
-    mockCursors = next;
-    for (const listener of cursorListeners) listener(next);
+  people: mockPeople,
+  resetMockPeople: () => {
+    mockMyPresence = {};
+    peopleListeners.clear();
   },
   setMockPlayerIdentity: (next: Partial<typeof mockPlayerIdentity>) => {
     Object.assign(mockPlayerIdentity, next);

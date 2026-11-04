@@ -24,7 +24,7 @@ import {
   unwrapPagePresenceValue,
   wrapPagePresenceValue,
 } from "./presence-utils";
-import { ALL_PRESENCE_CHANNELS } from "./presence-scope";
+import { ALL_PRESENCE_CHANNELS } from "./people";
 
 type PresenceClientOptions = {
   transport: RealtimePresenceTransport;
