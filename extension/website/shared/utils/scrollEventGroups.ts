@@ -2,11 +2,7 @@
 // ABOUTME: Shares the renderer's participant, browser session, URL, and inactivity boundaries.
 
 import type { CollectionEvent } from "../types";
-import {
-  MAX_VIEWPORT_ANIMATION_DURATION,
-  SCROLL_SESSION_THRESHOLD,
-  SCROLL_TIME_COMPRESSION,
-} from "./eventUtils";
+import { SCROLL_SESSION_THRESHOLD } from "./eventUtils";
 
 export interface ScrollEventGroup {
   id: string;
@@ -38,7 +34,7 @@ function createScrollEventGroup(
 export function scrollEventGroupHasVisibleActivity(
   group: ScrollEventGroup,
 ): boolean {
-  const rawScrollEvents = group.events.filter(
+  const scrollEvents = group.events.filter(
     (event) => (event.data as { event?: string })?.event === "scroll",
   );
   const resizeEvents = group.events.filter(
@@ -47,47 +43,8 @@ export function scrollEventGroupHasVisibleActivity(
   const zoomEvents = group.events.filter(
     (event) => (event.data as { event?: string })?.event === "zoom",
   );
-  const baseStartTime =
-    rawScrollEvents[0]?.ts ??
-    resizeEvents[0]?.ts ??
-    zoomEvents[0]?.ts ??
-    group.startTs;
-  const scrollEvents = rawScrollEvents.map((event, index) => {
-    if (index === 0) return event;
-    const previous = rawScrollEvents[index - 1];
-    return {
-      ...event,
-      ts: previous.ts + (event.ts - previous.ts) * SCROLL_TIME_COMPRESSION,
-    };
-  });
-  const compressedResizeEvents = resizeEvents.map((event) => ({
-    ...event,
-    ts: baseStartTime + (event.ts - baseStartTime) * SCROLL_TIME_COMPRESSION,
-  }));
-  const compressedZoomEvents = zoomEvents.map((event) => ({
-    ...event,
-    ts: baseStartTime + (event.ts - baseStartTime) * SCROLL_TIME_COMPRESSION,
-  }));
-  const startTime = Math.min(
-    ...[
-      ...scrollEvents,
-      ...compressedResizeEvents,
-      ...compressedZoomEvents,
-    ].map((event) => event.ts),
-  );
-  const cappedEndTime = startTime + MAX_VIEWPORT_ANIMATION_DURATION;
-  const cappedScrollEvents = scrollEvents.filter(
-    (event) => event.ts <= cappedEndTime,
-  );
-  const cappedResizeEvents = compressedResizeEvents.filter(
-    (event) => event.ts <= cappedEndTime,
-  );
-  const cappedZoomEvents = compressedZoomEvents.filter(
-    (event) => event.ts <= cappedEndTime,
-  );
-
-  if (cappedScrollEvents.length >= 2) {
-    const scrollY = cappedScrollEvents.map(
+  if (scrollEvents.length >= 2) {
+    const scrollY = scrollEvents.map(
       (event) => (event.data as { scrollY?: number }).scrollY ?? 0,
     );
     if (Math.max(...scrollY) - Math.min(...scrollY) >= 0.05) {
@@ -95,11 +52,11 @@ export function scrollEventGroupHasVisibleActivity(
     }
   }
 
-  if (cappedResizeEvents.length >= 2) {
-    const widths = cappedResizeEvents.map(
+  if (resizeEvents.length >= 2) {
+    const widths = resizeEvents.map(
       (event) => (event.data as { width?: number }).width ?? event.meta.vw,
     );
-    const heights = cappedResizeEvents.map(
+    const heights = resizeEvents.map(
       (event) => (event.data as { height?: number }).height ?? event.meta.vh,
     );
     if (
@@ -110,8 +67,8 @@ export function scrollEventGroupHasVisibleActivity(
     }
   }
 
-  if (cappedZoomEvents.length >= 2) {
-    const zooms = cappedZoomEvents.map(
+  if (zoomEvents.length >= 2) {
+    const zooms = zoomEvents.map(
       (event) => (event.data as { zoom?: number }).zoom ?? 1,
     );
     if (Math.max(...zooms) - Math.min(...zooms) >= 0.1) return true;

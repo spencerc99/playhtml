@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ACTIVE_VISUALIZATIONS } from "../../components/registry";
 import { DEFAULT_SETTINGS } from "../../components/settingsDefaults";
+import { parseSpec } from "../settingsSpec";
 import { buildShareUrl } from "../shareUrl";
 
 describe("buildShareUrl", () => {
@@ -58,4 +59,38 @@ describe("buildShareUrl", () => {
       window.history.replaceState(null, "", originalUrl);
     }
   });
+});
+
+describe("scroll timeline speed URLs", () => {
+  it.each([0.1, 0.5, 1, 4, 10])(
+    "round-trips %sx independently of window density",
+    (scrollSpeed) => {
+      const url = new URL(
+        buildShareUrl({
+          settings: {
+            ...DEFAULT_SETTINGS,
+            scrollSpeed,
+            maxConcurrentScrolls: 12,
+          },
+          activeVisualizations: ["scrolling"],
+          selectedTimeRange: null,
+          baseUrl: "https://wewere.online/installation/live/",
+        }),
+      );
+      expect({
+        ...DEFAULT_SETTINGS,
+        ...parseSpec(url.searchParams),
+      }).toMatchObject({ scrollSpeed, maxConcurrentScrolls: 12 });
+      if (scrollSpeed !== 1)
+        expect(url.searchParams.get("scrollSpeed")).toBe(String(scrollSpeed));
+    },
+  );
+  it.each(["0", "-1", "NaN", "Infinity", "11", ""])(
+    "ignores invalid speed %s",
+    (value) => {
+      expect(
+        parseSpec(new URLSearchParams({ scrollSpeed: value })).scrollSpeed,
+      ).toBeUndefined();
+    },
+  );
 });
