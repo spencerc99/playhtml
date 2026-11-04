@@ -168,23 +168,34 @@ In this demo, everyone else's cursor is an emoji in a ring of their color. Open 
   <DemoCodeLink href="/docs/examples/custom-cursors/" />
 </div>
 
-```javascript
-cursors: {
-  enabled: true,
-  onCustomCursorRender: (pid, element) => {
-    // Look up who the cursor belongs to for their color.
-    const person = playhtml.people.everyone.find((p) => p.pid === pid);
-    const critter = document.createElement("div");
-    critter.className = "critter";
-    critter.textContent = "🐝";
-    critter.style.borderColor = person?.color ?? "black";
-    element.replaceChildren(critter);
-    return element;
-  },
-}
-```
+`onCustomCursorRender` only draws other people. Your own pointer stays the browser's cursor, so the demo also sets a CSS `cursor` image to give you the same emoji everyone else sees:
 
-It only draws other people. Your own pointer stays the browser's cursor. To change it, set a CSS `cursor` image on the page, as the demo above does so your pointer shows the same emoji others see.
+```javascript
+await playhtml.init({
+  cursors: {
+    enabled: true,
+    // Everyone else's cursor: an emoji in a ring of their color.
+    onCustomCursorRender: (pid, element) => {
+      const person = playhtml.people.everyone.find((p) => p.pid === pid);
+      const critter = document.createElement("div");
+      critter.className = "critter";
+      critter.textContent = "🐝";
+      critter.style.borderColor = person?.color ?? "black";
+      element.replaceChildren(critter);
+      return element;
+    },
+  },
+});
+
+// Your own pointer: the same emoji and ring, as a CSS cursor image.
+const { color } = playhtml.people.me;
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+  <circle cx="16" cy="16" r="13" fill="white" stroke="${color}" stroke-width="3" />
+  <text x="16" y="21.5" font-size="15" text-anchor="middle">🐝</text>
+</svg>`;
+document.body.style.cursor =
+  `url("data:image/svg+xml,${encodeURIComponent(svg)}") 16 16, auto`;
+```
 
 The element is built once per person, so read anything that changes often (like position) from [`getCursorStyle`](#getcursorstyle) or [`usePeople("cursor")`](#reading-everyones-cursors) instead.
 
