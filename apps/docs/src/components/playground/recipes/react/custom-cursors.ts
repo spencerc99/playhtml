@@ -4,7 +4,10 @@ import { critterCursorCss, critterHelpers } from "../demo-shared";
 import { appShell } from "./app-shell";
 
 const typedHelpers = critterHelpers
-  .replace("function critterFor(pid)", "function critterFor(pid: string): string")
+  .replace(
+    "function critterFor(pid)",
+    "function critterFor(pid: string): string",
+  )
   .replace(
     "function critterCursor(emoji, color)",
     "function critterCursor(emoji: string, color: string): string",
