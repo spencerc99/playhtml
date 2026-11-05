@@ -350,6 +350,7 @@ export const GALLERY_STYLES = `
   }
 
   .collage-board__meta {
+    align-self: stretch;
     color: #3f3a35;
     font-family: "Martian Mono", ui-monospace, monospace;
     font-size: 10px;
