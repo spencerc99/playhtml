@@ -46,28 +46,48 @@ mock.module("cloudflare:workers", () => ({
   WorkerEntrypoint: class {},
 }));
 
-const persistedRow: { document: string | null } = { document: null };
+// Like the database trigger, every document write gives the row a new version.
+let persistedVersionCounter = 0;
+let persistedDocument: string | null = null;
+const persistedRow: { document: string | null; version: string } = {
+  get document() {
+    return persistedDocument;
+  },
+  set document(value: string | null) {
+    persistedDocument = value;
+    persistedVersionCounter += 1;
+  },
+  get version() {
+    return `v${persistedVersionCounter}`;
+  },
+};
 let documentReadCount = 0;
+let versionReadCount = 0;
 let upsertCalls: Array<{ name: string; document: string }> = [];
 
 const supabaseStub = {
   from() {
     return {
-      select() {
+      select(columns: string) {
+        const includesDocument = columns
+          .split(",")
+          .some((column) => column.trim() === "document");
         return {
           eq() {
             return {
               abortSignal() {
                 return {
                   maybeSingle: async () => {
-                    documentReadCount += 1;
-                    return {
-                      data:
-                        persistedRow.document === null
-                          ? null
-                          : { document: persistedRow.document },
-                      error: null,
+                    if (includesDocument) documentReadCount += 1;
+                    else versionReadCount += 1;
+                    if (persistedRow.document === null) {
+                      return { data: null, error: null };
+                    }
+                    const data: Record<string, unknown> = {
+                      version: persistedRow.version,
                     };
+                    if (includesDocument) data.document = persistedRow.document;
+                    return { data, error: null };
                   },
                 };
               },
@@ -75,10 +95,16 @@ const supabaseStub = {
           },
         };
       },
-      async upsert(row: { name: string; document: string }) {
-        upsertCalls.push(row);
-        persistedRow.document = row.document;
-        return { error: null };
+      upsert(row: { name: string; document: string }) {
+        return {
+          select: () => ({
+            single: async () => {
+              upsertCalls.push(row);
+              persistedRow.document = row.document;
+              return { data: { version: persistedRow.version }, error: null };
+            },
+          }),
+        };
       },
     };
   },
@@ -95,14 +121,25 @@ class FakeStorage {
   values = new Map<string, unknown>();
   alarm: number | null = null;
 
-  async get(key: string) {
+  async get(key: string | string[]) {
+    if (Array.isArray(key)) {
+      return new Map(
+        key.filter((k) => this.values.has(k)).map((k) => [k, this.values.get(k)])
+      );
+    }
     return this.values.get(key);
   }
-  async put(key: string, value: unknown) {
-    this.values.set(key, value);
+  async put(key: string | Record<string, unknown>, value?: unknown) {
+    const entries = typeof key === "string" ? { [key]: value } : key;
+    for (const [entryKey, entryValue] of Object.entries(entries)) {
+      this.values.set(entryKey, entryValue);
+    }
   }
-  async delete(key: string) {
-    this.values.delete(key);
+  async delete(key: string | string[]) {
+    const keys = Array.isArray(key) ? key : [key];
+    let deleted = 0;
+    for (const k of keys) if (this.values.delete(k)) deleted += 1;
+    return Array.isArray(key) ? deleted : deleted > 0;
   }
   async list() {
     return new Map();
@@ -163,6 +200,7 @@ const SMALL_DOCUMENT = (() => {
 beforeEach(() => {
   persistedRow.document = SMALL_DOCUMENT;
   documentReadCount = 0;
+  versionReadCount = 0;
   upsertCalls = [];
   kvStore.clear();
 });
@@ -179,6 +217,7 @@ describe("alarm entry point", () => {
     await server.alarm();
 
     expect(documentReadCount).toBe(0);
+    expect(versionReadCount).toBe(0);
     expect(server.circuitBreaker.isLoadDeferred()).toBe(true);
     expect(storage.alarm).toBe(retryAfter);
   });
@@ -193,6 +232,7 @@ describe("alarm entry point", () => {
     await server.alarm();
 
     expect(documentReadCount).toBe(0);
+    expect(versionReadCount).toBe(0);
     expect(storage.values.has("documentSaveRetry")).toBe(false);
     expect(storage.alarm).toBe(loadRetryAfter);
   });
@@ -232,6 +272,7 @@ describe("alarm entry point", () => {
     await server.alarm();
 
     expect(documentReadCount).toBe(0);
+    expect(versionReadCount).toBe(0);
     expect(server.circuitBreaker.isQuarantined()).toBe(true);
     // Nothing may be written back over the untouched document.
     expect(upsertCalls).toEqual([]);
@@ -278,6 +319,7 @@ describe("alarm entry point", () => {
       )
     );
     documentReadCount = 0;
+    versionReadCount = 0;
     (server as any).persistenceMode = {
       kind: "transient",
       reason: "database outage",
@@ -291,7 +333,10 @@ describe("alarm entry point", () => {
 
     await server.alarm();
 
-    expect(documentReadCount).toBe(1);
+    // The row's version still matches the copy saved before the outage, so the
+    // persisted snapshot is restored from that copy without a download.
+    expect(versionReadCount).toBe(1);
+    expect(documentReadCount).toBe(0);
     expect(server.isPersistenceAvailable()).toBe(true);
     expect(storage.values.has("persistenceRecoveryPending")).toBe(false);
     expect(closeCalls).toEqual([
