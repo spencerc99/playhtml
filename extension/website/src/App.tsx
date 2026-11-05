@@ -584,10 +584,13 @@ export default function App() {
                   decoding="async"
                 />
               </BrowserWindow>
-              <h3 className={styles.featureCardTitle}>make browsing collages</h3>
+              <h3 className={styles.featureCardTitle}>
+                turn browsing into art supplies
+              </h3>
               <p className={styles.featureCardBody}>
-                Arrange your scraps into collages. Every piece remembers the
-                page it came from.
+                Use your scraps as collage material and turn browsing into a
+                creative act. Each piece remembers the page it came from and
+                becomes an ode to your rabbit holes.
               </p>
             </div>
           </div>
