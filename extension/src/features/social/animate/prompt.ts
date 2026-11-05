@@ -22,7 +22,6 @@ export interface ElementDescription {
 
 export interface Suggestion {
   offer: OfferId;
-  line: string;
 }
 
 export interface SuggestionResult {
@@ -33,12 +32,13 @@ export interface SuggestionResult {
 export const SYSTEM_PROMPT = [
   "You help make a web page feel shared by everyone visiting it.",
   "You see one element from a page: a picture of it and a short description.",
-  "Suggest 2 or 3 ways everyone visiting could play with it together, based on what it is or what it looks like.",
+  "Suggest up to 3 ways everyone visiting could play with it together, based on what it is or what it looks like.",
+  "Fewer is better than a poor fit. Keep it light and kind; the page may be personal.",
   "Only pick from this list:",
   ...OFFERS.map((o) => `- ${o.id}: ${o.does}. Fits ${o.fits}.`),
   "",
-  'Answer with JSON only: {"thing": "<what it is, 2-4 words>", "suggestions": [{"offer": "<id from the list>", "line": "<what everyone can do with this specific thing, under 12 words>"}]}',
-  "Order suggestions from best fit to worst. Never repeat an id.",
+  'Answer with JSON only: {"thing": "<what it is: 1-4 lowercase words, no article>", "offers": ["<id>", ...]}',
+  "Order offers from best fit to worst. Never repeat an id.",
 ].join("\n");
 
 export function describeForPrompt(d: ElementDescription): string {
@@ -59,21 +59,14 @@ export const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
     thing: { type: "string" },
-    suggestions: {
+    offers: {
       type: "array",
       minItems: 1,
       maxItems: 3,
-      items: {
-        type: "object",
-        properties: {
-          offer: { type: "string", enum: OFFERS.map((o) => o.id) },
-          line: { type: "string" },
-        },
-        required: ["offer", "line"],
-      },
+      items: { type: "string", enum: OFFERS.map((o) => o.id) },
     },
   },
-  required: ["thing", "suggestions"],
+  required: ["thing", "offers"],
 } as const;
 
 /** OpenAI-compatible chat messages (works with llama-server, LM Studio, Ollama's /v1). */
@@ -111,13 +104,26 @@ export function parseSuggestions(raw: string): ParseOutcome {
   } catch {
     return { result: null, problems: ["invalid JSON"] };
   }
-  const obj = parsed as { thing?: unknown; suggestions?: unknown };
-  const list = Array.isArray(obj.suggestions) ? obj.suggestions : [];
-  if (!Array.isArray(obj.suggestions)) problems.push("no suggestions array");
+  const obj = parsed as {
+    thing?: unknown;
+    offers?: unknown;
+    suggestions?: unknown;
+  };
+  // Accept {"offers": ["id"]} and the older {"suggestions": [{"offer": "id"}]}.
+  const list = Array.isArray(obj.offers)
+    ? obj.offers
+    : Array.isArray(obj.suggestions)
+      ? obj.suggestions
+      : [];
+  if (list.length === 0) problems.push("no offers array");
   const seen = new Set<string>();
   const suggestions: Suggestion[] = [];
   for (const item of list) {
-    const offer = String((item as { offer?: unknown })?.offer ?? "")
+    const offer = String(
+      typeof item === "string"
+        ? item
+        : ((item as { offer?: unknown })?.offer ?? ""),
+    )
       .trim()
       .toLowerCase();
     if (!OFFER_BY_ID.has(offer as OfferId)) {
@@ -129,10 +135,7 @@ export function parseSuggestions(raw: string): ParseOutcome {
       continue;
     }
     seen.add(offer);
-    let line = String((item as { line?: unknown })?.line ?? "").trim();
-    if (!line) line = OFFER_BY_ID.get(offer as OfferId)!.line;
-    if (line.length > 90) line = line.slice(0, 87).trimEnd() + "…";
-    suggestions.push({ offer: offer as OfferId, line });
+    suggestions.push({ offer: offer as OfferId });
     if (suggestions.length === 3) break;
   }
   if (suggestions.length === 0)

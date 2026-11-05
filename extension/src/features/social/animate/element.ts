@@ -98,7 +98,7 @@ export function bestTarget(start: Element | null): HTMLElement | null {
     if (isOurUi(node)) return null;
     const r = node.getBoundingClientRect();
     const area = r.width * r.height;
-    if (r.width >= 16 && r.height >= 12 && area < vw * vh * 0.6) {
+    if (r.width >= 8 && r.height >= 8 && area < vw * vh * 0.6) {
       return node as HTMLElement;
     }
     node = node.parentElement;

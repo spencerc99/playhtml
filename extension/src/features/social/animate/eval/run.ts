@@ -8,6 +8,7 @@
 import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { offerLine } from "../offers";
 import {
   buildMessages,
   describeForPrompt,
@@ -113,7 +114,7 @@ for (const t of targets) {
       problems,
       thing: result?.thing,
       offers,
-      lines: result?.suggestions.map((s) => s.line),
+      lines: result?.suggestions.map((s) => offerLine(s.offer, result.thing)),
       topFits: offers.length > 0 && good.includes(offers[0]),
       fitCount: offers.filter((o) => good.includes(o)).length,
       raw: out.raw.slice(0, 600),

@@ -136,7 +136,7 @@ export const animateExperiment: SocialExperiment = {
           error,
         },
         {
-          onPick: (offer, _line, source) => {
+          onPick: (offer, source) => {
             const rec: AnimationRecord = {
               key,
               ref,

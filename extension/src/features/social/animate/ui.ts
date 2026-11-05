@@ -1,7 +1,7 @@
 // ABOUTME: The animate picker (outline under the pointer) and the suggestion card, in a shadow root.
 // ABOUTME: Nothing is applied until the person picks; "pick myself" always shows the whole menu.
 
-import { OFFERS, OFFER_BY_ID, type OfferId } from "./offers";
+import { OFFERS, OFFER_BY_ID, offerLine, type OfferId } from "./offers";
 import { OUR_UI_ATTR, bestTarget } from "./element";
 import type { AnimationRecord } from "./apply";
 
@@ -32,7 +32,7 @@ const CARD_CSS = `
 `;
 
 export interface CardHandlers {
-  onPick(offer: OfferId, line: string, source: "model" | "hand"): void;
+  onPick(offer: OfferId, source: "model" | "hand"): void;
   onUndo?(): void;
   onClose(): void;
   onEditModel?(): void;
@@ -186,7 +186,7 @@ export class AnimateUi {
     el: HTMLElement,
     opts: {
       thing: string;
-      suggestions: { offer: OfferId; line: string }[];
+      suggestions: { offer: OfferId }[];
       modelLabel: string;
       error?: string;
     },
@@ -212,8 +212,8 @@ export class AnimateUi {
     }
     for (const s of opts.suggestions)
       card.appendChild(
-        this.optionButton(s.offer, s.line, () =>
-          h.onPick(s.offer, s.line, "model"),
+        this.optionButton(s.offer, offerLine(s.offer, opts.thing), () =>
+          h.onPick(s.offer, "model"),
         ),
       );
 
@@ -223,7 +223,11 @@ export class AnimateUi {
     for (const o of OFFERS) {
       if (opts.suggestions.some((s) => s.offer === o.id)) continue;
       all.appendChild(
-        this.optionButton(o.id, o.line, () => h.onPick(o.id, o.line, "hand")),
+        this.optionButton(
+          o.id,
+          offerLine(o.id, opts.error ? undefined : opts.thing),
+          () => h.onPick(o.id, "hand"),
+        ),
       );
     }
     card.appendChild(all);
@@ -274,7 +278,7 @@ export class AnimateUi {
       ` · ${new Date(rec.at).toLocaleDateString()}`,
     );
     const what = document.createElement("p");
-    what.textContent = offer?.line ?? rec.offer;
+    what.textContent = offer ? offerLine(rec.offer, rec.thing) : rec.offer;
     card.append(head, meta, what);
     const row = document.createElement("div");
     row.className = "row";
