@@ -718,7 +718,7 @@ export function collageBackMarkup(options: CollageBackMarkupOptions): string {
   const paper = backPaper(options.paper, look);
   const ink = backInk(paper.color);
   const title = content.title.trim();
-  const shownTitle = title || "untitled collage";
+  const shownTitle = title || "untitled";
   const detail = backDetail(content);
   const sites = backSites(content.pieces);
   const layout = backLayout(frame, shownTitle, detail, sites, content.shows);

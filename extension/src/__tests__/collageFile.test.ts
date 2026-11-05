@@ -121,7 +121,7 @@ describe("encodeCollageFile", () => {
 
   it("names the file after the collage, or as untitled", () => {
     expect(collageFileName("  a walk  ")).toBe("a walk.collage.json");
-    expect(collageFileName("   ")).toBe("untitled collage.collage.json");
+    expect(collageFileName("   ")).toBe("untitled.collage.json");
   });
 });
 

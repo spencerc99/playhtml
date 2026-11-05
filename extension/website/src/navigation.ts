@@ -2,6 +2,7 @@
 // ABOUTME: Keeps site navigation state consistent across standalone pages.
 
 export const LIVE_PORTRAIT_URL = "/portrait/";
+export const COLLAGES_URL = "/collages/";
 export const CHANGELOG_URL = "/changelog/";
 
 export function isNavigationPathActive(pathname: string, href: string) {

@@ -195,7 +195,7 @@ export function createCollageId(): string {
 }
 
 /** What a copy is called when the collage it came from had no name. */
-const UNTITLED_COPY = "untitled collage copy";
+const UNTITLED_COPY = "untitled copy";
 
 /**
  * The same collage under an id of its own. Every piece is copied with an id of

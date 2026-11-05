@@ -15,7 +15,11 @@ import {
   loadPublishedCollage,
   publishedCoverUrl,
 } from "../collage/publishedCollageView";
-import { CHANGELOG_URL, LIVE_PORTRAIT_URL } from "../src/navigation";
+import {
+  CHANGELOG_URL,
+  COLLAGES_URL,
+  LIVE_PORTRAIT_URL,
+} from "../src/navigation";
 import {
   PINNED_COLLAGES,
   type CollageMaker,
@@ -108,7 +112,7 @@ function cardWash(id: string, colors: readonly string[]): CSSProperties[] {
 function PinnedCard({ pinned, at }: { pinned: Pinned; at: number }) {
   const { id, by, collage } = pinned;
   const [colors, setColors] = useState<string[]>([]);
-  const title = collage.title.trim() || "untitled collage";
+  const title = collage.title.trim() || "untitled";
   const date = captionDate(collage);
   // A collage with no loud colour of its own takes its maker's.
   const wash = useMemo(
@@ -215,7 +219,7 @@ function CollagesPage() {
           we were online
         </a>
         <span className="collage-board__links">
-          <a href="/collages/" aria-current="page">
+          <a href={COLLAGES_URL} aria-current="page">
             collages
           </a>
           <a href={LIVE_PORTRAIT_URL}>live portrait</a>
