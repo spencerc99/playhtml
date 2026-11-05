@@ -118,14 +118,18 @@ export function PieceMaterial({ piece, onCutoutFailed }: PieceMaterialProps) {
       loaded={true}
       onLoad={() => {}}
       onError={() => {}}
-      letteringChecker={false}
+      letteringBacking={false}
     />
   );
   if (!isLettered(scrap)) return content;
 
   // Words are set at the scrap's own type size and scaled to the piece's box,
   // so a resized heading or button grows and shrinks its lettering with it.
-  const layout = letteringLayout(scrap, sourceBoxForCrop(piece, piece.crop));
+  const layout = letteringLayout(
+    scrap,
+    sourceBoxForCrop(piece, piece.crop),
+    piece.letteringWidth,
+  );
   return (
     <div
       className="collage-piece__lettering"
