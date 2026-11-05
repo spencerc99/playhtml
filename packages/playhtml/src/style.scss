@@ -103,16 +103,15 @@ body .__playhtml-element.editing:nth-child(2n-1) {
 .playhtml-loading {
   pointer-events: none;
 
+  &[loading-behavior="hidden"],
   &[data-loading-behavior="hidden"] {
     opacity: 0;
     visibility: hidden;
   }
 
-  &[data-loading-style="breathing"] {
-    animation: playhtml-breathing 2s infinite ease-in-out;
-  }
-
-  // default tags: breathing animation
+  // default tags and loading-behavior="animate": breathing animation
+  &[loading-style="breathing"],
+  &[data-loading-style="breathing"],
   &[can-move],
   &[can-toggle],
   &[can-spin],
@@ -120,8 +119,12 @@ body .__playhtml-element.editing:nth-child(2n-1) {
   &[can-duplicate],
   &[can-mirror],
   &[can-draw],
-  [loading-behavior="animate"].playhtml-loading {
+  &[loading-behavior="animate"] {
     animation: playhtml-breathing 2s infinite ease-in-out;
+  }
+
+  &[loading-style="pulse"] {
+    animation: playhtml-pulse 1.2s infinite ease-in-out;
   }
 
   &[loading-style="fade"] {

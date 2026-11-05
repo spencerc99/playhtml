@@ -5,6 +5,8 @@ import {
   generatePersistentPlayerIdentity,
   savePlayerIdentityToStorage,
   toHexColor,
+  isValidPersonColor,
+  normalizePersonName,
   User,
   type CursorPresenceView,
   type PlayerIdentity,
@@ -45,7 +47,7 @@ function assertValidPlayerIdentity(identity: PlayerIdentity): void {
 function toUser(identity: PlayerIdentity, isMe: boolean): User {
   return {
     pid: identity.publicKey,
-    name: identity.name,
+    name: normalizePersonName(identity.name),
     color: getPrimaryColor(identity),
     isMe,
   };
@@ -171,7 +173,9 @@ export function createUsersAPI(
         try {
           usersByStableId.set(
             stableId,
-            isMe ? toUser(identity, true) : toUser(presence.playerIdentity, false),
+            isMe
+              ? toUser(identity, true)
+              : toUser(presence.playerIdentity, false),
           );
         } catch {
           // Skip cursor presences with an invalid identity (no primary color).
@@ -194,9 +198,12 @@ export function createUsersAPI(
       return identity.publicKey;
     },
     get name() {
-      return identity.name;
+      return normalizePersonName(identity.name);
     },
-    set name(newName: string | undefined) {
+    set name(name: string | undefined) {
+      // Names are trimmed and capped at MAX_PERSON_NAME_LENGTH characters;
+      // a blank name clears it.
+      const newName = normalizePersonName(name);
       if (identity.name === newName) return;
       applyIdentityMutation(() => {
         identity.name = newName;
@@ -211,6 +218,12 @@ export function createUsersAPI(
           "[playhtml] users.me.color cannot be set to empty; player identity must have a primary color.",
         );
       }
+      if (!isValidPersonColor(newColor)) {
+        throw new Error(
+          `[playhtml] "${String(newColor).slice(0, 64)}" is not a valid color. Use a CSS color like "#ff6b6b", "rgb(255 107 107)" or "tomato".`,
+        );
+      }
+      newColor = newColor.trim();
       if (identity.playerStyle.colorPalette[0] === newColor) return;
       applyIdentityMutation(() => {
         identity.playerStyle.colorPalette[0] = newColor;

@@ -3,6 +3,8 @@
 import { describe, expect, test } from "vitest";
 import {
   generatePlayerIdentity,
+  isValidPersonColor,
+  normalizePersonName,
   playerIdentityToUser,
   toHexColor,
 } from "../cursor-types";
@@ -62,8 +64,81 @@ describe("playerIdentityToUser", () => {
     );
     expect(user.color).toBe("#ff0000");
     expect(
-      playerIdentityToUser({ publicKey: "pk", playerStyle: { colorPalette: [] } }, false)
-        .color,
+      playerIdentityToUser(
+        { publicKey: "pk", playerStyle: { colorPalette: [] } },
+        false,
+      ).color,
     ).toBe("");
+  });
+});
+
+describe("normalizePersonName", () => {
+  test("trims, caps at 32 characters and clears blank names", () => {
+    expect(normalizePersonName("  Ada  ")).toBe("Ada");
+    expect(normalizePersonName("x".repeat(33))).toBe("x".repeat(32));
+    expect(normalizePersonName("   ")).toBeUndefined();
+    expect(normalizePersonName(undefined)).toBeUndefined();
+    expect(normalizePersonName(42)).toBeUndefined();
+  });
+
+  test("doesn't split emoji at the cap", () => {
+    const name = "\u{1F600}".repeat(40);
+    expect(Array.from(normalizePersonName(name)!)).toHaveLength(32);
+  });
+
+  test("playerIdentityToUser caps remote names", () => {
+    const user = playerIdentityToUser(
+      {
+        publicKey: "p",
+        name: "n".repeat(40),
+        playerStyle: { colorPalette: ["#fff"] },
+      },
+      false,
+    );
+    expect(user.name).toBe("n".repeat(32));
+  });
+});
+
+describe("isValidPersonColor", () => {
+  test("accepts hex, rgb and hsl, including see-through ones", () => {
+    for (const color of [
+      "#fff",
+      "#ff000080",
+      "rgb(1 2 3)",
+      "rgba(1,2,3,0.5)",
+      "hsl(200 70% 60%)",
+      "hsla(0, 100%, 50%, 0.5)",
+    ]) {
+      expect(isValidPersonColor(color)).toBe(true);
+    }
+  });
+
+  test("rejects empty, wide keywords and non-strings", () => {
+    for (const color of [
+      "",
+      "  ",
+      "inherit",
+      "currentColor",
+      "unset",
+      "#ggg",
+      "rgb(",
+      null,
+      3,
+    ]) {
+      expect(isValidPersonColor(color)).toBe(false);
+    }
+  });
+
+  test("asks the browser about other colors when it can", () => {
+    const original = (globalThis as { CSS?: unknown }).CSS;
+    (globalThis as { CSS?: unknown }).CSS = {
+      supports: (_property: string, value: string) => value === "tomato",
+    };
+    try {
+      expect(isValidPersonColor("tomato")).toBe(true);
+      expect(isValidPersonColor("banana")).toBe(false);
+    } finally {
+      (globalThis as { CSS?: unknown }).CSS = original;
+    }
   });
 });
