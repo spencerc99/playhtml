@@ -552,7 +552,7 @@ export default function App() {
 
             <div className={styles.featureCard}>
               <BrowserWindow
-                label="your shore · internet scraps"
+                label="internet scraps"
                 bodyClassName={styles.featureCardFrame}
               >
                 <img
@@ -573,7 +573,7 @@ export default function App() {
 
             <div className={styles.featureCard}>
               <BrowserWindow
-                label="untitled collage"
+                label="untitled"
                 bodyClassName={styles.featureCardFrame}
               >
                 <img

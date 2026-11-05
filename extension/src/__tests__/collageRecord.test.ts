@@ -449,10 +449,10 @@ describe("copying a collage", () => {
 
   it("names an unnamed collage's copy", () => {
     expect(duplicateCollage({ ...source, title: "" }).title).toBe(
-      "untitled collage copy",
+      "untitled copy",
     );
     expect(duplicateCollage({ ...source, title: "   " }).title).toBe(
-      "untitled collage copy",
+      "untitled copy",
     );
   });
 

@@ -2808,7 +2808,7 @@ export function CollageStudio({
                   <input
                     className="collage-title-input"
                     value={title}
-                    placeholder="untitled collage"
+                    placeholder="untitled"
                     onChange={(event) => setTitle(event.target.value)}
                     aria-label="Collage title"
                   />

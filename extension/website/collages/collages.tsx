@@ -109,7 +109,7 @@ function cardWash(id: string, colors: readonly string[]): CSSProperties[] {
 function PinnedCard({ pinned, at }: { pinned: Pinned; at: number }) {
   const { id, by, collage } = pinned;
   const [colors, setColors] = useState<string[]>([]);
-  const title = collage.title.trim() || "untitled collage";
+  const title = collage.title.trim() || "untitled";
   // A collage with no loud colour of its own takes its maker's.
   const wash = useMemo(
     () => cardWash(id, colors.length > 0 ? colors : [by.color]),
