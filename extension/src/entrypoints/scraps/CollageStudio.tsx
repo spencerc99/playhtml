@@ -2926,7 +2926,6 @@ export function CollageStudio({
                       >
                         <PieceMaterial
                           piece={piece}
-                          paper={paper.color}
                           onCutoutFailed={onCutoutFailed}
                         />
                       </div>

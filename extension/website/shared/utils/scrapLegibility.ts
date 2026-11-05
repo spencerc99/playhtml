@@ -78,31 +78,6 @@ export function inkNeedsBacking(color: string | undefined): boolean {
   return contrastRatio(parsed.rgb, PAPER) < MIN_CONTRAST;
 }
 
-/** A pale halo for dark ink, warm like the paper the page uses. */
-const LIGHT_HALO = "rgba(255, 253, 249, 0.9)";
-
-/**
- * A soft halo for lettering that would wash out on the given paper, as a CSS
- * `text-shadow`, or undefined when the lettering already reads. The words keep
- * their own color; the halo is a shade of their hue, dark behind pale ink and
- * light behind dark ink, so they lift off the paper without being recolored.
- */
-export function inkHaloFor(
-  color: string | undefined,
-  paper: string,
-): string | undefined {
-  if (!color) return undefined;
-  const ink = parseRgb(color);
-  const ground = parseRgb(paper);
-  if (!ink || !ground || ink.alpha < 0.5) return undefined;
-  if (contrastRatio(ink.rgb, ground.rgb) >= MIN_CONTRAST) return undefined;
-  const halo =
-    relativeLuminance(ink.rgb) > relativeLuminance(ground.rgb)
-      ? backingFor(color)
-      : LIGHT_HALO;
-  return `0 0 1px ${halo}, 0 0 2px ${halo}, 0 0 5px ${halo}, 0 0 10px ${halo}`;
-}
-
 /** A deep shade of the ink's own hue for it to sit on. */
 export function backingFor(color: string): string {
   const parsed = parseRgb(color);

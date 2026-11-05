@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
   backingFor,
   hasOwnFill,
-  inkHaloFor,
   inkNeedsBacking,
   lightIconInk,
 } from "../scrapLegibility";
@@ -45,27 +44,5 @@ describe("scrap legibility", () => {
     ).toBeNull();
     expect(lightIconInk('<svg><path d="M0 0"/></svg>')).toBeNull();
     expect(lightIconInk('<svg><path fill="currentColor"/></svg>')).toBeNull();
-  });
-});
-
-describe("inkHaloFor", () => {
-  it("gives pale lettering a dark halo on light paper", () => {
-    const halo = inkHaloFor("rgb(255, 255, 255)", "#fffdf9");
-    expect(halo).toMatch(/^0 0 1px /);
-    expect(halo).toContain("#2a2622");
-  });
-
-  it("gives dark lettering a light halo on dark paper", () => {
-    expect(inkHaloFor("rgb(20, 20, 20)", "#1a1a1a")).toContain("rgba(255, 253, 249");
-  });
-
-  it("leaves lettering that already reads alone", () => {
-    expect(inkHaloFor("rgb(42, 38, 34)", "#fffdf9")).toBeUndefined();
-    expect(inkHaloFor("rgb(255, 255, 255)", "#14161c")).toBeUndefined();
-  });
-
-  it("leaves colors it cannot read alone", () => {
-    expect(inkHaloFor("var(--ink)", "#fffdf9")).toBeUndefined();
-    expect(inkHaloFor(undefined, "#fffdf9")).toBeUndefined();
   });
 });

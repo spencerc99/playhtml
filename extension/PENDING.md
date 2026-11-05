@@ -17,4 +17,4 @@ extension/website/public/changelog/media/ and reference them here:
 
 - Collage exports are much smaller: front and back pictures now save as high-quality JPEGs around 1-2MB instead of 7-13MB PNGs, and the "moving pieces" video now sits in the same frame and caption as the pictures. (#684)
 - Collage source labels are now just the site's icon and address.
-- Headings in a collage now wrap onto more lines when you pull them narrower from a side (only corners scale them), and pale headings drop their dark backing on the collage, getting a soft halo instead when they would wash out on the paper.
+- Headings in a collage now wrap onto more lines when you pull them narrower from a side (only corners scale them), and pale headings no longer bring their dark backing onto the collage.
