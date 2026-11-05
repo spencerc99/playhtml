@@ -24,6 +24,8 @@ const JCLAHOOT: CollageMaker = { name: "JCLaHoot", color: "#c9c2b8" };
 export const PINNED_COLLAGES: readonly PinnedCollage[] = [
   { id: "TpNCMd88MOQVtAeRT9Lvlw", by: SPENCER },
   { id: "iLhZ4UrzUPxNCfM7vICBwA", by: SPENCER },
+  // "you can see everything"
+  { id: "Nrz8x6uOpGSKdmN2N9gLdA", by: SPENCER },
   // "Internet shrine"
   { id: "TTmQjpbr6KXvePqO7lEwpQ", by: JCLAHOOT },
   // "the way out"
