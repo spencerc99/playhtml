@@ -11,6 +11,7 @@ import {
   DataCollectionSection,
   DeveloperModeSection,
   YourDataSection,
+  DenyListSection,
 } from "./Collections";
 import { DeveloperFeaturesSection } from "./DeveloperFeaturesPage";
 import { FeatureGate } from "./FeatureGate";
@@ -43,6 +44,7 @@ const SECTIONS = [
   { id: "experiments", title: "Experiments" },
   { id: "community", title: "Community" },
   { id: "your-data", title: "Your data" },
+  { id: "deny-list", title: "Deny List" },
 ] as const;
 
 function randomPrimaryColor(): string {
@@ -600,6 +602,13 @@ export function OptionsPage() {
           <h1>Your data</h1>
           <div className="options-page__card options-page__collections-card">
             <YourDataSection />
+          </div>
+        </section>
+
+        <section id="deny-list" className="options-page__section">
+          <h1>Deny list</h1>
+          <div className="options-page__card options-page__collections-card">
+            <DenyListSection />
           </div>
         </section>
       </main>
