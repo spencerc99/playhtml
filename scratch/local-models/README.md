@@ -8,3 +8,11 @@ For the Mozilla Human-Scale AI application. Not product code.
 
 Targets: `name=http://localhost:8080/v1/chat/completions` (llama-server, LM Studio, Ollama /v1), or `claude` for the Claude Code CLI.
 Env: `RUNS=2`, `CONDITIONS=guide,none`.
+
+## Map
+
+`map.ts` asks each model to place a page for the Internet Commute (hidden / scenery / regular / featured / reserve). It scores the answers against the placements Spencer filed in the commute desk, with Clef's logged call as the baseline.
+
+The fixtures are real participants' pages, so they stay out of the repo. To rebuild them, run `wrangler d1 execute wwo-admin --remote --json --file scratch/local-models/map-fixtures.sql` and keep one row per `page_key`, using the narrowest scope.
+
+Caveat: some of the human placements were made by accepting Clef's call, so Clef's agreement is inflated.
