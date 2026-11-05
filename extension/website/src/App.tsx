@@ -570,6 +570,26 @@ export default function App() {
                 scrap back to the page it came from.
               </p>
             </div>
+
+            <div className={styles.featureCard}>
+              <BrowserWindow
+                label="untitled collage"
+                bodyClassName={styles.featureCardFrame}
+              >
+                <img
+                  className={styles.featureCardImage}
+                  src="/home/browsing-collage.jpg"
+                  alt="A collage of found browsing materials: leather boots stepping across a sunset painting, chrome pipes and a faucet winding between them, blue tape rolls, and a minion in a sea of cartoon eyeballs"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </BrowserWindow>
+              <h3 className={styles.featureCardTitle}>make browsing collages</h3>
+              <p className={styles.featureCardBody}>
+                Arrange your scraps into collages. Every piece remembers the
+                page it came from.
+              </p>
+            </div>
           </div>
 
           <div className={styles.featureRow}>
@@ -611,34 +631,6 @@ export default function App() {
             <span className={styles.cautionStripe} aria-hidden="true" />
           </div>
           <div className={styles.comingSoonGrid}>
-            <div className={`${styles.comingCard} ${styles.comingCardA}`}>
-              <div className={styles.browserWindow}>
-                <div className={styles.browserBar}>
-                  <span className={styles.browserDots} aria-hidden="true">
-                    <span className={styles.browserDot} />
-                    <span className={styles.browserDot} />
-                    <span className={styles.browserDot} />
-                  </span>
-                  <span className={styles.browserLabel}>untitled collage</span>
-                  <span className={styles.statusChip}>SOON</span>
-                </div>
-                <div className={styles.comingThumbFrame}>
-                  <img
-                    className={styles.comingThumb}
-                    src="/home/browsing-collage.jpg"
-                    alt="A collage of found browsing materials: leather boots stepping across a sunset painting, chrome pipes and a faucet winding between them, blue tape rolls, and a minion in a sea of cartoon eyeballs"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </div>
-              </div>
-              <h3 className={styles.comingTitle}>browsing collages</h3>
-              <p className={styles.comingBody}>
-                arrange your scraps into collages. every piece remembers the
-                page it came from.
-              </p>
-            </div>
-
             <div className={`${styles.comingCard} ${styles.comingCardB}`}>
               <div className={styles.browserWindow}>
                 <div className={styles.browserBar}>
