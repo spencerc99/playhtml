@@ -59,14 +59,13 @@ function countOf(count: number, one: string, many: string): string {
 function captionMeta(collage: PublishedCollage): string {
   const sites = new Set(collage.pieces.map((piece) => piece.source.domain))
     .size;
-  const when = collage.createdAt
-    ? `made ${madeOn(collage.createdAt)}`
-    : collage.sharedAt
-      ? `shared ${madeOn(collage.sharedAt)}`
-      : null;
-  const what = `${countOf(collage.pieces.length, "scrap", "scraps")} from ${countOf(sites, "site", "sites")}`;
-  // The date never breaks across lines.
-  return when ? `${what} · ${when.replace(/ /g, "\u00a0")}` : what;
+  return `${countOf(collage.pieces.length, "scrap", "scraps")} from ${countOf(sites, "site", "sites")}`;
+}
+
+/** When the collage was made, or else shared; it sits beside the maker's name. */
+function captionDate(collage: PublishedCollage): string | null {
+  const at = collage.createdAt ?? collage.sharedAt;
+  return at ? madeOn(at) : null;
 }
 
 /** A steady pseudo-random sequence, so a collage's wash keeps its shape on every visit. */
@@ -110,6 +109,7 @@ function PinnedCard({ pinned, at }: { pinned: Pinned; at: number }) {
   const { id, by, collage } = pinned;
   const [colors, setColors] = useState<string[]>([]);
   const title = collage.title.trim() || "untitled collage";
+  const date = captionDate(collage);
   // A collage with no loud colour of its own takes its maker's.
   const wash = useMemo(
     () => cardWash(id, colors.length > 0 ? colors : [by.color]),
@@ -150,12 +150,15 @@ function PinnedCard({ pinned, at }: { pinned: Pinned; at: number }) {
         {wash.map((style, i) => (
           <span key={i} className="collage-board__blot" style={style} />
         ))}
-        <span
-          className="collage-board__name"
-          style={{ backgroundColor: by.color }}
-        >
-          {by.name}
-        </span>
+        <div className="collage-board__byline">
+          <span
+            className="collage-board__name"
+            style={{ backgroundColor: by.color }}
+          >
+            {by.name}
+          </span>
+          {date && <span className="collage-board__date">{date}</span>}
+        </div>
         <span className="collage-board__meta">{captionMeta(collage)}</span>
       </div>
     </a>
