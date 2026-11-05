@@ -1,6 +1,7 @@
 // ABOUTME: Animate: double-tap "a", pick something on the page, and a model suggests 2-3 shared behaviors for it.
 // ABOUTME: Nothing happens until the person picks one; picks are stored per page in WWO's own room.
 
+import browser from "webextension-polyfill";
 import type { GlobalFeatureDeps, SocialExperiment } from "../types";
 import { Animator, ANIMATE_CSS, hashKey, type AnimationRecord } from "./apply";
 import { cropElement, describeElement, findByRef, refFor } from "./element";

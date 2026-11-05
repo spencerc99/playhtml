@@ -1,6 +1,7 @@
 // ABOUTME: Background-side call to whatever model the person points animate at (local llama.cpp by default).
 // ABOUTME: Any OpenAI-compatible chat endpoint works: llama-server, LM Studio, Ollama's /v1, or a hosted API.
 
+import browser from "webextension-polyfill";
 import { RESPONSE_SCHEMA } from "./prompt";
 
 export interface AnimateModelSettings {
