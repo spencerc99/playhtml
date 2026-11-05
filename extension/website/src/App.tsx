@@ -27,6 +27,7 @@ import { TrainCrossing } from "./components/TrainCrossing";
 import { WikipediaDemo } from "./components/WikipediaDemo";
 import {
   CHANGELOG_URL,
+  COLLAGES_URL,
   isNavigationPathActive,
   LIVE_PORTRAIT_URL,
 } from "./navigation";
@@ -287,6 +288,16 @@ export default function App() {
 
       <div className={styles.content}>
         <nav className={styles.siteNav} aria-label="Site navigation">
+          <a
+            aria-current={
+              isNavigationPathActive(currentPath, COLLAGES_URL)
+                ? "page"
+                : undefined
+            }
+            href={COLLAGES_URL}
+          >
+            collages
+          </a>
           <a
             aria-current={
               isNavigationPathActive(currentPath, LIVE_PORTRAIT_URL)
@@ -590,7 +601,10 @@ export default function App() {
               <p className={styles.featureCardBody}>
                 Use your scraps as collage material and turn browsing into a
                 creative act. Each piece remembers the page it came from and
-                becomes an ode to your rabbit holes.
+                becomes an ode to your rabbit holes.{" "}
+                <a className={styles.featureCardLink} href={COLLAGES_URL}>
+                  View collages from the community →
+                </a>
               </p>
             </div>
           </div>

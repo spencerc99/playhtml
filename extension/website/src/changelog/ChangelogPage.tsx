@@ -4,6 +4,7 @@
 import type { ChangelogBlock, ChangelogRelease } from "./changelog";
 import {
   CHANGELOG_URL,
+  COLLAGES_URL,
   isNavigationPathActive,
   LIVE_PORTRAIT_URL,
 } from "../navigation";
@@ -24,6 +25,16 @@ export function ChangelogPage({ releases }: Props) {
             we were online
           </a>
           <div className={styles.navLinks}>
+            <a
+              aria-current={
+                isNavigationPathActive(currentPath, COLLAGES_URL)
+                  ? "page"
+                  : undefined
+              }
+              href={COLLAGES_URL}
+            >
+              collages
+            </a>
             <a
               aria-current={
                 isNavigationPathActive(currentPath, LIVE_PORTRAIT_URL)
