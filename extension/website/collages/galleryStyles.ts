@@ -332,7 +332,25 @@ export const GALLERY_STYLES = `
     font-weight: 700;
   }
 
+  /* The maker's name on the left, the date on the right. */
+  .collage-board__byline {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    align-self: stretch;
+  }
+
+  .collage-board__date {
+    color: #3f3a35;
+    font-family: "Martian Mono", ui-monospace, monospace;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
   .collage-board__meta {
+    align-self: stretch;
     color: #3f3a35;
     font-family: "Martian Mono", ui-monospace, monospace;
     font-size: 10px;
