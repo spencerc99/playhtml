@@ -33,4 +33,6 @@ export const PINNED_COLLAGES: readonly PinnedCollage[] = [
   { id: "aXkOxC_W_o3LSzntBf8MAw", by: SPENCER },
   // untitled, by dan
   { id: "t5mdEEwfTbAkdMwUHk0J6g", by: DAN },
+  // "you can see everything"
+  { id: "Nrz8x6uOpGSKdmN2N9gLdA", by: SPENCER },
 ];
