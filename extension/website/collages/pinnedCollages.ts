@@ -15,6 +15,7 @@ export interface PinnedCollage {
 const SPENCER: CollageMaker = { name: "spencer", color: "#ffae00" };
 // Their cursor colour isn't known yet, so a quiet one stands in.
 const JCLAHOOT: CollageMaker = { name: "JCLaHoot", color: "#c9c2b8" };
+const DAN: CollageMaker = { name: "dan", color: "#e526d7" };
 
 /**
  * Until collages can be published to the gallery from the studio, the board
@@ -30,4 +31,6 @@ export const PINNED_COLLAGES: readonly PinnedCollage[] = [
   { id: "6K99LF2Gld4NBGL67CXdTg", by: SPENCER },
   // "construction"
   { id: "aXkOxC_W_o3LSzntBf8MAw", by: SPENCER },
+  // untitled, by dan
+  { id: "t5mdEEwfTbAkdMwUHk0J6g", by: DAN },
 ];
