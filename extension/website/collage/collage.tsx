@@ -742,7 +742,7 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
                             pointerEvents: "none",
                           }}
                         >
-                          <PieceMaterial piece={piece} />
+                          <PieceMaterial piece={piece} paper={paper.color} />
                         </div>
                       </div>
                     );

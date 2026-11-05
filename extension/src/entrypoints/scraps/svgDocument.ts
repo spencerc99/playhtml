@@ -158,6 +158,8 @@ export function headingBodyMarkup(
   scrap: HeadingScrapShape,
   fontSize: number,
   lineHeight: number,
+  /** A soft halo behind words that would wash out on the paper. */
+  textShadow?: string,
 ): string {
   const declarations = [
     styleDeclarations(scrap.styles),
@@ -165,6 +167,7 @@ export function headingBodyMarkup(
     // size and line height, which belong to the size the heading was read at.
     `font-size:${fontSize}px`,
     `line-height:${lineHeight}`,
+    ...(textShadow ? [`text-shadow:${textShadow}`] : []),
     "display:flex",
     "align-items:center",
     "justify-content:center",

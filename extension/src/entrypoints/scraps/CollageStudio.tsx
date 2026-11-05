@@ -112,7 +112,10 @@ import {
 import { loadCollage, saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
-import { rewrapHeadingFromSide } from "./pieceLettering";
+import {
+  resizeHeadingFromEnd,
+  rewrapHeadingFromSide,
+} from "./pieceLettering";
 import { ExportMenu } from "./ExportMenu";
 import { ShareButton } from "./ShareButton";
 import type { CollageSigner } from "./collageSignature";
@@ -2005,24 +2008,32 @@ export function CollageStudio({
           keepAspect: !event.shiftKey,
           aboutCenter: event.altKey,
         };
-        // A heading pulled from a side keeps its type size and rewraps its
-        // words to the new width, growing downward to hold the lines.
+        // A heading pulled from any edge keeps its type size: from a side
+        // its words rewrap to the new width and the piece grows downward to
+        // hold the lines; from the top or bottom the box gains or loses room
+        // around the lines. Only the corners scale it.
         if (
           grip.kind === "edge" &&
-          (grip.edge === "left" || grip.edge === "right") &&
           before.scrap.kind === "heading" &&
           isFullCrop(before.crop)
         ) {
-          const rewrapped = rewrapHeadingFromSide({
+          const headingDrag = {
             box: before,
             scrap: before.scrap,
             letteringWidth: before.letteringWidth,
-            edge: grip.edge,
             pointer: reach.pointer,
             aboutCenter: event.altKey,
-          });
-          editPieces([{ ...before, ...rewrapped }], `resize:${before.id}`);
-          setGestureReadout(`wrap ${Math.round(rewrapped.letteringWidth)}px`);
+          };
+          const resized =
+            grip.edge === "left" || grip.edge === "right"
+              ? rewrapHeadingFromSide({ ...headingDrag, edge: grip.edge })
+              : resizeHeadingFromEnd({ ...headingDrag, edge: grip.edge });
+          editPieces([{ ...before, ...resized }], `resize:${before.id}`);
+          setGestureReadout(
+            grip.edge === "left" || grip.edge === "right"
+              ? `wrap ${Math.round(resized.letteringWidth)}px`
+              : `height ${Math.round(resized.height)}px`,
+          );
           return;
         }
         const drag =
@@ -2915,6 +2926,7 @@ export function CollageStudio({
                       >
                         <PieceMaterial
                           piece={piece}
+                          paper={paper.color}
                           onCutoutFailed={onCutoutFailed}
                         />
                       </div>

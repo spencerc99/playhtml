@@ -216,3 +216,55 @@ export function rewrapHeadingFromSide(options: {
     letteringWidth,
   };
 }
+
+/**
+ * Pulls a heading piece taller or shorter from its top or bottom. Its type
+ * keeps its size and its lines stay as they are; the box gains or loses room
+ * around them, but never gets shorter than the lines it holds. The opposite
+ * edge stays put, or the middle does with `aboutCenter`.
+ */
+export function resizeHeadingFromEnd(options: {
+  box: PieceBox & { rotation: number };
+  scrap: HeadingScrap;
+  letteringWidth: number | undefined;
+  edge: Extract<BoxEdge, "top" | "bottom">;
+  pointer: Point;
+  aboutCenter: boolean;
+  measure?: (scrap: HeadingScrap, letteringWidth: number) => number;
+}): PieceBox & { letteringWidth: number } {
+  const { box, scrap, edge, pointer, aboutCenter } = options;
+  const measure = options.measure ?? headingHeightAtLetteringWidth;
+  const layout = letteringLayout(scrap, box, options.letteringWidth);
+  const radians = (box.rotation * Math.PI) / 180;
+  const center = boxCenter(box);
+  const local = rotatePoint(pointer, center, -radians);
+  const bottom = box.y + box.height;
+
+  const shortest = Math.max(
+    MIN_PIECE_SIDE,
+    measure(scrap, layout.width) * layout.scale,
+  );
+  const pulled = aboutCenter
+    ? 2 * Math.abs(local.y - center.y)
+    : edge === "bottom"
+      ? local.y - box.y
+      : bottom - local.y;
+  const height = Math.max(shortest, pulled);
+  const top = aboutCenter
+    ? center.y - height / 2
+    : edge === "bottom"
+      ? box.y
+      : bottom - height;
+  const newCenter = rotatePoint(
+    { x: box.x + box.width / 2, y: top + height / 2 },
+    center,
+    radians,
+  );
+  return {
+    x: newCenter.x - box.width / 2,
+    y: newCenter.y - height / 2,
+    width: box.width,
+    height,
+    letteringWidth: layout.width,
+  };
+}

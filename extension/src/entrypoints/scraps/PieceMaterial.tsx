@@ -13,9 +13,15 @@ import {
 } from "./collageRecord";
 import { sourceBoxForCrop } from "./collageGeometry";
 import { isLettered, letteringLayout } from "./pieceLettering";
+import { inkHaloFor } from "@movement/utils/scrapLegibility";
 
 interface PieceMaterialProps {
   piece: CollagePiece;
+  /**
+   * The paper the piece lies on, so pale lettering that would wash out on it
+   * gets a soft halo. Absent where there is no paper to read against.
+   */
+  paper?: string;
   /** Told when the cut could not be computed, so the studio can say so. */
   onCutoutFailed?: (pieceId: string, reason: string) => void;
 }
@@ -47,7 +53,11 @@ function maskStyle(mask: CutoutMaskImage): React.CSSProperties {
  * cut that did not happen. The mask is computed over the piece's crop, so a
  * new crop brings a new cut.
  */
-export function PieceMaterial({ piece, onCutoutFailed }: PieceMaterialProps) {
+export function PieceMaterial({
+  piece,
+  paper,
+  onCutoutFailed,
+}: PieceMaterialProps) {
   const { scrap, cutout, crop } = piece;
   const wantsCutout = scrap.kind === "image" && cutout !== undefined;
   const src = scrap.kind === "image" ? scrap.src : "";
@@ -137,6 +147,10 @@ export function PieceMaterial({ piece, onCutoutFailed }: PieceMaterialProps) {
         width: layout.width,
         height: layout.height,
         transform: `scale(${layout.scale})`,
+        textShadow:
+          scrap.kind === "heading" && paper
+            ? inkHaloFor(scrap.styles.color, paper)
+            : undefined,
       }}
     >
       {content}

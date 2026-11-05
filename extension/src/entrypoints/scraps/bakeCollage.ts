@@ -8,6 +8,7 @@ import { cutoutCanvas } from "./cutoutImages";
 import { drawGrain } from "./paperGrain";
 import { resolveScrapImageSrc } from "@movement/utils/scrapImageSource";
 import { headingDisplayFontSize } from "@movement/components/ScrapCollage";
+import { inkHaloFor } from "@movement/utils/scrapLegibility";
 import { HEADING_LINE_HEIGHT, letteringLayout } from "./pieceLettering";
 import {
   buttonBodyMarkup,
@@ -95,6 +96,7 @@ async function loadHeadingImage(
   width: number,
   height: number,
   letteringWidth: number | undefined,
+  paper: string | undefined,
 ): Promise<HTMLImageElement> {
   const layout = letteringLayout(scrap, { width, height }, letteringWidth);
   return loadImage(
@@ -103,6 +105,7 @@ async function loadHeadingImage(
         scrap,
         headingDisplayFontSize(scrap.styles, scrap.text),
         HEADING_LINE_HEIGHT,
+        paper ? inkHaloFor(scrap.styles.color, paper) : undefined,
       ),
       ...layout,
     }),
@@ -161,6 +164,7 @@ async function pieceImage(
   piece: CollagePiece,
   sourceWidth: number,
   sourceHeight: number,
+  paper: string | undefined,
 ): Promise<PieceImage> {
   const { scrap } = piece;
   switch (scrap.kind) {
@@ -197,6 +201,7 @@ async function pieceImage(
           sourceWidth,
           sourceHeight,
           piece.letteringWidth,
+          paper,
         ),
       };
   }
@@ -229,6 +234,8 @@ type SourceBox = ReturnType<typeof sourceBoxForCrop>;
  */
 export async function prepareCollagePieces(
   pieces: readonly CollagePiece[],
+  /** The paper they lie on, so pale lettering gets the halo the studio shows. */
+  paper?: string,
 ): Promise<PreparedPiece[]> {
   const ordered = [...pieces].sort((a, b) => a.z - b.z);
   const failures: BakeFailure[] = [];
@@ -240,6 +247,7 @@ export async function prepareCollagePieces(
           piece,
           Math.max(1, Math.round(source.width)),
           Math.max(1, Math.round(source.height)),
+          paper,
         );
         return { piece, source, still };
       } catch (error) {
@@ -351,6 +359,8 @@ export interface PreviewBakeOptions {
   pieces: readonly CollagePiece[];
   /** Pixel density of the baked PNG relative to the frame's logical size. */
   scale?: number;
+  /** The paper the pieces will be shown on, for the lettering's halo. */
+  paper?: string;
 }
 
 /**
@@ -403,7 +413,7 @@ async function drawCollageCanvas(
 ): Promise<HTMLCanvasElement> {
   const { frame } = options;
   const scale = options.scale ?? 2;
-  const prepared = await prepareCollagePieces(options.pieces);
+  const prepared = await prepareCollagePieces(options.pieces, options.paper);
   const { canvas, context } = collageCanvas(
     frame,
     Math.round(frame.width * scale),

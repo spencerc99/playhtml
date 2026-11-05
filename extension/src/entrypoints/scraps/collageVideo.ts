@@ -167,7 +167,7 @@ export async function bakeCollageVideo(options: VideoBakeOptions): Promise<Blob>
   if (!support.ok) throw new Error(support.reason);
   const { frame } = options;
 
-  const prepared = await prepareCollagePieces(options.pieces);
+  const prepared = await prepareCollagePieces(options.pieces, options.paper);
   const failures: BakeFailure[] = [];
   const animated = new Map<string, AnimatedPiece>();
   await Promise.all(
