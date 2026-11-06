@@ -449,7 +449,7 @@ export default function App() {
               is the causal sharing of space with other people. We share a look
               when something funny happens or help out when a stranger trips.
               Sometimes these spontaneous encounters become meaningful
-              encounters that stay with us.
+              encounters that stay with us. There is so much life around us!
             </p>
 
             <div className={styles.marginalia}>
