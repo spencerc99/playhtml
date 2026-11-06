@@ -4,20 +4,33 @@
 import type { PlayerIdentity } from "../types";
 import { getConfig } from "./sync";
 import {
-  getPublicPlayerIdentity,
   getStoredPlayerIdentity,
   saveStoredPlayerIdentity,
+  signPlayerIdentityPayload,
 } from "./playerIdentity";
 
-async function syncPlayerColor(pid: string, color: string): Promise<void> {
+function colorUpdatePayload(pid: string, color: string, version: number): string {
+  return `participant-color-v1\n${pid}\n${color}\n${version}`;
+}
+
+async function syncPlayerColor(
+  pid: string,
+  color: string,
+  version: number,
+  privateKey: JsonWebKey,
+): Promise<void> {
   try {
     const { workerUrl } = await getConfig();
+    const signature = await signPlayerIdentityPayload(
+      privateKey,
+      colorUpdatePayload(pid, color, version),
+    );
     const response = await fetch(
       `${workerUrl}/participants/${encodeURIComponent(pid)}`,
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cursor_color: color }),
+        body: JSON.stringify({ cursor_color: color, version, signature }),
       },
     );
 
@@ -30,10 +43,13 @@ async function syncPlayerColor(pid: string, color: string): Promise<void> {
 }
 
 export async function syncStoredPlayerColor(): Promise<void> {
-  const identity = await getPublicPlayerIdentity();
-  const color = identity?.playerStyle.colorPalette[0];
-  if (!identity?.publicKey || !color) return;
-  await syncPlayerColor(identity.publicKey, color);
+  const stored = await getStoredPlayerIdentity();
+  const color = stored?.public.playerStyle.colorPalette[0];
+  if (!stored?.public.publicKey || !color) return;
+
+  const version = Math.max(Date.now(), (stored.colorSyncVersion ?? 0) + 1);
+  await saveStoredPlayerIdentity({ ...stored, colorSyncVersion: version });
+  await syncPlayerColor(stored.public.publicKey, color, version, stored.privateKey);
 }
 
 export async function savePlayerColor(color: string): Promise<PlayerIdentity | null> {
@@ -54,13 +70,15 @@ export async function savePlayerColor(color: string): Promise<PlayerIdentity | n
     },
   };
 
+  const version = Math.max(Date.now(), (stored.colorSyncVersion ?? 0) + 1);
   await saveStoredPlayerIdentity({
     ...stored,
     public: updated,
+    colorSyncVersion: version,
   });
 
   if (updated.publicKey) {
-    await syncPlayerColor(updated.publicKey, color);
+    await syncPlayerColor(updated.publicKey, color, version, stored.privateKey);
   }
 
   return updated;

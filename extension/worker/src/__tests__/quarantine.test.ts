@@ -1,5 +1,5 @@
 // ABOUTME: Tests for the /quarantine/* route handlers.
-// ABOUTME: Mocks the Supabase client and asserts validation, url normalization, rip idempotency, and setness snapshot.
+// ABOUTME: Mocks the Supabase client and asserts validation, ownership proof, url normalization, rip idempotency, and setness snapshot.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -74,6 +74,7 @@ import {
   handleQuarantineRip,
   __resetRateLimitForTests,
 } from '../routes/quarantine';
+import { quarantineRipPayload, quarantineStripPayload } from '../lib/quarantineProof';
 import type { Env } from '../lib/supabase';
 
 const ENV = {
@@ -98,6 +99,55 @@ function post(path: string, body: unknown, ip = '1.2.3.4'): Request {
 
 const EDGE_A = { wall: 'left', t: 0.5 };
 const EDGE_B = { wall: 'right', t: 0.5 };
+
+// --- signed-identity test helpers -------------------------------------------
+// Mirrors the real client: the actor id IS the raw hex-encoded P-256 public key.
+interface Identity {
+  pid: string;
+  privateKey: CryptoKey;
+}
+
+async function makeIdentity(): Promise<Identity> {
+  const keypair = await crypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    true,
+    ['sign', 'verify'],
+  );
+  const rawPublicKey = new Uint8Array(await crypto.subtle.exportKey('raw', keypair.publicKey));
+  const pid = `pk_${Array.from(rawPublicKey, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+  return { pid, privateKey: keypair.privateKey };
+}
+
+async function sign(privateKey: CryptoKey, payload: string): Promise<string> {
+  const signature = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    privateKey,
+    new TextEncoder().encode(payload),
+  );
+  return btoa(String.fromCharCode(...new Uint8Array(signature)));
+}
+
+async function signedStripBody(
+  identity: Identity,
+  overrides: { url: string; type: string; a: unknown; b: unknown; seed: number },
+) {
+  const signature = await sign(
+    identity.privateKey,
+    quarantineStripPayload(identity.pid, overrides.url, overrides.type, overrides.a as any, overrides.b as any, overrides.seed),
+  );
+  return { ...overrides, createdBy: identity.pid, signature };
+}
+
+async function signedRipBody(
+  identity: Identity,
+  overrides: { url: string; stripId: string; pos: number },
+) {
+  const signature = await sign(
+    identity.privateKey,
+    quarantineRipPayload(identity.pid, overrides.url, overrides.stripId, overrides.pos),
+  );
+  return { ...overrides, by: identity.pid, signature };
+}
 
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -138,16 +188,18 @@ describe('GET /quarantine/verdict', () => {
 
 describe('POST /quarantine/strip', () => {
   it('400s on invalid type', async () => {
+    const identity = await makeIdentity();
     const res = await handleQuarantineStrip(
-      post('/quarantine/strip', { url: 'https://x.com', type: 'nope', a: EDGE_A, b: EDGE_B, seed: 1, createdBy: 'p' }),
+      post('/quarantine/strip', await signedStripBody(identity, { url: 'https://x.com', type: 'nope', a: EDGE_A, b: EDGE_B, seed: 1 })),
       ENV,
     );
     expect(res.status).toBe(400);
   });
 
   it('400s on out-of-range edge t', async () => {
+    const identity = await makeIdentity();
     const res = await handleQuarantineStrip(
-      post('/quarantine/strip', { url: 'https://x.com', type: 'slop', a: { wall: 'left', t: 5 }, b: EDGE_B, seed: 1, createdBy: 'p' }),
+      post('/quarantine/strip', await signedStripBody(identity, { url: 'https://x.com', type: 'slop', a: { wall: 'left', t: 5 }, b: EDGE_B, seed: 1 })),
       ENV,
     );
     expect(res.status).toBe(400);
@@ -161,21 +213,65 @@ describe('POST /quarantine/strip', () => {
     expect(res.status).toBe(400);
   });
 
-  it('inserts a strip and returns it', async () => {
+  it('400s when createdBy is not a valid participant public key', async () => {
     const res = await handleQuarantineStrip(
-      post('/quarantine/strip', { url: 'https://x.com/p', type: 'spam', a: EDGE_A, b: EDGE_B, seed: 7, createdBy: 'pid9' }),
+      post('/quarantine/strip', { url: 'https://x.com', type: 'slop', a: EDGE_A, b: EDGE_B, seed: 1, createdBy: 'someone-else', signature: 'whatever' }),
+      ENV,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('401s on missing signature', async () => {
+    const identity = await makeIdentity();
+    const res = await handleQuarantineStrip(
+      post('/quarantine/strip', { url: 'https://x.com', type: 'slop', a: EDGE_A, b: EDGE_B, seed: 1, createdBy: identity.pid }),
+      ENV,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('401s when the signature was captured for a different actor (forged createdBy)', async () => {
+    const author = await makeIdentity();
+    const attacker = await makeIdentity();
+    const forged = await signedStripBody(author, { url: 'https://x.com/p', type: 'spam', a: EDGE_A, b: EDGE_B, seed: 7 });
+    // Attacker claims the write as their own identity but reuses the author's signature.
+    const res = await handleQuarantineStrip(
+      post('/quarantine/strip', { ...forged, createdBy: attacker.pid }),
+      ENV,
+    );
+    expect(res.status).toBe(401);
+    expect(fake.inserted).toBeNull();
+  });
+
+  it('401s when the signature was captured for a different url (content mismatch)', async () => {
+    const identity = await makeIdentity();
+    const signed = await signedStripBody(identity, { url: 'https://x.com/p', type: 'spam', a: EDGE_A, b: EDGE_B, seed: 7 });
+    const res = await handleQuarantineStrip(
+      post('/quarantine/strip', { ...signed, url: 'https://x.com/other-page' }),
+      ENV,
+    );
+    expect(res.status).toBe(401);
+    expect(fake.inserted).toBeNull();
+  });
+
+  it('inserts a strip and returns it when the proof is valid', async () => {
+    const identity = await makeIdentity();
+    const res = await handleQuarantineStrip(
+      post('/quarantine/strip', await signedStripBody(identity, { url: 'https://x.com/p', type: 'spam', a: EDGE_A, b: EDGE_B, seed: 7 })),
       ENV,
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
     expect(body.strip.type).toBe('spam');
-    expect(body.strip.createdBy).toBe('pid9');
-    expect(fake.inserted.created_by).toBe('pid9');
+    expect(body.strip.createdBy).toBe(identity.pid);
+    expect(fake.inserted.created_by).toBe(identity.pid);
   });
 
   it('keeps the query string in the url key (artifact identity)', async () => {
+    const identity = await makeIdentity();
+    const url = 'https://cdn.x.com/img.png?w=800&sig=abc#frag';
     await handleQuarantineStrip(
-      post('/quarantine/strip', { url: 'https://cdn.x.com/img.png?w=800&sig=abc#frag', type: 'slop', a: EDGE_A, b: EDGE_B, seed: 1, createdBy: 'p' }),
+      post('/quarantine/strip', await signedStripBody(identity, { url, type: 'slop', a: EDGE_A, b: EDGE_B, seed: 1 })),
       ENV,
     );
     // hash dropped, query kept
@@ -190,19 +286,51 @@ describe('POST /quarantine/rip', () => {
     seed: 1, created_by: 'author', created_at: 't', rips: [], rips_required: null,
   };
 
+  it('400s when by is not a valid participant public key', async () => {
+    const res = await handleQuarantineRip(
+      post('/quarantine/rip', { url: 'https://x.com/p', stripId: 'r1', by: 'not-a-pubkey', pos: 0.5, signature: 'x' }),
+      ENV,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('401s on missing signature', async () => {
+    const identity = await makeIdentity();
+    const res = await handleQuarantineRip(
+      post('/quarantine/rip', { url: 'https://x.com/p', stripId: 'r1', by: identity.pid, pos: 0.5 }),
+      ENV,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('401s when the signature was captured for a different player (forged by)', async () => {
+    fake.rows = [{ ...baseStrip, rips: [], rips_required: 1 }];
+    const author = await makeIdentity();
+    const attacker = await makeIdentity();
+    const forged = await signedRipBody(author, { url: 'https://x.com/p', stripId: 'r1', pos: 0.5 });
+    const res = await handleQuarantineRip(
+      post('/quarantine/rip', { ...forged, by: attacker.pid }),
+      ENV,
+    );
+    expect(res.status).toBe(401);
+    expect(fake.updated).toBeNull();
+  });
+
   it('404s when the strip is gone', async () => {
     fake.rows = [];
+    const identity = await makeIdentity();
     const res = await handleQuarantineRip(
-      post('/quarantine/rip', { url: 'https://x.com/p', stripId: 'missing', by: 'p', pos: 0.5 }),
+      post('/quarantine/rip', await signedRipBody(identity, { url: 'https://x.com/p', stripId: 'missing', pos: 0.5 })),
       ENV,
     );
     expect(res.status).toBe(404);
   });
 
   it('is idempotent per player — a second rip by the same pid is a no-op', async () => {
-    fake.rows = [{ ...baseStrip, rips: [{ by: 'p1', at: 1, pos: 0.5 }], rips_required: 1 }];
+    const identity = await makeIdentity();
+    fake.rows = [{ ...baseStrip, rips: [{ by: identity.pid, at: 1, pos: 0.5 }], rips_required: 1 }];
     const res = await handleQuarantineRip(
-      post('/quarantine/rip', { url: 'https://x.com/p', stripId: 'r1', by: 'p1', pos: 0.5 }),
+      post('/quarantine/rip', await signedRipBody(identity, { url: 'https://x.com/p', stripId: 'r1', pos: 0.5 })),
       ENV,
     );
     expect(res.status).toBe(200);
@@ -210,10 +338,11 @@ describe('POST /quarantine/rip', () => {
   });
 
   it('snapshots ripsRequired=1 when the page is provisional (<3 strips)', async () => {
+    const identity = await makeIdentity();
     fake.rows = [{ ...baseStrip }];
     fake.countValue = 2; // provisional
     await handleQuarantineRip(
-      post('/quarantine/rip', { url: 'https://x.com/p', stripId: 'r1', by: 'p1', pos: 0.5 }),
+      post('/quarantine/rip', await signedRipBody(identity, { url: 'https://x.com/p', stripId: 'r1', pos: 0.5 })),
       ENV,
     );
     expect(fake.updated.rips_required).toBe(1);
@@ -221,20 +350,23 @@ describe('POST /quarantine/rip', () => {
   });
 
   it('snapshots ripsRequired=SET_THRESHOLD when the page is set (>=3 strips)', async () => {
+    const identity = await makeIdentity();
     fake.rows = [{ ...baseStrip }];
     fake.countValue = 4; // set
     await handleQuarantineRip(
-      post('/quarantine/rip', { url: 'https://x.com/p', stripId: 'r1', by: 'p1', pos: 0.5 }),
+      post('/quarantine/rip', await signedRipBody(identity, { url: 'https://x.com/p', stripId: 'r1', pos: 0.5 })),
       ENV,
     );
     expect(fake.updated.rips_required).toBe(3);
   });
 
   it('does not recompute ripsRequired once snapshotted', async () => {
-    fake.rows = [{ ...baseStrip, rips: [{ by: 'x', at: 1, pos: 0.5 }], rips_required: 3 }];
+    const identityX = await makeIdentity();
+    const identityP2 = await makeIdentity();
+    fake.rows = [{ ...baseStrip, rips: [{ by: identityX.pid, at: 1, pos: 0.5 }], rips_required: 3 }];
     fake.countValue = 1; // even though page is now provisional
     await handleQuarantineRip(
-      post('/quarantine/rip', { url: 'https://x.com/p', stripId: 'r1', by: 'p2', pos: 0.5 }),
+      post('/quarantine/rip', await signedRipBody(identityP2, { url: 'https://x.com/p', stripId: 'r1', pos: 0.5 })),
       ENV,
     );
     expect(fake.updated.rips_required).toBe(3); // unchanged

@@ -28,6 +28,7 @@ export async function postStrip(input: {
   b: EdgePoint;
   seed: number;
   createdBy: string;
+  signature: string;
 }): Promise<Strip | null> {
   try {
     const { workerUrl } = await getConfig();
@@ -49,6 +50,7 @@ export async function postRip(input: {
   stripId: string;
   by: string;
   pos: number;
+  signature: string;
 }): Promise<Strip | null> {
   try {
     const { workerUrl } = await getConfig();

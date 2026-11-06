@@ -3,6 +3,12 @@
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
 import { createIpRateLimiter } from '../lib/ipRateLimit';
+import {
+  isValidQuarantineActorId,
+  quarantineRipPayload,
+  quarantineStripPayload,
+  verifyQuarantineSignature,
+} from '../lib/quarantineProof';
 
 const CORS_HEADERS = {
   'Content-Type': 'application/json',
@@ -146,6 +152,7 @@ interface StripBody {
   b?: unknown;
   seed?: unknown;
   createdBy?: unknown;
+  signature?: unknown;
 }
 
 // POST /quarantine/strip — lay a new strip on a URL
@@ -172,10 +179,22 @@ export async function handleQuarantineStrip(request: Request, env: Env): Promise
   const seed = typeof body.seed === 'number' ? Math.trunc(body.seed) : NaN;
   if (!Number.isFinite(seed)) return jsonResponse(400, { error: 'Invalid seed' });
   const createdBy = typeof body.createdBy === 'string' ? body.createdBy : '';
-  if (!createdBy) return jsonResponse(400, { error: 'Missing createdBy' });
+  if (!createdBy || !isValidQuarantineActorId(createdBy)) {
+    return jsonResponse(400, { error: 'Invalid or missing createdBy' });
+  }
+  const signature = typeof body.signature === 'string' ? body.signature : '';
+  if (!signature) return jsonResponse(401, { error: 'Missing quarantine proof' });
 
   const a = body.a as EdgePoint;
   const b = body.b as EdgePoint;
+
+  const rawUrl = body.url as string;
+  const isSigned = await verifyQuarantineSignature(
+    createdBy,
+    quarantineStripPayload(createdBy, rawUrl, body.type as string, a, b, seed),
+    signature,
+  );
+  if (!isSigned) return jsonResponse(401, { error: 'Invalid quarantine proof' });
 
   const supabase = createSupabaseClient(env);
   const { data, error } = await supabase
@@ -206,6 +225,7 @@ interface RipBody {
   stripId?: unknown;
   by?: unknown;
   pos?: unknown;
+  signature?: unknown;
 }
 
 // POST /quarantine/rip — tear at a strip
@@ -226,9 +246,21 @@ export async function handleQuarantineRip(request: Request, env: Env): Promise<R
   const stripId = typeof body.stripId === 'string' ? body.stripId : '';
   if (!stripId) return jsonResponse(400, { error: 'Missing stripId' });
   const by = typeof body.by === 'string' ? body.by : '';
-  if (!by) return jsonResponse(400, { error: 'Missing by' });
+  if (!by || !isValidQuarantineActorId(by)) {
+    return jsonResponse(400, { error: 'Invalid or missing by' });
+  }
   const pos =
     typeof body.pos === 'number' && body.pos >= 0 && body.pos <= 1 ? body.pos : 0.5;
+  const signature = typeof body.signature === 'string' ? body.signature : '';
+  if (!signature) return jsonResponse(401, { error: 'Missing quarantine proof' });
+
+  const rawUrl = body.url as string;
+  const isSigned = await verifyQuarantineSignature(
+    by,
+    quarantineRipPayload(by, rawUrl, stripId, pos),
+    signature,
+  );
+  if (!isSigned) return jsonResponse(401, { error: 'Invalid quarantine proof' });
 
   const supabase = createSupabaseClient(env);
 
