@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import react from "@astrojs/react";
+import directedit from "directedit/astro";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -157,5 +158,7 @@ export default defineConfig({
       ],
     }),
     react(),
+    // Alt+E to edit copy in place (dev and Cloudflare previews only; see vite.config.site.mts).
+    directedit(),
   ],
 });
