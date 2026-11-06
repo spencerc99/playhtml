@@ -5,6 +5,7 @@ import React from "react";
 import { PlayProvider } from "@playhtml/react";
 import { Cursors, Guestbook, PlayhtmlToolBox } from "../events";
 import { useStickyState } from "../../hooks/useStickyState";
+import { getMe } from "../../utils/useMe";
 import "./gray-area.scss";
 
 function Main() {
@@ -12,8 +13,8 @@ function Main() {
     "username",
     null,
     (newName) => {
-      // Cursor identity is exposed through settable properties, not methods.
-      if (window.cursors) window.cursors.name = newName ?? "";
+      const me = getMe();
+      if (me) me.name = newName ?? "";
     },
   );
   const [from, setFrom] = useStickyState<string | null>("from", null);

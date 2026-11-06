@@ -11,9 +11,9 @@ import {
 } from "react";
 import {
   usePlayContext,
-  usePlayerIdentity,
   withSharedState,
 } from "@playhtml/react";
+import { useMe } from "../../../utils/useMe";
 import {
   PARTY_COLORS,
   createBalloonCreation,
@@ -61,7 +61,7 @@ function SegmentShape({ segment }: { segment: BalloonSegment }) {
 }
 
 export function BalloonWorkshop() {
-  const playerIdentity = usePlayerIdentity();
+  const myIdentity = useMe();
   const {
     isLoading,
     dispatchPlayEvent,
@@ -114,11 +114,11 @@ export function BalloonWorkshop() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const identity: PartyIdentity | null = playerIdentity.pid
+  const identity: PartyIdentity | null = myIdentity.pid
     ? {
-        pid: playerIdentity.pid,
-        name: playerIdentity.name?.trim() || "you",
-        color: playerIdentity.color || PARTY_COLORS[0],
+        pid: myIdentity.pid,
+        name: myIdentity.name?.trim() || "you",
+        color: myIdentity.color || PARTY_COLORS[0],
       }
     : null;
   const current = useRef({

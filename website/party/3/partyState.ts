@@ -101,7 +101,7 @@ export interface PartyData {
   lastPopperPair: string;
 }
 
-export interface PopperAwareness extends PartyIdentity {
+export interface PopperPresence extends PartyIdentity {
   holdingPopper: boolean;
   holdId: string;
 }

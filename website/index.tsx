@@ -26,7 +26,7 @@ const GuestbookSubmissionLimit = {
   storageKey: "playhtml:guestbook-submission-timestamps",
 };
 const GuestbookNameStorageKey = "name";
-type HomepageAwareness = { online: true };
+type HomepagePresence = { online: true };
 
 function getFormDataId(formData: FormData) {
   return `${formData.name}-${formData.timestamp}`;
@@ -72,20 +72,19 @@ function setupGuestbookNameInput() {
 
 setupGuestbookNameInput();
 
-function setupHomepageAwarenessStatus() {
+function setupHomepagePresenceStatus() {
   const statusElement = document.getElementById("site-console-count");
   const countElement = document.getElementById("site-console-count-number");
   const countLabel = document.querySelector(".site-console__status-label");
   if (!statusElement || !countElement || !countLabel) return;
 
-  playhtml.register<Record<string, never>, undefined, HomepageAwareness>(
+  playhtml.register<Record<string, never>, undefined, HomepagePresence>(
     "site-console-count",
     {
       defaultData: {},
-      myDefaultAwareness: { online: true },
-      updateElement: () => {},
-      updateElementAwareness: ({ awareness }) => {
-        const peopleCount = Math.max(awareness.length, 1);
+      defaultPresence: { online: true },
+      update: ({ everyone }) => {
+        const peopleCount = Math.max(everyone.length, 1);
 
         if (countElement.textContent === String(peopleCount)) return;
 
@@ -135,7 +134,7 @@ function getLocalPreviewInitOptions() {
   };
 }
 
-setupHomepageAwarenessStatus();
+setupHomepagePresenceStatus();
 setupHomepageCandle();
 
 // Render React components

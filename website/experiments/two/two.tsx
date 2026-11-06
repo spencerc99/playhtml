@@ -19,17 +19,17 @@ const CursorController = withSharedState(
     defaultData: {
       cursors: [] as Cursor[],
     },
-    myDefaultAwareness: {
+    defaultPresence: {
       cursorUrl: "",
     },
   },
-  ({ data, setData, myAwareness, setMyAwareness, awareness }) => {
+  ({ data, setData, everyone, me, setMyPresence }) => {
     const [cursorUrl, setCursorUrl] = useState<string>("");
     const { cursors } = data;
     const cursorsSet = new Set(cursors.map((cursor) => cursor.cursorUrl));
-    const userCursor = myAwareness?.cursorUrl;
+    const userCursor = me.presence?.cursorUrl;
     const setUserCursor = (newUrl: string) => {
-      setMyAwareness({ cursorUrl: newUrl });
+      setMyPresence({ cursorUrl: newUrl });
     };
     const userCursorIsGif = userCursor && userCursor.endsWith(".gif");
     const [cursorLocation, setCursorLocation] = useState({ x: 0, y: 0 });
@@ -147,7 +147,7 @@ const CursorController = withSharedState(
           >
             original
             <div className="count">
-              {awareness.filter((a) => a.cursorUrl === "").length}
+              {everyone.filter((p) => p.presence?.cursorUrl === "").length}
             </div>
           </div>
           {cursors.map((cursor) => (
@@ -164,7 +164,7 @@ const CursorController = withSharedState(
               <img src={cursor.cursorUrl} alt="cursor" />
               <div className="count">
                 {
-                  awareness.filter((a) => a.cursorUrl === cursor.cursorUrl)
+                  everyone.filter((p) => p.presence?.cursorUrl === cursor.cursorUrl)
                     .length
                 }
               </div>

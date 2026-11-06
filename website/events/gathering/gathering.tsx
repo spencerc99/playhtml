@@ -2,19 +2,8 @@ import ReactDOM from "react-dom";
 import React, { useState } from "react";
 import { PlayProvider, withSharedState } from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
+import { getMe } from "../../utils/useMe";
 import "./walking-together.scss";
-
-interface CursorParty {
-  color: string;
-  count: number;
-  name: string;
-}
-
-declare global {
-  interface Window {
-    cursors?: CursorParty;
-  }
-}
 
 interface SharedURL {
   url: string;
@@ -52,28 +41,32 @@ export function UserSetup() {
     "username",
     null,
     (newName) => {
-      if (window.cursors) window.cursors.name = newName ?? "";
+      const me = getMe();
+      if (me) me.name = newName ?? "";
     }
   );
 
   const [color, setInternalColor] = useState(
-    JSON.parse(localStorage.getItem("color") || "null") || window.cursors?.color
+    JSON.parse(localStorage.getItem("color") || "null") || getMe()?.color
   );
   const setColor = (newColor: string) => {
     setInternalColor(newColor);
-    if (window.cursors) window.cursors.color = newColor;
+    const me = getMe();
+    if (me) me.color = newColor;
   };
 
   const [cursorsLoaded, setCursorsLoaded] = React.useState(false);
 
-  // Check for cursors availability
+  // Wait for playhtml to start
   React.useEffect(() => {
     const checkCursors = () => {
-      if (!window.cursors) return false;
-      // The setters above skip writes while the client is still loading,
+      const me = getMe();
+      if (!me) return false;
+      // The setters above skip writes while playhtml is still loading,
       // so apply the saved identity once it arrives.
-      if (name) window.cursors.name = name;
-      if (color) window.cursors.color = color;
+      if (name) me.name = name;
+      if (color) me.color = color;
+      else setInternalColor(me.color);
       setCursorsLoaded(true);
       return true;
     };
@@ -91,13 +84,14 @@ export function UserSetup() {
     };
   }, [name, color]);
 
-  // The cursor client loads after first render, so the sticky name and color
+  // playhtml starts after first render, so the sticky name and color
   // callbacks above can run before it exists. Apply them once it appears.
   React.useEffect(() => {
-    if (!cursorsLoaded || !window.cursors) return;
-    if (name) window.cursors.name = name;
-    if (color) window.cursors.color = color;
-    else setInternalColor(window.cursors.color);
+    const me = getMe();
+    if (!cursorsLoaded || !me) return;
+    if (name) me.name = name;
+    if (color) me.color = color;
+    else setInternalColor(me.color);
   }, [cursorsLoaded]);
 
   if (!cursorsLoaded) {
@@ -170,8 +164,8 @@ export const URLChat = withSharedState(
 
       const newUrl: SharedURL = {
         url: inputUrl,
-        userName: window.cursors?.name || "Anonymous",
-        userColor: window.cursors?.color || "#000000",
+        userName: getMe()?.name || "Anonymous",
+        userColor: getMe()?.color || "#000000",
         timestamp: Date.now(),
       };
 
@@ -296,8 +290,7 @@ export const GroupActivityDisplay = withSharedState(
     };
 
     const isAdmin =
-      window.cursors?.name === "Kristoffer" ||
-      window.cursors?.name === "spencer";
+      getMe()?.name === "Kristoffer" || getMe()?.name === "spencer";
 
     return (
       <div className="group-activity" id="group-activity">

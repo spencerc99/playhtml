@@ -10,8 +10,8 @@ import React, {
 import {
   usePageData,
   usePlayContext,
-  usePlayerIdentity,
 } from "@playhtml/react";
+import { useMe } from "../../../utils/useMe";
 import { LiveTrails } from "@movement/components/LiveTrails";
 import { DEFAULT_SETTINGS } from "@movement/components/settingsDefaults";
 import { useLiveEvents } from "@movement/hooks/useLiveEvents";
@@ -123,7 +123,7 @@ export function WalkStage({ active }: { active: boolean }) {
   // An ended walk lands fully drawn; each replay remounts the trails so they
   // trace in again from the start.
   const [replays, setReplays] = useState(0);
-  const { pid, name, color } = usePlayerIdentity();
+  const { pid, name, color } = useMe();
   const extension = useSyncExternalStore(onExtensionDetected, extensionStatus);
   const [watching, setWatching] = useStickyState<boolean>(
     "walk-just-watching",

@@ -104,9 +104,9 @@ const ColorController = withSharedState(
     defaultData: {
       colors: [] as ColorChange[],
     },
-    myDefaultAwareness: undefined as undefined | { color: string },
+    defaultPresence: undefined as undefined | { color: string },
   },
-  ({ data, setData, awareness, setMyAwareness }) => {
+  ({ data, setData, everyone, setMyPresence }) => {
     const { colors } = data;
     // Get the latest color in the history, otherwise use white as the default background.
     const colorSet = useMemo(
@@ -123,8 +123,8 @@ const ColorController = withSharedState(
     }, [data.colors]);
 
     useEffect(() => {
-      // Awareness is "live" information that isn't persisted. In this case, it will be an array of colors for each active user.
-      setMyAwareness(color === currentColor ? { color } : { color });
+      // Presence is per-person state that isn't saved. Here each person shares the color they're previewing.
+      setMyPresence({ color });
     }, [color]);
 
     const addColor = () => {
@@ -222,15 +222,16 @@ const ColorController = withSharedState(
               <p className="error">{color} has already been selected!</p>
             )}
             <div id="awareness">
-              {awareness.map((a) => {
+              {everyone.map(({ pid, presence }) => {
                 return (
                   <div
+                    key={pid}
                     style={{
-                      background: a.color,
+                      background: presence?.color,
                       width: "2em",
                       height: "2em",
                       filter: "blur(4px)",
-                      boxShadow: `0 0 8px 4px ${a.color}`,
+                      boxShadow: `0 0 8px 4px ${presence?.color}`,
                       borderRadius: "50%",
                     }}
                   ></div>
