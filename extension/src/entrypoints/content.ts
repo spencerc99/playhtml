@@ -1089,6 +1089,10 @@ export default defineContentScript({
         try {
           this.globalCleanup = await initGlobalFeatures({
             createPageData: this.playhtmlInstance.createPageData,
+            setupPlayElement: (el: HTMLElement) =>
+              this.playhtmlInstance?.setupPlayElement(el),
+            removePlayElement: (el: HTMLElement) =>
+              this.playhtmlInstance?.removePlayElement(el),
             presence: this.playhtmlInstance.presence,
             playerColor: color,
             playerPid: pid,

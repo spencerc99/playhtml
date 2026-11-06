@@ -36,6 +36,13 @@ const FEATURE_DEFINITIONS = {
     defaultStage: "internal",
     requiresReload: true,
   },
+  ANIMATE: {
+    name: "Animate",
+    description:
+      "Pick something on a page and get a few suggestions for how everyone could play with it.",
+    defaultStage: "internal",
+    requiresReload: true,
+  },
   INVENTORY: {
     name: "Satchel",
     description: "Collect and carry objects found on PlayHTML pages.",
@@ -86,7 +93,8 @@ const FEATURE_DEFINITIONS = {
   },
   EVERYONE_TRAILS: {
     name: "Everyone's trails",
-    description: "Show everyone's cursor trails, not just yours, in the page portrait overlay.",
+    description:
+      "Show everyone's cursor trails, not just yours, in the page portrait overlay.",
     defaultStage: "internal",
     requiresReload: false,
     // Picked from the overlay's own mine/everyone switch.
@@ -96,7 +104,8 @@ const FEATURE_DEFINITIONS = {
 
 export type FeatureId = keyof typeof FEATURE_DEFINITIONS;
 
-export const FEATURE_CATALOG: Record<FeatureId, FeatureDefinition> = FEATURE_DEFINITIONS;
+export const FEATURE_CATALOG: Record<FeatureId, FeatureDefinition> =
+  FEATURE_DEFINITIONS;
 
 export const FEATURE_IDS = Object.keys(FEATURE_CATALOG) as FeatureId[];
 

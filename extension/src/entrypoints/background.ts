@@ -767,6 +767,14 @@ export default defineBackground(() => {
       return true
     }
 
+    if (message.type === 'ANIMATE_SUGGEST') {
+      import('../features/social/animate/model')
+        .then(({ requestSuggestions }) => requestSuggestions(message.messages || []))
+        .then((res) => reply(res))
+        .catch((err: Error) => reply({ error: err.message }))
+      return true
+    }
+
     if (message.type === 'CAPTURE_PAGE_PORTRAIT') {
       // Use the sender's window id explicitly. Without it, captureVisibleTab
       // falls back to the current focused window, which Arc's window model
