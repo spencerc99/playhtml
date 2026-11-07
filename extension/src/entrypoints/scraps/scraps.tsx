@@ -21,6 +21,8 @@ import {
 } from "@movement/components/ScrapCollage";
 import { toScrapItem, type ScrapRecord } from "./scrapItems";
 import { useSettledFeatureState } from "../../features/useFeatureAccess";
+import { useMeaningSearch } from "./meaning/useMeaningSearch";
+import { MeaningSearchControl } from "./meaning/MeaningSearchControl";
 import { parsePlaceHash, placeHash, type ScrapsPlace } from "./scrapsPlace";
 import type { CollageRecord } from "./collageRecord";
 import {
@@ -139,6 +141,8 @@ export function ScrapsPage() {
   const seed = useMemo(() => Math.floor(Date.now() / 86_400_000), []);
   const collagesFeature = useSettledFeatureState("SCRAP_COLLAGES");
   const canCreate = collagesFeature?.enabled ?? false;
+  const meaningFeature = useSettledFeatureState("SCRAP_MEANING_SEARCH");
+  const meaning = useMeaningSearch(items, meaningFeature?.enabled ?? false);
   /** The saved collage open in the studio, once it has an id to name. */
   const [openCollageId, setOpenCollageId] = useState<string | null>(null);
   /**
@@ -517,6 +521,19 @@ export function ScrapsPage() {
             seed={seed}
             showKindFilter={true}
             onDeleteScraps={archiveComplete ? deleteScraps : undefined}
+            meaningScore={meaning.scoreFor}
+            onSearchChange={
+              meaning.supported ? meaning.onSearchChange : undefined
+            }
+            searchTools={
+              meaning.supported ? (
+                <MeaningSearchControl
+                  status={meaning.status}
+                  onEnable={meaning.enable}
+                  onRemove={() => void meaning.remove()}
+                />
+              ) : undefined
+            }
           />
         </div>
       )}

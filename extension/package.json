@@ -25,6 +25,7 @@
     "postinstall": "bun run prepare:types"
   },
   "dependencies": {
+    "@huggingface/transformers": "3.8.1",
     "@playhtml/common": "workspace:*",
     "@playhtml/extension-types": "workspace:*",
     "@playhtml/react": "workspace:*",

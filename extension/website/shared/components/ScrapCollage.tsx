@@ -130,6 +130,16 @@ interface ScrapCollageProps {
    * delete a scrap and the controls offer to delete whatever the filters show.
    */
   onDeleteScraps?: (items: ScrapItem[]) => Promise<void>;
+  /**
+   * How closely a scrap matches the search by what it shows rather than by its
+   * words, or undefined when it does not. Scraps it scores join the keyword
+   * matches, and the archive lists them closest first.
+   */
+  meaningScore?: (item: ScrapItem, search: string) => number | undefined;
+  /** Hears the search words as they are typed, for a page that scores them. */
+  onSearchChange?: (search: string) => void;
+  /** Sits under the filters, for controls that change how search works. */
+  searchTools?: React.ReactNode;
 }
 
 export type ScrapView = "drift" | "archive";
@@ -2138,6 +2148,9 @@ export function ScrapCollage({
   showKindFilter = false,
   initialView = "drift",
   onDeleteScraps,
+  meaningScore,
+  onSearchChange,
+  searchTools,
 }: ScrapCollageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const archiveScrollRef = useRef<HTMLDivElement>(null);
@@ -2201,12 +2214,28 @@ export function ScrapCollage({
     () => newestUniqueGroupedScraps(groupedItems),
     [groupedItems],
   );
+  useEffect(() => {
+    onSearchChange?.(search);
+  }, [onSearchChange, search]);
+  /** Scores for scraps that match by meaning, when a search is scored. */
+  const meaningScores = useMemo(() => {
+    if (!meaningScore || search.trim() === "") return null;
+    const scores = new Map<string, number>();
+    for (const item of groupedItems) {
+      const score = meaningScore(item, search);
+      if (score !== undefined) scores.set(item.key, score);
+    }
+    return scores;
+  }, [groupedItems, meaningScore, search]);
   const filteredItems = useMemo(
     () =>
-      groupedItems.filter((item) =>
-        scrapPassesFilters(item, selectedKind, shape, places, search, when),
+      groupedItems.filter(
+        (item) =>
+          scrapPassesFilters(item, selectedKind, shape, places, search, when) ||
+          (meaningScores?.has(item.key) === true &&
+            scrapPassesFilters(item, selectedKind, shape, places, "", when)),
       ),
-    [groupedItems, selectedKind, shape, places, search, when],
+    [groupedItems, selectedKind, shape, places, search, when, meaningScores],
   );
   const filteredUniqueItems = useMemo(
     () => newestUniqueGroupedScraps(filteredItems),
@@ -2216,9 +2245,14 @@ export function ScrapCollage({
     () =>
       [...filteredUniqueItems].sort(
         (first, second) =>
-          second.ts - first.ts || first.key.localeCompare(second.key),
+          (meaningScores
+            ? (meaningScores.get(second.key) ?? -Infinity) -
+                (meaningScores.get(first.key) ?? -Infinity) || 0
+            : 0) ||
+          second.ts - first.ts ||
+          first.key.localeCompare(second.key),
       ),
-    [filteredUniqueItems],
+    [filteredUniqueItems, meaningScores],
   );
   const filtersActive =
     selectedKind.length > 0 ||
@@ -3103,8 +3137,10 @@ export function ScrapCollage({
                 <span className="scrap-collage__controls-spacer" />
                 {archiveMode ? (
                   <span className="scrap-collage__archive-summary">
-                    newest first · {archiveScraps.length} of{" "}
-                    {uniqueItems.length}
+                    {meaningScores && meaningScores.size > 0
+                      ? "closest first"
+                      : "newest first"}{" "}
+                    · {archiveScraps.length} of {uniqueItems.length}
                   </span>
                 ) : (
                   <button
@@ -3154,6 +3190,7 @@ export function ScrapCollage({
                   matchCount={archiveScraps.length}
                   countScraps={countUniqueGroupedScraps}
                 />
+                {searchTools}
               </div>
               {onDeleteScraps &&
                 (selectedScraps.length > 0 ||
