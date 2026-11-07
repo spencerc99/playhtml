@@ -26,7 +26,6 @@ const GuestbookSubmissionLimit = {
   storageKey: "playhtml:guestbook-submission-timestamps",
 };
 const GuestbookNameStorageKey = "name";
-type HomepageAwareness = { online: true };
 
 function getFormDataId(formData: FormData) {
   return `${formData.name}-${formData.timestamp}`;
@@ -73,27 +72,20 @@ function setupGuestbookNameInput() {
 setupGuestbookNameInput();
 
 function setupHomepageAwarenessStatus() {
-  const statusElement = document.getElementById("site-console-count");
   const countElement = document.getElementById("site-console-count-number");
   const countLabel = document.querySelector(".site-console__status-label");
-  if (!statusElement || !countElement || !countLabel) return;
+  if (!countElement || !countLabel) return;
 
-  playhtml.register<Record<string, never>, undefined, HomepageAwareness>(
-    "site-console-count",
-    {
-      defaultData: {},
-      myDefaultAwareness: { online: true },
-      updateElement: () => {},
-      updateElementAwareness: ({ awareness }) => {
-        const peopleCount = Math.max(awareness.length, 1);
+  // Count people, not tabs, so this matches the "online now" number on the page.
+  void playhtml.ready.then(() => {
+    playhtml.people.onChange((everyone) => {
+      const peopleCount = Math.max(everyone.length, 1);
+      if (countElement.textContent === String(peopleCount)) return;
 
-        if (countElement.textContent === String(peopleCount)) return;
-
-        countElement.textContent = String(peopleCount);
-        countLabel.textContent = ` ${peopleCount === 1 ? "person" : "people"} here`;
-      },
-    },
-  );
+      countElement.textContent = String(peopleCount);
+      countLabel.textContent = ` ${peopleCount === 1 ? "person" : "people"} here`;
+    });
+  });
 }
 
 function setupHomepageCandle() {
