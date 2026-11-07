@@ -43,12 +43,20 @@ People: every person is a `Person` (`{ pid, name, color, isMe, presence }`). `pl
 ## Critical Rules
 
 - Every element MUST have a unique `id` attribute — without it, sync silently fails
+- Vanilla HTML: `import { playhtml } from "https://unpkg.com/playhtml@latest"` only works inside `<script type="module">`, never a plain `<script>`
 - Vanilla HTML: Put custom-element behavior in `playhtml.register(elementOrId, initializer)`
 - React: Wrap app in `<PlayProvider>`
 
 ## Quick Reference — Vanilla HTML (can-play)
 
-```javascript
+Put the script at the end of `<body>`, and give the tag `type="module"`. A plain
+`<script>` throws "Cannot use import statement outside a module" and nothing
+syncs.
+
+```html
+<div id="myElement"></div>
+
+<script type="module">
 import { playhtml } from "https://unpkg.com/playhtml@latest";
 
 const el = document.getElementById("myElement");
@@ -64,7 +72,11 @@ playhtml.register(el, {
 });
 
 playhtml.init();
+</script>
 ```
+
+Every other vanilla snippet in this guide that uses `playhtml` goes inside the
+same `<script type="module">` block.
 
 Pass an element when you already have the DOM node, or pass its id before it
 exists. `register` works before or after `init()`. Use
