@@ -26,6 +26,7 @@ const GuestbookSubmissionLimit = {
   storageKey: "playhtml:guestbook-submission-timestamps",
 };
 const GuestbookNameStorageKey = "name";
+type HomepageAwareness = { online: true };
 
 function getFormDataId(formData: FormData) {
   return `${formData.name}-${formData.timestamp}`;
@@ -72,20 +73,29 @@ function setupGuestbookNameInput() {
 setupGuestbookNameInput();
 
 function setupHomepageAwarenessStatus() {
+  const statusElement = document.getElementById("site-console-count");
   const countElement = document.getElementById("site-console-count-number");
   const countLabel = document.querySelector(".site-console__status-label");
-  if (!countElement || !countLabel) return;
+  if (!statusElement || !countElement || !countLabel) return;
 
-  // Count people, not tabs, so this matches the "online now" number on the page.
-  void playhtml.ready.then(() => {
-    playhtml.people.onChange((everyone) => {
-      const peopleCount = Math.max(everyone.length, 1);
-      if (countElement.textContent === String(peopleCount)) return;
+  playhtml.register<Record<string, never>, undefined, HomepageAwareness>(
+    "site-console-count",
+    {
+      defaultData: {},
+      myDefaultAwareness: { online: true },
+      updateElement: () => {},
+      // `everyone` is one entry per person; `awareness` has one per open tab,
+      // which counted people with several tabs more than once.
+      updateElementAwareness: ({ everyone }) => {
+        const peopleCount = Math.max(everyone.length, 1);
 
-      countElement.textContent = String(peopleCount);
-      countLabel.textContent = ` ${peopleCount === 1 ? "person" : "people"} here`;
-    });
-  });
+        if (countElement.textContent === String(peopleCount)) return;
+
+        countElement.textContent = String(peopleCount);
+        countLabel.textContent = ` ${peopleCount === 1 ? "person" : "people"} here`;
+      },
+    },
+  );
 }
 
 function setupHomepageCandle() {
