@@ -171,14 +171,15 @@ describe("a press with one piece or none held", () => {
     expect(plan?.selectOnDown).toEqual(selectOnly("bottom"));
   });
 
-  it("reaches the next piece down straight away with cmd", () => {
+  it("reaches the next piece down on a cmd click, but a cmd drag keeps the held piece", () => {
     const plan = planSelectionPress(pieces, inThePile, selectOnly("top"), null, {
       deep: true,
       additive: false,
       sameSpot: false,
     });
-    expect(plan?.selectOnDown).toEqual(selectOnly("middle"));
-    expect(plan?.dragIds).toEqual(["middle"]);
+    expect(plan?.selectOnClick).toEqual(selectOnly("middle"));
+    expect(plan?.selectOnDown).toEqual(selectOnly("top"));
+    expect(plan?.dragIds).toEqual(["top"]);
   });
 
   it("does nothing on bare paper", () => {
@@ -260,14 +261,14 @@ describe("a press with several held", () => {
     expect(plan?.dragIds).toEqual(["apart"]);
   });
 
-  it("with cmd reaches down from the primary alone", () => {
+  it("with cmd a click reaches down from the primary alone, a drag moves them all", () => {
     const plan = planSelectionPress(pieces, inThePile, selectMany(["apart", "top"]), null, {
       deep: true,
       additive: false,
       sameSpot: false,
     });
-    expect(plan?.selectOnDown).toEqual(selectOnly("middle"));
-    expect(plan?.dragIds).toEqual(["middle"]);
+    expect(plan?.selectOnClick).toEqual(selectOnly("middle"));
+    expect(plan?.dragIds).toEqual(["apart", "top"]);
   });
 });
 
@@ -353,13 +354,14 @@ describe("a press on an unheld piece inside the box around several", () => {
     expect(plan?.dragIds).toEqual(["between"]);
   });
 
-  it("with cmd still reaches down from the pointer, not the box", () => {
+  it("with cmd a click still reaches down from the pointer, not the box", () => {
     const plan = planSelectionPress(spread, onBetween, held, groupBox, {
       deep: true,
       additive: false,
       sameSpot: false,
     });
-    expect(plan?.selectOnDown).toEqual(selectOnly("between"));
+    expect(plan?.selectOnClick).toEqual(selectOnly("between"));
+    expect(plan?.dragIds).toEqual(held.ids);
   });
 });
 

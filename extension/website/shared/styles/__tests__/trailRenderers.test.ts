@@ -33,4 +33,30 @@ describe("colorRenderer", () => {
     expect(firstCallCount).toBeGreaterThan(0);
     expect(setAttribute.mock.calls).toHaveLength(firstCallCount);
   });
+
+  it("gives a see-through pale color the same plate as its opaque form", () => {
+    const plateFor = (trailColor: string) => {
+      const svg = "http://www.w3.org/2000/svg";
+      const pathEl = document.createElementNS(svg, "path");
+      const haloEl = document.createElementNS(svg, "path");
+      colorRenderer.updatePath({
+        pathEl,
+        haloEl,
+        pathData: "M 0 0 L 10 10",
+        trailOpacity: 0.7,
+        strokeWidth: 5,
+        trailProgress: 0.5,
+        trailColor,
+        fixedMonoStrokeWidth: 3,
+      });
+      return haloEl.style.display === "none"
+        ? null
+        : haloEl.getAttribute("fill");
+    };
+
+    const opaque = plateFor("#f0ece4");
+    expect(opaque).not.toBeNull();
+    expect(plateFor("#f0ece480")).toBe(opaque);
+    expect(plateFor("#feec")).toBe(plateFor("#ffeeee"));
+  });
 });

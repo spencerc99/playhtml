@@ -4,6 +4,8 @@
 import { COLLAGE_PIECE_TOOL_STYLES } from "./collagePieceToolStyles";
 import { COLLAGE_VIEW_STYLES } from "./collageViewStyles";
 import { EXPORT_MENU_STYLES } from "./exportMenuStyles";
+import { SIGNATURE_ROW_STYLES } from "./SignatureRow";
+import { SIGNATURE_STAMP_STYLES } from "./SignatureStamp";
 import {
   COLLAGE_MAT_STYLES,
   COLLAGE_SHEET_STYLES,
@@ -41,7 +43,8 @@ export const COLLAGE_PEEK_STYLES = `
     display: flex;
     flex-direction: column;
     gap: 1px;
-    max-width: 230px;
+    box-sizing: border-box;
+    max-width: 150px;
     padding: 2px 5px;
     transform-origin: left top;
     border: 1px solid var(--peek-tint, color-mix(in srgb, var(--c-ink) 50%, transparent));
@@ -70,6 +73,7 @@ export const COLLAGE_PEEK_STYLES = `
     display: flex;
     align-items: center;
     gap: 3px;
+    min-width: 0;
     white-space: nowrap;
   }
 
@@ -90,26 +94,18 @@ export const COLLAGE_PEEK_STYLES = `
     border-radius: 50%;
   }
 
+  /* A long address is cut short so the label keeps to its width. */
+  .collage-peek__site {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .collage-peek__mark {
     display: block;
     width: 10px;
     height: 10px;
     object-fit: contain;
-  }
-
-  .collage-peek__more {
-    display: flex;
-    flex-direction: column;
-    padding-top: 1px;
-    border-top: 1px solid color-mix(in srgb, var(--c-ink) 14%, transparent);
-    color: var(--c-muted);
-  }
-
-  .collage-peek__line {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
 `;
@@ -1071,18 +1067,18 @@ ${PIECE_MATERIAL_STYLES}
     background: var(--c-frame);
   }
 
-  .collage-here__thumb > * {
-    max-width: 100%;
-    max-height: 100%;
+  /* The piece as it looks now, shrunk to fit; its own box clips the crop. */
+  .collage-piece-look {
+    position: relative;
+    display: block;
+    overflow: hidden;
   }
 
-  .collage-here__thumb img,
-  .collage-here__thumb svg {
-    width: auto;
-    height: auto;
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
+  .collage-piece-look__piece {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: left top;
   }
 
   .collage-here__what {
@@ -1499,6 +1495,8 @@ ${COLLAGE_MAT_STYLES}
   /* Views sit at the top-right: the back, and where the pieces came from. */
 ${COLLAGE_VIEW_STYLES}
 ${EXPORT_MENU_STYLES}
+${SIGNATURE_ROW_STYLES}
+${SIGNATURE_STAMP_STYLES}
   .collage-setting:focus-visible,
   .collage-keys-button:focus-visible {
     outline: 2px solid var(--c-accent);

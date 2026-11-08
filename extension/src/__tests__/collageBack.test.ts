@@ -542,7 +542,7 @@ describe("collageBackMarkup", () => {
       markup([], { frame: TALL, content: content([], { title: "   " }) }),
     );
     expect(document.querySelector(".collage-back__title")?.textContent).toBe(
-      "untitled collage",
+      "untitled",
     );
   });
 

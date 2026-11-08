@@ -1,5 +1,5 @@
 // ABOUTME: The studio's "share to view" button, beside "export", opening a popover that makes a view-only link.
-// ABOUTME: The popover holds the publish section: make the link, then copy, open, update or unshare it.
+// ABOUTME: The popover holds the publish section: make the link, then copy, open or unshare it while it keeps itself up to date.
 
 import React, { useEffect, useRef, useState } from "react";
 import { PublishSection, type PublishSectionProps } from "./PublishSection";
@@ -48,9 +48,7 @@ export function ShareButton(props: PublishSectionProps) {
         style={open ? undefined : { display: "none" }}
       >
         <section className="collage-export__section" aria-label="Link">
-          <p className="collage-studio__label">
-            a view-only page — anyone with the link can look, not edit.
-          </p>
+          <p className="collage-studio__label">anyone with the link can view</p>
           <PublishSection {...props} />
         </section>
       </div>

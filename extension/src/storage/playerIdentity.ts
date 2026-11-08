@@ -192,3 +192,12 @@ export async function recordDiscoveredSite(domain: string): Promise<void> {
     [DISCOVERED_SITES_STORAGE_KEY]: [...discoveredSites, domain],
   });
 }
+
+/** Sets the name others see this player by, keeping the rest of the identity. */
+export async function savePlayerName(name: string): Promise<PlayerIdentity | null> {
+  const stored = await getStoredPlayerIdentity();
+  if (!stored) return null;
+  const updated: PlayerIdentity = { ...stored.public, name };
+  await saveStoredPlayerIdentity({ ...stored, public: updated });
+  return updated;
+}

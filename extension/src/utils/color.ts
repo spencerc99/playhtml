@@ -17,3 +17,23 @@ export function hslToHex(h: number, s: number, l: number): string {
   };
   return `#${f(0)}${f(8)}${f(4)}`;
 }
+
+/**
+ * A cursor colour as a lowercase hex string, from the hex or `hsl()` forms
+ * identities are stored in; null for anything else.
+ */
+export function cssColorToHex(value: string): string | null {
+  const text = value.trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(text)) return text;
+  if (/^#[0-9a-f]{3}$/.test(text)) {
+    return `#${[...text.slice(1)].map((digit) => digit + digit).join("")}`;
+  }
+  const hsl = text.match(
+    /^hsla?\(\s*(-?[\d.]+)(?:deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%\s*(?:[,/]\s*[\d.]+%?\s*)?\)$/,
+  );
+  if (!hsl) return null;
+  const hue = ((Number(hsl[1]) % 360) + 360) % 360;
+  const saturation = Math.min(100, Number(hsl[2]));
+  const lightness = Math.min(100, Number(hsl[3]));
+  return hslToHex(hue, saturation, lightness);
+}

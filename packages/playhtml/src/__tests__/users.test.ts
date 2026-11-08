@@ -122,6 +122,59 @@ describe("users", () => {
     ).toEqual(users.getIdentity());
   });
 
+  it("trims names and caps them at 32 characters", () => {
+    const { users } = makeUsers();
+    users.me.name = "  Spencer  ";
+    expect(users.me.name).toBe("Spencer");
+    users.me.name = "x".repeat(40);
+    expect(users.me.name).toBe("x".repeat(32));
+    expect(users.getIdentity().name).toBe("x".repeat(32));
+    users.me.name = "   ";
+    expect(users.me.name).toBeUndefined();
+  });
+
+  it("caps long names from peers and older saved identities", () => {
+    const { users, transport } = makeUsers(
+      makeIdentity("self", "#123456", ` ${"a".repeat(50)}`),
+    );
+    transport.emit({
+      type: "presence-sync",
+      peers: {
+        tab1: { identity: makeIdentity("remote", "#00ff00", "b".repeat(50)) },
+      },
+    });
+    const byPid = new Map(users.getAll().map((user) => [user.pid, user]));
+    expect(byPid.get("self")?.name).toBe("a".repeat(32));
+    expect(byPid.get("remote")?.name).toBe("b".repeat(32));
+  });
+
+  it("rejects colors that aren't valid CSS colors", () => {
+    const supports = vi.fn((_property: string, value: string) =>
+      ["tomato", "oklch(70% 0.1 200)"].includes(value),
+    );
+    vi.stubGlobal("CSS", { supports });
+    try {
+      const { users } = makeUsers();
+      expect(() => {
+        users.me.color = "banana";
+      }).toThrow(/not a valid color/);
+      expect(() => {
+        users.me.color = "inherit";
+      }).toThrow(/not a valid color/);
+      expect(users.me.color).toBe("#123456");
+      users.me.color = "tomato";
+      expect(users.me.color).toBe("tomato");
+      users.me.color = " oklch(70% 0.1 200) ";
+      expect(users.getIdentity().playerStyle.colorPalette[0]).toBe(
+        "oklch(70% 0.1 200)",
+      );
+      users.me.color = "hsla(0, 100%, 50%, 0.5)";
+      expect(users.me.color).toBe("#ff000080");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("onChange fires on self mutation", () => {
     const { users } = makeUsers(makeIdentity("local-key"));
 
@@ -275,5 +328,27 @@ describe("users", () => {
         { pid: "c", color: "#111111", isMe: false },
       ]),
     ).toEqual(["#111111", "#222222"]);
+  });
+});
+
+describe("users colors", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("reports older hsl and rgb colors as hex", () => {
+    const { users, transport } = makeUsers(
+      makeIdentity("self", "hsl(0, 100%, 50%)"),
+    );
+    expect(users.me.color).toBe("#ff0000");
+
+    transport.emit({
+      type: "presence-sync",
+      peers: { tab1: { identity: makeIdentity("remote", "rgb(0, 128, 255)") } },
+    });
+    const colors = Object.fromEntries(
+      users.getAll().map((user) => [user.pid, user.color]),
+    );
+    expect(colors).toEqual({ self: "#ff0000", remote: "#0080ff" });
   });
 });

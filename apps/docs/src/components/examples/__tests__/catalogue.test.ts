@@ -29,7 +29,7 @@ describe("catalogueExamples", () => {
   it("includes complete recipes and inline docs demos without duplicate ids", () => {
     expect(
       catalogueExamples.filter((example) => example.kind === "recipe"),
-    ).toHaveLength(15);
+    ).toHaveLength(20);
     expect(
       catalogueExamples.filter((example) => example.kind === "docs-demo"),
     ).toHaveLength(4);

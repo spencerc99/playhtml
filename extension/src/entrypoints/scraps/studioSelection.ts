@@ -140,8 +140,9 @@ export interface SelectionPressPlan {
  *
  * With one piece or none held, the single-piece rules apply (see planPress):
  * a drag from the held piece moves it, a click takes the frontmost piece, a
- * click again on the same spot reaches one piece further down, and cmd or
- * ctrl reaches the next piece down straight away.
+ * click again on the same spot reaches one piece further down, and a cmd or
+ * ctrl click reaches the next piece down straight away. A cmd or ctrl drag
+ * moves what a plain drag would, since cmd held while dragging snaps.
  */
 export function planSelectionPress(
   pieces: readonly CollagePiece[],
@@ -178,16 +179,6 @@ export function planSelectionPress(
     return { selectOnDown: grown, dragIds: grown.ids, selectOnClick: grown };
   }
 
-  if (selection.ids.length > 1 && !modifiers.deep) {
-    if (heldHere || (groupBox !== null && boxHolds(groupBox, point))) {
-      return {
-        selectOnDown: selection,
-        dragIds: selection.ids,
-        selectOnClick: selectOnly(stack[0].id),
-      };
-    }
-  }
-
   const single = planPress(
     pieces,
     point,
@@ -195,6 +186,20 @@ export function planSelectionPress(
     { deep: modifiers.deep, sameSpot: modifiers.sameSpot },
   );
   if (!single) return null;
+
+  if (selection.ids.length > 1) {
+    if (heldHere || (groupBox !== null && boxHolds(groupBox, point))) {
+      return {
+        selectOnDown: selection,
+        dragIds: selection.ids,
+        // A cmd click reaches down from the primary; a plain one takes the
+        // frontmost piece at that spot.
+        selectOnClick: selectOnly(
+          modifiers.deep ? single.selectOnClick : stack[0].id,
+        ),
+      };
+    }
+  }
   return {
     selectOnDown: selectOnly(single.selectOnDown),
     dragIds: [single.dragId],

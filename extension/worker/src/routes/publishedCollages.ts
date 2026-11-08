@@ -1,9 +1,10 @@
 // ABOUTME: Stores, serves and deletes collages shared as public view-only links, in the SHARED_COLLAGES R2 bucket.
-// ABOUTME: Uploads are validated strictly and rate limited; each share carries its own delete token.
+// ABOUTME: Uploads are validated strictly and rate limited; each share's token takes it down or updates it in place.
 
 import {
   PUBLISHED_COLLAGE_LIMITS,
   PublishedCollageError,
+  MAX_REVISION,
   isPublishedCollageId,
   parsePublishedCollage,
   publishedCollageViewerUrl,
@@ -12,6 +13,7 @@ import {
   sniffPublishedImageType,
   type PublishedCollage,
   type PublishedCollageCreated,
+  type PublishedCollageUpdated,
 } from "../../../shared/publishedCollage";
 import type { Env } from "../lib/supabase";
 
@@ -68,12 +70,37 @@ function collageKey(id: string): string {
   return `${collagePrefix(id)}collage.json`;
 }
 
-function imageKey(id: string, ref: string): string {
-  return `${collagePrefix(id)}${ref}`;
+/**
+ * Where one revision's pictures live. A share never updated keeps them at its
+ * root, as shares always have; each update writes a fresh `r<n>/` folder, so
+ * a picture link (which browsers keep for good) never changes underneath them.
+ */
+function revisionPrefix(id: string, revision: number | undefined): string {
+  return revision === undefined
+    ? collagePrefix(id)
+    : `${collagePrefix(id)}r${revision}/`;
 }
 
-function coverKey(id: string): string {
-  return `${collagePrefix(id)}cover`;
+function imageKey(id: string, ref: string, revision?: number): string {
+  return `${revisionPrefix(id, revision)}${ref}`;
+}
+
+function coverKey(id: string, revision?: number): string {
+  return `${revisionPrefix(id, revision)}cover`;
+}
+
+const REVISION_QUERY = /^[1-9][0-9]{0,8}$/;
+
+/**
+ * The revision a picture link asks for with `?v=<n>`: undefined for none, or
+ * null when the value cannot be one.
+ */
+function requestedRevision(request: Request): number | undefined | null {
+  const value = new URL(request.url).searchParams.get("v");
+  if (value === null) return undefined;
+  if (!REVISION_QUERY.test(value)) return null;
+  const revision = Number(value);
+  return revision <= MAX_REVISION ? revision : null;
 }
 
 function base64Url(bytes: Uint8Array): string {
@@ -148,17 +175,17 @@ export async function handlePublishedCollages(
   }
   if (!isPublishedCollageId(route.id))
     return jsonResponse(404, { error: "Not found" });
-  if (route.kind === "image") {
+  if (route.kind === "image" || route.kind === "cover") {
     if (request.method !== "GET")
       return jsonResponse(405, { error: "Method not allowed" });
-    return handleImage(request, env, route.id, route.ref, ctx);
-  }
-  if (route.kind === "cover") {
-    if (request.method !== "GET")
-      return jsonResponse(405, { error: "Method not allowed" });
-    return servePicture(request, env, coverKey(route.id), ctx);
+    const revision = requestedRevision(request);
+    if (revision === null) return jsonResponse(404, { error: "Not found" });
+    if (route.kind === "cover")
+      return servePicture(request, env, coverKey(route.id, revision), ctx);
+    return handleImage(request, env, route.id, route.ref, revision, ctx);
   }
   if (request.method === "GET") return handleRead(env, route.id);
+  if (request.method === "PUT") return handleUpdate(request, env, route.id);
   if (request.method === "DELETE") return handleDelete(request, env, route.id);
   return jsonResponse(405, { error: "Method not allowed" });
 }
@@ -279,33 +306,32 @@ async function readCover(
   return { bytes, type };
 }
 
-async function handleCreate(request: Request, env: Env): Promise<Response> {
+/** Asks the rate limiter, answering with the refusal when the key has had enough. */
+async function rateLimited(env: Env, key: string): Promise<Response | null> {
   let allowed: boolean;
   try {
-    const outcome = await env.COLLAGE_SHARE_RATE_LIMITER.limit({
-      key: request.headers.get("CF-Connecting-IP") ?? "unidentified-client",
-    });
+    const outcome = await env.COLLAGE_SHARE_RATE_LIMITER.limit({ key });
     allowed = outcome.success;
   } catch (error) {
     console.error("[published collages] rate limiter unavailable:", error);
     return jsonResponse(503, { error: "Sharing is temporarily unavailable" });
   }
-  if (!allowed) {
-    return jsonResponse(
-      429,
-      { error: "Too many collages shared at once; try again in a minute" },
-      { "Retry-After": String(RATE_LIMIT_RETRY_SECONDS) },
-    );
-  }
+  if (allowed) return null;
+  return jsonResponse(
+    429,
+    { error: "Too many collages shared at once; try again in a minute" },
+    { "Retry-After": String(RATE_LIMIT_RETRY_SECONDS) },
+  );
+}
 
+/** Reads an upload's body, or answers with what is wrong with it. */
+async function readUpload(request: Request): Promise<ParsedUpload | Response> {
   const declared = Number(request.headers.get("Content-Length"));
   if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
     return jsonResponse(413, { error: "The collage is too large to share" });
   }
-
-  let upload: ParsedUpload;
   try {
-    upload = await readPublishedCollageUpload(request);
+    return await readPublishedCollageUpload(request);
   } catch (error) {
     if (error instanceof PublishedCollageError) {
       return jsonResponse(400, {
@@ -314,25 +340,49 @@ async function handleCreate(request: Request, env: Env): Promise<Response> {
     }
     throw error;
   }
+}
+
+/** Writes one revision's pictures; the collage itself goes up after them. */
+async function storePictures(
+  env: Env,
+  id: string,
+  upload: ParsedUpload,
+  revision: number | undefined,
+): Promise<void> {
+  await Promise.all(
+    upload.images.map((image) =>
+      env.SHARED_COLLAGES.put(imageKey(id, image.ref, revision), image.bytes, {
+        httpMetadata: { contentType: image.type },
+      }),
+    ),
+  );
+  if (upload.cover) {
+    await env.SHARED_COLLAGES.put(coverKey(id, revision), upload.cover.bytes, {
+      httpMetadata: { contentType: upload.cover.type },
+    });
+  }
+}
+
+async function handleCreate(request: Request, env: Env): Promise<Response> {
+  const refused = await rateLimited(
+    env,
+    request.headers.get("CF-Connecting-IP") ?? "unidentified-client",
+  );
+  if (refused) return refused;
+
+  const read = await readUpload(request);
+  if (read instanceof Response) return read;
+  const upload = read;
 
   const id = createPublishedCollageId();
   const deleteToken = createDeleteToken();
   const sharedAt = Date.now();
   const stored: PublishedCollage = { ...upload.collage, sharedAt };
+  // A revision is the Worker's to count, never the uploader's.
+  delete stored.revision;
   try {
     // The pictures land first, so a collage that can be read can always be drawn.
-    await Promise.all(
-      upload.images.map((image) =>
-        env.SHARED_COLLAGES.put(imageKey(id, image.ref), image.bytes, {
-          httpMetadata: { contentType: image.type },
-        }),
-      ),
-    );
-    if (upload.cover) {
-      await env.SHARED_COLLAGES.put(coverKey(id), upload.cover.bytes, {
-        httpMetadata: { contentType: upload.cover.type },
-      });
-    }
+    await storePictures(env, id, upload, undefined);
     await env.SHARED_COLLAGES.put(collageKey(id), JSON.stringify(stored), {
       httpMetadata: { contentType: "application/json" },
       customMetadata: {
@@ -381,11 +431,12 @@ async function handleImage(
   env: Env,
   id: string,
   ref: string,
+  revision: number | undefined,
   ctx?: Pick<ExecutionContext, "waitUntil">,
 ): Promise<Response> {
   if (publishedImageIndex(ref) === null)
     return jsonResponse(404, { error: "Not found" });
-  return servePicture(request, env, imageKey(id, ref), ctx);
+  return servePicture(request, env, imageKey(id, ref, revision), ctx);
 }
 
 /**
@@ -423,7 +474,7 @@ async function servePicture(
     ...CORS_HEADERS,
     "Content-Type":
       object.httpMetadata?.contentType ?? "application/octet-stream",
-    // A picture under a share never changes; a new share gets a new id.
+    // A picture link never changes: an update serves its pictures under a new revision.
     "Cache-Control": "public, max-age=31536000, immutable",
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": "default-src 'none'; sandbox",
@@ -444,11 +495,15 @@ async function servePicture(
   return new Response(served, { headers });
 }
 
-async function handleDelete(
+/**
+ * Checks the request carries the token for this share, answering with the
+ * refusal when it does not. On success, gives back the stored collage's head.
+ */
+async function authorize(
   request: Request,
   env: Env,
   id: string,
-): Promise<Response> {
+): Promise<R2Object | Response> {
   const authorization = request.headers.get("Authorization") ?? "";
   const token = authorization.startsWith("Bearer ")
     ? authorization.slice(7).trim()
@@ -466,21 +521,120 @@ async function handleDelete(
       error: "That delete token does not match this collage",
     });
   }
+  return head;
+}
+
+async function handleDelete(
+  request: Request,
+  env: Env,
+  id: string,
+): Promise<Response> {
+  const authorized = await authorize(request, env, id);
+  if (authorized instanceof Response) return authorized;
   await removeCollage(env, id);
   return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
+/**
+ * Replaces a shared collage in place, keeping its link. The new revision's
+ * pictures go up first, then the collage pointing at them. The revision
+ * before stays, so a page that loaded it a moment ago can still draw it; the
+ * one before that is cleared away.
+ */
+async function handleUpdate(
+  request: Request,
+  env: Env,
+  id: string,
+): Promise<Response> {
+  const authorized = await authorize(request, env, id);
+  if (authorized instanceof Response) return authorized;
+  // Counted per share, so one person's edits never hold up another's.
+  const refused = await rateLimited(env, `update:${id}`);
+  if (refused) return refused;
+
+  const read = await readUpload(request);
+  if (read instanceof Response) return read;
+  const upload = read;
+
+  const current = await env.SHARED_COLLAGES.get(collageKey(id));
+  if (!current)
+    return jsonResponse(404, {
+      error: "This collage is not shared (any more)",
+    });
+  let previous: PublishedCollage;
+  try {
+    previous = parsePublishedCollage(await current.json());
+  } catch (error) {
+    console.error("[published collages] stored collage unreadable:", error);
+    return jsonResponse(503, { error: "The collage could not be updated" });
+  }
+  const revision = (previous.revision ?? 0) + 1;
+  if (revision > MAX_REVISION)
+    return jsonResponse(409, { error: "This link cannot be updated again" });
+
+  const stored: PublishedCollage = {
+    ...upload.collage,
+    revision,
+    ...(previous.sharedAt !== undefined ? { sharedAt: previous.sharedAt } : {}),
+  };
+  try {
+    await storePictures(env, id, upload, revision);
+    await env.SHARED_COLLAGES.put(collageKey(id), JSON.stringify(stored), {
+      httpMetadata: { contentType: "application/json" },
+      customMetadata: {
+        deleteTokenHash: authorized.customMetadata?.deleteTokenHash ?? "",
+        ...(upload.cover ? { cover: "1" } : {}),
+      },
+    });
+  } catch (error) {
+    console.error("[published collages] update failed:", error);
+    await removeRevision(env, id, revision).catch(() => {});
+    return jsonResponse(503, { error: "The collage could not be updated" });
+  }
+  if (revision >= 2) {
+    await removeRevision(
+      env,
+      id,
+      revision === 2 ? undefined : revision - 2,
+    ).catch((error: unknown) =>
+      console.warn("[published collages] old pictures stayed:", error),
+    );
+  }
+
+  const updated: PublishedCollageUpdated = {
+    id,
+    url: publishedCollageViewerUrl(id, env.COLLAGE_VIEWER_ORIGIN),
+    revision,
+  };
+  return jsonResponse(200, updated);
+}
+
+/** Clears one revision's pictures; the share's root holds those before any update. */
+async function removeRevision(
+  env: Env,
+  id: string,
+  revision: number | undefined,
+): Promise<void> {
+  if (revision !== undefined) {
+    await removePrefix(env, revisionPrefix(id, revision));
+    return;
+  }
+  await removePrefix(env, `${collagePrefix(id)}img/`);
+  await env.SHARED_COLLAGES.delete(coverKey(id));
+}
+
+async function removePrefix(env: Env, prefix: string): Promise<void> {
+  let cursor: string | undefined;
+  do {
+    const listing = await env.SHARED_COLLAGES.list({ prefix, cursor });
+    const keys = listing.objects.map((object) => object.key);
+    if (keys.length > 0) await env.SHARED_COLLAGES.delete(keys);
+    cursor = listing.truncated ? listing.cursor : undefined;
+  } while (cursor);
 }
 
 /** Removes the collage first, so the link goes dark before its pictures go. */
 async function removeCollage(env: Env, id: string): Promise<void> {
   await env.SHARED_COLLAGES.delete(collageKey(id));
-  let cursor: string | undefined;
-  do {
-    const listing = await env.SHARED_COLLAGES.list({
-      prefix: collagePrefix(id),
-      cursor,
-    });
-    const keys = listing.objects.map((object) => object.key);
-    if (keys.length > 0) await env.SHARED_COLLAGES.delete(keys);
-    cursor = listing.truncated ? listing.cursor : undefined;
-  } while (cursor);
+  await removePrefix(env, collagePrefix(id));
 }

@@ -29,9 +29,9 @@ export const doodleStripCss = `main { display: grid; gap: 0.75rem; justify-items
 const prizePages = `const PAGES = [
   { label: "Toggle a lamp", href: "https://playhtml.fun/docs/capabilities/#can-toggle" },
   { label: "Drag a hat", href: "https://playhtml.fun/docs/capabilities/#can-move" },
-  { label: "See cursors", href: "https://playhtml.fun/docs/data/presence/cursors/" },
+  { label: "See cursors", href: "https://playhtml.fun/docs/advanced/cursors/" },
   { label: "Summon rain", href: "https://playhtml.fun/docs/data/events/" },
-  { label: "Shape data", href: "https://playhtml.fun/docs/data/data-essentials/" },
+  { label: "Shape data", href: "https://playhtml.fun/docs/advanced/data-best-practices/" },
   { label: "Write React", href: "https://playhtml.fun/docs/using-react/" },
 ];
 const SLICE = 360 / PAGES.length;
@@ -184,3 +184,157 @@ export const liveReactionsCss = `.reactions {
 @keyframes float-up {
   to { opacity: 0; transform: translateY(-140px) scale(0.8); }
 }`;
+
+export const yourNameCss = `.me {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.25rem;
+}
+.dot {
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid #1c1c1c;
+  border-radius: 50%;
+}
+label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}`;
+
+export const pageStatusCss = `.picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.picker button {
+  padding: 0.35rem 0.75rem;
+  border: 1.5px solid #1c1c1c;
+  border-radius: 999px;
+  background: white;
+  font: inherit;
+  cursor: pointer;
+}
+/* Your current status is highlighted. */
+.picker button[aria-pressed="true"] {
+  background: #e8a63a;
+}
+.people {
+  display: grid;
+  gap: 0.35rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.people li {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.6rem;
+  border: 1.5px solid #1c1c1c;
+  border-radius: 6px;
+  background: white;
+}
+.people .dot {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid #1c1c1c;
+  border-radius: 50%;
+}
+.people .status {
+  margin-left: auto;
+  color: #6a6a66;
+}`;
+export const pageColorCss = `body {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  place-items: stretch;
+  padding: 0.75rem;
+  transition: background 300ms;
+}
+.corner { display: flex; gap: 0.4rem; }
+.corner.top { justify-content: flex-start; }
+.corner.bottom { justify-content: flex-end; }
+.corner button {
+  width: 26px;
+  height: 26px;
+  border: 1.5px solid #1c1c1c;
+  border-radius: 50%;
+  background: var(--swatch);
+  cursor: pointer;
+}
+.corner button:hover { box-shadow: 2px 2px 0 #1c1c1c; }
+.middle { display: grid; gap: 0.6rem; place-content: center; text-align: center; }
+.middle p { margin: 0; max-width: 20rem; line-height: 1.5; }
+.readout {
+  justify-self: center;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid #1c1c1c;
+  border-radius: 4px;
+  background: white;
+  font: 0.8rem ui-monospace, monospace;
+}`;
+
+/** The swatches both corners offer. */
+export const pageColorSwatches = [
+  "#f4efe5",
+  "#f3cf58",
+  "#c9d8bf",
+  "#f2c4ce",
+  "#bcd4e6",
+];
+
+export const critterCursorCss = `.critter-pad {
+  display: grid;
+  gap: 0.5rem;
+  place-items: center;
+  width: 100%;
+  min-height: 14rem;
+  border: 1.5px dashed #65795d;
+  border-radius: 8px;
+  text-align: center;
+}
+.critter-pad p { margin: 0; max-width: 22rem; line-height: 1.5; }
+/* A custom cursor: an emoji in a ring of the person's color. */
+.critter {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--color);
+  border-radius: 50%;
+  background: white;
+  font-size: 18px;
+  transform: translate(-50%, -50%);
+}`;
+
+/** Picks the same emoji for a person on every screen, from their pid. */
+export const critterHelpers = `const CRITTERS = ["🐝", "🐞", "🦋", "🐌", "🐸", "🦆"];
+
+function critterFor(pid) {
+  let hash = 0;
+  for (const char of pid) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return CRITTERS[hash % CRITTERS.length];
+}
+
+// Your own pointer as a CSS cursor: the same emoji and ring others see.
+function critterCursor(emoji, color) {
+  const svg = \`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32">
+    <circle cx="16" cy="16" r="13" fill="white" stroke="\${color}" stroke-width="3" />
+    <text x="16" y="21.5" font-size="15" text-anchor="middle">\${emoji}</text>
+  </svg>\`;
+  return \`url("data:image/svg+xml,\${encodeURIComponent(svg)}") 16 16, auto\`;
+}`;
+
+export const sharedStampSrc = "https://playhtml.fun/playhtml-logo.png";
+
+export const sharedStampCss = `main {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  text-align: center;
+}
+.stamp { width: 120px; cursor: grab; }
+p { margin: 0; max-width: 18rem; font-size: 0.85rem; line-height: 1.5; }`;

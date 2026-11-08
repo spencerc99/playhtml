@@ -27,6 +27,7 @@ import { TrainCrossing } from "./components/TrainCrossing";
 import { WikipediaDemo } from "./components/WikipediaDemo";
 import {
   CHANGELOG_URL,
+  COLLAGES_URL,
   isNavigationPathActive,
   LIVE_PORTRAIT_URL,
 } from "./navigation";
@@ -287,6 +288,16 @@ export default function App() {
 
       <div className={styles.content}>
         <nav className={styles.siteNav} aria-label="Site navigation">
+          <a
+            aria-current={
+              isNavigationPathActive(currentPath, COLLAGES_URL)
+                ? "page"
+                : undefined
+            }
+            href={COLLAGES_URL}
+          >
+            collages
+          </a>
           <a
             aria-current={
               isNavigationPathActive(currentPath, LIVE_PORTRAIT_URL)
@@ -552,7 +563,7 @@ export default function App() {
 
             <div className={styles.featureCard}>
               <BrowserWindow
-                label="your shore · internet scraps"
+                label="internet scraps"
                 bodyClassName={styles.featureCardFrame}
               >
                 <img
@@ -568,6 +579,32 @@ export default function App() {
                 The images, buttons, icons, and cursors you pass become a visual
                 browsing history. Search them, filter by site, and trace any
                 scrap back to the page it came from.
+              </p>
+            </div>
+
+            <div className={styles.featureCard}>
+              <BrowserWindow
+                label="untitled"
+                bodyClassName={styles.featureCardFrame}
+              >
+                <img
+                  className={styles.featureCardImage}
+                  src="/home/browsing-collage.jpg"
+                  alt="A collage of found browsing materials: leather boots stepping across a sunset painting, chrome pipes and a faucet winding between them, blue tape rolls, and a minion in a sea of cartoon eyeballs"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </BrowserWindow>
+              <h3 className={styles.featureCardTitle}>
+                turn browsing into art supplies
+              </h3>
+              <p className={styles.featureCardBody}>
+                Use your scraps as collage material and turn browsing into a
+                creative act. Each piece remembers the page it came from and
+                becomes an ode to your rabbit holes.{" "}
+                <a className={styles.featureCardLink} href={COLLAGES_URL}>
+                  View collages from the community →
+                </a>
               </p>
             </div>
           </div>
@@ -611,34 +648,6 @@ export default function App() {
             <span className={styles.cautionStripe} aria-hidden="true" />
           </div>
           <div className={styles.comingSoonGrid}>
-            <div className={`${styles.comingCard} ${styles.comingCardA}`}>
-              <div className={styles.browserWindow}>
-                <div className={styles.browserBar}>
-                  <span className={styles.browserDots} aria-hidden="true">
-                    <span className={styles.browserDot} />
-                    <span className={styles.browserDot} />
-                    <span className={styles.browserDot} />
-                  </span>
-                  <span className={styles.browserLabel}>untitled collage</span>
-                  <span className={styles.statusChip}>SOON</span>
-                </div>
-                <div className={styles.comingThumbFrame}>
-                  <img
-                    className={styles.comingThumb}
-                    src="/home/browsing-collage.jpg"
-                    alt="A collage of found browsing materials: leather boots stepping across a sunset painting, chrome pipes and a faucet winding between them, blue tape rolls, and a minion in a sea of cartoon eyeballs"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </div>
-              </div>
-              <h3 className={styles.comingTitle}>browsing collages</h3>
-              <p className={styles.comingBody}>
-                arrange your scraps into collages. every piece remembers the
-                page it came from.
-              </p>
-            </div>
-
             <div className={`${styles.comingCard} ${styles.comingCardB}`}>
               <div className={styles.browserWindow}>
                 <div className={styles.browserBar}>

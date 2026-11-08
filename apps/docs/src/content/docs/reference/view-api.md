@@ -86,7 +86,10 @@ Returned by `register` and `getHandle`. Reads and writes resolve the live handle
   getData(),         // undefined until bound
   setData(next),
   setLocalData(next),
-  setLive(next),
+  everyone,          // [{ pid, name, color, isMe, presence }]; empty until bound
+  me,                // you, with your presence at me.presence (undefined until bound)
+  setMyPresence(next),                 // value, or a mutator fn like setData
+  onEveryoneChange(keys?, callback),   // works before the element binds; returns unsubscribe
   requestUpdate(),   // no-op without a view
   unregister(),      // detach + run onMount cleanup; shared data is kept
 }

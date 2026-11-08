@@ -38,13 +38,6 @@ Shift-clicking a `can-move`, `can-spin`, `can-toggle`, or `can-grow` element res
 </details>
 </div>
 
-
-Every section below has the same shape:
-
-- A short description of what the capability does and the kind of state it owns.
-- A live demo you can interact with. Open the page in a second tab and watch both update.
-- The **vanilla HTML** form, and the **React** form. Pick the framework you're shipping in; the reader's choice syncs across every snippet on the page.
-
 ## can-move
 
 **What it does.** Drag anywhere. Position persists and syncs.
@@ -314,16 +307,16 @@ import { CanHoverElement } from "@playhtml/react";
   </TabItem>
 </Tabs>
 
-If you want the hover effect to reflect *who* is hovering (for example, tint the element with each hovering viewer's color) rather than a plain on/off, pass a function child and read `users`. Each entry's `live.hover` says whether that viewer is hovering right now. It clears when they leave and does not persist:
+If you want the hover effect to reflect *who* is hovering (for example, tint the element with each hovering viewer's color) rather than a plain on/off, pass a function child and read `everyone`. Each person's `presence.hover` says whether they're hovering right now, and `color` is their color. It clears when they leave and does not persist:
 
 ```tsx
 import { CanHoverElement } from "@playhtml/react";
 
 <CanHoverElement>
-  {({ users }) => {
-    const colors = users
-      .filter(({ live }) => live?.hover)
-      .map(({ user }) => user.color);
+  {({ everyone }) => {
+    const colors = everyone
+      .filter((person) => person.presence.hover)
+      .map((person) => person.color);
     return (
       <div
         id="hover-pad"
@@ -426,7 +419,7 @@ These capabilities are the building blocks. The best way to see them in concert 
   <a class="ph-composed-card" href="https://playhtml.fun/experiments/4/" target="_blank" rel="noopener">
     <span class="ph-composed-card__kicker">EXPERIMENT · 04</span>
     <span class="ph-composed-card__title">Every color</span>
-    <span class="ph-composed-card__body">A page where every visitor adds one color. can-play + element users + an ever-growing shared palette.</span>
+    <span class="ph-composed-card__body">A page where every visitor adds one color. can-play + element presence + an ever-growing shared palette.</span>
   </a>
   <a class="ph-composed-card" href="https://playhtml.fun/fridge" target="_blank" rel="noopener">
     <span class="ph-composed-card__kicker">COMMUNITY · FRIDGE</span>

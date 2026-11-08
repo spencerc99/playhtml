@@ -1,5 +1,5 @@
 // ABOUTME: Custom React hooks for playhtml functionality
-// ABOUTME: Cursor, presence, page-data, and presence-room hooks that safely no-op pre-sync
+// ABOUTME: People, cursor, page-data, and presence-room hooks that safely no-op pre-sync
 
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import type * as React from "react";
@@ -9,7 +9,9 @@ import {
   CursorPresenceView,
   PageDataChannel,
   PageDataSetter,
+  Person,
   PlayerIdentity,
+  PresenceKeys,
   PresenceRoom,
   PresenceView,
   User,
@@ -72,8 +74,9 @@ function isPresenceRoomNotReadyError(error: unknown): boolean {
 }
 
 /**
- * Hook to access cursor presences from the playhtml context
- * Returns a Map of stable ID -> CursorPresenceView
+ * @deprecated Use `usePeople("cursor")` and read `person.presence.cursor`.
+ *
+ * Cursor presences from the playhtml context, as a Map of pid -> CursorPresenceView.
  */
 export function useCursorPresences(): Map<string, CursorPresenceView> {
   const { isLoading } = useContext(PlayContext);
@@ -115,6 +118,9 @@ export function useCursorZone(
 }
 
 /**
+ * @deprecated Use `usePeople(key)`: read `person.presence[key]` on each person
+ * in `everyone`, and write with `setMyPresence(key, value)`.
+ *
  * Subscribe to a presence channel. Safe to call before playhtml has initialized:
  * returns an empty map, a setter that warns and no-ops, and `null` identity
  * until sync completes — then wires up automatically.
@@ -292,6 +298,9 @@ const EMPTY_PLAYER_IDENTITY = {
 };
 
 /**
+ * @deprecated Use `usePeople().me` (`pid`, `name`, `color`). Set your name or
+ * color with `playhtml.people.me.name = "..."`.
+ *
  * Read the local player's identity — color, participant id (PID), and name —
  * from `playhtml.users`. Values update reactively:
  * `playhtml.users` notifies on any self identity change, including when the
@@ -332,6 +341,8 @@ export function usePlayerIdentity(): {
 }
 
 /**
+ * @deprecated Use `usePeople().everyone`, which also carries each person's presence.
+ *
  * Subscribe to all known users — the union of main-room awareness identities
  * and (when cursors are enabled) cursor-room identities. Self is always
  * present. Returns an empty array until playhtml has synced.
@@ -344,4 +355,56 @@ export function useUsers(): User[] {
     (setUsers) => playhtml.users.onChange(setUsers),
     [],
   );
+}
+
+const PRE_SYNC_ME: Person = { pid: "", color: "", isMe: true, presence: {} };
+
+/**
+ * The people on this page, the React form of `playhtml.people`:
+ *
+ * - `everyone`: each person (`pid`, `name`, `color`, `isMe`) with their page
+ *   `presence`, in join order.
+ * - `me`: you, from `everyone`.
+ * - `setMyPresence(key, value)`: sets one key of your presence (`null` clears it).
+ *
+ * Re-renders when someone joins, leaves, or changes name, color, or presence.
+ * Pass a key or a list of keys to re-render only when those keys change, and
+ * pass `"cursor"` to re-render on cursor moves (they're skipped otherwise).
+ *
+ * Before playhtml has synced, `everyone` is empty, `me` has an empty `pid`,
+ * and `setMyPresence` warns and does nothing. Set your name or color with
+ * `playhtml.people.me.name = "..."`.
+ */
+export function usePeople(keys?: PresenceKeys): {
+  everyone: Person[];
+  me: Person;
+  setMyPresence: (key: string, value: unknown) => void;
+} {
+  const { isLoading } = useContext(PlayContext);
+  const keysDependency =
+    keys === undefined ? "" : JSON.stringify(typeof keys === "string" ? [keys] : keys);
+
+  const everyone = usePlayhtmlSubscription<Person[]>(
+    isLoading,
+    () => [],
+    (setEveryone) =>
+      keys === undefined
+        ? playhtml.people.onChange(setEveryone)
+        : playhtml.people.onChange(keys, setEveryone),
+    [keysDependency],
+  );
+
+  const setMyPresence = useCallback(
+    (key: string, value: unknown) => {
+      if (isLoading) {
+        warnPreInit("usePeople().setMyPresence");
+        return;
+      }
+      playhtml.people.setMyPresence(key, value);
+    },
+    [isLoading],
+  );
+
+  const me = everyone.find((person) => person.isMe) ?? PRE_SYNC_ME;
+  return { everyone, me, setMyPresence };
 }

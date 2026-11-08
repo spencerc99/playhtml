@@ -78,6 +78,17 @@ describe("parseCollagePiece", () => {
     expect(parseCollagePiece(structuredClone(original))).toEqual(original);
   });
 
+  it("keeps the width a rewrapped heading wraps to", () => {
+    const original = piece({ letteringWidth: 180 });
+    expect(parseCollagePiece(structuredClone(original)).letteringWidth).toBe(180);
+    expect(parseCollagePiece(structuredClone(piece()))).not.toHaveProperty(
+      "letteringWidth",
+    );
+    expect(() => parseCollagePiece({ ...piece(), letteringWidth: 0 })).toThrow(
+      /letteringWidth/,
+    );
+  });
+
   it("defaults a piece saved without a crop to the whole source", () => {
     const { crop, ...withoutCrop } = piece();
     expect(crop).toBeDefined();
@@ -438,10 +449,10 @@ describe("copying a collage", () => {
 
   it("names an unnamed collage's copy", () => {
     expect(duplicateCollage({ ...source, title: "" }).title).toBe(
-      "untitled collage copy",
+      "untitled copy",
     );
     expect(duplicateCollage({ ...source, title: "   " }).title).toBe(
-      "untitled collage copy",
+      "untitled copy",
     );
   });
 

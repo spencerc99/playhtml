@@ -1,16 +1,19 @@
-import { usePlayContext } from "@playhtml/react";
+import { usePeople } from "@playhtml/react";
 import { ViewCount } from "../../packages/react/examples/ViewCount";
 import { formatLargeNumber } from "../../packages/react/examples/utils";
 import "./DataModes.scss";
 
-// Awareness Data Mode - Current online users
+// Awareness Data Mode - Current online users, one per person (not per tab or color)
 export function OnlineNowIndicator() {
-  const { cursors } = usePlayContext();
-  const currentUsers = cursors.allColors.length;
+  const { everyone } = usePeople();
+  const currentUsers = everyone.length;
 
-  // Limit displayed dots to prevent overcrowding
+  // Limit displayed dots to prevent overcrowding; you come first
   const maxDotsToShow = 12;
-  const visibleColors = cursors.allColors.slice(0, maxDotsToShow);
+  const visibleColors = [...everyone]
+    .sort((a, b) => Number(b.isMe) - Number(a.isMe))
+    .slice(0, maxDotsToShow)
+    .map((person) => person.color);
   const hiddenCount = Math.max(0, currentUsers - maxDotsToShow);
 
   const formatted = formatLargeNumber(currentUsers);

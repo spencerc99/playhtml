@@ -1911,6 +1911,14 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   line-height: 1.5;
 }
 
+/* Shared elements: the video of one lamp toggling on two sites. */
+.ph-shared-lamp-video {
+  display: block;
+  width: 100%;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+}
+
 .ph-online-indicator {
   display: flex;
   flex-direction: column;
@@ -1966,6 +1974,152 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   padding: 0;
   background: transparent;
   cursor: pointer;
+}
+
+/* Names and colors demo: your saved name and color, editable. */
+/* Starlight adds margin-top between siblings in page content; reset it. */
+.ph-identity *,
+.ph-status-board * {
+  margin: 0;
+}
+.ph-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+.ph-identity__card {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 1rem 0.55rem 0.6rem;
+  background: var(--ph-paper);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 999px;
+  box-shadow: var(--ph-shadow-brick);
+}
+.ph-identity__dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ph-ink);
+}
+.ph-identity__name {
+  font-family: var(--ph-font-display);
+  font-size: 1.15rem;
+  color: var(--ph-ink);
+}
+.ph-identity__fields {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.9rem;
+}
+.ph-identity__field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--ph-font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+}
+.ph-identity__field input:not([type="color"]) {
+  width: 11rem;
+  padding: 0.35rem 0.5rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 4px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  font-family: var(--ph-font-body);
+  font-size: 0.9rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.ph-identity__field input[type="color"] {
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* Page presence demo: everyone's status, set with setMyPresence. */
+.ph-status-board {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  width: 100%;
+  max-width: 340px;
+}
+.ph-status-board__picker {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+}
+.ph-status-board__option {
+  padding: 0.35rem 0.75rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 999px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  font-family: var(--ph-font-mono);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease;
+}
+.ph-status-board__option:hover {
+  background: var(--ph-paper-warm);
+}
+.ph-status-board__option[aria-pressed="true"] {
+  background: var(--ph-mustard);
+  box-shadow: var(--ph-shadow-brick);
+  transform: translateY(-1px);
+}
+.ph-status-board__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.ph-status-board__row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  background: var(--ph-paper);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+}
+.ph-status-board__dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ph-ink);
+}
+.ph-status-board__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  color: var(--ph-ink);
+}
+.ph-status-board__status {
+  font-family: var(--ph-font-mono);
+  font-size: 0.75rem;
+  color: var(--ph-ink-3);
 }
 
 .ph-live-reactions {
@@ -2839,4 +2993,83 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 .ph-demo-slot:has(> .ph-demo-code-link),
 .ph-canplay-inline:has(> .ph-demo-code-link) {
   margin-bottom: 1.4rem;
+}
+
+/* ---------------------------------------------------------------------
+   Loading state demo (advanced/loading-state)
+   --------------------------------------------------------------------- */
+
+.ph-loading-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+}
+.ph-loading-demo__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.ph-loading-demo__choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.ph-loading-demo__choice-label {
+  min-width: 9.5rem;
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  color: var(--ph-ink-2);
+}
+.sl-markdown-content .ph-loading-demo__option {
+  margin: 0;
+  padding: 0.25rem 0.6rem;
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  color: var(--ph-ink);
+  background: var(--ph-paper);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.sl-markdown-content .ph-loading-demo__option[aria-pressed="true"] {
+  background: var(--ph-ink);
+  color: var(--ph-paper);
+}
+.sl-markdown-content .ph-loading-demo__option:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ph-loading-demo__stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.25rem 0 0.5rem;
+}
+.sl-markdown-content .ph-loading-demo__sample {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+}
+.sl-markdown-content .ph-loading-demo__hint,
+.sl-markdown-content .ph-loading-demo__note {
+  margin: 0;
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  color: var(--ph-ink-3);
+  text-align: center;
+}
+.ph-loading-demo__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.sl-markdown-content .ph-loading-demo__code {
+  margin: 0;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
 }

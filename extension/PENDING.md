@@ -15,5 +15,6 @@ extension/website/public/changelog/media/ and reference them here:
 ![video: Demo title](/changelog/media/file.mp4)
 -->
 
-- Import a data export of any size in one go, with a progress bar and time left.
-- Pick a range of days, a whole month, or a time of day like "mornings" when looking back at your movement portrait or your scraps.
+- Collage exports are much smaller: front and back pictures now save as high-quality JPEGs around 1-2MB instead of 7-13MB PNGs, and the "moving pieces" video now sits in the same frame and caption as the pictures. (#684)
+- Collage source labels are now just the site's icon and address.
+- Headings in a collage now wrap onto more lines when you pull them narrower from a side (only corners scale them), and pale headings no longer bring their dark backing onto the collage.

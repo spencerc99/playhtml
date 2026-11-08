@@ -6,6 +6,7 @@ import type { CollagePiece } from "@extension/entrypoints/scraps/collageRecord";
 import {
   isPublishedCollageId,
   parsePublishedCollage,
+  publishedRevisionQuery,
   webUrl,
   type PublishedCollage,
   type PublishedCollagePiece,
@@ -39,13 +40,23 @@ export function publishedCollageUrl(workerUrl: string, id: string): string {
   return `${workerUrl}/collages/${encodeURIComponent(id)}`;
 }
 
-/** Where a piece's picture is served, from its `img/<n>` name. */
+/** Where a piece's picture is served, from its `img/<n>` name and the share's revision. */
 export function publishedImageUrl(
   workerUrl: string,
   id: string,
   ref: string,
+  revision?: number,
 ): string {
-  return `${publishedCollageUrl(workerUrl, id)}/${ref}`;
+  return `${publishedCollageUrl(workerUrl, id)}/${ref}${publishedRevisionQuery(revision)}`;
+}
+
+/** Where a share's cover is served, for its revision. */
+export function publishedCoverUrl(
+  workerUrl: string,
+  id: string,
+  revision?: number,
+): string {
+  return `${publishedCollageUrl(workerUrl, id)}/cover${publishedRevisionQuery(revision)}`;
 }
 
 export async function loadPublishedCollage(
@@ -239,6 +250,9 @@ export function viewerPieces(
       z: published.z,
       flipX: published.flipX,
       flipY: published.flipY,
+      ...(published.letteringWidth === undefined
+        ? {}
+        : { letteringWidth: published.letteringWidth }),
     };
     if (published.content) {
       const scrap = contentScrap(published.content, base);

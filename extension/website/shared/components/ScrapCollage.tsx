@@ -1834,10 +1834,12 @@ export interface ScrapContentProps {
   /** Uses a tile-sized local preview where the surface provides one. */
   imagePreview?: boolean;
   /**
-   * Whether dark lettering sits on a light chequer. Browsed and drawer tiles
-   * show it; a piece placed in a collage sits directly on the collage.
+   * Whether lettering sits on a backing that keeps it legible on the tray:
+   * dark lettering on a light chequer, pale lettering on a dark patch. Browsed
+   * and drawer tiles show it; a piece placed in a collage sits directly on the
+   * collage, as the page's own lettering did.
    */
-  letteringChecker?: boolean;
+  letteringBacking?: boolean;
 }
 
 /** Keeps image tiles sized and tinted while their source loads. */
@@ -1946,7 +1948,7 @@ export function ScrapContent({
   onLoad,
   tileWidth,
   imagePreview = false,
-  letteringChecker = true,
+  letteringBacking = true,
 }: ScrapContentProps) {
   const imageSrc = useScrapImageSrc(
     item.kind === "image" ? item.src : undefined,
@@ -1973,7 +1975,10 @@ export function ScrapContent({
     case "button":
       return (
         <ScrapBackdrop
-          color={item.backdropColor ?? inkBackingFor(item.styles)}
+          color={
+            item.backdropColor ??
+            (letteringBacking ? inkBackingFor(item.styles) : undefined)
+          }
           ink={!item.backdropColor}
         >
           <span
@@ -2021,9 +2026,9 @@ export function ScrapContent({
     case "heading":
       return (
         <ScrapBackdrop
-          color={inkBackingFor(item.styles)}
+          color={letteringBacking ? inkBackingFor(item.styles) : undefined}
           ink
-          checker={letteringChecker && !hasOwnFill(item.styles.backgroundColor)}
+          checker={letteringBacking && !hasOwnFill(item.styles.backgroundColor)}
         >
           <span
             className="scrap-collage__heading"

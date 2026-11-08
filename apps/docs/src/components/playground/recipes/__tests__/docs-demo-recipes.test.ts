@@ -2,16 +2,25 @@
 // ABOUTME: Guards complete documents, parseable scripts, registry coverage, and bounded writes.
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { customCursorsRecipe } from "../custom-cursors";
 import { doodleStripRecipe } from "../doodle-strip";
 import { liveReactionsRecipe, rainEventRecipe } from "../events-basics";
 import { exampleRecipes } from "../index";
 import { onlineIndicatorRecipe } from "../online-indicator";
+import { pageStatusRecipe, yourNameRecipe } from "../people-basics";
+import { pageColorRecipe } from "../page-color";
 import { prizeWheelRecipe } from "../prize-wheel";
+import { sharedStampRecipe } from "../shared-stamp";
 
 const recipes = [
   doodleStripRecipe,
   prizeWheelRecipe,
   onlineIndicatorRecipe,
+  yourNameRecipe,
+  pageStatusRecipe,
+  customCursorsRecipe,
+  pageColorRecipe,
+  sharedStampRecipe,
   rainEventRecipe,
   liveReactionsRecipe,
 ];
@@ -22,6 +31,13 @@ const DEPRECATED = [
   "setMyAwareness",
   "awareness",
   "playerIdentity",
+  "setLive",
+  "getPresences",
+  "playhtml.presence.",
+  "usePresence(",
+  "live:",
+  "myPresence",
+  "useUsers(",
 ];
 
 function moduleScript(html: string): string {
@@ -80,6 +96,25 @@ describe("docs demo recipes", () => {
   it("imports the view helpers the prize wheel uses", () => {
     expect(prizeWheelRecipe.html).toContain(
       'import { playhtml, html, nothing } from "https://unpkg.com/playhtml@latest"',
+    );
+  });
+  it("creates the page color channel after init and only writes from clicks", () => {
+    const script = moduleScript(pageColorRecipe.html);
+    expect(script.indexOf("createPageData(")).toBeGreaterThan(
+      script.indexOf("await playhtml.init("),
+    );
+    expect(script.match(/setData\(/g)).toHaveLength(1);
+    expect(script.indexOf("setData(")).toBeGreaterThan(
+      script.indexOf('addEventListener("click"'),
+    );
+  });
+
+  it("passes the custom cursor renderer to init", () => {
+    expect(customCursorsRecipe.html).toContain(
+      "onCustomCursorRender: renderCursor",
+    );
+    expect(customCursorsRecipe.react?.code).toContain(
+      "onCustomCursorRender: renderCursor",
     );
   });
 });

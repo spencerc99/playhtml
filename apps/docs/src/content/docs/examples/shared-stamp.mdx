@@ -1,0 +1,38 @@
+---
+title: "Borrow an element from another page"
+description: "Spin the logo stamp from the playhtml.fun homepage, from any other page."
+sidebar:
+  hidden: true
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { sharedStampRecipe } from "@/components/playground/recipes/shared-stamp";
+
+The logo stamp on the [playhtml.fun homepage](https://playhtml.fun) is a shared
+element. This page shows the same stamp. Spin it here and it spins on the
+homepage too, for everyone.
+
+<RecipeExample recipe={sharedStampRecipe} client:load />
+
+<RecipeCodeTabs recipe={sharedStampRecipe} />
+
+## Point at the source
+
+The homepage marks its stamp with `shared`:
+
+```html
+<!-- on playhtml.fun -->
+<img id="stamp" src="playhtml-logo.png" can-spin shared />
+```
+
+Any other page, on any site, reads and writes the same rotation with
+`data-source` and the same capability. Its markup and styles can be different:
+
+```html
+<!-- anywhere else -->
+<img class="stamp" src="playhtml-logo.png" data-source="playhtml.fun#stamp" can-spin />
+```
+
+See [Shared elements](/docs/advanced/shared-elements/) for read-only sources and
+the full `data-source` syntax.

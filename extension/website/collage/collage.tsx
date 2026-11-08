@@ -18,7 +18,6 @@ import {
 import { useChromeToggle } from "@movement/hooks/useChromeToggle";
 import { COLLAGE_STYLES } from "@movement/components/ScrapCollage";
 import { paperBackground } from "@extension/entrypoints/scraps/paperGrain";
-import { sourceBoxForCrop } from "@extension/entrypoints/scraps/collageGeometry";
 import { PieceMaterial } from "@extension/entrypoints/scraps/PieceMaterial";
 import { CollageBackFace } from "@extension/entrypoints/scraps/CollageBackFace";
 import {
@@ -35,6 +34,7 @@ import {
 import { StudioViews } from "@extension/entrypoints/scraps/StudioTools";
 import { COLLAGE_PIECE_TOOL_STYLES } from "@extension/entrypoints/scraps/collagePieceToolStyles";
 import {
+  materialBox,
   pieceMaterialTransform,
   type CollagePiece,
 } from "@extension/entrypoints/scraps/collageRecord";
@@ -53,6 +53,7 @@ import { COLLAGE_VIEW_STYLES } from "@extension/entrypoints/scraps/collageViewSt
 import type {
   PublishedCollage,
   PublishedCollagePiece,
+  PublishedSignature,
 } from "../../shared/publishedCollage";
 import {
   faviconFor,
@@ -70,6 +71,11 @@ import {
   type ViewerPiece,
 } from "./publishedCollageView";
 import { VIEWER_STYLES } from "./collageViewerStyles";
+import { VIEWER_CREDIT_STYLES, ViewerCredit } from "./ViewerCredit";
+import {
+  SIGNATURE_STAMP_STYLES,
+  SignatureStamp,
+} from "@extension/entrypoints/scraps/SignatureStamp";
 import { pieceUnderPointer, type PieceBox } from "./pieceUnderPointer";
 
 /** Room above the frame for the mark and the toggle, and below it for the caption. */
@@ -338,6 +344,40 @@ function HoverLabel({
   );
 }
 
+/** The maker's stamp at the end of the caption; reaching for it says who and when. */
+function Signed({
+  signature,
+  sharedAt,
+}: {
+  signature: PublishedSignature;
+  sharedAt: number | undefined;
+}) {
+  return (
+    <span className="published-collage__signed" tabIndex={0}>
+      <SignatureStamp signature={signature} />
+      <span className="published-collage__signed-tip" role="tooltip">
+        <span>
+          signed by{" "}
+          {signature.name ?? (
+            <>
+              a{" "}
+              <span
+                className="published-collage__signed-dot"
+                style={{ color: signature.color }}
+                aria-hidden="true"
+              >
+                &#9679;
+              </span>{" "}
+              cursor
+            </>
+          )}
+        </span>
+        {sharedAt !== undefined && <span>shared {madeOn(sharedAt)}</span>}
+      </span>
+    </span>
+  );
+}
+
 /** The quiet line on the mat: how much the collage holds, and when it was made. */
 function captionMeta(collage: PublishedCollage, short: boolean): string {
   const count = collage.pieces.length;
@@ -445,7 +485,9 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
   // Markup is sanitized here, every time the collage is shown.
   const shown = useMemo(
     () =>
-      viewerPieces(collage, (ref) => publishedImageUrl(ASSETS_URL, id, ref)),
+      viewerPieces(collage, (ref) =>
+        publishedImageUrl(ASSETS_URL, id, ref, collage.revision),
+      ),
     [collage, id],
   );
   const studioPieces = useMemo(
@@ -566,7 +608,7 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
   const examinedItem =
     examinedIndex === null ? null : shown[examinedIndex].item;
   const examinedPiece = examinedIndex === null ? null : pieces[examinedIndex];
-  const title = collage.title.trim() || "untitled collage";
+  const title = collage.title.trim() || "untitled";
   const fitWidth = frame.width * scale;
   const fitHeight = frame.height * scale;
 
@@ -607,6 +649,12 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
               <span className="collage-studio__label published-collage__meta">
                 {captionMeta(collage, narrow)}
               </span>
+              {collage.signature && (
+                <Signed
+                  signature={collage.signature}
+                  sharedAt={collage.sharedAt}
+                />
+              )}
             </>
           }
         >
@@ -645,7 +693,7 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
                   }}
                 >
                   {shown.map(({ piece }, index) => {
-                    const source = sourceBoxForCrop(piece, piece.crop);
+                    const source = materialBox(piece);
                     const lifted = hovered?.index === index;
                     const published = pieces[index];
                     return (
@@ -740,6 +788,8 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
       {hovered && !examining && shownMode === "off" && (
         <HoverLabel piece={pieces[hovered.index]} rect={hovered.rect} />
       )}
+
+      {!chromeHidden && <ViewerCredit />}
 
       {examining &&
         examinedItem &&
@@ -868,6 +918,8 @@ function PublishedCollagePage() {
       <style>{COLLAGE_VIEW_STYLES}</style>
       <style>{COLLAGE_PEEK_STYLES}</style>
       <style>{VIEWER_STYLES}</style>
+      <style>{SIGNATURE_STAMP_STYLES}</style>
+      <style>{VIEWER_CREDIT_STYLES}</style>
       {body}
     </>
   );

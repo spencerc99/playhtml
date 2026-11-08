@@ -753,11 +753,11 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   }
 }
 
-// Three matching cards sharing the what's-coming card anatomy: window on top,
-// title, then copy.
+// Four matching cards in a 2x2 grid sharing the what's-coming card anatomy:
+// window on top, title, then copy.
 .featureCards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 24px;
 
   @media (max-width: 768px) {
@@ -788,6 +788,19 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   font-size: 1.25rem;
   color: $text;
   margin: 16px 0 8px;
+}
+
+.featureCardLink {
+  color: $accent-teal;
+  text-decoration: none;
+  border-bottom: 1px solid rgba($accent-teal, 0.3);
+  white-space: nowrap;
+  transition: color 0.2s, border-color 0.2s;
+
+  &:hover {
+    color: color.adjust($accent-teal, $lightness: -8%);
+    border-color: $accent-teal;
+  }
 }
 
 .featureCardBody {
@@ -834,7 +847,7 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 
 .comingSoonGrid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 28px;
 
   @media (max-width: 768px) {
@@ -845,10 +858,6 @@ $font-mono: "Martian Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 
 .comingCard {
   min-width: 0;
-}
-
-.comingCardA {
-  transform: rotate(-1deg);
 }
 
 .comingCardB {

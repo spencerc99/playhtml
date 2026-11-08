@@ -12,6 +12,7 @@ import React, {
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import {
   FULL_CROP,
+  isFullCrop,
   boxCenter,
   cornerPoint,
   type Bounds,
@@ -30,7 +31,6 @@ import {
   scaleAboutCenter,
   scaleFromPointer,
   snapDegrees,
-  sourceBoxForCrop,
   type CropFraction,
   type PieceBox,
   type Point,
@@ -45,6 +45,7 @@ import {
   createPieceId,
   normalizeStack,
   flipPiece,
+  materialBox,
   pieceMaterialTransform,
   type BackShows,
   type CollagePiece,
@@ -111,8 +112,13 @@ import {
 import { loadCollage, saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
+import {
+  resizeHeadingFromEnd,
+  rewrapHeadingFromSide,
+} from "./pieceLettering";
 import { ExportMenu } from "./ExportMenu";
 import { ShareButton } from "./ShareButton";
+import type { CollageSigner } from "./collageSignature";
 import {
   CollageMat,
   MAT,
@@ -136,6 +142,7 @@ import { PiecesHereMenu } from "./PiecesHereMenu";
 import {
   neighborInStack,
   piecesUnder,
+  stackHeight,
   stackOrder,
   topPieceUnder,
 } from "./pieceStack";
@@ -169,6 +176,9 @@ import {
 } from "./groupGeometry";
 import {
   copiesOnTop,
+  duplicateTrail,
+  nextDuplicateOffset,
+  type DuplicateTrail,
   moveGroupBackward,
   moveGroupForward,
   moveGroupToBack,
@@ -208,12 +218,28 @@ import {
 import {
   collageSoundsMuted,
   playCollageSound,
+  primeCollageSounds,
   setCollageSoundsMuted,
   startCollageSlide,
   type CollageSlide,
   type CollageSound,
+  type StackMove,
 } from "./collageSounds";
 import { snapMove, type SnapGuide } from "./moveSnap";
+import {
+  cropOf,
+  cutoutOf,
+  endSession,
+  IDLE_SESSION,
+  studioModeOf,
+  transformOf,
+  turnedOver,
+  updateSession,
+  type CropState,
+  type ModalTransform,
+  type StudioSession,
+} from "./studioSession";
+import { frameExport } from "./frameExport";
 import {
   isEmptyChange,
   piecesChange,
@@ -354,23 +380,30 @@ type Gesture =
       start: FingerPair;
     };
 
-/** A rotate or scale driven by pointer movement with no button held. */
-type ModalTransform = {
-  kind: "rotate" | "scale";
-  /** The pieces in hand as they were when the transform began, for cancelling back. */
-  before: readonly CollagePiece[];
-  /** What the pieces turn or grow about: the piece's center or the group's. */
-  center: Point;
-  anchor: Point;
-  readout: string;
-};
+const SNAP_LEARNED_KEY = "wwo-collage-snap-learned";
 
-type CropState = {
-  pieceId: string;
-  crop: CropFraction;
-  /** The crop the piece had on entry, restored when the session is cancelled. */
-  before: CropFraction;
-};
+/** The slip shown while carrying pieces, until snapping has been found. */
+const SNAP_HINT = `hold ${
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent)
+    ? "cmd"
+    : "ctrl"
+} to snap`;
+
+function readSnapLearned(): boolean {
+  try {
+    return window.localStorage.getItem(SNAP_LEARNED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function rememberSnapLearned(): void {
+  try {
+    window.localStorage.setItem(SNAP_LEARNED_KEY, "1");
+  } catch {
+    // Without storage the hint simply shows again next time.
+  }
+}
 
 interface CollageStudioProps {
   scraps: readonly ScrapItem[];
@@ -383,6 +416,9 @@ interface CollageStudioProps {
   /** Whether the export menu offers a view-only link. The host decides, since
    * feature access reads extension storage the walk page can't reach. */
   canPublish?: boolean;
+  /** Who is sharing, so a shared collage can be signed. The host provides it
+   * for the same reason as canPublish. */
+  signer?: CollageSigner;
   /**
    * A collage other people edit at the same time. The studio then reports
    * each settled edit instead of saving, takes in everyone else's edits, and
@@ -442,6 +478,7 @@ export function CollageStudio({
   onLeave,
   autosaveTimers,
   canPublish = false,
+  signer,
   shared,
 }: CollageStudioProps) {
   const initial = useMemo<readonly CollagePiece[]>(
@@ -498,8 +535,36 @@ export function CollageStudio({
   const mat = sheet ? 0 : phone ? PHONE_MAT : MAT;
   const matCaption = sheet ? 0 : phone ? PHONE_MAT_CAPTION : MAT_CAPTION;
   const topBand = sheet ? STAGE_PADDING : STAGE_TOP_BAND;
-  /** Whether the collage is turned over to its back, where the sources are. */
-  const [over, setOver] = useState(false);
+  /**
+   * The one session the studio is in: a crop, a cutout, a modal rotate or
+   * scale, or the collage turned over to its back, where the sources are.
+   * Holding them as one value means starting one always ends the last.
+   */
+  const [session, setSession] = useState<StudioSession>(IDLE_SESSION);
+  const over = session.kind === "back";
+  const crop = cropOf(session);
+  const transform = transformOf(session);
+  const cutoutSession = cutoutOf(session);
+  const mode: StudioMode = studioModeOf(session);
+  /** Moves the running crop's edges; does nothing once the crop has ended. */
+  const setCrop = useCallback(
+    (next: CropState) =>
+      setSession((current) => updateSession(current, { kind: "crop", crop: next })),
+    [],
+  );
+  /** Updates the running transform; does nothing once it has ended. */
+  const setTransform = useCallback(
+    (next: ModalTransform) =>
+      setSession((current) =>
+        updateSession(current, { kind: "transform", transform: next }),
+      ),
+    [],
+  );
+  const endRunning = useCallback(
+    (kind: StudioSession["kind"]) =>
+      setSession((current) => endSession(current, kind)),
+    [],
+  );
   const [backLook, setBackLook] = useState<BackLook>(BACK_LOOK);
   /** The front as the back shows it through the paper. */
   const [bleed, setBleed] = useState<Blob | null>(null);
@@ -519,19 +584,15 @@ export function CollageStudio({
     [],
   );
 
-  const [crop, setCrop] = useState<CropState | null>(null);
-  const [transform, setTransform] = useState<ModalTransform | null>(null);
-  /**
-   * The picture whose cutout edge is being tuned, and the cutout it had when
-   * the control opened, restored if the session is cancelled.
-   */
-  const [cutoutSession, setCutoutSession] = useState<{
-    pieceId: string;
-    before: PieceCutout | undefined;
-  } | null>(null);
   const [gesture, setGesture] = useState<Gesture>({ kind: "idle" });
   /** What the slip above the selected piece says while a gesture runs. */
   const [gestureReadout, setGestureReadout] = useState<string | null>(null);
+  /**
+   * Whether the slip names the snapping key while pieces are carried. It shows
+   * until the person has snapped once, then stays out of the way for good.
+   */
+  const [snapHint, setSnapHint] = useState(false);
+  const snapLearnedRef = useRef(readSnapLearned());
   const [clipboard, setClipboard] = useState<readonly CollagePiece[] | null>(
     null,
   );
@@ -645,8 +706,19 @@ export function CollageStudio({
       format,
       backShows,
       publication: publication?.id ?? null,
+      // A link catching up is stored too, so it is not sent again on reopen.
+      publicationKey: publication?.contentKey ?? null,
     }),
-    [pieces, title, paper.color, paper.grain, format, backShows, publication?.id],
+    [
+      pieces,
+      title,
+      paper.color,
+      paper.grain,
+      format,
+      backShows,
+      publication?.id,
+      publication?.contentKey,
+    ],
   );
   const firstChangeRef = useRef(true);
   useEffect(() => {
@@ -679,16 +751,6 @@ export function CollageStudio({
     if (shared) return;
     flush();
   }, [publication?.id, flush, shared]);
-
-  const mode: StudioMode = over
-    ? "back"
-    : crop
-    ? "crop"
-    : transform
-      ? transform.kind
-      : cutoutSession
-        ? "cutout"
-        : "idle";
 
   // A shared collage trades edits with everyone else. Pieces this person is
   // dragging, turning, scaling or cutting out go out as a draft others can
@@ -810,10 +872,7 @@ export function CollageStudio({
   // One decision picks the floating panel on screen, so a tool's own controls
   // can never be covered by the piece strip or the stack menu.
   const panelState: PanelState = {
-    turnedOver: over,
-    cropping: crop !== null,
-    transforming: transform !== null,
-    cuttingOut: cutoutSession !== null,
+    mode,
     piecesHereOpen: hereStack.length > 0,
     gestureRunning: gesture.kind !== "idle",
     peekHeld: (peek.held || sourcesOn) && !over,
@@ -826,10 +885,10 @@ export function CollageStudio({
   // hand, however that happened, the session is over and keeps what it made.
   useEffect(() => {
     if (cutoutSession && cutoutSession.pieceId !== selectedId) {
-      setCutoutSession(null);
+      endRunning("cutout");
       setHistory((current) => endRun(current));
     }
-  }, [cutoutSession, selectedId]);
+  }, [cutoutSession, endRunning, selectedId]);
 
   /** Commits an arrangement, coalescing a continuous run into one undo step. */
   const commit = useCallback(
@@ -874,7 +933,11 @@ export function CollageStudio({
 
   /** Plays an action's sound, panned toward where the pieces sit in the frame. */
   const sound = useCallback(
-    (name: CollageSound, at: readonly CollagePiece[] = []) => {
+    (
+      name: CollageSound,
+      at: readonly CollagePiece[] = [],
+      stack?: StackMove,
+    ) => {
       const pan =
         at.length === 0
           ? 0
@@ -883,7 +946,7 @@ export function CollageStudio({
               frame.width) *
               2 -
             1;
-      playCollageSound(name, pan);
+      playCollageSound(name, pan, stack);
     },
     [frame.width],
   );
@@ -916,6 +979,8 @@ export function CollageStudio({
   const liftedRef = useRef<number | null>(null);
 
   const [soundOn, setSoundOn] = useState(() => !collageSoundsMuted());
+  // Safari starts audio only inside a gesture, so wake it on the first one.
+  useEffect(() => primeCollageSounds(), []);
   const toggleSound = useCallback(() => {
     setSoundOn((on) => {
       setCollageSoundsMuted(on);
@@ -1040,20 +1105,44 @@ export function CollageStudio({
     if (removable.length === 0) return;
     commit(removePieces(pieces, removable));
     setSelection(EMPTY_SELECTION);
-    setCrop(null);
+    endRunning("crop");
     sound(
       "delete",
       selectedPieces.filter((piece) => removable.includes(piece.id)),
     );
-  }, [commit, pieces, selectedPieces, selection, shared?.removalRefusal, sound]);
+  }, [
+    commit,
+    endRunning,
+    pieces,
+    selectedPieces,
+    selection,
+    shared?.removalRefusal,
+    sound,
+  ]);
 
   /**
    * Lays copies of the given pieces on top of the stack and takes them in
    * hand. A run label lets an alt-drag's copy and its move undo together.
    */
+  const duplicateTrailRef = useRef<DuplicateTrail | null>(null);
   const duplicatePieces = useCallback(
-    (originals: readonly CollagePiece[], runLabel: string | null = null) => {
-      const copies = copiesOnTop(pieces, originals, COPY_OFFSET, createPieceId);
+    (
+      originals: readonly CollagePiece[],
+      runLabel: string | null = null,
+      repeatStep = true,
+    ) => {
+      // Like Figma: duplicating the last copies again, after dragging them
+      // into place, steps on by however far they were dragged.
+      const offset = repeatStep
+        ? nextDuplicateOffset(
+            pieces,
+            originals,
+            duplicateTrailRef.current,
+            COPY_OFFSET,
+          )
+        : COPY_OFFSET;
+      const copies = copiesOnTop(pieces, originals, offset, createPieceId);
+      duplicateTrailRef.current = duplicateTrail(originals, copies);
       commit([...pieces, ...copies], runLabel);
       setSelection(selectMany(copies.map((copy) => copy.id)));
       sound("duplicate", copies);
@@ -1095,24 +1184,21 @@ export function CollageStudio({
         front: moveGroupToFront,
         back: moveGroupToBack,
       }[to];
-      commit(move(pieces, selection.ids));
+      const next = move(pieces, selection.ids);
+      commit(next);
+      // Pitched to where the pieces sit in the pile, so stepping one up
+      // through a stack climbs a scale.
       sound(
         to === "forward" || to === "front" ? "layerUp" : "layerDown",
         selectedPieces,
+        {
+          from: stackHeight(pieces, selection.ids),
+          to: stackHeight(next, selection.ids),
+        },
       );
     },
     [commit, pieces, selectedPieces, selection, sound],
   );
-
-  const enterCrop = useCallback(() => {
-    if (!selected) return;
-    setTransform(null);
-    setCrop({
-      pieceId: selected.id,
-      crop: cropSessionStart(selected),
-      before: selected.crop,
-    });
-  }, [selected]);
 
   /**
    * Commits the crop session. The piece keeps its place because the crop
@@ -1125,10 +1211,10 @@ export function CollageStudio({
       editPiece(crop.pieceId, (piece) => commitCropSession(piece, crop.crop));
       sound("crop", [target]);
     }
-    setCrop(null);
-  }, [crop, editPiece, pieces, sound]);
+    endRunning("crop");
+  }, [crop, editPiece, endRunning, pieces, sound]);
 
-  const cancelCrop = useCallback(() => setCrop(null), []);
+  const cancelCrop = useCallback(() => endRunning("crop"), [endRunning]);
 
   /**
    * Whether the running crop has changed the piece. The crop lives outside
@@ -1140,67 +1226,16 @@ export function CollageStudio({
     return Boolean(target && !sameCrop(target.crop, crop.crop));
   }, [crop, pieces]);
 
-  const beginTransform = useCallback(
-    (kind: "rotate" | "scale") => {
-      if (!selectionBox) return;
-      setCrop(null);
-      const center = boxCenter(selectionBox);
-      // Until the pointer moves, the transform reads from the selection's
-      // edge so a scale starts at exactly one. A group turns by how far the
-      // pointer goes round from where it was, so it starts where it stands.
-      const edge = { x: center.x + selectionBox.width / 2, y: center.y };
-      const pointer = lastPointerRef.current;
-      const anchor =
-        kind === "rotate" &&
-        multiple &&
-        pointer &&
-        Math.hypot(pointer.x - center.x, pointer.y - center.y) > 1
-          ? pointer
-          : edge;
-      if (kind === "rotate") sound("rotate", selectedPieces);
-      setTransform({
-        kind,
-        before: selectedPieces,
-        center,
-        anchor,
-        readout: kind === "rotate" ? "0 deg" : "100%",
-      });
-    },
-    [multiple, selectedPieces, selectionBox, sound],
-  );
-
   const confirmTransform = useCallback(() => {
-    setTransform(null);
+    endRunning("transform");
     setHistory((current) => endRun(current));
-  }, []);
+  }, [endRunning]);
 
   const cancelTransform = useCallback(() => {
     if (!transform) return;
     editPieces(transform.before, "transform");
-    setTransform(null);
-  }, [editPieces, transform]);
-
-  /**
-   * Opens the cutout's edge control on the selected picture, cutting its
-   * background away first if it still has one. The whole session, from the
-   * first cut through every change of edge, is one undo step.
-   */
-  const beginCutout = useCallback(() => {
-    if (!selected || selected.scrap.kind !== "image") return;
-    setCutoutSession({ pieceId: selected.id, before: selected.cutout });
-    if (!selected.cutout) {
-      sound("cutout", [selected]);
-      const cutout: PieceCutout = {
-        method: "edge-color",
-        tolerance: DEFAULT_CUTOUT_TOLERANCE,
-      };
-      editPiece(
-        selected.id,
-        (piece) => ({ ...piece, cutout }),
-        `cutout:${selected.id}`,
-      );
-    }
-  }, [editPiece, selected, sound]);
+    endRunning("transform");
+  }, [editPieces, endRunning, transform]);
 
   const reshapeCutout = useCallback(
     (change: (cutout: PieceCutout) => PieceCutout) => {
@@ -1226,9 +1261,9 @@ export function CollageStudio({
   );
 
   const confirmCutout = useCallback(() => {
-    setCutoutSession(null);
+    endRunning("cutout");
     setHistory((current) => endRun(current));
-  }, []);
+  }, [endRunning]);
 
   /** Puts the piece back the way it was when the edge control opened. */
   const cancelCutout = useCallback(() => {
@@ -1253,18 +1288,99 @@ export function CollageStudio({
   }, [confirmCutout, cutoutSession, editPiece]);
 
   /**
+   * Puts down whatever session is running, keeping what it made: a crop is
+   * committed, a cutout keeps its edge and a transform stays where it is.
+   * Every way into another session goes through here first.
+   */
+  const settleSession = useCallback(() => {
+    if (crop) commitCrop();
+    else if (cutoutSession) confirmCutout();
+    else if (transform) confirmTransform();
+  }, [commitCrop, confirmCutout, confirmTransform, crop, cutoutSession, transform]);
+
+  const enterCrop = useCallback(() => {
+    if (!selected) return;
+    settleSession();
+    setSession({
+      kind: "crop",
+      crop: {
+        pieceId: selected.id,
+        crop: cropSessionStart(selected),
+        before: selected.crop,
+      },
+    });
+  }, [selected, settleSession]);
+
+  const beginTransform = useCallback(
+    (kind: "rotate" | "scale") => {
+      if (!selectionBox) return;
+      settleSession();
+      const center = boxCenter(selectionBox);
+      // Until the pointer moves, the transform reads from the selection's
+      // edge so a scale starts at exactly one. A group turns by how far the
+      // pointer goes round from where it was, so it starts where it stands.
+      const edge = { x: center.x + selectionBox.width / 2, y: center.y };
+      const pointer = lastPointerRef.current;
+      const anchor =
+        kind === "rotate" &&
+        multiple &&
+        pointer &&
+        Math.hypot(pointer.x - center.x, pointer.y - center.y) > 1
+          ? pointer
+          : edge;
+      if (kind === "rotate") sound("rotate", selectedPieces);
+      setSession({
+        kind: "transform",
+        transform: {
+          kind,
+          before: selectedPieces,
+          center,
+          anchor,
+          readout: kind === "rotate" ? "0 deg" : "100%",
+        },
+      });
+    },
+    [multiple, selectedPieces, selectionBox, settleSession, sound],
+  );
+
+  /**
+   * Opens the cutout's edge control on the selected picture, cutting its
+   * background away first if it still has one. The whole session, from the
+   * first cut through every change of edge, is one undo step.
+   */
+  const beginCutout = useCallback(() => {
+    if (!selected || selected.scrap.kind !== "image") return;
+    settleSession();
+    setSession({
+      kind: "cutout",
+      cutout: { pieceId: selected.id, before: selected.cutout },
+    });
+    if (!selected.cutout) {
+      sound("cutout", [selected]);
+      const cutout: PieceCutout = {
+        method: "edge-color",
+        tolerance: DEFAULT_CUTOUT_TOLERANCE,
+      };
+      editPiece(
+        selected.id,
+        (piece) => ({ ...piece, cutout }),
+        `cutout:${selected.id}`,
+      );
+    }
+  }, [editPiece, selected, settleSession, sound]);
+
+  /**
    * Turns the collage over or face up again. Whatever was in hand is put
    * down first, so the back is only ever read and nothing is edited behind it.
    */
   const turnOver = useCallback(() => {
-    if (transform) confirmTransform();
-    if (crop) commitCrop();
+    settleSession();
     setSelection(EMPTY_SELECTION);
     setHoveredId(null);
     setHereMenu(null);
     setGesture({ kind: "idle" });
-    setOver((value) => !value);
-  }, [commitCrop, confirmTransform, crop, transform]);
+    setSession((current) => turnedOver(current));
+  }, [settleSession]);
 
   const backContent = useMemo<CollageBackContent>(
     () => ({
@@ -1436,20 +1552,9 @@ export function CollageStudio({
    * a drag stops where it is and no longer follows the pointer.
    */
   const finishRunning = useCallback(() => {
-    if (crop) commitCrop();
-    else if (cutoutSession) confirmCutout();
-    else if (transform) confirmTransform();
+    settleSession();
     if (gesture.kind !== "idle") endGesture();
-  }, [
-    commitCrop,
-    confirmCutout,
-    confirmTransform,
-    crop,
-    cutoutSession,
-    endGesture,
-    gesture.kind,
-    transform,
-  ]);
+  }, [endGesture, gesture.kind, settleSession]);
 
   /** Steps back or forward through the history, with a sound when it moves. */
   const stepHistory = useCallback(
@@ -1678,6 +1783,11 @@ export function CollageStudio({
             ? `${snap.caught.x}|${snap.caught.y}`
             : null;
       }
+      if (snapping && !snapLearnedRef.current) {
+        snapLearnedRef.current = true;
+        rememberSnapLearned();
+      }
+      setSnapHint(!snapping && !snapLearnedRef.current);
       const pan = (point.x / frame.width) * 2 - 1;
       if (caught && caught !== caughtRef.current) {
         playCollageSound("snap", pan);
@@ -1710,7 +1820,10 @@ export function CollageStudio({
   // and cmd or ctrl starts or stops snapping, without waiting for the pointer
   // to move again.
   useEffect(() => {
-    if (gesture.kind !== "move") return;
+    if (gesture.kind !== "move") {
+      setSnapHint(false);
+      return;
+    }
     const { origins, grabbedAt } = gesture;
     const onModifier = (event: KeyboardEvent) => {
       if (!["Shift", "Meta", "Control"].includes(event.key)) return;
@@ -1828,7 +1941,9 @@ export function CollageStudio({
           Math.hypot(point.x - grabbedAt.x, point.y - grabbedAt.y) >
             ALT_DRAG_THRESHOLD
         ) {
-          const copies = duplicatePieces(origins, "move");
+          // An alt-drag's copy follows the pointer rather than a remembered
+          // step, and a later duplicate of it repeats where it was dragged.
+          const copies = duplicatePieces(origins, "move", false);
           setGesture({ kind: "move", origins: copies, grabbedAt });
           return;
         }
@@ -1893,6 +2008,34 @@ export function CollageStudio({
           keepAspect: !event.shiftKey,
           aboutCenter: event.altKey,
         };
+        // A heading pulled from any edge keeps its type size: from a side
+        // its words rewrap to the new width and the piece grows downward to
+        // hold the lines; from the top or bottom the box gains or loses room
+        // around the lines. Only the corners scale it.
+        if (
+          grip.kind === "edge" &&
+          before.scrap.kind === "heading" &&
+          isFullCrop(before.crop)
+        ) {
+          const headingDrag = {
+            box: before,
+            scrap: before.scrap,
+            letteringWidth: before.letteringWidth,
+            pointer: reach.pointer,
+            aboutCenter: event.altKey,
+          };
+          const resized =
+            grip.edge === "left" || grip.edge === "right"
+              ? rewrapHeadingFromSide({ ...headingDrag, edge: grip.edge })
+              : resizeHeadingFromEnd({ ...headingDrag, edge: grip.edge });
+          editPieces([{ ...before, ...resized }], `resize:${before.id}`);
+          setGestureReadout(
+            grip.edge === "left" || grip.edge === "right"
+              ? `wrap ${Math.round(resized.letteringWidth)}px`
+              : `height ${Math.round(resized.height)}px`,
+          );
+          return;
+        }
         const drag =
           grip.kind === "corner"
             ? dragCorner({ ...reach, corner: grip.corner })
@@ -1989,7 +2132,7 @@ export function CollageStudio({
     };
     (event.target as Element).setPointerCapture?.(event.pointerId);
     setSelection(plan.selectOnDown);
-    setCrop(null);
+    endRunning("crop");
     pressRef.current = {
       at,
       downAt: performance.now(),
@@ -2385,9 +2528,43 @@ export function CollageStudio({
     downloadFile(file, name);
   };
 
+  /** The caption the mat carries under an exported picture or flip. */
+  const exportCaption = () => ({
+    title: title.trim(),
+    detail: `${pieces.length} piece${pieces.length === 1 ? "" : "s"} · made ${madeOn(createdAtRef.current)}`,
+  });
+
+  /** Bakes the front, and the back that shows that very front through it. */
+  const bakeSides = async () => {
+    const front = await bakeCollage({
+      frame,
+      pieces,
+      paper: paper.color,
+      grain: paper.grain,
+    });
+    const back = await bakeCollageBack({
+      frame,
+      paper,
+      content: backContent,
+      front,
+      favicons: await resolveBackFavicons(collageProvenance(backContent.pieces)),
+      thumbnails: await resolveBackThumbnails(backContent.pieces),
+      look: backLook,
+    });
+    return { front, back };
+  };
+
+  /** Names what went wrong with an export, and the pieces that could not be drawn. */
+  const exportProblem = (what: string, error: unknown) =>
+    error instanceof CollageBakeError
+      ? `could not export${what ? ` ${what}` : ""} — these could not be drawn: ${error.failures
+          .map((failure) => failure.label)
+          .join(", ")}`
+      : `could not export${what ? ` ${what}` : ""} — ${error instanceof Error ? error.message : String(error)}`;
+
   /**
-   * Exports the front and the back as two pictures of the same size. The back
-   * shows this very front through its paper, so the pair always agree.
+   * Exports the front and the back as two pictures of the same size, each on
+   * the mat the studio shows it on, with the caption along the bottom.
    */
   const download = async () => {
     if (pieces.length === 0) return;
@@ -2396,35 +2573,43 @@ export function CollageStudio({
     setReadyFiles(null);
     const name = collageExportName(title);
     try {
-      const front = await bakeCollage({
-        frame,
-        pieces,
-        paper: paper.color,
-        grain: paper.grain,
-      });
-      const back = await bakeCollageBack({
-        frame,
-        paper,
-        content: backContent,
-        front,
-        favicons: await resolveBackFavicons(collageProvenance(backContent.pieces)),
-        thumbnails: await resolveBackThumbnails(backContent.pieces),
-        look: backLook,
-      });
-      saveFile(front, `${name} front.png`, "front · png");
-      saveFile(back, `${name} back.png`, "back · png");
+      const { front, back } = await bakeSides();
+      const caption = exportCaption();
+      const [frontFile, backFile] = await Promise.all([
+        frameExport(front, caption),
+        frameExport(back, caption),
+      ]);
+      saveFile(frontFile, `${name} front.jpg`, "front · jpg");
+      saveFile(backFile, `${name} back.jpg`, "back · jpg");
     } catch (error) {
       // An export is asked for out loud, so it fails out loud, naming the
       // pieces that would have left holes in the picture.
-      const text =
-        error instanceof CollageBakeError
-          ? `could not export — these could not be drawn: ${error.failures
-              .map((failure) => failure.label)
-              .join(", ")}`
-          : `could not export — ${error instanceof Error ? error.message : String(error)}`;
-      setNotice({ tone: "problem", text });
+      setNotice({ tone: "problem", text: exportProblem("", error) });
     } finally {
       setExporting(false);
+    }
+  };
+
+  /** Exports the framed collage turning from its front to its back and over again. */
+  const downloadFlip = async () => {
+    if (pieces.length === 0) return;
+    setVideoProgress(0);
+    setNotice(null);
+    setReadyFiles(null);
+    try {
+      const { front, back } = await bakeSides();
+      const { bakeFlipVideo } = await import("./collageFlipVideo");
+      const video = await bakeFlipVideo({
+        front,
+        back,
+        caption: exportCaption(),
+        onProgress: (done, total) => setVideoProgress(done / total),
+      });
+      saveFile(video, `${collageExportName(title)} flip.mp4`, "flip · mp4");
+    } catch (error) {
+      setNotice({ tone: "problem", text: exportProblem("the flip", error) });
+    } finally {
+      setVideoProgress(null);
     }
   };
 
@@ -2453,6 +2638,7 @@ export function CollageStudio({
         pieces,
         paper: paper.color,
         grain: paper.grain,
+        caption: exportCaption(),
         onProgress: (done, total) => setVideoProgress(done / total),
       });
       saveFile(video, `${collageExportName(title)}.mp4`);
@@ -2511,7 +2697,7 @@ export function CollageStudio({
   // Modal transforms and handle drags speak through the same slip.
   const readout = transform
     ? `${transform.kind} ${transform.readout}`
-    : gestureReadout;
+    : (gestureReadout ?? (snapHint && !phone ? SNAP_HINT : null));
   const standing = standingWords(autosave.standing);
 
   const cropping = crop
@@ -2622,7 +2808,7 @@ export function CollageStudio({
                   <input
                     className="collage-title-input"
                     value={title}
-                    placeholder="untitled collage"
+                    placeholder="untitled"
                     onChange={(event) => setTitle(event.target.value)}
                     aria-label="Collage title"
                   />
@@ -2698,7 +2884,7 @@ export function CollageStudio({
                     piece mostly off the frame can still be grabbed and scaled. */}
                 <div className="collage-frame__pieces" data-marquee-ground="">
                 {ordered.map((piece) => {
-                  const source = sourceBoxForCrop(piece, piece.crop);
+                  const source = materialBox(piece);
                   const held = isSelected(selection, piece.id);
                   const hidden = crop?.pieceId === piece.id;
                   const offFrame =
@@ -3108,6 +3294,8 @@ export function CollageStudio({
                   workerUrl={WORKER_URL}
                   materialFor={publishPieceMaterial}
                   coverFor={publishCollageCover}
+                  signer={signer}
+                  changedAt={changedAt}
                   onShared={(next) => {
                     if (!mountedRef.current) {
                       // The studio closed while the link uploaded: store its
@@ -3148,6 +3336,11 @@ export function CollageStudio({
                   : null
               }
               onPicture={() => void download()}
+              onFlip={
+                typeof VideoEncoder === "undefined"
+                  ? undefined
+                  : () => void downloadFlip()
+              }
               video={animates ? videoSupport : undefined}
               onVideo={() => void downloadVideo()}
               onFile={() => void downloadCollageFile()}
