@@ -376,6 +376,7 @@ export function ImportPreview({
               {
                 id: "file",
                 name: "Keep being you",
+                detail: "Same cursor, color and beta features as before.",
                 who: contents.youId
                   ? {
                       color: contents.youColor ?? "#b5aea5",
@@ -388,6 +389,7 @@ export function ImportPreview({
               {
                 id: "here",
                 name: "Start fresh",
+                detail: "A new you. Your history still comes along.",
                 who: here,
                 color: here?.color ?? "#b5aea5",
               },
@@ -405,9 +407,14 @@ export function ImportPreview({
                 checked={who === option.id}
                 onChange={() => onWhoChange(option.id)}
               />
-              <CursorMark color={option.color} size={28} />
-              <span className="transfer-card__row-text">
+              <span className="transfer-card__row-text transfer-card__grow">
                 <span className="transfer-card__row-name">{option.name}</span>
+                <span className="transfer-card__row-detail">
+                  {option.detail}
+                </span>
+              </span>
+              <span className="transfer-card__who-id">
+                <CursorMark color={option.color} size={20} />
                 <IdentityLine who={option.who} />
               </span>
             </label>
