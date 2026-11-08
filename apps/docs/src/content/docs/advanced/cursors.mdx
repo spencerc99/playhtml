@@ -18,14 +18,16 @@ A cursor is part of a person's [presence](/docs/data/presence/): it's at `person
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
-```javascript
-import { playhtml } from "https://unpkg.com/playhtml@latest";
+```html
+<script type="module">
+  import { playhtml } from "https://unpkg.com/playhtml@latest";
 
-playhtml.init({
-  cursors: {
-    enabled: true,
-  }
-});
+  playhtml.init({
+    cursors: {
+      enabled: true,
+    }
+  });
+</script>
 ```
   </TabItem>
   <TabItem label="React">
