@@ -46,6 +46,7 @@ import {
   exportSummary,
   type ExportCounts,
   type ExportProgressRow,
+  type IdentityPreview,
   type ImportWho,
   type SectionChoices,
 } from "./TransferPanels";
@@ -406,7 +407,7 @@ export function Collections({
   const [exportCollageCount, setExportCollageCount] = useState<number | null>(
     null,
   );
-  const [youColor, setYouColor] = useState<string | null>(null);
+  const [youPreview, setYouPreview] = useState<IdentityPreview | null>(null);
   const [exportRows, setExportRows] = useState<ExportProgressRow[] | null>(
     null,
   );
@@ -658,6 +659,22 @@ export function Collections({
   const exportOpen = !!(exportChoices || exportRows || exportReady);
   const importOpen = !!(pendingImport || importProgress);
 
+  const loadYouPreview = () => {
+    getPublicPlayerIdentity()
+      .then((identity) =>
+        setYouPreview(
+          identity
+            ? {
+                color: identity.playerStyle.colorPalette[0] ?? "#b5aea5",
+                id: identity.publicKey,
+                name: identity.name,
+              }
+            : null,
+        ),
+      )
+      .catch(() => {});
+  };
+
   const openExportPicker = async () => {
     setTransferStatus(null);
     setExportReady(null);
@@ -666,9 +683,7 @@ export function Collections({
     readableCollageIds()
       .then((ids) => setExportCollageCount(ids.length))
       .catch(() => setExportCollageCount(null));
-    getPublicPlayerIdentity()
-      .then((identity) => setYouColor(identity?.playerStyle.colorPalette[0] ?? null))
-      .catch(() => {});
+    loadYouPreview();
   };
 
   const exportCounts = (): ExportCounts => {
@@ -694,7 +709,12 @@ export function Collections({
         ...(choices.collages ? { collages: collageIds.length } : {}),
         ...(pictures.size > 0 ? { pictures: pictures.size } : {}),
         ...(you
-          ? { you: true, youColor: you.public.playerStyle.colorPalette[0] }
+          ? {
+              you: true,
+              youColor: you.public.playerStyle.colorPalette[0],
+              youId: you.public.publicKey,
+              ...(you.public.name ? { youName: you.public.name } : {}),
+            }
           : {}),
       };
 
@@ -872,6 +892,8 @@ export function Collections({
               pictures: (sum.pictures ?? 0) + (c.pictures ?? 0),
               you: sum.you || c.you,
               youColor: sum.youColor ?? c.youColor,
+              youId: sum.youId ?? c.youId,
+              youName: sum.youName ?? c.youName,
             };
           }, {})
         : null;
@@ -888,11 +910,7 @@ export function Collections({
                   : "numeric",
             }) + (first.packedIn ? ` in ${first.packedIn}` : "")
           : null;
-      getPublicPlayerIdentity()
-        .then((identity) =>
-          setYouColor(identity?.playerStyle.colorPalette[0] ?? null),
-        )
-        .catch(() => {});
+      loadYouPreview();
       setPendingImport({
         files,
         title: files.length === 1 ? files[0].name : `${files.length} files`,
@@ -1436,7 +1454,7 @@ export function Collections({
                   onChange={setExportChoices}
                   onExport={() => handleExport(exportChoices)}
                   onCancel={() => setExportChoices(null)}
-                  youColor={youColor}
+                  you={youPreview}
                 />
               )}
               {exportRows && <ExportProgress rows={exportRows} />}
@@ -1459,7 +1477,7 @@ export function Collections({
                   onWhoChange={(who) =>
                     setPendingImport({ ...pendingImport, who })
                   }
-                  hereColor={youColor}
+                  here={youPreview}
                   onImport={() =>
                     handleImportFiles(pendingImport.files, {
                       ...pendingImport.choices,

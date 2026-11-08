@@ -119,6 +119,14 @@
     font-size: 11px;
   }
 
+  &__id {
+    font-family: $font-mono;
+    font-size: 11px;
+    background: none;
+    padding: 0;
+    color: inherit;
+  }
+
   &__plus {
     color: $accent-teal;
     font-weight: 500;

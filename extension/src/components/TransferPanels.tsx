@@ -13,6 +13,29 @@ function CursorMark({ color, size = 18 }: { color: string; size?: number }) {
   return <CursorSvg size={size} color={color} />;
 }
 
+/** A public ID short enough to read: its start and end. */
+export function shortPublicId(publicKey: string): string {
+  if (publicKey.length <= 14) return publicKey;
+  return `${publicKey.slice(0, 7)}…${publicKey.slice(-6)}`;
+}
+
+/** A person as the cards show them: their name if set, then their public ID. */
+export interface IdentityPreview {
+  color: string;
+  id: string;
+  name?: string;
+}
+
+function IdentityLine({ who }: { who: IdentityPreview | null }) {
+  if (!who) return null;
+  return (
+    <span className="transfer-card__row-detail">
+      {who.name ? `${who.name} · ` : ""}
+      <code className="transfer-card__id">{shortPublicId(who.id)}</code>
+    </span>
+  );
+}
+
 function plural(count: number, one: string, many = `${one}s`): string {
   return `${count.toLocaleString()} ${count === 1 ? one : many}`;
 }
@@ -36,19 +59,19 @@ export function ExportPicker({
   onChange,
   onExport,
   onCancel,
-  youColor,
+  you,
 }: {
   counts: ExportCounts;
   choices: SectionChoices;
   onChange: (choices: SectionChoices) => void;
   onExport: () => void;
   onCancel: () => void;
-  youColor: string | null;
+  you: IdentityPreview | null;
 }) {
   const rows: {
     key: TransferSection;
     name: React.ReactNode;
-    detail: string;
+    detail: React.ReactNode;
   }[] = [
     {
       key: "history",
@@ -68,9 +91,8 @@ export function ExportPicker({
     },
     {
       key: "you",
-      name: <>You {youColor && <CursorMark color={youColor} size={20} />}</>,
-      detail:
-        "Your cursor, color, name if you set one, and the key that lets the new browser be you",
+      name: <>You {you && <CursorMark color={you.color} size={20} />}</>,
+      detail: <IdentityLine who={you} />,
     },
   ];
   const picked = rows.filter((row) => choices[row.key]).length;
@@ -96,7 +118,11 @@ export function ExportPicker({
             />
             <span className="transfer-card__row-text">
               <span className="transfer-card__row-name">{row.name}</span>
-              <span className="transfer-card__row-detail">{row.detail}</span>
+              {row.key === "you" ? (
+                row.detail
+              ) : (
+                <span className="transfer-card__row-detail">{row.detail}</span>
+              )}
               {row.key === "you" && choices.you && (
                 <span className="transfer-card__warn">
                   Anyone with this file can show up as you. Keep it to yourself
@@ -253,7 +279,7 @@ export function ImportPreview({
   onChange,
   who,
   onWhoChange,
-  hereColor,
+  here,
   onImport,
   onCancel,
 }: {
@@ -265,7 +291,7 @@ export function ImportPreview({
   onChange: (choices: SectionChoices) => void;
   who: ImportWho;
   onWhoChange: (who: ImportWho) => void;
-  hereColor: string | null;
+  here: IdentityPreview | null;
   onImport: () => void;
   onCancel: () => void;
 }) {
@@ -350,14 +376,20 @@ export function ImportPreview({
               {
                 id: "file",
                 name: "Keep being you",
-                detail: "Same cursor, color and beta features as before.",
+                who: contents.youId
+                  ? {
+                      color: contents.youColor ?? "#b5aea5",
+                      id: contents.youId,
+                      name: contents.youName,
+                    }
+                  : null,
                 color: contents.youColor ?? "#b5aea5",
               },
               {
                 id: "here",
                 name: "Start fresh",
-                detail: "A new you. Your history still comes along.",
-                color: hereColor ?? "#b5aea5",
+                who: here,
+                color: here?.color ?? "#b5aea5",
               },
             ] as const
           ).map((option) => (
@@ -376,9 +408,7 @@ export function ImportPreview({
               <CursorMark color={option.color} size={28} />
               <span className="transfer-card__row-text">
                 <span className="transfer-card__row-name">{option.name}</span>
-                <span className="transfer-card__row-detail">
-                  {option.detail}
-                </span>
+                <IdentityLine who={option.who} />
               </span>
             </label>
           ))}

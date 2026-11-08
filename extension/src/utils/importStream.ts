@@ -29,6 +29,9 @@ export interface ExportContents {
   you?: boolean;
   /** The cursor color of the person the file remembers. */
   youColor?: string;
+  /** Their public ID, so an import can show who it is. */
+  youId?: string;
+  youName?: string;
 }
 
 /** The part of an export before its events. */
