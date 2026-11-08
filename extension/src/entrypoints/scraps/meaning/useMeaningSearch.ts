@@ -18,6 +18,12 @@ import type { MeaningWorkerResponse } from "./meaningProtocol";
 import MeaningWorker from "./meaningModel.worker?worker";
 
 const CHOICE_KEY = "scraps-meaning-search";
+
+/**
+ * The worker's answer: a vector, null for a picture it could not read, or
+ * undefined when it stopped before answering.
+ */
+type Answer = Float32Array | null | undefined;
 /** Pictures fetched from storage together; each is still read one at a time. */
 const READ_BATCH = 8;
 const SEARCH_DELAY_MS = 200;
@@ -103,9 +109,7 @@ export function useMeaningSearch(
   } | null>(null);
 
   const workerRef = useRef<Worker | null>(null);
-  const pending = useRef(
-    new Map<number, (vector: Float32Array | null) => void>(),
-  );
+  const pending = useRef(new Map<number, (vector: Answer) => void>());
   const nextId = useRef(0);
   const vectors = useRef(new Map<string, Float32Array | null>());
   const queryVector = useRef<{ query: string; vector: Float32Array } | null>(
@@ -156,7 +160,8 @@ export function useMeaningSearch(
       cancelled = true;
       worker.terminate();
       workerRef.current = null;
-      for (const resolve of pending.current.values()) resolve(null);
+      // Unanswered, not unreadable: the reading loop drops these.
+      for (const resolve of pending.current.values()) resolve(undefined);
       pending.current.clear();
       setModelReady(false);
     };
@@ -164,9 +169,9 @@ export function useMeaningSearch(
 
   const ask = useCallback(
     (request: { type: "image"; blob: Blob } | { type: "text"; text: string }) =>
-      new Promise<Float32Array | null>((resolve) => {
+      new Promise<Answer>((resolve) => {
         const worker = workerRef.current;
-        if (!worker) return resolve(null);
+        if (!worker) return resolve(undefined);
         const id = ++nextId.current;
         pending.current.set(id, resolve);
         worker.postMessage({ ...request, id });
@@ -198,10 +203,11 @@ export function useMeaningSearch(
         for (const src of batch) {
           if (cancelled) return;
           const blob = blobs.get(src);
-          results.push({
-            src,
-            vector: blob ? await ask({ type: "image", blob }) : null,
-          });
+          const vector = blob ? await ask({ type: "image", blob }) : null;
+          // The worker went away (turned off or the page is closing), so the
+          // batch is dropped rather than saved as pictures that cannot be read.
+          if (vector === undefined) return;
+          results.push({ src, vector });
         }
         if (cancelled) return;
         for (const { src, vector } of results) vectors.current.set(src, vector);
