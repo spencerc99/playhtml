@@ -18,7 +18,6 @@ vi.mock("./Collections", () => ({
   DataCollectionSection: () => <div>collection controls</div>,
   YourDataSection: () => <div>data controls</div>,
   DeveloperModeSection: () => <div>developer controls</div>,
-  DenyListSection: () => <div>deny list controls</div>,
 }));
 vi.mock("./DeveloperFeaturesPage", () => ({
   DeveloperFeaturesSection: () => <div>feature controls</div>,
@@ -84,12 +83,12 @@ describe("OptionsPage", () => {
       ).toEqual([
         "Identity",
         "Data collection",
+        "Sites",
         "Browser",
         "Bag settings",
         "Experiments",
         "Community",
         "Your data",
-        "Deny list",
       ]);
       expect(
         Array.from(container.querySelectorAll("nav a")).map(
@@ -98,12 +97,12 @@ describe("OptionsPage", () => {
       ).toEqual([
         "identity",
         "data collection",
+        "sites",
         "browser",
         "bag settings",
         "experiments",
         "community",
         "your data",
-        "deny list",
       ]);
     } finally {
       cleanup(root, container);
@@ -138,11 +137,11 @@ describe("OptionsPage", () => {
       ).toEqual([
         "identity",
         "data collection",
+        "sites",
         "browser",
         "experiments",
         "community",
         "your data",
-        "deny list",
       ]);
     } finally {
       cleanup(root, container);
