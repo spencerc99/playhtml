@@ -156,12 +156,20 @@ export interface ExportProgressRow {
   written: number;
   total: number | null;
   state: "waiting" | "packing" | "done";
+  /** Replaces the count shown beside the label. */
+  note?: string;
 }
 
-export function ExportProgress({ rows }: { rows: ExportProgressRow[] }) {
+export function ExportProgress({
+  rows,
+  title = "Packing it up…",
+}: {
+  rows: ExportProgressRow[];
+  title?: string;
+}) {
   return (
     <div className="transfer-card" role="status">
-      <div className="transfer-card__title">Packing it up…</div>
+      <div className="transfer-card__title">{title}</div>
       <div className="transfer-card__bars">
         {rows.map((row) => {
           const share =
@@ -171,13 +179,14 @@ export function ExportProgress({ rows }: { rows: ExportProgressRow[] }) {
                 ? Math.min(row.written / row.total, 1)
                 : 0;
           const note =
-            row.state === "waiting"
+            row.note ??
+            (row.state === "waiting"
               ? "waiting"
               : row.state === "done"
                 ? `done · ${row.written.toLocaleString()}`
                 : row.total
                   ? `${row.written.toLocaleString()} of ${row.total.toLocaleString()}`
-                  : row.written.toLocaleString();
+                  : row.written.toLocaleString());
           return (
             <div
               key={row.label}

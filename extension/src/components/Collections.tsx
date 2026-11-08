@@ -118,6 +118,8 @@ interface ImportProgress {
   eventsRead: number;
   startedAt: number;
   stats?: StatsProgress;
+  /** One row per section, when the file says what it holds. */
+  rows?: ExportProgressRow[];
 }
 
 interface StatsProgress {
@@ -155,6 +157,23 @@ function statsProgressLabel(stats: StatsProgress | undefined): {
       `${prefix} · ${Math.floor(share * 100)}%` +
       (remainingMs === null ? "" : ` · ${formatRemaining(remainingMs)}`),
   };
+}
+
+/** Section rows, plus a stats row once every section is read. */
+function importRowsWithStats(progress: ImportProgress): ExportProgressRow[] {
+  const rows = progress.rows ?? [];
+  if (progress.phase !== "finishing") return rows;
+  const stats = statsProgressLabel(progress.stats);
+  return [
+    ...rows.map((row) => ({ ...row, state: "done" as const })),
+    {
+      label: "Updating stats",
+      written: progress.stats?.done ?? 0,
+      total: stats.share === null ? null : (progress.stats?.total ?? null),
+      state: "packing",
+      note: stats.text.replace(/^updating stats ?/, "").replace(/^· /, ""),
+    },
+  ];
 }
 
 function ImportProgressBar({ progress }: { progress: ImportProgress }) {
@@ -937,6 +956,7 @@ export function Collections({
       collages: true,
       you: false,
     },
+    contents: ExportContents | null = null,
   ) => {
     setPendingImport(null);
     let stopStatsProgress = () => {};
@@ -949,12 +969,71 @@ export function Collections({
     let collagesAdded = 0;
     let becameYou = false;
     let readAll = false;
+
+    // Rows follow the file's order: events, then pictures, then collages.
+    type RowKey = "events" | "images" | "collages";
+    const rowOrder: { key: RowKey; label: string; total: number }[] = [];
+    if (contents) {
+      const history = choices.history && (contents.history ?? 0) > 0;
+      const scraps = choices.scraps && (contents.scraps ?? 0) > 0;
+      if (history || scraps)
+        rowOrder.push({
+          key: "events",
+          label:
+            history && scraps
+              ? "Browsing history and scraps"
+              : history
+                ? "Browsing history"
+                : "Scraps",
+          total:
+            (history ? (contents.history ?? 0) : 0) +
+            (scraps ? (contents.scraps ?? 0) : 0),
+        });
+      if ((choices.scraps || choices.collages) && (contents.pictures ?? 0) > 0)
+        rowOrder.push({
+          key: "images",
+          label: "Saved pictures",
+          total: contents.pictures ?? 0,
+        });
+      if (choices.collages && (contents.collages ?? 0) > 0)
+        rowOrder.push({
+          key: "collages",
+          label: "Collages",
+          total: contents.collages ?? 0,
+        });
+    }
+    const rowsRead: Record<RowKey, number> = {
+      events: 0,
+      images: 0,
+      collages: 0,
+    };
+    let currentRow = 0;
+    const advanceRowTo = (key: RowKey) => {
+      const index = rowOrder.findIndex((row) => row.key === key);
+      if (index > currentRow) currentRow = index;
+    };
+    const progressRows = (): ExportProgressRow[] | undefined =>
+      contents
+        ? rowOrder.map((row, index) => ({
+            label: row.label,
+            written: rowsRead[row.key],
+            total: row.total,
+            state:
+              index < currentRow
+                ? "done"
+                : index === currentRow
+                  ? "packing"
+                  : "waiting",
+          }))
+        : undefined;
+
     setImportProgress({
       phase: "reading",
       bytesRead: 0,
       totalBytes: files.reduce((sum, file) => sum + file.size, 0),
       eventsRead: 0,
       startedAt,
+      rows: progressRows(),
     });
     // Count everything stored so far in the stats. The background skips the
     // rebuild when nothing is waiting to be counted.
@@ -977,6 +1056,7 @@ export function Collections({
           const events = batch.filter(
             (event) => choices[eventSection(event.type)],
           );
+          rowsRead.events += events.length;
           if (events.length > 0) {
             const response = await browser.runtime.sendMessage({
               type: "IMPORT_EVENT_BATCH",
@@ -988,18 +1068,35 @@ export function Collections({
             alreadyHeld += response.alreadyHeld;
             scrapsAdded ||= response.scrapsAdded;
           }
-          setImportProgress({ phase: "reading", ...progress, startedAt });
+          setImportProgress({
+            phase: "reading",
+            ...progress,
+            startedAt,
+            rows: progressRows(),
+          });
         },
         async (item, progress) => {
           if (item.section === "images") {
-            if (choices.scraps || choices.collages) await importImage(item.value);
+            if (choices.scraps || choices.collages) {
+              advanceRowTo("images");
+              await importImage(item.value);
+              rowsRead.images++;
+            }
           } else if (item.section === "collages") {
-            if (choices.collages && (await importCollage(item.value)) === "added")
-              collagesAdded++;
+            if (choices.collages) {
+              advanceRowTo("collages");
+              if ((await importCollage(item.value)) === "added") collagesAdded++;
+              rowsRead.collages++;
+            }
           } else if (item.section === "you") {
             if (choices.you) becameYou = await importIdentity(item.value);
           }
-          setImportProgress({ phase: "reading", ...progress, startedAt });
+          setImportProgress({
+            phase: "reading",
+            ...progress,
+            startedAt,
+            rows: progressRows(),
+          });
         },
       );
       readAll = true;
@@ -1479,17 +1576,27 @@ export function Collections({
                   }
                   here={youPreview}
                   onImport={() =>
-                    handleImportFiles(pendingImport.files, {
-                      ...pendingImport.choices,
-                      you: pendingImport.who === "file",
-                    })
+                    handleImportFiles(
+                      pendingImport.files,
+                      {
+                        ...pendingImport.choices,
+                        you: pendingImport.who === "file",
+                      },
+                      pendingImport.contents,
+                    )
                   }
                   onCancel={() => setPendingImport(null)}
                 />
               )}
-              {importProgress && (
-                <ImportProgressBar progress={importProgress} />
-              )}
+              {importProgress &&
+                (importProgress.rows ? (
+                  <ExportProgress
+                    title="Importing…"
+                    rows={importRowsWithStats(importProgress)}
+                  />
+                ) : (
+                  <ImportProgressBar progress={importProgress} />
+                ))}
               {transferStatus && (
                 <p
                   className={`collections__transfer-status collections__transfer-status--${transferStatus.type}`}
