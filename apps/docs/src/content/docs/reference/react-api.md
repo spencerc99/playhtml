@@ -321,7 +321,7 @@ Before sync, `everyone` is empty and `me.pid` is `""`.
 
 ### `isLoading`
 
-Boolean that is `true` until the initial state from the server has landed, then flips to `false`. Gate effects that should run once per synced session on it:
+Boolean that is `true` until the room's state from the server has landed, then flips to `false`. It is `true` again while client-side navigation loads a different room. Gate effects that should run once per synced session on it, and guard with a ref if they must run only once:
 
 ```tsx
 const { isLoading } = usePlayContext();

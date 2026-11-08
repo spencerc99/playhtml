@@ -15,7 +15,11 @@ import {
   loadPublishedCollage,
   publishedCoverUrl,
 } from "../collage/publishedCollageView";
-import { CHANGELOG_URL, LIVE_PORTRAIT_URL } from "../src/navigation";
+import {
+  CHANGELOG_URL,
+  COLLAGES_URL,
+  LIVE_PORTRAIT_URL,
+} from "../src/navigation";
 import {
   PINNED_COLLAGES,
   type CollageMaker,
@@ -59,14 +63,13 @@ function countOf(count: number, one: string, many: string): string {
 function captionMeta(collage: PublishedCollage): string {
   const sites = new Set(collage.pieces.map((piece) => piece.source.domain))
     .size;
-  const when = collage.createdAt
-    ? `made ${madeOn(collage.createdAt)}`
-    : collage.sharedAt
-      ? `shared ${madeOn(collage.sharedAt)}`
-      : null;
-  const what = `${countOf(collage.pieces.length, "scrap", "scraps")} from ${countOf(sites, "site", "sites")}`;
-  // The date never breaks across lines.
-  return when ? `${what} · ${when.replace(/ /g, "\u00a0")}` : what;
+  return `${countOf(collage.pieces.length, "scrap", "scraps")} from ${countOf(sites, "site", "sites")}`;
+}
+
+/** When the collage was made, or else shared; it sits beside the maker's name. */
+function captionDate(collage: PublishedCollage): string | null {
+  const at = collage.createdAt ?? collage.sharedAt;
+  return at ? madeOn(at) : null;
 }
 
 /** A steady pseudo-random sequence, so a collage's wash keeps its shape on every visit. */
@@ -109,7 +112,8 @@ function cardWash(id: string, colors: readonly string[]): CSSProperties[] {
 function PinnedCard({ pinned, at }: { pinned: Pinned; at: number }) {
   const { id, by, collage } = pinned;
   const [colors, setColors] = useState<string[]>([]);
-  const title = collage.title.trim() || "untitled collage";
+  const title = collage.title.trim() || "untitled";
+  const date = captionDate(collage);
   // A collage with no loud colour of its own takes its maker's.
   const wash = useMemo(
     () => cardWash(id, colors.length > 0 ? colors : [by.color]),
@@ -150,12 +154,15 @@ function PinnedCard({ pinned, at }: { pinned: Pinned; at: number }) {
         {wash.map((style, i) => (
           <span key={i} className="collage-board__blot" style={style} />
         ))}
-        <span
-          className="collage-board__name"
-          style={{ backgroundColor: by.color }}
-        >
-          {by.name}
-        </span>
+        <div className="collage-board__byline">
+          <span
+            className="collage-board__name"
+            style={{ backgroundColor: by.color }}
+          >
+            {by.name}
+          </span>
+          {date && <span className="collage-board__date">{date}</span>}
+        </div>
         <span className="collage-board__meta">{captionMeta(collage)}</span>
       </div>
     </a>
@@ -212,7 +219,7 @@ function CollagesPage() {
           we were online
         </a>
         <span className="collage-board__links">
-          <a href="/collages/" aria-current="page">
+          <a href={COLLAGES_URL} aria-current="page">
             collages
           </a>
           <a href={LIVE_PORTRAIT_URL}>live portrait</a>
@@ -221,10 +228,21 @@ function CollagesPage() {
       </nav>
 
       <header className="collage-board__header">
-        <h1 className="collage-board__heading">collages</h1>
-        <p className="collage-board__lede">
-          things people found online, pinned up together
-        </p>
+        <div className="collage-board__band">
+          <span className="collage-board__streak" aria-hidden="true" />
+          <h1 className="collage-board__heading">browsing collages</h1>
+        </div>
+        <div className="collage-board__shares" aria-hidden="true">
+          {Array.from({ length: SHARE_PILLS }, (_, i) => (
+            <span
+              key={i}
+              className="collage-board__share"
+              style={{ opacity: 1 - i * 0.11 }}
+            >
+              Share
+            </span>
+          ))}
+        </div>
         <div className="collage-board__note" aria-hidden="true">
           <img
             className="collage-board__tape"
@@ -232,7 +250,7 @@ function CollagesPage() {
             alt=""
             style={{ width: 92, left: 54, top: -14, transform: "rotate(5deg)" }}
           />
-          <span>every scrap still links back to where it was found</span>
+          <span>every scrap links back to where it was found</span>
         </div>
         <div className="collage-board__cta">
           <img
@@ -247,29 +265,11 @@ function CollagesPage() {
               transform: "rotate(-7deg)",
             }}
           />
-          <a href="/">pin up your own &#187;</a>
+          <a href="/">make your own &#187;</a>
         </div>
       </header>
 
-      <section className="collage-board__section" aria-labelledby="favorites">
-        <div className="collage-board__band">
-          <span className="collage-board__streak" aria-hidden="true" />
-          <h2 id="favorites" className="collage-board__favorites">
-            favorites
-          </h2>
-        </div>
-        <div className="collage-board__shares" aria-hidden="true">
-          {Array.from({ length: SHARE_PILLS }, (_, i) => (
-            <span
-              key={i}
-              className="collage-board__share"
-              style={{ opacity: 1 - i * 0.11 }}
-            >
-              Share
-            </span>
-          ))}
-        </div>
-
+      <section className="collage-board__section" aria-label="collages">
         {pinned === null ? (
           <p className="collage-board__status" role="status">
             pinning up the collages...

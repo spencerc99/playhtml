@@ -197,6 +197,9 @@ export async function buildPublishedCollage(
       crop: { ...piece.crop },
       flipX: piece.flipX,
       flipY: piece.flipY,
+      ...(piece.letteringWidth === undefined
+        ? {}
+        : { letteringWidth: piece.letteringWidth }),
     };
     if ("content" in material) {
       const bytes = new TextEncoder().encode(

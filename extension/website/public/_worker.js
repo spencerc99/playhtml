@@ -72,7 +72,7 @@ async function collagePage(request, env, page) {
   const { collage, hasCover } = found;
   const name =
     (typeof collage.title === "string" && collage.title.trim()) ||
-    "untitled collage";
+    "untitled";
   const sites = new Set(
     collage.pieces.map((piece) => piece?.source?.domain).filter(Boolean),
   ).size;

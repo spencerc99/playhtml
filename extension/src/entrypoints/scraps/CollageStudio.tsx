@@ -12,6 +12,7 @@ import React, {
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import {
   FULL_CROP,
+  isFullCrop,
   boxCenter,
   cornerPoint,
   type Bounds,
@@ -111,6 +112,10 @@ import {
 import { loadCollage, saveCollage } from "./collageStore";
 import { ScrapTray } from "./ScrapTray";
 import { PieceMaterial } from "./PieceMaterial";
+import {
+  resizeHeadingFromEnd,
+  rewrapHeadingFromSide,
+} from "./pieceLettering";
 import { ExportMenu } from "./ExportMenu";
 import { ShareButton } from "./ShareButton";
 import type { CollageSigner } from "./collageSignature";
@@ -2003,6 +2008,34 @@ export function CollageStudio({
           keepAspect: !event.shiftKey,
           aboutCenter: event.altKey,
         };
+        // A heading pulled from any edge keeps its type size: from a side
+        // its words rewrap to the new width and the piece grows downward to
+        // hold the lines; from the top or bottom the box gains or loses room
+        // around the lines. Only the corners scale it.
+        if (
+          grip.kind === "edge" &&
+          before.scrap.kind === "heading" &&
+          isFullCrop(before.crop)
+        ) {
+          const headingDrag = {
+            box: before,
+            scrap: before.scrap,
+            letteringWidth: before.letteringWidth,
+            pointer: reach.pointer,
+            aboutCenter: event.altKey,
+          };
+          const resized =
+            grip.edge === "left" || grip.edge === "right"
+              ? rewrapHeadingFromSide({ ...headingDrag, edge: grip.edge })
+              : resizeHeadingFromEnd({ ...headingDrag, edge: grip.edge });
+          editPieces([{ ...before, ...resized }], `resize:${before.id}`);
+          setGestureReadout(
+            grip.edge === "left" || grip.edge === "right"
+              ? `wrap ${Math.round(resized.letteringWidth)}px`
+              : `height ${Math.round(resized.height)}px`,
+          );
+          return;
+        }
         const drag =
           grip.kind === "corner"
             ? dragCorner({ ...reach, corner: grip.corner })
@@ -2546,8 +2579,8 @@ export function CollageStudio({
         frameExport(front, caption),
         frameExport(back, caption),
       ]);
-      saveFile(frontFile, `${name} front.png`, "front · png");
-      saveFile(backFile, `${name} back.png`, "back · png");
+      saveFile(frontFile, `${name} front.jpg`, "front · jpg");
+      saveFile(backFile, `${name} back.jpg`, "back · jpg");
     } catch (error) {
       // An export is asked for out loud, so it fails out loud, naming the
       // pieces that would have left holes in the picture.
@@ -2605,6 +2638,7 @@ export function CollageStudio({
         pieces,
         paper: paper.color,
         grain: paper.grain,
+        caption: exportCaption(),
         onProgress: (done, total) => setVideoProgress(done / total),
       });
       saveFile(video, `${collageExportName(title)}.mp4`);
@@ -2774,7 +2808,7 @@ export function CollageStudio({
                   <input
                     className="collage-title-input"
                     value={title}
-                    placeholder="untitled collage"
+                    placeholder="untitled"
                     onChange={(event) => setTitle(event.target.value)}
                     aria-label="Collage title"
                   />

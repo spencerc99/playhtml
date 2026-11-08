@@ -121,10 +121,30 @@ export function paintPaperEdge(
   context.restore();
 }
 
+/** The longest side an exported picture may have, mat included, in pixels. */
+export const EXPORT_MAX_SIDE = 3000;
+/** JPEG quality for exported pictures: high enough that nothing shows. */
+const EXPORT_QUALITY = 0.95;
+
+/** The paper's size in an export, shrunk so the whole mat fits `maxSide`. */
+export function exportPaperSize(
+  width: number,
+  height: number,
+  maxSide = EXPORT_MAX_SIDE,
+): { width: number; height: number } {
+  const full = matLayout(width, height);
+  const ratio = Math.min(1, maxSide / Math.max(full.width, full.height, 1));
+  return {
+    width: Math.max(1, Math.round(width * ratio)),
+    height: Math.max(1, Math.round(height * ratio)),
+  };
+}
+
 /**
  * The picture set in the studio's mat: an even border on three sides and a
- * deeper band along the bottom carrying the caption, sized to the picture so a
- * 2x export gets a 2x mat.
+ * deeper band along the bottom carrying the caption. It is saved as a JPEG no
+ * more than `EXPORT_MAX_SIDE` across. The paper grain is noise a PNG cannot
+ * squeeze, which is what made lossless exports run to 8MB and more.
  */
 export async function frameExport(
   picture: Blob,
@@ -132,22 +152,27 @@ export async function frameExport(
 ): Promise<Blob> {
   const image = await createImageBitmap(picture);
   try {
-    const layout = matLayout(image.width, image.height);
+    const paper = exportPaperSize(image.width, image.height);
+    const layout = matLayout(paper.width, paper.height);
     const canvas = document.createElement("canvas");
     canvas.width = layout.width;
     canvas.height = layout.height;
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Could not draw the framed picture");
     await paintMat(context, layout, caption);
-    context.drawImage(image, layout.window.x, layout.window.y);
-    paintPaperEdge(context, layout.window, image.width);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    const win = layout.window;
+    context.drawImage(image, win.x, win.y, win.width, win.height);
+    paintPaperEdge(context, win, win.width);
     return await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob(
         (blob) =>
           blob
             ? resolve(blob)
             : reject(new Error("Could not encode the framed picture")),
-        "image/png",
+        "image/jpeg",
+        EXPORT_QUALITY,
       ),
     );
   } finally {

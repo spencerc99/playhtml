@@ -8,7 +8,7 @@ import { cutoutCanvas } from "./cutoutImages";
 import { drawGrain } from "./paperGrain";
 import { resolveScrapImageSrc } from "@movement/utils/scrapImageSource";
 import { headingDisplayFontSize } from "@movement/components/ScrapCollage";
-import { letteringLayout } from "./pieceLettering";
+import { HEADING_LINE_HEIGHT, letteringLayout } from "./pieceLettering";
 import {
   buttonBodyMarkup,
   foreignObjectDataUrl,
@@ -16,13 +16,6 @@ import {
   requireXmlFragment,
   svgDataUrl,
 } from "./svgDocument";
-
-/**
- * The line height a heading is drawn at, rather than the one captured with its
- * font size, which would space wrapped lines far too far apart at display size.
- * Matches the shared renderer.
- */
-const HEADING_LINE_HEIGHT = 1.15;
 
 /** Names the pieces that could not be drawn, so a save can refuse to go ahead. */
 export class CollageBakeError extends Error {
@@ -83,8 +76,9 @@ async function loadButtonImage(
   scrap: Extract<ScrapSnapshot, { kind: "button" }>,
   width: number,
   height: number,
+  letteringWidth: number | undefined,
 ): Promise<HTMLImageElement> {
-  const layout = letteringLayout(scrap, { width, height });
+  const layout = letteringLayout(scrap, { width, height }, letteringWidth);
   return loadImage(
     foreignObjectDataUrl({ body: buttonBodyMarkup(scrap), ...layout }),
   );
@@ -100,8 +94,9 @@ async function loadHeadingImage(
   scrap: Extract<ScrapSnapshot, { kind: "heading" }>,
   width: number,
   height: number,
+  letteringWidth: number | undefined,
 ): Promise<HTMLImageElement> {
-  const layout = letteringLayout(scrap, { width, height });
+  const layout = letteringLayout(scrap, { width, height }, letteringWidth);
   return loadImage(
     foreignObjectDataUrl({
       body: headingBodyMarkup(
@@ -187,10 +182,22 @@ async function pieceImage(
         image: await loadSvgIconImage(scrap.markup, sourceWidth, sourceHeight),
       };
     case "button":
-      return { image: await loadButtonImage(scrap, sourceWidth, sourceHeight) };
+      return {
+        image: await loadButtonImage(
+          scrap,
+          sourceWidth,
+          sourceHeight,
+          piece.letteringWidth,
+        ),
+      };
     case "heading":
       return {
-        image: await loadHeadingImage(scrap, sourceWidth, sourceHeight),
+        image: await loadHeadingImage(
+          scrap,
+          sourceWidth,
+          sourceHeight,
+          piece.letteringWidth,
+        ),
       };
   }
 }

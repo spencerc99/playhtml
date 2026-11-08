@@ -34,7 +34,7 @@ export class CollageFileError extends Error {
 
 /** What a saved collage's file is called on disk. */
 export function collageFileName(title: string): string {
-  return `${title.trim() || "untitled collage"}.collage.json`;
+  return `${title.trim() || "untitled"}.collage.json`;
 }
 
 /**

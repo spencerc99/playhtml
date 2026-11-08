@@ -79,31 +79,14 @@ export const GALLERY_STYLES = `
 
   .collage-board__header {
     position: relative;
-    max-width: 1000px;
+    max-width: 1120px;
     margin: 0 auto;
-    padding: 64px 0 40px;
+    padding: 72px 0 0;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
+    gap: 20px;
     text-align: center;
-  }
-
-  .collage-board__heading {
-    margin: 0;
-    font-family: "Source Serif 4", Georgia, serif;
-    font-style: italic;
-    font-weight: 200;
-    font-size: 64px;
-    letter-spacing: -0.01em;
-    line-height: 1;
-  }
-
-  .collage-board__lede {
-    margin: 0;
-    font-size: 14px;
-    color: var(--b-muted);
-    letter-spacing: 0.08em;
   }
 
   .collage-board__tape {
@@ -114,12 +97,13 @@ export const GALLERY_STYLES = `
     mix-blend-mode: multiply;
   }
 
-  /* A cut-out hyperlink, the kind of scrap the studio collects. */
+  /* A cut-out hyperlink, the kind of scrap the studio collects.
+     The two side notes sit out at the page edges, clear of the title. */
   .collage-board__note {
     position: absolute;
-    left: 0;
-    top: 70px;
-    width: 196px;
+    left: -28px;
+    top: 112px;
+    width: 156px;
     padding: 8px 10px;
     background: #ffffff;
     text-align: left;
@@ -137,8 +121,8 @@ export const GALLERY_STYLES = `
   /* A cut-out grey system button. */
   .collage-board__cta {
     position: absolute;
-    right: 6px;
-    top: 96px;
+    right: -20px;
+    top: 156px;
     transform: rotate(2.4deg);
   }
 
@@ -162,10 +146,7 @@ export const GALLERY_STYLES = `
   .collage-board__section {
     max-width: 1120px;
     margin: 0 auto;
-    padding-top: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
+    padding-top: 56px;
   }
 
   .collage-board__band {
@@ -173,7 +154,7 @@ export const GALLERY_STYLES = `
     display: flex;
     justify-content: center;
     align-items: flex-end;
-    height: 120px;
+    min-height: 120px;
   }
 
   .collage-board__streak {
@@ -188,7 +169,7 @@ export const GALLERY_STYLES = `
     filter: blur(3px);
   }
 
-  .collage-board__favorites {
+  .collage-board__heading {
     position: relative;
     margin: 0;
     font-family: "Source Serif 4", Georgia, serif;
@@ -205,7 +186,6 @@ export const GALLERY_STYLES = `
     justify-content: center;
     flex-wrap: wrap;
     gap: 6px;
-    margin-bottom: 36px;
   }
 
   .collage-board__share {
@@ -352,7 +332,25 @@ export const GALLERY_STYLES = `
     font-weight: 700;
   }
 
+  /* The maker's name on the left, the date on the right. */
+  .collage-board__byline {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    align-self: stretch;
+  }
+
+  .collage-board__date {
+    color: #3f3a35;
+    font-family: "Martian Mono", ui-monospace, monospace;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
   .collage-board__meta {
+    align-self: stretch;
     color: #3f3a35;
     font-family: "Martian Mono", ui-monospace, monospace;
     font-size: 10px;
@@ -368,19 +366,8 @@ export const GALLERY_STYLES = `
   }
 
   /* The cut-out scraps crowd the title on narrow screens; they sit under it instead. */
-  @media (max-width: 760px) {
-    .collage-board {
-      padding: 20px 16px 64px;
-    }
-
-    .collage-board__header {
-      padding: 40px 0 24px;
-    }
-
-    .collage-board__heading {
-      font-size: 52px;
-    }
-
+  /* Too narrow to keep the side notes clear of the title: they drop below it. */
+  @media (max-width: 1240px) {
     .collage-board__note,
     .collage-board__cta {
       position: relative;
@@ -389,13 +376,27 @@ export const GALLERY_STYLES = `
       top: auto;
       margin-top: 18px;
     }
+  }
 
-    .collage-board__band {
-      height: 92px;
+  @media (max-width: 760px) {
+    .collage-board {
+      padding: 20px 16px 64px;
     }
 
-    .collage-board__favorites {
-      font-size: 68px;
+    .collage-board__header {
+      padding-top: 40px;
+    }
+
+    .collage-board__section {
+      padding-top: 40px;
+    }
+
+    .collage-board__band {
+      min-height: 92px;
+    }
+
+    .collage-board__heading {
+      font-size: 56px;
     }
 
     .collage-board__grid {

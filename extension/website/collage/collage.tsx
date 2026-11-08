@@ -608,7 +608,7 @@ function Viewer({ collage, id }: { collage: PublishedCollage; id: string }) {
   const examinedItem =
     examinedIndex === null ? null : shown[examinedIndex].item;
   const examinedPiece = examinedIndex === null ? null : pieces[examinedIndex];
-  const title = collage.title.trim() || "untitled collage";
+  const title = collage.title.trim() || "untitled";
   const fitWidth = frame.width * scale;
   const fitHeight = frame.height * scale;
 

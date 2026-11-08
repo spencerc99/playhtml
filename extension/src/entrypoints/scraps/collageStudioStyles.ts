@@ -43,7 +43,8 @@ export const COLLAGE_PEEK_STYLES = `
     display: flex;
     flex-direction: column;
     gap: 1px;
-    max-width: 230px;
+    box-sizing: border-box;
+    max-width: 150px;
     padding: 2px 5px;
     transform-origin: left top;
     border: 1px solid var(--peek-tint, color-mix(in srgb, var(--c-ink) 50%, transparent));
@@ -72,6 +73,7 @@ export const COLLAGE_PEEK_STYLES = `
     display: flex;
     align-items: center;
     gap: 3px;
+    min-width: 0;
     white-space: nowrap;
   }
 
@@ -92,26 +94,18 @@ export const COLLAGE_PEEK_STYLES = `
     border-radius: 50%;
   }
 
+  /* A long address is cut short so the label keeps to its width. */
+  .collage-peek__site {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .collage-peek__mark {
     display: block;
     width: 10px;
     height: 10px;
     object-fit: contain;
-  }
-
-  .collage-peek__more {
-    display: flex;
-    flex-direction: column;
-    padding-top: 1px;
-    border-top: 1px solid color-mix(in srgb, var(--c-ink) 14%, transparent);
-    color: var(--c-muted);
-  }
-
-  .collage-peek__line {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
 `;

@@ -214,6 +214,11 @@ export interface PublishedCollagePiece {
   flipX: boolean;
   flipY: boolean;
   /**
+   * The width a heading's words wrap to, in its own type size, when it was
+   * rewrapped in the studio. Absent while it keeps the lines it arrived with.
+   */
+  letteringWidth?: number;
+  /**
    * The uploaded picture this piece draws, as `img/<n>`. A piece has exactly
    * one of `image` and `content`.
    */
@@ -618,6 +623,9 @@ function parsePiece(value: unknown, index: number): PublishedCollagePiece {
     source: parseSource(value.source, where),
   };
   if (typeof image === "string") piece.image = image;
+  if (value.letteringWidth !== undefined) {
+    piece.letteringWidth = positive(value, "letteringWidth", where, limit);
+  }
   if (value.content !== undefined) {
     const content = parseContent(value.content, where);
     if (content.kind !== piece.source.kind) {

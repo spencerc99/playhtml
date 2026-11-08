@@ -211,7 +211,7 @@ export function CollageBackFace({
 
   const card = backPaper(paper, look);
   const ink = backInk(card.color);
-  const name = content.title.trim() || "untitled collage";
+  const name = content.title.trim() || "untitled";
   return (
     <section
       className="collage-back"
@@ -236,7 +236,7 @@ export function CollageBackFace({
             <textarea
               className="collage-back__title-field"
               value={content.title}
-              placeholder="untitled collage"
+              placeholder="untitled"
               aria-label="Collage title"
               rows={1}
               spellCheck={false}
