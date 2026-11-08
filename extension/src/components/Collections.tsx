@@ -6,6 +6,7 @@ import browser from "webextension-polyfill";
 import { isExtensionPageUrl } from "../utils/extensionPage";
 import type { CollectorStatus } from "../collectors/types";
 import { getValidEventTypes } from "@playhtml/extension-types";
+import type { CollectionEvent } from "@playhtml/extension-types";
 import { CollectorIcon } from "./icons";
 import {
   collectionModeStorageKey,
@@ -14,6 +15,8 @@ import {
   type CollectionMode,
 } from "../collectors/modes";
 import { triggerDownload } from "../utils/portraitExport";
+import { EXPORT_PAGE_SIZE, gzipEventExportPages } from "../utils/dataTransfer";
+import { getPublicPlayerIdentity } from "../storage/playerIdentity";
 import {
   estimateRemainingMs,
   formatRemaining,
@@ -370,6 +373,7 @@ export function Collections({
     message: string;
   } | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportedCount, setExportedCount] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(
     null,
@@ -604,16 +608,30 @@ export function Collections({
 
   const handleExport = async () => {
     setIsExporting(true);
+    setExportedCount(0);
     setTransferStatus(null);
     try {
-      const response = await browser.runtime.sendMessage({
-        type: "EXPORT_EVENTS",
-      });
-      if (!response?.success)
-        throw new Error(response?.error ?? "Export failed");
-      const blob = new Blob([new Uint8Array(response.data)], {
-        type: "application/gzip",
-      });
+      let afterId: string | null = null;
+      let done = false;
+      const readPage = async (): Promise<CollectionEvent[] | null> => {
+        if (done) return null;
+        const response = await browser.runtime.sendMessage({
+          type: "EXPORT_EVENT_PAGE",
+          afterId,
+          limit: EXPORT_PAGE_SIZE,
+        });
+        if (!response?.success)
+          throw new Error(response?.error ?? "Export failed");
+        afterId = response.nextAfterId ?? null;
+        if (afterId === null) done = true;
+        return response.events as CollectionEvent[];
+      };
+      const blob = await gzipEventExportPages(
+        readPage,
+        await getPublicPlayerIdentity(),
+        Date.now(),
+        setExportedCount,
+      );
       const date = new Date().toISOString().slice(0, 10);
       triggerDownload(blob, `we-were-online-export-${date}.json.gz`);
       setTransferStatus({ type: "success", message: "Export downloaded." });
@@ -1115,7 +1133,11 @@ export function Collections({
                   onClick={handleExport}
                   disabled={isExporting || isImporting}
                 >
-                  {isExporting ? "Exporting…" : "Export data"}
+                  {isExporting
+                    ? exportedCount > 0
+                      ? `Exporting… ${exportedCount.toLocaleString()}`
+                      : "Exporting…"
+                    : "Export data"}
                 </button>
                 <button
                   className="collections__transfer-btn"
