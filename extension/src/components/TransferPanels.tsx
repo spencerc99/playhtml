@@ -58,15 +58,13 @@ export function ExportPicker({
     {
       key: "scraps",
       name: "Scraps",
-      detail: `${plural(counts.scraps, "scrap")}, plus the pictures we saved for them`,
+      detail: plural(counts.scraps, "scrap"),
     },
     {
       key: "collages",
       name: "Collages",
       detail:
-        counts.collages === null
-          ? "Every collage, with every piece and cover"
-          : `${plural(counts.collages, "collage")}, with every piece and cover`,
+        counts.collages === null ? "" : plural(counts.collages, "collage"),
     },
     {
       key: "you",
@@ -307,8 +305,8 @@ export function ImportPreview({
       <div className="transfer-card__head">
         <div className="transfer-card__title">Import {title}</div>
         <div className="transfer-card__sub">
-          {packedOn ? `Packed up ${packedOn}. ` : ""}This only adds to what's
-          here, nothing gets deleted.
+          {packedOn ? `Exported ${packedOn}. ` : ""}Imports only add, nothing is
+          deleted.
         </div>
       </div>
       {rows.length > 0 && (

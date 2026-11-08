@@ -879,7 +879,7 @@ export function Collections({
       const packedOn =
         files.length === 1 && first.exportedAt
           ? new Date(first.exportedAt).toLocaleDateString(undefined, {
-              month: "short",
+              month: "long",
               day: "numeric",
               year:
                 new Date(first.exportedAt).getFullYear() ===
