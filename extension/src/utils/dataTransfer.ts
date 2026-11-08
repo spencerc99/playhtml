@@ -1,8 +1,10 @@
 // ABOUTME: Gzip compression/decompression helpers using the browser's built-in CompressionStream API
-// ABOUTME: Used for export/import of local event data as compact .json.gz files
+// ABOUTME: Used for export/import of events, pictures, collages and identity as compact .json.gz files
 
 import type { PlayerIdentity } from "@playhtml/common";
 import type { CollectionEvent } from "@playhtml/extension-types";
+import type { StoredPlayerIdentity } from "../storage/playerIdentity";
+import type { ExportContents } from "./importStream";
 
 /** Events per export page; small enough that one page stays far below message limits. */
 export const EXPORT_PAGE_SIZE = 1000;
@@ -38,22 +40,53 @@ export async function gzipString(str: string): Promise<Uint8Array> {
 /** One page of events, or null once every event has been read. */
 export type EventPageReader = () => Promise<CollectionEvent[] | null>;
 
+/** One picture as file text: the URLs it was saved from and its bytes in base64. */
+export interface ExportedImage {
+  hash: string;
+  srcs: string[];
+  form: string;
+  mimeType: string;
+  width?: number;
+  height?: number;
+  base64: string;
+}
+
+export interface ExportSections {
+  exportedAt: number;
+  /** What the file holds, so an import can say so before reading it all. */
+  contents?: ExportContents;
+  packedIn?: string;
+  readEventPage: EventPageReader;
+  images?: AsyncIterable<ExportedImage>;
+  /** Collage file envelopes, as `encodeCollageFile` writes them. */
+  collages?: AsyncIterable<unknown>;
+  identity: PlayerIdentity | null;
+  /** The private side of the identity, only when the person chose to bring it. */
+  you?: StoredPlayerIdentity | null;
+  onProgress?: (
+    section: "events" | "images" | "collages",
+    written: number,
+  ) => void;
+}
+
 /**
- * Builds a .json.gz export by pulling events a page at a time, so the full
- * history never has to sit in memory or cross a single extension message.
- * The file format matches what `readExportFiles` imports.
+ * Builds a .json.gz export by pulling events a page at a time, then pictures
+ * and collages one at a time, so nothing ever has to sit in memory all at once
+ * or cross a single extension message. The file format is what
+ * `readExportFiles` imports; builds that only know events stop after them.
  */
-export async function gzipEventExportPages(
-  readPage: EventPageReader,
-  identity: PlayerIdentity | null,
-  exportedAt: number,
-  onProgress?: (eventsWritten: number) => void,
-): Promise<Blob> {
+export async function gzipExport(sections: ExportSections): Promise<Blob> {
+  const { onProgress } = sections;
   async function* jsonChunks(): AsyncGenerator<string> {
-    yield `{"version":1,"exportedAt":${exportedAt},"events":[`;
+    let head = `{"version":1,"exportedAt":${sections.exportedAt}`;
+    if (sections.packedIn)
+      head += `,"packedIn":${JSON.stringify(sections.packedIn)}`;
+    if (sections.contents)
+      head += `,"contents":${JSON.stringify(sections.contents)}`;
+    yield head + `,"events":[`;
     let written = 0;
     while (true) {
-      const page = await readPage();
+      const page = await sections.readEventPage();
       if (!page) break;
       const parts: string[] = [];
       for (const event of page) {
@@ -62,13 +95,43 @@ export async function gzipEventExportPages(
       if (parts.length > 0) {
         yield (written > 0 ? "," : "") + parts.join(",");
         written += parts.length;
-        onProgress?.(written);
+        onProgress?.("events", written);
       }
     }
-    yield `],"identity":${JSON.stringify(identity)}}`;
+    yield "]";
+    for (const section of ["images", "collages"] as const) {
+      const items = sections[section];
+      if (!items) continue;
+      yield `,"${section}":[`;
+      let count = 0;
+      for await (const item of items) {
+        yield (count > 0 ? "," : "") + JSON.stringify(item);
+        count++;
+        onProgress?.(section, count);
+      }
+      yield "]";
+    }
+    yield `,"identity":${JSON.stringify(sections.identity)}`;
+    if (sections.you) yield `,"you":${JSON.stringify(sections.you)}`;
+    yield "}";
   }
 
   return gzipChunks(jsonChunks());
+}
+
+/** An events-only export, in the shape every build can read. */
+export async function gzipEventExportPages(
+  readPage: EventPageReader,
+  identity: PlayerIdentity | null,
+  exportedAt: number,
+  onProgress?: (eventsWritten: number) => void,
+): Promise<Blob> {
+  return gzipExport({
+    exportedAt,
+    readEventPage: readPage,
+    identity,
+    onProgress: onProgress && ((_, written) => onProgress(written)),
+  });
 }
 
 export async function gzipEventExport(
