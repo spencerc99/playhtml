@@ -36,7 +36,7 @@ export interface ImageCopy extends StoredCopySummary {
   previewByteLength?: number;
 }
 
-interface SourceRow {
+export interface SourceRow {
   src: string;
   hash: string;
 }
@@ -435,5 +435,33 @@ export async function writeImageCopyMeta(
 ): Promise<void> {
   await transact([META], "readwrite", async (transaction) => {
     transaction.objectStore(META).put({ key, value } satisfies MetaRow);
+  });
+}
+
+/** Every image URL with a copy, and the content hash it points at. */
+export async function listImageSources(): Promise<SourceRow[]> {
+  return transact(
+    [SOURCES],
+    "readonly",
+    async (transaction) =>
+      (await requestResult(
+        transaction.objectStore(SOURCES).getAll(),
+      )) as SourceRow[],
+  );
+}
+
+/** A held copy's metadata and full-quality bytes, by content hash. */
+export async function readImageCopy(
+  hash: string,
+): Promise<{ copy: ImageCopy; blob: Blob } | undefined> {
+  return transact([COPIES, BLOBS], "readonly", async (transaction) => {
+    const copy = (await requestResult(
+      transaction.objectStore(COPIES).get(hash),
+    )) as ImageCopy | undefined;
+    const row = (await requestResult(
+      transaction.objectStore(BLOBS).get(hash),
+    )) as BlobRow | undefined;
+    if (!copy || !row) return undefined;
+    return { copy, blob: row.blob };
   });
 }
