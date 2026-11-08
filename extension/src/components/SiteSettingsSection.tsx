@@ -40,9 +40,9 @@ export function SiteSettingsSection() {
   }, []);
 
   const preview = normalizeSiteHost(draft);
-  const sites = Object.entries(settings).sort(
-    ([, a], [, b]) => b.since - a.since,
-  );
+  const sites = Object.entries(settings)
+    .filter(([, setting]) => setting.level !== "everyone")
+    .sort(([, a], [, b]) => b.since - a.since);
 
   const add = async (event: React.FormEvent) => {
     event.preventDefault();

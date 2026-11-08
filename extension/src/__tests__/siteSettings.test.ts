@@ -91,6 +91,18 @@ describe("setSiteLevel", () => {
     expect(await getSiteLevel("chase.com")).toBe("everyone");
   });
 
+  it("turns a subdomain back on under a parent that is off, and drops the override once the parent is on", async () => {
+    await setSiteLevel("chase.com", "off", 100);
+    expect(await getSiteLevel("news.chase.com")).toBe("off");
+
+    await setSiteLevel("news.chase.com", "everyone", 200);
+    expect(await getSiteLevel("news.chase.com")).toBe("everyone");
+    expect(await getSiteLevel("secure.chase.com")).toBe("off");
+
+    await setSiteLevel("chase.com", "everyone", 300);
+    expect(stored[SITE_SETTINGS_KEY]).toEqual({});
+  });
+
   it("ignores input that isn't a site", async () => {
     expect(await setSiteLevel("nope", "off")).toBe("");
     expect(browser.storage.local.set).not.toHaveBeenCalled();
