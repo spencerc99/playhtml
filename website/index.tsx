@@ -84,8 +84,10 @@ function setupHomepageAwarenessStatus() {
       defaultData: {},
       myDefaultAwareness: { online: true },
       updateElement: () => {},
-      updateElementAwareness: ({ awareness }) => {
-        const peopleCount = Math.max(awareness.length, 1);
+      // `everyone` is one entry per person; `awareness` has one per open tab,
+      // which counted people with several tabs more than once.
+      updateElementAwareness: ({ everyone }) => {
+        const peopleCount = Math.max(everyone.length, 1);
 
         if (countElement.textContent === String(peopleCount)) return;
 
