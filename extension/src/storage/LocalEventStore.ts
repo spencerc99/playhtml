@@ -3195,6 +3195,54 @@ export class LocalEventStore {
     });
   }
 
+  /**
+   * Permanently deletes every event whose page is on one of the sites the
+   * matcher accepts (it gets the event's domain, without "www."), then
+   * recounts the stats so totals no longer include them. Returns how many
+   * events were removed and the ids of any scraps among them.
+   */
+  async deleteEventsForSite(
+    matchesDomain: (domain: string) => boolean,
+  ): Promise<{ deleted: number; scrapIds: string[] }> {
+    await this.ensureInitialized();
+    await this.ensureSessionStatsBackfilled();
+    await this.ensureAggregateDaysBackfilled();
+
+    const result = await new Promise<{ deleted: number; scrapIds: string[] }>(
+      (resolve, reject) => {
+        if (!this.db) {
+          reject(new Error("Database not initialized"));
+          return;
+        }
+        let deleted = 0;
+        const scrapIds: string[] = [];
+        const transaction = this.db.transaction([STORE_NAME], "readwrite");
+        const request = transaction.objectStore(STORE_NAME).openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return;
+          const evt = cursor.value as StoredCollectionEvent;
+          const domain =
+            (evt as { domain?: string }).domain ||
+            extractDomain(evt.meta?.url ?? null);
+          if (domain && matchesDomain(domain)) {
+            cursor.delete();
+            deleted++;
+            if (evt.type === "element") scrapIds.push(evt.id);
+          }
+          cursor.continue();
+        };
+        request.onerror = () => reject(request.error);
+        transaction.oncomplete = () => resolve({ deleted, scrapIds });
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error);
+      },
+    );
+
+    if (result.deleted > 0) await this.rebuildStatsAfterImport();
+    return result;
+  }
+
   async pruneOlderThan(cutoffTs: number): Promise<number> {
     return this.pruneUploadedEventsOlderThan(cutoffTs);
   }

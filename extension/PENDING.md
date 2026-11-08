@@ -19,3 +19,4 @@ extension/website/public/changelog/media/ and reference them here:
 - Collage source labels are now just the site's icon and address.
 - Headings in a collage now wrap onto more lines when you pull them narrower from a side (only corners scale them), and pale headings no longer bring their dark backing onto the collage.
 - Turn we were online off on any site from the popup, or keep what it collects there just for you. Sites you turned off are listed in Settings, where you can also add one. (#666)
+- Delete everything collected on a site you turned off, on your computer and the shared copy, from the site's menu in Settings.
