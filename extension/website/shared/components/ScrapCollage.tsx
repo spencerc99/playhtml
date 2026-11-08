@@ -26,6 +26,7 @@ import {
   type ScrapWhenFilter,
 } from "./ScrapFilters";
 import type { FilterChip } from "../utils/eventUtils";
+import { hasExactScrapSearch } from "../utils/scrapFilters";
 import { hashString, seededRandom } from "../utils/styleUtils";
 import { ScrapLightbox, type ScrapOrigin } from "./ScrapLightbox";
 import {
@@ -2214,19 +2215,21 @@ export function ScrapCollage({
     () => newestUniqueGroupedScraps(groupedItems),
     [groupedItems],
   );
+  // Quotes ask for exact words, so a quoted search is not read for meaning.
+  const exactSearch = hasExactScrapSearch(search);
   useEffect(() => {
-    onSearchChange?.(search);
-  }, [onSearchChange, search]);
+    onSearchChange?.(exactSearch ? "" : search);
+  }, [onSearchChange, search, exactSearch]);
   /** Scores for scraps that match by meaning, when a search is scored. */
   const meaningScores = useMemo(() => {
-    if (!meaningScore || search.trim() === "") return null;
+    if (!meaningScore || exactSearch || search.trim() === "") return null;
     const scores = new Map<string, number>();
     for (const item of groupedItems) {
       const score = meaningScore(item, search);
       if (score !== undefined) scores.set(item.key, score);
     }
     return scores;
-  }, [groupedItems, meaningScore, search]);
+  }, [groupedItems, meaningScore, search, exactSearch]);
   const filteredItems = useMemo(
     () =>
       groupedItems.filter(

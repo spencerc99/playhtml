@@ -258,6 +258,24 @@ try {
   assert.equal(results.flag[0], "img-09.png", "flag finds the flag first");
   assert.equal(results.mask.length, 0, "nothing matches mask");
 
+  // Quotes ask for exact words: no reading by meaning, whole words only.
+  for (const query of ['"shoe"', '"catalog"', '"catalo"']) {
+    await search.fill(query);
+    await page.waitForTimeout(1500);
+    results[query] = await shownPictures(page);
+    console.log(query, results[query].length);
+    await page.screenshot({
+      path: `${evidence}/5-exact-${query.replaceAll('"', "")}.png`,
+    });
+  }
+  assert.equal(results['"shoe"'].length, 0, "a quoted word skips meaning");
+  assert.equal(
+    results['"catalog"'].filter((name) => name.endsWith(".png")).length,
+    pictures.length,
+    "a quoted word matches page titles exactly",
+  );
+  assert.equal(results['"catalo"'].length, 0, "quotes match whole words only");
+
   // Cold start: a reopened browser uses the kept model and vectors.
   await context.close();
   modelBytesServed = 0;
