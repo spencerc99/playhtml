@@ -3,23 +3,14 @@
 
 import React from "react";
 import type { ExportContents } from "../utils/importStream";
+import { CursorSvg } from "./icons";
 import type { TransferSection } from "../utils/transferSections";
 import "./TransferPanels.scss";
 
 export type SectionChoices = Record<TransferSection, boolean>;
 
 function CursorMark({ color, size = 18 }: { color: string; size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 22 22" aria-hidden="true">
-      <path
-        d="M4 2l14 9-6 1.5L9 19z"
-        fill={color}
-        stroke="#3d3833"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  return <CursorSvg size={size} color={color} />;
 }
 
 function plural(count: number, one: string, many = `${one}s`): string {
@@ -79,7 +70,7 @@ export function ExportPicker({
     },
     {
       key: "you",
-      name: <>You {youColor && <CursorMark color={youColor} size={14} />}</>,
+      name: <>You {youColor && <CursorMark color={youColor} size={20} />}</>,
       detail:
         "Your cursor, color, name if you set one, and the key that lets the new browser be you",
     },
@@ -384,7 +375,7 @@ export function ImportPreview({
                 checked={who === option.id}
                 onChange={() => onWhoChange(option.id)}
               />
-              <CursorMark color={option.color} size={20} />
+              <CursorMark color={option.color} size={28} />
               <span className="transfer-card__row-text">
                 <span className="transfer-card__row-name">{option.name}</span>
                 <span className="transfer-card__row-detail">

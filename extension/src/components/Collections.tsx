@@ -655,6 +655,9 @@ export function Collections({
     }
   };
 
+  const exportOpen = !!(exportChoices || exportRows || exportReady);
+  const importOpen = !!(pendingImport || importProgress);
+
   const openExportPicker = async () => {
     setTransferStatus(null);
     setExportReady(null);
@@ -1374,17 +1377,31 @@ export function Collections({
             <div className="collections__transfer">
               <div className="collections__transfer-buttons">
                 <button
-                  className="collections__transfer-btn"
-                  onClick={openExportPicker}
+                  className={`collections__transfer-btn${
+                    exportOpen ? " collections__transfer-btn--active" : ""
+                  }`}
+                  aria-pressed={exportOpen}
+                  onClick={() => {
+                    setPendingImport(null);
+                    if (exportOpen) {
+                      setExportChoices(null);
+                      setExportReady(null);
+                    } else openExportPicker();
+                  }}
                   disabled={isExporting || isImporting}
                 >
                   {isExporting ? "Exporting…" : "Export data"}
                 </button>
                 <button
-                  className="collections__transfer-btn"
+                  className={`collections__transfer-btn${
+                    importOpen ? " collections__transfer-btn--active" : ""
+                  }`}
+                  aria-pressed={importOpen}
                   onClick={() => {
                     setExportChoices(null);
-                    importInputRef.current?.click();
+                    setExportReady(null);
+                    if (pendingImport) setPendingImport(null);
+                    else importInputRef.current?.click();
                   }}
                   disabled={isExporting || isImporting}
                 >
