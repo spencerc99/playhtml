@@ -6,14 +6,15 @@ import browser from "webextension-polyfill";
 export const SITE_SETTINGS_KEY = "site_settings";
 
 /**
- * "everyone" follows your usual collector settings and is the default, so it is
- * never stored. "just-me" collects as usual but never uploads. "off" collects
+ * "everyone" follows your usual collector settings and is the default. It is
+ * only stored to turn a subdomain back on under a parent site that is off or
+ * just me. "just-me" collects as usual but never uploads. "off" collects
  * nothing on the site.
  */
 export type SiteLevel = "everyone" | "just-me" | "off";
 
 export interface SiteSetting {
-  level: Exclude<SiteLevel, "everyone">;
+  level: SiteLevel;
   /** When the person picked this level, in ms since epoch. */
   since: number;
 }
@@ -42,7 +43,9 @@ export function parseSiteSettings(value: unknown): SiteSettings {
   for (const [host, raw] of Object.entries(value as Record<string, unknown>)) {
     if (!raw || typeof raw !== "object") continue;
     const { level, since } = raw as Partial<SiteSetting>;
-    if (level !== "off" && level !== "just-me") continue;
+    if (level !== "off" && level !== "just-me" && level !== "everyone") {
+      continue;
+    }
     out[host] = {
       level,
       since: typeof since === "number" && Number.isFinite(since) ? since : 0,
@@ -92,8 +95,10 @@ export async function getSiteLevel(hostOrUrl: string): Promise<SiteLevel> {
 }
 
 /**
- * Stores a level for a host. "everyone" clears the host's entry. Returns the
- * host as stored, or "" when the input isn't a usable host.
+ * Stores a level for a host. "everyone" clears the host's entry, and when a
+ * parent site still has its own setting, stores an "everyone" override so the
+ * host really goes back to your usual settings. Returns the host as stored, or
+ * "" when the input isn't a usable host.
  */
 export async function setSiteLevel(
   hostOrUrl: string,
@@ -105,8 +110,17 @@ export async function setSiteLevel(
   const settings = await loadSiteSettings();
   if (level === "everyone") {
     delete settings[host];
+    if (siteLevelFor(settings, host) !== "everyone") {
+      settings[host] = { level, since: now };
+    }
   } else if (settings[host]?.level !== level) {
     settings[host] = { level, since: now };
+  }
+  // Drop "everyone" overrides that no parent setting needs any more.
+  for (const [key, setting] of Object.entries(settings)) {
+    if (setting.level !== "everyone") continue;
+    delete settings[key];
+    if (siteLevelFor(settings, key) !== "everyone") settings[key] = setting;
   }
   await browser.storage.local.set({ [SITE_SETTINGS_KEY]: settings });
   return host;
