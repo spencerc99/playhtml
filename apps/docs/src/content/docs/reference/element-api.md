@@ -306,7 +306,7 @@ Pass the initializer to `playhtml.register`. The element needs a stable, unique 
 <div id="counter"></div>
 
 <script type="module">
-  import { playhtml } from "https://unpkg.com/playhtml@latest";
+  import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml@latest/dist/playhtml.es.js";
 
   playhtml.register("counter", {
     defaultData: { count: 0 },

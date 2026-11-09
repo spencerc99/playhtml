@@ -8,7 +8,7 @@ const DOCS = "https://playhtml.fun/docs";
 
 const header = `# playhtml
 
-> playhtml makes HTML elements collaborative and real-time. Add an attribute like \`can-move\` or \`can-toggle\` to an element with an \`id\`, or register a custom \`can-play\` element, and its state syncs live between everyone on the page. Works with vanilla HTML (\`playhtml\` on npm or unpkg) and React (\`@playhtml/react\`).
+> playhtml makes HTML elements collaborative and real-time. Add an attribute like \`can-move\` or \`can-toggle\` to an element with an \`id\`, or register a custom \`can-play\` element, and its state syncs live between everyone on the page. Works with vanilla HTML (\`playhtml\` on npm or jsDelivr) and React (\`@playhtml/react\`).
 
 Read this whole file before writing playhtml code. The guide below covers the APIs, which data type to use, and the mistakes that silently break sync.
 
