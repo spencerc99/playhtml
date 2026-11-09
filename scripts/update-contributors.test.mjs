@@ -93,7 +93,7 @@ test("renders a linked avatar grid between the markers", () => {
   const block = renderGrid([{ login: "a", name: "A <b>" }]);
   assert.match(
     block,
-    /<a href="https:\/\/github.com\/a"><img src="https:\/\/github.com\/a.png\?size=128"/,
+    /<a href="https:\/\/github.com\/a"><img src="https:\/\/avatars.githubusercontent.com\/a\?s=128"/,
   );
   assert.match(block, /A &lt;b&gt;/);
   const readme =

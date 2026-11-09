@@ -193,9 +193,10 @@ export function renderGrid(contributors) {
   for (let i = 0; i < contributors.length; i += PER_ROW) {
     const cells = contributors.slice(i, i + PER_ROW).map(({ login, name }) => {
       const href = `https://github.com/${login}`;
+      const avatar = `https://avatars.githubusercontent.com/${login}?s=128`;
       return [
-        `    <td align="center" valign="top" width="${Math.floor(100 / PER_ROW)}%">`,
-        `      <a href="${href}"><img src="${href}.png?size=128" width="64" height="64" alt="${escapeHtml(login)}" /><br /><sub><b>${escapeHtml(name)}</b></sub></a>`,
+        `    <td align="center" valign="top">`,
+        `      <a href="${href}"><img src="${avatar}" width="64" height="64" alt="${escapeHtml(login)}" /><br /><sub><b>${escapeHtml(name)}</b></sub></a>`,
         `    </td>`,
       ].join("\n");
     });
