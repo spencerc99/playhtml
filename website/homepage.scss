@@ -649,10 +649,6 @@ h3 {
   @include dotted($box);
 }
 
-.ph-toybox__label {
-  display: none;
-}
-
 .ph-toybox__toys {
   position: absolute;
   inset: 0;
@@ -661,10 +657,6 @@ h3 {
   > * {
     pointer-events: auto;
   }
-}
-
-.ph-toybox__swipe {
-  display: none;
 }
 
 .ph-hero__pitch {
@@ -870,10 +862,6 @@ h3 {
   66% {
     transform: rotate(-4deg);
   }
-}
-
-.ph-note__short {
-  display: none;
 }
 
 .ph-note--lamp {
@@ -2858,26 +2846,18 @@ h3 {
     height: auto;
     display: flex;
     flex-direction: column;
-    padding: 34px 0 10px;
+    padding: 0 0 26px;
     border-radius: 14px;
     box-shadow: 5px 5px 0 $ink;
   }
 
-  .ph-toybox__label {
-    display: inline-flex;
-    position: absolute;
-    left: 50%;
-    top: -12px;
-    transform: translateX(-50%) rotate(-2deg);
-    font-size: 11px;
-    z-index: 4;
-  }
-
+  // Same toys and notes as desktop, stacked: lamp and sign above the pitch,
+  // the rest in a two-column grid below it. No sideways shelf.
   .ph-hero__pitch {
     position: static;
     transform: none;
     width: auto;
-    padding: 64px 16px 18px;
+    padding: 178px 16px 8px;
     gap: 10px;
 
     h1 {
@@ -2916,10 +2896,8 @@ h3 {
   }
 
   .ph-toy--sign {
-    right: auto;
-    left: 50%;
-    top: 46px;
-    transform: translateX(-50%);
+    right: 16px;
+    top: 132px;
   }
 
   #sign {
@@ -2927,7 +2905,10 @@ h3 {
   }
 
   .ph-toy--newest {
-    display: none;
+    position: static;
+    align-self: center;
+    margin: 18px 16px 0;
+    max-width: calc(100% - 32px);
   }
 
   .ph-toy--lamp {
@@ -2935,55 +2916,49 @@ h3 {
     top: 0;
 
     .lamp {
-      width: 32px;
+      width: 46px;
     }
   }
 
   .ph-toy--lamp__cord {
-    height: 14px;
+    height: 18px;
+  }
+
+  .ph-note {
+    font-size: 18px;
+  }
+
+  .ph-note__arrow {
+    width: 34px;
+    height: 24px;
   }
 
   .ph-note--lamp {
-    left: 40px;
-    top: 26px;
-    font-size: 18px;
-
-    .ph-note__arrow,
-    .ph-note__long {
-      display: none;
-    }
-
-    .ph-note__short {
-      display: inline;
-    }
+    left: 54px;
+    top: 54px;
   }
 
   .ph-toybox__toys {
     position: relative;
     inset: auto;
-    display: flex;
-    align-items: flex-end;
-    gap: 26px;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scroll-snap-type: x proximity;
-    padding: 30px 18px 16px;
-    border-top: 1.5px dashed rgba(28, 28, 28, 0.3);
-    scrollbar-width: none;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-items: center;
+    align-items: end;
+    gap: 34px 12px;
+    padding: 34px 12px 8px;
   }
 
   .ph-toybox__toys > .ph-toy {
     position: relative;
-    flex: none;
     left: auto !important;
     right: auto !important;
     top: auto !important;
     bottom: auto !important;
-    scroll-snap-align: start;
+  }
+
+  .ph-toy--boxes {
+    grid-column: 1 / -1;
   }
 
   .ph-toy--visits {
@@ -3005,7 +2980,6 @@ h3 {
   }
 
   .ph-note--visits {
-    font-size: 18px;
     text-align: center;
   }
 
@@ -3025,16 +2999,14 @@ h3 {
     }
   }
 
-  .ph-note--plant,
-  .ph-note--spin {
+  .ph-toybox__toys .ph-note {
     position: static;
-    margin-top: 6px;
-    font-size: 18px;
+    margin-top: 8px;
     text-align: center;
+    white-space: normal;
     transform: none;
 
-    .ph-note__arrow,
-    small {
+    .ph-note__arrow {
       display: none;
     }
   }
@@ -3050,6 +3022,12 @@ h3 {
     height: 92px;
   }
 
+  .ph-toy--hydrant {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
   .ph-hydrant {
     width: 70px;
 
@@ -3059,19 +3037,10 @@ h3 {
     }
   }
 
-  .ph-note--hydrant {
-    font-size: 18px;
-  }
-
   .ph-toy--boxes {
+    display: flex;
     flex-direction: column-reverse;
     align-items: center;
-    padding-right: 10px;
-  }
-
-  .ph-note--boxes {
-    font-size: 18px;
-    text-align: center;
   }
 
   .ph-boxes {
@@ -3082,15 +3051,6 @@ h3 {
     width: 60px;
     height: 60px;
     box-shadow: 3px 3px 0 $ink;
-  }
-
-  .ph-toybox__swipe {
-    display: block;
-    align-self: flex-end;
-    padding: 0 16px;
-    font-family: $mono;
-    font-size: 10px;
-    color: $muted;
   }
 
   .ph-peek {
@@ -3333,11 +3293,24 @@ h3 {
     box-shadow: 5px 5px 0 $ink;
   }
 
+  // Inline flow, so the sentence reads on from the name box like desktop.
   #guestbookForm {
+    display: block;
     font-size: 15px;
+    line-height: 1.6;
+
+    input,
+    button {
+      vertical-align: middle;
+      margin: 4px 0;
+    }
 
     input[name="name"] {
       width: 110px;
+    }
+
+    .inputMessage {
+      margin-right: 8px;
     }
   }
 
@@ -3374,9 +3347,10 @@ h3 {
     gap: 24px;
   }
 
+  // Sized to the screen so the whole word fits, letters stay tappable.
   .ph-footer__big {
-    height: 64px;
-    font-size: 86px;
-    padding: 0 12px;
+    height: 16vw;
+    font-size: 20vw;
+    padding: 0 8px;
   }
 }
