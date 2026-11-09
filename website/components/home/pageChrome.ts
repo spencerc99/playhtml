@@ -31,6 +31,18 @@ export function setupLabels() {
   });
 }
 
+// A toy people can drag (data-peek-anchor) gets its peek under wherever the
+// dragged element sits now, not where the toy started.
+function placeNearAnchor(toy: HTMLElement, peek: HTMLElement) {
+  const selector = toy.dataset.peekAnchor;
+  const anchor = selector ? toy.querySelector<HTMLElement>(selector) : null;
+  if (!anchor) return;
+  const toyBox = toy.getBoundingClientRect();
+  const anchorBox = anchor.getBoundingClientRect();
+  peek.style.left = `${anchorBox.left - toyBox.left}px`;
+  peek.style.top = `${anchorBox.bottom - toyBox.top + 10}px`;
+}
+
 // Shows the code behind a toy on hover, or briefly after a tap on touch screens.
 export function setupCodePeeks() {
   document.querySelectorAll<HTMLElement>("[data-peek]").forEach((toy) => {
@@ -55,6 +67,7 @@ export function setupCodePeeks() {
       peek.append(head);
       if (code) peek.append(code.cloneNode(true));
       toy.append(peek);
+      placeNearAnchor(toy, peek);
     };
     const hide = () => {
       window.clearTimeout(hideTimer);
