@@ -1367,13 +1367,14 @@ h3 {
   font-family: Georgia, serif;
 }
 .ph-org--grayarea {
-  background: $ink;
-  color: #f4efe5;
+  background: #6b6b6b;
+  color: #fff;
   border-radius: 6px;
   rotate: 3deg;
 }
 .ph-org--rhizome {
-  background: $sage-light;
+  background: #000;
+  color: #3dff6e;
   border-radius: 999px;
   rotate: -2deg;
   font-family: Georgia, serif;
@@ -1385,7 +1386,8 @@ h3 {
   font-family: $mono;
 }
 .ph-org--sfpc {
-  background: $mustard;
+  background: #000;
+  color: #c79bff;
   border-radius: 999px;
   rotate: -3deg;
   font-family: $mono;
@@ -2293,8 +2295,8 @@ h3 {
 }
 
 .ph-logo--rhizome {
-  background: $ink;
-  color: $paper;
+  background: #000;
+  color: #3dff6e;
   box-shadow: 2px 2px 0 $brick;
   rotate: 1.5deg;
   font-family: $display;
