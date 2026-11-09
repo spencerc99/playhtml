@@ -2959,8 +2959,11 @@ h3 {
 
   // Same toys and notes as desktop, stacked: lamp and sign above the pitch,
   // the rest on a shelf below it that scrolls sideways when it runs out of room.
+  // The stacked toy box is a flex column, so the pitch's z-index would still
+  // count and its top padding would cover the lamp and sign above it.
   .ph-hero__pitch {
     position: static;
+    z-index: auto;
     width: auto;
     margin: 0;
     padding: 178px 16px 8px;
