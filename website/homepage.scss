@@ -795,6 +795,45 @@ h3 {
   box-shadow: 0 0 6px rgba(16, 210, 16, 0.8);
 }
 
+// One dot per person here, in their color, sitting on the pill's outline.
+// Positions come from setupHereNow; the ring matches the pill's border box.
+.ph-here-now__ring {
+  position: absolute;
+  inset: -1.5px;
+  pointer-events: none;
+}
+
+.ph-here-now__person {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.5px solid $ink;
+  box-sizing: border-box;
+  pointer-events: auto;
+  transition:
+    left 0.4s ease,
+    top 0.4s ease;
+  animation: ph-here-now-pop 0.35s ease-out both;
+
+  &.is-me {
+    box-shadow: 0 0 0 2px $paper;
+  }
+}
+
+@keyframes ph-here-now-pop {
+  from {
+    transform: scale(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ph-here-now__person {
+    transition: none;
+    animation: none;
+  }
+}
+
 // The old homepage's neon sign, renamed. Same id and can-move data.
 // The sign can be dragged, so it isn't scaled (a scaled parent would make it
 // lag behind the cursor). Its text shrinks instead.
