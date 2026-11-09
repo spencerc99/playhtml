@@ -3,8 +3,6 @@
 
 import { formatSimpleNumber } from "../../../packages/react/examples/utils";
 
-const PeekHideDelayMs = 3500;
-
 // Splits a label's text into letters with a small, stable jitter so it reads
 // like embossed label-maker tape.
 export function setLabelText(label: HTMLElement, text: string) {
@@ -58,7 +56,8 @@ function placeNearAnchor(toy: HTMLElement, peek: HTMLElement) {
   peek.style.top = `${anchorBox.bottom - toyBox.top + 10}px`;
 }
 
-// Shows the code behind a toy on hover, or briefly after a tap on touch screens.
+// Shows the code behind a toy on mouse hover. Touch screens skip it: a tap
+// is for playing with the toy, and a code box covering it got in the way.
 export function setupCodePeeks() {
   document.querySelectorAll<HTMLElement>("[data-peek]").forEach((toy) => {
     const template = document.getElementById(
@@ -67,10 +66,8 @@ export function setupCodePeeks() {
     if (!template) return;
 
     let peek: HTMLElement | null = null;
-    let hideTimer: number | undefined;
 
     const show = () => {
-      window.clearTimeout(hideTimer);
       if (peek) return;
       peek = document.createElement("div");
       peek.className = "ph-peek";
@@ -85,7 +82,6 @@ export function setupCodePeeks() {
       placeNearAnchor(toy, peek);
     };
     const hide = () => {
-      window.clearTimeout(hideTimer);
       peek?.remove();
       peek = null;
     };
@@ -95,11 +91,6 @@ export function setupCodePeeks() {
     });
     toy.addEventListener("pointerleave", (event) => {
       if (event.pointerType === "mouse") hide();
-    });
-    toy.addEventListener("pointerdown", (event) => {
-      if (event.pointerType === "mouse") return;
-      show();
-      hideTimer = window.setTimeout(hide, PeekHideDelayMs);
     });
   });
 }

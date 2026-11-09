@@ -675,10 +675,6 @@ h3 {
   }
 }
 
-.ph-toybox__swipe {
-  display: none;
-}
-
 .ph-hero__pitch {
   position: absolute;
   left: 0;
@@ -1401,16 +1397,20 @@ h3 {
   transform: rotate(-3deg);
 }
 
+// Two windows side by side, each with its note under it. The notes sit in
+// their own row so long handwriting wraps instead of running into each other.
 .ph-how__card--windows {
-  display: flex;
-  gap: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr) auto;
+  column-gap: 14px;
+  row-gap: 6px;
   align-items: center;
 }
 
 .ph-window {
   position: relative;
-  flex: 1;
-  height: 168px;
+  height: min(168px, 100%);
   border: 1px solid $ink;
   border-radius: 6px;
   background: $paper;
@@ -1514,17 +1514,13 @@ h3 {
 
 .ph-how__left-note,
 .ph-how__right-note {
-  position: absolute;
-  bottom: 6px;
+  grid-row: 2;
   font-size: var(--fs-hand);
-}
-
-.ph-how__left-note {
-  left: 22px;
+  line-height: 1;
+  text-align: center;
 }
 
 .ph-how__right-note {
-  right: 22px;
   color: $magenta;
 }
 
@@ -3044,24 +3040,20 @@ h3 {
     top: 54px;
   }
 
+  // The shelf wraps rather than scrolling sideways: most toys take touch
+  // drags themselves (spin, rain), so a sideways scroller couldn't be swiped.
   .ph-toybox__toys {
     position: relative;
     inset: auto;
     display: flex;
-    justify-content: safe center;
+    flex-wrap: wrap;
+    justify-content: center;
     align-items: flex-end;
-    gap: 30px;
+    column-gap: 44px;
+    row-gap: 28px;
     margin-top: 26px;
     padding: 28px 20px 12px;
     border-top: 1.5px dashed rgba(28, 28, 28, 0.3);
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scroll-snap-type: x proximity;
-    scrollbar-width: none;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
   }
 
   .ph-toybox__toys > .ph-toy {
@@ -3072,7 +3064,6 @@ h3 {
     right: auto !important;
     top: auto !important;
     bottom: auto !important;
-    scroll-snap-align: center;
   }
 
   .ph-toy--visits {
@@ -3167,30 +3158,10 @@ h3 {
     box-shadow: 3px 3px 0 $ink;
   }
 
+  // Code peeks belong next to toys on the desktop toy box. Stacked, they
+  // covered the toys, so smaller screens just play.
   .ph-peek {
-    position: fixed;
-    left: 16px !important;
-    right: 16px !important;
-    top: auto !important;
-    bottom: 16px !important;
-    width: auto;
-    max-width: none;
-
-    pre {
-      white-space: pre-wrap;
-      font-size: 12px;
-    }
-  }
-}
-
-// Tablets have room for every toy, so the shelf wraps instead of scrolling.
-@media (min-width: 761px) and (max-width: 900px) {
-  .ph-toybox__toys {
-    flex-wrap: wrap;
-    justify-content: center;
-    column-gap: 44px;
-    row-gap: 28px;
-    overflow: visible;
+    display: none;
   }
 }
 
@@ -3205,14 +3176,23 @@ h3 {
     --fs-hand: 20px;
   }
 
-  // Phones run out of room for the shelf, so hint that it scrolls.
-  .ph-toybox__swipe {
-    display: block;
-    align-self: flex-end;
-    padding: 0 16px;
-    font-family: $mono;
-    font-size: 10px;
-    color: $muted;
+  // Two toys per row, so every toy is on screen without sideways scrolling.
+  // An odd one out gets the whole last row.
+  .ph-toybox__toys {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-items: center;
+    column-gap: 12px;
+    row-gap: 32px;
+    padding: 28px 12px 4px;
+
+    > .ph-toy {
+      max-width: 100%;
+    }
+
+    > .ph-toy:last-child:nth-child(odd) {
+      grid-column: 1 / -1;
+    }
   }
 
   .ph-section-head h2,
@@ -3248,18 +3228,6 @@ h3 {
     height: 130px;
   }
 
-  .ph-how__left-note,
-  .ph-how__right-note {
-    bottom: 4px;
-  }
-
-  .ph-how__left-note {
-    left: 14px;
-  }
-
-  .ph-how__right-note {
-    right: 14px;
-  }
 
   .ph-made {
     padding: 56px 16px 0;
