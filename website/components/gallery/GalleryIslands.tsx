@@ -4,6 +4,7 @@
 import {
   type CSSProperties,
   type MouseEvent,
+  type MutableRefObject,
   type ReactNode,
   useCallback,
   useContext,
@@ -16,6 +17,7 @@ import { createPortal } from "react-dom";
 import { PlayContext, withSharedState } from "@playhtml/react";
 import {
   TraceRetentionMs,
+  experimentsTracesSource,
   getExperimentTraceIndexesToRemove,
   pruneExperimentTraces,
   type ExperimentTrace,
@@ -85,6 +87,44 @@ interface GalleryData {
   traces: ExperimentTrace[];
 }
 
+type TraceWriter = (mutator: (draft: GalleryData) => void) => void;
+
+function addTrace(draft: GalleryData, trace: ExperimentTrace, now: number) {
+  if (!Array.isArray(draft.traces)) draft.traces = [];
+  getExperimentTraceIndexesToRemove(draft.traces, trace, now).forEach(
+    (index) => {
+      draft.traces.splice(index, 1);
+    },
+  );
+  draft.traces.push(trace);
+}
+
+// Spencer's experiments keep their smudges on the homepage shelf, so the
+// gallery reads and writes that shared element instead of its own data. This
+// renders nothing visible; it hands the traces and a writer up to the grid.
+const StudioTraces = withSharedState<
+  GalleryData,
+  any,
+  {
+    onTraces: (traces: ExperimentTrace[]) => void;
+    writerRef: MutableRefObject<TraceWriter | null>;
+  }
+>(
+  () => ({
+    defaultData: { traces: [] },
+    dataSource: experimentsTracesSource(),
+  }),
+  ({ data, setData }, { onTraces, writerRef }) => {
+    useEffect(() => {
+      writerRef.current = setData as TraceWriter;
+    });
+    useEffect(() => {
+      onTraces(Array.isArray(data?.traces) ? data.traces : []);
+    }, [data?.traces, onTraces]);
+    return <span hidden aria-hidden="true" />;
+  },
+);
+
 const GalleryGrid = withSharedState<GalleryData>(
   { defaultData: { traces: [] } },
   ({ data, setData }) => {
@@ -95,18 +135,21 @@ const GalleryGrid = withSharedState<GalleryData>(
     const [luckyId, setLuckyId] = useState<string | null>(null);
     const [previewId, setPreviewId] = useState<string | null>(null);
     const luckyRef = useRef<HTMLAnchorElement | null>(null);
+    const studioWriterRef = useRef<TraceWriter | null>(null);
+    const [studioTraces, setStudioTraces] = useState<ExperimentTrace[]>([]);
     const myColor = cursors.color || "#10d210";
 
     const tracesById = useMemo(() => {
       const grouped = new Map<string, ExperimentTrace[]>();
+      const ownTraces = Array.isArray(data?.traces) ? data.traces : [];
       for (const trace of pruneExperimentTraces(
-        data?.traces ?? [],
+        [...ownTraces, ...studioTraces],
         Date.now(),
       )) {
         grouped.set(trace.rowId, [...(grouped.get(trace.rowId) ?? []), trace]);
       }
       return grouped;
-    }, [data?.traces]);
+    }, [data?.traces, studioTraces]);
 
     const items = sites.status === "ready" ? sites.items : [];
     const ordered = useMemo(() => {
@@ -136,15 +179,8 @@ const GalleryGrid = withSharedState<GalleryData>(
           createdAt: now,
           x: clickX(event),
         };
-        setData((draft) => {
-          if (!Array.isArray(draft.traces)) draft.traces = [];
-          getExperimentTraceIndexesToRemove(draft.traces, trace, now).forEach(
-            (index) => {
-              draft.traces.splice(index, 1);
-            },
-          );
-          draft.traces.push(trace);
-        });
+        const write = item.fromStudio ? studioWriterRef.current : setData;
+        write?.((draft) => addTrace(draft, trace, now));
 
         if (
           event.button !== 0 ||
@@ -177,6 +213,7 @@ const GalleryGrid = withSharedState<GalleryData>(
         id="gallery-index"
         aria-labelledby="projects-h"
       >
+        <StudioTraces onTraces={setStudioTraces} writerRef={studioWriterRef} />
         <div className="ph-section-head">
           <h2 id="projects-h">Everyone's projects</h2>
           <span className="ph-hand">

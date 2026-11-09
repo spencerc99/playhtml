@@ -16,6 +16,7 @@ import "./ExperimentsArchive.scss";
 import {
   TraceRetentionMs,
   buildRandomExperimentSequence,
+  experimentsTracesSource,
   getExperimentTraceIndexesToRemove,
   pruneExperimentTraces,
   type ExperimentTrace,
@@ -386,11 +387,15 @@ const ExperimentsArchiveContent = withSharedState<
   any,
   ExperimentsArchiveProps
 >(
-  {
+  ({ variant = "full" }) => ({
     defaultData: {
       traces: [],
     },
-  },
+    // The homepage shelf owns the smudges; /experiments reads and writes the
+    // same ones so a click on either page shows up on both (and the gallery).
+    ...(variant === "home" ? { shared: true } : {}),
+    ...(variant === "wall" ? { dataSource: experimentsTracesSource() } : {}),
+  }),
   ({ data, setData }, { variant = "full" }) => {
     const {
       cursors,
