@@ -61,12 +61,21 @@ html {
   scroll-behavior: smooth;
 }
 
+// One type scale for the whole page. Phones step every size down once (below).
 body.ph-home {
+  --fs-display: 68px;
+  --fs-h2: 44px;
+  --fs-h3: 30px;
+  --fs-h4: 22px;
+  --fs-lead: 19px;
+  --fs-body: 16px;
+  --fs-small: 14px;
+  --fs-hand: 24px;
   margin: 0;
   background: $page;
   color: $ink;
   font-family: $body;
-  font-size: 16px;
+  font-size: var(--fs-body);
   line-height: 1.5;
   overflow-x: clip;
   -webkit-text-size-adjust: 100%;
@@ -112,7 +121,7 @@ h3 {
 
 .ph-hand {
   font-family: $hand;
-  font-size: 25px;
+  font-size: var(--fs-hand);
   line-height: 0.95;
   color: $pen;
 }
@@ -689,7 +698,7 @@ h3 {
   h1 {
     margin: 0;
     font-weight: 800;
-    font-size: 68px;
+    font-size: var(--fs-display);
     line-height: 1.02;
     letter-spacing: -0.03em;
     color: $text;
@@ -698,7 +707,7 @@ h3 {
   p {
     margin: 0;
     max-width: 520px;
-    font-size: 19px;
+    font-size: var(--fs-lead);
     line-height: 1.5;
     color: $text;
   }
@@ -730,7 +739,7 @@ h3 {
   align-items: flex-start;
   gap: 2px;
   font-family: $hand;
-  font-size: 25px;
+  font-size: var(--fs-hand);
   line-height: 0.95;
   color: $pen;
   white-space: nowrap;
@@ -1181,7 +1190,7 @@ h3 {
   h2 {
     margin: 0;
     font-weight: 800;
-    font-size: 40px;
+    font-size: var(--fs-h2);
     letter-spacing: -0.02em;
     line-height: 1.1;
   }
@@ -1191,7 +1200,7 @@ h3 {
   }
 
   > a {
-    font-size: 16px;
+    font-size: var(--fs-body);
     padding: 8px 0;
   }
 }
@@ -1219,14 +1228,14 @@ h3 {
   h2 {
     margin: 0;
     font-weight: 600;
-    font-size: 30px;
+    font-size: var(--fs-h3);
     line-height: 1.2;
     letter-spacing: -0.01em;
   }
 
   p {
     margin: 0;
-    font-size: 18px;
+    font-size: var(--fs-lead);
     line-height: 1.55;
     color: $body-text;
   }
@@ -1314,7 +1323,7 @@ h3 {
   align-items: flex-start;
 
   > .ph-hand {
-    font-size: 26px;
+    font-size: var(--fs-hand);
     transform: rotate(-2deg);
   }
 
@@ -1358,13 +1367,13 @@ h3 {
   h3 {
     margin: 6px 0 0;
     font-weight: 800;
-    font-size: 23px;
+    font-size: var(--fs-h4);
     letter-spacing: -0.01em;
   }
 
   p {
     margin: 0;
-    font-size: 16px;
+    font-size: var(--fs-body);
     line-height: 1.5;
     color: $text;
   }
@@ -1384,7 +1393,7 @@ h3 {
 
 .ph-how__aside {
   align-self: flex-end;
-  font-size: 24px;
+  font-size: var(--fs-hand);
   transform: rotate(-3deg);
 }
 
@@ -1503,7 +1512,7 @@ h3 {
 .ph-how__right-note {
   position: absolute;
   bottom: 6px;
-  font-size: 22px;
+  font-size: var(--fs-hand);
 }
 
 .ph-how__left-note {
@@ -1543,7 +1552,7 @@ h3 {
   }
 
   .ph-hand {
-    font-size: 24px;
+    font-size: var(--fs-hand);
     rotate: 2deg;
   }
 }
@@ -1558,11 +1567,11 @@ h3 {
   gap: 22px;
 
   .ph-section-head h2 {
-    font-size: 48px;
+    font-size: var(--fs-h2);
   }
 
   .ph-section-head .ph-hand {
-    font-size: 27px;
+    font-size: var(--fs-hand);
   }
 }
 
@@ -1575,7 +1584,7 @@ h3 {
 .ph-made__fallback {
   grid-column: 1 / -1;
   margin: 0;
-  font-size: 16px;
+  font-size: var(--fs-body);
   color: $text;
 }
 
@@ -2036,14 +2045,14 @@ h3 {
   h2 {
     margin: 0;
     font-weight: 800;
-    font-size: 38px;
+    font-size: var(--fs-h3);
     letter-spacing: -0.02em;
     line-height: 1.05;
   }
 
   p {
     margin: 0;
-    font-size: 17px;
+    font-size: var(--fs-body);
     line-height: 1.5;
     color: $text;
   }
@@ -2113,7 +2122,7 @@ h3 {
 // we were online
 .ph-wwo {
   position: relative;
-  max-width: 1392px;
+  max-width: 1100px;
   margin: 96px auto 0;
   padding: 0 24px;
 }
@@ -2140,15 +2149,15 @@ h3 {
 .ph-wwo__text {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 56px 44px 44px;
+  gap: 16px;
+  padding: 40px 36px 36px;
 
   h2 {
     margin: 0;
     font-family: "Lora", Georgia, serif;
     font-style: italic;
     font-weight: 600;
-    font-size: 64px;
+    font-size: var(--fs-h2);
     line-height: 1;
     letter-spacing: -0.01em;
     color: $body-text;
@@ -2156,7 +2165,7 @@ h3 {
 
   > p {
     margin: 0;
-    font-size: 20px;
+    font-size: var(--fs-lead);
     line-height: 1.45;
     color: $body-text;
   }
@@ -2168,7 +2177,7 @@ h3 {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    font-size: 16px;
+    font-size: var(--fs-body);
   }
 
   li {
@@ -2179,7 +2188,7 @@ h3 {
 
     span span {
       color: #4a4a46;
-      font-size: 15px;
+      font-size: var(--fs-small);
     }
   }
 }
@@ -2217,7 +2226,7 @@ h3 {
 .ph-wwo__media {
   position: relative;
   border-left: 1.5px solid $ink;
-  min-height: 480px;
+  min-height: 380px;
   background: #fff;
 
   video {
@@ -2272,14 +2281,14 @@ h3 {
   h2 {
     margin: 0;
     font-weight: 800;
-    font-size: 30px;
+    font-size: var(--fs-h3);
     line-height: 1.15;
     letter-spacing: -0.01em;
   }
 
   > p {
     margin: 0;
-    font-size: 16px;
+    font-size: var(--fs-body);
     line-height: 1.5;
     color: $body-text;
   }
@@ -2715,7 +2724,7 @@ h3 {
     list-style: none;
     font-family: $display;
     font-weight: 700;
-    font-size: 20px;
+    font-size: var(--fs-h4);
     line-height: 1.25;
 
     &::-webkit-details-marker {
@@ -2770,7 +2779,7 @@ h3 {
     margin: 0;
     padding: 0 20px 20px 54px;
     max-width: 760px;
-    font-size: 17px;
+    font-size: var(--fs-body);
     line-height: 1.55;
     color: $body-text;
   }
@@ -3183,7 +3192,13 @@ h3 {
 
 @include phone {
   body.ph-home {
-    font-size: 15px;
+    --fs-h2: 30px;
+    --fs-h3: 24px;
+    --fs-h4: 18px;
+    --fs-lead: 17px;
+    --fs-body: 15px;
+    --fs-small: 13px;
+    --fs-hand: 20px;
   }
 
   // Phones run out of room for the shelf, so hint that it scrolls.
@@ -3196,31 +3211,10 @@ h3 {
     color: $muted;
   }
 
-  .ph-hand {
-    font-size: 21px;
-  }
-
   .ph-section-head h2,
-  .ph-made .ph-section-head h2 {
-    font-size: 30px;
-  }
-
-  .ph-section-head > a {
-    font-size: 15px;
-  }
-
   .ph-why {
     padding: 48px 16px 0;
     gap: 32px;
-  }
-
-  .ph-why__text {
-    h2 {
-      font-size: 24px;
-    }
-    p {
-      font-size: 16px;
-    }
   }
 
   .ph-why__side {
@@ -3252,7 +3246,6 @@ h3 {
 
   .ph-how__left-note,
   .ph-how__right-note {
-    font-size: 17px;
     bottom: 4px;
   }
 
@@ -3368,14 +3361,6 @@ h3 {
 
   .ph-meet__text {
     gap: 6px;
-
-    h2 {
-      font-size: 28px;
-    }
-
-    p {
-      font-size: 15px;
-    }
   }
 
   .ph-discord-btn {
@@ -3419,14 +3404,6 @@ h3 {
     padding: 28px 20px 24px;
     gap: 14px;
 
-    h2 {
-      font-size: 40px;
-    }
-
-    > p {
-      font-size: 16px;
-    }
-
     .ph-btn {
       align-self: stretch;
     }
@@ -3440,10 +3417,6 @@ h3 {
     padding: 30px 18px 22px;
     box-shadow: 5px 5px 0 $ink;
     rotate: 0deg;
-
-    h2 {
-      font-size: 26px;
-    }
   }
 
   .ph-ask__foot .ph-btn {
@@ -3492,7 +3465,6 @@ h3 {
     }
 
     summary {
-      font-size: 16px;
       padding: 14px;
       gap: 10px;
 
@@ -3504,7 +3476,6 @@ h3 {
 
     p {
       padding: 0 14px 16px 42px;
-      font-size: 15px;
     }
   }
 
