@@ -1889,8 +1889,9 @@ h3 {
   min-height: 340px;
   border-right: 1.5px solid $ink;
   background: #f1efe8;
+  overflow: hidden;
 
-  img {
+  video {
     position: absolute;
     inset: 0;
     width: 100%;
