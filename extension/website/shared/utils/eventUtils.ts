@@ -269,7 +269,10 @@ export function extractPath(url: string): string {
  * `/maps` and `maps` match `https://google.com/maps/...`. Used together
  * with a domain filter to scope a viz to a sub-section of a site.
  */
-export function eventMatchesPath(eventUrl: string, pathFilter: string): boolean {
+export function eventMatchesPath(
+  eventUrl: string,
+  pathFilter: string,
+): boolean {
   if (!pathFilter) return true;
   const path = extractPath(eventUrl);
   if (!path) return false;
@@ -384,16 +387,51 @@ export function summarizeActiveLocations(
   windowMs: number = ACTIVE_PEOPLE_WINDOW_MS,
   now: number = Date.now(),
 ): ActiveLocations {
+  const lastSeen: LastSeenByPerson = new Map();
+  recordLastSeen(lastSeen, events, now);
+  return summarizeLastSeen(lastSeen, windowMs, now);
+}
+
+/** Each person's newest event time and timezone. Kept apart from the bounded
+ * event list a live page holds, so a person stays counted for the whole window
+ * even after their events have scrolled out of that list. */
+export type LastSeenByPerson = Map<string, { ts: number; tz?: string }>;
+
+/** Fold events into `lastSeen`, keeping each person's newest event. Future
+ * timestamps are clamped to `now` so a client with a fast clock reads as "now". */
+export function recordLastSeen(
+  lastSeen: LastSeenByPerson,
+  events: CollectionEvent[],
+  now: number = Date.now(),
+): void {
+  for (const e of events) {
+    const pid = e.meta?.pid;
+    if (!pid) continue;
+    const ts = Math.min(e.ts, now);
+    const prev = lastSeen.get(pid);
+    if (prev && prev.ts >= ts) continue;
+    lastSeen.set(pid, { ts, tz: e.meta.tz || prev?.tz });
+  }
+}
+
+/** Count people seen within `windowMs` of `now` and their geographic spread,
+ * dropping anyone older than the window from `lastSeen`. */
+export function summarizeLastSeen(
+  lastSeen: LastSeenByPerson,
+  windowMs: number = ACTIVE_PEOPLE_WINDOW_MS,
+  now: number = Date.now(),
+): ActiveLocations {
   const cutoff = now - windowMs;
-  const pids = new Set<string>();
   const timezones = new Set<string>();
   const continents = new Set<string>();
-  for (const e of events) {
-    // Count an event whose ts is within [cutoff, now]; clamp the future so a
-    // skewed-fast client still counts (its events read as "now", not dropped).
-    if (!e.meta?.pid || Math.min(e.ts, now) < cutoff) continue;
-    pids.add(e.meta.pid);
-    const tz = e.meta.tz;
+  let people = 0;
+  for (const [pid, seen] of lastSeen) {
+    if (seen.ts < cutoff) {
+      lastSeen.delete(pid);
+      continue;
+    }
+    people++;
+    const tz = seen.tz;
     if (tz) {
       timezones.add(tz);
       // IANA zones are "Continent/City"; the prefix is the broad region.
@@ -404,11 +442,7 @@ export function summarizeActiveLocations(
         continents.add(region);
     }
   }
-  return {
-    people: pids.size,
-    timezones: timezones.size,
-    continents: continents.size,
-  };
+  return { people, timezones: timezones.size, continents: continents.size };
 }
 
 // Constants used across event processing

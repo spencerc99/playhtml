@@ -5,6 +5,9 @@ import { describe, it, expect } from "vitest";
 import {
   summarizeActiveLocations,
   ACTIVE_PEOPLE_WINDOW_MS,
+  recordLastSeen,
+  summarizeLastSeen,
+  type LastSeenByPerson,
 } from "../eventUtils";
 import type { CollectionEvent } from "../../types";
 
@@ -118,5 +121,39 @@ describe("summarizeActiveLocations", () => {
     const r = summarizeActiveLocations(events, WINDOW, NOW);
     expect(r.people).toBe(3);
     expect(r.continents).toBe(0);
+  });
+});
+
+describe("last-seen tracking across a bounded event list", () => {
+  it("keeps counting a person after their events leave the list", () => {
+    const lastSeen: LastSeenByPerson = new Map();
+    // First batch: a quiet person and a busy one.
+    recordLastSeen(
+      lastSeen,
+      [ev("quiet", NOW - 30_000), ev("busy", NOW - 29_000)],
+      NOW,
+    );
+    // Later the list only holds the busy person's newest events.
+    recordLastSeen(lastSeen, [ev("busy", NOW - 1_000), ev("busy", NOW)], NOW);
+    expect(
+      summarizeLastSeen(lastSeen, ACTIVE_PEOPLE_WINDOW_MS, NOW).people,
+    ).toBe(2);
+  });
+
+  it("drops people once their last event ages past the window", () => {
+    const lastSeen: LastSeenByPerson = new Map();
+    recordLastSeen(lastSeen, [ev("a", NOW), ev("b", NOW - 10_000)], NOW);
+    const later = NOW + ACTIVE_PEOPLE_WINDOW_MS - 5_000;
+    expect(
+      summarizeLastSeen(lastSeen, ACTIVE_PEOPLE_WINDOW_MS, later).people,
+    ).toBe(1);
+    expect(lastSeen.has("b")).toBe(false);
+  });
+
+  it("keeps the newest time when an older event arrives late", () => {
+    const lastSeen: LastSeenByPerson = new Map();
+    recordLastSeen(lastSeen, [ev("a", NOW)], NOW);
+    recordLastSeen(lastSeen, [ev("a", NOW - 100_000)], NOW);
+    expect(lastSeen.get("a")?.ts).toBe(NOW);
   });
 });
