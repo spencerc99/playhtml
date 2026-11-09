@@ -1681,37 +1681,30 @@ h3 {
   max-width: 1100px;
   margin: 0 auto;
   padding: 72px 24px 0;
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  gap: 36px;
-  align-items: start;
-}
-
-.ph-studio__intro {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  position: sticky;
-  top: 16px;
+  gap: 20px;
+}
+
+.ph-studio__head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 
   h2 {
     margin: 0;
     font-weight: 800;
-    font-size: 32px;
-    letter-spacing: -0.02em;
+    font-size: 40px;
+    letter-spacing: -0.025em;
   }
 
   p {
     margin: 0;
+    max-width: 560px;
     font-size: 16px;
     line-height: 1.5;
     color: $text;
-  }
-
-  .ph-hand {
-    font-size: 26px;
-    transform: rotate(-3deg);
-    align-self: flex-start;
   }
 
   > a {
@@ -1719,11 +1712,194 @@ h3 {
   }
 }
 
+.ph-studio__title {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+
+  .ph-hand {
+    font-size: 26px;
+    color: $pen;
+    transform: rotate(-3deg);
+  }
+}
+
+.ph-studio__wall {
+  position: relative;
+  padding: 32px 32px 24px;
+  background: $paper;
+  border: 1.5px solid $ink;
+  border-radius: 16px;
+  box-shadow: 4px 4px 0 $ink;
+  min-height: 380px;
+}
+
+.ph-studio__names {
+  margin: 0;
+  max-width: calc(100% - 310px);
+  font-family: $display;
+  font-weight: 800;
+  font-size: 48px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.ph-studio__name {
+  position: relative;
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 6px;
+  color: $ink;
+  text-decoration: none;
+
+  &:hover,
+  &.is-selected {
+    background: $ink;
+    color: $page;
+  }
+
+  &.is-random-active {
+    background: var(--randomizer-color);
+    color: $ink;
+  }
+
+  &.is-random-selected {
+    animation: ph-flash 0.19s steps(2) 4;
+  }
+}
+
+@keyframes ph-flash {
+  50% {
+    background: color-mix(in srgb, var(--randomizer-color) 50%, transparent);
+  }
+}
+
+.ph-studio__label {
+  position: relative;
+}
+
+.ph-studio__star {
+  position: relative;
+  font-size: 20px;
+  color: $brick;
+
+  .is-selected & {
+    color: $mustard;
+  }
+}
+
+.ph-studio__dot {
+  font-size: 26px;
+  vertical-align: middle;
+}
+
+.ph-studio__number {
+  font-family: $mono;
+  font-size: 12px;
+  color: $muted;
+}
+
+.ph-studio__fingerprints {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+
+  i {
+    position: absolute;
+    left: var(--trace-x);
+    top: var(--trace-y);
+    width: 18px;
+    height: 23px;
+    border-radius: 50% 50% 46% 46%;
+    transform: translate(-50%, -50%) rotate(var(--trace-rotate));
+    opacity: var(--trace-opacity);
+    background: radial-gradient(
+      ellipse at 48% 42%,
+      color-mix(in srgb, var(--trace-color) 20%, transparent) 0 10%,
+      transparent 11% 20%,
+      color-mix(in srgb, var(--trace-color) 25%, transparent) 21% 28%,
+      transparent 29% 38%,
+      color-mix(in srgb, var(--trace-color) 22%, transparent) 39% 46%,
+      transparent 47% 56%,
+      color-mix(in srgb, var(--trace-color) 19%, transparent) 57% 64%,
+      transparent 65%
+    );
+  }
+}
+
+.ph-studio__card {
+  position: absolute;
+  right: 28px;
+  top: 28px;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  background: $paper;
+  border: 1.5px solid $ink;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 4px 4px 0 $ink;
+  transform: rotate(2deg);
+  color: $ink;
+  text-decoration: none;
+}
+
+.ph-studio__shot {
+  display: block;
+  aspect-ratio: 4 / 3;
+  background: #f3edcc;
+  border-bottom: 1.5px solid $ink;
+  overflow: hidden;
+
+  img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.ph-studio__card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px 14px;
+
+  b {
+    font-family: $display;
+    font-weight: 800;
+    font-size: 20px;
+    line-height: 1.05;
+  }
+
+  > span:last-child {
+    font-size: 14px;
+    line-height: 1.4;
+    color: $text;
+  }
+}
+
+.ph-studio__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  max-width: calc(100% - 310px);
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px dashed rgba(28, 28, 28, 0.3);
+
+  .ph-hand {
+    font-size: 21px;
+    transform: rotate(-1deg);
+  }
+}
+
 .ph-studio__random {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  margin-top: 8px;
 
   button {
     min-height: 44px;
@@ -1755,132 +1931,6 @@ h3 {
     border-radius: 50%;
     background: var(--user-color);
     border: 1px solid $ink;
-  }
-}
-
-.ph-studio__rows {
-  position: relative;
-  padding-top: 4px;
-}
-
-.ph-studio__row {
-  position: relative;
-  display: grid;
-  grid-template-columns: 56px 1fr 240px;
-  align-items: baseline;
-  gap: 16px;
-  padding: 8px 6px;
-  border-top: 1px solid rgba(28, 28, 28, 0.18);
-  color: $ink;
-  text-decoration: none;
-
-  &:hover,
-  &.is-random-active {
-    background: rgba(232, 166, 58, 0.18);
-    color: $ink;
-  }
-
-  &.is-random-active {
-    background: color-mix(in srgb, var(--randomizer-color) 22%, transparent);
-  }
-
-  &.is-random-selected {
-    animation: ph-flash 0.19s steps(2) 4;
-  }
-}
-
-@keyframes ph-flash {
-  50% {
-    background: color-mix(in srgb, var(--randomizer-color) 50%, transparent);
-  }
-}
-
-.ph-studio__number {
-  font-family: $mono;
-  font-size: 12px;
-  color: $muted;
-}
-
-.ph-studio__name {
-  position: relative;
-  font-family: $display;
-  font-weight: 800;
-  font-size: 34px;
-  letter-spacing: -0.02em;
-  line-height: 1.05;
-}
-
-.ph-studio__desc {
-  position: relative;
-  font-size: 15px;
-  color: $text;
-}
-
-.ph-studio__fingerprints {
-  position: absolute;
-  inset: 0 0 0 56px;
-  overflow: hidden;
-  pointer-events: none;
-
-  i {
-    position: absolute;
-    left: var(--trace-x);
-    top: var(--trace-y);
-    width: 16px;
-    height: 21px;
-    border-radius: 50% 50% 46% 46%;
-    transform: translate(-50%, -50%) rotate(var(--trace-rotate));
-    opacity: var(--trace-opacity);
-    background: radial-gradient(
-      ellipse at 48% 42%,
-      color-mix(in srgb, var(--trace-color) 20%, transparent) 0 10%,
-      transparent 11% 20%,
-      color-mix(in srgb, var(--trace-color) 25%, transparent) 21% 28%,
-      transparent 29% 38%,
-      color-mix(in srgb, var(--trace-color) 22%, transparent) 39% 46%,
-      transparent 47% 56%,
-      color-mix(in srgb, var(--trace-color) 19%, transparent) 57% 64%,
-      transparent 65%
-    );
-  }
-}
-
-.ph-studio__preview {
-  position: absolute;
-  right: 30px;
-  top: -50px;
-  width: 220px;
-  padding: 6px 6px 18px;
-  background: $paper;
-  border: 1px solid rgba(28, 28, 28, 0.3);
-  box-shadow: 3px 4px 0 rgba(28, 28, 28, 0.2);
-  transform: rotate(4deg);
-  z-index: 3;
-  pointer-events: none;
-
-  img {
-    display: block;
-    width: 100%;
-    height: auto;
-  }
-}
-
-.ph-studio__foot {
-  border-top: 1px solid rgba(28, 28, 28, 0.18);
-  padding-top: 8px;
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-
-  .ph-hand {
-    font-size: 21px;
-    transform: rotate(-1deg);
-  }
-
-  > span:last-child {
-    font-family: $mono;
-    font-size: 12px;
-    color: $muted;
   }
 }
 
@@ -2764,11 +2814,16 @@ h3 {
   .ph-how__card {
     max-width: 560px;
   }
-  .ph-studio {
-    grid-template-columns: minmax(0, 1fr);
+  .ph-studio__names,
+  .ph-studio__foot {
+    max-width: none;
   }
-  .ph-studio__intro {
-    position: static;
+  .ph-studio__card {
+    position: relative;
+    right: auto;
+    top: auto;
+    margin-top: 24px;
+    transform: rotate(1deg);
   }
   .ph-why {
     flex-direction: column;
@@ -3148,33 +3203,32 @@ h3 {
 
   .ph-studio {
     padding: 56px 16px 0;
-    gap: 18px;
+    gap: 14px;
   }
 
-  .ph-studio__row {
-    grid-template-columns: 44px minmax(0, 1fr);
-    gap: 4px 8px;
-    padding: 10px 4px;
-
-    .ph-studio__desc {
-      grid-column: 2;
-    }
+  .ph-studio__head h2 {
+    font-size: 32px;
   }
 
-  .ph-studio__name {
-    font-size: 24px;
+  .ph-studio__wall {
+    padding: 20px 16px 18px;
+    min-height: 0;
   }
 
-  .ph-studio__preview {
-    display: none;
+  .ph-studio__names {
+    font-size: 30px;
   }
 
-  .ph-studio__foot {
-    flex-direction: column;
+  .ph-studio__star {
+    font-size: 14px;
+  }
 
-    > span:last-child {
-      display: none;
-    }
+  .ph-studio__dot {
+    font-size: 18px;
+  }
+
+  .ph-studio__card {
+    width: min(260px, 100%);
   }
 
   .ph-events-wrap {
