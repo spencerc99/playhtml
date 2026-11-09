@@ -2260,30 +2260,45 @@ h3 {
   rotate: 0.5deg;
 }
 
+// Ways to collaborate: chips that link to the write-up of each past project.
 .ph-ask__ways {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
 
-  li {
-    display: grid;
-    grid-template-columns: 170px minmax(0, 1fr);
-    gap: 12px;
-    align-items: baseline;
-  }
-
-  b {
+  a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border: 1.5px solid $ink;
+    border-radius: 999px;
+    background: $paper;
+    color: $ink;
+    text-decoration: none;
     font-family: $display;
-    font-size: 16px;
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1.2;
+    transition: translate 0.15s ease;
+
+    &:hover,
+    &:focus-visible {
+      translate: 0 -2px;
+      color: $ink;
+    }
+
+    &.ph-ask__way--own {
+      border-style: dashed;
+      background: transparent;
+    }
   }
 
-  span {
-    font-size: 14px;
-    line-height: 1.5;
-    color: $text;
+  .ph-logo {
+    font-weight: 700;
   }
 }
 
@@ -2409,6 +2424,14 @@ h3 {
   font-weight: 700;
   font-size: 15px;
   letter-spacing: 0.06em;
+}
+
+.ph-logo--cooper {
+  background: #ffffff;
+  box-shadow: 2px 2px 0 $ink;
+  rotate: -1deg;
+  font-family: $display;
+  font-weight: 700;
 }
 
 .ph-logo--small {
@@ -3318,11 +3341,6 @@ h3 {
     h2 {
       font-size: 26px;
     }
-  }
-
-  .ph-ask__ways li {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 2px;
   }
 
   .ph-ask__foot .ph-btn {
