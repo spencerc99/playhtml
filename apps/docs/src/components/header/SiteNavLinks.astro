@@ -1,0 +1,22 @@
+---
+// ABOUTME: The site nav links (docs, examples, gallery, events, we were online),
+// ABOUTME: used inline in the header, in its mid-width menu, and in the phone menu.
+import { activeNavKey, siteNavLinks } from "./site-nav";
+
+const active = activeNavKey(Astro.url.pathname);
+---
+
+{
+  siteNavLinks.map((link) => (
+    <a
+      href={link.href}
+      class:list={["ph-sitenav__link", { "ph-sitenav__wwo": link.wwo }]}
+      aria-current={link.key === active ? "page" : undefined}
+    >
+      {link.wwo && (
+        <img src="/docs/wwo-icon.png" width="22" height="22" alt="" />
+      )}
+      {link.wwo ? <i>{link.label}</i> : link.label}
+    </a>
+  ))
+}
