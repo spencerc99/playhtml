@@ -95,7 +95,7 @@ describe("docs demo recipes", () => {
 
   it("imports the view helpers the prize wheel uses", () => {
     expect(prizeWheelRecipe.html).toContain(
-      'import { playhtml, html, nothing } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js"',
+      'import { playhtml, html, nothing } from "https://cdn.jsdelivr.net/npm/playhtml"',
     );
   });
   it("creates the page color channel after init and only writes from clicks", () => {

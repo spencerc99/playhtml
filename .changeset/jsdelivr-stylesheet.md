@@ -2,4 +2,4 @@
 "playhtml": patch
 ---
 
-playhtml now loads its default stylesheet from jsDelivr (`cdn.jsdelivr.net/npm/playhtml/dist/style.css`) instead of unpkg, matching the new recommended CDN in the docs. Nothing changes in how you set up playhtml.
+playhtml now ships a single-file browser build (`dist/playhtml.browser.js`) and points the package's `jsdelivr` and `unpkg` fields at it, so `import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml"` works directly in a `<script type="module">`. The default stylesheet also loads from jsDelivr instead of unpkg. Bundlers and npm installs keep using the existing code-split build.

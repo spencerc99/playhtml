@@ -43,7 +43,7 @@ People: every person is a `Person` (`{ pid, name, color, isMe, presence }`). `pl
 ## Critical Rules
 
 - Every element MUST have a unique `id` attribute — without it, sync silently fails
-- Vanilla HTML: `import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js"` only works inside `<script type="module">`, never a plain `<script>`
+- Vanilla HTML: `import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml"` only works inside `<script type="module">`, never a plain `<script>`
 - Vanilla HTML: Put custom-element behavior in `playhtml.register(elementOrId, initializer)`
 - React: Wrap app in `<PlayProvider>`
 
@@ -57,7 +57,7 @@ syncs.
 <div id="myElement"></div>
 
 <script type="module">
-import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
+import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml";
 
 const el = document.getElementById("myElement");
 playhtml.register(el, {
