@@ -220,7 +220,7 @@
             </div>
 
             <div class="ph-toy ph-toy--plant" data-peek="plant">
-              <div id="plantContainer" can-move can-move-bounds="#toybox">
+              <div id="plantContainer">
                 <div id="plant" can-grow></div>
                 <div class="pot"></div>
               </div>
@@ -233,11 +233,7 @@
                   <path d="M56 30 C 40 32, 20 24, 8 8" />
                   <path d="M6 20 L7 7 L19 10" />
                 </svg>
-                <span
-                  >click to help it grow,<br />drag it somewhere sunny<small
-                    >can-grow + can-move</small
-                  ></span
-                >
+                <span>click to help it grow<small>can-grow</small></span>
               </span>
             </div>
 
@@ -898,9 +894,7 @@
       <pre><span class="t">&lt;img</span> <span class="a">id</span>=<span class="s">"lamp"</span> <span class="a">src</span>=<span class="s">"lamp.png"</span> <mark>can-toggle</mark><span class="t">&gt;</span></pre>
     </template>
     <template id="peek-plant" data-file="plant.html">
-      <pre><span class="t">&lt;div</span> <span class="a">id</span>=<span class="s">"pot"</span> <mark>can-move</mark><span class="t">&gt;</span>
-  <span class="t">&lt;div</span> <span class="a">id</span>=<span class="s">"plant"</span> <mark>can-grow</mark><span class="t">&gt;&lt;/div&gt;</span>
-<span class="t">&lt;/div&gt;</span></pre>
+      <pre><span class="t">&lt;div</span> <span class="a">id</span>=<span class="s">"plant"</span> <mark>can-grow</mark><span class="t">&gt;&lt;/div&gt;</span></pre>
     </template>
     <template id="peek-sign" data-file="sign.html">
       <pre><span class="t">&lt;div</span> <span class="a">id</span>=<span class="s">"sign"</span> <mark>can-move</mark><span class="t">&gt;</span>
