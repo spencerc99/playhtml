@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Policy - playhtml</title>
+    <meta
+      name="description"
+      content="What the playhtml server stores, what stays on your device, and how to get data deleted."
+    />
+    <link rel="canonical" href="https://playhtml.fun/privacy" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,600;0,700;1,600;1,700&family=Atkinson+Hyperlegible:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <script
+      defer
+      data-domain="playhtml.fun"
+      data-api="https://sharingan.spencerc99.workers.dev/genjutsu/event"
+      src="https://sharingan.spencerc99.workers.dev/genjutsu/script.js"
+    ></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      * {
+        margin: 0;
+      }
+      body {
+        background: #fff9d8;
+        color: #2d2a24;
+        font-family: "Atkinson Hyperlegible", -apple-system, BlinkMacSystemFont,
+          sans-serif;
+        line-height: 1.7;
+        -webkit-font-smoothing: antialiased;
+        padding: 2rem 1.5rem 4rem;
+        max-width: 680px;
+        margin: 0 auto;
+      }
+      a {
+        color: #2f4bb3;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      code {
+        font-size: 0.9em;
+        background: #fff3b8;
+        padding: 0.05rem 0.3rem;
+        border-radius: 3px;
+      }
+      h1 {
+        font-family: "Lora", Georgia, serif;
+        font-weight: 700;
+        font-size: 1.8rem;
+        margin-bottom: 0.25rem;
+      }
+      h2 {
+        font-family: "Lora", Georgia, serif;
+        font-weight: 600;
+        font-size: 1.2rem;
+        margin-top: 2rem;
+        margin-bottom: 0.5rem;
+      }
+      p,
+      ul {
+        margin-bottom: 1rem;
+      }
+      ul {
+        padding-left: 1.5rem;
+      }
+      li {
+        margin-bottom: 0.35rem;
+      }
+      .subtitle {
+        color: #807758;
+        font-size: 0.95rem;
+        margin-bottom: 2rem;
+      }
+      .back {
+        display: inline-block;
+        margin-bottom: 1.5rem;
+        color: #807758;
+        text-decoration: none;
+        font-size: 0.9rem;
+      }
+      .back:hover {
+        color: #2d2a24;
+      }
+      hr {
+        border: none;
+        border-top: 1px solid #ebe0a8;
+        margin: 2rem 0;
+      }
+      .note {
+        background: #fff3b8;
+        border-left: 3px solid #2f4bb3;
+        padding: 1rem 1.25rem;
+        margin: 1.5rem 0;
+        font-size: 0.95rem;
+      }
+    </style>
+  </head>
+  <body>
+    <a class="back" href="/">&larr; playhtml.fun</a>
+    <h1>Privacy Policy</h1>
+    <p class="subtitle">Last updated: November 9, 2026</p>
+
+    <p>
+      <em>playhtml</em> is an open-source library by
+      <a href="https://spencer.place">Spencer Chang</a> for making shared,
+      interactive websites. Sites that use it connect to a shared server that
+      we run, which keeps each page's shared elements in sync and saved. This
+      policy covers that shared server and the playhtml.fun website: what they
+      store, what stays on your device, and how to get data deleted.
+    </p>
+
+    <p>
+      If you're visiting a site someone else made with playhtml, that site's
+      owner decides what their page shares. Sites that run their own server
+      aren't covered by this policy.
+    </p>
+
+    <h2>What the shared server saves</h2>
+    <p>
+      <strong>Shared element data.</strong> When you move, toggle, sign or
+      otherwise change a shared element, the new state is saved so the next
+      visitor sees it. That's whatever the page stores: a position, a count,
+      the text of a guestbook entry. It's saved under a room named after the
+      site and page address, and it isn't
+      linked to who made the change unless the page itself stores a name.
+    </p>
+    <ul>
+      <li>
+        This data is <strong>public</strong>. Anyone who knows a page's room
+        name can read it, and it isn't end-to-end encrypted. Don't put anything
+        private into a playhtml element.
+      </li>
+      <li>
+        It's kept until the site owner clears it or we delete it, so a page can
+        keep the traces of its past visitors.
+      </li>
+    </ul>
+
+    <h2>What the shared server doesn't save</h2>
+    <p>
+      <strong>Presence.</strong> Your cursor, your name and color, and anything
+      else a page shows about who's here right now are passed live to the
+      other people on the page. They're not stored on our servers, and they're
+      gone when you leave.
+    </p>
+
+    <h2>What stays on your device</h2>
+    <p>
+      The first time you visit a playhtml site, your browser makes a random ID
+      and picks a cursor color. If you set a name, it's kept with them. They're
+      saved in your browser's local storage so you look the same across
+      playhtml sites, and they aren't tied to your real identity. Clear your
+      browser's site data to reset them.
+    </p>
+
+    <h2>Server logs</h2>
+    <p>
+      Like any website, the server sees your IP address when you connect.
+      We don't store it with any shared data. Short-lived operational logs
+      record which rooms are active and any errors, so we can keep the server
+      healthy and stop abuse.
+    </p>
+
+    <h2>The playhtml.fun website</h2>
+    <p>
+      playhtml.fun counts page views with
+      <a href="https://plausible.io/privacy-focused-web-analytics"
+        >Plausible</a
+      >, which uses no cookies and doesn't track you across sites. Its pages
+      also load fonts from Google Fonts and the star button from GitHub.
+    </p>
+
+    <h2>Who handles the data</h2>
+    <ul>
+      <li>
+        <strong>Cloudflare</strong> &mdash; runs the shared server and
+        playhtml.fun
+      </li>
+      <li><strong>Supabase</strong> &mdash; stores saved element data</li>
+    </ul>
+    <p>
+      Data is never sold, rented, used for advertising, or shared with data
+      brokers.
+    </p>
+
+    <h2>Your choices</h2>
+    <ul>
+      <li>
+        <strong>Deletion requests:</strong> To have something removed, email
+        <a href="mailto:hi@spencer.place">hi@spencer.place</a> with the page's
+        address and what you'd like gone. We'll remove it within 30 days.
+      </li>
+      <li>
+        <strong>For site owners:</strong> you can clear your own page's data
+        from your code (see
+        <a href="/docs/advanced/data-best-practices/#cleaning-up"
+          >cleaning up</a
+        >), or
+        <a href="/docs/reference/init-options/#host">run your own server</a>
+        so your data never touches ours.
+      </li>
+      <li>
+        <strong>No account required:</strong> playhtml never asks for an
+        account, an email, or a password.
+      </li>
+    </ul>
+
+    <h2>Looking ahead</h2>
+    <p>
+      Today your data lives on a server we run. Down the line, we want people
+      to own their data, with playhtml syncing through open, decentralized
+      protocols like AT Protocol. When that changes, this page will too.
+    </p>
+
+    <div class="note">
+      <strong>Using the we were online extension?</strong> It's built on
+      playhtml and has its own policy for what it collects as you browse. See
+      the
+      <a href="https://wewere.online/privacy">we were online privacy policy</a>.
+    </div>
+
+    <h2>Changes to this policy</h2>
+    <p>
+      If this policy changes materially, the date at the top will change too.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      Questions or concerns? Reach out at
+      <a href="mailto:hi@spencer.place">hi@spencer.place</a>.
+    </p>
+
+    <hr />
+    <p style="color: #807758; font-size: 0.85rem">
+      Spencer Chang &middot;
+      <a href="https://spencer.place" style="color: #807758">spencer.place</a>
+    </p>
+  </body>
+</html>
