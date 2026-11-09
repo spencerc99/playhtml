@@ -314,7 +314,7 @@
               >3.4k<small>downloads a month</small></span
             >
           </div>
-          <div class="ph-supporters">
+          <div class="ph-supporters" id="supporters">
             <span class="ph-hand">supporters &amp; collaborators</span>
             <ul>
               <li>
@@ -525,7 +525,7 @@
       </div>
 
       <section class="ph-asks" aria-label="Work with us or support playhtml">
-        <div class="ph-ask ph-ask--collab">
+        <div class="ph-ask ph-ask--collab" id="collaborate">
           <span class="ph-label ph-label--brick">collaborate</span>
           <h2>Activate your online community</h2>
           <p>
@@ -785,27 +785,46 @@
           <details name="ph-faq" open>
             <summary><span>01</span><span>Is it free?</span><i></i></summary>
             <p>
-              Yes. playhtml is open source under the MIT license, and the shared
-              server is free to use.
+              Yes. There's no account, no API key and no plan to pick. Spencer
+              hosts the shared server himself because he thinks a more playful,
+              shared web should be a public good. It's free within limits that
+              keep it safe from abuse and overload. If you hit a limit,
+              <a href="mailto:hi@spencer.place">get in touch</a>. If you're
+              building something large,
+              <a href="/docs/reference/init-options/#host"
+                >run your own server</a
+              >. If playhtml is useful to you,
+              <a href="https://github.com/sponsors/spencerc99">sponsoring it</a>
+              helps keep it running for everyone.
             </p>
           </details>
           <details name="ph-faq">
             <summary>
-              <span>02</span><span>Do I need a server or a build step?</span
-              ><i></i>
+              <span>02</span><span>Where does my data live?</span><i></i>
             </summary>
             <p>
-              No. One script tag works on any static page, including Neocities
-              and GitHub Pages.
+              On a shared playhtml server, with one room per page URL.
+              <b>All data is public</b> because it powers public websites.
+              Please do not store private or sensitive data on playhtml. See the
+              <a href="/privacy">privacy policy</a> for details. Down the line,
+              we want people to own their data, with playhtml syncing through
+              open, decentralized protocols like AT Protocol, so that developers
+              can own their own data. In the meantime, you can run your own
+              server to keep your data.
             </p>
           </details>
           <details name="ph-faq">
             <summary>
-              <span>03</span><span>Where does the data live?</span><i></i>
+              <span>03</span><span>Does this work with my website?</span><i></i>
             </summary>
             <p>
-              On the playhtml server, saved per page. You can run your own
-              server if you want full control.
+              It should! If you code your own website, all it takes is adding
+              the setup script and decorating your elements. If you're using a
+              website builder like Squarespace, you will have to add custom
+              scripts and do small modifications to the HTML of elements. It
+              works natively with all HTML and JavaScript, and we have a React
+              package, plus guides for Astro and other frameworks. Let us know
+              if a framework you use is missing.
             </p>
           </details>
           <details name="ph-faq">
@@ -813,15 +832,21 @@
               <span>04</span><span>What if the server is down?</span><i></i>
             </summary>
             <p>
-              Your page still loads. Shared elements show their default state, a
-              little faded and not clickable, until the server is back.
+              Your page still loads as normal, but the shared data won't show
+              up. Built-in elements show their default state, fade gently and
+              can't be clicked until they connect. You can use
+              <code>onError</code> to show your own message.
             </p>
           </details>
           <details name="ph-faq">
-            <summary><span>05</span><span>Who makes it?</span><i></i></summary>
+            <summary>
+              <span>05</span><span>Can I run my own server?</span><i></i>
+            </summary>
             <p>
-              <a href="https://spencer.place/">Spencer Chang</a>, with
-              contributors and support from the folks above.
+              Yes, we support self-hosting. Pass
+              <a href="/docs/reference/init-options/#host"><code>host</code></a>
+              to <code>init</code> and deploy the PartyKit server from the
+              <a href="https://github.com/spencerc99/playhtml">repo</a>.
             </p>
           </details>
           <details name="ph-faq">
@@ -842,6 +867,22 @@
               you to use tools to realize your own unique vision. It can
               definitely be a resource to try if you feel held back by technical
               capability.
+            </p>
+          </details>
+          <details name="ph-faq">
+            <summary>
+              <span>07</span><span>Who's funding this?</span><i></i>
+            </summary>
+            <p>
+              This is mostly self-funded by
+              <a href="https://spencer.place/">Spencer Chang</a> through his
+              creative practice. Generous sponsors, organizational grants, and
+              partnerships with
+              <a href="#supporters">like-minded organizations</a> support it as
+              well. Please consider
+              <a href="https://github.com/sponsors/spencerc99">sponsoring</a> or
+              <a href="#collaborate">partnering</a> to support this work if it
+              resonates with you.
             </p>
           </details>
         </div>

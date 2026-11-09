@@ -1321,6 +1321,7 @@ h3 {
 }
 
 .ph-supporters {
+  scroll-margin-top: 24px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -2267,6 +2268,7 @@ h3 {
 
 .ph-ask {
   position: relative;
+  scroll-margin-top: 24px;
   display: flex;
   flex-direction: column;
   gap: 14px;
