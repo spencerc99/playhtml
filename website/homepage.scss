@@ -2654,7 +2654,8 @@ h3 {
   align-content: flex-start;
   gap: 12px 10px;
   min-height: 60px;
-  max-height: 166px;
+  // About five rows of entries; stacked layouts keep it shorter (see below).
+  max-height: 286px;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 6px 14px 34px 6px;
@@ -3178,6 +3179,13 @@ h3 {
   // covered the toys, so smaller screens just play.
   .ph-peek {
     display: none;
+  }
+}
+
+// Stacked layouts: a shorter guestbook so it doesn't eat the screen.
+@media (max-width: 900px) {
+  #guestbookMessages {
+    max-height: 166px;
   }
 }
 
