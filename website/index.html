@@ -264,6 +264,88 @@
               />
             </div>
 
+            <div class="ph-toy ph-toy--cat" data-peek="cat">
+              <div
+                id="home-cat"
+                class="ph-cat"
+                can-hover
+                data-awake="0"
+                role="img"
+                aria-label="A sleeping cat that wakes up as more people pet it"
+              >
+                <span class="ph-cat__petting" aria-hidden="true"></span>
+                <span class="ph-cat__zzz" aria-hidden="true">z z z</span>
+                <span class="ph-cat__say" aria-hidden="true"></span>
+                <svg
+                  class="ph-cat__body"
+                  viewBox="0 0 220 150"
+                  aria-hidden="true"
+                >
+                  <ellipse
+                    class="ph-cat__fur"
+                    cx="118"
+                    cy="104"
+                    rx="78"
+                    ry="40"
+                  />
+                  <path
+                    class="ph-cat__line"
+                    d="M190 112 C 214 120, 204 146, 160 142 C 130 140, 96 142, 70 136"
+                  />
+                  <path
+                    class="ph-cat__tail"
+                    d="M190 112 C 214 120, 204 146, 160 142"
+                  />
+                  <g class="ph-cat__head">
+                    <path
+                      class="ph-cat__fur ph-cat__ear"
+                      d="M34 74 L40 46 L58 66 Z"
+                    />
+                    <path class="ph-cat__fur" d="M74 64 L92 46 L94 74 Z" />
+                    <ellipse
+                      class="ph-cat__fur"
+                      cx="64"
+                      cy="92"
+                      rx="36"
+                      ry="30"
+                    />
+                    <path
+                      class="ph-cat__shut ph-cat__shut--left"
+                      d="M44 92 q 7 6 14 0"
+                    />
+                    <g class="ph-cat__open ph-cat__open--left">
+                      <ellipse cx="51" cy="90" rx="6" ry="7" />
+                      <circle cx="52" cy="91" r="3" />
+                    </g>
+                    <path
+                      class="ph-cat__shut ph-cat__shut--right"
+                      d="M70 92 q 7 6 14 0"
+                    />
+                    <g class="ph-cat__open ph-cat__open--right">
+                      <ellipse cx="77" cy="90" rx="6" ry="7" />
+                      <circle cx="78" cy="91" r="3" />
+                    </g>
+                    <path class="ph-cat__nose" d="M61 102 l3 3 l3 -3" />
+                  </g>
+                </svg>
+              </div>
+              <span class="ph-note ph-note--cat">
+                <svg
+                  class="ph-note__arrow"
+                  viewBox="0 0 60 40"
+                  aria-hidden="true"
+                >
+                  <path d="M56 30 C 40 32, 20 24, 8 8" />
+                  <path d="M6 20 L7 7 L19 10" />
+                </svg>
+                <span
+                  >pet the cat.<br />it takes a few<br />people to wake it<small
+                    >can-hover</small
+                  ></span
+                >
+              </span>
+            </div>
+
             <div class="ph-toy ph-toy--hydrant" data-peek="hydrant">
               <div id="home-hydrant-mount" class="ph-hydrant"></div>
               <span class="ph-note ph-note--hydrant"
@@ -916,6 +998,15 @@
 visits.defaultData = 0;
 visits.onMount = ({ getData, setData }) =&gt;
   setData(getData() + 1);</pre>
+    </template>
+    <template id="peek-cat" data-file="cat.html">
+      <pre><span class="t">&lt;div</span> <span class="a">id</span>=<span class="s">"cat"</span> <mark>can-hover</mark><span class="t">&gt;&lt;/div&gt;</span>
+
+cat.update = ({ everyone }) =&gt; {
+  const petting = everyone.filter(
+    (person) =&gt; person.presence.hover);
+  cat.dataset.awake = petting.length;
+};</pre>
     </template>
     <template id="peek-hydrant" data-file="hydrant.html">
       <pre><span class="t">&lt;img</span> <span class="a">id</span>=<span class="s">"hydrant"</span> <span class="a">src</span>=<span class="s">"hydrant.png"</span> <mark>can-play</mark><span class="t">&gt;</span>

@@ -1026,6 +1026,226 @@ h3 {
   }
 }
 
+// can-hover: a sleeping cat that wakes a little more for each person
+// petting it. update() counts hovering people into data-awake (0-4+), and
+// the CSS animates on it, so everyone sees the same cat.
+.ph-toy--cat {
+  left: 44%;
+  bottom: calc(40px * var(--toy-scale));
+  transform-origin: bottom left;
+}
+
+.ph-cat {
+  position: relative;
+  width: 210px;
+  height: 150px;
+  cursor: grab;
+
+  .ph-cat__body {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 210px;
+    height: 143px;
+    overflow: visible;
+  }
+
+  .ph-cat__fur {
+    fill: $mustard;
+    stroke: $ink;
+    stroke-width: 2;
+    stroke-linejoin: round;
+  }
+
+  .ph-cat__line {
+    fill: none;
+    stroke: $ink;
+    stroke-width: 2;
+  }
+
+  .ph-cat__tail {
+    fill: none;
+    stroke: $mustard;
+    stroke-width: 9;
+    stroke-linecap: round;
+    opacity: 0.9;
+  }
+
+  .ph-cat__head {
+    transform-box: view-box;
+    transform-origin: 66px 104px;
+    transition: transform 0.5s cubic-bezier(0.3, 1.4, 0.5, 1);
+  }
+
+  .ph-cat__ear {
+    transform-box: view-box;
+    transform-origin: 46px 70px;
+    transition: transform 0.25s;
+  }
+
+  .ph-cat__shut,
+  .ph-cat__nose {
+    fill: none;
+    stroke: $ink;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .ph-cat__open {
+    display: none;
+
+    ellipse {
+      fill: $paper;
+      stroke: $ink;
+      stroke-width: 2;
+    }
+
+    circle {
+      fill: $ink;
+    }
+  }
+
+  .ph-cat__zzz,
+  .ph-cat__say {
+    position: absolute;
+    font-family: $hand;
+    line-height: 1;
+    pointer-events: none;
+    transition:
+      opacity 0.4s,
+      font-size 0.3s;
+  }
+
+  .ph-cat__zzz {
+    left: 120px;
+    top: 20px;
+    font-size: 30px;
+    color: $pen;
+  }
+
+  .ph-cat__say {
+    left: 112px;
+    top: 10px;
+    font-size: 30px;
+    color: $brick;
+    transform: rotate(-6deg);
+  }
+
+  // Little cursors in the colors of the people petting right now.
+  .ph-cat__petting {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: flex;
+    gap: 2px;
+
+    svg {
+      width: 14px;
+      height: 16px;
+    }
+  }
+
+  // 1 person: an ear twitches.
+  &[data-awake="1"] {
+    .ph-cat__ear {
+      transform: rotate(-14deg);
+    }
+    .ph-cat__zzz {
+      opacity: 0.5;
+    }
+  }
+
+  // 2: one eye opens, head lifts a little.
+  &[data-awake="2"] {
+    .ph-cat__head {
+      transform: translateY(-3px);
+    }
+    .ph-cat__shut--right {
+      display: none;
+    }
+    .ph-cat__open--right {
+      display: inline;
+
+      ellipse {
+        transform: scaleY(0.6);
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+    }
+    .ph-cat__zzz {
+      opacity: 0;
+    }
+    .ph-cat__say::after {
+      content: "mrr?";
+      font-size: 28px;
+    }
+  }
+
+  // 3 or more: awake, head up. 4 or more: purring loudly.
+  &[data-awake="3"],
+  &[data-awake="4"] {
+    .ph-cat__head {
+      transform: translateY(-10px) rotate(-6deg);
+    }
+    .ph-cat__shut {
+      display: none;
+    }
+    .ph-cat__open {
+      display: inline;
+    }
+    .ph-cat__zzz {
+      opacity: 0;
+    }
+  }
+
+  &[data-awake="3"] .ph-cat__say::after {
+    content: "prrr";
+    font-size: 32px;
+  }
+
+  &[data-awake="4"] {
+    .ph-cat__body {
+      animation: ph-cat-purr 0.12s linear infinite;
+    }
+    .ph-cat__say::after {
+      content: "PRRRRR";
+      font-size: 44px;
+    }
+  }
+}
+
+@keyframes ph-cat-purr {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  25% {
+    transform: translate(0.8px, -0.6px);
+  }
+  75% {
+    transform: translate(-0.8px, 0.4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ph-cat[data-awake="4"] .ph-cat__body {
+    animation: none;
+  }
+}
+
+.ph-note--cat {
+  left: 214px;
+  top: 30px;
+  transform: rotate(-3deg);
+
+  .ph-note__arrow {
+    width: 46px;
+    height: 32px;
+    margin-top: 6px;
+  }
+}
+
 .ph-toy--hydrant {
   right: 9%;
   top: calc(150px * var(--toy-scale));
@@ -1170,6 +1390,11 @@ h3 {
   right: -10px;
   top: calc(100% + 8px);
   transform-origin: top right;
+}
+.ph-toy--cat .ph-peek {
+  left: 0;
+  bottom: calc(100% + 10px);
+  transform-origin: bottom left;
 }
 .ph-toy--boxes .ph-peek {
   right: 0;
@@ -3148,6 +3373,22 @@ h3 {
     .fire-hydrant {
       width: 70px;
       height: 120px;
+    }
+  }
+
+  .ph-toy--cat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .ph-cat {
+    width: 160px;
+    height: 115px;
+
+    .ph-cat__body {
+      width: 160px;
+      height: 109px;
     }
   }
 
