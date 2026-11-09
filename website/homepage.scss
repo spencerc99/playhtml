@@ -3195,6 +3195,16 @@ h3 {
     }
   }
 
+  // Three click boxes fit half a phone's width.
+  .ph-boxes {
+    gap: 8px;
+  }
+
+  .ph-box {
+    width: 48px;
+    height: 48px;
+  }
+
   .ph-section-head h2,
   .ph-why {
     padding: 48px 16px 0;
