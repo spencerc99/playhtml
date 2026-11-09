@@ -3010,8 +3010,14 @@ h3 {
     top: 132px;
   }
 
+  // The sign's text is only ~20px tall on phones, so a drag that starts a
+  // little off it scrolled the page instead. Pad the touch target without
+  // moving the text, and keep the browser from claiming the gesture.
   #sign {
     font-size: 19px;
+    padding: 14px 10px;
+    margin: -14px -10px;
+    touch-action: none;
   }
 
   .ph-toy--newest {
