@@ -1,5 +1,5 @@
-// ABOUTME: Renders a compact homepage index of playhtml experiments and spaces.
-// ABOUTME: Provides direct navigation to experiments and event archives.
+// ABOUTME: Renders the shared experiments index, as a full archive or the homepage shelf.
+// ABOUTME: Both variants share the same click smudges and random-experiment picker.
 
 import {
   type CSSProperties,
@@ -118,6 +118,11 @@ const pastEvents: ExperimentArchiveEntry[] = [
     actionLabel: "Read",
   },
 ];
+
+// The homepage shows only the recommended experiments.
+const homeExperiments = experiments.filter(
+  (experiment) => experiment.recommended,
+);
 
 function getTraceCoordinates(event: MouseEvent<HTMLElement>) {
   const rect = event.currentTarget.getBoundingClientRect();
@@ -264,13 +269,103 @@ function ExperimentsArchiveRow({
   );
 }
 
-const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
+function TraceSmudges({ traces }: { traces: ExperimentTrace[] }) {
+  const now = Date.now();
+
+  return (
+    <>
+      {traces.map((trace) => {
+        const placement = getTracePlacement(trace.id);
+        const age = Math.max(0, now - trace.createdAt);
+        const opacity = Math.max(0.08, (1 - age / TraceRetentionMs) * 0.72);
+
+        return (
+          <i
+            key={trace.id}
+            style={
+              {
+                "--trace-color": trace.color,
+                "--trace-opacity": opacity,
+                "--trace-rotate": `${placement.rotate}deg`,
+                "--trace-x": `${trace.x * 100}%`,
+                "--trace-y": `${placement.y}%`,
+              } as CSSProperties
+            }
+          />
+        );
+      })}
+    </>
+  );
+}
+
+// The homepage shelf: big names, smudges where people clicked, and a
+// polaroid preview on hover.
+function HomeExperimentRow({
+  entry,
+  isRandomActive,
+  isRandomSelected,
+  randomizerColor,
+  traces,
+  onExperimentClick,
+}: {
+  entry: ExperimentArchiveEntry;
+  isRandomActive: boolean;
+  isRandomSelected: boolean;
+  randomizerColor: string;
+  traces: ExperimentTrace[];
+  onExperimentClick: (
+    entry: ExperimentArchiveEntry,
+    event: MouseEvent<HTMLElement>,
+  ) => void;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const className = `ph-studio__row${isRandomActive ? " is-random-active" : ""}${
+    isRandomSelected ? " is-random-selected" : ""
+  }`;
+
+  return (
+    <a
+      className={className}
+      href={entry.href}
+      style={{ "--randomizer-color": randomizerColor } as CSSProperties}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onFocus={() => setIsHovered(true)}
+      onBlur={() => setIsHovered(false)}
+      onClick={(event) => onExperimentClick(entry, event)}
+    >
+      {traces.length > 0 ? (
+        <span className="ph-studio__fingerprints" aria-hidden="true">
+          <TraceSmudges traces={traces} />
+        </span>
+      ) : null}
+      <span className="ph-studio__number">{entry.number}</span>
+      <span className="ph-studio__name">{entry.name}</span>
+      <span className="ph-studio__desc">{entry.description}</span>
+      {entry.image && isHovered ? (
+        <span className="ph-studio__preview" aria-hidden="true">
+          <img src={entry.image} alt="" loading="lazy" />
+        </span>
+      ) : null}
+    </a>
+  );
+}
+
+interface ExperimentsArchiveProps {
+  variant?: "full" | "home";
+}
+
+const ExperimentsArchiveContent = withSharedState<
+  ExperimentsArchiveData,
+  any,
+  ExperimentsArchiveProps
+>(
   {
     defaultData: {
       traces: [],
     },
   },
-  ({ data, setData }) => {
+  ({ data, setData }, { variant = "full" }) => {
     const {
       cursors,
       dispatchPlayEvent,
@@ -424,11 +519,7 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
     );
 
     useEffect(() => {
-      if (
-        isLoading ||
-        !registerPlayEventListener ||
-        !removePlayEventListener
-      ) {
+      if (isLoading || !registerPlayEventListener || !removePlayEventListener) {
         return;
       }
 
@@ -496,9 +587,9 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
 
         if (isLoading) return;
 
-        const availableExperiments = experiments.filter(
-          (experiment) => experiment.href,
-        );
+        const availableExperiments = (
+          variant === "home" ? homeExperiments : experiments
+        ).filter((experiment) => experiment.href);
         const selectedIndex = Math.floor(
           Math.random() * availableExperiments.length,
         );
@@ -525,8 +616,67 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
           eventPayload: payload,
         });
       },
-      [dispatchPlayEvent, getMyPlayerIdentity, isLoading, myColor],
+      [dispatchPlayEvent, getMyPlayerIdentity, isLoading, myColor, variant],
     );
+
+    if (variant === "home") {
+      return (
+        <section
+          className="ph-studio"
+          id="experiments-index"
+          aria-labelledby="experiments-archive-title"
+        >
+          <div className="ph-studio__intro">
+            <h2 id="experiments-archive-title">Experiments</h2>
+            <p>
+              Various playhtml projects that showcase what a shared web could
+              look like
+            </p>
+            <span className="ph-hand">- spencer</span>
+            <div className="ph-studio__random">
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={handleRandomExperiment}
+              >
+                {!isLoading ? "random experiment" : "syncing..."}
+              </button>
+              <span className="ph-studio__clickers" aria-hidden="true">
+                {randomizer.clickerColors.map((color) => (
+                  <i
+                    key={color}
+                    style={{ "--user-color": color } as CSSProperties}
+                  />
+                ))}
+              </span>
+            </div>
+            <a href="/experiments/">all {experiments.length} experiments</a>
+          </div>
+          <div className="ph-studio__rows">
+            {homeExperiments.map((experiment) => (
+              <HomeExperimentRow
+                entry={experiment}
+                key={experiment.number}
+                randomizerColor={randomizer.color}
+                traces={tracesByRow.get(experiment.number) ?? []}
+                isRandomActive={randomizer.activeNumber === experiment.number}
+                isRandomSelected={
+                  randomizer.isFlashing &&
+                  randomizer.selectedNumber === experiment.number
+                }
+                onExperimentClick={handleExperimentClick}
+              />
+            ))}
+            <div className="ph-studio__foot">
+              <span className="ph-hand">
+                smudges = where people clicked, in their cursor color
+              </span>
+              <span>hover for a preview</span>
+            </div>
+          </div>
+        </section>
+      );
+    }
 
     return (
       <section
@@ -595,6 +745,8 @@ const ExperimentsArchiveContent = withSharedState<ExperimentsArchiveData>(
   },
 );
 
-export default function ExperimentsArchive() {
-  return <ExperimentsArchiveContent />;
+export default function ExperimentsArchive({
+  variant = "full",
+}: ExperimentsArchiveProps) {
+  return <ExperimentsArchiveContent variant={variant} />;
 }
