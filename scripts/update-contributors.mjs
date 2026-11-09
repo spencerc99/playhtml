@@ -7,7 +7,11 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const REPO = "spencerc99/playhtml";
-const README_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "README.md");
+const README_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "README.md",
+);
 const START_MARKER = "<!-- contributors:start -->";
 const END_MARKER = "<!-- contributors:end -->";
 const PER_ROW = 7;
@@ -47,7 +51,9 @@ export function isBot({ login, email, name }) {
 }
 
 export function loginFromNoreply(email) {
-  const match = /^(?:\d+\+)?([a-z0-9-]+)@users\.noreply\.github\.com$/i.exec(email);
+  const match = /^(?:\d+\+)?([a-z0-9-]+)@users\.noreply\.github\.com$/i.exec(
+    email,
+  );
   return match ? match[1] : null;
 }
 
@@ -64,7 +70,8 @@ export function parseGitLog(raw) {
     people.push({ sha, name, email });
     for (const line of trailers.split("\n")) {
       const match = /^\s*(.+?)\s*<([^>]+)>\s*$/.exec(line);
-      if (match) people.push({ sha, name: match[1], email: match[2], coAuthor: true });
+      if (match)
+        people.push({ sha, name: match[1], email: match[2], coAuthor: true });
     }
   }
   return people;
@@ -90,7 +97,12 @@ async function github(path) {
       ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
   });
-  if (!res.ok) return null;
+  // 404/422 mean "no such commit or user"; anything else (rate limit, outage)
+  // would silently drop real people from the grid, so stop instead.
+  if (res.status === 404 || res.status === 422) return null;
+  if (!res.ok) {
+    throw new Error(`GitHub API ${res.status} for ${path}. Set GITHUB_TOKEN and retry.`);
+  }
   return res.json();
 }
 
@@ -102,7 +114,9 @@ async function resolveLogin({ email, sha, coAuthor }) {
     if (commit?.author?.type === "Bot") return { bot: true };
     if (commit?.author?.login) return commit.author.login;
   }
-  const search = await github(`search/users?q=${encodeURIComponent(`${email} in:email`)}`);
+  const search = await github(
+    `search/users?q=${encodeURIComponent(`${email} in:email`)}`,
+  );
   if (search?.items?.length === 1) return search.items[0].login;
   return null;
 }
@@ -142,7 +156,8 @@ export async function collectContributors(entries, resolve = resolveLogin) {
     const existing = byLogin.get(key);
     if (existing) {
       for (const sha of person.commits) existing.commits.add(sha);
-      for (const [n, c] of person.names) existing.names.set(n, (existing.names.get(n) ?? 0) + c);
+      for (const [n, c] of person.names)
+        existing.names.set(n, (existing.names.get(n) ?? 0) + c);
       existing.first = Math.min(existing.first, person.first);
     } else {
       byLogin.set(key, {
@@ -200,7 +215,9 @@ export function replaceBlock(readme, block) {
   const start = readme.indexOf(START_MARKER);
   const end = readme.indexOf(END_MARKER);
   if (start === -1 || end === -1 || end < start) {
-    throw new Error(`README.md needs ${START_MARKER} and ${END_MARKER} markers`);
+    throw new Error(
+      `README.md needs ${START_MARKER} and ${END_MARKER} markers`,
+    );
   }
   return readme.slice(0, start) + block + readme.slice(end + END_MARKER.length);
 }
@@ -208,19 +225,29 @@ export function replaceBlock(readme, block) {
 async function main() {
   const mode = process.argv[2];
   if (mode !== "--write" && mode !== "--check") {
-    console.error("Usage: node scripts/update-contributors.mjs --write | --check");
+    console.error(
+      "Usage: node scripts/update-contributors.mjs --write | --check",
+    );
     process.exit(2);
   }
-  const { contributors, unresolved } = await collectContributors(parseGitLog(readGitLog()));
+  const { contributors, unresolved } = await collectContributors(
+    parseGitLog(readGitLog()),
+  );
   for (const who of unresolved) {
-    console.warn(`Could not find a GitHub account for ${who}. Add it to EMAIL_TO_LOGIN if it's a person.`);
+    console.warn(
+      `Could not find a GitHub account for ${who}. Add it to EMAIL_TO_LOGIN if it's a person.`,
+    );
   }
   const readme = await readFile(README_PATH, "utf8");
   const next = replaceBlock(readme, renderGrid(contributors));
-  console.log(`${contributors.length} contributors: ${contributors.map((c) => c.login).join(", ")}`);
+  console.log(
+    `${contributors.length} contributors: ${contributors.map((c) => c.login).join(", ")}`,
+  );
   if (next === readme) return;
   if (mode === "--check") {
-    console.error("README contributors are out of date. Run: bun run contributors");
+    console.error(
+      "README contributors are out of date. Run: bun run contributors",
+    );
     process.exit(1);
   }
   await writeFile(README_PATH, next);
