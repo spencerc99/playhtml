@@ -77,7 +77,7 @@
 /* Dark-mode token stub — graphite board instead of paper. Refined later. */
 :root[data-theme="dark"] {
   --ph-paper: #1b1e1a;
-  --ph-code-paper: #1b1e1a;
+  --ph-code-paper: #24271f;
   --ph-paper-warm: #22251f;
   --ph-paper-deep: #2a2d26;
   --ph-ink: #eae4d3;
