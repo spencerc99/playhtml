@@ -471,6 +471,10 @@ h3 {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+
+  img {
+    border-radius: 5px;
+  }
 }
 
 .ph-header__spacer {
@@ -495,8 +499,22 @@ h3 {
 }
 
 .ph-header__stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-family: $mono;
   font-size: 13px;
+
+  &[hidden] {
+    display: none;
+  }
+
+  &::before {
+    content: "\2605";
+    color: $mustard;
+    font-size: 14px;
+    -webkit-text-stroke: 0.6px $ink;
+  }
 }
 
 .ph-header__support {
@@ -1039,19 +1057,6 @@ h3 {
   align-items: center;
 }
 
-.ph-rain {
-  width: 200px;
-  height: 120px;
-  margin-bottom: -40px;
-
-  path {
-    stroke: $ultramarine;
-    stroke-width: 2.5;
-    stroke-linecap: round;
-    opacity: 0.75;
-  }
-}
-
 .ph-hydrant {
   width: 110px;
 
@@ -1351,44 +1356,6 @@ h3 {
     padding: 0;
     list-style: none;
   }
-}
-
-.ph-org {
-  padding: 8px 14px;
-  border: 1px solid $ink;
-  box-shadow: 2px 2px 0 $ink;
-  font-size: 16px;
-}
-
-.ph-org--wikipedia {
-  background: $paper;
-  border-radius: 999px;
-  rotate: -5deg;
-  font-family: Georgia, serif;
-}
-.ph-org--grayarea {
-  background: $ink;
-  color: #f4efe5;
-  border-radius: 6px;
-  rotate: 3deg;
-}
-.ph-org--rhizome {
-  background: $sage-light;
-  border-radius: 999px;
-  rotate: -2deg;
-  font-family: Georgia, serif;
-}
-.ph-org--ifthen {
-  background: $periwinkle;
-  border-radius: 6px;
-  rotate: 4deg;
-  font-family: $mono;
-}
-.ph-org--sfpc {
-  background: $mustard;
-  border-radius: 999px;
-  rotate: -3deg;
-  font-family: $mono;
 }
 
 // How it works
@@ -2294,12 +2261,41 @@ h3 {
 
 .ph-logo--rhizome {
   background: $ink;
-  color: $paper;
-  box-shadow: 2px 2px 0 $brick;
+  color: #3ddc6a;
+  box-shadow: 2px 2px 0 $ink;
   rotate: 1.5deg;
   font-family: $display;
   font-weight: 800;
   font-size: 16px;
+}
+
+.ph-logo--grayarea {
+  background: #6b6b6b;
+  color: #ffffff;
+  box-shadow: 2px 2px 0 $ink;
+  rotate: 2deg;
+  font-family: $display;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.ph-logo--ifthen {
+  background: $periwinkle;
+  box-shadow: 2px 2px 0 $ink;
+  rotate: -1.5deg;
+  font-family: $mono;
+  font-size: 15px;
+}
+
+.ph-logo--sfpc {
+  background: $ink;
+  color: #b89cf5;
+  box-shadow: 2px 2px 0 $ink;
+  rotate: -2.5deg;
+  font-family: $mono;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.06em;
 }
 
 .ph-discord {
@@ -3004,12 +3000,6 @@ h3 {
 
   .ph-heart {
     display: none;
-  }
-
-  .ph-rain {
-    width: 120px;
-    height: 72px;
-    margin-bottom: -24px;
   }
 
   .ph-hydrant {
