@@ -1,126 +1,36 @@
-// ABOUTME: Boots the playhtml homepage and its React-backed shared examples.
-// ABOUTME: Wires homepage-only collaboration state into non-React page chrome.
+// ABOUTME: Boots the playhtml.fun homepage: shared toys, guestbook, and React islands.
+// ABOUTME: Element ids and data shapes match the previous homepage so saved state carries over.
 
-import words from "profane-words";
-import "./home.scss";
-// NOTE: this pins it to the working code so we can test library changes through this home page.
+import "./homepage.scss";
 import { createRoot } from "react-dom/client";
 import { PlayProvider } from "@playhtml/react";
-import { playhtml, type ElementInitializer } from "playhtml";
-import FeaturesGrid from "./components/FeaturesGrid";
-import ExperimentsArchive from "./components/ExperimentsArchive";
+import { HomeIslands } from "./components/home/HomeIslands";
 import {
-  isGuestbookNameAllowed,
-  sanitizeGuestbookName,
-} from "./utils/guestbookValidation";
-
-interface FormData {
-  name: string;
-  message: string;
-  timestamp: number;
-}
-
-const GuestbookSubmissionLimit = {
-  maxEntries: 3,
-  windowMs: 10 * 60 * 1000,
-  storageKey: "playhtml:guestbook-submission-timestamps",
-};
-const GuestbookNameStorageKey = "name";
-type HomepageAwareness = { online: true };
-
-function getFormDataId(formData: FormData) {
-  return `${formData.name}-${formData.timestamp}`;
-}
-
-function readStoredGuestbookName(): string {
-  const storedName = window.localStorage.getItem(GuestbookNameStorageKey);
-  if (!storedName) return "";
-
-  try {
-    const parsedName = JSON.parse(storedName);
-    return typeof parsedName === "string" ? parsedName : "";
-  } catch {
-    return "";
-  }
-}
-
-function writeStoredGuestbookName(name: string) {
-  window.localStorage.setItem(GuestbookNameStorageKey, JSON.stringify(name));
-}
-
-function setupGuestbookNameInput() {
-  const nameInput = document.querySelector<HTMLInputElement>(
-    'input[name="name"]',
-  );
-  if (!nameInput) return;
-
-  nameInput.value = sanitizeGuestbookName(readStoredGuestbookName());
-  writeStoredGuestbookName(nameInput.value);
-
-  const syncNameInput = () => {
-    const sanitizedName = sanitizeGuestbookName(nameInput.value);
-    if (nameInput.value !== sanitizedName) {
-      nameInput.value = sanitizedName;
-    }
-
-    writeStoredGuestbookName(sanitizedName);
-  };
-
-  nameInput.addEventListener("input", syncNameInput);
-  nameInput.addEventListener("change", syncNameInput);
-}
-
-setupGuestbookNameInput();
-
-function setupHomepageAwarenessStatus() {
-  const statusElement = document.getElementById("site-console-count");
-  const countElement = document.getElementById("site-console-count-number");
-  const countLabel = document.querySelector(".site-console__status-label");
-  if (!statusElement || !countElement || !countLabel) return;
-
-  playhtml.register<Record<string, never>, undefined, HomepageAwareness>(
-    "site-console-count",
-    {
-      defaultData: {},
-      myDefaultAwareness: { online: true },
-      updateElement: () => {},
-      // `everyone` is one entry per person; `awareness` has one per open tab,
-      // which counted people with several tabs more than once.
-      updateElementAwareness: ({ everyone }) => {
-        const peopleCount = Math.max(everyone.length, 1);
-
-        if (countElement.textContent === String(peopleCount)) return;
-
-        countElement.textContent = String(peopleCount);
-        countLabel.textContent = ` ${peopleCount === 1 ? "person" : "people"} here`;
-      },
-    },
-  );
-}
-
-function setupHomepageCandle() {
-  const candle = document.getElementById("customCandle");
-  if (!candle) return;
-
-  playhtml.register(candle, {
-    defaultData: { on: true },
-    onClick: (_event, { data, setData }) => {
-      setData({ on: !data.on });
-    },
-    updateElement: ({ element, data }) => {
-      (element as HTMLImageElement).src = data.on
-        ? "/candle-gif.gif"
-        : "/candle-off.png";
-    },
-    resetShortcut: "shiftKey",
-  });
-}
+  guestbookCapability,
+  setupGuestbookNameInput,
+} from "./components/home/guestbook";
+import {
+  loadLiveCounts,
+  setupCodePeeks,
+  setupLabels,
+  setupMirrorDemo,
+  setupSponsorGoal,
+  setupToyboxScale,
+} from "./components/home/pageChrome";
+import {
+  setupHereNow,
+  setupPersistentNote,
+  setupSnippetCopies,
+  setupTipJar,
+  setupWordmarkColors,
+} from "./components/home/sharedElements";
 
 const isCursorRoom = (
   value: string | null,
 ): value is "page" | "domain" | "section" =>
   value === "page" || value === "domain" || value === "section";
 
+// Lets local previews and smoke tests point the page at a local server/room.
 function getLocalPreviewInitOptions() {
   const localHostnames = new Set(["localhost", "127.0.0.1"]);
   if (!localHostnames.has(window.location.hostname)) return {};
@@ -137,15 +47,23 @@ function getLocalPreviewInitOptions() {
   };
 }
 
-setupHomepageAwarenessStatus();
-setupHomepageCandle();
+setupToyboxScale();
+setupLabels();
+setupCodePeeks();
+setupMirrorDemo();
+setupSponsorGoal();
+loadLiveCounts();
+setupGuestbookNameInput();
+setupHereNow();
+setupSnippetCopies();
+setupPersistentNote();
+setupWordmarkColors();
+setupTipJar();
 
-// Render React components
 const reactContentElement = document.getElementById("reactContent");
 if (reactContentElement) {
   const { cursorRoom, ...localPreviewOptions } = getLocalPreviewInitOptions();
-  const root = createRoot(reactContentElement);
-  root.render(
+  createRoot(reactContentElement).render(
     <PlayProvider
       initOptions={{
         ...localPreviewOptions,
@@ -154,196 +72,12 @@ if (reactContentElement) {
           enabled: true,
           ...(cursorRoom ? { room: cursorRoom } : {}),
         },
-        // an event when someone opens the website?
         extraCapabilities: {
-          "can-post": {
-            defaultData: [],
-            defaultLocalData: { addedEntries: new Set() },
-            updateElement: ({
-              data: entries,
-              localData: { addedEntries },
-              setLocalData,
-            }) => {
-              const entriesToAdd = entries.filter(
-                (entry) => !addedEntries.has(getFormDataId(entry))
-              );
-
-              const guestbookDiv =
-                document.getElementById("guestbookMessages")!;
-              entriesToAdd.forEach((entry) => {
-                const newEntry = document.createElement("div");
-                newEntry.classList.add("guestbook-entry");
-                const entryDate = new Date(entry.timestamp);
-                const time = entryDate.toTimeString().split(" ")[0];
-                const isToday =
-                  entryDate.toDateString() === new Date().toDateString();
-
-                const dateString = (() => {
-                  // TODO: this is naive and incorrect but works most of the time lol
-                  const now = new Date();
-                  if (
-                    now.getFullYear() !== entryDate.getFullYear() ||
-                    now.getMonth() !== entryDate.getMonth()
-                  ) {
-                    return "Sometime before";
-                  } else if (isToday) {
-                    return "Today";
-                  } else if (now.getDate() - entryDate.getDate() === 1) {
-                    return "Yesterday";
-                  } else if (now.getDate() - entryDate.getDate() < 7) {
-                    return "This week";
-                  } else {
-                    return "Sometime before";
-                  }
-                })();
-
-                newEntry.innerHTML = `
-        <span class="guestbook-entry-timestamp">${dateString} at ${time}</span><span class="guestbook-entry-name"></span> <span class="guestbook-entry-message"></span>`;
-                // TODO: add option to change order?
-                guestbookDiv.prepend(newEntry);
-                if (newEntry.querySelector(".guestbook-entry-name")) {
-                  // @ts-ignore
-                  newEntry.querySelector(".guestbook-entry-name")!.textContent =
-                    entry.name;
-                }
-                if (newEntry.querySelector(".guestbook-entry-message")) {
-                  // @ts-ignore
-                  newEntry.querySelector(
-                    ".guestbook-entry-message"
-                  )!.textContent = entry.message;
-                }
-                addedEntries.add(getFormDataId(entry));
-              });
-
-              setLocalData({ addedEntries });
-            },
-            onMount: ({ getElement, setData }) => {
-              const element = getElement();
-              let guestbookSubmissionTimestamps: number[] = [];
-
-              try {
-                const storedTimestamps = window.localStorage.getItem(
-                  GuestbookSubmissionLimit.storageKey
-                );
-                if (storedTimestamps) {
-                  const parsedTimestamps = JSON.parse(storedTimestamps);
-                  if (Array.isArray(parsedTimestamps)) {
-                    guestbookSubmissionTimestamps = parsedTimestamps.filter(
-                      (timestamp): timestamp is number =>
-                        typeof timestamp === "number" &&
-                        Number.isFinite(timestamp)
-                    );
-                  }
-                }
-              } catch {
-                guestbookSubmissionTimestamps = [];
-              }
-
-              element.addEventListener("submit", (e: SubmitEvent) => {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-
-                const formData = new FormData(e.target as HTMLFormElement);
-                // massage formData into new object
-
-                function clearMessage() {
-                  const messageEle = element.querySelector(
-                    'input[name="message"]'
-                  );
-                  if (!messageEle) {
-                    return;
-                  }
-                  // @ts-ignore
-                  messageEle.value = "";
-                }
-                // @ts-ignore
-                const inputData = Object.fromEntries(formData.entries());
-
-                if (!inputData.name || !inputData.message) {
-                  clearMessage();
-                  return false;
-                }
-
-                const submittedName = String(inputData.name);
-                if (!isGuestbookNameAllowed(submittedName)) {
-                  const nameEle = element.querySelector<HTMLInputElement>(
-                    'input[name="name"]'
-                  );
-                  const sanitizedName = sanitizeGuestbookName(submittedName);
-                  if (nameEle) {
-                    nameEle.value = sanitizedName;
-                  }
-                  writeStoredGuestbookName(sanitizedName);
-                  alert("please use letters and numbers only for your name");
-                  return false;
-                }
-
-                if (
-                  words.some((word) => {
-                    const regex = new RegExp(`\\b${word}\\b`, "gi");
-                    return (
-                      regex.test(String(inputData.message)) ||
-                      regex.test(String(inputData.name))
-                    );
-                  })
-                ) {
-                  alert("now why would you try to do something like that?");
-                  clearMessage();
-                  return false;
-                }
-
-                // TODO: add length validation here
-
-                const timestamp = Date.now();
-                const earliestAllowedSubmission =
-                  timestamp - GuestbookSubmissionLimit.windowMs;
-                guestbookSubmissionTimestamps =
-                  guestbookSubmissionTimestamps.filter(
-                    (submittedAt) =>
-                      submittedAt > earliestAllowedSubmission &&
-                      submittedAt <= timestamp
-                  );
-
-                if (
-                  guestbookSubmissionTimestamps.length >=
-                  GuestbookSubmissionLimit.maxEntries
-                ) {
-                  alert("please wait a bit before adding more guestbook notes");
-                  return false;
-                }
-
-                const newEntry: FormData = {
-                  message: "something",
-                  ...inputData,
-                  name: submittedName,
-                  timestamp,
-                };
-
-                setData((d: FormData[]) => {
-                  d.push(newEntry);
-                });
-                guestbookSubmissionTimestamps = [
-                  ...guestbookSubmissionTimestamps,
-                  timestamp,
-                ];
-                try {
-                  window.localStorage.setItem(
-                    GuestbookSubmissionLimit.storageKey,
-                    JSON.stringify(guestbookSubmissionTimestamps)
-                  );
-                } catch {
-                  // Ignore local storage failures so valid guestbook posts still work.
-                }
-                clearMessage();
-                return false;
-              });
-            },
-          } as ElementInitializer<FormData[]>,
+          "can-post": guestbookCapability,
         },
       }}
     >
-      <FeaturesGrid />
-      <ExperimentsArchive />
-    </PlayProvider>
+      <HomeIslands />
+    </PlayProvider>,
   );
 }
