@@ -29,6 +29,7 @@ import {
   DEFAULT_EMERGENCY_COMPACT_CHECK_BYTES,
   DEFAULT_EMERGENCY_COMPACT_RECHECK_DELAY_MS,
   DEFAULT_DOCUMENT_WARNING_BYTES,
+  DEFAULT_MAX_CONNECTIONS_PER_ROOM,
   DEFAULT_MAX_REQUEST_BYTES,
   DEFAULT_MESSAGE_RATE_LIMIT,
   DEFAULT_MESSAGE_RATE_WINDOW_MS,
@@ -62,8 +63,13 @@ import {
   isApplySubtreesImmediateRequest,
 } from "./request";
 import {
+  checkEdgeRateLimit,
   checkMessageRate,
   isDurableObjectOverloadError,
+  countOtherConnections,
+  isRoomAtConnectionLimit,
+  ROOM_FULL_CLOSE_CODE,
+  ROOM_FULL_CLOSE_REASON,
   shouldAcceptRequestBody,
   shouldWarnForDocumentSize,
   type MessageLimitState,
@@ -227,6 +233,7 @@ export class PartyServer extends YServer {
   private persistenceObserverAttached = false;
   private emptyRoomCompactionPromise: Promise<void> | null = null;
   private compactionAutosaveSnapshot: string | null = null;
+  private lastRoomFullWarningAt = 0;
   private cachedResetEpoch: number | null | undefined;
   // Request URLs of pending connections, needed to finish admitting them. Lost
   // on hibernation, which only drops the URL-declared sharing parameters.
@@ -1777,10 +1784,39 @@ export class PartyServer extends YServer {
     } catch {}
   }
 
+  // Counts joined sockets. Pending and held ones are excluded like everywhere
+  // else, so a held stale client never blocks a fresh one.
+  private closeConnectionIfRoomFull(connection: Party.Connection): boolean {
+    const maxConnections = readPositiveNumberEnv(
+      "MAX_CONNECTIONS_PER_ROOM",
+      DEFAULT_MAX_CONNECTIONS_PER_ROOM
+    );
+    const openConnections = countOtherConnections(
+      this.getConnections(),
+      connection
+    );
+    if (!isRoomAtConnectionLimit(openConnections, maxConnections)) {
+      return false;
+    }
+    // A flood would log once per refused socket; once a minute is enough.
+    const now = Date.now();
+    if (now - (this.lastRoomFullWarningAt ?? 0) >= 60_000) {
+      this.lastRoomFullWarningAt = now;
+      console.warn(
+        `[PartyServer] Room full, refusing connections: room=${this.name}, ` +
+          `connectionId=${connection.id}, open=${openConnections}, max=${maxConnections}`
+      );
+    }
+    connection.close(ROOM_FULL_CLOSE_CODE, ROOM_FULL_CLOSE_REASON);
+    return true;
+  }
+
   override async onConnect(
     connection: Party.Connection,
     ctx: Party.ConnectionContext
   ) {
+    if (this.closeConnectionIfRoomFull(connection)) return;
+
     this.setConnectionOpenedAt(connection, Date.now());
 
     if (await this.closeConnectionWhileLoadDeferred(connection)) return;
@@ -3432,6 +3468,12 @@ export default {
         quarantineControl: workerEnv.QUARANTINE_CONTROL,
       });
       if (quarantineResponse) return quarantineResponse;
+
+      const rateLimitResponse = await checkEdgeRateLimit(
+        request,
+        workerEnv.CONNECTION_RATE_LIMITER
+      );
+      if (rateLimitResponse) return rateLimitResponse;
 
       return (
         (await routePartykitRequest(request, workerEnv)) ||

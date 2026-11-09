@@ -71,6 +71,12 @@ export const DEFAULT_MESSAGE_RATE_LIMIT = (() => {
 export const DEFAULT_MAX_REQUEST_BYTES = (() => {
   return 1024 * 1024 * 16;
 })();
+// Open sockets one room accepts before new ones are turned away. Busy event and
+// class rooms sit well under 100; this bounds a single room against a flood.
+export const DEFAULT_MAX_CONNECTIONS_PER_ROOM = 500;
+// Presence values are capped at 4KB each, so no real presence message comes
+// near this. Larger strings are refused before JSON.parse touches them.
+export const DEFAULT_MAX_PRESENCE_MESSAGE_CHARS = 64 * 1024;
 // Pre-persist compaction runs before writing oversized autosave candidates so
 // persisted snapshots stay below the startup-risk range seen in live rooms.
 export const DEFAULT_PERSISTED_DOCUMENT_COMPACT_BYTES = (() => {
