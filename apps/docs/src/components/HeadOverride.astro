@@ -32,8 +32,8 @@ const { head } = Astro.locals.starlightRoute;
 <script>
   import { playhtml } from 'playhtml';
   // Progressive enhancement: wraps every Shiki-highlighted <pre> in .ph-copy
-  // chrome with a copy button so all fenced code blocks match the splash
-  // snippets. Runs on DOMContentLoaded; import order here is intentional so
+  // chrome with a copy button so all fenced code blocks share one look.
+  // Runs on DOMContentLoaded; import order here is intentional so
   // it initialises before playhtml.init awaits window.load.
   import '../scripts/enhance-code-blocks';
 

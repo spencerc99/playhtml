@@ -39,4 +39,4 @@ The more of these you describe up front, the fewer questions you'll get:
 
 For example: _"A draggable sticky note in vanilla HTML. Anyone can drag it and everyone sees it move. Its position should stay after reload."_
 
-For the hand-written setup, see [getting started](/docs/getting-started/).
+For the hand-written setup, see [getting started](/docs/).

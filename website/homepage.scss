@@ -1,0 +1,3497 @@
+// ABOUTME: Styles the playhtml.fun homepage: the live toy box, pitch, gallery, events and community.
+// ABOUTME: Uses the docs palette on buttercream paper with dot-notebook cards and deep ink shadows.
+
+$ink: #1c1c1c;
+$text: #3b3b3b;
+$body-text: #2b2b2b;
+$muted: #6a6a66;
+$page: #fff9d8;
+$box: #fffff9;
+$paper: #fffdf8;
+$code-paper: #f4efe5;
+$code-bar: #ebe4d5;
+$brick: #c0373c;
+$ultramarine: #274b9e;
+$mustard: #e8a63a;
+$sage: #5c7c54;
+$pen: #1c3875;
+$magenta: #b0306a;
+$rose: #e7b3b4;
+$periwinkle: #b6c7ff;
+$sage-light: #c3d1b7;
+$peach: #f2cf94;
+
+$shadow-big: 8px 8px 0 $ink;
+$shadow-mid: 5px 5px 0 $ink;
+$dots: radial-gradient(
+  circle at 1px 1px,
+  rgba(40, 40, 48, 0.2) 0.75px,
+  transparent 1.15px
+);
+
+$display: "Bricolage Grotesque", system-ui, sans-serif;
+$body: "Play", system-ui, sans-serif;
+$mono: "IBM Plex Mono", ui-monospace, monospace;
+$hand: "Nanum Pen Script", cursive;
+$wordmark: "Carter One", system-ui, sans-serif;
+
+$phone: 760px;
+
+@mixin dotted($bg) {
+  background-color: $bg;
+  background-image: $dots;
+  background-size: 18px 18px;
+}
+
+@mixin phone {
+  @media (max-width: $phone) {
+    @content;
+  }
+}
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+// One type scale for the whole page. Phones step every size down once (below).
+body.ph-home {
+  --fs-display: 68px;
+  --fs-h2: 44px;
+  --fs-h3: 30px;
+  --fs-h4: 22px;
+  --fs-lead: 19px;
+  --fs-body: 16px;
+  --fs-small: 14px;
+  --fs-hand: 24px;
+  margin: 0;
+  background: $page;
+  color: $ink;
+  font-family: $body;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+}
+
+a {
+  color: $pen;
+
+  &:hover {
+    color: $ink;
+  }
+}
+
+h1,
+h2,
+h3 {
+  font-family: $display;
+  color: $ink;
+}
+
+.ph-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.ph-skip {
+  position: absolute;
+  left: 12px;
+  top: -60px;
+  z-index: 100;
+  padding: 8px 12px;
+  background: $ink;
+  color: $page;
+
+  &:focus {
+    top: 12px;
+  }
+}
+
+.ph-hand {
+  font-family: $hand;
+  font-size: var(--fs-hand);
+  line-height: 0.95;
+  color: $pen;
+}
+
+// ---------- shared pieces ----------
+
+.ph-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 0 20px;
+  background: $paper;
+  color: $ink;
+  border: 1px solid $ink;
+  border-radius: 8px;
+  box-shadow: $shadow-mid;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 17px;
+  font-family: $display;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+
+  &:hover {
+    color: $ink;
+    transform: translate(-1px, -1px);
+    box-shadow: 6px 6px 0 $ink;
+  }
+
+  &:active {
+    transform: translate(3px, 3px);
+    box-shadow: 2px 2px 0 $ink;
+  }
+}
+
+.ph-btn--primary {
+  background: $ultramarine;
+  color: #f4efe5;
+  padding: 0 24px;
+
+  &:hover {
+    color: #f4efe5;
+  }
+}
+
+.ph-btn--small {
+  min-height: 44px;
+  padding: 0 16px;
+  font-size: 15px;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 $ink;
+
+  &:hover {
+    box-shadow: 3px 3px 0 $ink;
+  }
+
+  &:active {
+    box-shadow: 0 0 0 $ink;
+    transform: translate(2px, 2px);
+  }
+}
+
+.ph-btn--paper {
+  background: $paper;
+}
+
+.ph-btn--mustard {
+  background: $mustard;
+}
+
+.ph-btn--rose {
+  background: $rose;
+}
+
+.ph-btn--pill {
+  border-radius: 999px;
+  min-height: 44px;
+  font-size: 15px;
+  box-shadow: 2px 2px 0 $ink;
+  align-self: flex-start;
+}
+
+.ph-card {
+  position: relative;
+  border: 1.5px solid $ink;
+  border-radius: 14px;
+  box-shadow: $shadow-big;
+  @include dotted($box);
+}
+
+.ph-num {
+  position: absolute;
+  left: -14px;
+  top: -16px;
+  z-index: 1;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: $paper;
+  border: 4px solid #fff;
+  box-shadow: 1px 3px 4px rgba(28, 28, 28, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: $wordmark;
+  font-size: 20px;
+  transform: rotate(-10deg);
+}
+
+.ph-num--brick {
+  background: $brick;
+}
+.ph-num--ultramarine {
+  background: $ultramarine;
+}
+.ph-num--sage {
+  background: $sage;
+}
+
+// Label-maker tape. Text is split into letters by index.tsx for the jitter.
+.ph-label {
+  --label-bg: #2b2b2b;
+  --label-edge: #151515;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.22) 0,
+      rgba(255, 255, 255, 0.05) 22%,
+      rgba(0, 0, 0, 0) 50%,
+      rgba(0, 0, 0, 0.18) 100%
+    ),
+    var(--label-bg);
+  border-radius: 2px;
+  clip-path: polygon(
+    3px 0,
+    calc(100% - 3px) 0,
+    100% 3px,
+    100% calc(100% - 3px),
+    calc(100% - 3px) 100%,
+    3px 100%,
+    0 calc(100% - 3px),
+    0 3px
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -2px 0 var(--label-edge);
+  color: rgba(255, 255, 255, 0.92);
+  font-family: $display;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  white-space: nowrap;
+  text-transform: uppercase;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.45),
+    0 -1px 0 rgba(255, 255, 255, 0.35);
+  filter: drop-shadow(1px 2px 1.5px rgba(28, 28, 28, 0.35));
+
+  > span {
+    display: inline-block;
+  }
+
+  .ph-label__space {
+    width: 0.55em;
+  }
+}
+
+.ph-label--brick {
+  --label-bg: #d2393f;
+  --label-edge: #a8262c;
+}
+.ph-label--ultramarine {
+  --label-bg: #2f5bc4;
+  --label-edge: #1f3f94;
+}
+.ph-label--green {
+  --label-bg: #3f8a4f;
+  --label-edge: #2b6a39;
+}
+.ph-label--ink {
+  font-size: 12px;
+}
+
+.ph-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 12px;
+  background: $paper;
+  border: 1px solid $ink;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 var(--chip-color, #{$magenta});
+
+  b {
+    font-size: 14px;
+    color: var(--chip-color, #{$magenta});
+  }
+
+  span {
+    font-family: $mono;
+    font-size: 15px;
+  }
+}
+
+// Code blocks match the docs .ph-copy look.
+.ph-code {
+  border: 1.5px solid $ink;
+  border-radius: 4px;
+  background: $code-paper;
+  box-shadow: 2px 2px 0 $ink;
+  overflow: hidden;
+  text-align: left;
+
+  pre {
+    margin: 0;
+    padding: 12px 16px 10px;
+    font-family: $mono;
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: #24292e;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
+.ph-code__head,
+.ph-code__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 12px;
+  background: $code-bar;
+  font-family: $mono;
+  font-size: 11px;
+  color: $text;
+}
+
+.ph-code__head {
+  border-bottom: 1px solid rgba(28, 28, 28, 0.18);
+}
+
+.ph-code__bar {
+  border-top: 1px solid rgba(28, 28, 28, 0.18);
+}
+
+.ph-code__spacer {
+  flex: 1;
+}
+
+.ph-code__copy {
+  font-family: $mono;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  background: $ink;
+  color: #f4efe5;
+  border: 0;
+  border-radius: 3px;
+  padding: 4px 10px;
+  cursor: pointer;
+
+  &:hover {
+    background: $ultramarine;
+  }
+}
+
+.ph-code,
+.ph-peek {
+  .t {
+    color: #22863a;
+  }
+  .a {
+    color: #6f42c1;
+  }
+  .s {
+    color: #032f62;
+  }
+  mark {
+    background: $mustard;
+    color: $ink;
+    font-weight: 600;
+    padding: 1px 4px;
+    border-radius: 2px;
+    box-shadow: 1px 1px 0 $ink;
+  }
+}
+
+// Tally marks: four strokes and a slash per five copies.
+.ph-tally {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+
+  i {
+    display: inline-block;
+    width: 1.5px;
+    height: 10px;
+    background: $ink;
+  }
+
+  i.slash {
+    height: 14px;
+    transform: translateX(-11.25px) rotate(-65deg);
+    margin-right: -4.5px;
+  }
+}
+
+// ---------- header ----------
+
+.ph-header {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 14px 32px;
+  border-bottom: 1px solid rgba(28, 28, 28, 0.18);
+
+  a {
+    text-decoration: none;
+  }
+}
+
+.ph-header__wordmark {
+  font-family: $wordmark;
+  font-size: 26px;
+  color: $ink;
+}
+
+.ph-header__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  align-items: center;
+  font-size: 16px;
+
+  a {
+    color: $text;
+    padding: 10px 0;
+
+    &:hover {
+      color: $ink;
+      text-decoration: underline;
+      text-decoration-color: $ultramarine;
+      text-underline-offset: 5px;
+    }
+  }
+
+  i {
+    font-family: "Lora", Georgia, serif;
+  }
+}
+
+.ph-header__wwo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  img {
+    border-radius: 5px;
+  }
+}
+
+.ph-header__spacer {
+  flex: 1;
+}
+
+.ph-header__icon,
+.ph-header__github {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 38px;
+  min-height: 38px;
+  color: $ink;
+
+  svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+  }
+}
+
+.ph-header__stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: $mono;
+  font-size: 13px;
+
+  &[hidden] {
+    display: none;
+  }
+
+  &::before {
+    content: "\2605";
+    color: $mustard;
+    font-size: 14px;
+    -webkit-text-stroke: 0.6px $ink;
+  }
+}
+
+.ph-header__support {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 14px;
+  background: $mustard;
+  border: 1px solid $ink;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 $ink;
+  color: $ink;
+  font-weight: 700;
+  font-size: 15px;
+  font-family: $display;
+
+  &:hover {
+    color: $ink;
+    box-shadow: 3px 3px 0 $ink;
+  }
+}
+
+.ph-header__menu {
+  display: none;
+  position: relative;
+
+  summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: 1.5px solid $ink;
+    border-radius: 6px;
+    background: $paper;
+    cursor: pointer;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    svg {
+      width: 20px;
+      height: 20px;
+    }
+  }
+}
+
+.ph-header__menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  padding: 8px;
+  background: $paper;
+  border: 1.5px solid $ink;
+  border-radius: 10px;
+  box-shadow: $shadow-mid;
+
+  a {
+    padding: 12px 10px;
+    color: $ink;
+    font-size: 17px;
+    border-bottom: 1px solid rgba(28, 28, 28, 0.12);
+
+    &:last-child {
+      border-bottom: 0;
+    }
+  }
+
+  i {
+    font-family: "Lora", Georgia, serif;
+  }
+}
+
+.ph-header__menu-support {
+  margin-top: 6px;
+  background: $mustard;
+  border: 1px solid $ink !important;
+  border-radius: 6px;
+  text-align: center;
+  font-weight: 700;
+}
+
+@media (max-width: 1100px) {
+  .ph-header {
+    gap: 18px;
+    padding: 12px 20px;
+  }
+  .ph-header__nav {
+    gap: 4px 16px;
+  }
+}
+
+@media (max-width: 900px) {
+  .ph-header__nav,
+  .ph-header__icon,
+  .ph-header__github,
+  .ph-header__support {
+    display: none;
+  }
+  .ph-header__menu {
+    display: block;
+  }
+  .ph-header {
+    padding: 12px 16px;
+  }
+  .ph-header__wordmark {
+    font-size: 22px;
+  }
+}
+
+// ---------- hero toy box ----------
+
+.ph-hero {
+  position: relative;
+  padding: 20px 24px 0;
+}
+
+.ph-toybox {
+  // Set from the toy box's width (see setupToyboxScale): 1 at 1392px wide,
+  // smaller below that so the whole layout shrinks instead of overlapping.
+  --toy-scale: 1;
+  position: relative;
+  max-width: 1392px;
+  margin: 0 auto;
+  height: calc(800px * var(--toy-scale));
+  border: 1.5px solid $ink;
+  border-radius: 18px;
+  box-shadow: $shadow-big;
+  @include dotted($box);
+}
+
+.ph-toybox__toys {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+
+  > * {
+    pointer-events: auto;
+  }
+}
+
+.ph-toybox__swipe {
+  display: none;
+}
+
+.ph-hero__pitch {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(168px * var(--toy-scale));
+  z-index: 2;
+  width: 640px;
+  margin: 0 auto;
+  scale: var(--toy-scale);
+  transform-origin: top center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+
+  h1 {
+    margin: 0;
+    font-weight: 800;
+    font-size: var(--fs-display);
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    color: $text;
+  }
+
+  p {
+    margin: 0;
+    max-width: 520px;
+    font-size: var(--fs-lead);
+    line-height: 1.5;
+    color: $text;
+  }
+}
+
+.ph-hero__ctas {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.ph-toy,
+.ph-here-now {
+  position: absolute;
+  scale: var(--toy-scale);
+}
+
+// Scaling gives each toy its own stacking layer, so the toy showing a code
+// peek has to come forward for the peek to sit above the pitch.
+.ph-toy:has(> .ph-peek) {
+  z-index: 30;
+}
+
+.ph-note {
+  position: absolute;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  font-family: $hand;
+  font-size: var(--fs-hand);
+  line-height: 0.95;
+  color: $pen;
+  white-space: nowrap;
+  pointer-events: none;
+
+  small {
+    display: block;
+    margin-top: 4px;
+    font-family: $mono;
+    font-size: 10px;
+    color: $text;
+  }
+}
+
+.ph-note__arrow {
+  flex: none;
+  width: 54px;
+  height: 36px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ph-here-now {
+  right: 4%;
+  top: calc(34px * var(--toy-scale));
+  transform-origin: top right;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 14px;
+  background: $paper;
+  border: 1.5px solid $ink;
+  border-radius: 999px;
+  box-shadow: $shadow-mid;
+  transform: rotate(-3deg);
+  font-family: $mono;
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.ph-here-now__dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgb(16, 210, 16);
+  box-shadow: 0 0 6px rgba(16, 210, 16, 0.8);
+}
+
+// The old homepage's neon sign, renamed. Same id and can-move data.
+// The sign can be dragged, so it isn't scaled (a scaled parent would make it
+// lag behind the cursor). Its text shrinks instead.
+.ph-toy--sign {
+  right: 22.4%;
+  top: calc(60px * var(--toy-scale));
+  z-index: 3;
+  scale: none;
+}
+
+#sign {
+  font-family: $body;
+  font-weight: 700;
+  font-size: calc(32px * var(--toy-scale));
+  color: $brick;
+  transform-origin: center;
+  rotate: -4deg;
+  cursor: grab;
+  user-select: none;
+  white-space: nowrap;
+  animation: ph-neon 2.5s infinite alternate;
+}
+
+@keyframes ph-neon {
+  0% {
+    text-shadow:
+      0 0 6px rgba(192, 55, 60, 0.45),
+      0 0 18px rgba(192, 55, 60, 0.25);
+  }
+  100% {
+    text-shadow:
+      0 0 8px rgba(192, 55, 60, 0.6),
+      0 0 24px rgba(192, 55, 60, 0.4);
+  }
+}
+
+.ph-toy--newest {
+  left: 17%;
+  top: calc(62px * var(--toy-scale));
+  transform-origin: top left;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transform: rotate(-4deg);
+  color: $ink;
+  text-decoration: none;
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+.ph-toy__caption {
+  font-family: $mono;
+  font-size: 10px;
+  color: $text;
+}
+
+.ph-toy--lamp {
+  left: 6%;
+  top: 0;
+  transform-origin: top left;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ph-toy--lamp__cord {
+  width: 1.5px;
+  height: 40px;
+  background: $ink;
+}
+
+.lamp {
+  display: block;
+  width: 92px;
+  height: auto;
+  cursor: pointer;
+  transform-origin: top center;
+
+  &:hover {
+    animation: ph-jiggle 0.5s ease-in-out;
+  }
+
+  &.clicked {
+    filter: brightness(1.2) saturate(1.6)
+      drop-shadow(0 0 50px rgba(247, 220, 156, 0.85));
+  }
+}
+
+@keyframes ph-jiggle {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(5deg);
+  }
+  66% {
+    transform: rotate(-4deg);
+  }
+}
+
+.ph-note--lamp {
+  left: 108px;
+  top: 150px;
+  transform: rotate(-3deg);
+}
+
+// Right side, between the hydrant and the boxes, so the plant on the left
+// has room to grow to full height.
+.ph-toy--visits {
+  right: 4%;
+  top: calc(428px * var(--toy-scale));
+  transform-origin: top right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.ph-visits {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1.5px solid $ink;
+  border-radius: 10px;
+  box-shadow: 3px 3px 0 rgba(28, 28, 28, 0.3);
+  transform: rotate(-2deg);
+  background: $mustard;
+}
+
+.ph-visits__label {
+  font-family: $mono;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+}
+
+.ph-visits__digits {
+  display: flex;
+  gap: 3px;
+  min-height: 40px;
+
+  > span {
+    width: 28px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, $paper 0 48%, #e9e4d6 52% 100%);
+    border-radius: 3px;
+    font-family: $mono;
+    font-weight: 600;
+    font-size: 24px;
+  }
+}
+
+.ph-note--visits {
+  position: static;
+  font-size: 24px;
+  text-align: right;
+  transform: rotate(-3deg);
+}
+
+.ph-toy--plant {
+  left: 7%;
+  bottom: calc(30px * var(--toy-scale));
+  transform-origin: bottom left;
+}
+
+#plantContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+// The original playhtml.fun plant: a green stalk in a burlywood pot.
+#plant {
+  width: 30px;
+  height: 150px;
+  background: green;
+  border-top-left-radius: 50%;
+  border-top-right-radius: 50%;
+  transform-origin: bottom center;
+  cursor: pointer;
+}
+
+.pot {
+  position: relative;
+  z-index: 1;
+  width: 90px;
+  height: 80px;
+  background: burlywood;
+  border-radius: 10px;
+}
+
+.ph-note--plant {
+  left: 84px;
+  top: -64px;
+  transform: rotate(-3deg);
+}
+
+.ph-toy--spin {
+  left: 22%;
+  bottom: calc(70px * var(--toy-scale));
+  transform-origin: bottom left;
+}
+
+.ph-sticker {
+  display: block;
+  width: 116px;
+  height: 116px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ph-note--spin {
+  left: 100px;
+  top: -66px;
+  transform: rotate(-4deg);
+
+  .ph-note__arrow {
+    width: 46px;
+    height: 32px;
+    margin-top: 16px;
+  }
+}
+
+.ph-toy--hydrant {
+  right: 9%;
+  top: calc(150px * var(--toy-scale));
+  transform-origin: top right;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ph-hydrant {
+  width: 110px;
+
+  .fire-hydrant {
+    height: 189px;
+    width: 110px;
+    background: url(/fire-hydrant.png) center / contain no-repeat;
+    cursor: pointer;
+    filter: drop-shadow(3px 4px 0 rgba(28, 28, 28, 0.18));
+  }
+}
+
+.ph-note--hydrant {
+  position: static;
+  margin-top: 8px;
+  text-align: center;
+  transform: rotate(-3deg);
+}
+
+.ph-toy--boxes {
+  right: 4%;
+  bottom: calc(60px * var(--toy-scale));
+  transform-origin: bottom right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.ph-note--boxes {
+  position: static;
+  text-align: right;
+  transform: rotate(-2deg);
+}
+
+.ph-boxes {
+  display: flex;
+  gap: 14px;
+  min-height: 74px;
+}
+
+.ph-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 74px;
+  height: 74px;
+  border: 1.5px solid $ink;
+  border-radius: 8px;
+  box-shadow: $shadow-mid;
+  font-family: $mono;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.08s ease;
+
+  &:nth-child(1) {
+    rotate: -4deg;
+  }
+  &:nth-child(2) {
+    rotate: 3deg;
+  }
+  &:nth-child(3) {
+    rotate: -2deg;
+  }
+
+  &:active {
+    translate: 3px 3px;
+    box-shadow: 2px 2px 0 $ink;
+  }
+
+  .ph-box__main {
+    font-size: 20px;
+  }
+
+  .ph-box__suffix {
+    font-size: 11px;
+    opacity: 0.8;
+    margin-top: 3px;
+  }
+}
+
+// Hover (tap on phones) code peeks.
+.ph-peek {
+  position: absolute;
+  z-index: 30;
+  width: max-content;
+  max-width: min(440px, calc(100vw - 32px));
+  border: 1.5px solid $ink;
+  border-radius: 4px;
+  background: $code-paper;
+  box-shadow: 2px 2px 0 $ink;
+  overflow: hidden;
+  text-align: left;
+  pointer-events: none;
+  // Toys are scaled down on smaller windows; the code stays full size.
+  scale: calc(1 / var(--toy-scale));
+  transform-origin: top left;
+
+  pre {
+    margin: 0;
+    padding: 10px 14px;
+    font-family: $mono;
+    font-size: 13px;
+    line-height: 1.65;
+    color: #24292e;
+    white-space: pre;
+  }
+}
+
+.ph-toy--lamp .ph-peek {
+  left: 10px;
+  top: 270px;
+}
+.ph-toy--plant .ph-peek {
+  left: -10px;
+  bottom: calc(100% + 10px);
+  transform-origin: bottom left;
+}
+.ph-toy--spin .ph-peek {
+  left: 120px;
+  bottom: 0;
+  transform-origin: bottom left;
+}
+.ph-toy--visits .ph-peek {
+  right: 0;
+  bottom: calc(100% + 10px);
+  transform-origin: bottom right;
+}
+.ph-toy--hydrant .ph-peek {
+  right: -10px;
+  top: calc(100% + 8px);
+  transform-origin: top right;
+}
+.ph-toy--boxes .ph-peek {
+  right: 0;
+  bottom: calc(100% + 10px);
+  transform-origin: bottom right;
+}
+
+// Rain overlay from the hydrant sits above everything.
+.rain-background,
+.rain-effect-cloud {
+  z-index: 9000 !important;
+}
+
+// ---------- sections ----------
+
+.ph-section-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+
+  h2 {
+    margin: 0;
+    font-weight: 800;
+    font-size: var(--fs-h2);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  .ph-hand {
+    transform: rotate(-2deg);
+  }
+
+  > a {
+    font-size: var(--fs-body);
+    padding: 8px 0;
+  }
+}
+
+.ph-section-head__spacer {
+  flex: 1;
+}
+
+.ph-why {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 80px 24px 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 64px;
+  align-items: center;
+}
+
+.ph-why__text {
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  h2 {
+    margin: 0;
+    font-weight: 600;
+    font-size: var(--fs-h3);
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+
+  p {
+    margin: 0;
+    font-size: var(--fs-lead);
+    line-height: 1.55;
+    color: $body-text;
+  }
+}
+
+.ph-why__side {
+  flex: none;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.ph-stats {
+  position: relative;
+  width: 270px;
+  height: 230px;
+  border: 1.5px dashed rgba(28, 28, 28, 0.35);
+  border-radius: 18px;
+  background: rgba(255, 253, 248, 0.5);
+}
+
+.ph-stat {
+  position: absolute;
+  border-radius: 50%;
+  color: $paper;
+  border: 4px solid #fff;
+  box-shadow: rgba(28, 28, 28, 0.35) 1px 4px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-family: $display;
+  font-weight: 800;
+  line-height: 1;
+
+  small {
+    font-family: $body;
+    font-weight: 700;
+    font-size: 10px;
+    margin-top: 3px;
+    padding: 0 6px;
+  }
+}
+
+.ph-stat--sites {
+  left: 14px;
+  top: 18px;
+  width: 96px;
+  height: 96px;
+  background: $brick;
+  font-size: 25px;
+  transform: rotate(-8deg);
+}
+
+.ph-stat--pages {
+  left: 120px;
+  top: 54px;
+  width: 122px;
+  height: 122px;
+  background: $ultramarine;
+  font-size: 32px;
+  transform: rotate(6deg);
+
+  small {
+    font-size: 12px;
+  }
+}
+
+.ph-stat--downloads {
+  left: 34px;
+  top: 126px;
+  width: 84px;
+  height: 84px;
+  background: $sage;
+  font-size: 22px;
+  transform: rotate(-10deg);
+}
+
+.ph-supporters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+
+  > .ph-hand {
+    font-size: var(--fs-hand);
+    transform: rotate(-2deg);
+  }
+
+  li.ph-hand {
+    font-size: 22px;
+    transform: rotate(-4deg);
+  }
+
+  ul {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+}
+
+// How it works
+.ph-how {
+  max-width: 1392px;
+  margin: 0 auto;
+  padding: 64px 24px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.ph-how__steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+}
+
+.ph-how__step {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  h3 {
+    margin: 6px 0 0;
+    font-weight: 800;
+    font-size: var(--fs-h4);
+    letter-spacing: -0.01em;
+  }
+
+  p {
+    margin: 0;
+    font-size: var(--fs-body);
+    line-height: 1.5;
+    color: $text;
+  }
+}
+
+.ph-how__card {
+  height: 270px;
+  padding: 22px 20px;
+}
+
+.ph-how__card--code {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+}
+
+.ph-how__aside {
+  align-self: flex-end;
+  font-size: var(--fs-hand);
+  transform: rotate(-3deg);
+}
+
+.ph-how__card--windows {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.ph-window {
+  position: relative;
+  flex: 1;
+  height: 168px;
+  border: 1px solid $ink;
+  border-radius: 6px;
+  background: $paper;
+  overflow: hidden;
+}
+
+.ph-window--left {
+  transform: rotate(-1.5deg);
+  touch-action: none;
+}
+
+.ph-window--right {
+  transform: rotate(1.5deg);
+}
+
+.ph-window__bar {
+  display: flex;
+  gap: 4px;
+  padding: 5px 7px;
+  border-bottom: 1px solid rgba(28, 28, 28, 0.15);
+
+  i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: $brick;
+
+    &:nth-child(2) {
+      background: $mustard;
+    }
+    &:nth-child(3) {
+      background: $sage;
+    }
+  }
+}
+
+.ph-note-paper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 76px;
+  background: #ffc4d6;
+  border: 1px solid $ink;
+  border-radius: 4px;
+  box-shadow: 2px 2px 0 $ink;
+  font-family: $hand;
+  font-size: 24px;
+  line-height: 1;
+  user-select: none;
+}
+
+.ph-note-paper--small {
+  width: 70px;
+  height: 56px;
+  font-size: 17px;
+  rotate: 6deg;
+}
+
+[data-mirror-note],
+.ph-mirror {
+  position: absolute;
+  left: 30%;
+  top: 36%;
+}
+
+[data-mirror-note] {
+  cursor: grab;
+  z-index: 2;
+}
+
+.ph-mirror {
+  pointer-events: none;
+  transition: translate 0.25s ease-out;
+}
+
+.ph-mirror__cursor {
+  position: absolute;
+  left: 46px;
+  top: 34px;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+
+  svg {
+    width: 14px;
+    height: 18px;
+  }
+
+  span {
+    margin-top: 12px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: $ultramarine;
+    color: $paper;
+    font-family: $mono;
+    font-size: 9px;
+    white-space: nowrap;
+  }
+}
+
+.ph-how__left-note,
+.ph-how__right-note {
+  position: absolute;
+  bottom: 6px;
+  font-size: var(--fs-hand);
+}
+
+.ph-how__left-note {
+  left: 22px;
+}
+
+.ph-how__right-note {
+  right: 22px;
+  color: $magenta;
+}
+
+.ph-how__card--persist {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 22px;
+}
+
+.ph-how__note {
+  position: absolute;
+  left: 7%;
+  top: 33%;
+  z-index: 2;
+  rotate: -6deg;
+  cursor: grab;
+  touch-action: none;
+}
+
+.ph-how__moved {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+
+  .ph-label {
+    rotate: -3deg;
+  }
+
+  .ph-hand {
+    font-size: var(--fs-hand);
+    rotate: 2deg;
+  }
+}
+
+// Made with playhtml
+.ph-made {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 72px 24px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+
+  .ph-section-head h2 {
+    font-size: var(--fs-h2);
+  }
+
+  .ph-section-head .ph-hand {
+    font-size: var(--fs-hand);
+  }
+}
+
+.ph-made__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.ph-made__fallback {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--fs-body);
+  color: $text;
+}
+
+.ph-site {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1.5px solid $ink;
+  border-radius: 8px;
+  overflow: hidden;
+  background: $paper;
+  box-shadow: $shadow-mid;
+  color: $ink;
+  text-decoration: none;
+  transition: transform 0.12s ease;
+
+  &:hover {
+    color: $ink;
+    transform: translate(-2px, -2px);
+  }
+}
+
+.ph-site__shot {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  background: var(--site-bg, #{$periwinkle});
+  border-bottom: 1.5px solid $ink;
+  overflow: hidden;
+
+  img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+  }
+}
+
+.ph-site__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  font-family: $mono;
+  font-size: 13px;
+  min-width: 0;
+
+  b {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  span {
+    color: $muted;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.ph-site--placeholder .ph-site__shot {
+  animation: ph-pulse 1.4s ease-in-out infinite alternate;
+}
+
+@keyframes ph-pulse {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+// Experiments (homepage variant of the experiments archive)
+.ph-studio {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 72px 24px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ph-studio__head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+
+  h2 {
+    margin: 0;
+    font-weight: 800;
+    font-size: 40px;
+    letter-spacing: -0.025em;
+  }
+
+  p {
+    margin: 0;
+    max-width: 560px;
+    font-size: 16px;
+    line-height: 1.5;
+    color: $text;
+  }
+
+  > a {
+    font-size: 15px;
+  }
+}
+
+.ph-studio__title {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+
+  .ph-hand {
+    font-size: 26px;
+    color: $pen;
+    transform: rotate(-3deg);
+  }
+}
+
+.ph-studio__wall {
+  position: relative;
+  padding: 32px 32px 24px;
+  background: $paper;
+  border: 1.5px solid $ink;
+  border-radius: 16px;
+  box-shadow: 4px 4px 0 $ink;
+  min-height: 380px;
+}
+
+.ph-studio__names {
+  margin: 0;
+  max-width: calc(100% - 310px);
+  font-family: $display;
+  font-weight: 800;
+  font-size: 48px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.ph-studio__name {
+  position: relative;
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 6px;
+  color: $ink;
+  text-decoration: none;
+
+  &:hover,
+  &.is-selected {
+    background: $ink;
+    color: $page;
+  }
+
+  &.is-random-active {
+    background: var(--randomizer-color);
+    color: $ink;
+  }
+
+  &.is-random-selected {
+    animation: ph-flash 0.19s steps(2) 4;
+  }
+}
+
+@keyframes ph-flash {
+  50% {
+    background: color-mix(in srgb, var(--randomizer-color) 50%, transparent);
+  }
+}
+
+.ph-studio__label {
+  position: relative;
+}
+
+.ph-studio__star {
+  position: relative;
+  font-size: 20px;
+  color: $brick;
+
+  .is-selected & {
+    color: $mustard;
+  }
+}
+
+.ph-studio__dot {
+  font-size: 26px;
+  vertical-align: middle;
+}
+
+.ph-studio__number {
+  font-family: $mono;
+  font-size: 12px;
+  color: $muted;
+}
+
+.ph-studio__fingerprints {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+
+  i {
+    position: absolute;
+    left: var(--trace-x);
+    top: var(--trace-y);
+    width: 18px;
+    height: 23px;
+    border-radius: 50% 50% 46% 46%;
+    transform: translate(-50%, -50%) rotate(var(--trace-rotate));
+    opacity: var(--trace-opacity);
+    background: radial-gradient(
+      ellipse at 48% 42%,
+      color-mix(in srgb, var(--trace-color) 20%, transparent) 0 10%,
+      transparent 11% 20%,
+      color-mix(in srgb, var(--trace-color) 25%, transparent) 21% 28%,
+      transparent 29% 38%,
+      color-mix(in srgb, var(--trace-color) 22%, transparent) 39% 46%,
+      transparent 47% 56%,
+      color-mix(in srgb, var(--trace-color) 19%, transparent) 57% 64%,
+      transparent 65%
+    );
+  }
+}
+
+.ph-studio__card {
+  position: absolute;
+  right: 28px;
+  top: 28px;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  background: $paper;
+  border: 1.5px solid $ink;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 4px 4px 0 $ink;
+  transform: rotate(2deg);
+  color: $ink;
+  text-decoration: none;
+}
+
+.ph-studio__shot {
+  display: block;
+  aspect-ratio: 4 / 3;
+  background: #f3edcc;
+  border-bottom: 1.5px solid $ink;
+  overflow: hidden;
+
+  img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.ph-studio__card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px 14px;
+
+  b {
+    font-family: $display;
+    font-weight: 800;
+    font-size: 20px;
+    line-height: 1.05;
+  }
+
+  > span:last-child {
+    font-size: 14px;
+    line-height: 1.4;
+    color: $text;
+  }
+}
+
+.ph-studio__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  max-width: calc(100% - 310px);
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px dashed rgba(28, 28, 28, 0.3);
+
+  .ph-hand {
+    font-size: 21px;
+    transform: rotate(-1deg);
+  }
+}
+
+.ph-studio__random {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+
+  button {
+    min-height: 44px;
+    padding: 0 18px;
+    background: $ink;
+    color: $page;
+    border: 1.5px solid $ink;
+    border-radius: 6px;
+    box-shadow: 3px 3px 0 $brick;
+    font-family: $mono;
+    font-size: 14px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+  }
+}
+
+.ph-studio__clickers {
+  display: inline-flex;
+  gap: 4px;
+
+  i {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--user-color);
+    border: 1px solid $ink;
+  }
+}
+
+// Events band
+// Where we meet: the latest event, with Discord as the way in
+.ph-meet-wrap {
+  padding: 0 24px;
+}
+
+.ph-meet {
+  position: relative;
+  max-width: 1100px;
+  margin: 96px auto 0;
+  border: 1.5px solid $ink;
+  border-radius: 14px;
+  background: $paper;
+  box-shadow: $shadow-big;
+  // Video left, words and Discord right, so the card fits a laptop screen.
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+
+  > .ph-label {
+    position: absolute;
+    left: 22px;
+    top: -14px;
+    z-index: 2;
+    rotate: -1.5deg;
+  }
+}
+
+.ph-meet__media {
+  position: relative;
+  display: block;
+  aspect-ratio: 1280 / 824;
+  width: 100%;
+  border-right: 1.5px solid $ink;
+  border-radius: 13px 0 0 13px;
+  overflow: hidden;
+  background: $ink;
+  color: $ink;
+
+  video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  &:hover {
+    color: $ink;
+  }
+}
+
+.ph-events__stamp {
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  border: 2px solid $brick;
+  color: $brick;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: $mono;
+  font-size: 10px;
+  text-align: center;
+  line-height: 1.25;
+  transform: rotate(-14deg);
+  background: rgba(255, 253, 248, 0.9);
+
+  b {
+    font-size: 12px;
+  }
+}
+
+.ph-meet__recent {
+  position: absolute;
+  left: 22px;
+  bottom: 20px;
+  max-width: calc(100% - 44px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  background: $paper;
+  border: 1.5px solid $ink;
+  border-radius: 8px;
+  box-shadow: 3px 3px 0 $ink;
+  rotate: -1deg;
+
+  span {
+    font-size: 13px;
+    color: $text;
+
+    &:first-child {
+      font-family: $mono;
+      font-size: 11px;
+      color: $muted;
+    }
+  }
+
+  b {
+    font-family: $display;
+    font-size: 18px;
+  }
+}
+
+.ph-meet__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+  align-content: center;
+  padding: 26px 28px;
+  border-radius: 0 13px 13px 0;
+  @include dotted(#fffef6);
+}
+
+.ph-meet__text {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  h2 {
+    margin: 0;
+    font-weight: 800;
+    font-size: var(--fs-h3);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+
+  p {
+    margin: 0;
+    font-size: var(--fs-body);
+    line-height: 1.5;
+    color: $text;
+  }
+
+  a {
+    font-size: 15px;
+  }
+}
+
+.ph-meet__join {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ph-discord-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 84px;
+  padding: 10px 20px;
+  background: $periwinkle;
+  color: $ink;
+  border: 1.5px solid $ink;
+  border-radius: 10px;
+  box-shadow: 4px 4px 0 $ink;
+  text-decoration: none;
+  text-align: center;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+
+  b {
+    font-family: $display;
+    font-size: 24px;
+  }
+
+  > span {
+    font-family: $mono;
+    font-size: 12px;
+
+    &[hidden] {
+      display: none;
+    }
+  }
+
+  &:hover {
+    color: $ink;
+    transform: translate(-1px, -1px);
+    box-shadow: 6px 6px 0 $ink;
+  }
+
+  &:active {
+    transform: translate(3px, 3px);
+    box-shadow: 1px 1px 0 $ink;
+  }
+}
+
+.ph-meet__github {
+  font-size: 14px;
+  text-align: center;
+  color: $text;
+}
+
+// we were online
+.ph-wwo {
+  position: relative;
+  max-width: 1100px;
+  margin: 96px auto 0;
+  padding: 0 24px;
+}
+
+.ph-wwo__label {
+  position: absolute;
+  left: 52px;
+  top: -13px;
+  z-index: 3;
+  rotate: -1.5deg;
+}
+
+.ph-wwo__card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  border: 1.5px solid $ink;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #f3f0ea;
+  box-shadow: $shadow-big;
+}
+
+.ph-wwo__text {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 40px 36px 36px;
+
+  h2 {
+    margin: 0;
+    font-family: "Lora", Georgia, serif;
+    font-style: italic;
+    font-weight: 600;
+    font-size: var(--fs-h2);
+    line-height: 1;
+    letter-spacing: -0.01em;
+    color: $body-text;
+  }
+
+  > p {
+    margin: 0;
+    font-size: var(--fs-lead);
+    line-height: 1.45;
+    color: $body-text;
+  }
+
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: var(--fs-body);
+  }
+
+  li {
+    display: grid;
+    grid-template-columns: 14px 1fr;
+    gap: 10px;
+    align-items: baseline;
+
+    span span {
+      color: #4a4a46;
+      font-size: var(--fs-small);
+    }
+  }
+}
+
+.ph-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.ph-dot--brick {
+  background: $brick;
+}
+.ph-dot--ultramarine {
+  background: $ultramarine;
+}
+.ph-dot--sage {
+  background: $sage;
+}
+
+.ph-soon {
+  font-family: $mono;
+  font-size: 11px !important;
+  padding: 1px 6px;
+  border: 1px solid $ink;
+  border-radius: 999px;
+  vertical-align: 2px;
+  color: $ink !important;
+}
+
+.ph-wwo__fine {
+  font-size: 14px;
+  color: #4a4a46;
+}
+
+.ph-wwo__media {
+  position: relative;
+  border-left: 1.5px solid $ink;
+  min-height: 380px;
+  background: #fff;
+
+  video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+}
+
+.ph-wwo__caption {
+  position: absolute;
+  left: 22px;
+  bottom: 26px;
+  transform: rotate(-3deg);
+  background: rgba(255, 253, 248, 0.82);
+  padding: 6px 10px;
+  border-radius: 4px;
+}
+
+// Come play with us
+// The two asks: make something with us, or help keep it going
+.ph-asks {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 72px 24px 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.ph-ask {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 32px 28px 26px;
+  border: 1.5px solid $ink;
+  border-radius: 14px;
+  box-shadow: $shadow-big;
+
+  > .ph-label {
+    position: absolute;
+    left: 20px;
+    top: -14px;
+    rotate: -1.5deg;
+  }
+
+  h2 {
+    margin: 0;
+    font-weight: 800;
+    font-size: var(--fs-h3);
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+  }
+
+  > p {
+    margin: 0;
+    font-size: var(--fs-body);
+    line-height: 1.5;
+    color: $body-text;
+  }
+}
+
+.ph-ask--collab {
+  background: $paper;
+  rotate: -0.4deg;
+}
+
+.ph-ask--fund {
+  @include dotted(#fff3c4);
+  rotate: 0.5deg;
+}
+
+// Ways to collaborate: chips that link to the write-up of each past project.
+.ph-ask__ways {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border: 1.5px solid $ink;
+    border-radius: 999px;
+    background: $paper;
+    color: $ink;
+    text-decoration: none;
+    font-family: $display;
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1.2;
+    transition: translate 0.15s ease;
+
+    &:hover,
+    &:focus-visible {
+      translate: 0 -2px;
+      color: $ink;
+    }
+  }
+
+  .ph-logo {
+    font-weight: 700;
+  }
+}
+
+.ph-ask__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 4px;
+
+  a:not(.ph-btn) {
+    font-size: 14px;
+  }
+}
+
+.ph-ask__foot--stack {
+  flex-direction: column;
+  align-items: stretch;
+  text-align: center;
+}
+
+.ph-ask__fine {
+  font-family: $mono;
+  font-size: 11px;
+  color: $muted;
+}
+
+.ph-ask__fund-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: auto;
+
+  .ph-goal {
+    flex: 1;
+    margin-top: 0;
+  }
+}
+
+.ph-logo {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid $ink;
+  border-radius: 4px;
+  color: $ink;
+  text-decoration: none;
+  transition: translate 0.15s ease;
+
+  &:is(a):hover,
+  &:is(a):focus-visible {
+    translate: 0 -2px;
+    // Beat the global a:hover ink color so text on dark badges stays visible.
+    color: var(--logo-fg, #{$ink});
+  }
+}
+
+.ph-logo--wikipedia {
+  background: $paper;
+  box-shadow: 2px 2px 0 $ink;
+  rotate: -2deg;
+  font-family: "Linux Libertine", Georgia, "Times New Roman", serif;
+  font-size: 19px;
+  letter-spacing: 0.04em;
+
+  span {
+    font-size: 15px;
+    letter-spacing: 0.08em;
+  }
+}
+
+.ph-logo--rhizome {
+  --logo-fg: #3ddc6a;
+  background: $ink;
+  color: #3ddc6a;
+  box-shadow: 2px 2px 0 $ink;
+  rotate: 1.5deg;
+  font-family: $display;
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.ph-logo--grayarea {
+  --logo-fg: #ffffff;
+  background: #6b6b6b;
+  color: #ffffff;
+  box-shadow: 2px 2px 0 $ink;
+  rotate: 2deg;
+  font-family: $display;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.ph-logo--itp {
+  --logo-fg: #ffffff;
+  background: #57068c;
+  color: #ffffff;
+  box-shadow: 2px 2px 0 $ink;
+  rotate: -1deg;
+  font-family: $display;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.ph-logo--eyebeam {
+  background: #ffffff;
+  box-shadow: 2px 2px 0 $ink;
+  rotate: 1.5deg;
+  font-family: $display;
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.ph-logo--sfpc {
+  --logo-fg: #b89cf5;
+  background: $ink;
+  color: #b89cf5;
+  box-shadow: 2px 2px 0 $ink;
+  rotate: -2.5deg;
+  font-family: $mono;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+}
+
+.ph-logo--cooper {
+  background: #ffffff;
+  box-shadow: 2px 2px 0 $ink;
+  rotate: -1deg;
+  font-family: $display;
+  font-weight: 700;
+}
+
+.ph-logo--small {
+  min-height: 0;
+  padding: 1px 8px;
+  font-size: 12px;
+  vertical-align: baseline;
+
+  span {
+    font-size: 10px;
+  }
+}
+
+// Tip jar: a button; coins from everyone here right now drop in.
+.ph-jar {
+  flex: none;
+  // Fixed width so the count label changing length never shifts the goal bar.
+  width: 112px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+
+  svg {
+    width: 78px;
+    height: 90px;
+    overflow: visible;
+    transition: rotate 0.15s ease;
+  }
+
+  &:hover svg {
+    rotate: -4deg;
+  }
+
+  &:active svg {
+    rotate: 3deg;
+  }
+
+  .is-new {
+    animation: ph-coin-drop 0.45s cubic-bezier(0.3, 0.6, 0.4, 1.2);
+  }
+}
+
+.ph-jar__count {
+  width: 100%;
+  font-family: $mono;
+  font-size: 11px;
+  color: $muted;
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes ph-coin-drop {
+  from {
+    translate: 0 -90px;
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
+.ph-goal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.ph-goal__bar {
+  display: block;
+  height: 14px;
+  background: $paper;
+  border: 1.5px solid $ink;
+  border-radius: 999px;
+  overflow: hidden;
+
+  &[hidden] {
+    display: none;
+  }
+
+  > span {
+    display: block;
+    height: 100%;
+    background: $mustard;
+    border-right: 1.5px solid $ink;
+  }
+}
+
+.ph-goal__label {
+  font-family: $mono;
+  font-size: 13px;
+  color: $ink;
+}
+
+// Guestbook
+.ph-guestbook {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 88px 24px 0;
+}
+
+.ph-guestbook__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 40px 32px 30px;
+  border: 1.5px solid $ink;
+  border-radius: 14px;
+  box-shadow: $shadow-big;
+  @include dotted($box);
+
+  > .ph-label {
+    position: absolute;
+    left: 24px;
+    top: -14px;
+    rotate: -2deg;
+  }
+}
+
+#guestbookForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  font-size: 18px;
+
+  input {
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid $ink;
+    border-radius: 6px;
+    background: $paper;
+    font: inherit;
+    font-size: 16px;
+    color: $ink;
+  }
+
+  input[name="name"] {
+    width: 130px;
+  }
+
+  .inputMessage {
+    width: 110px;
+    font-family: $mono;
+  }
+
+  button {
+    min-height: 44px;
+    padding: 0 18px;
+    background: $ink;
+    color: $page;
+    border: 1.5px solid $ink;
+    border-radius: 6px;
+    box-shadow: 3px 3px 0 $brick;
+    font-family: $mono;
+    font-size: 14px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+  }
+}
+
+#guestbookMessages {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 12px 10px;
+  min-height: 60px;
+  max-height: 166px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 14px 34px 6px;
+  margin: -6px -14px 0 -6px;
+  scrollbar-width: thin;
+  scrollbar-color: $ink transparent;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 44px),
+    transparent
+  );
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent);
+
+  .ph-chip:nth-child(3n) {
+    rotate: 0.6deg;
+  }
+  .ph-chip:nth-child(3n + 1) {
+    rotate: -1.6deg;
+  }
+  .ph-chip:nth-child(3n + 2) {
+    rotate: 0.3deg;
+  }
+}
+
+.ph-guestbook__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-family: $mono;
+  font-size: 12px;
+  color: $muted;
+}
+
+// Questions
+.ph-faq {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 80px 24px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+// The heading row and the cards share one width so "more in the docs" ends
+// where the cards end.
+.ph-faq > .ph-section-head,
+.ph-faq__list {
+  width: 100%;
+  max-width: 900px;
+}
+
+.ph-faq__list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  details {
+    border: 1.5px solid $ink;
+    border-radius: 10px;
+    background: $paper;
+    box-shadow: $shadow-mid;
+  }
+
+  summary {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 20px;
+    cursor: pointer;
+    list-style: none;
+    font-family: $display;
+    font-weight: 700;
+    font-size: var(--fs-h4);
+    line-height: 1.25;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    > span:first-child {
+      flex: none;
+      width: 18px;
+      font-family: $mono;
+      font-weight: 500;
+      font-size: 12px;
+      color: $muted;
+    }
+
+    > span:nth-child(2) {
+      flex: 1;
+    }
+
+    i {
+      flex: none;
+      width: 30px;
+      height: 30px;
+      border: 1.5px solid $ink;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: $mono;
+      font-style: normal;
+      font-size: 17px;
+      line-height: 1;
+      background: $page;
+      color: $ink;
+
+      &::before {
+        content: "+";
+      }
+    }
+  }
+
+  details[open] summary i {
+    background: $ink;
+    color: $page;
+
+    &::before {
+      content: "–";
+    }
+  }
+
+  p {
+    margin: 0;
+    padding: 0 20px 20px 54px;
+    max-width: 760px;
+    font-size: var(--fs-body);
+    line-height: 1.55;
+    color: $body-text;
+  }
+}
+
+// Footer
+.ph-footer {
+  border-top: 1px solid rgba(28, 28, 28, 0.18);
+  background: #efeacb;
+  padding: 40px 32px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px 64px;
+  font-size: 15px;
+
+  nav {
+    flex: 1 1 140px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    > span {
+      font-family: $mono;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      color: $muted;
+    }
+
+    a {
+      color: $ink;
+      text-decoration: none;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+}
+
+.ph-footer__about {
+  flex: 2 1 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 415px;
+
+  > span:last-child {
+    color: $text;
+    line-height: 1.5;
+  }
+}
+
+.ph-footer__wordmark {
+  font-family: $wordmark;
+  font-size: 24px;
+}
+
+// Big footer wordmark. Each click gives a letter a new shared random color
+// (--letter-color, marked with data-lit once a letter has one).
+.ph-footer__big {
+  background: #efeacb;
+  height: 190px;
+  overflow: hidden;
+  text-align: center;
+  padding: 0 40px;
+  font-family: $wordmark;
+  font-size: 250px;
+  line-height: 0.95;
+  letter-spacing: -0.01em;
+  color: rgba(28, 28, 28, 0.9);
+  white-space: nowrap;
+
+  .letter {
+    display: inline-block;
+    cursor: pointer;
+    transition:
+      color 0.2s ease,
+      text-shadow 0.2s ease;
+
+    &:hover {
+      color: $ultramarine;
+    }
+
+    &[data-lit] {
+      color: var(--letter-color, #{$mustard});
+      text-shadow: 0 0 24px
+        color-mix(in srgb, var(--letter-color, #{$mustard}) 70%, transparent);
+    }
+  }
+}
+
+// ---------- tablet ----------
+
+// Laptop widths: smaller heading and notes so the lamp and plant notes clear
+// the pitch.
+@media (max-width: 1000px) {
+  .ph-how__steps,
+  .ph-asks {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+  }
+  .ph-how__card {
+    max-width: 560px;
+  }
+  .ph-studio__names,
+  .ph-studio__foot {
+    max-width: none;
+  }
+  .ph-studio__card {
+    position: relative;
+    right: auto;
+    top: auto;
+    margin-top: 24px;
+    transform: rotate(1deg);
+  }
+  .ph-meet {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  // Stacked, the video is capped so the card never fills the screen.
+  .ph-meet__media {
+    max-height: min(46vh, 400px);
+    border-right: 0;
+    border-bottom: 1.5px solid $ink;
+    border-radius: 13px 13px 0 0;
+  }
+  .ph-meet__body {
+    border-radius: 0 0 13px 13px;
+  }
+  .ph-why {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+// ---------- phone ----------
+
+// Tablets: words and the Discord button side by side under the video.
+@media (min-width: 761px) and (max-width: 1000px) {
+  .ph-meet__body {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+  }
+}
+
+// Below this width the scaled desktop toy box gets too small to read, so the
+// toys stack: lamp and sign up top, pitch, then a shelf of toys.
+@media (max-width: 900px) {
+  .ph-hero {
+    padding: 14px 12px 0;
+  }
+
+  // Stacked toys are drawn at full size. scale: none (not 1) also keeps the
+  // fixed-position code peeks tied to the screen rather than the toy.
+  .ph-toybox {
+    --toy-scale: 1 !important;
+  }
+
+  .ph-toy,
+  .ph-here-now,
+  .ph-hero__pitch,
+  .ph-peek {
+    scale: none;
+  }
+
+  .ph-toybox {
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 0 0 26px;
+    border-radius: 14px;
+    box-shadow: 5px 5px 0 $ink;
+  }
+
+  // Same toys and notes as desktop, stacked: lamp and sign above the pitch,
+  // the rest on a shelf below it that scrolls sideways when it runs out of room.
+  .ph-hero__pitch {
+    position: static;
+    width: auto;
+    margin: 0;
+    padding: 178px 16px 8px;
+    gap: 10px;
+
+    h1 {
+      font-size: clamp(34px, 6.4vw, 54px);
+      line-height: 1.05;
+    }
+
+    p {
+      font-size: clamp(15px, 2vw, 17px);
+    }
+  }
+
+  .ph-hero__ctas {
+    flex-wrap: nowrap;
+    width: min(100%, 460px);
+
+    .ph-btn {
+      min-height: 46px;
+      font-size: 15px;
+      padding: 0 14px;
+      box-shadow: 3px 3px 0 $ink;
+    }
+
+    .ph-btn--primary {
+      flex: 1;
+    }
+  }
+
+  .ph-here-now {
+    right: 12px;
+    top: 14px;
+    min-height: 30px;
+    font-size: 12px;
+    padding: 0 10px;
+    box-shadow: 3px 3px 0 $ink;
+  }
+
+  .ph-toy--sign {
+    right: 16px;
+    top: 132px;
+  }
+
+  #sign {
+    font-size: 19px;
+  }
+
+  .ph-toy--newest {
+    position: static;
+    align-self: center;
+    margin: 18px 16px 0;
+    max-width: calc(100% - 32px);
+  }
+
+  .ph-toy--lamp {
+    left: 18px;
+    top: 0;
+
+    .lamp {
+      width: 46px;
+    }
+  }
+
+  .ph-toy--lamp__cord {
+    height: 18px;
+  }
+
+  .ph-note {
+    font-size: 18px;
+  }
+
+  .ph-note__arrow {
+    width: 34px;
+    height: 24px;
+  }
+
+  .ph-note--lamp {
+    left: 54px;
+    top: 54px;
+  }
+
+  .ph-toybox__toys {
+    position: relative;
+    inset: auto;
+    display: flex;
+    justify-content: safe center;
+    align-items: flex-end;
+    gap: 30px;
+    margin-top: 26px;
+    padding: 28px 20px 12px;
+    border-top: 1.5px dashed rgba(28, 28, 28, 0.3);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
+  .ph-toybox__toys > .ph-toy {
+    position: relative;
+    flex: none;
+    max-width: 200px;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: auto !important;
+    scroll-snap-align: center;
+  }
+
+  .ph-toy--visits {
+    align-items: center;
+  }
+
+  .ph-visits {
+    padding: 8px 10px;
+
+    .ph-visits__digits > span {
+      width: 20px;
+      height: 30px;
+      font-size: 18px;
+    }
+  }
+
+  .ph-visits__digits {
+    min-height: 30px;
+  }
+
+  .ph-note--visits {
+    text-align: center;
+  }
+
+  .ph-toy--plant {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+
+    #plant {
+      width: 20px;
+      height: 100px;
+    }
+
+    .pot {
+      width: 60px;
+      height: 54px;
+    }
+  }
+
+  .ph-toybox__toys .ph-note {
+    position: static;
+    margin-top: 8px;
+    text-align: center;
+    white-space: normal;
+    transform: none;
+
+    .ph-note__arrow {
+      display: none;
+    }
+  }
+
+  .ph-toy--spin {
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: center;
+  }
+
+  .ph-sticker {
+    width: 92px;
+    height: 92px;
+  }
+
+  .ph-toy--hydrant {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .ph-hydrant {
+    width: 70px;
+
+    .fire-hydrant {
+      width: 70px;
+      height: 120px;
+    }
+  }
+
+  .ph-toy--boxes {
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: center;
+  }
+
+  .ph-boxes {
+    gap: 10px;
+  }
+
+  .ph-box {
+    width: 60px;
+    height: 60px;
+    box-shadow: 3px 3px 0 $ink;
+  }
+
+  .ph-peek {
+    position: fixed;
+    left: 16px !important;
+    right: 16px !important;
+    top: auto !important;
+    bottom: 16px !important;
+    width: auto;
+    max-width: none;
+
+    pre {
+      white-space: pre-wrap;
+      font-size: 12px;
+    }
+  }
+}
+
+// Tablets have room for every toy, so the shelf wraps instead of scrolling.
+@media (min-width: 761px) and (max-width: 900px) {
+  .ph-toybox__toys {
+    flex-wrap: wrap;
+    justify-content: center;
+    column-gap: 44px;
+    row-gap: 28px;
+    overflow: visible;
+  }
+}
+
+@include phone {
+  body.ph-home {
+    --fs-h2: 30px;
+    --fs-h3: 24px;
+    --fs-h4: 18px;
+    --fs-lead: 17px;
+    --fs-body: 15px;
+    --fs-small: 13px;
+    --fs-hand: 20px;
+  }
+
+  // Phones run out of room for the shelf, so hint that it scrolls.
+  .ph-toybox__swipe {
+    display: block;
+    align-self: flex-end;
+    padding: 0 16px;
+    font-family: $mono;
+    font-size: 10px;
+    color: $muted;
+  }
+
+  .ph-section-head h2,
+  .ph-why {
+    padding: 48px 16px 0;
+    gap: 32px;
+  }
+
+  .ph-why__side {
+    width: 100%;
+  }
+
+  .ph-stats {
+    margin: 0 auto;
+  }
+
+  .ph-how {
+    padding: 48px 16px 0;
+  }
+
+  .ph-how__card {
+    height: 220px;
+    padding: 18px 14px;
+    box-shadow: 5px 5px 0 $ink;
+  }
+
+  .ph-code pre {
+    font-size: 11.5px;
+    padding: 10px 12px 8px;
+  }
+
+  .ph-window {
+    height: 130px;
+  }
+
+  .ph-how__left-note,
+  .ph-how__right-note {
+    bottom: 4px;
+  }
+
+  .ph-how__left-note {
+    left: 14px;
+  }
+
+  .ph-how__right-note {
+    right: 14px;
+  }
+
+  .ph-made {
+    padding: 56px 16px 0;
+  }
+
+  .ph-made__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .ph-site {
+    box-shadow: 3px 3px 0 $ink;
+  }
+
+  .ph-site__meta {
+    font-size: 11px;
+    padding: 8px;
+
+    span {
+      display: none;
+    }
+  }
+
+  .ph-studio {
+    padding: 56px 16px 0;
+    gap: 14px;
+  }
+
+  .ph-studio__head h2 {
+    font-size: 32px;
+  }
+
+  .ph-studio__wall {
+    padding: 20px 16px 18px;
+    min-height: 0;
+  }
+
+  .ph-studio__names {
+    font-size: 30px;
+  }
+
+  .ph-studio__star {
+    font-size: 14px;
+  }
+
+  .ph-studio__dot {
+    font-size: 18px;
+  }
+
+  .ph-studio__card {
+    width: min(260px, 100%);
+  }
+
+  .ph-meet-wrap {
+    padding: 0 16px;
+  }
+
+  .ph-meet {
+    margin-top: 64px;
+    box-shadow: 5px 5px 0 $ink;
+  }
+
+  .ph-meet__media {
+    aspect-ratio: 16 / 10;
+    max-height: 30vh;
+  }
+
+  .ph-meet__recent {
+    left: 10px;
+    bottom: 10px;
+    max-width: calc(100% - 20px);
+    padding: 5px 9px;
+
+    span:first-child {
+      font-size: 9px;
+    }
+
+    b {
+      font-size: 13px;
+    }
+
+    span:not(:first-child) {
+      display: none;
+    }
+  }
+
+  .ph-events__stamp {
+    right: 8px;
+    top: 8px;
+    width: 52px;
+    height: 52px;
+    font-size: 8px;
+
+    b {
+      font-size: 10px;
+    }
+  }
+
+  .ph-meet__body {
+    padding: 18px 16px;
+    gap: 16px;
+  }
+
+  .ph-meet__text {
+    gap: 6px;
+  }
+
+  .ph-discord-btn {
+    min-height: 60px;
+
+    b {
+      font-size: 19px;
+    }
+  }
+
+  .ph-wwo {
+    margin-top: 64px;
+    padding: 0 16px;
+  }
+
+  .ph-wwo__label {
+    left: 26px;
+    font-size: 10px;
+  }
+
+  .ph-wwo__card {
+    grid-template-columns: minmax(0, 1fr);
+    box-shadow: 5px 5px 0 $ink;
+  }
+
+  .ph-wwo__media {
+    order: -1;
+    min-height: 200px;
+    border-left: 0;
+    border-bottom: 1.5px solid $ink;
+  }
+
+  .ph-wwo__caption {
+    left: auto;
+    right: 12px;
+    bottom: 10px;
+    font-size: 17px;
+  }
+
+  .ph-wwo__text {
+    padding: 28px 20px 24px;
+    gap: 14px;
+
+    .ph-btn {
+      align-self: stretch;
+    }
+  }
+
+  .ph-asks {
+    padding: 56px 16px 0;
+  }
+
+  .ph-ask {
+    padding: 30px 18px 22px;
+    box-shadow: 5px 5px 0 $ink;
+    rotate: 0deg;
+  }
+
+  .ph-ask__foot .ph-btn {
+    flex: 1 1 100%;
+  }
+
+  .ph-guestbook {
+    padding: 64px 16px 0;
+  }
+
+  .ph-guestbook__card {
+    padding: 32px 16px 20px;
+    box-shadow: 5px 5px 0 $ink;
+  }
+
+  // Inline flow, so the sentence reads on from the name box like desktop.
+  #guestbookForm {
+    display: block;
+    font-size: 15px;
+    line-height: 1.6;
+
+    input,
+    button {
+      vertical-align: middle;
+      margin: 4px 0;
+    }
+
+    input[name="name"] {
+      width: 110px;
+    }
+
+    .inputMessage {
+      margin-right: 8px;
+    }
+  }
+
+  .ph-faq {
+    padding: 56px 16px 48px;
+  }
+
+  .ph-faq__list {
+    gap: 10px;
+
+    details {
+      box-shadow: 3px 3px 0 $ink;
+    }
+
+    summary {
+      padding: 14px;
+      gap: 10px;
+
+      i {
+        width: 26px;
+        height: 26px;
+      }
+    }
+
+    p {
+      padding: 0 14px 16px 42px;
+    }
+  }
+
+  .ph-footer {
+    padding: 28px 16px;
+    gap: 24px;
+  }
+
+  // Sized to the screen so the whole word fits, letters stay tappable.
+  .ph-footer__big {
+    height: 16vw;
+    font-size: 20vw;
+    padding: 0 8px;
+  }
+}
