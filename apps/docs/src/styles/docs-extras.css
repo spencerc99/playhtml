@@ -22,10 +22,10 @@
    --------------------------------------------------------------------- */
 
 :root {
-  /* Paper + ink. The page is near-white like the homepage's toy box;
-     code blocks keep the warmer paper so they stand apart. */
-  --ph-paper: #fffff9;
-  --ph-code-paper: #f4efe5;
+  /* Paper + ink. Code blocks use the homepage's near-white toy-box color
+     so they read as cards sitting on the warm paper. */
+  --ph-paper: #f4efe5;
+  --ph-code-paper: #fffff9;
   --ph-paper-warm: #ebe4d5;
   --ph-paper-deep: #e0d8c6;
   --ph-ink: #1c1c1c;
