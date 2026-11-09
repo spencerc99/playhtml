@@ -17,6 +17,7 @@ import { createPortal } from "react-dom";
 import { PlayContext, withSharedState } from "@playhtml/react";
 import {
   TraceRetentionMs,
+  ExperimentsTracesElementId,
   experimentsTracesSource,
   getExperimentTraceIndexesToRemove,
   pruneExperimentTraces,
@@ -121,7 +122,9 @@ const StudioTraces = withSharedState<
     useEffect(() => {
       onTraces(Array.isArray(data?.traces) ? data.traces : []);
     }, [data?.traces, onTraces]);
-    return <span hidden aria-hidden="true" />;
+    // The consumer's id must match the source element's id, or its data is
+    // kept under a generated id and never reaches the homepage room.
+    return <span id={ExperimentsTracesElementId} hidden aria-hidden="true" />;
   },
 );
 

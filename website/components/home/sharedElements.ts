@@ -296,3 +296,16 @@ export function setupTipJar() {
     },
   });
 }
+
+// The homepage no longer shows the experiments row, but its room still holds
+// the smudges people left on it. Keep the element registered (with `shared` in
+// index.html) so the gallery and /experiments can read and add to those
+// smudges. Consumer writes only land on elements the source room already has,
+// so this registration is what keeps the entry present. It never writes.
+export function setupExperimentsTracesHost() {
+  if (!document.getElementById("experiments-index")) return;
+  playhtml.register<{ traces: unknown[] }>("experiments-index", {
+    defaultData: { traces: [] },
+    update: () => {},
+  });
+}

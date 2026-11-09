@@ -18,6 +18,7 @@ import {
   setupToyboxScale,
 } from "./components/home/pageChrome";
 import {
+  setupExperimentsTracesHost,
   setupHereNow,
   setupPersistentNote,
   setupSnippetCopies,
@@ -59,6 +60,7 @@ setupSnippetCopies();
 setupPersistentNote();
 setupWordmarkColors();
 setupTipJar();
+setupExperimentsTracesHost();
 
 const reactContentElement = document.getElementById("reactContent");
 if (reactContentElement) {
