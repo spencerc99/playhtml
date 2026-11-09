@@ -4,7 +4,6 @@
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { RainSprinkler } from "../../../packages/react/examples/RainSprinkler";
-import ExperimentsArchive from "../ExperimentsArchive";
 import { ClickBox } from "./ClickBox";
 import { MadeWithGallery } from "./MadeWithGallery";
 import { VisitCounter } from "./VisitCounter";
@@ -30,9 +29,6 @@ export function HomeIslands() {
       </Slot>
       <Slot id="home-gallery-mount">
         <MadeWithGallery />
-      </Slot>
-      <Slot id="home-experiments-mount">
-        <ExperimentsArchive variant="home" />
       </Slot>
     </>
   );
