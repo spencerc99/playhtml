@@ -641,7 +641,7 @@ export function parseClefSuggestion(
     .sort((first, second) => second[1] - first[1])
     .map(
       ([option, probability]) =>
-        `Clef also weighed ${option} at ${percent(probability)}.`,
+        `The model also weighed ${option} at ${percent(probability)}.`,
     );
   if (scope.confidence < 0.5) {
     uncertainties.push(
@@ -1089,14 +1089,14 @@ export async function loadClefGate(
             scope: "hostname",
             placeKey: hostnameKey,
             placement: "hidden",
-            note: "Clef hid this name until a human reviews it",
+            note: "The model hid this name until a human reviews it",
             updatedAt: "",
           }
         : {
             scope: "page",
             placeKey: pageKey,
             placement: "scenery",
-            note: "Waiting for Clef or a human to approve this page",
+            note: "Waiting for the model or a human to approve this page",
             updatedAt: "",
           };
     gate.set(`${policy.scope}:${policy.placeKey}`, policy);
@@ -1174,7 +1174,7 @@ export async function loadNameGate(
       scope: "hostname" as const,
       placeKey,
       placement: "hidden" as const,
-      note: "Clef hid this name until a human reviews it",
+      note: "The model hid this name until a human reviews it",
       updatedAt: "",
     }));
 }

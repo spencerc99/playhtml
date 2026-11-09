@@ -170,7 +170,7 @@ describe("Internet place suggestions", () => {
       rationale:
         "The model chose featured at hostname scope with 64% confidence.",
       uncertainties: [
-        "Clef also weighed regular at 30%.",
+        "The model also weighed regular at 30%.",
         "The hostname scope is uncertain (40%).",
       ],
       stopProbability: expect.closeTo(0.94, 5),
