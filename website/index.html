@@ -75,7 +75,7 @@
       <nav class="ph-header__nav" aria-label="Site">
         <a href="/docs/">docs</a>
         <a href="/docs/examples/">examples</a>
-        <a href="/experiments/">experiments</a>
+        <a href="/gallery/">gallery</a>
         <a href="/events/walking-together/">events</a>
         <a class="ph-header__wwo" href="https://wewere.online"
           ><img src="/home/wwo-icon.png" width="22" height="22" alt="" /><i
@@ -126,7 +126,7 @@
         <nav class="ph-header__menu-panel" aria-label="Site menu">
           <a href="/docs/">docs</a>
           <a href="/docs/examples/">examples</a>
-          <a href="/experiments/">experiments</a>
+          <a href="/gallery/">gallery</a>
           <a href="/events/walking-together/">events</a>
           <a href="https://wewere.online"><i>we were online</i></a>
           <a href="https://discord.gg/SKbsSf4ptU">discord</a>
@@ -461,7 +461,7 @@
           <h2 id="made-h">Made with playhtml</h2>
           <span class="ph-hand">by people all over the web</span>
           <span class="ph-section-head__spacer"></span>
-          <a href="/docs/examples/">see the whole gallery</a>
+          <a href="/gallery/">see the whole gallery</a>
         </div>
         <div class="ph-made__grid" id="home-gallery-mount"></div>
       </section>
@@ -846,6 +846,10 @@
           </details>
         </div>
       </section>
+      <!-- Hosts the experiment smudges (clicks on the old homepage experiments
+           row) so the gallery and /experiments can keep reading and adding to
+           them. Nothing renders here. -->
+      <span id="experiments-index" shared hidden aria-hidden="true"></span>
     </main>
 
     <footer class="ph-footer">
@@ -864,13 +868,13 @@
       </nav>
       <nav aria-label="Community">
         <span>COMMUNITY</span>
+        <a href="/gallery/">gallery</a>
         <a href="/events/walking-together/">events</a>
         <a href="https://discord.gg/SKbsSf4ptU">discord</a>
         <a href="https://github.com/spencerc99/playhtml">github</a>
       </nav>
       <nav aria-label="Project">
         <span>PROJECT</span>
-        <a href="/experiments/">experiments</a>
         <a href="https://github.com/sponsors/spencerc99">support</a>
         <a href="https://wewere.online">wewere.online</a>
       </nav>
