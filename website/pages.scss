@@ -376,44 +376,6 @@ $phone: 760px;
 }
 
 // Class band
-// Getting-started band right after the grid, for people browsing for ideas.
-.ph-make {
-  max-width: 1052px;
-  margin: 64px auto 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px 40px;
-  padding: 32px 40px;
-  background: $paper;
-  border: 1.5px solid $ink;
-  border-radius: 16px;
-  box-shadow: 4px 4px 0 $ink;
-
-  h2 {
-    margin: 0 0 8px;
-    font-size: 34px;
-  }
-
-  p {
-    margin: 0;
-    max-width: 520px;
-    color: $text;
-  }
-
-  @include phone {
-    flex-direction: column;
-    align-items: flex-start;
-    margin-top: 48px;
-    padding: 24px 20px;
-
-    h2 {
-      font-size: 28px;
-    }
-  }
-}
-
-.ph-make__links,
 .ph-page__actions {
   display: flex;
   flex-wrap: wrap;
