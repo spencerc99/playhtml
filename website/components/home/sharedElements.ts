@@ -1,5 +1,5 @@
 // ABOUTME: Registers the homepage's vanilla can-play elements with playhtml.
-// ABOUTME: Covers the here-now count, the candle, the snippet copy counter and the persistent note.
+// ABOUTME: Covers the here-now count, the snippet copy counter and the persistent note.
 
 import { playhtml } from "playhtml";
 import { setLabelText } from "./pageChrome";
@@ -30,25 +30,6 @@ export function setupHereNow() {
       },
     },
   );
-}
-
-// Same id and {on} data as the old homepage candle.
-export function setupCandle() {
-  const candle = document.getElementById("customCandle");
-  if (!candle) return;
-
-  playhtml.register(candle, {
-    defaultData: { on: true },
-    onClick: (_event, { data, setData }) => {
-      setData({ on: !data.on });
-    },
-    updateElement: ({ element, data }) => {
-      (element as HTMLImageElement).src = data.on
-        ? "/candle-gif.gif"
-        : "/candle-off.png";
-    },
-    resetShortcut: "shiftKey",
-  });
 }
 
 function renderTally(count: number) {

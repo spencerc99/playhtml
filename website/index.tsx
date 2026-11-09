@@ -17,7 +17,6 @@ import {
   setupSponsorGoal,
 } from "./components/home/pageChrome";
 import {
-  setupCandle,
   setupHereNow,
   setupPersistentNote,
   setupSnippetCopies,
@@ -52,7 +51,6 @@ setupSponsorGoal();
 loadLiveCounts();
 setupGuestbookNameInput();
 setupHereNow();
-setupCandle();
 setupSnippetCopies();
 setupPersistentNote();
 

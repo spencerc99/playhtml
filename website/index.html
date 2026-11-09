@@ -221,32 +221,7 @@
 
             <div class="ph-toy ph-toy--plant" data-peek="plant">
               <div id="plantContainer" can-move can-move-bounds="#toybox">
-                <div id="plant" can-grow>
-                  <svg viewBox="0 0 80 150" aria-hidden="true">
-                    <path
-                      d="M40 150 L40 40"
-                      stroke="#5c7c54"
-                      stroke-width="4"
-                    />
-                    <ellipse
-                      cx="24"
-                      cy="70"
-                      rx="18"
-                      ry="9"
-                      fill="#5c7c54"
-                      transform="rotate(-30 24 70)"
-                    />
-                    <ellipse
-                      cx="56"
-                      cy="50"
-                      rx="18"
-                      ry="9"
-                      fill="#5c7c54"
-                      transform="rotate(30 56 50)"
-                    />
-                    <ellipse cx="40" cy="28" rx="10" ry="16" fill="#7a9574" />
-                  </svg>
-                </div>
+                <div id="plant" can-grow></div>
                 <div class="pot"></div>
               </div>
               <span class="ph-note ph-note--plant">
@@ -282,27 +257,16 @@
                   ></span
                 >
               </span>
-              <div id="stamp" class="ph-sticker" can-spin shared>
-                play<br />html
-              </div>
-            </div>
-
-            <div class="ph-toy ph-toy--candle" data-peek="candle">
               <img
-                can-play
-                can-move
-                can-move-bounds="#toybox"
-                id="customCandle"
-                src="/candle-gif.gif"
-                class="candle"
-                alt="A candle anyone can light or blow out"
+                id="stamp"
+                class="ph-sticker"
+                src="/playhtml-logo.png"
+                alt="The playhtml logo, a slide between code brackets"
+                draggable="false"
+                can-spin
+                shared
               />
-              <span class="ph-note ph-note--candle"
-                >light it or<br />blow it out</span
-              >
             </div>
-
-            <span class="ph-heart" aria-hidden="true">♥</span>
 
             <div class="ph-toy ph-toy--hydrant" data-peek="hydrant">
               <div id="home-hydrant-mount" class="ph-hydrant"></div>
@@ -873,15 +837,8 @@
   <span class="t">&lt;div</span> <span class="a">id</span>=<span class="s">"plant"</span> <mark>can-grow</mark><span class="t">&gt;&lt;/div&gt;</span>
 <span class="t">&lt;/div&gt;</span></pre>
     </template>
-    <template id="peek-spin" data-file="sticker.html">
-      <pre><span class="t">&lt;div</span> <span class="a">id</span>=<span class="s">"sticker"</span> <mark>can-spin</mark><span class="t">&gt;</span>play html<span class="t">&lt;/div&gt;</span></pre>
-    </template>
-    <template id="peek-candle" data-file="candle.html">
-      <pre><span class="t">&lt;img</span> <span class="a">id</span>=<span class="s">"candle"</span> <span class="a">src</span>=<span class="s">"candle.gif"</span> <mark>can-play</mark><span class="t">&gt;</span>
-
-candle.defaultData = { on: true };
-candle.onClick = (e, { data, setData }) =&gt;
-  setData({ on: !data.on });</pre>
+    <template id="peek-spin" data-file="logo.html">
+      <pre><span class="t">&lt;img</span> <span class="a">id</span>=<span class="s">"logo"</span> <span class="a">src</span>=<span class="s">"logo.png"</span> <mark>can-spin</mark><span class="t">&gt;</span></pre>
     </template>
     <template id="peek-visits" data-file="visits.html">
       <pre><span class="t">&lt;span</span> <span class="a">id</span>=<span class="s">"visits"</span> <mark>can-play</mark><span class="t">&gt;&lt;/span&gt;</span>

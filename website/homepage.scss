@@ -943,30 +943,28 @@ h3 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
   cursor: grab;
   touch-action: none;
 }
 
+// The original playhtml.fun plant: a green stalk in a burlywood pot.
 #plant {
-  width: 80px;
+  width: 30px;
   height: 150px;
+  background: green;
+  border-top-left-radius: 50%;
+  border-top-right-radius: 50%;
   transform-origin: bottom center;
   cursor: pointer;
-
-  svg {
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
 }
 
 .pot {
+  position: relative;
+  z-index: 1;
   width: 90px;
-  height: 60px;
-  background: $brick;
-  border: 1.5px solid $ink;
-  border-radius: 4px 4px 22px 22px;
+  height: 80px;
+  background: burlywood;
+  border-radius: 10px;
 }
 
 .ph-note--plant {
@@ -981,19 +979,9 @@ h3 {
 }
 
 .ph-sticker {
-  width: 104px;
-  height: 104px;
-  border-radius: 50%;
-  border: 3px dashed $ultramarine;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: $wordmark;
-  font-size: 18px;
-  line-height: 1.1;
-  color: $ultramarine;
-  text-align: center;
-  background: rgba(39, 75, 158, 0.06);
+  display: block;
+  width: 116px;
+  height: 116px;
   cursor: pointer;
   user-select: none;
 }
@@ -1008,45 +996,6 @@ h3 {
     height: 32px;
     margin-top: 16px;
   }
-}
-
-.ph-toy--candle {
-  left: 37%;
-  bottom: 44px;
-  display: flex;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-#customCandle {
-  width: 50px;
-  height: 50px;
-  cursor: pointer;
-  touch-action: none;
-}
-
-.ph-note--candle {
-  position: static;
-  font-size: 22px;
-  transform: rotate(-3deg);
-}
-
-.ph-heart {
-  position: absolute;
-  right: 31%;
-  top: 380px;
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
-  background: $ultramarine;
-  color: $paper;
-  border: 4px solid #fff;
-  box-shadow: 1px 3px 4px rgba(28, 28, 28, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  transform: rotate(14deg);
 }
 
 .ph-toy--hydrant {
@@ -1176,10 +1125,6 @@ h3 {
 .ph-toy--spin .ph-peek {
   left: 120px;
   bottom: 0;
-}
-.ph-toy--candle .ph-peek {
-  left: 0;
-  bottom: calc(100% + 10px);
 }
 .ph-toy--visits .ph-peek {
   left: 0;
@@ -2800,9 +2745,6 @@ h3 {
   .ph-toy--newest {
     left: 190px;
   }
-  .ph-heart {
-    display: none;
-  }
 }
 
 @media (max-width: 1000px) {
@@ -3007,13 +2949,13 @@ h3 {
     align-items: center;
 
     #plant {
-      width: 54px;
+      width: 20px;
       height: 100px;
     }
 
     .pot {
-      width: 64px;
-      height: 42px;
+      width: 60px;
+      height: 54px;
     }
   }
 
@@ -3038,23 +2980,8 @@ h3 {
   }
 
   .ph-sticker {
-    width: 84px;
-    height: 84px;
-    font-size: 15px;
-  }
-
-  .ph-toy--candle {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .ph-note--candle {
-    font-size: 18px;
-    text-align: center;
-  }
-
-  .ph-heart {
-    display: none;
+    width: 92px;
+    height: 92px;
   }
 
   .ph-hydrant {
