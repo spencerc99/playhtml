@@ -7,7 +7,7 @@ const appendHeadChild = document.head.appendChild.bind(document.head);
 document.head.appendChild = ((child: Node) => {
   if (
     child instanceof HTMLLinkElement &&
-    child.href.includes("https://cdn.jsdelivr.net/npm/playhtml@latest/dist/style.css")
+    child.href.includes("https://cdn.jsdelivr.net/npm/playhtml/dist/style.css")
   ) {
     child.href = "data:text/css,/* playhtml */";
   }
