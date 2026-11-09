@@ -1,4 +1,4 @@
-// ABOUTME: Non-shared homepage behaviors: label-maker letters, code peeks, the mirror demo,
+// ABOUTME: Non-shared homepage behaviors: label-maker letters, toy box scaling, code peeks, the mirror demo,
 // ABOUTME: and live GitHub and Discord counts that quietly stay hidden if a fetch fails.
 
 import { formatSimpleNumber } from "../../../packages/react/examples/utils";
@@ -31,6 +31,33 @@ export function setupLabels() {
   });
 }
 
+// The desktop toy box is laid out at this width. Narrower windows scale the
+// toys and pitch down to fit instead of rearranging them.
+const ToyboxDesignWidth = 1392;
+
+export function setupToyboxScale() {
+  const toybox = document.getElementById("toybox");
+  if (!toybox) return;
+  const apply = () => {
+    const scale = Math.min(1, toybox.offsetWidth / ToyboxDesignWidth);
+    toybox.style.setProperty("--toy-scale", scale.toFixed(4));
+  };
+  apply();
+  new ResizeObserver(apply).observe(toybox);
+}
+
+// A toy people can drag (data-peek-anchor) gets its peek under wherever the
+// dragged element sits now, not where the toy started.
+function placeNearAnchor(toy: HTMLElement, peek: HTMLElement) {
+  const selector = toy.dataset.peekAnchor;
+  const anchor = selector ? toy.querySelector<HTMLElement>(selector) : null;
+  if (!anchor) return;
+  const toyBox = toy.getBoundingClientRect();
+  const anchorBox = anchor.getBoundingClientRect();
+  peek.style.left = `${anchorBox.left - toyBox.left}px`;
+  peek.style.top = `${anchorBox.bottom - toyBox.top + 10}px`;
+}
+
 // Shows the code behind a toy on hover, or briefly after a tap on touch screens.
 export function setupCodePeeks() {
   document.querySelectorAll<HTMLElement>("[data-peek]").forEach((toy) => {
@@ -55,6 +82,7 @@ export function setupCodePeeks() {
       peek.append(head);
       if (code) peek.append(code.cloneNode(true));
       toy.append(peek);
+      placeNearAnchor(toy, peek);
     };
     const hide = () => {
       window.clearTimeout(hideTimer);

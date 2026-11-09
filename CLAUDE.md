@@ -1,176 +1,92 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (and other AI agents) when working with code in this repository.
+Guidance for Claude Code and other AI agents working in this repository. `AGENTS.md` is a symlink to this file.
 
 ## Project Overview
 
-playhtml is a collaborative, interactive HTML library that allows elements to be magically transformed with simple data attributes. Bun workspaces monorepo:
+playhtml is a collaborative, interactive HTML library: data attributes turn elements into shared, real-time ones. Bun workspaces monorepo:
 
-- **packages/playhtml**: Core library that adds interactive capabilities to HTML elements
+- **packages/playhtml**: core library
 - **packages/react**: React wrapper components
-- **packages/common**: Shared TypeScript types and interfaces
-- **packages/extension-types**: Event/metadata type contract between the extension and its Worker
-- **extension/**: Browser extension ("we were online") for collecting and visualizing browsing traces. See `extension/CLAUDE.md`.
-- **extension/website/**: `wewere.online` site — marketing pages plus visualization experiments. Shared visualization code lives in `extension/website/shared/`, reached via the `@movement` path alias.
-- **extension/worker/**: Cloudflare Worker backend for event ingestion (Supabase persistence)
-- **partykit/**: Real-time sync server using PartyKit and Yjs
-- **website/**: Demo site and library home page (`playhtml.fun`). Test pages go here.
-- **apps/docs/**: Astro + Starlight docs site (served under `/docs/` in production)
+- **packages/common**: shared TypeScript types
+- **packages/extension-types**: event/metadata contract between the extension and its Worker
+- **extension/**: browser extension ("we were online"). See `extension/CLAUDE.md`.
+- **extension/website/**: `wewere.online` site; shared visualization code is in `extension/website/shared/` (the `@movement` alias)
+- **extension/worker/**: Cloudflare Worker for event ingestion
+- **partykit/**: real-time sync server (PartyKit + Yjs). Production log searching: `partykit/README.md`.
+- **website/**: `playhtml.fun` demo site. Test pages go here.
+- **apps/docs/**: Astro + Starlight docs, served under `/docs/`
 
-**Note:** `packages/extension/` is a WXT build artifact directory, not a real package. The extension workspace lives at `extension/`.
+`packages/extension/` is a WXT build artifact, not a package.
 
-## Development Commands
+## Commands
 
-- `bun run setup`: install locked dependencies, prepare WXT metadata, build packages, and verify workspace readiness
-- `bun run setup:agent`: run the full workspace setup and install headless Chromium for cloud and local agents
-- `bun run doctor`: check whether dependencies, WXT metadata, and package build outputs are ready
-- `bun dev`: Website dev server (Vite)
-- `bun dev-server`: PartyKit dev server for real-time sync
-- `bun run dev-server:presence`: presence-only PartyKit server without Supabase persistence
-- `PLAYHTML_PARTYKIT_PORT=2000 bun dev-server`: PartyKit dev server on a non-default port
-- `bun dev-extension`: Extension dev server (WXT hot reload)
-- `bun build-packages`: Build all library packages
-- `bun run lint`: Type-check all packages
-- `bun run format:check -- <file...>`: Check up to 50 explicit source files
-- `bun run format:write -- <file...>`: Format up to 50 explicit source files
-- `bun run smoke:extension-worker`: bundle the extension Worker without deploying or starting a watcher
-- `bun run smoke:extension`: build and load the real extension in isolated headless Chromium with a loopback-only backend
+- `bun run setup`: install, build packages, verify the workspace (`bun run setup:agent` adds headless Chromium; use it as the cloud agent setup script, not a `SessionStart` hook). `bun run doctor` reports what's missing.
+- `bun dev` (site), `bun dev-server` (PartyKit; `PLAYHTML_PARTYKIT_PORT` changes the port), `bun dev-extension`
+- `bun build-packages`, `bun run lint` (type-check everything), `bun run format:write -- <files>`
+- Tests: `bun run test:<common|playhtml|react|extension|docs|extension-worker>`; checks: `bun run check:<name>`
+- Supabase: `bun run db:start` / `db:reset` / `db:new -- <extension_|partykit_>name`. All migrations live in `supabase/migrations/`.
 
+Other scripts are in the root `package.json`.
 
-Per-package and deploy scripts are in the root `package.json`.
+**Run `bun build-packages` before `extension` or `react` tests.** They import `@playhtml/common` and `playhtml` through their built `dist/`, so a stale build gives phantom `TypeError: <fn> is not a function` failures. `bun install` does not rebuild `dist`.
 
-### Cloud agents
+**Performance:** CI runs the extension and library performance reports and fails on regressions (thresholds in `scripts/compare-*-performance.mjs`). Don't run `perf:extension:trace` locally unless Spencer asks.
 
-Use `bun run setup:agent` as the environment setup command for Codex Cloud, Cursor Cloud Agents, and Claude Code cloud sessions. Cursor reads this command from `.cursor/environment.json`. Configure the same command as the cached environment setup script in the Codex and Claude environment dashboards.
-
-For Claude Code cloud, use the environment setup script rather than a `SessionStart` hook. Claude caches environment setup output, while session hooks rerun after every start or resume and Bun has known compatibility issues with Claude's network proxy. Keep the default agent setup free of secrets and start long-running services only within the task that needs them.
-
-### Testing
-
-- `bun run test:common` / `test:playhtml` / `test:react` / `test:extension` / `test:docs` / `test:extension-worker`
-- `bun run check:playhtml` / `check:react` / `check:extension` / `check:docs` / `check:extension-website` / `check:extension-worker`
-
-**Run `bun build-packages` before running `extension` or `react` tests locally.** Those suites import `@playhtml/common` (and `playhtml`) by package name, which resolves through the workspace symlink to the package's built `dist/`, not `src/`. A stale `packages/common/dist` (e.g. after pulling a branch that added a new export like `toPublicPlayerIdentity`) makes the import resolve to `undefined` and produces phantom `TypeError: <fn> is not a function` failures that look like regressions but aren't. `bun install` does not rebuild `dist`. `bun run setup` performs the required build, and `bun run doctor` reports missing outputs. CI runs the same setup and test commands.
-
-### Supabase
-
-- `bun run db:start` / `db:reset` / `db:verify` / `db:stop`
-- `bun run db:new -- extension_describe_change` (or `partykit_`): create a migration
-- `bun run dev-server:local-db` / `dev-extension-worker:local-db`: run against the local stack
-
-The extension and PartyKit use one Supabase project with different tables. All new migrations live in `supabase/migrations/`; the name prefix records which application owns the affected tables.
-
-### Extension Performance
-
-- The `Extension Performance Report` workflow runs extension performance traces in CI. The `Library Performance Report` workflow runs the deterministic playhtml client benchmark (`packages/playhtml/bench/`, bundle size plus message/byte/render counts). Both compare the PR to its base, keep one bot comment on the PR up to date, and fail the check when a metric regresses past its threshold (thresholds live in `scripts/compare-*-performance.mjs`). If a regression is intentional, say so in the PR; the check stays red until it's resolved or Spencer overrides it.
-- Do not run `perf:extension:trace` during local agent work. Repeated traces consume local resources and duplicate CI coverage. Check the CI workflow result instead.
-- Run a local trace only when Spencer explicitly requests one. Treat large increases in `TaskDuration`, `ScriptDuration`, `LayoutDuration`, `RecalcStyleDuration`, or `JSHeapUsedSize` as regression signals to investigate.
-
-## Papercuts
-
-When you hit a small friction while working — a tool call that missed and had to be retried, a confusing or undocumented setup step, a flaky command, a stale cache, a misleading error, a non-obvious gotcha — log it via `papercut -m <model> "message"` (a global CLI on the machine, not a repo script). One or two sentences: what you were doing → what got in the way (a guess at the cause/fix is a bonus). Do this proactively, in the moment, even though none of these are blocking — logged together they show where the repo needs sanding down. This is distinct from what you accomplished (that goes in your work summary / commit) and from real bugs or tracked work (those are issues).
-
-To mine a whole session for papercuts at once, `papercut review` feeds the current session transcript to a cheap model and appends what it finds; it auto-detects the latest transcript for this project. This is user-triggered — don't run the review yourself unprompted.
-
-Papercuts are stored centrally per repo on the machine (keyed by git remote), outside the repo, so nothing here is committed. If the `papercut` command isn't installed, skip logging rather than creating files in the repo.
+**Papercuts:** when you hit a small friction (a retried command, a confusing step, a misleading error), log it with `papercut -m <model> "what you were doing, what got in the way"`. Skip it if the command isn't installed. Don't run `papercut review` unprompted.
 
 ## Architecture
 
-### Core Library (packages/playhtml)
+- **Capabilities** are the data attributes (`can-move`, `can-spin`, `can-toggle`, `can-grow`, `can-duplicate`, `can-hover`, `can-mirror`, and the custom `can-play`), defined in `packages/playhtml/src/elements.ts` and `packages/common/src/index.ts`. Each element gets an `ElementHandler`.
+- **State** syncs through Yjs. Element state is SyncedStore records keyed by capability and element id; presence rides on `yprovider.awareness`.
+- **React:** `<PlayProvider>` initializes playhtml. Prefer `withSharedState` over the internal `CanPlayElement`.
 
-The library revolves around "capabilities" — interactive behaviors added to HTML elements via data attributes (`can-move`, `can-spin`, `can-toggle`, `can-grow`, `can-duplicate`, `can-mirror`, and the fully customizable `can-play`). Defined in `packages/playhtml/src/elements.ts` and `packages/common/src/index.ts`.
+### Docs site (apps/docs/)
 
-**State management:** Yjs for real-time collaborative sync. Shared element state is SyncedStore records keyed by capability and element id; `elementHandlers` maps element ids to `ElementHandler` instances; user presence rides on `yprovider.awareness`.
+- **Sidebar:** Examples, Start, and Building blocks are hand-rolled in `astro.config.mjs`; Advanced, Integrations, and Reference autogenerate from their folders. A page in an autogenerated folder only needs `sidebar: { order: N }`. A top-level or `data/` page also needs an entry in `astro.config.mjs`. Example pages set `sidebar: { hidden: true }` and are linked from the examples index.
+- **Asset paths** need the `/docs/` prefix (`/docs/foo.png`).
+- **Init:** the docs initialize playhtml globally in `HeadOverride.astro`, not with `<PlayProvider>`. React islands use `standalone` mode.
+- **Vanilla vs React:** use `<Tabs syncKey="framework">` with labels exactly `Vanilla HTML` and `React` (sync is by label text). Needs `.mdx`. A markdown list can't be the last thing before `</TabItem>`.
 
-**Element handlers:** Each interactive element gets an `ElementHandler` managing data persistence, event handling, element updates, awareness, reset shortcuts, and debouncing.
+## State management rules
 
-### React Integration (packages/react)
+- `setData()` is persistent and synced, `setLocalData()` is local only.
+- **People and presence:** `playhtml.people` (`everyone`, `me`, `setMyPresence(key, value)`, `onChange(keys?, cb)`) lists everyone on the page as `Person` (`{ pid, name, color, isMe, presence }`); cursors are at `person.presence.cursor`. Elements use `defaultPresence` and `everyone` / `me` / `setMyPresence`. React: `usePeople(keys?)` and `usePlayContext().people`. `playhtml.users` / `User`, `playhtml.presence`, `live` / `setLive` / `users`, and the `awareness` names are deprecated aliases.
+- **Identity:** public APIs use `Person` and `pid`. Don't expose `PlayerIdentity` / `publicKey` in new public API or docs.
+- **NEVER write shared data (`setData`) from a callback that re-runs when that data changes** (a `useEffect` depending on `data.x` that calls `setData`, or `setData` in `updateElement`). It loops forever and never converges; it once crashed a production room (1.2M ops / 23 MB). Write from user events. If you must write from a reactive callback, read through a ref and make the write idempotent.
+- **Changing the shape of already-live persisted data: migrate or clear it, and flag it to Spencer.** `defaultData` only seeds new elements, so old rooms load the old shape into new code and can crash the page. Prefer writing to a new field name. Details and options are in the skill below.
 
-`<PlayProvider>` initializes playhtml; `<CanMove>`, `<CanSpin>`, `<CanToggle>` etc. wrap each capability. Prefer `withSharedState` over the internal `CanPlayElement` for React usage.
+Before building or changing playhtml elements, read `claude-plugin/skills/building-playhtml-elements/SKILL.md`.
 
-### Real-Time Backend (partykit/)
+## Testing requirements
 
-Production Worker logs for this backend belong to the Cloudflare Worker named `playhtml` configured by `partykit/wrangler.jsonc`. `wrangler tail --config partykit/wrangler.jsonc` is live-only and can be noisy for Durable Object WebSocket traffic. Historical log searches must use Workers Observability Query Builder in the Cloudflare dashboard, or a dedicated Cloudflare API token with Workers Observability read access; the Wrangler OAuth token in `~/.wrangler/config/default.toml` has tail access but is not sufficient for the stored Workers Observability telemetry API. Useful incident search terms include room ids such as `class.playhtml.fun-%2Fweek%2F1` and persistence strings such as `SUPABASE PERSISTENCE UNAVAILABLE`, `SUPABASE AUTOSAVE FAILED`, `Autosave skipped`, `Hard Reset`, `Restore Snapshot`, `Emergency compacted connected room`, and `Empty-room compacted`.
+- Run the relevant package tests before opening a PR.
+- **Extension features:** before merging a new extension feature, automate the complete user flow in a real browser with the built extension and assert the final outcome, covering every runtime boundary it touches (service worker, content script, page, storage, navigation, Worker API) and relevant lifecycle conditions (cold start, reload, late readiness). Unit tests, mocked APIs, the generic smoke test, screenshots, or a manual pass don't count. Report the flow and result in the PR. If it's blocked, stop and tell Spencer.
+- **Screenshots:** every user-facing change must be checked on the real surface, with screenshots of the finished result (key states for interactive changes) in the handoff and PR. If you can't capture it, stop and tell Spencer.
 
-### Docs Site (apps/docs/)
-
-Astro + Starlight site at `apps/docs/`, served under `/docs/` in production via Astro's `base: "/docs"` config.
-
-**Sidebar is hybrid** (manual top + autogenerated subdirs). See `apps/docs/astro.config.mjs` for the full layout with comments.
-
-- **Top groups** ("Start", "Capabilities") are hand-rolled because there's no matching directory on disk
-- **Subdir groups** ("Data", "Advanced", "Integrations", "Reference") are autogenerated from their on-disk directories
-- **Adding a new page in a subdir:** just set `sidebar: { order: N }` in the page frontmatter; it shows up in the sidebar automatically
-- **Adding a new top-level page:** add an entry to the hand-rolled section in `astro.config.mjs` AND a `sidebar.order` in the page frontmatter
-
-**Asset paths:** because of `base: "/docs"`, asset URLs in CSS and JS-generated styles need to include the `/docs/` prefix. Use `/docs/foo.png` rather than `/foo.png` in `url()` declarations and `src` attributes. Files live in `apps/docs/public/` but are served under `/docs/`.
-
-**Init pattern:** the docs site initializes playhtml globally in `HeadOverride.astro`, NOT via `<PlayProvider>`. React islands that need playhtml use `standalone` mode on `CanPlayElement` / `CanToggleElement` etc., which is a no-op when playhtml is already initialized but lets the component register itself with the right handlers.
-
-**Vanilla vs React splits:** whenever a doc shows both a vanilla-HTML/JS form and a React form of the same thing, use the `<Tabs syncKey="framework">` + `<TabItem label="Vanilla HTML">` / `<TabItem label="React">` component (import from `@astrojs/starlight/components`). This requires an `.mdx` file — convert `.md` → `.mdx` if needed (the route is unchanged). The synced toggle persists the reader's choice site-wide, so labels MUST be exactly `Vanilla HTML` and `React` on every page (Starlight syncs by label text, not position — a mismatched label like `JavaScript` silently breaks sync). MDX gotcha: a markdown list as the last content before `</TabItem>` fails to parse — keep bulleted lists outside the Tabs block or end the tab on prose/code. A couple of `.md` pages still use `### Vanilla HTML` / `### React` heading splits as a fallback, tracked for conversion in [issue #205](https://github.com/spencerc99/playhtml/issues/205).
-
-## Important Patterns
-
-### Element Initialization
-
-- Elements must have unique `id` attributes
-- Capabilities detected via data attributes (e.g., `can-move`, `can-toggle`)
-- Custom elements use the `can-play` attribute with JavaScript setup
-
-### State Management
-
-- `setData()` for persistent, synced state changes
-- `setLocalData()` for temporary, local-only state
-- People and presence: `playhtml.people` (`everyone`, `me`, `setMyPresence(key, value)`, `onChange(keys?, cb)`) is everyone on the page as `Person` (`{ pid, name, color, isMe, presence }`); cursors are at `person.presence.cursor`. Elements use the same names: `defaultPresence`, `everyone` / `me` / `setMyPresence` in callbacks and on handles. React: `usePeople(keys?)` and `usePlayContext().people`. `playhtml.users`/`User`, `playhtml.presence`, `live`/`setLive`/`users`, and `awareness` names are deprecated aliases that keep working
-- Identity: public APIs use `Person` and `pid`. `PlayerIdentity`/`publicKey` are the lower-level stored form; don't expose them in new public API or docs
-- **NEVER write shared data (`setData`) from a callback that re-runs when that data changes** (e.g. a React `useEffect` depending on `data.x` that also calls `setData`, or `setData` inside `updateElement`). It loops forever, and because the data is a CRDT, concurrent writes append instead of overwrite — so it never converges. This crashed a production room (1.2M ops / 23 MB). Write from explicit user events; if you must write from a reactive callback, read the data through a ref (don't depend on it) and make the write idempotent (key by unique id, last-write-wins). Full guidance: the `building-playhtml-elements` skill in `claude-plugin/skills/` and https://playhtml.fun/docs/advanced/data-best-practices/ (rule 7).
-- **When changing the SHAPE of persisted shared data for something already live, you MUST migrate or clear the old data — and flag this to Spencer.** `defaultData` only seeds brand-new elements; rooms that already have persisted data load it as-is, so a shape change (array→map, renamed field, new required field) means existing rooms hydrate the OLD shape into NEW code. That mismatch crashes the page (e.g. a keyed write `data.entries[pid]=…` against a room whose `entries` is still a legacy Y.Array throws and blanks the page). Options, in order of preference: (1) write to a NEW field name and abandon the old one (no migration, always-clean writes); (2) defensively handle both shapes at read AND write (null-safe reads, initialize-if-absent, in-place migrate — fragile, test against real legacy data); (3) clear the room's persisted data (delete the `documents` row). This ONLY applies when the data is already live/persisted — brand-new features have no old data to worry about. Note: our load/soak tests do NOT catch this — they bypass page code and start from empty rooms, so a data-shape change must be verified by loading the real page against a room pre-seeded with the old shape.
-
-When building or modifying playhtml elements, follow the `building-playhtml-elements` skill in `claude-plugin/skills/building-playhtml-elements/SKILL.md` — it captures the full set of footguns (config-before-init, missing ids, write loops, array-mutation rules).
-
-## Testing Requirements
-
-- Run relevant package tests locally before PRs
-- **Automated real-browser verification for extension features:** Before merging any new extension feature, Codex MUST automate the complete user flow in a real browser and confirm that the whole feature works end to end. Use the built extension and built application artifacts where applicable. Exercise every runtime boundary the feature depends on, which may include the MV3 service worker, content script, injected or hosted page, browser storage, navigation lifecycle, and Worker API. Start from the real user entrypoint, assert the final observable outcome, and cover relevant lifecycle conditions such as cold start, reload, delayed script or service-worker readiness, or a client/server deployment contract. The automation may be a temporary verification harness or a committed test; committing an integration test is not required. Unit tests, component tests, mocked browser APIs, the generic extension shell smoke, screenshots, and an unstructured manual pass do not satisfy this requirement. Report the exact automated flow and result in the PR and handoff. If real-browser automation is technically blocked, stop and tell Spencer; do not merge based on partial evidence.
-- **Screenshots for user-facing changes:** Every user-facing change MUST be verified on the real affected surface and accompanied by screenshots of the finished result. For interactive changes, capture the key states of the flow (for example, closed, open, and success states), not only the initial screen. Include the screenshots in the handoff and PR. If the surface cannot be captured, stop and tell Spencer what blocks it rather than omitting them.
-
-## Commit & PR Guidelines
-
-**Before opening a PR, check which of these fired — details below.**
+## Commits and PRs
 
 | If you… | Then… |
 | --- | --- |
-| Changed published package behavior | Add a changeset + audit `apps/docs/` |
-| Changed the public core API | Update both starter templates |
-| Changed package deps or exports | Run the tarball install simulation |
-| Added a new extension feature | Automate and verify the complete feature end to end in a real browser before merge |
-| Added a meaningful feature, common-workflow change, or broadly relevant fix to the released extension | Add a bullet to `extension/PENDING.md` |
-| Added, removed, or changed an extension manifest permission | Update `extension/STORE_LISTING.md` and flag the Chrome Privacy practices dashboard change |
+| Changed published package behavior | Add a changeset and audit `apps/docs/` |
+| Changed the public core API | Update both starter templates (`CONTRIBUTING.md`) |
+| Changed package deps or exports | Follow the package boundary rules and run the tarball install simulation (`CONTRIBUTING.md`) |
+| Added a new extension feature | Real-browser verification (above) |
+| Made a user-noticeable extension change, or changed a manifest permission | Follow `extension/CLAUDE.md` (`PENDING.md`, `STORE_LISTING.md`) |
 
-- **Commits:** Short imperative subject; scope paths when helpful (e.g., `react:`, `extension:`). Group mechanical changes separately.
-- **PRs:** Include summary, rationale, screenshots for UI/site/extension changes, reproduction for fixes, and link issues.
-- **Releases:** `bun run version-packages` then `bun run release` (builds + publishes via changesets).
-
-- **Changesets:** Add a changeset when a change under `packages/` affects published runtime behavior, public APIs or types, published dependencies, or package output. Do not add a changeset for tests, CI, development-only scripts, documentation, or internal refactors with no observable package behavior. If the qualification is uncertain, stop and ask Spencer. Create the file directly in `.changeset/<short-slug>.md` with the standard frontmatter (`"<package>": patch|minor|major`) and a one-paragraph user-facing description of the change and why. `bun run changeset` is the interactive equivalent. Config in `.changeset/config.json` (public access, patch for internal deps).
-
-- **Docs audit for package changes:** Whenever you change code under `packages/`, check whether public documentation in `apps/docs/` needs to change. Update the relevant user-facing docs in the same PR when behavior, APIs, attributes, classes, examples, or gotchas change. Common places to check are `apps/docs/src/content/docs/capabilities.mdx`, `apps/docs/src/content/docs/index.mdx` (Getting started), `apps/docs/src/content/docs/reference/react-api.md`, and the `data/`, `advanced/`, and `integrations/` docs. If no docs change is needed, mention why in the PR summary.
-
-- **Package API boundaries:** `playhtml` is the public runtime/API boundary for app code. `@playhtml/react` peers on `playhtml` and imports PlayHTML domain symbols from `playhtml`, not from `@playhtml/common`. `@playhtml/common` is a shared monorepo package owned by `playhtml`; do not make React consumers install/import it unless we intentionally promote a symbol as public protocol SDK. If a React-facing symbol lives in `@playhtml/common`, add a curated re-export from `playhtml` rather than `export *`. Keep `playhtml` externalized in `packages/react/vite.config.ts`, keep it out of React `dependencies`, and verify packed declarations import package names instead of monorepo paths like `../../common/src`. For dependency-boundary changes, run a tarball install simulation before merge: version, build, rewrite workspace deps, `npm pack`, install into a blank consumer, check `npm ls`, inspect the React bundle import, and type-check a small consumer file.
-
-- **Starter templates for core API changes:** Whenever you change the public core API under `packages/` (capability attributes/classes, React component props like `<CanDuplicateElement>`/`<CanToggleElement>`, exported functions, the vanilla `can-play` element API `defaultData`/`onClick`/`updateElement`/`setupPlayElement`, `playhtml.init` options, or CSS hooks like `[data-playhtml-hover]`), update BOTH starter templates in the same PR so they stay copy-pasteable and verify them live in a browser: `templates/react-starter/` (React API — `src/App.tsx`, `src/index.css`) and `templates/html-starter/` (vanilla API — `index.html`, `style.css`, `script.js`). The starters depend on the published `@playhtml/react` / `playhtml` (`"latest"`), so they pick up code changes on release — but their own usage (imports, props, selectors, example markup/CSS) won't update itself. Only use real, existing API methods: there is no `playhtml.setupCustomElement`; vanilla custom elements set `defaultData`/`onClick`/`updateElement` directly on the DOM element, then call `playhtml.setupPlayElement(el)`. The starters are standalone projects: `react-starter` is Vite+TS with no `tsconfig.json` of its own (so `npm run build`'s `tsc` step picks up the monorepo root config and fails — verify with `npx vite build` plus a live browser test instead); `html-starter` is static files loading `playhtml@latest` from unpkg. If a change doesn't touch either starter, say why in the PR summary.
-
-- **Extension release notes:** `extension/PENDING.md` is a curated public changelog, not a complete record of extension changes. Add a bullet only for a meaningful change that regular users are likely to notice or care about, such as a feature, a common-workflow change, or a broadly relevant fix. Skip copy polish, narrow bug fixes, minor performance or reliability work without a clear user-visible outcome, and internal maintenance. Write one short, plain-language sentence about what someone can do, what works better, or what problem was fixed. No implementation or maintainer details. Full rules, including how feature flags affect this, are in `extension/CLAUDE.md`.
-
-- **Extension store permissions:** Whenever a change adds, removes, or changes a permission in `extension/wxt.config.ts`, update the matching reviewer-facing justification in `extension/STORE_LISTING.md`. Explicitly flag the required Chrome Web Store Privacy practices dashboard update in the PR and release handoff. Do not describe Chrome as ready to publish or published until the dashboard disclosure is saved and the publish API succeeds. Remove stale justification copy and dashboard disclosures when a permission is removed.
+- **Commits:** short imperative subject, scoped when helpful (`react:`, `extension:`).
+- **PRs:** summary, rationale, screenshots for UI changes, repro for fixes, linked issues.
+- **Changesets:** add `.changeset/<slug>.md` (`"<package>": patch|minor|major` plus one user-facing paragraph) when a `packages/` change affects runtime behavior, public APIs or types, published deps, or package output. Not for tests, CI, dev scripts, docs, or invisible refactors. If unsure, ask Spencer.
+- **Docs audit:** any `packages/` change gets a check of `apps/docs/` (capabilities, getting started, React API reference, `data/`, `advanced/`, `integrations/`). Say in the PR if nothing needed to change.
+- **Releases:** `bun run version-packages` then `bun run release`.
 
 ## Documentation
 
-- `apps/docs/`: Public developer-facing and user-facing documentation. All user-visible docs live here as Astro + Starlight pages. DO NOT PUT PLANS IN HERE.
-- **Whenever you write or edit anything in `apps/docs/`, follow the `writing-developer-docs` skill** (`claude-plugin/skills/writing-developer-docs/SKILL.md`): read it before drafting and run its checklist before you commit.
-- Package behavior changes should be reflected in `apps/docs/` when they affect how users write HTML, React components, CSS, shared data, setup code, or troubleshooting steps.
-- **Never leak internal-only language or concerns into `apps/docs/`.** These docs are for users building on playhtml, not for maintainers of playhtml. Do NOT reference our own internal tooling, infra, or process: load/soak tests, the `documents` table or Supabase, PartyKit deploy/staging, internal incident history ("this crashed a production room"), CRDT/Yjs internals, or repo-internal terms. Keep the framing "here's how to use this," not "here's how we operate it." If a caveat genuinely matters to a user (e.g. data persists per room), state the user-facing consequence and the user-facing fix — never the internal mechanism or our testing gaps. Internal concerns belong in `internal-docs/`, the `building-playhtml-elements` skill, or code comments.
-- `internal-docs/`: Internal planning and decision records (gitignored, not committed). Specs go in `internal-docs/specs/`, plans go in `internal-docs/plans/`. Date-prefix files (e.g., `2026-03-13-feature-name.md`).
+- `apps/docs/` is user-facing documentation only. No plans there.
+- Before writing in `apps/docs/`, read `claude-plugin/skills/writing-developer-docs/SKILL.md` and run its checklist before committing.
+- Never put internal concerns in `apps/docs/` (our tests, Supabase or the `documents` table, PartyKit deploys, incident history, Yjs internals). State the user-facing consequence and fix instead.
+- `internal-docs/` (gitignored) holds specs and plans, date-prefixed, in `specs/` and `plans/`.
 
-## Coding Style
+## Coding style
 
-TypeScript strict mode, 2-space indent, named exports. React components `PascalCase.tsx`; modules `camelCase.ts`; tests in `__tests__/` named `*.test.ts[x]` (Vitest). No emoji anywhere — use Unicode symbols or inline SVGs.
+TypeScript strict, 2-space indent, named exports. Components `PascalCase.tsx`, modules `camelCase.ts`, tests in `__tests__/*.test.ts[x]` (Vitest). No emoji anywhere; use Unicode symbols or inline SVGs.

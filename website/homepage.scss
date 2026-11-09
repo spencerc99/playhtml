@@ -61,12 +61,21 @@ html {
   scroll-behavior: smooth;
 }
 
+// One type scale for the whole page. Phones step every size down once (below).
 body.ph-home {
+  --fs-display: 68px;
+  --fs-h2: 44px;
+  --fs-h3: 30px;
+  --fs-h4: 22px;
+  --fs-lead: 19px;
+  --fs-body: 16px;
+  --fs-small: 14px;
+  --fs-hand: 24px;
   margin: 0;
   background: $page;
   color: $ink;
   font-family: $body;
-  font-size: 16px;
+  font-size: var(--fs-body);
   line-height: 1.5;
   overflow-x: clip;
   -webkit-text-size-adjust: 100%;
@@ -112,7 +121,7 @@ h3 {
 
 .ph-hand {
   font-family: $hand;
-  font-size: 25px;
+  font-size: var(--fs-hand);
   line-height: 0.95;
   color: $pen;
 }
@@ -184,6 +193,10 @@ h3 {
 
 .ph-btn--mustard {
   background: $mustard;
+}
+
+.ph-btn--rose {
+  background: $rose;
 }
 
 .ph-btn--pill {
@@ -639,18 +652,17 @@ h3 {
 }
 
 .ph-toybox {
+  // Set from the toy box's width (see setupToyboxScale): 1 at 1392px wide,
+  // smaller below that so the whole layout shrinks instead of overlapping.
+  --toy-scale: 1;
   position: relative;
   max-width: 1392px;
   margin: 0 auto;
-  height: 800px;
+  height: calc(800px * var(--toy-scale));
   border: 1.5px solid $ink;
   border-radius: 18px;
   box-shadow: $shadow-big;
   @include dotted($box);
-}
-
-.ph-toybox__label {
-  display: none;
 }
 
 .ph-toybox__toys {
@@ -669,11 +681,14 @@ h3 {
 
 .ph-hero__pitch {
   position: absolute;
-  left: 50%;
-  top: 168px;
+  left: 0;
+  right: 0;
+  top: calc(168px * var(--toy-scale));
   z-index: 2;
-  transform: translateX(-50%);
   width: 640px;
+  margin: 0 auto;
+  scale: var(--toy-scale);
+  transform-origin: top center;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -683,7 +698,7 @@ h3 {
   h1 {
     margin: 0;
     font-weight: 800;
-    font-size: 68px;
+    font-size: var(--fs-display);
     line-height: 1.02;
     letter-spacing: -0.03em;
     color: $text;
@@ -692,7 +707,7 @@ h3 {
   p {
     margin: 0;
     max-width: 520px;
-    font-size: 19px;
+    font-size: var(--fs-lead);
     line-height: 1.5;
     color: $text;
   }
@@ -706,8 +721,16 @@ h3 {
   margin-top: 6px;
 }
 
-.ph-toy {
+.ph-toy,
+.ph-here-now {
   position: absolute;
+  scale: var(--toy-scale);
+}
+
+// Scaling gives each toy its own stacking layer, so the toy showing a code
+// peek has to come forward for the peek to sit above the pitch.
+.ph-toy:has(> .ph-peek) {
+  z-index: 30;
 }
 
 .ph-note {
@@ -716,7 +739,7 @@ h3 {
   align-items: flex-start;
   gap: 2px;
   font-family: $hand;
-  font-size: 25px;
+  font-size: var(--fs-hand);
   line-height: 0.95;
   color: $pen;
   white-space: nowrap;
@@ -743,9 +766,9 @@ h3 {
 }
 
 .ph-here-now {
-  position: absolute;
   right: 4%;
-  top: 34px;
+  top: calc(34px * var(--toy-scale));
+  transform-origin: top right;
   z-index: 3;
   display: inline-flex;
   align-items: center;
@@ -773,16 +796,19 @@ h3 {
 }
 
 // The old homepage's neon sign, renamed. Same id and can-move data.
+// The sign can be dragged, so it isn't scaled (a scaled parent would make it
+// lag behind the cursor). Its text shrinks instead.
 .ph-toy--sign {
-  right: 312px;
-  top: 60px;
+  right: 22.4%;
+  top: calc(60px * var(--toy-scale));
   z-index: 3;
+  scale: none;
 }
 
 #sign {
   font-family: $body;
   font-weight: 700;
-  font-size: 32px;
+  font-size: calc(32px * var(--toy-scale));
   color: $brick;
   transform-origin: center;
   rotate: -4deg;
@@ -806,8 +832,9 @@ h3 {
 }
 
 .ph-toy--newest {
-  left: 236px;
-  top: 62px;
+  left: 17%;
+  top: calc(62px * var(--toy-scale));
+  transform-origin: top left;
   z-index: 3;
   display: flex;
   flex-direction: column;
@@ -830,6 +857,7 @@ h3 {
 .ph-toy--lamp {
   left: 6%;
   top: 0;
+  transform-origin: top left;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -872,22 +900,21 @@ h3 {
   }
 }
 
-.ph-note__short {
-  display: none;
-}
-
 .ph-note--lamp {
   left: 108px;
   top: 150px;
   transform: rotate(-3deg);
 }
 
+// Right side, between the hydrant and the boxes, so the plant on the left
+// has room to grow to full height.
 .ph-toy--visits {
-  left: 3%;
-  top: 330px;
+  right: 4%;
+  top: calc(428px * var(--toy-scale));
+  transform-origin: top right;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 8px;
 }
 
@@ -931,20 +958,20 @@ h3 {
 .ph-note--visits {
   position: static;
   font-size: 24px;
+  text-align: right;
   transform: rotate(-3deg);
 }
 
 .ph-toy--plant {
   left: 7%;
-  bottom: 30px;
+  bottom: calc(30px * var(--toy-scale));
+  transform-origin: bottom left;
 }
 
 #plantContainer {
   display: flex;
   flex-direction: column;
   align-items: center;
-  cursor: grab;
-  touch-action: none;
 }
 
 // The original playhtml.fun plant: a green stalk in a burlywood pot.
@@ -975,7 +1002,8 @@ h3 {
 
 .ph-toy--spin {
   left: 22%;
-  bottom: 70px;
+  bottom: calc(70px * var(--toy-scale));
+  transform-origin: bottom left;
 }
 
 .ph-sticker {
@@ -1000,7 +1028,8 @@ h3 {
 
 .ph-toy--hydrant {
   right: 9%;
-  top: 150px;
+  top: calc(150px * var(--toy-scale));
+  transform-origin: top right;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1027,7 +1056,8 @@ h3 {
 
 .ph-toy--boxes {
   right: 4%;
-  bottom: 60px;
+  bottom: calc(60px * var(--toy-scale));
+  transform-origin: bottom right;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -1102,6 +1132,9 @@ h3 {
   overflow: hidden;
   text-align: left;
   pointer-events: none;
+  // Toys are scaled down on smaller windows; the code stays full size.
+  scale: calc(1 / var(--toy-scale));
+  transform-origin: top left;
 
   pre {
     margin: 0;
@@ -1121,22 +1154,27 @@ h3 {
 .ph-toy--plant .ph-peek {
   left: -10px;
   bottom: calc(100% + 10px);
+  transform-origin: bottom left;
 }
 .ph-toy--spin .ph-peek {
   left: 120px;
   bottom: 0;
+  transform-origin: bottom left;
 }
 .ph-toy--visits .ph-peek {
-  left: 0;
-  top: calc(100% + 10px);
+  right: 0;
+  bottom: calc(100% + 10px);
+  transform-origin: bottom right;
 }
 .ph-toy--hydrant .ph-peek {
   right: -10px;
   top: calc(100% + 8px);
+  transform-origin: top right;
 }
 .ph-toy--boxes .ph-peek {
   right: 0;
   bottom: calc(100% + 10px);
+  transform-origin: bottom right;
 }
 
 // Rain overlay from the hydrant sits above everything.
@@ -1156,7 +1194,7 @@ h3 {
   h2 {
     margin: 0;
     font-weight: 800;
-    font-size: 40px;
+    font-size: var(--fs-h2);
     letter-spacing: -0.02em;
     line-height: 1.1;
   }
@@ -1166,7 +1204,7 @@ h3 {
   }
 
   > a {
-    font-size: 16px;
+    font-size: var(--fs-body);
     padding: 8px 0;
   }
 }
@@ -1194,14 +1232,14 @@ h3 {
   h2 {
     margin: 0;
     font-weight: 600;
-    font-size: 30px;
+    font-size: var(--fs-h3);
     line-height: 1.2;
     letter-spacing: -0.01em;
   }
 
   p {
     margin: 0;
-    font-size: 18px;
+    font-size: var(--fs-lead);
     line-height: 1.55;
     color: $body-text;
   }
@@ -1288,14 +1326,20 @@ h3 {
   gap: 10px;
   align-items: flex-start;
 
-  .ph-hand {
-    font-size: 26px;
+  > .ph-hand {
+    font-size: var(--fs-hand);
     transform: rotate(-2deg);
+  }
+
+  li.ph-hand {
+    font-size: 22px;
+    transform: rotate(-4deg);
   }
 
   ul {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 10px;
     margin: 0;
     padding: 0;
@@ -1327,13 +1371,13 @@ h3 {
   h3 {
     margin: 6px 0 0;
     font-weight: 800;
-    font-size: 23px;
+    font-size: var(--fs-h4);
     letter-spacing: -0.01em;
   }
 
   p {
     margin: 0;
-    font-size: 16px;
+    font-size: var(--fs-body);
     line-height: 1.5;
     color: $text;
   }
@@ -1353,7 +1397,7 @@ h3 {
 
 .ph-how__aside {
   align-self: flex-end;
-  font-size: 24px;
+  font-size: var(--fs-hand);
   transform: rotate(-3deg);
 }
 
@@ -1472,7 +1516,7 @@ h3 {
 .ph-how__right-note {
   position: absolute;
   bottom: 6px;
-  font-size: 22px;
+  font-size: var(--fs-hand);
 }
 
 .ph-how__left-note {
@@ -1512,7 +1556,7 @@ h3 {
   }
 
   .ph-hand {
-    font-size: 24px;
+    font-size: var(--fs-hand);
     rotate: 2deg;
   }
 }
@@ -1527,11 +1571,11 @@ h3 {
   gap: 22px;
 
   .ph-section-head h2 {
-    font-size: 48px;
+    font-size: var(--fs-h2);
   }
 
   .ph-section-head .ph-hand {
-    font-size: 27px;
+    font-size: var(--fs-hand);
   }
 }
 
@@ -1544,7 +1588,7 @@ h3 {
 .ph-made__fallback {
   grid-column: 1 / -1;
   margin: 0;
-  font-size: 16px;
+  font-size: var(--fs-body);
   color: $text;
 }
 
@@ -1880,34 +1924,53 @@ h3 {
 }
 
 // Events band
-.ph-events-wrap {
+// Where we meet: the latest event, with Discord as the way in
+.ph-meet-wrap {
   padding: 0 24px;
 }
 
-.ph-events {
-  max-width: 1052px;
-  margin: 72px auto 0;
-  display: grid;
-  grid-template-columns: 1.3fr 1fr;
+.ph-meet {
+  position: relative;
+  max-width: 1100px;
+  margin: 96px auto 0;
   border: 1.5px solid $ink;
   border-radius: 14px;
-  overflow: hidden;
   background: $paper;
   box-shadow: $shadow-big;
+  // Video left, words and Discord right, so the card fits a laptop screen.
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+
+  > .ph-label {
+    position: absolute;
+    left: 22px;
+    top: -14px;
+    z-index: 2;
+    rotate: -1.5deg;
+  }
 }
 
-.ph-events__media {
+.ph-meet__media {
   position: relative;
-  min-height: 340px;
+  display: block;
+  aspect-ratio: 1280 / 824;
+  width: 100%;
   border-right: 1.5px solid $ink;
-  background: #f1efe8;
+  border-radius: 13px 0 0 13px;
+  overflow: hidden;
+  background: $ink;
+  color: $ink;
 
-  img {
+  video {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+
+  &:hover {
+    color: $ink;
   }
 }
 
@@ -1936,47 +1999,27 @@ h3 {
   }
 }
 
-.ph-events__body {
+.ph-meet__recent {
+  position: absolute;
+  left: 22px;
+  bottom: 20px;
+  max-width: calc(100% - 44px);
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 34px 32px;
-  @include dotted(#fffef6);
-
-  h2 {
-    margin: 0;
-    font-weight: 800;
-    font-size: 36px;
-    letter-spacing: -0.02em;
-  }
-
-  p {
-    margin: 0;
-    font-size: 17px;
-    line-height: 1.5;
-    color: $text;
-  }
-
-  .ph-btn {
-    align-self: flex-start;
-    margin-top: auto;
-  }
-}
-
-.ph-events__recent {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px 14px;
+  gap: 2px;
+  padding: 8px 12px;
   background: $paper;
-  border: 1px dashed $ink;
-  border-radius: 6px;
+  border: 1.5px solid $ink;
+  border-radius: 8px;
+  box-shadow: 3px 3px 0 $ink;
+  rotate: -1deg;
 
   span {
-    font-family: $mono;
-    font-size: 12px;
+    font-size: 13px;
+    color: $text;
 
     &:first-child {
+      font-family: $mono;
       font-size: 11px;
       color: $muted;
     }
@@ -1984,14 +2027,106 @@ h3 {
 
   b {
     font-family: $display;
-    font-size: 20px;
+    font-size: 18px;
   }
+}
+
+.ph-meet__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+  align-content: center;
+  padding: 26px 28px;
+  border-radius: 0 13px 13px 0;
+  @include dotted(#fffef6);
+}
+
+.ph-meet__text {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  h2 {
+    margin: 0;
+    font-weight: 800;
+    font-size: var(--fs-h3);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+
+  p {
+    margin: 0;
+    font-size: var(--fs-body);
+    line-height: 1.5;
+    color: $text;
+  }
+
+  a {
+    font-size: 15px;
+  }
+}
+
+.ph-meet__join {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ph-discord-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 84px;
+  padding: 10px 20px;
+  background: $periwinkle;
+  color: $ink;
+  border: 1.5px solid $ink;
+  border-radius: 10px;
+  box-shadow: 4px 4px 0 $ink;
+  text-decoration: none;
+  text-align: center;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+
+  b {
+    font-family: $display;
+    font-size: 24px;
+  }
+
+  > span {
+    font-family: $mono;
+    font-size: 12px;
+
+    &[hidden] {
+      display: none;
+    }
+  }
+
+  &:hover {
+    color: $ink;
+    transform: translate(-1px, -1px);
+    box-shadow: 6px 6px 0 $ink;
+  }
+
+  &:active {
+    transform: translate(3px, 3px);
+    box-shadow: 1px 1px 0 $ink;
+  }
+}
+
+.ph-meet__github {
+  font-size: 14px;
+  text-align: center;
+  color: $text;
 }
 
 // we were online
 .ph-wwo {
   position: relative;
-  max-width: 1392px;
+  max-width: 1100px;
   margin: 96px auto 0;
   padding: 0 24px;
 }
@@ -2018,15 +2153,15 @@ h3 {
 .ph-wwo__text {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 56px 44px 44px;
+  gap: 16px;
+  padding: 40px 36px 36px;
 
   h2 {
     margin: 0;
     font-family: "Lora", Georgia, serif;
     font-style: italic;
     font-weight: 600;
-    font-size: 64px;
+    font-size: var(--fs-h2);
     line-height: 1;
     letter-spacing: -0.01em;
     color: $body-text;
@@ -2034,7 +2169,7 @@ h3 {
 
   > p {
     margin: 0;
-    font-size: 20px;
+    font-size: var(--fs-lead);
     line-height: 1.45;
     color: $body-text;
   }
@@ -2046,7 +2181,7 @@ h3 {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    font-size: 16px;
+    font-size: var(--fs-body);
   }
 
   li {
@@ -2057,7 +2192,7 @@ h3 {
 
     span span {
       color: #4a4a46;
-      font-size: 15px;
+      font-size: var(--fs-small);
     }
   }
 }
@@ -2095,7 +2230,7 @@ h3 {
 .ph-wwo__media {
   position: relative;
   border-left: 1.5px solid $ink;
-  min-height: 480px;
+  min-height: 380px;
   background: #fff;
 
   video {
@@ -2119,115 +2254,131 @@ h3 {
 }
 
 // Come play with us
-.ph-come {
+// The two asks: make something with us, or help keep it going
+.ph-asks {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 80px 24px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 30px;
-}
-
-.ph-come__door {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 6px;
-
-  svg {
-    width: 30px;
-    height: 36px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-}
-
-.ph-come__grid {
+  padding: 72px 24px 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 28px 22px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
 }
 
-.ph-door {
+.ph-ask {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 34px 22px 22px;
+  padding: 32px 28px 26px;
   border: 1.5px solid $ink;
   border-radius: 14px;
   box-shadow: $shadow-big;
 
   > .ph-label {
     position: absolute;
-    left: 18px;
+    left: 20px;
     top: -14px;
     rotate: -1.5deg;
   }
 
+  h2 {
+    margin: 0;
+    font-weight: 800;
+    font-size: var(--fs-h3);
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+  }
+
   > p {
     margin: 0;
-    font-size: 16px;
+    font-size: var(--fs-body);
     line-height: 1.5;
     color: $body-text;
   }
-
-  > .ph-btn {
-    margin-top: auto;
-    align-self: flex-start;
-  }
 }
 
-.ph-door--rose {
-  @include dotted($rose);
-}
-.ph-door--periwinkle {
-  @include dotted($periwinkle);
-}
-.ph-door--sage {
-  @include dotted($sage-light);
-}
-.ph-door--support {
-  grid-column: 1 / -1;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 24px;
-  padding: 30px 28px;
-  @include dotted($peach);
-
-  > .ph-btn {
-    margin-top: 0;
-    align-self: center;
-  }
+.ph-ask--collab {
+  background: $paper;
+  rotate: -0.4deg;
 }
 
-.ph-door__visual {
-  min-height: 92px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 8px;
+.ph-ask--fund {
+  @include dotted(#fff3c4);
+  rotate: 0.5deg;
 }
 
-.ph-door__kicker {
-  font-family: $mono;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: #5a3a3a;
-}
-
-.ph-door__logos {
+// Ways to collaborate: chips that link to the write-up of each past project.
+.ph-ask__ways {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 
-  .ph-hand {
-    font-size: 22px;
-    transform: rotate(-3deg);
+  a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border: 1.5px solid $ink;
+    border-radius: 999px;
+    background: $paper;
+    color: $ink;
+    text-decoration: none;
+    font-family: $display;
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1.2;
+    transition: translate 0.15s ease;
+
+    &:hover,
+    &:focus-visible {
+      translate: 0 -2px;
+      color: $ink;
+    }
+  }
+
+  .ph-logo {
+    font-weight: 700;
+  }
+}
+
+.ph-ask__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 4px;
+
+  a:not(.ph-btn) {
+    font-size: 14px;
+  }
+}
+
+.ph-ask__foot--stack {
+  flex-direction: column;
+  align-items: stretch;
+  text-align: center;
+}
+
+.ph-ask__fine {
+  font-family: $mono;
+  font-size: 11px;
+  color: $muted;
+}
+
+.ph-ask__fund-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: auto;
+
+  .ph-goal {
+    flex: 1;
+    margin-top: 0;
   }
 }
 
@@ -2238,6 +2389,16 @@ h3 {
   padding: 0 14px;
   border: 1px solid $ink;
   border-radius: 4px;
+  color: $ink;
+  text-decoration: none;
+  transition: translate 0.15s ease;
+
+  &:is(a):hover,
+  &:is(a):focus-visible {
+    translate: 0 -2px;
+    // Beat the global a:hover ink color so text on dark badges stays visible.
+    color: var(--logo-fg, #{$ink});
+  }
 }
 
 .ph-logo--wikipedia {
@@ -2255,6 +2416,7 @@ h3 {
 }
 
 .ph-logo--rhizome {
+  --logo-fg: #3ddc6a;
   background: $ink;
   color: #3ddc6a;
   box-shadow: 2px 2px 0 $ink;
@@ -2265,6 +2427,7 @@ h3 {
 }
 
 .ph-logo--grayarea {
+  --logo-fg: #ffffff;
   background: #6b6b6b;
   color: #ffffff;
   box-shadow: 2px 2px 0 $ink;
@@ -2274,15 +2437,28 @@ h3 {
   font-size: 16px;
 }
 
-.ph-logo--ifthen {
-  background: $periwinkle;
+.ph-logo--itp {
+  --logo-fg: #ffffff;
+  background: #57068c;
+  color: #ffffff;
   box-shadow: 2px 2px 0 $ink;
-  rotate: -1.5deg;
-  font-family: $mono;
-  font-size: 15px;
+  rotate: -1deg;
+  font-family: $display;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.ph-logo--eyebeam {
+  background: #ffffff;
+  box-shadow: 2px 2px 0 $ink;
+  rotate: 1.5deg;
+  font-family: $display;
+  font-weight: 800;
+  font-size: 16px;
 }
 
 .ph-logo--sfpc {
+  --logo-fg: #b89cf5;
   background: $ink;
   color: #b89cf5;
   box-shadow: 2px 2px 0 $ink;
@@ -2293,116 +2469,81 @@ h3 {
   letter-spacing: 0.06em;
 }
 
-.ph-discord {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-  max-width: 280px;
-  padding: 12px 14px;
-  background: $paper;
-  border: 1px solid $ink;
-  border-radius: 8px;
+.ph-logo--cooper {
+  background: #ffffff;
   box-shadow: 2px 2px 0 $ink;
-  transform: rotate(-1.5deg);
-
-  b {
-    font-family: $display;
-    font-size: 17px;
-    line-height: 1.1;
-  }
-
-  > span {
-    font-size: 13px;
-    line-height: 1.35;
-    color: #4a4a46;
-  }
+  rotate: -1deg;
+  font-family: $display;
+  font-weight: 700;
 }
 
-.ph-discord__counts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 12px;
-  margin-top: 2px;
-  font-family: $mono;
+.ph-logo--small {
+  min-height: 0;
+  padding: 1px 8px;
   font-size: 12px;
-  color: $ink !important;
+  vertical-align: baseline;
 
-  &[hidden] {
-    display: none;
+  span {
+    font-size: 10px;
   }
 }
 
-.ph-discord__online {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-
-  i {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: rgb(16, 210, 16);
-    box-shadow: 0 0 5px rgba(16, 210, 16, 0.8);
-  }
-}
-
-.ph-discord__members {
-  color: $muted;
-}
-
-.ph-terminal {
-  align-self: flex-start;
-  border: 1.5px solid $ink;
-  border-radius: 4px;
-  background: $code-paper;
-  box-shadow: 2px 2px 0 $ink;
-  padding: 10px 12px;
-  font-family: $mono;
-  font-size: 12px;
-  line-height: 1.7;
-  color: #24292e;
-  transform: rotate(1deg);
-
-  > span {
-    color: $muted;
-  }
-
-  a {
-    color: $ink;
-    text-decoration: none;
-  }
-
-  mark {
-    background: $mustard;
-    padding: 0 4px;
-  }
-}
-
+// Tip jar: a button; coins from everyone here right now drop in.
 .ph-jar {
   flex: none;
-  width: 78px;
-  height: 90px;
-}
-
-.ph-door__support-text {
-  flex: 1 1 380px;
+  // Fixed width so the count label changing length never shifts the goal bar.
+  width: 112px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
 
-  h3 {
-    margin: 0;
-    font-weight: 800;
-    font-size: 26px;
+  svg {
+    width: 78px;
+    height: 90px;
+    overflow: visible;
+    transition: rotate 0.15s ease;
   }
 
-  p {
-    margin: 0;
-    font-size: 16px;
-    line-height: 1.5;
-    color: $body-text;
+  &:hover svg {
+    rotate: -4deg;
+  }
+
+  &:active svg {
+    rotate: 3deg;
+  }
+
+  .is-new {
+    animation: ph-coin-drop 0.45s cubic-bezier(0.3, 0.6, 0.4, 1.2);
+  }
+}
+
+.ph-jar__count {
+  width: 100%;
+  font-family: $mono;
+  font-size: 11px;
+  color: $muted;
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes ph-coin-drop {
+  from {
+    translate: 0 -90px;
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+  to {
+    translate: 0 0;
   }
 }
 
@@ -2411,7 +2552,6 @@ h3 {
   flex-direction: column;
   gap: 6px;
   margin-top: 6px;
-  max-width: 420px;
 }
 
 .ph-goal__bar {
@@ -2438,10 +2578,6 @@ h3 {
   font-family: $mono;
   font-size: 13px;
   color: $ink;
-}
-
-.ph-door__support-text .ph-door__support-contact {
-  font-size: 14px;
 }
 
 // Guestbook
@@ -2563,11 +2699,18 @@ h3 {
   gap: 20px;
 }
 
+// The heading row and the cards share one width so "more in the docs" ends
+// where the cards end.
+.ph-faq > .ph-section-head,
+.ph-faq__list {
+  width: 100%;
+  max-width: 900px;
+}
+
 .ph-faq__list {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-width: 900px;
 
   details {
     border: 1.5px solid $ink;
@@ -2585,7 +2728,7 @@ h3 {
     list-style: none;
     font-family: $display;
     font-weight: 700;
-    font-size: 20px;
+    font-size: var(--fs-h4);
     line-height: 1.25;
 
     &::-webkit-details-marker {
@@ -2594,6 +2737,7 @@ h3 {
 
     > span:first-child {
       flex: none;
+      width: 18px;
       font-family: $mono;
       font-weight: 500;
       font-size: 12px;
@@ -2639,7 +2783,7 @@ h3 {
     margin: 0;
     padding: 0 20px 20px 54px;
     max-width: 760px;
-    font-size: 17px;
+    font-size: var(--fs-body);
     line-height: 1.55;
     color: $body-text;
   }
@@ -2697,7 +2841,8 @@ h3 {
   font-size: 24px;
 }
 
-// Big footer wordmark. The h, t, m, l letters are the old homepage's toggles.
+// Big footer wordmark. Each click gives a letter a new shared random color
+// (--letter-color, marked with data-lit once a letter has one).
 .ph-footer__big {
   background: #efeacb;
   height: 190px;
@@ -2722,34 +2867,21 @@ h3 {
       color: $ultramarine;
     }
 
-    &.clicked {
-      color: $mustard;
-      text-shadow: 0 0 24px rgba(232, 166, 58, 0.7);
+    &[data-lit] {
+      color: var(--letter-color, #{$mustard});
+      text-shadow: 0 0 24px
+        color-mix(in srgb, var(--letter-color, #{$mustard}) 70%, transparent);
     }
   }
 }
 
 // ---------- tablet ----------
 
-@media (max-width: 1180px) {
-  .ph-hero__pitch {
-    width: 560px;
-
-    h1 {
-      font-size: 58px;
-    }
-  }
-  .ph-toy--sign {
-    right: 24%;
-  }
-  .ph-toy--newest {
-    left: 190px;
-  }
-}
-
+// Laptop widths: smaller heading and notes so the lamp and plant notes clear
+// the pitch.
 @media (max-width: 1000px) {
   .ph-how__steps,
-  .ph-come__grid {
+  .ph-asks {
     grid-template-columns: minmax(0, 1fr);
     gap: 40px;
   }
@@ -2767,6 +2899,19 @@ h3 {
     margin-top: 24px;
     transform: rotate(1deg);
   }
+  .ph-meet {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  // Stacked, the video is capped so the card never fills the screen.
+  .ph-meet__media {
+    max-height: min(46vh, 400px);
+    border-right: 0;
+    border-bottom: 1.5px solid $ink;
+    border-radius: 13px 13px 0 0;
+  }
+  .ph-meet__body {
+    border-radius: 0 0 13px 13px;
+  }
   .ph-why {
     flex-direction: column;
     align-items: flex-start;
@@ -2775,58 +2920,65 @@ h3 {
 
 // ---------- phone ----------
 
-@include phone {
-  body.ph-home {
-    font-size: 15px;
+// Tablets: words and the Discord button side by side under the video.
+@media (min-width: 761px) and (max-width: 1000px) {
+  .ph-meet__body {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
   }
+}
 
-  .ph-hand {
-    font-size: 21px;
-  }
-
+// Below this width the scaled desktop toy box gets too small to read, so the
+// toys stack: lamp and sign up top, pitch, then a shelf of toys.
+@media (max-width: 900px) {
   .ph-hero {
     padding: 14px 12px 0;
+  }
+
+  // Stacked toys are drawn at full size. scale: none (not 1) also keeps the
+  // fixed-position code peeks tied to the screen rather than the toy.
+  .ph-toybox {
+    --toy-scale: 1 !important;
+  }
+
+  .ph-toy,
+  .ph-here-now,
+  .ph-hero__pitch,
+  .ph-peek {
+    scale: none;
   }
 
   .ph-toybox {
     height: auto;
     display: flex;
     flex-direction: column;
-    padding: 34px 0 10px;
+    padding: 0 0 26px;
     border-radius: 14px;
     box-shadow: 5px 5px 0 $ink;
   }
 
-  .ph-toybox__label {
-    display: inline-flex;
-    position: absolute;
-    left: 50%;
-    top: -12px;
-    transform: translateX(-50%) rotate(-2deg);
-    font-size: 11px;
-    z-index: 4;
-  }
-
+  // Same toys and notes as desktop, stacked: lamp and sign above the pitch,
+  // the rest on a shelf below it that scrolls sideways when it runs out of room.
   .ph-hero__pitch {
     position: static;
-    transform: none;
     width: auto;
-    padding: 64px 16px 18px;
+    margin: 0;
+    padding: 178px 16px 8px;
     gap: 10px;
 
     h1 {
-      font-size: 34px;
+      font-size: clamp(34px, 6.4vw, 54px);
       line-height: 1.05;
     }
 
     p {
-      font-size: 15px;
+      font-size: clamp(15px, 2vw, 17px);
     }
   }
 
   .ph-hero__ctas {
     flex-wrap: nowrap;
-    width: 100%;
+    width: min(100%, 460px);
 
     .ph-btn {
       min-height: 46px;
@@ -2850,10 +3002,8 @@ h3 {
   }
 
   .ph-toy--sign {
-    right: auto;
-    left: 50%;
-    top: 46px;
-    transform: translateX(-50%);
+    right: 16px;
+    top: 132px;
   }
 
   #sign {
@@ -2861,7 +3011,10 @@ h3 {
   }
 
   .ph-toy--newest {
-    display: none;
+    position: static;
+    align-self: center;
+    margin: 18px 16px 0;
+    max-width: calc(100% - 32px);
   }
 
   .ph-toy--lamp {
@@ -2869,40 +3022,41 @@ h3 {
     top: 0;
 
     .lamp {
-      width: 32px;
+      width: 46px;
     }
   }
 
   .ph-toy--lamp__cord {
-    height: 14px;
+    height: 18px;
+  }
+
+  .ph-note {
+    font-size: 18px;
+  }
+
+  .ph-note__arrow {
+    width: 34px;
+    height: 24px;
   }
 
   .ph-note--lamp {
-    left: 40px;
-    top: 26px;
-    font-size: 18px;
-
-    .ph-note__arrow,
-    .ph-note__long {
-      display: none;
-    }
-
-    .ph-note__short {
-      display: inline;
-    }
+    left: 54px;
+    top: 54px;
   }
 
   .ph-toybox__toys {
     position: relative;
     inset: auto;
     display: flex;
+    justify-content: safe center;
     align-items: flex-end;
-    gap: 26px;
+    gap: 30px;
+    margin-top: 26px;
+    padding: 28px 20px 12px;
+    border-top: 1.5px dashed rgba(28, 28, 28, 0.3);
     overflow-x: auto;
     overscroll-behavior-x: contain;
     scroll-snap-type: x proximity;
-    padding: 30px 18px 16px;
-    border-top: 1.5px dashed rgba(28, 28, 28, 0.3);
     scrollbar-width: none;
 
     &::-webkit-scrollbar {
@@ -2913,11 +3067,12 @@ h3 {
   .ph-toybox__toys > .ph-toy {
     position: relative;
     flex: none;
+    max-width: 200px;
     left: auto !important;
     right: auto !important;
     top: auto !important;
     bottom: auto !important;
-    scroll-snap-align: start;
+    scroll-snap-align: center;
   }
 
   .ph-toy--visits {
@@ -2939,7 +3094,6 @@ h3 {
   }
 
   .ph-note--visits {
-    font-size: 18px;
     text-align: center;
   }
 
@@ -2959,16 +3113,14 @@ h3 {
     }
   }
 
-  .ph-note--plant,
-  .ph-note--spin {
+  .ph-toybox__toys .ph-note {
     position: static;
-    margin-top: 6px;
-    font-size: 18px;
+    margin-top: 8px;
     text-align: center;
+    white-space: normal;
     transform: none;
 
-    .ph-note__arrow,
-    small {
+    .ph-note__arrow {
       display: none;
     }
   }
@@ -2984,6 +3136,12 @@ h3 {
     height: 92px;
   }
 
+  .ph-toy--hydrant {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
   .ph-hydrant {
     width: 70px;
 
@@ -2993,19 +3151,10 @@ h3 {
     }
   }
 
-  .ph-note--hydrant {
-    font-size: 18px;
-  }
-
   .ph-toy--boxes {
+    display: flex;
     flex-direction: column-reverse;
     align-items: center;
-    padding-right: 10px;
-  }
-
-  .ph-note--boxes {
-    font-size: 18px;
-    text-align: center;
   }
 
   .ph-boxes {
@@ -3016,15 +3165,6 @@ h3 {
     width: 60px;
     height: 60px;
     box-shadow: 3px 3px 0 $ink;
-  }
-
-  .ph-toybox__swipe {
-    display: block;
-    align-self: flex-end;
-    padding: 0 16px;
-    font-family: $mono;
-    font-size: 10px;
-    color: $muted;
   }
 
   .ph-peek {
@@ -3041,28 +3181,44 @@ h3 {
       font-size: 12px;
     }
   }
+}
+
+// Tablets have room for every toy, so the shelf wraps instead of scrolling.
+@media (min-width: 761px) and (max-width: 900px) {
+  .ph-toybox__toys {
+    flex-wrap: wrap;
+    justify-content: center;
+    column-gap: 44px;
+    row-gap: 28px;
+    overflow: visible;
+  }
+}
+
+@include phone {
+  body.ph-home {
+    --fs-h2: 30px;
+    --fs-h3: 24px;
+    --fs-h4: 18px;
+    --fs-lead: 17px;
+    --fs-body: 15px;
+    --fs-small: 13px;
+    --fs-hand: 20px;
+  }
+
+  // Phones run out of room for the shelf, so hint that it scrolls.
+  .ph-toybox__swipe {
+    display: block;
+    align-self: flex-end;
+    padding: 0 16px;
+    font-family: $mono;
+    font-size: 10px;
+    color: $muted;
+  }
 
   .ph-section-head h2,
-  .ph-made .ph-section-head h2 {
-    font-size: 30px;
-  }
-
-  .ph-section-head > a {
-    font-size: 15px;
-  }
-
   .ph-why {
     padding: 48px 16px 0;
     gap: 32px;
-  }
-
-  .ph-why__text {
-    h2 {
-      font-size: 24px;
-    }
-    p {
-      font-size: 16px;
-    }
   }
 
   .ph-why__side {
@@ -3094,7 +3250,6 @@ h3 {
 
   .ph-how__left-note,
   .ph-how__right-note {
-    font-size: 17px;
     bottom: 4px;
   }
 
@@ -3158,31 +3313,65 @@ h3 {
     width: min(260px, 100%);
   }
 
-  .ph-events-wrap {
+  .ph-meet-wrap {
     padding: 0 16px;
   }
 
-  .ph-events {
-    grid-template-columns: minmax(0, 1fr);
-    margin-top: 56px;
+  .ph-meet {
+    margin-top: 64px;
     box-shadow: 5px 5px 0 $ink;
   }
 
-  .ph-events__media {
-    min-height: 200px;
-    border-right: 0;
-    border-bottom: 1.5px solid $ink;
+  .ph-meet__media {
+    aspect-ratio: 16 / 10;
+    max-height: 30vh;
   }
 
-  .ph-events__body {
-    padding: 22px 18px;
+  .ph-meet__recent {
+    left: 10px;
+    bottom: 10px;
+    max-width: calc(100% - 20px);
+    padding: 5px 9px;
 
-    h2 {
-      font-size: 28px;
+    span:first-child {
+      font-size: 9px;
     }
 
-    .ph-btn {
-      align-self: stretch;
+    b {
+      font-size: 13px;
+    }
+
+    span:not(:first-child) {
+      display: none;
+    }
+  }
+
+  .ph-events__stamp {
+    right: 8px;
+    top: 8px;
+    width: 52px;
+    height: 52px;
+    font-size: 8px;
+
+    b {
+      font-size: 10px;
+    }
+  }
+
+  .ph-meet__body {
+    padding: 18px 16px;
+    gap: 16px;
+  }
+
+  .ph-meet__text {
+    gap: 6px;
+  }
+
+  .ph-discord-btn {
+    min-height: 60px;
+
+    b {
+      font-size: 19px;
     }
   }
 
@@ -3219,43 +3408,23 @@ h3 {
     padding: 28px 20px 24px;
     gap: 14px;
 
-    h2 {
-      font-size: 40px;
-    }
-
-    > p {
-      font-size: 16px;
-    }
-
     .ph-btn {
       align-self: stretch;
     }
   }
 
-  .ph-come {
+  .ph-asks {
     padding: 56px 16px 0;
   }
 
-  .ph-door {
+  .ph-ask {
+    padding: 30px 18px 22px;
     box-shadow: 5px 5px 0 $ink;
-
-    > .ph-btn {
-      align-self: stretch;
-    }
+    rotate: 0deg;
   }
 
-  .ph-door--support {
-    flex-direction: column;
-    align-items: flex-start;
-
-    > .ph-btn {
-      align-self: stretch;
-    }
-  }
-
-  // In a column, the desktop 380px flex-basis would become a height.
-  .ph-door__support-text {
-    flex: none;
+  .ph-ask__foot .ph-btn {
+    flex: 1 1 100%;
   }
 
   .ph-guestbook {
@@ -3267,11 +3436,24 @@ h3 {
     box-shadow: 5px 5px 0 $ink;
   }
 
+  // Inline flow, so the sentence reads on from the name box like desktop.
   #guestbookForm {
+    display: block;
     font-size: 15px;
+    line-height: 1.6;
+
+    input,
+    button {
+      vertical-align: middle;
+      margin: 4px 0;
+    }
 
     input[name="name"] {
       width: 110px;
+    }
+
+    .inputMessage {
+      margin-right: 8px;
     }
   }
 
@@ -3287,7 +3469,6 @@ h3 {
     }
 
     summary {
-      font-size: 16px;
       padding: 14px;
       gap: 10px;
 
@@ -3298,8 +3479,7 @@ h3 {
     }
 
     p {
-      padding: 0 14px 16px;
-      font-size: 15px;
+      padding: 0 14px 16px 42px;
     }
   }
 
@@ -3308,9 +3488,10 @@ h3 {
     gap: 24px;
   }
 
+  // Sized to the screen so the whole word fits, letters stay tappable.
   .ph-footer__big {
-    height: 64px;
-    font-size: 86px;
-    padding: 0 12px;
+    height: 16vw;
+    font-size: 20vw;
+    padding: 0 8px;
   }
 }

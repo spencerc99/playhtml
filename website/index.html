@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- ABOUTME: Hosts the interactive public homepage for the playhtml library. -->
-<!-- ABOUTME: A toy box of live shared elements, then the pitch, gallery, experiments, events and community. -->
+<!-- ABOUTME: A toy box of live shared elements, then the pitch, gallery, events and community. -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -143,16 +143,13 @@
     <main id="main">
       <section class="ph-hero" aria-label="Live playground">
         <div class="ph-toybox" id="toybox">
-          <span class="ph-label ph-toybox__label"
-            >everything in here is live</span
-          >
-
           <div class="ph-hero__pitch">
             <h1>Making the web more alive &amp; fun</h1>
             <p>
-              playhtml adds live, persistent interactivity to any HTML element.
-              Facilitate real-time interactions and allow visitors' actions to
-              stay over time without complex infrastructure.
+              playhtml is an open-source library that adds live, persistent
+              interactivity to any HTML element. Facilitate real-time
+              interactions and allow visitors' actions to stay over time without
+              complex infrastructure.
             </p>
             <div class="ph-hero__ctas">
               <a class="ph-btn ph-btn--primary" href="/docs/">Get started</a>
@@ -168,7 +165,11 @@
             </span>
           </span>
 
-          <div class="ph-toy ph-toy--sign">
+          <div
+            class="ph-toy ph-toy--sign"
+            data-peek="sign"
+            data-peek-anchor="#sign"
+          >
             <div id="sign" can-move can-move-bounds="#toybox">
               #aliveinternettheory
             </div>
@@ -205,7 +206,6 @@
                 >click the lamp.<br />it stays on for<br />everyone after
                 you<small>can-toggle</small></span
               >
-              <span class="ph-note__short" aria-hidden="true">tap it</span>
             </span>
           </div>
 
@@ -220,7 +220,7 @@
             </div>
 
             <div class="ph-toy ph-toy--plant" data-peek="plant">
-              <div id="plantContainer" can-move can-move-bounds="#toybox">
+              <div id="plantContainer">
                 <div id="plant" can-grow></div>
                 <div class="pot"></div>
               </div>
@@ -233,11 +233,7 @@
                   <path d="M56 30 C 40 32, 20 24, 8 8" />
                   <path d="M6 20 L7 7 L19 10" />
                 </svg>
-                <span
-                  >click to help it grow,<br />drag it somewhere sunny<small
-                    >can-grow + can-move</small
-                  ></span
-                >
+                <span>click to help it grow<small>can-grow</small></span>
               </span>
             </div>
 
@@ -283,7 +279,7 @@
             </div>
           </div>
           <span class="ph-toybox__swipe" aria-hidden="true"
-            >swipe for more toys →</span
+            >swipe for more toys &rarr;</span
           >
         </div>
       </section>
@@ -321,11 +317,41 @@
           <div class="ph-supporters">
             <span class="ph-hand">supporters &amp; collaborators</span>
             <ul>
-              <li class="ph-logo ph-logo--wikipedia">W<span>IKIPEDIA</span></li>
-              <li class="ph-logo ph-logo--grayarea">Gray Area</li>
-              <li class="ph-logo ph-logo--rhizome">Rhizome</li>
-              <li class="ph-logo ph-logo--ifthen">If, Then</li>
-              <li class="ph-logo ph-logo--sfpc">SFPC</li>
+              <li>
+                <a
+                  class="ph-logo ph-logo--wikipedia"
+                  href="https://www.wikipedia.org/"
+                  >W<span>IKIPEDIA</span></a
+                >
+              </li>
+              <li>
+                <a class="ph-logo ph-logo--rhizome" href="https://rhizome.org/"
+                  >Rhizome</a
+                >
+              </li>
+              <li>
+                <a
+                  class="ph-logo ph-logo--grayarea"
+                  href="https://grayarea.org/"
+                  >Gray Area</a
+                >
+              </li>
+              <li>
+                <a class="ph-logo ph-logo--itp" href="https://itp.nyu.edu/"
+                  >NYU ITP</a
+                >
+              </li>
+              <li>
+                <a class="ph-logo ph-logo--eyebeam" href="https://eyebeam.org/"
+                  >Eyebeam</a
+                >
+              </li>
+              <li>
+                <a class="ph-logo ph-logo--sfpc" href="https://sfpc.study/"
+                  >SFPC</a
+                >
+              </li>
+              <li class="ph-hand">+ you?</li>
             </ul>
           </div>
         </div>
@@ -440,43 +466,207 @@
         <div class="ph-made__grid" id="home-gallery-mount"></div>
       </section>
 
-      <div id="home-experiments-mount"></div>
-
-      <div class="ph-events-wrap">
-        <section class="ph-events" aria-labelledby="events-h">
+      <div class="ph-meet-wrap">
+        <section class="ph-meet" aria-labelledby="meet-h">
+          <span class="ph-label ph-label--ultramarine">where we meet</span>
           <a
-            class="ph-events__media"
+            class="ph-meet__media"
             href="/events/walking-together/"
             aria-label="walking together event page"
           >
-            <img
-              src="/experiments/index-previews/event-walking.png"
-              alt="Cursors from an internet walk gathered around a shared page"
-              loading="lazy"
-            />
+            <video
+              src="/home/event-walk.mp4"
+              poster="/home/event-walk-poster.jpg"
+              autoplay
+              muted
+              loop
+              playsinline
+              preload="metadata"
+              aria-label="Cursor trails drawing in during an internet walk, then everyone collaging the scraps they found"
+            ></video>
             <span class="ph-events__stamp" aria-hidden="true"
               >WALK<b>OCT 11</b></span
             >
+            <span class="ph-meet__recent">
+              <span>MOST RECENT EVENT</span>
+              <b>walking together · walk + collage night</b>
+              <span
+                >cursor trails across the web, then one shared collage of what
+                we found</span
+              >
+            </span>
           </a>
-          <div class="ph-events__body">
-            <h2 id="events-h">Events</h2>
-            <p>
-              Walks, workshops and get-togethers where we build a more alive web
-              together, online and in person.
-            </p>
-            <div class="ph-events__recent">
-              <span>MOST RECENT</span>
-              <b>walking together</b>
-              <span>Internet walk + collage night · Oct 11</span>
+          <div class="ph-meet__body">
+            <div class="ph-meet__text">
+              <h2 id="meet-h">Come play with us</h2>
+              <p>
+                We walk the web together, sketch websites and make things in the
+                same place at once, online and in person.
+              </p>
+              <a href="/events/walking-together/">see all past events →</a>
             </div>
-            <a
-              class="ph-btn ph-btn--mustard ph-btn--small"
-              href="/events/walking-together/"
-              >see the walk</a
-            >
+            <div class="ph-meet__join">
+              <a class="ph-discord-btn" href="https://discord.gg/SKbsSf4ptU"
+                ><b>Join us in Discord</b
+                ><span data-discord-counts hidden
+                  ><span data-discord-members></span> members helping steward
+                  the web<span hidden data-discord-online></span></span
+              ></a>
+              <span class="ph-meet__github"
+                >or help build it:
+                <a
+                  href="https://github.com/spencerc99/playhtml/blob/main/CONTRIBUTING.md"
+                  >contribute on GitHub</a
+                ></span
+              >
+            </div>
           </div>
         </section>
       </div>
+
+      <section class="ph-asks" aria-label="Work with us or support playhtml">
+        <div class="ph-ask ph-ask--collab">
+          <span class="ph-label ph-label--brick">collaborate</span>
+          <h2>Activate your online community</h2>
+          <p>
+            From cultural and educational institutions to brands and companies,
+            people bring us in to make the web feel inhabited for their
+            communities. We've led an internet walk with Rhizome, run a workshop
+            at Gray Area where people made ~30 sites in a day, put readers'
+            cursors on Wikipedia, and built a shared home for Cooper Union's
+            architecture school.
+          </p>
+          <ul class="ph-ask__ways">
+            <li>
+              <a
+                href="https://spencer.place/creation/walking-on-the-internet-together/"
+                >internet walks &amp; events
+                <span class="ph-logo ph-logo--small ph-logo--rhizome"
+                  >Rhizome</span
+                ></a
+              >
+            </li>
+            <li>
+              <a
+                href="https://spencer.place/creation/neighborhood-internets-workshop/"
+                >workshops
+                <span class="ph-logo ph-logo--small ph-logo--grayarea"
+                  >Gray Area</span
+                ></a
+              >
+            </li>
+            <li>
+              <a href="https://spencer.place/creation/wwo-x-wikipedia/"
+                >durable online takeovers
+                <span class="ph-logo ph-logo--small ph-logo--wikipedia"
+                  >W<span>IKIPEDIA</span></span
+                ></a
+              >
+            </li>
+            <li>
+              <a href="https://spencer.place/creation/cmuplace/"
+                >shared sites
+                <span class="ph-logo ph-logo--small ph-logo--cooper"
+                  >Cooper Union</span
+                ></a
+              >
+            </li>
+          </ul>
+          <div class="ph-ask__foot">
+            <a
+              class="ph-btn ph-btn--small ph-btn--rose"
+              href="mailto:hi@spencer.place"
+              >get in touch</a
+            >
+            <span class="ph-ask__fine"
+              >to bring one of these to your people, or pitch your own
+              idea</span
+            >
+          </div>
+        </div>
+        <div class="ph-ask ph-ask--fund">
+          <span class="ph-label">keep it going</span>
+          <h2>Keep it free and open source</h2>
+          <p>
+            playhtml is made by a small group of maintainers and community
+            members as public good infrastructure to keep the web alive.
+            Sponsors, from a few dollars a month to organizations backing a
+            season of work, help make this work possible.
+          </p>
+          <div class="ph-ask__fund-row">
+            <!-- Update data-current (USD per month) as sponsorships change. -->
+            <div
+              class="ph-goal"
+              data-sponsor-goal
+              data-current="276"
+              data-goal="1000"
+            >
+              <span class="ph-goal__bar" hidden><span></span></span>
+              <span class="ph-goal__label"></span>
+            </div>
+            <!-- Each click drops a coin. Coins live in presence, so the jar
+                   empties once everyone has left the page. -->
+            <button
+              type="button"
+              class="ph-jar"
+              id="tip-jar"
+              can-play
+              aria-label="Drop a coin in the tip jar"
+            >
+              <svg viewBox="0 0 120 140" aria-hidden="true">
+                <rect
+                  x="40"
+                  y="6"
+                  width="40"
+                  height="12"
+                  rx="3"
+                  fill="#a87a4a"
+                  stroke="#1c1c1c"
+                />
+                <path
+                  d="M30 22 h60 q8 0 8 10 v80 q0 22 -22 22 h-32 q-22 0 -22 -22 v-80 q0 -10 8 -10z"
+                  fill="#fffdf8"
+                  stroke="#1c1c1c"
+                  stroke-width="2"
+                />
+                <circle
+                  cx="48"
+                  cy="118"
+                  r="9"
+                  fill="#e8a63a"
+                  stroke="#1c1c1c"
+                />
+                <circle
+                  cx="66"
+                  cy="120"
+                  r="9"
+                  fill="#e8a63a"
+                  stroke="#1c1c1c"
+                />
+                <circle
+                  cx="58"
+                  cy="104"
+                  r="9"
+                  fill="#e8a63a"
+                  stroke="#1c1c1c"
+                />
+                <g data-tip-coins></g>
+              </svg>
+              <span class="ph-jar__count" data-tip-count>click to tip</span>
+            </button>
+          </div>
+          <div class="ph-ask__foot ph-ask__foot--stack">
+            <a
+              class="ph-btn ph-btn--small ph-btn--mustard"
+              href="https://github.com/sponsors/spencerc99"
+              >sponsor on GitHub</a
+            >
+            <a href="mailto:hi@spencer.place?subject=Sponsoring%20playhtml"
+              >sponsoring as an organization? let's talk</a
+            >
+          </div>
+        </div>
+      </section>
 
       <section class="ph-wwo" aria-labelledby="wwo-h">
         <span class="ph-label ph-wwo__label"
@@ -538,146 +728,10 @@
               loop
               playsinline
               preload="metadata"
-              aria-label="Colorful cursor trails left by people browsing"
+              aria-label="Cursor trails, collected scraps and people following each other on Wikipedia, recorded with we were online"
             ></video>
             <span class="ph-hand ph-wwo__caption"
-              >real trails from<br />people browsing</span
-            >
-          </div>
-        </div>
-      </section>
-
-      <section class="ph-come" aria-labelledby="come-h">
-        <div class="ph-section-head">
-          <h2 id="come-h">Come play with us</h2>
-          <span class="ph-hand ph-come__door"
-            >pick a door<svg viewBox="0 0 40 46" aria-hidden="true">
-              <path d="M4 4 C 20 8, 30 20, 30 40" />
-              <path d="M22 34 L30 42 L36 32" /></svg
-          ></span>
-        </div>
-        <div class="ph-come__grid">
-          <div class="ph-door ph-door--rose">
-            <span class="ph-label ph-label--brick">collaborate with us</span>
-            <div class="ph-door__visual">
-              <span class="ph-door__kicker">PAST COLLABORATORS</span>
-              <span class="ph-door__logos"
-                ><span class="ph-logo ph-logo--wikipedia"
-                  >W<span>IKIPEDIA</span></span
-                ><span class="ph-logo ph-logo--rhizome">Rhizome</span
-                ><span class="ph-hand">+ you?</span></span
-              >
-            </div>
-            <p>
-              From cultural and educational institutions to brands and
-              companies, we work with all kinds of collaborators to make the
-              internet feel more alive, including custom activations, branded
-              objects, and classroom resources.
-            </p>
-            <a
-              class="ph-btn ph-btn--small ph-btn--paper"
-              href="mailto:playhtml@spencer.place"
-              >get in touch</a
-            >
-          </div>
-          <div class="ph-door ph-door--periwinkle">
-            <span class="ph-label ph-label--ultramarine">join the discord</span>
-            <div class="ph-door__visual">
-              <div class="ph-discord">
-                <b>playhtml / WWO</b>
-                <span>turning the internet into a shared, living space</span>
-                <span class="ph-discord__counts" data-discord-counts hidden
-                  ><span class="ph-discord__online"
-                    ><i></i><span data-discord-online></span> online</span
-                  ><span class="ph-discord__members"
-                    ><span data-discord-members></span> members</span
-                  ></span
-                >
-              </div>
-            </div>
-            <p>
-              Join our community on Discord to show off what you make, ask for
-              help, and commiserate over a more human internet with like-minded
-              people.
-            </p>
-            <a
-              class="ph-btn ph-btn--small ph-btn--paper"
-              href="https://discord.gg/SKbsSf4ptU"
-              >join on Discord</a
-            >
-          </div>
-          <div class="ph-door ph-door--sage">
-            <span class="ph-label ph-label--green">help build it</span>
-            <div class="ph-door__visual">
-              <div class="ph-terminal">
-                <span>$</span> git clone playhtml<br /><a
-                  href="https://github.com/spencerc99/playhtml/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22"
-                  ><mark data-good-first-issues>good first issues</mark></a
-                >
-              </div>
-            </div>
-            <p>
-              playhtml is open source. Start by reading our CONTRIBUTING.md and
-              try to get your first PR in by fixing a bug, clarifying the docs,
-              or adding your own capability.
-            </p>
-            <a
-              class="ph-btn ph-btn--small ph-btn--paper"
-              href="https://github.com/spencerc99/playhtml/blob/main/CONTRIBUTING.md"
-              >contribute on GitHub</a
-            >
-          </div>
-          <div class="ph-door ph-door--support">
-            <span class="ph-label">keep it open</span>
-            <svg class="ph-jar" viewBox="0 0 120 140" aria-hidden="true">
-              <rect
-                x="40"
-                y="6"
-                width="40"
-                height="12"
-                rx="3"
-                fill="#a87a4a"
-                stroke="#1c1c1c"
-              />
-              <path
-                d="M30 22 h60 q8 0 8 10 v80 q0 22 -22 22 h-32 q-22 0 -22 -22 v-80 q0 -10 8 -10z"
-                fill="#fffdf8"
-                stroke="#1c1c1c"
-                stroke-width="2"
-              />
-              <circle cx="48" cy="118" r="9" fill="#e8a63a" stroke="#1c1c1c" />
-              <circle cx="66" cy="120" r="9" fill="#e8a63a" stroke="#1c1c1c" />
-              <circle cx="58" cy="104" r="9" fill="#e8a63a" stroke="#1c1c1c" />
-            </svg>
-            <div class="ph-door__support-text">
-              <h3>Keep playhtml running</h3>
-              <p>
-                playhtml is free and open source and aims to provide public-good
-                infrastructure for making the web feel more alive. We're
-                supported by generous sponsors, grants and paid collaborations.
-              </p>
-              <!-- Update data-current (USD per month) as sponsorships change. -->
-              <div
-                class="ph-goal"
-                data-sponsor-goal
-                data-current="276"
-                data-goal="1000"
-              >
-                <span class="ph-goal__bar" hidden><span></span></span>
-                <span class="ph-goal__label"></span>
-              </div>
-              <p class="ph-door__support-contact">
-                Sponsoring as an organization, or thinking bigger?
-                <a
-                  href="mailto:playhtml@spencer.place?subject=Sponsoring%20playhtml"
-                  >Get in touch</a
-                >.
-              </p>
-            </div>
-            <a
-              class="ph-btn ph-btn--small ph-btn--mustard"
-              href="https://github.com/sponsors/spencerc99"
-              >Sponsor on GitHub</a
+              >from real people<br />browsing</span
             >
           </div>
         </div>
@@ -821,11 +875,20 @@
         <a href="https://wewere.online">wewere.online</a>
       </nav>
     </footer>
-    <div class="ph-footer__big" aria-label="playhtml">
-      play<span class="letter" id="h" can-toggle>h</span
-      ><span class="letter" id="t" can-toggle>t</span
-      ><span class="letter" id="m" can-toggle>m</span
-      ><span class="letter" id="l" can-toggle>l</span>
+    <!-- Every click on a letter gives it a new random color, shared with
+         everyone. The wrapper stores one color per letter id. -->
+    <div
+      class="ph-footer__big"
+      id="wordmark-colors"
+      can-play
+      aria-label="playhtml"
+    >
+      <span class="letter" id="wm-p">p</span
+      ><span class="letter" id="wm-l">l</span
+      ><span class="letter" id="wm-a">a</span
+      ><span class="letter" id="wm-y">y</span
+      ><span class="letter" id="h">h</span><span class="letter" id="t">t</span
+      ><span class="letter" id="m">m</span><span class="letter" id="l">l</span>
     </div>
 
     <!-- Code shown when hovering a toy. Kept in <pre> so formatting survives. -->
@@ -833,8 +896,11 @@
       <pre><span class="t">&lt;img</span> <span class="a">id</span>=<span class="s">"lamp"</span> <span class="a">src</span>=<span class="s">"lamp.png"</span> <mark>can-toggle</mark><span class="t">&gt;</span></pre>
     </template>
     <template id="peek-plant" data-file="plant.html">
-      <pre><span class="t">&lt;div</span> <span class="a">id</span>=<span class="s">"pot"</span> <mark>can-move</mark><span class="t">&gt;</span>
-  <span class="t">&lt;div</span> <span class="a">id</span>=<span class="s">"plant"</span> <mark>can-grow</mark><span class="t">&gt;&lt;/div&gt;</span>
+      <pre><span class="t">&lt;div</span> <span class="a">id</span>=<span class="s">"plant"</span> <mark>can-grow</mark><span class="t">&gt;&lt;/div&gt;</span></pre>
+    </template>
+    <template id="peek-sign" data-file="sign.html">
+      <pre><span class="t">&lt;div</span> <span class="a">id</span>=<span class="s">"sign"</span> <mark>can-move</mark><span class="t">&gt;</span>
+  #aliveinternettheory
 <span class="t">&lt;/div&gt;</span></pre>
     </template>
     <template id="peek-spin" data-file="logo.html">

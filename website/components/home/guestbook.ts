@@ -156,11 +156,7 @@ function readSubmissionTimestamps(): number[] {
 export const guestbookCapability = {
   defaultData: [],
   defaultLocalData: { addedEntries: new Set<string>() },
-  updateElement: ({
-    data: entries,
-    localData: { addedEntries },
-    setLocalData,
-  }) => {
+  update: ({ data: entries, localData: { addedEntries }, setLocalData }) => {
     const list = document.getElementById("guestbookMessages");
     if (!list) return;
 
