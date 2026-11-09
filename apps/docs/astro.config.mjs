@@ -13,7 +13,8 @@ export default defineConfig({
   base: "/docs",
   // Pages removed or merged elsewhere; keep old links working.
   redirects: {
-    "/using-react": "/docs/getting-started/",
+    "/using-react": "/docs/",
+    "/getting-started": "/docs/",
     "/data/data-essentials": "/docs/concepts/",
     "/data/presence/users": "/docs/data/presence/#names-and-colors",
     "/data/presence/cursors": "/docs/advanced/cursors/",
@@ -100,7 +101,7 @@ export default defineConfig({
       // Sidebar IA
       //
       //   Examples     → examples index (top-level link, above the path)
-      //   Start        → getting-started, concepts
+      //   Start        → index (Getting started), concepts
       //   Building blocks → capabilities, custom-elements,
       //                     presence (people), events, page-data
       //   Advanced     → autogenerate (advanced/)
@@ -132,7 +133,7 @@ export default defineConfig({
         {
           label: "Start",
           items: [
-            { label: "Getting started", slug: "getting-started" },
+            { label: "Getting started", slug: "index" },
             { label: "Core concepts", slug: "concepts" },
           ],
         },
