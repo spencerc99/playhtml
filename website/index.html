@@ -881,22 +881,20 @@
         <a href="https://wewere.online">wewere.online</a>
       </nav>
     </footer>
-    <!-- Every letter toggles. h, t, m, l keep the old homepage's ids and data;
-         the wrapper remembers which color each letter lit up in. -->
+    <!-- Every click on a letter gives it a new random color, shared with
+         everyone. The wrapper stores one color per letter id. -->
     <div
       class="ph-footer__big"
       id="wordmark-colors"
       can-play
       aria-label="playhtml"
     >
-      <span class="letter" id="wm-p" can-toggle>p</span
-      ><span class="letter" id="wm-l" can-toggle>l</span
-      ><span class="letter" id="wm-a" can-toggle>a</span
-      ><span class="letter" id="wm-y" can-toggle>y</span
-      ><span class="letter" id="h" can-toggle>h</span
-      ><span class="letter" id="t" can-toggle>t</span
-      ><span class="letter" id="m" can-toggle>m</span
-      ><span class="letter" id="l" can-toggle>l</span>
+      <span class="letter" id="wm-p">p</span
+      ><span class="letter" id="wm-l">l</span
+      ><span class="letter" id="wm-a">a</span
+      ><span class="letter" id="wm-y">y</span
+      ><span class="letter" id="h">h</span><span class="letter" id="t">t</span
+      ><span class="letter" id="m">m</span><span class="letter" id="l">l</span>
     </div>
 
     <!-- Code shown when hovering a toy. Kept in <pre> so formatting survives. -->

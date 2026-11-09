@@ -2770,8 +2770,8 @@ h3 {
   font-size: 24px;
 }
 
-// Big footer wordmark. Every letter toggles; h, t, m, l are the old homepage's
-// toggles. --letter-color is the shared random color each letter lit up in.
+// Big footer wordmark. Each click gives a letter a new shared random color
+// (--letter-color, marked with data-lit once a letter has one).
 .ph-footer__big {
   background: #efeacb;
   height: 190px;
@@ -2796,7 +2796,7 @@ h3 {
       color: $ultramarine;
     }
 
-    &.clicked {
+    &[data-lit] {
       color: var(--letter-color, #{$mustard});
       text-shadow: 0 0 24px
         color-mix(in srgb, var(--letter-color, #{$mustard}) 70%, transparent);

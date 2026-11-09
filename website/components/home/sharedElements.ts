@@ -189,10 +189,9 @@ const WordmarkColors = [
 
 type WordmarkColorData = Record<string, string>;
 
-// Footer wordmark: each letter is its own can-toggle. Every click also picks a
-// new random color for that letter, shared with everyone, so a letter lights
-// up differently each time it's switched on. One color per letter id, written
-// only from clicks (last write wins).
+// Footer wordmark: every click on a letter cycles it to a new random color,
+// shared with everyone. One color per letter id, written only from clicks
+// (last write wins). Letters nobody has clicked yet stay ink.
 export function setupWordmarkColors() {
   const wordmark = document.getElementById("wordmark-colors");
   if (!wordmark) return;
@@ -202,8 +201,10 @@ export function setupWordmarkColors() {
       const color = colors[letter.id];
       if (typeof color === "string" && WordmarkColors.includes(color)) {
         letter.style.setProperty("--letter-color", color);
+        letter.dataset.lit = "";
       } else {
         letter.style.removeProperty("--letter-color");
+        delete letter.dataset.lit;
       }
     });
   };
