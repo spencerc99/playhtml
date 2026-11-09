@@ -325,11 +325,37 @@
           <div class="ph-supporters">
             <span class="ph-hand">supporters &amp; collaborators</span>
             <ul>
-              <li class="ph-logo ph-logo--wikipedia">W<span>IKIPEDIA</span></li>
-              <li class="ph-logo ph-logo--grayarea">Gray Area</li>
-              <li class="ph-logo ph-logo--rhizome">Rhizome</li>
-              <li class="ph-logo ph-logo--ifthen">If, Then</li>
-              <li class="ph-logo ph-logo--sfpc">SFPC</li>
+              <li>
+                <a
+                  class="ph-logo ph-logo--wikipedia"
+                  href="https://www.wikipedia.org/"
+                  >W<span>IKIPEDIA</span></a
+                >
+              </li>
+              <li>
+                <a
+                  class="ph-logo ph-logo--grayarea"
+                  href="https://grayarea.org/"
+                  >Gray Area</a
+                >
+              </li>
+              <li>
+                <a class="ph-logo ph-logo--rhizome" href="https://rhizome.org/"
+                  >Rhizome</a
+                >
+              </li>
+              <li>
+                <a
+                  class="ph-logo ph-logo--ifthen"
+                  href="https://ifthen.cargo.site/"
+                  >If, Then</a
+                >
+              </li>
+              <li>
+                <a class="ph-logo ph-logo--sfpc" href="https://sfpc.study/"
+                  >SFPC</a
+                >
+              </li>
             </ul>
           </div>
         </div>
@@ -566,9 +592,12 @@
             <div class="ph-door__visual">
               <span class="ph-door__kicker">PAST COLLABORATORS</span>
               <span class="ph-door__logos"
-                ><span class="ph-logo ph-logo--wikipedia"
-                  >W<span>IKIPEDIA</span></span
-                ><span class="ph-logo ph-logo--rhizome">Rhizome</span
+                ><a
+                  class="ph-logo ph-logo--wikipedia"
+                  href="https://www.wikipedia.org/"
+                  >W<span>IKIPEDIA</span></a
+                ><a class="ph-logo ph-logo--rhizome" href="https://rhizome.org/"
+                  >Rhizome</a
                 ><span class="ph-hand">+ you?</span></span
               >
             </div>
@@ -633,26 +662,56 @@
           </div>
           <div class="ph-door ph-door--support">
             <span class="ph-label">keep it open</span>
-            <svg class="ph-jar" viewBox="0 0 120 140" aria-hidden="true">
-              <rect
-                x="40"
-                y="6"
-                width="40"
-                height="12"
-                rx="3"
-                fill="#a87a4a"
-                stroke="#1c1c1c"
-              />
-              <path
-                d="M30 22 h60 q8 0 8 10 v80 q0 22 -22 22 h-32 q-22 0 -22 -22 v-80 q0 -10 8 -10z"
-                fill="#fffdf8"
-                stroke="#1c1c1c"
-                stroke-width="2"
-              />
-              <circle cx="48" cy="118" r="9" fill="#e8a63a" stroke="#1c1c1c" />
-              <circle cx="66" cy="120" r="9" fill="#e8a63a" stroke="#1c1c1c" />
-              <circle cx="58" cy="104" r="9" fill="#e8a63a" stroke="#1c1c1c" />
-            </svg>
+            <!-- Each click drops a coin. Coins live in presence, so the jar
+                 empties once everyone has left the page. -->
+            <button
+              type="button"
+              class="ph-jar"
+              id="tip-jar"
+              can-play
+              aria-label="Drop a coin in the tip jar"
+            >
+              <svg viewBox="0 0 120 140" aria-hidden="true">
+                <rect
+                  x="40"
+                  y="6"
+                  width="40"
+                  height="12"
+                  rx="3"
+                  fill="#a87a4a"
+                  stroke="#1c1c1c"
+                />
+                <path
+                  d="M30 22 h60 q8 0 8 10 v80 q0 22 -22 22 h-32 q-22 0 -22 -22 v-80 q0 -10 8 -10z"
+                  fill="#fffdf8"
+                  stroke="#1c1c1c"
+                  stroke-width="2"
+                />
+                <circle
+                  cx="48"
+                  cy="118"
+                  r="9"
+                  fill="#e8a63a"
+                  stroke="#1c1c1c"
+                />
+                <circle
+                  cx="66"
+                  cy="120"
+                  r="9"
+                  fill="#e8a63a"
+                  stroke="#1c1c1c"
+                />
+                <circle
+                  cx="58"
+                  cy="104"
+                  r="9"
+                  fill="#e8a63a"
+                  stroke="#1c1c1c"
+                />
+                <g data-tip-coins></g>
+              </svg>
+              <span class="ph-jar__count" data-tip-count>click to tip</span>
+            </button>
             <div class="ph-door__support-text">
               <h3>Keep playhtml running</h3>
               <p>
@@ -825,8 +884,19 @@
         <a href="https://wewere.online">wewere.online</a>
       </nav>
     </footer>
-    <div class="ph-footer__big" aria-label="playhtml">
-      play<span class="letter" id="h" can-toggle>h</span
+    <!-- Every letter toggles. h, t, m, l keep the old homepage's ids and data;
+         the wrapper remembers which color each letter lit up in. -->
+    <div
+      class="ph-footer__big"
+      id="wordmark-colors"
+      can-play
+      aria-label="playhtml"
+    >
+      <span class="letter" id="wm-p" can-toggle>p</span
+      ><span class="letter" id="wm-l" can-toggle>l</span
+      ><span class="letter" id="wm-a" can-toggle>a</span
+      ><span class="letter" id="wm-y" can-toggle>y</span
+      ><span class="letter" id="h" can-toggle>h</span
       ><span class="letter" id="t" can-toggle>t</span
       ><span class="letter" id="m" can-toggle>m</span
       ><span class="letter" id="l" can-toggle>l</span>

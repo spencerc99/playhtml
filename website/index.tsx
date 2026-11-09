@@ -20,6 +20,8 @@ import {
   setupHereNow,
   setupPersistentNote,
   setupSnippetCopies,
+  setupTipJar,
+  setupWordmarkColors,
 } from "./components/home/sharedElements";
 
 const isCursorRoom = (
@@ -53,6 +55,8 @@ setupGuestbookNameInput();
 setupHereNow();
 setupSnippetCopies();
 setupPersistentNote();
+setupWordmarkColors();
+setupTipJar();
 
 const reactContentElement = document.getElementById("reactContent");
 if (reactContentElement) {

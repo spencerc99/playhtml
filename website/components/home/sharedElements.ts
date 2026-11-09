@@ -1,5 +1,5 @@
 // ABOUTME: Registers the homepage's vanilla can-play elements with playhtml.
-// ABOUTME: Covers the here-now count, the snippet copy counter and the persistent note.
+// ABOUTME: Covers the here-now count, the snippet copy counter, the persistent note, tip jar and wordmark colors.
 
 import { playhtml } from "playhtml";
 import { setLabelText } from "./pageChrome";
@@ -174,6 +174,125 @@ export function setupPersistentNote() {
       };
       note.addEventListener("pointerup", finish);
       note.addEventListener("pointercancel", finish);
+    },
+  });
+}
+
+// Colors a footer letter can light up in. Matches the homepage palette.
+const WordmarkColors = [
+  "#e8a63a",
+  "#c0373c",
+  "#274b9e",
+  "#5c7c54",
+  "#b0306a",
+  "#8a5cc0",
+];
+
+type WordmarkColorData = Record<string, string>;
+
+// Footer wordmark: each letter is its own can-toggle. Every click also picks a
+// new random color for that letter, shared with everyone, so a letter lights
+// up differently each time it's switched on. One color per letter id, written
+// only from clicks (last write wins).
+export function setupWordmarkColors() {
+  const wordmark = document.getElementById("wordmark-colors");
+  if (!wordmark) return;
+
+  const paint = (colors: WordmarkColorData) => {
+    wordmark.querySelectorAll<HTMLElement>(".letter").forEach((letter) => {
+      const color = colors[letter.id];
+      if (typeof color === "string" && WordmarkColors.includes(color)) {
+        letter.style.setProperty("--letter-color", color);
+      } else {
+        letter.style.removeProperty("--letter-color");
+      }
+    });
+  };
+
+  playhtml.register<WordmarkColorData>(wordmark, {
+    defaultData: {},
+    updateElement: ({ data }) => paint(data ?? {}),
+    onMount: ({ getData, setData }) => {
+      wordmark.addEventListener("click", (event) => {
+        const letter = (event.target as HTMLElement).closest<HTMLElement>(
+          ".letter",
+        );
+        if (!letter?.id) return;
+        const current = getData()?.[letter.id];
+        const choices = WordmarkColors.filter((color) => color !== current);
+        const next = choices[Math.floor(Math.random() * choices.length)];
+        setData((draft) => {
+          draft[letter.id] = next;
+        });
+      });
+    },
+  });
+}
+
+type TipPresence = { tips: number };
+
+// Where coin n sits in the jar: rows of three, stacking up from the coins
+// drawn in the markup. Past the top row they pile on the last spot.
+const MaxShownCoins = 21;
+function coinPosition(index: number) {
+  const slot = Math.min(index, MaxShownCoins - 1);
+  const row = Math.floor(slot / 3);
+  const column = slot % 3;
+  const shift = row % 2 === 0 ? 0 : 6;
+  return {
+    x: 42 + column * 17 + shift + ((slot * 7) % 5) - 2,
+    y: 92 - row * 11 + ((slot * 3) % 4) - 2,
+  };
+}
+
+// Support card tip jar. Each click adds a coin to your own presence, and the
+// jar shows the sum for everyone here, so it empties once everyone leaves.
+export function setupTipJar() {
+  const jar = document.getElementById("tip-jar");
+  const coins = jar?.querySelector<SVGGElement>("[data-tip-coins]");
+  const count = jar?.querySelector<HTMLElement>("[data-tip-count]");
+  if (!jar || !coins || !count) return;
+
+  const render = (total: number) => {
+    const shown = Math.min(total, MaxShownCoins);
+    while (coins.childElementCount > shown) coins.lastElementChild?.remove();
+    while (coins.childElementCount < shown) {
+      const { x, y } = coinPosition(coins.childElementCount);
+      const coin = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "circle",
+      );
+      coin.setAttribute("cx", String(x));
+      coin.setAttribute("cy", String(y));
+      coin.setAttribute("r", "8");
+      coin.setAttribute("fill", "#e8a63a");
+      coin.setAttribute("stroke", "#1c1c1c");
+      coin.classList.add("is-new");
+      coins.append(coin);
+    }
+    count.textContent =
+      total === 0
+        ? "click to tip"
+        : `${total.toLocaleString()} ${total === 1 ? "coin" : "coins"} right now`;
+  };
+
+  playhtml.register<Record<string, never>, undefined, TipPresence>(jar, {
+    defaultData: {},
+    defaultPresence: { tips: 0 },
+    update: ({ everyone }) => {
+      const total = everyone.reduce((sum, person) => {
+        const tips = person.presence?.tips;
+        return sum + (Number.isFinite(tips) && tips > 0 ? tips : 0);
+      }, 0);
+      render(total);
+    },
+    onMount: ({ getMe, setMyPresence }) => {
+      jar.addEventListener("click", () => {
+        const mine = getMe().presence?.tips;
+        setMyPresence({
+          tips: (Number.isFinite(mine) && mine > 0 ? mine : 0) + 1,
+        });
+      });
     },
   });
 }

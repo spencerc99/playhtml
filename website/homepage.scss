@@ -2238,6 +2238,14 @@ h3 {
   padding: 0 14px;
   border: 1px solid $ink;
   border-radius: 4px;
+  color: $ink;
+  text-decoration: none;
+  transition: translate 0.15s ease;
+
+  &:is(a):hover,
+  &:is(a):focus-visible {
+    translate: 0 -2px;
+  }
 }
 
 .ph-logo--wikipedia {
@@ -2380,10 +2388,58 @@ h3 {
   }
 }
 
+// Tip jar: a button; coins from everyone here right now drop in.
 .ph-jar {
   flex: none;
-  width: 78px;
-  height: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+
+  svg {
+    width: 78px;
+    height: 90px;
+    overflow: visible;
+    transition: rotate 0.15s ease;
+  }
+
+  &:hover svg {
+    rotate: -4deg;
+  }
+
+  &:active svg {
+    rotate: 3deg;
+  }
+
+  .is-new {
+    animation: ph-coin-drop 0.45s cubic-bezier(0.3, 0.6, 0.4, 1.2);
+  }
+}
+
+.ph-jar__count {
+  font-family: $mono;
+  font-size: 11px;
+  color: $muted;
+  white-space: nowrap;
+}
+
+@keyframes ph-coin-drop {
+  from {
+    translate: 0 -90px;
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+  to {
+    translate: 0 0;
+  }
 }
 
 .ph-door__support-text {
@@ -2563,11 +2619,18 @@ h3 {
   gap: 20px;
 }
 
+// The heading row and the cards share one width so "more in the docs" ends
+// where the cards end.
+.ph-faq > .ph-section-head,
+.ph-faq__list {
+  width: 100%;
+  max-width: 900px;
+}
+
 .ph-faq__list {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-width: 900px;
 
   details {
     border: 1.5px solid $ink;
@@ -2594,6 +2657,7 @@ h3 {
 
     > span:first-child {
       flex: none;
+      width: 18px;
       font-family: $mono;
       font-weight: 500;
       font-size: 12px;
@@ -2697,7 +2761,8 @@ h3 {
   font-size: 24px;
 }
 
-// Big footer wordmark. The h, t, m, l letters are the old homepage's toggles.
+// Big footer wordmark. Every letter toggles; h, t, m, l are the old homepage's
+// toggles. --letter-color is the shared random color each letter lit up in.
 .ph-footer__big {
   background: #efeacb;
   height: 190px;
@@ -2723,8 +2788,9 @@ h3 {
     }
 
     &.clicked {
-      color: $mustard;
-      text-shadow: 0 0 24px rgba(232, 166, 58, 0.7);
+      color: var(--letter-color, #{$mustard});
+      text-shadow: 0 0 24px
+        color-mix(in srgb, var(--letter-color, #{$mustard}) 70%, transparent);
     }
   }
 }
@@ -3298,7 +3364,7 @@ h3 {
     }
 
     p {
-      padding: 0 14px 16px;
+      padding: 0 14px 16px 42px;
       font-size: 15px;
     }
   }
