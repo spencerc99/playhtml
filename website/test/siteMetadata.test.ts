@@ -66,6 +66,7 @@ describe("PlayHTML experiment metadata", () => {
     ["8", "08"],
     ["9", "09"],
     ["cinderblock", "10"],
+    ["passpals", "11"],
   ] as const;
 
   for (const [route, cardNumber] of experimentCards) {
