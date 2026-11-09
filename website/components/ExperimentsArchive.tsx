@@ -1,5 +1,5 @@
-// ABOUTME: Renders the shared experiments index, as a full archive or the homepage shelf.
-// ABOUTME: Both variants share the same click smudges and random-experiment picker.
+// ABOUTME: Renders the shared experiments index: the homepage shelf, the /experiments wall
+// ABOUTME: of every experiment, or the older full archive. All share smudges and the random picker.
 
 import {
   type CSSProperties,
@@ -33,6 +33,7 @@ interface ExperimentArchiveEntry {
   date?: string;
   eventType?: string;
   recommended?: boolean;
+  sourcePath?: string;
 }
 
 interface ExperimentsArchiveData {
@@ -375,7 +376,9 @@ const StudioDotColors = [
 ];
 
 interface ExperimentsArchiveProps {
-  variant?: "full" | "home";
+  // "home" shows the recommended picks with an intro; "wall" is the
+  // /experiments page, every experiment with picks starred.
+  variant?: "full" | "home" | "wall";
 }
 
 const ExperimentsArchiveContent = withSharedState<
@@ -645,37 +648,41 @@ const ExperimentsArchiveContent = withSharedState<
       [dispatchPlayEvent, getMyPlayerIdentity, isLoading, myColor, variant],
     );
 
-    if (variant === "home") {
+    if (variant === "home" || variant === "wall") {
+      const isWall = variant === "wall";
+      const wallExperiments = isWall ? experiments : homeExperiments;
       const shownNumber =
         randomizer.activeNumber ?? randomizer.selectedNumber ?? previewNumber;
       const shown =
-        homeExperiments.find((entry) => entry.number === shownNumber) ??
+        wallExperiments.find((entry) => entry.number === shownNumber) ??
         homeExperiments[0];
 
       return (
         <section
-          className="ph-studio"
+          className={`ph-studio${isWall ? " ph-studio--page" : ""}`}
           id="experiments-index"
-          aria-labelledby="experiments-archive-title"
+          aria-labelledby={isWall ? "studio-h" : "experiments-archive-title"}
         >
-          <div className="ph-studio__head">
-            <div className="ph-studio__title">
-              <h2 id="experiments-archive-title">Experiments</h2>
-              <span className="ph-hand">- spencer</span>
+          {isWall ? null : (
+            <div className="ph-studio__head">
+              <div className="ph-studio__title">
+                <h2 id="experiments-archive-title">Experiments</h2>
+                <span className="ph-hand">- spencer</span>
+              </div>
+              <p>
+                My favorite playhtml experiments, testing what sharing space
+                online can feel like. Hover a name to peek, click to go play.
+              </p>
+              <a href="/experiments/">all {experiments.length} experiments</a>
             </div>
-            <p>
-              My favorite playhtml experiments, testing what sharing space
-              online can feel like. Hover a name to peek, click to go play.
-            </p>
-            <a href="/experiments/">all {experiments.length} experiments</a>
-          </div>
+          )}
           <div className="ph-studio__wall">
             <p className="ph-studio__names">
-              {homeExperiments.map((experiment, index) => (
+              {wallExperiments.map((experiment, index) => (
                 <HomeExperimentName
                   entry={experiment}
                   key={experiment.number}
-                  isLast={index === homeExperiments.length - 1}
+                  isLast={index === wallExperiments.length - 1}
                   dotColor={StudioDotColors[index % StudioDotColors.length]}
                   isSelected={shown?.number === experiment.number}
                   randomizerColor={randomizer.color}
@@ -710,6 +717,14 @@ const ExperimentsArchiveContent = withSharedState<
                   <b>{shown.name}</b>
                   <span>{shown.description}</span>
                 </span>
+              </a>
+            ) : null}
+            {isWall && shown?.sourcePath ? (
+              <a
+                className="ph-studio__source"
+                href={`https://github.com/spencerc99/playhtml/tree/main/website/${shown.sourcePath}`}
+              >
+                view the source for {shown.name}
               </a>
             ) : null}
             <div className="ph-studio__foot">

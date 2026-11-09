@@ -53,7 +53,7 @@ export function MadeWithGallery() {
     return (
       <p className="ph-made__fallback">
         Couldn't load the gallery right now.{" "}
-        <a href="/docs/examples/">See everything people have made</a>.
+        <a href="/gallery/">See everything people have made</a>.
       </p>
     );
   }
