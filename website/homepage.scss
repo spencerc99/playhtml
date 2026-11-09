@@ -663,6 +663,10 @@ h3 {
   }
 }
 
+.ph-toybox__swipe {
+  display: none;
+}
+
 .ph-hero__pitch {
   position: absolute;
   left: 50%;
@@ -2829,6 +2833,21 @@ h3 {
 
 // ---------- tablet ----------
 
+// Laptop widths: smaller heading and notes so the lamp and plant notes clear
+// the pitch.
+@media (max-width: 1400px) {
+  .ph-hero__pitch {
+    width: 560px;
+
+    h1 {
+      font-size: 60px;
+    }
+  }
+  .ph-note {
+    font-size: 21px;
+  }
+}
+
 @media (max-width: 1180px) {
   .ph-hero__pitch {
     width: 560px;
@@ -2868,7 +2887,9 @@ h3 {
   .ph-meet {
     grid-template-columns: minmax(0, 1fr);
   }
+  // Stacked, the video is capped so the card never fills the screen.
   .ph-meet__media {
+    max-height: min(46vh, 400px);
     border-right: 0;
     border-bottom: 1.5px solid $ink;
     border-radius: 13px 13px 0 0;
@@ -2884,15 +2905,17 @@ h3 {
 
 // ---------- phone ----------
 
-@include phone {
-  body.ph-home {
-    font-size: 15px;
+// Tablets: words and the Discord button side by side under the video.
+@media (min-width: 761px) and (max-width: 1000px) {
+  .ph-meet__body {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
   }
+}
 
-  .ph-hand {
-    font-size: 21px;
-  }
-
+// Below this width the desktop toy box overlaps the pitch, so the toys stack:
+// lamp and sign up top, pitch, then a sideways-scrolling shelf of toys.
+@media (max-width: 1280px) {
   .ph-hero {
     padding: 14px 12px 0;
   }
@@ -2907,7 +2930,7 @@ h3 {
   }
 
   // Same toys and notes as desktop, stacked: lamp and sign above the pitch,
-  // the rest in a two-column grid below it. No sideways shelf.
+  // the rest on a shelf below it that scrolls sideways when it runs out of room.
   .ph-hero__pitch {
     position: static;
     transform: none;
@@ -2916,18 +2939,18 @@ h3 {
     gap: 10px;
 
     h1 {
-      font-size: 34px;
+      font-size: clamp(34px, 6.4vw, 54px);
       line-height: 1.05;
     }
 
     p {
-      font-size: 15px;
+      font-size: clamp(15px, 2vw, 17px);
     }
   }
 
   .ph-hero__ctas {
     flex-wrap: nowrap;
-    width: 100%;
+    width: min(100%, 460px);
 
     .ph-btn {
       min-height: 46px;
@@ -2996,24 +3019,32 @@ h3 {
   .ph-toybox__toys {
     position: relative;
     inset: auto;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    justify-items: center;
-    align-items: end;
-    gap: 34px 12px;
-    padding: 34px 12px 8px;
+    display: flex;
+    justify-content: safe center;
+    align-items: flex-end;
+    gap: 30px;
+    margin-top: 26px;
+    padding: 28px 20px 12px;
+    border-top: 1.5px dashed rgba(28, 28, 28, 0.3);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
   }
 
   .ph-toybox__toys > .ph-toy {
     position: relative;
+    flex: none;
+    max-width: 200px;
     left: auto !important;
     right: auto !important;
     top: auto !important;
     bottom: auto !important;
-  }
-
-  .ph-toy--boxes {
-    grid-column: 1 / -1;
+    scroll-snap-align: center;
   }
 
   .ph-toy--visits {
@@ -3121,6 +3152,26 @@ h3 {
       white-space: pre-wrap;
       font-size: 12px;
     }
+  }
+}
+
+@include phone {
+  body.ph-home {
+    font-size: 15px;
+  }
+
+  // Phones run out of room for the shelf, so hint that it scrolls.
+  .ph-toybox__swipe {
+    display: block;
+    align-self: flex-end;
+    padding: 0 16px;
+    font-family: $mono;
+    font-size: 10px;
+    color: $muted;
+  }
+
+  .ph-hand {
+    font-size: 21px;
   }
 
   .ph-section-head h2,
@@ -3249,17 +3300,22 @@ h3 {
   }
 
   .ph-meet__media {
-    aspect-ratio: 4 / 3;
+    aspect-ratio: 16 / 10;
+    max-height: 30vh;
   }
 
   .ph-meet__recent {
     left: 10px;
     bottom: 10px;
     max-width: calc(100% - 20px);
-    padding: 6px 10px;
+    padding: 5px 9px;
+
+    span:first-child {
+      font-size: 9px;
+    }
 
     b {
-      font-size: 15px;
+      font-size: 13px;
     }
 
     span:not(:first-child) {
@@ -3268,26 +3324,39 @@ h3 {
   }
 
   .ph-events__stamp {
-    right: 10px;
-    top: 10px;
-    width: 62px;
-    height: 62px;
+    right: 8px;
+    top: 8px;
+    width: 52px;
+    height: 52px;
+    font-size: 8px;
+
+    b {
+      font-size: 10px;
+    }
   }
 
   .ph-meet__body {
-    padding: 22px 18px;
-    gap: 22px;
+    padding: 18px 16px;
+    gap: 16px;
   }
 
-  .ph-meet__text h2 {
-    font-size: 34px;
+  .ph-meet__text {
+    gap: 6px;
+
+    h2 {
+      font-size: 28px;
+    }
+
+    p {
+      font-size: 15px;
+    }
   }
 
   .ph-discord-btn {
-    min-height: 72px;
+    min-height: 60px;
 
     b {
-      font-size: 21px;
+      font-size: 19px;
     }
   }
 
