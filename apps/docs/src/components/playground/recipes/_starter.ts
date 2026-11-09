@@ -91,7 +91,7 @@ export const starterRecipe: RunnableRecipe = {
   <button id="starBtn">shooting star!</button>
   <div id="shootingStar">★</div>
   <script type="module">
-    import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
+    import { playhtml } from "https://unpkg.com/playhtml@latest";
 
     playhtml.registerPlayEventListener("shootingStar", {
       onEvent: () => {
@@ -113,7 +113,7 @@ export const starterRecipe: RunnableRecipe = {
   <h2>custom elements</h2>
   <div id="reactionBtn" can-play></div>
   <script type="module">
-    import { playhtml, html } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
+    import { playhtml, html } from "https://unpkg.com/playhtml@latest";
 
     // A reaction button with a shared count. The view renders from \`data\`
     // and re-renders whenever anyone changes it.
@@ -136,7 +136,7 @@ export const starterRecipe: RunnableRecipe = {
 
   <!-- Start playhtml once, after every element above is set up. -->
   <script type="module">
-    import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
+    import { playhtml } from "https://unpkg.com/playhtml@latest";
 
     await playhtml.init({
       developmentMode: true,

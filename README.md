@@ -22,7 +22,7 @@ playhtml is in beta and actively developed. Join the [Discord](https://discord.c
 
 ```html
 <script type="module">
-  import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
+  import { playhtml } from "https://unpkg.com/playhtml";
   playhtml.init();
 </script>
 <div id="couch" can-move style="display: inline-block; font-size: 80px">🛋</div>

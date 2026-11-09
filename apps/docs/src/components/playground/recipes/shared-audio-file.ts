@@ -124,7 +124,7 @@ export const sharedAudioFileRecipe: ExampleRecipe = {
   </main>
 
   <script type="module">
-    import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
+    import { playhtml } from "https://unpkg.com/playhtml@latest";
 
     const player = document.getElementById("shared-audio-player");
     const audio = player.querySelector("[data-audio]");
