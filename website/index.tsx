@@ -15,6 +15,7 @@ import {
   setupLabels,
   setupMirrorDemo,
   setupSponsorGoal,
+  setupToyboxScale,
 } from "./components/home/pageChrome";
 import {
   setupHereNow,
@@ -46,6 +47,7 @@ function getLocalPreviewInitOptions() {
   };
 }
 
+setupToyboxScale();
 setupLabels();
 setupCodePeeks();
 setupMirrorDemo();

@@ -1,4 +1,4 @@
-// ABOUTME: Non-shared homepage behaviors: label-maker letters, code peeks, the mirror demo,
+// ABOUTME: Non-shared homepage behaviors: label-maker letters, toy box scaling, code peeks, the mirror demo,
 // ABOUTME: and live GitHub and Discord counts that quietly stay hidden if a fetch fails.
 
 import { formatSimpleNumber } from "../../../packages/react/examples/utils";
@@ -29,6 +29,21 @@ export function setupLabels() {
   document.querySelectorAll<HTMLElement>(".ph-label").forEach((label) => {
     setLabelText(label, label.textContent?.trim() ?? "");
   });
+}
+
+// The desktop toy box is laid out at this width. Narrower windows scale the
+// toys and pitch down to fit instead of rearranging them.
+const ToyboxDesignWidth = 1392;
+
+export function setupToyboxScale() {
+  const toybox = document.getElementById("toybox");
+  if (!toybox) return;
+  const apply = () => {
+    const scale = Math.min(1, toybox.offsetWidth / ToyboxDesignWidth);
+    toybox.style.setProperty("--toy-scale", scale.toFixed(4));
+  };
+  apply();
+  new ResizeObserver(apply).observe(toybox);
 }
 
 // A toy people can drag (data-peek-anchor) gets its peek under wherever the
