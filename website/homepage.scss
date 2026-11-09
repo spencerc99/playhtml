@@ -906,13 +906,15 @@ h3 {
   transform: rotate(-3deg);
 }
 
+// Right side, between the hydrant and the boxes, so the plant on the left
+// has room to grow to full height.
 .ph-toy--visits {
-  left: 3%;
-  top: calc(330px * var(--toy-scale));
-  transform-origin: top left;
+  right: 4%;
+  top: calc(428px * var(--toy-scale));
+  transform-origin: top right;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: flex-end;
   gap: 8px;
 }
 
@@ -956,6 +958,7 @@ h3 {
 .ph-note--visits {
   position: static;
   font-size: 24px;
+  text-align: right;
   transform: rotate(-3deg);
 }
 
@@ -1159,8 +1162,9 @@ h3 {
   transform-origin: bottom left;
 }
 .ph-toy--visits .ph-peek {
-  left: 0;
-  top: calc(100% + 10px);
+  right: 0;
+  bottom: calc(100% + 10px);
+  transform-origin: bottom right;
 }
 .ph-toy--hydrant .ph-peek {
   right: -10px;
