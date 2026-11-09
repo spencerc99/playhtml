@@ -4,7 +4,7 @@
 import { playhtml } from "playhtml";
 import { setLabelText } from "./pageChrome";
 
-type HomepageAwareness = { online: true };
+type HerePresence = { online: true };
 
 const SnippetText = `<div id="note" can-move>drag me</div>
 <script type="module"
@@ -15,14 +15,13 @@ export function setupHereNow() {
   const countLabel = document.querySelector(".site-console__status-label");
   if (!countElement || !countLabel) return;
 
-  playhtml.register<Record<string, never>, undefined, HomepageAwareness>(
+  playhtml.register<Record<string, never>, undefined, HerePresence>(
     "site-console-count",
     {
       defaultData: {},
-      myDefaultAwareness: { online: true },
-      updateElement: () => {},
-      // `everyone` is one entry per person; `awareness` has one per open tab.
-      updateElementAwareness: ({ everyone }) => {
+      defaultPresence: { online: true },
+      // `everyone` is one entry per person, even with several tabs open.
+      update: ({ everyone }) => {
         const peopleCount = Math.max(everyone.length, 1);
         if (countElement.textContent === String(peopleCount)) return;
         countElement.textContent = String(peopleCount);
@@ -56,7 +55,7 @@ export function setupSnippetCopies() {
 
   playhtml.register<{ count: number }>(counter, {
     defaultData: { count: 0 },
-    updateElement: ({ element, data }) => {
+    update: ({ element, data }) => {
       const count = Number.isFinite(data.count) ? data.count : 0;
       element.textContent =
         count === 0
@@ -104,7 +103,7 @@ export function setupPersistentNote() {
 
   playhtml.register<PersistNoteData>(note, {
     defaultData: { x: 0.07, y: 0.33, moves: 0 },
-    updateElement: ({ data }) => {
+    update: ({ data }) => {
       if (Number.isFinite(data.x) && Number.isFinite(data.y)) {
         place(data.x, data.y);
       }
@@ -211,7 +210,7 @@ export function setupWordmarkColors() {
 
   playhtml.register<WordmarkColorData>(wordmark, {
     defaultData: {},
-    updateElement: ({ data }) => paint(data ?? {}),
+    update: ({ data }) => paint(data ?? {}),
     onMount: ({ getData, setData }) => {
       wordmark.addEventListener("click", (event) => {
         const letter = (event.target as HTMLElement).closest<HTMLElement>(
