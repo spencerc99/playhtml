@@ -140,7 +140,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 <div id="counter"></div>
 
 <script type="module">
-  import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml";
+  import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
 
   playhtml.register("counter", {
     defaultData: { count: 0 },
@@ -182,7 +182,7 @@ Most capabilities can share the same element. Each keeps its own data and behavi
 <button id="switch">off</button>
 
 <script type="module">
-  import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml";
+  import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
 
   playhtml.register("switch", {
     defaultData: { on: false },
@@ -224,7 +224,7 @@ The same `update` function renders both shared `data` and presence changes. See 
 <div id="online"></div>
 
 <script type="module">
-  import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml";
+  import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
 
   playhtml.register("online", {
     defaultPresence: { status: "here" },
@@ -300,7 +300,7 @@ The element is an empty mount point; everything you see is rendered from state. 
 <div id="counter"></div>
 
 <script type="module">
-  import { playhtml, html } from "https://cdn.jsdelivr.net/npm/playhtml";
+  import { playhtml, html } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
 
   playhtml.register("counter", {
     defaultData: { count: 0 },
@@ -381,7 +381,7 @@ form.addEventListener("submit", (e) => {
 <div id="note-2" can-note data-color="pink"></div>
 
 <script type="module">
-  import { playhtml, html } from "https://cdn.jsdelivr.net/npm/playhtml";
+  import { playhtml, html } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
   playhtml.define("can-note", {
     defaultData: (el) => ({ text: "", color: el.dataset.color }),
     view: ({ data, setData }) => html`

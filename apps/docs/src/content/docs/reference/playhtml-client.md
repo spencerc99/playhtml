@@ -19,7 +19,7 @@ await playhtml.init();
 
 ```html
 <script type="module">
-  import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml";
+  import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
 
   await playhtml.init();
 </script>

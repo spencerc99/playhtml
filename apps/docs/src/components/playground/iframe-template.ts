@@ -6,7 +6,7 @@
  * pasted into any hosted HTML file. Inside the preview iframe the importmap
  * points this URL at the in-repo build instead.
  */
-export const PLAYHTML_CDN_URL = "https://cdn.jsdelivr.net/npm/playhtml";
+export const PLAYHTML_CDN_URL = "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
 
 export type IframeTemplateArgs = {
   /** Recipe source. Must be a complete <!doctype html> document. */

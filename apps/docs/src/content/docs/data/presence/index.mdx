@@ -61,7 +61,7 @@ These are the only "profile" properties that we have for each person currently t
 <ul id="roster"></ul>
 
 <script type="module">
-  import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml";
+  import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
 
   await playhtml.init();
   const nameInput = document.getElementById("my-name");
@@ -222,7 +222,7 @@ Use element presence when the signal belongs to one element, like "who has joine
 <button id="ready-count">0 ready</button>
 
 <script type="module">
-  import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml";
+  import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js";
 
   playhtml.register("ready-count", {
     defaultPresence: { ready: false },
