@@ -665,6 +665,10 @@ h3 {
   @include dotted($box);
 }
 
+.ph-toybox__swipe {
+  display: none;
+}
+
 .ph-toybox__toys {
   position: absolute;
   inset: 0;
@@ -3040,20 +3044,29 @@ h3 {
     top: 54px;
   }
 
-  // The shelf wraps rather than scrolling sideways: most toys take touch
-  // drags themselves (spin, rain), so a sideways scroller couldn't be swiped.
+  // The desktop toy layer ignores pointers between toys (so the pitch under
+  // it stays clickable). Stacked, the shelf has to take them back, or a swipe
+  // that starts between two toys never reaches the scroller.
   .ph-toybox__toys {
     position: relative;
     inset: auto;
     display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
+    justify-content: safe center;
     align-items: flex-end;
-    column-gap: 44px;
-    row-gap: 28px;
+    gap: 30px;
     margin-top: 26px;
     padding: 28px 20px 12px;
     border-top: 1.5px dashed rgba(28, 28, 28, 0.3);
+    pointer-events: auto;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
   }
 
   .ph-toybox__toys > .ph-toy {
@@ -3165,6 +3178,17 @@ h3 {
   }
 }
 
+// Tablets have room for every toy, so the shelf wraps instead of scrolling.
+@media (min-width: 761px) and (max-width: 900px) {
+  .ph-toybox__toys {
+    flex-wrap: wrap;
+    justify-content: center;
+    column-gap: 44px;
+    row-gap: 28px;
+    overflow: visible;
+  }
+}
+
 @include phone {
   body.ph-home {
     --fs-h2: 30px;
@@ -3176,33 +3200,14 @@ h3 {
     --fs-hand: 20px;
   }
 
-  // Two toys per row, so every toy is on screen without sideways scrolling.
-  // An odd one out gets the whole last row.
-  .ph-toybox__toys {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    justify-items: center;
-    column-gap: 12px;
-    row-gap: 32px;
-    padding: 28px 12px 4px;
-
-    > .ph-toy {
-      max-width: 100%;
-    }
-
-    > .ph-toy:last-child:nth-child(odd) {
-      grid-column: 1 / -1;
-    }
-  }
-
-  // Three click boxes fit half a phone's width.
-  .ph-boxes {
-    gap: 8px;
-  }
-
-  .ph-box {
-    width: 48px;
-    height: 48px;
+  // Phones run out of room for the shelf, so hint that it scrolls.
+  .ph-toybox__swipe {
+    display: block;
+    align-self: flex-end;
+    padding: 0 16px;
+    font-family: $mono;
+    font-size: 10px;
+    color: $muted;
   }
 
   .ph-section-head h2,
