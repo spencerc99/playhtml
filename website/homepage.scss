@@ -186,6 +186,10 @@ h3 {
   background: $mustard;
 }
 
+.ph-btn--rose {
+  background: $rose;
+}
+
 .ph-btn--pill {
   border-radius: 999px;
   min-height: 44px;
@@ -1167,14 +1171,13 @@ h3 {
   max-width: 1100px;
   margin: 0 auto;
   padding: 80px 24px 0;
-  display: flex;
-  justify-content: space-between;
-  gap: 64px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 56px;
   align-items: center;
 }
 
 .ph-why__text {
-  max-width: 680px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1196,24 +1199,19 @@ h3 {
 }
 
 .ph-why__side {
-  flex: none;
-  width: 300px;
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 22px;
 }
 
 .ph-stats {
-  position: relative;
-  width: 270px;
-  height: 230px;
-  border: 1.5px dashed rgba(28, 28, 28, 0.35);
-  border-radius: 18px;
-  background: rgba(255, 253, 248, 0.5);
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .ph-stat {
-  position: absolute;
+  flex: none;
   border-radius: 50%;
   color: $paper;
   border: 4px solid #fff;
@@ -1237,8 +1235,6 @@ h3 {
 }
 
 .ph-stat--sites {
-  left: 14px;
-  top: 18px;
   width: 96px;
   height: 96px;
   background: $brick;
@@ -1247,47 +1243,52 @@ h3 {
 }
 
 .ph-stat--pages {
-  left: 120px;
-  top: 54px;
-  width: 122px;
-  height: 122px;
+  width: 116px;
+  height: 116px;
   background: $ultramarine;
-  font-size: 32px;
+  font-size: 30px;
   transform: rotate(6deg);
 
   small {
-    font-size: 12px;
+    font-size: 11px;
   }
 }
 
 .ph-stat--downloads {
-  left: 34px;
-  top: 126px;
-  width: 84px;
-  height: 84px;
+  width: 90px;
+  height: 90px;
   background: $sage;
   font-size: 22px;
   transform: rotate(-10deg);
 }
 
+.ph-kicker {
+  font-family: $mono;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: $muted;
+}
+
 .ph-supporters {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  align-items: flex-start;
-
-  .ph-hand {
-    font-size: 26px;
-    transform: rotate(-2deg);
-  }
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1.5px dashed rgba(28, 28, 28, 0.3);
 
   ul {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 10px;
     margin: 0;
     padding: 0;
     list-style: none;
+  }
+
+  .ph-hand {
+    font-size: 24px;
+    transform: rotate(-3deg);
   }
 }
 
@@ -1868,28 +1869,40 @@ h3 {
 }
 
 // Events band
-.ph-events-wrap {
+// Where we meet: the latest event, with Discord as the way in
+.ph-meet-wrap {
   padding: 0 24px;
 }
 
-.ph-events {
-  max-width: 1052px;
-  margin: 72px auto 0;
-  display: grid;
-  grid-template-columns: 1.3fr 1fr;
+.ph-meet {
+  position: relative;
+  max-width: 1100px;
+  margin: 96px auto 0;
   border: 1.5px solid $ink;
   border-radius: 14px;
-  overflow: hidden;
   background: $paper;
   box-shadow: $shadow-big;
+
+  > .ph-label {
+    position: absolute;
+    left: 22px;
+    top: -14px;
+    z-index: 2;
+    rotate: -1.5deg;
+  }
 }
 
-.ph-events__media {
+.ph-meet__media {
   position: relative;
-  min-height: 340px;
-  border-right: 1.5px solid $ink;
-  background: #f1efe8;
+  display: block;
+  aspect-ratio: 1280 / 824;
+  max-height: 600px;
+  width: 100%;
+  border-bottom: 1.5px solid $ink;
+  border-radius: 13px 13px 0 0;
   overflow: hidden;
+  background: $ink;
+  color: $ink;
 
   video {
     position: absolute;
@@ -1897,6 +1910,10 @@ h3 {
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+
+  &:hover {
+    color: $ink;
   }
 }
 
@@ -1925,18 +1942,59 @@ h3 {
   }
 }
 
-.ph-events__body {
+.ph-meet__recent {
+  position: absolute;
+  left: 22px;
+  bottom: 20px;
+  max-width: calc(100% - 44px);
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 34px 32px;
+  gap: 2px;
+  padding: 8px 12px;
+  background: $paper;
+  border: 1.5px solid $ink;
+  border-radius: 8px;
+  box-shadow: 3px 3px 0 $ink;
+  rotate: -1deg;
+
+  span {
+    font-size: 13px;
+    color: $text;
+
+    &:first-child {
+      font-family: $mono;
+      font-size: 11px;
+      color: $muted;
+    }
+  }
+
+  b {
+    font-family: $display;
+    font-size: 18px;
+  }
+}
+
+.ph-meet__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: 36px;
+  align-items: center;
+  padding: 28px 30px 30px;
+  border-radius: 0 0 13px 13px;
   @include dotted(#fffef6);
+}
+
+.ph-meet__text {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 
   h2 {
     margin: 0;
     font-weight: 800;
-    font-size: 36px;
+    font-size: 44px;
     letter-spacing: -0.02em;
+    line-height: 1.05;
   }
 
   p {
@@ -1946,35 +2004,66 @@ h3 {
     color: $text;
   }
 
-  .ph-btn {
-    align-self: flex-start;
-    margin-top: auto;
+  a {
+    font-size: 15px;
   }
 }
 
-.ph-events__recent {
+.ph-meet__join {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+}
+
+.ph-discord-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 4px;
-  padding: 12px 14px;
-  background: $paper;
-  border: 1px dashed $ink;
-  border-radius: 6px;
-
-  span {
-    font-family: $mono;
-    font-size: 12px;
-
-    &:first-child {
-      font-size: 11px;
-      color: $muted;
-    }
-  }
+  min-height: 84px;
+  padding: 10px 20px;
+  background: $periwinkle;
+  color: $ink;
+  border: 1.5px solid $ink;
+  border-radius: 10px;
+  box-shadow: 4px 4px 0 $ink;
+  text-decoration: none;
+  text-align: center;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
 
   b {
     font-family: $display;
-    font-size: 20px;
+    font-size: 24px;
   }
+
+  > span {
+    font-family: $mono;
+    font-size: 12px;
+
+    &[hidden] {
+      display: none;
+    }
+  }
+
+  &:hover {
+    color: $ink;
+    transform: translate(-1px, -1px);
+    box-shadow: 6px 6px 0 $ink;
+  }
+
+  &:active {
+    transform: translate(3px, 3px);
+    box-shadow: 1px 1px 0 $ink;
+  }
+}
+
+.ph-meet__github {
+  font-size: 14px;
+  text-align: center;
+  color: $text;
 }
 
 // we were online
@@ -2108,52 +2197,40 @@ h3 {
 }
 
 // Come play with us
-.ph-come {
+// The two asks: make something with us, or help keep it going
+.ph-asks {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 80px 24px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 30px;
-}
-
-.ph-come__door {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 6px;
-
-  svg {
-    width: 30px;
-    height: 36px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-}
-
-.ph-come__grid {
+  padding: 72px 24px 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 28px 22px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 28px;
+  align-items: stretch;
 }
 
-.ph-door {
+.ph-ask {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 34px 22px 22px;
+  padding: 32px 28px 26px;
   border: 1.5px solid $ink;
   border-radius: 14px;
   box-shadow: $shadow-big;
 
   > .ph-label {
     position: absolute;
-    left: 18px;
+    left: 20px;
     top: -14px;
     rotate: -1.5deg;
+  }
+
+  h2 {
+    margin: 0;
+    font-weight: 800;
+    font-size: 30px;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
   }
 
   > p {
@@ -2162,61 +2239,79 @@ h3 {
     line-height: 1.5;
     color: $body-text;
   }
-
-  > .ph-btn {
-    margin-top: auto;
-    align-self: flex-start;
-  }
 }
 
-.ph-door--rose {
-  @include dotted($rose);
-}
-.ph-door--periwinkle {
-  @include dotted($periwinkle);
-}
-.ph-door--sage {
-  @include dotted($sage-light);
-}
-.ph-door--support {
-  grid-column: 1 / -1;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 24px;
-  padding: 30px 28px;
-  @include dotted($peach);
-
-  > .ph-btn {
-    margin-top: 0;
-    align-self: center;
-  }
+.ph-ask--collab {
+  background: $paper;
+  rotate: -0.4deg;
 }
 
-.ph-door__visual {
-  min-height: 92px;
+.ph-ask--fund {
+  @include dotted(#fff3c4);
+  rotate: 0.5deg;
+}
+
+.ph-ask__ways {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 8px;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: grid;
+    grid-template-columns: 170px minmax(0, 1fr);
+    gap: 12px;
+    align-items: baseline;
+  }
+
+  b {
+    font-family: $display;
+    font-size: 16px;
+  }
+
+  span {
+    font-size: 14px;
+    line-height: 1.5;
+    color: $text;
+  }
 }
 
-.ph-door__kicker {
-  font-family: $mono;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: #5a3a3a;
-}
-
-.ph-door__logos {
+.ph-ask__foot {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
   align-items: center;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 4px;
 
-  .ph-hand {
-    font-size: 22px;
-    transform: rotate(-3deg);
+  a:not(.ph-btn) {
+    font-size: 14px;
+  }
+}
+
+.ph-ask__foot--stack {
+  flex-direction: column;
+  align-items: stretch;
+  text-align: center;
+}
+
+.ph-ask__fine {
+  font-family: $mono;
+  font-size: 11px;
+  color: $muted;
+}
+
+.ph-ask__fund-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: auto;
+
+  .ph-goal {
+    flex: 1;
+    margin-top: 0;
   }
 }
 
@@ -2275,12 +2370,24 @@ h3 {
   font-size: 16px;
 }
 
-.ph-logo--ifthen {
-  background: $periwinkle;
+.ph-logo--itp {
+  --logo-fg: #ffffff;
+  background: #57068c;
+  color: #ffffff;
   box-shadow: 2px 2px 0 $ink;
-  rotate: -1.5deg;
-  font-family: $mono;
-  font-size: 15px;
+  rotate: -1deg;
+  font-family: $display;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.ph-logo--eyebeam {
+  background: #ffffff;
+  box-shadow: 2px 2px 0 $ink;
+  rotate: 1.5deg;
+  font-family: $display;
+  font-weight: 800;
+  font-size: 16px;
 }
 
 .ph-logo--sfpc {
@@ -2295,90 +2402,14 @@ h3 {
   letter-spacing: 0.06em;
 }
 
-.ph-discord {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-  max-width: 280px;
-  padding: 12px 14px;
-  background: $paper;
-  border: 1px solid $ink;
-  border-radius: 8px;
-  box-shadow: 2px 2px 0 $ink;
-  transform: rotate(-1.5deg);
-
-  b {
-    font-family: $display;
-    font-size: 17px;
-    line-height: 1.1;
-  }
-
-  > span {
-    font-size: 13px;
-    line-height: 1.35;
-    color: #4a4a46;
-  }
-}
-
-.ph-discord__counts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 12px;
-  margin-top: 2px;
-  font-family: $mono;
+.ph-logo--small {
+  min-height: 0;
+  padding: 1px 8px;
   font-size: 12px;
-  color: $ink !important;
+  vertical-align: baseline;
 
-  &[hidden] {
-    display: none;
-  }
-}
-
-.ph-discord__online {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-
-  i {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: rgb(16, 210, 16);
-    box-shadow: 0 0 5px rgba(16, 210, 16, 0.8);
-  }
-}
-
-.ph-discord__members {
-  color: $muted;
-}
-
-.ph-terminal {
-  align-self: flex-start;
-  border: 1.5px solid $ink;
-  border-radius: 4px;
-  background: $code-paper;
-  box-shadow: 2px 2px 0 $ink;
-  padding: 10px 12px;
-  font-family: $mono;
-  font-size: 12px;
-  line-height: 1.7;
-  color: #24292e;
-  transform: rotate(1deg);
-
-  > span {
-    color: $muted;
-  }
-
-  a {
-    color: $ink;
-    text-decoration: none;
-  }
-
-  mark {
-    background: $mustard;
-    padding: 0 4px;
+  span {
+    font-size: 10px;
   }
 }
 
@@ -2436,32 +2467,11 @@ h3 {
   }
 }
 
-.ph-door__support-text {
-  flex: 1 1 380px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-
-  h3 {
-    margin: 0;
-    font-weight: 800;
-    font-size: 26px;
-  }
-
-  p {
-    margin: 0;
-    font-size: 16px;
-    line-height: 1.5;
-    color: $body-text;
-  }
-}
-
 .ph-goal {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin-top: 6px;
-  max-width: 420px;
 }
 
 .ph-goal__bar {
@@ -2488,10 +2498,6 @@ h3 {
   font-family: $mono;
   font-size: 13px;
   color: $ink;
-}
-
-.ph-door__support-text .ph-door__support-contact {
-  font-size: 14px;
 }
 
 // Guestbook
@@ -2809,7 +2815,7 @@ h3 {
 
 @media (max-width: 1000px) {
   .ph-how__steps,
-  .ph-come__grid {
+  .ph-asks {
     grid-template-columns: minmax(0, 1fr);
     gap: 40px;
   }
@@ -2827,9 +2833,9 @@ h3 {
     margin-top: 24px;
     transform: rotate(1deg);
   }
-  .ph-why {
-    flex-direction: column;
-    align-items: flex-start;
+  .ph-why,
+  .ph-meet__body {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -3097,12 +3103,27 @@ h3 {
     }
   }
 
-  .ph-why__side {
-    width: 100%;
+  .ph-stats {
+    justify-content: center;
+    gap: 10px;
   }
 
-  .ph-stats {
-    margin: 0 auto;
+  .ph-stat--sites {
+    width: 84px;
+    height: 84px;
+    font-size: 22px;
+  }
+
+  .ph-stat--pages {
+    width: 100px;
+    height: 100px;
+    font-size: 26px;
+  }
+
+  .ph-stat--downloads {
+    width: 80px;
+    height: 80px;
+    font-size: 20px;
   }
 
   .ph-how {
@@ -3190,31 +3211,55 @@ h3 {
     width: min(260px, 100%);
   }
 
-  .ph-events-wrap {
+  .ph-meet-wrap {
     padding: 0 16px;
   }
 
-  .ph-events {
-    grid-template-columns: minmax(0, 1fr);
-    margin-top: 56px;
+  .ph-meet {
+    margin-top: 64px;
     box-shadow: 5px 5px 0 $ink;
   }
 
-  .ph-events__media {
-    min-height: 200px;
-    border-right: 0;
-    border-bottom: 1.5px solid $ink;
+  .ph-meet__media {
+    aspect-ratio: 4 / 3;
   }
 
-  .ph-events__body {
-    padding: 22px 18px;
+  .ph-meet__recent {
+    left: 10px;
+    bottom: 10px;
+    max-width: calc(100% - 20px);
+    padding: 6px 10px;
 
-    h2 {
-      font-size: 28px;
+    b {
+      font-size: 15px;
     }
 
-    .ph-btn {
-      align-self: stretch;
+    span:not(:first-child) {
+      display: none;
+    }
+  }
+
+  .ph-events__stamp {
+    right: 10px;
+    top: 10px;
+    width: 62px;
+    height: 62px;
+  }
+
+  .ph-meet__body {
+    padding: 22px 18px;
+    gap: 22px;
+  }
+
+  .ph-meet__text h2 {
+    font-size: 34px;
+  }
+
+  .ph-discord-btn {
+    min-height: 72px;
+
+    b {
+      font-size: 21px;
     }
   }
 
@@ -3264,30 +3309,27 @@ h3 {
     }
   }
 
-  .ph-come {
+  .ph-asks {
     padding: 56px 16px 0;
   }
 
-  .ph-door {
+  .ph-ask {
+    padding: 30px 18px 22px;
     box-shadow: 5px 5px 0 $ink;
+    rotate: 0deg;
 
-    > .ph-btn {
-      align-self: stretch;
+    h2 {
+      font-size: 26px;
     }
   }
 
-  .ph-door--support {
-    flex-direction: column;
-    align-items: flex-start;
-
-    > .ph-btn {
-      align-self: stretch;
-    }
+  .ph-ask__ways li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
   }
 
-  // In a column, the desktop 380px flex-basis would become a height.
-  .ph-door__support-text {
-    flex: none;
+  .ph-ask__foot .ph-btn {
+    flex: 1 1 100%;
   }
 
   .ph-guestbook {
