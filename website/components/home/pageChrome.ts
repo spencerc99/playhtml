@@ -186,3 +186,33 @@ export function loadLiveCounts() {
     })
     .catch(() => {});
 }
+
+// Support card: monthly sponsorship against the goal. The amounts live in
+// the markup's data attributes so they're easy to update by hand.
+export function setupSponsorGoal() {
+  const goal = document.querySelector<HTMLElement>("[data-sponsor-goal]");
+  if (!goal) return;
+  const label = goal.querySelector<HTMLElement>(".ph-goal__label");
+  const bar = goal.querySelector<HTMLElement>(".ph-goal__bar");
+  const target = Number(goal.dataset.goal);
+  const current = goal.dataset.current ? Number(goal.dataset.current) : NaN;
+  if (!label || !Number.isFinite(target) || target <= 0) return;
+
+  const dollars = (amount: number) => "$" + Math.round(amount).toLocaleString();
+  if (!Number.isFinite(current)) {
+    label.textContent = `goal: ${dollars(target)} a month`;
+    return;
+  }
+
+  const percent = Math.min(100, Math.max(0, (current / target) * 100));
+  label.textContent = `${dollars(current)} of ${dollars(target)} a month`;
+  if (bar) {
+    bar.hidden = false;
+    bar.setAttribute("role", "img");
+    bar.setAttribute(
+      "aria-label",
+      `${Math.round(percent)}% of the monthly goal`,
+    );
+    bar.querySelector<HTMLElement>("span")!.style.width = `${percent}%`;
+  }
+}

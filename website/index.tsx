@@ -14,6 +14,7 @@ import {
   setupCodePeeks,
   setupLabels,
   setupMirrorDemo,
+  setupSponsorGoal,
 } from "./components/home/pageChrome";
 import {
   setupCandle,
@@ -47,6 +48,7 @@ function getLocalPreviewInitOptions() {
 setupLabels();
 setupCodePeeks();
 setupMirrorDemo();
+setupSponsorGoal();
 loadLiveCounts();
 setupGuestbookNameInput();
 setupHereNow();

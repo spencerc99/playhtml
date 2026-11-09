@@ -2415,6 +2415,44 @@ h3 {
   }
 }
 
+.ph-goal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  max-width: 420px;
+}
+
+.ph-goal__bar {
+  display: block;
+  height: 14px;
+  background: $paper;
+  border: 1.5px solid $ink;
+  border-radius: 999px;
+  overflow: hidden;
+
+  &[hidden] {
+    display: none;
+  }
+
+  > span {
+    display: block;
+    height: 100%;
+    background: $mustard;
+    border-right: 1.5px solid $ink;
+  }
+}
+
+.ph-goal__label {
+  font-family: $mono;
+  font-size: 13px;
+  color: $ink;
+}
+
+.ph-door__support-text .ph-door__support-contact {
+  font-size: 14px;
+}
+
 // Guestbook
 .ph-guestbook {
   max-width: 1100px;
