@@ -273,7 +273,7 @@ export function setupTipJar() {
     count.textContent =
       total === 0
         ? "click to tip"
-        : `${total.toLocaleString()} ${total === 1 ? "coin" : "coins"} right now`;
+        : `${total.toLocaleString()} ${total === 1 ? "coin" : "coins"} now`;
   };
 
   playhtml.register<Record<string, never>, undefined, TipPresence>(jar, {

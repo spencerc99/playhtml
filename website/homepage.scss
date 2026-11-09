@@ -1889,6 +1889,9 @@ h3 {
   border-radius: 14px;
   background: $paper;
   box-shadow: $shadow-big;
+  // Video left, words and Discord right, so the card fits a laptop screen.
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
 
   > .ph-label {
     position: absolute;
@@ -1903,10 +1906,9 @@ h3 {
   position: relative;
   display: block;
   aspect-ratio: 1280 / 824;
-  max-height: 600px;
   width: 100%;
-  border-bottom: 1.5px solid $ink;
-  border-radius: 13px 13px 0 0;
+  border-right: 1.5px solid $ink;
+  border-radius: 13px 0 0 13px;
   overflow: hidden;
   background: $ink;
   color: $ink;
@@ -1983,11 +1985,11 @@ h3 {
 
 .ph-meet__body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
-  gap: 36px;
-  align-items: center;
-  padding: 28px 30px 30px;
-  border-radius: 0 0 13px 13px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+  align-content: center;
+  padding: 26px 28px;
+  border-radius: 0 13px 13px 0;
   @include dotted(#fffef6);
 }
 
@@ -1999,7 +2001,7 @@ h3 {
   h2 {
     margin: 0;
     font-weight: 800;
-    font-size: 44px;
+    font-size: 38px;
     letter-spacing: -0.02em;
     line-height: 1.05;
   }
@@ -2212,7 +2214,7 @@ h3 {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
   gap: 28px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .ph-ask {
@@ -2287,11 +2289,6 @@ h3 {
     &:focus-visible {
       translate: 0 -2px;
       color: $ink;
-    }
-
-    &.ph-ask__way--own {
-      border-style: dashed;
-      background: transparent;
     }
   }
 
@@ -2446,6 +2443,8 @@ h3 {
 // Tip jar: a button; coins from everyone here right now drop in.
 .ph-jar {
   flex: none;
+  // Fixed width so the count label changing length never shifts the goal bar.
+  width: 112px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2478,10 +2477,13 @@ h3 {
 }
 
 .ph-jar__count {
+  width: 100%;
   font-family: $mono;
   font-size: 11px;
   color: $muted;
+  text-align: center;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 @keyframes ph-coin-drop {
@@ -2863,8 +2865,16 @@ h3 {
     margin-top: 24px;
     transform: rotate(1deg);
   }
-  .ph-meet__body {
+  .ph-meet {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .ph-meet__media {
+    border-right: 0;
+    border-bottom: 1.5px solid $ink;
+    border-radius: 13px 13px 0 0;
+  }
+  .ph-meet__body {
+    border-radius: 0 0 13px 13px;
   }
   .ph-why {
     flex-direction: column;
