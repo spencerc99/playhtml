@@ -31,6 +31,7 @@
     "@typescript-eslint/eslint-plugin": "^8.29.0",
     "@typescript-eslint/parser": "^8.29.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "agentation": "^2.2.1",
     "directedit": "^0.2.0",
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.2.0",
