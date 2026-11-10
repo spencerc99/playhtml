@@ -1679,8 +1679,9 @@ h3 {
 
 .ph-site__meta {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 8px;
+  gap: 2px 8px;
   padding: 10px 12px;
   font-family: $mono;
   font-size: 13px;
@@ -1699,6 +1700,19 @@ h3 {
     overflow: hidden;
     text-overflow: ellipsis;
   }
+}
+
+// Homepage gallery: the site's description, one line under the address.
+.ph-site__desc {
+  flex: 1 0 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: $body;
+  font-style: normal;
+  font-size: 13px;
+  color: $muted;
 }
 
 .ph-site--placeholder .ph-site__shot {
@@ -3510,6 +3524,10 @@ h3 {
     span {
       display: none;
     }
+  }
+
+  .ph-site__desc {
+    font-size: 12px;
   }
 
   .ph-studio {
