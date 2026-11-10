@@ -1,5 +1,5 @@
-// ABOUTME: Converts a persisted v1 Yjs document into a v2 room snapshot.
-// ABOUTME: Assigns stable identities to every array while preserving plain room values.
+// ABOUTME: Converts room data between a persisted v1 Yjs document and a v2 room snapshot.
+// ABOUTME: Going to v2 assigns stable identities to every array; going to v1 stamps a reset epoch.
 
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
@@ -10,7 +10,12 @@ import type {
   RoomSnapshot,
   RoomState,
 } from "@playhtml/common";
-import { docToJson } from "./docUtils";
+import {
+  docToJson,
+  encodeDocToBase64,
+  jsonToDoc,
+  setDocResetEpoch,
+} from "./docUtils";
 
 export type ConversionErrorCode = "empty-document" | "invalid-document";
 
@@ -175,6 +180,29 @@ export function convertDocumentToSnapshot(
         message: `Failed to decode the Yjs document: ${errorMessage(error)}`,
       },
     };
+  } finally {
+    doc.destroy();
+  }
+}
+
+/**
+ * Build a persisted v1 Yjs document holding a v2 snapshot's room state.
+ *
+ * The document carries `resetEpoch` so the v1 room adopts it as its reset
+ * boundary on load. v1 clients still holding the pre-conversion document then
+ * report an older epoch and are refused instead of merging stale history in.
+ */
+export function convertSnapshotToDocument(
+  snapshot: RoomSnapshot,
+  resetEpoch: number,
+): string {
+  if (!Number.isSafeInteger(resetEpoch) || resetEpoch <= 0) {
+    throw new Error("resetEpoch must be a positive integer.");
+  }
+  const doc = jsonToDoc(snapshot.state as Record<string, unknown>);
+  try {
+    setDocResetEpoch(doc, resetEpoch);
+    return encodeDocToBase64(doc);
   } finally {
     doc.destroy();
   }
