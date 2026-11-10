@@ -68,7 +68,6 @@ if (reactContentElement) {
       initOptions={{
         ...localPreviewOptions,
         cursors: {
-          enableChat: true,
           enabled: true,
           ...(cursorRoom ? { room: cursorRoom } : {}),
         },
