@@ -5,6 +5,7 @@ import { handleIngest } from './routes/ingest';
 import { handleClefLog } from './routes/clefLog';
 import { handleRecent } from './routes/recent';
 import { handleRestore } from './routes/restore';
+import { handleSiteDelete } from './routes/siteDelete';
 import { handleDailyCounts } from './routes/dailyCounts';
 import { handleStats } from './routes/stats';
 import { handleExport } from './routes/export';
@@ -101,6 +102,10 @@ export default {
     // extension's service worker sends no Origin or Referer on these requests.
     if (path === '/events/restore' && request.method === 'POST') {
       return handleRestore(request, env);
+    }
+
+    if (path === '/events/delete-site' && request.method === 'POST') {
+      return handleSiteDelete(request, env);
     }
 
     if (path === '/commute/recent' && request.method === 'GET') {

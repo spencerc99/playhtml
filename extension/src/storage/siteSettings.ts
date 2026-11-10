@@ -146,3 +146,11 @@ export function watchSiteLevel(
   browser.storage.onChanged.addListener(listener);
   return () => browser.storage.onChanged.removeListener(listener);
 }
+
+/** Whether a site entry for `host` covers `domain` (the same site or a subdomain). */
+export function siteCovers(host: string, domain: string): boolean {
+  const site = normalizeSiteHost(host);
+  const target = normalizeSiteHost(domain);
+  if (!site || !target) return false;
+  return target === site || target.endsWith(`.${site}`);
+}
