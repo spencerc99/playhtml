@@ -132,6 +132,12 @@ export default defineConfig({
           slug: "examples",
           badge: { text: "inspo", variant: "tip" },
         },
+        // The /play editor isn't in the shared site header, so it lives here.
+        {
+          label: "Playground",
+          link: "/play",
+          badge: { text: "try it", variant: "note" },
+        },
         {
           label: "Start",
           items: [
