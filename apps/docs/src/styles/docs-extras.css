@@ -436,6 +436,45 @@ header.header {
   box-shadow: 3px 3px 0 #1c1c1c;
 }
 
+/* Compact theme toggle: moon in light mode, sun in dark mode. */
+.ph-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ph-ink);
+  cursor: pointer;
+}
+.ph-theme-toggle:hover {
+  color: var(--ph-ultramarine-deep);
+  background: var(--ph-ultramarine-wash);
+}
+.ph-theme-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+.ph-theme-toggle__moon {
+  fill: currentColor;
+}
+.ph-theme-toggle__sun {
+  display: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+:root[data-theme="dark"] .ph-theme-toggle__moon {
+  display: none;
+}
+:root[data-theme="dark"] .ph-theme-toggle__sun {
+  display: block;
+}
+
 /* Mid-width menu: same boxed button and panel as the homepage. */
 .ph-header__menu {
   display: none;

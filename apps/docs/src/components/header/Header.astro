@@ -1,10 +1,10 @@
 ---
 // ABOUTME: Docs header, matching the playhtml.fun homepage header: wordmark, site nav,
-// ABOUTME: then search, presence, Discord, GitHub stars, support and the theme toggle.
+// ABOUTME: then search, presence, Discord, GitHub stars, support and a compact theme toggle.
 import Search from "virtual:starlight/components/Search";
-import ThemeSelect from "virtual:starlight/components/ThemeSelect";
 import { DocsPresenceBar } from "../react/DocsPresenceBar";
 import SiteNavLinks from "./SiteNavLinks.astro";
+import ThemeToggle from "./ThemeToggle.astro";
 import { discordHref, githubHref, supportHref } from "./site-nav";
 ---
 
@@ -53,7 +53,7 @@ import { discordHref, githubHref, supportHref } from "./site-nav";
       <span class="ph-header__stars" data-github-stars hidden></span>
     </a>
     <a class="ph-header__support" href={supportHref}>support</a>
-    <ThemeSelect />
+    <ThemeToggle />
   </div>
 </div>
 
