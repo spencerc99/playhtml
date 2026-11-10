@@ -9,6 +9,7 @@ declare namespace Cloudflare {
   }
   interface StagingEnv {
     QUARANTINE_CONTROL: KVNamespace;
+    CONNECTION_RATE_LIMITER: RateLimit;
     SUPABASE_URL: string;
     SUPABASE_KEY: string;
     ADMIN_TOKEN: string;
@@ -19,6 +20,7 @@ declare namespace Cloudflare {
   }
   interface Env {
     QUARANTINE_CONTROL: KVNamespace;
+    CONNECTION_RATE_LIMITER: RateLimit;
     SUPABASE_URL: string;
     SUPABASE_KEY: string;
     ADMIN_TOKEN: string;

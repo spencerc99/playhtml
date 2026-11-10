@@ -7,6 +7,8 @@ import { CollageHistory } from "./CollageHistory";
 import { CollageStudio } from "./CollageStudio";
 import { COLLAGE_STUDIO_STYLES } from "./collageStudioStyles";
 import type { CollageRecord } from "./collageRecord";
+import { useSettledFeatureState } from "../../features/useFeatureAccess";
+import { extensionSigner } from "./extensionSigner";
 
 interface CreateModeProps {
   items: ScrapItem[];
@@ -31,10 +33,14 @@ export function CreateMode({
   onSaved,
   onLeave,
 }: CreateModeProps) {
+  const shareLinks = useSettledFeatureState("COLLAGE_SHARE_LINKS");
+
   return (
     <>
       <style>{COLLAGE_STUDIO_STYLES}</style>
-      <div style={{ position: "absolute", inset: "96px 0 0", zIndex: 2 }}>
+      <div
+        className={`collage-create-area${studioOpen ? " collage-create-area--studio" : ""}`}
+      >
         {!studioOpen ? (
           <CollageHistory
             revision={savedRevision}
@@ -48,6 +54,8 @@ export function CreateMode({
             editing={editing}
             onSaved={onSaved}
             onLeave={onLeave}
+            canPublish={shareLinks?.enabled === true}
+            signer={extensionSigner}
           />
         )}
       </div>

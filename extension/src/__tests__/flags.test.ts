@@ -21,6 +21,7 @@ function access(availableFeatures: FeatureId[] = []): FeatureAccessSnapshot {
         available: stage === "released" || availableFeatures.includes(feature),
       }];
     })) as FeatureAccessSnapshot["features"],
+    internal: false,
     checkedAt: 0,
   };
 }

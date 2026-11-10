@@ -7,6 +7,8 @@ import {
   isLettered,
   letteringLayout,
   naturalScrapSize,
+  resizeHeadingFromEnd,
+  rewrapHeadingFromSide,
 } from "../entrypoints/scraps/pieceLettering";
 
 const base = {
@@ -91,5 +93,145 @@ describe("isLettered", () => {
         naturalHeight: 10,
       } as ScrapItem),
     ).toBe(false);
+  });
+});
+
+describe("rewrapping a heading from its side", () => {
+  // Two lines' worth of height for every halving of the width, so the test
+  // reads the rewrap without depending on a typeface.
+  const measure = (_scrap: unknown, letteringWidth: number) =>
+    letteringWidth >= 200 ? 40 : 80;
+  const placed = { x: 100, y: 50, width: 400, height: 40, rotation: 0, flipY: false };
+
+  it("sets the words at a fixed width once rewrapped, scaled to the box", () => {
+    const layout = letteringLayout(heading, { width: 300, height: 120 }, 150);
+    expect(layout.scale).toBeCloseTo(2);
+    expect(layout.width).toBe(150);
+    expect(layout.height).toBeCloseTo(60);
+  });
+
+  it("keeps the type size and grows downward when pulled narrower", () => {
+    const before = letteringLayout(heading, placed, 400);
+    const pulled = rewrapHeadingFromSide({
+      box: placed,
+      scrap: heading,
+      letteringWidth: 400,
+      edge: "right",
+      pointer: { x: 250, y: 70 },
+      aboutCenter: false,
+      measure,
+    });
+    expect(pulled.width).toBeCloseTo(150);
+    expect(pulled.letteringWidth).toBeCloseTo(150);
+    // Same scale as before: the words did not shrink, they wrapped.
+    expect(pulled.width / pulled.letteringWidth).toBeCloseTo(before.scale);
+    expect(pulled.height).toBeCloseTo(80);
+    // Left and top edges stay put.
+    expect(pulled.x).toBeCloseTo(100);
+    expect(pulled.y).toBeCloseTo(50);
+  });
+
+  it("keeps the opposite side when pulled from the left", () => {
+    const pulled = rewrapHeadingFromSide({
+      box: placed,
+      scrap: heading,
+      letteringWidth: 400,
+      edge: "left",
+      pointer: { x: 350, y: 70 },
+      aboutCenter: false,
+      measure,
+    });
+    expect(pulled.x + pulled.width).toBeCloseTo(500);
+    expect(pulled.y).toBeCloseTo(50);
+  });
+
+  it("rewraps a turned heading along its own baseline, keeping its top-left", () => {
+    const turned = { ...placed, rotation: 90 };
+    // Turned a quarter, the piece's right side points down the frame.
+    const center = { x: 300, y: 70 };
+    const pulled = rewrapHeadingFromSide({
+      box: turned,
+      scrap: heading,
+      letteringWidth: 400,
+      edge: "right",
+      pointer: { x: center.x, y: center.y - 200 + 150 },
+      aboutCenter: false,
+      measure,
+    });
+    expect(pulled.width).toBeCloseTo(150);
+    // The turned top-left corner of the piece does not move.
+    const corner = (box: { x: number; y: number; width: number; height: number }) => {
+      const cx = box.x + box.width / 2;
+      const cy = box.y + box.height / 2;
+      const dx = box.x - cx;
+      const dy = box.y - cy;
+      return { x: cx - dy, y: cy + dx };
+    };
+    expect(corner(pulled).x).toBeCloseTo(corner(turned).x);
+    expect(corner(pulled).y).toBeCloseTo(corner(turned).y);
+  });
+
+  it("will not pull a heading narrower than about one letter", () => {
+    const pulled = rewrapHeadingFromSide({
+      box: placed,
+      scrap: heading,
+      letteringWidth: 400,
+      edge: "right",
+      pointer: { x: 90, y: 70 },
+      aboutCenter: false,
+      measure,
+    });
+    expect(pulled.width).toBeGreaterThan(20);
+    expect(pulled.x).toBeCloseTo(100);
+  });
+});
+
+describe("resizing a heading from its top or bottom", () => {
+  const measure = () => 40;
+  const placed = { x: 100, y: 50, width: 400, height: 40, rotation: 0 };
+
+  it("adds room below the lines without scaling the words", () => {
+    const pulled = resizeHeadingFromEnd({
+      box: placed,
+      scrap: heading,
+      letteringWidth: 400,
+      edge: "bottom",
+      pointer: { x: 300, y: 150 },
+      aboutCenter: false,
+      measure,
+    });
+    expect(pulled.height).toBeCloseTo(100);
+    expect(pulled.width).toBe(400);
+    expect(pulled.y).toBeCloseTo(50);
+    expect(pulled.letteringWidth).toBe(400);
+  });
+
+  it("never gets shorter than the lines it holds", () => {
+    const pulled = resizeHeadingFromEnd({
+      box: placed,
+      scrap: heading,
+      letteringWidth: 400,
+      edge: "top",
+      pointer: { x: 300, y: 85 },
+      aboutCenter: false,
+      measure,
+    });
+    expect(pulled.height).toBeCloseTo(40);
+    expect(pulled.y + pulled.height).toBeCloseTo(90);
+  });
+
+  it("pins the words' wrap width for a heading never rewrapped", () => {
+    const natural = naturalScrapSize(heading);
+    const pulled = resizeHeadingFromEnd({
+      box: { x: 0, y: 0, ...natural, rotation: 0 },
+      scrap: heading,
+      letteringWidth: undefined,
+      edge: "bottom",
+      pointer: { x: 10, y: natural.height * 3 },
+      aboutCenter: false,
+      measure,
+    });
+    // The scale stays 1: the box grew, the words did not.
+    expect(pulled.width / pulled.letteringWidth).toBeCloseTo(1);
   });
 });

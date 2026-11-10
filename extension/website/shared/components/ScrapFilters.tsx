@@ -1,4 +1,4 @@
-// ABOUTME: Filters scraps by where and when they were found, their kind, and an always-visible search field.
+// ABOUTME: Filters scraps by where (kept or hidden sites) and when they were found, their kind and shape, and an always-visible search field.
 // ABOUTME: Lays out as one bar or as two drawer rows; popovers anchor to their chip and return focus.
 
 import {
@@ -15,7 +15,6 @@ import {
   extractDomain,
   formatFilterChip,
   parseFilterChip,
-  type FilterChip,
 } from "../utils/eventUtils";
 import {
   ANY_TIME,
@@ -24,19 +23,102 @@ import {
   matchesScrapWhen,
   scrapDays,
   scrapLocations,
+  scrapShape,
   scrapSightings,
+  type ScrapPlace,
+  type ScrapShape,
   type ScrapWhenFilter,
 } from "../utils/scrapFilters";
-import type { TimeOfDayFilter } from "../config";
-import { formatTimeOfDay, localDayKey } from "../utils/timeOfDay";
-import { DAY_GRID_WIDTH, DayGrid } from "./DayGrid";
-import { TimeOfDayInputs } from "./TimeOfDayInputs";
+import { formatDayRange } from "../utils/dayRange";
+import {
+  formatTimeOfDay,
+  localDayKey,
+  quarterDayOf,
+} from "../utils/timeOfDay";
+import { WHEN_PANEL_WIDTH, WhenPanel } from "./WhenPanel";
 
-export { ANY_TIME, isAnyTime, type ScrapWhenFilter };
+export { ANY_TIME, isAnyTime, type ScrapPlace, type ScrapWhenFilter };
 
-export type ScrapKindFilter = ScrapItem["kind"] | "all";
+/** The scrap kinds to show; an empty list shows every kind. */
+export type ScrapKindFilter = ScrapItem["kind"][];
 
-const kinds: { kind: ScrapKindFilter; label: string }[] = [
+type KindOption = ScrapItem["kind"] | "all";
+
+/** The scrap shapes to show; an empty list shows every shape. */
+export type ScrapShapeFilter = ScrapShape[];
+
+/** Each shape with the proportions of the rectangle drawn for it, widest first. */
+const shapes: {
+  shape: ScrapShape;
+  label: string;
+  width: number;
+  height: number;
+}[] = [
+  { shape: "very-wide", label: "very wide", width: 16, height: 6 },
+  { shape: "wide", label: "wide", width: 15, height: 10 },
+  { shape: "square", label: "square", width: 12, height: 12 },
+  { shape: "tall", label: "tall", width: 10, height: 15 },
+  { shape: "very-tall", label: "very tall", width: 6, height: 16 },
+];
+
+/** A shape drawn as an outlined rectangle centred in a square box. */
+function ShapeIcon({
+  width,
+  height,
+  size,
+}: {
+  width: number;
+  height: number;
+  size: number;
+}) {
+  return (
+    <svg
+      className="scrap-filters__shape-icon"
+      viewBox="0 0 18 18"
+      width={size}
+      height={size}
+      aria-hidden="true"
+    >
+      <rect
+        x={(18 - width) / 2}
+        y={(18 - height) / 2}
+        width={width}
+        height={height}
+        rx="1"
+        fill="currentColor"
+        fillOpacity="var(--scrap-filters-shape-fill, 0)"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+    </svg>
+  );
+}
+
+/** An eye with a slash through it, for hiding a site's scraps. */
+function HideIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+      <path
+        d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx="8"
+        cy="8"
+        r="2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path d="m2.5 13.5 11-11" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
+const kinds: { kind: KindOption; label: string }[] = [
   { kind: "all", label: "all" },
   { kind: "image", label: "images" },
   { kind: "button", label: "buttons" },
@@ -45,59 +127,52 @@ const kinds: { kind: ScrapKindFilter; label: string }[] = [
   { kind: "cursor", label: "cursors" },
 ];
 
-/** Quarter-day windows in local time, offered as starting points for the time of day. */
-const timesOfDay: { label: string; window: TimeOfDayFilter }[] = [
-  { label: "night", window: { centerMinutes: 180, radiusMinutes: 180 } },
-  { label: "morning", window: { centerMinutes: 540, radiusMinutes: 180 } },
-  { label: "afternoon", window: { centerMinutes: 900, radiusMinutes: 180 } },
-  { label: "evening", window: { centerMinutes: 1260, radiusMinutes: 180 } },
-];
-
 /** Whether a scrap passes every filter at once, shared by each surface that filters scraps. */
 export function scrapPassesFilters(
   item: ScrapItem,
   kind: ScrapKindFilter,
-  places: FilterChip[],
+  shape: ScrapShapeFilter,
+  places: ScrapPlace[],
   search: string,
   when: ScrapWhenFilter,
 ): boolean {
   return (
-    (kind === "all" || item.kind === kind) &&
+    (kind.length === 0 || kind.includes(item.kind)) &&
+    matchesShape(item, shape) &&
     matchesScrapFilters(item, places, search) &&
     matchesScrapWhen(item, when)
   );
 }
 
-/** The chip's short summary of a day and time-of-day filter, naming a quarter-day window when it is one. */
+function matchesShape(item: ScrapItem, shape: ScrapShapeFilter): boolean {
+  if (shape.length === 0) return true;
+  const itemShape = scrapShape(item);
+  return itemShape !== null && shape.includes(itemShape);
+}
+
+/** The chip's short summary of a day span and time-of-day filter, naming a quarter-day window when it is one. */
 export function formatScrapWhen(when: ScrapWhenFilter): string {
-  const { day, timeOfDay } = when;
+  const { days, timeOfDay } = when;
   const parts = [
-    day === null
-      ? null
-      : new Date(`${day}T00:00:00`).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        }),
+    days === null ? null : formatDayRange(days),
     timeOfDay === null
       ? null
-      : (timesOfDay.find(
-          (option) =>
-            option.window.centerMinutes === timeOfDay.centerMinutes &&
-            option.window.radiusMinutes === timeOfDay.radiusMinutes,
-        )?.label ?? formatTimeOfDay(timeOfDay)),
+      : (quarterDayOf(timeOfDay)?.label ?? formatTimeOfDay(timeOfDay)),
   ].filter((part): part is string => part !== null);
   return parts.length === 0 ? "any time" : parts.join(" · ");
 }
 
 interface Props {
   items: readonly ScrapItem[];
-  places: FilterChip[];
-  onPlaces: (places: FilterChip[]) => void;
+  /** Sites to keep scraps from, and sites (marked `exclude`) to hide them from. */
+  places: ScrapPlace[];
+  onPlaces: (places: ScrapPlace[]) => void;
   kind: ScrapKindFilter;
   onKind: (kind: ScrapKindFilter) => void;
+  shape: ScrapShapeFilter;
+  onShape: (shape: ScrapShapeFilter) => void;
   search: string;
   onSearch: (search: string) => void;
-  onFilterIntent?: () => void;
   /** The local day and time of day a scrap must have been seen at. */
   when: ScrapWhenFilter;
   onWhen: (when: ScrapWhenFilter) => void;
@@ -115,7 +190,31 @@ interface Props {
   chipsAccessory?: ReactNode;
 }
 
-type Panel = "places" | "type" | "when";
+type Panel = "places" | "type" | "shape" | "when";
+
+/**
+ * A phone: a finger on a screen too narrow for the chips to sit beside the
+ * search field. There the chips fold behind one "filters" chip, so the search
+ * and the scraps under it keep the room.
+ */
+const PHONE_QUERY = "(pointer: coarse) and (max-width: 619px)";
+
+function usePhoneFilters(): boolean {
+  const matches = () =>
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(PHONE_QUERY).matches;
+  const [phone, setPhone] = useState(matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(PHONE_QUERY);
+    const update = () => setPhone(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return phone;
+}
 
 const countEach = (group: ScrapItem[]) => group.length;
 
@@ -125,9 +224,10 @@ export function ScrapFilters({
   onPlaces,
   kind,
   onKind,
+  shape,
+  onShape,
   search,
   onSearch,
-  onFilterIntent,
   when,
   onWhen,
   matchCount,
@@ -139,17 +239,22 @@ export function ScrapFilters({
 }: Props) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [draft, setDraft] = useState("");
+  const phone = usePhoneFilters();
+  const [chipsOpen, setChipsOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const placeAnchor = useRef<HTMLSpanElement>(null);
   const typeAnchor = useRef<HTMLSpanElement>(null);
   const placeButton = useRef<HTMLButtonElement>(null);
   const typeButton = useRef<HTMLButtonElement>(null);
+  const shapeAnchor = useRef<HTMLSpanElement>(null);
+  const shapeButton = useRef<HTMLButtonElement>(null);
+  const shapeOptions = useRef<HTMLDivElement>(null);
   const whenAnchor = useRef<HTMLSpanElement>(null);
   const whenButton = useRef<HTMLButtonElement>(null);
   const whenPanel = useRef<HTMLElement>(null);
   const placeInput = useRef<HTMLInputElement>(null);
-  /** A site row to hand focus back to once toggling it has moved it. */
-  const refocusPlace = useRef<string | null>(null);
+  /** A site row's button to hand focus back to once toggling it has moved it. */
+  const refocusPlace = useRef<{ label: string; hide: boolean } | null>(null);
   const typeOptions = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const popover = useRef<HTMLElement>(null);
@@ -161,13 +266,21 @@ export function ScrapFilters({
         .map((source) => extractDomain(source.pageUrl))
         .filter(Boolean),
     );
-  const domains = useMemo(
-    () =>
-      Array.from(
-        new Set(items.flatMap((item) => [...itemDomains(item)])),
-      ).sort(),
-    [items],
-  );
+  // Sites are listed by when a scrap was last met there, newest first.
+  const domains = useMemo(() => {
+    if (panel !== "places") return [];
+    const lastSeen = new Map<string, number>();
+    for (const item of items) {
+      for (const location of scrapLocations(item)) {
+        const domain = extractDomain(location.pageUrl);
+        if (!domain) continue;
+        lastSeen.set(domain, Math.max(lastSeen.get(domain) ?? 0, location.ts));
+      }
+    }
+    return Array.from(lastSeen.keys()).sort(
+      (a, b) => lastSeen.get(b)! - lastSeen.get(a)! || a.localeCompare(b),
+    );
+  }, [items, panel]);
   // Counts answer "how many would I see if I picked this", so each facet
   // honours the other filters but not its own.
   const domainCounts = useMemo(() => {
@@ -176,7 +289,7 @@ export function ScrapFilters({
     for (const domain of domains) counts.set(domain, 0);
     const byDomain = new Map<string, ScrapItem[]>();
     for (const item of items) {
-      if (!scrapPassesFilters(item, kind, [], search, when)) continue;
+      if (!scrapPassesFilters(item, kind, shape, [], search, when)) continue;
       for (const domain of itemDomains(item)) {
         const group = byDomain.get(domain) ?? [];
         group.push(item);
@@ -186,14 +299,12 @@ export function ScrapFilters({
     for (const [domain, group] of byDomain)
       counts.set(domain, countScraps(group));
     return counts;
-  }, [panel, items, domains, kind, search, when, countScraps]);
+  }, [panel, items, domains, kind, shape, search, when, countScraps]);
   const kindCounts = useMemo(() => {
-    const counts = new Map<ScrapKindFilter, number>();
+    const counts = new Map<KindOption, number>();
     if (panel !== "type") return counts;
-    const matching = items.filter(
-      (item) =>
-        matchesScrapFilters(item, places, search) &&
-        matchesScrapWhen(item, when),
+    const matching = items.filter((item) =>
+      scrapPassesFilters(item, [], shape, places, search, when),
     );
     counts.set("all", countScraps(matching));
     for (const option of kinds) {
@@ -204,7 +315,23 @@ export function ScrapFilters({
       );
     }
     return counts;
-  }, [panel, items, places, search, when, countScraps]);
+  }, [panel, items, shape, places, search, when, countScraps]);
+  const shapeCounts = useMemo(() => {
+    const counts = new Map<ScrapShape, number>();
+    if (panel !== "shape") return counts;
+    const matching = items.filter((item) =>
+      scrapPassesFilters(item, kind, [], places, search, when),
+    );
+    for (const option of shapes) {
+      counts.set(
+        option.shape,
+        countScraps(
+          matching.filter((item) => scrapShape(item) === option.shape),
+        ),
+      );
+    }
+    return counts;
+  }, [panel, items, kind, places, search, when, countScraps]);
   // Every day anything was seen stays in the grid, so narrowing another
   // filter thins a day's texture rather than moving the calendar around.
   const dayCounts = useMemo(() => {
@@ -214,7 +341,8 @@ export function ScrapFilters({
       for (const ts of scrapSightings(item)) counts.set(localDayKey(ts), 0);
     const byDay = new Map<string, ScrapItem[]>();
     for (const item of items) {
-      if (!scrapPassesFilters(item, kind, places, search, ANY_TIME)) continue;
+      if (!scrapPassesFilters(item, kind, shape, places, search, ANY_TIME))
+        continue;
       for (const day of scrapDays(item, when.timeOfDay)) {
         const group = byDay.get(day) ?? [];
         group.push(item);
@@ -223,9 +351,11 @@ export function ScrapFilters({
     }
     for (const [day, group] of byDay) counts.set(day, countScraps(group));
     return counts;
-  }, [panel, items, kind, places, search, when.timeOfDay, countScraps]);
+  }, [panel, items, kind, shape, places, search, when.timeOfDay, countScraps]);
 
-  const selected = places.map(formatFilterChip);
+  const kept = places.filter((place) => !place.exclude).map(formatFilterChip);
+  const hidden = places.filter((place) => place.exclude).map(formatFilterChip);
+  const selected = [...kept, ...hidden];
   const candidate = parseFilterChip(draft);
   candidate.domain = candidate.domain.toLowerCase();
   const candidateLabel = formatFilterChip(candidate);
@@ -236,31 +366,44 @@ export function ScrapFilters({
     (domain) => !selected.includes(domain) && matchesDraft(domain),
   );
   const listed = [...pinned, ...rest];
-  const togglePlace = (label: string) => {
-    if (selected.includes(label))
-      onPlaces(places.filter((place) => formatFilterChip(place) !== label));
-    else onPlaces([...places, parseFilterChip(label)]);
+  /** Keeps, hides, or (with null) forgets a site, replacing whatever it was. */
+  const setPlace = (label: string, state: "keep" | "hide" | null) => {
+    const others = places.filter((place) => formatFilterChip(place) !== label);
+    if (state === null) onPlaces(others);
+    else
+      onPlaces([
+        ...others,
+        state === "hide"
+          ? { ...parseFilterChip(label), exclude: true }
+          : parseFilterChip(label),
+      ]);
   };
   // Toggling a site moves its row between the picked and unpicked groups,
   // which drops focus to the page; put it back so the keyboard stays here.
   useEffect(() => {
-    const label = refocusPlace.current;
-    if (label === null) return;
+    const target = refocusPlace.current;
+    if (target === null) return;
     refocusPlace.current = null;
     Array.from(
-      root.current?.querySelectorAll<HTMLButtonElement>("[data-place]") ?? [],
+      root.current?.querySelectorAll<HTMLButtonElement>(
+        target.hide ? "[data-place-hide]" : "[data-place]",
+      ) ?? [],
     )
-      .find((row) => row.dataset.place === label)
+      .find(
+        (row) => (row.dataset.place ?? row.dataset.placeHide) === target.label,
+      )
       ?.focus();
   });
   const panelButton = {
     places: placeButton,
     type: typeButton,
+    shape: shapeButton,
     when: whenButton,
   };
   const panelAnchor = {
     places: placeAnchor,
     type: typeAnchor,
+    shape: shapeAnchor,
     when: whenAnchor,
   };
   const close = () => {
@@ -274,6 +417,12 @@ export function ScrapFilters({
       typeOptions.current
         ?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')
         ?.focus();
+    if (panel === "shape")
+      (
+        shapeOptions.current?.querySelector<HTMLButtonElement>(
+          '[aria-pressed="true"]',
+        ) ?? shapeOptions.current?.querySelector<HTMLButtonElement>("button")
+      )?.focus();
     if (panel === "when")
       (
         whenPanel.current?.querySelector<HTMLElement>(
@@ -311,17 +460,53 @@ export function ScrapFilters({
     const bounds = element.getBoundingClientRect();
     let nudge = 0;
     if (bounds.right > right - margin) nudge = right - margin - bounds.right;
-    if (bounds.left + nudge < left + margin) nudge = left + margin - bounds.left;
+    if (bounds.left + nudge < left + margin)
+      nudge = left + margin - bounds.left;
     element.style.setProperty("--scrap-filters-nudge", `${nudge}px`);
-  }, [panel, layout, places, kind, when]);
+  }, [panel, layout, places, kind, shape, when]);
 
+  const countSites = (labels: string[]) =>
+    labels.length === 1 ? labels[0] : `${labels.length} sites`;
   const siteLabel =
     selected.length === 0
       ? "anywhere"
-      : selected.length === 1
-        ? selected[0]
-        : `${selected.length} sites`;
-  const kindLabel = kinds.find((option) => option.kind === kind)?.label;
+      : [
+          kept.length > 0 ? countSites(kept) : null,
+          hidden.length > 0 ? `not ${countSites(hidden)}` : null,
+        ]
+          .filter(Boolean)
+          .join(", ");
+  const kindLabel =
+    kind.length === 0
+      ? "all"
+      : kind.length <= 2
+        ? kinds
+            .filter(
+              (option) => option.kind !== "all" && kind.includes(option.kind),
+            )
+            .map((option) => option.label)
+            .join(", ")
+        : `${kind.length} types`;
+  const toggleKind = (option: KindOption) => {
+    if (option === "all") {
+      onKind([]);
+      return;
+    }
+    const next = kind.includes(option)
+      ? kind.filter((value) => value !== option)
+      : [...kind, option];
+    // Picking every kind is the same as picking none.
+    onKind(next.length === kinds.length - 1 ? [] : next);
+  };
+
+  const pickedShapes = shapes.filter((option) => shape.includes(option.shape));
+  const toggleShape = (option: ScrapShape) => {
+    const next = shape.includes(option)
+      ? shape.filter((value) => value !== option)
+      : [...shape, option];
+    // Picking every shape is the same as picking none.
+    onShape(next.length === shapes.length ? [] : next);
+  };
 
   const searchField = (
     <label className="scrap-filters__search">
@@ -345,7 +530,7 @@ export function ScrapFilters({
       <input
         ref={searchInput}
         aria-label="Search scraps"
-        placeholder="search titles, urls, alt text"
+        placeholder="search words, titles, urls"
         value={search}
         onChange={(event) => onSearch(event.target.value)}
         onKeyDown={(event) => {
@@ -465,19 +650,33 @@ export function ScrapFilters({
                 />
               </label>
               {candidateLabel && !listed.includes(candidateLabel) && (
-                <button type="submit" className="scrap-filters__option">
-                  <span className="scrap-filters__name">
-                    Use {candidateLabel}
-                  </span>
-                </button>
+                <div className="scrap-filters__place">
+                  <button type="submit" className="scrap-filters__option">
+                    <span className="scrap-filters__name">
+                      Use {candidateLabel}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="scrap-filters__hide"
+                    aria-label={`Hide ${candidateLabel}`}
+                    title={`hide scraps from ${candidateLabel}`}
+                    onClick={() => {
+                      setPlace(candidateLabel, "hide");
+                      setDraft("");
+                    }}
+                  >
+                    <HideIcon />
+                  </button>
+                </div>
               )}
             </form>
             <div className="scrap-filters__options">
-              {pinned.map((domain) => placeRow(domain, true))}
+              {pinned.map((domain) => placeRow(domain))}
               {pinned.length > 0 && rest.length > 0 && (
                 <hr className="scrap-filters__separator" />
               )}
-              {rest.map((domain) => placeRow(domain, false))}
+              {rest.map((domain) => placeRow(domain))}
               {listed.length === 0 && (
                 <p className="scrap-filters__empty">no sites match</p>
               )}
@@ -488,28 +687,54 @@ export function ScrapFilters({
     </span>
   );
 
-  function placeRow(domain: string, on: boolean) {
+  function placeRow(domain: string) {
     const count = domainCounts.get(domain);
+    const on = kept.includes(domain);
+    const off = hidden.includes(domain);
     return (
-      <button
-        type="button"
+      <div
+        className="scrap-filters__place"
         key={domain}
-        className="scrap-filters__option"
-        data-place={domain}
-        aria-pressed={on}
-        onClick={() => {
-          refocusPlace.current = domain;
-          togglePlace(domain);
-        }}
+        data-hidden={off || undefined}
       >
-        <span className="scrap-filters__check" aria-hidden="true">
-          {on ? "✓" : ""}
-        </span>
-        <span className="scrap-filters__name">{domain}</span>
-        {count !== undefined && (
-          <span className="scrap-filters__count">{count}</span>
-        )}
-      </button>
+        <button
+          type="button"
+          className="scrap-filters__option"
+          data-place={domain}
+          aria-pressed={on}
+          title={off ? `show scraps from ${domain} again` : undefined}
+          onClick={() => {
+            refocusPlace.current = { label: domain, hide: false };
+            setPlace(domain, on || off ? null : "keep");
+          }}
+        >
+          <span className="scrap-filters__check" aria-hidden="true">
+            {on ? "✓" : ""}
+          </span>
+          <span className="scrap-filters__name">{domain}</span>
+          {count !== undefined && (
+            <span className="scrap-filters__count">{count}</span>
+          )}
+        </button>
+        <button
+          type="button"
+          className="scrap-filters__hide"
+          data-place-hide={domain}
+          aria-pressed={off}
+          aria-label={`Hide ${domain}`}
+          title={
+            off
+              ? `show scraps from ${domain} again`
+              : `hide scraps from ${domain}`
+          }
+          onClick={() => {
+            refocusPlace.current = { label: domain, hide: true };
+            setPlace(domain, off ? null : "hide");
+          }}
+        >
+          <HideIcon />
+        </button>
+      </div>
     );
   }
 
@@ -519,7 +744,7 @@ export function ScrapFilters({
         type="button"
         ref={typeButton}
         className="scrap-filters__chip"
-        data-on={kind !== "all" || undefined}
+        data-on={kind.length > 0 || undefined}
         aria-expanded={panel === "type"}
         aria-controls={`${id}-type`}
         onClick={() => setPanel(panel === "type" ? null : "type")}
@@ -543,29 +768,116 @@ export function ScrapFilters({
               <span>type</span>
             </div>
             <div className="scrap-filters__options" ref={typeOptions}>
-              {kinds.map((option) => (
-                <div key={option.kind} className="scrap-filters__kind">
-                  <button
-                    type="button"
-                    className="scrap-filters__option"
-                    data-scrap-kind={option.kind}
-                    aria-pressed={option.kind === kind}
-                    onClick={() => {
-                      onKind(option.kind);
-                      typeButton.current?.focus();
-                      setPanel(null);
-                    }}
-                  >
-                    <span className="scrap-filters__radio" aria-hidden="true" />
-                    <span className="scrap-filters__name">{option.label}</span>
-                    <span className="scrap-filters__count">
-                      {kindCounts.get(option.kind)}
-                    </span>
-                  </button>
-                  {option.kind === "all" && (
-                    <hr className="scrap-filters__separator" />
-                  )}
-                </div>
+              {kinds.map((option) => {
+                const on =
+                  option.kind === "all"
+                    ? kind.length === 0
+                    : kind.includes(option.kind);
+                return (
+                  <div key={option.kind} className="scrap-filters__kind">
+                    <button
+                      type="button"
+                      className="scrap-filters__option"
+                      data-scrap-kind={option.kind}
+                      aria-pressed={on}
+                      onClick={() => toggleKind(option.kind)}
+                    >
+                      <span className="scrap-filters__check" aria-hidden="true">
+                        {on ? "✓" : ""}
+                      </span>
+                      <span className="scrap-filters__name">
+                        {option.label}
+                      </span>
+                      <span className="scrap-filters__count">
+                        {kindCounts.get(option.kind)}
+                      </span>
+                    </button>
+                    {option.kind === "all" && (
+                      <hr className="scrap-filters__separator" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </>
+      )}
+    </span>
+  );
+
+  const shapeChip = (
+    <span className="scrap-filters__anchor" ref={shapeAnchor}>
+      <button
+        type="button"
+        ref={shapeButton}
+        className="scrap-filters__chip"
+        data-on={shape.length > 0 || undefined}
+        aria-expanded={panel === "shape"}
+        aria-controls={`${id}-shape`}
+        onClick={() => setPanel(panel === "shape" ? null : "shape")}
+      >
+        <span className="scrap-filters__key">shape</span>
+        {pickedShapes.length === 0 ? (
+          <span className="scrap-filters__value">any</span>
+        ) : (
+          <span
+            className="scrap-filters__value scrap-filters__shapes-picked"
+            aria-label={pickedShapes.map((option) => option.label).join(", ")}
+          >
+            {pickedShapes.map((option) => (
+              <ShapeIcon
+                key={option.shape}
+                width={option.width}
+                height={option.height}
+                size={13}
+              />
+            ))}
+          </span>
+        )}
+        <span className="scrap-filters__more" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      {panel === "shape" && (
+        <>
+          {caret}
+          <section
+            ref={popover}
+            id={`${id}-shape`}
+            className={`scrap-filters__popover scrap-filters__popover--shape scrap-filters__popover--${placement}`}
+            aria-label="Scrap shapes"
+          >
+            <div className="scrap-filters__heading">
+              <span>shape</span>
+              <button
+                type="button"
+                className="scrap-filters__link"
+                onClick={() => onShape([])}
+              >
+                clear
+              </button>
+            </div>
+            <div className="scrap-filters__shapes" ref={shapeOptions}>
+              {shapes.map((option) => (
+                <button
+                  key={option.shape}
+                  type="button"
+                  className="scrap-filters__shape"
+                  data-scrap-shape={option.shape}
+                  aria-pressed={shape.includes(option.shape)}
+                  aria-label={`${option.label}, ${shapeCounts.get(option.shape) ?? 0} scraps`}
+                  title={option.label}
+                  onClick={() => toggleShape(option.shape)}
+                >
+                  <ShapeIcon
+                    width={option.width}
+                    height={option.height}
+                    size={24}
+                  />
+                  <span className="scrap-filters__count">
+                    {shapeCounts.get(option.shape)}
+                  </span>
+                </button>
               ))}
             </div>
           </section>
@@ -604,87 +916,50 @@ export function ScrapFilters({
             className={`scrap-filters__popover scrap-filters__popover--when scrap-filters__popover--${placement}`}
             aria-label="When found"
           >
-            <div className="scrap-filters__heading">
-              <span>day</span>
-              <button
-                type="button"
-                className="scrap-filters__link"
-                onClick={() => onWhen(ANY_TIME)}
-              >
-                clear
-              </button>
-            </div>
-            {dayCounts.size === 0 ? (
-              <p className="scrap-filters__empty">no days yet</p>
-            ) : (
-              <DayGrid
-                dayCounts={dayCounts}
-                selectedDay={when.day}
-                onSelectDay={(day) => onWhen({ ...when, day })}
-                style={{
-                  flex: "none",
-                  maxHeight: "min(170px, 28vh)",
-                  padding: 0,
-                }}
-              />
-            )}
-            <div className="scrap-filters__heading scrap-filters__heading--time">
-              <span>time of day</span>
-            </div>
-            <div className="scrap-filters__times">
-              {timesOfDay.map((option) => {
-                const on =
-                  when.timeOfDay !== null &&
-                  when.timeOfDay.centerMinutes ===
-                    option.window.centerMinutes &&
-                  when.timeOfDay.radiusMinutes === option.window.radiusMinutes;
-                return (
-                  <button
-                    key={option.label}
-                    type="button"
-                    className="scrap-filters__time"
-                    aria-pressed={on}
-                    title={formatTimeOfDay(option.window)}
-                    onClick={() =>
-                      onWhen({ ...when, timeOfDay: on ? null : option.window })
-                    }
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-            {when.timeOfDay !== null && (
-              <div
-                className="scrap-filters__window"
-                title="Recurring time-of-day window (local time), across every day"
-              >
-                <TimeOfDayInputs
-                  value={when.timeOfDay}
-                  onChange={(timeOfDay) => onWhen({ ...when, timeOfDay })}
-                />
-                <button
-                  type="button"
-                  className="scrap-filters__clear"
-                  aria-label="Clear time of day"
-                  onClick={() => onWhen({ ...when, timeOfDay: null })}
-                >
-                  ×
-                </button>
-              </div>
-            )}
+            <WhenPanel
+              dayCounts={dayCounts}
+              days={when.days}
+              onDays={(days) => onWhen({ ...when, days })}
+              timeOfDay={when.timeOfDay}
+              onTimeOfDay={(timeOfDay) => onWhen({ ...when, timeOfDay })}
+              gridStyle={{ flex: "none", maxHeight: "min(220px, 30vh)" }}
+            />
           </section>
         </>
       )}
     </span>
   );
 
+  const activeFilters =
+    (places.length > 0 ? 1 : 0) +
+    (kind.length > 0 ? 1 : 0) +
+    (shape.length > 0 ? 1 : 0) +
+    (isAnyTime(when) ? 0 : 1);
+  const filtersToggle = (
+    <button
+      type="button"
+      className="scrap-filters__chip scrap-filters__toggle"
+      aria-expanded={chipsOpen}
+      aria-pressed={activeFilters > 0}
+      onClick={() => {
+        if (chipsOpen) close();
+        setChipsOpen(!chipsOpen);
+      }}
+    >
+      <span className="scrap-filters__key">filters</span>
+      {activeFilters > 0 && (
+        <span className="scrap-filters__value">{activeFilters}</span>
+      )}
+      <span className="scrap-filters__more" aria-hidden="true">
+        {chipsOpen ? "\u25B4" : "\u25BE"}
+      </span>
+    </button>
+  );
+
   return (
     <div
       className={`scrap-filters scrap-filters--${layout}`}
       ref={root}
-      onClickCapture={onFilterIntent}
-      onFocusCapture={onFilterIntent}
       // The collage studio leaves every key pressed in here to the filters.
       data-owns-keys=""
       onKeyDown={(event) => {
@@ -696,7 +971,25 @@ export function ScrapFilters({
       }}
     >
       <style>{styles}</style>
-      {layout === "drawer" ? (
+      {phone ? (
+        <>
+          <div className="scrap-filters__row">
+            {searchField}
+            {filtersToggle}
+            {searchAccessory}
+          </div>
+          {chipsOpen && (
+            <div className="scrap-filters__row">
+              {placesChip}
+              {typeChip}
+              {shapeChip}
+              {whenChip}
+              <span className="scrap-filters__spacer" />
+              {chipsAccessory}
+            </div>
+          )}
+        </>
+      ) : layout === "drawer" ? (
         <>
           <div className="scrap-filters__row">
             {searchField}
@@ -705,6 +998,7 @@ export function ScrapFilters({
           <div className="scrap-filters__row">
             {placesChip}
             {typeChip}
+            {shapeChip}
             {whenChip}
             <span className="scrap-filters__spacer" />
             {chipsAccessory}
@@ -715,6 +1009,7 @@ export function ScrapFilters({
           {searchField}
           {placesChip}
           {typeChip}
+          {shapeChip}
           {whenChip}
         </div>
       )}
@@ -725,7 +1020,9 @@ export function ScrapFilters({
 const styles = `
 .scrap-filters { display:flex; flex-direction:column; gap:8px; min-width:0; font-family:"Martian Mono",monospace; color:#3d3833; }
 .scrap-filters__row { display:flex; align-items:center; gap:6px; min-width:0; }
-.scrap-filters--bar .scrap-filters__row { flex-wrap:nowrap; }
+/* Chips wrap under the search field rather than squeezing it shut. */
+.scrap-filters--bar .scrap-filters__row { flex-wrap:wrap; }
+.scrap-filters--bar .scrap-filters__search { min-width:140px; }
 .scrap-filters--drawer .scrap-filters__row { flex-wrap:wrap; }
 .scrap-filters__spacer { flex:1 1 auto; }
 .scrap-filters button { font-family:"Martian Mono",monospace; color:inherit; cursor:pointer; }
@@ -759,16 +1056,10 @@ const styles = `
 .scrap-filters--drawer .scrap-filters__popover { left:0; }
 .scrap-filters--drawer .scrap-filters__popover--places { width:280px; }
 .scrap-filters__popover--type { width:200px; }
-.scrap-filters__popover--when { width:${DAY_GRID_WIDTH + 22}px; }
+.scrap-filters__popover--shape { width:auto; }
+.scrap-filters--bar .scrap-filters__popover--shape { right:0; }
+.scrap-filters__popover--when { width:${WHEN_PANEL_WIDTH + 2}px; padding:0; overflow:hidden; }
 .scrap-filters--bar .scrap-filters__popover--when { right:0; }
-.scrap-filters__heading--time { margin-top:10px; }
-.scrap-filters__times { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
-.scrap-filters .scrap-filters__time { height:22px; padding:0 6px; border:1px solid rgba(61,56,51,.18); border-radius:999px; background:#faf9f6; font-size:9px; }
-.scrap-filters .scrap-filters__time:hover { border-color:rgba(61,56,51,.38); }
-.scrap-filters .scrap-filters__time[aria-pressed=true] { border-color:rgba(74,154,138,.55); background:rgba(74,154,138,.1); color:#2f6b60; }
-.scrap-filters .scrap-filters__time:focus-visible { outline:none; border-color:#4a9a8a; box-shadow:0 0 0 3px rgba(74,154,138,.16); }
-.scrap-filters__window { display:flex; align-items:center; gap:4px; margin-top:8px; font-size:10px; }
-.scrap-filters__window .scrap-filters__clear { margin-left:auto; }
 .scrap-filters [role=button][data-day]:focus-visible { outline:2px solid #4a9a8a; outline-offset:-2px; }
 .scrap-filters__caret { position:absolute; left:50%; z-index:4; box-sizing:border-box; width:9px; height:9px; border:1px solid rgba(61,56,51,.2); background:#f5f0e8; transform:translateX(-50%) rotate(45deg); }
 .scrap-filters__caret--above { bottom:calc(100% + 7.5px); border-top-color:transparent; border-left-color:transparent; }
@@ -786,11 +1077,23 @@ const styles = `
 .scrap-filters .scrap-filters__option:focus-visible { outline:none; background:rgba(61,56,51,.06); box-shadow:inset 0 0 0 1px #4a9a8a; }
 .scrap-filters__name { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .scrap-filters__count { flex:0 0 auto; color:#827a72; }
+.scrap-filters__shapes { display:flex; gap:4px; }
+.scrap-filters .scrap-filters__shape { display:flex; flex-direction:column; align-items:center; gap:3px; width:40px; padding:6px 0 5px; border:1px solid transparent; border-radius:6px; background:transparent; color:#827a72; font-size:9px; }
+.scrap-filters .scrap-filters__shape:hover { background:rgba(61,56,51,.06); color:#3d3833; }
+.scrap-filters .scrap-filters__shape:focus-visible { outline:none; box-shadow:inset 0 0 0 1px #4a9a8a; }
+.scrap-filters .scrap-filters__shape[aria-pressed=true] { border-color:rgba(74,154,138,.55); background:rgba(74,154,138,.1); color:#2f6b60; --scrap-filters-shape-fill:.35; }
+.scrap-filters__shape-icon { display:block; flex:0 0 auto; }
+.scrap-filters__shapes-picked { display:inline-flex; align-items:center; gap:1px; --scrap-filters-shape-fill:.35; }
 .scrap-filters__check { display:grid; place-items:center; flex:0 0 auto; box-sizing:border-box; width:12px; height:12px; border:1px solid rgba(61,56,51,.3); border-radius:3px; background:#faf9f6; color:#fff; font-size:8px; line-height:1; }
 .scrap-filters__option[aria-pressed=true] .scrap-filters__check { border-color:#4a9a8a; background:#4a9a8a; }
-.scrap-filters__radio { flex:0 0 auto; box-sizing:border-box; width:12px; height:12px; border:1px solid rgba(61,56,51,.3); border-radius:999px; background:#faf9f6; }
-.scrap-filters__option[aria-pressed=true] .scrap-filters__radio { border:4px solid #4a9a8a; }
 .scrap-filters__option[aria-pressed=true] .scrap-filters__name { color:#2f6b60; }
+.scrap-filters__place { display:flex; align-items:center; gap:2px; }
+.scrap-filters .scrap-filters__hide { display:grid; place-items:center; flex:0 0 auto; width:24px; height:24px; padding:0; border:0; border-radius:5px; background:transparent; color:#b3aba1; }
+.scrap-filters .scrap-filters__hide:hover { background:rgba(162,84,47,.1); color:#a2542f; }
+.scrap-filters .scrap-filters__hide:focus-visible { outline:none; box-shadow:inset 0 0 0 1px #4a9a8a; color:#a2542f; }
+.scrap-filters .scrap-filters__hide[aria-pressed=true] { background:rgba(162,84,47,.12); color:#a2542f; }
+.scrap-filters__place[data-hidden] .scrap-filters__name { color:#a2542f; text-decoration:line-through; text-decoration-color:rgba(162,84,47,.6); }
+.scrap-filters__place[data-hidden] .scrap-filters__check { border-style:dashed; }
 .scrap-filters__separator { height:1px; margin:4px 2px; border:0; background:rgba(61,56,51,.14); }
 .scrap-filters__empty { margin:6px; color:#827a72; }
 
@@ -801,6 +1104,21 @@ const styles = `
 @media (pointer:coarse) {
   .scrap-filters__chip,.scrap-filters__search { height:auto; min-height:40px; }
   .scrap-filters .scrap-filters__option { min-height:40px; }
+  .scrap-filters .scrap-filters__hide { width:40px; height:40px; }
   .scrap-filters input { font-size:16px; }
 }
+/* On a phone the bar sits under a thumb on a small screen, so it is compact:
+   one search line, with the chips behind the filters chip. The input keeps
+   16px text so Safari does not zoom the page to type, and the hint under it
+   stays small. */
+@media (pointer:coarse) and (max-width:619px) {
+  .scrap-filters { gap:6px; }
+  .scrap-filters__row { flex-wrap:wrap; gap:5px; }
+  .scrap-filters__chip { min-height:32px; padding:0 10px; }
+  .scrap-filters__search, .scrap-filters--bar .scrap-filters__search { min-height:34px; flex:1 1 0; min-width:0; }
+  .scrap-filters input::placeholder { font-size:11px; }
+  .scrap-filters .scrap-filters__option { min-height:36px; }
+  .scrap-filters .scrap-filters__hide { width:36px; height:36px; }
+}
+.scrap-filters__toggle[aria-pressed=true] { border-color:rgba(74,154,138,.55); background:rgba(74,154,138,.1); color:#2f6b60; }
 `;

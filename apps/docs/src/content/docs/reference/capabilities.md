@@ -7,7 +7,7 @@ sidebar:
 
 Capabilities are HTML attributes. Add one to an element, give it a stable unique `id`, call `playhtml.init()`, and playhtml handles sync and event wiring.
 
-The `id` is the storage key — it must match across visitors. Use a hand-written `id="my-lamp"`. Without one, playhtml falls back to an HTML hash that can differ across browsers and break sync. For many same-template elements, use `selector-id` instead — see [Dynamic elements](/docs/advanced/dynamic-elements/).
+The `id` is the storage key — it must match across visitors. Use a hand-written `id="my-light"`. Without one, playhtml falls back to an HTML hash that can differ across browsers and break sync. For many same-template elements, use `selector-id` instead — see [Dynamic elements](/docs/advanced/dynamic-elements/).
 
 For demos, see the [Capabilities guide](/docs/capabilities/). For React wrappers, see [React API](/docs/reference/react-api/).
 
@@ -164,11 +164,9 @@ Turns click into a shared boolean switch. State persists and syncs.
 Toggles the `toggled` CSS class on the element.
 
 ```css
-/* Style the on state */
-#my-lamp.toggled {
-  opacity: 1;
-  filter: brightness(1.4);
-}
+/* Style both states */
+.light { background: gold; filter: brightness(0.4); }
+.light.toggled { filter: brightness(1.2) drop-shadow(0 0 24px gold); }
 ```
 
 ### Interaction
@@ -285,15 +283,15 @@ No built-in reset shortcut. Deleting all clones (as above) is the equivalent.
 
 ## `can-hover`
 
-Surfaces hover state from any visitor on the page. This is **presence-only** — state is not persisted and clears when a user leaves.
+Surfaces hover state from any visitor on the page. This is **presence-only** — state is not persisted and clears when that person leaves.
 
 **Guide page:** [can-hover](/docs/capabilities/#can-hover)
 
 ### Data
 
-`can-hover` stores no persistent shared data. Hover state is transmitted as ephemeral live user data scoped to this element.
+`can-hover` stores no persistent shared data. Hover state is element presence: each person's `{ hover: boolean }` on this element, gone when they leave.
 
-**Awareness shape (per visitor):** `{ hover: boolean }`
+**Presence shape (per person):** `{ hover: boolean }`
 
 ### DOM effect
 
@@ -336,7 +334,7 @@ Syncs an element's **attributes**, **direct child list**, and **form / contented
 | Contenteditable content | Yes, via `input` and `change` events |
 | Descendant mutations (arbitrary depth) | **No** — `can-mirror` only observes the element itself, not its subtree |
 
-Ephemeral attributes (`data-playhtml-hover`, `data-playhtml-focus`) are not stored in the shared snapshot. They are driven by live user state instead.
+Ephemeral attributes (`data-playhtml-hover`, `data-playhtml-focus`) are not stored in the shared snapshot. They are driven by presence instead.
 
 ### Data
 

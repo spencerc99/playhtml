@@ -8,7 +8,7 @@ import { cutoutCanvas } from "./cutoutImages";
 import { drawGrain } from "./paperGrain";
 import { resolveScrapImageSrc } from "@movement/utils/scrapImageSource";
 import { headingDisplayFontSize } from "@movement/components/ScrapCollage";
-import { letteringLayout } from "./pieceLettering";
+import { HEADING_LINE_HEIGHT, letteringLayout } from "./pieceLettering";
 import {
   buttonBodyMarkup,
   foreignObjectDataUrl,
@@ -16,13 +16,6 @@ import {
   requireXmlFragment,
   svgDataUrl,
 } from "./svgDocument";
-
-/**
- * The line height a heading is drawn at, rather than the one captured with its
- * font size, which would space wrapped lines far too far apart at display size.
- * Matches the shared renderer.
- */
-const HEADING_LINE_HEIGHT = 1.15;
 
 /** Names the pieces that could not be drawn, so a save can refuse to go ahead. */
 export class CollageBakeError extends Error {
@@ -83,8 +76,9 @@ async function loadButtonImage(
   scrap: Extract<ScrapSnapshot, { kind: "button" }>,
   width: number,
   height: number,
+  letteringWidth: number | undefined,
 ): Promise<HTMLImageElement> {
-  const layout = letteringLayout(scrap, { width, height });
+  const layout = letteringLayout(scrap, { width, height }, letteringWidth);
   return loadImage(
     foreignObjectDataUrl({ body: buttonBodyMarkup(scrap), ...layout }),
   );
@@ -100,8 +94,9 @@ async function loadHeadingImage(
   scrap: Extract<ScrapSnapshot, { kind: "heading" }>,
   width: number,
   height: number,
+  letteringWidth: number | undefined,
 ): Promise<HTMLImageElement> {
-  const layout = letteringLayout(scrap, { width, height });
+  const layout = letteringLayout(scrap, { width, height }, letteringWidth);
   return loadImage(
     foreignObjectDataUrl({
       body: headingBodyMarkup(
@@ -187,10 +182,22 @@ async function pieceImage(
         image: await loadSvgIconImage(scrap.markup, sourceWidth, sourceHeight),
       };
     case "button":
-      return { image: await loadButtonImage(scrap, sourceWidth, sourceHeight) };
+      return {
+        image: await loadButtonImage(
+          scrap,
+          sourceWidth,
+          sourceHeight,
+          piece.letteringWidth,
+        ),
+      };
     case "heading":
       return {
-        image: await loadHeadingImage(scrap, sourceWidth, sourceHeight),
+        image: await loadHeadingImage(
+          scrap,
+          sourceWidth,
+          sourceHeight,
+          piece.letteringWidth,
+        ),
       };
   }
 }
@@ -334,6 +341,66 @@ export function collageCanvas(
  * could not be drawn, rather than leaving a hole in the saved image.
  */
 export async function bakeCollage(options: BakeOptions): Promise<Blob> {
+  return drawCollage(options, (context) =>
+    paintPaper(context, options.frame, options.paper, options.grain ?? false),
+  );
+}
+
+export interface PreviewBakeOptions {
+  frame: CollageFrame;
+  pieces: readonly CollagePiece[];
+  /** Pixel density of the baked PNG relative to the frame's logical size. */
+  scale?: number;
+}
+
+/**
+ * Draws only the pieces, on a clear canvas, as the preview a collage stores.
+ * Whatever shows the preview paints the collage's paper behind it, grain and
+ * all. Baked in, the grain's per-pixel noise defeats PNG's compression and
+ * every preview runs to megabytes. Throws `CollageBakeError` like `bakeCollage`.
+ */
+export async function bakeCollagePreview(
+  options: PreviewBakeOptions,
+): Promise<Blob> {
+  return drawCollage(options, async () => {});
+}
+
+/**
+ * The whole collage, paper and all, as a JPEG no wider or taller than
+ * `longest` pixels: the picture a shared link shows where it is pasted.
+ */
+export async function bakeCollageCover(
+  options: BakeOptions & { longest?: number },
+): Promise<Blob> {
+  const longest = options.longest ?? 1200;
+  const scale =
+    longest / Math.max(options.frame.width, options.frame.height, 1);
+  const canvas = await drawCollageCanvas({ ...options, scale }, (context) =>
+    paintPaper(context, options.frame, options.paper, options.grain ?? false),
+  );
+  const blob = await new Promise<Blob | null>((resolve, reject) => {
+    try {
+      canvas.toBlob(resolve, "image/jpeg", 0.85);
+    } catch (error) {
+      reject(error);
+    }
+  });
+  if (!blob) throw new Error("The collage canvas produced no image");
+  return blob;
+}
+
+async function drawCollage(
+  options: PreviewBakeOptions,
+  paint: (context: CanvasRenderingContext2D) => Promise<void>,
+): Promise<Blob> {
+  const canvas = await drawCollageCanvas(options, paint);
+  return canvasPng(canvas, "The collage canvas produced no image");
+}
+
+async function drawCollageCanvas(
+  options: PreviewBakeOptions,
+  paint: (context: CanvasRenderingContext2D) => Promise<void>,
+): Promise<HTMLCanvasElement> {
   const { frame } = options;
   const scale = options.scale ?? 2;
   const prepared = await prepareCollagePieces(options.pieces);
@@ -342,11 +409,11 @@ export async function bakeCollage(options: BakeOptions): Promise<Blob> {
     Math.round(frame.width * scale),
     Math.round(frame.height * scale),
   );
-  await paintPaper(context, frame, options.paper, options.grain ?? false);
+  await paint(context);
   for (const { piece, source, still } of prepared) {
     drawPiece(context, piece, source, still);
   }
-  return canvasPng(canvas, "The collage canvas produced no image");
+  return canvas;
 }
 
 /** Reads a finished canvas out as a PNG, or throws with the given words. */

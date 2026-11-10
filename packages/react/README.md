@@ -276,7 +276,7 @@ function CursorSettings() {
 }
 ```
 
-For full cursor configuration options, see the [cursor documentation](https://playhtml.fun/docs/data/presence/cursors/).
+For full cursor configuration options, see the [cursor documentation](https://playhtml.fun/docs/advanced/cursors/).
 
 ## Navigation
 

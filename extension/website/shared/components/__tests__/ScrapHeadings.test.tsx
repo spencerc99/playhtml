@@ -9,6 +9,7 @@ import {
   canonicalScrapKey,
   headingDisplayFontSize,
   ScrapCollage,
+  ScrapContent,
   type ScrapItem,
 } from "../ScrapCollage";
 import { canonicalHeadingKey } from "../../utils/scrapIdentity";
@@ -214,7 +215,8 @@ describe("heading scraps in the collage", () => {
     expect(rendered?.style.fontFamily).toBe("Georgia, serif");
     expect(rendered?.style.fontWeight).toBe("700");
     expect(rendered?.style.color).toBe("rgb(61, 56, 51)");
-    expect(rendered?.style.fontSize).toBe("22px");
+    // Sized to fit its tile inside the patch the heading sits on.
+    expect(rendered?.style.fontSize).toBe("21px");
   });
 
   it("renders heading text as text rather than markup", () => {
@@ -255,6 +257,27 @@ describe("heading scraps in the collage", () => {
       ".scrap-collage__heading",
     );
     expect(rendered?.textContent).toBe("Pale type from a dark page");
+    expect(rendered?.style.color).toBe("rgb(245, 240, 232)");
+  });
+
+  it("leaves a pale heading's backing behind once it is placed on a collage", () => {
+    act(() => {
+      root.render(
+        <ScrapContent
+          item={heading("h-pale", "Pale type from a dark page", 2, {
+            color: "rgb(245, 240, 232)",
+          })}
+          loaded
+          onLoad={() => {}}
+          onError={() => {}}
+          letteringBacking={false}
+        />,
+      );
+    });
+    expect(container.querySelector(".scrap-collage__backdrop")).toBeNull();
+    const rendered = container.querySelector<HTMLElement>(
+      ".scrap-collage__heading",
+    );
     expect(rendered?.style.color).toBe("rgb(245, 240, 232)");
   });
 

@@ -4,6 +4,7 @@
 import {
   parseCollageRecord,
   withFreshIds,
+  withoutPublication,
   type CollageRecord,
 } from "./collageRecord";
 import { upgradeToCurrentShape } from "./upgradeCollageRecord";
@@ -20,7 +21,7 @@ export interface CollageFileEnvelope {
   format: typeof COLLAGE_FILE_FORMAT;
   version: typeof COLLAGE_FILE_VERSION;
   exportedAt: number;
-  collage: Omit<CollageRecord, "preview"> & { preview: EncodedPreview };
+  collage: Omit<CollageRecord, "preview" | "publication"> & { preview: EncodedPreview };
 }
 
 /** A file that cannot be opened as a collage, with the reason it names. */
@@ -33,10 +34,23 @@ export class CollageFileError extends Error {
 
 /** What a saved collage's file is called on disk. */
 export function collageFileName(title: string): string {
-  return `${title.trim() || "untitled collage"}.collage.json`;
+  return `${title.trim() || "untitled"}.collage.json`;
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
+/**
+ * The shared stem of an exported picture or video, before its suffix. It names
+ * the project, the collage, and the local day, so untitled exports stay apart.
+ */
+export function collageExportName(title: string, at: Date = new Date()): string {
+  const day = [
+    at.getFullYear(),
+    String(at.getMonth() + 1).padStart(2, "0"),
+    String(at.getDate()).padStart(2, "0"),
+  ].join("-");
+  return `we were online - ${title.trim() || "collage"} - ${day}`;
+}
+
+export function bytesToBase64(bytes: Uint8Array): string {
   // Built in slices, because spreading a multi-megabyte picture into one
   // String.fromCharCode call overflows the argument limit.
   const SLICE = 0x8000;
@@ -47,7 +61,7 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
+export function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let at = 0; at < binary.length; at += 1) {
@@ -76,7 +90,8 @@ export async function encodeCollageFile(
     format: COLLAGE_FILE_FORMAT,
     version: COLLAGE_FILE_VERSION,
     exportedAt: now,
-    collage: { ...record, preview },
+    // The share's delete token stays on this device, never in a file.
+    collage: { ...withoutPublication(record), preview },
   };
   return JSON.stringify(envelope);
 }

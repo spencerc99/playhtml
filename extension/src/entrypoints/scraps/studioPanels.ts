@@ -3,6 +3,7 @@
 
 import type { PieceBox } from "./collageGeometry";
 import { GRIP_REACH } from "./handleZones";
+import type { StudioMode } from "./studioKeymap";
 
 /**
  * The floating panels that can sit over the collage. At most one is ever on
@@ -17,13 +18,11 @@ export type StudioPanel =
   | "pieceActions";
 
 export interface PanelState {
-  /** The collage is turned over and only its back is showing. */
-  turnedOver: boolean;
-  cropping: boolean;
-  /** A modal rotate or scale is following the pointer. */
-  transforming: boolean;
-  /** The background cutout's edge control is open. */
-  cuttingOut: boolean;
+  /**
+   * The one session the studio is in. "back" is the collage turned over;
+   * "rotate" and "scale" are a modal transform following the pointer.
+   */
+  mode: StudioMode;
   piecesHereOpen: boolean;
   /** A drag, resize or rotate from a handle is under way. */
   gestureRunning: boolean;
@@ -39,10 +38,18 @@ export interface PanelState {
  * state and stands aside while anything moves or the tags are up.
  */
 export function visiblePanel(state: PanelState): StudioPanel {
-  if (state.turnedOver) return "none";
-  if (state.cropping) return "crop";
-  if (state.transforming) return "none";
-  if (state.cuttingOut) return "cutout";
+  switch (state.mode) {
+    case "back":
+    case "rotate":
+    case "scale":
+      return "none";
+    case "crop":
+      return "crop";
+    case "cutout":
+      return "cutout";
+    case "idle":
+      break;
+  }
   if (state.piecesHereOpen) return "piecesHere";
   if (state.gestureRunning || state.peekHeld) return "none";
   if (state.hasSelection) return "pieceActions";
@@ -54,7 +61,7 @@ export function visiblePanel(state: PanelState): StudioPanel {
  * not open and the hover outline stays down.
  */
 export function toolSessionActive(state: PanelState): boolean {
-  return state.cropping || state.transforming || state.cuttingOut;
+  return state.mode !== "idle" && state.mode !== "back";
 }
 
 /** How far from the piece a panel sits, in on-screen pixels. */
@@ -72,12 +79,15 @@ export function placeBesidePiece(
   panel: { width: number; height: number },
   scale: number,
   frame: { width: number; height: number },
+  /** Further on-screen room to keep below the piece, for a knob drawn there. */
+  extraBelow = 0,
 ): { left: number; top: number } {
   const clear = (GRIP_REACH + PANEL_GAP) / scale;
+  const clearBelow = clear + extraBelow / scale;
   const width = panel.width / scale;
   const height = panel.height / scale;
   const above = piece.y - clear - height;
-  const top = above >= 0 ? above : piece.y + piece.height + clear;
+  const top = above >= 0 ? above : piece.y + piece.height + clearBelow;
   const centered = piece.x + piece.width / 2 - width / 2;
   const left =
     width >= frame.width

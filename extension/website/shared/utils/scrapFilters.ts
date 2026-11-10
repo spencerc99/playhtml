@@ -1,21 +1,67 @@
-// ABOUTME: Matches scraps against saved source locations, searchable text, and when they were seen.
+// ABOUTME: Matches scraps against saved source locations, searchable text, when they were seen, and shape.
 // ABOUTME: Retains complete photo provenance when any encounter matches a filter.
 
 import type { ScrapItem } from "../components/ScrapCollage";
 import type { TimeOfDayFilter } from "../config";
+import { dayRangeContains, type DayRange } from "./dayRange";
 import { eventMatchesAnyFilter, type FilterChip } from "./eventUtils";
 import { localDayKey, timeOfDayMatches } from "./timeOfDay";
 
-/** A local calendar day and a recurring local time-of-day window, either optional. */
+/** A span of local calendar days and a recurring local time-of-day window, either optional. */
 export interface ScrapWhenFilter {
-  day: string | null;
+  days: DayRange | null;
   timeOfDay: TimeOfDayFilter | null;
 }
 
-export const ANY_TIME: ScrapWhenFilter = { day: null, timeOfDay: null };
+/** A site or page in the "found on" filter: kept, or hidden when `exclude` is set. */
+export interface ScrapPlace extends FilterChip {
+  exclude?: boolean;
+}
+
+export const ANY_TIME: ScrapWhenFilter = { days: null, timeOfDay: null };
 
 export function isAnyTime(when: ScrapWhenFilter): boolean {
-  return when.day === null && when.timeOfDay === null;
+  return when.days === null && when.timeOfDay === null;
+}
+
+/** The outline a scrap has in the collage, read roughly from its own proportions. */
+export type ScrapShape = "very-wide" | "wide" | "square" | "tall" | "very-tall";
+
+/** Width-to-height ratios past which a scrap leans wide (or, inverted, tall). */
+const LEANS = 1.25;
+/** Width-to-height ratios past which a scrap is very wide (or, inverted, very tall). */
+const STRETCHED = 2;
+/** Headings and buttons longer than this many characters read as very wide strips. */
+const SHORT_WORDING = 8;
+
+/**
+ * Photos and icons take the shape of their own pixels. Buttons and headings
+ * are runs of words, so they sit wide, or very wide once the wording is long.
+ * Cursors are drawn in a square tile. A scrap whose size was never measured
+ * has no shape.
+ */
+export function scrapShape(item: ScrapItem): ScrapShape | null {
+  switch (item.kind) {
+    case "image":
+      return shapeOf(item.naturalWidth, item.naturalHeight);
+    case "svg-icon":
+      return shapeOf(item.width, item.height);
+    case "button":
+    case "heading":
+      return item.text.trim().length > SHORT_WORDING ? "very-wide" : "wide";
+    case "cursor":
+      return "square";
+  }
+}
+
+function shapeOf(width: number, height: number): ScrapShape | null {
+  if (!(width > 0) || !(height > 0)) return null;
+  const ratio = width / height;
+  if (ratio >= STRETCHED) return "very-wide";
+  if (ratio > LEANS) return "wide";
+  if (ratio <= 1 / STRETCHED) return "very-tall";
+  if (ratio < 1 / LEANS) return "tall";
+  return "square";
 }
 
 export function scrapLocations(item: ScrapItem) {
@@ -27,15 +73,26 @@ export function scrapLocations(item: ScrapItem) {
 
 export function matchesScrapFilters(
   item: ScrapItem,
-  places: FilterChip[],
+  places: ScrapPlace[],
   search: string,
 ): boolean {
+  const query = search.trim();
+  if (places.length === 0 && query === "") return true;
   const locations = scrapLocations(item);
+  const kept = places.filter((place) => !place.exclude);
+  const hidden = places.filter((place) => place.exclude);
+  // A scrap stays while some place it was seen is kept and not hidden, so
+  // hiding a site drops only what was never found anywhere else.
   if (
-    !locations.some((source) => eventMatchesAnyFilter(source.pageUrl, places))
+    !locations.some(
+      (source) =>
+        eventMatchesAnyFilter(source.pageUrl, kept) &&
+        (hidden.length === 0 || !eventMatchesAnyFilter(source.pageUrl, hidden)),
+    )
   )
     return false;
-  const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const { words, phrases } = parseScrapSearch(query);
+  if (words.length === 0 && phrases.length === 0) return true;
   const text = [
     ...locations.flatMap((source) => [
       source.pageTitle,
@@ -44,13 +101,55 @@ export function matchesScrapFilters(
     ]),
     item.kind === "image"
       ? (item.alt ?? "")
-      : item.kind === "button"
+      : item.kind === "button" || item.kind === "heading"
         ? item.text
         : "",
   ]
     .join(" ")
     .toLowerCase();
-  return words.every((word) => text.includes(word));
+  return (
+    words.every((word) => text.includes(word)) &&
+    phrases.every((phrase) => containsWholePhrase(text, phrase))
+  );
+}
+
+/**
+ * A search split into loose words, which match anywhere ("eye" finds
+ * "monkey"), and quoted phrases, which match only as whole words ("\"eye\""
+ * finds "an eye" but not "eyeliner"). A quote still being typed counts as
+ * closed at the end.
+ */
+export function parseScrapSearch(search: string): {
+  words: string[];
+  phrases: string[];
+} {
+  const phrases: string[] = [];
+  const rest = search
+    .toLowerCase()
+    // Typed quotes often arrive curly, from a phone or a Mac's smart quotes.
+    .replace(/[\u201c\u201d\u201e]/g, '"')
+    .replace(/"([^"]*)("|$)/g, (_, phrase: string) => {
+      const trimmed = phrase.trim().replace(/\s+/g, " ");
+      if (trimmed) phrases.push(trimmed);
+      return " ";
+    });
+  return { words: rest.split(/\s+/).filter(Boolean), phrases };
+}
+
+/** Whether the search asks for an exact match anywhere, with quotes. */
+export function hasExactScrapSearch(search: string): boolean {
+  return parseScrapSearch(search).phrases.length > 0;
+}
+
+function containsWholePhrase(text: string, phrase: string): boolean {
+  const pattern = phrase
+    .split(" ")
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s+");
+  return new RegExp(
+    `(?<![\\p{L}\\p{N}])${pattern}(?![\\p{L}\\p{N}])`,
+    "u",
+  ).test(text);
 }
 
 /**
@@ -62,8 +161,8 @@ export function scrapSightings(item: ScrapItem): number[] {
 }
 
 /**
- * Whether one sighting of the scrap falls on the day and inside the time of
- * day, both in the viewer's local time. The same sighting has to satisfy
+ * Whether one sighting of the scrap falls within the days and inside the time
+ * of day, both in the viewer's local time. The same sighting has to satisfy
  * both, so "Tuesday, evenings" means seen on a Tuesday evening.
  */
 export function matchesScrapWhen(
@@ -73,7 +172,7 @@ export function matchesScrapWhen(
   if (isAnyTime(when)) return true;
   return scrapSightings(item).some(
     (ts) =>
-      (when.day === null || localDayKey(ts) === when.day) &&
+      (when.days === null || dayRangeContains(when.days, localDayKey(ts))) &&
       (when.timeOfDay === null || timeOfDayMatches(ts, when.timeOfDay)),
   );
 }

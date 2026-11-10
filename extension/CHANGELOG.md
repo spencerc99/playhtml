@@ -1,5 +1,43 @@
 # @playhtml/extension
 
+## 0.1.30 (2026-11-10)
+
+- Collage exports are much smaller: front and back pictures now save as high-quality JPEGs around 1-2MB instead of 7-13MB PNGs, and the "moving pieces" video now sits in the same frame and caption as the pictures. (#684)
+- Collage source labels are now just the site's icon and address.
+- Headings in a collage now wrap onto more lines when you pull them narrower from a side (only corners scale them), and pale headings no longer bring their dark backing onto the collage.
+- Exporting your data now works no matter how much history you have, and you can pick what to bring: history, scraps and their pictures, collages, and even yourself (same cursor, color and beta features) in a new browser.
+
+
+## 0.1.29 (2026-11-04)
+
+- Import a data export of any size in one go, with a progress bar and time left.
+- Pick a range of days, a whole month, or a time of day like "mornings" when looking back at your movement portrait or your scraps.
+- Collage sounds now play in Safari, and moving a piece forward or back rings higher or lower to match where it sits in the stack.
+- Collage pieces no longer vanish when you come back from another tab, flipping a cropped piece keeps the crop, the crop view and the right-click piece list show pieces as they look now, a hint shows how to snap while dragging, duplicating again repeats how far you moved the last copy, exported pictures come framed with the collage's name, and a new video export shows the collage turning from front to back.
+
+
+## 0.1.28 (2026-10-30)
+
+- Time on a site stops counting after a few minutes away from your computer, so a tab left open overnight no longer inflates your history.
+- the scraps on your history page now show what you came across in the week, month, or year you're looking at, not just your latest finds.
+- Beta: share a scrap collage as a view-only link anyone can open, from the share button in the collage studio.
+
+
+## 0.1.27 (2026-10-10)
+
+- Fix bug with "Save image" on a page portrait on some browsers
+- Fix bug with page portrait trails playing on some long pages
+
+
+## 0.1.26 (2026-10-08)
+
+- At a walking together event, the scraps you collected on the walk now show up in a panel on the shared collage table, ready to place.
+- Internet scraps opens faster with large collections while search and filters still find older scraps.
+- You can now hide scraps from sites you don't want to see in the scraps site filter.
+- Turn on sources in the scraps archive to see which site each run of scraps came from.
+- Notices in the popup now go away once you open them, and on their own after a few views.
+
+
 ## 0.1.25 (2026-09-24)
 
 - You can turn off milestone popups in Browser settings.

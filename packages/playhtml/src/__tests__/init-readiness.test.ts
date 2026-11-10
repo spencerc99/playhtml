@@ -70,6 +70,27 @@ describe("playhtml init readiness", () => {
     },
   );
 
+  it("gives custom elements loading treatment only when they opt in", async () => {
+    (globalThis as any).PLAYHTML_TEST_DISABLE_AUTO_SYNC = true;
+    document.body.innerHTML = `
+      <div id="plain" can-play></div>
+      <div id="styled" can-play loading-style="pulse"></div>
+      <div id="classed" can-play loading-class="is-placeholder"></div>
+    `;
+
+    void playhtml.init({});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const plain = document.getElementById("plain")!;
+    const styled = document.getElementById("styled")!;
+    const classed = document.getElementById("classed")!;
+    expect(plain.classList.contains("playhtml-loading")).toBe(false);
+    expect(styled.classList.contains("playhtml-loading")).toBe(true);
+    expect(classed.classList.contains("playhtml-loading")).toBe(true);
+    expect(classed.classList.contains("is-placeholder")).toBe(true);
+    expect(classed.getAttribute("aria-busy")).toBe("true");
+  });
+
   it("keeps duplicate init callers pending until the first init syncs", async () => {
     (globalThis as any).PLAYHTML_TEST_DISABLE_AUTO_SYNC = true;
 

@@ -1,8 +1,8 @@
 // ABOUTME: Provides the copy-paste React source for the shared audio-file example.
 // ABOUTME: Mirrors the vanilla recipe with local media playback and shared transport data.
 
-export const sharedAudioFileReactSource = `// ABOUTME: Keeps one audio file on a shared play, pause, and restart timeline.
-// ABOUTME: Loads and plays the media locally while PlayHTML syncs only transport data.
+export const sharedAudioFileReactSource = `// Keeps one audio file on a shared play, pause, and restart timeline.
+// Loads and plays the media locally while PlayHTML syncs only transport data.
 import { useEffect, useRef, useState } from "react";
 import { PlayProvider, withSharedState } from "@playhtml/react";
 

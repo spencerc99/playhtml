@@ -138,7 +138,6 @@
     @include btn-teal;
     margin-left: auto;
   }
-
 }
 
 .commute-entry {
@@ -593,7 +592,163 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 6px;
-    margin-top: 6px;
+    margin-top: 8px;
+  }
+
+  &__footer-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    font-size: 11px;
+    color: $text-muted;
+  }
+
+  &--site-off {
+    border-color: rgba($accent-rust, 0.45);
+    background: rgba($accent-rust, 0.06);
+
+    .collector-pill {
+      color: $text-faint;
+    }
+
+    .collector-pill__name,
+    .collector-pill__state {
+      color: $text-faint;
+    }
+
+    .collector-pill__state {
+      text-decoration: line-through;
+    }
+  }
+}
+
+.site-privacy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  &__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__site {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  &__label {
+    font-size: 12px;
+    color: $text-muted;
+  }
+
+  &__host {
+    font-size: 17px;
+    font-weight: 700;
+    color: $text;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    .collection-status--site-off & {
+      color: $error-text;
+      text-decoration: line-through;
+      text-decoration-thickness: 2px;
+    }
+  }
+
+  &__switch {
+    flex-shrink: 0;
+    margin-right: 4px;
+  }
+
+  &__seen-by {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px solid $border;
+  }
+
+  &__seen-by-label {
+    font-size: 12px;
+    color: $text-muted;
+  }
+
+  &__choices {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 7px;
+    background: $surface-hover;
+  }
+
+  &__choice {
+    position: relative;
+    min-height: 30px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: $text-muted;
+    font-family: $font-body;
+    font-size: 12px;
+    cursor: pointer;
+
+    &--selected {
+      background: #fff;
+      color: $text;
+      font-weight: 700;
+      box-shadow: 0 1px 2px rgba(90, 78, 65, 0.2);
+    }
+
+    &:focus-visible {
+      outline: 2px solid $accent-teal;
+      outline-offset: 1px;
+    }
+  }
+
+  &__default {
+    position: absolute;
+    top: -8px;
+    right: -6px;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: $text;
+    color: $bg;
+    font-family: $font-mono;
+    font-size: 8px;
+    font-weight: 400;
+    line-height: 12px;
+    pointer-events: none;
+  }
+
+  &__note {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-top: -4px;
+    font-size: 11px;
+    color: $text-muted;
+  }
+
+  &__reset {
+    min-height: 28px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: $accent-teal;
+    font-family: $font-body;
+    font-size: 11px;
+    text-decoration: underline;
+    cursor: pointer;
   }
 }
 
@@ -746,4 +901,61 @@
   &__button {
     @include btn-primary;
   }
+}
+
+// Phone: the header links become big tiles under the portrait card.
+.phone-tiles {
+  margin: 12px 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.phone-tile {
+  min-height: 104px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba($text-muted, 0.08);
+  color: $text;
+  text-align: left;
+  cursor: pointer;
+
+  &--commute {
+    background: rgba($accent-blue, 0.12);
+  }
+
+  &:focus-visible {
+    outline: 2px solid $accent-teal;
+    outline-offset: 2px;
+  }
+
+  &__copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  &__title {
+    font-family: $font-heading;
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  &__subtitle {
+    font-size: 13px;
+    color: $text-muted;
+  }
+}
+
+.collection-status__summary {
+  margin: 4px 0 0;
+  font-family: $font-mono;
+  font-size: 12px;
+  color: $accent-teal;
 }

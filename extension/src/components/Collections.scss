@@ -1,7 +1,7 @@
 // ABOUTME: Styles for the data collection settings screen
 // ABOUTME: Covers collector cards, mode radio buttons, privacy settings, and filter tags
 
-@use '../styles/variables' as *;
+@use "../styles/variables" as *;
 
 .collections {
   padding: 16px;
@@ -229,7 +229,9 @@
     font-size: 11px;
     color: $text-muted;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
 
     &:hover:not(:disabled) {
       color: $text;
@@ -239,6 +241,43 @@
     &:disabled {
       opacity: 0.5;
       cursor: default;
+    }
+  }
+
+  // The open section's button reads as selected, like a tab.
+  & &__transfer-btn--active,
+  & &__transfer-btn--active:disabled {
+    opacity: 1;
+    color: #22433c;
+    background: $active-bg;
+    border-color: $accent-teal;
+    box-shadow: inset 0 0 0 1px $accent-teal;
+  }
+
+  &__import-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+    color: $text-muted;
+    font-family: $font-mono;
+    font-size: 10px;
+  }
+
+  &__import-bar {
+    height: 3px;
+    background: $border;
+    border-radius: 2px;
+    overflow: hidden;
+
+    div {
+      height: 100%;
+      background: $accent-teal;
+      transition: width 0.2s ease;
+    }
+
+    &--waiting div {
+      animation: collections-import-finishing 1.2s ease-in-out infinite;
     }
   }
 
@@ -266,7 +305,10 @@
     font-size: 10px;
     color: #b34a38;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    transition:
+      background 0.15s,
+      color 0.15s,
+      border-color 0.15s;
 
     &:hover {
       background: rgba(196, 74, 54, 0.08);
@@ -321,7 +363,9 @@
   border-radius: 6px;
   background: $bg;
   position: relative;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 
   // Local: rust accent bar — data stays close, private, at rest.
   // Mirrors shared's left-bar treatment so "active" has a shared visual
@@ -423,7 +467,7 @@
       }
     }
 
-    input[type='radio'] {
+    input[type="radio"] {
       accent-color: $accent-teal;
       width: 11px;
       height: 11px;
@@ -494,7 +538,7 @@
     font-size: 10px;
     letter-spacing: 0.3px;
     text-transform: uppercase;
-    font-family: 'Martian Mono', monospace;
+    font-family: "Martian Mono", monospace;
     background: transparent;
     color: $text-muted;
     border: 1px solid $border;
@@ -539,11 +583,11 @@
     font-size: 10px;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    font-family: 'Martian Mono', monospace;
+    font-family: "Martian Mono", monospace;
   }
 
   &__privacy-preview-value {
-    font-family: 'Martian Mono', monospace;
+    font-family: "Martian Mono", monospace;
     color: $text;
     word-break: break-word;
 
@@ -624,5 +668,15 @@
     font-size: 11px;
     color: $text-faint;
     font-style: italic;
+  }
+}
+
+@keyframes collections-import-finishing {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
   }
 }

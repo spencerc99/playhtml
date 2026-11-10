@@ -138,9 +138,7 @@ describe("element awareness sync", () => {
 
     expect(updates.at(-1).live).toEqual({ active: true });
     expect(updates.at(-1).users).not.toContainEqual(
-      expect.objectContaining({
-        user: expect.objectContaining({ pid: "pk_remote_user" }),
-      }),
+      expect.objectContaining({ pid: "pk_remote_user" }),
     );
 
     const updateCountBeforeIdentity = updates.length;
@@ -158,15 +156,13 @@ describe("element awareness sync", () => {
       removes: {},
     });
 
-    expect(updates.length).toBeGreaterThan(updateCountBeforeIdentity);
-    expect(updates.at(-1).users).toContainEqual({
-      user: {
-        pid: "pk_remote_user",
-        name: "Mina",
-        color: "blue",
-        isMe: false,
-      },
-      live: { active: false },
+    expect(updates.length).toBe(updateCountBeforeIdentity + 1);
+    expect(updates.at(-1).everyone).toContainEqual({
+      pid: "pk_remote_user",
+      name: "Mina",
+      color: "blue",
+      isMe: false,
+      presence: { active: false },
     });
 
     const updateCount = updates.length;
@@ -184,16 +180,35 @@ describe("element awareness sync", () => {
       removes: {},
     });
 
-    expect(updates.length).toBeGreaterThan(updateCount);
-    expect(updates.at(-1).users).toContainEqual({
-      user: {
-        pid: "pk_remote_user",
-        name: "Jo",
-        color: "purple",
-        isMe: false,
-      },
-      live: { active: false },
+    expect(updates.length).toBe(updateCount + 1);
+    expect(updates.at(-1).everyone).toContainEqual({
+      pid: "pk_remote_user",
+      name: "Jo",
+      color: "purple",
+      isMe: false,
+      presence: { active: false },
     });
+  });
+
+  it("rerenders a live element once when the local identity changes", async () => {
+    const update = vi.fn();
+    const el = document.createElement("div");
+    el.id = "local-identity-live-card";
+    document.body.appendChild(el);
+
+    playhtml.register(el, {
+      live: { active: true },
+      update,
+    } as any);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    update.mockClear();
+
+    playhtml.users.me.name = "Ada";
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.lastCall?.[0].everyone).toContainEqual(
+      expect.objectContaining({ name: "Ada", isMe: true, presence: { active: true } }),
+    );
   });
 
   it("publishes element awareness through the page room when cursors use another room", async () => {

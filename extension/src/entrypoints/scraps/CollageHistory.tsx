@@ -22,13 +22,16 @@ import {
   encodeCollageFile,
   importCollageFile,
 } from "./collageFile";
-import { paperBackground } from "./paperGrain";
+import { THUMBNAIL_GRAIN_STRENGTH, paperBackground } from "./paperGrain";
 import { GLYPHS } from "./PieceActions";
 import {
   inBackground,
   keepCollageImages,
   releaseCollageImages,
 } from "./localScrapImages";
+import { deletePublishedCollage } from "./publishCollage";
+import { WORKER_URL } from "@movement/config";
+import { recordCollageDeletion } from "../../sync/deviceSync";
 
 interface CollageHistoryProps {
   /** Bumped by the studio after a save so the list reloads. */
@@ -181,8 +184,26 @@ export function CollageHistory({
   };
 
   const remove = async (id: string) => {
+    // A deleted collage takes its shared link down first, since the token that
+    // could do so later is deleted along with the collage.
+    const publication = await loadCollage(id)
+      .then((record) => record?.publication)
+      .catch(() => undefined);
+    if (publication) {
+      try {
+        await deletePublishedCollage(WORKER_URL, publication);
+      } catch (takedownError) {
+        setError(
+          `could not take the shared link down, so the collage was kept — ${takedownError instanceof Error ? takedownError.message : String(takedownError)}`,
+        );
+        setConfirmingId(null);
+        return;
+      }
+    }
     await deleteCollage(id);
     inBackground(releaseCollageImages(id));
+    // Keeps the other copy of the extension on an iPhone from bringing it back.
+    inBackground(recordCollageDeletion(id));
     setConfirmingId(null);
     setSummaries((current) =>
       current ? current.filter((entry) => entry.id !== id) : current,
@@ -196,7 +217,20 @@ export function CollageHistory({
           {/* A torn scrap of the newest collage, or bare kraft before one. */}
           <span className="collage-history__scrap" aria-hidden="true">
             <span className="collage-history__scrap-paper">
-              {newestPreview && <img src={newestPreview} alt="" />}
+              {newest && newestPreview && (
+                <img
+                  src={newestPreview}
+                  alt=""
+                  // The preview holds only the pieces; its paper goes behind.
+                  style={paperBackground(
+                    newest.paper.color,
+                    newest.paper.grain,
+                    46,
+                    38,
+                    THUMBNAIL_GRAIN_STRENGTH,
+                  )}
+                />
+              )}
             </span>
           </span>
           <div>
@@ -299,6 +333,7 @@ export function CollageHistory({
             summary.paper.grain,
             240,
             160,
+            THUMBNAIL_GRAIN_STRENGTH,
           );
           return (
             <article key={summary.id} className="collage-card">
@@ -321,7 +356,9 @@ export function CollageHistory({
                     className="collage-card__thumb collage-card__thumb--undrawn"
                     style={paper}
                   >
-                    <span className="collage-studio__label">no preview yet</span>
+                    <span className="collage-studio__label">
+                      no preview yet
+                    </span>
                   </span>
                 )}
                 <span className="collage-card__title">{name}</span>

@@ -9,6 +9,12 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "jsdom",
+    // Node 22+ defines its own global localStorage that shadows jsdom's and
+    // is undefined without --localstorage-file. Disable it in test workers.
+    poolOptions: {
+      forks: { execArgv: ["--no-experimental-webstorage"] },
+      threads: { execArgv: ["--no-experimental-webstorage"] },
+    },
     setupFiles: ["../playhtml/vitest.setup.ts"],
     include: ["src/**/__tests__/*.integration.test.tsx"],
     exclude: ["node_modules/**", "dist/**"],

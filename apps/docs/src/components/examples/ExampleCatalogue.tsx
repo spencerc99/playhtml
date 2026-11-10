@@ -1,16 +1,13 @@
-// ABOUTME: Renders the searchable catalogue of canonical examples and external sites.
-// ABOUTME: Loads the curated Are.na channel without blocking repo-owned examples.
+// ABOUTME: Renders the searchable catalogue of canonical examples, plus the newest community
+// ABOUTME: sites from the Are.na channel. The full sites list lives in the playhtml.fun gallery.
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  ARENA_CHANNEL_URL,
   ARENA_CONTENTS_URL,
   filterExamples,
-  filterSites,
   isArenaContentsResponse,
   mapArenaSites,
   type SiteSummary,
-  type SourceFilter,
 } from "./catalogue";
 import type { CatalogueExampleSummary } from "./examples";
 import styles from "./examples.module.css";
@@ -19,11 +16,55 @@ type ExampleCatalogueProps = {
   examples: readonly CatalogueExampleSummary[];
 };
 
-const SOURCE_FILTERS: Array<{ value: SourceFilter; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "examples", label: "Examples" },
-  { value: "sites", label: "Sites" },
-];
+// With no search, examples preview whole rows; "Show all" expands in place.
+const EXAMPLE_PREVIEW_ROWS = 2;
+// The docs show only the newest sites. Everything else is in the gallery.
+const NEWEST_SITES_SHOWN = 4;
+const GALLERY_URL = "https://playhtml.fun/gallery/";
+
+// Counts the columns the responsive card grid currently resolves to, so a
+// preview can fill whole rows at any width.
+function useGridColumns(grid: HTMLElement | null): number {
+  const [columns, setColumns] = useState(1);
+
+  useEffect(() => {
+    if (!grid) return;
+
+    const measure = () => {
+      const template = getComputedStyle(grid).gridTemplateColumns;
+      const count = template.split(" ").filter(Boolean).length;
+      setColumns(Math.max(1, count));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(grid);
+    return () => observer.disconnect();
+  }, [grid]);
+
+  return columns;
+}
+
+function ShowAllButton({
+  expanded,
+  total,
+  onToggle,
+}: {
+  expanded: boolean;
+  total: number;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={styles.showAll}
+      aria-expanded={expanded}
+      onClick={onToggle}
+    >
+      {expanded ? "Show less" : `Show all ${total}`}
+      {!expanded && <ArrowIcon />}
+    </button>
+  );
+}
 
 function SearchIcon() {
   return (
@@ -144,12 +185,14 @@ function SiteCard({ site }: { site: SiteSummary }) {
 
 export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
   const [query, setQuery] = useState("");
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [sites, setSites] = useState<SiteSummary[]>([]);
   const [sitesState, setSitesState] = useState<"loading" | "loaded" | "failed">(
     "loading",
   );
-  const [requestVersion, setRequestVersion] = useState(0);
+  const [examplesExpanded, setExamplesExpanded] = useState(false);
+  // Callback ref, since the grid mounts only once its results exist.
+  const [examplesGrid, setExamplesGrid] = useState<HTMLDivElement | null>(null);
+  const exampleColumns = useGridColumns(examplesGrid);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -182,20 +225,22 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
 
     void loadSites();
     return () => abortController.abort();
-  }, [requestVersion]);
+  }, []);
 
   const visibleExamples = useMemo(
-    () => (sourceFilter === "sites" ? [] : filterExamples(examples, query)),
-    [examples, query, sourceFilter],
+    () => filterExamples(examples, query),
+    [examples, query],
   );
-  const visibleSites = useMemo(
-    () => (sourceFilter === "examples" ? [] : filterSites(sites, query)),
-    [query, sites, sourceFilter],
-  );
-  const resultCount = visibleExamples.length + visibleSites.length;
-  const sitesAreVisible = sourceFilter !== "examples";
-  const showEmptyState =
-    resultCount === 0 && !(sitesAreVisible && sitesState === "loading");
+  const isPreview = query.trim() === "";
+  const newestSites = isPreview ? sites.slice(0, NEWEST_SITES_SHOWN) : [];
+  const examplePreviewCount = exampleColumns * EXAMPLE_PREVIEW_ROWS;
+  const examplesCollapsible =
+    isPreview && visibleExamples.length > examplePreviewCount;
+  const shownExamples =
+    examplesCollapsible && !examplesExpanded
+      ? visibleExamples.slice(0, examplePreviewCount)
+      : visibleExamples;
+  const showEmptyState = visibleExamples.length === 0;
 
   return (
     <section
@@ -216,97 +261,62 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
             />
           </span>
         </label>
-
-        <fieldset
-          className={styles.filters}
-          aria-labelledby="examples-source-label"
-        >
-          <span id="examples-source-label" className={styles.filterLabel}>
-            Source
-          </span>
-          <div className={styles.filterButtons}>
-            {SOURCE_FILTERS.map((filter) => (
-              <button
-                key={filter.value}
-                type="button"
-                aria-pressed={sourceFilter === filter.value}
-                onClick={() => setSourceFilter(filter.value)}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-        </fieldset>
       </div>
 
-      <div className={styles.resultsHeader}>
-        <p className={styles.resultCount} aria-live="polite">
-          {resultCount} {resultCount === 1 ? "result" : "results"}
-        </p>
-        <p className={styles.attribution}>
-          Sites are curated on{" "}
-          <a href={ARENA_CHANNEL_URL} target="_blank" rel="noreferrer">
-            Are.na
-            <ExternalIcon />
-          </a>
-        </p>
-      </div>
-
-      {sitesAreVisible && sitesState === "loading" && (
-        <p className={styles.sitesStatus} role="status">
-          Loading sites from Are.na…
-        </p>
-      )}
-
-      {sitesAreVisible && sitesState === "failed" && (
-        <aside className={styles.sitesError}>
-          <div>
-            <strong>Sites could not load.</strong>
-            <span>The examples in these docs are still available.</span>
-          </div>
-          <div className={styles.errorActions}>
-            <button
-              type="button"
-              onClick={() => setRequestVersion((v) => v + 1)}
-            >
-              Try again
-            </button>
-            <a href={ARENA_CHANNEL_URL} target="_blank" rel="noreferrer">
-              Browse on Are.na
-              <ExternalIcon />
-            </a>
-          </div>
-        </aside>
-      )}
+      <p className={styles.resultCount} aria-live="polite">
+        {visibleExamples.length}{" "}
+        {visibleExamples.length === 1 ? "example" : "examples"}
+      </p>
 
       <div id="examples-catalogue-results" className={styles.resultGroups}>
+        {isPreview && sitesState !== "failed" && (
+          <section
+            className={styles.resultGroup}
+            aria-labelledby="sites-heading"
+          >
+            <div className={styles.groupHeader}>
+              <h2 id="sites-heading" className={styles.groupTitle}>
+                Newest community sites
+              </h2>
+              <a className={styles.showAll} href={GALLERY_URL}>
+                See all in the gallery
+                <ArrowIcon />
+              </a>
+            </div>
+            {sitesState === "loading" ? (
+              <p className={styles.sitesStatus} role="status">
+                Loading sites…
+              </p>
+            ) : (
+              <div className={styles.cardGrid}>
+                {newestSites.map((site) => (
+                  <SiteCard key={site.id} site={site} />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
         {visibleExamples.length > 0 && (
           <section
             className={styles.resultGroup}
             aria-labelledby="examples-heading"
           >
-            <h2 id="examples-heading" className={styles.groupTitle}>
-              Examples
-            </h2>
-            <div className={styles.cardGrid}>
-              {visibleExamples.map((example) => (
-                <ExampleCard key={example.id} example={example} />
-              ))}
+            <div className={styles.groupHeader}>
+              <h2 id="examples-heading" className={styles.groupTitle}>
+                Examples
+              </h2>
+              {examplesCollapsible && (
+                <ShowAllButton
+                  expanded={examplesExpanded}
+                  total={visibleExamples.length}
+                  onToggle={() => setExamplesExpanded((value) => !value)}
+                />
+              )}
             </div>
-          </section>
-        )}
-
-        {visibleSites.length > 0 && (
-          <section
-            className={styles.resultGroup}
-            aria-labelledby="sites-heading"
-          >
-            <h2 id="sites-heading" className={styles.groupTitle}>
-              Community sites
-            </h2>
-            <div className={styles.cardGrid}>
-              {visibleSites.map((site) => (
-                <SiteCard key={site.id} site={site} />
+            <div ref={setExamplesGrid} className={styles.cardGrid}>
+              {shownExamples.map((example) => (
+                <ExampleCard key={example.id} example={example} />
               ))}
             </div>
           </section>
@@ -316,7 +326,7 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
       {showEmptyState && (
         <div className={styles.emptyState}>
           <strong>No examples found.</strong>
-          <span>Try another search or source.</span>
+          <span>Try another search.</span>
         </div>
       )}
     </section>

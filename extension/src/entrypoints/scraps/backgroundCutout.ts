@@ -12,7 +12,15 @@ export type PieceCutout = {
   method: "edge-color";
   /** How far a pixel may stray from the border color and still be backdrop. */
   tolerance: number;
+  /**
+   * Which side of the cut stays. Absent means the subject, as every cutout
+   * made before the inverse existed; "background" keeps the backdrop and
+   * leaves a subject-shaped hole.
+   */
+  keep?: CutoutKeep;
 };
+
+export type CutoutKeep = "subject" | "background";
 
 export const DEFAULT_CUTOUT_TOLERANCE = 0.12;
 
@@ -124,7 +132,32 @@ export function parseCutout(value: unknown): PieceCutout | undefined {
   ) {
     throw new Error("Piece cutout is missing a numeric tolerance");
   }
-  return { method: cutout.method, tolerance: cutout.tolerance };
+  if (
+    cutout.keep !== undefined &&
+    cutout.keep !== "subject" &&
+    cutout.keep !== "background"
+  ) {
+    throw new Error(`Piece cutout keeps an unknown side: ${String(cutout.keep)}`);
+  }
+  return cutout.keep === "background"
+    ? { method: cutout.method, tolerance: cutout.tolerance, keep: "background" }
+    : { method: cutout.method, tolerance: cutout.tolerance };
+}
+
+/** Which side of the cut a cutout keeps, reading an absent side as the subject. */
+export function cutoutKeeps(cutout: PieceCutout): CutoutKeep {
+  return cutout.keep ?? "subject";
+}
+
+/**
+ * The same cut keeping the other side. Keeping the subject leaves `keep` off,
+ * so a cutout flipped twice is stored exactly as it was before.
+ */
+export function invertedCutout(cutout: PieceCutout): PieceCutout {
+  const { keep: _keep, ...rest } = cutout;
+  return cutoutKeeps(cutout) === "background"
+    ? rest
+    : { ...rest, keep: "background" };
 }
 
 export interface Bitmap {
@@ -350,6 +383,19 @@ export function workingSize(
     width: Math.max(1, Math.round(width * scale)),
     height: Math.max(1, Math.round(height * scale)),
   };
+}
+
+/**
+ * Swaps which side of a coverage mask stays, so the backdrop is kept and the
+ * subject becomes the hole. The feathered edge flips with it, so the hole is
+ * as soft as the cut it came from.
+ */
+export function invertMask(mask: Uint8ClampedArray): Uint8ClampedArray {
+  const inverted = new Uint8ClampedArray(mask.length);
+  for (let index = 0; index < mask.length; index += 1) {
+    inverted[index] = 255 - mask[index];
+  }
+  return inverted;
 }
 
 /** Writes a coverage mask into a bitmap's alpha channel, in place. */

@@ -24,21 +24,33 @@ const NOISE_OPACITY = 0.7;
 const GRAIN_OPACITY = 0.3;
 
 /**
- * The grain as a standalone SVG document of a given size. It multiplies onto
- * whatever is beneath, so the paper tone shows through it.
+ * How strongly a small thumbnail shows the grain. At thumbnail size the grain
+ * is as coarse as on the full sheet, so it is eased off to read as texture
+ * rather than speckle.
  */
-export function grainSvg(width: number, height: number): string {
+export const THUMBNAIL_GRAIN_STRENGTH = 0.5;
+
+/**
+ * The grain as a standalone SVG document of a given size. It multiplies onto
+ * whatever is beneath, so the paper tone shows through it. `strength` scales
+ * how strongly it sits, 1 being the page's own.
+ */
+export function grainSvg(width: number, height: number, strength = 1): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <defs>${NOISE_FILTER}</defs>
-  <rect width="100%" height="100%" filter="url(#g-noise)" opacity="${NOISE_OPACITY}"/>
-  <rect width="100%" height="100%" filter="url(#g-grain)" opacity="${GRAIN_OPACITY * NOISE_OPACITY}"/>
+  <rect width="100%" height="100%" filter="url(#g-noise)" opacity="${NOISE_OPACITY * strength}"/>
+  <rect width="100%" height="100%" filter="url(#g-grain)" opacity="${GRAIN_OPACITY * NOISE_OPACITY * strength}"/>
 </svg>`;
 }
 
 /** The grain as a data URL, for a CSS background or an image to draw. */
-export function grainDataUrl(width: number, height: number): string {
+export function grainDataUrl(
+  width: number,
+  height: number,
+  strength = 1,
+): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-    grainSvg(width, height),
+    grainSvg(width, height, strength),
   )}`;
 }
 
@@ -51,6 +63,7 @@ export function paperBackground(
   grain: boolean,
   width: number,
   height: number,
+  strength = 1,
 ): {
   background: string;
   backgroundBlendMode?: string;
@@ -58,7 +71,7 @@ export function paperBackground(
 } {
   if (!grain) return { background: color };
   return {
-    background: `url("${grainDataUrl(width, height)}") ${color}`,
+    background: `url("${grainDataUrl(width, height, strength)}") ${color}`,
     backgroundBlendMode: "multiply",
     backgroundSize: "100% 100%",
   };

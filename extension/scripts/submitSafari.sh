@@ -70,6 +70,11 @@ sed -i '' "s/${GENERATED_APP_BUNDLE_ID}/${SAFARI_BUNDLE_ID}/g" "$PROJECT_FILE"
 plutil -insert LSApplicationCategoryType \
   -string "public.app-category.lifestyle" \
   "$APP_INFO_PLIST"
+# The app only uses the system's HTTPS, which is exempt from export compliance.
+# Declaring it lets each uploaded build go straight to App Review.
+plutil -insert ITSAppUsesNonExemptEncryption \
+  -bool NO \
+  "$APP_INFO_PLIST"
 
 if [ -n "${APPLE_TEAM_ID:-}" ]; then
   SIGNING_CONFIGURATION_COUNT=$(grep -c "CODE_SIGN_STYLE = Automatic;" "$PROJECT_FILE")

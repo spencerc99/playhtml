@@ -58,11 +58,15 @@ describe("DeveloperFeaturesPage", () => {
     document.body.innerHTML = "";
   });
 
-  it("lists the full catalog and toggles the effective feature state", async () => {
+  it("lists the catalog, leaving out choices made where they are used", async () => {
     const { container, root } = await renderPage();
     try {
       expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(
-        FEATURE_IDS.filter((feature) => FEATURE_CATALOG[feature].defaultStage !== "released").length,
+        FEATURE_IDS.filter(
+          (feature) =>
+            FEATURE_CATALOG[feature].defaultStage !== "released" &&
+            !FEATURE_CATALOG[feature].chosenWhereUsed,
+        ).length,
       );
       expect(container.textContent).toContain("Early access");
       expect(container.textContent).not.toContain("Closed beta");

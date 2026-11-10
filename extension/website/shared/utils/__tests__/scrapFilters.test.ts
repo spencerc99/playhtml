@@ -1,15 +1,18 @@
 // ABOUTME: Verifies source-aware filtering without dropping photo encounter history.
-// ABOUTME: Covers domain/path scopes, saved-text search, and local day / time-of-day sightings.
+// ABOUTME: Covers kept and hidden domain/path scopes, saved-text search, local day-span / time-of-day sightings, and shape buckets.
 import { describe, expect, it } from "vitest";
 import type { ScrapItem } from "../../components/ScrapCollage";
 import { groupPhotoEncounters } from "../scrapPhotoGroups";
 import { parseFilterChip } from "../eventUtils";
 import {
   ANY_TIME,
+  hasExactScrapSearch,
   matchesScrapFilters,
   matchesScrapWhen,
   scrapDays,
+  scrapShape,
 } from "../scrapFilters";
+import { singleDay } from "../dayRange";
 
 const photo: ScrapItem = {
   id: "a",
@@ -62,6 +65,32 @@ describe("scrap filters", () => {
     expect(matchesScrapFilters(grouped, places, "missing")).toBe(false);
     expect(matchesScrapFilters(grouped, [], "  ")).toBe(true);
   });
+  it("hides scraps only found on hidden sites", () => {
+    const hide = (raw: string) => ({ ...parseFilterChip(raw), exclude: true });
+    expect(matchesScrapFilters(photo, [hide("are.na")], "")).toBe(false);
+    expect(matchesScrapFilters(photo, [hide("example.com")], "")).toBe(true);
+    // Seen elsewhere too, so hiding one of its sites keeps it.
+    expect(matchesScrapFilters(grouped, [hide("are.na")], "")).toBe(true);
+    expect(
+      matchesScrapFilters(grouped, [hide("are.na"), hide("spencer.place")], ""),
+    ).toBe(false);
+    // A kept site that is also hidden by path leaves nothing from it.
+    expect(
+      matchesScrapFilters(
+        photo,
+        [parseFilterChip("are.na"), hide("are.na/spencer")],
+        "",
+      ),
+    ).toBe(false);
+  });
+  it("keeps place exclusions active when search is only whitespace", () => {
+    const hidden = { ...parseFilterChip("are.na"), exclude: true };
+    expect(matchesScrapFilters(photo, [hidden], " \t\n ")).toBe(false);
+    expect(matchesScrapFilters(grouped, [hidden], " \t\n ")).toBe(true);
+    expect(
+      matchesScrapFilters(photo, [parseFilterChip("missing.test")], "   "),
+    ).toBe(false);
+  });
   it("searches button text and URLs", () => {
     const button: ScrapItem = {
       ...photo,
@@ -70,6 +99,41 @@ describe("scrap filters", () => {
       styles: {},
     };
     expect(matchesScrapFilters(button, [], "later spencer")).toBe(true);
+  });
+  it("searches the words of a heading", () => {
+    const heading: ScrapItem = {
+      ...photo,
+      kind: "heading",
+      text: "A field guide to moss",
+      level: 1,
+      styles: {},
+    };
+    expect(matchesScrapFilters(heading, [], "moss guide")).toBe(true);
+    expect(matchesScrapFilters(heading, [], "lichen")).toBe(false);
+  });
+  it("matches quoted words exactly, as whole words", () => {
+    const heading: ScrapItem = {
+      ...photo,
+      kind: "heading",
+      text: "A field guide to moss",
+      level: 1,
+      styles: {},
+    };
+    expect(matchesScrapFilters(heading, [], "gui")).toBe(true);
+    expect(matchesScrapFilters(heading, [], '"gui"')).toBe(false);
+    expect(matchesScrapFilters(heading, [], '"guide"')).toBe(true);
+    expect(matchesScrapFilters(heading, [], '"field guide"')).toBe(true);
+    expect(matchesScrapFilters(heading, [], '"guide field"')).toBe(false);
+    expect(matchesScrapFilters(heading, [], '"Field  Guide" mo')).toBe(true);
+    expect(matchesScrapFilters(heading, [], "\u201cmoss\u201d")).toBe(true);
+    // A quote still being typed is read as closed.
+    expect(matchesScrapFilters(heading, [], '"mos')).toBe(false);
+    expect(matchesScrapFilters(heading, [], '"moss')).toBe(true);
+  });
+  it("knows when a search asks for exact words", () => {
+    expect(hasExactScrapSearch("eye")).toBe(false);
+    expect(hasExactScrapSearch('"eye"')).toBe(true);
+    expect(hasExactScrapSearch('""')).toBe(false);
   });
 });
 
@@ -92,18 +156,56 @@ describe("scrap day and time-of-day filters", () => {
 
   it("matches a photo on any day it was seen, in local time", () => {
     expect(matchesScrapWhen(seenTwice, ANY_TIME)).toBe(true);
-    expect(matchesScrapWhen(seenTwice, { day: "2026-09-01", timeOfDay: null })).toBe(true);
-    expect(matchesScrapWhen(seenTwice, { day: "2026-09-02", timeOfDay: null })).toBe(false);
-    expect(matchesScrapWhen(seenTwice, { day: "2026-09-03", timeOfDay: null })).toBe(true);
+    expect(
+      matchesScrapWhen(seenTwice, {
+        days: singleDay("2026-09-01"),
+        timeOfDay: null,
+      }),
+    ).toBe(true);
+    expect(
+      matchesScrapWhen(seenTwice, {
+        days: singleDay("2026-09-02"),
+        timeOfDay: null,
+      }),
+    ).toBe(false);
+    expect(
+      matchesScrapWhen(seenTwice, {
+        days: singleDay("2026-09-03"),
+        timeOfDay: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("matches a photo seen on any day inside a span", () => {
+    expect(
+      matchesScrapWhen(seenTwice, {
+        days: { start: "2026-09-02", end: "2026-09-04" },
+        timeOfDay: null,
+      }),
+    ).toBe(true);
+    expect(
+      matchesScrapWhen(seenTwice, {
+        days: { start: "2026-09-04", end: "2026-09-30" },
+        timeOfDay: null,
+      }),
+    ).toBe(false);
   });
 
   it("needs one sighting to fall on both the day and the time of day", () => {
-    expect(matchesScrapWhen(seenTwice, { day: null, timeOfDay: morning })).toBe(true);
     expect(
-      matchesScrapWhen(seenTwice, { day: "2026-09-03", timeOfDay: morning }),
+      matchesScrapWhen(seenTwice, { days: null, timeOfDay: morning }),
+    ).toBe(true);
+    expect(
+      matchesScrapWhen(seenTwice, {
+        days: singleDay("2026-09-03"),
+        timeOfDay: morning,
+      }),
     ).toBe(false);
     expect(
-      matchesScrapWhen(seenTwice, { day: "2026-09-03", timeOfDay: lateNight }),
+      matchesScrapWhen(seenTwice, {
+        days: singleDay("2026-09-03"),
+        timeOfDay: lateNight,
+      }),
     ).toBe(true);
   });
 
@@ -116,8 +218,18 @@ describe("scrap day and time-of-day filters", () => {
       ts: at(5, 0, 20),
     };
     const midnight = { centerMinutes: 0, radiusMinutes: 30 };
-    expect(matchesScrapWhen(button, { day: "2026-09-05", timeOfDay: midnight })).toBe(true);
-    expect(matchesScrapWhen(button, { day: "2026-09-04", timeOfDay: null })).toBe(false);
+    expect(
+      matchesScrapWhen(button, {
+        days: singleDay("2026-09-05"),
+        timeOfDay: midnight,
+      }),
+    ).toBe(true);
+    expect(
+      matchesScrapWhen(button, {
+        days: singleDay("2026-09-04"),
+        timeOfDay: null,
+      }),
+    ).toBe(false);
   });
 
   it("lists the days a scrap was seen, limited by the time of day", () => {
@@ -126,5 +238,39 @@ describe("scrap day and time-of-day filters", () => {
       "2026-09-03",
     ]);
     expect([...scrapDays(seenTwice, morning)]).toEqual(["2026-09-01"]);
+  });
+
+  it("buckets scraps into five rough shapes", () => {
+    const sized = (naturalWidth: number, naturalHeight: number): ScrapItem => ({
+      ...photo,
+      naturalWidth,
+      naturalHeight,
+    });
+    expect(scrapShape(sized(100, 400))).toBe("very-tall");
+    expect(scrapShape(sized(100, 200))).toBe("very-tall");
+    expect(scrapShape(sized(100, 199))).toBe("tall");
+    expect(scrapShape(sized(100, 126))).toBe("tall");
+    expect(scrapShape(sized(100, 124))).toBe("square");
+    expect(scrapShape(sized(124, 100))).toBe("square");
+    expect(scrapShape(sized(126, 100))).toBe("wide");
+    expect(scrapShape(sized(199, 100))).toBe("wide");
+    expect(scrapShape(sized(200, 100))).toBe("very-wide");
+    expect(scrapShape(sized(0, 100))).toBeNull();
+    expect(
+      scrapShape({
+        ...photo,
+        kind: "svg-icon",
+        markup: "<svg/>",
+        width: 10,
+        height: 30,
+      } as ScrapItem),
+    ).toBe("very-tall");
+    expect(
+      scrapShape({ ...photo, kind: "cursor", url: "c.png" } as ScrapItem),
+    ).toBe("square");
+    const heading = (text: string) =>
+      ({ ...photo, kind: "heading", text, level: 1, styles: {} }) as ScrapItem;
+    expect(scrapShape(heading("Hi"))).toBe("wide");
+    expect(scrapShape(heading("A much longer heading"))).toBe("very-wide");
   });
 });

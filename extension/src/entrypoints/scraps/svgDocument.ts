@@ -169,6 +169,10 @@ export function headingBodyMarkup(
     "align-items:center",
     "justify-content:center",
     "text-align:center",
+    // The same side padding and breaking the studio sets a heading with, so
+    // its words wrap onto the same lines in the bake.
+    "padding:0 4px",
+    "overflow-wrap:anywhere",
     "box-sizing:border-box",
     "width:100%",
     "height:100%",

@@ -1,7 +1,8 @@
 // ABOUTME: Tests collage record parsing, stacking order, and source-page provenance.
 // ABOUTME: Guards that a stored collage round-trips and that provenance dedupes by page.
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Blob as NodeBlob } from "node:buffer";
 import type { ScrapItem } from "@movement/components/ScrapCollage";
 import { rotatePoint } from "../entrypoints/scraps/collageGeometry";
 import {
@@ -10,6 +11,7 @@ import {
   collageProvenance,
   commitCropSession,
   cropSessionStart,
+  detachPreview,
   duplicateCollage,
   movePieceBackward,
   movePieceForward,
@@ -76,6 +78,17 @@ describe("parseCollagePiece", () => {
     expect(parseCollagePiece(structuredClone(original))).toEqual(original);
   });
 
+  it("keeps the width a rewrapped heading wraps to", () => {
+    const original = piece({ letteringWidth: 180 });
+    expect(parseCollagePiece(structuredClone(original)).letteringWidth).toBe(180);
+    expect(parseCollagePiece(structuredClone(piece()))).not.toHaveProperty(
+      "letteringWidth",
+    );
+    expect(() => parseCollagePiece({ ...piece(), letteringWidth: 0 })).toThrow(
+      /letteringWidth/,
+    );
+  });
+
   it("defaults a piece saved without a crop to the whole source", () => {
     const { crop, ...withoutCrop } = piece();
     expect(crop).toBeDefined();
@@ -134,6 +147,19 @@ describe("parseCollageRecord", () => {
       preview: original.preview,
     });
     expect(parsed).toEqual(original);
+  });
+
+  it("keeps what the back lists, and leaves it absent on collages stored before it", () => {
+    const titled = { ...record([piece()]), backShows: "titles" as const };
+    expect(parseCollageRecord(titled).backShows).toBe("titles");
+    expect(parseCollageRecord(record([piece()]))).not.toHaveProperty("backShows");
+    expect(duplicateCollage(titled).backShows).toBe("titles");
+  });
+
+  it("refuses a back it does not know", () => {
+    expect(() =>
+      parseCollageRecord({ ...record([piece()]), backShows: "photos" }),
+    ).toThrow(/unknown back/);
   });
 
   it("refuses a record with no preview at all", () => {
@@ -423,10 +449,10 @@ describe("copying a collage", () => {
 
   it("names an unnamed collage's copy", () => {
     expect(duplicateCollage({ ...source, title: "" }).title).toBe(
-      "untitled collage copy",
+      "untitled copy",
     );
     expect(duplicateCollage({ ...source, title: "   " }).title).toBe(
-      "untitled collage copy",
+      "untitled copy",
     );
   });
 
@@ -498,5 +524,43 @@ describe("copying a collage", () => {
     expect(source.title).toBe("  a good one  ");
     expect(source.pieces[0].id).toBe("piece_a");
     expect(source.updatedAt).toBe(2_000);
+  });
+});
+
+describe("detaching a stored preview", () => {
+  // jsdom's Blob cannot be read back, so these run on Node's, as a browser's would.
+  const jsdomBlob = globalThis.Blob;
+  beforeEach(() => {
+    globalThis.Blob = NodeBlob as unknown as typeof Blob;
+  });
+  afterEach(() => {
+    globalThis.Blob = jsdomBlob;
+  });
+
+  it("copies the picture into a new blob with the same bytes and type", async () => {
+    const stored = new Blob(["png bytes"], { type: "image/png" });
+    const detached = await detachPreview({ drawn: true, image: stored });
+    expect(detached.drawn).toBe(true);
+    if (!detached.drawn) return;
+    expect(detached.image).not.toBe(stored);
+    expect(detached.image.type).toBe("image/png");
+    expect(await detached.image.text()).toBe("png bytes");
+  });
+
+  it("drops a picture whose bytes can no longer be read", async () => {
+    const gone = {
+      type: "image/png",
+      arrayBuffer: () =>
+        Promise.reject(new DOMException("file is gone", "NotFoundError")),
+    } as unknown as Blob;
+    expect(await detachPreview({ drawn: true, image: gone })).toEqual({
+      drawn: false,
+      reason: "the saved picture could not be read",
+    });
+  });
+
+  it("leaves an undrawn preview as it is", async () => {
+    const undrawn = { drawn: false as const, reason: "not drawn yet" };
+    expect(await detachPreview(undrawn)).toBe(undrawn);
   });
 });

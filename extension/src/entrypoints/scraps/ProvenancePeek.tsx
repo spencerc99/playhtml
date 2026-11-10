@@ -12,6 +12,7 @@ import {
   type TagRequest,
 } from "./peekTags";
 import { webPageHref } from "./scrapLinks";
+import type { PieceOwner } from "./sharedCollage";
 
 interface ProvenancePeekProps {
   pieces: readonly CollagePiece[];
@@ -21,6 +22,8 @@ interface ProvenancePeekProps {
   scale: number;
   /** The part of the frame that shows, in frame units; every label stays in it. */
   bounds: Rect;
+  /** Who put a piece down, on a shared collage; their color tints its label. */
+  ownerFor?: (piece: CollagePiece) => PieceOwner | null;
 }
 
 /** What a tag is assumed to take up before it has been measured. */
@@ -28,47 +31,33 @@ const ASSUMED_TAG = { width: 120, height: 16 };
 /** How close two pieces sit on screen before their tints must differ. */
 const NEAR_ON_SCREEN = 48;
 
-function scrapKindName(scrap: ScrapItem): string {
-  switch (scrap.kind) {
-    case "image":
-      return "picture";
-    case "button":
-      return "button";
-    case "svg-icon":
-      return "icon";
-    case "heading":
-      return "heading";
-    case "cursor":
-      return "cursor";
-  }
-}
-
-function seenOn(ts: number): string {
-  return new Date(ts).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-/** Keeps a long page title to a length a slip of paper can carry. */
-function shortened(title: string, limit = 42): string {
-  const trimmed = title.trim();
-  if (trimmed.length <= limit) return trimmed;
-  return `${trimmed.slice(0, limit - 1)}…`;
+/** Who added a scrap, leading its label in their cursor's color. */
+export function OwnerLine({ owner }: { owner: PieceOwner }) {
+  return (
+    <span className="collage-peek__who" style={{ color: owner.color }}>
+      <span className="collage-peek__dot" style={{ background: owner.color }} />
+      {owner.name}
+    </span>
+  );
 }
 
 /**
- * What a label says about a scrap: where it came from, the page's title, what
- * kind of thing it is and when it was first seen.
+ * What a label says about a scrap: the site's icon and where it came from.
  */
-export function ProvenanceLines({ scrap }: { scrap: ScrapItem }) {
+export function ProvenanceLines({
+  scrap,
+  owner,
+}: {
+  scrap: ScrapItem;
+  /** Who added it, on a shared collage. */
+  owner?: PieceOwner | null;
+}) {
   // Favicons are stored data like any other URL, so only a plain web address
   // is ever loaded.
   const favicon = scrap.faviconUrl ? webPageHref(scrap.faviconUrl) : null;
-  const title = shortened(scrap.pageTitle ?? "");
   return (
     <>
+      {owner && <OwnerLine owner={owner} />}
       <span className="collage-peek__where">
         {favicon && (
           <img
@@ -79,13 +68,7 @@ export function ProvenanceLines({ scrap }: { scrap: ScrapItem }) {
             height={10}
           />
         )}
-        {scrap.domain}
-      </span>
-      <span className="collage-peek__more">
-        {title && <span className="collage-peek__line">{title}</span>}
-        <span className="collage-peek__line">
-          {scrapKindName(scrap)} &#183; first seen {seenOn(scrap.ts)}
-        </span>
+        <span className="collage-peek__site">{scrap.domain}</span>
       </span>
     </>
   );
@@ -96,6 +79,7 @@ export function ProvenancePeek({
   hoveredId,
   scale,
   bounds,
+  ownerFor,
 }: ProvenancePeekProps) {
   const holderRef = useRef<HTMLDivElement>(null);
   /** Tints given so far, kept for as long as the peek is held. */
@@ -154,13 +138,19 @@ export function ProvenancePeek({
         const { scrap } = piece;
         const hovered = piece.id === hoveredId;
         const tag = placed.get(piece.id);
-        const tint = { "--peek-tint": tints.get(piece.id) } as React.CSSProperties;
+        const owner = ownerFor?.(piece) ?? null;
+        // On a shared collage each piece wears its adder's color instead.
+        const tint = {
+          "--peek-tint": owner?.color ?? tints.get(piece.id),
+        } as React.CSSProperties;
         return (
           <React.Fragment key={piece.id}>
             {/* The piece's own edge, drawn so the label has something to
                 belong to. It turns with the piece. */}
             <div
-              className={`collage-peek-edge${hovered ? " collage-peek-edge--on" : ""}`}
+              className={`collage-peek-edge${hovered ? " collage-peek-edge--on" : ""}${
+                owner ? " collage-peek-edge--owned" : ""
+              }`}
               aria-hidden="true"
               style={{
                 left: piece.x,
@@ -168,7 +158,7 @@ export function ProvenancePeek({
                 width: piece.width,
                 height: piece.height,
                 transform: `rotate(${piece.rotation}deg)`,
-                borderWidth: 1 / scale,
+                borderWidth: (owner ? 2.5 : 1) / scale,
                 ...tint,
               }}
             />
@@ -184,7 +174,7 @@ export function ProvenancePeek({
                 ...tint,
               }}
             >
-              <ProvenanceLines scrap={scrap} />
+              <ProvenanceLines scrap={scrap} owner={owner} />
             </div>
           </React.Fragment>
         );

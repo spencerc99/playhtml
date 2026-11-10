@@ -128,18 +128,21 @@ export interface SelectionPressPlan {
 /**
  * Decides a press on the pieces.
  *
- * Shift adds the frontmost piece under the pointer, or, when that piece is
- * already held, a click puts it down while a drag still moves the whole hand.
+ * Shift adds the frontmost piece under the pointer. When a held piece is
+ * under the pointer, even beneath an unheld one, the press keeps the hand: a
+ * drag moves it, and a click adds or puts down the frontmost piece.
  *
  * With several pieces held, a press anywhere inside the box around them keeps
  * the hand so a drag moves them all: on a held piece, on an unheld piece lying
  * over one, or on an unheld piece that only sits inside the box. A click there
- * without a drag takes the frontmost piece at that spot alone, the one the eye
- * sees clicked. A press outside the box takes the frontmost piece alone.
+ * without a drag keeps just the frontmost piece at that spot. A press outside
+ * the box takes the frontmost piece alone.
  *
  * With one piece or none held, the single-piece rules apply (see planPress):
- * clicking the held piece again steps down the pile, and cmd or ctrl reaches
- * the next piece down straight away.
+ * a drag from the held piece moves it, a click takes the frontmost piece, a
+ * click again on the same spot reaches one piece further down, and a cmd or
+ * ctrl click reaches the next piece down straight away. A cmd or ctrl drag
+ * moves what a plain drag would, since cmd held while dragging snaps.
  */
 export function planSelectionPress(
   pieces: readonly CollagePiece[],
@@ -147,14 +150,25 @@ export function planSelectionPress(
   selection: Selection,
   /** The box around the hand when several pieces are held, else null. */
   groupBox: Bounds | null,
-  modifiers: { deep: boolean; additive: boolean },
+  modifiers: {
+    deep: boolean;
+    additive: boolean;
+    /** The press lands where the last plain click on a piece landed. */
+    sameSpot: boolean;
+  },
 ): SelectionPressPlan | null {
   const stack = piecesUnder(pieces, point);
   if (stack.length === 0) return null;
 
+  const heldHere = stack.find((piece) => isSelected(selection, piece.id));
+
   if (modifiers.additive) {
     const front = stack[0].id;
-    if (isSelected(selection, front)) {
+    // Over a held piece, even one buried under an unheld piece, a shift press
+    // may be the start of a drag, so the hand is kept until release shows
+    // which it was: a drag moves the hand, a click adds or takes away the
+    // piece on top.
+    if (heldHere) {
       return {
         selectOnDown: selection,
         dragIds: selection.ids,
@@ -165,26 +179,27 @@ export function planSelectionPress(
     return { selectOnDown: grown, dragIds: grown.ids, selectOnClick: grown };
   }
 
-  if (selection.ids.length > 1 && !modifiers.deep) {
-    if (
-      stack.some((piece) => isSelected(selection, piece.id)) ||
-      (groupBox !== null && boxHolds(groupBox, point))
-    ) {
-      return {
-        selectOnDown: selection,
-        dragIds: selection.ids,
-        selectOnClick: selectOnly(stack[0].id),
-      };
-    }
-  }
-
   const single = planPress(
     pieces,
     point,
     selection.ids.length === 1 ? selection.ids[0] : selection.primary,
-    modifiers.deep,
+    { deep: modifiers.deep, sameSpot: modifiers.sameSpot },
   );
   if (!single) return null;
+
+  if (selection.ids.length > 1) {
+    if (heldHere || (groupBox !== null && boxHolds(groupBox, point))) {
+      return {
+        selectOnDown: selection,
+        dragIds: selection.ids,
+        // A cmd click reaches down from the primary; a plain one takes the
+        // frontmost piece at that spot.
+        selectOnClick: selectOnly(
+          modifiers.deep ? single.selectOnClick : stack[0].id,
+        ),
+      };
+    }
+  }
   return {
     selectOnDown: selectOnly(single.selectOnDown),
     dragIds: [single.dragId],

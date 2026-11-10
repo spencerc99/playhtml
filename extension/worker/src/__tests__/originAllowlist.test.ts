@@ -16,6 +16,35 @@ describe('isAllowedOrigin', () => {
     expect(isAllowedOrigin(req({ Origin: 'https://www.wewere.online' }))).toBe(true);
   });
 
+  it('allows playhtml.fun event pages and their preview deployments', () => {
+    const allowedOrigins = [
+      'https://playhtml.fun',
+      'https://www.playhtml.fun',
+      'https://playhtml.pages.dev',
+      'https://claude-project-thread-m309ya.playhtml.pages.dev',
+    ];
+
+    for (const origin of allowedOrigins) {
+      expect(isAllowedOrigin(req({ Origin: origin }))).toBe(true);
+    }
+    expect(
+      isAllowedOrigin(req({ Referer: 'https://playhtml.fun/events/walking-together/session?session=x' })),
+    ).toBe(true);
+  });
+
+  it('rejects playhtml lookalikes', () => {
+    const rejectedOrigins = [
+      'https://evilplayhtml.fun',
+      'https://playhtml.fun.evil.example',
+      'https://evilplayhtml.pages.dev',
+      'http://playhtml.fun',
+    ];
+
+    for (const origin of rejectedOrigins) {
+      expect(isAllowedOrigin(req({ Origin: origin }))).toBe(false);
+    }
+  });
+
   it('allows website preview deployments', () => {
     const allowedOrigins = [
       'https://cx-fix-movement-audio-crackl.we-were-online-website.pages.dev',

@@ -6,7 +6,11 @@ import { ScrapContent } from "@movement/components/ScrapCollage";
 import { useScrapImageSrc } from "@movement/utils/scrapImageSource";
 import { maskPositionPercent } from "./backgroundCutout";
 import { cutoutMaskImage, type CutoutMaskImage } from "./cutoutImages";
-import type { CollagePiece } from "./collageRecord";
+import {
+  materialBox,
+  pieceMaterialTransform,
+  type CollagePiece,
+} from "./collageRecord";
 import { sourceBoxForCrop } from "./collageGeometry";
 import { isLettered, letteringLayout } from "./pieceLettering";
 
@@ -114,13 +118,18 @@ export function PieceMaterial({ piece, onCutoutFailed }: PieceMaterialProps) {
       loaded={true}
       onLoad={() => {}}
       onError={() => {}}
+      letteringBacking={false}
     />
   );
   if (!isLettered(scrap)) return content;
 
   // Words are set at the scrap's own type size and scaled to the piece's box,
   // so a resized heading or button grows and shrinks its lettering with it.
-  const layout = letteringLayout(scrap, sourceBoxForCrop(piece, piece.crop));
+  const layout = letteringLayout(
+    scrap,
+    sourceBoxForCrop(piece, piece.crop),
+    piece.letteringWidth,
+  );
   return (
     <div
       className="collage-piece__lettering"
@@ -132,5 +141,50 @@ export function PieceMaterial({ piece, onCutoutFailed }: PieceMaterialProps) {
     >
       {content}
     </div>
+  );
+}
+
+/**
+ * A piece as it looks now, upright and shrunk to fit a square of `size`
+ * pixels: cropped, mirrored and cut the way it sits on the collage, rather
+ * than the whole picture it was cut from.
+ */
+export function PieceLook({
+  piece,
+  size,
+}: {
+  piece: CollagePiece;
+  size: number;
+}) {
+  const fit = size / Math.max(piece.width, piece.height, 1);
+  const source = materialBox(piece);
+  return (
+    <span
+      className="collage-piece-look"
+      style={{ width: piece.width * fit, height: piece.height * fit }}
+    >
+      <span
+        className="collage-piece-look__piece"
+        style={{
+          width: piece.width,
+          height: piece.height,
+          transform: `scale(${fit})`,
+        }}
+      >
+        <span
+          className="collage-piece__source"
+          style={{
+            left: source.x - piece.x,
+            top: source.y - piece.y,
+            width: source.width,
+            height: source.height,
+            transform: pieceMaterialTransform(piece),
+            transformOrigin: "center",
+          }}
+        >
+          <PieceMaterial piece={piece} />
+        </span>
+      </span>
+    </span>
   );
 }

@@ -65,8 +65,15 @@ export function parseColorToHsl(
   } else {
     // Handle hex strings
     let hex = color.replace("#", "");
-    if (hex.length === 3)
-      hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+    if (hex.length === 3 || hex.length === 4) {
+      hex = hex
+        .split("")
+        .map((digit) => digit + digit)
+        .join("");
+    }
+    // #rrggbbaa: see-through person colors. Hue, saturation and lightness
+    // come from the RGB part; alpha is ignored.
+    if (hex.length === 8) hex = hex.slice(0, 6);
     if (hex.length !== 6) return null;
 
     r = parseInt(hex.slice(0, 2), 16) / 255;

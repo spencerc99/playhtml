@@ -16,7 +16,17 @@ export default defineConfig({
       ...(browser === "safari" ? [] : ["idle", "webNavigation"]),
       "unlimitedStorage",
     ],
-    host_permissions: ["http://*/*", "https://*/*"],
+    // tabs.captureVisibleTab (portrait "save image") only accepts the literal
+    // <all_urls> host permission or activeTab; http/https patterns are refused.
+    // Safari keeps the narrower origins its website-access flow requests.
+    host_permissions:
+      browser === "safari" ? ["http://*/*", "https://*/*"] : ["<all_urls>"],
+    // The scraps page's opt-in picture search runs its model as WebAssembly,
+    // which extension pages may only compile with 'wasm-unsafe-eval'.
+    content_security_policy: {
+      extension_pages:
+        "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+    },
     action: {
       default_title: "we were online",
     },
@@ -51,6 +61,23 @@ export default defineConfig({
     },
   }),
   hooks: {
+    // The runtime for the scraps page's picture-reading model ships with the
+    // extension, since extension pages may not load code from elsewhere.
+    "build:publicAssets": (_wxt, files) => {
+      const dist = path.resolve(
+        __dirname,
+        "../node_modules/@huggingface/transformers/dist",
+      );
+      for (const file of [
+        "ort-wasm-simd-threaded.jsep.mjs",
+        "ort-wasm-simd-threaded.jsep.wasm",
+      ]) {
+        files.push({
+          absoluteSrc: path.join(dist, file),
+          relativeDest: `ort/${file}`,
+        });
+      }
+    },
     "build:manifestGenerated": (wxt, manifest) => {
       if (wxt.config.browser === "safari" && manifest.options_ui) {
         delete manifest.options_ui.open_in_tab;

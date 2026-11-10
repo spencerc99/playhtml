@@ -36,8 +36,8 @@ export interface MapData {
  * browser has already inflated it by the time we see the body; others send it
  * as opaque bytes. Sniff the gzip magic instead of trusting either.
  */
-async function loadMaybeGzipped(url: string): Promise<any> {
-  const buf = await (await fetch(url)).arrayBuffer();
+async function loadMaybeGzipped(url: string, init: RequestInit): Promise<any> {
+  const buf = await (await fetchOk(url, init)).arrayBuffer();
   const head = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
   const text = head[0] === 0x1f && head[1] === 0x8b
     ? await new Response(
@@ -52,23 +52,33 @@ const CTOR: Record<string, any> = {
   uint16: Uint16Array, uint8: Uint8Array,
 };
 
+/** The Worker refused the admin key; distinct from a missing bundle. */
+export class MapUnauthorizedError extends Error {}
+
+async function fetchOk(url: string, init: RequestInit): Promise<Response> {
+  const res = await fetch(url, init);
+  if (res.status === 401) throw new MapUnauthorizedError(`not authorized for ${url}`);
+  // A missing bundle comes back as a 404 from the Worker, or as the SPA's HTML
+  // fallback from the static dev server.
+  if (!res.ok || (res.headers.get("content-type") ?? "").includes("text/html")) {
+    throw new Error(`no map bundle at ${url}`);
+  }
+  return res;
+}
+
 export async function loadMap(
   dir: string,
   onProgress: (msg: string, pct: number) => void,
+  init: RequestInit = {},
 ): Promise<MapData> {
   onProgress("header", 0.05);
-  const headRes = await fetch(`${dir}/map.json`);
-  // A missing bundle comes back as the SPA's HTML fallback, not a 404.
-  if (!headRes.ok || (headRes.headers.get("content-type") ?? "").includes("text/html")) {
-    throw new Error(`no map bundle at ${dir}`);
-  }
-  const head: Header = await headRes.json();
+  const head: Header = await (await fetchOk(`${dir}/map.json`, init)).json();
 
   onProgress("positions", 0.15);
-  const bin = await (await fetch(`${dir}/map.bin`)).arrayBuffer();
+  const bin = await (await fetchOk(`${dir}/map.bin`, init)).arrayBuffer();
 
   onProgress("labels", 0.55);
-  const labels: Labels = await loadMaybeGzipped(`${dir}/labels.json.gz`);
+  const labels: Labels = await loadMaybeGzipped(`${dir}/labels.json.gz`, init);
 
   onProgress("indexing", 0.85);
   const A: Arrays = {};

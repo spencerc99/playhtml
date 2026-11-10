@@ -51,15 +51,16 @@ export function piecesById(
 export function copiesOnTop(
   pieces: readonly CollagePiece[],
   originals: readonly CollagePiece[],
-  offset: number,
+  offset: number | { x: number; y: number },
   newId: () => string,
 ): CollagePiece[] {
   const top = pieces.reduce((highest, piece) => Math.max(highest, piece.z), -1);
+  const step = typeof offset === "number" ? { x: offset, y: offset } : offset;
   return stackOrder(originals).map((piece, index) => ({
     ...piece,
     id: newId(),
-    x: piece.x + offset,
-    y: piece.y + offset,
+    x: piece.x + step.x,
+    y: piece.y + step.y,
     z: top + 1 + index,
   }));
 }
@@ -130,4 +131,46 @@ export function moveGroupToBack(
   ids: readonly string[],
 ): CollagePiece[] {
   return liftGroup(pieces, ids, "back");
+}
+
+/** Which piece each copy of the last duplicate was made from. */
+export type DuplicateTrail = ReadonlyMap<string, string>;
+
+/**
+ * Where the next duplicate lands. Duplicating the copies the last duplicate
+ * made repeats how far those copies now sit from their originals, so a copy
+ * dragged into place and duplicated again steps on by the same amount. Any
+ * other duplicate lands `fallback` down and to the right.
+ */
+export function nextDuplicateOffset(
+  pieces: readonly CollagePiece[],
+  originals: readonly CollagePiece[],
+  trail: DuplicateTrail | null,
+  fallback: number,
+): { x: number; y: number } {
+  const plain = { x: fallback, y: fallback };
+  if (!trail || originals.length === 0) return plain;
+  let step: { x: number; y: number } | null = null;
+  for (const copy of originals) {
+    const sourceId = trail.get(copy.id);
+    const source = sourceId
+      ? pieces.find((piece) => piece.id === sourceId)
+      : undefined;
+    if (!source) return plain;
+    const delta = { x: copy.x - source.x, y: copy.y - source.y };
+    if (!step) step = delta;
+    // Copies moved apart from each other no longer share one step.
+    else if (Math.abs(step.x - delta.x) > 0.5 || Math.abs(step.y - delta.y) > 0.5)
+      return plain;
+  }
+  return step ?? plain;
+}
+
+/** Pairs each copy with the original it came from, in the order copies are made. */
+export function duplicateTrail(
+  originals: readonly CollagePiece[],
+  copies: readonly CollagePiece[],
+): DuplicateTrail {
+  const ordered = stackOrder(originals);
+  return new Map(copies.map((copy, index) => [copy.id, ordered[index].id]));
 }

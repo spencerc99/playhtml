@@ -2,6 +2,7 @@
 // ABOUTME: rebuilds per-element awareness maps from page-scoped presence peers.
 
 import { describe, expect, it, vi } from "vitest";
+import { PRESENCE_STALE_MS } from "../presence-utils";
 import { MAX_PRESENCE_VALUE_BYTES } from "@playhtml/common";
 import { RealtimePresenceTransport } from "../presence-transport";
 import {
@@ -438,6 +439,31 @@ describe("ElementAwarenessClient", () => {
     error.mockRestore();
   });
 
+  it("logs the overflow once while the same tags stay over budget", async () => {
+    const { client } = createClient();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const bigValue = { blob: "x".repeat(1000) };
+    for (let i = 0; i < 60; i += 1) {
+      client.setLocalAwareness(
+        "can-mirror",
+        `el-${String(i).padStart(3, "0")}`,
+        {
+          ...bigValue,
+        },
+      );
+    }
+    await flushPresencePublishes();
+    // Later publishes (e.g. each hover) that still overflow stay quiet.
+    client.setLocalAwareness("can-mirror", "el-000", { blob: "y" });
+    await flushPresencePublishes();
+    client.setLocalAwareness("can-mirror", "el-001", { blob: "z" });
+    await flushPresencePublishes();
+
+    expect(error).toHaveBeenCalledTimes(1);
+    error.mockRestore();
+  });
+
   it("re-publishes the latest snapshot only after the rate window (resilience)", async () => {
     vi.useFakeTimers();
     try {
@@ -547,7 +573,7 @@ describe("ElementAwarenessClient", () => {
       );
 
       // No further message from the ghost; after the window the sweep drops it.
-      vi.advanceTimersByTime(31_000);
+      vi.advanceTimersByTime(PRESENCE_STALE_MS + 1_000);
       expect(emitted.at(-1)!.has("can-play:card")).toBe(false);
       expect(error).toHaveBeenCalledWith(
         expect.stringContaining("presence transport unreachable"),

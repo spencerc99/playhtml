@@ -19,17 +19,22 @@ export type PlayerIdentity = {
 
 export const MAX_PLAYER_IDENTITY_COLORS = 16;
 export const MAX_PLAYER_IDENTITY_STRING_LENGTH = 512;
+/** Longest person name, in characters, after trimming. */
+export const MAX_PERSON_NAME_LENGTH = 32;
 
 const PLAYER_IDENTITY_CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 
 export type CursorZonePosition = {
-  zoneId: string;       // matches element.id of the zone element
-  relX: number;         // 0-1, percentage within zone element's bounding box
-  relY: number;         // 0-1
+  zoneId: string; // matches element.id of the zone element
+  relX: number; // 0-1, percentage within zone element's bounding box
+  relY: number; // 0-1
 };
 
 export type CursorPresence = {
   cursor?: Cursor | null;
+  /** Who this cursor belongs to. */
+  user?: User;
+  /** @deprecated Use `user`. */
   playerIdentity?: PlayerIdentity;
   lastSeen?: number;
   message?: string | null;
@@ -44,6 +49,9 @@ export type CursorPresence = {
 // single-page apps can set it to anything they want to group presences by.
 export type CursorPresenceView = {
   cursor: Cursor | null;
+  /** Who this cursor belongs to. */
+  user?: User;
+  /** @deprecated Use `user` (`user.pid`, `user.name`, `user.color`). */
   playerIdentity?: PlayerIdentity;
   zone?: CursorZonePosition | null;
   page?: string;
@@ -56,9 +64,8 @@ export interface CursorEvents {
   name: string | undefined;
 }
 
-// Flat view of a participant's durable identity, as returned by
-// playhtml.users.getAll() / playhtml.users.onChange(). `pid` is the stable
-// publicKey; `color` is playerStyle.colorPalette[0].
+// Who someone is: their stable `pid` (the identity publicKey), `name`, and
+// `color` (playerStyle.colorPalette[0]). A `Person` adds their `presence`.
 export type User = {
   pid: string;
   name?: string;
@@ -66,13 +73,153 @@ export type User = {
   isMe: boolean;
 };
 
+/**
+ * Flattens a PlayerIdentity into the public `User` shape. Unlike the users
+ * module's strict conversion, a missing color becomes "" so a partially
+ * populated remote identity still yields a usable view.
+ */
+export function playerIdentityToUser(
+  identity: PlayerIdentity,
+  isMe: boolean,
+): User {
+  const user: User = {
+    pid: identity.publicKey,
+    color: toHexColor(identity.playerStyle?.colorPalette?.[0] ?? ""),
+    isMe,
+  };
+  const name = normalizePersonName(identity.name);
+  if (name !== undefined) user.name = name;
+  return user;
+}
+
+/**
+ * Trims a person name and cuts it to MAX_PERSON_NAME_LENGTH characters
+ * (whole characters, so emoji aren't split). Blank or non-string names
+ * become undefined.
+ */
+export function normalizePersonName(name: unknown): string | undefined {
+  if (typeof name !== "string") return undefined;
+  const trimmed = name.trim();
+  if (!trimmed) return undefined;
+  const chars = Array.from(trimmed);
+  return chars.length > MAX_PERSON_NAME_LENGTH
+    ? chars.slice(0, MAX_PERSON_NAME_LENGTH).join("").trimEnd()
+    : trimmed;
+}
+
+// Valid CSS but not a color a person can have.
+const NON_PERSON_COLOR_KEYWORDS = new Set([
+  "inherit",
+  "initial",
+  "unset",
+  "revert",
+  "revert-layer",
+  "currentcolor",
+]);
+
+/**
+ * Returns true if `color` is a CSS color a person can use: hex, rgb(a),
+ * hsl(a), or anything else the browser accepts as a color (like "red" or
+ * "oklch(...)"). Wide keywords like "inherit" are rejected. Without a browser
+ * CSS engine, only hex/rgb/hsl and plain color words are accepted.
+ */
+export function isValidPersonColor(color: unknown): color is string {
+  if (typeof color !== "string") return false;
+  const value = color.trim().toLowerCase();
+  if (!value || value.length > MAX_PLAYER_IDENTITY_STRING_LENGTH) return false;
+  if (PLAYER_IDENTITY_CONTROL_CHARACTERS.test(value)) return false;
+  if (NON_PERSON_COLOR_KEYWORDS.has(value)) return false;
+  if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/.test(toHexColor(value))) return true;
+  const css = (
+    globalThis as { CSS?: { supports?: (p: string, v: string) => boolean } }
+  ).CSS;
+  if (typeof css?.supports === "function") return css.supports("color", value);
+  return /^[a-z]+$/.test(value);
+}
+
+/**
+ * Returns `color` as a lowercase hex string when it's a hex, `hsl()`, or
+ * `rgb()` color: `#rrggbb` for opaque colors, so they work in
+ * `<input type="color">` (which only accepts that form), and `#rrggbbaa` when
+ * the color is see-through, so alpha is kept. Other CSS colors (like `"red"`)
+ * are returned unchanged.
+ */
+export function toHexColor(color: string): string {
+  const value = color.trim().toLowerCase();
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(value);
+  if (hex) {
+    const digits =
+      hex[1].length <= 4
+        ? [...hex[1]].map((digit) => digit + digit).join("")
+        : hex[1];
+    return digits.length === 8 && digits.endsWith("ff")
+      ? `#${digits.slice(0, 6)}`
+      : `#${digits}`;
+  }
+  const toHex = (channel: number) =>
+    Math.round(Math.min(255, Math.max(0, channel)))
+      .toString(16)
+      .padStart(2, "0");
+  // Appends an alpha byte only when the color is see-through.
+  const withAlpha = (rgbHex: string, alpha: string | undefined) => {
+    if (alpha === undefined) return rgbHex;
+    const amount = alpha.endsWith("%")
+      ? parseFloat(alpha) / 100
+      : parseFloat(alpha);
+    const byte = toHex(Math.min(1, Math.max(0, amount)) * 255);
+    return byte === "ff" ? rgbHex : `${rgbHex}${byte}`;
+  };
+  const rgb =
+    /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[,/]\s*([\d.]+%?)\s*)?\)$/.exec(
+      value,
+    );
+  if (rgb) {
+    return withAlpha(
+      `#${toHex(+rgb[1])}${toHex(+rgb[2])}${toHex(+rgb[3])}`,
+      rgb[4],
+    );
+  }
+  const hsl =
+    /^hsla?\(\s*(-?[\d.]+)(?:deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%\s*(?:[,/]\s*([\d.]+%?)\s*)?\)$/.exec(
+      value,
+    );
+  if (hsl) {
+    const hue = (((+hsl[1] % 360) + 360) % 360) / 360;
+    const saturation = Math.min(100, +hsl[2]) / 100;
+    const lightness = Math.min(100, +hsl[3]) / 100;
+    const q =
+      lightness < 0.5
+        ? lightness * (1 + saturation)
+        : lightness + saturation - lightness * saturation;
+    const p = 2 * lightness - q;
+    const channel = (t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    return withAlpha(
+      `#${toHex(channel(hue + 1 / 3) * 255)}${toHex(channel(hue) * 255)}${toHex(channel(hue - 1 / 3) * 255)}`,
+      hsl[4],
+    );
+  }
+  return color;
+}
+
+// Default person colors are tuned in HSL (fixed saturation and lightness, any
+// hue) and saved as hex, so they work in native color inputs.
+function defaultColor(hue: number): string {
+  return toHexColor(`hsl(${hue % 360}, 70%, 60%)`);
+}
+
 // Constants
 export const PROXIMITY_THRESHOLD = 150; // pixels
 
-/** Returns a random HSL color string (used as default primary color when none exists). */
+/** Returns a random hex color (used as default primary color when none exists). */
 function randomPrimaryColor(): string {
-  const hue = Math.floor(Math.random() * 360);
-  return `hsl(${hue}, 70%, 60%)`;
+  return defaultColor(Math.floor(Math.random() * 360));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -136,9 +283,9 @@ export function generatePlayerIdentity(): PlayerIdentity {
 
   const hue = Math.floor(Math.random() * 360);
   const colorPalette = [
-    `hsl(${hue}, 70%, 60%)`,
-    `hsl(${(hue + 120) % 360}, 70%, 60%)`,
-    `hsl(${(hue + 240) % 360}, 70%, 60%)`,
+    defaultColor(hue),
+    defaultColor(hue + 120),
+    defaultColor(hue + 240),
   ];
 
   return {
@@ -150,24 +297,20 @@ export function generatePlayerIdentity(): PlayerIdentity {
   };
 }
 
-/** Returns true if identity has a non-empty primary color. */
+/** Returns true if identity has a valid primary color. */
 function hasValidPrimaryColor(identity: PlayerIdentity): boolean {
-  const color = identity.playerStyle?.colorPalette?.[0];
-  return typeof color === "string" && color.length > 0;
+  return isValidPersonColor(identity.playerStyle?.colorPalette?.[0]);
 }
 
 export function savePlayerIdentityToStorage(identity: PlayerIdentity): void {
   try {
-    localStorage.setItem(
-      PLAYER_IDENTITY_STORAGE_KEY,
-      JSON.stringify(identity),
-    );
+    localStorage.setItem(PLAYER_IDENTITY_STORAGE_KEY, JSON.stringify(identity));
   } catch (e) {
     console.warn("Failed to save player identity to localStorage:", e);
   }
 }
 
-/** Ensures identity has a primary color, assigning one when missing. */
+/** Ensures identity has a valid primary color, assigning one when missing or invalid. */
 function ensurePrimaryColor(identity: PlayerIdentity): boolean {
   if (!hasValidPrimaryColor(identity)) {
     if (!identity.playerStyle) identity.playerStyle = { colorPalette: [] };

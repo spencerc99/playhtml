@@ -12,7 +12,8 @@ import {
 import {
   ElementAwarenessEventHandlerData,
   ElementInitializer,
-  ElementUser,
+  ElementPerson,
+  Person,
   TagType,
   elementHandlers,
   getIdForElement,
@@ -267,13 +268,18 @@ export function CanPlayElement<T extends object, V = any>({
   const ref = useRef<HTMLElement>(null);
   const registeredBindingRef = useRef<ElementBinding | undefined>(undefined);
   const warningKeysRef = useRef<Set<string>>(new Set());
-  const { defaultData, live: configuredLive, myDefaultAwareness } = elementProps;
+  const {
+    defaultData,
+    defaultPresence: configuredPresence,
+    live: configuredLive,
+    myDefaultAwareness,
+  } = elementProps;
   requireDefaultValue(defaultData, "defaultData");
+  requireDefaultValue(configuredPresence, "defaultPresence");
   requireDefaultValue(configuredLive, "live");
   requireDefaultValue(myDefaultAwareness, "myDefaultAwareness");
 
-  const initialLive =
-    configuredLive !== undefined ? configuredLive : myDefaultAwareness;
+  const initialLive = configuredPresence ?? configuredLive ?? myDefaultAwareness;
   const [data, setData] = useState<T | undefined>(() => defaultData);
   const [awareness, setAwareness] = useState<V[]>(
     initialLive === undefined ? [] : [initialLive],
@@ -282,7 +288,13 @@ export function CanPlayElement<T extends object, V = any>({
     Map<string, V>
   >(new Map());
   const [live, setLive] = useState<V | undefined>(() => initialLive);
-  const [users, setUsers] = useState<ElementUser<V>[]>([]);
+  const [users, setUsers] = useState<ElementPerson<V>[]>([]);
+  const [me, setMe] = useState<Person<V>>(() => ({
+    pid: "",
+    color: "",
+    isMe: true,
+    presence: initialLive as V,
+  }));
 
   // Capture the capability's original render callbacks so we can compose them
   // with the React state updater below. These come from the built-in
@@ -319,10 +331,15 @@ export function CanPlayElement<T extends object, V = any>({
         : (handlerData.live as V | undefined)
     );
     setUsers((prev) =>
-      isDeepEqual(prev, handlerData.users)
+      isDeepEqual(prev, handlerData.everyone ?? handlerData.users ?? [])
         ? prev
-        : (handlerData.users as ElementUser<V>[])
+        : ((handlerData.everyone ?? handlerData.users ?? []) as ElementPerson<V>[])
     );
+    if (handlerData.me) {
+      setMe((prev) =>
+        isDeepEqual(prev, handlerData.me) ? prev : (handlerData.me as Person<V>)
+      );
+    }
   };
 
   const updateElement: ElementInitializer["updateElement"] = (handlerData) => {
@@ -438,6 +455,8 @@ export function CanPlayElement<T extends object, V = any>({
   const renderedChildren = children({
     // @ts-ignore
     data,
+    everyone: users,
+    me,
     live,
     users,
     awareness,
@@ -467,11 +486,14 @@ export function CanPlayElement<T extends object, V = any>({
       }
       handler.setData(newData);
     },
-    setLive: (newLive) => {
-      getRegisteredHandler()?.setLive(newLive);
+    setMyPresence: (next) => {
+      getRegisteredHandler()?.setMyPresence(next);
     },
-    setMyAwareness: (newLive) => {
-      getRegisteredHandler()?.setLive(newLive);
+    setLive: (next) => {
+      getRegisteredHandler()?.replaceMyPresence(next);
+    },
+    setMyAwareness: (next) => {
+      getRegisteredHandler()?.replaceMyPresence(next);
     },
     myAwareness: live,
     ref,
@@ -626,10 +648,12 @@ export function withSharedState<T extends object, V = any, P = any>(
 
 export { playhtml };
 export { PlayProvider, PlayContext } from "./PlayProvider";
+export type { PlayContextInfo, PlayContextPeople } from "./PlayProvider";
 export { usePlayContext } from "./usePlayContext";
 export {
   useCursorPresences,
   useCursorZone,
+  usePeople,
   usePresence,
   usePageData,
   usePresenceRoom,

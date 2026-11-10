@@ -2,6 +2,8 @@ import path from "path";
 import { glob } from "glob";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import directedit from "directedit";
+import agentation from "./scripts/vite-plugin-agentation.mjs";
 
 export default defineConfig({
   root: path.join(__dirname, "website"),
@@ -9,12 +11,18 @@ export default defineConfig({
     alias: {
       "@playhtml/common": path.join(__dirname, "packages/common/src"),
       "@playhtml/react": path.join(__dirname, "packages/react/src"),
-      "playhtml/leafEditor": path.join(__dirname, "packages/playhtml/src/leafEditor.ts"),
+      "playhtml/leafEditor": path.join(
+        __dirname,
+        "packages/playhtml/src/leafEditor.ts",
+      ),
       playhtml: path.join(__dirname, "packages/playhtml/src/index.ts"),
       "@extension": path.join(__dirname, "extension/src"),
       "@moderation": path.join(__dirname, "partykit/moderation.ts"),
       "@movement": path.join(__dirname, "extension/website/shared"),
     },
+    // Code reached through @extension and @movement sits next to the
+    // extension's own React; one copy keeps hooks working across both.
+    dedupe: ["react", "react-dom"],
   },
   optimizeDeps: {
     exclude: ["@playhtml/common", "@playhtml/react", "playhtml", "@extension"],
@@ -28,7 +36,11 @@ export default defineConfig({
     outDir: path.join(__dirname, "site-dist"),
     emptyOutDir: true,
   },
-  plugins: [react()],
+  // directedit: Alt+E to edit copy in place. In dev it saves straight to source; on
+  // Cloudflare preview builds it copies a `npx directedit apply` command instead.
+  // Production builds (main) never include it. Agentation (feedback toolbar) follows
+  // the same rule: dev and preview builds only.
+  plugins: [directedit(), agentation(), react()],
   server: {
     allowedHosts: ["16ea7fb66b66.ngrok-free.app"],
   },

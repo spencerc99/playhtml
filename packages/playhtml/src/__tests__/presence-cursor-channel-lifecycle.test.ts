@@ -86,8 +86,8 @@ describe("page presence cursor channel across cursor rebuilds", () => {
       "custom-message",
       JSON.stringify({ type: "room-reset", resetEpoch: 7 }),
     );
-    await new Promise((r) => queueMicrotask(r));
-    await new Promise((r) => queueMicrotask(r));
+    // The cursor client is rebuilt once its module import resolves.
+    await new Promise((r) => setTimeout(r, 0));
     received.length = 0;
 
     // The pre-reset subscription must still fire for cursors in the reset room.
@@ -119,3 +119,4 @@ describe("page presence cursor channel across cursor rebuilds", () => {
     expect(staleFired).toBe(false);
   });
 });
+

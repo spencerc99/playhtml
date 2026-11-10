@@ -6,7 +6,9 @@ import type { ScrapItem } from "@movement/components/ScrapCollage";
 import type { CollagePiece } from "../entrypoints/scraps/collageRecord";
 import {
   copiesOnTop,
+  duplicateTrail,
   moveGroupBackward,
+  nextDuplicateOffset,
   moveGroupForward,
   moveGroupToBack,
   moveGroupToFront,
@@ -125,5 +127,34 @@ describe("removing, replacing and copying several pieces", () => {
       ["copy2", 6, 30 + 24],
     ]);
     expect(copies[0].scrapId).toBe("scrap");
+  });
+});
+
+describe("nextDuplicateOffset", () => {
+  it("steps by the default when nothing was duplicated before", () => {
+    const a = piece("a", 0);
+    expect(nextDuplicateOffset([a], [a], null, 24)).toEqual({ x: 24, y: 24 });
+  });
+
+  it("repeats how far the last copy was moved from its original", () => {
+    const a = piece("a", 0);
+    const [copy] = copiesOnTop([a], [a], 24, () => "copy");
+    const trail = duplicateTrail([a], [copy]);
+    const moved = { ...copy, x: a.x + 150, y: a.y - 10 };
+    expect(nextDuplicateOffset([a, moved], [moved], trail, 24)).toEqual({
+      x: 150,
+      y: -10,
+    });
+  });
+
+  it("falls back for pieces that are not the last copies", () => {
+    const a = piece("a", 0);
+    const b = piece("b", 1);
+    const [copy] = copiesOnTop([a, b], [a], 24, () => "copy");
+    const trail = duplicateTrail([a], [copy]);
+    expect(nextDuplicateOffset([a, b, copy], [b], trail, 24)).toEqual({
+      x: 24,
+      y: 24,
+    });
   });
 });

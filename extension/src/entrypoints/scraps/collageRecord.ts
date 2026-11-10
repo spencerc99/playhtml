@@ -2,7 +2,7 @@
 // ABOUTME: Converts between the in-memory studio state and the stored record.
 
 import type { ScrapItem } from "@movement/components/ScrapCollage";
-import type { CropFraction } from "./collageGeometry";
+import type { CropFraction, PieceBox } from "./collageGeometry";
 import {
   FULL_CROP,
   boxForInnerRect,
@@ -12,6 +12,7 @@ import {
   sourceBoxForCrop,
 } from "./collageGeometry";
 import { parseCutout, type PieceCutout } from "./backgroundCutout";
+import type { PublishedSignature } from "../../../shared/publishedCollage";
 import {
   isCollageFormatName,
   parsePaper,
@@ -48,6 +49,12 @@ export interface CollagePiece {
   /** How this piece's backdrop was removed, absent when it was left alone. */
   cutout?: PieceCutout;
   /**
+   * The width a heading's words wrap to, in the heading's own type size, once
+   * it has been pulled wider or narrower from a side. Absent while the words
+   * keep the lines they arrived with.
+   */
+  letteringWidth?: number;
+  /**
    * Present when the piece is held in place: clicks pass through it to what is
    * beneath. It is only reached again from the list of pieces under a point.
    */
@@ -63,7 +70,19 @@ export interface CollageRecord {
   /** Which named size the frame is, so the studio can name it back. */
   format: CollageFormatName;
   paper: CollagePaper;
+  /**
+   * What the back lists under each site. Absent on collages stored before the
+   * back could show page titles, which show their pieces as they always did.
+   */
+  backShows?: BackShows;
   pieces: CollagePiece[];
+  /**
+   * The public view-only link this collage was last shared as, kept so it can
+   * be taken down again. Absent when the collage is not shared. The delete
+   * token is the only way to take the link down, so it never leaves this
+   * device: copies and collage files are made without it.
+   */
+  publication?: CollagePublication;
   /**
    * The baked picture of this collage, or an explicit note that it has not
    * been drawn yet. A collage is stored the moment its arrangement changes,
@@ -73,9 +92,61 @@ export interface CollageRecord {
   preview: CollagePreview;
 }
 
+/** A shared link to a collage, and the token that takes it down. */
+export interface CollagePublication {
+  /** The shared collage's id on the Worker. */
+  id: string;
+  deleteToken: string;
+  sharedAt: number;
+  /** The page the link opens. */
+  url: string;
+  /** How it was signed when shared; absent when it went unsigned. */
+  signature?: PublishedSignature;
+  /** When the link last caught up with the collage, if it ever updated. */
+  updatedAt?: number;
+  /**
+   * A fingerprint of what the link shows, so the studio knows when the
+   * collage has moved on from it. Absent on links shared before updates.
+   */
+  contentKey?: string;
+}
+
+/** What the back lists under each site: the pieces, or the titles of their pages. */
+export type BackShows = "pieces" | "titles";
+
+export function isBackShows(value: unknown): value is BackShows {
+  return value === "pieces" || value === "titles";
+}
+
 export type CollagePreview =
   | { drawn: true; image: Blob }
   | { drawn: false; reason: string };
+
+/**
+ * A preview read out of IndexedDB, copied into memory so it can be written
+ * back. The Blob IndexedDB hands out is backed by the stored row's file, and a
+ * reopened collage carries it into every save until a re-bake replaces it.
+ * In Firefox the first save back succeeds, but it lets go of the file behind
+ * that Blob, so every later save carrying it fails with an UnknownError ("The
+ * operation failed for reasons unrelated to the database itself...") and the
+ * collage can no longer be saved. An in-memory copy has no tie to the row it
+ * came from. A picture whose bytes can no longer be read is dropped, so the
+ * arrangement still saves and a re-bake draws it again.
+ */
+export async function detachPreview(
+  preview: CollagePreview,
+): Promise<CollagePreview> {
+  if (!preview.drawn) return preview;
+  try {
+    const bytes = await preview.image.arrayBuffer();
+    return {
+      drawn: true,
+      image: new Blob([bytes], { type: preview.image.type }),
+    };
+  } catch {
+    return { drawn: false, reason: "the saved picture could not be read" };
+  }
+}
 
 /** A stored row that could not be read, listed so it can still be deleted. */
 export interface UnreadableCollage {
@@ -124,7 +195,7 @@ export function createCollageId(): string {
 }
 
 /** What a copy is called when the collage it came from had no name. */
-const UNTITLED_COPY = "untitled collage copy";
+const UNTITLED_COPY = "untitled copy";
 
 /**
  * The same collage under an id of its own. Every piece is copied with an id of
@@ -143,6 +214,7 @@ export function withFreshIds(record: CollageRecord): CollageRecord {
     frame: { ...record.frame },
     format: record.format,
     paper: { ...record.paper },
+    ...(record.backShows ? { backShows: record.backShows } : {}),
     pieces: record.pieces.map((piece) => ({
       ...piece,
       id: createPieceId(),
@@ -243,6 +315,12 @@ function readNumber(source: Record<string, unknown>, key: string): number {
   return value;
 }
 
+function readPositive(source: Record<string, unknown>, key: string): number {
+  const value = readNumber(source, key);
+  if (value <= 0) throw new Error(`Collage piece ${key} is not positive`);
+  return value;
+}
+
 function readBoolean(source: Record<string, unknown>, key: string): boolean {
   const value = source[key];
   if (typeof value !== "boolean") {
@@ -282,7 +360,13 @@ export function parseCollagePiece(value: unknown): CollagePiece {
     flipX: readBoolean(piece, "flipX"),
     flipY: readBoolean(piece, "flipY"),
     // Collages saved before cutouts existed simply have no field to read.
-    ...(piece.cutout === undefined ? {} : { cutout: parseCutout(piece.cutout) }),
+    ...(piece.cutout === undefined
+      ? {}
+      : { cutout: parseCutout(piece.cutout) }),
+    // A heading that was never rewrapped keeps the lines it arrived with.
+    ...(piece.letteringWidth === undefined
+      ? {}
+      : { letteringWidth: readPositive(piece, "letteringWidth") }),
     // Likewise a piece that was never locked carries no lock.
     ...(piece.locked === undefined ? {} : { locked: readLocked(piece.locked) }),
   };
@@ -329,9 +413,78 @@ export function parseCollageRecord(value: unknown): CollageRecord {
     },
     format: readFormatName(record.format),
     paper: parsePaper(record.paper),
+    ...(record.backShows === undefined
+      ? {}
+      : { backShows: readBackShows(record.backShows) }),
     pieces: record.pieces.map(parseCollagePiece),
+    ...(record.publication === undefined
+      ? {}
+      : { publication: readPublication(record.publication) }),
     preview,
   };
+}
+
+function readPublication(value: unknown): CollagePublication {
+  if (!value || typeof value !== "object") {
+    throw new Error("Collage publication is not an object");
+  }
+  const publication = value as Record<string, unknown>;
+  return {
+    id: readPublicationString(publication, "id"),
+    deleteToken: readPublicationString(publication, "deleteToken"),
+    sharedAt: readNumber(publication, "sharedAt"),
+    url: readPublicationString(publication, "url"),
+    ...(publication.signature === undefined
+      ? {}
+      : { signature: readPublicationSignature(publication.signature) }),
+    ...(typeof publication.updatedAt === "number"
+      ? { updatedAt: publication.updatedAt }
+      : {}),
+    ...(typeof publication.contentKey === "string"
+      ? { contentKey: publication.contentKey }
+      : {}),
+  };
+}
+
+function readPublicationSignature(value: unknown): PublishedSignature {
+  if (!value || typeof value !== "object") {
+    throw new Error("Collage publication signature is not an object");
+  }
+  const signature = value as Record<string, unknown>;
+  if (typeof signature.color !== "string") {
+    throw new Error("Collage publication signature has no colour");
+  }
+  if (signature.name !== undefined && typeof signature.name !== "string") {
+    throw new Error("Collage publication signature name is not text");
+  }
+  return {
+    color: signature.color,
+    ...(signature.name ? { name: signature.name } : {}),
+  };
+}
+
+function readPublicationString(
+  source: Record<string, unknown>,
+  key: string,
+): string {
+  const value = source[key];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`Collage publication is missing ${key}`);
+  }
+  return value;
+}
+
+/** The collage without its publication, for anything that leaves this device. */
+export function withoutPublication(record: CollageRecord): CollageRecord {
+  const { publication: _publication, ...rest } = record;
+  return rest;
+}
+
+function readBackShows(value: unknown): BackShows {
+  if (!isBackShows(value)) {
+    throw new Error(`Collage record has an unknown back: ${String(value)}`);
+  }
+  return value;
 }
 
 function readFormatName(value: unknown): CollageFormatName {
@@ -405,12 +558,15 @@ export function composeCropOnto(
   piece: CollagePiece,
   fromSource: CropFraction,
 ): CollagePiece {
-  const source = sourceBoxForCrop(piece, piece.crop);
+  // Worked out where the piece is seen, so a mirrored piece keeps the part
+  // that was kept on screen where it sat on screen.
+  const source = materialBox(piece);
+  const shown = mirrorCrop(fromSource, piece);
   const box = {
-    x: source.x + fromSource.x * source.width,
-    y: source.y + fromSource.y * source.height,
-    width: source.width * fromSource.width,
-    height: source.height * fromSource.height,
+    x: source.x + shown.x * source.width,
+    y: source.y + shown.y * source.height,
+    width: source.width * shown.width,
+    height: source.height * shown.height,
   };
   const before = rotatePoint(
     { x: box.x, y: box.y },
@@ -453,26 +609,47 @@ export function commitCropSession(
 }
 
 /** Mirrors what a piece shows, leaving its box and its crop alone. */
-export function flipPiece(
-  piece: CollagePiece,
-  axis: "x" | "y",
-): CollagePiece {
+export function flipPiece(piece: CollagePiece, axis: "x" | "y"): CollagePiece {
   return axis === "x"
     ? { ...piece, flipX: !piece.flipX }
     : { ...piece, flipY: !piece.flipY };
 }
 
 /**
- * The CSS transform that draws a piece's material: the mirror happens inside
- * the box, so a flipped piece keeps its position, its rotation and the crop
- * window it was given.
+ * A crop as it is seen on a mirrored piece, or a seen crop back to the source:
+ * mirroring twice is no mirror, so the one function goes both ways.
+ */
+export function mirrorCrop(
+  crop: CropFraction,
+  piece: Pick<CollagePiece, "flipX" | "flipY">,
+): CropFraction {
+  return {
+    x: piece.flipX ? 1 - crop.x - crop.width : crop.x,
+    y: piece.flipY ? 1 - crop.y - crop.height : crop.y,
+    width: crop.width,
+    height: crop.height,
+  };
+}
+
+/**
+ * Where a piece's whole source is drawn, in frame coordinates, before it is
+ * mirrored about its own middle by `pieceMaterialTransform`. The mirror turns
+ * about the piece's box, never the whole source's, so flipping a cropped piece
+ * mirrors what the crop kept rather than sliding other material into view.
+ */
+export function materialBox(piece: CollagePiece): PieceBox {
+  return sourceBoxForCrop(piece, mirrorCrop(piece.crop, piece));
+}
+
+/**
+ * The CSS transform that draws a piece's material at its `materialBox`: the
+ * mirror happens inside the box, so a flipped piece keeps its position, its
+ * rotation and the crop window it was given.
  */
 export function pieceMaterialTransform(piece: CollagePiece): string {
   const scaleX = piece.flipX ? -1 : 1;
   const scaleY = piece.flipY ? -1 : 1;
-  return scaleX === 1 && scaleY === 1
-    ? "none"
-    : `scale(${scaleX}, ${scaleY})`;
+  return scaleX === 1 && scaleY === 1 ? "none" : `scale(${scaleX}, ${scaleY})`;
 }
 
 /** Restores a cropped piece to its whole source, around the same center. */
@@ -493,7 +670,9 @@ export function clearCrop(piece: CollagePiece): CollagePiece {
 }
 
 /** Reassigns z so the stack is a dense 0..n-1 run in its current order. */
-export function normalizeStack(pieces: readonly CollagePiece[]): CollagePiece[] {
+export function normalizeStack(
+  pieces: readonly CollagePiece[],
+): CollagePiece[] {
   return [...pieces]
     .sort((a, b) => a.z - b.z)
     .map((piece, index) => ({ ...piece, z: index }));

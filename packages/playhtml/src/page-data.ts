@@ -12,7 +12,6 @@ export { PAGE_TAG };
 
 interface PageDataDeps {
   ensureProxy: <T>(tag: string, id: string, defaultData: T) => T;
-  getProxy: (tag: string, id: string) => unknown;
   // doc + store are read through getters so a channel handle held across a room
   // change (which recreates both) sees the CURRENT doc/store, not a stale one
   // captured at channel-creation time.
@@ -131,6 +130,20 @@ function attachPageDataObserver<T>(
   yObserverByKey.set(observerKey, observer);
 }
 
+/**
+ * Re-attaches every open channel after the page-data map itself was replaced
+ * (another client created it at the same moment and won the merge). The old
+ * observers sit on the discarded map and would never fire again.
+ */
+export function rebindPageDataChannels(deps: PageDataDeps): void {
+  for (const [name, listeners] of deps.channelListeners) {
+    detachPageDataObserver(name, deps);
+    deps.proxyByTagAndId.get(PAGE_TAG)?.delete(name);
+    attachPageDataObserver(name, deps, listeners);
+    notifyPageDataListeners(name, deps, listeners);
+  }
+}
+
 export function refreshPageDataChannels(deps: PageDataDeps): void {
   const { channelListeners, getStorePlay } = deps;
 
@@ -149,7 +162,7 @@ export function createPageDataChannel<T>(
   deps: PageDataDeps,
 ): PageDataChannel<T> {
   const {
-    ensureProxy, getProxy, getDoc, getStorePlay, proxyByTagAndId,
+    ensureProxy, getDoc, getStorePlay, proxyByTagAndId,
     channelRefCounts, channelListeners,
   } = deps;
   // Read live each use so we follow a room-change store/doc swap.
@@ -198,15 +211,19 @@ export function createPageDataChannel<T>(
 
     setData(data: PageDataSetter<T>): void {
       if (destroyed) throw new Error(`PageDataChannel "${name}" has been destroyed`);
-      // Re-acquire the proxy if it's gone (e.g. a room change cleared page-data
-      // out from under this still-alive handle). ensureProxy re-seeds the
-      // default into a fresh value and attachObserver re-attaches the deep
-      // observer, wired to this channel's preserved listener set — so the
-      // handle keeps both writing AND notifying after the reset.
-      let currentProxy = getProxy(PAGE_TAG, name) as T | undefined;
+      // Read the live value, not a cached proxy: another client creating this
+      // channel at the same moment can replace the value in a merge.
+      // If it's gone (e.g. a room change cleared page-data out from under this
+      // still-alive handle), ensureProxy re-seeds the default into a fresh
+      // value and attachObserver re-attaches the deep observer, wired to this
+      // channel's preserved listener set — so the handle keeps both writing AND
+      // notifying after the reset.
+      let currentProxy = storePlay()[PAGE_TAG]?.[name] as T | undefined;
       if (currentProxy === undefined) {
         currentProxy = ensureProxy<T>(PAGE_TAG, name, defaultValue) as T;
         attachObserver();
+      } else {
+        proxyByTagAndId.get(PAGE_TAG)?.set(name, currentProxy);
       }
       const proxy = currentProxy;
       const isObjectRoot = proxy !== null && typeof proxy === "object";

@@ -3354,6 +3354,38 @@ describe("stale reset-epoch connections", () => {
     return client;
   }
 
+  test("a full room refuses a new socket before it joins", async () => {
+    const { room } = createStaleRoom();
+    const joined = [createConnection("a"), createConnection("b")];
+    room.getConnections = () => joined.map((client) => client.connection);
+    workerEnv.MAX_CONNECTIONS_PER_ROOM = "2";
+    try {
+      const client = await connectStale(room, "late");
+
+      expect(client.closes).toEqual([{ code: 1013, reason: "Room Full" }]);
+      expect(client.sent).toEqual([]);
+      expect(client.connection.state.__playhtmlAdmission).toBeUndefined();
+      expect(room.pendingConnectionUrls.size).toBe(0);
+    } finally {
+      delete workerEnv.MAX_CONNECTIONS_PER_ROOM;
+    }
+  });
+
+  test("a room under its limit still accepts sockets", async () => {
+    const { room } = createStaleRoom();
+    const joined = [createConnection("a")];
+    room.getConnections = () => joined.map((client) => client.connection);
+    workerEnv.MAX_CONNECTIONS_PER_ROOM = "2";
+    try {
+      const client = await connectStale(room, "next");
+
+      expect(client.closes).toEqual([]);
+      expect(client.connection.state.__playhtmlAdmission).toBe("pending");
+    } finally {
+      delete workerEnv.MAX_CONNECTIONS_PER_ROOM;
+    }
+  });
+
   test("a stale connection stays open and pending without joining", async () => {
     const { room } = createStaleRoom();
     const client = await connectStale(room, "legacy");

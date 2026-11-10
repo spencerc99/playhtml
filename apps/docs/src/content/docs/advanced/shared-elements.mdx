@@ -3,17 +3,43 @@ title: "Shared elements"
 description: "Sync interactive elements across pages and domains."
 sidebar:
   order: 2
+  hidden: true
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
+import DemoCodeLink from '@/components/DemoCodeLink.astro';
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import { sharedStampRecipe } from "@/components/playground/recipes/shared-stamp";
 
 Shared elements let you share data between different pages on the same site, and even across different domains. The same state can be rendered with different markup and styles on each page. You define a shared element on a source page, then reference it on a consumer page by its domain and path (the playhtml room it's assigned to).
+
+## Try it
+
+The logo stamp on the [playhtml.fun homepage](https://playhtml.fun) is marked `shared`. This page reads it with `data-source="playhtml.fun#stamp"`. Spin it here and it spins on the homepage too, for everyone.
+
+<div id="shared-stamp-demo" className="ph-demo-slot" data-label="DEMO — shared stamp">
+  <RecipeExample
+    recipe={sharedStampRecipe}
+    compact
+    frameHeight="15rem"
+    client:load
+  />
+  <DemoCodeLink href="/docs/examples/shared-stamp/" />
+</div>
+
+Shared elements work across domains too. The lamp on [spencer.place](https://spencer.place) is the source; the playhtml homepage reads it. Each site draws the lamp with its own markup and styles, and only the on/off state is shared:
+
+<video className="ph-shared-lamp-video" src="/docs/shared-lamp-sites.mp4" poster="/docs/shared-lamp-sites-poster.jpg" controls muted loop playsinline>
+  Your browser doesn't support embedded video. <a href="/docs/shared-lamp-sites.mp4">Watch the shared lamp video</a>.
+</video>
+
+## Set it up
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```html
 <!-- Source page (thissite.com) -->
-<div id="couch" shared can-move style="font-size: 80px">🛋</div>
+<div id="couch" shared can-move style="display: inline-block; font-size: 80px">🛋</div>
 
 <!-- Consumer page (anothersite.com) -->
 <div data-source="thissite.com#couch" can-move>🪑</div>
@@ -84,7 +110,7 @@ import {
 
 // Source
 <CanMoveElement id="couch" shared>
-  <div style={{ fontSize: 80 }}>🛋</div>
+  <div style={{ display: "inline-block", fontSize: 80 }}>🛋</div>
 </CanMoveElement>
 
 // Consumer (matching capability + dataSource)
@@ -112,7 +138,7 @@ The prop names map to the HTML attributes: `shared` → `shared`, `dataSource` �
   </TabItem>
 </Tabs>
 
-#### Troubleshooting
+## Troubleshooting
 
 - **Nothing shows up / stays local only**: ensure `data-source` is correct and the capability matches the source element's capability.
 - **Consumer doesn't update the source**: check if the source is `shared="read-only"` or the consumer has `data-source-read-only`.

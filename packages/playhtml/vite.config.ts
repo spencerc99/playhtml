@@ -22,6 +22,13 @@ export default defineConfig({
     }),
   ],
   build: {
+    // Vite's esbuild pass keeps whitespace in ES library output; terser strips
+    // it, and preserve_annotations keeps pure annotations for downstream
+    // tree-shaking. The package is also loaded unbundled
+    // from CDNs, so ship it minified with source maps for debugging.
+    minify: "terser",
+    terserOptions: { format: { preserve_annotations: true } },
+    sourcemap: true,
     rollupOptions: {
       input: ["src/init.ts", "src/index.ts", "src/leafEditor.ts"],
       output: {

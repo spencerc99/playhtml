@@ -3,12 +3,17 @@
 
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import directedit from "directedit";
+import agentation from "../../scripts/vite-plugin-agentation.mjs";
 import path from "path";
 import { glob } from "glob";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  // directedit: Alt+E to edit copy in place. Saves to source in dev; on Cloudflare
+  // preview builds it copies a `npx directedit apply` command. Not in main builds.
+  // Agentation (feedback toolbar) follows the same rule: dev and preview builds only.
+  plugins: [directedit(), agentation(), react()],
   resolve: {
     alias: {
       "@movement": path.resolve(__dirname, "./shared"),
@@ -17,11 +22,17 @@ export default defineConfig({
       // on the site there's no extension context, so alias it to a small shim
       // (getURL → /asset paths, storage.local → localStorage). Lets the social
       // playground run the real initGlobalFeatures unchanged.
-      "webextension-polyfill": path.resolve(__dirname, "./shared/webext-shim.ts"),
+      "webextension-polyfill": path.resolve(
+        __dirname,
+        "./shared/webext-shim.ts",
+      ),
       playhtml: path.resolve(__dirname, "../../packages/playhtml/src/index.ts"),
       "@playhtml/react": path.resolve(__dirname, "../../packages/react/src"),
       "@playhtml/common": path.resolve(__dirname, "../../packages/common/src"),
-      "@playhtml/extension-types": path.resolve(__dirname, "../../packages/extension-types/src"),
+      "@playhtml/extension-types": path.resolve(
+        __dirname,
+        "../../packages/extension-types/src",
+      ),
       // Bun's hoisting puts react@19 in extension/node_modules and react@18 at
       // the workspace root. Node's upward resolution from extension/website/
       // hits the @19 copy first, even though the website declares @18.3.1.

@@ -13,8 +13,8 @@ import {
 import { bakeCollage } from "@extension/entrypoints/scraps/bakeCollage";
 import { readCollageFile } from "@extension/entrypoints/scraps/collageFile";
 import {
-  collageProvenance,
   normalizeStack,
+  type BackShows,
   type CollageRecord,
 } from "@extension/entrypoints/scraps/collageRecord";
 import { testCollage } from "./testCollage";
@@ -89,6 +89,8 @@ function Bench() {
   const [problem, setProblem] = useState<string | null>(null);
   const [paperColor, setPaperColor] = useState(collage.paper.color);
   const [title, setTitle] = useState(collage.title);
+  // A collage stored before the back could list titles has always shown pieces.
+  const [shows, setShows] = useState<BackShows>(collage.backShows ?? "pieces");
 
   const paper = useMemo(
     () => ({ ...collage.paper, color: paperColor }),
@@ -138,11 +140,10 @@ function Bench() {
       title,
       createdAt: collage.createdAt,
       changedAt: collage.updatedAt,
-      pieceCount: collage.pieces.length,
-      formatLabel: `${collage.format} · ${collage.frame.width} × ${collage.frame.height}`,
-      sources: collageProvenance(normalizeStack(collage.pieces)),
+      pieces: normalizeStack(collage.pieces),
+      shows,
     }),
-    [collage, title],
+    [collage, shows, title],
   );
 
   const open = useCallback(async (file: File) => {
@@ -151,6 +152,7 @@ function Bench() {
       setCollage(record);
       setPaperColor(record.paper.color);
       setTitle(record.title);
+      setShows(record.backShows ?? "pieces");
     } catch (error) {
       setProblem(
         `${file.name} could not be opened — ${error instanceof Error ? error.message : String(error)}`,
@@ -194,10 +196,21 @@ function Bench() {
             setCollage(testCollage);
             setPaperColor(testCollage.paper.color);
             setTitle(testCollage.title);
+            setShows(testCollage.backShows ?? "pieces");
           }}
         >
           test collage
         </button>
+        <label>
+          back lists{" "}
+          <select
+            value={shows}
+            onChange={(event) => setShows(event.target.value as BackShows)}
+          >
+            <option value="pieces">pieces</option>
+            <option value="titles">titles</option>
+          </select>
+        </label>
         <label>
           front paper{" "}
           <input

@@ -55,5 +55,10 @@ export function resolveFeatureState(
     return { enabled: override, available: true, stage: policy.stage, source: "choice" };
   }
 
-  return { enabled: true, available: true, stage: policy.stage, source: "available" };
+  return {
+    enabled: true,
+    available: true,
+    stage: policy.stage,
+    source: "available",
+  };
 }

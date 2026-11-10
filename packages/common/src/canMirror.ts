@@ -53,9 +53,15 @@ interface TextState {
 
 export const canMirrorInitializer: ElementInitializer<ElementState> = {
   defaultData: (element: HTMLElement) => constructInitialState(element),
-  myDefaultAwareness: { hover: false, focus: false },
   onMount: ({ getElement, setData, setMyAwareness }) => {
     const element = getElement();
+
+    // Publish presence only while this visitor is hovering or focused. An idle
+    // element sends nothing (peers treat a missing entry as idle), so pages with
+    // hundreds of mirrored elements don't fill the element presence budget.
+    const publishInteraction = (hover: boolean, focus: boolean) => {
+      setMyAwareness(hover || focus ? { hover, focus } : undefined);
+    };
 
     const setDataAny = setData as unknown as (data: any) => void;
 
@@ -85,21 +91,21 @@ export const canMirrorInitializer: ElementInitializer<ElementState> = {
     // TODO: auto-duplicate :hover CSS rules to [data-playhtml-hover] via CSSOM
     // so users don't need to manually rewrite their hover styles.
     element.addEventListener("mouseenter", () => {
-      setMyAwareness({ hover: true, focus: element.hasAttribute("data-playhtml-focus") });
+      publishInteraction(true, element.hasAttribute("data-playhtml-focus"));
       element.setAttribute("data-playhtml-hover", "");
     });
     element.addEventListener("mouseleave", () => {
-      setMyAwareness({ hover: false, focus: element.hasAttribute("data-playhtml-focus") });
+      publishInteraction(false, element.hasAttribute("data-playhtml-focus"));
       element.removeAttribute("data-playhtml-hover");
     });
 
     // Sync :focus via awareness (ephemeral, per-user).
     element.addEventListener("focusin", () => {
-      setMyAwareness({ hover: element.hasAttribute("data-playhtml-hover"), focus: true });
+      publishInteraction(element.hasAttribute("data-playhtml-hover"), true);
       element.setAttribute("data-playhtml-focus", "");
     });
     element.addEventListener("focusout", () => {
-      setMyAwareness({ hover: element.hasAttribute("data-playhtml-hover"), focus: false });
+      publishInteraction(element.hasAttribute("data-playhtml-hover"), false);
       element.removeAttribute("data-playhtml-focus");
     });
 

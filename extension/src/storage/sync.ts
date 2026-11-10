@@ -2,8 +2,37 @@
 // ABOUTME: Handles batching, server backfill mode, and worker URL configuration.
 
 import browser from 'webextension-polyfill';
-import type { CollectionEvent } from '../collectors/types';
+import type { CollectionEvent, NavigationEventData } from '../collectors/types';
 import { VERBOSE } from '../config';
+import { stripFragment } from '../utils/urlNormalization';
+
+/**
+ * Hash fragments can carry sensitive content (OAuth tokens, in-page state)
+ * regardless of event type. Strip them from the outgoing payload only; the
+ * local IndexedDB copy (used for the user's own history/visualization
+ * features) keeps the full URL. Query strings are kept because they often
+ * identify the page (e.g. YouTube's `v`).
+ */
+function sanitizeForUpload(events: CollectionEvent[]): CollectionEvent[] {
+  return events.map((event) => {
+    let sanitized = event;
+    if (event.meta?.url) {
+      sanitized = { ...sanitized, meta: { ...event.meta, url: stripFragment(event.meta.url) } };
+    }
+    // Navigation events also carry window.location.href in their payload:
+    // data.url on popstate and data.from_url on beforeunload.
+    if (event.type === 'navigation') {
+      const data = event.data as NavigationEventData;
+      if (typeof data.url === 'string' || typeof data.from_url === 'string') {
+        const cleaned: NavigationEventData = { ...data };
+        if (typeof data.url === 'string') cleaned.url = stripFragment(data.url);
+        if (typeof data.from_url === 'string') cleaned.from_url = stripFragment(data.from_url);
+        sanitized = { ...sanitized, data: cleaned } as CollectionEvent;
+      }
+    }
+    return sanitized;
+  });
+}
 
 const STORAGE_KEYS = {
   WORKER_URL: 'collection_worker_url',
@@ -76,14 +105,15 @@ export async function uploadEvents(events: CollectionEvent[]): Promise<void> {
   }
   
   const workerUrl = await getWorkerUrl();
-  
+  const sanitizedEvents = sanitizeForUpload(events);
+
   try {
     const response = await fetch(`${workerUrl}/events`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ events }),
+      body: JSON.stringify({ events: sanitizedEvents }),
     });
     
     if (!response.ok) {

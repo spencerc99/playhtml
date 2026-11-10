@@ -7,9 +7,7 @@ import { matterPhysicsRecipe } from "../matter-physics";
 describe("matter physics recipe", () => {
   it("is a complete canonical recipe", () => {
     expect(matterPhysicsRecipe.id).toBe("matter-physics");
-    expect(matterPhysicsRecipe.docsHref).toBe(
-      "/docs/examples/matter-physics/",
-    );
+    expect(matterPhysicsRecipe.docsHref).toBe("/docs/examples/matter-physics/");
     expect(matterPhysicsRecipe.html).toMatch(/^<!doctype html>/);
     expect(matterPhysicsRecipe.html).toContain('id="physics-world"');
     expect(matterPhysicsRecipe.html).toContain(
@@ -22,7 +20,7 @@ describe("matter physics recipe", () => {
     const configPosition = source.indexOf(
       'playhtml.register("physics-world", {',
     );
-    const updatePosition = source.indexOf("updateElement:", configPosition);
+    const updatePosition = source.indexOf("update:", configPosition);
     const mountPosition = source.indexOf("onMount:", configPosition);
     const initPosition = source.indexOf("await playhtml.init(");
 
@@ -45,7 +43,7 @@ describe("matter physics recipe", () => {
     expect(source).toContain("resetLocalBodies();");
 
     const updateBody = source.slice(
-      source.indexOf("updateElement:", registerPosition),
+      source.indexOf("update:", registerPosition),
       source.indexOf("onMount:", registerPosition),
     );
     expect(updateBody).not.toContain("setData");

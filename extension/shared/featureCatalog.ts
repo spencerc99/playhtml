@@ -10,6 +10,11 @@ type FeatureDefinition = {
   description: string;
   defaultStage: FeatureStage;
   requiresReload: boolean;
+  /**
+   * Turned on and off where it is used rather than in the settings list, for
+   * a choice that belongs next to the thing it changes.
+   */
+  chosenWhereUsed?: boolean;
 };
 
 const FEATURE_DEFINITIONS = {
@@ -49,6 +54,19 @@ const FEATURE_DEFINITIONS = {
     defaultStage: "internal",
     requiresReload: false,
   },
+  SCRAP_MEANING_SEARCH: {
+    name: "Search scraps by meaning",
+    description:
+      'Download a picture-reading model to find scraps by what\'s in them, like "eye" or "mask". It runs on this computer.',
+    defaultStage: "beta",
+    requiresReload: false,
+  },
+  COLLAGE_SHARE_LINKS: {
+    name: "Collage share links",
+    description: "Share a scrap collage as a view-only link anyone can open.",
+    defaultStage: "internal",
+    requiresReload: false,
+  },
   BAG_SETTINGS: {
     name: "Bag settings",
     description: "Show controls for unfinished PlayHTML Bag features.",
@@ -73,11 +91,21 @@ const FEATURE_DEFINITIONS = {
     defaultStage: "internal",
     requiresReload: true,
   },
+  EVERYONE_TRAILS: {
+    name: "Everyone's trails",
+    description:
+      "Show everyone's cursor trails, not just yours, in the page portrait overlay.",
+    defaultStage: "internal",
+    requiresReload: false,
+    // Picked from the overlay's own mine/everyone switch.
+    chosenWhereUsed: true,
+  },
 } as const satisfies Record<string, FeatureDefinition>;
 
 export type FeatureId = keyof typeof FEATURE_DEFINITIONS;
 
-export const FEATURE_CATALOG: Record<FeatureId, FeatureDefinition> = FEATURE_DEFINITIONS;
+export const FEATURE_CATALOG: Record<FeatureId, FeatureDefinition> =
+  FEATURE_DEFINITIONS;
 
 export const FEATURE_IDS = Object.keys(FEATURE_CATALOG) as FeatureId[];
 
@@ -88,6 +116,8 @@ export type FeaturePolicy = {
 
 export type FeatureAccessSnapshot = {
   features: Record<FeatureId, FeaturePolicy>;
+  // True for members of a cohort that receives every unreleased feature.
+  internal: boolean;
   checkedAt: number;
 };
 

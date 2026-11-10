@@ -410,6 +410,49 @@ const LIGHTBOX_STYLES = `
     box-shadow: 0 5px 12px rgba(61, 56, 51, 0.18);
   }
 
+  .scrap-lightbox__delete {
+    appearance: none;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #a39b92;
+    font-family: "Martian Mono", monospace;
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  .scrap-lightbox__delete:hover,
+  .scrap-lightbox__delete:focus-visible {
+    color: #3d3833;
+    text-decoration: underline;
+    outline: none;
+  }
+
+  .scrap-lightbox__delete--confirm {
+    color: #a8553f;
+  }
+
+  .scrap-lightbox__delete--confirm:hover,
+  .scrap-lightbox__delete--confirm:focus-visible {
+    color: #91462f;
+  }
+
+  .scrap-lightbox__delete:disabled {
+    cursor: default;
+    opacity: 0.6;
+    text-decoration: none;
+  }
+
+  .scrap-lightbox__delete-confirm {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+    color: #827a72;
+    font-family: "Martian Mono", monospace;
+    font-size: 10px;
+  }
+
   .scrap-lightbox__close {
     position: absolute;
     top: 16px;
@@ -507,6 +550,8 @@ interface ScrapLightboxProps {
   onClose: () => void;
   onPrevious: () => void;
   onNext: () => void;
+  /** Permanently removes this scrap; when absent, the scrap cannot be deleted here. */
+  onDelete?: () => Promise<void>;
 }
 
 function ScrapMedia({ item }: { item: ScrapItem }) {
@@ -629,8 +674,20 @@ export function ScrapLightbox({
   onClose,
   onPrevious,
   onNext,
+  onDelete,
 }: ScrapLightboxProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const [deleteStep, setDeleteStep] = useState<
+    "idle" | "confirm" | "deleting" | "failed"
+  >("idle");
+  const confirmDelete = () => {
+    if (!onDelete) return;
+    setDeleteStep("deleting");
+    onDelete().catch((error: unknown) => {
+      console.error("Could not delete the scrap:", error);
+      setDeleteStep("failed");
+    });
+  };
   const dialogRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [lifted, setLifted] = useState(prefersReducedMotion);
@@ -909,16 +966,48 @@ export function ScrapLightbox({
               </div>
             </section>
           )}
-          {item.pageUrl && (
+          {(item.pageUrl || onDelete) && (
             <div className="scrap-lightbox__actions">
-              <a
-                className="scrap-lightbox__action"
-                href={item.pageUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                visit page →
-              </a>
+              {item.pageUrl && (
+                <a
+                  className="scrap-lightbox__action"
+                  href={item.pageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  visit page →
+                </a>
+              )}
+              {onDelete && (deleteStep === "idle" || deleteStep === "failed") && (
+                <button
+                  type="button"
+                  className="scrap-lightbox__delete"
+                  onClick={() => setDeleteStep("confirm")}
+                >
+                  {deleteStep === "failed" ? "could not delete, try again" : "delete"}
+                </button>
+              )}
+              {onDelete && (deleteStep === "confirm" || deleteStep === "deleting") && (
+                <span className="scrap-lightbox__delete-confirm" role="group">
+                  <span>delete for good?</span>
+                  <button
+                    type="button"
+                    className="scrap-lightbox__delete scrap-lightbox__delete--confirm"
+                    disabled={deleteStep === "deleting"}
+                    onClick={confirmDelete}
+                  >
+                    {deleteStep === "deleting" ? "deleting..." : "delete"}
+                  </button>
+                  <button
+                    type="button"
+                    className="scrap-lightbox__delete"
+                    disabled={deleteStep === "deleting"}
+                    onClick={() => setDeleteStep("idle")}
+                  >
+                    keep
+                  </button>
+                </span>
+              )}
             </div>
           )}
         </aside>

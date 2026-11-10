@@ -4,6 +4,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import browser from "webextension-polyfill";
+import "@fontsource/martian-mono/latin-500.css";
+import "@fontsource/martian-mono/latin-600.css";
 import "@fontsource/atkinson-hyperlegible/latin-400.css";
 import "@fontsource/atkinson-hyperlegible/latin-700.css";
 import "@fontsource/lora/latin-400-italic.css";
@@ -12,12 +14,15 @@ import "@fontsource/lora/latin-700.css";
 import { groupPhotoEncounters } from "@movement/utils/scrapPhotoGroups";
 import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import {
+  canonicalScrapKey,
   COLLAGE_STYLES,
   ScrapCollage,
   type ScrapItem,
 } from "@movement/components/ScrapCollage";
 import { toScrapItem, type ScrapRecord } from "./scrapItems";
 import { useSettledFeatureState } from "../../features/useFeatureAccess";
+import { useMeaningSearch } from "./meaning/useMeaningSearch";
+import { MeaningSearchControl } from "./meaning/MeaningSearchControl";
 import { parsePlaceHash, placeHash, type ScrapsPlace } from "./scrapsPlace";
 import type { CollageRecord } from "./collageRecord";
 import {
@@ -64,18 +69,22 @@ const centeredMessageStyle: React.CSSProperties = {
 
 type ScrapsMode = "browse" | "create";
 const SCRAPS_PAGE_SIZE = 500;
-const FILTER_PAGE_SIZE = 1_000;
+const HISTORY_PAGE_SIZE = 1_000;
 
 export function ScrapsPage() {
   const [records, setRecords] = useState<ScrapRecord[]>([]);
   const [nextCursor, setNextCursor] = useState<ScrapsResponse["nextCursor"]>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [searchHistory, setSearchHistory] = useState(false);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
+  /**
+   * True once the archive has been gathered. Scraps collected in another tab
+   * gather it again, and the page keeps showing what it has meanwhile: taking
+   * the studio down for the reload would reopen it on the collage it was
+   * first opened with, which looked like every newer piece had vanished.
+   */
+  const [gathered, setGathered] = useState(false);
   const [mode, setMode] = useState<ScrapsMode>("browse");
   const [editing, setEditing] = useState<CollageRecord | null>(null);
   const [studioOpen, setStudioOpen] = useState(false);
@@ -90,6 +99,41 @@ export function ScrapsPage() {
         .map(toScrapItem),
     [records],
   );
+  /**
+   * Deletes every stored encounter of these scraps. The collage folds repeat
+   * encounters into one scrap, so each is matched back to all of its records.
+   */
+  const deleteScraps = useCallback(
+    async (doomed: ScrapItem[]) => {
+      const canonicalKeys = new Set(doomed.map(canonicalScrapKey));
+      const itemKeys = new Set(doomed.map((item) => item.key));
+      const ids = records
+        .filter((record) => {
+          const item = toScrapItem(record);
+          return (
+            canonicalKeys.has(canonicalScrapKey(item)) || itemKeys.has(item.key)
+          );
+        })
+        .map((record) => record.id);
+      if (ids.length === 0) return;
+      const response = (await browser.runtime.sendMessage({
+        type: "DELETE_SCRAPS",
+        ids,
+      })) as { deleted?: number; error?: string } | undefined;
+      if (!response || response.error || typeof response.deleted !== "number") {
+        throw new Error(response?.error ?? "DELETE_SCRAPS returned no response");
+      }
+      const removed = new Set(ids);
+      setRecords((current) =>
+        current.filter((record) => !removed.has(record.id)),
+      );
+    },
+    [records],
+  );
+  // Deleting before the whole archive has loaded would miss older encounters
+  // of the same scrap, which would then reappear once they arrive.
+  const ready = gathered || (!loading && !error);
+  const archiveComplete = !loading && !error && nextCursor === null && !historyError;
   const [createMode, setCreateMode] = useState<
     typeof import("./CreateMode") | null
   >(null);
@@ -97,6 +141,8 @@ export function ScrapsPage() {
   const seed = useMemo(() => Math.floor(Date.now() / 86_400_000), []);
   const collagesFeature = useSettledFeatureState("SCRAP_COLLAGES");
   const canCreate = collagesFeature?.enabled ?? false;
+  const meaningFeature = useSettledFeatureState("SCRAP_MEANING_SEARCH");
+  const meaning = useMeaningSearch(items, meaningFeature?.enabled ?? false);
   /** The saved collage open in the studio, once it has an id to name. */
   const [openCollageId, setOpenCollageId] = useState<string | null>(null);
   /**
@@ -236,13 +282,33 @@ export function ScrapsPage() {
     return () => browser.runtime.onMessage.removeListener(onMessage);
   }, []);
 
+  // On iPhone, Safari's copy of the extension and the app's share scraps.
+  // Opening the page brings in what the other one collected or deleted since
+  // their last sync, then lists the scraps again. Elsewhere nothing syncs.
+  useEffect(() => {
+    let cancelled = false;
+    browser.runtime
+      .sendMessage({ type: "SYNC_DEVICES" })
+      .then((result) => {
+        const synced =
+          typeof result === "object" && result !== null && "synced" in result
+            ? result.synced === true
+            : false;
+        if (synced && !cancelled) setRevision((value) => value + 1);
+      })
+      .catch((syncError) => {
+        console.warn("Could not sync scraps with this iPhone's other copy:", syncError);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     requestGeneration.current += 1;
     setLoading(true);
-    setLoadingMore(false);
-    setLoadMoreError(null);
-    setRecords([]);
+    setHistoryError(null);
     setNextCursor(null);
     const loadScraps = async () => {
       try {
@@ -257,6 +323,7 @@ export function ScrapsPage() {
           setRecords(response.scraps);
           setNextCursor(response.nextCursor);
           setError(null);
+          setGathered(true);
         }
       } catch (loadError) {
         const message =
@@ -274,11 +341,12 @@ export function ScrapsPage() {
     };
   }, [revision]);
 
+  // The first page paints quickly; the rest of the archive follows in the
+  // background so the count, collage, search, and filters cover everything.
   useEffect(() => {
-    if (!searchHistory || !nextCursor || loading || loadingMore) return;
+    if (!nextCursor || loading || historyError) return;
     let cancelled = false;
     const generation = requestGeneration.current;
-    setLoadingHistory(true);
 
     const loadHistory = async () => {
       const olderRecords: ScrapRecord[] = [];
@@ -287,7 +355,7 @@ export function ScrapsPage() {
         while (cursor && !cancelled && generation === requestGeneration.current) {
           const response = (await browser.runtime.sendMessage({
             type: "GET_SCRAPS",
-            options: { limit: FILTER_PAGE_SIZE, cursor },
+            options: { limit: HISTORY_PAGE_SIZE, cursor },
           })) as ScrapsResponse;
           if (!isScrapsResponse(response)) {
             throw new Error("GET_SCRAPS returned an invalid response");
@@ -298,18 +366,13 @@ export function ScrapsPage() {
         if (!cancelled && generation === requestGeneration.current) {
           setRecords((current) => [...current, ...olderRecords]);
           setNextCursor(cursor);
-          setLoadMoreError(null);
+          setHistoryError(null);
         }
       } catch (loadError) {
         if (!cancelled && generation === requestGeneration.current) {
-          setLoadMoreError(
+          setHistoryError(
             loadError instanceof Error ? loadError.message : String(loadError),
           );
-          setSearchHistory(false);
-        }
-      } finally {
-        if (!cancelled && generation === requestGeneration.current) {
-          setLoadingHistory(false);
         }
       }
     };
@@ -318,94 +381,20 @@ export function ScrapsPage() {
     return () => {
       cancelled = true;
     };
-  }, [searchHistory, nextCursor, loading, loadingMore]);
-
-  const loadMore = async () => {
-    if (!nextCursor || loadingMore || loadingHistory) return;
-    const generation = requestGeneration.current;
-    setLoadingMore(true);
-    try {
-      const response = (await browser.runtime.sendMessage({
-        type: "GET_SCRAPS",
-        options: { limit: SCRAPS_PAGE_SIZE, cursor: nextCursor },
-      })) as ScrapsResponse;
-      if (!isScrapsResponse(response)) {
-        throw new Error("GET_SCRAPS returned an invalid response");
-      }
-      if (generation === requestGeneration.current) {
-        setRecords((current) => [...current, ...response.scraps]);
-        setNextCursor(response.nextCursor);
-        setLoadMoreError(null);
-      }
-    } catch (loadError) {
-      if (generation === requestGeneration.current) {
-        setLoadMoreError(loadError instanceof Error ? loadError.message : String(loadError));
-      }
-    } finally {
-      if (generation === requestGeneration.current) setLoadingMore(false);
-    }
-  };
+  }, [nextCursor, loading, historyError]);
 
   return (
     <main
+      className="scraps-page"
       style={{
         position: "relative",
         width: "100vw",
-        height: "100vh",
         overflow: "hidden",
         background: "#faf9f6",
         color: "#3d3833",
       }}
     >
       {canCreate && <style>{COLLAGE_STYLES}</style>}
-      <svg
-        width="100%"
-        height="100%"
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: 1,
-          opacity: 0.7,
-          pointerEvents: "none",
-          mixBlendMode: "multiply",
-        }}
-      >
-        <defs>
-          <filter id="scraps-paper-noise">
-            <feTurbulence
-              type="fractalNoise"
-              baseFrequency="0.9"
-              numOctaves="3"
-              stitchTiles="stitch"
-            />
-            <feColorMatrix
-              type="matrix"
-              values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 2 -1"
-            />
-          </filter>
-          <filter id="scraps-paper-grain">
-            <feTurbulence
-              type="turbulence"
-              baseFrequency="0.5"
-              numOctaves="2"
-              stitchTiles="stitch"
-            />
-            <feColorMatrix type="saturate" values="0" />
-            <feComponentTransfer>
-              <feFuncA type="discrete" tableValues="0 0.2 0.3 0.4" />
-            </feComponentTransfer>
-          </filter>
-        </defs>
-        <rect width="100%" height="100%" filter="url(#scraps-paper-noise)" />
-        <rect
-          width="100%"
-          height="100%"
-          filter="url(#scraps-paper-grain)"
-          style={{ opacity: 0.3 }}
-        />
-      </svg>
-
       <div
         style={{
           position: "absolute",
@@ -448,17 +437,22 @@ export function ScrapsPage() {
           border-radius: 4px;
           background: rgba(245, 240, 232, 0.9);
         }
+        /* The visible height, so on a phone nothing sits under the browser's
+           own toolbar; browsers without dynamic units keep the plain one. */
+        .scraps-page { height: 100vh; height: 100dvh; }
         .scraps-heading { top: 14px; width: min(520px, calc(100vw - 320px)); }
         .scraps-stage { inset: 64px 0 0; }
-        .scraps-load-more { position: absolute; top: 80px; right: 16px; z-index: 5; text-align: center; }
+        .scraps-history-error { position: absolute; top: 80px; right: 16px; z-index: 5; color: #827a72; font-size: 11px; }
         @media (max-width: 620px) {
           .scraps-heading { top: 48px; width: calc(100vw - 32px); }
           .scraps-stage { inset: 104px 0 0; }
-          .scraps-load-more { top: 120px; }
+          .scraps-history-error { top: 120px; }
+          /* An open collage takes the screen; its own back link returns to the list. */
+          .scraps-heading--studio { display: none; }
         }
       `}</style>
       <header
-        className="scraps-heading"
+        className={`scraps-heading${mode === "create" && studioOpen ? " scraps-heading--studio" : ""}`}
         style={{
           position: "absolute",
           left: "50%",
@@ -514,7 +508,7 @@ export function ScrapsPage() {
         )}
       </header>
 
-      {mode === "browse" && !loading && !error && items.length > 0 && (
+      {mode === "browse" && ready && items.length > 0 && (
         <div
           className="scraps-stage"
           style={{
@@ -526,46 +520,34 @@ export function ScrapsPage() {
             items={items}
             seed={seed}
             showKindFilter={true}
-            onFilterIntent={() => setSearchHistory(true)}
+            onDeleteScraps={archiveComplete ? deleteScraps : undefined}
+            meaningScore={meaning.scoreFor}
+            onSearchChange={
+              meaning.supported ? meaning.onSearchChange : undefined
+            }
+            searchTools={
+              meaning.supported ? (
+                <MeaningSearchControl
+                  status={meaning.status}
+                  onEnable={meaning.enable}
+                  onRemove={() => void meaning.remove()}
+                />
+              ) : undefined
+            }
           />
         </div>
       )}
 
-      {!loading && !error && nextCursor && (
-        <div className="scraps-load-more">
-          <button
-            type="button"
-            onClick={() => void loadMore()}
-            disabled={loadingMore || loadingHistory}
-            style={{
-              border: "1px solid #827a72",
-              borderRadius: 999,
-              background: "#faf9f6",
-              color: "#3d3833",
-              padding: "9px 16px",
-              fontFamily: '"Martian Mono", monospace',
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            {loadingHistory
-              ? "searching older scraps..."
-              : loadingMore
-                ? "gathering more..."
-                : "load more scraps"}
-          </button>
-          {loadMoreError && (
-            <div
-              role="alert"
-              style={{ marginTop: 6, color: "#827a72", fontSize: 11 }}
-            >
-              scraps could not be gathered
-            </div>
-          )}
+      {historyError && (
+        <div role="alert" className="scraps-history-error">
+          older scraps could not be gathered
         </div>
       )}
 
-      {mode === "create" && !loading && !error && createMode && (
+      {/* An open studio stays mounted while the scraps reload (as they do
+          whenever another tab collects some), or it would reopen as it was
+          when first opened and lose everything since, its link included. */}
+      {mode === "create" && ready && createMode && (
         <createMode.CreateMode
           items={items}
           editing={editing}
@@ -582,17 +564,17 @@ export function ScrapsPage() {
           onLeave={closeStudio}
         />
       )}
-      {mode === "create" && !loading && !error && !createMode && (
+      {mode === "create" && ready && !createMode && (
         <div style={centeredMessageStyle}>
           {createError ? "collage tools could not be opened" : "opening collage tools..."}
         </div>
       )}
 
-      {loading && <div style={centeredMessageStyle}>gathering scraps...</div>}
-      {!loading && error && (
+      {!ready && loading && <div style={centeredMessageStyle}>gathering scraps...</div>}
+      {!ready && !loading && error && (
         <div style={centeredMessageStyle}>scraps could not be gathered</div>
       )}
-      {mode === "browse" && !loading && !error && items.length === 0 && (
+      {mode === "browse" && ready && !loading && items.length === 0 && (
         <div style={centeredMessageStyle}>
           nothing has washed up yet - browse a while
         </div>

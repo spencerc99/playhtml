@@ -12,10 +12,7 @@ import {
 import { GRIP_REACH } from "../entrypoints/scraps/handleZones";
 
 const RESTING: PanelState = {
-  turnedOver: false,
-  cropping: false,
-  transforming: false,
-  cuttingOut: false,
+  mode: "idle",
   piecesHereOpen: false,
   gestureRunning: false,
   peekHeld: false,
@@ -32,12 +29,12 @@ describe("which panel is showing", () => {
   });
 
   it("gives the cutout's edge control the space over the strip", () => {
-    expect(visiblePanel({ ...RESTING, cuttingOut: true })).toBe("cutout");
+    expect(visiblePanel({ ...RESTING, mode: "cutout" })).toBe("cutout");
   });
 
   it("keeps the edge control up over a stack menu", () => {
     expect(
-      visiblePanel({ ...RESTING, cuttingOut: true, piecesHereOpen: true }),
+      visiblePanel({ ...RESTING, mode: "cutout", piecesHereOpen: true }),
     ).toBe("cutout");
   });
 
@@ -45,8 +42,7 @@ describe("which panel is showing", () => {
     expect(
       visiblePanel({
         ...RESTING,
-        cropping: true,
-        cuttingOut: true,
+        mode: "crop",
         piecesHereOpen: true,
       }),
     ).toBe("crop");
@@ -64,33 +60,36 @@ describe("which panel is showing", () => {
   });
 
   it("shows nothing over a modal transform", () => {
-    expect(visiblePanel({ ...RESTING, transforming: true })).toBe("none");
+    expect(visiblePanel({ ...RESTING, mode: "rotate" })).toBe("none");
+    expect(visiblePanel({ ...RESTING, mode: "scale" })).toBe("none");
   });
 
   it("shows nothing on the back of the collage", () => {
     expect(
-      visiblePanel({ ...RESTING, turnedOver: true, cuttingOut: true }),
+      visiblePanel({ ...RESTING, mode: "back", piecesHereOpen: true }),
     ).toBe("none");
   });
 
   it("returns the strip when the tool is done", () => {
-    const during = { ...RESTING, cuttingOut: true };
+    const during: PanelState = { ...RESTING, mode: "cutout" };
     expect(visiblePanel(during)).toBe("cutout");
-    expect(visiblePanel({ ...during, cuttingOut: false })).toBe("pieceActions");
+    expect(visiblePanel({ ...during, mode: "idle" })).toBe("pieceActions");
   });
 });
 
 describe("whether a tool holds the collage", () => {
   it("counts a crop, a transform and a cutout", () => {
-    expect(toolSessionActive({ ...RESTING, cropping: true })).toBe(true);
-    expect(toolSessionActive({ ...RESTING, transforming: true })).toBe(true);
-    expect(toolSessionActive({ ...RESTING, cuttingOut: true })).toBe(true);
+    expect(toolSessionActive({ ...RESTING, mode: "crop" })).toBe(true);
+    expect(toolSessionActive({ ...RESTING, mode: "rotate" })).toBe(true);
+    expect(toolSessionActive({ ...RESTING, mode: "scale" })).toBe(true);
+    expect(toolSessionActive({ ...RESTING, mode: "cutout" })).toBe(true);
   });
 
   it("does not count a menu, a drag or a plain selection", () => {
     expect(toolSessionActive({ ...RESTING, piecesHereOpen: true })).toBe(false);
     expect(toolSessionActive({ ...RESTING, gestureRunning: true })).toBe(false);
     expect(toolSessionActive(RESTING)).toBe(false);
+    expect(toolSessionActive({ ...RESTING, mode: "back" })).toBe(false);
   });
 });
 
@@ -113,6 +112,13 @@ describe("placing a panel beside a piece", () => {
     const piece = { x: 400, y: 10, width: 200, height: 100 };
     expect(placeBesidePiece(piece, panel, 1, frame).top).toBe(
       10 + 100 + GRIP_REACH + PANEL_GAP,
+    );
+  });
+
+  it("keeps further room below for a knob drawn under the piece", () => {
+    const piece = { x: 400, y: 10, width: 200, height: 100 };
+    expect(placeBesidePiece(piece, panel, 0.5, frame, 40).top).toBe(
+      10 + 100 + (GRIP_REACH + PANEL_GAP + 40) / 0.5,
     );
   });
 

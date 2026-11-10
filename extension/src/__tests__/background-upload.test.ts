@@ -9,6 +9,7 @@ const originalDefineBackground = (globalThis as any).defineBackground;
 function makeEvent(
   id: string,
   type: CollectionEvent["type"] = "navigation",
+  url = "https://example.com/",
 ): CollectionEvent {
   return {
     id,
@@ -18,7 +19,7 @@ function makeEvent(
     meta: {
       pid: "pid",
       sid: "sid",
-      url: "https://example.com/",
+      url,
       vw: 1024,
       vh: 768,
       tz: "America/New_York",
@@ -40,10 +41,12 @@ describe("background upload flushing", () => {
     }
   });
 
-  it("drains up to the worker request limit per flush", async () => {
+  it("drains up to the worker request limit per flush, keeping just-me and off sites local", async () => {
     const navigationEvent = makeEvent("event-1");
     const scrapEvent = makeEvent("scrap-1", "element");
-    const pendingEvents = [navigationEvent, scrapEvent];
+    const justMeEvent = makeEvent("me-1", "navigation", "https://news.chase.com/a");
+    const offEvent = makeEvent("off-1", "navigation", "https://bank.com/");
+    const pendingEvents = [navigationEvent, scrapEvent, justMeEvent, offEvent];
     const store = {
       getPendingEvents: vi.fn().mockResolvedValue(pendingEvents),
       markEventsAsUploaded: vi.fn().mockResolvedValue(undefined),
@@ -62,7 +65,7 @@ describe("background upload flushing", () => {
       uploadEvents,
     }));
     vi.doMock("../storage/restore", () => ({
-      fetchEventsByPid: vi.fn(),
+      restoreEventsFromServer: vi.fn(),
     }));
     vi.doMock("webextension-polyfill", () => ({
       default: {
@@ -71,6 +74,10 @@ describe("background upload flushing", () => {
             get: vi.fn().mockResolvedValue({
               collection_mode_navigation: "shared",
               collection_mode_element: "shared",
+              site_settings: {
+                "chase.com": { level: "just-me", since: 1 },
+                "bank.com": { level: "off", since: 1 },
+              },
             }),
             set: vi.fn().mockResolvedValue(undefined),
             remove: vi.fn().mockResolvedValue(undefined),
@@ -108,6 +115,11 @@ describe("background upload flushing", () => {
     expect(response).toEqual({ success: true });
     expect(store.getPendingEvents).toHaveBeenCalledWith(500);
     expect(uploadEvents).toHaveBeenCalledWith([navigationEvent]);
-    expect(store.markEventsAsUploaded).toHaveBeenCalledWith(["event-1", "scrap-1"]);
+    expect(store.markEventsAsUploaded).toHaveBeenCalledWith([
+      "event-1",
+      "scrap-1",
+      "me-1",
+      "off-1",
+    ]);
   });
 });

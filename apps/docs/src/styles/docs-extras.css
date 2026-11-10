@@ -22,8 +22,10 @@
    --------------------------------------------------------------------- */
 
 :root {
-  /* Paper + ink */
+  /* Paper + ink. Code blocks use the homepage's near-white toy-box color
+     so they read as cards sitting on the warm paper. */
   --ph-paper: #f4efe5;
+  --ph-code-paper: #fffff9;
   --ph-paper-warm: #ebe4d5;
   --ph-paper-deep: #e0d8c6;
   --ph-ink: #1c1c1c;
@@ -50,12 +52,16 @@
   --ph-grid-line: rgba(39, 75, 158, 0.08);
   --ph-grid-line-strong: rgba(39, 75, 158, 0.14);
   --ph-grid-size: 28px;
+  /* Page background: a faint dot notebook grid */
+  --ph-dot: rgba(40, 40, 48, 0.22);
+  --ph-dot-size: 18px;
 
   /* Type scale (docs-grade; Starlight tokens are overridden below) */
-  --ph-font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --ph-font-display:
+    "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
   --ph-font-body: "Play", ui-sans-serif, system-ui, sans-serif;
-  --ph-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo,
-    monospace;
+  --ph-font-mono:
+    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --ph-font-wordmark: "Carter One", var(--ph-font-display);
   --ph-font-neon: "Yellowtail", var(--ph-font-display);
 
@@ -66,12 +72,15 @@
 
   /* Elevation — Lego-brick 2px offset. No blur. */
   --ph-shadow-brick: 2px 2px 0 0 var(--ph-ink);
+  --ph-shadow-card: 6px 6px 0 var(--ph-ink);
+  --ph-shadow-card-hover: 8px 8px 0 var(--ph-ink);
   --ph-shadow-brick-pressed: 0 0 0 0 var(--ph-ink);
 }
 
 /* Dark-mode token stub — graphite board instead of paper. Refined later. */
 :root[data-theme="dark"] {
   --ph-paper: #1b1e1a;
+  --ph-code-paper: #24271f;
   --ph-paper-warm: #22251f;
   --ph-paper-deep: #2a2d26;
   --ph-ink: #eae4d3;
@@ -86,7 +95,10 @@
   --ph-ultramarine-wash: rgba(138, 166, 255, 0.14);
   --ph-grid-line: rgba(138, 166, 255, 0.08);
   --ph-grid-line-strong: rgba(138, 166, 255, 0.14);
+  --ph-dot: rgba(234, 228, 211, 0.16);
   --ph-shadow-brick: 2px 2px 0 0 rgba(0, 0, 0, 0.6);
+  --ph-shadow-card: 6px 6px 0 rgba(0, 0, 0, 0.6);
+  --ph-shadow-card-hover: 8px 8px 0 rgba(0, 0, 0, 0.6);
 }
 
 /* ---------------------------------------------------------------------
@@ -132,7 +144,7 @@
 }
 
 /* ---------------------------------------------------------------------
-   3. Page surface — paper, graph grid, subtle grain
+   3. Page surface — paper, dot grid, subtle grain
    --------------------------------------------------------------------- */
 
 html,
@@ -156,13 +168,12 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background-image: linear-gradient(
-      to right,
-      var(--ph-grid-line) 1px,
-      transparent 1px
-    ),
-    linear-gradient(to bottom, var(--ph-grid-line) 1px, transparent 1px);
-  background-size: var(--ph-grid-size) var(--ph-grid-size);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    var(--ph-dot) 0.75px,
+    transparent 1.15px
+  );
+  background-size: var(--ph-dot-size) var(--ph-dot-size);
   mask-image: linear-gradient(
     to bottom,
     rgba(0, 0, 0, 0.9),
@@ -189,8 +200,7 @@ h3,
 h4,
 h5,
 h6,
-.sl-markdown-content
-  :is(h1, h2, h3, h4, h5, h6):not(:where(.not-content *)) {
+.sl-markdown-content :is(h1, h2, h3, h4, h5, h6):not(:where(.not-content *)) {
   font-family: var(--ph-font-display);
   font-weight: 700;
   letter-spacing: -0.015em;
@@ -280,7 +290,7 @@ kbd,
 }
 
 /* ---------------------------------------------------------------------
-   5. Header (wordmark + presence)
+   5. Header (matches the playhtml.fun homepage header)
    --------------------------------------------------------------------- */
 
 header.header {
@@ -299,41 +309,91 @@ header.header {
   min-width: 0;
 }
 
-/* Wordmark — "play" as link, "h-t-m-l" each as a can-toggle letter */
-.ph-wordmark {
+/* Compact theme toggle: moon in light mode, sun in dark mode. */
+.ph-theme-toggle {
   display: inline-flex;
-  align-items: baseline;
-  gap: 0;
-  font-family: var(--ph-font-wordmark);
-  font-size: 1.55rem;
-  line-height: 1;
-  letter-spacing: -0.01em;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
   color: var(--ph-ink);
-  user-select: none;
-}
-.ph-wordmark__home {
-  color: inherit;
-  text-decoration: none;
-  transition: color var(--ph-motion-fast);
-}
-.ph-wordmark__home:hover .ph-wordmark__stem {
-  color: var(--ph-ultramarine-deep);
-}
-.ph-wordmark__letter {
-  display: inline-block;
   cursor: pointer;
+}
+.ph-theme-toggle:hover {
+  color: var(--ph-ultramarine-deep);
+  background: var(--ph-ultramarine-wash);
+}
+.ph-theme-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+.ph-theme-toggle__moon {
+  fill: currentColor;
+}
+.ph-theme-toggle__sun {
+  display: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+:root[data-theme="dark"] .ph-theme-toggle__moon {
+  display: none;
+}
+:root[data-theme="dark"] .ph-theme-toggle__sun {
+  display: block;
+}
+
+/* Phone menu: site links above Starlight's social icons and theme toggle. */
+.ph-mobile-sitenav {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0 1rem;
+  border-top: 1px solid var(--ph-hairline);
+  font-family: var(--ph-font-body);
+}
+/* Beats the .sidebar-content a rules, since this nav sits inside the sidebar. */
+.sidebar-content .ph-mobile-sitenav a.ph-sitenav__link {
+  padding-inline: 0;
+  border-left: 0;
+  background: none;
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--ph-ink-2);
+  text-decoration: none;
+}
+.sidebar-content .ph-mobile-sitenav a.ph-sitenav__link[aria-current="page"] {
   color: var(--ph-ink);
-  transition: color var(--ph-motion-fast), text-shadow var(--ph-motion),
-    transform var(--ph-motion-fast);
+  text-decoration: underline 2px var(--ph-ultramarine);
+  text-underline-offset: 5px;
 }
-.ph-wordmark__letter:hover {
-  transform: translateY(-1px);
+.sidebar-content .ph-mobile-sitenav a.ph-mobile-sitenav__support {
+  text-decoration: none;
+  border-left: 1px solid #1c1c1c;
+  border-radius: 6px;
+  background: #e8a63a;
+  color: #1c1c1c;
 }
-/* playhtml adds the `toggled` class when a can-toggle element is toggled on */
-.ph-wordmark__letter.toggled {
-  color: var(--ph-mustard);
-  text-shadow: 0 0 0.6rem rgba(232, 166, 58, 0.55),
-    0 0 1.6rem rgba(232, 166, 58, 0.25);
+.ph-mobile-sitenav__support {
+  margin-top: 1rem;
+  min-height: 44px;
+}
+
+@media (max-width: 50rem) {
+  .ph-header {
+    gap: 12px;
+  }
+  .ph-header__wordmark {
+    font-size: 22px;
+  }
+  .ph-header__menu,
+  .ph-header__right {
+    display: none;
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -391,7 +451,9 @@ header.header {
   border-left: 2px solid transparent;
   border-radius: 0;
   padding-block: 0.35rem;
-  transition: color var(--ph-motion-fast), border-color var(--ph-motion-fast),
+  transition:
+    color var(--ph-motion-fast),
+    border-color var(--ph-motion-fast),
     background var(--ph-motion-fast);
 }
 .sidebar-content a:hover {
@@ -403,76 +465,6 @@ header.header {
   border-left-color: var(--ph-ultramarine);
   background: var(--ph-ultramarine-wash);
   font-weight: 700;
-}
-
-/* ---------------------------------------------------------------------
-   7. Hero (splash)
-   --------------------------------------------------------------------- */
-
-/* Force the splash hero into a single predictable column. Starlight's Hero
- * uses Astro-scoped styles for `.hero`, `.stack`, and `.copy`; because we
- * override the component, those scoped rules don't bind to our markup and
- * the flex defaults (row) leak through. We re-declare them here.
- *
- * Extra care: the default 7fr/4fr grid at wide screens reserves a column for
- * an image we never render; keeping one column keeps the hero readable. */
-.ph-docs-hero {
-  display: grid !important;
-  grid-template-columns: 1fr !important;
-  padding-block: clamp(1.2rem, 3vw, 2rem) !important;
-  gap: 1.1rem !important;
-}
-.ph-docs-hero .stack {
-  display: flex;
-  flex-direction: column;
-  max-width: 60ch;
-  gap: 1rem;
-}
-.ph-docs-hero .copy {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  text-align: left;
-  gap: 0.6rem;
-}
-/* Mono kicker sitting above the splash H1, in the register of the rest of
- * the site's figure labels (FIG. 01 etc.). Calls out playhtml's positioning
- * — infrastructure, not a product. */
-.ph-docs-hero__kicker {
-  font-family: var(--ph-font-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--ph-ink-3);
-  margin: 0 0 0.4rem;
-  line-height: 1.2;
-}
-.ph-docs-hero h1 {
-  font-family: var(--ph-font-display);
-  font-weight: 800;
-  /* Sized to fit the splash tagline on a single line inside Starlight's
-   * ~560px copy column. If you extend the tagline past ~22 characters,
-   * revisit the max or re-measure with the DOM. */
-  font-size: clamp(2rem, 1.7rem + 1.6vw, 3rem);
-  letter-spacing: -0.025em;
-  line-height: 1.05;
-  color: var(--ph-ink);
-  margin: 0;
-  text-wrap: balance;
-}
-.ph-docs-hero .tagline {
-  font-family: var(--ph-font-body);
-  font-size: clamp(1rem, 0.95rem + 0.4vw, 1.15rem);
-  color: var(--ph-ink-2);
-  max-width: 52ch;
-  line-height: 1.5;
-  margin: 0;
-}
-.ph-docs-hero .actions {
-  justify-content: flex-start;
-  flex-wrap: wrap;
-  gap: 0.7rem;
-  margin-top: 0.25rem;
 }
 
 /* ---------------------------------------------------------------------
@@ -489,8 +481,11 @@ header.header {
   border: 2px solid var(--ph-ink);
   white-space: nowrap;
   line-height: 1.2;
-  transition: transform var(--ph-motion-fast), box-shadow var(--ph-motion-fast),
-    background var(--ph-motion-fast), color var(--ph-motion-fast);
+  transition:
+    transform var(--ph-motion-fast),
+    box-shadow var(--ph-motion-fast),
+    background var(--ph-motion-fast),
+    color var(--ph-motion-fast);
   box-shadow: var(--ph-shadow-brick);
 }
 .sl-link-button:hover,
@@ -519,206 +514,72 @@ header.header {
 }
 
 /* ---------------------------------------------------------------------
-   8b. Splash-only density scaffolding
-   --------------------------------------------------------------------- */
-
-/* The splash page uses its own MDX blocks (quickstart + live demo + catalog)
- * so we can control density without re-implementing the hero. */
-.ph-splash-pitch,
-.ph-splash-quickstart,
-.ph-splash-section {
-  max-width: 68rem;
-  margin-block: clamp(1.1rem, 2vw, 1.6rem);
-}
-.ph-splash-pitch__list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.55rem 1.2rem;
-}
-@media (min-width: 48rem) {
-  .ph-splash-pitch__list {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-.ph-splash-pitch__list > li {
-  position: relative;
-  padding-left: 1.1rem;
-  font-size: 0.95rem;
-  line-height: 1.45;
-  color: var(--ph-ink-2, inherit);
-}
-.ph-splash-pitch__list > li::before {
-  content: "→";
-  position: absolute;
-  left: 0;
-  top: 0;
-  color: var(--ph-ink-3);
-  font-family: var(--ph-font-mono);
-  font-size: 0.85em;
-}
-.ph-splash-pitch__list > li strong {
-  color: var(--ph-ink);
-}
-.ph-splash-quickstart {
-  display: block;
-}
-.ph-splash-quickstart__label,
-.ph-splash-section__label {
-  font-family: var(--ph-font-mono);
-  font-size: 0.65rem;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--ph-ink-3);
-  padding-bottom: 0.3rem;
-  border-bottom: 1px dashed var(--ph-hairline-soft);
-  margin-bottom: 0.75rem;
-}
-.ph-splash-quickstart .ph-copy {
-  margin: 0;
-}
-
-/* Furniture variant: the lamp floats at the top-right of the splash content
- * like a hanging fixture, with the museum-label annotation beside it. Pinned
- * to the splash hero area via the parent `.sl-markdown-content`. On narrow
- * screens it collapses back into the flow so it doesn't collide with copy. */
-.ph-splash-lamp {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.9rem;
-  margin: 0.4rem 0 0;
-  padding: 0;
-}
-.main-frame .sl-markdown-content,
-[data-has-hero] .sl-markdown-content {
-  position: relative;
-}
-.ph-splash-lamp--furniture {
-  margin: 0;
-  padding: 0;
-  flex-direction: row-reverse;
-  justify-content: flex-end;
-  gap: 0.75rem;
-}
-.ph-splash-lamp--furniture .ph-lamp__img {
-  max-width: 84px;
-  height: auto;
-}
-@media (min-width: 60rem) {
-  .ph-splash-lamp--furniture {
-    position: absolute;
-    top: -16rem;
-    right: 0;
-    flex-direction: row;
-    align-items: flex-start;
-    gap: 0.75rem;
-    z-index: 2;
-    pointer-events: auto;
-  }
-  .ph-splash-lamp--furniture .ph-lamp__img {
-    max-width: 120px;
-  }
-  .ph-splash-lamp--furniture .ph-splash-lamp__tag {
-    margin-top: 2.5rem;
-  }
-}
-/* Keep the splash content area unclipped so the hanging lamp can extend up
- * into the hero region. */
-.main-frame .sl-markdown-content,
-[data-has-hero] .sl-markdown-content {
-  overflow: visible;
-}
-.ph-splash-lamp__tag {
-  font-family: var(--ph-font-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ph-ink-3);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.3rem 0.55rem;
-  border: 1px solid var(--ph-hairline);
-  background: var(--ph-paper, #fff);
-  border-radius: 3px;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
-}
-.ph-splash-lamp__pip {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #6cd97e;
-  box-shadow: 0 0 0 3px rgba(108, 217, 126, 0.18);
-  animation: ph-splash-lamp-pip 1.6s ease-in-out infinite;
-}
-@keyframes ph-splash-lamp-pip {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
-}
-
-/* Splash catalog: 2-col on desktop, no stagger, no wasted gutter. The default
- * CardGrid staggers for marketing vibe — we want a tight specimen sheet. */
-.ph-splash-section .card-grid,
-.ph-splash-section [class*="CardGrid"] {
-  grid-template-columns: 1fr !important;
-  gap: 0.75rem !important;
-}
-@media (min-width: 48rem) {
-  .ph-splash-section .card-grid,
-  .ph-splash-section [class*="CardGrid"] {
-    grid-template-columns: 1fr 1fr !important;
-  }
-}
-@media (min-width: 72rem) {
-  .ph-splash-section .card-grid,
-  .ph-splash-section [class*="CardGrid"] {
-    grid-template-columns: 1fr 1fr 1fr !important;
-  }
-}
-/* Nuke any stagger transform applied by Starlight so the cards land on a
- * clean grid. */
-.ph-splash-section .card-grid > *,
-.ph-splash-section [class*="CardGrid"] > * {
-  transform: none !important;
-  margin-inline-start: 0 !important;
-}
-
-/* ---------------------------------------------------------------------
    9. Card grid (Starlight <Card> / <CardGrid>)
    --------------------------------------------------------------------- */
 
+/* Cards are the homepage's toy-box card: near-white dotted paper, ink
+ * border, hard ink shadow. Prev/next pagination uses the same card. */
 .sl-link-card,
 starlight-card,
-.card {
-  background: var(--ph-paper-warm);
-  border: 1px solid var(--ph-hairline);
-  border-radius: 4px;
+.card,
+.pagination-links a {
+  background-color: var(--ph-code-paper);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    var(--ph-dot) 0.75px,
+    transparent 1.15px
+  );
+  background-size: 18px 18px;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 12px;
   padding: 1.15rem 1.2rem 1rem;
-  box-shadow: var(--ph-shadow-brick);
+  box-shadow: var(--ph-shadow-card);
+  color: var(--ph-ink);
   position: relative;
-  transition: box-shadow var(--ph-motion), background var(--ph-motion);
+  transition:
+    transform var(--ph-motion-fast),
+    box-shadow var(--ph-motion-fast);
 }
-/* No translate on hover — combined with Starlight's <CardGrid stagger> offset,
- * the transform caused a visible jitter. Deepen the shadow + warm the
- * background instead; gives feedback without layout shift. */
+/* No translate on cards: with Starlight's <CardGrid stagger> offset it
+ * jittered. Deepen the shadow instead. */
 .sl-link-card:hover,
 .card:hover {
-  box-shadow: 4px 4px 0 0 var(--ph-ink);
-  background: color-mix(in srgb, var(--ph-sage-wash) 40%, var(--ph-paper-warm));
+  box-shadow: var(--ph-shadow-card-hover);
 }
-/* Museum-label "FIG." corner */
-.sl-link-card::before,
-.card::before {
-  content: "FIG.";
-  position: absolute;
-  top: 0.55rem;
-  right: 0.75rem;
-  font-family: var(--ph-font-mono);
-  font-size: 0.6rem;
-  letter-spacing: 0.18em;
-  color: var(--ph-ink-3);
+.pagination-links a:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--ph-shadow-card-hover);
+}
+.pagination-links a .link-title {
+  font-family: var(--ph-font-display);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ph-ink);
+}
+/* Phones: keep prev and next side by side as two compact cards instead of
+ * stacking them into two full-width rows. */
+@media (max-width: 50rem) {
+  .pagination-links {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+  .pagination-links a {
+    gap: 0.35rem;
+    padding: 0.6rem 0.7rem;
+    font-size: 0.7rem;
+    line-height: 1.3;
+    box-shadow: 4px 4px 0 var(--ph-ink);
+  }
+  .pagination-links a .link-title {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.9rem;
+    line-height: 1.2;
+  }
+  .pagination-links a svg {
+    width: 1rem;
+    height: 1rem;
+  }
 }
 .sl-link-card .title,
 .sl-link-card .sl-link-card-title,
@@ -747,8 +608,8 @@ starlight-card,
 .expressive-code .frame {
   --ec-brdCol: var(--ph-ink);
   --ec-brdRad: 4px;
-  --ec-frm-edBg: var(--ph-paper);
-  --ec-frm-trmBg: var(--ph-paper);
+  --ec-frm-edBg: var(--ph-code-paper);
+  --ec-frm-trmBg: var(--ph-code-paper);
   font-family: var(--ph-font-mono);
 }
 .expressive-code .frame {
@@ -915,7 +776,7 @@ starlight-card,
   transition: transform var(--ph-motion-fast);
 }
 .ph-presence__dot--btn::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: -5px;
   border-radius: 999px;
@@ -1157,7 +1018,7 @@ nav.sidebar a:has(> .ph-sidebar-pip-stack) {
   border: 1px solid rgba(0, 0, 0, 0.28);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
 }
-:root[data-theme='dark'] .ph-sidebar-pip {
+:root[data-theme="dark"] .ph-sidebar-pip {
   border-color: rgba(255, 255, 255, 0.28);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
@@ -1184,7 +1045,7 @@ nav.sidebar a:has(> .ph-sidebar-pip-stack) {
   margin-block: 1.1rem;
   border: 1.5px solid var(--ph-ink);
   border-radius: 4px;
-  background: var(--ph-paper);
+  background: var(--ph-code-paper);
   box-shadow: var(--ph-shadow-brick);
   transition: box-shadow var(--ph-motion);
 }
@@ -1198,11 +1059,13 @@ nav.sidebar a:has(> .ph-sidebar-pip-stack) {
  * (bare .ph-copy without the variable) still pulses something sensible. */
 @keyframes ph-copy-pulse {
   0% {
-    box-shadow: var(--ph-shadow-brick),
+    box-shadow:
+      var(--ph-shadow-brick),
       0 0 0 0 var(--ph-copy-pulse-color, var(--ph-mustard));
   }
   45% {
-    box-shadow: var(--ph-shadow-brick),
+    box-shadow:
+      var(--ph-shadow-brick),
       0 0 0 7px
         color-mix(
           in srgb,
@@ -1211,11 +1074,13 @@ nav.sidebar a:has(> .ph-sidebar-pip-stack) {
         );
   }
   100% {
-    box-shadow: var(--ph-shadow-brick), 0 0 0 0 transparent;
+    box-shadow:
+      var(--ph-shadow-brick),
+      0 0 0 0 transparent;
   }
 }
 .ph-copy__frame {
-  background: var(--ph-paper);
+  background: var(--ph-code-paper);
   padding: 0.75rem 1rem 0.55rem;
   border-bottom: 1px solid var(--ph-hairline);
 }
@@ -1277,7 +1142,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   border: 1.5px solid var(--ph-ink);
   border-radius: 4px;
   padding: 0.75rem 1rem;
-  background: var(--ph-paper) !important;
+  background: var(--ph-code-paper) !important;
   box-shadow: var(--ph-shadow-brick);
   font-family: var(--ph-font-mono);
   font-size: 0.85rem;
@@ -1346,12 +1211,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
     black 14px,
     black 100%
   );
-  mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black 14px,
-    black 100%
-  );
+  mask-image: linear-gradient(to right, transparent 0, black 14px, black 100%);
 }
 /* Individual tally tick — thin vertical ink stroke.
  *
@@ -1510,7 +1370,9 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   border-radius: 3px;
   padding: 0.28rem 0.7rem;
   cursor: pointer;
-  transition: transform var(--ph-motion-fast), background var(--ph-motion-fast);
+  transition:
+    transform var(--ph-motion-fast),
+    background var(--ph-motion-fast);
   /* Always anchored to the meta bar's right edge. Doesn't matter whether
    * the tally is visible (wear=0 hides it via display:none) — the button
    * stays put. The flex container's justify-content is irrelevant once
@@ -1576,8 +1438,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 
 @keyframes ph-copy-particle-fly {
   0% {
-    transform: translate3d(-50%, -50%, 0) rotate(var(--sx, 0deg))
-      scale(0.85);
+    transform: translate3d(-50%, -50%, 0) rotate(var(--sx, 0deg)) scale(0.85);
     opacity: 0;
   }
   8% {
@@ -1626,8 +1487,11 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   background: var(--ph-paper-warm);
   color: var(--ph-ink);
   cursor: pointer;
-  transition: transform var(--ph-motion-fast), box-shadow var(--ph-motion-fast),
-    background var(--ph-motion-fast), color var(--ph-motion-fast);
+  transition:
+    transform var(--ph-motion-fast),
+    box-shadow var(--ph-motion-fast),
+    background var(--ph-motion-fast),
+    color var(--ph-motion-fast);
 }
 .ph-toggle:hover {
   transform: translate(-1px, -1px);
@@ -1647,7 +1511,9 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   border-radius: 999px;
   background: var(--ph-ink-3);
   border: 1px solid rgba(0, 0, 0, 0.35);
-  transition: background var(--ph-motion-fast), box-shadow var(--ph-motion-fast);
+  transition:
+    background var(--ph-motion-fast),
+    box-shadow var(--ph-motion-fast);
 }
 .ph-toggle.is-on .ph-toggle__dot {
   background: var(--ph-mustard);
@@ -1663,7 +1529,9 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   font-family: var(--ph-font-neon);
   font-size: 1.2em;
   color: var(--ph-brick);
-  text-shadow: 0 0 6px rgba(192, 55, 60, 0.35), 0 0 16px rgba(192, 55, 60, 0.18);
+  text-shadow:
+    0 0 6px rgba(192, 55, 60, 0.35),
+    0 0 16px rgba(192, 55, 60, 0.18);
   transform: rotate(-4deg);
   padding-inline: 0.25em;
 }
@@ -1716,7 +1584,9 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   border-radius: 6px;
   box-shadow: var(--ph-shadow-brick);
 }
-.ph-demo-slot::before {
+.ph-demo-slot::before,
+.ph-canplay-inline::before,
+.ph-mirror-sample::before {
   content: attr(data-label);
   position: absolute;
   top: -0.65rem;
@@ -1735,6 +1605,41 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   color: var(--ph-ink-3);
   text-align: center;
   line-height: 1.6;
+}
+
+/* "Two things to know" — collapsed gotchas above the capability demos. Only
+   the summaries show until a reader opens one. */
+.sl-markdown-content .ph-know {
+  margin: 1.25rem 0;
+  padding: 0.25rem 0;
+  border-top: 1px dashed var(--ph-ink-3);
+  border-bottom: 1px dashed var(--ph-ink-3);
+}
+.sl-markdown-content .ph-know-label {
+  margin: 0.5rem 0 0.25rem;
+  font-family: var(--ph-font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ph-ink-2);
+}
+.sl-markdown-content .ph-know details {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.sl-markdown-content .ph-know details + details {
+  margin-top: 0;
+}
+.sl-markdown-content .ph-know summary {
+  padding: 0.3rem 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sl-markdown-content .ph-know details > :not(summary) {
+  margin: 0.25rem 0 0.75rem 1.1rem;
+  color: var(--ph-ink-2);
 }
 
 /* Media placeholder: renders where a real photo will eventually sit. The
@@ -1806,7 +1711,9 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   box-shadow: var(--ph-shadow-brick);
   text-decoration: none;
   color: var(--ph-ink);
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease;
 }
 .ph-composed-card:hover {
   transform: translate(-2px, -2px);
@@ -1874,6 +1781,14 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   line-height: 1.5;
 }
 
+/* Shared elements: the video of one lamp toggling on two sites. */
+.ph-shared-lamp-video {
+  display: block;
+  width: 100%;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+}
+
 .ph-online-indicator {
   display: flex;
   flex-direction: column;
@@ -1896,7 +1811,9 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   transition: box-shadow 150ms ease;
 }
 .ph-online-indicator__dot.is-me {
-  box-shadow: 0 0 0 3px var(--ph-paper), 0 0 0 5px var(--ph-ink),
+  box-shadow:
+    0 0 0 3px var(--ph-paper),
+    0 0 0 5px var(--ph-ink),
     0 0 22px 6px rgba(245, 169, 15, 0.7);
 }
 .ph-online-indicator__meta {
@@ -1931,6 +1848,154 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   cursor: pointer;
 }
 
+/* Names and colors demo: your saved name and color, editable. */
+/* Starlight adds margin-top between siblings in page content; reset it. */
+.ph-identity *,
+.ph-status-board * {
+  margin: 0;
+}
+.ph-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+.ph-identity__card {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 1rem 0.55rem 0.6rem;
+  background: var(--ph-paper);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 999px;
+  box-shadow: var(--ph-shadow-brick);
+}
+.ph-identity__dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ph-ink);
+}
+.ph-identity__name {
+  font-family: var(--ph-font-display);
+  font-size: 1.15rem;
+  color: var(--ph-ink);
+}
+.ph-identity__fields {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.9rem;
+}
+.ph-identity__field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--ph-font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ph-ink-3);
+}
+.ph-identity__field input:not([type="color"]) {
+  width: 11rem;
+  padding: 0.35rem 0.5rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 4px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  font-family: var(--ph-font-body);
+  font-size: 0.9rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.ph-identity__field input[type="color"] {
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* Page presence demo: everyone's status, set with setMyPresence. */
+.ph-status-board {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  width: 100%;
+  max-width: 340px;
+}
+.ph-status-board__picker {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+}
+.ph-status-board__option {
+  padding: 0.35rem 0.75rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 999px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  font-family: var(--ph-font-mono);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    background 120ms ease;
+}
+.ph-status-board__option:hover {
+  background: var(--ph-paper-warm);
+}
+.ph-status-board__option[aria-pressed="true"] {
+  background: var(--ph-mustard);
+  box-shadow: var(--ph-shadow-brick);
+  transform: translateY(-1px);
+}
+.ph-status-board__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.ph-status-board__row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  background: var(--ph-paper);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+}
+.ph-status-board__dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ph-ink);
+}
+.ph-status-board__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  color: var(--ph-ink);
+}
+.ph-status-board__status {
+  font-family: var(--ph-font-mono);
+  font-size: 0.75rem;
+  color: var(--ph-ink-3);
+}
+
 .ph-live-reactions {
   position: relative;
   display: flex;
@@ -1954,7 +2019,9 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   font-size: 1.05rem;
   line-height: 1;
   cursor: pointer;
-  transition: transform 120ms ease, background 120ms ease;
+  transition:
+    transform 120ms ease,
+    background 120ms ease;
 }
 .ph-live-reactions__swatch:hover {
   background: var(--ph-paper-warm);
@@ -1976,7 +2043,9 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   color: var(--ph-ink);
   cursor: pointer;
   box-shadow: var(--ph-shadow-brick);
-  transition: transform 100ms ease, box-shadow 100ms ease;
+  transition:
+    transform 100ms ease,
+    box-shadow 100ms ease;
 }
 .ph-live-reactions__fire:hover {
   transform: translate(-1px, -1px);
@@ -1997,64 +2066,71 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   bottom: 0;
   font-size: 1.65rem;
   pointer-events: none;
-  transition: none;
-  will-change: transform, opacity;
+  animation: ph-live-reaction-float 2.5s ease-out forwards;
+}
+@keyframes ph-live-reaction-float {
+  to {
+    opacity: 0;
+    transform: translateY(-140px) scale(0.8);
+  }
 }
 
-/* LiveReactions from packages/react/examples — light docs polish when className set */
-.ph-live-reactions-root button {
-  font-family: var(--ph-font-mono);
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 6px;
-  background: var(--ph-paper);
-  color: var(--ph-ink);
-  cursor: pointer;
-  box-shadow: var(--ph-shadow-brick);
+/* Page-wide rain from the events demo. RainSprinklerDemo appends one
+   .ph-docs-rain to <body> per event and removes it after 6s. */
+.ph-docs-rain {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
 }
-.ph-live-reactions-root button:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 0 var(--ph-ink);
+.ph-docs-rain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("https://media.giphy.com/media/Wmp1EOzVybWd13s5DB/giphy.gif")
+    0 0 / 200px;
+  animation: ph-docs-rain 6s ease-in-out forwards;
+}
+.ph-docs-rain__cloud {
+  position: absolute;
+  top: 10px;
+  width: 150px;
+  height: 80px;
+  background: url("/docs/rain-cloud.webp") center / contain no-repeat;
+  animation: ph-docs-rain-cloud 5.5s ease-out both;
+}
+@keyframes ph-docs-rain {
+  0%,
+  15% {
+    opacity: 0;
+  }
+  30%,
+  85% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes ph-docs-rain-cloud {
+  0% {
+    opacity: 0;
+    transform: translateY(-120px);
+  }
+  20%,
+  80% {
+    opacity: 0.9;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-120px);
+  }
 }
 
 /* ---------------------------------------------------------------------
    17e. Capabilities page — inline demos (can-move … can-duplicate)
    --------------------------------------------------------------------- */
-
-/* Splash-page lamp: same Noguchi hanging lamp the marketing homepage uses
-   (see `website/home.scss .lamp`). The "lit" class brightens + drops a
-   warm glow so the toggled state reads instantly without needing a label. */
-.ph-lamp {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  outline: none;
-}
-.ph-lamp:focus-visible {
-  outline: 2px solid var(--ph-accent, rgba(59, 130, 246, 0.7));
-  outline-offset: 4px;
-}
-.ph-lamp__img {
-  width: 96px;
-  height: auto;
-  display: block;
-  background-color: transparent;
-  transition: filter 240ms ease, transform 240ms ease;
-}
-.ph-lamp--dark .ph-lamp__img {
-  filter: brightness(0.85) saturate(0.6);
-}
-.ph-lamp--lit .ph-lamp__img {
-  filter: brightness(1.2) saturate(1.6)
-    drop-shadow(0 0 36px rgba(247, 220, 156, 0.85));
-  transform: translateY(1px);
-}
 
 .ph-grow-balloon-wrap {
   display: flex;
@@ -2160,7 +2236,8 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   box-sizing: border-box;
   border-radius: 10px;
   border: 1.5px solid rgba(45, 62, 40, 0.55);
-  background: repeating-linear-gradient(
+  background:
+    repeating-linear-gradient(
       105deg,
       transparent 0 6px,
       rgba(255, 255, 255, 0.06) 6px 7px
@@ -2173,7 +2250,8 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
       #b8d888 52% 78%,
       #d8ec9c 78% 100%
     );
-  box-shadow: inset 0 -8px 16px rgba(0, 0, 0, 0.12),
+  box-shadow:
+    inset 0 -8px 16px rgba(0, 0, 0, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.35);
   overflow: hidden;
 }
@@ -2244,7 +2322,8 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 @keyframes ph-bunny-face {
-  0%, 49.9% {
+  0%,
+  49.9% {
     transform: scaleX(1);
   }
   50%,
@@ -2310,13 +2389,14 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
    behave uniquely (hover, focus, editable, etc.). */
 
 .ph-mirror-sample {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.6rem;
-  margin: 0.9rem 0 1.2rem;
-  padding: 1rem;
-  background: var(--ph-paper);
+  margin: 1.4rem 0 1.2rem;
+  padding: 1.25rem 1rem 1rem;
+  background: var(--ph-sage-wash);
   border: 1.5px solid var(--ph-ink);
   border-radius: 6px;
   box-shadow: var(--ph-shadow-brick);
@@ -2348,7 +2428,10 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: background 180ms ease, transform 180ms ease, color 180ms ease;
+  transition:
+    background 180ms ease,
+    transform 180ms ease,
+    color 180ms ease;
 }
 #pg-mirror-hover[data-playhtml-hover] {
   background: var(--ph-sage-deep);
@@ -2359,7 +2442,9 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 
 .pg-focus-input {
   width: 260px;
-  transition: outline 120ms ease, background 120ms ease;
+  transition:
+    outline 120ms ease,
+    background 120ms ease;
 }
 #pg-mirror-focus[data-playhtml-focus] {
   outline: 3px solid var(--ph-sage-deep);
@@ -2414,9 +2499,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   }
   .ph-presence__label {
     display: none;
-  }
-  .ph-wordmark {
-    font-size: 1.3rem;
   }
 }
 
@@ -2490,7 +2572,9 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   color: var(--ph-ink);
   cursor: pointer;
   box-shadow: var(--ph-shadow-brick);
-  transition: transform var(--ph-motion-fast), box-shadow var(--ph-motion-fast);
+  transition:
+    transform var(--ph-motion-fast),
+    box-shadow var(--ph-motion-fast);
 }
 .ph-smiley-row__btn:hover:not(:disabled) {
   transform: translate(-1px, -1px);
@@ -2643,7 +2727,9 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   color: var(--ph-ink);
   cursor: pointer;
   box-shadow: var(--ph-shadow-brick);
-  transition: transform 100ms ease, box-shadow 100ms ease;
+  transition:
+    transform 100ms ease,
+    box-shadow 100ms ease;
 }
 .ph-docs-spinner__button:hover:not(:disabled) {
   transform: translate(-1px, -1px);
@@ -2696,7 +2782,9 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   text-decoration: underline;
   text-decoration-thickness: 2px;
   text-underline-offset: 3px;
-  transition: color 120ms ease, text-decoration-color 120ms ease;
+  transition:
+    color 120ms ease,
+    text-decoration-color 120ms ease;
 }
 .ph-docs-spinner__link:hover,
 .ph-docs-spinner__link:focus-visible {
@@ -2705,23 +2793,24 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ------------------------------------------------------------------
-   Inline can-play vignettes — scattered through the capabilities page
-   so the page itself becomes a `can-play` showcase. Each block is a
-   margin-style aside, not a heavy framed demo box: a ruled head with a
-   tiny "CAN-PLAY · …" kicker, the demo, and a target id so the can-play
-   section's nav links can jump to it.
+   Inline can-play vignettes — scattered through the custom elements page
+   so the page itself becomes a `can-play` showcase. Each block uses the
+   same frame as .ph-demo-slot (bordered box, data-label notched into the
+   top border), stacked so a caption sits above the demo, plus a target id
+   so the can-play section's nav links can jump to it.
    ------------------------------------------------------------------ */
 
 .ph-canplay-inline {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
   margin: 1.6rem 0;
-  padding: 0.85rem 1rem 1rem;
-  border: 1px solid var(--ph-sage-wash);
-  border-left: 3px solid var(--ph-sage-deep);
-  border-radius: 4px;
+  padding: 1.25rem;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
   background: var(--ph-sage-wash);
+  box-shadow: var(--ph-shadow-brick);
   scroll-margin-top: 5rem;
 }
 
@@ -2735,14 +2824,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   gap: 0.25rem;
 }
 
-.ph-canplay-inline__kicker {
-  font-family: var(--ph-font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ph-sage-deep);
-}
-
 .ph-canplay-inline__caption {
   margin: 0;
   font-family: var(--ph-font-body);
@@ -2750,4 +2831,147 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   line-height: 1.45;
   color: var(--ph-ink-2);
   max-width: 56ch;
+}
+
+/* "View code" link on a live demo (DemoCodeLink.astro). Styled like the
+   demo boxes' mono labels so it reads as part of the frame. The doubled
+   class beats Starlight's markdown link color. */
+.sl-markdown-content .ph-demo-code-link.ph-demo-code-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--ph-font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  color: var(--ph-ink-2);
+}
+.sl-markdown-content .ph-demo-code-link.ph-demo-code-link:hover,
+.sl-markdown-content .ph-demo-code-link.ph-demo-code-link:focus-visible {
+  color: var(--ph-ink);
+  text-decoration-thickness: 2px;
+}
+.ph-demo-slot > .ph-demo-code-link,
+.ph-canplay-inline > .ph-demo-code-link {
+  position: absolute;
+  right: 0.9rem;
+  bottom: -0.6rem;
+  padding: 0 0.4rem;
+  background: var(--ph-paper);
+}
+.ph-demo-slot:has(> .ph-demo-code-link),
+.ph-canplay-inline:has(> .ph-demo-code-link) {
+  margin-bottom: 1.4rem;
+}
+
+/* ---------------------------------------------------------------------
+   Loading state demo (advanced/loading-state)
+   --------------------------------------------------------------------- */
+
+.ph-loading-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+}
+.ph-loading-demo__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.ph-loading-demo__choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.ph-loading-demo__choice-label {
+  min-width: 9.5rem;
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  color: var(--ph-ink-2);
+}
+.sl-markdown-content .ph-loading-demo__option {
+  margin: 0;
+  padding: 0.25rem 0.6rem;
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  color: var(--ph-ink);
+  background: var(--ph-paper);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.sl-markdown-content .ph-loading-demo__option[aria-pressed="true"] {
+  background: var(--ph-ink);
+  color: var(--ph-paper);
+}
+.sl-markdown-content .ph-loading-demo__option:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ph-loading-demo__stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.25rem 0 0.5rem;
+}
+.sl-markdown-content .ph-loading-demo__sample {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+}
+.sl-markdown-content .ph-loading-demo__hint,
+.sl-markdown-content .ph-loading-demo__note {
+  margin: 0;
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  color: var(--ph-ink-3);
+  text-align: center;
+}
+.ph-loading-demo__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.sl-markdown-content .ph-loading-demo__code {
+  margin: 0;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------
+   Phone spacing: tighter rhythm, and code scrolls sideways instead of
+   breaking lines mid-word.
+   --------------------------------------------------------------------- */
+@media (max-width: 49.999rem) {
+  .content-panel {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+  .sl-markdown-content p:not(:where(.not-content *)),
+  .sl-markdown-content li:not(:where(.not-content *)) {
+    line-height: 1.6;
+  }
+  .sl-markdown-content h2:not(:where(.not-content *)) {
+    margin-top: 2rem;
+    padding-top: 1rem;
+  }
+  .sl-markdown-content h3:not(:where(.not-content *)) {
+    margin-top: 1.6rem;
+  }
+  .ph-copy__frame {
+    padding: 0.65rem 0.85rem 0.5rem;
+    overflow-x: auto;
+  }
+  .ph-copy__frame pre {
+    font-size: 0.8rem;
+    white-space: pre;
+    word-break: normal;
+  }
 }

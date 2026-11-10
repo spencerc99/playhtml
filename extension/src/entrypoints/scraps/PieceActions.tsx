@@ -115,13 +115,23 @@ export interface PieceActionsProps {
   /** The frame's size, so the strip can be kept inside it. */
   frame: { width: number; height: number };
   onOrder: (to: "forward" | "backward" | "front" | "back") => void;
-  onFlip: (axis: "x" | "y") => void;
+  /** Flipping, when this editor offers it from the strip. */
+  onFlip?: (axis: "x" | "y") => void;
   onCrop: () => void;
   onCutOut: () => void;
   /** Holds what is in hand in place; each piece is let go again from the pieces-here list. */
   onLock: () => void;
+  /** How a locked piece is let go again in this editor, shown with the lock. */
+  lockHint?: string;
+  /**
+   * Whether the piece in hand is already locked, for an editor that lets a
+   * locked piece be selected; the lock then offers to unlock it.
+   */
+  locked?: boolean;
   onDuplicate: () => void;
   onRemove: () => void;
+  /** Further on-screen room to keep below the piece, for a knob drawn there. */
+  extraBelow?: number;
 }
 
 type Action =
@@ -150,6 +160,7 @@ export function useBesidePiece(
   piece: PieceBox,
   scale: number,
   frame: { width: number; height: number },
+  extraBelow = 0,
 ) {
   const ref = useRef<HTMLDivElement>(null);
   /** The panel's own on-screen size, measured so it can be kept in frame. */
@@ -168,7 +179,13 @@ export function useBesidePiece(
     return () => observer.disconnect();
   }, []);
 
-  const { left, top } = placeBesidePiece(piece, size, scale, frame);
+  const { left, top } = placeBesidePiece(
+    piece,
+    size,
+    scale,
+    frame,
+    extraBelow,
+  );
   return {
     ref,
     style: { left, top, transform: `scale(${1 / scale})` },
@@ -191,10 +208,13 @@ export function PieceActions({
   onCrop,
   onCutOut,
   onLock,
+  lockHint = "right-click the spot to unlock",
+  locked = false,
   onDuplicate,
   onRemove,
+  extraBelow = 0,
 }: PieceActionsProps) {
-  const placement = useBesidePiece(box, scale, frame);
+  const placement = useBesidePiece(box, scale, frame, extraBelow);
 
   const actions: Action[] = [
     {
@@ -212,22 +232,26 @@ export function PieceActions({
       run: () => onOrder("forward"),
     },
     { separator: true, key: "after-order" },
-    {
-      key: "flip-x",
-      label: "Flip across",
-      hint: "H",
-      glyph: GLYPHS.flipX,
-      run: () => onFlip("x"),
-      ...(piece ? { on: piece.flipX } : {}),
-    },
-    {
-      key: "flip-y",
-      label: "Flip down",
-      hint: "V",
-      glyph: GLYPHS.flipY,
-      run: () => onFlip("y"),
-      ...(piece ? { on: piece.flipY } : {}),
-    },
+    ...(onFlip
+      ? [
+          {
+            key: "flip-x",
+            label: "Flip across",
+            hint: "H",
+            glyph: GLYPHS.flipX,
+            run: () => onFlip("x"),
+            ...(piece ? { on: piece.flipX } : {}),
+          },
+          {
+            key: "flip-y",
+            label: "Flip down",
+            hint: "V",
+            glyph: GLYPHS.flipY,
+            run: () => onFlip("y"),
+            ...(piece ? { on: piece.flipY } : {}),
+          },
+        ]
+      : []),
     ...(piece
       ? [
           {
@@ -257,10 +281,11 @@ export function PieceActions({
     { separator: true, key: "after-shape" },
     {
       key: "lock",
-      label: piece ? "Lock in place" : "Lock these in place",
-      hint: "right-click the spot to unlock",
-      glyph: GLYPHS.lock,
+      label: locked ? "Unlock" : piece ? "Lock in place" : "Lock these in place",
+      hint: lockHint,
+      glyph: locked ? GLYPHS.unlock : GLYPHS.lock,
       run: onLock,
+      ...(locked ? { on: true } : {}),
     },
     {
       key: "duplicate",

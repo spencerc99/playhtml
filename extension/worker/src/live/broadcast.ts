@@ -1,4 +1,4 @@
-// ABOUTME: Forwards renderable movement events to the LiveEventsHub durable object.
+// ABOUTME: Forwards renderable movement and navigation events to the LiveEventsHub durable object.
 // ABOUTME: Enriches events with participant cursor colors; fire-and-forget, never fails ingest.
 
 import type { CollectionEvent } from '@playhtml/extension-types';
@@ -12,7 +12,7 @@ import { HUB_NAME } from './constants';
  */
 const COLOR_TTL_MS = 5 * 60 * 1000;
 const colorCache = new Map<string, { color: string | null; at: number }>();
-const LIVE_EVENT_TYPES = new Set(['cursor', 'viewport', 'keyboard']);
+const LIVE_EVENT_TYPES = new Set(['cursor', 'viewport', 'keyboard', 'navigation']);
 const REDACTED_GLYPH = '\u2588';
 
 type UnknownRecord = Record<string, unknown>;
@@ -142,13 +142,27 @@ function projectViewportEvent(event: CollectionEvent): CollectionEvent {
   return { ...event, data };
 }
 
+function projectNavigationEvent(event: CollectionEvent): CollectionEvent {
+  const source = isRecord(event.data) ? event.data : {};
+  const data: UnknownRecord = {};
+
+  if (typeof source.event === 'string') data.event = source.event;
+  if (typeof source.quantity === 'number') data.quantity = source.quantity;
+  const faviconUrl = sanitizeLiveUrl(source.favicon_url);
+  if (faviconUrl) data.favicon_url = faviconUrl;
+
+  return { ...event, data };
+}
+
 function projectLiveEvent(event: CollectionEvent): CollectionEvent {
   const projected =
     event.type === 'keyboard'
       ? projectKeyboardEvent(event)
       : event.type === 'cursor'
         ? projectCursorEvent(event)
-        : projectViewportEvent(event);
+        : event.type === 'navigation'
+          ? projectNavigationEvent(event)
+          : projectViewportEvent(event);
   const normalizedUrl = sanitizeLiveUrl(projected.normalizedUrl);
   return {
     id: projected.id,

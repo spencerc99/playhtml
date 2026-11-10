@@ -17,7 +17,7 @@ import {
   CursorZoneOptions,
 } from "playhtml";
 import { useLocation } from "./hooks/useLocation";
-import { CursorEvents, CursorPresenceView, PlayerIdentity } from "playhtml";
+import { CursorEvents, CursorPresenceView, Person, PlayerIdentity } from "playhtml";
 
 type PlayProviderCursorContainer = CursorContainer | React.RefObject<HTMLElement>;
 
@@ -63,6 +63,7 @@ export interface PlayContextInfo
   isLoading: boolean;
   isProviderMissing: boolean;
   configureCursors: (options: Partial<CursorOptions>) => void;
+  /** @deprecated Use `usePeople().me` or `playhtml.people.me`. */
   getMyPlayerIdentity: () => PlayerIdentity | null;
   /**
    * Apply a CSS class to the actual cursor DOM element for the given stableId.
@@ -74,6 +75,39 @@ export interface PlayContextInfo
   cursors: CursorEvents;
   cursorPresences: Map<string, CursorPresenceView>;
 }
+
+/** The people on this page, as `usePlayContext().people` and `usePeople()` return them. */
+export interface PlayContextPeople {
+  /** Everyone on this page (including you), each with their page `presence`. */
+  everyone: Person[];
+  /** You. Before sync, `pid` is empty. */
+  me: Person;
+  /** Sets one key of your page presence (`null` clears it). */
+  setMyPresence: (key: string, value: unknown) => void;
+}
+
+const PRE_SYNC_ME: Person = { pid: "", color: "", isMe: true, presence: {} };
+
+function setMyPresenceBeforeSync(): void {
+  console.warn("[@playhtml/react] people.setMyPresence called before init — ignored.");
+}
+
+const PRE_SYNC_PEOPLE: PlayContextPeople = {
+  everyone: [],
+  me: PRE_SYNC_ME,
+  setMyPresence: setMyPresenceBeforeSync,
+};
+
+function setMyPagePresence(key: string, value: unknown): void {
+  playhtml.people.setMyPresence(key, value);
+}
+
+/**
+ * People live in their own context so a presence change re-renders only the
+ * components that read them (through `usePlayContext()`), not every playhtml
+ * element on the page.
+ */
+export const PeopleContext = createContext<PlayContextPeople>(PRE_SYNC_PEOPLE);
 
 export const PlayContext = createContext<PlayContextInfo>({
   setupPlayElements: () => {
@@ -137,6 +171,10 @@ interface Props {
   initOptions?: PlayProviderInitOptions;
   pathname?: string;
 }
+
+// Matches playhtml's LOADING_CHANGE_EVENT. Spelled out rather than imported so
+// an older playhtml without the export does not register an "undefined" event.
+const LOADING_CHANGE_EVENT = "playhtml:loading-change";
 
 export function PlayProvider({
   children,
@@ -207,6 +245,20 @@ export function PlayProvider({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // A room switch (client-side navigation to a new room, or a server room
+  // reset) makes playhtml load again; follow it so hasSynced is false until
+  // the new room's data is in, not just until the first room synced.
+  useEffect(() => {
+    const onLoadingChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ isLoading?: unknown }>).detail;
+      if (typeof detail?.isLoading !== "boolean") return;
+      setHasSynced(!detail.isLoading);
+    };
+    document.addEventListener(LOADING_CHANGE_EVENT, onLoadingChange);
+    return () =>
+      document.removeEventListener(LOADING_CHANGE_EVENT, onLoadingChange);
   }, []);
 
   const configureCursors = (options: Partial<CursorOptions>) => {
@@ -290,6 +342,29 @@ export function PlayProvider({
     return client.onCursorPresencesChange(applyPresences);
   }, [hasSynced]);
 
+  const [everyone, setEveryone] = useState<Person[]>([]);
+  useEffect(() => {
+    if (!hasSynced) {
+      setEveryone([]);
+      return;
+    }
+    // Cursor moves are skipped here (they'd re-render every reader on every
+    // frame); read them with usePeople("cursor").
+    return playhtml.people.onChange(setEveryone);
+  }, [hasSynced]);
+
+  const people = useMemo<PlayContextPeople>(
+    () =>
+      hasSynced
+        ? {
+            everyone,
+            me: everyone.find((person) => person.isMe) ?? PRE_SYNC_ME,
+            setMyPresence: setMyPagePresence,
+          }
+        : PRE_SYNC_PEOPLE,
+    [hasSynced, everyone],
+  );
+
   const contextValue = useMemo<PlayContextInfo>(
     () => ({
       setupPlayElements: playhtml.setupPlayElements,
@@ -314,7 +389,7 @@ export function PlayProvider({
 
   return (
     <PlayContext.Provider value={contextValue}>
-      {children}
+      <PeopleContext.Provider value={people}>{children}</PeopleContext.Provider>
     </PlayContext.Provider>
   );
 }

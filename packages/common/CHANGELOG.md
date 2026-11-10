@@ -1,5 +1,27 @@
 # @playhtml/common
 
+## 0.11.0
+
+### Minor Changes
+
+- cfa607a: Adds `playhtml.people`, one place to see who's here and what they're doing. `playhtml.people.everyone` is everyone on the page (including you) as `Person` objects, `{ pid, name, color, isMe, presence }`. `people.me` is you: set `me.name` or `me.color` to save and show a new name or color. `people.setMyPresence(key, value)` sets one key of your page presence (`null` clears it), and `people.onChange(keys?, callback)` calls back now and when people join, leave, change their name or color, or change the watched presence keys. Cursor moves are skipped unless you pass `"cursor"`, and each person's cursor is at `person.presence.cursor`. Presence rooms expose the same API at `room.people`.
+
+  Elements use the same names. Give an element a `defaultPresence`, then read `everyone` and `me` and call `setMyPresence(value)` (or a mutator, like `setData`) in its callbacks. Handles add `everyone`, `me`, `setMyPresence()`, and `onEveryoneChange(keys?, callback)`, which works before the element exists. In React, `usePeople(keys?)` returns `{ everyone, me, setMyPresence }`, the same object is on `usePlayContext().people`, and `withSharedState` / `<CanPlayElement>` take `defaultPresence` and pass `everyone`, `me`, and `setMyPresence` to render.
+
+  Presence views and the presence objects passed to `shouldRenderCursor` / `getCursorStyle` now include `user` (`{ pid, name, color, isMe }`), and `onProximityEntered` receives it as a fourth argument. `user`, `playerIdentity`, `cursor`, and `isMe` are reserved presence keys. The earlier names keep working as deprecated aliases: `playhtml.users`, the `User` type, `playhtml.presence`, `room.presence`, `useUsers`, `usePresence`, `useCursorPresences`, `usePlayerIdentity`, `getMyPlayerIdentity`, `playerIdentity` on views, and the element `live` / `users` / `setLive` and awareness names. Nothing about stored or synced data changes.
+
+### Patch Changes
+
+- 3c3fe69: Person colors now read back as hex. New identities save their default colors as `#rrggbb` instead of `hsl()`, and `playhtml.people` (`me.color` and each person's `color`), the deprecated `playhtml.users`, `window.cursors.color` and cursor color events convert colors saved as `hsl()` or `rgb()` to hex. You can pass a person's color straight to `<input type="color">`, which only accepts hex. See-through colors keep their alpha as `#rrggbbaa`. Adds a `toHexColor()` helper to `@playhtml/common`.
+- ecbcb0b: Person names are now trimmed and capped at 32 characters, and a blank name clears it. This applies when you set `people.me.name` and when reading names from other people or older saved identities. Setting `people.me.color` to something that isn't a CSS color (like `"banana"` or `"inherit"`) now throws an error and keeps the old color, and a saved color that isn't valid is replaced with a new default on load. Adds `normalizePersonName` and `isValidPersonColor` helpers to `@playhtml/common`.
+
+## 0.10.1
+
+### Patch Changes
+
+- 1ab8866: Less network traffic and a smaller download. `setData` on a list now sends only the items that changed, so editing one entry in a long list no longer resends the whole list or grows the room's saved history by a full copy each time. Rapid `setData` calls, such as updates on every pointer move, are batched into at most 20 messages a second; the first change still goes out right away. The build is minified with source maps, and the cursor code only downloads on pages that enable cursors, which cuts the default download from 110 KB to 65 KB gzipped.
+- b619ac1: Fix the `PlayEvent.onEvent` type so listeners receive the dispatched `eventPayload` directly, matching what playhtml already passes at runtime. Typed listeners such as `onEvent: ({ emoji }: { emoji: string }) => ...` now type-check without casts.
+
 ## 0.10.0
 
 ### Minor Changes

@@ -1,32 +1,403 @@
 // ABOUTME: Stylesheet for the scrap collage studio, tray, and history surfaces.
 // ABOUTME: Warm paper chrome that stays quiet behind the collaged material.
 
+import { COLLAGE_PIECE_TOOL_STYLES } from "./collagePieceToolStyles";
+import { COLLAGE_VIEW_STYLES } from "./collageViewStyles";
+import { EXPORT_MENU_STYLES } from "./exportMenuStyles";
+import { SIGNATURE_ROW_STYLES } from "./SignatureRow";
+import { SIGNATURE_STAMP_STYLES } from "./SignatureStamp";
+import {
+  COLLAGE_MAT_STYLES,
+  COLLAGE_SHEET_STYLES,
+  PIECE_MATERIAL_STYLES,
+} from "./collageSheetStyles";
+
+/** The source labels and piece edges the peek shows, shared with the collage viewer page. */
+export const COLLAGE_PEEK_STYLES = `
+  /* The peeked piece's own edge, so its label has something to belong to. */
+  /* While peeking, a piece and its label share one quiet tint, so the label
+     can be matched to its piece where pieces sit close or overlap. */
+  .collage-peek-edge {
+    position: absolute;
+    z-index: 10004;
+    border-style: dotted;
+    border-color: var(--peek-tint, var(--c-muted));
+    transform-origin: center;
+    pointer-events: none;
+  }
+
+  .collage-peek-edge--on {
+    border-style: solid;
+  }
+
+  /* On a shared collage the edge is its adder's cursor color, drawn boldly
+     so whose is whose reads across the table. */
+  .collage-peek-edge--owned {
+    border-style: solid;
+  }
+
+  /* An archive label pinned to a piece while the peek key is held. It is a
+     slip of paper over the work, never a control: it takes no pointer. */
+  .collage-peek {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    box-sizing: border-box;
+    max-width: 150px;
+    padding: 2px 5px;
+    transform-origin: left top;
+    border: 1px solid var(--peek-tint, color-mix(in srgb, var(--c-ink) 50%, transparent));
+    border-left-width: 3px;
+    border-radius: 2px;
+    background: var(--c-surface);
+    color: var(--c-ink);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--c-ink) 18%, transparent);
+    font-family: "Martian Mono", monospace;
+    font-size: 8px;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* The same label, floated over the drawer for the scrap under the pointer.
+     Fixed, so the drawer's scroll does not clip it. */
+  .collage-peek--tray {
+    position: fixed;
+    z-index: 10010;
+    border-left-width: 1px;
+  }
+
+  .collage-peek__where {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  /* Who added a scrap, leading its label in their cursor's color. */
+  .collage-peek__who {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .collage-peek__dot {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+
+  /* A long address is cut short so the label keeps to its width. */
+  .collage-peek__site {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .collage-peek__mark {
+    display: block;
+    width: 10px;
+    height: 10px;
+    object-fit: contain;
+  }
+
+`;
+
 export const COLLAGE_STUDIO_STYLES = `
+  /* The collage studio's palette: WWO's linen nudged a hair cooler. Every
+     surface, rule and ink in the studio and the history reads from these. */
+  .collage-studio,
+  .collage-history {
+    --c-ground: #f6f5f1;
+    --c-surface: #efede7;
+    --c-frame: #fdfcfa;
+    --c-mat: #e6e3dc;
+    --c-ink: #3a3734;
+    --c-muted: #86807a;
+    --c-accent: #4a9a8a;
+    --c-accent-ink: #2f6b60;
+    --c-rule: #dcd8cf;
+  }
+
   .collage-studio {
     position: absolute;
     inset: 0;
     display: flex;
-    color: #3d3833;
+    background: var(--c-ground);
+    color: var(--c-ink);
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
   }
 
-  .collage-studio__label {
-    font-family: "Martian Mono", monospace;
-    font-size: 9px;
-    letter-spacing: 0.06em;
-    text-transform: lowercase;
-    color: #827a72;
+  /* Create mode sits under the page's heading and its browse / create switch. */
+  .collage-create-area {
+    position: absolute;
+    inset: 96px 0 0;
+    z-index: 2;
   }
 
+  /* A phone stacks the heading taller, so the list of collages starts lower;
+     once a collage is open the heading steps away and the studio takes the
+     screen from just under the page links. */
+  @media (max-width: 620px) {
+    .collage-create-area {
+      top: 124px;
+    }
+
+    .collage-create-area--studio {
+      top: 48px;
+    }
+  }
+
+  /* On a phone the drawer docks under the collage, so the collage and the
+     scraps to add to it are on screen together. */
+  .collage-studio--phone {
+    flex-direction: column;
+  }
+
+  .collage-studio--phone .collage-frame-area {
+    order: 0;
+  }
+
+  /* Every touch on the stage is the studio's: a drag moves a piece or draws
+     a marquee, and two fingers pinch, so the page must not scroll or zoom. */
+  .collage-studio--phone .collage-frame-area__stage {
+    touch-action: none;
+    /* Holding a finger down opens the pieces-here list, not the system's
+       text selection or its menu for the picture under it. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Each tool beside a piece is big enough for a fingertip. */
+  .collage-studio--phone .collage-piece-actions .collage-glyph {
+    width: 36px;
+    height: 36px;
+  }
+
+  .collage-studio--phone .collage-piece-actions__rule {
+    height: 22px;
+    margin: 0 2px;
+  }
+
+  /* The knob under a selection that turns it, on a touch screen. */
+  .collage-rotate-stem {
+    position: absolute;
+    z-index: 10001;
+    width: 1.5px;
+    margin-left: -0.75px;
+    transform-origin: top center;
+    background: var(--c-accent);
+    pointer-events: none;
+  }
+
+  .collage-rotate-knob {
+    position: absolute;
+    z-index: 10003;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1.5px solid var(--c-accent);
+    border-radius: 50%;
+    background: var(--c-surface);
+    color: var(--c-accent-ink);
+    transform-origin: center;
+    touch-action: none;
+  }
+
+  /* A fingertip takes the knob from well around it. */
+  .collage-rotate-knob::after {
+    content: "";
+    position: absolute;
+    inset: -12px;
+    border-radius: 50%;
+  }
+
+  /* A held finger must not raise the system's copy and look-up menu or
+     start selecting text over the collage. */
+  .collage-studio--phone .collage-frame-area {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* A held finger must not raise the system's copy and look-up menu or
+     start selecting text over the collage. */
+  .collage-studio--phone .collage-frame-area {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Two classes, so this outranks the drawer's own side-docked size and
+     margin, which come later; otherwise the drawer grows with its scraps
+     and buries the collage. */
+  .collage-tray.collage-tray--bottom {
+    order: 1;
+    flex: 0 0 40%;
+    margin: 0 8px 8px;
+    /* Its filter menus open upward over the collage, so they sit above the
+       bars floating at the top of the stage. */
+    z-index: 10020;
+  }
+
+  /* While the drawer is open on a phone the collage is being filled, so the
+     format and export bar steps aside for it; tucking the drawer brings it back. */
+  .collage-studio--picking .collage-bar {
+    display: none;
+  }
+
+  /* No keyboard, so no list of keys. */
+  .collage-studio--phone .collage-keys-button {
+    display: none;
+  }
+
+  .collage-studio--phone .collage-mat__caption {
+    bottom: 4px;
+    min-width: 0;
+  }
+
+  /* When the drawer is raised the frame gets small, so the caption keeps to
+     one line inside the mat and trims its end rather than spilling out. */
+  .collage-studio--phone .collage-mat__caption .collage-studio__label {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .collage-studio--phone .collage-title-input {
+    min-width: 0;
+  }
+
+  /* Raised, the drawer becomes a sheet: it lifts off the page with rounded
+     shoulders and takes most of the screen, and the collage above it shrinks
+     to a bare miniature that shows each scrap landing as it is tapped. */
+  .collage-tray.collage-tray--bottom.collage-tray--tall {
+    flex-basis: 68%;
+    margin: 0;
+    padding-top: 6px;
+    border-width: 1px 0 0;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -10px 30px color-mix(in srgb, var(--c-ink) 18%, transparent);
+  }
+
+  /* Everything around the miniature steps back: the bars, the mat, the
+     selection and its tools. */
+  .collage-studio--sheet .collage-frame-area__stage {
+    background: color-mix(in srgb, var(--c-ink) 6%, var(--c-ground));
+  }
+
+  .collage-studio--sheet .collage-stage-top,
+  .collage-studio--sheet .collage-views,
+  .collage-studio--sheet .collage-piece-actions,
+  .collage-studio--sheet .collage-mat__caption,
+  .collage-studio--sheet .collage-selection-edge,
+  .collage-studio--sheet .collage-handle,
+  .collage-studio--sheet .collage-grip,
+  .collage-studio--sheet .collage-rotate-knob,
+  .collage-studio--sheet .collage-rotate-stem {
+    visibility: hidden;
+  }
+
+  .collage-studio--sheet .collage-mat {
+    background: transparent;
+    box-shadow: none;
+  }
+
+  /* Laid over the whole miniature, so a tap there lowers the sheet rather
+     than moving a piece it cannot see the handles of. */
+  .collage-sheet-peek {
+    position: absolute;
+    inset: 0;
+    z-index: 10010;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0 0 4px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .collage-sheet-peek__label {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--c-ground) 85%, transparent);
+    color: var(--c-muted);
+    font-family: "Martian Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+  }
+
+  /* The grab bar at the top of a docked drawer: flick it up or down, or tap
+     it to raise and lower the drawer. */
+  /* Tall enough for a thumb to land on without aiming; the bar drawn in it
+     stays small. */
+  .collage-tray__handle {
+    flex: 0 0 auto;
+    align-self: center;
+    /* Far wider and taller than the bar it draws, so a thumb finds it. */
+    width: min(100%, 220px);
+    height: 30px;
+    margin: -10px 0 -4px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .collage-tray__handle::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 0 auto;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--c-ink) 22%, transparent);
+  }
+
+  .collage-tray--bottom .collage-tray__rail {
+    touch-action: none;
+  }
+
+  .collage-tray.collage-tray--bottom.collage-tray--tucked {
+    flex: 0 0 auto;
+    padding: 6px;
+  }
+
+  .collage-tray--bottom .collage-tray__rail {
+    width: 100%;
+    height: auto;
+    padding: 10px;
+    font-size: 10px;
+    writing-mode: horizontal-tb;
+  }
+
+${COLLAGE_PIECE_TOOL_STYLES}
   .collage-tray {
     position: relative;
     flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     min-height: 0;
+    margin: 10px 0 10px 10px;
     padding: 10px 8px 8px;
     gap: 6px;
-    border-right: 1px solid rgba(61, 56, 51, 0.12);
+    background: var(--c-surface);
+    border: 1px solid var(--c-rule);
+    border-radius: 2px;
   }
 
   .collage-tray__count {
@@ -37,7 +408,7 @@ export const COLLAGE_STUDIO_STYLES = `
     padding: 0;
     border: 0;
     background: transparent;
-    color: #33796d;
+    color: var(--c-accent-ink);
     font: inherit;
     letter-spacing: inherit;
     text-decoration: underline;
@@ -46,35 +417,9 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-tray__reset:focus-visible {
-    outline: 2px solid rgba(74, 154, 138, 0.45);
+    outline: 2px solid color-mix(in srgb, var(--c-accent) 45%, transparent);
     outline-offset: 2px;
     border-radius: 2px;
-  }
-
-  .collage-tray__sizes {
-    display: flex;
-    flex: 0 0 auto;
-    gap: 2px;
-  }
-
-  .collage-tray__size {
-    width: 17px;
-    height: 17px;
-    padding: 0;
-    border: 1px solid rgba(61, 56, 51, 0.18);
-    border-radius: 3px;
-    background: transparent;
-    color: #827a72;
-    font-family: "Martian Mono", monospace;
-    font-size: 8px;
-    text-transform: uppercase;
-    cursor: pointer;
-  }
-
-  .collage-tray__size--on {
-    border-color: rgba(74, 154, 138, 0.7);
-    background: rgba(74, 154, 138, 0.12);
-    color: #2f6b60;
   }
 
   .collage-tray__tuck {
@@ -85,10 +430,10 @@ export const COLLAGE_STUDIO_STYLES = `
     width: 28px;
     height: 28px;
     padding: 0;
-    border: 1px solid rgba(61, 56, 51, 0.18);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 18%, transparent);
     border-radius: 999px;
     background: transparent;
-    color: #827a72;
+    color: var(--c-muted);
     font-family: "Martian Mono", monospace;
     font-size: 12px;
     line-height: 1;
@@ -97,22 +442,22 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-tray__tuck:hover {
-    border-color: rgba(61, 56, 51, 0.38);
-    color: #3d3833;
+    border-color: color-mix(in srgb, var(--c-ink) 38%, transparent);
+    color: var(--c-ink);
   }
 
   .collage-tray__tuck:focus-visible {
     outline: none;
-    border-color: #4a9a8a;
-    box-shadow: 0 0 0 3px rgba(74, 154, 138, 0.16);
+    border-color: var(--c-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 16%, transparent);
   }
 
   .collage-tray__rail {
     flex: 0 0 auto;
-    border: 1px solid rgba(61, 56, 51, 0.18);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 18%, transparent);
     border-radius: 3px;
     background: transparent;
-    color: #827a72;
+    color: var(--c-muted);
     font-family: "Martian Mono", monospace;
     font-size: 10px;
     line-height: 1;
@@ -145,7 +490,7 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-tray__grip:hover {
-    background: rgba(74, 154, 138, 0.25);
+    background: color-mix(in srgb, var(--c-accent) 25%, transparent);
   }
 
   .collage-tray__scroll {
@@ -172,8 +517,8 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-tray__slot:hover,
   .collage-tray__slot:focus-visible {
-    border-color: rgba(61, 56, 51, 0.28);
-    background: rgba(61, 56, 51, 0.05);
+    border-color: color-mix(in srgb, var(--c-ink) 28%, transparent);
+    background: color-mix(in srgb, var(--c-ink) 5%, transparent);
     outline: none;
   }
 
@@ -194,19 +539,19 @@ export const COLLAGE_STUDIO_STYLES = `
    * out to be see-through. Everything else sits on the paper.
    */
   .collage-tray__thumb--checker {
-    background-color: #f3efe8;
+    background-color: var(--c-surface);
     background-image:
-      linear-gradient(45deg, rgba(61, 56, 51, 0.07) 25%, transparent 25%),
-      linear-gradient(-45deg, rgba(61, 56, 51, 0.07) 25%, transparent 25%),
-      linear-gradient(45deg, transparent 75%, rgba(61, 56, 51, 0.07) 75%),
-      linear-gradient(-45deg, transparent 75%, rgba(61, 56, 51, 0.07) 75%);
+      linear-gradient(45deg, color-mix(in srgb, var(--c-ink) 7%, transparent) 25%, transparent 25%),
+      linear-gradient(-45deg, color-mix(in srgb, var(--c-ink) 7%, transparent) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, color-mix(in srgb, var(--c-ink) 7%, transparent) 75%),
+      linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--c-ink) 7%, transparent) 75%);
     background-size: 12px 12px;
     background-position: 0 0, 0 6px, 6px -6px, -6px 0;
   }
 
   /* A small thing gets a plain box so it is legible without being blown up. */
   .collage-tray__thumb--small {
-    border: 1px solid rgba(61, 56, 51, 0.16);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 16%, transparent);
   }
 
   /*
@@ -215,7 +560,7 @@ export const COLLAGE_STUDIO_STYLES = `
    * drawer even though it is really there.
    */
   .collage-tray__thumb--paper {
-    border: 1px solid rgba(61, 56, 51, 0.1);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 10%, transparent);
   }
 
   /*
@@ -305,35 +650,6 @@ export const COLLAGE_STUDIO_STYLES = `
     outline: 1px dashed rgba(196, 114, 78, 0.6);
   }
 
-  /* The piece's own tools, floating beside it in frame space. They are drawn
-     at a constant on-screen size whatever the frame is zoomed to. */
-  .collage-piece-actions {
-    position: absolute;
-    z-index: 10004;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 3px 4px;
-    transform-origin: left top;
-    border: 1px solid rgba(61, 56, 51, 0.2);
-    border-radius: 4px;
-    background: #f5f0e8;
-    box-shadow: 0 4px 14px rgba(61, 56, 51, 0.18);
-    /* Only the buttons take the pointer; the gaps belong to the frame. */
-    pointer-events: none;
-  }
-
-  .collage-piece-actions > button {
-    pointer-events: auto;
-  }
-
-  .collage-piece-actions__rule {
-    width: 1px;
-    height: 15px;
-    margin: 0 3px;
-    background: rgba(61, 56, 51, 0.2);
-  }
-
   /* Undo, redo and the shortcut list, in the stage's top-left corner. */
   /* The stage's top-left row: the way back, then the studio tools. */
   .collage-stage-top {
@@ -350,7 +666,7 @@ export const COLLAGE_STUDIO_STYLES = `
     padding: 4px 2px;
     border: none;
     background: none;
-    color: #827a72;
+    color: var(--c-muted);
     font-family: "Martian Mono", monospace;
     font-size: 10px;
     letter-spacing: 0.02em;
@@ -359,7 +675,7 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-leave:hover,
   .collage-leave:focus-visible {
-    color: #3d3833;
+    color: var(--c-ink);
   }
 
   .collage-tools {
@@ -367,60 +683,17 @@ export const COLLAGE_STUDIO_STYLES = `
     align-items: center;
     gap: 2px;
     padding: 3px 4px;
-    border: 1px solid rgba(61, 56, 51, 0.16);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 16%, transparent);
     border-radius: 4px;
-    background: rgba(245, 240, 232, 0.94);
-  }
-
-  .collage-glyph {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 24px;
-    padding: 0;
-    border: 1px solid transparent;
-    border-radius: 3px;
-    background: transparent;
-    color: #3d3833;
-    cursor: pointer;
-  }
-
-  .collage-glyph:hover:not(:disabled) {
-    border-color: rgba(61, 56, 51, 0.24);
-    background: rgba(61, 56, 51, 0.07);
-  }
-
-  .collage-glyph:disabled {
-    color: rgba(130, 122, 114, 0.45);
-    cursor: default;
-  }
-
-  .collage-glyph--on {
-    border-color: rgba(74, 154, 138, 0.7);
-    background: rgba(74, 154, 138, 0.12);
-    color: #2f6b60;
-  }
-
-  .collage-glyph--danger:hover:not(:disabled) {
-    border-color: rgba(196, 114, 78, 0.6);
-    background: rgba(196, 114, 78, 0.12);
-    color: #a2542f;
+    background: color-mix(in srgb, var(--c-surface) 94%, transparent);
   }
 
   /* The document's own settings, opposite the studio tools. */
   .collage-format {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    z-index: 10001;
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px 6px;
-    border: 1px solid rgba(61, 56, 51, 0.16);
-    border-radius: 4px;
-    background: rgba(245, 240, 232, 0.94);
+    gap: 6px;
   }
 
   .collage-paper-button {
@@ -432,24 +705,24 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-paper-button__swatch {
     width: 10px;
     height: 10px;
-    border: 1px solid rgba(61, 56, 51, 0.35);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 35%, transparent);
     border-radius: 2px;
   }
 
   .collage-paper-popover {
     position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
+    bottom: calc(100% + 8px);
+    left: 0;
     z-index: 10002;
     display: flex;
     flex-direction: column;
     gap: 5px;
     width: 232px;
     padding: 9px 10px;
-    border: 1px solid rgba(61, 56, 51, 0.2);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 20%, transparent);
     border-radius: 4px;
-    background: #f5f0e8;
-    box-shadow: 0 10px 28px rgba(61, 56, 51, 0.2);
+    background: var(--c-surface);
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--c-ink) 20%, transparent);
   }
 
   .collage-paper-popover p.collage-studio__label {
@@ -467,18 +740,57 @@ export const COLLAGE_STUDIO_STYLES = `
     width: 18px;
     height: 18px;
     padding: 0;
-    border: 1px solid rgba(61, 56, 51, 0.28);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 28%, transparent);
     border-radius: 3px;
     cursor: pointer;
   }
 
   .collage-swatch--on {
-    outline: 1px solid #2f6b60;
+    outline: 1px solid var(--c-accent-ink);
     outline-offset: 1px;
   }
 
-  .collage-swatch--custom {
-    background: transparent;
+  /* The custom color: a rainbow swatch, so it reads as a picker. */
+  .collage-color-picker {
+    position: relative;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    background: linear-gradient(
+      135deg,
+      #e94b4b,
+      #f0b03c,
+      #e7e046,
+      #5cc96b,
+      #4bb8e9,
+      #6a6ae9,
+      #c45ce0
+    );
+  }
+
+  .collage-color-picker:focus-within {
+    outline: 1px solid var(--c-accent-ink);
+    outline-offset: 1px;
+  }
+
+  .collage-color-picker__chosen {
+    width: 8px;
+    height: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 2px;
+  }
+
+  /* The real input covers the swatch so a click anywhere opens the picker. */
+  .collage-color-picker input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    cursor: pointer;
   }
 
   /* The paper's grain, beside the tones it lies over. */
@@ -491,7 +803,7 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-grain input {
-    accent-color: #4a9a8a;
+    accent-color: var(--c-accent);
     margin: 0;
   }
 
@@ -515,6 +827,7 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-frame-area {
     position: relative;
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -534,194 +847,12 @@ export const COLLAGE_STUDIO_STYLES = `
     user-select: none;
   }
 
-  /* Both sides of the collage share one place on the stage. The sheet keeps
-     the frame's true size and is only ever zoomed, never squeezed by the flex
-     stage around it. */
-  .collage-sheet {
-    position: relative;
-    flex: none;
-    transform-origin: center;
-    perspective: 6000px;
-  }
-
-  /* The sheet turns over the way a printed card does, about its vertical axis. */
-  .collage-sheet__leaf {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    transform-style: preserve-3d;
-    transition: transform 560ms cubic-bezier(0.22, 0.61, 0.36, 1);
-  }
-
-  .collage-sheet--over .collage-sheet__leaf {
-    transform: rotateY(180deg);
-  }
-
-  /* The frame's paper comes from the record, so the studio shows what bakes. */
-  .collage-frame {
-    position: relative;
-    box-shadow: 0 10px 34px rgba(61, 56, 51, 0.16);
-    touch-action: none;
-    backface-visibility: hidden;
-  }
-
-  /* What bakes stops at the frame's edge, so the pieces are clipped there. */
-  .collage-frame__pieces {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-  }
-
-  /* The back: the same paper, the front faintly through it, and the sources. */
-  .collage-back {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-    box-shadow: 0 10px 34px rgba(61, 56, 51, 0.16);
-    backface-visibility: hidden;
-    transform: rotateY(180deg);
-    user-select: text;
-  }
-
-  .collage-back__text {
-    position: absolute;
-    inset: 0;
-  }
-
-  /* The field over it shows the title, so the written one only holds its place. */
-  .collage-back__text--titled .collage-back__title {
-    visibility: hidden;
-  }
-
-  /* The title on the back, editable where it is written. It always reads as
-     the writing itself: no outline or text cursor, only a caret once it is
-     clicked into. */
-  .collage-back__title-field {
-    position: absolute;
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    outline: none;
-    background: transparent;
-    overflow: hidden;
-    overflow-wrap: anywhere;
-    resize: none;
-    cursor: inherit;
-  }
-
-  .collage-back__title-field::placeholder {
-    color: var(--collage-back-muted);
-    opacity: 1;
-  }
-
-  /* The side facing away takes no pointer, however the sheet turned over. */
-  .collage-sheet__leaf > [inert] {
-    pointer-events: none;
-  }
-
-  /* A sheet that cannot swing still turns over, just as a crossfade. */
-  @media (prefers-reduced-motion: reduce) {
-    .collage-sheet__leaf,
-    .collage-sheet--over .collage-sheet__leaf {
-      transform: none;
-      transition: none;
-    }
-
-    .collage-frame,
-    .collage-back {
-      backface-visibility: visible;
-      transition: opacity 180ms linear;
-    }
-
-    .collage-back {
-      transform: none;
-    }
-
-    .collage-sheet__leaf > [inert] {
-      opacity: 0;
-    }
-  }
-
-  .collage-frame__edge {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    box-shadow: inset 0 0 0 1px rgba(61, 56, 51, 0.16);
-  }
-
+${COLLAGE_SHEET_STYLES}
   .collage-frame--drop-target {
-    box-shadow: 0 10px 34px rgba(61, 56, 51, 0.16), inset 0 0 0 2px rgba(74, 154, 138, 0.5);
+    box-shadow: 0 10px 34px color-mix(in srgb, var(--c-ink) 16%, transparent), inset 0 0 0 2px color-mix(in srgb, var(--c-accent) 50%, transparent);
   }
 
-  .collage-piece {
-    position: absolute;
-    overflow: hidden;
-    transform-origin: center;
-    user-select: none;
-  }
-
-  .collage-piece__source {
-    position: absolute;
-  }
-
-  /* The box a heading or button is set in before it is scaled to its piece. */
-  .collage-piece__lettering {
-    position: absolute;
-    left: 0;
-    top: 0;
-    transform-origin: left top;
-  }
-
-  /* A placed piece fills its box whatever kind of scrap it came from. */
-  .collage-piece__source .scrap-collage__svg,
-  .collage-piece__source .scrap-collage__button {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  /* Matches how the bake draws a button, so the studio is what you get. */
-  .collage-piece__source .scrap-collage__button {
-    box-sizing: border-box;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-  }
-
-  .collage-piece__source .scrap-collage__svg svg {
-    width: 100%;
-    height: 100%;
-  }
-
-  /*
-   * A cursor is pinned to 32px on the browse surface. A placed piece is sized
-   * by its own box instead, so the pin and its centering offset are undone —
-   * the studio must show exactly what the bake draws.
-   */
-  .collage-piece__source .scrap-collage__cursor,
-  .collage-tray__thumb .scrap-collage__cursor {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    transform: none;
-  }
-
-  /* The swatch stand-in follows the same box as the cursor it sits under. */
-  .collage-piece__source .scrap-collage__swatch,
-  .collage-tray__thumb .scrap-collage__swatch {
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    transform: none;
-  }
-
+${PIECE_MATERIAL_STYLES}
   /* The edge of the selected piece, or of the box around several: a plain
      teal line two screen pixels wide, kept that weight through the frame's
      zoom. It is drawn as an inset shadow because the browser rounds a
@@ -730,20 +861,24 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-selection-edge {
     position: absolute;
     inset: 0;
-    box-shadow: inset 0 0 0 calc(2px / var(--collage-zoom)) #4a9a8a;
+    box-shadow: inset 0 0 0 calc(2px / var(--collage-zoom)) var(--c-accent);
     pointer-events: none;
   }
 
-  .collage-handle {
-    position: absolute;
-    width: 13px;
-    height: 13px;
-    margin: -7px 0 0 -7px;
-    border: 2px solid #4a9a8a;
-    border-radius: 2px;
-    background: #fffdf9;
-    padding: 0;
-    cursor: grab;
+  /* A finger needs far more room than a cursor: the handle grows a little and
+     takes presses from well around it, with nothing drawn there. */
+  @media (pointer: coarse) {
+    .collage-handle {
+      width: 18px;
+      height: 18px;
+      margin: -9px 0 0 -9px;
+    }
+
+    .collage-handle::after {
+      content: "";
+      position: absolute;
+      inset: -16px;
+    }
   }
 
   /* A corner handle held at the edge of the view because its corner is out
@@ -762,54 +897,6 @@ export const COLLAGE_STUDIO_STYLES = `
     touch-action: none;
   }
 
-  /*
-   * While cropping, the piece's whole source is laid out dimmed and the kept
-   * region is punched back through at full strength, so the material waiting
-   * outside the crop is visible to drag back in.
-   */
-  .collage-crop {
-    position: absolute;
-    transform-origin: center;
-    z-index: 10001;
-    touch-action: none;
-  }
-
-  .collage-crop__source {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-  }
-
-  .collage-crop__shade {
-    position: absolute;
-    inset: 0;
-    background: rgba(61, 56, 51, 0.62);
-    pointer-events: none;
-  }
-
-  .collage-crop__kept {
-    position: absolute;
-    box-shadow: 0 0 0 1px #fffdf9;
-    cursor: move;
-  }
-
-  .collage-crop__window {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-    pointer-events: none;
-  }
-
-  .collage-crop__reveal {
-    position: absolute;
-  }
-
-  .collage-handle--crop {
-    position: absolute;
-    z-index: 2;
-    pointer-events: auto;
-  }
-
   /* Small readout that rides above a piece during a modal rotate or scale. */
   .collage-readout {
     position: absolute;
@@ -817,10 +904,10 @@ export const COLLAGE_STUDIO_STYLES = `
     padding: 2px 6px;
     z-index: 10002;
     transform-origin: center bottom;
-    border: 1px solid rgba(61, 56, 51, 0.2);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 20%, transparent);
     border-radius: 3px;
-    background: #f5f0e8;
-    color: #3d3833;
+    background: var(--c-surface);
+    color: var(--c-ink);
     font-family: "Martian Mono", monospace;
     font-size: 9px;
     letter-spacing: 0.04em;
@@ -833,7 +920,7 @@ export const COLLAGE_STUDIO_STYLES = `
     position: absolute;
     z-index: 9998;
     border-style: solid;
-    border-color: rgba(61, 56, 51, 0.32);
+    border-color: color-mix(in srgb, var(--c-ink) 32%, transparent);
     transform-origin: center;
     pointer-events: none;
   }
@@ -844,19 +931,47 @@ export const COLLAGE_STUDIO_STYLES = `
     position: absolute;
     z-index: 9999;
     border-style: solid;
-    border-color: rgba(74, 154, 138, 0.85);
+    border-color: color-mix(in srgb, var(--c-accent) 85%, transparent);
     transform-origin: center;
     pointer-events: none;
   }
 
   /* The area a drag across bare paper is sweeping. */
+  .collage-snap-guide {
+    position: absolute;
+    z-index: 10003;
+    background: var(--c-accent);
+    pointer-events: none;
+  }
+
   .collage-marquee {
     position: absolute;
     z-index: 10003;
     border-style: solid;
-    border-color: #4a9a8a;
-    background: rgba(74, 154, 138, 0.08);
+    border-color: var(--c-accent);
+    background: color-mix(in srgb, var(--c-accent) 8%, transparent);
     pointer-events: none;
+  }
+
+  /* A ring under a finger that has rested long enough: dragging from bare
+     paper now draws a box, and lifting from a piece lists the pieces there. */
+  .collage-hold-mark {
+    position: absolute;
+    z-index: 10003;
+    border-style: solid;
+    border-color: var(--c-accent);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--c-accent) 12%, transparent);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    animation: collage-hold-mark 180ms ease-out;
+  }
+
+  @keyframes collage-hold-mark {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.4);
+    }
   }
 
   /* Every piece stacked under the pointer, so a buried one can be picked by
@@ -872,10 +987,10 @@ export const COLLAGE_STUDIO_STYLES = `
     overflow-y: auto;
     padding: 5px;
     transform-origin: left top;
-    border: 1px solid rgba(61, 56, 51, 0.2);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 20%, transparent);
     border-radius: 4px;
-    background: #f5f0e8;
-    box-shadow: 0 10px 28px rgba(61, 56, 51, 0.22);
+    background: var(--c-surface);
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--c-ink) 22%, transparent);
   }
 
   .collage-here__head {
@@ -929,13 +1044,13 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-here__row:hover {
-    border-color: rgba(61, 56, 51, 0.2);
-    background: rgba(61, 56, 51, 0.06);
+    border-color: color-mix(in srgb, var(--c-ink) 20%, transparent);
+    background: color-mix(in srgb, var(--c-ink) 6%, transparent);
   }
 
   .collage-here__row--on {
-    border-color: rgba(74, 154, 138, 0.7);
-    background: rgba(74, 154, 138, 0.1);
+    border-color: color-mix(in srgb, var(--c-accent) 70%, transparent);
+    background: color-mix(in srgb, var(--c-accent) 10%, transparent);
   }
 
   .collage-here__thumb {
@@ -947,23 +1062,23 @@ export const COLLAGE_STUDIO_STYLES = `
     width: 30px;
     height: 30px;
     overflow: hidden;
-    border: 1px solid rgba(61, 56, 51, 0.16);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 16%, transparent);
     border-radius: 2px;
-    background: #fffdf9;
+    background: var(--c-frame);
   }
 
-  .collage-here__thumb > * {
-    max-width: 100%;
-    max-height: 100%;
+  /* The piece as it looks now, shrunk to fit; its own box clips the crop. */
+  .collage-piece-look {
+    position: relative;
+    display: block;
+    overflow: hidden;
   }
 
-  .collage-here__thumb img,
-  .collage-here__thumb svg {
-    width: auto;
-    height: auto;
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
+  .collage-piece-look__piece {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: left top;
   }
 
   .collage-here__what {
@@ -977,93 +1092,17 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-here__kind {
-    color: #3d3833;
+    color: var(--c-ink);
   }
 
   .collage-here__where {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: #827a72;
+    color: var(--c-muted);
   }
 
-  /* The peeked piece's own edge, so its label has something to belong to. */
-  /* While peeking, a piece and its label share one quiet tint, so the label
-     can be matched to its piece where pieces sit close or overlap. */
-  .collage-peek-edge {
-    position: absolute;
-    z-index: 10004;
-    border-style: dotted;
-    border-color: var(--peek-tint, #827a72);
-    transform-origin: center;
-    pointer-events: none;
-  }
-
-  .collage-peek-edge--on {
-    border-style: solid;
-  }
-
-  /* An archive label pinned to a piece while the peek key is held. It is a
-     slip of paper over the work, never a control: it takes no pointer. */
-  .collage-peek {
-    position: absolute;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    max-width: 230px;
-    padding: 2px 5px;
-    transform-origin: left top;
-    border: 1px solid var(--peek-tint, rgba(61, 56, 51, 0.5));
-    border-left-width: 3px;
-    border-radius: 2px;
-    background: #f5f0e8;
-    color: #3d3833;
-    box-shadow: 0 2px 8px rgba(61, 56, 51, 0.18);
-    font-family: "Martian Mono", monospace;
-    font-size: 8px;
-    line-height: 1.5;
-    letter-spacing: 0.02em;
-    pointer-events: none;
-    user-select: none;
-  }
-
-  /* The same label, floated over the drawer for the scrap under the pointer.
-     Fixed, so the drawer's scroll does not clip it. */
-  .collage-peek--tray {
-    position: fixed;
-    z-index: 10010;
-    border-left-width: 1px;
-  }
-
-  .collage-peek__where {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    white-space: nowrap;
-  }
-
-  .collage-peek__mark {
-    display: block;
-    width: 10px;
-    height: 10px;
-    object-fit: contain;
-  }
-
-  .collage-peek__more {
-    display: flex;
-    flex-direction: column;
-    padding-top: 1px;
-    border-top: 1px solid rgba(61, 56, 51, 0.14);
-    color: #827a72;
-  }
-
-  .collage-peek__line {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
+${COLLAGE_PEEK_STYLES}
   /* Where the save button used to be: a quiet word on how the work stands. */
   .collage-standing {
     margin: 0;
@@ -1071,72 +1110,12 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Martian Mono", monospace;
     font-size: 9px;
     letter-spacing: 0.03em;
-    color: #827a72;
+    color: var(--c-muted);
     white-space: nowrap;
   }
 
   .collage-standing--problem {
     color: #c4724e;
-  }
-
-  /* The cutout's edge control takes the piece strip's place beside the piece,
-     drawn at the same constant on-screen size. */
-  .collage-tolerance {
-    position: absolute;
-    z-index: 10004;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 6px 4px 8px;
-    transform-origin: left top;
-    border: 1px solid rgba(61, 56, 51, 0.2);
-    border-radius: 4px;
-    background: #f5f0e8;
-    box-shadow: 0 4px 14px rgba(61, 56, 51, 0.18);
-    white-space: nowrap;
-  }
-
-  .collage-tolerance input {
-    width: 96px;
-    accent-color: #4a9a8a;
-  }
-
-  .collage-tolerance__button {
-    padding: 3px 6px;
-    border: 1px solid transparent;
-    border-radius: 3px;
-    background: transparent;
-    font-family: "Martian Mono", monospace;
-    font-size: 9px;
-    color: #3d3833;
-    cursor: pointer;
-  }
-
-  .collage-tolerance__button:hover {
-    border-color: rgba(61, 56, 51, 0.2);
-  }
-
-  .collage-tolerance__button:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-
-  .collage-tolerance__button:disabled:hover {
-    border-color: transparent;
-  }
-
-  .collage-tolerance__button--done {
-    border-color: rgba(74, 154, 138, 0.5);
-    color: #2f6f62;
-  }
-
-  .collage-piece__cut {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: fill;
-    display: block;
   }
 
   /* A cut that is still being computed, and one that could not be read. */
@@ -1145,8 +1124,8 @@ export const COLLAGE_STUDIO_STYLES = `
     inset: 0;
     background: repeating-linear-gradient(
       45deg,
-      rgba(61, 56, 51, 0.06),
-      rgba(61, 56, 51, 0.06) 4px,
+      color-mix(in srgb, var(--c-ink) 6%, transparent),
+      color-mix(in srgb, var(--c-ink) 6%, transparent) 4px,
       transparent 4px,
       transparent 8px
     );
@@ -1168,10 +1147,10 @@ export const COLLAGE_STUDIO_STYLES = `
     max-height: calc(100% - 32px);
     overflow-y: auto;
     padding: 10px 12px;
-    border: 1px solid rgba(61, 56, 51, 0.2);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 20%, transparent);
     border-radius: 4px;
-    background: #f5f0e8;
-    box-shadow: 0 10px 28px rgba(61, 56, 51, 0.2);
+    background: var(--c-surface);
+    box-shadow: 0 10px 28px color-mix(in srgb, var(--c-ink) 20%, transparent);
   }
 
   .collage-keys__head {
@@ -1184,7 +1163,7 @@ export const COLLAGE_STUDIO_STYLES = `
   .collage-keys__close {
     border: none;
     background: transparent;
-    color: #827a72;
+    color: var(--c-muted);
     font-size: 15px;
     line-height: 1;
     cursor: pointer;
@@ -1200,7 +1179,7 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Martian Mono", monospace;
     font-size: 8px;
     letter-spacing: 0.08em;
-    color: #827a72;
+    color: var(--c-muted);
   }
 
   .collage-keys__row {
@@ -1218,11 +1197,11 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Martian Mono", monospace;
     font-size: 8px;
     letter-spacing: 0.02em;
-    color: #3d3833;
+    color: var(--c-ink);
   }
 
   .collage-keys__what {
-    color: #827a72;
+    color: var(--c-muted);
   }
 
   .collage-bar {
@@ -1231,23 +1210,11 @@ export const COLLAGE_STUDIO_STYLES = `
     align-items: center;
     gap: 8px;
     padding: 8px 14px;
-    border-top: 1px solid rgba(61, 56, 51, 0.12);
+    border-top: 3px double var(--c-rule);
   }
 
   .collage-bar__spacer {
     flex: 1 1 auto;
-  }
-
-  .collage-title-input {
-    flex: 0 1 260px;
-    min-width: 120px;
-    padding: 4px 6px;
-    border: none;
-    border-bottom: 1px solid rgba(61, 56, 51, 0.28);
-    background: transparent;
-    color: #3d3833;
-    font-family: "Lora", Georgia, serif;
-    font-size: 15px;
   }
 
   /* Stands where the title was, at the title field's height, so turning over
@@ -1258,21 +1225,12 @@ export const COLLAGE_STUDIO_STYLES = `
     min-height: 29px;
   }
 
-  .collage-title-input:focus {
-    outline: none;
-    border-bottom-color: rgba(74, 154, 138, 0.8);
-  }
-
-  .collage-title-input::placeholder {
-    color: rgba(130, 122, 114, 0.7);
-  }
-
   .collage-action {
     padding: 4px 9px;
-    border: 1px solid rgba(61, 56, 51, 0.22);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 22%, transparent);
     border-radius: 3px;
     background: transparent;
-    color: #3d3833;
+    color: var(--c-ink);
     font-family: "Martian Mono", monospace;
     font-size: 9px;
     letter-spacing: 0.04em;
@@ -1280,18 +1238,18 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-action:hover:not(:disabled) {
-    background: rgba(61, 56, 51, 0.07);
+    background: color-mix(in srgb, var(--c-ink) 7%, transparent);
   }
 
   .collage-action:disabled {
-    color: rgba(130, 122, 114, 0.6);
-    border-color: rgba(61, 56, 51, 0.12);
+    color: color-mix(in srgb, var(--c-muted) 60%, transparent);
+    border-color: color-mix(in srgb, var(--c-ink) 12%, transparent);
     cursor: default;
   }
 
   .collage-action--primary {
-    border-color: rgba(74, 154, 138, 0.7);
-    color: #2f6b60;
+    border-color: color-mix(in srgb, var(--c-accent) 70%, transparent);
+    color: var(--c-accent-ink);
   }
 
   .collage-action--danger:hover:not(:disabled) {
@@ -1312,17 +1270,18 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-notice--quiet {
-    border-top-color: rgba(61, 56, 51, 0.12);
-    background: rgba(74, 154, 138, 0.08);
-    color: #2f6b60;
+    border-top-color: color-mix(in srgb, var(--c-ink) 12%, transparent);
+    background: color-mix(in srgb, var(--c-accent) 8%, transparent);
+    color: var(--c-accent-ink);
   }
 
   .collage-history {
+    background: var(--c-ground);
     position: absolute;
     inset: 0;
     overflow-y: auto;
     padding: 18px 22px 40px;
-    color: #3d3833;
+    color: var(--c-ink);
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
   }
 
@@ -1349,7 +1308,7 @@ export const COLLAGE_STUDIO_STYLES = `
     width: 46px;
     height: 38px;
     transform: rotate(-6deg);
-    filter: drop-shadow(0 2px 3px rgba(61, 56, 51, 0.22));
+    filter: drop-shadow(0 2px 3px color-mix(in srgb, var(--c-ink) 22%, transparent));
   }
 
   .collage-history__scrap-paper {
@@ -1377,7 +1336,7 @@ export const COLLAGE_STUDIO_STYLES = `
     font-size: 26px;
     font-weight: 600;
     line-height: 1.15;
-    color: #3d3833;
+    color: var(--c-ink);
   }
 
   .collage-history__summary {
@@ -1385,7 +1344,7 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Martian Mono", monospace;
     font-size: 10px;
     letter-spacing: 0.02em;
-    color: #827a72;
+    color: var(--c-muted);
   }
 
   .collage-history__start {
@@ -1402,19 +1361,19 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Martian Mono", monospace;
     font-size: 10px;
     font-weight: 400;
-    color: #827a72;
+    color: var(--c-muted);
     cursor: pointer;
   }
 
   .collage-history__import:hover {
-    color: #3d3833;
+    color: var(--c-ink);
     text-decoration: underline;
     text-underline-offset: 2px;
   }
 
   .collage-history__import:focus-visible {
-    color: #3d3833;
-    outline: 2px solid rgba(74, 154, 138, 0.45);
+    color: var(--c-ink);
+    outline: 2px solid color-mix(in srgb, var(--c-accent) 45%, transparent);
     outline-offset: 2px;
     border-radius: 2px;
   }
@@ -1424,7 +1383,7 @@ export const COLLAGE_STUDIO_STYLES = `
     font-family: "Lora", Georgia, serif;
     font-size: 11px;
     font-style: italic;
-    color: #827a72;
+    color: var(--c-muted);
   }
 
   .collage-history__grid {
@@ -1438,17 +1397,17 @@ export const COLLAGE_STUDIO_STYLES = `
     flex-direction: column;
     gap: 6px;
     padding: 9px;
-    border: 1px solid rgba(61, 56, 51, 0.14);
+    border: 1px solid color-mix(in srgb, var(--c-ink) 14%, transparent);
     border-radius: 3px;
-    background: #fffdf9;
-    box-shadow: 0 4px 14px rgba(61, 56, 51, 0.08);
+    background: var(--c-frame);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--c-ink) 8%, transparent);
     transition: box-shadow 140ms ease, border-color 140ms ease;
   }
 
   .collage-card:hover,
   .collage-card:focus-within {
-    border-color: rgba(61, 56, 51, 0.26);
-    box-shadow: 0 6px 18px rgba(61, 56, 51, 0.13);
+    border-color: color-mix(in srgb, var(--c-ink) 26%, transparent);
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--c-ink) 13%, transparent);
   }
 
   /* The whole card face is one button that opens the collage. */
@@ -1468,7 +1427,7 @@ export const COLLAGE_STUDIO_STYLES = `
   }
 
   .collage-card__open:focus-visible {
-    outline: 2px solid rgba(74, 154, 138, 0.8);
+    outline: 2px solid color-mix(in srgb, var(--c-accent) 80%, transparent);
     outline-offset: 3px;
   }
 
@@ -1486,7 +1445,7 @@ export const COLLAGE_STUDIO_STYLES = `
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    border: 1px dashed rgba(61, 56, 51, 0.2);
+    border: 1px dashed color-mix(in srgb, var(--c-ink) 20%, transparent);
   }
 
   .collage-card__title {
@@ -1503,7 +1462,7 @@ export const COLLAGE_STUDIO_STYLES = `
     font-size: 9px;
     line-height: 1.7;
     letter-spacing: 0.02em;
-    color: #827a72;
+    color: var(--c-muted);
   }
 
   /* The card's tools: a quiet row of the studio's glyphs, clearer on hover
@@ -1514,7 +1473,7 @@ export const COLLAGE_STUDIO_STYLES = `
     align-items: center;
     gap: 4px;
     min-height: 26px;
-    color: #827a72;
+    color: var(--c-muted);
     opacity: 0.7;
     transition: opacity 140ms ease;
   }
@@ -1530,5 +1489,61 @@ export const COLLAGE_STUDIO_STYLES = `
 
   .collage-card__actions-gap {
     flex: 1 1 auto;
+  }
+
+${COLLAGE_MAT_STYLES}
+  /* Views sit at the top-right: the back, and where the pieces came from. */
+${COLLAGE_VIEW_STYLES}
+${EXPORT_MENU_STYLES}
+${SIGNATURE_ROW_STYLES}
+${SIGNATURE_STAMP_STYLES}
+  .collage-setting:focus-visible,
+  .collage-keys-button:focus-visible {
+    outline: 2px solid var(--c-accent);
+    outline-offset: 1px;
+  }
+
+  /* Size and paper, quiet in the bottom bar. */
+  .collage-setting {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 8px;
+    border: 1px solid var(--c-rule);
+    border-radius: 3px;
+    background: var(--c-frame);
+    color: var(--c-ink);
+    font-family: "Martian Mono", monospace;
+    font-size: 9.5px;
+    cursor: pointer;
+  }
+  .collage-setting:hover,
+  .collage-setting--open {
+    border-color: var(--c-muted);
+  }
+  .collage-setting__caret {
+    color: var(--c-muted);
+    font-size: 8px;
+  }
+
+  .collage-keys-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--c-ink);
+    font-family: "Martian Mono", monospace;
+    font-size: 9.5px;
+    cursor: pointer;
+  }
+  .collage-keys-button:hover,
+  .collage-keys-button--on {
+    border-color: var(--c-rule);
+    background: var(--c-surface);
   }
 `;

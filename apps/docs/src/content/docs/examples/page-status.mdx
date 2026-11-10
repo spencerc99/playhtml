@@ -1,0 +1,41 @@
+---
+title: "Page status board"
+description: "Everyone picks a status and sees everyone else's, gone when they leave."
+sidebar:
+  hidden: true
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { pageStatusRecipe } from "@/components/playground/recipes/people-basics";
+
+Each reader picks a status, and everyone sees each person's status next to their name. A status is page presence: everyone can see it, only you can change yours, and it's gone when you leave.
+
+<RecipeExample recipe={pageStatusRecipe} client:load />
+
+<RecipeCodeTabs recipe={pageStatusRecipe} />
+
+## Set your status
+
+`setMyPresence(key, value)` sets one key of your page presence. Pass `null` to clear it:
+
+```js
+playhtml.people.setMyPresence("status", "reading");
+playhtml.people.setMyPresence("status", null);
+```
+
+## Show everyone's
+
+`onChange("status", callback)` calls back now, then when someone joins, leaves, renames, or changes their status. Each person's status is at `person.presence.status`:
+
+```js
+playhtml.people.onChange("status", (everyone) => {
+  for (const person of everyone) {
+    console.log(person.name, person.presence.status);
+  }
+});
+```
+
+In React, `usePeople("status")` re-renders on the same changes.
+
+See [page presence](/docs/data/presence/#page-presence) for the full API.

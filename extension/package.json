@@ -1,6 +1,6 @@
 {
   "name": "@playhtml/extension",
-  "version": "0.1.25",
+  "version": "0.1.30",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,6 +13,9 @@
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "zip:safari": "wxt zip -b safari --mv3",
+    "ios:safari": "./scripts/packageSafariIOS.sh",
+    "ios:safari:simulator": "./scripts/packageSafariIOS.sh --simulator",
+    "ios:safari:check": "./scripts/checkSafariIOSApp.sh",
     "submit": "./release.sh",
     "submit:dry": "./release.sh --dry-run",
     "submit:refresh-chrome-token": "./scripts/refresh-chrome-token.sh",
@@ -22,6 +25,7 @@
     "postinstall": "bun run prepare:types"
   },
   "dependencies": {
+    "@huggingface/transformers": "3.8.1",
     "@playhtml/common": "workspace:*",
     "@playhtml/extension-types": "workspace:*",
     "@playhtml/react": "workspace:*",

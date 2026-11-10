@@ -6,10 +6,12 @@ import {
   ElementAwarenessEventHandlerData,
   ElementData,
   ElementEventHandlerData,
+  ElementPerson,
   ElementSetupData,
-  ElementUser,
   ModifierKey,
+  Person,
   ViewTemplate,
+  clonePlain,
   observeElementChanges,
 } from "@playhtml/common";
 
@@ -29,7 +31,11 @@ interface ElementHandlerOptions<V> {
   getUsers?: (
     byStableId: Map<string, V>,
     selfLive: V | undefined,
-  ) => ElementUser<V>[];
+  ) => ElementPerson<V>[];
+  /** You on this element: your identity plus your presence here. */
+  getMe?: (selfLive: V | undefined) => Person<V>;
+  /** Called after anyone's presence on this element changes (local or remote). */
+  onPresenceChange?: () => void;
 }
 
 // TODO: turn this into just an extension of HTMLElement and initialize all the methods / do all the state tracking
@@ -71,7 +77,9 @@ export class ElementHandler<T = any, U = any, V = any> {
   private getUsers: (
     byStableId: Map<string, V>,
     selfLive: V | undefined,
-  ) => ElementUser<V>[];
+  ) => ElementPerson<V>[];
+  private getMeFor?: (selfLive: V | undefined) => Person<V>;
+  private onPresenceChange?: () => void;
   private clickListener?: (e: MouseEvent) => void;
   private touchStartListener?: (e: TouchEvent) => void;
   private mouseDownListener?: (e: MouseEvent) => void;
@@ -102,6 +110,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       onAwarenessChange,
       defaultData,
       defaultLocalData,
+      defaultPresence,
       live,
       myDefaultAwareness,
       data,
@@ -118,6 +127,8 @@ export class ElementHandler<T = any, U = any, V = any> {
     // console.log("🔨 constructing ", element.id);
     this.scheduleSetupDataWrite = options.scheduleSetupDataWrite;
     this.getUsers = options.getUsers ?? (() => []);
+    this.getMeFor = options.getMe;
+    this.onPresenceChange = options.onPresenceChange;
     this.element = element;
     this.view = view;
     this.devMode = devMode;
@@ -138,11 +149,11 @@ export class ElementHandler<T = any, U = any, V = any> {
     if (awarenessData !== undefined) {
       this.awareness = awarenessData;
     }
-    const initialLive = live !== undefined ? live : myDefaultAwareness;
+    const initialLive = defaultPresence ?? live ?? myDefaultAwareness;
     const myInitialLive =
       initialLive instanceof Function ? initialLive(element) : initialLive;
     if (myInitialLive !== undefined) {
-      this.setLive(myInitialLive);
+      this.replaceMyPresence(myInitialLive);
     }
     // Needed to get around the typescript error even though it is assigned in __data.
     this._data = initialData as T;
@@ -507,6 +518,17 @@ export class ElementHandler<T = any, U = any, V = any> {
     return true;
   }
 
+  /** Everyone with presence on this element, including you. */
+  getEveryone(): ElementPerson<V>[] {
+    return this.getUsers(this.awarenessByStableId, this.selfAwareness);
+  }
+
+  /** You on this element, with your presence here. */
+  getMe(): Person<V> {
+    if (this.getMeFor) return this.getMeFor(this.selfAwareness);
+    return { pid: "", color: "", isMe: true, presence: this.selfAwareness as V };
+  }
+
   updateAwareness(data: V[], byStableId: Map<string, V>) {
     this.awareness = data;
     this.awarenessByStableId = byStableId;
@@ -521,22 +543,27 @@ export class ElementHandler<T = any, U = any, V = any> {
       );
     }
     this.render();
+    this.onPresenceChange?.();
   }
 
   getEventHandlerData(): ElementEventHandlerData<T, U, V> {
+    const everyone = this.getEveryone();
     return {
       element: this.element,
       data: this.data,
       localData: this.localData,
+      everyone,
+      me: this.getMe(),
       live: this.selfAwareness,
-      users: this.getUsers(this.awarenessByStableId, this.selfAwareness),
+      users: everyone,
       awareness: this.awareness,
       awarenessByStableId: this.awarenessByStableId,
       myAwareness: this.selfAwareness,
       setData: (newData) => this.setData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
-      setLive: (newData) => this.setLive(newData),
-      setMyAwareness: (newData) => this.setLive(newData),
+      setMyPresence: (next) => this.setMyPresence(next),
+      setLive: (newData) => this.replaceMyPresence(newData),
+      setMyAwareness: (newData) => this.replaceMyPresence(newData),
       requestUpdate: () => this.requestUpdate(),
     };
   }
@@ -552,14 +579,16 @@ export class ElementHandler<T = any, U = any, V = any> {
       getElement: () => this.element,
       getData: () => this.data,
       getLocalData: () => this.localData,
+      getEveryone: () => this.getEveryone(),
+      getMe: () => this.getMe(),
       getLive: () => this.selfAwareness,
-      getUsers: () =>
-        this.getUsers(this.awarenessByStableId, this.selfAwareness),
+      getUsers: () => this.getEveryone(),
       getAwareness: () => this.awareness,
       setData: (newData) => this.setSetupData(newData),
       setLocalData: (newData) => this.setLocalData(newData),
-      setLive: (newData) => this.setLive(newData),
-      setMyAwareness: (newData) => this.setLive(newData),
+      setMyPresence: (next) => this.setMyPresence(next),
+      setLive: (newData) => this.replaceMyPresence(newData),
+      setMyAwareness: (newData) => this.replaceMyPresence(newData),
       requestUpdate: () => this.requestUpdate(),
     };
   }
@@ -607,11 +636,26 @@ export class ElementHandler<T = any, U = any, V = any> {
     this.onChange(data as unknown as T);
   }
 
-  // TODO: this should be keyed on the element to avoid conflicts
-  setLive(data: V): void {
+  /**
+   * Sets your presence on this element. A function receives a copy of your
+   * current presence to edit (or return a new value from), like `setData`.
+   */
+  setMyPresence(next: V | ((draft: V) => V | void)): void {
+    if (typeof next !== "function") {
+      this.replaceMyPresence(next, "setMyPresence");
+      return;
+    }
+    if (this.rejectWriteDuringRender("setMyPresence")) return;
+    const draft = clonePlain(this.selfAwareness) as V;
+    const result = (next as (draft: V) => V | void)(draft);
+    this.replaceMyPresence(result === undefined ? draft : result, "setMyPresence");
+  }
+
+  /** Replaces your whole presence on this element (the `setLive` behavior). */
+  replaceMyPresence(data: V, method = "setLive"): void {
     // In view mode an awareness change re-renders, so writing awareness during
     // render would loop. Reject it like the other write paths.
-    if (this.rejectWriteDuringRender("setLive")) return;
+    if (this.rejectWriteDuringRender(method)) return;
     if (data === this.selfAwareness) {
       // avoid duplicate broadcasts
       return;
@@ -626,9 +670,14 @@ export class ElementHandler<T = any, U = any, V = any> {
     this.triggerAwarenessUpdate?.();
   }
 
-  /** @deprecated Use `setLive`. */
+  /** @deprecated Use `setMyPresence`. */
+  setLive(data: V): void {
+    this.replaceMyPresence(data);
+  }
+
+  /** @deprecated Use `setMyPresence`. */
   setMyAwareness(data: V): void {
-    this.setLive(data);
+    this.replaceMyPresence(data, "setMyAwareness");
   }
 
   setDataDebounced(data: T) {

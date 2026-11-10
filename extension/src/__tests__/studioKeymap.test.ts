@@ -1,11 +1,12 @@
 // ABOUTME: Tests which studio command each key press invokes.
 // ABOUTME: Guards that typing is never interrupted and modes own their keys.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   RESERVED_ACCELERATORS,
   acceleratorName,
   isTypingTarget,
+  releaseTypingFocus,
   studioCommandFor,
   STUDIO_SHORTCUTS,
   type KeyEventShape,
@@ -73,7 +74,7 @@ describe("shortcuts while typing", () => {
 });
 
 describe("controls that own their keys", () => {
-  it("leaves every key to a control marked as owning them", () => {
+  it("leaves every key but undo and redo to a control marked as owning them", () => {
     const owned = {
       target: {
         tagName: "BUTTON",
@@ -94,6 +95,36 @@ describe("controls that own their keys", () => {
     expect(studioCommandFor(press("\\", plain), IDLE)).toEqual({
       kind: "toggleDrawer",
     });
+  });
+
+  // The browser's own undo would reach back into the last text typed, such
+  // as the drawer's search, so the studio keeps undo even from a filter chip.
+  it("still takes undo and redo from a control that owns its keys", () => {
+    const chip = {
+      tagName: "BUTTON",
+      closest: (selector: string) =>
+        selector === "[data-owns-keys]" ? {} : null,
+    };
+    expect(
+      studioCommandFor(press("z", { metaKey: true, target: chip }), IDLE),
+    ).toEqual({ kind: "undo" });
+    expect(
+      studioCommandFor(
+        press("z", { metaKey: true, shiftKey: true, target: chip }),
+        IDLE,
+      ),
+    ).toEqual({ kind: "redo" });
+  });
+
+  it("leaves undo to a text field inside a control that owns its keys", () => {
+    const field = {
+      tagName: "INPUT",
+      closest: (selector: string) =>
+        selector === "[data-owns-keys]" ? {} : null,
+    };
+    expect(
+      studioCommandFor(press("z", { metaKey: true, target: field }), IDLE),
+    ).toBeNull();
   });
 });
 
@@ -119,9 +150,30 @@ describe("modal transforms", () => {
     });
     expect(studioCommandFor(press("r"), rotating)).toBeNull();
     expect(studioCommandFor(press("Backspace"), rotating)).toBeNull();
-    expect(
-      studioCommandFor(press("z", { metaKey: true }), rotating),
-    ).toBeNull();
+  });
+
+  // The studio finishes the running session before it steps. A press left to
+  // the browser would undo the last text typed, such as the drawer's search.
+  it("claims undo and redo while a session is running", () => {
+    for (const mode of ["crop", "cutout", "rotate", "scale"] as const) {
+      const running: KeymapContext = { ...IDLE, mode };
+      expect(
+        studioCommandFor(press("z", { metaKey: true }), running),
+        `${mode} cmd+z`,
+      ).toEqual({ kind: "undo" });
+      expect(
+        studioCommandFor(press("z", { ctrlKey: true }), running),
+        `${mode} ctrl+z`,
+      ).toEqual({ kind: "undo" });
+      expect(
+        studioCommandFor(press("Z", { metaKey: true, shiftKey: true }), running),
+        `${mode} cmd+shift+z`,
+      ).toEqual({ kind: "redo" });
+      expect(
+        studioCommandFor(press("y", { ctrlKey: true }), running),
+        `${mode} ctrl+y`,
+      ).toEqual({ kind: "redo" });
+    }
   });
 
   it("leaves the shift key alone while rotating so snapping can read it", () => {
@@ -474,7 +526,15 @@ describe("turning the collage over", () => {
     ]) {
       expect(studioCommandFor(press(key), BACK), key).toBeNull();
     }
-    for (const key of ["z", "d", "c", "v", "y"]) {
+    // Undo and redo are withheld from the browser, so they cannot reach
+    // back into a field, but they change nothing while the back is read.
+    for (const key of ["z", "y"]) {
+      expect(
+        studioCommandFor(press(key, { metaKey: true }), BACK),
+        `cmd+${key}`,
+      ).toEqual({ kind: "withhold" });
+    }
+    for (const key of ["d", "c", "v"]) {
       expect(
         studioCommandFor(press(key, { metaKey: true }), {
           ...BACK,
@@ -564,5 +624,38 @@ describe("several pieces in hand", () => {
     expect(studioCommandFor(press("d", { metaKey: true }), SEVERAL)).toEqual({
       kind: "duplicate",
     });
+  });
+});
+
+describe("turning from a text field to the collage", () => {
+  function field(tagName: string) {
+    const blur = vi.fn();
+    return { el: { tagName, blur } as unknown as Element & { blur: () => void }, blur };
+  }
+
+  it("puts down the drawer's search when a scrap is placed with focus still in it", () => {
+    const search = field("INPUT");
+    expect(releaseTypingFocus(search.el)).toBe(true);
+    expect(search.blur).toHaveBeenCalledOnce();
+  });
+
+  it("puts down a focused field when the collage is pressed", () => {
+    const search = field("INPUT");
+    expect(releaseTypingFocus(search.el, { tagName: "DIV" })).toBe(true);
+    expect(search.blur).toHaveBeenCalledOnce();
+  });
+
+  it("leaves a field alone when the press lands on a field", () => {
+    const title = field("INPUT");
+    expect(releaseTypingFocus(title.el, title.el as never)).toBe(false);
+    expect(releaseTypingFocus(title.el, { tagName: "TEXTAREA" })).toBe(false);
+    expect(title.blur).not.toHaveBeenCalled();
+  });
+
+  it("leaves focus on a button or the page alone", () => {
+    const button = field("BUTTON");
+    expect(releaseTypingFocus(button.el)).toBe(false);
+    expect(button.blur).not.toHaveBeenCalled();
+    expect(releaseTypingFocus(null)).toBe(false);
   });
 });

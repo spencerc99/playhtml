@@ -1,7 +1,5 @@
 # Unreleased
 
-- Internet scraps opens faster with large collections while search and filters still find older scraps.
-
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
 watches this file: when there are bullets, it opens (or updates) a release PR
@@ -17,4 +15,6 @@ extension/website/public/changelog/media/ and reference them here:
 ![video: Demo title](/changelog/media/file.mp4)
 -->
 
-- Notices in the popup now go away once you open them, and on their own after a few views.
+- Turn we were online off on any site from the popup, or keep what it collects there just for you. Sites you turned off are listed in Settings, where you can also add one. (#666)
+- Beta: search your scraps by what's in the pictures, like "eye" or "shoe". Turn it on from the scraps page search; it downloads a picture-reading model once and runs entirely on your computer.
+- Delete everything collected on a site you turned off, on your computer and the shared copy, from the site's menu in Settings.

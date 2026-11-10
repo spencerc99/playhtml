@@ -82,6 +82,60 @@ const mockUsers = {
   }),
 };
 
+// Mock people: the local person with a presence object, key-form writes, and
+// onChange(keys?, callback) that replays immediately and skips unchanged keys.
+let mockMyPresence: Record<string, unknown> = {};
+const peopleListeners = new Set<() => void>();
+
+function mockEveryone(): Array<Record<string, unknown>> {
+  return mockGetAllUsers().map((user) => ({
+    ...user,
+    presence: user.isMe ? { ...mockMyPresence } : {},
+  }));
+}
+
+const mockPeople = {
+  get everyone() {
+    return mockEveryone();
+  },
+  getAll: () => mockEveryone(),
+  get me() {
+    return mockEveryone()[0];
+  },
+  setMyPresence: vi.fn((key: string, value: unknown) => {
+    const next = { ...mockMyPresence };
+    if (value === null || value === undefined) delete next[key];
+    else next[key] = value;
+    mockMyPresence = next;
+    for (const listener of peopleListeners) listener();
+  }),
+  onChange: vi.fn((first: any, second?: any) => {
+    const callback = second ?? first;
+    const keys: string[] | null = second ? (typeof first === "string" ? [first] : first) : null;
+    let last: string | null = null;
+    const listener = () => {
+      const everyone = mockEveryone();
+      const watched = everyone.map((person: any) => [
+        person.pid,
+        person.name,
+        person.color,
+        keys ? keys.map((key) => person.presence[key] ?? null) : person.presence,
+      ]);
+      const fingerprint = JSON.stringify(watched);
+      if (fingerprint === last) return;
+      last = fingerprint;
+      callback(everyone);
+    };
+    peopleListeners.add(listener);
+    usersChangeListeners.add(listener);
+    listener();
+    return () => {
+      peopleListeners.delete(listener);
+      usersChangeListeners.delete(listener);
+    };
+  }),
+};
+
 let mockReadyResolve: () => void = () => {};
 let mockReadyReject: (error: unknown) => void = () => {};
 let mockReady: Promise<void>;
@@ -175,6 +229,11 @@ const mockedPlayhtml = {
     })),
   },
   users: mockUsers,
+  people: mockPeople,
+  resetMockPeople: () => {
+    mockMyPresence = {};
+    peopleListeners.clear();
+  },
   setMockPlayerIdentity: (next: Partial<typeof mockPlayerIdentity>) => {
     Object.assign(mockPlayerIdentity, next);
     notifyUsersChange();

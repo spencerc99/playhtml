@@ -6,6 +6,7 @@ import browser from "webextension-polyfill";
 import { isExtensionPageUrl } from "../utils/extensionPage";
 import type { CollectorStatus } from "../collectors/types";
 import { getValidEventTypes } from "@playhtml/extension-types";
+import type { CollectionEvent } from "@playhtml/extension-types";
 import { CollectorIcon } from "./icons";
 import {
   collectionModeStorageKey,
@@ -14,6 +15,42 @@ import {
   type CollectionMode,
 } from "../collectors/modes";
 import { triggerDownload } from "../utils/portraitExport";
+import { EXPORT_PAGE_SIZE, gzipExport } from "../utils/dataTransfer";
+import {
+  getPublicPlayerIdentity,
+  getStoredPlayerIdentity,
+} from "../storage/playerIdentity";
+import {
+  estimateRemainingMs,
+  formatRemaining,
+  readExportFiles,
+  readExportHeader,
+  type ExportContents,
+} from "../utils/importStream";
+import {
+  browserName,
+  eventSection,
+  exportedCollages,
+  exportedImages,
+  importCollage,
+  importIdentity,
+  importImage,
+  picturesToExport,
+  readableCollageIds,
+} from "../utils/transferSections";
+import {
+  ExportPicker,
+  ExportProgress,
+  ExportReady,
+  ImportPreview,
+  exportSummary,
+  type ExportCounts,
+  type ExportProgressRow,
+  type IdentityPreview,
+  type ImportWho,
+  type SectionChoices,
+} from "./TransferPanels";
+import type { StatsRebuildProgress } from "../storage/LocalEventStore";
 import {
   LEGIBILITY_KEY,
   DEFAULT_LEGIBILITY,
@@ -45,7 +82,9 @@ interface StorageStats {
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 function formatCompactCount(count: number): string {
@@ -70,6 +109,109 @@ function formatAge(ts: number): string {
   if (weeks < 8) return `${weeks}w`;
   const months = Math.floor(days / 30);
   return `${months}mo`;
+}
+
+interface ImportProgress {
+  phase: "reading" | "finishing";
+  bytesRead: number;
+  totalBytes: number;
+  eventsRead: number;
+  startedAt: number;
+  stats?: StatsProgress;
+  /** One row per section, when the file says what it holds. */
+  rows?: ExportProgressRow[];
+}
+
+interface StatsProgress {
+  step: StatsRebuildProgress["step"];
+  done: number;
+  total: number;
+  /** When this step began, for its time estimate. */
+  stepStartedAt: number;
+}
+
+const STATS_STEP_ORDER: StatsRebuildProgress["step"][] = [
+  "adding",
+  "saving",
+  "days",
+];
+
+function statsProgressLabel(stats: StatsProgress | undefined): {
+  share: number | null;
+  text: string;
+} {
+  if (!stats) return { share: null, text: "updating stats" };
+  const number = STATS_STEP_ORDER.indexOf(stats.step) + 1;
+  const prefix = `updating stats (${number} of ${STATS_STEP_ORDER.length})`;
+  if (stats.total <= 0 || stats.step === "saving")
+    return { share: null, text: prefix };
+  const share = Math.min(stats.done / stats.total, 1);
+  const remainingMs = estimateRemainingMs(
+    Date.now() - stats.stepStartedAt,
+    stats.done,
+    stats.total,
+  );
+  return {
+    share,
+    text:
+      `${prefix} · ${Math.floor(share * 100)}%` +
+      (remainingMs === null ? "" : ` · ${formatRemaining(remainingMs)}`),
+  };
+}
+
+/** Section rows, plus a stats row once every section is read. */
+function importRowsWithStats(progress: ImportProgress): ExportProgressRow[] {
+  const rows = progress.rows ?? [];
+  if (progress.phase !== "finishing") return rows;
+  const stats = statsProgressLabel(progress.stats);
+  return [
+    ...rows.map((row) => ({ ...row, state: "done" as const })),
+    {
+      label: "Updating stats",
+      written: progress.stats?.done ?? 0,
+      total: stats.share === null ? null : (progress.stats?.total ?? null),
+      state: "packing",
+      note: stats.text.replace(/^updating stats ?/, "").replace(/^· /, ""),
+    },
+  ];
+}
+
+function ImportProgressBar({ progress }: { progress: ImportProgress }) {
+  let share: number | null;
+  let label: string;
+  if (progress.phase === "finishing") {
+    const stats = statsProgressLabel(progress.stats);
+    share = stats.share;
+    label = stats.text;
+  } else {
+    share =
+      progress.totalBytes > 0 ? progress.bytesRead / progress.totalBytes : 0;
+    const remainingMs = estimateRemainingMs(
+      Date.now() - progress.startedAt,
+      progress.bytesRead,
+      progress.totalBytes,
+    );
+    label =
+      `${progress.eventsRead.toLocaleString()} events · ${Math.floor(
+        share * 100,
+      )}%` + (remainingMs === null ? "" : ` · ${formatRemaining(remainingMs)}`);
+  }
+  return (
+    <div className="collections__import-progress" role="status">
+      <div
+        className={`collections__import-bar${
+          share === null ? " collections__import-bar--waiting" : ""
+        }`}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={share === null ? undefined : Math.floor(share * 100)}
+      >
+        <div style={{ width: `${(share ?? 1) * 100}%` }} />
+      </div>
+      <span>{label}</span>
+    </div>
+  );
 }
 
 function getEventTypeCounts(countsByType: Record<string, number>) {
@@ -278,7 +420,33 @@ export function Collections({
     message: string;
   } | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportChoices, setExportChoices] = useState<SectionChoices | null>(
+    null,
+  );
+  const [exportCollageCount, setExportCollageCount] = useState<number | null>(
+    null,
+  );
+  const [youPreview, setYouPreview] = useState<IdentityPreview | null>(null);
+  const [exportRows, setExportRows] = useState<ExportProgressRow[] | null>(
+    null,
+  );
+  const [exportReady, setExportReady] = useState<{
+    fileName: string;
+    bytes: number;
+    summary: string;
+  } | null>(null);
+  const [pendingImport, setPendingImport] = useState<{
+    files: File[];
+    title: string;
+    packedOn: string | null;
+    contents: ExportContents | null;
+    choices: SectionChoices;
+    who: ImportWho;
+  } | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(
+    null,
+  );
   const [isRestoring, setIsRestoring] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -507,21 +675,161 @@ export function Collections({
     }
   };
 
-  const handleExport = async () => {
+  const exportOpen = !!(exportChoices || exportRows || exportReady);
+  const importOpen = !!(pendingImport || importProgress);
+
+  const loadYouPreview = () => {
+    getPublicPlayerIdentity()
+      .then((identity) =>
+        setYouPreview(
+          identity
+            ? {
+                color: identity.playerStyle.colorPalette[0] ?? "#b5aea5",
+                id: identity.publicKey,
+                name: identity.name,
+              }
+            : null,
+        ),
+      )
+      .catch(() => {});
+  };
+
+  const openExportPicker = async () => {
+    setTransferStatus(null);
+    setExportReady(null);
+    setExportChoices({ history: true, scraps: true, collages: true, you: false });
+    setExportCollageCount(null);
+    readableCollageIds()
+      .then((ids) => setExportCollageCount(ids.length))
+      .catch(() => setExportCollageCount(null));
+    loadYouPreview();
+  };
+
+  const exportCounts = (): ExportCounts => {
+    const counts = storageStats?.countsByType ?? {};
+    const scraps = counts.element ?? 0;
+    const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
+    return { history: total - scraps, scraps, collages: exportCollageCount };
+  };
+
+  const handleExport = async (choices: SectionChoices) => {
+    setExportChoices(null);
     setIsExporting(true);
     setTransferStatus(null);
+    const counts = exportCounts();
+    const withEvents = choices.history || choices.scraps;
     try {
-      const response = await browser.runtime.sendMessage({
-        type: "EXPORT_EVENTS",
+      const collageIds = choices.collages ? await readableCollageIds() : [];
+      const pictures = await picturesToExport(choices.scraps, choices.collages);
+      const you = choices.you ? await getStoredPlayerIdentity() : null;
+      const contents: ExportContents = {
+        ...(choices.history ? { history: counts.history } : {}),
+        ...(choices.scraps ? { scraps: counts.scraps } : {}),
+        ...(choices.collages ? { collages: collageIds.length } : {}),
+        ...(pictures.size > 0 ? { pictures: pictures.size } : {}),
+        ...(you
+          ? {
+              you: true,
+              youColor: you.public.playerStyle.colorPalette[0],
+              youId: you.public.publicKey,
+              ...(you.public.name ? { youName: you.public.name } : {}),
+            }
+          : {}),
+      };
+
+      type RowKey = "events" | "images" | "collages";
+      const rowOrder: { key: RowKey; label: string; total: number }[] = [];
+      if (withEvents)
+        rowOrder.push({
+          key: "events",
+          label:
+            choices.history && choices.scraps
+              ? "Browsing history and scraps"
+              : choices.history
+                ? "Browsing history"
+                : "Scraps",
+          total:
+            (choices.history ? counts.history : 0) +
+            (choices.scraps ? counts.scraps : 0),
+        });
+      if (pictures.size > 0)
+        rowOrder.push({ key: "images", label: "Saved pictures", total: pictures.size });
+      if (choices.collages)
+        rowOrder.push({ key: "collages", label: "Collages", total: collageIds.length });
+      const written: Record<RowKey, number> = { events: 0, images: 0, collages: 0 };
+      let current = 0;
+      const showRows = () =>
+        setExportRows(
+          rowOrder.map((row, index) => ({
+            label: row.label,
+            written: written[row.key],
+            total: row.total,
+            state: index < current ? "done" : index === current ? "packing" : "waiting",
+          })),
+        );
+      showRows();
+
+      let afterId: string | null = null;
+      let done = !withEvents;
+      const readPage = async (): Promise<CollectionEvent[] | null> => {
+        if (done) return null;
+        const response = await browser.runtime.sendMessage({
+          type: "EXPORT_EVENT_PAGE",
+          afterId,
+          limit: EXPORT_PAGE_SIZE,
+        });
+        if (!response?.success)
+          throw new Error(response?.error ?? "Export failed");
+        afterId = response.nextAfterId ?? null;
+        if (afterId === null) done = true;
+        return (response.events as CollectionEvent[]).filter(
+          (event) => choices[eventSection(event.type)],
+        );
+      };
+      const advanceTo = (key: RowKey) => {
+        const index = rowOrder.findIndex((row) => row.key === key);
+        if (index > current) current = index;
+      };
+      async function* tracked<T>(key: RowKey, items: AsyncIterable<T>) {
+        advanceTo(key);
+        showRows();
+        yield* items;
+      }
+
+      const blob = await gzipExport({
+        exportedAt: Date.now(),
+        contents,
+        packedIn: browserName(navigator.userAgent),
+        readEventPage: readPage,
+        images:
+          pictures.size > 0
+            ? tracked("images", exportedImages(pictures))
+            : undefined,
+        collages: choices.collages
+          ? tracked("collages", exportedCollages(collageIds))
+          : undefined,
+        identity: await getPublicPlayerIdentity(),
+        you,
+        onProgress: (section, count) => {
+          written[section] = count;
+          advanceTo(section);
+          showRows();
+        },
       });
-      if (!response?.success)
-        throw new Error(response?.error ?? "Export failed");
-      const blob = new Blob([new Uint8Array(response.data)], {
-        type: "application/gzip",
-      });
+      current = rowOrder.length;
+      showRows();
+
       const date = new Date().toISOString().slice(0, 10);
-      triggerDownload(blob, `we-were-online-export-${date}.json.gz`);
-      setTransferStatus({ type: "success", message: "Export downloaded." });
+      const fileName = `we-were-online-${date}.json.gz`;
+      triggerDownload(blob, fileName);
+      setExportReady({
+        fileName,
+        bytes: blob.size,
+        summary: exportSummary(choices, {
+          scraps: counts.scraps,
+          collages: written.collages,
+        }),
+      });
     } catch (e: any) {
       setTransferStatus({
         type: "error",
@@ -529,6 +837,7 @@ export function Collections({
       });
     } finally {
       setIsExporting(false);
+      setExportRows(null);
     }
   };
 
@@ -568,30 +877,268 @@ export function Collections({
     }
   };
 
-  const handleImportFile = async (file: File) => {
-    setIsImporting(true);
+  const listenForStatsProgress = () => {
+    const listener = (message: any) => {
+      if (message?.type !== "IMPORT_STATS_PROGRESS") return;
+      const { step, done, total } = message as StatsRebuildProgress;
+      setImportProgress((current) => {
+        if (!current) return current;
+        const stepStartedAt =
+          current.stats?.step === step
+            ? current.stats.stepStartedAt
+            : Date.now();
+        return { ...current, stats: { step, done, total, stepStartedAt } };
+      });
+    };
+    browser.runtime.onMessage.addListener(listener);
+    return () => browser.runtime.onMessage.removeListener(listener);
+  };
+
+  const previewImport = async (files: File[]) => {
     setTransferStatus(null);
+    setExportReady(null);
     try {
-      const buffer = await file.arrayBuffer();
-      const data = Array.from(new Uint8Array(buffer));
-      const response = await browser.runtime.sendMessage({
-        type: "IMPORT_EVENTS",
-        data,
+      const headers = await Promise.all(files.map(readExportHeader));
+      // Older files say nothing about what they hold.
+      const described = headers.every((header) => header.contents);
+      const contents: ExportContents | null = described
+        ? headers.reduce<ExportContents>((sum, header) => {
+            const c = header.contents ?? {};
+            return {
+              history: (sum.history ?? 0) + (c.history ?? 0),
+              scraps: (sum.scraps ?? 0) + (c.scraps ?? 0),
+              collages: (sum.collages ?? 0) + (c.collages ?? 0),
+              pictures: (sum.pictures ?? 0) + (c.pictures ?? 0),
+              you: sum.you || c.you,
+              youColor: sum.youColor ?? c.youColor,
+              youId: sum.youId ?? c.youId,
+              youName: sum.youName ?? c.youName,
+            };
+          }, {})
+        : null;
+      const first = headers[0];
+      const packedOn =
+        files.length === 1 && first.exportedAt
+          ? new Date(first.exportedAt).toLocaleDateString(undefined, {
+              month: "long",
+              day: "numeric",
+              year:
+                new Date(first.exportedAt).getFullYear() ===
+                new Date().getFullYear()
+                  ? undefined
+                  : "numeric",
+            }) + (first.packedIn ? ` in ${first.packedIn}` : "")
+          : null;
+      loadYouPreview();
+      setPendingImport({
+        files,
+        title: files.length === 1 ? files[0].name : `${files.length} files`,
+        packedOn,
+        contents,
+        choices: { history: true, scraps: true, collages: true, you: true },
+        who: "file",
       });
-      if (!response?.success)
-        throw new Error(response?.error ?? "Import failed");
-      setTransferStatus({
-        type: "success",
-        message: `Imported ${response.imported.toLocaleString()} events.`,
-      });
-      await loadStorageStats();
     } catch (e: any) {
       setTransferStatus({
         type: "error",
         message: `Import failed: ${e.message}`,
       });
     } finally {
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  };
+
+  const handleImportFiles = async (
+    files: File[],
+    choices: SectionChoices = {
+      history: true,
+      scraps: true,
+      collages: true,
+      you: false,
+    },
+    contents: ExportContents | null = null,
+  ) => {
+    setPendingImport(null);
+    let stopStatsProgress = () => {};
+    setIsImporting(true);
+    setTransferStatus(null);
+    const startedAt = Date.now();
+    let imported = 0;
+    let alreadyHeld = 0;
+    let scrapsAdded = false;
+    let collagesAdded = 0;
+    let becameYou = false;
+    let readAll = false;
+
+    // Rows follow the file's order: events, then pictures, then collages.
+    type RowKey = "events" | "images" | "collages";
+    const rowOrder: { key: RowKey; label: string; total: number }[] = [];
+    if (contents) {
+      const history = choices.history && (contents.history ?? 0) > 0;
+      const scraps = choices.scraps && (contents.scraps ?? 0) > 0;
+      if (history || scraps)
+        rowOrder.push({
+          key: "events",
+          label:
+            history && scraps
+              ? "Browsing history and scraps"
+              : history
+                ? "Browsing history"
+                : "Scraps",
+          total:
+            (history ? (contents.history ?? 0) : 0) +
+            (scraps ? (contents.scraps ?? 0) : 0),
+        });
+      if ((choices.scraps || choices.collages) && (contents.pictures ?? 0) > 0)
+        rowOrder.push({
+          key: "images",
+          label: "Saved pictures",
+          total: contents.pictures ?? 0,
+        });
+      if (choices.collages && (contents.collages ?? 0) > 0)
+        rowOrder.push({
+          key: "collages",
+          label: "Collages",
+          total: contents.collages ?? 0,
+        });
+    }
+    const rowsRead: Record<RowKey, number> = {
+      events: 0,
+      images: 0,
+      collages: 0,
+    };
+    let currentRow = 0;
+    const advanceRowTo = (key: RowKey) => {
+      const index = rowOrder.findIndex((row) => row.key === key);
+      if (index > currentRow) currentRow = index;
+    };
+    const progressRows = (): ExportProgressRow[] | undefined =>
+      contents
+        ? rowOrder.map((row, index) => ({
+            label: row.label,
+            written: rowsRead[row.key],
+            total: row.total,
+            state:
+              index < currentRow
+                ? "done"
+                : index === currentRow
+                  ? "packing"
+                  : "waiting",
+          }))
+        : undefined;
+
+    setImportProgress({
+      phase: "reading",
+      bytesRead: 0,
+      totalBytes: files.reduce((sum, file) => sum + file.size, 0),
+      eventsRead: 0,
+      startedAt,
+      rows: progressRows(),
+    });
+    // Count everything stored so far in the stats. The background skips the
+    // rebuild when nothing is waiting to be counted.
+    const finishImport = async () => {
+      setImportProgress((current) =>
+        current ? { ...current, phase: "finishing" } : current,
+      );
+      stopStatsProgress = listenForStatsProgress();
+      const response = await browser.runtime.sendMessage({
+        type: "FINISH_IMPORT",
+        scrapsAdded,
+      });
+      if (!response?.success)
+        throw new Error(response?.error ?? "Import failed");
+    };
+    try {
+      await readExportFiles(
+        files,
+        async (batch, progress) => {
+          const events = batch.filter(
+            (event) => choices[eventSection(event.type)],
+          );
+          rowsRead.events += events.length;
+          if (events.length > 0) {
+            const response = await browser.runtime.sendMessage({
+              type: "IMPORT_EVENT_BATCH",
+              events,
+            });
+            if (!response?.success)
+              throw new Error(response?.error ?? "Import failed");
+            imported += response.imported;
+            alreadyHeld += response.alreadyHeld;
+            scrapsAdded ||= response.scrapsAdded;
+          }
+          setImportProgress({
+            phase: "reading",
+            ...progress,
+            startedAt,
+            rows: progressRows(),
+          });
+        },
+        async (item, progress) => {
+          if (item.section === "images") {
+            if (choices.scraps || choices.collages) {
+              advanceRowTo("images");
+              await importImage(item.value);
+              rowsRead.images++;
+            }
+          } else if (item.section === "collages") {
+            if (choices.collages) {
+              advanceRowTo("collages");
+              if ((await importCollage(item.value)) === "added") collagesAdded++;
+              rowsRead.collages++;
+            }
+          } else if (item.section === "you") {
+            if (choices.you) becameYou = await importIdentity(item.value);
+          }
+          setImportProgress({
+            phase: "reading",
+            ...progress,
+            startedAt,
+            rows: progressRows(),
+          });
+        },
+      );
+      readAll = true;
+      await finishImport();
+      setImportProgress(null);
+      setTransferStatus({
+        type: "success",
+        message:
+          `Imported ${imported.toLocaleString()} events` +
+          (alreadyHeld > 0
+            ? ` (${alreadyHeld.toLocaleString()} already here)`
+            : "") +
+          (collagesAdded > 0
+            ? ` and ${collagesAdded.toLocaleString()} ${collagesAdded === 1 ? "collage" : "collages"}`
+            : "") +
+          "." +
+          (becameYou
+            ? " You're the same you here now. Reload open tabs to see it."
+            : ""),
+      });
+      await loadStorageStats();
+    } catch (e: any) {
+      // Reading stopped partway: still count the batches already saved.
+      if (!readAll && imported > 0) {
+        await finishImport()
+          .then(loadStorageStats)
+          .catch((finishError) =>
+            console.error("Counting imported events failed:", finishError),
+          );
+      }
+      setTransferStatus({
+        type: "error",
+        message:
+          `Import failed: ${e.message}` +
+          (imported > 0
+            ? ` (${imported.toLocaleString()} saved; import again to continue)`
+            : ""),
+      });
+    } finally {
+      stopStatsProgress();
       setIsImporting(false);
+      setImportProgress(null);
       if (importInputRef.current) importInputRef.current.value = "";
     }
   };
@@ -945,15 +1492,32 @@ export function Collections({
             <div className="collections__transfer">
               <div className="collections__transfer-buttons">
                 <button
-                  className="collections__transfer-btn"
-                  onClick={handleExport}
+                  className={`collections__transfer-btn${
+                    exportOpen ? " collections__transfer-btn--active" : ""
+                  }`}
+                  aria-pressed={exportOpen}
+                  onClick={() => {
+                    setPendingImport(null);
+                    if (exportOpen) {
+                      setExportChoices(null);
+                      setExportReady(null);
+                    } else openExportPicker();
+                  }}
                   disabled={isExporting || isImporting}
                 >
                   {isExporting ? "Exporting…" : "Export data"}
                 </button>
                 <button
-                  className="collections__transfer-btn"
-                  onClick={() => importInputRef.current?.click()}
+                  className={`collections__transfer-btn${
+                    importOpen ? " collections__transfer-btn--active" : ""
+                  }`}
+                  aria-pressed={importOpen}
+                  onClick={() => {
+                    setExportChoices(null);
+                    setExportReady(null);
+                    if (pendingImport) setPendingImport(null);
+                    else importInputRef.current?.click();
+                  }}
                   disabled={isExporting || isImporting}
                 >
                   {isImporting ? "Importing…" : "Import data"}
@@ -973,12 +1537,66 @@ export function Collections({
                 ref={importInputRef}
                 type="file"
                 accept=".json.gz"
+                multiple
                 style={{ display: "none" }}
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleImportFile(file);
+                  const files = Array.from(e.target.files ?? []);
+                  if (files.length > 0) previewImport(files);
                 }}
               />
+              {exportChoices && !isExporting && (
+                <ExportPicker
+                  counts={exportCounts()}
+                  choices={exportChoices}
+                  onChange={setExportChoices}
+                  onExport={() => handleExport(exportChoices)}
+                  onCancel={() => setExportChoices(null)}
+                  you={youPreview}
+                />
+              )}
+              {exportRows && <ExportProgress rows={exportRows} />}
+              {exportReady && (
+                <ExportReady
+                  {...exportReady}
+                  onDone={() => setExportReady(null)}
+                />
+              )}
+              {pendingImport && !isImporting && (
+                <ImportPreview
+                  title={pendingImport.title}
+                  packedOn={pendingImport.packedOn}
+                  contents={pendingImport.contents}
+                  choices={pendingImport.choices}
+                  onChange={(choices) =>
+                    setPendingImport({ ...pendingImport, choices })
+                  }
+                  who={pendingImport.who}
+                  onWhoChange={(who) =>
+                    setPendingImport({ ...pendingImport, who })
+                  }
+                  here={youPreview}
+                  onImport={() =>
+                    handleImportFiles(
+                      pendingImport.files,
+                      {
+                        ...pendingImport.choices,
+                        you: pendingImport.who === "file",
+                      },
+                      pendingImport.contents,
+                    )
+                  }
+                  onCancel={() => setPendingImport(null)}
+                />
+              )}
+              {importProgress &&
+                (importProgress.rows ? (
+                  <ExportProgress
+                    title="Importing…"
+                    rows={importRowsWithStats(importProgress)}
+                  />
+                ) : (
+                  <ImportProgressBar progress={importProgress} />
+                ))}
               {transferStatus && (
                 <p
                   className={`collections__transfer-status collections__transfer-status--${transferStatus.type}`}

@@ -1,0 +1,38 @@
+---
+title: "Shared prize wheel"
+description: "Run one seeded animation so every reader lands on the same result."
+sidebar:
+  hidden: true
+---
+
+import { RecipeExample } from "@/components/playground/RecipeExample";
+import RecipeCodeTabs from "@/components/playground/RecipeCodeTabs.astro";
+import { prizeWheelRecipe } from "@/components/playground/recipes/prize-wheel";
+
+Spin the wheel in one window and watch it spin and land on the same page in the
+other. Each slice links to a docs page.
+
+<RecipeExample recipe={prizeWheelRecipe} client:load />
+
+<RecipeCodeTabs recipe={prizeWheelRecipe} />
+
+## Share the spin, not the angle
+
+Shared data holds only when the spin started and which slice it lands on:
+
+```js
+setData({ spin: { startedAt: Date.now(), target } });
+```
+
+Every browser computes the wheel's angle from that and the current time, so
+the animation runs locally at full frame rate and still lands in the same place
+for everyone. Nothing is written while the wheel turns.
+
+## Re-render on a clock
+
+The data only changes when someone spins, so the wheel needs its own clock. The
+Vanilla HTML version calls `requestUpdate()` from a `requestAnimationFrame` loop
+in `onMount`, which re-runs `view` without touching data. The React version
+does the same with `useState` and a `useEffect` loop.
+
+See [Custom elements](/docs/custom-elements/#play-spinner) for the `view` API.
