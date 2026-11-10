@@ -288,33 +288,6 @@ $phone: 760px;
   color: $ultramarine !important;
 }
 
-// Studio experiments: a small stamp in the screenshot's top-right corner.
-.ph-gallery__stamp {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 1;
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: rgba(255, 249, 216, 0.92);
-  color: $muted;
-  font-family: $mono;
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0.02em;
-  line-height: 1.5;
-
-  &.is-inline {
-    position: relative;
-    top: -0.2em;
-    right: auto;
-    margin-left: 6px;
-    padding: 0;
-    background: none;
-    vertical-align: middle;
-  }
-}
-
 .ph-gallery__host {
   min-width: 0;
   overflow: hidden;

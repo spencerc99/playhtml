@@ -80,16 +80,6 @@ function clickX(event: MouseEvent<HTMLElement>) {
   return Math.min(0.92, Math.max(0.08, raw));
 }
 
-// Small mark for the studio's own experiments: a corner stamp on the
-// screenshot, or an inline one after the title in the index.
-function ExperimentStamp({ inline = false }: { inline?: boolean }) {
-  return (
-    <span className={`ph-gallery__stamp${inline ? " is-inline" : ""}`}>
-      experiment
-    </span>
-  );
-}
-
 // The site's address, styled like a link.
 function SiteMeta({ item }: { item: GalleryItem }) {
   return (
@@ -303,7 +293,6 @@ const GalleryGrid = withSharedState<GalleryData>(
                     <span className="ph-gallery__badge">random pick</span>
                   ) : null}
                   <span className="ph-site__shot">
-                    {item.fromStudio ? <ExperimentStamp /> : null}
                     {item.imageUrl ? (
                       <img
                         src={item.imageUrl}
@@ -356,10 +345,7 @@ const GalleryGrid = withSharedState<GalleryData>(
                   onClick={(event) => visit(item, event)}
                 >
                   <Smudges traces={tracesById.get(item.id) ?? []} />
-                  <b>
-                    {item.title}
-                    {item.fromStudio ? <ExperimentStamp inline /> : null}
-                  </b>
+                  <b>{item.title}</b>
                   {item.by ? (
                     <span>by {item.by}</span>
                   ) : (
@@ -371,7 +357,6 @@ const GalleryGrid = withSharedState<GalleryData>(
             {preview ? (
               <aside className="ph-gallery__preview" aria-live="polite">
                 <span className="ph-site__shot">
-                  {preview.fromStudio ? <ExperimentStamp /> : null}
                   {preview.imageUrl ? (
                     <img
                       src={preview.imageUrl}
