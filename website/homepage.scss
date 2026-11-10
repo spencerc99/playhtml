@@ -2287,6 +2287,11 @@ h3 {
 .ph-ask--collab {
   background: $paper;
   rotate: -0.4deg;
+
+  // Right under the chips, not pinned to the bottom of the stretched card.
+  .ph-ask__foot {
+    margin-top: 0;
+  }
 }
 
 .ph-ask--fund {
