@@ -28,6 +28,23 @@ export type ConnectionRateLimiter = {
 };
 
 // Matches the period configured on the binding in wrangler.jsonc.
+
+// Blocked IPs already logged in this isolate, so a flood from one IP logs once
+// a minute instead of once per request. Bounded so it can't grow without end.
+const EDGE_RATE_LIMIT_LOG_INTERVAL_MS = 60_000;
+const MAX_TRACKED_BLOCKED_IPS = 1_000;
+const lastBlockLoggedAt = new Map<string, number>();
+
+function logEdgeRateLimitBlock(ip: string, pathname: string): void {
+  const now = Date.now();
+  const last = lastBlockLoggedAt.get(ip);
+  if (last !== undefined && now - last < EDGE_RATE_LIMIT_LOG_INTERVAL_MS) return;
+  if (lastBlockLoggedAt.size >= MAX_TRACKED_BLOCKED_IPS) lastBlockLoggedAt.clear();
+  lastBlockLoggedAt.set(ip, now);
+  console.warn(
+    `[ServerLimits] Edge rate limit: blocking ip=${ip} path=${pathname}`
+  );
+}
 const EDGE_RATE_LIMIT_RETRY_AFTER_SECONDS = 60;
 
 const DURABLE_OBJECT_OVERLOAD_MESSAGE =
@@ -152,11 +169,12 @@ export async function checkEdgeRateLimit(
   try {
     ({ success } = await limiter.limit({ key: ip }));
   } catch (error) {
-    console.warn("[PartyServer] Edge rate limiter failed; allowing request:", error);
+    console.warn("[ServerLimits] Edge rate limiter failed; allowing request:", error);
     return null;
   }
   if (success) return null;
 
+  logEdgeRateLimitBlock(ip, new URL(request.url).pathname);
   return new Response("Too Many Requests", {
     status: 429,
     headers: { "Retry-After": String(EDGE_RATE_LIMIT_RETRY_AFTER_SECONDS) },

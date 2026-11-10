@@ -116,6 +116,10 @@ export class PresenceServer extends Server<Env> {
     if (
       isPresenceMessageTooLarge(message, DEFAULT_MAX_PRESENCE_MESSAGE_CHARS)
     ) {
+      console.warn(
+        `[ServerLimits] Presence message too large: room=${this.name}, ` +
+          `connection=${connection.id}, chars=${message.length}`,
+      );
       this.sendError(connection, "Presence message is too large");
       return;
     }
@@ -250,7 +254,7 @@ export class PresenceServer extends Server<Env> {
     if (now - (this.lastRoomFullWarningAt ?? 0) >= 60_000) {
       this.lastRoomFullWarningAt = now;
       console.warn(
-        `[PresenceServer] Room full, refusing connections: room=${this.name}, ` +
+        `[ServerLimits] Room full (PresenceServer), refusing connections: room=${this.name}, ` +
           `connection=${connection.id}, open=${openConnections}, max=${maxConnections}`,
       );
     }

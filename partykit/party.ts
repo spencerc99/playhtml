@@ -1803,7 +1803,7 @@ export class PartyServer extends YServer {
     if (now - (this.lastRoomFullWarningAt ?? 0) >= 60_000) {
       this.lastRoomFullWarningAt = now;
       console.warn(
-        `[PartyServer] Room full, refusing connections: room=${this.name}, ` +
+        `[ServerLimits] Room full (PartyServer), refusing connections: room=${this.name}, ` +
           `connectionId=${connection.id}, open=${openConnections}, max=${maxConnections}`
       );
     }
@@ -1963,7 +1963,7 @@ export class PartyServer extends YServer {
     const limitResult = this.checkConnectionMessageRate(connection);
     if (limitResult.violation) {
       console.warn(
-        `[PartyServer] Closing connection for ${limitResult.violation.kind}: ` +
+        `[ServerLimits] Closing connection for ${limitResult.violation.kind}: room=${this.name}, ` +
           `connectionId=${connection.id}, ` +
           `documentBytes=${this.lastKnownDocumentBytes}`
       );

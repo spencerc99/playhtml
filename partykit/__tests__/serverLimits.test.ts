@@ -288,6 +288,24 @@ describe("checkEdgeRateLimit", () => {
     );
   });
 
+  it("logs a blocked IP once a minute, not once per request", async () => {
+    const { limiter } = fakeLimiter(0);
+    const original = console.warn;
+    const lines: string[] = [];
+    console.warn = (...args: unknown[]) => lines.push(args.join(" "));
+    try {
+      for (let i = 0; i < 5; i += 1) {
+        await checkEdgeRateLimit(roomRequest("198.51.100.7"), limiter);
+      }
+    } finally {
+      console.warn = original;
+    }
+    const blocks = lines.filter((line) =>
+      line.includes("[ServerLimits] Edge rate limit: blocking ip=198.51.100.7")
+    );
+    expect(blocks.length).toBe(1);
+  });
+
   it("lets requests through when the limiter itself fails", async () => {
     const limiter: ConnectionRateLimiter = {
       async limit() {
