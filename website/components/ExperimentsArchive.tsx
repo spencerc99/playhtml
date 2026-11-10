@@ -305,6 +305,7 @@ function TraceSmudges({ traces }: { traces: ExperimentTrace[] }) {
 function HomeExperimentName({
   entry,
   isLast,
+  numbered,
   dotColor,
   isSelected,
   isRandomActive,
@@ -316,6 +317,9 @@ function HomeExperimentName({
 }: {
   entry: ExperimentArchiveEntry;
   isLast: boolean;
+  // On the /experiments page each name is led by its number (01, 02, ...)
+  // in place of the dot separators the homepage shelf uses.
+  numbered: boolean;
   dotColor: string;
   isSelected: boolean;
   isRandomActive: boolean;
@@ -342,6 +346,16 @@ function HomeExperimentName({
         onFocus={() => onPreview(entry.number)}
         onClick={(event) => onExperimentClick(entry, event)}
       >
+        {numbered ? (
+          // Inside the link so the number never wraps away from its name.
+          <span
+            className="ph-studio__count"
+            aria-hidden="true"
+            style={{ color: dotColor }}
+          >
+            {entry.number.replace(/^EX-/, "")}
+          </span>
+        ) : null}
         {traces.length > 0 ? (
           <span className="ph-studio__fingerprints" aria-hidden="true">
             <TraceSmudges traces={traces} />
@@ -354,7 +368,7 @@ function HomeExperimentName({
           </sup>
         ) : null}
       </a>
-      {isLast ? null : (
+      {isLast || numbered ? null : (
         <span
           className="ph-studio__dot"
           aria-hidden="true"
@@ -688,6 +702,7 @@ const ExperimentsArchiveContent = withSharedState<
                   entry={experiment}
                   key={experiment.number}
                   isLast={index === wallExperiments.length - 1}
+                  numbered={isWall}
                   dotColor={StudioDotColors[index % StudioDotColors.length]}
                   isSelected={shown?.number === experiment.number}
                   randomizerColor={randomizer.color}

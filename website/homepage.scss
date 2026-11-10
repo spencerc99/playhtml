@@ -1828,6 +1828,16 @@ h3 {
   vertical-align: middle;
 }
 
+.ph-studio__count {
+  position: relative;
+  margin-right: 4px;
+  font-family: $mono;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0;
+  vertical-align: super;
+}
+
 .ph-studio__number {
   font-family: $mono;
   font-size: 12px;
@@ -3358,6 +3368,10 @@ h3 {
 
   .ph-studio__dot {
     font-size: 18px;
+  }
+
+  .ph-studio__count {
+    font-size: 13px;
   }
 
   .ph-studio__card {
