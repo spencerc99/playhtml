@@ -177,19 +177,29 @@ export function setupPersistentNote() {
   });
 }
 
-// Colors a footer letter can light up in. Matches the homepage palette.
-const WordmarkColors = [
-  "#e8a63a",
-  "#c0373c",
-  "#274b9e",
-  "#5c7c54",
-  "#b0306a",
-  "#8a5cc0",
-];
+// Any hue, with saturation and lightness kept in a band that stays readable
+// on the light page. Older rooms may still hold palette hex colors.
+const WordmarkColorPattern =
+  /^(#[0-9a-f]{6}|hsl\(\d{1,3} \d{1,3}% \d{1,3}%\))$/i;
+
+function randomWordmarkColor(current: string | undefined): string {
+  const currentHue = Number(current?.match(/^hsl\((\d+)/)?.[1] ?? NaN);
+  let hue = Math.floor(Math.random() * 360);
+  // Step away from the current hue so each click visibly changes the letter.
+  if (
+    !Number.isNaN(currentHue) &&
+    Math.min(Math.abs(hue - currentHue), 360 - Math.abs(hue - currentHue)) < 40
+  ) {
+    hue = (hue + 120) % 360;
+  }
+  const saturation = 55 + Math.floor(Math.random() * 30);
+  const lightness = 34 + Math.floor(Math.random() * 14);
+  return `hsl(${hue} ${saturation}% ${lightness}%)`;
+}
 
 type WordmarkColorData = Record<string, string>;
 
-// Footer wordmark: every click on a letter cycles it to a new random color,
+// Footer wordmark: every click on a letter changes it to a new random color,
 // shared with everyone. One color per letter id, written only from clicks
 // (last write wins). Letters nobody has clicked yet stay ink.
 export function setupWordmarkColors() {
@@ -199,7 +209,7 @@ export function setupWordmarkColors() {
   const paint = (colors: WordmarkColorData) => {
     wordmark.querySelectorAll<HTMLElement>(".letter").forEach((letter) => {
       const color = colors[letter.id];
-      if (typeof color === "string" && WordmarkColors.includes(color)) {
+      if (typeof color === "string" && WordmarkColorPattern.test(color)) {
         letter.style.setProperty("--letter-color", color);
         letter.dataset.lit = "";
       } else {
@@ -218,9 +228,7 @@ export function setupWordmarkColors() {
           ".letter",
         );
         if (!letter?.id) return;
-        const current = getData()?.[letter.id];
-        const choices = WordmarkColors.filter((color) => color !== current);
-        const next = choices[Math.floor(Math.random() * choices.length)];
+        const next = randomWordmarkColor(getData()?.[letter.id]);
         setData((draft) => {
           draft[letter.id] = next;
         });
