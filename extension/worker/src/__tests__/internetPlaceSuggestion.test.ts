@@ -749,6 +749,20 @@ describe("Internet place suggestions", () => {
     expect(getReviewNeed({ ...base, placement: "hidden" })).toBe("hidden");
     expect(getReviewNeed({ ...base, placement: "featured" })).toBe("promote");
     expect(
+      getReviewNeed({
+        ...base,
+        placement: "regular",
+        probabilities: { regular: 0.6, featured: 0.3, scenery: 0.1 },
+      }),
+    ).toBe("promote");
+    expect(
+      getReviewNeed({
+        ...base,
+        placement: "scenery",
+        probabilities: { scenery: 0.6, featured: 0.35, regular: 0.05 },
+      }),
+    ).not.toBe("promote");
+    expect(
       getReviewNeed({ ...base, placement: "regular", stopProbability: 0.55 }),
     ).toBe("unsure");
     expect(

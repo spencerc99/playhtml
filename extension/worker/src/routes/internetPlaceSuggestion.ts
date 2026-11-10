@@ -531,7 +531,7 @@ const PLACEMENT_CRITERIA: Record<Placement, string> = {
   regular:
     "A safe, ordinary public stop that a stranger can open and see the same thing, including small personal, indie, and hobby websites, and mainstream news, magazines, encyclopedias, and museums however good the page",
   featured:
-    "Rare, about one stop in fifty: the handmade, alternative small web at its most inventive, a place a curious stranger would be delighted to stumble on, such as net art, an experimental or lovingly crafted personal site, a zine or small independent publication, or a community run by its own members. An ordinary portfolio, blog post, or personal homepage is regular. Not mainstream news, big magazines, encyclopedias, museums, submission pages, or open calls",
+    "Rare, about one stop in fifty: the handmade, alternative small web at its most inventive, a place a curious stranger would be delighted to stumble on, such as a personal homepage that is exciting and unlike any other, net art, an experimental or lovingly crafted personal site, a zine or small independent publication, or a community run by its own members. A templated portfolio or an ordinary blog post is regular. Not mainstream news, big magazines, encyclopedias, museums, submission pages, or open calls",
   reserve:
     "An exceptional handmade, small-web destination worth sending travelers to even when nobody visited it recently",
 };
@@ -1290,6 +1290,13 @@ export async function checkSceneryNames(
 export type ReviewNeed = "pending" | "unsure" | "promote" | "hidden";
 
 /**
+ * The featured probability that puts a page in the desk's promote queue. It
+ * sits below the featured floor so the curator sees near misses, not only
+ * the pages that become featured on their own.
+ */
+const PROMOTE_REVIEW_FLOOR = 0.3;
+
+/**
  * Why a page nobody has decided still needs a human, or null when Clef's
  * answer can stand on its own.
  */
@@ -1300,7 +1307,9 @@ export function getReviewNeed(
   if (suggestion.placement === "hidden") return "hidden";
   if (
     suggestion.placement === "featured" ||
-    suggestion.placement === "reserve"
+    suggestion.placement === "reserve" ||
+    (suggestion.placement === "regular" &&
+      (suggestion.probabilities?.featured ?? 0) >= PROMOTE_REVIEW_FLOOR)
   ) {
     return "promote";
   }
