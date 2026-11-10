@@ -1391,7 +1391,7 @@ h3 {
 
 // How it works
 .ph-how {
-  max-width: 1392px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 64px 24px 0;
   display: flex;
@@ -1974,13 +1974,17 @@ h3 {
 // Events band
 // Where we meet: the latest event, with Discord as the way in
 .ph-meet-wrap {
-  padding: 0 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 80px 24px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
 }
 
 .ph-meet {
   position: relative;
-  max-width: 1100px;
-  margin: 96px auto 0;
+  margin: 0;
   border: 1.5px solid $ink;
   border-radius: 14px;
   background: $paper;
@@ -2286,7 +2290,7 @@ h3 {
 .ph-asks {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 72px 24px 0;
+  padding: 56px 24px 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 28px;
@@ -2311,11 +2315,10 @@ h3 {
     rotate: -1.5deg;
   }
 
-  // A notch under h3 so both card titles stay on one line side by side.
   h2 {
     margin: 0;
     font-weight: 800;
-    font-size: min(var(--fs-h3), 27px);
+    font-size: var(--fs-h3);
     line-height: 1.15;
     letter-spacing: -0.01em;
   }
@@ -3402,11 +3405,11 @@ h3 {
   }
 
   .ph-meet-wrap {
-    padding: 0 16px;
+    padding: 48px 16px 0;
+    gap: 32px;
   }
 
   .ph-meet {
-    margin-top: 64px;
     box-shadow: 5px 5px 0 $ink;
   }
 
