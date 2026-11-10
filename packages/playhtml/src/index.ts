@@ -1399,6 +1399,14 @@ function handleMainProviderSync(connected: boolean): void {
 }
 
 function queueServerRoomReset(resetEpoch: number): void {
+  if (!roomResetPromise) {
+    // Drop the old provider before anything awaits and before the new epoch is
+    // stored. The server closes every socket right after sending room-reset,
+    // and the old provider would otherwise reconnect on its own with the old
+    // doc (all its pre-reset history) and the new epoch, so the server admits
+    // it and the deleted history merges straight back into the compacted room.
+    teardownMainProvider();
+  }
   storeResetEpochForRoom(__currentRoomId, resetEpoch);
 
   if (roomResetPromise) {
