@@ -37,12 +37,14 @@ interface Client {
   state: ElementState;
   applyRemote: (incoming: ElementState) => void;
   setAwareness: (awareness: { hover: boolean; focus: boolean }[]) => void;
+  published: unknown[];
 }
 
 function mountClient(element: HTMLElement): Client {
   document.body.appendChild(element);
   const client: Client = {
     element,
+    published: [],
     state: canMirrorInitializer.defaultData!(element) as ElementState,
     applyRemote(incoming) {
       canMirrorInitializer.updateElement!({
@@ -63,7 +65,9 @@ function mountClient(element: HTMLElement): Client {
       if (typeof updater === "function") updater(client.state);
       else client.state = updater;
     },
-    setMyAwareness: () => {},
+    setMyAwareness: (value: unknown) => {
+      client.published.push(value);
+    },
   } as any);
   return client;
 }
@@ -727,6 +731,32 @@ describe("can-mirror: minimal shared writes", () => {
     source.element.dispatchEvent(new Event("input", { bubbles: true }));
     await sync(source, sink);
     expectMirrored(source.element, sink.element);
+  });
+});
+
+describe("can-mirror: own presence", () => {
+  it("publishes no presence until the visitor hovers or focuses", () => {
+    expect(canMirrorInitializer.myDefaultAwareness).toBeUndefined();
+    expect(canMirrorInitializer.defaultPresence).toBeUndefined();
+    const client = mountClient(elementFromHTML(`<div id="a"></div>`));
+    expect(client.published).toEqual([]);
+  });
+
+  it("publishes while hovering or focused and clears when idle again", () => {
+    const client = mountClient(elementFromHTML(`<div id="a"><input /></div>`));
+    const input = client.element.querySelector("input")!;
+
+    client.element.dispatchEvent(new MouseEvent("mouseenter"));
+    input.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    client.element.dispatchEvent(new MouseEvent("mouseleave"));
+    input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+
+    expect(client.published).toEqual([
+      { hover: true, focus: false },
+      { hover: true, focus: true },
+      { hover: false, focus: true },
+      undefined,
+    ]);
   });
 });
 

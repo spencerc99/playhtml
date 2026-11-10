@@ -2036,6 +2036,12 @@ function createPlayElementData<T extends TagType, TData = any>(
       });
     },
     onAwarenessChange: (elementAwarenessData) => {
+      // `undefined` can't travel as JSON, so treat it as "no presence here" and
+      // drop the entry instead of publishing an empty slot for this element.
+      if (elementAwarenessData === undefined) {
+        elementAwarenessClient?.removeLocalAwareness(tag, elementId);
+        return;
+      }
       elementAwarenessClient?.setLocalAwareness(
         tag,
         elementId,

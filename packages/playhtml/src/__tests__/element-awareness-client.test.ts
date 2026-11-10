@@ -439,6 +439,31 @@ describe("ElementAwarenessClient", () => {
     error.mockRestore();
   });
 
+  it("logs the overflow once while the same tags stay over budget", async () => {
+    const { client } = createClient();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const bigValue = { blob: "x".repeat(1000) };
+    for (let i = 0; i < 60; i += 1) {
+      client.setLocalAwareness(
+        "can-mirror",
+        `el-${String(i).padStart(3, "0")}`,
+        {
+          ...bigValue,
+        },
+      );
+    }
+    await flushPresencePublishes();
+    // Later publishes (e.g. each hover) that still overflow stay quiet.
+    client.setLocalAwareness("can-mirror", "el-000", { blob: "y" });
+    await flushPresencePublishes();
+    client.setLocalAwareness("can-mirror", "el-001", { blob: "z" });
+    await flushPresencePublishes();
+
+    expect(error).toHaveBeenCalledTimes(1);
+    error.mockRestore();
+  });
+
   it("re-publishes the latest snapshot only after the rate window (resilience)", async () => {
     vi.useFakeTimers();
     try {
