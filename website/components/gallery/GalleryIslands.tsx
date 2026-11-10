@@ -296,6 +296,9 @@ const GalleryGrid = withSharedState<GalleryData>(
                   <span className="ph-gallery__text">
                     <Smudges traces={tracesById.get(item.id) ?? []} />
                     <b>{item.title}</b>
+                    {item.description ? (
+                      <i className="ph-gallery__desc">{item.description}</i>
+                    ) : null}
                     <span>{byline(item)}</span>
                     {item.by ? (
                       <span className="ph-gallery__host">{item.hostname}</span>
@@ -353,6 +356,9 @@ const GalleryGrid = withSharedState<GalleryData>(
                 </span>
                 <span className="ph-gallery__text">
                   <b>{preview.title}</b>
+                  {preview.description ? (
+                    <i className="ph-gallery__desc">{preview.description}</i>
+                  ) : null}
                   <span>{byline(preview)}</span>
                   <span className="ph-gallery__host">{preview.hostname}</span>
                 </span>

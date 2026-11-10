@@ -264,6 +264,19 @@ $phone: 760px;
   }
 }
 
+// The site's one-line description, clipped to two lines.
+.ph-gallery__desc {
+  position: relative;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-style: normal;
+  font-size: 14px;
+  line-height: 1.35;
+  color: $muted;
+}
+
 .ph-gallery__host {
   font-family: $mono;
   font-size: 12px !important;
@@ -928,6 +941,10 @@ $phone: 760px;
 
   .ph-gallery__host {
     display: none;
+  }
+
+  .ph-gallery__desc {
+    font-size: 12px;
   }
 
   .ph-gallery__index {

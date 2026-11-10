@@ -12,6 +12,9 @@ export interface GalleryItem {
   id: string;
   title: string;
   by?: string;
+  // One line about the site, from its Are.na block description (or the
+  // experiment catalog for Spencer's experiments).
+  description?: string;
   href: string;
   hostname: string;
   imageUrl?: string;
@@ -77,12 +80,27 @@ export function studioItems(): GalleryItem[] {
       id: experiment.number,
       title: experiment.name,
       by: "Spencer",
+      description: experiment.description,
       href: experiment.href!,
       hostname: `playhtml.fun${experiment.href!.replace(/\/$/, "")}`,
       imageUrl: experiment.image,
       imageAlt: `Screenshot of ${experiment.name}`,
       fromStudio: true,
     }));
+}
+
+// Are.na fills empty descriptions from the page's own meta tags, so skip the
+// ones that say nothing about the site: playhtml's own tagline, and scraps
+// with no words in them (an emoji, a "?").
+const PlayhtmlTagline =
+  "interactive, collaborative html elements with a single attribute";
+
+export function galleryDescription(description: string): string | undefined {
+  const text = description.replace(/\s+/g, " ").trim();
+  if (!text) return undefined;
+  if (text.toLowerCase() === PlayhtmlTagline) return undefined;
+  if ((text.match(/\p{L}/gu) ?? []).length < 3) return undefined;
+  return text;
 }
 
 let sitesRequest: Promise<GalleryItem[]> | null = null;
@@ -100,6 +118,7 @@ function loadCommunitySites(): Promise<GalleryItem[]> {
           id: site.id,
           title: site.title,
           by: site.author,
+          description: galleryDescription(site.description),
           href: site.href,
           hostname: site.hostname,
           imageUrl: site.imageUrl,
