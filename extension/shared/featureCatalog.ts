@@ -54,6 +54,13 @@ const FEATURE_DEFINITIONS = {
     defaultStage: "internal",
     requiresReload: false,
   },
+  SCRAP_MEANING_SEARCH: {
+    name: "Search scraps by meaning",
+    description:
+      'Download a picture-reading model to find scraps by what\'s in them, like "eye" or "mask". It runs on this computer.',
+    defaultStage: "beta",
+    requiresReload: false,
+  },
   COLLAGE_SHARE_LINKS: {
     name: "Collage share links",
     description: "Share a scrap collage as a view-only link anyone can open.",
@@ -86,7 +93,8 @@ const FEATURE_DEFINITIONS = {
   },
   EVERYONE_TRAILS: {
     name: "Everyone's trails",
-    description: "Show everyone's cursor trails, not just yours, in the page portrait overlay.",
+    description:
+      "Show everyone's cursor trails, not just yours, in the page portrait overlay.",
     defaultStage: "internal",
     requiresReload: false,
     // Picked from the overlay's own mine/everyone switch.
@@ -96,7 +104,8 @@ const FEATURE_DEFINITIONS = {
 
 export type FeatureId = keyof typeof FEATURE_DEFINITIONS;
 
-export const FEATURE_CATALOG: Record<FeatureId, FeatureDefinition> = FEATURE_DEFINITIONS;
+export const FEATURE_CATALOG: Record<FeatureId, FeatureDefinition> =
+  FEATURE_DEFINITIONS;
 
 export const FEATURE_IDS = Object.keys(FEATURE_CATALOG) as FeatureId[];
 

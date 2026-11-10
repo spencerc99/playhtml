@@ -6,6 +6,7 @@ import { groupPhotoEncounters } from "../scrapPhotoGroups";
 import { parseFilterChip } from "../eventUtils";
 import {
   ANY_TIME,
+  hasExactScrapSearch,
   matchesScrapFilters,
   matchesScrapWhen,
   scrapDays,
@@ -109,6 +110,30 @@ describe("scrap filters", () => {
     };
     expect(matchesScrapFilters(heading, [], "moss guide")).toBe(true);
     expect(matchesScrapFilters(heading, [], "lichen")).toBe(false);
+  });
+  it("matches quoted words exactly, as whole words", () => {
+    const heading: ScrapItem = {
+      ...photo,
+      kind: "heading",
+      text: "A field guide to moss",
+      level: 1,
+      styles: {},
+    };
+    expect(matchesScrapFilters(heading, [], "gui")).toBe(true);
+    expect(matchesScrapFilters(heading, [], '"gui"')).toBe(false);
+    expect(matchesScrapFilters(heading, [], '"guide"')).toBe(true);
+    expect(matchesScrapFilters(heading, [], '"field guide"')).toBe(true);
+    expect(matchesScrapFilters(heading, [], '"guide field"')).toBe(false);
+    expect(matchesScrapFilters(heading, [], '"Field  Guide" mo')).toBe(true);
+    expect(matchesScrapFilters(heading, [], "\u201cmoss\u201d")).toBe(true);
+    // A quote still being typed is read as closed.
+    expect(matchesScrapFilters(heading, [], '"mos')).toBe(false);
+    expect(matchesScrapFilters(heading, [], '"moss')).toBe(true);
+  });
+  it("knows when a search asks for exact words", () => {
+    expect(hasExactScrapSearch("eye")).toBe(false);
+    expect(hasExactScrapSearch('"eye"')).toBe(true);
+    expect(hasExactScrapSearch('""')).toBe(false);
   });
 });
 

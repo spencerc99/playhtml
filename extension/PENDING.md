@@ -16,3 +16,4 @@ extension/website/public/changelog/media/ and reference them here:
 -->
 
 - Turn we were online off on any site from the popup, or keep what it collects there just for you. Sites you turned off are listed in Settings, where you can also add one. (#666)
+- Beta: search your scraps by what's in the pictures, like "eye" or "shoe". Turn it on from the scraps page search; it downloads a picture-reading model once and runs entirely on your computer.
