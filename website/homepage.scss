@@ -2216,7 +2216,7 @@ h3 {
 .ph-wwo__media {
   position: relative;
   border-left: 1.5px solid $ink;
-  min-height: 380px;
+  min-height: 0;
   background: #fff;
 
   video {
@@ -3196,6 +3196,30 @@ h3 {
     --fs-body: 15px;
     --fs-small: 13px;
     --fs-hand: 20px;
+  }
+
+  // The shelf runs past the box's edges and fades out there, so the toy
+  // cut off at the edge reads as "more this way" rather than clipped.
+  .ph-toybox {
+    overflow: visible;
+  }
+
+  .ph-toybox__toys {
+    margin: 14px -13px 0;
+    padding: 20px 28px 10px;
+    border-top: 0;
+    gap: 22px;
+    mask-image: linear-gradient(
+      90deg,
+      transparent 0,
+      #000 18px,
+      #000 calc(100% - 40px),
+      transparent
+    );
+  }
+
+  .ph-toybox__toys > .ph-toy {
+    zoom: 0.85;
   }
 
   // Phones run out of room for the shelf, so hint that it scrolls.
