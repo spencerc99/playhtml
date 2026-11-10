@@ -1,0 +1,270 @@
+// ABOUTME: Styles for the export picker, export progress and import preview cards
+// ABOUTME: Matches the settings page palette: warm paper, teal accent, mono counts
+
+@use "../styles/variables" as *;
+
+.transfer-card {
+  margin-top: 10px;
+  padding: 16px;
+  background: $surface;
+  border: 1px solid $border-strong;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-family: $font-body;
+  color: $text;
+
+  &__head {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  &__title {
+    font-family: $font-heading;
+    font-weight: 600;
+    font-size: 15px;
+    overflow-wrap: anywhere;
+
+    &--done {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: $text;
+
+      svg {
+        color: $accent-teal;
+        flex-shrink: 0;
+      }
+    }
+  }
+
+  &__sub {
+    font-size: 12px;
+    color: $text-muted;
+    line-height: 1.5;
+  }
+
+  &__rows {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid $border-strong;
+    border-radius: 8px;
+    background: $bg;
+  }
+
+  &__row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px 14px;
+    cursor: pointer;
+
+    & + & {
+      border-top: 1px solid $border;
+    }
+
+    &--center {
+      align-items: center;
+    }
+
+    input {
+      width: 16px;
+      height: 16px;
+      margin: 1px 0 0;
+      accent-color: $accent-teal;
+      flex-shrink: 0;
+    }
+  }
+
+  &__row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__row-name {
+    font-weight: 600;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  &__row-detail {
+    font-size: 12px;
+    color: $text-muted;
+  }
+
+  &__grow {
+    flex: 1;
+  }
+
+  &__warn {
+    margin-top: 4px;
+    align-self: flex-start;
+    font-size: 11px;
+    line-height: 1.45;
+    color: $gold-text;
+    background: $gold-bg;
+    border-radius: 4px;
+    padding: 4px 8px;
+  }
+
+  &__mono {
+    font-family: $font-mono;
+    font-size: 11px;
+  }
+
+  &__who-id {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  &__id {
+    font-family: $font-mono;
+    font-size: 11px;
+    background: none;
+    padding: 0;
+    color: inherit;
+  }
+
+  &__plus {
+    color: $accent-teal;
+    font-weight: 500;
+  }
+
+  &__who {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  &__question {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  &__choice {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid $border-strong;
+    background: $bg;
+    cursor: pointer;
+
+    input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: $accent-teal;
+      flex-shrink: 0;
+    }
+
+    svg {
+      flex-shrink: 0;
+    }
+
+    &--on {
+      border: 1.5px solid $accent-teal;
+      background: $active-bg;
+    }
+  }
+
+  &__actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  // Doubled up so page-level button styles never win over these.
+  & &__primary,
+  & &__quiet {
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 8px;
+    font-family: $font-body;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  & &__primary {
+    flex: 1;
+    font-weight: 600;
+    border: 1px solid $accent-teal;
+    background: $active-bg;
+    color: #22433c;
+
+    &:disabled {
+      cursor: default;
+      opacity: 0.5;
+    }
+  }
+
+  & &__quiet {
+    border: 1px solid $border-strong;
+    background: transparent;
+    color: $text-muted;
+  }
+
+  &__bars {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  &__bar-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+
+    &--waiting {
+      color: $text-muted;
+    }
+  }
+
+  &__bar-label {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+
+    .transfer-card__mono {
+      color: $text-muted;
+    }
+  }
+
+  &__bar-row--done &__bar-label .transfer-card__mono {
+    color: $accent-teal;
+  }
+
+  &__bar {
+    height: 5px;
+    border-radius: 3px;
+    background: $border;
+    overflow: hidden;
+
+    div {
+      height: 100%;
+      background: $accent-teal;
+      border-radius: 3px;
+      transition: width 0.2s ease;
+    }
+  }
+
+  &__file {
+    font-family: $font-mono;
+    font-size: 11px;
+    background: $bg;
+    border: 1px solid $border;
+    border-radius: 6px;
+    padding: 8px 10px;
+    overflow-wrap: anywhere;
+  }
+}

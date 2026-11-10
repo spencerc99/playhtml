@@ -27,6 +27,25 @@ When a change under `packages/` affects user-facing behavior, APIs, attributes, 
 
 If you checked the docs and no update is needed, call that out in your PR summary so reviewers know it was considered.
 
+### Package API boundaries
+
+`playhtml` is the public runtime and API boundary for app code.
+
+- `@playhtml/react` peers on `playhtml` and imports playhtml domain symbols from `playhtml`, not from `@playhtml/common`.
+- `@playhtml/common` is a shared monorepo package owned by `playhtml`. Don't make React consumers install or import it unless a symbol is intentionally promoted as public protocol SDK. If a React-facing symbol lives in `@playhtml/common`, add a curated re-export from `playhtml` rather than `export *`.
+- Keep `playhtml` externalized in `packages/react/vite.config.ts` and out of React `dependencies`. Packed declarations must import package names, not monorepo paths like `../../common/src`.
+
+**Tarball install simulation** (required before merging a dependency or export change): version, build, rewrite workspace deps, `npm pack`, install into a blank consumer, check `npm ls`, inspect the React bundle import, and type-check a small consumer file.
+
+### Starter templates
+
+When the public core API changes, update both starters in the same PR and check them live in a browser:
+
+- `templates/react-starter/` (React API: `src/App.tsx`, `src/index.css`). It is Vite + TS with no `tsconfig.json` of its own, so `npm run build`'s `tsc` step picks up the monorepo root config and fails. Verify with `npx vite build` plus a live browser test instead.
+- `templates/html-starter/` (vanilla API: `index.html`, `style.css`, `script.js`). Static files loading `playhtml@latest` from unpkg.
+
+The starters depend on the published `playhtml` / `@playhtml/react` (`"latest"`), so they pick up code changes on release, but their own imports, props, selectors, and example markup don't update themselves. Use only real API methods: there is no `playhtml.setupCustomElement`. Vanilla custom elements set `defaultData` / `onClick` / `updateElement` on the DOM element, then call `playhtml.setupPlayElement(el)`.
+
 ## Release Process
 
 This project uses [Changesets](https://github.com/changesets/changesets) for managing package versions and releases.

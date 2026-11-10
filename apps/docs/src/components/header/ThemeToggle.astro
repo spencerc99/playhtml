@@ -1,0 +1,59 @@
+---
+// ABOUTME: Compact light/dark toggle for the docs header: one icon button instead of
+// ABOUTME: Starlight's "Auto" dropdown. Uses Starlight's own storage key, so both stay in sync.
+---
+
+<button
+  type="button"
+  class="ph-theme-toggle"
+  data-ph-theme-toggle
+  aria-label="Switch to dark mode"
+  title="Switch theme"
+>
+  <svg class="ph-theme-toggle__moon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z"></path>
+  </svg>
+  <svg class="ph-theme-toggle__sun" viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="4.5"></circle>
+    <path
+      d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"
+    ></path>
+  </svg>
+</button>
+
+<script>
+  // Starlight resolves "auto" to light or dark on <html data-theme>. Clicking
+  // flips whatever is showing and saves it under Starlight's key.
+  const StorageKey = "starlight-theme";
+
+  function currentTheme(): "light" | "dark" {
+    return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  }
+
+  function syncLabels() {
+    const next = currentTheme() === "dark" ? "light" : "dark";
+    document
+      .querySelectorAll<HTMLButtonElement>("[data-ph-theme-toggle]")
+      .forEach((button) =>
+        button.setAttribute("aria-label", `Switch to ${next} mode`),
+      );
+  }
+
+  document
+    .querySelectorAll<HTMLButtonElement>("[data-ph-theme-toggle]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const next = currentTheme() === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = next;
+        try {
+          localStorage.setItem(StorageKey, next);
+        } catch {}
+        // Keep Starlight's own picker (phone menu) showing the same choice.
+        document
+          .querySelectorAll<HTMLSelectElement>("starlight-theme-select select")
+          .forEach((select) => (select.value = next));
+        syncLabels();
+      });
+    });
+  syncLabels();
+</script>

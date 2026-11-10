@@ -146,11 +146,7 @@ export function mountExperimentBadge({
   links.setAttribute("aria-label", "playhtml links");
   links.append(
     link("home", "/", "playhtml-experiment-badge__link"),
-    link(
-      "experiments",
-      "/#experiments-index",
-      "playhtml-experiment-badge__link",
-    ),
+    link("experiments", "/experiments/", "playhtml-experiment-badge__link"),
     link("docs", "/docs/", "playhtml-experiment-badge__link"),
   );
   const source = link(

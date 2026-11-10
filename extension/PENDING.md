@@ -16,6 +16,3 @@ extension/website/public/changelog/media/ and reference them here:
 -->
 
 - Beta: search your scraps by what's in the pictures, like "eye" or "shoe". Turn it on from the scraps page search; it downloads a picture-reading model once and runs entirely on your computer.
-- Collage exports are much smaller: front and back pictures now save as high-quality JPEGs around 1-2MB instead of 7-13MB PNGs, and the "moving pieces" video now sits in the same frame and caption as the pictures. (#684)
-- Collage source labels are now just the site's icon and address.
-- Headings in a collage now wrap onto more lines when you pull them narrower from a side (only corners scale them), and pale headings no longer bring their dark backing onto the collage.

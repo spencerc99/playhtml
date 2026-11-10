@@ -32,21 +32,23 @@ Comparing all four primitives side by side: see the [decision table in core conc
   <TabItem label="Vanilla HTML">
 Register listeners in `playhtml.init()`, then dispatch from anywhere:
 
-```js
-import { playhtml } from "https://unpkg.com/playhtml@latest";
+```html
+<script type="module">
+  import { playhtml } from "https://unpkg.com/playhtml@latest";
 
-playhtml.init({
-  events: {
-    confetti: {
-      type: "confetti",
-      onEvent: () => window.confetti?.({ particleCount: 100 }),
+  playhtml.init({
+    events: {
+      confetti: {
+        type: "confetti",
+        onEvent: () => window.confetti?.({ particleCount: 100 }),
+      },
     },
-  },
-});
+  });
 
-document.querySelector("#celebrate").addEventListener("click", () => {
-  playhtml.dispatchPlayEvent({ type: "confetti" });
-});
+  document.querySelector("#celebrate").addEventListener("click", () => {
+    playhtml.dispatchPlayEvent({ type: "confetti" });
+  });
+</script>
 ```
 
 `events` in the init options is an object keyed by a local name (the key). `type` is the wire identifier every client must agree on.

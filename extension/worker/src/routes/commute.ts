@@ -15,6 +15,7 @@ import {
   checkSceneryNames,
   getReviewNeed,
   hostnameKey,
+  activeSuggestionModel,
   loadClefGate,
   loadClefSuggestions,
   loadNameGate,
@@ -175,9 +176,9 @@ async function buildPublicCommuteResponse(
     destinations: CATALOG_CANDIDATE_LIMIT,
   });
   const policies = await loadInternetPlacePolicies(env.WWO_ADMIN_DB, candidates);
-  // Without the AI binding (local dev) nothing could ever approve a page, so
-  // the gate only applies where Clef runs.
-  const gate = env.AI
+  // Without a decision model (local dev) nothing could ever approve a page, so
+  // the gate only applies where Jev or Clef runs.
+  const gate = activeSuggestionModel(env)
     ? [
         ...(await loadClefGate(
           env.WWO_ADMIN_DB,

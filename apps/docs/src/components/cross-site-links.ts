@@ -1,5 +1,5 @@
 // ABOUTME: Single source of truth for the cross-site nav link list.
-// ABOUTME: Imported by CrossSiteNav.astro and by Playground.tsx (the React playground shell).
+// ABOUTME: Imported by Playground.tsx (the React playground shell). The docs header uses header/site-nav.ts.
 
 export type SurfaceKey = "home" | "docs" | "play";
 

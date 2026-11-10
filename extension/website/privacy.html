@@ -172,6 +172,13 @@
       page. Your chat handle is a randomly chosen Wikipedia article title kept
       only in your browser's local storage.
     </p>
+    <p>
+      Presence and shared pages run on
+      <a href="https://playhtml.fun">playhtml</a>, the open-source library
+      behind the extension. Its
+      <a href="https://playhtml.fun/privacy">privacy policy</a> covers what the
+      shared playhtml server stores.
+    </p>
 
     <h2>How your data is used</h2>
     <p>Your data is used solely to:</p>
@@ -203,6 +210,15 @@
         <strong>Cloudflare Workers</strong> &mdash; event ingestion and API
       </li>
       <li><strong>Supabase</strong> &mdash; persistent database</li>
+      <li>
+        <strong>TypeSafe</strong> &mdash; an AI model that helps decide which
+        visited pages are safe to show publicly on the Internet Commute. It
+        receives only a page's address and title, what a logged-out visitor
+        would see on that page or its site's homepage, what the site publishes
+        for search engines (robots.txt and sitemap), and our own past
+        decisions about other pages on the same site. It never receives your
+        participant ID or session.
+      </li>
       <li>
         <strong>Resend</strong> &mdash; email service (only if you provide your
         email)

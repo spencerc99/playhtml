@@ -109,6 +109,7 @@
     "@vitejs/plugin-react": "^4.2.1",
     "agentation": "^2.2.1",
     "ajv": "^8.18.0",
+    "directedit": "^0.2.0",
     "glob": "^10.3.10",
     "prettier": "3.8.3",
     "sass": "^1.62.1",
