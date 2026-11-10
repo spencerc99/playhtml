@@ -680,6 +680,42 @@ describe("can-mirror: minimal shared writes", () => {
     });
   });
 
+  it("syncs a nested input's value to the right entry", async () => {
+    const source = mountClient(
+      elementFromHTML(
+        `<form id="f"><p>a</p><label>name <input /></label><select><option>x</option><option>y</option></select></form>`,
+      ),
+    );
+    const sink = mountClient(
+      elementFromHTML(
+        `<form id="f"><p>a</p><label>name <input /></label><select><option>x</option><option>y</option></select></form>`,
+      ),
+    );
+    const input = source.element.querySelector("input")!;
+    input.value = "ada";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    const select = source.element.querySelector("select")!;
+    select.selectedIndex = 1;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await sync(source, sink);
+
+    expect(sink.element.querySelector("input")!.value).toBe("ada");
+    expect(sink.element.querySelector("select")!.selectedIndex).toBe(1);
+  });
+
+  it("mirrors a burst of appends made in one go", async () => {
+    const source = mountClient(elementFromHTML(`<ul id="l">${siblings(20)}</ul>`));
+    const sink = mountClient(elementFromHTML(`<ul id="l">${siblings(20)}</ul>`));
+    for (let i = 0; i < 30; i++) {
+      const p = document.createElement("p");
+      p.textContent = `new ${i}`;
+      source.element.appendChild(p);
+    }
+    source.element.firstElementChild!.remove();
+    await sync(source, sink);
+    expectMirrored(source.element, sink.element);
+  });
+
   it("still mirrors contenteditable typing that changes nested text", async () => {
     const source = mountClient(
       elementFromHTML(`<div id="c" contenteditable><b>bold</b> tail</div>`),

@@ -109,7 +109,34 @@ export const canMirrorInitializer: ElementInitializer<ElementState> = {
     // the observer doesn't watch the subtree. Reconcile against a fresh
     // snapshot and write only what differs: replacing the whole subtree on
     // every keystroke re-sent (and permanently stored) every sibling.
-    const syncInputState = () => {
+    const syncInputState = (event: Event) => {
+      // Fast path: a form control changed. Write just its form state, found by
+      // its position, without snapshotting the whole element on every key.
+      const target = event.target;
+      if (
+        (target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement ||
+          target instanceof HTMLSelectElement) &&
+        !target.isContentEditable
+      ) {
+        const path = getMirroredPath(element, target);
+        const formState = captureFormState(target);
+        if (path && formState) {
+          let applied = false;
+          setDataAny((draft: any) => {
+            const node = getStateAtPath(draft, path);
+            if (
+              node &&
+              isHTMLElementState(node) &&
+              node.tagName === target.tagName.toLowerCase()
+            ) {
+              reconcileFormStateInPlace(node, formState);
+              applied = true;
+            }
+          });
+          if (applied) return;
+        }
+      }
       const current = constructInitialState(element);
       setDataAny((draft: any) => {
         reconcileStateInPlace(draft, current);
@@ -235,12 +262,18 @@ function applyMutationsInPlace(
   state: ElementState,
   mutations: MutationRecord[]
 ): void {
+  // updateChildList resyncs a target's whole child list from the live DOM, so
+  // one pass per target covers every childList record for it. Running it per
+  // record made bulk edits quadratic (200 appends took about a second).
+  const childListTargets = new Set<Node>();
   mutations.forEach((mutation) => {
     switch (mutation.type) {
       case "attributes":
         updateAttributes(state, mutation);
         break;
       case "childList":
+        if (childListTargets.has(mutation.target)) break;
+        childListTargets.add(mutation.target);
         updateChildList(state, mutation);
         break;
       case "characterData":
@@ -338,23 +371,61 @@ function reconcileStateInPlace(draft: ElementState, next: ElementState): void {
     if (!(name in next.attributes)) delete draft.attributes[name];
   }
 
-  if (!next.formState) {
+  reconcileFormStateInPlace(draft, next.formState);
+  reconcileChildrenInPlace(draft.children, next.children);
+}
+
+function reconcileFormStateInPlace(
+  draft: HTMLElementState,
+  next: HTMLElementState["formState"],
+): void {
+  if (!next) {
     if (draft.formState) delete draft.formState;
-  } else if (!draft.formState) {
-    draft.formState = { ...next.formState };
-  } else {
-    const fields = ["checked", "value", "selectedIndex"] as const;
-    for (const field of fields) {
-      const value = next.formState[field];
-      if (value === undefined) {
-        if (field in draft.formState) delete draft.formState[field];
-      } else if (draft.formState[field] !== value) {
-        (draft.formState as Record<string, unknown>)[field] = value;
-      }
+    return;
+  }
+  if (!draft.formState) {
+    draft.formState = { ...next };
+    return;
+  }
+  const fields = ["checked", "value", "selectedIndex"] as const;
+  for (const field of fields) {
+    const value = next[field];
+    if (value === undefined) {
+      if (field in draft.formState) delete draft.formState[field];
+    } else if (draft.formState[field] !== value) {
+      (draft.formState as Record<string, unknown>)[field] = value;
     }
   }
+}
 
-  reconcileChildrenInPlace(draft.children, next.children);
+/** Child indexes (among mirrored nodes) from `root` down to `target`. */
+function getMirroredPath(root: HTMLElement, target: Node): number[] | null {
+  const path: number[] = [];
+  let node: Node = target;
+  while (node !== root) {
+    const parent = node.parentNode;
+    if (!parent || !isMirroredNode(node)) return null;
+    let index = 0;
+    for (const sibling of Array.from(parent.childNodes)) {
+      if (sibling === node) break;
+      if (isMirroredNode(sibling)) index += 1;
+    }
+    path.unshift(index);
+    node = parent;
+  }
+  return path;
+}
+
+function getStateAtPath(
+  state: ElementState,
+  path: number[],
+): ElementState | undefined {
+  let node: ElementState | undefined = state;
+  for (const index of path) {
+    if (!node || !isHTMLElementState(node)) return undefined;
+    node = node.children[index];
+  }
+  return node;
 }
 
 /**
