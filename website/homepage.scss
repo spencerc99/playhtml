@@ -665,6 +665,10 @@ h3 {
   @include dotted($box);
 }
 
+.ph-toybox__swipe {
+  display: none;
+}
+
 .ph-toybox__toys {
   position: absolute;
   inset: 0;
@@ -673,10 +677,6 @@ h3 {
   > * {
     pointer-events: auto;
   }
-}
-
-.ph-toybox__swipe {
-  display: none;
 }
 
 .ph-hero__pitch {
@@ -1441,16 +1441,20 @@ h3 {
   transform: rotate(-3deg);
 }
 
+// Two windows side by side, each with its note under it. The notes sit in
+// their own row so long handwriting wraps instead of running into each other.
 .ph-how__card--windows {
-  display: flex;
-  gap: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr) auto;
+  column-gap: 14px;
+  row-gap: 6px;
   align-items: center;
 }
 
 .ph-window {
   position: relative;
-  flex: 1;
-  height: 168px;
+  height: min(168px, 100%);
   border: 1px solid $ink;
   border-radius: 6px;
   background: $paper;
@@ -1554,17 +1558,13 @@ h3 {
 
 .ph-how__left-note,
 .ph-how__right-note {
-  position: absolute;
-  bottom: 6px;
+  grid-row: 2;
   font-size: var(--fs-hand);
-}
-
-.ph-how__left-note {
-  left: 22px;
+  line-height: 1;
+  text-align: center;
 }
 
 .ph-how__right-note {
-  right: 22px;
   color: $magenta;
 }
 
@@ -1623,6 +1623,12 @@ h3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 22px;
+}
+
+.ph-made__more {
+  align-self: center;
+  font-size: var(--fs-body);
+  color: $ink;
 }
 
 .ph-made__fallback {
@@ -2057,12 +2063,6 @@ h3 {
   span {
     font-size: 13px;
     color: $text;
-
-    &:first-child {
-      font-family: $mono;
-      font-size: 11px;
-      color: $muted;
-    }
   }
 
   b {
@@ -2182,7 +2182,7 @@ h3 {
 .ph-wwo__card {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
   border: 1.5px solid $ink;
   border-radius: 18px;
   overflow: hidden;
@@ -2220,8 +2220,9 @@ h3 {
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 6px;
     font-size: var(--fs-body);
+    line-height: 1.35;
   }
 
   li {
@@ -2252,25 +2253,10 @@ h3 {
   background: $sage;
 }
 
-.ph-soon {
-  font-family: $mono;
-  font-size: 11px !important;
-  padding: 1px 6px;
-  border: 1px solid $ink;
-  border-radius: 999px;
-  vertical-align: 2px;
-  color: $ink !important;
-}
-
-.ph-wwo__fine {
-  font-size: 14px;
-  color: #4a4a46;
-}
-
 .ph-wwo__media {
   position: relative;
   border-left: 1.5px solid $ink;
-  min-height: 380px;
+  min-height: 0;
   background: #fff;
 
   video {
@@ -2300,9 +2286,9 @@ h3 {
   margin: 0 auto;
   padding: 72px 24px 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 28px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .ph-ask {
@@ -2311,7 +2297,7 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 32px 28px 26px;
+  padding: 32px 24px 26px;
   border: 1.5px solid $ink;
   border-radius: 14px;
   box-shadow: $shadow-big;
@@ -2323,10 +2309,11 @@ h3 {
     rotate: -1.5deg;
   }
 
+  // A notch under h3 so both card titles stay on one line side by side.
   h2 {
     margin: 0;
     font-weight: 800;
-    font-size: var(--fs-h3);
+    font-size: min(var(--fs-h3), 27px);
     line-height: 1.15;
     letter-spacing: -0.01em;
   }
@@ -2342,6 +2329,11 @@ h3 {
 .ph-ask--collab {
   background: $paper;
   rotate: -0.4deg;
+
+  // Right under the chips, not pinned to the bottom of the stretched card.
+  .ph-ask__foot {
+    margin-top: 0;
+  }
 }
 
 .ph-ask--fund {
@@ -2350,10 +2342,11 @@ h3 {
 }
 
 // Ways to collaborate: chips that link to the write-up of each past project.
+// Sized so the four chips fit in two rows on desktop.
 .ph-ask__ways {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 10px 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2361,8 +2354,8 @@ h3 {
   a {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
+    gap: 5px;
+    padding: 5px 7px;
     border: 1.5px solid $ink;
     border-radius: 999px;
     background: $paper;
@@ -2370,7 +2363,7 @@ h3 {
     text-decoration: none;
     font-family: $display;
     font-weight: 700;
-    font-size: 14px;
+    font-size: 13px;
     line-height: 1.2;
     transition: translate 0.15s ease;
 
@@ -2403,12 +2396,6 @@ h3 {
   flex-direction: column;
   align-items: stretch;
   text-align: center;
-}
-
-.ph-ask__fine {
-  font-family: $mono;
-  font-size: 11px;
-  color: $muted;
 }
 
 .ph-ask__fund-row {
@@ -2695,7 +2682,8 @@ h3 {
   align-content: flex-start;
   gap: 12px 10px;
   min-height: 60px;
-  max-height: 166px;
+  // About five rows of entries; stacked layouts keep it shorter (see below).
+  max-height: 286px;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 6px 14px 34px 6px;
@@ -3000,8 +2988,11 @@ h3 {
 
   // Same toys and notes as desktop, stacked: lamp and sign above the pitch,
   // the rest on a shelf below it that scrolls sideways when it runs out of room.
+  // The stacked toy box is a flex column, so the pitch's z-index would still
+  // count and its top padding would cover the lamp and sign above it.
   .ph-hero__pitch {
     position: static;
+    z-index: auto;
     width: auto;
     margin: 0;
     padding: 178px 16px 8px;
@@ -3047,8 +3038,14 @@ h3 {
     top: 132px;
   }
 
+  // The sign's text is only ~20px tall on phones, so a drag that starts a
+  // little off it scrolled the page instead. Pad the touch target without
+  // moving the text, and keep the browser from claiming the gesture.
   #sign {
     font-size: 19px;
+    padding: 14px 10px;
+    margin: -14px -10px;
+    touch-action: none;
   }
 
   .ph-toy--newest {
@@ -3085,6 +3082,9 @@ h3 {
     top: 54px;
   }
 
+  // The desktop toy layer ignores pointers between toys (so the pitch under
+  // it stays clickable). Stacked, the shelf has to take them back, or a swipe
+  // that starts between two toys never reaches the scroller.
   .ph-toybox__toys {
     position: relative;
     inset: auto;
@@ -3095,9 +3095,11 @@ h3 {
     margin-top: 26px;
     padding: 28px 20px 12px;
     border-top: 1.5px dashed rgba(28, 28, 28, 0.3);
+    pointer-events: auto;
     overflow-x: auto;
     overscroll-behavior-x: contain;
-    scroll-snap-type: x proximity;
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
 
     &::-webkit-scrollbar {
@@ -3113,7 +3115,6 @@ h3 {
     right: auto !important;
     top: auto !important;
     bottom: auto !important;
-    scroll-snap-align: center;
   }
 
   .ph-toy--visits {
@@ -3208,19 +3209,17 @@ h3 {
     box-shadow: 3px 3px 0 $ink;
   }
 
+  // Code peeks belong next to toys on the desktop toy box. Stacked, they
+  // covered the toys, so smaller screens just play.
   .ph-peek {
-    position: fixed;
-    left: 16px !important;
-    right: 16px !important;
-    top: auto !important;
-    bottom: 16px !important;
-    width: auto;
-    max-width: none;
+    display: none;
+  }
+}
 
-    pre {
-      white-space: pre-wrap;
-      font-size: 12px;
-    }
+// Stacked layouts: a shorter guestbook so it doesn't eat the screen.
+@media (max-width: 900px) {
+  #guestbookMessages {
+    max-height: 166px;
   }
 }
 
@@ -3244,6 +3243,30 @@ h3 {
     --fs-body: 15px;
     --fs-small: 13px;
     --fs-hand: 20px;
+  }
+
+  // The shelf runs past the box's edges and fades out there, so the toy
+  // cut off at the edge reads as "more this way" rather than clipped.
+  .ph-toybox {
+    overflow: visible;
+  }
+
+  .ph-toybox__toys {
+    margin: 14px -13px 0;
+    padding: 20px 28px 10px;
+    border-top: 0;
+    gap: 22px;
+    mask-image: linear-gradient(
+      90deg,
+      transparent 0,
+      #000 18px,
+      #000 calc(100% - 40px),
+      transparent
+    );
+  }
+
+  .ph-toybox__toys > .ph-toy {
+    zoom: 0.85;
   }
 
   // Phones run out of room for the shelf, so hint that it scrolls.
@@ -3287,19 +3310,6 @@ h3 {
 
   .ph-window {
     height: 130px;
-  }
-
-  .ph-how__left-note,
-  .ph-how__right-note {
-    bottom: 4px;
-  }
-
-  .ph-how__left-note {
-    left: 14px;
-  }
-
-  .ph-how__right-note {
-    right: 14px;
   }
 
   .ph-made {
@@ -3374,15 +3384,11 @@ h3 {
     max-width: calc(100% - 20px);
     padding: 5px 9px;
 
-    span:first-child {
-      font-size: 9px;
-    }
-
     b {
       font-size: 13px;
     }
 
-    span:not(:first-child) {
+    span {
       display: none;
     }
   }
