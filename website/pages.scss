@@ -293,10 +293,56 @@ $phone: 760px;
   }
 }
 
-.ph-gallery__host {
+// The site's one-line description, clipped to two lines.
+.ph-gallery__desc {
+  position: relative;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-style: normal;
+  font-size: 14px;
+  line-height: 1.35;
+  color: $muted;
+}
+
+// Address line: optional "experiment" tag, then the address styled as a link.
+.ph-gallery__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   font-family: $mono;
   font-size: 12px !important;
-  color: $muted !important;
+  color: $ultramarine !important;
+}
+
+.ph-gallery__host {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.ph-gallery__arrow {
+  flex: none;
+  transition: transform 0.15s ease;
+}
+
+.ph-gallery__tile:hover,
+.ph-gallery__tile:focus-visible,
+.ph-gallery__row:hover,
+.ph-gallery__row:focus-visible {
+  .ph-gallery__host {
+    text-decoration-thickness: 2px;
+  }
+
+  .ph-gallery__arrow {
+    transform: translate(1px, -1px);
+  }
 }
 
 // Click smudges, in the clicker's cursor color. Only on the text, never the
@@ -955,8 +1001,18 @@ $phone: 760px;
     }
   }
 
+  .ph-gallery__meta {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    font-size: 11px !important;
+  }
+
   .ph-gallery__host {
-    display: none;
+    max-width: calc(100% - 16px);
+  }
+
+  .ph-gallery__desc {
+    font-size: 12px;
   }
 
   .ph-gallery__index {
