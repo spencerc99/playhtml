@@ -50,7 +50,7 @@ export function collageExportName(title: string, at: Date = new Date()): string 
   return `we were online - ${title.trim() || "collage"} - ${day}`;
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
+export function bytesToBase64(bytes: Uint8Array): string {
   // Built in slices, because spreading a multi-megabyte picture into one
   // String.fromCharCode call overflows the argument limit.
   const SLICE = 0x8000;
@@ -61,7 +61,7 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
+export function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let at = 0; at < binary.length; at += 1) {

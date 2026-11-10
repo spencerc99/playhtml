@@ -22,8 +22,10 @@
    --------------------------------------------------------------------- */
 
 :root {
-  /* Paper + ink */
+  /* Paper + ink. Code blocks use the homepage's near-white toy-box color
+     so they read as cards sitting on the warm paper. */
   --ph-paper: #f4efe5;
+  --ph-code-paper: #fffff9;
   --ph-paper-warm: #ebe4d5;
   --ph-paper-deep: #e0d8c6;
   --ph-ink: #1c1c1c;
@@ -50,6 +52,9 @@
   --ph-grid-line: rgba(39, 75, 158, 0.08);
   --ph-grid-line-strong: rgba(39, 75, 158, 0.14);
   --ph-grid-size: 28px;
+  /* Page background: a faint dot notebook grid */
+  --ph-dot: rgba(40, 40, 48, 0.22);
+  --ph-dot-size: 18px;
 
   /* Type scale (docs-grade; Starlight tokens are overridden below) */
   --ph-font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
@@ -72,6 +77,7 @@
 /* Dark-mode token stub — graphite board instead of paper. Refined later. */
 :root[data-theme="dark"] {
   --ph-paper: #1b1e1a;
+  --ph-code-paper: #24271f;
   --ph-paper-warm: #22251f;
   --ph-paper-deep: #2a2d26;
   --ph-ink: #eae4d3;
@@ -86,6 +92,7 @@
   --ph-ultramarine-wash: rgba(138, 166, 255, 0.14);
   --ph-grid-line: rgba(138, 166, 255, 0.08);
   --ph-grid-line-strong: rgba(138, 166, 255, 0.14);
+  --ph-dot: rgba(234, 228, 211, 0.16);
   --ph-shadow-brick: 2px 2px 0 0 rgba(0, 0, 0, 0.6);
 }
 
@@ -132,7 +139,7 @@
 }
 
 /* ---------------------------------------------------------------------
-   3. Page surface — paper, graph grid, subtle grain
+   3. Page surface — paper, dot grid, subtle grain
    --------------------------------------------------------------------- */
 
 html,
@@ -156,13 +163,12 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background-image: linear-gradient(
-      to right,
-      var(--ph-grid-line) 1px,
-      transparent 1px
-    ),
-    linear-gradient(to bottom, var(--ph-grid-line) 1px, transparent 1px);
-  background-size: var(--ph-grid-size) var(--ph-grid-size);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    var(--ph-dot) 0.75px,
+    transparent 1.15px
+  );
+  background-size: var(--ph-dot-size) var(--ph-dot-size);
   mask-image: linear-gradient(
     to bottom,
     rgba(0, 0, 0, 0.9),
@@ -280,7 +286,7 @@ kbd,
 }
 
 /* ---------------------------------------------------------------------
-   5. Header (wordmark + presence)
+   5. Header (matches the playhtml.fun homepage header)
    --------------------------------------------------------------------- */
 
 header.header {
@@ -299,41 +305,280 @@ header.header {
   min-width: 0;
 }
 
-/* Wordmark — "play" as link, "h-t-m-l" each as a can-toggle letter */
-.ph-wordmark {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0;
-  font-family: var(--ph-font-wordmark);
-  font-size: 1.55rem;
-  line-height: 1;
-  letter-spacing: -0.01em;
-  color: var(--ph-ink);
-  user-select: none;
+/* Same layout as the homepage's .ph-header (website/homepage.scss): wordmark,
+ * nav, then everything else pushed right. Breakpoints:
+ *   >= 72rem  full nav inline
+ *   50-72rem  nav folds into a menu button (the sidebar is still visible)
+ *   < 50rem   nav moves into Starlight's phone menu (MobileMenuFooter) */
+.ph-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 100%;
+  min-width: 0;
 }
-.ph-wordmark__home {
-  color: inherit;
+.ph-header a {
   text-decoration: none;
-  transition: color var(--ph-motion-fast);
 }
-.ph-wordmark__home:hover .ph-wordmark__stem {
+.ph-header__wordmark {
+  flex: none;
+  font-family: var(--ph-font-wordmark);
+  font-size: 26px;
+  line-height: 1;
+  color: var(--ph-ink);
+}
+.ph-header__wordmark:hover {
   color: var(--ph-ultramarine-deep);
 }
-.ph-wordmark__letter {
-  display: inline-block;
-  cursor: pointer;
+
+.ph-header__nav {
+  display: flex;
+  align-items: center;
+  gap: 4px 22px;
+  min-width: 0;
+  font-family: var(--ph-font-body);
+  font-size: 16px;
+}
+.ph-sitenav__link {
+  color: var(--ph-ink-2);
+  padding: 10px 0;
+  white-space: nowrap;
+}
+.ph-sitenav__link:hover,
+.ph-sitenav__link[aria-current="page"] {
   color: var(--ph-ink);
-  transition: color var(--ph-motion-fast), text-shadow var(--ph-motion),
-    transform var(--ph-motion-fast);
+  text-decoration: underline;
+  text-decoration-color: var(--ph-ultramarine);
+  text-underline-offset: 5px;
 }
-.ph-wordmark__letter:hover {
-  transform: translateY(-1px);
+.ph-sitenav__link[aria-current="page"] {
+  text-decoration-thickness: 2px;
 }
-/* playhtml adds the `toggled` class when a can-toggle element is toggled on */
-.ph-wordmark__letter.toggled {
+.ph-sitenav__wwo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ph-sitenav__wwo img {
+  border-radius: 5px;
+}
+.ph-sitenav__link i {
+  font-family: "Lora", Georgia, serif;
+}
+
+.ph-header__search {
+  display: flex;
+  flex: 1;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.ph-header__right {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 14px;
+}
+.ph-header__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 32px;
+  min-height: 38px;
+  color: var(--ph-ink);
+}
+.ph-header__icon:hover {
+  color: var(--ph-ultramarine-deep);
+}
+.ph-header__icon svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+.ph-header__stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--ph-font-mono);
+  font-size: 13px;
+}
+.ph-header__stars[hidden] {
+  display: none;
+}
+.ph-header__stars::before {
+  content: "\2605";
   color: var(--ph-mustard);
-  text-shadow: 0 0 0.6rem rgba(232, 166, 58, 0.55),
-    0 0 1.6rem rgba(232, 166, 58, 0.25);
+  font-size: 14px;
+  -webkit-text-stroke: 0.6px var(--ph-ink);
+}
+
+/* Support button keeps its light-mode ink on mustard in both themes. */
+.ph-header__support,
+.ph-mobile-sitenav__support {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  background: #e8a63a;
+  border: 1px solid #1c1c1c;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 #1c1c1c;
+  color: #1c1c1c;
+  font-family: var(--ph-font-display);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ph-header__support:hover,
+.ph-mobile-sitenav__support:hover {
+  color: #1c1c1c;
+  box-shadow: 3px 3px 0 #1c1c1c;
+}
+
+/* Compact theme toggle: moon in light mode, sun in dark mode. */
+.ph-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ph-ink);
+  cursor: pointer;
+}
+.ph-theme-toggle:hover {
+  color: var(--ph-ultramarine-deep);
+  background: var(--ph-ultramarine-wash);
+}
+.ph-theme-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+.ph-theme-toggle__moon {
+  fill: currentColor;
+}
+.ph-theme-toggle__sun {
+  display: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+:root[data-theme="dark"] .ph-theme-toggle__moon {
+  display: none;
+}
+:root[data-theme="dark"] .ph-theme-toggle__sun {
+  display: block;
+}
+
+/* Mid-width menu: same boxed button and panel as the homepage. */
+.ph-header__menu {
+  display: none;
+  position: relative;
+  flex: none;
+}
+.ph-header__menu summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  cursor: pointer;
+}
+.ph-header__menu summary::-webkit-details-marker {
+  display: none;
+}
+.ph-header__menu summary svg {
+  width: 20px;
+  height: 20px;
+}
+.ph-header__menu-panel {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  padding: 8px;
+  background: var(--ph-paper);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 10px;
+  box-shadow: 5px 5px 0 var(--ph-ink);
+}
+.ph-header__menu-panel .ph-sitenav__link,
+.ph-mobile-sitenav .ph-sitenav__link {
+  padding: 12px 10px;
+  font-size: 17px;
+  border-bottom: 1px solid var(--ph-hairline);
+}
+.ph-header__menu-panel .ph-sitenav__link:last-child {
+  border-bottom: 0;
+}
+
+/* Phone menu: site links above Starlight's social icons and theme toggle. */
+.ph-mobile-sitenav {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0 1rem;
+  border-top: 1px solid var(--ph-hairline);
+  font-family: var(--ph-font-body);
+}
+/* Beats the .sidebar-content a rules, since this nav sits inside the sidebar. */
+.sidebar-content .ph-mobile-sitenav a.ph-sitenav__link {
+  padding-inline: 0;
+  border-left: 0;
+  background: none;
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--ph-ink-2);
+  text-decoration: none;
+}
+.sidebar-content .ph-mobile-sitenav a.ph-sitenav__link[aria-current="page"] {
+  color: var(--ph-ink);
+  text-decoration: underline 2px var(--ph-ultramarine);
+  text-underline-offset: 5px;
+}
+.sidebar-content .ph-mobile-sitenav a.ph-mobile-sitenav__support {
+  text-decoration: none;
+  border-left: 1px solid #1c1c1c;
+  border-radius: 6px;
+  background: #e8a63a;
+  color: #1c1c1c;
+}
+.ph-mobile-sitenav__support {
+  margin-top: 1rem;
+  min-height: 44px;
+}
+
+@media (max-width: 72rem) {
+  .ph-header__nav {
+    display: none;
+  }
+  .ph-header__menu {
+    display: block;
+  }
+}
+@media (max-width: 50rem) {
+  .ph-header {
+    gap: 12px;
+  }
+  .ph-header__wordmark {
+    font-size: 22px;
+  }
+  .ph-header__menu,
+  .ph-header__right {
+    display: none;
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -406,76 +651,6 @@ header.header {
 }
 
 /* ---------------------------------------------------------------------
-   7. Hero (splash)
-   --------------------------------------------------------------------- */
-
-/* Force the splash hero into a single predictable column. Starlight's Hero
- * uses Astro-scoped styles for `.hero`, `.stack`, and `.copy`; because we
- * override the component, those scoped rules don't bind to our markup and
- * the flex defaults (row) leak through. We re-declare them here.
- *
- * Extra care: the default 7fr/4fr grid at wide screens reserves a column for
- * an image we never render; keeping one column keeps the hero readable. */
-.ph-docs-hero {
-  display: grid !important;
-  grid-template-columns: 1fr !important;
-  padding-block: clamp(1.2rem, 3vw, 2rem) !important;
-  gap: 1.1rem !important;
-}
-.ph-docs-hero .stack {
-  display: flex;
-  flex-direction: column;
-  max-width: 60ch;
-  gap: 1rem;
-}
-.ph-docs-hero .copy {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  text-align: left;
-  gap: 0.6rem;
-}
-/* Mono kicker sitting above the splash H1, in the register of the rest of
- * the site's figure labels (FIG. 01 etc.). Calls out playhtml's positioning
- * — infrastructure, not a product. */
-.ph-docs-hero__kicker {
-  font-family: var(--ph-font-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--ph-ink-3);
-  margin: 0 0 0.4rem;
-  line-height: 1.2;
-}
-.ph-docs-hero h1 {
-  font-family: var(--ph-font-display);
-  font-weight: 800;
-  /* Sized to fit the splash tagline on a single line inside Starlight's
-   * ~560px copy column. If you extend the tagline past ~22 characters,
-   * revisit the max or re-measure with the DOM. */
-  font-size: clamp(2rem, 1.7rem + 1.6vw, 3rem);
-  letter-spacing: -0.025em;
-  line-height: 1.05;
-  color: var(--ph-ink);
-  margin: 0;
-  text-wrap: balance;
-}
-.ph-docs-hero .tagline {
-  font-family: var(--ph-font-body);
-  font-size: clamp(1rem, 0.95rem + 0.4vw, 1.15rem);
-  color: var(--ph-ink-2);
-  max-width: 52ch;
-  line-height: 1.5;
-  margin: 0;
-}
-.ph-docs-hero .actions {
-  justify-content: flex-start;
-  flex-wrap: wrap;
-  gap: 0.7rem;
-  margin-top: 0.25rem;
-}
-
-/* ---------------------------------------------------------------------
    8. Buttons (Starlight LinkButton / action)
    --------------------------------------------------------------------- */
 
@@ -516,173 +691,6 @@ header.header {
   background: transparent;
   color: var(--ph-ink);
   border-color: var(--ph-ink);
-}
-
-/* ---------------------------------------------------------------------
-   8b. Splash-only density scaffolding
-   --------------------------------------------------------------------- */
-
-/* The splash page uses its own MDX blocks (quickstart + live demo + catalog)
- * so we can control density without re-implementing the hero. */
-.ph-splash-pitch,
-.ph-splash-quickstart,
-.ph-splash-section {
-  max-width: 68rem;
-  margin-block: clamp(1.1rem, 2vw, 1.6rem);
-}
-.ph-splash-pitch__list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.55rem 1.2rem;
-}
-@media (min-width: 48rem) {
-  .ph-splash-pitch__list {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-.ph-splash-pitch__list > li {
-  position: relative;
-  padding-left: 1.1rem;
-  font-size: 0.95rem;
-  line-height: 1.45;
-  color: var(--ph-ink-2, inherit);
-}
-.ph-splash-pitch__list > li::before {
-  content: "→";
-  position: absolute;
-  left: 0;
-  top: 0;
-  color: var(--ph-ink-3);
-  font-family: var(--ph-font-mono);
-  font-size: 0.85em;
-}
-.ph-splash-pitch__list > li strong {
-  color: var(--ph-ink);
-}
-.ph-splash-quickstart {
-  display: block;
-}
-.ph-splash-quickstart__label,
-.ph-splash-section__label {
-  font-family: var(--ph-font-mono);
-  font-size: 0.65rem;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--ph-ink-3);
-  padding-bottom: 0.3rem;
-  border-bottom: 1px dashed var(--ph-hairline-soft);
-  margin-bottom: 0.75rem;
-}
-.ph-splash-quickstart .ph-copy {
-  margin: 0;
-}
-
-/* Furniture variant: the lamp floats at the top-right of the splash content
- * like a hanging fixture, with the museum-label annotation beside it. Pinned
- * to the splash hero area via the parent `.sl-markdown-content`. On narrow
- * screens it collapses back into the flow so it doesn't collide with copy. */
-.ph-splash-lamp {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.9rem;
-  margin: 0.4rem 0 0;
-  padding: 0;
-}
-.main-frame .sl-markdown-content,
-[data-has-hero] .sl-markdown-content {
-  position: relative;
-}
-.ph-splash-lamp--furniture {
-  margin: 0;
-  padding: 0;
-  flex-direction: row-reverse;
-  justify-content: flex-end;
-  gap: 0.75rem;
-}
-.ph-splash-lamp--furniture .ph-lamp__img {
-  max-width: 84px;
-  height: auto;
-}
-@media (min-width: 60rem) {
-  .ph-splash-lamp--furniture {
-    position: absolute;
-    top: -16rem;
-    right: 0;
-    flex-direction: row;
-    align-items: flex-start;
-    gap: 0.75rem;
-    z-index: 2;
-    pointer-events: auto;
-  }
-  .ph-splash-lamp--furniture .ph-lamp__img {
-    max-width: 120px;
-  }
-  .ph-splash-lamp--furniture .ph-splash-lamp__tag {
-    margin-top: 2.5rem;
-  }
-}
-/* Keep the splash content area unclipped so the hanging lamp can extend up
- * into the hero region. */
-.main-frame .sl-markdown-content,
-[data-has-hero] .sl-markdown-content {
-  overflow: visible;
-}
-.ph-splash-lamp__tag {
-  font-family: var(--ph-font-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ph-ink-3);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.3rem 0.55rem;
-  border: 1px solid var(--ph-hairline);
-  background: var(--ph-paper, #fff);
-  border-radius: 3px;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
-}
-.ph-splash-lamp__pip {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #6cd97e;
-  box-shadow: 0 0 0 3px rgba(108, 217, 126, 0.18);
-  animation: ph-splash-lamp-pip 1.6s ease-in-out infinite;
-}
-@keyframes ph-splash-lamp-pip {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
-}
-
-/* Splash catalog: 2-col on desktop, no stagger, no wasted gutter. The default
- * CardGrid staggers for marketing vibe — we want a tight specimen sheet. */
-.ph-splash-section .card-grid,
-.ph-splash-section [class*="CardGrid"] {
-  grid-template-columns: 1fr !important;
-  gap: 0.75rem !important;
-}
-@media (min-width: 48rem) {
-  .ph-splash-section .card-grid,
-  .ph-splash-section [class*="CardGrid"] {
-    grid-template-columns: 1fr 1fr !important;
-  }
-}
-@media (min-width: 72rem) {
-  .ph-splash-section .card-grid,
-  .ph-splash-section [class*="CardGrid"] {
-    grid-template-columns: 1fr 1fr 1fr !important;
-  }
-}
-/* Nuke any stagger transform applied by Starlight so the cards land on a
- * clean grid. */
-.ph-splash-section .card-grid > *,
-.ph-splash-section [class*="CardGrid"] > * {
-  transform: none !important;
-  margin-inline-start: 0 !important;
 }
 
 /* ---------------------------------------------------------------------
@@ -747,8 +755,8 @@ starlight-card,
 .expressive-code .frame {
   --ec-brdCol: var(--ph-ink);
   --ec-brdRad: 4px;
-  --ec-frm-edBg: var(--ph-paper);
-  --ec-frm-trmBg: var(--ph-paper);
+  --ec-frm-edBg: var(--ph-code-paper);
+  --ec-frm-trmBg: var(--ph-code-paper);
   font-family: var(--ph-font-mono);
 }
 .expressive-code .frame {
@@ -1184,7 +1192,7 @@ nav.sidebar a:has(> .ph-sidebar-pip-stack) {
   margin-block: 1.1rem;
   border: 1.5px solid var(--ph-ink);
   border-radius: 4px;
-  background: var(--ph-paper);
+  background: var(--ph-code-paper);
   box-shadow: var(--ph-shadow-brick);
   transition: box-shadow var(--ph-motion);
 }
@@ -1215,7 +1223,7 @@ nav.sidebar a:has(> .ph-sidebar-pip-stack) {
   }
 }
 .ph-copy__frame {
-  background: var(--ph-paper);
+  background: var(--ph-code-paper);
   padding: 0.75rem 1rem 0.55rem;
   border-bottom: 1px solid var(--ph-hairline);
 }
@@ -1277,7 +1285,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   border: 1.5px solid var(--ph-ink);
   border-radius: 4px;
   padding: 0.75rem 1rem;
-  background: var(--ph-paper) !important;
+  background: var(--ph-code-paper) !important;
   box-shadow: var(--ph-shadow-brick);
   font-family: var(--ph-font-mono);
   font-size: 0.85rem;
@@ -2235,42 +2243,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
    17e. Capabilities page — inline demos (can-move … can-duplicate)
    --------------------------------------------------------------------- */
 
-/* Splash-page lamp: same Noguchi hanging lamp the marketing homepage uses
-   (see `website/home.scss .lamp`). The "lit" class brightens + drops a
-   warm glow so the toggled state reads instantly without needing a label. */
-.ph-lamp {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  outline: none;
-}
-.ph-lamp:focus-visible {
-  outline: 2px solid var(--ph-accent, rgba(59, 130, 246, 0.7));
-  outline-offset: 4px;
-}
-.ph-lamp__img {
-  width: 96px;
-  height: auto;
-  display: block;
-  background-color: transparent;
-  transition: filter 240ms ease, transform 240ms ease;
-}
-.ph-lamp--dark .ph-lamp__img {
-  filter: brightness(0.85) saturate(0.6);
-}
-.ph-lamp--lit .ph-lamp__img {
-  filter: brightness(1.2) saturate(1.6)
-    drop-shadow(0 0 36px rgba(247, 220, 156, 0.85));
-  transform: translateY(1px);
-}
-
 .ph-grow-balloon-wrap {
   display: flex;
   flex-direction: column;
@@ -2630,9 +2602,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   }
   .ph-presence__label {
     display: none;
-  }
-  .ph-wordmark {
-    font-size: 1.3rem;
   }
 }
 
@@ -3072,4 +3041,35 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   margin: 0;
   font-size: 0.72rem;
   overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------
+   Phone spacing: tighter rhythm, and code scrolls sideways instead of
+   breaking lines mid-word.
+   --------------------------------------------------------------------- */
+@media (max-width: 49.999rem) {
+  .content-panel {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+  .sl-markdown-content p:not(:where(.not-content *)),
+  .sl-markdown-content li:not(:where(.not-content *)) {
+    line-height: 1.6;
+  }
+  .sl-markdown-content h2:not(:where(.not-content *)) {
+    margin-top: 2rem;
+    padding-top: 1rem;
+  }
+  .sl-markdown-content h3:not(:where(.not-content *)) {
+    margin-top: 1.6rem;
+  }
+  .ph-copy__frame {
+    padding: 0.65rem 0.85rem 0.5rem;
+    overflow-x: auto;
+  }
+  .ph-copy__frame pre {
+    font-size: 0.8rem;
+    white-space: pre;
+    word-break: normal;
+  }
 }

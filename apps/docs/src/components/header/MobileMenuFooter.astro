@@ -1,0 +1,13 @@
+---
+// ABOUTME: Phone menu footer: the site nav and support link above Starlight's
+// ABOUTME: default social icons and theme toggle, since the header hides them on phones.
+import Default from "@astrojs/starlight/components/MobileMenuFooter.astro";
+import SiteNavLinks from "./SiteNavLinks.astro";
+import { supportHref } from "./site-nav";
+---
+
+<nav class="ph-mobile-sitenav" aria-label="Site">
+  <SiteNavLinks />
+  <a class="ph-mobile-sitenav__support" href={supportHref}>support playhtml</a>
+</nav>
+<Default />

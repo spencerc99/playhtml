@@ -10,7 +10,7 @@ function routes(port: string) {
   const base = `http://localhost:${port}`;
   return {
     capabilities: `${base}/docs/capabilities/`,
-    gettingStarted: `${base}/docs/getting-started/`,
+    gettingStarted: `${base}/docs/`,
     concepts: `${base}/docs/concepts/`,
     home: `${base}/docs/`,
     presence: `${base}/docs/data/presence/`,

@@ -1,2 +1,6 @@
 # Agents look for llms.txt at the site root; the guide lives with the docs.
 /llms.txt /docs/llms.txt 301
+
+# The docs open on Getting started at /docs/ now.
+/docs/getting-started /docs/ 301
+/docs/getting-started/ /docs/ 301

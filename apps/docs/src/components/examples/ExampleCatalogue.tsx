@@ -1,16 +1,13 @@
-// ABOUTME: Renders the searchable catalogue of canonical examples and external sites.
-// ABOUTME: Loads the curated Are.na channel without blocking repo-owned examples.
+// ABOUTME: Renders the searchable catalogue of canonical examples, plus the newest community
+// ABOUTME: sites from the Are.na channel. The full sites list lives in the playhtml.fun gallery.
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  ARENA_CHANNEL_URL,
   ARENA_CONTENTS_URL,
   filterExamples,
-  filterSites,
   isArenaContentsResponse,
   mapArenaSites,
   type SiteSummary,
-  type SourceFilter,
 } from "./catalogue";
 import type { CatalogueExampleSummary } from "./examples";
 import styles from "./examples.module.css";
@@ -19,11 +16,11 @@ type ExampleCatalogueProps = {
   examples: readonly CatalogueExampleSummary[];
 };
 
-// On "All" with no search, each section previews whole rows so both kinds of
-// results are visible at a glance; "Show all" expands the section in place.
-// Site cards carry a screenshot and run tall, so they preview one row.
-const SITE_PREVIEW_ROWS = 1;
+// With no search, examples preview whole rows; "Show all" expands in place.
 const EXAMPLE_PREVIEW_ROWS = 2;
+// The docs show only the newest sites. Everything else is in the gallery.
+const NEWEST_SITES_SHOWN = 4;
+const GALLERY_URL = "https://playhtml.fun/gallery/";
 
 // Counts the columns the responsive card grid currently resolves to, so a
 // preview can fill whole rows at any width.
@@ -68,12 +65,6 @@ function ShowAllButton({
     </button>
   );
 }
-
-const SOURCE_FILTERS: Array<{ value: SourceFilter; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "examples", label: "Examples" },
-  { value: "sites", label: "Sites" },
-];
 
 function SearchIcon() {
   return (
@@ -194,18 +185,13 @@ function SiteCard({ site }: { site: SiteSummary }) {
 
 export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
   const [query, setQuery] = useState("");
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [sites, setSites] = useState<SiteSummary[]>([]);
   const [sitesState, setSitesState] = useState<"loading" | "loaded" | "failed">(
     "loading",
   );
-  const [requestVersion, setRequestVersion] = useState(0);
-  const [sitesExpanded, setSitesExpanded] = useState(false);
   const [examplesExpanded, setExamplesExpanded] = useState(false);
-  // Callback refs, since each grid mounts only once its results exist.
-  const [sitesGrid, setSitesGrid] = useState<HTMLDivElement | null>(null);
+  // Callback ref, since the grid mounts only once its results exist.
   const [examplesGrid, setExamplesGrid] = useState<HTMLDivElement | null>(null);
-  const siteColumns = useGridColumns(sitesGrid);
   const exampleColumns = useGridColumns(examplesGrid);
 
   useEffect(() => {
@@ -239,34 +225,22 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
 
     void loadSites();
     return () => abortController.abort();
-  }, [requestVersion]);
+  }, []);
 
   const visibleExamples = useMemo(
-    () => (sourceFilter === "sites" ? [] : filterExamples(examples, query)),
-    [examples, query, sourceFilter],
+    () => filterExamples(examples, query),
+    [examples, query],
   );
-  const visibleSites = useMemo(
-    () => (sourceFilter === "examples" ? [] : filterSites(sites, query)),
-    [query, sites, sourceFilter],
-  );
-  const resultCount = visibleExamples.length + visibleSites.length;
-  const isPreview = sourceFilter === "all" && query.trim() === "";
-  const sitePreviewCount = siteColumns * SITE_PREVIEW_ROWS;
+  const isPreview = query.trim() === "";
+  const newestSites = isPreview ? sites.slice(0, NEWEST_SITES_SHOWN) : [];
   const examplePreviewCount = exampleColumns * EXAMPLE_PREVIEW_ROWS;
-  const sitesCollapsible = isPreview && visibleSites.length > sitePreviewCount;
   const examplesCollapsible =
     isPreview && visibleExamples.length > examplePreviewCount;
-  const shownSites =
-    sitesCollapsible && !sitesExpanded
-      ? visibleSites.slice(0, sitePreviewCount)
-      : visibleSites;
   const shownExamples =
     examplesCollapsible && !examplesExpanded
       ? visibleExamples.slice(0, examplePreviewCount)
       : visibleExamples;
-  const sitesAreVisible = sourceFilter !== "examples";
-  const showEmptyState =
-    resultCount === 0 && !(sitesAreVisible && sitesState === "loading");
+  const showEmptyState = visibleExamples.length === 0;
 
   return (
     <section
@@ -287,92 +261,39 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
             />
           </span>
         </label>
-
-        <fieldset
-          className={styles.filters}
-          aria-labelledby="examples-source-label"
-        >
-          <span id="examples-source-label" className={styles.filterLabel}>
-            Source
-          </span>
-          <div className={styles.filterButtons}>
-            {SOURCE_FILTERS.map((filter) => (
-              <button
-                key={filter.value}
-                type="button"
-                aria-pressed={sourceFilter === filter.value}
-                onClick={() => setSourceFilter(filter.value)}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-        </fieldset>
       </div>
 
-      <div className={styles.resultsHeader}>
-        <p className={styles.resultCount} aria-live="polite">
-          {resultCount} {resultCount === 1 ? "result" : "results"}
-        </p>
-        <p className={styles.attribution}>
-          Sites are curated on{" "}
-          <a href={ARENA_CHANNEL_URL} target="_blank" rel="noreferrer">
-            Are.na
-            <ExternalIcon />
-          </a>
-        </p>
-      </div>
-
-      {sitesAreVisible && sitesState === "loading" && (
-        <p className={styles.sitesStatus} role="status">
-          Loading sites from Are.na…
-        </p>
-      )}
-
-      {sitesAreVisible && sitesState === "failed" && (
-        <aside className={styles.sitesError}>
-          <div>
-            <strong>Sites could not load.</strong>
-            <span>The examples in these docs are still available.</span>
-          </div>
-          <div className={styles.errorActions}>
-            <button
-              type="button"
-              onClick={() => setRequestVersion((v) => v + 1)}
-            >
-              Try again
-            </button>
-            <a href={ARENA_CHANNEL_URL} target="_blank" rel="noreferrer">
-              Browse on Are.na
-              <ExternalIcon />
-            </a>
-          </div>
-        </aside>
-      )}
+      <p className={styles.resultCount} aria-live="polite">
+        {visibleExamples.length}{" "}
+        {visibleExamples.length === 1 ? "example" : "examples"}
+      </p>
 
       <div id="examples-catalogue-results" className={styles.resultGroups}>
-        {visibleSites.length > 0 && (
+        {isPreview && sitesState !== "failed" && (
           <section
             className={styles.resultGroup}
             aria-labelledby="sites-heading"
           >
             <div className={styles.groupHeader}>
               <h2 id="sites-heading" className={styles.groupTitle}>
-                Community sites
+                Newest community sites
               </h2>
-              {sitesCollapsible && (
-                <ShowAllButton
-                  expanded={sitesExpanded}
-                  total={visibleSites.length}
-                  onToggle={() => setSitesExpanded((value) => !value)}
-                />
-              )}
+              <a className={styles.showAll} href={GALLERY_URL}>
+                See all in the gallery
+                <ArrowIcon />
+              </a>
             </div>
-            <div ref={setSitesGrid} className={styles.cardGrid}>
-              {shownSites.map((site) => (
-                <SiteCard key={site.id} site={site} />
-              ))}
-            </div>
+            {sitesState === "loading" ? (
+              <p className={styles.sitesStatus} role="status">
+                Loading sites…
+              </p>
+            ) : (
+              <div className={styles.cardGrid}>
+                {newestSites.map((site) => (
+                  <SiteCard key={site.id} site={site} />
+                ))}
+              </div>
+            )}
           </section>
         )}
 
@@ -405,7 +326,7 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
       {showEmptyState && (
         <div className={styles.emptyState}>
           <strong>No examples found.</strong>
-          <span>Try another search or source.</span>
+          <span>Try another search.</span>
         </div>
       )}
     </section>

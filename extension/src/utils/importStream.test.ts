@@ -6,6 +6,7 @@ import type { CollectionEvent } from "@playhtml/extension-types";
 import { gzipEventExport, gzipString } from "./dataTransfer";
 import {
   ExportEventScanner,
+  ExportScanner,
   IMPORT_BATCH_SIZE,
   estimateRemainingMs,
   readExportFiles,
@@ -83,6 +84,52 @@ describe("ExportEventScanner", () => {
     );
     scanner.finish();
     expect(read).toEqual([{ id: "a" }]);
+  });
+});
+
+describe("ExportScanner", () => {
+  it("streams every section and the values after it, one character at a time", () => {
+    const text =
+      '{"version":1,"exportedAt":3,"contents":{"collages":1,"you":true},' +
+      '"events":[{"id":"a","s":"]},"}],' +
+      '"images":[{"hash":"h","srcs":["x,y"],"base64":"QQ=="}],' +
+      '"collages":[{"format":"wwo-collage","collage":{"id":"c","pieces":[{"z":1}]}}],' +
+      '"identity":null,"you":{"public":{"publicKey":"pk_1"},"privateKey":{"d":"}"}}}';
+    const scanner = new ExportScanner();
+    const items = [];
+    for (const char of text) items.push(...scanner.push(char));
+    scanner.finish();
+
+    expect(scanner.meta).toEqual({
+      version: 1,
+      exportedAt: 3,
+      contents: { collages: 1, you: true },
+    });
+    expect(items).toEqual([
+      { section: "events", value: { id: "a", s: "]}," } },
+      {
+        section: "images",
+        value: { hash: "h", srcs: ["x,y"], base64: "QQ==" },
+      },
+      {
+        section: "collages",
+        value: {
+          format: "wwo-collage",
+          collage: { id: "c", pieces: [{ z: 1 }] },
+        },
+      },
+      { section: "identity", value: null },
+      {
+        section: "you",
+        value: { public: { publicKey: "pk_1" }, privateKey: { d: "}" } },
+      },
+    ]);
+  });
+
+  it("fails when a file stops partway through a later section", () => {
+    const scanner = new ExportScanner();
+    scanner.push('{"version":1,"events":[],"collages":[{"id":"c"}');
+    expect(() => scanner.finish()).toThrow("ended before everything");
   });
 });
 
