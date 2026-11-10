@@ -70,7 +70,7 @@
     },
     "extension": {
       "name": "@playhtml/extension",
-      "version": "0.1.29",
+      "version": "0.1.30",
       "dependencies": {
         "@playhtml/common": "workspace:*",
         "@playhtml/extension-types": "workspace:*",
