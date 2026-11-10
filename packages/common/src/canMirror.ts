@@ -105,38 +105,14 @@ export const canMirrorInitializer: ElementInitializer<ElementState> = {
 
     // Sync form element internal state (checked, value, selectedIndex).
     // These IDL properties don't trigger attribute mutations, so we listen
-    // for input/change events and push a full state snapshot.
-    const syncFormStateRecursive = (
-      currentState: HTMLElementState,
-      draft: any
-    ) => {
-      if (currentState.formState) {
-        draft.formState = currentState.formState;
-      }
-      if (currentState.children && draft.children) {
-        for (let i = 0; i < currentState.children.length; i++) {
-          const childState = currentState.children[i];
-          if (
-            childState.nodeType === NodeType.HTMLElement &&
-            draft.children[i]
-          ) {
-            syncFormStateRecursive(
-              childState as HTMLElementState,
-              draft.children[i]
-            );
-          }
-        }
-      }
-    };
+    // for input/change events. Contenteditable typing also lands here, since
+    // the observer doesn't watch the subtree. Reconcile against a fresh
+    // snapshot and write only what differs: replacing the whole subtree on
+    // every keystroke re-sent (and permanently stored) every sibling.
     const syncInputState = () => {
+      const current = constructInitialState(element);
       setDataAny((draft: any) => {
-        const current = constructInitialState(element) as HTMLElementState;
-        syncFormStateRecursive(current, draft);
-        // Also sync children for contenteditable elements where browser input
-        // behavior can coalesce text and child changes into a single event.
-        if (current.children) {
-          draft.children.splice(0, draft.children.length, ...current.children);
-        }
+        reconcileStateInPlace(draft, current);
       });
     };
     element.addEventListener("input", syncInputState);
@@ -323,13 +299,112 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
     }
   });
   const mirroredCurrentChildren = getMirroredChildStates(state.children);
-  if (
-    mirroredCurrentChildren.length === state.children.length &&
-    areChildStatesEqual(mirroredCurrentChildren, newChildren)
-  ) {
+  if (mirroredCurrentChildren.length !== state.children.length) {
+    // Local-only entries slipped into shared state; rewrite from the DOM.
+    state.children.splice(0, state.children.length, ...newChildren);
     return;
   }
-  state.children.splice(0, state.children.length, ...newChildren);
+  reconcileChildrenInPlace(state.children, newChildren);
+}
+
+// --- Minimal in-place writes (Yjs proxy compatible) ---
+
+function canReconcileInPlace(a: ElementState, b: ElementState): boolean {
+  if (a.nodeType !== b.nodeType) return false;
+  if (isHTMLElementState(a) && isHTMLElementState(b)) {
+    return a.tagName === b.tagName;
+  }
+  return true;
+}
+
+/**
+ * Brings `draft` (a shared-state proxy) in line with `next`, writing only the
+ * fields that differ. Each write becomes a sync message and stays in the
+ * room's saved history, so rewriting unchanged siblings is expensive.
+ */
+function reconcileStateInPlace(draft: ElementState, next: ElementState): void {
+  if (draft.nodeType === NodeType.Text && next.nodeType === NodeType.Text) {
+    if (draft.textContent !== next.textContent) {
+      draft.textContent = next.textContent;
+    }
+    return;
+  }
+  if (!isHTMLElementState(draft) || !isHTMLElementState(next)) return;
+
+  for (const [name, value] of Object.entries(next.attributes)) {
+    if (draft.attributes[name] !== value) draft.attributes[name] = value;
+  }
+  for (const name of Object.keys(draft.attributes)) {
+    if (!(name in next.attributes)) delete draft.attributes[name];
+  }
+
+  if (!next.formState) {
+    if (draft.formState) delete draft.formState;
+  } else if (!draft.formState) {
+    draft.formState = { ...next.formState };
+  } else {
+    const fields = ["checked", "value", "selectedIndex"] as const;
+    for (const field of fields) {
+      const value = next.formState[field];
+      if (value === undefined) {
+        if (field in draft.formState) delete draft.formState[field];
+      } else if (draft.formState[field] !== value) {
+        (draft.formState as Record<string, unknown>)[field] = value;
+      }
+    }
+  }
+
+  reconcileChildrenInPlace(draft.children, next.children);
+}
+
+/**
+ * Updates a shared children array to match `next`: unchanged children at the
+ * start and end are left alone, same-kind children in the changed middle are
+ * updated in place, and only the rest is spliced. Appending one item to a
+ * long list then sends one item, not the whole list.
+ */
+function reconcileChildrenInPlace(
+  children: ElementState[],
+  next: ElementState[],
+): void {
+  let start = 0;
+  while (
+    start < children.length &&
+    start < next.length &&
+    areStatesEqual(children[start], next[start])
+  ) {
+    start += 1;
+  }
+  let endOld = children.length;
+  let endNew = next.length;
+  while (
+    endOld > start &&
+    endNew > start &&
+    areStatesEqual(children[endOld - 1], next[endNew - 1])
+  ) {
+    endOld -= 1;
+    endNew -= 1;
+  }
+  if (start === endOld && start === endNew) return;
+
+  const oldCount = endOld - start;
+  const newCount = endNew - start;
+  if (oldCount === newCount) {
+    let allInPlace = true;
+    for (let i = 0; i < oldCount; i++) {
+      if (!canReconcileInPlace(children[start + i], next[start + i])) {
+        allInPlace = false;
+        break;
+      }
+    }
+    if (allInPlace) {
+      for (let i = 0; i < oldCount; i++) {
+        reconcileStateInPlace(children[start + i], next[start + i]);
+      }
+      return;
+    }
+  }
+  children.splice(start, oldCount, ...next.slice(start, endNew));
 }
 
 function updateCharacterData(state: ElementState, mutation: MutationRecord) {
@@ -377,18 +452,6 @@ function isLocalElementState(state: ElementState): boolean {
 
 function getMirroredChildStates(children: ElementState[]): ElementState[] {
   return children.filter((child) => !isLocalElementState(child));
-}
-
-function areChildStatesEqual(
-  children1: ElementState[],
-  children2: ElementState[],
-): boolean {
-  if (children1.length !== children2.length) {
-    return false;
-  }
-  return children1.every((child, index) =>
-    areStatesEqual(child, children2[index])
-  );
 }
 
 interface MirrorContext {

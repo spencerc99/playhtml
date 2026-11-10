@@ -642,6 +642,58 @@ describe("can-mirror: awareness (hover/focus)", () => {
   });
 });
 
+describe("can-mirror: minimal shared writes", () => {
+  const siblings = (n: number) =>
+    Array.from({ length: n }, (_, i) => `<p>item ${i}</p>`).join("");
+
+  it("typing in an input rewrites only that input, not its siblings", async () => {
+    const client = mountClient(
+      elementFromHTML(`<div id="f">${siblings(50)}<input /></div>`),
+    );
+    const root = client.state as any;
+    const siblingStates = root.children.slice(0, 50);
+    const input = client.element.querySelector("input")!;
+
+    input.value = "hello";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush();
+
+    root.children.slice(0, 50).forEach((child: unknown, i: number) => {
+      expect(child).toBe(siblingStates[i]);
+    });
+    expect(root.children[50].formState).toEqual({ value: "hello" });
+  });
+
+  it("appending a child keeps the existing child entries", async () => {
+    const client = mountClient(elementFromHTML(`<ul id="l">${siblings(50)}</ul>`));
+    const root = client.state as any;
+    const before = root.children.slice();
+
+    const li = document.createElement("p");
+    li.textContent = "new";
+    client.element.appendChild(li);
+    await flush();
+
+    expect(root.children).toHaveLength(51);
+    before.forEach((child: unknown, i: number) => {
+      expect(root.children[i]).toBe(child);
+    });
+  });
+
+  it("still mirrors contenteditable typing that changes nested text", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="c" contenteditable><b>bold</b> tail</div>`),
+    );
+    const sink = mountClient(
+      elementFromHTML(`<div id="c" contenteditable><b>bold</b> tail</div>`),
+    );
+    source.element.querySelector("b")!.firstChild!.textContent = "bolder";
+    source.element.dispatchEvent(new Event("input", { bubbles: true }));
+    await sync(source, sink);
+    expectMirrored(source.element, sink.element);
+  });
+});
+
 describe("can-mirror: apply-side robustness", () => {
   it("is a no-op when incoming state already matches the DOM", async () => {
     const source = mountClient(
