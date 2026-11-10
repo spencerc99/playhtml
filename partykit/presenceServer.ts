@@ -28,6 +28,18 @@ import {
   PRESENCE_CLOSE_DIAGNOSTIC_POLICY,
 } from "./connectionDiagnostics";
 import {
+  DEFAULT_MAX_CONNECTIONS_PER_ROOM,
+  DEFAULT_MAX_PRESENCE_MESSAGE_CHARS,
+} from "./const";
+import {
+  isPresenceMessageTooLarge,
+  countOtherConnections,
+  isRoomAtConnectionLimit,
+  parsePositiveLimit,
+  ROOM_FULL_CLOSE_CODE,
+  ROOM_FULL_CLOSE_REASON,
+} from "./serverLimits";
+import {
   persistPresenceConnectionState,
   projectPresenceClientIdentity,
 } from "./presenceMessage";
@@ -71,6 +83,7 @@ export class PresenceServer extends Server<Env> {
   // close event for them must not remove or log a second time. Cleared when the
   // socket sends another accepted message and so holds presence again.
   private releasedConnections = new WeakSet<Connection>();
+  private lastRoomFullWarningAt = 0;
 
   override onConnect(
     connection: Connection,
@@ -86,6 +99,7 @@ export class PresenceServer extends Server<Env> {
       this.releasePresence(other);
       other.close(PRESENCE_REPLACED_CLOSE_CODE, "replaced");
     }
+    if (this.closeConnectionIfRoomFull(presenceConnection)) return;
     presenceConnection.setState((previous) => ({
       ...(previous ?? {}),
       [PRESENCE_OPENED_AT_STATE_KEY]: Date.now(),
@@ -97,6 +111,16 @@ export class PresenceServer extends Server<Env> {
   override onMessage(connection: Connection, message: WSMessage): void {
     if (typeof message !== "string") {
       this.sendError(connection, "Presence messages must be strings");
+      return;
+    }
+    if (
+      isPresenceMessageTooLarge(message, DEFAULT_MAX_PRESENCE_MESSAGE_CHARS)
+    ) {
+      console.warn(
+        `[ServerLimits] Presence message too large: room=${this.name}, ` +
+          `connection=${connection.id}, chars=${message.length}`,
+      );
+      this.sendError(connection, "Presence message is too large");
       return;
     }
 
@@ -206,6 +230,39 @@ export class PresenceServer extends Server<Env> {
     recordPresenceRemoval(this.presenceState, connection.id);
     clearPresenceMessageBudget(this.messageBudgets, connection.id);
     this.invalidMessageWindows.delete(connection.id);
+  }
+
+  private closeConnectionIfRoomFull(
+    connection: Connection<PresenceConnectionState>,
+  ): boolean {
+    const maxConnections = parsePositiveLimit(
+      (this.env as unknown as Record<string, string | undefined>)
+        .MAX_CONNECTIONS_PER_ROOM,
+      DEFAULT_MAX_CONNECTIONS_PER_ROOM,
+    );
+    // getConnections skips sockets that are not OPEN, so the ones just
+    // retired as "replaced" are not counted.
+    const openConnections = countOtherConnections(
+      this.getConnections(),
+      connection,
+    );
+    if (!isRoomAtConnectionLimit(openConnections, maxConnections)) {
+      return false;
+    }
+    // A flood would log once per refused socket; once a minute is enough.
+    const now = Date.now();
+    if (now - (this.lastRoomFullWarningAt ?? 0) >= 60_000) {
+      this.lastRoomFullWarningAt = now;
+      console.warn(
+        `[ServerLimits] Room full (PresenceServer), refusing connections: room=${this.name}, ` +
+          `connection=${connection.id}, open=${openConnections}, max=${maxConnections}`,
+      );
+    }
+    // Mark it released so its close event does not try to remove presence it
+    // never held.
+    this.releasedConnections.add(connection);
+    connection.close(ROOM_FULL_CLOSE_CODE, ROOM_FULL_CLOSE_REASON);
+    return true;
   }
 
   /** Open sockets other than `connection` that share its connection id. */
