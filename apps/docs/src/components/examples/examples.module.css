@@ -234,6 +234,10 @@
   min-width: 0;
 }
 
+.sitesBand {
+  margin-bottom: 2.25rem;
+}
+
 .groupTitle {
   margin: 0 0 0.65rem;
   color: var(--ph-ink-2);

@@ -205,8 +205,7 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
     () => filterExamples(examples, query),
     [examples, query],
   );
-  const isPreview = query.trim() === "";
-  const newestSites = isPreview ? sites.slice(0, siteColumns) : [];
+  const newestSites = sites.slice(0, siteColumns);
   const showEmptyState = visibleExamples.length === 0;
 
   return (
@@ -214,6 +213,34 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
       className={`${styles.catalogue} not-content`}
       aria-label="Examples catalogue"
     >
+      {sitesState !== "failed" && (
+        <section
+          className={`${styles.resultGroup} ${styles.sitesBand}`}
+          aria-labelledby="sites-heading"
+        >
+          <div className={styles.groupHeader}>
+            <h2 id="sites-heading" className={styles.groupTitle}>
+              Newest community sites
+            </h2>
+            <a className={styles.showAll} href={GALLERY_URL}>
+              See all in the gallery
+              <ArrowIcon />
+            </a>
+          </div>
+          {sitesState === "loading" ? (
+            <p className={styles.sitesStatus} role="status">
+              Loading sites…
+            </p>
+          ) : (
+            <div ref={setSitesGrid} className={styles.cardGrid}>
+              {newestSites.map((site) => (
+                <SiteCard key={site.id} site={site} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       <div className={styles.controls}>
         <label className={styles.searchLabel}>
           <span>Search examples</span>
@@ -231,34 +258,6 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
       </div>
 
       <div id="examples-catalogue-results" className={styles.resultGroups}>
-        {isPreview && sitesState !== "failed" && (
-          <section
-            className={styles.resultGroup}
-            aria-labelledby="sites-heading"
-          >
-            <div className={styles.groupHeader}>
-              <h2 id="sites-heading" className={styles.groupTitle}>
-                Newest community sites
-              </h2>
-              <a className={styles.showAll} href={GALLERY_URL}>
-                See all in the gallery
-                <ArrowIcon />
-              </a>
-            </div>
-            {sitesState === "loading" ? (
-              <p className={styles.sitesStatus} role="status">
-                Loading sites…
-              </p>
-            ) : (
-              <div ref={setSitesGrid} className={styles.cardGrid}>
-                {newestSites.map((site) => (
-                  <SiteCard key={site.id} site={site} />
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
         {visibleExamples.length > 0 && (
           <section
             className={styles.resultGroup}
