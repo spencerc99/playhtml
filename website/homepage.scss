@@ -2823,17 +2823,23 @@ h3 {
 }
 
 // Questions
+// Heading in a left column, questions in the right two thirds, so the
+// section lines up with the page without stretching short questions.
 .ph-faq {
   max-width: 1100px;
   margin: 0 auto;
   padding: 80px 24px 64px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: start;
+  gap: 20px 40px;
+
+  > .ph-section-head {
+    position: sticky;
+    top: 24px;
+  }
 }
 
-// The heading row and the cards share one width so "more in the docs" ends
-// where the cards end.
 .ph-faq > .ph-section-head,
 .ph-faq__list {
   width: 100%;
@@ -3679,6 +3685,12 @@ h3 {
 
   .ph-faq {
     padding: 56px 16px 48px;
+    display: flex;
+    flex-direction: column;
+
+    > .ph-section-head {
+      position: static;
+    }
   }
 
   .ph-faq__list {
