@@ -1702,23 +1702,21 @@ h3 {
   }
 }
 
-// Homepage gallery: title, one line of description, then who made it.
+// Homepage gallery: title and credit on one row, description below.
 .ph-made .ph-site__meta {
-  flex-direction: column;
-  flex-wrap: nowrap;
-  gap: 2px;
-
-  .ph-site__desc {
-    flex: none;
-  }
+  align-items: baseline;
 
   b {
+    flex: 1 1 0;
+    min-width: 0;
     font-family: $body;
     font-size: 15px;
   }
 }
 
 .ph-site__by {
+  flex: none;
+  max-width: 45%;
   font-size: 12px;
 }
 
