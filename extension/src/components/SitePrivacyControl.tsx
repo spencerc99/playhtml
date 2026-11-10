@@ -1,7 +1,7 @@
 // ABOUTME: Popup control for the current site: turn collection on or off, and pick who sees it.
 // ABOUTME: Reads and writes the per-site setting; collector settings for every site stay in Settings.
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   getSiteLevel,
   setSiteLevel,

@@ -13,6 +13,7 @@ import { MILESTONE_COPY } from "@extension/milestones/copy";
 import { PopupNav } from "@extension/components/PopupNav";
 import { PlayerIdentityCard } from "@extension/components/PlayerIdentityCard";
 import type { PlayerIdentity } from "@extension/types";
+import { SitePrivacySection } from "./SitePrivacyPreview";
 const Agentation = import.meta.env.DEV
   ? lazy(() => import("agentation").then((m) => ({ default: m.Agentation })))
   : null;
@@ -849,14 +850,14 @@ function VariantE({ data, colorful }: { data: MockData; colorful: boolean }) {
     peakHour < 5
       ? "3am"
       : peakHour < 9
-      ? "dawn"
-      : peakHour < 13
-      ? "morning"
-      : peakHour < 17
-      ? "afternoon"
-      : peakHour < 21
-      ? "evening"
-      : "midnight";
+        ? "dawn"
+        : peakHour < 13
+          ? "morning"
+          : peakHour < 17
+            ? "afternoon"
+            : peakHour < 21
+              ? "evening"
+              : "midnight";
 
   return (
     <div
@@ -1562,7 +1563,6 @@ function ltHslToHex(h: number, s: number, l: number): string {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
-
 const LT_PAGE_MAX = 800;
 
 // Each link gets its own slice of the color wheel so they're visually distinct.
@@ -1746,15 +1746,27 @@ function WikiExcerpt({ renderLink }: { renderLink: LtLinkRenderer }) {
       </p>
       <p style={{ margin: "0 0 10px" }}>
         Early visit test:{" "}
-        <LtLink href="single-visit-fresh" data={LT_EXCERPT_DATA["single-visit-fresh"]} render={R}>
+        <LtLink
+          href="single-visit-fresh"
+          data={LT_EXCERPT_DATA["single-visit-fresh"]}
+          render={R}
+        >
           single click, fresh page
         </LtLink>
         ,{" "}
-        <LtLink href="few-visits-fresh" data={LT_EXCERPT_DATA["few-visits-fresh"]} render={R}>
+        <LtLink
+          href="few-visits-fresh"
+          data={LT_EXCERPT_DATA["few-visits-fresh"]}
+          render={R}
+        >
           3 clicks on small page
         </LtLink>
         ,{" "}
-        <LtLink href="single-visit-busy" data={LT_EXCERPT_DATA["single-visit-busy"]} render={R}>
+        <LtLink
+          href="single-visit-busy"
+          data={LT_EXCERPT_DATA["single-visit-busy"]}
+          render={R}
+        >
           single click, busy page
         </LtLink>
         .
@@ -1791,7 +1803,9 @@ function PassingCursors({
   const t = linkIntensity(data);
 
   // Get per-line-fragment rects so cursors anchor to actual text positions
-  const [fragments, setFragments] = useState<{ left: number; top: number; width: number; height: number }[]>([]);
+  const [fragments, setFragments] = useState<
+    { left: number; top: number; width: number; height: number }[]
+  >([]);
   useEffect(() => {
     const el = linkRef.current;
     if (!el) return;
@@ -1835,7 +1849,7 @@ function PassingCursors({
   const drift2Pct = wanderPct * 0.55; // drifted to near side
   const drift3Pct = wanderPct * 0.75; // back toward center
   const absorbStartPct = wanderPct * 0.88; // begin shrinking
-  const absorbEndPct = wanderPct * 0.97;   // fully absorbed
+  const absorbEndPct = wanderPct * 0.97; // fully absorbed
 
   return (
     <span
@@ -1894,10 +1908,14 @@ function PassingCursors({
               }}
             >
               <svg
-                width={w} height={h}
+                width={w}
+                height={h}
                 viewBox="0 0 10 14"
                 fill="none"
-                style={{ display: "block", transform: ltr ? "none" : "scaleX(-1)" }}
+                style={{
+                  display: "block",
+                  transform: ltr ? "none" : "scaleX(-1)",
+                }}
               >
                 <path
                   d="M1 1L1 11.5L3.5 9L5.5 13L7 12.3L5 8.3L8.5 8.3L1 1Z"
@@ -1914,9 +1932,6 @@ function PassingCursors({
     </span>
   );
 }
-
-
-
 
 // Renders a link with the same glow effect the extension applies to Wikipedia links.
 // Uses the shared renderer from extension/src/features/link-glow-renderer.ts.
@@ -1954,7 +1969,8 @@ function SmearLink({
     }
   }, [style, cls, children]);
 
-  const cssRules = style && !wraps ? buildPseudoElementCSS(cls, style).join("\n") : "";
+  const cssRules =
+    style && !wraps ? buildPseudoElementCSS(cls, style).join("\n") : "";
 
   return (
     <>
@@ -2268,8 +2284,7 @@ function LinkTracesSection() {
             />
             <span style={{ minWidth: "12px" }}>{colorCount}</span>
           </label>
-          <label style={CTRL_STYLE}>
-          </label>
+          <label style={CTRL_STYLE}></label>
         </div>
       </div>
       <div
@@ -2288,14 +2303,18 @@ function LinkTracesSection() {
         label="Direction 1"
         name="Glow smear"
         desc="Color radiates from the letter shapes via text-shadow. Glow grows wider and more saturated with more visits."
-        renderLink={withColorCount((p) => <SmearLink {...p} />)}
+        renderLink={withColorCount((p) => (
+          <SmearLink {...p} />
+        ))}
       />
       <LinkDirectionSection
         id="section-lt-smear-cursors"
         label="Direction 1 + cursors"
         name="Glow smear + passing cursors"
         desc="Same glow smear, with occasional cursors that drift across the link and fade out while passing through — 1, 2, or 3 depending on visit volume."
-        renderLink={withColorCount((p) => <SmearLink {...p} showCursors />)}
+        renderLink={withColorCount((p) => (
+          <SmearLink {...p} showCursors />
+        ))}
       />
       <LinkDirectionSection
         id="section-lt-cursors"
@@ -2458,11 +2477,7 @@ const MILESTONE_TYPES: {
   },
 ];
 
-function MilestoneRow({
-  sample,
-}: {
-  sample: MilestoneToastData;
-}) {
+function MilestoneRow({ sample }: { sample: MilestoneToastData }) {
   return (
     <div className="milestone-preview-cell">
       <MilestoneToast milestone={sample} static />
@@ -2531,10 +2546,7 @@ function MilestonesSection() {
               }}
             >
               {MILESTONE_COPY[type].map((_, i) => (
-                <MilestoneRow
-                  key={i}
-                  sample={buildMilestoneSample(type, i)}
-                />
+                <MilestoneRow key={i} sample={buildMilestoneSample(type, i)} />
               ))}
             </div>
           </div>
@@ -2624,7 +2636,12 @@ function PopupNavSection() {
 
 // ── Sidebar navigation ────────────────────────────────────────────────────────
 
-type Section = "portrait-card" | "link-patina" | "milestones" | "popup-nav";
+type Section =
+  | "portrait-card"
+  | "link-patina"
+  | "milestones"
+  | "popup-nav"
+  | "site-privacy";
 
 const PORTRAIT_NAV = [
   { id: "section-density", label: "density" },
@@ -2636,21 +2653,26 @@ const PORTRAIT_NAV = [
 ];
 
 const LINK_PATINA_NAV = [
-  { id: "section-lt-smear",         label: "glow smear" },
+  { id: "section-lt-smear", label: "glow smear" },
   { id: "section-lt-smear-cursors", label: "smear + cursors" },
-  { id: "section-lt-cursors",       label: "orbit cursors" },
-  { id: "section-lt-faded",         label: "faded" },
-  { id: "section-lt-bold",          label: "bold" },
+  { id: "section-lt-cursors", label: "orbit cursors" },
+  { id: "section-lt-faded", label: "faded" },
+  { id: "section-lt-bold", label: "bold" },
 ];
 
 const MILESTONES_NAV = [
   { id: "section-ms-cursor", label: "cursor distance" },
-  { id: "section-ms-time",   label: "screen time" },
-  { id: "section-ms-sites",  label: "sites explored" },
+  { id: "section-ms-time", label: "screen time" },
+  { id: "section-ms-sites", label: "sites explored" },
   { id: "section-ms-domain", label: "domain visits" },
 ];
 
 const POPUP_NAV_NAV = [{ id: "section-popup-nav", label: "top nav" }];
+
+const SITE_PRIVACY_NAV = [
+  { id: "section-site-privacy-popup", label: "popup" },
+  { id: "section-site-privacy-settings", label: "settings" },
+];
 
 function SidebarNav({
   activeSection,
@@ -2667,7 +2689,9 @@ function SidebarNav({
         ? MILESTONES_NAV
         : activeSection === "popup-nav"
           ? POPUP_NAV_NAV
-          : LINK_PATINA_NAV;
+          : activeSection === "site-privacy"
+            ? SITE_PRIVACY_NAV
+            : LINK_PATINA_NAV;
 
   useEffect(() => {
     setActiveId("");
@@ -2689,7 +2713,13 @@ function SidebarNav({
   return (
     <nav className="sidebar-nav">
       {(
-        ["portrait-card", "link-patina", "milestones", "popup-nav"] as Section[]
+        [
+          "portrait-card",
+          "link-patina",
+          "milestones",
+          "popup-nav",
+          "site-privacy",
+        ] as Section[]
       ).map((s) => (
         <a
           key={s}
@@ -2699,7 +2729,7 @@ function SidebarNav({
           }`}
           style={{
             fontWeight: activeSection === s ? 700 : undefined,
-            marginBottom: s !== "popup-nav" ? "6px" : undefined,
+            marginBottom: s !== "site-privacy" ? "6px" : undefined,
           }}
           onClick={(e) => {
             e.preventDefault();
@@ -2714,7 +2744,9 @@ function SidebarNav({
               ? "link patina"
               : s === "milestones"
                 ? "milestones"
-                : "popup nav"}
+                : s === "popup-nav"
+                  ? "popup nav"
+                  : "site privacy"}
         </a>
       ))}
       {activeSection !== "portrait-card" && (
@@ -2763,6 +2795,7 @@ function PreviewPage() {
     if (hash === "link-patina") return "link-patina";
     if (hash === "milestones") return "milestones";
     if (hash === "popup-nav") return "popup-nav";
+    if (hash === "site-privacy") return "site-privacy";
     return "portrait-card";
   });
 
@@ -2790,7 +2823,9 @@ function PreviewPage() {
                     ? "milestones — copy & visuals"
                     : activeSection === "popup-nav"
                       ? "popup nav — top navigation bar"
-                      : "link patina — design directions"}
+                      : activeSection === "site-privacy"
+                        ? "turning we were online off on a site"
+                        : "link patina — design directions"}
               </div>
               <div className="page-subtitle">
                 {activeSection === "portrait-card"
@@ -2799,7 +2834,9 @@ function PreviewPage() {
                     ? "five milestone types · full copy pool for each"
                     : activeSection === "popup-nav"
                       ? "the real component inside a mock 350px popup frame"
-                      : "three visual treatments · links carry varied visit counts"}
+                      : activeSection === "site-privacy"
+                        ? "try it: the real popup switch and settings list, wired together"
+                        : "three visual treatments · links carry varied visit counts"}
               </div>
               {activeSection === "portrait-card" && (
                 <div className="mock-note">
@@ -2935,6 +2972,8 @@ function PreviewPage() {
         {activeSection === "milestones" && <MilestonesSection />}
 
         {activeSection === "popup-nav" && <PopupNavSection />}
+
+        {activeSection === "site-privacy" && <SitePrivacySection />}
       </div>
     </div>
   );
