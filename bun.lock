@@ -70,7 +70,7 @@
     },
     "extension": {
       "name": "@playhtml/extension",
-      "version": "0.1.30",
+      "version": "0.1.31",
       "dependencies": {
         "@huggingface/transformers": "3.8.1",
         "@playhtml/common": "workspace:*",
