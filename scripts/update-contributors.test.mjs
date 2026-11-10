@@ -1,9 +1,10 @@
-// ABOUTME: Tests the README contributors generator's bot filter, grouping, and rendering.
+// ABOUTME: Tests the contributors generator's bot filter, grouping, merging, and rendering.
 // ABOUTME: Uses fake git log records and a stub login resolver, so it never hits the network.
 
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  addMissing,
   collectContributors,
   isBot,
   loginFromNoreply,
@@ -103,4 +104,34 @@ test("renders a linked avatar grid between the markers", () => {
   assert.ok(next.endsWith("<!-- contributors:end -->\nbottom\n"));
   assert.equal(replaceBlock(next, block), next);
   assert.throws(() => replaceBlock("no markers", block), /markers/);
+});
+
+test("shows what each person did under their name", () => {
+  const block = renderGrid([
+    { login: "a", name: "A", contributions: "Docs & design" },
+    { login: "b", name: "B", contributions: "" },
+  ]);
+  assert.match(block, /<\/a><br \/><sub>Docs &amp; design<\/sub>/);
+  assert.equal(block.match(/<sub>/g).length, 3);
+});
+
+test("adds only people missing from the file, keeping hand edits", () => {
+  const file = {
+    contributors: [
+      { login: "Spencerc99", name: "S", contributions: "Creator" },
+    ],
+    ignore: ["skipme"],
+  };
+  const found = [
+    { login: "spencerc99", name: "Spencer Chang" },
+    { login: "skipme", name: "Skip" },
+    { login: "newbie", name: "New Person" },
+  ];
+  const { file: next, added } = addMissing(file, found);
+  assert.deepEqual(added, [
+    { login: "newbie", name: "New Person", contributions: "" },
+  ]);
+  assert.deepEqual(next.contributors[0], file.contributors[0]);
+  assert.equal(next.contributors.length, 2);
+  assert.equal(addMissing(next, found).added.length, 0);
 });

@@ -1,5 +1,5 @@
-// ABOUTME: Builds the README contributors grid from git history, skipping bots and AI agents.
-// ABOUTME: Run with --write to update README.md, or --check to fail when it is out of date.
+// ABOUTME: Renders the README contributors grid from the hand-edited contributors.json.
+// ABOUTME: --write also adds people git history shows but the file lacks; --check fails if README is stale.
 
 import { execFileSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
@@ -7,22 +7,12 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const REPO = "spencerc99/playhtml";
-const README_PATH = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "README.md",
-);
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const README_PATH = join(ROOT, "README.md");
+const CONTRIBUTORS_PATH = join(ROOT, "contributors.json");
 const START_MARKER = "<!-- contributors:start -->";
 const END_MARKER = "<!-- contributors:end -->";
 const PER_ROW = 7;
-
-// Emails GitHub can't map to an account on its own (a private email used only
-// in a Co-authored-by trailer, for example). Add a line here when the script
-// warns about an unresolved contributor.
-export const EMAIL_TO_LOGIN = {
-  "spencerc99@gmail.com": "spencerc99",
-  "git@jessa0.com": "jessa0",
-};
 
 // Bots and coding agents. Matched against login, email, and name.
 const BOT_EMAILS = [
@@ -101,29 +91,37 @@ async function github(path) {
   // would silently drop real people from the grid, so stop instead.
   if (res.status === 404 || res.status === 422) return null;
   if (!res.ok) {
-    throw new Error(`GitHub API ${res.status} for ${path}. Set GITHUB_TOKEN and retry.`);
+    throw new Error(
+      `GitHub API ${res.status} for ${path}. Set GITHUB_TOKEN and retry.`,
+    );
   }
   return res.json();
 }
 
-async function resolveLogin({ email, sha, coAuthor }) {
-  const known = EMAIL_TO_LOGIN[email.toLowerCase()] ?? loginFromNoreply(email);
-  if (known) return known;
-  if (!coAuthor) {
-    const commit = await github(`repos/${REPO}/commits/${sha}`);
-    if (commit?.author?.type === "Bot") return { bot: true };
-    if (commit?.author?.login) return commit.author.login;
-  }
-  const search = await github(
-    `search/users?q=${encodeURIComponent(`${email} in:email`)}`,
-  );
-  if (search?.items?.length === 1) return search.items[0].login;
-  return null;
-}
+// `emails` in contributors.json maps addresses GitHub can't link to an account
+// on its own (a private email used only in a Co-authored-by trailer).
+const makeResolver =
+  (emails = {}) =>
+  async ({ email, sha, coAuthor }) => {
+    const aliases = Object.fromEntries(
+      Object.entries(emails).map(([k, v]) => [k.toLowerCase(), v]),
+    );
+    const known = aliases[email.toLowerCase()] ?? loginFromNoreply(email);
+    if (known) return known;
+    if (!coAuthor) {
+      const commit = await github(`repos/${REPO}/commits/${sha}`);
+      if (commit?.author?.type === "Bot") return { bot: true };
+      if (commit?.author?.login) return commit.author.login;
+    }
+    const search = await github(
+      `search/users?q=${encodeURIComponent(`${email} in:email`)}`,
+    );
+    if (search?.items?.length === 1) return search.items[0].login;
+    return null;
+  };
 
-// Groups commit entries by GitHub login. Commit count decides order, and the
-// earliest contribution breaks ties so newer folks land after older ones.
-export async function collectContributors(entries, resolve = resolveLogin) {
+// Groups commit entries by GitHub login, most commits first.
+export async function collectContributors(entries, resolve = makeResolver()) {
   const byEmail = new Map();
   entries.forEach((entry, index) => {
     if (isBot(entry)) return;
@@ -191,12 +189,16 @@ function escapeHtml(text) {
 export function renderGrid(contributors) {
   const rows = [];
   for (let i = 0; i < contributors.length; i += PER_ROW) {
-    const cells = contributors.slice(i, i + PER_ROW).map(({ login, name }) => {
+    const cells = contributors.slice(i, i + PER_ROW).map((person) => {
+      const { login, name = login, contributions = "" } = person;
+      const note = contributions.trim()
+        ? `<br /><sub>${escapeHtml(contributions.trim())}</sub>`
+        : "";
       const href = `https://github.com/${login}`;
       const avatar = `https://avatars.githubusercontent.com/${login}?s=128`;
       return [
         `    <td align="center" valign="top">`,
-        `      <a href="${href}"><img src="${avatar}" width="64" height="64" alt="${escapeHtml(login)}" /><br /><sub><b>${escapeHtml(name)}</b></sub></a>`,
+        `      <a href="${href}"><img src="${avatar}" width="64" height="64" alt="${escapeHtml(login)}" /><br /><sub><b>${escapeHtml(name)}</b></sub></a>${note}`,
         `    </td>`,
       ].join("\n");
     });
@@ -204,7 +206,7 @@ export function renderGrid(contributors) {
   }
   return [
     START_MARKER,
-    "<!-- Generated by scripts/update-contributors.mjs. Edit that script, not this block. -->",
+    "<!-- Generated from contributors.json by scripts/update-contributors.mjs. Edit that file, then run: bun run contributors -->",
     "<table>",
     ...rows,
     "</table>",
@@ -223,31 +225,62 @@ export function replaceBlock(readme, block) {
   return readme.slice(0, start) + block + readme.slice(end + END_MARKER.length);
 }
 
+// Appends people git history credits who aren't listed or ignored yet, with an
+// empty description for a person to fill in. Existing entries are untouched.
+export function addMissing(file, found) {
+  const known = new Set(
+    [...file.contributors.map((c) => c.login), ...(file.ignore ?? [])].map(
+      (l) => l.toLowerCase(),
+    ),
+  );
+  const added = found
+    .filter((c) => !known.has(c.login.toLowerCase()))
+    .map(({ login, name }) => ({ login, name, contributions: "" }));
+  return {
+    file: { ...file, contributors: [...file.contributors, ...added] },
+    added,
+  };
+}
+
 async function main() {
   const mode = process.argv[2];
-  if (mode !== "--write" && mode !== "--check") {
+  if (!["--write", "--render", "--check"].includes(mode)) {
     console.error(
-      "Usage: node scripts/update-contributors.mjs --write | --check",
+      "Usage: node scripts/update-contributors.mjs --write | --render | --check",
     );
     process.exit(2);
   }
-  const { contributors, unresolved } = await collectContributors(
-    parseGitLog(readGitLog()),
-  );
-  for (const who of unresolved) {
-    console.warn(
-      `Could not find a GitHub account for ${who}. Add it to EMAIL_TO_LOGIN if it's a person.`,
+  let file = JSON.parse(await readFile(CONTRIBUTORS_PATH, "utf8"));
+
+  if (mode === "--write") {
+    const { contributors: found, unresolved } = await collectContributors(
+      parseGitLog(readGitLog()),
+      makeResolver(file.emails),
     );
+    for (const who of unresolved) {
+      console.warn(
+        `Could not find a GitHub account for ${who}. Add their email to "emails" in contributors.json if it's a person.`,
+      );
+    }
+    const result = addMissing(file, found);
+    if (result.added.length) {
+      file = result.file;
+      await writeFile(CONTRIBUTORS_PATH, `${JSON.stringify(file, null, 2)}\n`);
+      console.log(
+        `Added to contributors.json: ${result.added.map((c) => c.login).join(", ")}. Fill in what they did.`,
+      );
+    }
   }
+
   const readme = await readFile(README_PATH, "utf8");
-  const next = replaceBlock(readme, renderGrid(contributors));
-  console.log(
-    `${contributors.length} contributors: ${contributors.map((c) => c.login).join(", ")}`,
-  );
-  if (next === readme) return;
+  const next = replaceBlock(readme, renderGrid(file.contributors));
+  if (next === readme) {
+    console.log("README contributors are up to date.");
+    return;
+  }
   if (mode === "--check") {
     console.error(
-      "README contributors are out of date. Run: bun run contributors",
+      "README contributors don't match contributors.json. Run: bun run contributors",
     );
     process.exit(1);
   }

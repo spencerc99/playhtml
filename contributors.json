@@ -1,0 +1,24 @@
+{
+  "contributors": [
+    {
+      "login": "spencerc99",
+      "name": "Spencer Chang",
+      "contributions": "Creator and maintainer"
+    },
+    {
+      "login": "jessa0",
+      "name": "Jessa",
+      "contributions": "Moved the sync server to PartyServer"
+    },
+    {
+      "login": "alexwennerberg",
+      "name": "Alex Wennerberg",
+      "contributions": "README fixes"
+    }
+  ],
+  "ignore": [],
+  "emails": {
+    "spencerc99@gmail.com": "spencerc99",
+    "git@jessa0.com": "jessa0"
+  }
+}
