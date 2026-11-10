@@ -219,10 +219,6 @@ const GalleryGrid = withSharedState<GalleryData>(
         <StudioTraces onTraces={setStudioTraces} writerRef={studioWriterRef} />
         <div className="ph-section-head">
           <h2 id="projects-h">Everyone's projects</h2>
-          <span className="ph-hand">
-            mine are in here too, or see them as a set at{" "}
-            <a href="/experiments/">/experiments</a>
-          </span>
         </div>
         <div className="ph-gallery__bar">
           <div className="ph-gallery__views" role="group" aria-label="View">
