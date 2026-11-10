@@ -86,11 +86,40 @@ $phone: 760px;
   padding-top: 24px;
 
   .ph-studio__wall {
-    min-height: 520px;
+    min-height: 0;
+  }
+
+  // No standing preview card here, so the names fill the whole wall.
+  .ph-studio__names,
+  .ph-studio__foot {
+    max-width: none;
   }
 
   .ph-studio__names {
-    font-size: 60px;
+    font-size: 52px;
+    line-height: 1.15;
+  }
+}
+
+// The preview that follows the hovered (or randomly picked) name.
+.ph-studio__float {
+  position: absolute;
+  left: var(--float-left);
+  top: var(--float-top);
+  z-index: 20;
+  width: min(260px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  background: $paper;
+  border: 1.5px solid $ink;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 4px 4px 0 $ink;
+  transform: rotate(1.5deg);
+  pointer-events: none;
+
+  &.is-above {
+    transform: translateY(-100%) rotate(1.5deg);
   }
 }
 
@@ -902,7 +931,7 @@ $phone: 760px;
   }
 
   .ph-studio--page .ph-studio__names {
-    font-size: 36px;
+    font-size: 28px;
   }
 
   .ph-gallery {
