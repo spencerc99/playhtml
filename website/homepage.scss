@@ -2142,7 +2142,7 @@ h3 {
 .ph-wwo__card {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
   border: 1.5px solid $ink;
   border-radius: 18px;
   overflow: hidden;
@@ -2180,8 +2180,9 @@ h3 {
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 6px;
     font-size: var(--fs-body);
+    line-height: 1.35;
   }
 
   li {
