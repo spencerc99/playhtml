@@ -96,7 +96,8 @@ export default defineConfig({
         Head: "./src/components/HeadOverride.astro",
         SocialIcons: "./src/components/SocialIconsWithPresence.astro",
         Footer: "./src/components/FooterWithScrollRail.astro",
-        SiteTitle: "./src/components/SiteTitle.astro",
+        Header: "./src/components/header/Header.astro",
+        MobileMenuFooter: "./src/components/header/MobileMenuFooter.astro",
         Hero: "./src/components/Hero.astro",
       },
       // Sidebar IA
@@ -130,6 +131,12 @@ export default defineConfig({
           label: "Examples",
           slug: "examples",
           badge: { text: "inspo", variant: "tip" },
+        },
+        // The /play editor isn't in the shared site header, so it lives here.
+        {
+          label: "Playground",
+          link: "/play",
+          badge: { text: "try it", variant: "note" },
         },
         {
           label: "Start",
