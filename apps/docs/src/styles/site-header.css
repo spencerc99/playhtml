@@ -1,0 +1,193 @@
+/* ABOUTME: The playhtml.fun site header (wordmark, nav, Discord, GitHub stars, support, menu), */
+/* ABOUTME: shared by the Starlight docs header and the standalone /play editor page. */
+
+/* Same layout as the homepage's .ph-header (website/homepage.scss): wordmark,
+ * nav, then everything else pushed right. Breakpoints:
+ *   >= 72rem  full nav inline
+ *   50-72rem  nav folds into a menu button (the sidebar is still visible)
+ *   < 50rem   each page decides: the docs move the nav into Starlight's phone
+ *             menu (docs-extras.css), /play keeps the menu button (playground.css) */
+.ph-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 100%;
+  min-width: 0;
+}
+.ph-header a {
+  text-decoration: none;
+}
+.ph-header__wordmark {
+  flex: none;
+  font-family: var(--ph-font-wordmark);
+  font-size: 26px;
+  line-height: 1;
+  color: var(--ph-ink);
+}
+.ph-header__wordmark:hover {
+  color: var(--ph-ultramarine-deep);
+}
+
+.ph-header__nav {
+  display: flex;
+  align-items: center;
+  gap: 4px 22px;
+  min-width: 0;
+  font-family: var(--ph-font-body);
+  font-size: 16px;
+}
+.ph-sitenav__link {
+  color: var(--ph-ink-2);
+  padding: 10px 0;
+  white-space: nowrap;
+}
+.ph-sitenav__link:hover,
+.ph-sitenav__link[aria-current="page"] {
+  color: var(--ph-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--ph-ultramarine);
+  text-underline-offset: 5px;
+}
+.ph-sitenav__link[aria-current="page"] {
+  text-decoration-thickness: 2px;
+}
+.ph-sitenav__wwo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ph-sitenav__wwo img {
+  border-radius: 5px;
+}
+.ph-sitenav__link i {
+  font-family: "Lora", Georgia, serif;
+}
+
+.ph-header__search {
+  display: flex;
+  flex: 1;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.ph-header__right {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 14px;
+}
+.ph-header__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 32px;
+  min-height: 38px;
+  color: var(--ph-ink);
+}
+.ph-header__icon:hover {
+  color: var(--ph-ultramarine-deep);
+}
+.ph-header__icon svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+.ph-header__stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--ph-font-mono);
+  font-size: 13px;
+}
+.ph-header__stars[hidden] {
+  display: none;
+}
+.ph-header__stars::before {
+  content: "\2605";
+  color: var(--ph-mustard);
+  font-size: 14px;
+  -webkit-text-stroke: 0.6px var(--ph-ink);
+}
+
+/* Support button keeps its light-mode ink on mustard in both themes. */
+.ph-header__support,
+.ph-mobile-sitenav__support {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  background: #e8a63a;
+  border: 1px solid #1c1c1c;
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 #1c1c1c;
+  color: #1c1c1c;
+  font-family: var(--ph-font-display);
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ph-header__support:hover,
+.ph-mobile-sitenav__support:hover {
+  color: #1c1c1c;
+  box-shadow: 3px 3px 0 #1c1c1c;
+}
+
+/* Mid-width menu: same boxed button and panel as the homepage. */
+.ph-header__menu {
+  display: none;
+  position: relative;
+  flex: none;
+}
+.ph-header__menu summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  background: var(--ph-paper);
+  color: var(--ph-ink);
+  cursor: pointer;
+}
+.ph-header__menu summary::-webkit-details-marker {
+  display: none;
+}
+.ph-header__menu summary svg {
+  width: 20px;
+  height: 20px;
+}
+.ph-header__menu-panel {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  padding: 8px;
+  background: var(--ph-paper);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 10px;
+  box-shadow: 5px 5px 0 var(--ph-ink);
+}
+.ph-header__menu-panel .ph-sitenav__link,
+.ph-mobile-sitenav .ph-sitenav__link {
+  padding: 12px 10px;
+  font-size: 17px;
+  border-bottom: 1px solid var(--ph-hairline);
+}
+.ph-header__menu-panel .ph-sitenav__link:last-child {
+  border-bottom: 0;
+}
+
+@media (max-width: 72rem) {
+  .ph-header__nav {
+    display: none;
+  }
+  .ph-header__menu {
+    display: block;
+  }
+}
