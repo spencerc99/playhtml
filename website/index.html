@@ -54,7 +54,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Carter+One&family=IBM+Plex+Mono:wght@400;500;600&family=Lora:ital,wght@1,600&family=Nanum+Pen+Script&family=Play:wght@400;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:wght@500;600;700;800&family=Carter+One&family=IBM+Plex+Mono:wght@400;500;600&family=Lora:ital,wght@1,600&family=Nanum+Pen+Script&family=Martian+Mono:wght@400&family=Play:wght@400;700&family=Source+Serif+4:ital,opsz,wght@1,8..60,200&display=swap"
       rel="stylesheet"
     />
 
@@ -420,7 +420,7 @@
                 >it moves for everyone else</span
               >
             </div>
-            <h3>Real-time changes</h3>
+            <h3>Show changes live</h3>
             <p>Everyone on the page sees it as it is moved around.</p>
           </div>
           <div class="ph-how__step">
@@ -459,8 +459,11 @@
       </section>
 
       <div class="ph-meet-wrap">
+        <div class="ph-section-head">
+          <h2 id="involved-h">Get involved</h2>
+          <span class="ph-hand">pick a way in</span>
+        </div>
         <section class="ph-meet" aria-labelledby="meet-h">
-          <span class="ph-label ph-label--ultramarine">where we meet</span>
           <a
             class="ph-meet__media"
             href="/events/walking-together/"
@@ -517,14 +520,13 @@
 
       <section class="ph-asks" aria-label="Work with us or support playhtml">
         <div class="ph-ask ph-ask--collab" id="collaborate">
-          <span class="ph-label ph-label--brick">collaborate</span>
-          <h2>Activate your online community</h2>
+          <h2>Activate your community</h2>
           <p>
-            From cultural and educational institutions to brands and companies,
-            we collaborate to make the web feel inhabited for their communities.
-            160+ people signed up to walk the web together with Rhizome,
-            students made ~30 websites in a day at Gray Area, and Wikipedia
-            readers have inhabited over 50k pages.
+            From cultural &amp; educational institutions to brands &amp;
+            companies, we make people feel like active members in digital
+            space—including hundreds of people walking the web together for
+            Rhizome, dozens making small social websites for SFPC, and thousands
+            of readers inhabiting over 50k pages on Wikipedia.
           </p>
           <ul class="ph-ask__ways">
             <li>
@@ -571,13 +573,14 @@
           </div>
         </div>
         <div class="ph-ask ph-ask--fund">
-          <span class="ph-label">keep it going</span>
-          <h2>Keep it free and open source</h2>
+          <h2>Support a shared internet</h2>
           <p>
-            playhtml is made by a small group of maintainers and community
-            members as public good infrastructure to keep the web alive.
-            Sponsors, from a few dollars a month to organizations backing a
-            season of work, help make this work possible.
+            playhtml is designed to be public good infrastructure to keep the
+            web alive. We host the servers for our community to make it
+            accessible to a wide audience and continue to maintain and develop
+            new features. We're supported by sponsors, from individuals chipping
+            in to organizations committing larger support, that help make this
+            work possible.
           </p>
           <div class="ph-ask__fund-row">
             <!-- Update data-current (USD per month) as sponsorships change. -->
@@ -641,7 +644,7 @@
               <span class="ph-jar__count" data-tip-count>click to tip</span>
             </button>
           </div>
-          <div class="ph-ask__foot ph-ask__foot--stack">
+          <div class="ph-ask__foot">
             <a
               class="ph-btn ph-btn--small ph-btn--mustard"
               href="https://github.com/sponsors/spencerc99"
@@ -649,76 +652,87 @@
             >
             <a
               href="mailto:hi@spencer.place?subject=%5BSPONSOR%5D%20playhtml%20X%20%3CYOUR%20GREAT%20ORG%3E"
-              >sponsoring as an organization? let's talk</a
+              >Want to provide larger support? let's talk</a
             >
           </div>
         </div>
       </section>
 
       <section class="ph-wwo" aria-labelledby="wwo-h">
-        <span class="ph-label ph-wwo__label"
-          >making the entire web feel this way</span
-        >
         <div class="ph-wwo__card">
-          <div class="ph-wwo__text">
-            <h2 id="wwo-h">we were online</h2>
-            <p>
+          <video
+            class="ph-wwo__bg"
+            src="/home/trails.mp4"
+            poster="/home/trails-poster.jpg"
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="metadata"
+            aria-label="Cursor trails, collected scraps and people following each other on Wikipedia, recorded with we were online"
+          ></video>
+          <div class="ph-wwo__hero">
+            <h2 id="wwo-h" class="ph-wwo__wordmark">we were online</h2>
+            <p class="ph-wwo__tagline">
+              turning the internet into a living, shared space
+            </p>
+            <p class="ph-wwo__desc">
               playhtml makes your page a shared place.
               <b>we were online</b> brings that ethos to the entire web as you
               browse.
             </p>
-            <ul>
-              <li>
-                <i class="ph-dot ph-dot--brick"></i
-                ><span
-                  ><b>portraits:</b>
-                  <span
-                    >turn your cursor trails, windows, &amp; clicks into online
-                    portraits</span
-                  ></span
-                >
-              </li>
-              <li>
-                <i class="ph-dot ph-dot--ultramarine"></i
-                ><span
-                  ><b>scraps:</b>
-                  <span
-                    >collect images, buttons, etc. as you browse &amp; make
-                    webcollages</span
-                  ></span
-                >
-              </li>
-              <li>
-                <i class="ph-dot ph-dot--sage"></i
-                ><span
-                  ><b>a shared internet world:</b>
-                  <span
-                    >run into others &amp; leave traces of your presence</span
-                  ></span
-                >
-              </li>
-            </ul>
-            <a
-              class="ph-btn ph-btn--mustard ph-btn--pill"
-              href="https://wewere.online"
-              >Try now</a
+            <a class="ph-wwo__visit" href="https://wewere.online"
+              >visit wewere.online <span aria-hidden="true">&rarr;</span></a
             >
+            <div class="ph-wwo__install">
+              <span>install:</span
+              ><a
+                href="https://chromewebstore.google.com/detail/we-were-online/bhkdblmogjkgeipehaphdocclmijnkhc"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Chrome</a
+              ><i aria-hidden="true">&middot;</i
+              ><a
+                href="https://addons.mozilla.org/en-US/firefox/addon/we-were-online/"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Firefox</a
+              ><i aria-hidden="true">&middot;</i
+              ><a
+                href="https://microsoftedge.microsoft.com/addons/detail/we-were-online/kiamoecdnaglmhigmbmdkiodbbphpodl"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Edge</a
+              ><i aria-hidden="true">&middot;</i
+              ><a
+                href="https://apps.apple.com/us/app/we-were-online/id6798847358?mt=12"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Safari</a
+              >
+            </div>
           </div>
-          <div class="ph-wwo__media">
-            <video
-              src="/home/trails.mp4"
-              poster="/home/trails-poster.jpg"
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="metadata"
-              aria-label="Cursor trails, collected scraps and people following each other on Wikipedia, recorded with we were online"
-            ></video>
-            <span class="ph-hand ph-wwo__caption"
-              >from real people<br />browsing</span
-            >
-          </div>
+          <ul class="ph-wwo__chips">
+            <li class="ph-wwo__chip ph-wwo__chip--teal">
+              <b>portraits</b>
+              <span
+                >turn your cursor trails, windows, &amp; clicks into online
+                portraits</span
+              >
+            </li>
+            <li class="ph-wwo__chip ph-wwo__chip--rust">
+              <b>scraps</b>
+              <span
+                >collect images, buttons, etc. as you browse &amp; make
+                webcollages</span
+              >
+            </li>
+            <li class="ph-wwo__chip ph-wwo__chip--gold">
+              <b>a shared internet world</b>
+              <span>run into others &amp; leave traces of your presence</span>
+            </li>
+          </ul>
+          <span class="ph-wwo__caption">from real people browsing</span>
         </div>
       </section>
 
@@ -754,17 +768,25 @@
             aria-label="Signatures, newest first. Scroll for older ones."
           ></div>
           <span class="ph-guestbook__foot"
-            ><span>↓ scroll the box for older ones</span
+            ><span>↓ scroll to read older messages</span
             ><span data-guestbook-count></span
           ></span>
         </div>
       </section>
 
       <section class="ph-faq" aria-labelledby="faq-h">
-        <div class="ph-section-head">
-          <h2 id="faq-h">Questions</h2>
-          <span class="ph-section-head__spacer"></span>
-          <a href="/docs/">more in the docs</a>
+        <div class="ph-faq__aside">
+          <div class="ph-section-head">
+            <h2 id="faq-h">Questions</h2>
+          </div>
+          <div class="ph-faq__curious">
+            <span class="ph-hand">still curious?</span>
+            <a
+              class="ph-btn ph-btn--pill ph-faq__ask"
+              href="https://discord.gg/SKbsSf4ptU"
+              >ask us in Discord &rarr;</a
+            >
+          </div>
         </div>
         <div class="ph-faq__list">
           <details name="ph-faq" open>
@@ -825,18 +847,7 @@
           </details>
           <details name="ph-faq">
             <summary>
-              <span>05</span><span>Can I run my own server?</span><i></i>
-            </summary>
-            <p>
-              Yes, we support self-hosting. Pass
-              <a href="/docs/reference/init-options/#host"><code>host</code></a>
-              to <code>init</code> and deploy the PartyKit server from the
-              <a href="https://github.com/spencerc99/playhtml">repo</a>.
-            </p>
-          </details>
-          <details name="ph-faq">
-            <summary>
-              <span>06</span><span>Can I use AI coding tools with it?</span
+              <span>05</span><span>Can I use AI coding tools with it?</span
               ><i></i>
             </summary>
             <p>
@@ -856,7 +867,7 @@
           </details>
           <details name="ph-faq">
             <summary>
-              <span>07</span><span>Who's funding this?</span><i></i>
+              <span>06</span><span>Who's funding this?</span><i></i>
             </summary>
             <p>
               This is mostly self-funded by
