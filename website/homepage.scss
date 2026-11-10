@@ -59,6 +59,8 @@ $phone: 760px;
 
 html {
   scroll-behavior: smooth;
+  // iOS Safari can still scroll sideways when only body clips.
+  overflow-x: clip;
 }
 
 // One type scale for the whole page. Phones step every size down once (below).
@@ -3264,6 +3266,47 @@ h3 {
     zoom: 0.85;
   }
 
+  // Heading and its handwritten note stay on one line; both shrink with
+  // the screen instead of the note wrapping underneath.
+  .ph-section-head {
+    flex-wrap: nowrap;
+    align-items: baseline;
+    gap: 10px;
+
+    h2 {
+      flex: none;
+      font-size: min(var(--fs-h2), 6.8vw);
+    }
+
+    .ph-hand {
+      flex: none;
+      white-space: nowrap;
+      font-size: min(var(--fs-hand), 4.4vw);
+    }
+
+    > a {
+      white-space: nowrap;
+    }
+  }
+
+  // The longest heading pair, so it shrinks a step further.
+  .ph-made .ph-section-head {
+    h2 {
+      font-size: 5.7vw;
+    }
+
+    .ph-hand {
+      font-size: 3.6vw;
+    }
+  }
+
+  // Long link text wraps inside the card instead of pushing the page wider.
+  .ph-ask__foot a {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
   // Phones run out of room for the shelf, so hint that it scrolls.
   .ph-toybox__swipe {
     display: block;
@@ -3274,7 +3317,6 @@ h3 {
     color: $muted;
   }
 
-  .ph-section-head h2,
   .ph-why {
     padding: 48px 16px 0;
     gap: 32px;
