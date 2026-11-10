@@ -2017,12 +2017,6 @@ h3 {
   span {
     font-size: 13px;
     color: $text;
-
-    &:first-child {
-      font-family: $mono;
-      font-size: 11px;
-      color: $muted;
-    }
   }
 
   b {
@@ -3332,15 +3326,11 @@ h3 {
     max-width: calc(100% - 20px);
     padding: 5px 9px;
 
-    span:first-child {
-      font-size: 9px;
-    }
-
     b {
       font-size: 13px;
     }
 
-    span:not(:first-child) {
+    span {
       display: none;
     }
   }
