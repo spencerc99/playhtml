@@ -120,7 +120,7 @@ export const canMirrorInitializer: ElementInitializer<ElementState> = {
         !target.isContentEditable
       ) {
         const path = getMirroredPath(element, target);
-        const formState = captureFormState(target);
+        const formState = captureFormState(target as HTMLElement);
         if (path && formState) {
           let applied = false;
           setDataAny((draft: any) => {
