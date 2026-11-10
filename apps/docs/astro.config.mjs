@@ -91,7 +91,10 @@ export default defineConfig({
           href: "https://discord.com/invite/SKbsSf4ptU",
         },
       ],
-      customCss: ["./src/styles/docs-extras.css"],
+      customCss: [
+        "./src/styles/site-header.css",
+        "./src/styles/docs-extras.css",
+      ],
       components: {
         Head: "./src/components/HeadOverride.astro",
         SocialIcons: "./src/components/SocialIconsWithPresence.astro",

@@ -1,6 +1,10 @@
 ---
-// ABOUTME: /play route — the live editor + preview playground.
+// ABOUTME: /play route: the live editor + preview playground, under the same
+// ABOUTME: site header as the docs and playhtml.fun.
 import { Playground } from "../components/playground/Playground";
+import SiteHeaderNav from "../components/header/SiteHeaderNav.astro";
+import SiteHeaderActions from "../components/header/SiteHeaderActions.astro";
+import "../styles/site-header.css";
 ---
 <!doctype html>
 <html lang="en">
@@ -8,10 +12,11 @@ import { Playground } from "../components/playground/Playground";
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>playhtml playground</title>
+    <link rel="icon" type="image/png" href="/docs/icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;700;800&family=Play:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&family=Carter+One&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;700;800&family=Play:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&family=Carter+One&family=Lora:ital,wght@1,600&display=swap"
       rel="stylesheet"
     />
     <!--
@@ -21,7 +26,14 @@ import { Playground } from "../components/playground/Playground";
       strips them from html / body.
     -->
   </head>
-  <body>
+  <body class="ph-play-page">
+    <header class="ph-header ph-play-siteheader">
+      <SiteHeaderNav />
+      <span class="ph-play-siteheader__spacer"></span>
+      <div class="ph-header__right">
+        <SiteHeaderActions />
+      </div>
+    </header>
     <Playground client:only="react" />
   </body>
 </html>
