@@ -80,11 +80,13 @@ export function MadeWithGallery() {
             />
           </span>
           <span className="ph-site__meta">
-            <b>{site.hostname}</b>
-            {site.by ? <span>by {site.by}</span> : null}
+            <b>{site.title}</b>
             {site.description ? (
               <i className="ph-site__desc">{site.description}</i>
             ) : null}
+            <span className="ph-site__by">
+              {site.by ? `by ${site.by}` : site.hostname}
+            </span>
           </span>
         </a>
       ))}

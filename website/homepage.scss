@@ -1702,7 +1702,26 @@ h3 {
   }
 }
 
-// Homepage gallery: the site's description, one line under the address.
+// Homepage gallery: title, one line of description, then who made it.
+.ph-made .ph-site__meta {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 2px;
+
+  .ph-site__desc {
+    flex: none;
+  }
+
+  b {
+    font-family: $body;
+    font-size: 15px;
+  }
+}
+
+.ph-site__by {
+  font-size: 12px;
+}
+
 .ph-site__desc {
   flex: 1 0 100%;
   min-width: 0;
@@ -3528,6 +3547,15 @@ h3 {
 
   .ph-site__desc {
     font-size: 12px;
+  }
+
+  .ph-made .ph-site__meta b {
+    font-size: 13px;
+  }
+
+  .ph-made .ph-site__meta .ph-site__by {
+    display: block;
+    font-size: 11px;
   }
 
   .ph-studio {
