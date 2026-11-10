@@ -2,6 +2,9 @@
 // ABOUTME: such as attributes, direct children, and form values across clients.
 
 import type { ElementInitializer } from "./index";
+
+// Matches TagType.CanMirror; kept local to avoid a circular import.
+const CAN_MIRROR_ATTR = "can-mirror";
 // Ephemeral attributes managed via awareness, not Yjs state.
 // The MutationObserver must ignore these to avoid polluting
 // persistent state with transient per-user presence.
@@ -121,6 +124,10 @@ export const canMirrorInitializer: ElementInitializer<ElementState> = {
       // Radios take the full path: checking one silently unchecks the others
       // in its group (no event fires on them), so their entries must update too.
       const target = event.target;
+      // A nested can-mirror syncs its own form and contenteditable state.
+      if (target instanceof Node && isInsideNestedMirror(element, target)) {
+        return;
+      }
       if (
         (target instanceof HTMLInputElement ||
           target instanceof HTMLTextAreaElement ||
@@ -197,7 +204,45 @@ function isHTMLElementState(state: ElementState): state is HTMLElementState {
   return state.nodeType === NodeType.HTMLElement;
 }
 
-function areStatesEqual(state1: ElementState, state2: ElementState): boolean {
+/**
+ * A nested element with its own `can-mirror` saves and syncs its contents
+ * itself. Its parent keeps only the copy it took when the child was added
+ * (so peers can create it) and never rewrites or re-applies that copy:
+ * doing so duplicated every change and briefly put stale contents back.
+ */
+function ownsItsContents(state: ElementState): state is HTMLElementState {
+  return (
+    isHTMLElementState(state) &&
+    !!state.attributes &&
+    CAN_MIRROR_ATTR in state.attributes
+  );
+}
+
+function isInsideNestedMirror(root: HTMLElement, target: Node): boolean {
+  let node: Node | null = target;
+  while (node && node !== root) {
+    if (node instanceof Element && node.hasAttribute(CAN_MIRROR_ATTR)) {
+      return true;
+    }
+    node = node.parentNode;
+  }
+  return false;
+}
+
+function isSameOwnedElement(a: ElementState, b: ElementState): boolean {
+  return (
+    ownsItsContents(a) &&
+    ownsItsContents(b) &&
+    a.tagName === b.tagName &&
+    a.attributes.id === b.attributes.id
+  );
+}
+
+function areStatesEqual(
+  state1: ElementState,
+  state2: ElementState,
+  nested = false,
+): boolean {
   if (state1.nodeType !== state2.nodeType) {
     return false;
   }
@@ -223,6 +268,10 @@ function areStatesEqual(state1: ElementState, state2: ElementState): boolean {
       }
     }
 
+    if (nested && isSameOwnedElement(state1, state2)) {
+      return true;
+    }
+
     // Compare form state (checked, value, selectedIndex)
     const fs1 = state1.formState;
     const fs2 = state2.formState;
@@ -244,7 +293,7 @@ function areStatesEqual(state1: ElementState, state2: ElementState): boolean {
     }
 
     for (let i = 0; i < children1.length; i++) {
-      if (!areStatesEqual(children1[i], children2[i])) {
+      if (!areStatesEqual(children1[i], children2[i], true)) {
         return false;
       }
     }
@@ -354,7 +403,12 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
 function canReconcileInPlace(a: ElementState, b: ElementState): boolean {
   if (a.nodeType !== b.nodeType) return false;
   if (isHTMLElementState(a) && isHTMLElementState(b)) {
-    return a.tagName === b.tagName;
+    if (a.tagName !== b.tagName) return false;
+    // A different nested can-mirror in this slot needs its own fresh copy.
+    if (ownsItsContents(a) || ownsItsContents(b)) {
+      return isSameOwnedElement(a, b);
+    }
+    return true;
   }
   return true;
 }
@@ -364,7 +418,11 @@ function canReconcileInPlace(a: ElementState, b: ElementState): boolean {
  * fields that differ. Each write becomes a sync message and stays in the
  * room's saved history, so rewriting unchanged siblings is expensive.
  */
-function reconcileStateInPlace(draft: ElementState, next: ElementState): void {
+function reconcileStateInPlace(
+  draft: ElementState,
+  next: ElementState,
+  nested = false,
+): void {
   if (draft.nodeType === NodeType.Text && next.nodeType === NodeType.Text) {
     if (draft.textContent !== next.textContent) {
       draft.textContent = next.textContent;
@@ -379,6 +437,8 @@ function reconcileStateInPlace(draft: ElementState, next: ElementState): void {
   for (const name of Object.keys(draft.attributes)) {
     if (!(name in next.attributes)) delete draft.attributes[name];
   }
+
+  if (nested && isSameOwnedElement(draft, next)) return;
 
   reconcileFormStateInPlace(draft, next.formState);
   reconcileChildrenInPlace(draft.children, next.children);
@@ -451,7 +511,7 @@ function reconcileChildrenInPlace(
   while (
     start < children.length &&
     start < next.length &&
-    areStatesEqual(children[start], next[start])
+    areStatesEqual(children[start], next[start], true)
   ) {
     start += 1;
   }
@@ -460,7 +520,7 @@ function reconcileChildrenInPlace(
   while (
     endOld > start &&
     endNew > start &&
-    areStatesEqual(children[endOld - 1], next[endNew - 1])
+    areStatesEqual(children[endOld - 1], next[endNew - 1], true)
   ) {
     endOld -= 1;
     endNew -= 1;
@@ -479,7 +539,7 @@ function reconcileChildrenInPlace(
     }
     if (allInPlace) {
       for (let i = 0; i < oldCount; i++) {
-        reconcileStateInPlace(children[start + i], next[start + i]);
+        reconcileStateInPlace(children[start + i], next[start + i], true);
       }
       return;
     }
@@ -747,12 +807,15 @@ function applyFormState(
 
 function updateElementFromState(
   element: HTMLElement | Text,
-  newState: ElementState
+  newState: ElementState,
+  nested = false,
 ) {
   updateCharacterDataFromState(element, newState);
 
   if (newState.nodeType === NodeType.HTMLElement) {
     updateAttributesFromState(element as HTMLElement, newState);
+    // An existing nested can-mirror keeps its own contents.
+    if (nested && ownsItsContents(newState)) return;
     applyFormState(element as HTMLElement, newState.formState);
 
     // Always reconcile children, even when the target state has none: an
@@ -835,10 +898,22 @@ function canUpdateInPlace(node: HTMLElement | Text, state: ElementState) {
   if (state.nodeType === NodeType.Text) {
     return node instanceof Text;
   }
-  return (
-    node instanceof HTMLElement &&
-    node.tagName.toLowerCase() === state.tagName
-  );
+  if (
+    !(node instanceof HTMLElement) ||
+    node.tagName.toLowerCase() !== state.tagName
+  ) {
+    return false;
+  }
+  // A different nested can-mirror in this slot is rebuilt from the copy
+  // rather than keeping the old element's contents under a new id.
+  if (ownsItsContents(state) || node.hasAttribute(CAN_MIRROR_ATTR)) {
+    return (
+      ownsItsContents(state) &&
+      node.hasAttribute(CAN_MIRROR_ATTR) &&
+      node.id === (state.attributes.id ?? "")
+    );
+  }
+  return true;
 }
 
 function updateChildrenFromState(
@@ -855,7 +930,7 @@ function updateChildrenFromState(
     const domChild = domChildren[i] as HTMLElement | Text;
     const childState = childStates[i];
     if (canUpdateInPlace(domChild, childState)) {
-      updateElementFromState(domChild, childState);
+      updateElementFromState(domChild, childState, true);
     } else {
       const replacement = createNodeForState(childState);
       element.replaceChild(replacement, domChild);

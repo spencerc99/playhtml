@@ -761,6 +761,91 @@ describe("can-mirror: minimal shared writes", () => {
   });
 });
 
+describe("can-mirror: nested can-mirror children own their contents", () => {
+  const board = (card: string) =>
+    `<ul id="board"><li>plain</li><li id="card-1" can-mirror>${card}</li></ul>`;
+
+  it("leaves an existing nested can-mirror's contents alone when applying the parent", async () => {
+    const source = mountClient(elementFromHTML(board("<p>stale copy</p>")));
+    const sink = mountClient(elementFromHTML(board("<p>fresh</p><p>more</p>")));
+    source.element.setAttribute("data-mood", "sunny");
+    await sync(source, sink);
+
+    expect(sink.element.getAttribute("data-mood")).toBe("sunny");
+    expect(sink.element.querySelector("#card-1")!.innerHTML).toBe(
+      "<p>fresh</p><p>more</p>",
+    );
+  });
+
+  it("still applies a nested can-mirror's own attributes from the parent", async () => {
+    const source = mountClient(elementFromHTML(board("<p>a</p>")));
+    const sink = mountClient(elementFromHTML(board("<p>a</p>")));
+    const incoming = wire(source.state) as any;
+    incoming.children[1].attributes["data-pinned"] = "";
+    sink.applyRemote(incoming);
+    expect(
+      sink.element.querySelector("#card-1")!.hasAttribute("data-pinned"),
+    ).toBe(true);
+  });
+
+  it("creates a newly added nested can-mirror with its copied contents", async () => {
+    const source = mountClient(elementFromHTML(`<ul id="board"></ul>`));
+    const sink = mountClient(elementFromHTML(`<ul id="board"></ul>`));
+    const li = document.createElement("li");
+    li.id = "card-2";
+    li.setAttribute("can-mirror", "");
+    li.innerHTML = "<p>hello</p>";
+    source.element.appendChild(li);
+    await sync(source, sink);
+    expect(sink.element.querySelector("#card-2")!.innerHTML).toBe(
+      "<p>hello</p>",
+    );
+  });
+
+  it("rebuilds the slot when a different nested can-mirror takes it", async () => {
+    const source = mountClient(elementFromHTML(board("<p>one</p>")));
+    const sink = mountClient(elementFromHTML(board("<p>one</p>")));
+    const replacement = document.createElement("li");
+    replacement.id = "card-9";
+    replacement.setAttribute("can-mirror", "");
+    replacement.innerHTML = "<p>nine</p>";
+    source.element.replaceChild(
+      replacement,
+      source.element.querySelector("#card-1")!,
+    );
+    await sync(source, sink);
+    expect(sink.element.querySelector("#card-1")).toBeNull();
+    expect(sink.element.querySelector("#card-9")!.innerHTML).toBe(
+      "<p>nine</p>",
+    );
+  });
+
+  it("does not write into the parent when typing inside a nested can-mirror", async () => {
+    const client = mountClient(elementFromHTML(board("<input />")));
+    const before = JSON.stringify(client.state);
+    const input = client.element.querySelector("input")!;
+    input.value = "typed";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush();
+    expect(JSON.stringify(client.state)).toBe(before);
+  });
+
+  it("does not rewrite a nested can-mirror's copy when siblings change", async () => {
+    const client = mountClient(elementFromHTML(board("<p>first</p>")));
+    const root = client.state as any;
+    const cardEntry = root.children[1];
+    client.element.querySelector("#card-1")!.innerHTML = "<p>changed</p>";
+    const li = document.createElement("li");
+    li.textContent = "new";
+    client.element.appendChild(li);
+    await flush();
+
+    expect(root.children).toHaveLength(3);
+    expect(root.children[1]).toBe(cardEntry);
+    expect(JSON.stringify(cardEntry)).toContain("first");
+  });
+});
+
 describe("can-mirror: own presence", () => {
   it("publishes no presence until the visitor hovers or focuses", () => {
     expect(canMirrorInitializer.myDefaultAwareness).toBeUndefined();
