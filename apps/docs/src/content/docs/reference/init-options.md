@@ -5,6 +5,8 @@ sidebar:
   order: 1
 ---
 
+Install with `npm install playhtml`, or import from `https://unpkg.com/playhtml` with no build step.
+
 Every option below can be passed either to `playhtml.init({…})` (vanilla) or to `<PlayProvider initOptions={{…}}>` (React). The underlying `InitOptions` interface is the same. Options are locked to the first declaration: a later call that passes genuinely conflicting options warns and is ignored. Passing the same options again — or none — is fine and silent.
 
 ```js
