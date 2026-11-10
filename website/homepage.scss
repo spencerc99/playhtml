@@ -2274,35 +2274,57 @@ h3 {
   }
 }
 
-.ph-wwo__cta {
-  margin-top: 26px;
+// wewere.online's install pill (DownloadGate), not a playhtml button
+.ph-wwo__install {
+  margin-top: 28px;
   display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 11px 22px;
+  align-items: baseline;
+  white-space: nowrap;
+  padding: 11px 20px;
+  border: 1.5px solid rgba(61, 56, 51, 0.28);
   border-radius: 999px;
-  background: var(--wwo-text);
-  color: var(--wwo-paper);
-  font-size: 15px;
-  font-weight: 700;
-  text-decoration: none;
-  transition:
-    transform 0.15s ease,
-    background 0.15s ease;
+  background: rgba(250, 247, 242, 0.74);
+  backdrop-filter: blur(2px);
+  box-shadow: 0 1px 0 rgba(61, 56, 51, 0.06);
+  font-size: 17px;
+  color: var(--wwo-muted);
 
-  &:hover,
-  &:focus-visible {
-    background: #c4724e;
-    transform: translateY(-1px);
+  span {
+    margin-right: 0.45rem;
+  }
+
+  i {
+    font-style: normal;
+    margin: 0 0.45rem;
+  }
+
+  a {
+    color: var(--wwo-text);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.16em;
+    transition: color 0.15s;
+
+    &:hover,
+    &:focus-visible {
+      color: #4a9a8a;
+    }
   }
 }
 
-.ph-wwo__install {
-  margin-top: 12px;
+.ph-wwo__visit {
+  margin-top: 14px;
   font-family: "Martian Mono", ui-monospace, monospace;
   font-size: 10.5px;
   letter-spacing: 0.04em;
   color: var(--wwo-muted);
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    color: #3a7d6f;
+    text-decoration: underline;
+  }
 }
 
 .ph-wwo__chips {
@@ -2323,6 +2345,21 @@ h3 {
   border-radius: 4px;
   font-size: 13px;
   line-height: 1.35;
+
+  backdrop-filter: blur(2px);
+
+  // paper texture, as on wewere.online's site cards
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 200px 200px;
+    mix-blend-mode: overlay;
+    opacity: 0.3;
+    pointer-events: none;
+  }
 
   b {
     font-family: "Martian Mono", ui-monospace, monospace;
@@ -2822,7 +2859,6 @@ h3 {
 .ph-faq > .ph-section-head,
 .ph-faq__list {
   width: 100%;
-  max-width: 900px;
 }
 
 .ph-faq__list {
@@ -3561,63 +3597,72 @@ h3 {
     font-size: 10px;
   }
 
+  // Same scattered notes as desktop, tucked into the corners like
+  // wewere.online does on a phone.
   .ph-wwo__card {
     min-height: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 28px;
-    padding: 56px 16px 44px;
-
-    &::after {
-      background: linear-gradient(
-        180deg,
-        rgba(250, 247, 242, 0.55) 0,
-        rgba(250, 247, 242, 0.88) 30%,
-        rgba(250, 247, 242, 0.88) 100%
-      );
-    }
-  }
-
-  .ph-wwo__hero {
-    max-width: none;
+    padding: 172px 16px 168px;
   }
 
   .ph-wwo__wordmark {
-    font-size: min(52px, 12.5vw);
+    font-size: min(50px, 12.5vw);
   }
 
   .ph-wwo__tagline {
-    font-size: 12px;
+    margin-top: 10px;
+    font-size: 11px;
   }
 
   .ph-wwo__desc {
-    font-size: 16px;
+    margin-top: 20px;
+    font-size: 15px;
   }
 
-  .ph-wwo__chips {
-    position: relative;
-    z-index: 2;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 0 6px;
+  .ph-wwo__install {
+    margin-top: 22px;
+    padding: 9px 14px;
+    font-size: 14px;
+
+    span {
+      margin-right: 0.3rem;
+    }
+
+    i {
+      margin: 0 0.3rem;
+    }
   }
 
   .ph-wwo__chip {
-    position: static;
-    width: auto;
+    width: 150px;
+    padding: 9px 11px;
+    font-size: 11.5px;
+
+    b {
+      font-size: 9.5px;
+    }
+  }
+
+  .ph-wwo__chip--teal {
+    top: 34px;
+    left: 14px;
   }
 
   .ph-wwo__chip--rust {
-    align-self: flex-end;
+    top: 62px;
+    right: 14px;
+  }
+
+  .ph-wwo__chip--gold {
+    bottom: 44px;
+    left: auto;
+    right: 26px;
   }
 
   .ph-wwo__caption {
-    right: 0;
-    left: 0;
-    bottom: 14px;
-    text-align: center;
+    right: auto;
+    left: 18px;
+    bottom: 18px;
+    font-size: 9px;
   }
 
   .ph-asks {
