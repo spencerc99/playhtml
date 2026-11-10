@@ -1814,6 +1814,28 @@ describe("LocalEventStore pending uploads", () => {
     ]);
   });
 
+  it("reads every event exactly once across export pages", async () => {
+    const store = createStore();
+    const ids = Array.from({ length: 7 }, (_, i) => `page-event-${i}`);
+    await store.addEvents(ids.map((id) => event(id, "cursor")));
+
+    const seen: string[] = [];
+    let afterId: string | null = null;
+    let pages = 0;
+    do {
+      const page = await store.getEventPage(afterId, 3);
+      expect(page.events.length).toBeLessThanOrEqual(3);
+      seen.push(...page.events.map(({ id }) => id));
+      afterId = page.nextAfterId;
+      pages++;
+    } while (afterId !== null);
+
+    expect(seen.sort()).toEqual([...ids].sort());
+    expect(pages).toBe(3);
+    const [firstPage] = (await store.getEventPage(null, 1)).events;
+    expect((firstPage as StoredTestEvent).uploadState).toBeUndefined();
+  });
+
   it("does not return trusted restored history as pending", async () => {
     const store = createStore();
 

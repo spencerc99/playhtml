@@ -5,7 +5,9 @@ sidebar:
   order: 1
 ---
 
-playhtml keeps a single guide for coding agents at **[playhtml.fun/docs/llms.txt](/docs/llms.txt)**. It covers the APIs, which kind of data to use, and the mistakes that silently break sync. Pick whichever way of handing it over fits your tool.
+We think of coding as **sketching**: a tool should help your idea come into focus, not fill in the blanks for you. As such, whether you use AI or code by hand, we encourage you to use tools to realize your own unique vision. It can definitely be a resource to try if you feel held back by technical capability.
+
+Our guide teaches your agent how playhtml works and asks you to make your design choices clear. It lives at **[playhtml.fun/docs/llms.txt](/docs/llms.txt)** and covers the APIs, which kind of data to use, and the mistakes that silently break sync. Pick whichever way of handing it over fits your tool.
 
 ## Paste one line
 
@@ -39,4 +41,4 @@ The more of these you describe up front, the fewer questions you'll get:
 
 For example: _"A draggable sticky note in vanilla HTML. Anyone can drag it and everyone sees it move. Its position should stay after reload."_
 
-For the hand-written setup, see [getting started](/docs/getting-started/).
+For the hand-written setup, see [getting started](/docs/).

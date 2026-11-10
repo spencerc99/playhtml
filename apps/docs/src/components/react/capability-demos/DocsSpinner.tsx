@@ -10,7 +10,7 @@ const SEGMENTS: ReadonlyArray<{ label: string; href: string }> = [
   { label: "See cursors", href: "/docs/advanced/cursors/" },
   { label: "Summon rain", href: "/docs/data/events/" },
   { label: "Shape data", href: "/docs/advanced/data-best-practices/" },
-  { label: "Write React", href: "/docs/getting-started/" },
+  { label: "Write React", href: "/docs/" },
 ];
 
 type SpinnerData = {

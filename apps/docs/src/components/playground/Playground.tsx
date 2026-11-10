@@ -13,7 +13,6 @@ import {
   discardDraft,
   pruneStaleDrafts,
 } from "./recipe-loader";
-import { crossSiteLinks } from "../cross-site-links";
 import "./playground.css";
 
 export function Playground() {
@@ -178,52 +177,21 @@ export function Playground() {
 
   return (
     <div className="ph-play-root">
-      <div className="ph-play-topbar">
-        {/* Wordmark visually mirrors the docs SiteTitle (Carter One, 1.55rem,
-            "play" stem links home). The live `can-toggle` letter behavior
-            from docs is intentionally NOT replicated here — playhtml runs
-            inside the preview iframe, not on the /play host page, and adding
-            a second playhtml room just to animate the chrome wordmark would
-            cost a connection without meaningfully changing the surface. The
-            preview iframe owns the live-demo affordance on /play. */}
-        <span className="ph-play-wordmark" translate="no">
-          <a href="/" className="ph-play-wordmark__home" aria-label="playhtml home">
-            <span className="ph-play-wordmark__stem">play</span>
-          </a>
-          <span className="ph-play-wordmark__letter">h</span>
-          <span className="ph-play-wordmark__letter">t</span>
-          <span className="ph-play-wordmark__letter">m</span>
-          <span className="ph-play-wordmark__letter">l</span>
-        </span>
-        <nav className="ph-play-crossnav" aria-label="playhtml sites">
-          {crossSiteLinks.map((link) => (
-            <a
-              key={link.key}
-              href={link.href}
-              className={
-                "ph-play-crossnav__link" +
-                (link.key === "play" ? " is-active" : "")
-              }
-              aria-current={link.key === "play" ? "page" : undefined}
-            >
-              {link.label}
-            </a>
-          ))}
-        </nav>
-        <span className="ph-play-topbar-divider" aria-hidden="true" />
+      {/* The site header (wordmark, nav, Discord, GitHub, support) is static
+          Astro markup in play.astro. This bar only holds the editor's own state. */}
+      <div className="ph-play-toolbar">
+        <LabelTape text="playground" />
         <span className="ph-play-title">
-          {recipeId !== "_starter" ? (
-            <span className="ph-play-title-recipe">{recipeId}</span>
-          ) : (
-            <span className="ph-play-title-recipe">starter</span>
-          )}
-          {isEdited && <span className="ph-play-title-edited"> · edited</span>}
+          <span className="ph-play-title-recipe">
+            {recipeId !== "_starter" ? recipeId : "starter"}
+          </span>
+          {isEdited && <span className="ph-play-title-edited">edited</span>}
         </span>
         <span className="ph-play-spacer" />
         {isEdited && (
           <button
             type="button"
-            className="ph-play-reset-btn"
+            className="ph-play-btn"
             onClick={handleResetToStarter}
             title="Discard your edits and reload this example"
           >
@@ -260,6 +228,29 @@ export function Playground() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Label-maker tape, like the homepage's section labels: each letter gets a
+// small, stable wobble so it reads as embossed tape.
+function LabelTape({ text }: { text: string }) {
+  return (
+    <span className="ph-play-label" aria-label={text}>
+      {Array.from(text).map((character, index) => {
+        const wobble = ((index * 37) % 7) - 3;
+        return (
+          <span
+            key={index}
+            aria-hidden="true"
+            style={{
+              transform: `translateY(${wobble * 0.25}px) rotate(${wobble * 0.6}deg)`,
+            }}
+          >
+            {character}
+          </span>
+        );
+      })}
+    </span>
   );
 }
 

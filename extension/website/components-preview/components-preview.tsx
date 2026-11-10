@@ -1,8 +1,7 @@
 // ABOUTME: Preview page for PortraitCard design directions
 // ABOUTME: Shows distinct visual variants with mock browsing data for evaluation
-// Agentation is a dev-only toolbar — loaded at runtime so it never appears in the production bundle
 import "./components-preview.scss";
-import React, { lazy, useEffect, useId, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import {
   MilestoneToast,
@@ -14,9 +13,6 @@ import { PopupNav } from "@extension/components/PopupNav";
 import { PlayerIdentityCard } from "@extension/components/PlayerIdentityCard";
 import type { PlayerIdentity } from "@extension/types";
 import { SitePrivacySection } from "./SitePrivacyPreview";
-const Agentation = import.meta.env.DEV
-  ? lazy(() => import("agentation").then((m) => ({ default: m.Agentation })))
-  : null;
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
 
@@ -2981,9 +2977,4 @@ function PreviewPage() {
 
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement,
-).render(
-  <>
-    {Agentation && <Agentation />}
-    <PreviewPage />
-  </>,
-);
+).render(<PreviewPage />);

@@ -1,0 +1,24 @@
+---
+// ABOUTME: Docs header, matching the playhtml.fun homepage header: wordmark, site nav,
+// ABOUTME: then search, presence, Discord, GitHub stars, support and a compact theme toggle.
+import Search from "virtual:starlight/components/Search";
+import { DocsPresenceBar } from "../react/DocsPresenceBar";
+import SiteHeaderNav from "./SiteHeaderNav.astro";
+import ThemeToggle from "./ThemeToggle.astro";
+import SiteHeaderActions from "./SiteHeaderActions.astro";
+---
+
+<div class="ph-header">
+  <SiteHeaderNav />
+  <div class="ph-header__search print:hidden">
+    <Search />
+  </div>
+  <div class="ph-header__right print:hidden">
+    <div class="ph-presence-slot">
+      {/* client:only: presence reads cursor awareness, which only exists in the browser. */}
+      <DocsPresenceBar client:only="react" />
+    </div>
+    <SiteHeaderActions />
+    <ThemeToggle />
+  </div>
+</div>

@@ -42,7 +42,7 @@ export function Preview(props: PreviewProps) {
     iframe.style.width = "100%";
     iframe.style.height = "100%";
     iframe.style.border = "none";
-    iframe.style.background = "#faf7f2";
+    iframe.style.background = "#fffff9";
     iframe.title = "playhtml playground preview";
 
     iframe.srcdoc = buildIframeSrcdoc({

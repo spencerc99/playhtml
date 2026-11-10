@@ -1,6 +1,6 @@
 {
   "name": "@playhtml/extension",
-  "version": "0.1.29",
+  "version": "0.1.30",
   "private": true,
   "type": "module",
   "scripts": {
@@ -25,6 +25,7 @@
     "postinstall": "bun run prepare:types"
   },
   "dependencies": {
+    "@huggingface/transformers": "3.8.1",
     "@playhtml/common": "workspace:*",
     "@playhtml/extension-types": "workspace:*",
     "@playhtml/react": "workspace:*",

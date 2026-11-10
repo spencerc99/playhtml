@@ -44,7 +44,7 @@ import { PlayProvider, CanMoveElement } from "@playhtml/react";
 </PlayProvider>;
 ```
 
-See [getting started](https://playhtml.fun/docs/getting-started/) for both paths in depth. React users should also read the [React API reference](https://playhtml.fun/docs/reference/react-api/).
+See [getting started](https://playhtml.fun/docs/) for both paths in depth. React users should also read the [React API reference](https://playhtml.fun/docs/reference/react-api/).
 
 ## What's in the box
 

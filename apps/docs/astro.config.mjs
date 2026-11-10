@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import react from "@astrojs/react";
+import directedit from "directedit/astro";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -13,7 +14,8 @@ export default defineConfig({
   base: "/docs",
   // Pages removed or merged elsewhere; keep old links working.
   redirects: {
-    "/using-react": "/docs/getting-started/",
+    "/using-react": "/docs/",
+    "/getting-started": "/docs/",
     "/data/data-essentials": "/docs/concepts/",
     "/data/presence/users": "/docs/data/presence/#names-and-colors",
     "/data/presence/cursors": "/docs/advanced/cursors/",
@@ -89,18 +91,22 @@ export default defineConfig({
           href: "https://discord.com/invite/SKbsSf4ptU",
         },
       ],
-      customCss: ["./src/styles/docs-extras.css"],
+      customCss: [
+        "./src/styles/site-header.css",
+        "./src/styles/docs-extras.css",
+      ],
       components: {
         Head: "./src/components/HeadOverride.astro",
         SocialIcons: "./src/components/SocialIconsWithPresence.astro",
         Footer: "./src/components/FooterWithScrollRail.astro",
-        SiteTitle: "./src/components/SiteTitle.astro",
+        Header: "./src/components/header/Header.astro",
+        MobileMenuFooter: "./src/components/header/MobileMenuFooter.astro",
         Hero: "./src/components/Hero.astro",
       },
       // Sidebar IA
       //
       //   Examples     → examples index (top-level link, above the path)
-      //   Start        → getting-started, concepts
+      //   Start        → index (Getting started), concepts
       //   Building blocks → capabilities, custom-elements,
       //                     presence (people), events, page-data
       //   Advanced     → autogenerate (advanced/)
@@ -129,10 +135,16 @@ export default defineConfig({
           slug: "examples",
           badge: { text: "inspo", variant: "tip" },
         },
+        // The /play editor isn't in the shared site header, so it lives here.
+        {
+          label: "Playground",
+          link: "/play",
+          badge: { text: "try it", variant: "note" },
+        },
         {
           label: "Start",
           items: [
-            { label: "Getting started", slug: "getting-started" },
+            { label: "Getting started", slug: "index" },
             { label: "Core concepts", slug: "concepts" },
           ],
         },
@@ -157,5 +169,7 @@ export default defineConfig({
       ],
     }),
     react(),
+    // Alt+E to edit copy in place (dev and Cloudflare previews only; see vite.config.site.mts).
+    directedit(),
   ],
 });
