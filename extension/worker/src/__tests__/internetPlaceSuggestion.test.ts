@@ -21,6 +21,8 @@ import {
   hashSuggestionCandidate,
   INTERNET_PLACE_SUGGESTION_MODEL,
   INTERNET_PLACE_SUGGESTION_PROMPT_VERSION,
+  JEV_MODEL,
+  loadClefGate,
   parseClefSuggestion,
   getReviewNeed,
 } from "../routes/internetPlaceSuggestion";
@@ -94,7 +96,18 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await miniflare.dispose();
+  vi.unstubAllGlobals();
+  fetchPublicPageContext.mockReset();
+  fetchPublicPageContext.mockImplementation(async () => null);
 });
+
+const regularAnswers = {
+  answers: {
+    placement: { choice: "regular", confidence: 0.7, probabilities: {} },
+    scope: { choice: "page", confidence: 0.7, probabilities: {} },
+    reason: { choice: "none", confidence: 0.5, probabilities: {} },
+  },
+};
 
 describe("Internet place suggestions", () => {
   it("hashes only sanitized public URLs and allowlisted audit evidence", async () => {
@@ -154,9 +167,10 @@ describe("Internet place suggestions", () => {
       scope: "hostname",
       reason: "human-community",
       confidence: 0.64,
-      rationale: "Clef chose featured at hostname scope with 64% confidence.",
+      rationale:
+        "The model chose featured at hostname scope with 64% confidence.",
       uncertainties: [
-        "Clef also weighed regular at 30%.",
+        "The model also weighed regular at 30%.",
         "The hostname scope is uncertain (40%).",
       ],
       stopProbability: expect.closeTo(0.94, 5),
@@ -262,6 +276,134 @@ describe("Internet place suggestions", () => {
     );
     expect(((await cached.json()) as { source: string }).source).toBe("cache");
     expect(calls).toHaveLength(1);
+  });
+
+  it("asks Jev instead of Clef when a Jev key is set", async () => {
+    const run = vi.fn();
+    env.AI = { run } as unknown as Env["AI"];
+    env.JEV_TOKEN = "jev-secret";
+    const jevCalls: Array<{ headers: Headers; body: Record<string, unknown> }> =
+      [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url !== "https://api.typesafe.ai/v1/systemone")
+          return new Response("", { status: 404 });
+        jevCalls.push({
+          headers: new Headers(init?.headers),
+          body: JSON.parse(String(init?.body)),
+        });
+        return Response.json({
+          ...regularAnswers,
+          usage: { input_tokens: 900 },
+        });
+      }),
+    );
+    const response = await handleInternetPlaceSuggestion(
+      suggestionRequest({
+        candidate: { url: "https://example.com/essay", title: "An essay" },
+      }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      model: string;
+      suggestion: { placement: string };
+    };
+    expect(body.model).toBe(JEV_MODEL);
+    expect(body.suggestion.placement).toBe("regular");
+    expect(run).not.toHaveBeenCalled();
+    expect(jevCalls).toHaveLength(1);
+    expect(jevCalls[0].headers.get("Authorization")).toBe("Bearer jev-secret");
+    expect(jevCalls[0].body.model).toBe("jev-1.13.0");
+    expect(Object.keys(jevCalls[0].body.questions as object)).toEqual([
+      "placement",
+      "scope",
+      "reason",
+    ]);
+    const saved = await env.WWO_ADMIN_DB.prepare(
+      "SELECT model FROM place_suggestions",
+    ).first<{ model: string }>();
+    expect(saved?.model).toBe(JEV_MODEL);
+  });
+
+  it("keeps Clef's earlier approvals until a newer answer replaces them", async () => {
+    const page = "https://example.com/essay";
+    const regular = JSON.stringify({ ...suggestion, placement: "regular" });
+    const scenery = JSON.stringify({ ...suggestion, placement: "scenery" });
+    await env.WWO_ADMIN_DB.prepare(
+      `INSERT INTO place_suggestions (page_key, model, prompt_version, suggestion_json, evidence_hash, created_at)
+       VALUES (?, ?, 'clef-v5', ?, '', '2026-11-01 00:00:00')`,
+    )
+      .bind(page, INTERNET_PLACE_SUGGESTION_MODEL, regular)
+      .run();
+    expect(await loadClefGate(env.WWO_ADMIN_DB, [page])).toEqual([]);
+
+    await env.WWO_ADMIN_DB.prepare(
+      `INSERT INTO place_suggestions (page_key, model, prompt_version, suggestion_json, evidence_hash, created_at)
+       VALUES (?, ?, ?, ?, '', '2026-11-09 00:00:00')`,
+    )
+      .bind(page, JEV_MODEL, INTERNET_PLACE_SUGGESTION_PROMPT_VERSION, scenery)
+      .run();
+    expect(await loadClefGate(env.WWO_ADMIN_DB, [page])).toEqual([
+      expect.objectContaining({ scope: "page", placement: "scenery" }),
+    ]);
+  });
+
+  it("describes the site's homepage when the page itself can't be fetched", async () => {
+    const homepage = {
+      description: "Discussion forum",
+      headings: ["Latest threads"],
+      text: "Forum home",
+      signInForm: true,
+      linkCount: 40,
+      externalSites: 2,
+      navLabels: ["Forums", "Members"],
+    };
+    fetchPublicPageContext.mockImplementation((async (url: string) =>
+      url === "https://forum.example/"
+        ? {
+            inspection: {
+              verdict: "public",
+              reason: "public_html",
+              finalUrl: url,
+            },
+            context: homepage,
+          }
+        : {
+            inspection: {
+              verdict: "unavailable",
+              reason: "access_restricted",
+              finalUrl: url,
+            },
+          }) as never);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("", { status: 404 })),
+    );
+    const run = vi.fn(async () => regularAnswers);
+    env.AI = { run } as unknown as Env["AI"];
+    const response = await handleInternetPlaceSuggestion(
+      suggestionRequest({
+        candidate: {
+          url: "https://forum.example/threads/123",
+          title: "A thread",
+        },
+      }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    const [, body] = run.mock.calls[0] as unknown as [
+      string,
+      {
+        state: { candidate: Record<string, unknown> };
+        questions: { placement: { instructions: string } };
+      },
+    ];
+    expect(body.state.candidate.page).toBeUndefined();
+    expect(body.state.candidate.site).toEqual(homepage);
+    expect(body.questions.placement.instructions).toContain("candidate.site");
   });
 
   it("requires admin authentication before reading the cache", async () => {
@@ -518,7 +660,7 @@ describe("Internet place suggestions", () => {
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({
       available: false,
-      error: "Workers AI is not configured for this environment",
+      error: "No suggestion model is configured for this environment",
     });
     expect(await countRows("place_policies")).toBe(0);
   });

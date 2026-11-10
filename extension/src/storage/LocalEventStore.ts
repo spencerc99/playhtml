@@ -2033,6 +2033,46 @@ export class LocalEventStore {
   }
 
   /**
+   * Read one page of events in id order, starting after `afterId`. Export
+   * walks the whole store this way so no single read or message holds every
+   * event. `nextAfterId` is null once the last page has been read.
+   */
+  async getEventPage(
+    afterId: string | null,
+    limit: number,
+  ): Promise<{ events: CollectionEvent[]; nextAfterId: string | null }> {
+    await this.ensureInitialized();
+
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error("Database not initialized"));
+        return;
+      }
+      const transaction = this.db.transaction([STORE_NAME], "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const range =
+        afterId === null ? null : IDBKeyRange.lowerBound(afterId, true);
+      const request = store.openCursor(range);
+      const events: CollectionEvent[] = [];
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve({ events, nextAfterId: null });
+          return;
+        }
+        if (events.length >= limit) {
+          resolve({ events, nextAfterId: events[events.length - 1].id });
+          return;
+        }
+        events.push(toCollectionEvent(cursor.value as StoredCollectionEvent));
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
    * Read the event subset needed by the walking record without transferring
    * every high-frequency cursor sample to the new-tab page.
    */

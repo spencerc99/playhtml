@@ -34,7 +34,7 @@ import {
 } from '../storage/playerIdentity'
 import { syncStoredPlayerColor } from '../storage/playerColor'
 import { VERBOSE } from '../config'
-import { gzipEventExport } from '../utils/dataTransfer'
+import { EXPORT_PAGE_SIZE } from '../utils/dataTransfer'
 import { normalizeUrl, extractDomain } from '../utils/urlNormalization'
 import {
   loadState,
@@ -1258,22 +1258,23 @@ export default defineBackground(() => {
       return true
     }
 
-    if (message.type === 'EXPORT_EVENTS') {
-      ;(async () => {
-        try {
-          const events = await store.getAllEvents()
-          const identity = await getPublicPlayerIdentity()
-          const compressed = await gzipEventExport(
-            events,
-            identity,
-            Date.now(),
-          )
-          reply({ success: true, data: Array.from(compressed) })
-        } catch (e) {
-          console.error('[Background] EXPORT_EVENTS error:', e)
+    if (message.type === 'EXPORT_EVENT_PAGE') {
+      // Export reads history a page at a time: one message holding every
+      // event (or the whole compressed file) exceeds the browser's message
+      // size limit for large profiles.
+      const afterId =
+        typeof message.afterId === 'string' ? message.afterId : null
+      const limit = Math.min(
+        Math.max(Number(message.limit) || EXPORT_PAGE_SIZE, 1),
+        EXPORT_PAGE_SIZE,
+      )
+      store
+        .getEventPage(afterId, limit)
+        .then((page) => reply({ success: true, ...page }))
+        .catch((e) => {
+          console.error('[Background] EXPORT_EVENT_PAGE error:', e)
           reply({ success: false, error: String(e) })
-        }
-      })()
+        })
       return true
     }
 

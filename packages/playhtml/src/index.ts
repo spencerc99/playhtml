@@ -1810,7 +1810,7 @@ async function initPlayHTMLOnce() {
   // Import default styles
   const playStyles = document.createElement("link");
   playStyles.rel = "stylesheet";
-  playStyles.href = "https://unpkg.com/playhtml@latest/dist/style.css";
+  playStyles.href = "https://cdn.jsdelivr.net/npm/playhtml/dist/style.css";
   document.head.appendChild(playStyles);
 
   if (configuredOptions?.developmentMode) {

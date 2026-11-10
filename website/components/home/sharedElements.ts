@@ -1,0 +1,402 @@
+// ABOUTME: Registers the homepage's vanilla can-play elements with playhtml.
+// ABOUTME: Covers the here-now count, the snippet copy counter, the persistent note, tip jar and wordmark colors.
+
+import { playhtml } from "playhtml";
+import { setLabelText } from "./pageChrome";
+
+type HerePresence = { online: true };
+
+const SnippetText = `<div id="note" can-move>drag me</div>
+<script type="module"
+  src="https://unpkg.com/playhtml/dist/init.es.js"></script>`;
+
+// Most dots shown around the here-now pill; past that the pill still counts.
+const MaxPresenceDots = 18;
+const PresenceDotSize = 11;
+
+// A point `distance` px along the outline of a w x h pill (a stadium), going
+// clockwise from the left end of the top edge.
+function pointOnPill(distance: number, w: number, h: number) {
+  const r = h / 2;
+  const straight = Math.max(w - h, 0);
+  const arc = Math.PI * r;
+  let d = distance;
+  if (d < straight) return { x: r + d, y: 0 };
+  d -= straight;
+  if (d < arc) {
+    const angle = -Math.PI / 2 + d / r;
+    return { x: w - r + r * Math.cos(angle), y: r + r * Math.sin(angle) };
+  }
+  d -= arc;
+  if (d < straight) return { x: w - r - d, y: h };
+  d -= straight;
+  const angle = Math.PI / 2 + d / r;
+  return { x: r + r * Math.cos(angle), y: r + r * Math.sin(angle) };
+}
+
+type DotPerson = { pid: string; name?: string; color: string; isMe: boolean };
+
+// Colored dots for everyone here, spaced evenly around the pill's edge. You
+// come first, starting near the top left.
+function renderPresenceDots(
+  pill: HTMLElement,
+  ring: HTMLElement,
+  people: DotPerson[],
+) {
+  const shown = [...people]
+    .sort((a, b) => Number(b.isMe) - Number(a.isMe))
+    .slice(0, MaxPresenceDots);
+  const w = pill.offsetWidth;
+  const h = pill.offsetHeight;
+  if (!w || !h) return;
+  const perimeter = 2 * Math.max(w - h, 0) + Math.PI * h;
+
+  const existing = new Map<string, HTMLElement>();
+  ring.querySelectorAll<HTMLElement>(".ph-here-now__person").forEach((dot) => {
+    existing.set(dot.dataset.pid ?? "", dot);
+  });
+
+  shown.forEach((person, index) => {
+    let dot = existing.get(person.pid);
+    existing.delete(person.pid);
+    if (!dot) {
+      dot = document.createElement("span");
+      dot.className = "ph-here-now__person";
+      dot.dataset.pid = person.pid;
+      ring.append(dot);
+    }
+    const along = ((index + 0.5) / shown.length) * perimeter;
+    const { x, y } = pointOnPill(along, w, h);
+    dot.style.left = `${x - PresenceDotSize / 2}px`;
+    dot.style.top = `${y - PresenceDotSize / 2}px`;
+    dot.style.backgroundColor = person.color;
+    dot.classList.toggle("is-me", person.isMe);
+    dot.title = person.isMe ? "you" : person.name || "someone here";
+  });
+  existing.forEach((dot) => dot.remove());
+}
+
+export function setupHereNow() {
+  const pill = document.querySelector<HTMLElement>(".ph-here-now");
+  const ring = document.querySelector<HTMLElement>(".ph-here-now__ring");
+  const countElement = document.getElementById("site-console-count-number");
+  const countLabel = document.querySelector(".site-console__status-label");
+  if (!countElement || !countLabel) return;
+
+  let lastPeople: DotPerson[] = [];
+  const redrawDots = () => {
+    if (pill && ring) renderPresenceDots(pill, ring, lastPeople);
+  };
+  // The pill's width changes with the count, and the toy box rescales it.
+  if (pill && typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(redrawDots).observe(pill);
+  }
+
+  playhtml.register<Record<string, never>, undefined, HerePresence>(
+    "site-console-count",
+    {
+      defaultData: {},
+      defaultPresence: { online: true },
+      // `everyone` is one entry per person, even with several tabs open.
+      update: ({ everyone }) => {
+        lastPeople = everyone.map(({ pid, name, color, isMe }) => ({
+          pid,
+          name,
+          color,
+          isMe,
+        }));
+        const peopleCount = Math.max(everyone.length, 1);
+        countElement.textContent = String(peopleCount);
+        countLabel.textContent = " here now";
+        redrawDots();
+      },
+    },
+  );
+}
+
+function renderTally(count: number) {
+  const tally = document.querySelector<HTMLElement>(".ph-code__bar .ph-tally");
+  if (!tally) return;
+  // Tally marks for the first few copies, then just the number.
+  const shown = Math.min(count, 10);
+  tally.replaceChildren(
+    ...Array.from({ length: shown }, (_, index) => {
+      const mark = document.createElement("i");
+      if (index % 5 === 4) mark.className = "slash";
+      return mark;
+    }),
+  );
+}
+
+// "How it works" step 1: counts how many times the snippet was copied.
+export function setupSnippetCopies() {
+  const counter = document.getElementById("copy-snippet-count");
+  const button = document.querySelector<HTMLButtonElement>(
+    "[data-copy-snippet]",
+  );
+  if (!counter || !button) return;
+
+  playhtml.register<{ count: number }>(counter, {
+    defaultData: { count: 0 },
+    update: ({ element, data }) => {
+      const count = Number.isFinite(data.count) ? data.count : 0;
+      element.textContent =
+        count === 0
+          ? "copy it"
+          : `copied ${count.toLocaleString()} ${count === 1 ? "time" : "times"}`;
+      renderTally(count);
+    },
+    onMount: ({ setData, getData }) => {
+      button.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(SnippetText);
+        } catch {
+          // Clipboard can be blocked; still count the intent to copy.
+        }
+        const current = getData().count;
+        setData({ count: (Number.isFinite(current) ? current : 0) + 1 });
+        button.textContent = "copied";
+        window.setTimeout(() => {
+          button.textContent = "copy";
+        }, 1400);
+      });
+    },
+  });
+}
+
+interface PersistNoteData {
+  x: number;
+  y: number;
+  moves: number;
+}
+
+// "How it works" step 3: a note that stays wherever the last person left it.
+// Position is stored as a fraction of the card so it fits any screen width,
+// and it's written once per drag, on release.
+export function setupPersistentNote() {
+  const note = document.getElementById("how-note");
+  const bounds = document.getElementById("how-persist-bounds");
+  const movedLabel = document.querySelector<HTMLElement>("[data-moved-label]");
+  if (!note || !bounds) return;
+
+  const place = (x: number, y: number) => {
+    note.style.left = `${x * 100}%`;
+    note.style.top = `${y * 100}%`;
+  };
+
+  playhtml.register<PersistNoteData>(note, {
+    defaultData: { x: 0.07, y: 0.33, moves: 0 },
+    update: ({ data }) => {
+      if (Number.isFinite(data.x) && Number.isFinite(data.y)) {
+        place(data.x, data.y);
+      }
+      const moves = Number.isFinite(data.moves) ? data.moves : 0;
+      if (movedLabel) {
+        setLabelText(
+          movedLabel,
+          `moved ${moves.toLocaleString()} ${moves === 1 ? "time" : "times"}`,
+        );
+      }
+    },
+    onMount: ({ getData, setData }) => {
+      let drag: {
+        pointerX: number;
+        pointerY: number;
+        left: number;
+        top: number;
+        moved: boolean;
+      } | null = null;
+      let next = { x: 0, y: 0 };
+
+      note.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        note.setPointerCapture(event.pointerId);
+        drag = {
+          pointerX: event.clientX,
+          pointerY: event.clientY,
+          left: note.offsetLeft,
+          top: note.offsetTop,
+          moved: false,
+        };
+        note.style.cursor = "grabbing";
+      });
+
+      note.addEventListener("pointermove", (event) => {
+        if (!drag) return;
+        const maxLeft = bounds.clientWidth - note.offsetWidth;
+        const maxTop = bounds.clientHeight - note.offsetHeight;
+        const left = Math.min(
+          maxLeft,
+          Math.max(0, drag.left + event.clientX - drag.pointerX),
+        );
+        const top = Math.min(
+          maxTop,
+          Math.max(0, drag.top + event.clientY - drag.pointerY),
+        );
+        drag.moved = true;
+        next = {
+          x: left / bounds.clientWidth,
+          y: top / bounds.clientHeight,
+        };
+        place(next.x, next.y);
+      });
+
+      const finish = () => {
+        if (!drag) return;
+        const { moved } = drag;
+        drag = null;
+        note.style.cursor = "";
+        if (!moved) return;
+        const current = getData();
+        setData({
+          x: next.x,
+          y: next.y,
+          moves: (Number.isFinite(current.moves) ? current.moves : 0) + 1,
+        });
+      };
+      note.addEventListener("pointerup", finish);
+      note.addEventListener("pointercancel", finish);
+    },
+  });
+}
+
+// Any hue, with saturation and lightness kept in a band that stays readable
+// on the light page. Older rooms may still hold palette hex colors.
+const WordmarkColorPattern =
+  /^(#[0-9a-f]{6}|hsl\(\d{1,3} \d{1,3}% \d{1,3}%\))$/i;
+
+function randomWordmarkColor(current: string | undefined): string {
+  const currentHue = Number(current?.match(/^hsl\((\d+)/)?.[1] ?? NaN);
+  let hue = Math.floor(Math.random() * 360);
+  // Step away from the current hue so each click visibly changes the letter.
+  if (
+    !Number.isNaN(currentHue) &&
+    Math.min(Math.abs(hue - currentHue), 360 - Math.abs(hue - currentHue)) < 40
+  ) {
+    hue = (hue + 120) % 360;
+  }
+  const saturation = 55 + Math.floor(Math.random() * 30);
+  const lightness = 34 + Math.floor(Math.random() * 14);
+  return `hsl(${hue} ${saturation}% ${lightness}%)`;
+}
+
+type WordmarkColorData = Record<string, string>;
+
+// Footer wordmark: every click on a letter changes it to a new random color,
+// shared with everyone. One color per letter id, written only from clicks
+// (last write wins). Letters nobody has clicked yet stay ink.
+export function setupWordmarkColors() {
+  const wordmark = document.getElementById("wordmark-colors");
+  if (!wordmark) return;
+
+  const paint = (colors: WordmarkColorData) => {
+    wordmark.querySelectorAll<HTMLElement>(".letter").forEach((letter) => {
+      const color = colors[letter.id];
+      if (typeof color === "string" && WordmarkColorPattern.test(color)) {
+        letter.style.setProperty("--letter-color", color);
+        letter.dataset.lit = "";
+      } else {
+        letter.style.removeProperty("--letter-color");
+        delete letter.dataset.lit;
+      }
+    });
+  };
+
+  playhtml.register<WordmarkColorData>(wordmark, {
+    defaultData: {},
+    update: ({ data }) => paint(data ?? {}),
+    onMount: ({ getData, setData }) => {
+      wordmark.addEventListener("click", (event) => {
+        const letter = (event.target as HTMLElement).closest<HTMLElement>(
+          ".letter",
+        );
+        if (!letter?.id) return;
+        const next = randomWordmarkColor(getData()?.[letter.id]);
+        setData((draft) => {
+          draft[letter.id] = next;
+        });
+      });
+    },
+  });
+}
+
+type TipPresence = { tips: number };
+
+// Where coin n sits in the jar: rows of three, stacking up from the coins
+// drawn in the markup. Past the top row they pile on the last spot.
+const MaxShownCoins = 21;
+function coinPosition(index: number) {
+  const slot = Math.min(index, MaxShownCoins - 1);
+  const row = Math.floor(slot / 3);
+  const column = slot % 3;
+  const shift = row % 2 === 0 ? 0 : 6;
+  return {
+    x: 42 + column * 17 + shift + ((slot * 7) % 5) - 2,
+    y: 92 - row * 11 + ((slot * 3) % 4) - 2,
+  };
+}
+
+// Support card tip jar. Each click adds a coin to your own presence, and the
+// jar shows the sum for everyone here, so it empties once everyone leaves.
+export function setupTipJar() {
+  const jar = document.getElementById("tip-jar");
+  const coins = jar?.querySelector<SVGGElement>("[data-tip-coins]");
+  const count = jar?.querySelector<HTMLElement>("[data-tip-count]");
+  if (!jar || !coins || !count) return;
+
+  const render = (total: number) => {
+    const shown = Math.min(total, MaxShownCoins);
+    while (coins.childElementCount > shown) coins.lastElementChild?.remove();
+    while (coins.childElementCount < shown) {
+      const { x, y } = coinPosition(coins.childElementCount);
+      const coin = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "circle",
+      );
+      coin.setAttribute("cx", String(x));
+      coin.setAttribute("cy", String(y));
+      coin.setAttribute("r", "8");
+      coin.setAttribute("fill", "#e8a63a");
+      coin.setAttribute("stroke", "#1c1c1c");
+      coin.classList.add("is-new");
+      coins.append(coin);
+    }
+    count.textContent =
+      total === 0
+        ? "click to tip"
+        : `${total.toLocaleString()} ${total === 1 ? "coin" : "coins"} now`;
+  };
+
+  playhtml.register<Record<string, never>, undefined, TipPresence>(jar, {
+    defaultData: {},
+    defaultPresence: { tips: 0 },
+    update: ({ everyone }) => {
+      const total = everyone.reduce((sum, person) => {
+        const tips = person.presence?.tips;
+        return sum + (Number.isFinite(tips) && tips > 0 ? tips : 0);
+      }, 0);
+      render(total);
+    },
+    onMount: ({ getMe, setMyPresence }) => {
+      jar.addEventListener("click", () => {
+        const mine = getMe().presence?.tips;
+        setMyPresence({
+          tips: (Number.isFinite(mine) && mine > 0 ? mine : 0) + 1,
+        });
+      });
+    },
+  });
+}
+
+// The homepage no longer shows the experiments row, but its room still holds
+// the smudges people left on it. Keep the element registered (with `shared` in
+// index.html) so the gallery and /experiments can read and add to those
+// smudges. Consumer writes only land on elements the source room already has,
+// so this registration is what keeps the entry present. It never writes.
+export function setupExperimentsTracesHost() {
+  if (!document.getElementById("experiments-index")) return;
+  playhtml.register<{ traces: unknown[] }>("experiments-index", {
+    defaultData: { traces: [] },
+    update: () => {},
+  });
+}

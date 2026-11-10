@@ -1,7 +1,7 @@
 // ABOUTME: Styles for the data collection settings screen
 // ABOUTME: Covers collector cards, mode radio buttons, privacy settings, and filter tags
 
-@use '../styles/variables' as *;
+@use "../styles/variables" as *;
 
 .collections {
   padding: 16px;
@@ -229,7 +229,9 @@
     font-size: 11px;
     color: $text-muted;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
 
     &:hover:not(:disabled) {
       color: $text;
@@ -240,6 +242,16 @@
       opacity: 0.5;
       cursor: default;
     }
+  }
+
+  // The open section's button reads as selected, like a tab.
+  & &__transfer-btn--active,
+  & &__transfer-btn--active:disabled {
+    opacity: 1;
+    color: #22433c;
+    background: $active-bg;
+    border-color: $accent-teal;
+    box-shadow: inset 0 0 0 1px $accent-teal;
   }
 
   &__import-progress {
@@ -293,7 +305,10 @@
     font-size: 10px;
     color: #b34a38;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    transition:
+      background 0.15s,
+      color 0.15s,
+      border-color 0.15s;
 
     &:hover {
       background: rgba(196, 74, 54, 0.08);
@@ -348,7 +363,9 @@
   border-radius: 6px;
   background: $bg;
   position: relative;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 
   // Local: rust accent bar — data stays close, private, at rest.
   // Mirrors shared's left-bar treatment so "active" has a shared visual
@@ -450,7 +467,7 @@
       }
     }
 
-    input[type='radio'] {
+    input[type="radio"] {
       accent-color: $accent-teal;
       width: 11px;
       height: 11px;
@@ -521,7 +538,7 @@
     font-size: 10px;
     letter-spacing: 0.3px;
     text-transform: uppercase;
-    font-family: 'Martian Mono', monospace;
+    font-family: "Martian Mono", monospace;
     background: transparent;
     color: $text-muted;
     border: 1px solid $border;
@@ -566,11 +583,11 @@
     font-size: 10px;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    font-family: 'Martian Mono', monospace;
+    font-family: "Martian Mono", monospace;
   }
 
   &__privacy-preview-value {
-    font-family: 'Martian Mono', monospace;
+    font-family: "Martian Mono", monospace;
     color: $text;
     word-break: break-word;
 

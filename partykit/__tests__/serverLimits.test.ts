@@ -1,10 +1,20 @@
-// ABOUTME: Verifies PartyServer abuse limits for message rate, payload size, and document size.
+// ABOUTME: Verifies PartyServer abuse limits for message rate, payload, room, per-IP, and document size.
 // ABOUTME: Keeps limit decisions testable without a Cloudflare Durable Object runtime.
 import { describe, expect, it } from "bun:test";
-import { DEFAULT_MESSAGE_RATE_LIMIT } from "../const";
 import {
+  DEFAULT_MAX_PRESENCE_MESSAGE_CHARS,
+  DEFAULT_MESSAGE_RATE_LIMIT,
+} from "../const";
+import { MAX_PRESENCE_VALUE_BYTES } from "@playhtml/common";
+import {
+  checkEdgeRateLimit,
   checkMessageRate,
   isDurableObjectOverloadError,
+  isPresenceMessageTooLarge,
+  countOtherConnections,
+  isRoomAtConnectionLimit,
+  parsePositiveLimit,
+  type ConnectionRateLimiter,
   shouldAcceptRequestBody,
   shouldWarnForDocumentSize,
   type ServerLimits,
@@ -175,6 +185,135 @@ describe("isDurableObjectOverloadError", () => {
     ).toBe(false);
     expect(isDurableObjectOverloadError("Durable Object is overloaded")).toBe(
       false,
+    );
+  });
+});
+
+describe("room connection limit", () => {
+  it("lets a room fill up to its limit and refuses the next socket", () => {
+    expect(isRoomAtConnectionLimit(499, 500)).toBe(false);
+    expect(isRoomAtConnectionLimit(500, 500)).toBe(true);
+  });
+
+  it("counts the same way whether or not the new socket is already listed", () => {
+    const a = {};
+    const b = {};
+    const connecting = {};
+    expect(countOtherConnections([a, b], connecting)).toBe(2);
+    expect(countOtherConnections([a, b, connecting], connecting)).toBe(2);
+  });
+});
+
+describe("isPresenceMessageTooLarge", () => {
+  it("accepts a message carrying a full-size presence value", () => {
+    const message = JSON.stringify({
+      type: "presence-update",
+      channel: "cursor",
+      value: "x".repeat(MAX_PRESENCE_VALUE_BYTES),
+    });
+    expect(
+      isPresenceMessageTooLarge(message, DEFAULT_MAX_PRESENCE_MESSAGE_CHARS)
+    ).toBe(false);
+  });
+
+  it("refuses messages over the cap", () => {
+    expect(isPresenceMessageTooLarge("x".repeat(11), 10)).toBe(true);
+    expect(isPresenceMessageTooLarge("x".repeat(10), 10)).toBe(false);
+  });
+});
+
+describe("parsePositiveLimit", () => {
+  it("uses the override when it is a positive number", () => {
+    expect(parsePositiveLimit("250", 500)).toBe(250);
+  });
+
+  it("falls back when unset or invalid", () => {
+    expect(parsePositiveLimit(undefined, 500)).toBe(500);
+    expect(parsePositiveLimit("", 500)).toBe(500);
+    expect(parsePositiveLimit("0", 500)).toBe(500);
+    expect(parsePositiveLimit("lots", 500)).toBe(500);
+  });
+});
+
+describe("checkEdgeRateLimit", () => {
+  function fakeLimiter(allowed: number) {
+    const keys: string[] = [];
+    const limiter: ConnectionRateLimiter = {
+      async limit({ key }) {
+        keys.push(key);
+        return { success: keys.filter((k) => k === key).length <= allowed };
+      },
+    };
+    return { limiter, keys };
+  }
+
+  function roomRequest(ip: string | null, path = "/parties/main/room-a") {
+    const headers = new Headers({ Upgrade: "websocket" });
+    if (ip) headers.set("CF-Connecting-IP", ip);
+    return new Request(`https://api.playhtml.fun${path}`, { headers });
+  }
+
+  it("keys the limit by client IP and returns 429 once it is used up", async () => {
+    const { limiter, keys } = fakeLimiter(2);
+    expect(await checkEdgeRateLimit(roomRequest("1.2.3.4"), limiter)).toBe(null);
+    expect(await checkEdgeRateLimit(roomRequest("1.2.3.4"), limiter)).toBe(null);
+    const blocked = await checkEdgeRateLimit(roomRequest("1.2.3.4"), limiter);
+    expect(blocked?.status).toBe(429);
+    expect(blocked?.headers.get("Retry-After")).toBe("60");
+    expect(keys).toEqual(["1.2.3.4", "1.2.3.4", "1.2.3.4"]);
+  });
+
+  it("limits each IP separately", async () => {
+    const { limiter } = fakeLimiter(1);
+    expect(await checkEdgeRateLimit(roomRequest("1.1.1.1"), limiter)).toBe(null);
+    expect(await checkEdgeRateLimit(roomRequest("2.2.2.2"), limiter)).toBe(null);
+    expect(
+      (await checkEdgeRateLimit(roomRequest("1.1.1.1"), limiter))?.status
+    ).toBe(429);
+  });
+
+  it("only limits room routes", async () => {
+    const { limiter, keys } = fakeLimiter(0);
+    expect(
+      await checkEdgeRateLimit(roomRequest("1.2.3.4", "/admin/quarantine"), limiter)
+    ).toBe(null);
+    expect(keys).toEqual([]);
+  });
+
+  it("skips requests with no client IP and deployments with no binding", async () => {
+    const { limiter } = fakeLimiter(0);
+    expect(await checkEdgeRateLimit(roomRequest(null), limiter)).toBe(null);
+    expect(await checkEdgeRateLimit(roomRequest("1.2.3.4"), undefined)).toBe(
+      null
+    );
+  });
+
+  it("logs a blocked IP once a minute, not once per request", async () => {
+    const { limiter } = fakeLimiter(0);
+    const original = console.warn;
+    const lines: string[] = [];
+    console.warn = (...args: unknown[]) => lines.push(args.join(" "));
+    try {
+      for (let i = 0; i < 5; i += 1) {
+        await checkEdgeRateLimit(roomRequest("198.51.100.7"), limiter);
+      }
+    } finally {
+      console.warn = original;
+    }
+    const blocks = lines.filter((line) =>
+      line.includes("[ServerLimits] Edge rate limit: blocking ip=198.51.100.7")
+    );
+    expect(blocks.length).toBe(1);
+  });
+
+  it("lets requests through when the limiter itself fails", async () => {
+    const limiter: ConnectionRateLimiter = {
+      async limit() {
+        throw new Error("limiter unavailable");
+      },
+    };
+    expect(await checkEdgeRateLimit(roomRequest("1.2.3.4"), limiter)).toBe(
+      null
     );
   });
 });

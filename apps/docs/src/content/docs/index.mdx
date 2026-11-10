@@ -1,94 +1,122 @@
 ---
-title: "playhtml docs"
-template: splash
-hero:
-  title: "make the web feel alive"
-  tagline: "Turn any element into a live, shared one with a single attribute, no backend required."
-  actions:
-    - text: "Get started"
-      link: /docs/getting-started/
-      icon: right-arrow
-      variant: primary
-    - text: "GitHub"
-      link: https://github.com/spencerc99/playhtml
-      icon: external
-      variant: minimal
+title: "Getting started"
+description: "Add playhtml to a page and make your first shared element."
+sidebar:
+  order: 1
 ---
 
-import { Card, CardGrid, Tabs, TabItem } from "@astrojs/starlight/components";
-import { LampToggleDemo } from "../../components/react/LampToggleDemo";
+import { Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
+import { InteractiveToggleDemo } from '@/components/react/InteractiveToggleDemo';
 
-<figure class="ph-splash-lamp ph-splash-lamp--furniture" aria-label="live demo">
-  <LampToggleDemo client:only="react" id="ph-splash-lamp" />
-  <figcaption class="ph-splash-lamp__tag">
-    <span class="ph-splash-lamp__pip" aria-hidden="true"></span>
-    toggles for everyone live!
-  </figcaption>
-</figure>
+playhtml makes HTML elements live and shared. Add an attribute like `can-toggle` to an element, and when anyone changes it, everyone on the page sees the change. The new state is saved for the next visitor too.
 
-<div class="ph-splash-pitch">
-  <ul class="ph-splash-pitch__list">
-      <li>
-      <strong>Make the web feel alive.</strong> Turn static web pages into
-      dynamic, living spaces.
-    </li>
-    <li>
-      <strong>Fully customizable.</strong> Use built-in capabilities to get started or build your own social experiences.
-    </li>
-    <li>
-      <strong>Library-agnostic, fast, expressive.</strong> Works with plain
-      HTML, React, or any framework.
-    </li>
-    <li>
-      <strong>No backend to run.</strong> Real-time sync and persistence taken
-      care of. Self-host for full control.
-    </li>
+You don't need a backend. Elements sync through a server we run, or you can [run your own](/docs/reference/init-options/#host).
 
-  </ul>
-</div>
+## Try it
 
-<div class="ph-splash-quickstart">
-  <div class="ph-splash-quickstart__label">FIG. 01 &nbsp;·&nbsp; 30-second install</div>
+This switch is shared with everyone reading this page right now. Flip it.
 
-  <Tabs syncKey="framework">
-    <TabItem label="Vanilla HTML">
+<InteractiveToggleDemo client:only="react" />
+
+## Make your own
+
+<Tabs syncKey="framework">
+  <TabItem label="Vanilla HTML">
+
+Add `can-toggle` and a unique `id` to an element, then add the playhtml script at the end of `<body>`:
+
 ```html
-<div id="couch" can-move style="display: inline-block; font-size: 80px">🛋️</div>
+<body>
+  <div id="my-light" class="light" can-toggle></div>
+
+  <style>
+    .light {
+      width: 80px; height: 80px; border-radius: 50%;
+      background: gold; filter: brightness(0.4);
+    }
+    /* can-toggle adds the "toggled" class when the light is on */
+    .light.toggled {
+      filter: brightness(1.2) drop-shadow(0 0 24px gold);
+    }
+  </style>
+
+  <script type="module" src="https://unpkg.com/playhtml/dist/init.es.js"></script>
+</body>
+```
+
+Open the page in two windows and click the light. It turns on in both.
+
+The `id` is how playhtml tells elements apart, so each one needs its own. The script goes after your elements because it looks for them as soon as it loads.
+
+**To pass options**, like showing everyone's cursors, import playhtml and call `init()` yourself instead of using the script tag above:
+
+```html
 <script type="module">
   import { playhtml } from "https://unpkg.com/playhtml";
-  playhtml.init();
+  playhtml.init({ cursors: { enabled: true } });
 </script>
 ```
-    </TabItem>
-    <TabItem label="React">
-```tsx
-// npm install playhtml @playhtml/react
-import { PlayProvider, CanMoveElement } from "@playhtml/react";
 
-<PlayProvider>
-  <CanMoveElement>
-    <div id="couch" style={{ display: "inline-block", fontSize: 80 }}>🛋️</div>
-  </CanMoveElement>
-</PlayProvider>
+  </TabItem>
+  <TabItem label="React">
+
+Install playhtml and its React package (React 16.8 and up):
+
+```bash
+npm install playhtml @playhtml/react
 ```
-    </TabItem>
-  </Tabs>
-</div>
 
-<div class="ph-splash-section">
-  <div class="ph-splash-section__label">FIG. 02 &nbsp;·&nbsp; start here</div>
-  <CardGrid>
-    <Card title="Getting started" icon="rocket">
-      Install playhtml and ship your first live element. [Read
-      &rarr;](/docs/getting-started/)
-    </Card>
-    <Card title="Core concepts" icon="open-book">
-      Shared data, people and presence, events: when to use each. [Read
-      &rarr;](/docs/concepts/)
-    </Card>
-    <Card title="Capabilities" icon="puzzle">
-      Every built-in `can-*` attribute with live demos. [Read
-      &rarr;](/docs/capabilities/)
-    </Card>
-  </CardGrid>
-</div>
+Wrap your app in `PlayProvider` once, then wrap an element in `CanToggleElement`. The element needs a unique `id`.
+
+```tsx
+import { PlayProvider, CanToggleElement } from "@playhtml/react";
+
+export function App() {
+  return (
+    <PlayProvider>
+      <CanToggleElement>
+        <div id="my-light" className="light" />
+      </CanToggleElement>
+    </PlayProvider>
+  );
+}
+```
+
+`CanToggleElement` adds the `toggled` class when the light is on:
+
+```css
+.light {
+  width: 80px; height: 80px; border-radius: 50%;
+  background: gold; filter: brightness(0.4);
+}
+.light.toggled {
+  filter: brightness(1.2) drop-shadow(0 0 24px gold);
+}
+```
+
+Open the page in two windows and click the light. It turns on in both.
+
+To pass options, like showing everyone's cursors, use `<PlayProvider initOptions={{ cursors: { enabled: true } }}>`.
+
+  </TabItem>
+</Tabs>
+
+## Where to next
+
+Read these in order:
+
+1. [Core concepts](/docs/concepts/): the three things playhtml shares (data on elements, the people on the page, and events) and when to use each.
+2. [Built-in elements](/docs/capabilities/): every `can-*` attribute (move, spin, grow, and more) with live demos.
+3. [Custom elements](/docs/custom-elements/): build your own shared element, like a counter or a guestbook.
+4. [People and presence](/docs/data/presence/): who's on the page, their names and colors, and cursors.
+
+Using a coding agent? See [Building with AI](/docs/integrations/building-with-ai/).
+
+## Join the community
+
+Share what you've made, get help, and see what others are building on Discord.
+
+<LinkCard
+  title="Join the playhtml Discord"
+  href="https://discord.com/invite/SKbsSf4ptU"
+/>

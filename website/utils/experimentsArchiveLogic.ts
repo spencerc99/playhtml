@@ -37,7 +37,9 @@ export function addExperimentTrace(
   );
 
   return [
-    ...traces.filter((_existingTrace, index) => !indexesToRemove.includes(index)),
+    ...traces.filter(
+      (_existingTrace, index) => !indexesToRemove.includes(index),
+    ),
     trace,
   ];
 }
@@ -88,4 +90,13 @@ export function buildRandomExperimentSequence<T extends ExperimentEntry>(
     { length: experiments.length * 3 + normalizedIndex + 1 },
     (_, index) => experiments[index % experiments.length],
   );
+}
+
+// Where the shared experiment smudges live: the homepage shelf on this same
+// host. Other pages (the /experiments wall, the gallery) read it as a
+// data-source so everyone's clicks land in one place.
+export const ExperimentsTracesElementId = "experiments-index";
+
+export function experimentsTracesSource(): string {
+  return `${window.location.host}#${ExperimentsTracesElementId}`;
 }
