@@ -707,6 +707,33 @@ describe("can-mirror: minimal shared writes", () => {
     expect(sink.element.querySelector("select")!.selectedIndex).toBe(1);
   });
 
+  it("unchecks the previous radio in shared state so late joiners see the latest pick", async () => {
+    const html = `<form id="r"><input type="radio" name="g" value="a" /><input type="radio" name="g" value="b" /></form>`;
+    const source = mountClient(elementFromHTML(html));
+    const [a, b] = Array.from(
+      source.element.querySelectorAll("input"),
+    ) as HTMLInputElement[];
+
+    b.checked = true;
+    b.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+    a.checked = true;
+    a.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+
+    const root = source.state as any;
+    expect(root.children[0].formState).toEqual({ checked: true });
+    expect(root.children[1].formState).toEqual({ checked: false });
+
+    const late = mountClient(elementFromHTML(html));
+    await sync(source, late);
+    const [lateA, lateB] = Array.from(
+      late.element.querySelectorAll("input"),
+    ) as HTMLInputElement[];
+    expect(lateA.checked).toBe(true);
+    expect(lateB.checked).toBe(false);
+  });
+
   it("mirrors a burst of appends made in one go", async () => {
     const source = mountClient(elementFromHTML(`<ul id="l">${siblings(20)}</ul>`));
     const sink = mountClient(elementFromHTML(`<ul id="l">${siblings(20)}</ul>`));

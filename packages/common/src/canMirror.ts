@@ -118,12 +118,15 @@ export const canMirrorInitializer: ElementInitializer<ElementState> = {
     const syncInputState = (event: Event) => {
       // Fast path: a form control changed. Write just its form state, found by
       // its position, without snapshotting the whole element on every key.
+      // Radios take the full path: checking one silently unchecks the others
+      // in its group (no event fires on them), so their entries must update too.
       const target = event.target;
       if (
         (target instanceof HTMLInputElement ||
           target instanceof HTMLTextAreaElement ||
           target instanceof HTMLSelectElement) &&
-        !target.isContentEditable
+        !target.isContentEditable &&
+        !(target instanceof HTMLInputElement && target.type === "radio")
       ) {
         const path = getMirroredPath(element, target);
         const formState = captureFormState(target as HTMLElement);
