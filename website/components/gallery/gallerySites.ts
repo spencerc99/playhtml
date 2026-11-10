@@ -79,7 +79,6 @@ export function studioItems(): GalleryItem[] {
     .map((experiment) => ({
       id: experiment.number,
       title: experiment.name,
-      by: "Spencer",
       description: experiment.description,
       href: experiment.href!,
       hostname: `playhtml.fun${experiment.href!.replace(/\/$/, "")}`,

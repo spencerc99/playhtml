@@ -80,8 +80,20 @@ function clickX(event: MouseEvent<HTMLElement>) {
   return Math.min(0.92, Math.max(0.08, raw));
 }
 
-function byline(item: GalleryItem) {
-  return item.by ? `by ${item.by}` : item.hostname;
+// The site's address, styled like a link, with an "experiment" tag on the
+// studio's own pieces.
+function SiteMeta({ item }: { item: GalleryItem }) {
+  return (
+    <span className="ph-gallery__meta">
+      {item.fromStudio ? (
+        <span className="ph-gallery__tag">experiment</span>
+      ) : null}
+      <span className="ph-gallery__host">{item.hostname}</span>
+      <span className="ph-gallery__arrow" aria-hidden="true">
+        {"\u2197"}
+      </span>
+    </span>
+  );
 }
 
 interface GalleryData {
@@ -299,10 +311,8 @@ const GalleryGrid = withSharedState<GalleryData>(
                     {item.description ? (
                       <i className="ph-gallery__desc">{item.description}</i>
                     ) : null}
-                    <span>{byline(item)}</span>
-                    {item.by ? (
-                      <span className="ph-gallery__host">{item.hostname}</span>
-                    ) : null}
+                    {item.by ? <span>by {item.by}</span> : null}
+                    <SiteMeta item={item} />
                   </span>
                 </a>
               );
@@ -340,7 +350,11 @@ const GalleryGrid = withSharedState<GalleryData>(
                 >
                   <Smudges traces={tracesById.get(item.id) ?? []} />
                   <b>{item.title}</b>
-                  <span>{byline(item)}</span>
+                  {item.by ? (
+                    <span>by {item.by}</span>
+                  ) : (
+                    <SiteMeta item={item} />
+                  )}
                 </a>
               ))}
             </div>
@@ -359,8 +373,8 @@ const GalleryGrid = withSharedState<GalleryData>(
                   {preview.description ? (
                     <i className="ph-gallery__desc">{preview.description}</i>
                   ) : null}
-                  <span>{byline(preview)}</span>
-                  <span className="ph-gallery__host">{preview.hostname}</span>
+                  {preview.by ? <span>by {preview.by}</span> : null}
+                  <SiteMeta item={preview} />
                 </span>
               </aside>
             ) : null}
