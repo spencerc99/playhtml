@@ -1,12 +1,8 @@
 // ABOUTME: Shows the newest sites from the public Are.na playhtml channel on the homepage.
 // ABOUTME: Falls back to a link to the full gallery if the channel can't be reached.
 
-import { type CSSProperties, useEffect, useState } from "react";
-import {
-  ARENA_CONTENTS_URL,
-  mapArenaSites,
-  type SiteSummary,
-} from "../../../apps/docs/src/components/examples/catalogue";
+import { type CSSProperties, useEffect } from "react";
+import { useGallerySites } from "../gallery/gallerySites";
 
 const SitesShown = 6;
 const PlaceholderColors = [
@@ -18,38 +14,30 @@ const PlaceholderColors = [
   "#cfe8ec",
 ];
 
-type GalleryState =
-  | { status: "loading" }
-  | { status: "ready"; sites: SiteSummary[] }
-  | { status: "failed" };
-
 export function MadeWithGallery() {
-  const [state, setState] = useState<GalleryState>({ status: "loading" });
+  const state = useGallerySites();
+  const sites =
+    state.status === "ready"
+      ? state.items
+          .filter((item) => !item.fromStudio && item.imageUrl)
+          .slice(0, SitesShown)
+      : [];
+  const moreCount =
+    state.status === "ready" ? state.items.length - sites.length : 0;
 
+  // The "see more" link sits below the grid in the static page, so it works
+  // before React loads; once the gallery loads, it says how many more there are.
   useEffect(() => {
-    const controller = new AbortController();
+    const more = document.getElementById("home-gallery-more");
+    if (more && moreCount > 0) {
+      more.textContent = `see ${moreCount} more in the gallery →`;
+    }
+  }, [moreCount]);
 
-    fetch(ARENA_CONTENTS_URL, { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) throw new Error(`Are.na ${response.status}`);
-        return response.json();
-      })
-      .then((body) => {
-        const sites = mapArenaSites(body)
-          .filter((site) => site.imageUrl)
-          .slice(0, SitesShown);
-        setState(
-          sites.length > 0 ? { status: "ready", sites } : { status: "failed" },
-        );
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setState({ status: "failed" });
-      });
-
-    return () => controller.abort();
-  }, []);
-
-  if (state.status === "failed") {
+  if (
+    state.status === "failed" ||
+    (state.status === "ready" && !sites.length)
+  ) {
     return (
       <p className="ph-made__fallback">
         Couldn't load the gallery right now.{" "}
@@ -82,7 +70,7 @@ export function MadeWithGallery() {
 
   return (
     <>
-      {state.sites.map((site) => (
+      {sites.map((site) => (
         <a className="ph-site" href={site.href} key={site.id}>
           <span className="ph-site__shot">
             <img
@@ -93,7 +81,7 @@ export function MadeWithGallery() {
           </span>
           <span className="ph-site__meta">
             <b>{site.hostname}</b>
-            {site.author ? <span>by {site.author}</span> : null}
+            {site.by ? <span>by {site.by}</span> : null}
           </span>
         </a>
       ))}
