@@ -27,13 +27,15 @@
     ]
   },
   // Per-IP limit on requests to rooms, checked before a Durable Object wakes.
-  // Generous so a classroom or event sharing one network stays well under it.
+  // Set high enough that a venue or carrier NAT with thousands of people behind
+  // one IP all opening a page at once stays under it; it only stops one source
+  // opening rooms at machine speed.
   // namespace_id is an arbitrary account-unique id; staging uses its own.
   "ratelimits": [
     {
       "name": "CONNECTION_RATE_LIMITER",
       "namespace_id": "4501",
-      "simple": { "limit": 600, "period": 60 }
+      "simple": { "limit": 6000, "period": 60 }
     }
   ],
   // Operator control plane for room quarantine. Read before hydration, so a room
@@ -96,7 +98,7 @@
         {
           "name": "CONNECTION_RATE_LIMITER",
           "namespace_id": "4502",
-          "simple": { "limit": 600, "period": 60 }
+          "simple": { "limit": 6000, "period": 60 }
         }
       ],
       "kv_namespaces": [
