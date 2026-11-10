@@ -2247,7 +2247,7 @@ h3 {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
   gap: 28px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .ph-ask {
