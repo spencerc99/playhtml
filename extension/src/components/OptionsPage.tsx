@@ -13,6 +13,7 @@ import {
   YourDataSection,
 } from "./Collections";
 import { DeveloperFeaturesSection } from "./DeveloperFeaturesPage";
+import { SiteSettingsSection } from "./SiteSettingsSection";
 import { FeatureGate } from "./FeatureGate";
 import { Inventory } from "./Inventory";
 import { QuickActions } from "./QuickActions";
@@ -38,6 +39,7 @@ const DISCORD_INVITE_URL = "https://discord.gg/SKbsSf4ptU";
 const SECTIONS = [
   { id: "identity", title: "Identity" },
   { id: "data-collection", title: "Data collection" },
+  { id: "sites", title: "Sites" },
   { id: "browser", title: "Browser" },
   { id: "bag-settings", title: "Bag settings" },
   { id: "experiments", title: "Experiments" },
@@ -411,6 +413,13 @@ export function OptionsPage() {
           <h1>Data collection</h1>
           <div className="options-page__card options-page__collections-card">
             <DataCollectionSection />
+          </div>
+        </section>
+
+        <section id="sites" className="options-page__section">
+          <h1>Sites</h1>
+          <div className="options-page__card">
+            <SiteSettingsSection />
           </div>
         </section>
 

@@ -23,6 +23,8 @@ import { PopupNav, WALKING_RECORD_PAGE } from "./PopupNav";
 import { SlowModeSettings } from "./SlowModeSettings";
 import { DebugModesSettings } from "./DebugModesSettings";
 import { usePhoneLayout } from "../entrypoints/scraps/phoneLayout";
+import { SitePrivacyControl, useSiteLevel } from "./SitePrivacyControl";
+import { normalizeSiteHost } from "../storage/siteSettings";
 
 interface Props {
   playerIdentity: PlayerIdentity | null;
@@ -71,6 +73,8 @@ export function InternetPortraitHome({
     null,
   );
   const [portraitStatsLoaded, setPortraitStatsLoaded] = useState(false);
+  const [siteHost, setSiteHost] = useState<string | null>(null);
+  const site = useSiteLevel(siteHost);
   const copresenceEnabled = useFeatureState("COPRESENCE").enabled;
   const phone = usePhoneLayout();
 
@@ -129,6 +133,9 @@ export function InternetPortraitHome({
           return;
         }
         const url = new URL(tab.url);
+        if (url.protocol === "http:" || url.protocol === "https:") {
+          setSiteHost(normalizeSiteHost(url.hostname) || null);
+        }
         const domain = url.hostname.replace(/^www\./, "");
         const response = await browser.runtime.sendMessage({
           type: "GET_DOMAIN_STATS",
@@ -159,6 +166,13 @@ export function InternetPortraitHome({
       } catch {} // content script may not be ready
     })();
   }, [copresenceEnabled]);
+
+  const siteOff = site.level === "off";
+  // On a "just me" site nothing is shared, so show shared collectors as local.
+  const shownMode = (type: string): CollectionMode => {
+    const mode = collectorModes[type] ?? "off";
+    return site.level === "just-me" && mode === "shared" ? "local" : mode;
+  };
 
   const openPage = (path: string) => {
     if (path === WALKING_RECORD_PAGE) {
@@ -296,26 +310,31 @@ export function InternetPortraitHome({
         </FeatureGate>
         {!phone && portraitPreview}
 
-        <section className="collection-status">
-          <div className="collection-status__header-row">
-            <h3>
-              {phone ? "Collecting on this page" : "Your Collection Status"}
-            </h3>
-            <button
-              onClick={onOpenSettings}
-              title="Data settings"
-              className="collection-status__settings-link"
-            >
-              Settings →
-            </button>
-          </div>
+        <section
+          className={`collection-status${siteOff ? " collection-status--site-off" : ""}`}
+        >
+          {siteHost && site.level ? (
+            <SitePrivacyControl
+              host={siteHost}
+              level={site.level}
+              onChoose={site.choose}
+            />
+          ) : (
+            <div className="collection-status__header-row">
+              <h3>
+                {phone ? "Collecting on this page" : "Your Collection Status"}
+              </h3>
+            </div>
+          )}
           {error && <p className="collection-status__error">{error}</p>}
           {collectors && phone && (
             <p className="collection-status__summary">
-              {collectors
-                .filter((c) => (collectorModes[c.type] ?? "off") !== "off")
-                .map((c) => c.type)
-                .join(" · ") || "nothing right now"}
+              {siteOff
+                ? "nothing on this site"
+                : collectors
+                    .filter((c) => (collectorModes[c.type] ?? "off") !== "off")
+                    .map((c) => c.type)
+                    .join(" · ") || "nothing right now"}
             </p>
           )}
           {collectors && !phone && (
@@ -329,14 +348,24 @@ export function InternetPortraitHome({
                     <span className="collector-pill__name">{c.type}</span>
                   </div>
                   <span
-                    className={`collector-pill__state collector-pill__state--${collectorModes[c.type] ?? "off"}`}
+                    className={`collector-pill__state collector-pill__state--${shownMode(c.type)}`}
                   >
-                    {collectorModes[c.type] ?? "off"}
+                    {shownMode(c.type)}
                   </span>
                 </div>
               ))}
             </div>
           )}
+          <div className="collection-status__footer-row">
+            <span>Your settings for every site</span>
+            <button
+              onClick={onOpenSettings}
+              title="Data settings"
+              className="collection-status__settings-link"
+            >
+              Settings →
+            </button>
+          </div>
         </section>
         <DebugModesSettings />
       </main>

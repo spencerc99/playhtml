@@ -83,6 +83,7 @@ describe("OptionsPage", () => {
       ).toEqual([
         "Identity",
         "Data collection",
+        "Sites",
         "Browser",
         "Bag settings",
         "Experiments",
@@ -96,6 +97,7 @@ describe("OptionsPage", () => {
       ).toEqual([
         "identity",
         "data collection",
+        "sites",
         "browser",
         "bag settings",
         "experiments",
@@ -135,6 +137,7 @@ describe("OptionsPage", () => {
       ).toEqual([
         "identity",
         "data collection",
+        "sites",
         "browser",
         "experiments",
         "community",

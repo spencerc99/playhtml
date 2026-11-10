@@ -21,6 +21,11 @@ import {
   supportsSharedCollection,
 } from '../collectors/modes'
 import {
+  SITE_SETTINGS_KEY,
+  parseSiteSettings,
+  siteLevelFor,
+} from '../storage/siteSettings'
+import {
   ensurePlayerIdentity,
   getPlayerProfile,
   getPublicPlayerIdentity,
@@ -323,10 +328,15 @@ async function flushPendingUploads(): Promise<void> {
 
     const types = Array.from(new Set(pending.map((e) => e.type)))
     const keys = types.map((t) => collectionModeStorageKey(t))
-    const result = await browser.storage.local.get(keys)
+    const result = await browser.storage.local.get([...keys, SITE_SETTINGS_KEY])
 
+    const siteSettings = parseSiteSettings(result[SITE_SETTINGS_KEY])
     const uploadable = pending.filter((e) => {
       if (!supportsSharedCollection(e.type)) return false
+      // Sites set to "just me" (or off) keep their events on this device.
+      if (siteLevelFor(siteSettings, e.meta?.url ?? '') !== 'everyone') {
+        return false
+      }
       const mode = normalizeCollectionMode(
         e.type,
         result[collectionModeStorageKey(e.type)],

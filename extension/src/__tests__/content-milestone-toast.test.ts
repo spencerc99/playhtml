@@ -65,6 +65,7 @@ vi.mock("playhtml", () => ({
 vi.mock("../collectors/CollectorManager", () => ({
   CollectorManager: class {
     registerCollector = vi.fn();
+    setSiteOff = vi.fn().mockResolvedValue(undefined);
     init = vi.fn().mockResolvedValue(undefined);
     stopAll = vi.fn();
     pauseAll = vi.fn();

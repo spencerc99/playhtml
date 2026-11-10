@@ -32,6 +32,9 @@ export class CollectorManager {
   private eventBuffer: EventBuffer;
   private initialized = false;
   private stopInstallationPaceWatch: (() => void) | null = null;
+  // True while the person has turned collection off for this site. Collectors
+  // stay stopped, but mode changes are still saved so they apply elsewhere.
+  private siteOff = false;
 
   constructor() {
     this.eventBuffer = new EventBuffer();
@@ -145,7 +148,7 @@ export class CollectorManager {
     }
     const collector = this.collectors.get(type);
     if (collector) {
-      collector.enable();
+      if (!this.siteOff) collector.enable();
       await this.saveCollectorState(type, true);
       if (VERBOSE) {
         console.log(`[CollectorManager] Collector ${type} enabled successfully`);
@@ -206,7 +209,7 @@ export class CollectorManager {
       
       // Apply saved state to all registered collectors
       for (const [type, collector] of this.collectors.entries()) {
-        if (enabledCollectors[type]) {
+        if (enabledCollectors[type] && !this.siteOff) {
           collector.enable();
         } else {
           collector.disable();
@@ -217,6 +220,35 @@ export class CollectorManager {
     }
   }
   
+  /**
+   * Turn collection off or back on for the current site. Call before init()
+   * so nothing starts on a site that is off. Turning off stops every collector
+   * without touching the saved per-collector settings; turning back on
+   * restores them.
+   */
+  async setSiteOff(off: boolean): Promise<void> {
+    if (this.siteOff === off) return;
+    this.siteOff = off;
+    if (!this.initialized) return;
+    if (off) {
+      const stopping: BaseCollector<any>[] = [];
+      for (const collector of this.collectors.values()) {
+        if (collector.isEnabled()) {
+          collector.disable();
+          stopping.push(collector);
+        }
+      }
+      await Promise.all(stopping.map((c) => c.waitForPendingEvents()));
+    } else {
+      await this.applyModesFromStorage();
+      await this.loadEnabledCollectors();
+    }
+  }
+
+  isSiteOff(): boolean {
+    return this.siteOff;
+  }
+
   /**
    * Get status of all collectors
    */
