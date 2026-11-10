@@ -10,9 +10,10 @@ Use the next experiment number. Numeric experiments live at
 `website/experiments/<number>/`. A named route is appropriate when the name is
 part of the experiment, such as `cinderblock`.
 
-Update `ExperimentNumber` in `website/experiments/index.tsx`. Add an entry to
-`Experiments` when the route is not the numeric default or the archive should
-show a custom title.
+Add an entry to `experiments` in `website/utils/experimentsCatalog.ts` with
+its number, name, one-line description, route, preview image and source path.
+The /experiments wall, the homepage shelf and the gallery all read from that
+list. Set `recommended: true` only for Spencer's picks.
 
 ## Create the page
 
@@ -109,7 +110,7 @@ asset under `site-dist/`.
 - [ ] Add a title, description, canonical URL, Open Graph tags, and Twitter tags.
 - [ ] Capture a deterministic 1200 × 630 preview without user-derived data.
 - [ ] Save the preview as `ex-<NN>.png`.
-- [ ] Update `ExperimentNumber` and any custom slug or title.
+- [ ] Add the experiment to `website/utils/experimentsCatalog.ts`.
 - [ ] Register the route in `siteMetadata.test.ts`.
 - [ ] Verify the real route and its important interaction states in a browser.
 - [ ] Run the metadata test, production build, and `git diff --check`.
