@@ -45,7 +45,8 @@ export interface Env {
   COMMUTE_TRAIN_DISPATCHER: DurableObjectNamespace; // Synchronized train assignment
   COMMUTE_BOARD_RATE_LIMITER: RateLimit; // Public train boarding request limiter
   WWO_ADMIN_DB: D1Database;     // Feature policy, beta cohorts, and operator workflows
-  AI?: Ai;                      // Advisory Internet place classifications
+  AI?: Ai;                      // Advisory Internet place classifications (Clef)
+  JEV_TOKEN?: string;           // Optional: TypeSafe Jev key; when set, Jev replaces Clef
   INTERNET_MAP_BUNDLES: R2Bucket; // Private internet map bundles (real browsing URLs)
   INTERNET_MAP_PASSWORD?: string; // Optional: shared password that opens map bundles only
   SHARED_COLLAGES: R2Bucket;      // Public, view-only shared collages and their pictures
