@@ -388,7 +388,10 @@ $phone: 760px;
   margin-top: 22px;
 
   .ph-page__jump {
+    align-self: center;
     margin: 0 0 0 6px;
+    padding: 0;
+    line-height: 1;
   }
 }
 
