@@ -2392,11 +2392,6 @@ h3 {
   }
 }
 
-.ph-ask__foot--stack {
-  flex-direction: column;
-  align-items: stretch;
-  text-align: center;
-}
 
 .ph-ask__fund-row {
   display: flex;
@@ -2520,7 +2515,7 @@ h3 {
 .ph-jar {
   flex: none;
   // Fixed width so the count label changing length never shifts the goal bar.
-  width: 112px;
+  width: 92px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2533,8 +2528,8 @@ h3 {
   color: inherit;
 
   svg {
-    width: 78px;
-    height: 90px;
+    width: 56px;
+    height: 65px;
     overflow: visible;
     transition: rotate 0.15s ease;
   }
