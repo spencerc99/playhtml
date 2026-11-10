@@ -54,7 +54,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Carter+One&family=IBM+Plex+Mono:wght@400;500;600&family=Lora:ital,wght@1,600&family=Nanum+Pen+Script&family=Play:wght@400;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:wght@500;600;700;800&family=Carter+One&family=IBM+Plex+Mono:wght@400;500;600&family=Lora:ital,wght@1,600&family=Nanum+Pen+Script&family=Martian+Mono:wght@400&family=Play:wght@400;700&family=Source+Serif+4:ital,opsz,wght@1,8..60,200&display=swap"
       rel="stylesheet"
     />
 
@@ -666,65 +666,55 @@
           >making the entire web feel this way</span
         >
         <div class="ph-wwo__card">
-          <div class="ph-wwo__text">
-            <h2 id="wwo-h">we were online</h2>
-            <p>
+          <video
+            class="ph-wwo__bg"
+            src="/home/trails.mp4"
+            poster="/home/trails-poster.jpg"
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="metadata"
+            aria-label="Cursor trails, collected scraps and people following each other on Wikipedia, recorded with we were online"
+          ></video>
+          <div class="ph-wwo__hero">
+            <h2 id="wwo-h" class="ph-wwo__wordmark">we were online</h2>
+            <p class="ph-wwo__tagline">
+              turning the internet into a living, shared space
+            </p>
+            <p class="ph-wwo__desc">
               playhtml makes your page a shared place.
               <b>we were online</b> brings that ethos to the entire web as you
               browse.
             </p>
-            <ul>
-              <li>
-                <i class="ph-dot ph-dot--brick"></i
-                ><span
-                  ><b>portraits:</b>
-                  <span
-                    >turn your cursor trails, windows, &amp; clicks into online
-                    portraits</span
-                  ></span
-                >
-              </li>
-              <li>
-                <i class="ph-dot ph-dot--ultramarine"></i
-                ><span
-                  ><b>scraps:</b>
-                  <span
-                    >collect images, buttons, etc. as you browse &amp; make
-                    webcollages</span
-                  ></span
-                >
-              </li>
-              <li>
-                <i class="ph-dot ph-dot--sage"></i
-                ><span
-                  ><b>a shared internet world:</b>
-                  <span
-                    >run into others &amp; leave traces of your presence</span
-                  ></span
-                >
-              </li>
-            </ul>
-            <a
-              class="ph-btn ph-btn--mustard ph-btn--pill"
-              href="https://wewere.online"
-              >Try now</a
+            <a class="ph-wwo__cta" href="https://wewere.online"
+              >get we were online <span aria-hidden="true">&rarr;</span></a
+            >
+            <span class="ph-wwo__install"
+              >chrome &middot; firefox &middot; safari</span
             >
           </div>
-          <div class="ph-wwo__media">
-            <video
-              src="/home/trails.mp4"
-              poster="/home/trails-poster.jpg"
-              autoplay
-              muted
-              loop
-              playsinline
-              preload="metadata"
-              aria-label="Cursor trails, collected scraps and people following each other on Wikipedia, recorded with we were online"
-            ></video>
-            <span class="ph-hand ph-wwo__caption"
-              >from real people<br />browsing</span
-            >
-          </div>
+          <ul class="ph-wwo__chips">
+            <li class="ph-wwo__chip ph-wwo__chip--teal">
+              <b>portraits</b>
+              <span
+                >turn your cursor trails, windows, &amp; clicks into online
+                portraits</span
+              >
+            </li>
+            <li class="ph-wwo__chip ph-wwo__chip--rust">
+              <b>scraps</b>
+              <span
+                >collect images, buttons, etc. as you browse &amp; make
+                webcollages</span
+              >
+            </li>
+            <li class="ph-wwo__chip ph-wwo__chip--gold">
+              <b>a shared internet world</b>
+              <span>run into others &amp; leave traces of your presence</span>
+            </li>
+          </ul>
+          <span class="ph-wwo__caption">from real people browsing</span>
         </div>
       </section>
 
