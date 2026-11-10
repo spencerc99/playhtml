@@ -10,10 +10,87 @@ const SnippetText = `<div id="note" can-move>drag me</div>
 <script type="module"
   src="https://unpkg.com/playhtml/dist/init.es.js"></script>`;
 
+// Most dots shown around the here-now pill; past that the pill still counts.
+const MaxPresenceDots = 18;
+const PresenceDotSize = 11;
+
+// A point `distance` px along the outline of a w x h pill (a stadium), going
+// clockwise from the left end of the top edge.
+function pointOnPill(distance: number, w: number, h: number) {
+  const r = h / 2;
+  const straight = Math.max(w - h, 0);
+  const arc = Math.PI * r;
+  let d = distance;
+  if (d < straight) return { x: r + d, y: 0 };
+  d -= straight;
+  if (d < arc) {
+    const angle = -Math.PI / 2 + d / r;
+    return { x: w - r + r * Math.cos(angle), y: r + r * Math.sin(angle) };
+  }
+  d -= arc;
+  if (d < straight) return { x: w - r - d, y: h };
+  d -= straight;
+  const angle = Math.PI / 2 + d / r;
+  return { x: r + r * Math.cos(angle), y: r + r * Math.sin(angle) };
+}
+
+type DotPerson = { pid: string; name?: string; color: string; isMe: boolean };
+
+// Colored dots for everyone here, spaced evenly around the pill's edge. You
+// come first, starting near the top left.
+function renderPresenceDots(
+  pill: HTMLElement,
+  ring: HTMLElement,
+  people: DotPerson[],
+) {
+  const shown = [...people]
+    .sort((a, b) => Number(b.isMe) - Number(a.isMe))
+    .slice(0, MaxPresenceDots);
+  const w = pill.offsetWidth;
+  const h = pill.offsetHeight;
+  if (!w || !h) return;
+  const perimeter = 2 * Math.max(w - h, 0) + Math.PI * h;
+
+  const existing = new Map<string, HTMLElement>();
+  ring.querySelectorAll<HTMLElement>(".ph-here-now__person").forEach((dot) => {
+    existing.set(dot.dataset.pid ?? "", dot);
+  });
+
+  shown.forEach((person, index) => {
+    let dot = existing.get(person.pid);
+    existing.delete(person.pid);
+    if (!dot) {
+      dot = document.createElement("span");
+      dot.className = "ph-here-now__person";
+      dot.dataset.pid = person.pid;
+      ring.append(dot);
+    }
+    const along = ((index + 0.5) / shown.length) * perimeter;
+    const { x, y } = pointOnPill(along, w, h);
+    dot.style.left = `${x - PresenceDotSize / 2}px`;
+    dot.style.top = `${y - PresenceDotSize / 2}px`;
+    dot.style.backgroundColor = person.color;
+    dot.classList.toggle("is-me", person.isMe);
+    dot.title = person.isMe ? "you" : person.name || "someone here";
+  });
+  existing.forEach((dot) => dot.remove());
+}
+
 export function setupHereNow() {
+  const pill = document.querySelector<HTMLElement>(".ph-here-now");
+  const ring = document.querySelector<HTMLElement>(".ph-here-now__ring");
   const countElement = document.getElementById("site-console-count-number");
   const countLabel = document.querySelector(".site-console__status-label");
   if (!countElement || !countLabel) return;
+
+  let lastPeople: DotPerson[] = [];
+  const redrawDots = () => {
+    if (pill && ring) renderPresenceDots(pill, ring, lastPeople);
+  };
+  // The pill's width changes with the count, and the toy box rescales it.
+  if (pill && typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(redrawDots).observe(pill);
+  }
 
   playhtml.register<Record<string, never>, undefined, HerePresence>(
     "site-console-count",
@@ -22,10 +99,16 @@ export function setupHereNow() {
       defaultPresence: { online: true },
       // `everyone` is one entry per person, even with several tabs open.
       update: ({ everyone }) => {
+        lastPeople = everyone.map(({ pid, name, color, isMe }) => ({
+          pid,
+          name,
+          color,
+          isMe,
+        }));
         const peopleCount = Math.max(everyone.length, 1);
-        if (countElement.textContent === String(peopleCount)) return;
         countElement.textContent = String(peopleCount);
         countLabel.textContent = " here now";
+        redrawDots();
       },
     },
   );
