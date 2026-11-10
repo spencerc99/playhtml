@@ -352,6 +352,8 @@ Ephemeral attributes (`data-playhtml-hover`, `data-playhtml-focus`) are not stor
 </div>
 ```
 
+The nested element owns everything inside it. The outer element still syncs the nested element's position and attributes, but leaves its contents and form values to the nested `can-mirror`.
+
 ### Presence: `data-playhtml-hover` and `data-playhtml-focus`
 
 `can-mirror` also tracks live focus state. When any visitor focuses a descendant of the element, `data-playhtml-focus` is set on the element for all visitors. Style accordingly:
