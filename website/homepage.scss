@@ -2833,14 +2833,33 @@ h3 {
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   align-items: start;
   gap: 20px 40px;
+}
 
-  > .ph-section-head {
-    position: sticky;
-    top: 24px;
+.ph-faq__aside {
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.ph-faq__curious {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+
+  .ph-hand {
+    color: $ultramarine;
+    rotate: -2deg;
   }
 }
 
-.ph-faq > .ph-section-head,
+.ph-faq__ask {
+  padding: 0 18px;
+  background: $periwinkle;
+}
+
 .ph-faq__list {
   width: 100%;
 }
@@ -3687,10 +3706,15 @@ h3 {
     padding: 56px 16px 48px;
     display: flex;
     flex-direction: column;
+  }
 
-    > .ph-section-head {
-      position: static;
-    }
+  .ph-faq__aside {
+    display: contents;
+  }
+
+  // On a phone the question goes after the list, where it's an ending.
+  .ph-faq__curious {
+    order: 1;
   }
 
   .ph-faq__list {
