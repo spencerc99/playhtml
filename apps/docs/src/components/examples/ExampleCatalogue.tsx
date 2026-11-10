@@ -113,48 +113,38 @@ function ExampleCard({ example }: { example: CatalogueExampleSummary }) {
   );
 }
 
+// Mirrors the playhtml.fun gallery tile: the whole card links to the site.
 function SiteCard({ site }: { site: SiteSummary }) {
   return (
-    <article className={styles.card} data-source="site">
-      <div className={styles.siteMedia}>
+    <a
+      className={styles.siteTile}
+      data-source="site"
+      href={site.href}
+      target="_blank"
+      rel="noreferrer"
+    >
+      <span className={styles.siteShot}>
         {site.imageUrl ? (
           <img
             src={site.imageUrl}
-            alt={site.imageAlt ?? ""}
+            alt={site.imageAlt ?? `Screenshot of ${site.title}`}
             loading="lazy"
             referrerPolicy="no-referrer"
           />
-        ) : (
-          <span className={styles.sitePlaceholder}>{site.hostname}</span>
-        )}
-      </div>
-
-      <div className={styles.cardBody}>
-        <div className={styles.cardMeta}>
-          <span className={`${styles.sourceBadge} ${styles.siteBadge}`}>
-            Site
-          </span>
-          <span className={styles.hostname}>{site.hostname}</span>
-        </div>
-        <h2 className={styles.cardTitle}>{site.title}</h2>
-        {site.author && <p className={styles.author}>by {site.author}</p>}
+        ) : null}
+      </span>
+      <span className={styles.siteText}>
+        <b>{site.title}</b>
         {site.description && (
-          <p className={styles.cardDescription}>{site.description}</p>
+          <i className={styles.siteDesc}>{site.description}</i>
         )}
-      </div>
-
-      <div className={styles.cardActions}>
-        <a
-          className={`${styles.primaryAction} sl-link-button primary`}
-          href={site.href}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Visit site
-          <ExternalIcon />
-        </a>
-      </div>
-    </article>
+        {site.author && <span>by {site.author}</span>}
+        <span className={styles.siteHost}>
+          <span>{site.hostname}</span>
+          <span aria-hidden="true">{"\u2197"}</span>
+        </span>
+      </span>
+    </a>
   );
 }
 
@@ -220,19 +210,24 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
         >
           <div className={styles.groupHeader}>
             <h2 id="sites-heading" className={styles.groupTitle}>
-              Newest community sites
+              From the gallery
             </h2>
             <a className={styles.showAll} href={GALLERY_URL}>
-              See all in the gallery
+              See every site
               <ArrowIcon />
             </a>
           </div>
+          <p className={styles.sitesIntro}>
+            Sites people made with playhtml. We collect them in the{" "}
+            <a href={GALLERY_URL}>playhtml.fun gallery</a>; the newest show
+            here.
+          </p>
           {sitesState === "loading" ? (
             <p className={styles.sitesStatus} role="status">
               Loading sites…
             </p>
           ) : (
-            <div ref={setSitesGrid} className={styles.cardGrid}>
+            <div ref={setSitesGrid} className={styles.siteGrid}>
               {newestSites.map((site) => (
                 <SiteCard key={site.id} site={site} />
               ))}

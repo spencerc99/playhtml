@@ -319,38 +319,118 @@
   min-height: 0;
 }
 
-.siteMedia {
-  position: relative;
+/* Community sites mirror the playhtml.fun gallery tiles. */
+.sitesIntro {
+  margin: -0.2rem 0 0.9rem;
+  color: var(--ph-ink-2);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.sitesIntro a {
+  color: var(--sl-color-text-accent);
+}
+
+.siteGrid {
   display: grid;
-  min-height: 10.5rem;
-  aspect-ratio: 16 / 10;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+  align-items: start;
+  gap: 1.35rem;
+}
+
+.siteTile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   overflow: hidden;
-  border-bottom: 1px solid var(--ph-hairline);
+  color: var(--ph-ink);
+  text-decoration: none;
+  background: var(--ph-code-paper);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 8px;
+  box-shadow: 3px 3px 0 var(--ph-ink);
+  transition: transform var(--ph-motion-fast);
 }
 
-.siteMedia {
-  place-items: center;
-  color: var(--ph-ink-3);
+.siteTile:hover {
+  color: var(--ph-ink);
+  transform: translate(-2px, -2px);
+}
+
+.siteTile:focus-visible {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: 3px;
+}
+
+.siteShot {
+  display: block;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
   background: var(--ph-paper-deep);
+  border-bottom: 1.5px solid var(--ph-ink);
 }
 
-.siteMedia img {
+.siteShot img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform var(--ph-motion-slow);
+  object-position: top center;
 }
 
-.card:hover .siteMedia img {
-  transform: scale(1.025);
+.siteText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 0.7rem 0.8rem 0.75rem;
+  font-family: var(--ph-font-body);
 }
 
-.sitePlaceholder {
-  max-width: 85%;
-  overflow-wrap: anywhere;
+.siteText b {
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.siteText > span {
+  overflow: hidden;
+  color: var(--ph-ink-2);
+  font-size: 0.875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.siteDesc {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ph-ink-3);
+  font-size: 0.875rem;
+  font-style: normal;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.siteText > .siteHost {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ph-ultramarine);
   font-family: var(--ph-font-mono);
   font-size: 0.75rem;
-  text-align: center;
+}
+
+.siteHost > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.siteTile:hover .siteHost > span:first-child {
+  text-decoration-thickness: 2px;
 }
 
 .cardBody {
@@ -385,13 +465,7 @@
   background: var(--ph-ultramarine-wash);
 }
 
-.siteBadge {
-  color: var(--ph-sage-deep);
-  background: var(--ph-sage-wash);
-}
-
-.difficulty,
-.hostname {
+.difficulty {
   overflow: hidden;
   color: var(--ph-ink-3);
   font-family: var(--ph-font-mono);
@@ -424,14 +498,6 @@
   line-height: 1.5;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
-}
-
-.author {
-  margin: 0.35rem 0 0;
-  color: var(--ph-ink-3);
-  font-family: var(--ph-font-mono);
-  font-size: 0.72rem;
-  line-height: 1.4;
 }
 
 .tagList {
@@ -527,7 +593,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .card,
-  .siteMedia img,
+  .siteTile,
   .primaryAction,
   .secondaryAction {
     transition: none;
