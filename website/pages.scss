@@ -1,4 +1,4 @@
-// ABOUTME: Styles for the site pages that share the homepage look: /gallery and /experiments.
+// ABOUTME: Styles for the site pages that share the homepage look: /gallery, /experiments and /events.
 // ABOUTME: Loaded after homepage.scss, so it only adds page layout and the gallery pieces.
 
 $ink: #1c1c1c;
@@ -564,6 +564,328 @@ $phone: 760px;
   font-family: $hand;
   font-size: 30px;
   color: $pen;
+}
+
+// /events: one list of every event, newest first. Capped narrow so each
+// event reads as one card, with the date beside its series.
+.ph-events-page {
+  max-width: 868px;
+  margin: 0 auto;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.ph-events-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 28px 48px;
+  padding: 64px 0 24px;
+
+  h1 {
+    margin: 0;
+    font-weight: 800;
+    font-size: 80px;
+    line-height: 0.95;
+    letter-spacing: -0.035em;
+  }
+
+  p {
+    margin: 0;
+    max-width: 560px;
+    font-size: 19px;
+    line-height: 1.5;
+    color: $text;
+  }
+}
+
+.ph-events-hero__text {
+  flex: 1 1 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ph-events-next {
+  flex: 0 1 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  background: $paper;
+  border: 1px dashed $ink;
+  border-radius: 8px;
+  font-size: 16px;
+  line-height: 1.45;
+
+  a {
+    align-self: flex-start;
+    font-weight: 700;
+    font-size: 15px;
+  }
+}
+
+.ph-events-next__label {
+  font-family: $mono;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: $muted;
+}
+
+.ph-events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ph-events-list__note {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 6px;
+  font-size: 25px;
+  transform: rotate(-2deg);
+}
+
+.ph-events-list__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.ph-event {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 22px;
+  padding: 12px;
+  background: $paper;
+  border: 1.5px solid $ink;
+  border-radius: 12px;
+  box-shadow: 3px 3px 0 $ink;
+
+  h3 {
+    margin: 0;
+    font-family: $display;
+    font-weight: 700;
+    font-size: 26px;
+    line-height: 1.1;
+  }
+}
+
+.ph-event__photo {
+  position: relative;
+  display: block;
+  min-height: 200px;
+  border: 1.5px solid $ink;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #efe7c8;
+
+  img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.ph-event__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 4px 2px 0;
+}
+
+.ph-event__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+
+  time {
+    font-family: $mono;
+    font-size: 13px;
+  }
+}
+
+.ph-series {
+  padding: 1px 9px;
+  border: 1px solid $ink;
+  border-radius: 999px;
+  font-family: $mono;
+  font-size: 12px;
+}
+
+.ph-series--walk {
+  background: #bcd0ff;
+}
+
+.ph-series--hood {
+  background: $sage-light;
+}
+
+.ph-event__who {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 15px;
+  line-height: 1.3;
+  color: $text;
+
+  b {
+    color: $ink;
+  }
+
+  .ph-logo--small {
+    font-size: 13px;
+  }
+}
+
+.ph-event__where {
+  color: $muted;
+}
+
+.ph-event__blurb {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  color: $text;
+}
+
+.ph-event__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.ph-event__more {
+  padding: 10px 0;
+  font-size: 15px;
+}
+
+// Event partners without a badge on the homepage.
+.ph-logo--tiat {
+  background: #d982c7;
+  box-shadow: 2px 2px 0 $ink;
+  border-radius: 999px;
+  rotate: 2deg;
+  font-family: $mono;
+  font-weight: 600;
+}
+
+.ph-logo--ifthen {
+  background: #b6c7ff;
+  box-shadow: 2px 2px 0 $ink;
+  rotate: -2deg;
+  font-family: $mono;
+  font-weight: 600;
+}
+
+.ph-events-host {
+  margin: 96px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 40px 40px 36px;
+  background-color: #e7b3b4;
+  background-image:
+    linear-gradient(to right, rgba(39, 75, 158, 0.11) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(39, 75, 158, 0.11) 1px, transparent 1px);
+  background-size: 28px 28px;
+  border: 1.5px solid $ink;
+  border-radius: 16px;
+  box-shadow: 4px 4px 0 $ink;
+
+  h2 {
+    margin: 0;
+    font-family: $display;
+    font-weight: 800;
+    font-size: 40px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+
+  p {
+    margin: 0;
+    max-width: 640px;
+    font-size: 17px;
+    line-height: 1.5;
+    color: #2b2b2b;
+  }
+}
+
+.ph-events-host__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  margin-top: 6px;
+
+  a:not(.ph-btn) {
+    font-size: 15px;
+    color: $ink;
+  }
+}
+
+@include phone {
+  .ph-events-page {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .ph-events-hero {
+    padding: 40px 0 16px;
+    gap: 20px;
+
+    h1 {
+      font-size: 48px;
+    }
+
+    p {
+      font-size: 17px;
+    }
+  }
+
+  .ph-events-list__note {
+    align-self: flex-start;
+    font-size: 22px;
+  }
+
+  .ph-event {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 10px 10px 12px;
+
+    h3 {
+      font-size: 21px;
+    }
+  }
+
+  .ph-event__photo {
+    min-height: 170px;
+  }
+
+  .ph-event__body {
+    padding: 0 4px;
+  }
+
+  .ph-events-host {
+    margin-top: 56px;
+    padding: 24px 20px;
+
+    h2 {
+      font-size: 30px;
+    }
+  }
 }
 
 @include phone {
