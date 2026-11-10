@@ -2268,10 +2268,11 @@ h3 {
     rotate: -1.5deg;
   }
 
+  // A notch under h3 so both card titles stay on one line side by side.
   h2 {
     margin: 0;
     font-weight: 800;
-    font-size: var(--fs-h3);
+    font-size: min(var(--fs-h3), 27px);
     line-height: 1.15;
     letter-spacing: -0.01em;
   }
