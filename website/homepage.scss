@@ -356,6 +356,14 @@ h3 {
   }
 }
 
+// The snippet is broken into short lines by hand (copy uses the one-line
+// version), so it never wraps mid-word; scroll if a screen is narrower still.
+.ph-how__card--code .ph-code pre {
+  white-space: pre;
+  word-break: normal;
+  overflow-x: auto;
+}
+
 .ph-code__head,
 .ph-code__bar {
   display: flex;
