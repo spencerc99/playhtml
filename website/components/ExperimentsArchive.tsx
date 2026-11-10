@@ -7,6 +7,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -62,6 +63,7 @@ const RandomExperimentEventType = "homepage-experiments-randomize";
 const RandomExperimentFlashMs = 760;
 const RandomExperimentLandingPauseMs = 130;
 const TraceNavigationDelayMs = 700;
+const FloatingCardWidth = 260;
 
 function getRandomExperimentStepDelay(index: number) {
   return 55 * index + index * index * 4;
@@ -305,6 +307,7 @@ function TraceSmudges({ traces }: { traces: ExperimentTrace[] }) {
 function HomeExperimentName({
   entry,
   isLast,
+  numbered,
   dotColor,
   isSelected,
   isRandomActive,
@@ -312,10 +315,14 @@ function HomeExperimentName({
   randomizerColor,
   traces,
   onPreview,
+  onPreviewEnd,
   onExperimentClick,
 }: {
   entry: ExperimentArchiveEntry;
   isLast: boolean;
+  // On the /experiments page each name is led by its number (01, 02, ...)
+  // in place of the dot separators the homepage shelf uses.
+  numbered: boolean;
   dotColor: string;
   isSelected: boolean;
   isRandomActive: boolean;
@@ -323,6 +330,7 @@ function HomeExperimentName({
   randomizerColor: string;
   traces: ExperimentTrace[];
   onPreview: (number: string) => void;
+  onPreviewEnd?: () => void;
   onExperimentClick: (
     entry: ExperimentArchiveEntry,
     event: MouseEvent<HTMLElement>,
@@ -338,10 +346,23 @@ function HomeExperimentName({
         className={className}
         href={entry.href}
         style={{ "--randomizer-color": randomizerColor } as CSSProperties}
+        data-number={entry.number}
         onMouseEnter={() => onPreview(entry.number)}
         onFocus={() => onPreview(entry.number)}
+        onMouseLeave={onPreviewEnd}
+        onBlur={onPreviewEnd}
         onClick={(event) => onExperimentClick(entry, event)}
       >
+        {numbered ? (
+          // Inside the link so the number never wraps away from its name.
+          <span
+            className="ph-studio__count"
+            aria-hidden="true"
+            style={{ color: dotColor }}
+          >
+            {entry.number.replace(/^EX-/, "")}
+          </span>
+        ) : null}
         {traces.length > 0 ? (
           <span className="ph-studio__fingerprints" aria-hidden="true">
             <TraceSmudges traces={traces} />
@@ -354,7 +375,7 @@ function HomeExperimentName({
           </sup>
         ) : null}
       </a>
-      {isLast ? null : (
+      {isLast || numbered ? null : (
         <span
           className="ph-studio__dot"
           aria-hidden="true"
@@ -419,6 +440,54 @@ const ExperimentsArchiveContent = withSharedState<
     const [previewNumber, setPreviewNumber] = useState<string>(
       homeExperiments[0]?.number ?? "",
     );
+    // /experiments: the preview floats by the hovered name and is gone
+    // otherwise, so the names can use the whole wall.
+    const [hoverNumber, setHoverNumber] = useState<string | null>(null);
+    const wallRef = useRef<HTMLDivElement>(null);
+    const [floatPosition, setFloatPosition] = useState<{
+      left: number;
+      top: number;
+      above: boolean;
+    } | null>(null);
+    const floatingNumber =
+      variant === "wall"
+        ? (randomizer.activeNumber ??
+          (randomizer.isFlashing ? randomizer.selectedNumber : null) ??
+          hoverNumber)
+        : null;
+
+    useLayoutEffect(() => {
+      const wall = wallRef.current;
+      if (!floatingNumber || !wall) {
+        setFloatPosition(null);
+        return;
+      }
+      const name = wall.querySelector<HTMLElement>(
+        `[data-number="${floatingNumber}"]`,
+      );
+      if (!name) {
+        setFloatPosition(null);
+        return;
+      }
+      const wallRect = wall.getBoundingClientRect();
+      const nameRect = name.getBoundingClientRect();
+      const cardWidth = Math.min(FloatingCardWidth, wallRect.width - 32);
+      const left = Math.max(
+        16,
+        Math.min(
+          nameRect.left - wallRect.left,
+          wallRect.width - cardWidth - 16,
+        ),
+      );
+      // Names in the lower half get the card above them so it stays on
+      // screen.
+      const above = nameRect.top - wallRect.top > wallRect.height / 2;
+      const top = above
+        ? nameRect.top - wallRect.top - 10
+        : nameRect.bottom - wallRect.top + 10;
+      setFloatPosition({ left, top, above });
+    }, [floatingNumber]);
+
     const visibleTraces = useMemo(
       () => pruneExperimentTraces(data?.traces ?? [], Date.now()),
       [data?.traces],
@@ -661,6 +730,9 @@ const ExperimentsArchiveContent = withSharedState<
       const shown =
         wallExperiments.find((entry) => entry.number === shownNumber) ??
         homeExperiments[0];
+      const floating = floatingNumber
+        ? wallExperiments.find((entry) => entry.number === floatingNumber)
+        : undefined;
 
       return (
         <section
@@ -681,15 +753,20 @@ const ExperimentsArchiveContent = withSharedState<
               <a href="/experiments/">all {experiments.length} experiments</a>
             </div>
           )}
-          <div className="ph-studio__wall">
+          <div className="ph-studio__wall" ref={wallRef}>
             <p className="ph-studio__names">
               {wallExperiments.map((experiment, index) => (
                 <HomeExperimentName
                   entry={experiment}
                   key={experiment.number}
                   isLast={index === wallExperiments.length - 1}
+                  numbered={isWall}
                   dotColor={StudioDotColors[index % StudioDotColors.length]}
-                  isSelected={shown?.number === experiment.number}
+                  isSelected={
+                    isWall
+                      ? floatingNumber === experiment.number
+                      : shown?.number === experiment.number
+                  }
                   randomizerColor={randomizer.color}
                   traces={tracesByRow.get(experiment.number) ?? []}
                   isRandomActive={randomizer.activeNumber === experiment.number}
@@ -697,12 +774,46 @@ const ExperimentsArchiveContent = withSharedState<
                     randomizer.isFlashing &&
                     randomizer.selectedNumber === experiment.number
                   }
-                  onPreview={setPreviewNumber}
+                  onPreview={(number) => {
+                    setPreviewNumber(number);
+                    if (isWall) setHoverNumber(number);
+                  }}
+                  onPreviewEnd={
+                    isWall
+                      ? () =>
+                          setHoverNumber((current) =>
+                            current === experiment.number ? null : current,
+                          )
+                      : undefined
+                  }
                   onExperimentClick={handleExperimentClick}
                 />
               ))}
             </p>
-            {shown ? (
+            {isWall && floating && floatPosition ? (
+              <span
+                className={`ph-studio__float${
+                  floatPosition.above ? " is-above" : ""
+                }`}
+                aria-hidden="true"
+                style={
+                  {
+                    "--float-left": `${floatPosition.left}px`,
+                    "--float-top": `${floatPosition.top}px`,
+                  } as CSSProperties
+                }
+              >
+                <span className="ph-studio__shot">
+                  {floating.image ? <img src={floating.image} alt="" /> : null}
+                </span>
+                <span className="ph-studio__card-text">
+                  <span className="ph-studio__number">{floating.number}</span>
+                  <b>{floating.name}</b>
+                  <span>{floating.description}</span>
+                </span>
+              </span>
+            ) : null}
+            {!isWall && shown ? (
               <a
                 className="ph-studio__card"
                 href={shown.href}
