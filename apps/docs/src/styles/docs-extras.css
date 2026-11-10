@@ -556,6 +556,31 @@ starlight-card,
   letter-spacing: -0.01em;
   color: var(--ph-ink);
 }
+/* Phones: keep prev and next side by side as two compact cards instead of
+ * stacking them into two full-width rows. */
+@media (max-width: 50rem) {
+  .pagination-links {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+  .pagination-links a {
+    gap: 0.35rem;
+    padding: 0.65rem 0.75rem;
+    font-size: var(--sl-text-xs);
+    line-height: 1.3;
+    box-shadow: 4px 4px 0 var(--ph-ink);
+  }
+  .pagination-links a .link-title {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: var(--sl-text-base);
+    line-height: 1.2;
+  }
+  .pagination-links a svg {
+    width: 1rem;
+    height: 1rem;
+  }
+}
 .sl-link-card .title,
 .sl-link-card .sl-link-card-title,
 .card .card-title,
