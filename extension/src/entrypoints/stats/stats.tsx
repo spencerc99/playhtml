@@ -1,6 +1,5 @@
 // ABOUTME: Stats page — shows time spent on your top domains
 // ABOUTME: Expand any domain row to see its top pages by time spent
-// ABOUTME: Opens as a full tab from the Collections settings panel
 
 import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";

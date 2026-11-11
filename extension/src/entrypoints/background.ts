@@ -850,17 +850,6 @@ export default defineBackground(() => {
       return true
     }
 
-    if (message.type === 'GET_PENDING_COUNT') {
-      store
-        .getPendingEvents(10000)
-        .then((events) => reply({ count: events.length }))
-        .catch((e) => {
-          console.error('[Background] GET_PENDING_COUNT error:', e)
-          reply({ count: 0 })
-        })
-      return true
-    }
-
     if (message.type === 'GET_RECENT_EVENTS') {
       const domain = message.domain as string
       store

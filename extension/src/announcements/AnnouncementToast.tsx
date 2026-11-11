@@ -1,5 +1,5 @@
 // ABOUTME: System-styled toast surfacing a new announcement on a matching page.
-// ABOUTME: Click anywhere → opens CTA + dismisses; × dismisses; auto-dismiss after 8s (paused on hover).
+// ABOUTME: × dismisses; auto-dismisses after 8s (paused on hover).
 
 import { useEffect, useRef, useState } from "react";
 import type { Announcement } from "./announcements";

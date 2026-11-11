@@ -1031,14 +1031,16 @@ export default defineContentScript({
           "playhtml:ready",
           () => {
             dispatch();
-            console.log(
-              "[we-were-online] Re-dispatched identity after playhtml ready signal",
-            );
+            if (VERBOSE)
+              console.log(
+                "[we-were-online] Re-dispatched identity after playhtml ready signal",
+              );
           },
           { once: true },
         );
 
-        console.log("[we-were-online] Dispatched identity injection event");
+        if (VERBOSE)
+          console.log("[we-were-online] Dispatched identity injection event");
       }
 
       /**
@@ -1152,7 +1154,7 @@ export default defineContentScript({
         // own cursor instance here — but bottles still get one later via
         // ensureGlobalFeatures, in their own extension-owned room.
         if (await this.detectNativePlayhtml()) {
-          console.log("[we-were-online] Native playhtml detected");
+          if (VERBOSE) console.log("[we-were-online] Native playhtml detected");
           this.injectIdentityIntoMainWorld();
           this.listenForPresenceCount();
           return;
@@ -1663,39 +1665,6 @@ export default defineContentScript({
             })
             .catch((error) => {
               console.error("Failed to disable collector:", error);
-              sendResponse({
-                success: false,
-                error: error.message || String(error),
-              });
-            });
-          return true;
-        }
-
-        if (message.type === "FLUSH_EVENTS") {
-          if (!collectorManager) {
-            sendResponse({
-              success: false,
-              error: "Collector manager not initialized",
-            });
-            return true;
-          }
-          collectorManager
-            .flushEvents()
-            .then(() => {
-              browser.runtime
-                .sendMessage({ type: "GET_PENDING_COUNT" })
-                .then((res: any) => {
-                  sendResponse({
-                    success: true,
-                    pendingCount: res?.count ?? 0,
-                  });
-                })
-                .catch(() => {
-                  sendResponse({ success: true, pendingCount: 0 });
-                });
-            })
-            .catch((error) => {
-              console.error("Failed to flush events:", error);
               sendResponse({
                 success: false,
                 error: error.message || String(error),

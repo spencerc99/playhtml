@@ -30,6 +30,7 @@ import {
   releaseCollageImages,
 } from "./localScrapImages";
 import { deletePublishedCollage } from "./publishCollage";
+import { downloadFile } from "./ExportReady";
 import { WORKER_URL } from "@movement/config";
 import { recordCollageDeletion } from "../../sync/deviceSync";
 
@@ -145,14 +146,10 @@ export function CollageHistory({
         return;
       }
       const text = await encodeCollageFile(record);
-      const url = URL.createObjectURL(
+      downloadFile(
         new Blob([text], { type: "application/json" }),
+        collageFileName(record.title),
       );
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = collageFileName(record.title);
-      link.click();
-      URL.revokeObjectURL(url);
       setError(null);
     } catch (saveError) {
       setError(

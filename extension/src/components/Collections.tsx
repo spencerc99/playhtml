@@ -58,6 +58,7 @@ import {
   redactWithLegibility,
 } from "../utils/keyboardRedaction";
 import { useVisibleCollectorTypes } from "./useVisibleCollectorTypes";
+import { DEV_MODE_KEY } from "../features/debugModes/debugModes";
 import "./Collections.scss";
 
 interface CollectionsProps {
@@ -67,7 +68,6 @@ interface CollectionsProps {
 
 const PRIVACY_LEVEL_KEY = LEGIBILITY_KEY;
 const FILTER_SUBSTRINGS_KEY = "collection_keyboard_filter_substrings";
-const DEV_MODE_KEY = "dev_mode";
 
 interface StorageStats {
   totalEvents: number;
@@ -617,7 +617,6 @@ export function Collections({
       const clamped = Math.max(0, Math.min(100, Math.round(pct)));
       await browser.storage.local.set({ [PRIVACY_LEVEL_KEY]: clamped });
       setKeyboardLegibilityPct(clamped);
-      await loadCollectors();
     } catch (error) {
       console.error("Failed to update keyboard legibility:", error);
       alert("Failed to update keyboard legibility. Please try again.");

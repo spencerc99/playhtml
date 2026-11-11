@@ -469,8 +469,6 @@ function placedPiece(
   };
 }
 
-/** The day a collage was started, the way the history cards write it. */
-
 export function CollageStudio({
   scraps,
   editing,
@@ -1718,11 +1716,6 @@ export function CollageStudio({
     turnOver,
   ]);
 
-  /**
-   * Carries the pieces a move gesture holds to follow the pointer. Shift keeps
-   * the move to the axis the drag has mostly travelled along, decided afresh
-   * each time so the axis can change mid-drag.
-   */
   /** Lines shown while a carried piece is caught on another or the frame. */
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   /**
@@ -1742,6 +1735,11 @@ export function CollageStudio({
   const slidePaceRef = useRef<{ at: Point; time: number } | null>(null);
   useEffect(() => () => slideRef.current?.stop(), []);
 
+  /**
+   * Carries the pieces a move gesture holds to follow the pointer. Shift keeps
+   * the move to the axis the drag has mostly travelled along, decided afresh
+   * each time so the axis can change mid-drag.
+   */
   const carry = useCallback(
     (
       origins: readonly CollagePiece[],
@@ -2211,7 +2209,6 @@ export function CollageStudio({
     // there lets go of what is in hand and a quick swipe does nothing. Only a
     // finger held still first draws a selection box.
     if (phone && event.pointerType === "touch") {
-      event.currentTarget.setPointerCapture(event.pointerId);
       pressRef.current = {
         at,
         downAt: performance.now(),
@@ -2643,13 +2640,7 @@ export function CollageStudio({
       });
       saveFile(video, `${collageExportName(title)}.mp4`);
     } catch (error) {
-      const text =
-        error instanceof CollageBakeError
-          ? `could not export mp4 — these could not be drawn: ${error.failures
-              .map((failure) => failure.label)
-              .join(", ")}`
-          : `could not export mp4 — ${error instanceof Error ? error.message : String(error)}`;
-      setNotice({ tone: "problem", text });
+      setNotice({ tone: "problem", text: exportProblem("mp4", error) });
     } finally {
       setVideoProgress(null);
     }
@@ -2684,14 +2675,13 @@ export function CollageStudio({
     setNotice({ tone: "problem", text });
   }, []);
 
-  const onCutoutFailed = useCallback((pieceId: string, reason: string) => {
+  const onCutoutFailed = useCallback((_pieceId: string, reason: string) => {
     setNotice({
       tone: "problem",
       text: `a background could not be removed — ${reason}`,
     });
     // The piece keeps its cutout so the slider can be retried, but nothing
     // pretends the cut happened.
-    void pieceId;
   }, []);
 
   // Modal transforms and handle drags speak through the same slip.

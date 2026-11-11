@@ -243,10 +243,3 @@ function deduplicateEvents(events: CollectionEvent[]): CollectionEvent[] {
 function sortEventsByTimestamp(events: CollectionEvent[]): CollectionEvent[] {
   return events.sort((a, b) => a.ts - b.ts);
 }
-
-/**
- * Get current page domain
- */
-export function getCurrentDomain(): string {
-  return extractDomain(window.location.href);
-}

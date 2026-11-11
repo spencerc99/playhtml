@@ -35,6 +35,7 @@ import { useCursorTrails } from "@movement/hooks/useCursorTrails";
 import { useKeyboardTyping } from "@movement/hooks/useKeyboardTyping";
 import { useViewportScroll } from "@movement/hooks/useViewportScroll";
 import { SoundEngine } from "@movement/sound/SoundEngine";
+import { DEV_MODE_KEY } from "../features/debugModes/debugModes";
 
 // Note: Styles are inlined below since this component is injected into arbitrary web pages
 // and external stylesheets don't get bundled with content script injections
@@ -136,13 +137,15 @@ export function HistoricalOverlay({
   // first gesture, then auto-resumes via the engine's internal tick.
   const [soundEnabled, setSoundEnabled] = useState(true);
   const soundEngineRef = useRef<SoundEngine | null>(null);
+  // Mirrors the ref so the trails re-render once the engine is ready.
+  const [soundEngine, setSoundEngine] = useState<SoundEngine | null>(null);
 
   // Load dev mode setting from storage once on mount
   useEffect(() => {
     browser.storage.local
-      .get(["dev_mode"])
+      .get([DEV_MODE_KEY])
       .then((result) => {
-        setDevMode(Boolean(result["dev_mode"]));
+        setDevMode(Boolean(result[DEV_MODE_KEY]));
       })
       .catch(() => {});
   }, []);
@@ -360,6 +363,8 @@ export function HistoricalOverlay({
     setPortraitStats(null);
     setPortraitStatsLoaded(false);
 
+    // Ignores a response that lands after the mode or page has changed.
+    let cancelled = false;
     (async () => {
       try {
         const res: any = await browser.runtime.sendMessage({
@@ -368,6 +373,7 @@ export function HistoricalOverlay({
           // Page-level lookup: pass the raw URL (background normalizes it)
           ...(actualMode !== "domain" ? { url: currentUrl } : {}),
         });
+        if (cancelled) return;
         if (res?.success && res.stats) {
           setPortraitStats({
             domain:
@@ -381,10 +387,14 @@ export function HistoricalOverlay({
         }
         setPortraitStatsLoaded(true);
       } catch (e) {
+        if (cancelled) return;
         console.error("[HistoricalOverlay] Failed to fetch portrait stats", e);
         setPortraitStatsLoaded(true);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [visible, actualMode, currentUrl, domain]);
 
   // Track viewport size
@@ -402,21 +412,32 @@ export function HistoricalOverlay({
 
   // Manage SoundEngine lifecycle — mirrors MovementCanvas pattern
   useEffect(() => {
+    // Set by the cleanup so an engine whose init() resolves after sound was
+    // turned off (or the overlay closed) is disposed instead of adopted.
+    let cancelled = false;
     if (soundEnabled) {
       if (!soundEngineRef.current) {
         const engine = new SoundEngine();
         engine.init().then(() => {
+          if (cancelled) {
+            engine.dispose();
+            return;
+          }
           engine.setCanvasWidth(viewportSize.width);
           soundEngineRef.current = engine;
+          setSoundEngine(engine);
         });
       }
     } else if (soundEngineRef.current) {
       soundEngineRef.current.dispose();
       soundEngineRef.current = null;
+      setSoundEngine(null);
     }
     return () => {
+      cancelled = true;
       soundEngineRef.current?.dispose();
       soundEngineRef.current = null;
+      setSoundEngine(null);
     };
   }, [soundEnabled]);
 
@@ -459,7 +480,6 @@ export function HistoricalOverlay({
     trailStates,
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
-    documentCanvasSize,
   } = useCursorTrails(
     events as unknown as MovementCollectionEvent[],
     viewportSize,
@@ -558,18 +578,6 @@ export function HistoricalOverlay({
     viewportSize,
     viewportSettings,
   );
-
-  // Compute date range
-  const dateRange = useMemo(() => {
-    if (events.length === 0) return null;
-    const timestamps = events.map((e) => e.ts);
-    const oldest = Math.min(...timestamps);
-    const newest = Math.max(...timestamps);
-    return {
-      oldest: new Date(oldest).toISOString(),
-      newest: new Date(newest).toISOString(),
-    };
-  }, [events]);
 
   async function handleCapturePagePortrait() {
     try {
@@ -1158,7 +1166,7 @@ export function HistoricalOverlay({
               showClickRipples={!settings.showCursorClicks}
               windowSize={settings.maxConcurrentTrails * 3}
               documentSpace={settings.documentSpace}
-              soundEngine={soundEnabled ? soundEngineRef.current : null}
+              soundEngine={soundEnabled ? soundEngine : null}
               settings={{
                 strokeWidth: settings.strokeWidth,
                 trailOpacity: settings.trailOpacity,

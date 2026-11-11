@@ -266,11 +266,11 @@ Domain-specific collaborative features:
 
 - **LinkGlowManager**: Wikipedia link click visualization -- glow intensity from click frequency, recent player colors, decay mechanic.
 - **link-glow-renderer**: Canvas/CSS rendering for link glows (inline vs multi-line).
-- **FollowManager**: Follow another user's cursor, scroll tethering, cross-page navigation via presence API. `F` to follow nearest, `Q` to unfollow.
+- **FollowManager**: Follow another user's cursor, scroll tethering, cross-page navigation via presence API. `F` toggles following the nearest cursor, `Escape` stops.
 - **PresenceCountPill**: Ambient people-count indicator with colored dots.
 - **OffscreenIndicator**: Directional arrow at screen edge when followed user is off-screen.
 - **inventory/**: The shared satchel — armable items registered by social experiments (see `features/social/`).
-- **emotes/**: Radial emote wheel (`Cmd/Ctrl+Shift+E`) — 10 cursor-native emotes that broadcast to page peers over a presence channel. Runs on cursor-enabled sites (wired into the cursor-site path in `content.ts`). Three emotes (heart, high five, nuzzle, poke) target the nearest cursor.
+- **emotes/**: Radial emote wheel (`Cmd/Ctrl+Shift+E`) — cursor-native emotes that broadcast to page peers over a presence channel. Runs on cursor-enabled sites (wired into the cursor-site path in `content.ts`). `EMOTES` in `emotes.ts` is the catalog and its `enabled` flag gates what's live; the four interaction emotes (heart, high five, nuzzle, poke), which target the nearest cursor, are currently disabled.
 
 Test social features live (no extension install) in
 `extension/website/social-playground/` — see the Website & experiments section.
@@ -307,7 +307,7 @@ sync.
 
 Key exports:
 
-- `CollectionEventType`: `'cursor' | 'navigation' | 'viewport' | 'keyboard'`
+- `CollectionEventType`: `'cursor' | 'navigation' | 'viewport' | 'keyboard' | 'element'`
 - `CollectionEvent`: `{ id, type, ts, data, meta, domain?, normalizedUrl? }`
 - `EventMeta`: `{ sid, pid, url, vw, vh, tz, cursor_color? }`
 - `PageMetadataSnapshot`: `{ page_ref, canonical_url, title, favicon_url, metadata_hash, observed_at_ts }`

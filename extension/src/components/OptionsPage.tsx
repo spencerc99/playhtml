@@ -255,7 +255,7 @@ export function OptionsPage() {
       .querySelectorAll<HTMLElement>(".options-page__section")
       .forEach((section) => observer.observe(section));
     return () => observer.disconnect();
-  }, [bagSettingsEnabled]);
+  }, [bagSettingsEnabled, internalAccess]);
 
   const handleOpenColorPicker = () => colorInputRef.current?.click();
 
