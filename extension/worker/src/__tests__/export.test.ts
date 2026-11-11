@@ -2,10 +2,8 @@
 // ABOUTME: Verifies delayed inserts cannot shift later pages onto duplicate rows.
 
 import { describe, expect, it } from 'vitest';
-import {
-  getLaterEventFilter,
-  loadExportEventRows,
-} from '../routes/export';
+import { getLaterEventFilter } from '../lib/eventCursorFilter';
+import { loadExportEventRows } from '../routes/export';
 
 interface StoredEventRow {
   id: string;

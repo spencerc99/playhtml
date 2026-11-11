@@ -2,6 +2,7 @@
 // ABOUTME: Admin-authenticated endpoint for extracting edition data from Supabase.
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
+import { getLaterEventFilter } from '../lib/eventCursorFilter';
 import type { CollectionEvent, EventMeta } from '@playhtml/extension-types';
 
 const EXPORT_PAGE_SIZE = 1000;
@@ -32,16 +33,6 @@ interface ExportEventPage {
 type ExportEventRows =
   | { rows: ExportEventRow[]; error: null }
   | { rows: null; error: { message: string } };
-
-function quoteEventCursorValue(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-}
-
-export function getLaterEventFilter(ts: string, id: string): string {
-  const quotedTs = quoteEventCursorValue(ts);
-  const quotedId = quoteEventCursorValue(id);
-  return `ts.gt.${quotedTs},and(ts.eq.${quotedTs},id.gt.${quotedId})`;
-}
 
 interface ExportRequestBody {
   type?: string;

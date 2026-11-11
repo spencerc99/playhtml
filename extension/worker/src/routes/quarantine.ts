@@ -257,10 +257,14 @@ export async function handleQuarantineRip(request: Request, env: Env): Promise<R
   // page's standing-strip count changes underneath it.
   let ripsRequired = strip.rips_required;
   if (ripsRequired === null) {
-    const { count } = await supabase
+    const { count, error: countErr } = await supabase
       .from('quarantine_strips')
       .select('id', { count: 'exact', head: true })
       .eq('url', strip.url);
+    if (countErr) {
+      console.error('[Quarantine] rip strip count failed:', countErr);
+      return jsonResponse(503, { error: 'Store temporarily unavailable' });
+    }
     ripsRequired = (count ?? 0) >= SET_THRESHOLD ? SET_THRESHOLD : 1;
   }
 

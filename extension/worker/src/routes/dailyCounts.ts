@@ -1,5 +1,5 @@
 // ABOUTME: Serves daily event counts for the movement page calendar heatmap.
-// ABOUTME: Public endpoint calling the daily_event_counts Supabase RPC function.
+// ABOUTME: Public endpoint reading the pre-computed daily_counts Supabase table.
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
 
@@ -46,7 +46,10 @@ export async function handleDailyCounts(
       console.error('daily_counts query error:', error);
       return new Response(
         JSON.stringify({ error: 'Failed to fetch daily counts', details: error.message }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        }
       );
     }
 
@@ -78,7 +81,10 @@ export async function handleDailyCounts(
     console.error('Daily counts error:', error);
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        }
     );
   }
 }

@@ -2,7 +2,6 @@
 // ABOUTME: Validates, rate-limits, and stores event batches in Supabase with page metadata.
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
-import { VERBOSE } from '../config';
 import {
   getValidEventTypes,
   type CollectionEventType,
@@ -170,6 +169,7 @@ export async function handleIngest(
     const metadataSnapshots: PageMetadataSnapshot[] = [];
 
     // Validate events structure and extract metadata snapshots.
+    const validTypes = getValidEventTypes();
     for (const event of typedEvents) {
       if (!event.id || !event.type || !event.ts || !event.data || !event.meta) {
         return new Response(
@@ -185,7 +185,6 @@ export async function handleIngest(
       }
       
       // Validate event type
-      const validTypes = getValidEventTypes();
       if (!validTypes.includes(event.type as CollectionEventType)) {
         return new Response(
           JSON.stringify({ error: `Invalid event type: ${event.type}` }),
@@ -246,24 +245,6 @@ export async function handleIngest(
       });
     
     if (error) {
-      // Check if it's a duplicate key error (shouldn't happen with upsert, but just in case)
-      if (error.code === '23505') {
-        // Duplicate key - treat as success (events already exist)
-        if (VERBOSE) {
-          console.log(`[Ingest] ${events.length} events already exist (duplicates ignored)`);
-        }
-        return new Response(
-          JSON.stringify({ inserted: 0, duplicates: events.length }),
-          { 
-            status: 200,
-            headers: { 
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*',
-            }
-          }
-        );
-      }
-      
       console.error('Supabase insert error:', error);
       return new Response(
         JSON.stringify({ error: 'Failed to insert events', details: error.message }),
@@ -278,7 +259,6 @@ export async function handleIngest(
     }
     
     const inserted = typedEvents.length;
-    const duplicates = 0;
 
     // Best effort: persist page metadata history.
     // If table doesn't exist yet, ingest still succeeds and event data remains valid.
@@ -289,10 +269,6 @@ export async function handleIngest(
       } catch (metadataError) {
         console.warn('[Ingest] Page metadata history write skipped:', metadataError);
       }
-    }
-    
-    if (VERBOSE && duplicates > 0) {
-      console.log(`[Ingest] Inserted ${inserted} new events, ${duplicates} duplicates ignored`);
     }
     
     // Fan out renderable movement and navigation events to the live stream. Fire-and-forget
@@ -308,7 +284,7 @@ export async function handleIngest(
     );
 
     return new Response(
-      JSON.stringify({ inserted, duplicates, page_metadata_inserted: pageMetadataInserted }),
+      JSON.stringify({ inserted, duplicates: 0, page_metadata_inserted: pageMetadataInserted }),
       { 
         status: 200,
         headers: { 

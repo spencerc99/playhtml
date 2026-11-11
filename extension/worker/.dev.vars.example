@@ -10,3 +10,13 @@ CODA_API_TOKEN=your-coda-api-token-here
 
 # Optional: TypeSafe Jev key. When set, the site categorizer asks Jev instead of Clef.
 JEV_TOKEN=your-jev-key
+
+# Optional: tag new mailing-list contacts with this Resend segment.
+RESEND_SEGMENT_ID=your-resend-segment-id
+
+# Optional: shared password that opens /internet-map bundles (ADMIN_KEY always works).
+INTERNET_MAP_PASSWORD=your-internet-map-password
+
+# Optional: origin that collage share links open on, e.g. a local website dev server.
+# Unset means https://wewere.online.
+COLLAGE_VIEWER_ORIGIN=http://localhost:5173

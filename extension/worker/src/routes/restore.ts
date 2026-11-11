@@ -3,6 +3,7 @@
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
 import { createIpRateLimiter } from '../lib/ipRateLimit';
+import { getValidEventTypes } from '@playhtml/extension-types';
 import { toCollectionEvents } from './recent';
 import {
   ECDSA_SIGN_ALGORITHM,
@@ -16,7 +17,7 @@ import {
 
 /** Uncompressed P-256 public key: 0x04 prefix, then 64 bytes of x and y. */
 const PUBLIC_KEY_PID_PATTERN = /^pk_04[0-9a-f]{128}$/;
-const RESTORE_TYPES = new Set(['cursor', 'navigation', 'viewport', 'keyboard', 'element']);
+const RESTORE_TYPES = new Set<string>(getValidEventTypes());
 
 // A full restore of a heavy participant is about a thousand pages.
 const rateLimiter = createIpRateLimiter(600, 60_000);
