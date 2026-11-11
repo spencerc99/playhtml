@@ -444,8 +444,6 @@ export function CanPlayElement<T extends object, V = any>({
   useEffect(() => {
     const mountedElement = ref.current;
 
-    // console.log("setting up", elementProps.defaultData, ref.current);
-
     return () => {
       if (!mountedElement) return;
       playhtml.removePlayElement(mountedElement);
@@ -462,11 +460,6 @@ export function CanPlayElement<T extends object, V = any>({
     awareness,
     awarenessByStableId,
     setData: (newData: T | ((draft: T) => void)) => {
-      // console.log("settingdata", newData);
-      // console.log(ref.current?.id);
-      // console.log(
-      //   getCurrentElementHandler(TagType.CanPlay, ref.current?.id || "")
-      // );
       const effectiveId = ref.current
         ? getIdForElement(ref.current as unknown as HTMLElement)
         : undefined;

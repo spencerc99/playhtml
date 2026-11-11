@@ -1906,11 +1906,13 @@ export class CursorClientAwareness {
 
     // Convert our cursor to client coordinates so distance is in pixels (visibilityThreshold is in px)
     const ourClientCoords = this.storageToClient(this.currentCursor.x, this.currentCursor.y);
+    const cursorDataById = new Map<string, CursorPresence>();
+    for (const item of this.spatialGrid.getAll()) {
+      cursorDataById.set(item.id, item.data);
+    }
 
     this.cursors.forEach((cursorElement, stableId) => {
-      // Get cursor data from spatial grid
-      const gridItems = this.spatialGrid.getAll();
-      const cursorData = gridItems.find((item) => item.id === stableId)?.data;
+      const cursorData = cursorDataById.get(stableId);
 
       if (cursorData && cursorData.cursor) {
         // Convert to viewport coordinates for distance calculation

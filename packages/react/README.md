@@ -248,7 +248,7 @@ function UserCount() {
   const { cursors } = usePlayContext();
 
   return (
-    <div>👥 {cursors.allColors.length} users online</div>
+    <div>{cursors.allColors.length} users online</div>
   );
 }
 ```
@@ -258,18 +258,20 @@ The `cursors` object provides:
 - `cursors.color` - Your current cursor color
 - `cursors.name` - Your current name
 
-You can also access the global `window.cursors` API for setting values:
+To change your own color or name, set it on `playhtml.people.me`:
 
 ```tsx
+import { playhtml, usePeople } from "@playhtml/react";
+
 function CursorSettings() {
-  const { getMyPlayerIdentity } = usePlayContext();
+  const { me } = usePeople();
 
   return (
     <input
       type="color"
-      value={getMyPlayerIdentity().color}
+      value={me.color}
       onChange={(e) => {
-        window.cursors.color = e.target.value;
+        playhtml.people.me.color = e.target.value;
       }}
     />
   );

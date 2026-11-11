@@ -56,9 +56,8 @@ export function deepReplaceIntoProxy(target: any, src: any) {
     }
     return;
   }
-  // primitives
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  target = src as any;
+  // A top-level primitive src has no proxy to merge into, so it is ignored.
+  // Nested primitives are assigned by the object branch above.
 }
 
 // An item that names itself with `id` is the same item only when the id

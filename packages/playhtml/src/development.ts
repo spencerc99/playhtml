@@ -17,6 +17,7 @@ export { listSharedElements } from "./shared-elements";
 
 let activeElementObserver: MutationObserver | null = null;
 let activeDevRoot: HTMLElement | null = null;
+let activeDevStyle: HTMLStyleElement | null = null;
 // Polling tick that checks for new elementHandlers between MutationObserver
 // firings (playhtml's post-sync setup registers handlers on already-existing
 // DOM nodes, which doesn't fire the observer). Stored at module scope so
@@ -774,6 +775,7 @@ export function setupDevUI(
   const styleEl = document.createElement("style");
   styleEl.textContent = DEV_STYLES;
   document.head.appendChild(styleEl);
+  activeDevStyle = styleEl;
 
   // ── State ──
   let inspectMode = false;
@@ -2083,4 +2085,6 @@ export function teardownDevUI(): void {
     activeDevRoot.parentElement.removeChild(activeDevRoot);
     activeDevRoot = null;
   }
+  activeDevStyle?.remove();
+  activeDevStyle = null;
 }

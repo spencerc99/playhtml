@@ -263,7 +263,6 @@ export function PlayProvider({
 
   const configureCursors = (options: Partial<CursorOptions>) => {
     if (playhtml.cursorClient) {
-      // Use the new configure method
       playhtml.cursorClient.configure(options);
     } else {
       console.warn(

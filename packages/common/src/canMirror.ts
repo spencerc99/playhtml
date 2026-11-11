@@ -90,24 +90,28 @@ export const canMirrorInitializer: ElementInitializer<ElementState> = {
     // Style with [data-playhtml-hover] instead of :hover.
     // TODO: auto-duplicate :hover CSS rules to [data-playhtml-hover] via CSSOM
     // so users don't need to manually rewrite their hover styles.
-    element.addEventListener("mouseenter", () => {
+    const onMouseEnter = () => {
       publishInteraction(true, element.hasAttribute("data-playhtml-focus"));
       element.setAttribute("data-playhtml-hover", "");
-    });
-    element.addEventListener("mouseleave", () => {
+    };
+    const onMouseLeave = () => {
       publishInteraction(false, element.hasAttribute("data-playhtml-focus"));
       element.removeAttribute("data-playhtml-hover");
-    });
+    };
+    element.addEventListener("mouseenter", onMouseEnter);
+    element.addEventListener("mouseleave", onMouseLeave);
 
     // Sync :focus via awareness (ephemeral, per-user).
-    element.addEventListener("focusin", () => {
+    const onFocusIn = () => {
       publishInteraction(element.hasAttribute("data-playhtml-hover"), true);
       element.setAttribute("data-playhtml-focus", "");
-    });
-    element.addEventListener("focusout", () => {
+    };
+    const onFocusOut = () => {
       publishInteraction(element.hasAttribute("data-playhtml-hover"), false);
       element.removeAttribute("data-playhtml-focus");
-    });
+    };
+    element.addEventListener("focusin", onFocusIn);
+    element.addEventListener("focusout", onFocusOut);
 
     // Sync form element internal state (checked, value, selectedIndex).
     // These IDL properties don't trigger attribute mutations, so we listen
@@ -147,6 +151,22 @@ export const canMirrorInitializer: ElementInitializer<ElementState> = {
     };
     element.addEventListener("input", syncInputState);
     element.addEventListener("change", syncInputState);
+
+    // A handler rebuilt for the same element runs onMount again; without this
+    // the old observer would keep writing, including remote state the new
+    // handler applies (updateElement only pauses the newest observer).
+    return () => {
+      observer.disconnect();
+      if ((element as any).__playhtml_observer === observer) {
+        delete (element as any).__playhtml_observer;
+      }
+      element.removeEventListener("mouseenter", onMouseEnter);
+      element.removeEventListener("mouseleave", onMouseLeave);
+      element.removeEventListener("focusin", onFocusIn);
+      element.removeEventListener("focusout", onFocusOut);
+      element.removeEventListener("input", syncInputState);
+      element.removeEventListener("change", syncInputState);
+    };
   },
   updateElement: ({ element, data }) => {
     const currentState = constructInitialState(element);

@@ -20,14 +20,17 @@ export function listSharedElements() {
     const ds = `${window.location.host}${normalizePath(
       window.location.pathname,
     )}#${id}`;
+    // Same parsing as the runtime's permission check (sharing.ts).
+    const sharedValue = element.getAttribute("shared")?.toLowerCase() ?? "";
     out.push({
       type: "source",
       elementId: id,
       dataSource: ds,
       normalized: ds,
-      permissions: element.getAttribute("shared")?.includes("read-only")
-        ? "read-only"
-        : "read-write",
+      permissions:
+        sharedValue.includes("read-only") || sharedValue === "ro"
+          ? "read-only"
+          : "read-write",
       element,
     });
   });

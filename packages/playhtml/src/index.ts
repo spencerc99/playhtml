@@ -146,7 +146,6 @@ let publicSyncedStore = createReadOnlyStore(store.play);
 let developmentModule: typeof import("./development") | null = null;
 
 function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
-  // TODO: Strip filename extension
   const transformedPathname = window.location.pathname.replace(/\.[^/.]+$/, "");
 
   return includeSearch
@@ -315,9 +314,6 @@ const yObserverByKey = new Map<string, (...args: unknown[]) => void>();
 // Page data channel tracking, scoped here so init() can clear them
 const pageDataRefCounts = new Map<string, number>();
 const pageDataListeners = new Map<string, Set<(data: any) => void>>();
-// Tracks elements currently being updated due to remote SyncedStore/Yjs updates.
-// Allows us to distinguish programmatic remote-applied changes from local user writes.
-// moved below (single declaration)
 // Dev: track hydration of shared references for warnings
 const sharedUpdateSeen: Set<string> = new Set();
 const sharedHydrationTimers: Map<string, number> = new Map();
@@ -447,9 +443,6 @@ let eventHandlers: Map<string, Array<RegisteredPlayEvent>> = new Map<
   string,
   Array<RegisteredPlayEvent>
 >();
-// Tracks elements currently being updated due to remote SyncedStore/Yjs updates.
-// Allows us to distinguish programmatic remote-applied changes from local user writes.
-const remoteApplyingKeys: Set<string> = new Set();
 const canMirrorDataQueue = new CanMirrorDataQueue(() => doc);
 const selectorIdsToAvailableIdx = new Map<string, number>();
 let eventCount = 0;
@@ -1834,7 +1827,7 @@ async function initPlayHTMLOnce() {
   markAllElementsAsLoading();
 
   await waitForMainProviderSync();
-  console.log("[PLAYHTML]: Setting up elements... Time to have some fun 🛝");
+  console.log("[PLAYHTML]: Setting up elements... Time to have some fun");
 
   setupElements();
 
@@ -2836,7 +2829,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
   }
   // Set up the common classes for affected elements.
   element.classList.add(`__playhtml-element`);
-  element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
+  element.style.setProperty("--jiggle-delay", `${Math.random()}s`);
 
   attachSyncedStoreObserver(tag as string, elementId);
 }
@@ -2850,17 +2843,10 @@ function applySharedElementDataToHandler(
   if (proxy === undefined) return false;
 
   // Push a plain snapshot into the handler for stable rendering.
-  const applyKey = `${tag}:${elementId}`;
-  // Mark as remote-apply so onChange can permit programmatic updates for RO elements.
-  remoteApplyingKeys.add(applyKey);
-  try {
-    // @ts-ignore private usage intended
-    handler.__data = clonePlain(proxy);
-    if (tag === TagType.CanMirror) {
-      setupPlayElementDescendants(handler.element);
-    }
-  } finally {
-    remoteApplyingKeys.delete(applyKey);
+  // @ts-ignore private usage intended
+  handler.__data = clonePlain(proxy);
+  if (tag === TagType.CanMirror) {
+    setupPlayElementDescendants(handler.element);
   }
   return true;
 }

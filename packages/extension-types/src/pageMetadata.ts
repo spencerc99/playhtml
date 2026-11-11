@@ -98,7 +98,7 @@ export function buildPageRef(canonicalUrl: string): string {
  * sides of the contract.
  */
 export function buildMetadataHash(title: string, faviconUrl: string): string {
-  const value = `${title}${faviconUrl}`;
+  const value = `${title}\u0001${faviconUrl}`;
   let hash = 0x811c9dc5;
   for (let i = 0; i < value.length; i++) {
     hash ^= value.charCodeAt(i);

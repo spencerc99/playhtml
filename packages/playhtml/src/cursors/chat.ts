@@ -151,9 +151,12 @@ export class CursorChat {
 
     if (this.listening || this.message) {
       this.chatElement.innerHTML = `
-        <div class="playhtml-chat-input">${this.message || "..."}</div>
+        <div class="playhtml-chat-input"></div>
         <div class="playhtml-chat-button">&times;</div>
       `;
+      // Typed text is set as text, not markup, so "<" and "&" show as typed.
+      const input = this.chatElement.querySelector(".playhtml-chat-input");
+      if (input) input.textContent = this.message || "...";
       this.chatElement.style.display = "flex";
 
       // Add click handler to close button
