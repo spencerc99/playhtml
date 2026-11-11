@@ -4,11 +4,11 @@
 import { Database } from "bun:sqlite";
 import type { RunSummary, LatencySnapshot } from "./metrics.js";
 
-const DB_PATH = new URL("../../data/runs.db", import.meta.url).pathname;
+const DB_PATH = new URL("../data/runs.db", import.meta.url).pathname;
 
 function openDb(): Database {
   // Ensure data dir exists
-  const dataDir = new URL("../../data", import.meta.url).pathname;
+  const dataDir = new URL("../data", import.meta.url).pathname;
   Bun.spawnSync(["mkdir", "-p", dataDir]);
 
   const db = new Database(DB_PATH, { create: true });

@@ -21,11 +21,6 @@ export interface ApplySubtreesImmediateRequest {
   resetEpoch?: number | null;
 }
 
-export type PartyKitRequest =
-  | SubscribeRequest
-  | ExportPermissionsRequest
-  | ApplySubtreesImmediateRequest;
-
 export interface SubscribeResponse {
   ok: true;
   subscribed: true;
@@ -46,10 +41,6 @@ export interface ApplySubtreesResponse {
   // re-sending on every flush. Optional so older callers reading only `ok`
   // keep working; absence is treated as applied.
   applied?: boolean;
-}
-
-export interface GenericErrorResponse {
-  error: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

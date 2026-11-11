@@ -268,7 +268,8 @@ export class PartyServer extends YServer {
   // epoch). In-memory, so a DO reload re-enables every bridge.
   private bridgeHealth = new BridgeHealth();
 
-  // Preserve the same debounce timing as the old y-partykit callback config
+  // Autosave (onSave) runs 3s after the last update, and at least every 15s
+  // while updates keep arriving.
   static callbackOptions = {
     debounceWait: 3000,
     debounceMaxWait: 15000,
@@ -1663,10 +1664,19 @@ export class PartyServer extends YServer {
     message: string
   ): Promise<void> {
     if (typeof message === "string") {
+      let parsed: any;
       try {
-        const parsed = JSON.parse(message);
+        parsed = JSON.parse(message);
+      } catch {
+        // Not JSON: relay as-is.
+        this.broadcastCustomMessage(message);
+        return;
+      }
 
-        if (parsed.type === "add-shared-reference") {
+      // A failing bridge-control handler must not fall through to the relay
+      // below, which would broadcast the control message to every client.
+      try {
+        if (parsed?.type === "add-shared-reference") {
           if (!this.canWriteSharedData()) {
             console.warn(
               `[Bridge] Ignoring add-shared-reference for room ${this.name}: document hydration or persistence unavailable.`
@@ -1694,8 +1704,10 @@ export class PartyServer extends YServer {
           this.broadcastCustomMessage(message);
         }
       } catch (error) {
-        // If not valid JSON, broadcast as-is (existing behavior)
-        this.broadcastCustomMessage(message);
+        console.error(
+          `[PartyServer] Custom message handler failed: room=${this.name} connection=${sender.id} type=${JSON.stringify(parsed?.type)}`,
+          error
+        );
       }
     }
   }
