@@ -140,7 +140,12 @@ test("typechecks every shipped Internet Scraps route", () => {
     "utf8",
   );
 
+  // The include globs cover every route folder, so a route is only skipped
+  // when the exclude list names it.
+  assert.match(websiteTsconfig, /"include":\s*\[\s*"\*\*\/\*\.ts",\s*"\*\*\/\*\.tsx"\s*\]/);
+  const exclude = websiteTsconfig.match(/"exclude":\s*\[([^\]]*)\]/);
+  assert.ok(exclude, "extension/website/tsconfig.json has an exclude list");
   for (const route of ["scraps-grid", "scraps-pile", "scraps-preview"]) {
-    assert.match(websiteTsconfig, new RegExp(`"${route}"`));
+    assert.doesNotMatch(exclude[1], new RegExp(`"${route}`));
   }
 });

@@ -137,5 +137,5 @@ Add its URL path to `PAGES`. Add new error patterns to
 
 ## CI
 
-The `smoke` job in `.github/workflows/pr-validation.yml` builds the site,
+The `build-site` job in `.github/workflows/pr-validation.yml` builds the site,
 installs Chromium, and runs this suite on every PR.
