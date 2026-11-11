@@ -2,6 +2,7 @@
 // ABOUTME: Admin-authenticated endpoint returning counts and breakdowns from Supabase.
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
+import { getAdminAuthError } from '../lib/adminAuth';
 
 /**
  * GET /events/stats
@@ -10,23 +11,13 @@ import { createSupabaseClient, type Env } from '../lib/supabase';
  * SECURITY: Requires ADMIN_KEY authentication.
  * Even though data is anonymous, we protect access to aggregated stats
  * because we're collecting data from real users.
- * 
- * TODO: Consider adding CORS restrictions as additional security layer.
  */
 export async function handleStats(
   request: Request,
   env: Env
 ): Promise<Response> {
-  // Authenticate with ADMIN_KEY (server-side only, never from browser extension)
-  const authHeader = request.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-  
-  const token = authHeader.substring(7);
-  if (token !== env.ADMIN_KEY) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+  const authError = getAdminAuthError(request, env.ADMIN_KEY);
+  if (authError) return authError;
   
   try {
     const url = new URL(request.url);

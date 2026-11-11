@@ -169,6 +169,8 @@ export async function handleIngest(
     const typedEvents = events as IngestEvent[];
     const metadataSnapshots: PageMetadataSnapshot[] = [];
 
+    const validTypes = getValidEventTypes();
+
     // Validate events structure and extract metadata snapshots.
     for (const event of typedEvents) {
       if (!event.id || !event.type || !event.ts || !event.data || !event.meta) {
@@ -185,7 +187,6 @@ export async function handleIngest(
       }
       
       // Validate event type
-      const validTypes = getValidEventTypes();
       if (!validTypes.includes(event.type as CollectionEventType)) {
         return new Response(
           JSON.stringify({ error: `Invalid event type: ${event.type}` }),
@@ -289,10 +290,6 @@ export async function handleIngest(
       } catch (metadataError) {
         console.warn('[Ingest] Page metadata history write skipped:', metadataError);
       }
-    }
-    
-    if (VERBOSE && duplicates > 0) {
-      console.log(`[Ingest] Inserted ${inserted} new events, ${duplicates} duplicates ignored`);
     }
     
     // Fan out renderable movement and navigation events to the live stream. Fire-and-forget

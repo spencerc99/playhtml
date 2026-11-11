@@ -206,10 +206,11 @@ async function resolveCursorColors(
   if (missing.length > 0) {
     try {
       const supabase = createSupabaseClient(env);
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('participants')
         .select('pid, cursor_color')
         .in('pid', missing);
+      if (error) throw new Error(error.message);
 
       const found = new Map<string, string | null>();
       for (const row of data ?? []) {

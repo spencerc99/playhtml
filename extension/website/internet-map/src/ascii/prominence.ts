@@ -47,9 +47,3 @@ export function footprint(p: number, seed: number): readonly [number, number] {
   const set = SHAPES[tier];
   return set[Math.abs(seed * 2654435761) % set.length];
 }
-
-/** Plot area in cells, for reserving ground before anything is drawn. */
-export function plotArea(p: number, seed: number): number {
-  const [w, h] = footprint(p, seed);
-  return w * h;
-}

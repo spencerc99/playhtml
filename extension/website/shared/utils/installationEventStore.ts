@@ -33,13 +33,14 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-/** Overwrite the stored events and bump the stored version. The bumped version
- * rides along on the `events-ready` ping so followers can tell writes apart. */
-export async function writeEvents(events: CollectionEvent[]): Promise<void> {
+/** Overwrite the stored events and bump the stored version. Resolves with the
+ * new version, which rides along on the `events-ready` ping so followers can
+ * tell writes apart. */
+export async function writeEvents(events: CollectionEvent[]): Promise<number> {
   const db = await openDb();
-  const previous = await readFromDb(db);
-  const version = (previous?.version ?? 0) + 1;
   try {
+    const previous = await readFromDb(db);
+    const version = (previous?.version ?? 0) + 1;
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, "readwrite");
       tx.objectStore(STORE_NAME).put({ events, version }, RECORD_KEY);
@@ -47,6 +48,7 @@ export async function writeEvents(events: CollectionEvent[]): Promise<void> {
       tx.onerror = () => reject(tx.error ?? new Error("write failed"));
       tx.onabort = () => reject(tx.error ?? new Error("write aborted"));
     });
+    return version;
   } finally {
     db.close();
   }

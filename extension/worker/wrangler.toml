@@ -41,8 +41,6 @@ compatibility_flags = ["global_fetch_strictly_public"]
 # - POST /collages: Public (validated, size capped + rate limited) collage share
 # - GET /collages/<id>, GET /collages/<id>/img/<n>: Public (unguessable ids)
 # - DELETE /collages/<id>: the delete token handed back when it was shared
-#
-# TODO: Consider adding CORS restrictions to admin endpoints
 
 # Serves the API from workers.dev. Shared collages' pictures are also served
 # from assets.wewere.online, where Cloudflare's edge cache sits in front of

@@ -8,20 +8,6 @@ import { loadParticipantColors } from '../lib/participantColors';
 import type { CollectionEvent, EventMeta } from '@playhtml/extension-types';
 import { canonicalizeUrl, buildPageRef } from '../../../src/utils/pageMetadata';
 
-/**
- * Extract domain from URL, matching frontend logic
- * Removes 'www.' prefix and returns hostname
- */
-function extractDomain(url: string | null): string {
-  if (!url) return '';
-  try {
-    const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
-    return urlObj.hostname.replace('www.', '');
-  } catch {
-    return '';
-  }
-}
-
 /** Supabase/PostgREST returns at most 1000 rows per request; we paginate to satisfy larger limits. */
 const SUPABASE_PAGE_SIZE = 1000;
 
@@ -243,7 +229,7 @@ export async function toCollectionEvents(
  * - type: Event type filter (default: 'cursor'; 'all' disables the filter)
  * - limit: Maximum number of events (default: 1000, max: 20000). Pagination is used internally.
  * - domain: Domain filter (optional) - filters events by URL domain
- * - pid: Participant ID filter (optional) - restore-from-server flow uses this
+ * - pid: Participant ID filter (optional)
  * - from: ISO date string, inclusive lower bound on ts (optional)
  * - to: ISO date string, inclusive upper bound on ts (optional)
  * - require_title: 'true' to omit events for which no title exists in page_metadata_history (optional)

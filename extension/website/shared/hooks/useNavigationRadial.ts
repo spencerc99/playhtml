@@ -121,7 +121,6 @@ export function useNavigationRadial(
       .slice(0, settings.maxSessions);
 
     if (validSessions.length === 0) {
-      console.log("[Radial] No valid sessions after filtering");
       return null;
     }
 
@@ -293,9 +292,6 @@ export function useNavigationRadial(
       return aFirst - bFirst;
     });
 
-    const sessionsByDay = new Map<string, number>();
-    sessions.forEach((s) => sessionsByDay.set(s.dayKey, (sessionsByDay.get(s.dayKey) ?? 0) + 1));
-    console.log("[Radial] Created", nodes.size, "domain nodes,", sessions.length, "sessions. Sessions per day (local):", Object.fromEntries(sessionsByDay));
     return { nodes, sessions };
   }, [
     navigationEvents,

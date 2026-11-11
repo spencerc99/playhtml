@@ -14,8 +14,6 @@ import {
   type InternetPlaceScope,
 } from "../../../shared/internetPlaceCatalog";
 
-export const CURATION_STORAGE_KEY = "wwo-commute-curation-v1";
-
 export const CURATION_PLACEMENTS = INTERNET_PLACE_PLACEMENTS;
 
 export const CURATION_REASONS = INTERNET_PLACE_REASONS;

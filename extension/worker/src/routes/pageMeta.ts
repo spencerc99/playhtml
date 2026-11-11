@@ -3,6 +3,7 @@
 
 import { parse } from 'tldts';
 import type { Env } from '../lib/supabase';
+import { createIpRateLimiter } from '../lib/ipRateLimit';
 import {
   classifyPublicPage,
   type PublicPageInspection,
@@ -21,9 +22,7 @@ const CACHE_CONTROL = `public, max-age=${CACHE_TTL_SECONDS}, s-maxage=${CACHE_TT
 // Portrait sessions can fan out hundreds of unique URLs on load; 300/min/IP
 // is comfortable without inviting abuse. Edge cache absorbs repeat lookups
 // across users so per-IP cost stays bounded even on busy pages.
-const RATE_LIMIT_MAX = 300;
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX_TRACKED_IPS = 10_000;
+const rateLimiter = createIpRateLimiter(300, 60_000);
 
 // Cap body reads at 256 KiB. Real pages have <title> in the first few KB; a
 // hostile response that streams indefinitely would otherwise sit on a worker
@@ -36,27 +35,6 @@ const MAX_REDIRECTS = 5;
 // key includes this version, so a deploy with a new version effectively
 // resets the cache without us needing to manually purge.
 const CACHE_VERSION = 'v6';
-const ipHits = new Map<string, number[]>();
-
-function rateLimited(ip: string, now: number): boolean {
-  const cutoff = now - RATE_LIMIT_WINDOW_MS;
-  const hits = (ipHits.get(ip) || []).filter((t) => t > cutoff);
-  if (hits.length >= RATE_LIMIT_MAX) {
-    ipHits.set(ip, hits);
-    return true;
-  }
-  hits.push(now);
-  ipHits.set(ip, hits);
-  if (ipHits.size > RATE_LIMIT_MAX_TRACKED_IPS) {
-    const toDrop = Math.floor(RATE_LIMIT_MAX_TRACKED_IPS / 2);
-    let i = 0;
-    for (const key of ipHits.keys()) {
-      if (i++ >= toDrop) break;
-      ipHits.delete(key);
-    }
-  }
-  return false;
-}
 
 function jsonResponse(status: number, body: unknown, extra?: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
@@ -771,7 +749,7 @@ export async function handlePageMeta(request: Request, _env: Env): Promise<Respo
   const target = canonicalizeUrl(validated);
 
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  if (rateLimited(ip, Date.now())) {
+  if (rateLimiter.isLimited(ip, Date.now())) {
     return jsonResponse(429, { error: 'rate limited' });
   }
 
@@ -810,8 +788,8 @@ export async function handlePageMeta(request: Request, _env: Env): Promise<Respo
       'Cache-Control': CACHE_CONTROL,
     },
   });
-  // Cache the response (including the 'none' case — failures are also
-  // worth caching briefly to avoid hammering a failing site).
+  // Cache the response for the full TTL, including the 'none' case, so a
+  // failing site isn't fetched again on every lookup.
   await cache.put(cacheKey, resp.clone());
   return resp;
 }
