@@ -30,12 +30,12 @@ counters. Ctrl+C stops them.
 | `--duration 60`            | 0 (forever) | Stop after N seconds                                 |
 | `--headed`                 | off         | Show their browser windows                           |
 
-First run needs the browser: `bunx playwright install chromium`.
+First run needs the browser: `bun run --cwd smoke-tests install-browsers`.
 
 ## Other pages and ports
 
 `bun run film:export -- --room '<room id>' --out scripts/filming/snapshots/other.json`
-exports another room (ids look like `playhtml.fun-%2Fsome%2Fpath`). Start it
+exports another room (ids look like `playhtml.fun-/some/path`). Start it
 with `bun run film -- --snapshot <file>`, open that page's path, and point the
 bots at it with `--url`. Ports: `--site-port` (5199), `--server-port` (1998),
 `--db-port` (54398), so it runs next to `bun dev` and `bun dev-server`.

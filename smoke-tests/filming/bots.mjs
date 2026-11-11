@@ -1,7 +1,7 @@
 // ABOUTME: Runs simulated visitors on the local filming copy: headless browsers whose cursors
 // ABOUTME: wander and play with the homepage toys, so a screen recording shows a busy room.
 
-import { chromium, type Browser, type Page } from "playwright";
+import { chromium } from "playwright";
 import { parseArgs } from "node:util";
 
 const { values } = parseArgs({
@@ -35,13 +35,7 @@ const only = values.only
   .filter(Boolean);
 const viewport = { width: Number(values.width), height: Number(values.height) };
 
-type Toy = {
-  selector: string;
-  kind: "click" | "drag" | "spin";
-  weight: number;
-};
-
-const TOYS: Toy[] = [
+const TOYS = [
   { selector: "#lamp-hanging", kind: "click", weight: 3 },
   { selector: "#sign", kind: "drag", weight: 3 },
   { selector: "#stamp", kind: "spin", weight: 3 },
@@ -55,21 +49,19 @@ const TOYS: Toy[] = [
           selector: "#rain-sprinkler .fire-hydrant",
           kind: "click",
           weight: 0.5,
-        } as Toy,
+        },
       ]
     : []),
 ].filter(
   (toy) => !only || only.includes(toy.selector.replace(/^#/, "").split(" ")[0]),
 );
 
-const random = (min: number, max: number) => min + Math.random() * (max - min);
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms / pace));
+const random = (min, max) => min + Math.random() * (max - min);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms / pace));
 let stopping = false;
 
-type Point = { x: number; y: number };
-
 // Moves along a gently curved path with ease-in-out, like a hand on a trackpad.
-async function glide(page: Page, from: Point, to: Point, speed = 1) {
+async function glide(page, from, to, speed = 1) {
   const distance = Math.hypot(to.x - from.x, to.y - from.y);
   const steps = Math.max(8, Math.round(distance / (14 * speed)));
   const bend = random(-0.25, 0.25) * distance;
@@ -93,7 +85,7 @@ async function glide(page: Page, from: Point, to: Point, speed = 1) {
   return to;
 }
 
-async function visibleBox(page: Page, selector: string) {
+async function visibleBox(page, selector) {
   const box = await page
     .locator(selector)
     .first()
@@ -108,7 +100,7 @@ async function visibleBox(page: Page, selector: string) {
   return inView ? box : null;
 }
 
-function pickToy(): Toy | null {
+function pickToy() {
   const total = TOYS.reduce((sum, toy) => sum + toy.weight, 0);
   let roll = Math.random() * total;
   for (const toy of TOYS) {
@@ -118,7 +110,7 @@ function pickToy(): Toy | null {
   return null;
 }
 
-async function play(page: Page, at: Point): Promise<Point> {
+async function play(page, at) {
   const toy = pickToy();
   if (!toy) return at;
   const box = await visibleBox(page, toy.selector);
@@ -151,7 +143,7 @@ async function play(page: Page, at: Point): Promise<Point> {
   return at;
 }
 
-async function wander(page: Page, at: Point): Promise<Point> {
+async function wander(page, at) {
   const margin = 40;
   const to = {
     x: Math.min(
@@ -166,13 +158,13 @@ async function wander(page: Page, at: Point): Promise<Point> {
   return glide(page, at, to, random(0.6, 1.4));
 }
 
-async function runPerson(browser: Browser, index: number) {
+async function runPerson(browser, index) {
   const context = await browser.newContext({ viewport });
   const page = await context.newPage();
-  await page.goto(values.url!, { waitUntil: "load" });
+  await page.goto(values.url, { waitUntil: "load" });
   await page.waitForTimeout(1500 + index * 700);
 
-  let at: Point = {
+  let at = {
     x: random(100, viewport.width - 100),
     y: random(100, viewport.height - 100),
   };
@@ -188,22 +180,21 @@ async function runPerson(browser: Browser, index: number) {
         await page.mouse.wheel(0, random(-600, 900));
       } else await sleep(random(600, 2000)); // idle: cursor rests
     } catch (error) {
-      if (!stopping)
-        console.warn(`person ${index + 1}:`, (error as Error).message);
+      if (!stopping) console.warn(`person ${index + 1}:`, error.message);
     }
     await sleep(random(200, 1200));
   }
   await context.close();
 }
 
-let browser: Browser;
+let browser;
 try {
   browser = await chromium.launch({
     headless: !values.headed,
     executablePath: process.env.FILMING_CHROMIUM_PATH || undefined,
   });
 } catch (error) {
-  console.error((error as Error).message.split("\n")[0]);
+  console.error(error.message.split("\n")[0]);
   console.error(
     "Install the browser once with: bunx playwright install chromium",
   );
