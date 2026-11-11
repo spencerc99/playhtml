@@ -4,7 +4,6 @@ import ReactDOM from "react-dom";
 import { PlayProvider } from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
 import { Cursors, PlayhtmlToolBox, Guestbook } from "../events";
-import React from "react";
 
 function Main() {
   const [name, setName] = useStickyState<string | null>(
@@ -15,10 +14,10 @@ function Main() {
       if (window.cursors) window.cursors.name = newName ?? "";
     },
   );
-  const [from, setFrom] = useStickyState<string | null>("from", null);
+  const [from] = useStickyState<string | null>("from", null);
 
   return (
-    <PlayProvider>
+    <PlayProvider initOptions={{ cursors: { enabled: true } }}>
       <Cursors />
       <div id="workshopContent">
         <PlayhtmlToolBox />

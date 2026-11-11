@@ -101,7 +101,6 @@ function calculateGridDimensions(
   // 3. Have enough cells for all minutes (1440)
   // 4. Minimize extra empty cells
 
-  const aspectRatio = windowWidth / windowHeight;
   const totalCells = MINUTES_IN_DAY; // 1440
 
   let bestColumns = 0;
@@ -601,7 +600,7 @@ const Main = withSharedState(
                 className="randomize"
                 onClick={() => setCurrentColor(generateRandomColor())}
               >
-                🎲
+                ⚄
               </button>
               <button
                 className="add-color-button"
@@ -669,7 +668,7 @@ mountExperimentBadge({ experiment: "EX-05" });
 ReactDOM.createRoot(
   document.getElementById("reactContent") as HTMLElement
 ).render(
-  <PlayProvider>
+  <PlayProvider initOptions={{ cursors: { enabled: true } }}>
     <Main></Main>
   </PlayProvider>
 );

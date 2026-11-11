@@ -73,7 +73,7 @@
             placeholder="your story word..."
             maxlength="20"
           />
-          <button class="wordSubmit">📤</button>
+          <button class="wordSubmit" aria-label="add word">→</button>
           <br />
           <span id="typingIndicators"></span>
           <script>
@@ -234,7 +234,10 @@
                   );
                 },
               });
-              playhtml.init({ room: window.location.pathname });
+              playhtml.init({
+                room: window.location.pathname,
+                cursors: { enabled: true },
+              });
             });
           </script>
         </p>

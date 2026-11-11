@@ -4,3 +4,10 @@
 # The docs open on Getting started at /docs/ now.
 /docs/getting-started /docs/ 301
 /docs/getting-started/ /docs/ 301
+
+# Experiment 03 is the fridge.
+/experiments/3 /fridge 301
+/experiments/3/ /fridge 301
+
+# The candles page is gone.
+/candles / 301

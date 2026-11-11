@@ -4,18 +4,6 @@ import { PlayProvider, withSharedState } from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
 import "./walking-together.scss";
 
-interface CursorParty {
-  color: string;
-  count: number;
-  name: string;
-}
-
-declare global {
-  interface Window {
-    cursors?: CursorParty;
-  }
-}
-
 interface SharedURL {
   url: string;
   userName: string;
@@ -33,6 +21,12 @@ const CURSOR_INSTRUCTIONS = [
   "Imagine your cursor as a falling rain drop",
 ];
 
+function isGatheringAdmin() {
+  return (
+    window.cursors?.name === "Kristoffer" || window.cursors?.name === "spencer"
+  );
+}
+
 // URL validation helper
 function isValidUrl(url: string) {
   try {
@@ -49,11 +43,12 @@ export function UserSetup() {
     null,
     (newName) => {
       if (window.cursors) window.cursors.name = newName ?? "";
-    }
+    },
   );
 
   const [color, setInternalColor] = useState(
-    JSON.parse(localStorage.getItem("color") || "null") || window.cursors?.color
+    JSON.parse(localStorage.getItem("color") || "null") ||
+      window.cursors?.color,
   );
   const setColor = (newColor: string) => {
     setInternalColor(newColor);
@@ -122,13 +117,13 @@ export function UserSetup() {
             height: "24px",
           }}
           src={`data:image/svg+xml,%3Csvg version='1.1' id='Layer_1' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' x='0px' y='0px' viewBox='0 0 28 28' enable-background='new 0 0 28 28' xml:space='preserve'%3E%3Cpolygon fill='${encodeURIComponent(
-            color
+            color,
           )}' points='8.2,20.9 8.2,4.9 19.8,16.5 13,16.5 12.6,16.6 '/%3E%3Cpolygon fill='${encodeURIComponent(
-            color
+            color,
           )}' points='17.3,21.6 13.7,23.1 9,12 12.7,10.5 '/%3E%3Crect x='12.5' y='13.6' transform='matrix(0.9221 -0.3871 0.3871 0.9221 -5.7605 6.5909)' fill='${encodeURIComponent(
-            color
+            color,
           )}' width='2' height='8'/%3E%3Cpolygon fill='${encodeURIComponent(
-            color
+            color,
           )}' points='9.2,7.3 9.2,18.5 12.2,15.6 12.6,15.5 17.4,15.5 '/%3E%3C/svg%3E`}
         />
         <input
@@ -171,7 +166,9 @@ export const URLChat = withSharedState(
         timestamp: Date.now(),
       };
 
-      setData({ urls: [...data.urls, newUrl] });
+      setData((draft) => {
+        draft.urls.push(newUrl);
+      });
       setInputUrl("");
     };
 
@@ -244,7 +241,7 @@ export const URLChat = withSharedState(
         </ul>
       </div>
     );
-  }
+  },
 );
 
 export const GroupActivityDisplay = withSharedState(
@@ -257,27 +254,44 @@ export const GroupActivityDisplay = withSharedState(
   ({ data, setData }) => {
     const [timeLeft, setTimeLeft] = React.useState(30); // 30 seconds
 
+    // Everyone counts down locally from the shared lastChangeTime. Only an
+    // admin writes the advance when it reaches zero, so open tabs do not all
+    // advance at once and skip activities. With no admin on the page the
+    // activity stays put at 0:00 until an admin arrives or presses SKIP.
+    const dataRef = React.useRef(data);
+    dataRef.current = data;
+    // The lastChangeTime this tab already advanced from, so it does not write
+    // again before its own advance syncs back into data.
+    const advancedFromRef = React.useRef<number | null>(null);
+
     React.useEffect(() => {
-      const interval = setInterval(() => {
-        const now = Date.now();
-        const elapsed = Math.floor((now - data.lastChangeTime) / 1000);
+      const tick = () => {
+        const d = dataRef.current;
+        const elapsed = Math.floor((Date.now() - d.lastChangeTime) / 1000);
         const remaining = 30 - elapsed;
 
-        if (remaining <= 0) {
-          // Update to next instruction
+        if (remaining > 0) {
+          setTimeLeft(remaining);
+          return;
+        }
+
+        setTimeLeft(0);
+        if (
+          isGatheringAdmin() &&
+          advancedFromRef.current !== d.lastChangeTime
+        ) {
+          advancedFromRef.current = d.lastChangeTime;
           setData({
             currentInstructionIndex:
-              (data.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
-            lastChangeTime: now,
+              (d.currentInstructionIndex + 1) % CURSOR_INSTRUCTIONS.length,
+            lastChangeTime: Date.now(),
           });
-          setTimeLeft(30);
-        } else {
-          setTimeLeft(remaining);
         }
-      }, 1000);
-
+      };
+      tick();
+      const interval = setInterval(tick, 1000);
       return () => clearInterval(interval);
-    }, [data.lastChangeTime, data.currentInstructionIndex, setData]);
+    }, [setData]);
 
     const minutes = Math.floor(timeLeft / 60);
     const seconds = timeLeft % 60;
@@ -291,9 +305,7 @@ export const GroupActivityDisplay = withSharedState(
       setTimeLeft(30);
     };
 
-    const isAdmin =
-      window.cursors?.name === "Kristoffer" ||
-      window.cursors?.name === "spencer";
+    const isAdmin = isGatheringAdmin();
 
     return (
       <div className="group-activity" id="group-activity">
@@ -331,12 +343,12 @@ export const GroupActivityDisplay = withSharedState(
         )}
       </div>
     );
-  }
+  },
 );
 
 function Main() {
   return (
-    <PlayProvider>
+    <PlayProvider initOptions={{ cursors: { enabled: true } }}>
       <div className="walking-together">
         <UserSetup />
         <URLChat />

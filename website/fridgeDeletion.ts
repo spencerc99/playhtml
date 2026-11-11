@@ -11,3 +11,26 @@ export function canDeleteFridgeWord(
 ): boolean {
   return publicKey === FridgeOwnerPublicKey || deleteCount < DeleteWordLimit;
 }
+
+interface FridgeWordMatchFields {
+  id?: string;
+  word: string;
+  color?: string;
+}
+
+// Removes one word from the shared list, matching by id when the word has one
+// and by text and color otherwise. Runs against the live list inside a setData
+// mutator, so a word another visitor already removed is left alone.
+export function removeFridgeWord(
+  words: FridgeWordMatchFields[],
+  target: FridgeWordMatchFields,
+): boolean {
+  const index = words.findIndex((word) =>
+    target.id
+      ? word.id === target.id
+      : word.word === target.word && word.color === target.color,
+  );
+  if (index === -1) return false;
+  words.splice(index, 1);
+  return true;
+}
