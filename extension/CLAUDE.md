@@ -235,24 +235,27 @@ WXT manages multiple entry points:
 
 ### Collectors (`src/collectors/`)
 
-Event capture system with a dual-layer architecture (real-time streaming + archival storage).
+Event capture system: collectors emit events into an `EventBuffer` for local storage and archival upload.
 
-**BaseCollector** (abstract): Lifecycle (`enable`/`disable`/`pause`/`resume`), dual emission (buffered + real-time), configurable sample rate.
+**BaseCollector** (abstract): Lifecycle (`enable`/`disable`/`pause`/`resume`), buffered emission, configurable sample rate. It also has an optional real-time callback (`setRealTimeCallback` / `emitRealTime`); only `CursorCollector` emits to it, and no extension code sets a callback, so nothing streams in real time today.
 
 **CollectorManager**: Orchestrates collectors, routes events to EventBuffer, supports 3 collection modes (`off`/`local`/`shared`), 3s debounced batch flush.
 
 Individual collectors:
 
-- **CursorCollector**: 60fps real-time to PartyKit, 250ms archival sampling. Tracks moves (normalized 0-1), clicks (2s debounce with quantity), holds (>250ms), cursor style changes. 15px movement threshold for archival.
+- **CursorCollector**: 250ms archival sampling with a 15px movement threshold (80ms/4px at installation pace). Tracks moves (normalized 0-1), clicks (one event per click, `quantity: 1`), holds (>250ms), cursor style changes (500ms debounce). Its 60fps real-time emission only runs when a real-time callback is set, which nothing does.
 - **NavigationCollector**: focus/blur/popstate/beforeunload events. 2s dedup window. Captures canonical URL, title, favicon on navigation.
 - **ViewportCollector**: Scroll (100ms throttle, normalized 0-1 position), resize (200ms debounce), zoom (via VisualViewport API, 2s debounce).
 - **KeyboardCollector**: Legibility is a continuous 0–100% slider (5% increments) stored under `collection_keyboard_privacy_level`. 0% = cadence only (every non-whitespace replaced with U+2588), 100% = full text with PII redacted, intermediate values randomly redact a proportion of non-PII characters using a deterministic per-session seed. PII (emails, US phone numbers, SSNs) is always redacted with U+2588 regardless of level. Excludes password inputs. 5s debounce for typing sessions. Legacy `"abstract"` / `"full"` storage values are migrated to 0 / 100 on read.
 
 ### Storage (`src/storage/`)
 
-- **EventBuffer**: Creates CollectionEvents with metadata in content-script context, batches for 3s flush, sends to background via `browser.runtime.sendMessage`.
-- **LocalEventStore**: IndexedDB v10 with domain-indexed queries. Pre-computes DomainStatsAggregate at insert time (totalTimeMs, hourBuckets[24], sessionCount, eventsByType, uniqueUrlCount), with exact URL membership stored separately in `aggregate_urls`. Screen time from focus/blur session pairing.
-- **sync.ts**: Upload to Cloudflare Worker (`POST /events`), retry on failure, participant color sync.
+- **EventBuffer**: Creates CollectionEvents with metadata in content-script context, batches for 3s flush, sends to background via `browser.runtime.sendMessage`. The participant ID is stamped on when events are stored; until the background has an identity, events wait in the buffer (retried with backoff, capped at `MAX_HELD_EVENTS`, oldest dropped first).
+- **LocalEventStore**: IndexedDB (`DB_VERSION` 15) with domain-indexed queries. Pre-computes DomainStatsAggregate at insert time (totalTimeMs, hourBuckets[24], sessionCount, eventsByType, uniqueUrlCount), with exact URL membership stored separately in `aggregate_urls`. Screen time from focus/blur session pairing.
+- **sync.ts**: Upload to Cloudflare Worker (`POST /events`). Network errors, 5xx, 401, 403, 408, and 429 keep the batch pending for retry; any other 4xx means the Worker rejected the batch, so it is logged once and kept local only (marked uploaded, never re-sent).
+- **historyLoader.ts**: Loads trails for the page overlay. Shared events from `/events/recent` are fetched through the background (`FETCH_SERVER_EVENTS`), one message per event type, because a content script's fetch carries the page's Origin, which the Worker refuses. A failed read throws so the overlay shows the error.
+
+All extension calls to the Worker use `WORKER_URL` from `@movement/config` (`extension/website/shared/config.ts`): `VITE_WORKER_URL` at build time, else the production Worker. Dev builds without `VITE_WORKER_URL` talk to production; point them at `wrangler dev` with `VITE_WORKER_URL=http://localhost:8787`.
 
 ### Identity (`src/storage/participant.ts`)
 
@@ -321,7 +324,7 @@ Cloudflare Worker + Supabase PostgreSQL + Resend:
 - `GET /events/stats`, `POST /events/export`: Admin key required
 - `POST /subscribe`: Public mailing-list signup (rate limited 5/min/IP). Adds the contact to Resend, then sends an email on every call: the welcome email for `website`, the updates email for `extension-setup`. Repeat signups send it again; only Resend's 24-hour idempotency key (one per email and template) suppresses a resend inside that window. Responds `{ ok, alreadySubscribed }`. Used by both the website (`<DownloadGate />` on mobile) and the extension setup form. Body: `{ email, source: 'website' | 'extension-setup' }`.
 
-**Resend integration:** the worker uses Resend Audiences/Contacts as the mailing-list store and welcome-email sender. Email addresses are NOT linked to browsing data — the `/subscribe` endpoint accepts only `email + source`, never participant or session IDs. The welcome template lives at `worker/src/emails/WelcomeEmail.tsx` (built with `react-email`).
+**Resend integration:** the worker uses Resend Audiences/Contacts as the mailing-list store and welcome-email sender. Email addresses are NOT linked to browsing data — the `/subscribe` endpoint accepts only `email + source`, never participant or session IDs. The email templates live in `worker/src/emails/WelcomeEmail.tsx` as plain HTML and plaintext template strings.
 
 **Worker secrets:** `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `ADMIN_KEY`, `RESEND_API_KEY` (required); `RESEND_SEGMENT_ID` (optional, tags new contacts).
 
@@ -400,7 +403,7 @@ Playwright `chromium` channel.
 ### Files
 
 - `src/config.ts`: `VERBOSE` debug logging flag
-- `src/flags.ts`: Feature flags (`COPRESENCE: true`)
+- `src/flags.ts`: Resolves feature states from the shared `FEATURE_CATALOG` (`shared/featureCatalog.ts`), server access, and local choices. `FLAGS` is derived from each feature's `defaultStage`.
 - `wxt.config.ts`: Manifest v3, permissions (storage, tabs, `<all_urls>` host access; http/https on Safari), React module, ASCII charset output for Chrome compliance
 
 ## Testing
@@ -428,7 +431,7 @@ The PR description and handoff must name the automation or harness, browser and 
 
 ## Key Design Patterns
 
-1. **Dual-layer collection**: High-frequency real-time (PartyKit) + sparse archival (IndexedDB/Supabase)
+1. **Archival collection**: Sparse sampling into IndexedDB, uploaded to Supabase for shared modes; live presence comes from playhtml cursors, not the collectors
 2. **Message-based architecture**: Content scripts communicate with background via `browser.runtime.sendMessage` -- no direct DOM access from background
 3. **Privacy tiers**: Keyboard legibility 0–100% slider, collection off/local/shared modes, PII redaction (always-on)
 4. **Stats pre-computation**: Aggregates computed at insert time for O(1) domain-level queries

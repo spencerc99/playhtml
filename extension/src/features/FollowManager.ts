@@ -6,6 +6,7 @@ import { isWikiArticleUrl, type WikiPresenceView } from "../custom-sites/wikiped
 import { OffscreenIndicator } from "./OffscreenIndicator";
 import { PHONE_LAYOUT_QUERY } from "../entrypoints/scraps/phoneLayout";
 import { injectShadow } from "../entrypoints/content/inject-ui";
+import { isTypingEvent } from "./extensionPageUi";
 import {
   FOLLOW_AVAILABLE_ATTR,
   FOLLOW_PEER_EVENT,
@@ -256,15 +257,15 @@ export class FollowManager {
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
-    const target = e.target as HTMLElement;
-    if (
-      target instanceof HTMLInputElement ||
-      target instanceof HTMLTextAreaElement ||
-      target.isContentEditable
-    )
-      return;
+    if (isTypingEvent(e)) return;
 
-    if (e.key === "f" || e.key === "F") {
+    // Bare F only: Cmd/Ctrl+F is the browser's find and must never toggle follow.
+    if (
+      (e.key === "f" || e.key === "F") &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey
+    ) {
       this.handleFollowKey();
     }
     if (e.key === "Escape" && this.followState) {

@@ -2,6 +2,7 @@
 // ABOUTME: Picture, video (when something moves) and the collage file; sharing a link has its own button.
 
 import React, { useEffect, useRef, useState } from "react";
+import { useMenuEscape } from "./useMenuEscape";
 
 interface ExportMenuProps {
   /** False while the collage is empty, when nothing but the file can be made. */
@@ -31,20 +32,14 @@ export function ExportMenu({
   const holderRef = useRef<HTMLDivElement>(null);
   const busy = running !== null;
 
+  useMenuEscape(open, () => setOpen(false));
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
       if (!holderRef.current?.contains(event.target as Node)) setOpen(false);
     };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
     window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
+    return () => window.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
 
   /** Runs an export and folds the menu away, so its progress shows on the button. */

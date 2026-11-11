@@ -15,6 +15,7 @@ import { ReactHint } from "./ReactHint";
 import { ACTIVE_EMOTES, getEmote, type EmoteDef } from "./emotes";
 import { matchesEmoteShortcut, type EmoteShortcut } from "./emoteShortcut";
 import { FIRE_EMOTE_EVENT, type FireEmoteDetail } from "../peerEvents";
+import { isTypingEvent } from "../extensionPageUi";
 import {
   nearestPeer,
   detectMutualHighFive,
@@ -66,14 +67,6 @@ function injectCursorGestureStyles(): void {
 
 function removeCursorGestureStyles(): void {
   document.getElementById(CURSOR_GESTURE_STYLE_ID)?.remove();
-}
-
-function isTypingTarget(t: EventTarget | null): boolean {
-  return (
-    t instanceof HTMLInputElement ||
-    t instanceof HTMLTextAreaElement ||
-    (t instanceof HTMLElement && t.isContentEditable)
-  );
 }
 
 function keyToIndex(key: string): number | null {
@@ -272,7 +265,7 @@ export function initEmotes(
   }
 
   function onKeyDown(e: KeyboardEvent) {
-    if (matchesEmoteShortcut(e, shortcut, isMac, isTypingTarget(e.target))) {
+    if (matchesEmoteShortcut(e, shortcut, isMac, isTypingEvent(e))) {
       e.preventDefault();
       wheel.open ? closeWheel() : openWheel();
       return;
@@ -286,7 +279,7 @@ export function initEmotes(
       !e.metaKey &&
       !e.ctrlKey &&
       !e.altKey &&
-      !isTypingTarget(e.target)
+      !isTypingEvent(e)
     ) {
       const idx = keyToIndex(e.key);
       if (idx !== null && idx < emotes.length) {

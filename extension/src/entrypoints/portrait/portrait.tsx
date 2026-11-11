@@ -1,7 +1,7 @@
 // ABOUTME: Portrait page entrypoint — full movement visualization using local IndexedDB data
 // ABOUTME: Loads all locally-collected events and passes them to MovementCanvas for rendering
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import { PortraitCard } from "../../components/PortraitCard";
 import { createRoot } from "react-dom/client";
@@ -44,8 +44,13 @@ const PortraitPage = () => {
   );
   const [cardMinimized, setCardMinimized] = useState(false);
 
+  // Each load bumps the generation; a response from an older load is dropped
+  // so it can't overwrite events from a newer selection.
+  const loadGeneration = useRef(0);
   const loadEvents = useCallback(
     async (days?: DayRange | null) => {
+      const generation = ++loadGeneration.current;
+      const isCurrent = () => generation === loadGeneration.current;
       setLoading(true);
       setError(null);
       try {
@@ -65,8 +70,10 @@ const PortraitPage = () => {
           type: "GET_ALL_EVENTS",
           options,
         });
+        if (!isCurrent()) return;
         setEvents((res?.events ?? []) as CollectionEvent[]);
       } catch (err) {
+        if (!isCurrent()) return;
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("64MiB") || msg.includes("maximum allowed size")) {
           setError("Too much data to load at once. Try clearing old events.");
@@ -75,7 +82,7 @@ const PortraitPage = () => {
         }
         console.error("Error loading local events:", err);
       } finally {
-        setLoading(false);
+        if (isCurrent()) setLoading(false);
       }
     },
     [activeVisualizations],

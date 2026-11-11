@@ -19,6 +19,7 @@ import { Inventory } from "./Inventory";
 import { QuickActions } from "./QuickActions";
 import { SiteStatus } from "./SiteStatus";
 import { savePlayerColor } from "../storage/playerColor";
+import { submitAccessRequest } from "../storage/accessRequest";
 import {
   getPublicPlayerIdentity,
   PLAYER_IDENTITY_STORAGE_KEY,
@@ -173,7 +174,7 @@ export function OptionsPage() {
   const [color, setColor] = useState("#4a9a8a");
   const [savingColor, setSavingColor] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [newTabTakeover, setNewTabTakeover] = useState(true);
+  const [newTabTakeover, setNewTabTakeover] = useState(false);
   const [milestoneToastsEnabled, setMilestoneToastsEnabled] = useState(true);
   const [setupEmail, setSetupEmail] = useState<string | null>(null);
   const [emailDraft, setEmailDraft] = useState("");
@@ -211,7 +212,8 @@ export function OptionsPage() {
         setIdentity(playerIdentity);
         const savedColor = playerIdentity?.playerStyle.colorPalette[0];
         if (savedColor) setColor(savedColor);
-        setNewTabTakeover(stored[NEWTAB_TAKEOVER_KEY] !== false);
+        // Matches the new tab redirect: an unset key means opted out.
+        setNewTabTakeover(Boolean(stored[NEWTAB_TAKEOVER_KEY]));
         setMilestoneToastsEnabled(
           stored[MILESTONE_TOASTS_ENABLED_KEY] !== false,
         );
@@ -304,17 +306,10 @@ export function OptionsPage() {
     if (!identity) return;
     setAccessRequestStatus("sending");
     try {
-      const response = await fetch(`${WORKER_URL}/access-requests`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          publicId: identity.publicKey,
-          email: emailDraft.trim() || undefined,
-          requestedFeatures: ["COMMUTE", "SCRAPS"],
-        }),
+      await submitAccessRequest({
+        email: emailDraft.trim() || null,
+        requestedFeatures: ["COMMUTE", "SCRAPS"],
       });
-      if (!response.ok)
-        throw new Error(`Access request failed with ${response.status}`);
       setAccessRequestStatus("sent");
     } catch {
       setAccessRequestStatus("error");

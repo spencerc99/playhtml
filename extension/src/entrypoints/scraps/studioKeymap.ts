@@ -328,10 +328,29 @@ export function acceleratorNames(event: KeyEventShape): string[] {
   const rest: string[] = [];
   if (event.shiftKey) rest.push("shift");
   if (event.altKey) rest.push("alt");
-  rest.push(event.key.toLowerCase());
+  rest.push(acceleratorKey(event));
   const names = [["accel", ...rest].join("+")];
   if (event.ctrlKey) names.push(["ctrl", ...rest].join("+"));
   return names;
+}
+
+/**
+ * The physical keys the reserved list names by their unshifted character.
+ * Shift turns `[` into `{` and `1` into `!`, so these are read from the key's
+ * position; letters are read from the printed character, so they follow the
+ * keyboard layout the way the browser's own shortcuts do.
+ */
+const CODE_KEYS: Record<string, string> = {
+  BracketLeft: "[",
+  BracketRight: "]",
+  ...Object.fromEntries(
+    Array.from({ length: 10 }, (_, digit) => [`Digit${digit}`, String(digit)]),
+  ),
+};
+
+function acceleratorKey(event: KeyEventShape): string {
+  const fromCode = event.code ? CODE_KEYS[event.code] : undefined;
+  return fromCode ?? event.key.toLowerCase();
 }
 
 /** Whether an event is one of the accelerators the browser keeps for itself. */
@@ -340,6 +359,15 @@ export function isReservedAccelerator(event: KeyEventShape): boolean {
     RESERVED_ACCELERATORS.includes(name),
   );
 }
+
+/**
+ * What the accelerator key is called on this keyboard: cmd on a Mac, iPhone or
+ * iPad, ctrl everywhere else. Every shortcut hint names it this way.
+ */
+export const ACCEL_KEY_NAME: "cmd" | "ctrl" =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent)
+    ? "cmd"
+    : "ctrl";
 
 export interface ShortcutEntry {
   keys: string;
@@ -385,7 +413,7 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
       { keys: "shift + click", what: "add or take away a piece" },
       { keys: "drag on bare paper", what: "select every piece it touches" },
       { keys: "shift + drag on bare paper", what: "add to what is selected" },
-      { keys: "cmd + A", what: "select every piece" },
+      { keys: `${ACCEL_KEY_NAME} + A`, what: "select every piece" },
       { keys: "click one of them", what: "keep just that piece" },
     ],
   },
@@ -393,7 +421,7 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
     group: "reach a buried piece",
     entries: [
       { keys: "click again", what: "take the next piece down" },
-      { keys: "cmd + click", what: "take the next piece down at once" },
+      { keys: `${ACCEL_KEY_NAME} + click`, what: "take the next piece down at once" },
       { keys: ", / .", what: "step down / up the stack" },
       { keys: "right-click", what: "list every piece here" },
     ],
@@ -401,13 +429,13 @@ export const STUDIO_SHORTCUTS: { group: string; entries: ShortcutEntry[] }[] = [
   {
     group: "edit",
     entries: [
-      { keys: "cmd + D", what: "duplicate" },
+      { keys: `${ACCEL_KEY_NAME} + D`, what: "duplicate" },
       { keys: "alt-drag", what: "drag out a copy" },
-      { keys: "cmd + C / V", what: "copy and paste" },
-      { keys: "cmd + Z", what: "undo" },
-      { keys: "cmd + shift + Z", what: "redo" },
+      { keys: `${ACCEL_KEY_NAME} + C / V`, what: "copy and paste" },
+      { keys: `${ACCEL_KEY_NAME} + Z`, what: "undo" },
+      { keys: `${ACCEL_KEY_NAME} + shift + Z`, what: "redo" },
       { keys: "delete", what: "remove" },
-      { keys: "cmd + S", what: "save now" },
+      { keys: `${ACCEL_KEY_NAME} + S`, what: "save now" },
     ],
   },
   {

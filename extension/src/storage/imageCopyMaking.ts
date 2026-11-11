@@ -180,10 +180,18 @@ async function decode(src: string, original: Blob): Promise<ImageBitmap> {
 /**
  * The one local copy kept for an image: a still redrawn to fit the target
  * unless already small, an animation whole unless too large to keep, and SVG
- * as markup.
+ * as markup. `downloaded` supplies bytes another reader already fetched for
+ * `src`; without it the image is downloaded here.
  */
-export async function makeImageCopy(src: string): Promise<NewImageCopy> {
-  const { bytes, mimeType } = await downloadImage(src, COPY_DOWNLOAD_MAX_BYTES);
+export async function makeImageCopy(
+  src: string,
+  downloaded?: DownloadedBytes,
+): Promise<NewImageCopy> {
+  if (downloaded && downloaded.bytes.byteLength > COPY_DOWNLOAD_MAX_BYTES) {
+    throw new ImageCopyError(src, "the supplied image is over the limit");
+  }
+  const { bytes, mimeType } =
+    downloaded ?? (await downloadImage(src, COPY_DOWNLOAD_MAX_BYTES));
   const hash = await contentHash(bytes);
   const original = new Blob([bytes], { type: mimeType });
 

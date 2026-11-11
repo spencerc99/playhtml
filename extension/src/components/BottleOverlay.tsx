@@ -6,6 +6,7 @@ import { MessageBottle } from "./MessageBottle";
 import type { BottleAnchor } from "../features/bottle-anchor";
 import { resolveBottlePosition } from "../features/bottle-anchor";
 import type { RenderedBottle } from "../features/BottleManager";
+import { isExtensionPageUi } from "../features/extensionPageUi";
 
 interface BottleOverlayProps {
   bottles: RenderedBottle[];
@@ -34,6 +35,20 @@ interface ResolvedBottleSlot extends RenderedBottle {
   rotate: number;
 }
 
+/**
+ * True when a DOM mutation can move page content a bottle is anchored to.
+ * Changes to the extension's own injected UI (shadow hosts, peer cursors)
+ * never do, and peer cursors mutate continuously while people move.
+ */
+export function movesPageLayout(record: MutationRecord): boolean {
+  if (isExtensionPageUi(record.target)) return false;
+  const changed = [
+    ...Array.from(record.addedNodes),
+    ...Array.from(record.removedNodes),
+  ];
+  return changed.length === 0 || !changed.every(isExtensionPageUi);
+}
+
 export function BottleOverlay({
   bottles,
   onSeal,
@@ -46,7 +61,8 @@ export function BottleOverlay({
   const [tick, setTick] = useState(0);
   const rafRef = useRef<number | null>(null);
 
-  // Re-resolve positions on scroll/resize/layout mutations, throttled via rAF.
+  // Re-resolve positions on scroll/resize/layout mutations, coalesced to one
+  // per animation frame; a change after a frame runs schedules the next one.
   // Also re-tick periodically for the first few seconds in case content
   // loads in (images, lazy DOM) and shifts anchor positions.
   useEffect(() => {
@@ -63,7 +79,9 @@ export function BottleOverlay({
     // Layout-shift observer: re-resolve when major DOM changes happen.
     let mo: MutationObserver | null = null;
     if (typeof MutationObserver !== "undefined" && document.body) {
-      mo = new MutationObserver(() => onChange());
+      mo = new MutationObserver((records) => {
+        if (records.some(movesPageLayout)) onChange();
+      });
       mo.observe(document.body, {
         childList: true,
         subtree: true,

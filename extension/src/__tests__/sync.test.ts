@@ -1,7 +1,8 @@
-// ABOUTME: Tests that event upload strips hash fragments from meta.url and navigation URLs
-// ABOUTME: before events leave the device, without touching the caller's objects.
+// ABOUTME: Tests event upload: hash fragments are stripped before events leave the device,
+// ABOUTME: and the worker's permanent rejections settle a batch while transient failures retry.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { WORKER_URL } from "@movement/config";
 import { uploadEvents } from "../storage/sync";
 import type { CollectionEvent } from "../collectors/types";
 
@@ -24,6 +25,7 @@ function makeEvent(url: string): CollectionEvent {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("uploadEvents", () => {
@@ -76,5 +78,52 @@ describe("uploadEvents", () => {
     expect(body.events[0].data.url).toBe("https://example.com/b?q=2");
     expect(body.events[1].data.from_url).toBe("https://example.com/c?v=3");
     expect((popstate.data as { url: string }).url).toBe("https://example.com/b?q=2#access_token=y");
+  });
+});
+
+describe("uploadEvents failures", () => {
+  function respond(status: number, body: string) {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(body, { status }));
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("posts to the configured worker", async () => {
+    const fetchMock = respond(200, JSON.stringify({ inserted: 1, duplicates: 0 }));
+    await uploadEvents([makeEvent("https://example.com/")]);
+    expect(fetchMock.mock.calls[0][0]).toBe(`${WORKER_URL}/events`);
+  });
+
+  it.each([400, 413, 422])(
+    "settles a batch the worker rejects with %i and warns once with the status and message",
+    async (status) => {
+      respond(status, "Invalid event: data.x must be a number");
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      await expect(uploadEvents([makeEvent("https://example.com/")])).resolves.toBeUndefined();
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = warn.mock.calls[0].map(String).join(" ");
+      expect(message).toContain(String(status));
+      expect(message).toContain("Invalid event: data.x must be a number");
+    },
+  );
+
+  it.each([401, 403, 408, 429, 500, 503])(
+    "throws on %i so the batch is retried",
+    async (status) => {
+      respond(status, "try again");
+      await expect(uploadEvents([makeEvent("https://example.com/")])).rejects.toThrow(
+        `Upload failed: ${status} try again`,
+      );
+    },
+  );
+
+  it("throws on a network failure so the batch is retried", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(uploadEvents([makeEvent("https://example.com/")])).rejects.toThrow("Failed to fetch");
+    expect(error).toHaveBeenCalledTimes(1);
   });
 });

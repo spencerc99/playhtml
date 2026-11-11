@@ -100,16 +100,6 @@ export function getCommutePointFromClient(
   });
 }
 
-export function getCommutePointFromZone(
-  relativeX: number,
-  relativeY: number,
-): CommutePoint {
-  return clampCommuteAvatarPosition({
-    x: relativeX * COMMUTE_CAR_WIDTH,
-    y: relativeY * COMMUTE_CAR_HEIGHT,
-  });
-}
-
 export function getCommuteRiderStart(stableId: string): CommutePoint {
   let hash = 2166136261;
   for (const character of stableId) {
@@ -214,4 +204,18 @@ export function getStandingPosition(seat: CommuteSeatGeometry): CommutePoint {
     x: seat.x + 25,
     y: seat.y + (seat.row === "top" ? 62 : -14),
   };
+}
+
+/**
+ * Who takes a rider leaving the train to the stop's page. An exit handler
+ * (Slow Mode) navigates on its own, so the car must not navigate again.
+ */
+export type CommuteStopExitNavigation = "handler" | "current-tab" | "new-tab";
+
+export function getCommuteStopExitNavigation(
+  navigateCurrentTab: boolean,
+  hasExitHandler: boolean,
+): CommuteStopExitNavigation {
+  if (hasExitHandler) return "handler";
+  return navigateCurrentTab ? "current-tab" : "new-tab";
 }

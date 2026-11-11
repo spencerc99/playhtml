@@ -5,6 +5,7 @@ import { BottleManager, type BottleRenderRequest } from "../BottleManager";
 import type { BottleAnchor } from "../bottle-anchor";
 import { BottleOverlay } from "../../components/BottleOverlay";
 import { injectShadowReact } from "../../entrypoints/content/inject-ui";
+import { registerExtensionShadowRoot } from "../extensionPageUi";
 import { MESSAGE_BOTTLE_CSS } from "../../components/MessageBottle";
 import { initBottlePlacement, BOTTLE_PLACEMENT_CSS } from "./bottle-placement";
 import type { GlobalFeatureDeps, SocialExperiment } from "./types";
@@ -114,7 +115,14 @@ export const bottlesExperiment: SocialExperiment = {
       initBottlePlacement(deps.inventory, manager, ui.portal),
     );
 
+    // Page shortcuts (follow, emotes) must see typing in a bottle's note.
+    const unregisterShadow = registerExtensionShadowRoot(
+      ui.host,
+      ui.container.getRootNode() as ShadowRoot,
+    );
+
     cleanups.push(() => {
+      unregisterShadow();
       manager.destroy();
       ui.destroy();
     });

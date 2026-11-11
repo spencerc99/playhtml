@@ -1,9 +1,9 @@
-// ABOUTME: Background queue that keeps a local copy of each collected scrap image, one at a time.
+// ABOUTME: Background queue that keeps a local copy of each collected scrap image, one at a time, reusing handed-over downloads.
 // ABOUTME: Runs off the collection path, logs failures, and walks older scraps once in a throttled backfill.
 
 import type { CollectionEvent, ImageScrapData } from "../collectors/types";
 import type { LocalEventStore } from "./LocalEventStore";
-import { makeImageCopy } from "./imageCopyMaking";
+import { makeImageCopy, type DownloadedBytes } from "./imageCopyMaking";
 import {
   hasImageCopy,
   readImageCopyMeta,
@@ -18,6 +18,12 @@ const MAX_QUEUED = 500;
 const BACKFILL_PAUSE_MS = 1_500;
 /** Copies stored between budget checks while a long run is going. */
 const TRIM_EVERY = 25;
+/**
+ * Bytes held from downloads made elsewhere (the fingerprint pass) until their
+ * copy is made. Past this the oldest are let go and those images are
+ * downloaded again when their turn comes.
+ */
+const MAX_HANDED_BYTES = 32 * 1024 * 1024;
 
 const BACKFILL_DONE_KEY = "backfill-done";
 /** Timestamp of the oldest scrap the backfill has reached, so a restart resumes. */
@@ -37,15 +43,47 @@ export class ImageCopier {
   private running = false;
   private storedSinceTrim = 0;
   private backfilling = false;
+  private handed = new Map<string, DownloadedBytes>();
+  private handedBytes = 0;
 
   constructor(private store: LocalEventStore) {}
+
+  /**
+   * Keeps an image's already-downloaded bytes for its copy, so collecting a
+   * scrap downloads its image once. Call before `noteCollected`.
+   */
+  handDownload(src: string, image: DownloadedBytes): void {
+    this.dropHanded(src);
+    this.handed.set(src, image);
+    this.handedBytes += image.bytes.byteLength;
+    for (const oldest of this.handed.keys()) {
+      if (this.handedBytes <= MAX_HANDED_BYTES) break;
+      this.dropHanded(oldest);
+    }
+  }
+
+  private takeHanded(src: string): DownloadedBytes | undefined {
+    const image = this.handed.get(src);
+    this.dropHanded(src);
+    return image;
+  }
+
+  private dropHanded(src: string): void {
+    const image = this.handed.get(src);
+    if (!image) return;
+    this.handed.delete(src);
+    this.handedBytes -= image.bytes.byteLength;
+  }
 
   /** Queues copies for newly collected image scraps. Never waits on the network. */
   noteCollected(events: readonly CollectionEvent[]): void {
     for (const event of events) {
       const src = imageSrcOf(event);
       if (!src || this.queued.has(src)) continue;
-      if (this.queue.length >= MAX_QUEUED) break;
+      if (this.queue.length >= MAX_QUEUED) {
+        this.dropHanded(src);
+        continue;
+      }
       this.queue.push(src);
       this.queued.add(src);
     }
@@ -79,9 +117,10 @@ export class ImageCopier {
 
   /** Copies one image unless it is already held. Returns whether bytes were stored. */
   private async copy(src: string): Promise<boolean> {
+    const handed = this.takeHanded(src);
     try {
       if (await hasImageCopy(src)) return false;
-      const stored = await storeImageCopy(await makeImageCopy(src));
+      const stored = await storeImageCopy(await makeImageCopy(src, handed));
       if (stored && ++this.storedSinceTrim >= TRIM_EVERY) await this.trim();
       return stored;
     } catch (error) {

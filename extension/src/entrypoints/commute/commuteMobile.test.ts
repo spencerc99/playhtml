@@ -7,7 +7,7 @@ import {
   findNearbyCommuteSeat,
   getCommuteArrivalRiderId,
   getCommutePointFromClient,
-  getCommutePointFromZone,
+  getCommuteStopExitNavigation,
   getMyCommuteRiderStart,
   getCommuteRiderStart,
   getSharedCommutePosition,
@@ -116,20 +116,25 @@ describe("mobile commute geometry", () => {
     ).toBe(false);
   });
 
+  it("leaves navigation to the exit handler so a door exit navigates once", () => {
+    expect(getCommuteStopExitNavigation(true, true)).toBe("handler");
+    expect(getCommuteStopExitNavigation(false, true)).toBe("handler");
+    expect(getCommuteStopExitNavigation(true, false)).toBe("current-tab");
+    expect(getCommuteStopExitNavigation(false, false)).toBe("new-tab");
+  });
+
   it("places a standing rider on the aisle side of either seat row", () => {
     expect(getStandingPosition(SEATS[0])).toEqual({ x: 69, y: 94 });
     expect(getStandingPosition(SEATS[1])).toEqual({ x: 125, y: 270 });
   });
 
-  it("maps desktop clicks and shared cursor zones into carriage coordinates", () => {
+  it("maps desktop clicks into carriage coordinates", () => {
     expect(
       getCommutePointFromClient(
         { x: 375, y: 140 },
         { left: 100, top: 50, width: 550, height: 180 },
       ),
     ).toEqual({ x: 550, y: 180 });
-    expect(getCommutePointFromZone(0.5, 0.5)).toEqual({ x: 550, y: 180 });
-    expect(getCommutePointFromZone(-1, 2)).toEqual({ x: 38, y: 316 });
   });
 
   it("gives every rider a stable visible position before they move", () => {

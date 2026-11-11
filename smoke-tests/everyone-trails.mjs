@@ -1,8 +1,10 @@
 // ABOUTME: Exercises the internal "everyone's trails" page overlay in Chromium with the built extension.
 // ABOUTME: Opens it from the #wwo-trails hash against a loopback Worker and checks gating, trails, and hidden controls.
 
-// Build first with `bun run build-extension`. A production build is required:
-// development builds unlock every internal feature, which would hide the gate.
+// Build first with `VITE_WORKER_URL=http://127.0.0.1:18787 bun run build-extension`
+// so the extension's Worker calls reach the loopback Worker below. A production
+// build is required: development builds unlock every internal feature, which
+// would hide the gate.
 
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -123,8 +125,6 @@ async function setAccess(available) {
   await worker.evaluate(
     (available) =>
       chrome.storage.local.set({
-        // Points shared-trail reads at the loopback Worker below.
-        collection_worker_url: "http://127.0.0.1:18787",
         wwoFeatureAccess: {
           features: {
             EVERYONE_TRAILS: { stage: "internal", available },

@@ -1,19 +1,19 @@
 // ABOUTME: Abstract base class for all browsing behavior collectors.
-// ABOUTME: Defines the lifecycle (start/stop), event emission, and real-time streaming interface.
+// ABOUTME: Defines the lifecycle (start/stop), event emission, and an optional real-time callback.
 
 import type { CollectionEventType } from './types';
 
 /**
  * Abstract base class for all collectors
  *
- * Collectors capture browsing behaviors and emit events.
- * They can stream to real-time systems (PartyKit) and/or
- * buffer for archival (Supabase via Worker).
+ * Collectors capture browsing behaviors and emit events, which are buffered
+ * for local storage and archival upload (Supabase via Worker).
  *
- * Real-time streaming pattern:
- * - Currently only CursorCollector streams to PartyKit for live visualization
- * - To add real-time to other collectors, use emitRealTime() in addition to emit()
- * - Example: Navigation/viewport events could stream real-time for collaborative viewing
+ * Real-time callback:
+ * - A collector can also call emitRealTime() for a high-frequency stream.
+ *   Only CursorCollector does, and only while a callback is set through
+ *   setRealTimeCallback(); nothing in the extension sets one, so the stream
+ *   is idle and archival emission is the only output.
  */
 export abstract class BaseCollector<T = unknown> {
   abstract readonly type: CollectionEventType;

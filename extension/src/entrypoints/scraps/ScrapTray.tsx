@@ -175,11 +175,23 @@ export function ScrapTray({
    * reopened. The box comes back scrolled to the top, but only the rows near
    * the remembered scroll are mounted, so it is returned to that scroll.
    */
+  const scrollObserverRef = useRef<ResizeObserver | null>(null);
+  /**
+   * The box's height is followed for as long as it is mounted, since raising
+   * the phone drawer or resizing the window changes how many rows show.
+   */
   const attachScroll = useCallback((node: HTMLDivElement | null) => {
+    scrollObserverRef.current?.disconnect();
+    scrollObserverRef.current = null;
     if (!node) return;
     node.scrollTop = scrollTopRef.current;
     setScrollTop(node.scrollTop);
     setViewportHeight(node.clientHeight);
+    const observer = new ResizeObserver(() =>
+      setViewportHeight(node.clientHeight),
+    );
+    observer.observe(node);
+    scrollObserverRef.current = observer;
   }, []);
 
   // Docked along the bottom of a phone, the drawer answers a flick on its

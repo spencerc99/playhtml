@@ -1,15 +1,29 @@
 // ABOUTME: Loads historical event data for domain visualization
-// ABOUTME: Combines local IndexedDB data (via background worker) with server backfill as needed
+// ABOUTME: Combines local IndexedDB data with the Worker's shared events, fetched via the background on web pages
 
 import browser from 'webextension-polyfill';
 import type { CollectionEvent, CollectionEventType } from "../collectors/types";
-import { getConfig } from "./sync";
+import { WORKER_URL } from "@movement/config";
 import { VERBOSE } from "../config";
 import {
   normalizeUrl,
   extractDomain,
   determineFilterScope,
 } from "../utils/urlNormalization";
+import { isExtensionPageUrl } from "../utils/extensionPage";
+
+/** Background message that fetches one type of shared events from the Worker. */
+export const FETCH_SERVER_EVENTS_MESSAGE = 'FETCH_SERVER_EVENTS';
+
+export interface ServerEventsRequest {
+  domain: string;
+  type: CollectionEventType;
+  limit: number;
+}
+
+export type ServerEventsResponse =
+  | { ok: true; events: CollectionEvent[] }
+  | { ok: false; error: string };
 
 export interface LoadOptions {
   limit?: number;
@@ -123,40 +137,37 @@ export async function loadHistoricalData(
     `[HistoryLoader] Forcing server backfill (local: ${allEvents.length})`,
   );
 
-  try {
-    const serverEvents = await fetchServerEvents(
-      domain,
-      normalizedCurrentUrl,
-      actualMode,
-      limit,
-      types
-    );
+  // A failed server read throws so the overlay shows the error instead of
+  // presenting local events as if the backfill had succeeded.
+  const serverEvents = await fetchServerEvents(
+    domain,
+    normalizedCurrentUrl,
+    actualMode,
+    limit,
+    types,
+  );
 
-    if (VERBOSE) console.log(
-      `[HistoryLoader] Fetched ${serverEvents.length} events from server`,
-    );
+  if (VERBOSE) console.log(
+    `[HistoryLoader] Fetched ${serverEvents.length} events from server`,
+  );
 
-    // Combine and deduplicate
-    const combined = deduplicateEvents([...allEvents, ...serverEvents]);
+  const combined = deduplicateEvents([...allEvents, ...serverEvents]);
 
-    if (VERBOSE) console.log(
-      `[HistoryLoader] Final combined events: ${combined.length}`,
-    );
+  if (VERBOSE) console.log(
+    `[HistoryLoader] Final combined events: ${combined.length}`,
+  );
 
-    return sortEventsByTimestamp(combined);
-  } catch (error) {
-    console.error("[HistoryLoader] Failed to fetch from server:", error);
-    // Return local data if server fetch failed
-    if (VERBOSE) console.log(
-      `[HistoryLoader] Returning ${allEvents.length} local events (server fetch failed)`,
-    );
-    return sortEventsByTimestamp(allEvents);
-  }
+  return sortEventsByTimestamp(combined);
 }
 
 /**
- * Fetch events from server
- * Client-side filters by normalized URL if mode is 'url'
+ * Fetch shared events from the Worker, one request per type.
+ * Client-side filters by normalized URL if mode is 'url'.
+ *
+ * On a web page the request goes through the background: a content script's
+ * fetch carries the page's Origin, which the Worker's origin allowlist
+ * refuses. Each type is its own message, which keeps every reply well under
+ * the runtime message size limit.
  */
 async function fetchServerEvents(
   domain: string,
@@ -165,59 +176,89 @@ async function fetchServerEvents(
   limit: number,
   types: CollectionEventType[],
 ): Promise<CollectionEvent[]> {
-  const { workerUrl } = await getConfig();
+  const viaBackground = !isExtensionPageUrl(window.location.href);
   const allEvents: CollectionEvent[] = [];
 
-  // Fetch each event type
   for (const type of types) {
-    try {
-      const params = new URLSearchParams({
-        type,
-        limit: limit.toString(),
-        domain,
-      });
+    const request: ServerEventsRequest = { domain, type, limit };
+    let events = viaBackground
+      ? await requestServerEventsFromBackground(request)
+      : await fetchRecentServerEvents(request);
 
-      const response = await fetch(
-        `${workerUrl}/events/recent?${params.toString()}`,
+    if (mode === 'url') {
+      events = events.filter(
+        (e) => normalizeUrl(e.meta.url) === normalizedUrl,
       );
-
-      if (!response.ok) {
-        console.error(
-          `[HistoryLoader] Server fetch failed for ${type}: ${response.status}`,
-        );
-        continue;
-      }
-
-      let events = await response.json();
-
-      // Filter to normalized URL if in URL mode (client-side filtering)
-      if (mode === 'url') {
-        events = events.filter((e: CollectionEvent) => {
-          const eventNormalizedUrl = normalizeUrl(e.meta.url);
-          return eventNormalizedUrl === normalizedUrl;
-        });
-        if (VERBOSE) console.log(
-          `[HistoryLoader] Filtered ${type} events to URL: ${events.length} remaining`,
-        );
-      }
-
-      allEvents.push(...events);
-
       if (VERBOSE) console.log(
-        `[HistoryLoader] Fetched ${events.length} ${type} events from server`,
-      );
-    } catch (error) {
-      console.error(
-        `[HistoryLoader] Error fetching ${type} from server:`,
-        error,
+        `[HistoryLoader] Filtered ${type} events to URL: ${events.length} remaining`,
       );
     }
+
+    allEvents.push(...events);
+
+    if (VERBOSE) console.log(
+      `[HistoryLoader] Fetched ${events.length} ${type} events from server`,
+    );
   }
 
   if (VERBOSE) console.log(
     `[HistoryLoader] Total server events fetched: ${allEvents.length}`,
   );
   return allEvents;
+}
+
+async function requestServerEventsFromBackground(
+  request: ServerEventsRequest,
+): Promise<CollectionEvent[]> {
+  const response = (await browser.runtime.sendMessage({
+    type: FETCH_SERVER_EVENTS_MESSAGE,
+    domain: request.domain,
+    eventType: request.type,
+    limit: request.limit,
+  })) as ServerEventsResponse | undefined;
+  if (!response) {
+    throw new Error('Could not load shared trails: no reply from the extension');
+  }
+  if (!response.ok) throw new Error(response.error);
+  return response.events;
+}
+
+/**
+ * Read one type of recent shared events for a domain from the Worker's
+ * `/events/recent`. Throws with a message fit for the overlay when the
+ * request fails or the Worker answers with an error status.
+ */
+export async function fetchRecentServerEvents({
+  domain,
+  type,
+  limit,
+}: ServerEventsRequest): Promise<CollectionEvent[]> {
+  const params = new URLSearchParams({
+    type,
+    limit: limit.toString(),
+    domain,
+  });
+
+  let response: Response;
+  try {
+    response = await fetch(`${WORKER_URL}/events/recent?${params.toString()}`);
+  } catch (error) {
+    console.error(`[HistoryLoader] Server fetch failed for ${type}:`, error);
+    throw new Error('Could not reach the server for shared trails');
+  }
+
+  if (!response.ok) {
+    console.error(
+      `[HistoryLoader] Server fetch failed for ${type}: ${response.status}`,
+    );
+    throw new Error(`Could not load shared trails (server error ${response.status})`);
+  }
+
+  const events: unknown = await response.json();
+  if (!Array.isArray(events)) {
+    throw new Error('Could not load shared trails: unexpected server response');
+  }
+  return events as CollectionEvent[];
 }
 
 /**

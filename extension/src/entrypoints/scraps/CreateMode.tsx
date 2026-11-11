@@ -18,6 +18,9 @@ interface CreateModeProps {
   savedRevision: number;
   onEdit: (record: CollageRecord) => void;
   onStartNew: () => void;
+  /** Why a collage could not be reopened, shown over the list. */
+  notice?: string | null;
+  onClosed?: (stored: Promise<void>) => void;
   onSaved: (record: CollageRecord) => void;
   onLeave: () => void;
 }
@@ -32,6 +35,8 @@ export function CreateMode({
   onStartNew,
   onSaved,
   onLeave,
+  notice = null,
+  onClosed,
 }: CreateModeProps) {
   const shareLinks = useSettledFeatureState("COLLAGE_SHARE_LINKS");
 
@@ -46,6 +51,7 @@ export function CreateMode({
             revision={savedRevision}
             onEdit={onEdit}
             onStartNew={onStartNew}
+            notice={notice}
           />
         ) : (
           <CollageStudio
@@ -54,6 +60,7 @@ export function CreateMode({
             editing={editing}
             onSaved={onSaved}
             onLeave={onLeave}
+            onClosed={onClosed}
             canPublish={shareLinks?.enabled === true}
             signer={extensionSigner}
           />

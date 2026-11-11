@@ -81,14 +81,7 @@ describe("content page-lifecycle wiring", () => {
       if (keys === "wwoFeatureOverrides") {
         return Promise.resolve({ wwoFeatureOverrides: { COPRESENCE: true } });
       }
-      if (!Array.isArray(keys)) return Promise.resolve({});
-      return Promise.resolve(
-        Object.fromEntries(
-          keys
-            .filter((key) => key.startsWith("migration_v1_done_"))
-            .map((key) => [key, true]),
-        ),
-      );
+      return Promise.resolve({});
     });
 
     storageSet.mockReset();

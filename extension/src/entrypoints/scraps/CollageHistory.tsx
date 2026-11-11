@@ -39,6 +39,8 @@ interface CollageHistoryProps {
   revision: number;
   onEdit: (record: CollageRecord) => void;
   onStartNew: () => void;
+  /** A problem from outside the list to show, such as a collage that could not be reopened. */
+  notice?: string | null;
 }
 
 /** A day, so a collage touched again the day it was made reads as unchanged. */
@@ -60,6 +62,7 @@ export function CollageHistory({
   revision,
   onEdit,
   onStartNew,
+  notice = null,
 }: CollageHistoryProps) {
   const [entries, setSummaries] = useState<CollageEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -192,12 +195,23 @@ export function CollageHistory({
     }
   };
 
-  const remove = async (id: string) => {
-    // A deleted collage takes its shared link down first, since the token that
-    // could do so later is deleted along with the collage.
-    const publication = await loadCollage(id)
-      .then((record) => record?.publication)
-      .catch(() => undefined);
+  /**
+   * Deletes a collage. A readable one takes its shared link down first, since
+   * the token that could do so later is deleted along with the collage; if it
+   * cannot be loaded to find that link, it is kept. An unreadable one has no
+   * link that can be read, so it is deleted as it is.
+   */
+  const remove = async (id: string, readable = true) => {
+    let publication: CollageRecord["publication"];
+    if (readable) {
+      try {
+        publication = (await loadCollage(id))?.publication;
+      } catch (loadError) {
+        setError(`could not delete that collage — ${errorText(loadError)}`);
+        setConfirmingId(null);
+        return;
+      }
+    }
     if (publication) {
       try {
         await deletePublishedCollage(WORKER_URL, publication);
@@ -289,9 +303,9 @@ export function CollageHistory({
         </div>
       </header>
 
-      {error && (
+      {(error ?? notice) && (
         <p className="collage-notice" role="status">
-          {error}
+          {error ?? notice}
         </p>
       )}
       {!entries && !error && (
@@ -316,7 +330,7 @@ export function CollageHistory({
                       <button
                         type="button"
                         className="collage-action collage-action--danger"
-                        onClick={() => void remove(entry.id)}
+                        onClick={() => void remove(entry.id, false)}
                       >
                         delete for good
                       </button>
