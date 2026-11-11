@@ -50,4 +50,8 @@ export interface Env {
   SHARED_COLLAGES: R2Bucket;      // Public, view-only shared collages and their pictures
   COLLAGE_SHARE_RATE_LIMITER: RateLimit; // Public collage share upload limiter
   COLLAGE_VIEWER_ORIGIN?: string; // Optional: where share links open, for local development
+  // Gates rejecting unsigned color updates and access requests: "true" rejects
+  // them, anything else accepts them as legacy requests. Meant to be turned on
+  // once the signing extension build is the minimum in use.
+  REQUIRE_PARTICIPANT_SIGNATURES?: string;
 }

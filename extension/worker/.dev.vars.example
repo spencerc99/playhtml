@@ -20,3 +20,7 @@ INTERNET_MAP_PASSWORD=your-internet-map-password
 # Optional: origin that collage share links open on, e.g. a local website dev server.
 # Unset means https://wewere.online.
 COLLAGE_VIEWER_ORIGIN=http://localhost:5173
+
+# "true" rejects unsigned participant color updates and access requests with 401;
+# anything else accepts them as legacy requests. wrangler.toml [vars] sets "false".
+REQUIRE_PARTICIPANT_SIGNATURES=false

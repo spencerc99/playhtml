@@ -18,6 +18,11 @@ const CORS_HEADERS = {
 // needs fresh metadata they can hard-refresh.
 const CACHE_TTL_SECONDS = 60 * 60 * 24; // 24h
 const CACHE_CONTROL = `public, max-age=${CACHE_TTL_SECONDS}, s-maxage=${CACHE_TTL_SECONDS}`;
+// A lookup that found no title (network error, blocked fetch, untitled page)
+// is cached briefly: long enough to absorb a portrait's burst of repeats,
+// short enough that a site that was down recovers within minutes.
+const FAILED_LOOKUP_TTL_SECONDS = 60 * 5; // 5m
+const FAILED_LOOKUP_CACHE_CONTROL = `public, max-age=${FAILED_LOOKUP_TTL_SECONDS}, s-maxage=${FAILED_LOOKUP_TTL_SECONDS}`;
 
 // Portrait sessions can fan out hundreds of unique URLs on load; 300/min/IP
 // is comfortable without inviting abuse. Edge cache absorbs repeat lookups
@@ -739,7 +744,11 @@ export async function fetchPublicPageContext(raw: string): Promise<{
   };
 }
 
-export async function handlePageMeta(request: Request, _env: Env): Promise<Response> {
+export async function handlePageMeta(
+  request: Request,
+  _env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> {
   const reqUrl = new URL(request.url);
   const raw = reqUrl.searchParams.get('url');
   if (!raw) return jsonResponse(400, { error: 'missing url' });
@@ -785,11 +794,16 @@ export async function handlePageMeta(request: Request, _env: Env): Promise<Respo
     status: 200,
     headers: {
       ...CORS_HEADERS,
-      'Cache-Control': CACHE_CONTROL,
+      'Cache-Control': meta.source === 'none' ? FAILED_LOOKUP_CACHE_CONTROL : CACHE_CONTROL,
     },
   });
-  // Cache the response for the full TTL, including the 'none' case, so a
-  // failing site isn't fetched again on every lookup.
-  await cache.put(cacheKey, resp.clone());
+  // The edge cache honors the response's Cache-Control, so a titled result is
+  // kept for 24h and a 'none' result for 5 minutes. The write finishes after
+  // the response is sent.
+  ctx.waitUntil(
+    cache.put(cacheKey, resp.clone()).catch((error: unknown) => {
+      console.error('[page-meta] cache write failed:', error);
+    }),
+  );
   return resp;
 }

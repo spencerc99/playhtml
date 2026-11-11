@@ -6,6 +6,7 @@
 import { createSupabaseClient, type Env } from '../lib/supabase';
 import { loadParticipantColors } from '../lib/participantColors';
 import { getEarlierEventFilter } from '../lib/eventCursorFilter';
+import { parseOptionalIsoDate, parseOptionalPositiveInt } from '../lib/requestInput';
 import {
   buildPageRef,
   canonicalizeUrl,
@@ -296,7 +297,7 @@ export async function loadRecentEvents(
  *
  * Query parameters:
  * - type: Event type filter (default: 'cursor'; 'all' disables the filter)
- * - limit: Maximum number of events (default: 1000, max: 20000). Pagination is used internally.
+ * - limit: Maximum number of events, a positive integer (default: 1000, max: 20000). Pagination is used internally.
  * - domain: Domain filter (optional) - filters events by URL domain
  * - pid: Participant ID filter (optional)
  * - from: ISO date string, inclusive lower bound on ts (optional)
@@ -315,13 +316,28 @@ export async function handleRecent(
   };
   try {
     const url = new URL(request.url);
+    const limit = parseOptionalPositiveInt(url.searchParams, 'limit');
+    if (!limit.ok) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid limit (expected a positive integer)' }),
+        { status: 400, headers }
+      );
+    }
+    const from = parseOptionalIsoDate(url.searchParams, 'from');
+    const to = parseOptionalIsoDate(url.searchParams, 'to');
+    if (!from.ok || !to.ok) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid from/to (expected an ISO date)' }),
+        { status: 400, headers }
+      );
+    }
     const { events, error } = await loadRecentEvents(env, {
       type: getRecentEventTypeFilter(url),
-      limit: Math.min(parseInt(url.searchParams.get('limit') || '1000', 10), 20000),
+      limit: Math.min(limit.value ?? 1000, 20000),
       domain: url.searchParams.get('domain') || null,
       pid: url.searchParams.get('pid') || null,
-      from: url.searchParams.get('from') || null,
-      to: url.searchParams.get('to') || null,
+      from: from.value,
+      to: to.value,
       requireTitle: url.searchParams.get('require_title') === 'true',
     });
 

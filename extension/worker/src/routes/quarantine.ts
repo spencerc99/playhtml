@@ -1,6 +1,7 @@
 // ABOUTME: Quarantine-tape endpoints — read/lay/rip caution-tape strips on a URL to mark AI slop / SEO spam.
 // ABOUTME: Public, rate-limited, Supabase-backed. The verdict is the set of strips for a normalized URL.
 
+import { readJsonObject } from '../lib/requestInput';
 import { createSupabaseClient, type Env } from '../lib/supabase';
 import { createIpRateLimiter } from '../lib/ipRateLimit';
 
@@ -154,12 +155,9 @@ export async function handleQuarantineStrip(request: Request, env: Env): Promise
     return jsonResponse(429, { error: 'Too many requests. Try again in a minute.' });
   }
 
-  let body: StripBody;
-  try {
-    body = (await request.json()) as StripBody;
-  } catch {
-    return jsonResponse(400, { error: 'Invalid JSON body' });
-  }
+  const json = await readJsonObject(request);
+  if (!json) return jsonResponse(400, { error: 'Invalid JSON body' });
+  const body = json as StripBody;
 
   const key = typeof body.url === 'string' ? normalizeArtifactUrl(body.url) : null;
   if (!key) return jsonResponse(400, { error: 'Invalid or missing url' });
@@ -214,12 +212,9 @@ export async function handleQuarantineRip(request: Request, env: Env): Promise<R
     return jsonResponse(429, { error: 'Too many requests. Try again in a minute.' });
   }
 
-  let body: RipBody;
-  try {
-    body = (await request.json()) as RipBody;
-  } catch {
-    return jsonResponse(400, { error: 'Invalid JSON body' });
-  }
+  const json = await readJsonObject(request);
+  if (!json) return jsonResponse(400, { error: 'Invalid JSON body' });
+  const body = json as RipBody;
 
   const key = typeof body.url === 'string' ? normalizeArtifactUrl(body.url) : null;
   if (!key) return jsonResponse(400, { error: 'Invalid or missing url' });

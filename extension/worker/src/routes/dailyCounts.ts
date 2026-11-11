@@ -2,6 +2,7 @@
 // ABOUTME: Public endpoint reading the pre-computed daily_counts Supabase table.
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
+import { parseOptionalIsoDate } from '../lib/requestInput';
 
 /**
  * GET /events/daily-counts
@@ -20,8 +21,19 @@ export async function handleDailyCounts(
   try {
     const url = new URL(request.url);
     const type = url.searchParams.get('type') || null;
-    const from = url.searchParams.get('from') || null;
-    const to = url.searchParams.get('to') || null;
+    const fromParam = parseOptionalIsoDate(url.searchParams, 'from');
+    const toParam = parseOptionalIsoDate(url.searchParams, 'to');
+    if (!fromParam.ok || !toParam.ok) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid from/to (expected an ISO date)' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        }
+      );
+    }
+    const from = fromParam.value;
+    const to = toParam.value;
 
     const supabase = createSupabaseClient(env);
 

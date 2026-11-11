@@ -3,6 +3,7 @@
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
 import { createIpRateLimiter } from '../lib/ipRateLimit';
+import { isParticipantKey } from '../lib/participantKey';
 import { getValidEventTypes } from '@playhtml/extension-types';
 import { toCollectionEvents } from './recent';
 import {
@@ -15,8 +16,6 @@ import {
   type RestorePageResponse,
 } from '../../../src/utils/restoreRequest';
 
-/** Uncompressed P-256 public key: 0x04 prefix, then 64 bytes of x and y. */
-const PUBLIC_KEY_PID_PATTERN = /^pk_04[0-9a-f]{128}$/;
 const RESTORE_TYPES = new Set<string>(getValidEventTypes());
 
 // A full restore of a heavy participant is about a thousand pages.
@@ -35,7 +34,7 @@ export function parseRestorePageRequest(body: unknown): RestorePageRequest | nul
   if (!body || typeof body !== 'object') return null;
   const value = body as Record<string, unknown>;
   const { pid, type, before, signedAt, signature } = value;
-  if (typeof pid !== 'string' || !PUBLIC_KEY_PID_PATTERN.test(pid)) return null;
+  if (!isParticipantKey(pid)) return null;
   if (typeof type !== 'string' || !RESTORE_TYPES.has(type)) return null;
   if (typeof signedAt !== 'number' || !Number.isFinite(signedAt)) return null;
   if (typeof signature !== 'string' || !/^[0-9a-f]{128}$/.test(signature)) return null;

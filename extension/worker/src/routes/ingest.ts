@@ -80,18 +80,47 @@ function stripNavigationMetadata(event: IngestEvent): unknown {
   return rest;
 }
 
+/**
+ * The snapshots the metadata RPC needs, in observation order. Consecutive
+ * snapshots of one page with the same metadata_hash collapse to the first and
+ * last of the run: the RPC opens a history row at the first and only advances
+ * latest_observed_at_ts for the rest, so the dropped middle calls change
+ * nothing. A page that leaves a hash and returns to it keeps both runs.
+ */
+export function collapsePageMetadataSnapshots(
+  snapshots: PageMetadataSnapshot[],
+): PageMetadataSnapshot[] {
+  const sorted = [...snapshots].sort((a, b) => a.observed_at_ts - b.observed_at_ts);
+  const runsByPage = new Map<string, PageMetadataSnapshot[][]>();
+  const order: PageMetadataSnapshot[][] = [];
+  for (const snapshot of sorted) {
+    const runs = runsByPage.get(snapshot.page_ref) ?? [];
+    const run = runs.at(-1);
+    if (run && run[0].metadata_hash === snapshot.metadata_hash) {
+      run.push(snapshot);
+    } else {
+      const next = [snapshot];
+      runs.push(next);
+      order.push(next);
+    }
+    runsByPage.set(snapshot.page_ref, runs);
+  }
+  const collapsed: PageMetadataSnapshot[] = [];
+  for (const run of order) {
+    collapsed.push(run[0]);
+    const last = run.at(-1)!;
+    if (last !== run[0] && last.observed_at_ts !== run[0].observed_at_ts) collapsed.push(last);
+  }
+  return collapsed.sort((a, b) => a.observed_at_ts - b.observed_at_ts);
+}
+
+/** Writes snapshots one at a time, oldest first; the RPC ignores any older than what it has. */
 async function persistPageMetadataHistory(
   supabase: ReturnType<typeof createSupabaseClient>,
   snapshots: PageMetadataSnapshot[]
 ): Promise<number> {
-  if (snapshots.length === 0) {
-    return 0;
-  }
-
-  const sortedSnapshots = [...snapshots].sort((a, b) => a.observed_at_ts - b.observed_at_ts);
   let insertedCount = 0;
-
-  for (const snapshot of sortedSnapshots) {
+  for (const snapshot of snapshots) {
     const { data: inserted, error } = await supabase.rpc('record_page_metadata_snapshot', {
       p_page_ref: snapshot.page_ref,
       p_canonical_url: snapshot.canonical_url,
@@ -113,6 +142,44 @@ async function persistPageMetadataHistory(
   return insertedCount;
 }
 
+/** Page URL schemes the content script runs on: web pages, and local files when the user allows it. */
+const INGEST_URL_PROTOCOLS = new Set(['http:', 'https:', 'file:']);
+
+/** Largest |ms| a JavaScript Date can hold. */
+const MAX_DATE_MS = 8.64e15;
+
+/** Why event `index` is unacceptable, or null when it is a well-formed event. */
+export function ingestEventProblem(event: unknown, index: number, validTypes: string[]): string | null {
+  if (!isObject(event)) return `Invalid event at index ${index}: not an object`;
+  const { id, type, ts, data, meta } = event;
+  if (!id || !type || !ts || !data || !isObject(meta)) {
+    return `Invalid event structure at index ${index}`;
+  }
+  if (!validTypes.includes(type as string)) {
+    return `Invalid event type at index ${index}: ${String(type)}`;
+  }
+  if (typeof ts !== 'number' || !Number.isFinite(ts) || Math.abs(ts) > MAX_DATE_MS) {
+    return `Invalid ts at index ${index}: expected epoch milliseconds`;
+  }
+  if (!meta.pid || !meta.sid) {
+    return `Invalid meta at index ${index}: pid and sid required`;
+  }
+  if (meta.url !== undefined) {
+    let protocol: string | null = null;
+    if (typeof meta.url === 'string') {
+      try {
+        protocol = new URL(meta.url).protocol;
+      } catch {
+        protocol = null;
+      }
+    }
+    if (protocol === null || !INGEST_URL_PROTOCOLS.has(protocol)) {
+      return `Invalid meta.url at index ${index}: expected an http(s) or file URL`;
+    }
+  }
+  return null;
+}
+
 /**
  * POST /events
  * Batch insert events from extension
@@ -128,6 +195,11 @@ async function persistPageMetadataHistory(
  * 
  * The admin endpoints (stats, export) ARE protected with ADMIN_KEY
  * to prevent unauthorized access to aggregated user data.
+ *
+ * Response: { inserted, duplicates, page_metadata_queued }. `inserted` is the
+ * batch length (duplicates are ignored by the upsert and not counted apart).
+ * `page_metadata_queued` is how many page metadata snapshots were handed to
+ * the background history write, not how many rows it changed.
  */
 export async function handleIngest(
   request: Request,
@@ -165,60 +237,33 @@ export async function handleIngest(
       );
     }
     
+    // Validate every event before storing any; a 400 names the first bad index.
+    const validTypes = getValidEventTypes();
+    for (let index = 0; index < events.length; index++) {
+      const problem = ingestEventProblem(events[index], index, validTypes);
+      if (problem) {
+        return new Response(
+          JSON.stringify({ error: problem }),
+          {
+            status: 400,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+            }
+          }
+        );
+      }
+    }
+
     const typedEvents = events as IngestEvent[];
     const metadataSnapshots: PageMetadataSnapshot[] = [];
-
-    // Validate events structure and extract metadata snapshots.
-    const validTypes = getValidEventTypes();
     for (const event of typedEvents) {
-      if (!event.id || !event.type || !event.ts || !event.data || !event.meta) {
-        return new Response(
-          JSON.stringify({ error: 'Invalid event structure' }),
-          { 
-            status: 400, 
-            headers: { 
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*',
-            }
-          }
-        );
-      }
-      
-      // Validate event type
-      if (!validTypes.includes(event.type as CollectionEventType)) {
-        return new Response(
-          JSON.stringify({ error: `Invalid event type: ${event.type}` }),
-          { 
-            status: 400, 
-            headers: { 
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*',
-            }
-          }
-        );
-      }
-      
-      // Validate meta structure
-      const { meta } = event;
-      if (!meta.pid || !meta.sid) {
-        return new Response(
-          JSON.stringify({ error: 'Invalid meta: pid and sid required' }),
-          { 
-            status: 400, 
-            headers: { 
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*',
-            }
-          }
-        );
-      }
-
       const snapshot = extractPageMetadataSnapshot(event);
       if (snapshot) {
         metadataSnapshots.push(snapshot);
       }
     }
-    
+
     // Transform events to database format
     const dbEvents = typedEvents.map((event) => ({
       id: event.id,
@@ -260,17 +305,17 @@ export async function handleIngest(
     
     const inserted = typedEvents.length;
 
-    // Best effort: persist page metadata history.
-    // If table doesn't exist yet, ingest still succeeds and event data remains valid.
-    let pageMetadataInserted = 0;
-    if (metadataSnapshots.length > 0) {
-      try {
-        pageMetadataInserted = await persistPageMetadataHistory(supabase, metadataSnapshots);
-      } catch (metadataError) {
-        console.warn('[Ingest] Page metadata history write skipped:', metadataError);
-      }
+    // Best effort: page metadata history is written after the response is
+    // sent. A failed write leaves the event rows intact.
+    const pageMetadataSnapshots = collapsePageMetadataSnapshots(metadataSnapshots);
+    if (pageMetadataSnapshots.length > 0) {
+      ctx.waitUntil(
+        persistPageMetadataHistory(supabase, pageMetadataSnapshots).catch((metadataError) => {
+          console.warn('[Ingest] Page metadata history write skipped:', metadataError);
+        }),
+      );
     }
-    
+
     // Fan out renderable movement and navigation events to the live stream. Fire-and-forget
     // must never affect the ingest result. Live consumers tolerate optional
     // metadata fields being absent.
@@ -284,7 +329,7 @@ export async function handleIngest(
     );
 
     return new Response(
-      JSON.stringify({ inserted, duplicates: 0, page_metadata_inserted: pageMetadataInserted }),
+      JSON.stringify({ inserted, duplicates: 0, page_metadata_queued: pageMetadataSnapshots.length }),
       { 
         status: 200,
         headers: { 
