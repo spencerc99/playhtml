@@ -8,7 +8,7 @@
     {
       "login": "jessa0",
       "name": "Jessa",
-      "contributions": "Moved the sync server to PartyServer"
+      "contributions": "Infrastructure design and coding"
     },
     {
       "login": "alexwennerberg",
@@ -18,7 +18,7 @@
     {
       "login": "W-A-James",
       "name": "Warren James",
-      "contributions": "Per-site privacy: turning collection off for a site"
+      "contributions": "Feature design and coding"
     }
   ],
   "ignore": [],
