@@ -22,6 +22,7 @@
     "test:contributors": "node --test scripts/update-contributors.test.mjs",
     "test:scripts": "node --test scripts/*.test.mjs .github/scripts/*.test.mjs && bun test scripts/write-local-supabase-env.test.ts",
     "test:partykit": "bun test partykit/__tests__",
+    "test:website": "bun test ./website/adminHosts.test.ts ./website/test/adminMessages.test.ts ./website/test/experimentsArchiveLogic.test.ts ./website/test/fridgeDeletion.test.ts ./website/test/fridgeWordIdentity.test.ts ./website/test/guestbookValidation.test.ts ./website/test/siteMetadata.test.ts ./website/utils/adminComparison.test.ts ./website/utils/backup.test.ts ./website/experiments/cinderblock/__tests__/model.test.js && bunx vitest run --config website/vitest.config.mts website/test/adminJsonViewer.test.tsx website/test/adminQuarantine.test.tsx website/test/storyRendering.test.ts website/party/3/ website/experiments/8/ website/events/walking-together/",
     "dev": "vite --config vite.config.site.mts",
     "dev-docs": "cd apps/docs && bun run dev",
     "dev-server": "bunx wrangler dev --config partykit/wrangler.jsonc --port ${PLAYHTML_PARTYKIT_PORT:-1999}",

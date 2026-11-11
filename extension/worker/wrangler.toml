@@ -19,6 +19,7 @@ compatibility_flags = ["global_fetch_strictly_public"]
 #   Set secrets via: wrangler secret put CODA_API_TOKEN
 #   Optional:        wrangler secret put RESEND_SEGMENT_ID
 #   Optional:        wrangler secret put INTERNET_MAP_PASSWORD
+#   Optional:        wrangler secret put JEV_TOKEN
 #
 # Required variables:
 # - SUPABASE_URL - Your Supabase project URL
@@ -29,18 +30,22 @@ compatibility_flags = ["global_fetch_strictly_public"]
 #
 # Optional variables:
 # - RESEND_SEGMENT_ID - If set, new contacts are tagged with this Resend segment
+# - INTERNET_MAP_PASSWORD - Shared password that opens internet map bundles (and nothing else)
+# - JEV_TOKEN - TypeSafe Jev key; when set, Jev replaces Clef for internet place classification
+# - COLLAGE_VIEWER_ORIGIN - Where shared collage links open; for local development
 #
-# Security model:
-# - POST /events: Public (validated + rate limited)
-# - GET /events/recent: Public (for artwork rendering)
-# - GET /events/stats: ADMIN_KEY required
-# - POST /events/export: ADMIN_KEY required
-# - POST /feedback: Public (validated + rate limited)
-# - GET /internet-map/<bundle>/<file>: ADMIN_KEY or INTERNET_MAP_PASSWORD (private R2 bundles;
-#   the password is optional and only opens map bundles)
-# - POST /collages: Public (validated, size capped + rate limited) collage share
-# - GET /collages/<id>, GET /collages/<id>/img/<n>: Public (unguessable ids)
-# - DELETE /collages/<id>: the delete token handed back when it was shared
+# Security model (src/index.ts is the route list; each route falls in one group):
+# - Origin-allowlisted (src/lib/originAllowlist.ts): reads that serve pages and the
+#   extension, such as /events/recent, /stream and /page-meta. This stops casual
+#   cross-origin scraping; it is not an auth boundary.
+# - Signed by the participant's identity key: requests that act on one participant's
+#   data, such as /events/restore, /events/delete-site, /access-requests and
+#   PUT /participants/:pid.
+# - ADMIN_KEY: /admin/*, /events/stats, /events/export, /commute/review (also
+#   origin-allowlisted), and internet map bundles (which INTERNET_MAP_PASSWORD also opens).
+# - Public: event ingest, feedback, subscribe, quarantine tape, commute summaries and
+#   shared collages, each validated and rate limited where it writes. Deleting a
+#   shared collage needs the delete token handed back when it was shared.
 
 # Serves the API from workers.dev. Shared collages' pictures are also served
 # from assets.wewere.online, where Cloudflare's edge cache sits in front of
