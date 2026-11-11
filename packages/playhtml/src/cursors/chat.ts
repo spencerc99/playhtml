@@ -150,20 +150,22 @@ export class CursorChat {
     if (!this.chatElement) return;
 
     if (this.listening || this.message) {
-      this.chatElement.innerHTML = `
-        <div class="playhtml-chat-input">${this.message || "..."}</div>
-        <div class="playhtml-chat-button">&times;</div>
-      `;
-      this.chatElement.style.display = "flex";
+      // The typed message is set as text so characters like "<" and "&"
+      // render literally instead of being parsed as markup.
+      const input = document.createElement("div");
+      input.className = "playhtml-chat-input";
+      input.textContent = this.message || "...";
 
-      // Add click handler to close button
-      const closeButton = this.chatElement.querySelector(
-        ".playhtml-chat-button"
-      );
-      closeButton?.addEventListener("click", () => {
+      const closeButton = document.createElement("div");
+      closeButton.className = "playhtml-chat-button";
+      closeButton.textContent = "×";
+      closeButton.addEventListener("click", () => {
         this.setListening(false);
         this.setMessage("");
       });
+
+      this.chatElement.replaceChildren(input, closeButton);
+      this.chatElement.style.display = "flex";
     } else {
       this.chatElement.style.display = "none";
     }
@@ -184,10 +186,6 @@ export class CursorChat {
     if (!this.listening && !this.message) {
       this.chatElement.style.display = "none";
     }
-  }
-
-  public getCurrentMessage(): string | null {
-    return this.message.length > 0 ? this.message : null;
   }
 
   public destroy(): void {

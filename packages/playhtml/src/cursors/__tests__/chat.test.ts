@@ -40,6 +40,31 @@ describe("CursorChat", () => {
     expect(onMessageUpdate).toHaveBeenCalledTimes(callbackCountBeforeDestroy);
   });
 
+  it("renders typed markup characters as literal text", () => {
+    const chat = new CursorChat();
+
+    dispatchKey("/");
+    for (const key of "<b>a&amp;</b>") {
+      dispatchKey(key);
+    }
+
+    const input = document.body.querySelector(".playhtml-chat-input");
+    expect(input?.textContent).toBe("<b>a&amp;</b>");
+    expect(input?.querySelector("b")).toBeNull();
+
+    const closeButton = document.body.querySelector<HTMLElement>(
+      ".playhtml-chat-button",
+    );
+    expect(closeButton?.textContent).toBe("×");
+    closeButton?.click();
+    expect(
+      document.body.querySelector<HTMLElement>(".playhtml-chat-container")
+        ?.style.display,
+    ).toBe("none");
+
+    chat.destroy();
+  });
+
   it("does not stack listeners or styles across recreation cycles", () => {
     const firstMessageUpdate = vi.fn();
     const firstChat = new CursorChat({ onMessageUpdate: firstMessageUpdate });

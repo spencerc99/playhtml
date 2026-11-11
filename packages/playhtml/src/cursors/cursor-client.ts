@@ -285,11 +285,6 @@ function getSvgForCursor(color: string): string {
   </svg>`;
 }
 
-function getCursorStyleForUser(color: string): string {
-  const userCursorSvgEncoded = encodeSVG(getSvgForCursor(color));
-  return `url("data:image/svg+xml,${userCursorSvgEncoded}"), auto`;
-}
-
 /**
  * Convert a camelCase CSS property (e.g. "backgroundColor") to kebab-case
  * (e.g. "background-color") for use with CSSStyleDeclaration.setProperty /
@@ -406,6 +401,7 @@ export class CursorClientAwareness {
   } | null = null;
   private cursorEventCleanups: Array<() => void> = [];
   private ownCursorSvgCache: { color: string; svg: string } | null = null;
+  private lastDocumentCursor: string | null = null;
   private visibilityThreshold: number | undefined;
   private isStylesAdded: boolean = false;
   private globalApiListeners = new Map<keyof CursorEvents, Set<Function>>();
@@ -570,7 +566,7 @@ export class CursorClientAwareness {
   private handleSelfIdentityChange(): void {
     this.ownCursorSvgCache = null;
     const nextColor = getPrimaryColor(this.playerIdentity);
-    document.documentElement.style.cursor = getCursorStyleForUser(nextColor);
+    this.setDocumentCursor(this.getOwnCursorStyle());
     this.updateCursorAwareness();
 
     const nextName = this.playerIdentity.name;
@@ -605,9 +601,7 @@ export class CursorClientAwareness {
     this.setupPresenceTransportHandling();
 
     // Set initial cursor style (throws if identity has no primary color)
-    document.documentElement.style.cursor = getCursorStyleForUser(
-      getPrimaryColor(this.playerIdentity),
-    );
+    this.setDocumentCursor(this.getOwnCursorStyle());
   }
 
   private setupPresenceTransportHandling(): void {
@@ -1003,6 +997,18 @@ export class CursorClientAwareness {
     return this.ownCursorSvgCache.svg;
   }
 
+  private getOwnCursorStyle(): string {
+    return `url("data:image/svg+xml,${this.getOwnCursorSvg()}"), auto`;
+  }
+
+  // Writes the page cursor only when the value differs from the last one
+  // written, so pointer frames do not rewrite an unchanged data URL.
+  private setDocumentCursor(style: string): void {
+    if (style === this.lastDocumentCursor) return;
+    this.lastDocumentCursor = style;
+    document.documentElement.style.cursor = style;
+  }
+
   private addCursorEventListener(
     target: EventTarget,
     type: string,
@@ -1071,13 +1077,9 @@ export class CursorClientAwareness {
         }
       }
 
-      if (pointer === "mouse") {
-        document.documentElement.style.cursor = getCursorStyleForUser(
-          getPrimaryColor(this.playerIdentity),
-        );
-      } else {
-        document.documentElement.style.cursor = "auto";
-      }
+      this.setDocumentCursor(
+        pointer === "mouse" ? this.getOwnCursorStyle() : "auto",
+      );
     }
 
     const storageCoords = this.clientToStorage(sample.clientX, sample.clientY);
@@ -1105,16 +1107,12 @@ export class CursorClientAwareness {
       }
     };
 
-    const handleTouchEnd = () => {
-      // Keep presence alive on touch end — cursor freezes at last known position.
-      // Same rationale as mouseleave: switching apps shouldn't remove presence.
-    };
-
     this.addCursorEventListener(document, "mousemove", updateCursor);
+    // Touch end needs no handler: the cursor stays at its last position and
+    // presence stays alive, as with mouseleave below.
     this.addCursorEventListener(document, "touchmove", updateTouchCursor, {
       passive: true,
     });
-    this.addCursorEventListener(document, "touchend", handleTouchEnd);
 
     // When mouse leaves the window, keep presence alive but stop updating position.
     // The cursor freezes at its last known position for other clients.
@@ -1399,7 +1397,6 @@ export class CursorClientAwareness {
         cursor.pointer,
         cursorData.message,
         stableId,
-        cursorData,
       );
       cursorElement.dataset.pointerType = cursor.pointer;
       this.cursors.set(stableId, cursorElement);
@@ -1502,11 +1499,13 @@ export class CursorClientAwareness {
 
     // Handle visibility based on distance from our cursor
     if (this.currentCursor) {
-      // Convert our cursor to client coordinates for distance calculation
+      // Compare both cursors in viewport pixels, the same space
+      // updateAllCursorVisibility uses. targetCoords can be document or
+      // container-local coordinates, so it is not used here.
       const ourClientCoords = this.storageToClient(this.currentCursor.x, this.currentCursor.y);
-      // Use target coordinates for distance (viewport pixels)
+      const theirClientCoords = this.storageToClient(cursor.x, cursor.y);
       const distance = calculateDistance(
-        { x: targetCoords.x, y: targetCoords.y, pointer: cursor.pointer },
+        { x: theirClientCoords.x, y: theirClientCoords.y, pointer: cursor.pointer },
         {
           x: ourClientCoords.x,
           y: ourClientCoords.y,
@@ -1536,7 +1535,6 @@ export class CursorClientAwareness {
     pointer: string = "mouse",
     message?: string | null,
     pid?: string,
-    cursorData?: CursorPresence,
   ): HTMLElement {
     const element = document.createElement("div");
     element.className = "playhtml-cursor-other playhtml-cursor-fade-in";
@@ -1576,12 +1574,6 @@ export class CursorClientAwareness {
     // Add message and name if present
     this.updateCursorMessage(element, playerIdentity, message);
     this.updateCursorName(element, playerIdentity);
-
-    // Apply custom cursor styles if provided
-    if (this.options.getCursorStyle && cursorData) {
-      const customStyles = this.options.getCursorStyle(cursorData);
-      Object.assign(element.style, customStyles);
-    }
 
     return element;
   }
@@ -1907,13 +1899,18 @@ export class CursorClientAwareness {
     // Convert our cursor to client coordinates so distance is in pixels (visibilityThreshold is in px)
     const ourClientCoords = this.storageToClient(this.currentCursor.x, this.currentCursor.y);
 
+    const presenceById = new Map<string, CursorPresence>();
+    for (const item of this.spatialGrid.getAll()) {
+      presenceById.set(item.id, item.data);
+    }
+
     this.cursors.forEach((cursorElement, stableId) => {
-      // Get cursor data from spatial grid
-      const gridItems = this.spatialGrid.getAll();
-      const cursorData = gridItems.find((item) => item.id === stableId)?.data;
+      const cursorData = presenceById.get(stableId);
 
       if (cursorData && cursorData.cursor) {
-        // Convert to viewport coordinates for distance calculation
+        // Recompute viewport coordinates rather than reading the grid's
+        // stored x/y: the grid is rebuilt on presence changes, not on scroll,
+        // so its client coordinates can be stale here.
         const theirClientCoords = this.storageToClient(cursorData.cursor.x, cursorData.cursor.y);
         const distance = calculateDistance(
           { ...ourClientCoords, pointer: this.currentCursor!.pointer },

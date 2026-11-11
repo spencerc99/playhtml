@@ -55,7 +55,12 @@
             <img id="catOrDog" src="images/cat.jpg" can-toggle/>
             <img id="plant" can-grow src="images/plant.png"/>
             <div id="hoverBox" can-hover style="width: 100px; height: 100px; background: red; border-radius: 8px;"></div>
-            <button id="duplicateBtn" can-duplicate style="font-size: 24px; padding: 10px 20px;">🌟 Click to clone me!</button>
+            <div>
+              <!-- Template element to clone, and the container clones land in. -->
+              <span id="star-template" style="font-size: 32px; display: inline-block; margin: 0 4px;">★</span>
+              <div id="star-container" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;"></div>
+              <button id="duplicateBtn" can-duplicate="star-template" can-duplicate-to="star-container" style="font-size: 24px; padding: 10px 20px;">🌟 Click to clone me!</button>
+            </div>
           </div>
                 
 
@@ -136,7 +141,6 @@
           >
             can-toggle 
           </li>
-          <li>can-duplicate</li>
           <li
             onmouseenter="highlightElements('can-spin')"
             onmouseleave="unhighlightElements('can-spin')"

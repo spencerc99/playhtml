@@ -3,7 +3,7 @@
 
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import type * as React from "react";
-import { PlayContext } from "./PlayProvider";
+import { PlayContext, PRE_SYNC_ME } from "./PlayProvider";
 import playhtml from "./playhtml-singleton";
 import {
   CursorPresenceView,
@@ -356,8 +356,6 @@ export function useUsers(): User[] {
     [],
   );
 }
-
-const PRE_SYNC_ME: Person = { pid: "", color: "", isMe: true, presence: {} };
 
 /**
  * The people on this page, the React form of `playhtml.people`:

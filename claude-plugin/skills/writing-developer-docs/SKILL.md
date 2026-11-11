@@ -28,11 +28,11 @@ Say the thing directly. Cut the marketing voice, the metaphors, and the throat-c
 
 ### Before / after
 
-> ❌ **`can-mirror`** — no data model at all. The library mirrors the element's
+> Bad: **`can-mirror`** — no data model at all. The library mirrors the element's
 > own DOM to everyone, so **the state you share _is_ the DOM**. The
 > general-purpose escape hatch.
 
-> ✅ **`can-mirror`**: The DOM holds the state. All changes to the element are
+> Good: **`can-mirror`**: The DOM holds the state. All changes to the element are
 > automatically synced (attributes, children, form state). No fine-grained
 > control over what is synced, but very simple to get started because you can
 > just write normal HTML, CSS, and JavaScript.

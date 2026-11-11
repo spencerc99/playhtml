@@ -148,7 +148,7 @@ setData((draft) => {
 
 ## NEVER write shared data from code that re-runs when that data changes
 
-The most dangerous bug in playhtml. A React effect (or `updateElement`) that **both reads shared data and writes it** loops forever: the write changes the data → the dependency re-fires → it writes again. Because the data is a CRDT, concurrent writes from multiple readers **append rather than overwrite**, so the loop never converges to a value a guard can catch. This passes local testing and only blows up once several readers connect, when the room's data grows without bound until the page stops loading.
+The most dangerous bug in playhtml. A React effect (or `update`) that **both reads shared data and writes it** loops forever: the write changes the data → the dependency re-fires → it writes again. Because the data is a CRDT, concurrent writes from multiple readers **append rather than overwrite**, so the loop never converges to a value a guard can catch. This passes local testing and only blows up once several readers connect, when the room's data grows without bound until the page stops loading.
 
 ```tsx
 // DANGER — infinite write loop
@@ -163,9 +163,9 @@ Strongest fix — **model unique collections as a keyed map and upsert in place 
 // entries is keyed by id, not an array
 const ref = useRef(data.entries); ref.current = data.entries;
 useEffect(() => {
-  if (ref.current[me.id]?.name === me.name) return;       // already correct
-  setData((draft) => { draft.entries[me.id] = me; });      // keyed, idempotent, merge-safe
-}, [me.id, me.name]); // local identity only — NOT data.entries
+  if (ref.current[me.pid]?.name === me.name) return;      // already correct
+  setData((draft) => { draft.entries[me.pid] = { name: me.name }; }); // keyed, idempotent, merge-safe
+}, [me.pid, me.name]); // local identity only — NOT data.entries
 ```
 
 Two reinforcing rules: (1) prefer keyed-map + mutator upsert over array + replacement rewrite; (2) read the data through a ref so the effect depends on local identity, not the shared collection. If you truly need an array, you must both read via ref AND dedupe-by-id into a Map before writing — but a keyed map is almost always the right shape.
@@ -209,4 +209,4 @@ See https://playhtml.fun/docs/advanced/cursors/ for full API.
 7. **High-frequency updates**: Don't `setData` on every mousemove. Debounce, or use `setLocalData`/presence (rate limited to ~20 writes/s; use cursors for pointer position).
    - **Worst case — self-triggering write loop**: a callback that writes shared data AND re-runs when that data changes. See the "NEVER write shared data…" section above. Treat it as a hard rule.
 8. **Computed values in state**: Don't store what you can calculate. Compute in `update`/render.
-9. **Missing PlayProvider** (React): `withSharedState` silently fails without it.
+9. **Missing PlayProvider** (React): without it, `withSharedState` logs a "No PlayProvider found" console error and the element won't work correctly. Wrap the app in `<PlayProvider>`, or pass `{ standalone: true }` as the third argument for a one-off component outside the provider tree (e.g. an Astro island).

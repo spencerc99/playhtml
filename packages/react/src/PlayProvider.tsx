@@ -86,7 +86,8 @@ export interface PlayContextPeople {
   setMyPresence: (key: string, value: unknown) => void;
 }
 
-const PRE_SYNC_ME: Person = { pid: "", color: "", isMe: true, presence: {} };
+/** Stands in for `me` until the first sync, when `everyone` is still empty. */
+export const PRE_SYNC_ME: Person = { pid: "", color: "", isMe: true, presence: {} };
 
 function setMyPresenceBeforeSync(): void {
   console.warn("[@playhtml/react] people.setMyPresence called before init — ignored.");
