@@ -5,6 +5,7 @@ import type { PageDataChannel, PageDataSetter } from "@playhtml/common";
 import { clonePlain, deepReplaceIntoProxy } from "@playhtml/common";
 import { getYjsValue } from "@syncedstore/core";
 import type * as Y from "yjs";
+import { safeInvoke } from "./presence-utils";
 
 const PAGE_TAG = "__page__";
 
@@ -53,7 +54,7 @@ function notifyPageDataListeners<T>(
   if (currentProxy === undefined) return;
   const plain = clonePlain(currentProxy) as T;
   for (const cb of listeners) {
-    cb(plain);
+    safeInvoke(() => cb(plain), `page data "${name}" subscriber`);
   }
 }
 

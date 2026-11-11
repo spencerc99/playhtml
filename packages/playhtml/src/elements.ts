@@ -124,7 +124,7 @@ export class ElementHandler<T = any, U = any, V = any> {
       triggerAwarenessUpdate,
       devMode,
     } = elementData;
-    // console.log("🔨 constructing ", element.id);
+    // console.log("constructing ", element.id);
     this.scheduleSetupDataWrite = options.scheduleSetupDataWrite;
     this.getUsers = options.getUsers ?? (() => []);
     this.getMeFor = options.getMe;
@@ -263,7 +263,7 @@ export class ElementHandler<T = any, U = any, V = any> {
     // Handle advanced settings
     if (resetShortcut && !this.resetShortcutListener) {
       // @ts-ignore
-      element.reset = this.reset;
+      element.reset = this.reset.bind(this);
 
       this.resetShortcutListener = (e) => {
         switch (this.resetShortcut) {
@@ -651,10 +651,9 @@ export class ElementHandler<T = any, U = any, V = any> {
 
     this.selfAwareness = data;
     this.onAwarenessChange(data);
-    // Render our own awareness change locally right away. The awareness "change"
-    // observer also fires (onAwarenessChange writes a fresh state object, so
-    // y-protocols detects the change and broadcasts it), but that path reflects
-    // the write back asynchronously; updating here keeps the local view immediate.
+    // Render our own awareness change locally right away. onAwarenessChange
+    // publishes the value to peers; calling triggerAwarenessUpdate here keeps
+    // the local view immediate whatever the caller's awareness pipeline does.
     this.triggerAwarenessUpdate?.();
   }
 

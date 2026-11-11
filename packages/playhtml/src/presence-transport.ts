@@ -217,7 +217,7 @@ export class RealtimePresenceTransport {
     // stale server-side until the next explicit join. Page-scoped rooms don't
     // hit this (a new room rebuilds the socket, which re-joins with the new page).
     this.latestJoin = snapshot;
-    this.sendIfOpen(message);
+    this.sendValidatedIfOpen(message);
   }
 
   update(channel: string, value: unknown): void {
@@ -229,15 +229,17 @@ export class RealtimePresenceTransport {
     } satisfies PresenceClientMessage;
     validatePresenceClientMessage(message);
     this.channelValues.set(channel, snapshot);
-    this.sendIfOpen(message);
+    this.sendValidatedIfOpen(message);
   }
 
   clear(channel: string): void {
-    this.channelValues.delete(channel);
-    this.sendIfOpen({
+    const message = {
       type: "presence-clear",
       channel,
-    });
+    } satisfies PresenceClientMessage;
+    validatePresenceClientMessage(message);
+    this.channelValues.delete(channel);
+    this.sendValidatedIfOpen(message);
   }
 
   subscribe(listener: PresenceTransportListener): () => void {
@@ -284,9 +286,10 @@ export class RealtimePresenceTransport {
     this.listeners.clear();
   }
 
+  // Replays state that join() and update() validated before storing it.
   private flushCurrentState(): void {
     if (this.latestJoin) {
-      this.sendIfOpen({
+      this.sendValidatedIfOpen({
         type: "presence-join",
         identity: this.latestJoin.identity,
         page: this.latestJoin.page,
@@ -294,7 +297,7 @@ export class RealtimePresenceTransport {
     }
 
     for (const [channel, value] of this.channelValues) {
-      this.sendIfOpen({
+      this.sendValidatedIfOpen({
         type: "presence-update",
         channel,
         value,
@@ -302,8 +305,9 @@ export class RealtimePresenceTransport {
     }
   }
 
-  private sendIfOpen(message: PresenceClientMessage): void {
-    validatePresenceClientMessage(message);
+  // Callers validate the message (validatePresenceClientMessage serializes it,
+  // so validating once per message keeps per-frame cursor updates cheap).
+  private sendValidatedIfOpen(message: PresenceClientMessage): void {
     if (!this.isSocketOpen()) return;
     this.socket.send(JSON.stringify(message));
   }

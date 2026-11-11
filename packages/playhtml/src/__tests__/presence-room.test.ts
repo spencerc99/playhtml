@@ -56,10 +56,17 @@ describe("createPresenceRoom", () => {
       }
     });
 
-    it("setMyPresence can be called without error", () => {
+    it("setMyPresence publishes the value on self", () => {
       const room = playhtml.createPresenceRoom("presence-set");
       try {
         room.presence.setMyPresence("page", { url: "/test", title: "Test" });
+        const self = Array.from(room.presence.getPresences().values()).find(
+          (p) => p.isMe,
+        )!;
+        expect((self as any).page).toEqual({ url: "/test", title: "Test" });
+        expect(room.people.me.presence).toMatchObject({
+          page: { url: "/test", title: "Test" },
+        });
       } finally {
         room.destroy();
       }

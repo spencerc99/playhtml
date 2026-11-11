@@ -24,11 +24,20 @@ describe("playhtml.presence", () => {
 
   it("setMyPresence sets a named channel", () => {
     playhtml.presence.setMyPresence("test-channel", { value: 42 });
+    const self = Array.from(playhtml.presence.getPresences().values()).find(
+      (p) => p.isMe,
+    )!;
+    expect((self as any)["test-channel"]).toEqual({ value: 42 });
+    playhtml.presence.setMyPresence("test-channel", null);
   });
 
   it("setMyPresence with null clears a channel", () => {
     playhtml.presence.setMyPresence("test-channel", { value: 42 });
     playhtml.presence.setMyPresence("test-channel", null);
+    const self = Array.from(playhtml.presence.getPresences().values()).find(
+      (p) => p.isMe,
+    )!;
+    expect((self as any)["test-channel"]).toBeUndefined();
   });
 
   it("getPresences includes self with isMe flag", () => {

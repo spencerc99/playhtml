@@ -93,12 +93,12 @@ export function buildPageRef(canonicalUrl: string): string {
  * metadata has changed without re-storing identical records.
  *
  * The U+0001 separator between fields ensures titles like "foo" + "bar.ico"
- * don't collide with "foob" + "ar.ico". Must match the extension's
- * implementation byte-for-byte for the hash to be deterministic across both
- * sides of the contract.
+ * don't collide with "foob" + "ar.ico". The extension imports this function at
+ * collection time, so changing the algorithm changes every new metadata_hash
+ * and breaks equality with hashes already stored.
  */
 export function buildMetadataHash(title: string, faviconUrl: string): string {
-  const value = `${title}${faviconUrl}`;
+  const value = `${title}\u0001${faviconUrl}`;
   let hash = 0x811c9dc5;
   for (let i = 0; i < value.length; i++) {
     hash ^= value.charCodeAt(i);
