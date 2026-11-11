@@ -20,8 +20,6 @@ export const TINT_STEP_COUNT = 3;
 /** Woodland core to edge, then two cultivated-ground tints. */
 export const WOOD_COUNT = 5;
 export const FIELD_COUNT = 2;
-/** Per-building opacity steps, sparse to dense traffic. */
-export const BUILD_ALPHA_STEPS = 6;
 
 export interface Theme {
   /** what shows through everything: the paper or the night */

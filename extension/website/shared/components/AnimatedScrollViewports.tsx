@@ -361,9 +361,6 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         animationQueueRef.current = shuffled;
         queueIndexRef.current = 0;
         completionSignaledRef.current = false;
-        console.log(
-          `[Scroll Dynamic] Initialized queue with ${shuffled.length} animations`,
-        );
       }
     }, [
       animations,
@@ -520,11 +517,6 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
         };
 
         commitActiveViewports((prev) => [...prev, newViewport]);
-        console.log(
-          `[Scroll Dynamic] Added viewport ${newViewport.id}, now ${
-            activeCount + 1
-          } active`,
-        );
       },
       [canvasSize, commitActiveViewports, getNextAnimation, continuous, fadeInMs],
     );
@@ -570,7 +562,6 @@ export const AnimatedScrollViewports: React.FC<AnimatedScrollViewportsProps> =
             const fadeOutElapsed = currentTime - viewport.phaseStartTime;
             if (fadeOutElapsed >= fadeOutMs) {
               changed = true;
-              console.log(`[Scroll Dynamic] Removed viewport ${viewport.id}`);
               return false;
             }
           }

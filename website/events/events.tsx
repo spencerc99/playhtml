@@ -187,7 +187,7 @@ export const Guestbook = withSharedState(
           </button>
         </div>
         <hr />
-        {data.reverse().map((entry, i) => (
+        {[...data].reverse().map((entry, i) => (
           <div
             key={i}
             className="guestbook-entry"

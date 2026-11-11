@@ -5,7 +5,7 @@
     <link rel="icon" type="image/png" href="/icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="one word story powered by playhtml" />
-    <meta name="og:image" content="https://playhtml.fun/playhtml-story.png" />
+    <meta property="og:image" content="https://playhtml.fun/playhtml-story.png" />
 
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -104,7 +104,9 @@
                 : undefined;
             }
             function randomColor() {
-              const hex = Math.floor(Math.random() * 16777215).toString(16);
+              const hex = Math.floor(Math.random() * 16777215)
+                .toString(16)
+                .padStart(6, "0");
               return "#" + hex;
             }
             function convertHexToRGB(hex) {
@@ -137,25 +139,26 @@
                 onMount: ({ setData, getData, setMyAwareness }) => {
                   const onSubmit = () => {
                     submitBtn.disabled = true;
-                    if (!isValidWord(input.value)) {
+                    const word = input.value.trim();
+                    if (!word || !isValidWord(word)) {
                       alert("please enter a single word!");
                       submitBtn.disabled = false;
                       return;
                     }
-                    if (hasExplicitSlur(input.value)) {
+                    if (hasExplicitSlur(word)) {
                       alert("please don't troll and be nice");
                       submitBtn.disabled = false;
                       return;
                     }
                     // valid length again
-                    if (input.value.length > 20) {
+                    if (word.length > 20) {
                       alert("too long!");
                       submitBtn.disabled = false;
                       return;
                     }
                     const existingStory = getData();
                     const newEntry = {
-                      word: input.value,
+                      word,
                       color: getUserColor(),
                       ts: Date.now(),
                     };

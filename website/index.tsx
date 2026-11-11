@@ -5,6 +5,7 @@ import "./homepage.scss";
 import { createRoot } from "react-dom/client";
 import { PlayProvider } from "@playhtml/react";
 import { HomeIslands } from "./components/home/HomeIslands";
+import { getLocalPreviewInitOptions } from "./components/home/localPreview";
 import {
   guestbookCapability,
   setupGuestbookNameInput,
@@ -26,28 +27,6 @@ import {
   setupTipJar,
   setupWordmarkColors,
 } from "./components/home/sharedElements";
-
-const isCursorRoom = (
-  value: string | null,
-): value is "page" | "domain" | "section" =>
-  value === "page" || value === "domain" || value === "section";
-
-// Lets local previews and smoke tests point the page at a local server/room.
-function getLocalPreviewInitOptions() {
-  const localHostnames = new Set(["localhost", "127.0.0.1"]);
-  if (!localHostnames.has(window.location.hostname)) return {};
-
-  const params = new URLSearchParams(window.location.search);
-  const host = params.get("playhtmlHost");
-  const room = params.get("playhtmlRoom");
-  const cursorRoom = params.get("playhtmlCursorRoom");
-
-  return {
-    ...(host ? { host } : {}),
-    ...(room ? { room } : {}),
-    ...(isCursorRoom(cursorRoom) ? { cursorRoom } : {}),
-  };
-}
 
 setupToyboxScale();
 setupLazyVideos();

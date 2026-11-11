@@ -93,7 +93,15 @@ function ChangelogBlockView({ block }: { block: ChangelogBlock }) {
     case "paragraph":
       return <p className={styles.paragraph}>{block.text}</p>;
     case "image":
-      return <img className={styles.media} src={block.src} alt={block.alt} />;
+      return (
+        <img
+          className={styles.media}
+          src={block.src}
+          alt={block.alt}
+          loading="lazy"
+          decoding="async"
+        />
+      );
     case "video":
       return (
         <video

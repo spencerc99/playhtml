@@ -364,7 +364,7 @@ export const JSONViewer: React.FC<{
     if (typeof obj === "object") {
       const keys = Object.keys(obj);
       if (keys.length === 0) {
-        return <span className="json-bracket">{}</span>;
+        return <span className="json-bracket">{"{}"}</span>;
       }
 
       const id = `object-${path}`;
@@ -1583,12 +1583,12 @@ const AdminConsole: React.FC = () => {
       const res = await fetch(url, { method: "POST" });
       if (!res.ok) {
         let errorMessage = `${res.status} ${res.statusText}`;
+        const text = await res.text();
         try {
-          const errorData = await res.json();
+          const errorData = JSON.parse(text);
           errorMessage = errorData.error || errorData.message || errorMessage;
         } catch {
-          // If response isn't JSON, use status text
-          const text = await res.text();
+          // The body is not JSON: show the raw text when there is any
           if (text) errorMessage = text;
         }
         throw new Error(errorMessage);
@@ -2252,7 +2252,7 @@ const AdminConsole: React.FC = () => {
               <span className="badge subscriber-badge">CONSUMER</span>
               <a
                 className="room-link"
-                href={`admin-react.html?room=${encodedRoomId}`}
+                href={`admin.html?room=${encodedRoomId}`}
               >
                 <strong>{roomId}</strong>
               </a>
@@ -2282,7 +2282,7 @@ const AdminConsole: React.FC = () => {
               <span className="badge reference-badge">SOURCE</span>
               <a
                 className="room-link"
-                href={`admin-react.html?room=${encodedSourceId}`}
+                href={`admin.html?room=${encodedSourceId}`}
               >
                 <strong>{roomId}</strong>
               </a>

@@ -190,22 +190,6 @@ export interface ScrollAnimation {
   endViewportHeight: number;
 }
 
-export interface ViewportSize {
-  width: number;
-  height: number;
-  key: string;
-  count: number;
-}
-
-export interface ScrollViewportState {
-  animation: ScrollAnimation;
-  viewportSize: ViewportSize;
-  startOffsetMs: number;
-  durationMs: number;
-  viewportRect: { x: number; y: number; width: number; height: number };
-  backgroundSeed: number;
-}
-
 // Dynamic viewport system types
 export type ViewportPhase = 'fade-in' | 'animating' | 'fade-out';
 
@@ -242,35 +226,6 @@ export interface NavigationEdge {
   traversalCount: number;
   participants: Set<string>;
   wobblePath: Array<{ x: number; y: number }>;
-}
-
-export interface NavigationAnimation {
-  nodes: NavigationNode[];
-  edges: NavigationEdge[];
-  color: string;
-  startTime: number;
-  endTime: number;
-  participantId: string;
-}
-
-// A journey represents a single navigation session - sequence of page visits
-export interface NavigationJourney {
-  id: string;
-  participantId: string;
-  color: string;
-  // Ordered sequence of node IDs representing the path taken
-  nodeSequence: string[];
-  // Edges in order (edge from nodeSequence[i] to nodeSequence[i+1])
-  edgeSequence: string[];
-  startTime: number;
-  endTime: number;
-}
-
-export interface NavigationState {
-  nodes: NavigationNode[];
-  edges: NavigationEdge[];
-  journeys: NavigationJourney[];
-  durationMs: number;
 }
 
 // Timeline visualization types for branching roots view

@@ -23,10 +23,6 @@ interface SharedURL {
   timestamp: number;
 }
 
-function shuffleArray<T>(array: T[]): T[] {
-  return array.sort(() => Math.random() - 0.5);
-}
-
 const CURSOR_INSTRUCTIONS = [
   "Make a circle together",
   "Play tag with each other",

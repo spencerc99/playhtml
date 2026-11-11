@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { CollectionEvent } from "../../types";
 import {
   deriveSessionColor,
+  extractDomain,
   getColorForEvent,
   getColorForParticipant,
   parseColorToHsl,
@@ -62,5 +63,22 @@ describe("parseColorToHsl", () => {
     expect(parseColorToHsl("#52b1e080")).toEqual(parseColorToHsl("#52b1e0"));
     expect(parseColorToHsl("#0f08")).toEqual(parseColorToHsl("#00ff00"));
     expect(parseColorToHsl("#52b1e0")).not.toBeNull();
+  });
+});
+
+describe("extractDomain", () => {
+  it("strips a leading www. label", () => {
+    expect(extractDomain("https://www.example.com/page")).toBe("example.com");
+  });
+
+  it("keeps www. text that is not the leading label", () => {
+    expect(extractDomain("https://awww.example.com")).toBe("awww.example.com");
+    expect(extractDomain("https://shop.www.example.com")).toBe(
+      "shop.www.example.com",
+    );
+  });
+
+  it("accepts bare hostnames", () => {
+    expect(extractDomain("www.example.com")).toBe("example.com");
   });
 });

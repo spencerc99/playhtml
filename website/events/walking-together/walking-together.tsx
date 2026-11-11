@@ -243,7 +243,11 @@ export const URLChat = withSharedState(
       };
 
       setData((draft) => {
-        draft.urls = [...urls, newUrl];
+        if (Array.isArray(draft.urls)) {
+          draft.urls.push(newUrl);
+        } else {
+          draft.urls = [newUrl];
+        }
       });
       setInputUrl("");
     };

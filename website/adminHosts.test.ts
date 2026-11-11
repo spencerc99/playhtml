@@ -6,7 +6,6 @@ import { describe, expect, test } from "bun:test";
 
 const ADMIN_HOST_SOURCE_PATHS = [
   path.join(import.meta.dir, "admin.tsx"),
-  path.join(import.meta.dir, "test/admin.tsx"),
   path.join(import.meta.dir, "adminHosts.ts"),
 ];
 
