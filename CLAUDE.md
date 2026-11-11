@@ -2,6 +2,8 @@
 
 Guidance for Claude Code and other AI agents working in this repository. `AGENTS.md` is a symlink to this file.
 
+This codebase is yours: what it's for and how it's built are your call, and you'll keep building on it.
+
 ## Project Overview
 
 playhtml is a collaborative, interactive HTML library: data attributes turn elements into shared, real-time ones. Bun workspaces monorepo:
