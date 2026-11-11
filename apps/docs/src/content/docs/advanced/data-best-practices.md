@@ -347,18 +347,6 @@ POST /parties/main/{roomId}/admin/cleanup-orphans
 }
 ```
 
-There's a helper script in the repo for doing this from a terminal:
-
-```bash
-export ADMIN_TOKEN=your_token_here
-
-# Dry run first to see what would be removed
-DRY_RUN=true bun scripts/cleanup-orphans.ts "playhtml.fun-fridge" "can-move" "id1" "id2" "id3"
-
-# Actually perform the cleanup
-bun scripts/cleanup-orphans.ts "playhtml.fun-fridge" "can-move" "id1" "id2" "id3"
-```
-
 **Practice:** always dry-run first; always derive the `activeIds` list from your own data store, never from the playhtml state you're about to delete.
 
 ## Performance checklist

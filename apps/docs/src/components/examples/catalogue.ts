@@ -3,8 +3,6 @@
 
 import type { CatalogueExampleSummary } from "./examples";
 
-export const ARENA_CHANNEL_URL =
-  "https://www.are.na/spencer-chang/playhtml-sites";
 export const ARENA_CONTENTS_URL =
   "https://api.are.na/v3/channels/playhtml-sites/contents?per=100";
 
@@ -18,8 +16,6 @@ export type SiteSummary = {
   imageUrl?: string;
   imageAlt?: string;
 };
-
-export type SourceFilter = "all" | "examples" | "sites";
 
 type UnknownRecord = Record<string, unknown>;
 

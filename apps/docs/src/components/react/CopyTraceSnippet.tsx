@@ -53,8 +53,8 @@ export function CopyTraceSnippet({ id, language, code, label }: Props) {
         };
 
         return (
-          // id is required on the DOM node, not just on CanPlayElement — see
-          // comment in InteractiveToggleDemo.tsx. Without it, playhtml hashes
+          // id is required on the DOM node, not just on CanPlayElement.
+          // Without it, playhtml hashes
           // outerHTML (which includes the tally marks) and the shared wear
           // counter ends up under a different key on every render.
           <div

@@ -84,7 +84,16 @@ function exposeSharedChunkExports(source: string): string {
   );
 }
 
+// The bundled URL is about 1 MB of base64 and its sources are fixed at build
+// time, so every recipe frame on a page shares one copy.
+let cachedModuleUrl: string | null = null;
+
 export function makePlayhtmlModuleUrl(): string {
+  cachedModuleUrl ??= buildPlayhtmlModuleUrl();
+  return cachedModuleUrl;
+}
+
+function buildPlayhtmlModuleUrl(): string {
   const leafEditorUrl = makeModuleDataUrl(leafEditorSource);
   const sharedChunkSpecifier = playhtmlSource.match(
     /from\s*"(\.\/index-[^"]+\.js)"/,

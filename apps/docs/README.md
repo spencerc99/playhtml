@@ -1,49 +1,19 @@
-# Starlight Starter Kit: Basics
+# playhtml docs
 
-[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
+The playhtml documentation site, built with Astro and Starlight. It is served under `/docs/` on [playhtml.fun](https://playhtml.fun/docs/).
 
-```
-bun create astro@latest -- --template starlight
-```
+Pages live in `src/content/docs/`. Live demos and the playground are React and Astro components in `src/components/`. Because the site's base is `/docs`, asset paths need the `/docs/` prefix (`/docs/foo.png`).
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+## Commands
 
-## 🚀 Project Structure
+Run these from the repository root:
 
-Inside of your Astro + Starlight project, you'll see the following folders and files:
+| Command | Action |
+| :-- | :-- |
+| `bun dev-docs` | Starts the docs dev server at `localhost:4321/docs/` |
+| `bun run test:docs` | Runs the docs component and script tests |
+| `bun build-site` | Builds the playhtml.fun site and the docs |
 
-```
-.
-├── public/
-├── src/
-│   ├── assets/
-│   ├── content/
-│   │   └── docs/
-│   └── content.config.ts
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
-```
+The live demos import `playhtml` and `@playhtml/react` from their built output, so run `bun build-packages` first if you changed anything under `packages/`.
 
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
-
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
-
-Static assets, like favicons, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `bun install`             | Installs dependencies                            |
-| `bun dev`             | Starts local dev server at `localhost:4321`      |
-| `bun build`           | Build your production site to `./dist/`          |
-| `bun preview`         | Preview your build locally, before deploying     |
-| `bun astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `bun astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+Before writing pages, read `claude-plugin/skills/writing-developer-docs/SKILL.md` for the docs style and conventions.
