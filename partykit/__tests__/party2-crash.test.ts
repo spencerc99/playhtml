@@ -13,6 +13,7 @@ class FakeDurableObject {
 }
 
 const workerEnv: Record<string, string> = {
+  DOCUMENTS_TABLE: "documents",
   SUPABASE_LOAD_ATTEMPTS: "1",
   SUPABASE_LOAD_RETRY_DELAY_MS: "1",
   SUPABASE_LOAD_TIMEOUT_MS: "100",

@@ -27,6 +27,7 @@ const SOURCE_ROOM_ID = "source-%2Froom";
 const deliveredRequests: Array<{ roomName: string; body: unknown }> = [];
 const BRIDGE_SECRET = "test-bridge-secret";
 const workerEnv: Record<string, unknown> = {
+  DOCUMENTS_TABLE: "documents",
   PARTYKIT_BRIDGE_SECRET: BRIDGE_SECRET,
   SUPABASE_LOAD_ATTEMPTS: "1",
   SUPABASE_LOAD_RETRY_DELAY_MS: "1",

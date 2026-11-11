@@ -2,6 +2,7 @@
 // ABOUTME: Hydrates, sequences, broadcasts, and persists snapshots while retaining presence.
 
 import { env } from "cloudflare:workers";
+import { parseDocumentsTable } from "./documentsTable";
 import type { Connection, ConnectionContext, WSMessage } from "partyserver";
 import { getServerByName } from "partyserver";
 import {
@@ -815,7 +816,7 @@ export class PartyServerV2 extends PresenceServer {
     const result = await retryWithinTimeout(
       async (signal) => {
         const queryResult = await supabase
-          .from("documents")
+          .from(parseDocumentsTable(env.DOCUMENTS_TABLE))
           .select("document, document_json, protocol_version")
           .eq("name", this.name)
           .abortSignal(signal)
@@ -1145,7 +1146,7 @@ export class PartyServerV2 extends PresenceServer {
     // The v1 `document` column is deliberately absent: the upsert leaves it
     // untouched for rollback, and resending it would re-upload the whole
     // legacy Yjs snapshot on every save.
-    const { error } = await supabase.from("documents").upsert(
+    const { error } = await supabase.from(parseDocumentsTable(env.DOCUMENTS_TABLE)).upsert(
       {
         name: this.name,
         document_json: documentJson,

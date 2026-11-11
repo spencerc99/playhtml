@@ -49,6 +49,7 @@ const quarantineKvStub = {
 const ADMIN_TOKEN = "test-admin-token";
 
 const workerEnv: Record<string, unknown> = {
+  DOCUMENTS_TABLE: "documents",
   QUARANTINE_CONTROL: quarantineKvStub,
   SUPABASE_LOAD_ATTEMPTS: "3",
   SUPABASE_LOAD_RETRY_DELAY_MS: "1",

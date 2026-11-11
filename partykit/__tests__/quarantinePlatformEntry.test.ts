@@ -36,7 +36,11 @@ const quarantineKvStub = {
 const TEST_ADMIN_TOKEN = "test-admin-token";
 
 mock.module("cloudflare:workers", () => ({
-  env: { QUARANTINE_CONTROL: quarantineKvStub, ADMIN_TOKEN: TEST_ADMIN_TOKEN },
+  env: {
+    QUARANTINE_CONTROL: quarantineKvStub,
+    ADMIN_TOKEN: TEST_ADMIN_TOKEN,
+    DOCUMENTS_TABLE: "documents",
+  },
   DurableObject: class {
     constructor(
       public ctx: unknown,

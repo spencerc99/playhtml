@@ -26,6 +26,11 @@
       "PARTYKIT_BRIDGE_SECRET"
     ]
   },
+  // The Supabase table that holds room documents. Staging shares the project
+  // and sets its own table below; vars are not inherited by environments.
+  "vars": {
+    "DOCUMENTS_TABLE": "documents"
+  },
   // Per-IP limit on requests to rooms, checked before a Durable Object wakes.
   // Set high enough that a venue or carrier NAT with thousands of people behind
   // one IP all opening a page at once stays under it; it only stops one source
@@ -101,6 +106,9 @@
           "ADMIN_TOKEN",
           "PARTYKIT_BRIDGE_SECRET"
         ]
+      },
+      "vars": {
+        "DOCUMENTS_TABLE": "documents_staging"
       },
       "ratelimits": [
         {

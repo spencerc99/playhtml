@@ -6,6 +6,10 @@ import { YServer } from "y-partyserver";
 import { syncedStore, getYjsValue } from "@syncedstore/core";
 import { deepReplaceIntoProxy } from "@playhtml/common";
 import { env } from "cloudflare:workers";
+import {
+  getDocumentsTableError,
+  parseDocumentsTable,
+} from "./documentsTable";
 import { Buffer } from "node:buffer";
 import * as Y from "yjs";
 import { supabase } from "./db";
@@ -873,7 +877,7 @@ export class PartyServer extends YServer {
 
   private async getPersistedDocumentBase64(): Promise<string | null> {
     const { data, error } = await supabase
-      .from("documents")
+      .from(parseDocumentsTable(env.DOCUMENTS_TABLE))
       .select("document")
       .eq("name", this.name)
       .maybeSingle();
@@ -895,7 +899,7 @@ export class PartyServer extends YServer {
   ): Promise<void> {
     this.assertDocumentSaveAllowed(options);
 
-    const { error } = await supabase.from("documents").upsert(
+    const { error } = await supabase.from(parseDocumentsTable(env.DOCUMENTS_TABLE)).upsert(
       {
         name: this.name,
         document: documentBase64,
@@ -2124,7 +2128,7 @@ export class PartyServer extends YServer {
         const attemptStartedAt = Date.now();
         successfulAttempt = attempt;
         const queryResult = await supabase
-          .from("documents")
+          .from(parseDocumentsTable(env.DOCUMENTS_TABLE))
           .select("document, protocol_version")
           .eq("name", this.name)
           .abortSignal(signal)
@@ -3051,7 +3055,7 @@ export class PartyServer extends YServer {
           `[Hard Reset] Live doc is empty, falling back to database...`
         );
         const { data: dbRow, error: dbError } = await supabase
-          .from("documents")
+          .from(parseDocumentsTable(env.DOCUMENTS_TABLE))
           .select("document")
           .eq("name", roomId)
           .maybeSingle();
@@ -3494,6 +3498,18 @@ export default {
         quarantineControl: workerEnv.QUARANTINE_CONTROL,
       });
       if (quarantineResponse) return quarantineResponse;
+
+      // Staging and production share one Supabase project. Refuse to serve
+      // rooms if this deployment is pointed at the wrong table. Quarantine
+      // control above stays reachable: it never touches room documents.
+      const documentsTableError = getDocumentsTableError(
+        new URL(request.url).hostname,
+        workerEnv.DOCUMENTS_TABLE
+      );
+      if (documentsTableError) {
+        console.error(`[PartyServer] ${documentsTableError}`);
+        return new Response(documentsTableError, { status: 500 });
+      }
 
       const rateLimitResponse = await checkEdgeRateLimit(
         request,
