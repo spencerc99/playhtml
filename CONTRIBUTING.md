@@ -4,9 +4,9 @@
 
 `playhtml` is designed to be a collective library of magical capabilities that anyone can attach to arbitrary HTML elements.
 
-If you have an idea for a new capability, please first ensure that there is not a duplicate existing one in the current library (see [`TagType`](https://github.com/spencerc99/playhtml/blob/main/src/types.ts#L100)). If it doesn't exist please make a proposal for the capability you would like to add by opening an issue with the `new-capability` label.
+If you have an idea for a new capability, please first ensure that there is not a duplicate existing one in the current library (see `TagType` in [`packages/common/src/index.ts`](https://github.com/spencerc99/playhtml/blob/main/packages/common/src/index.ts)). If it doesn't exist please make a proposal for the capability you would like to add by opening an issue with the `new-capability` label.
 
-To contribute your capability, you are also welcome to make a PR with your addition to `elements.ts` (see [sample PR](https://github.com/spencerc99/playhtml/pull/10/files#diff-37bc0716e9726d7764d49fcc1b08ca0eb3f52170af06f8a49504b47e33ae09d2R327-R383)).
+To contribute your capability, you are also welcome to make a PR with your addition to `packages/playhtml/src/elements.ts` (see [sample PR](https://github.com/spencerc99/playhtml/pull/10/files#diff-37bc0716e9726d7764d49fcc1b08ca0eb3f52170af06f8a49504b47e33ae09d2R327-R383)).
 
 ---
 
@@ -19,7 +19,7 @@ There is future work I'm planning on getting to in the Issues section. If you ha
 
 ### Working with local packages
 
-Bun automatically handles workspace linking, so changes in `common` will be immediately available in `playhtml` and `react` packages without any additional setup. Just run `bun install` at the root to set up the workspace dependencies.
+Run `bun run setup` at the root to install dependencies, build the packages, and check the workspace (`bun run doctor` reports anything missing). Bun links the workspace packages, but they import each other through their built `dist/` output, so after changing `common` or `playhtml`, run `bun build-packages` before testing the packages that depend on it.
 
 ### Updating docs for package changes
 
@@ -44,7 +44,7 @@ When the public core API changes, update both starters in the same PR and check 
 - `templates/react-starter/` (React API: `src/App.tsx`, `src/index.css`). It is Vite + TS with no `tsconfig.json` of its own, so `npm run build`'s `tsc` step picks up the monorepo root config and fails. Verify with `npx vite build` plus a live browser test instead.
 - `templates/html-starter/` (vanilla API: `index.html`, `style.css`, `script.js`). Static files loading `playhtml@latest` from unpkg.
 
-The starters depend on the published `playhtml` / `@playhtml/react` (`"latest"`), so they pick up code changes on release, but their own imports, props, selectors, and example markup don't update themselves. Use only real API methods: there is no `playhtml.setupCustomElement`. Vanilla custom elements set `defaultData` / `onClick` / `updateElement` on the DOM element, then call `playhtml.setupPlayElement(el)`.
+The starters depend on the published `playhtml` / `@playhtml/react` (`"latest"`), so they pick up code changes on release, but their own imports, props, selectors, and example markup don't update themselves. Use only real API methods: there is no `playhtml.setupCustomElement`. Vanilla custom elements use `playhtml.register(elementOrId, { defaultData, update, ... })`; `playhtml.setupPlayElement(el)` sets up a built-in capability on an element added after `init()`.
 
 ## Release Process
 
@@ -70,9 +70,10 @@ Once your changes are merged to `main`, the GitHub Action workflow will:
 1. **Create a Release PR**: If there are pending changesets, it will create a "Release" PR that updates package versions and generates changelogs
 2. **Publish to NPM**: When the Release PR is merged, it will automatically publish the updated packages to NPM
 
-### Manual Release Commands (Deprecated)
+### Manual release commands
 
-The following manual release commands have been removed and replaced with the changesets workflow:
+The Release workflow runs these for you. To release by hand:
 
-- ~~`bun run release:*`~~ - Use changesets instead  
-- ~~`node scripts/release.js`~~ - Removed, use changesets workflow
+- `bun run version-packages` applies pending changesets (bumps versions and writes changelogs).
+- `bun run release` builds the packages, rewrites `workspace:` dependencies to real versions, and publishes to npm.
+- `bun run release:snapshot` publishes a snapshot under the `next` tag (or `SNAPSHOT_TAG`) without keeping the version changes.
