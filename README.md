@@ -126,6 +126,9 @@ Thank you to everyone who has helped build playhtml.
     <td align="center" valign="top">
       <a href="https://github.com/alexwennerberg"><img src="https://avatars.githubusercontent.com/alexwennerberg?s=128" width="64" height="64" alt="alexwennerberg" /><br /><sub><b>Alex Wennerberg</b></sub></a><br /><sub>README fixes</sub>
     </td>
+    <td align="center" valign="top">
+      <a href="https://github.com/W-A-James"><img src="https://avatars.githubusercontent.com/W-A-James?s=128" width="64" height="64" alt="W-A-James" /><br /><sub><b>Warren James</b></sub></a><br /><sub>Per-site privacy: turning collection off for a site</sub>
+    </td>
   </tr>
 </table>
 <!-- contributors:end -->
