@@ -469,8 +469,6 @@ function placedPiece(
   };
 }
 
-/** The day a collage was started, the way the history cards write it. */
-
 export function CollageStudio({
   scraps,
   editing,
@@ -2211,7 +2209,6 @@ export function CollageStudio({
     // there lets go of what is in hand and a quick swipe does nothing. Only a
     // finger held still first draws a selection box.
     if (phone && event.pointerType === "touch") {
-      event.currentTarget.setPointerCapture(event.pointerId);
       pressRef.current = {
         at,
         downAt: performance.now(),
@@ -2643,13 +2640,7 @@ export function CollageStudio({
       });
       saveFile(video, `${collageExportName(title)}.mp4`);
     } catch (error) {
-      const text =
-        error instanceof CollageBakeError
-          ? `could not export mp4 — these could not be drawn: ${error.failures
-              .map((failure) => failure.label)
-              .join(", ")}`
-          : `could not export mp4 — ${error instanceof Error ? error.message : String(error)}`;
-      setNotice({ tone: "problem", text });
+      setNotice({ tone: "problem", text: exportProblem("mp4", error) });
     } finally {
       setVideoProgress(null);
     }

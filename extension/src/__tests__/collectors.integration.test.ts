@@ -374,6 +374,42 @@ describe("Collector Integration", () => {
     });
   });
 
+  describe("shutdown", () => {
+    it("stops collectors without buffering, flushing, or saving collector state", async () => {
+      const cursorCollector = new CursorCollector();
+      manager.registerCollector(cursorCollector);
+      await manager.enableCollector("cursor");
+      const eventBuffer = manager.getEventBuffer();
+      const addSpy = vi.spyOn(eventBuffer, "addEvent");
+      const flushSpy = vi.spyOn(eventBuffer, "flushBatch");
+      vi.mocked(browser.storage.local.set).mockClear();
+
+      const target = createTestElement("button", { id: "shutdown-target" });
+      await simulateClick(100, 100, 50, 0, target);
+      await simulateMouseMove(300, 300);
+      manager.shutdown();
+      await vi.advanceTimersByTimeAsync(60_000);
+      // Events collected before shutdown reach the buffer, which drops them.
+      const bufferedIds = addSpy.mock.calls.map(([event]) => event.id);
+      expect(bufferedIds.length).toBeGreaterThan(0);
+
+      expect(cursorCollector.isEnabled()).toBe(false);
+      expect(flushSpy).not.toHaveBeenCalled();
+      expect(browser.storage.local.set).not.toHaveBeenCalled();
+      const storedIds = vi
+        .mocked(browser.runtime.sendMessage)
+        .mock.calls.flatMap(([message]) =>
+          (message as { type?: string }).type === "STORE_EVENTS"
+            ? (message as { events: { id: string }[] }).events.map((e) => e.id)
+            : [],
+        );
+      for (const id of bufferedIds) expect(storedIds).not.toContain(id);
+
+      await manager.enableCollector("cursor");
+      expect(cursorCollector.isEnabled()).toBe(false);
+    });
+  });
+
   describe("error handling", () => {
     it("handles errors when adding events gracefully", async () => {
       const cursorCollector = new CursorCollector();

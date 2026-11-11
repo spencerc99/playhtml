@@ -8,23 +8,8 @@ import browser from "webextension-polyfill";
 import PlayHTMLPopup from "./popup";
 
 vi.mock("../../styles/popup.scss", () => ({}));
-vi.mock("../../components/Inventory", () => ({
-  Inventory: () => null,
-}));
 vi.mock("../../components/PlayerIdentityCard", () => ({
   PlayerIdentityCard: () => null,
-}));
-vi.mock("../../components/SiteStatus", () => ({
-  SiteStatus: () => null,
-}));
-vi.mock("../../components/QuickActions", () => ({
-  QuickActions: () => null,
-}));
-vi.mock("../../components/Collections", () => ({
-  Collections: () => null,
-}));
-vi.mock("../../components/ProfilePage", () => ({
-  ProfilePage: () => null,
 }));
 vi.mock("../../components/InternetPortraitHome.scss", () => ({}));
 vi.mock("../../components/TinyMovementPreview", () => ({
@@ -94,15 +79,6 @@ describe("PlayHTMLPopup", () => {
             COMMUTE: true,
             SCRAPS: true,
             BAG_SETTINGS: true,
-          },
-        };
-      }
-      if (requestedKeys.includes("gameInventory")) {
-        return {
-          gameInventory: {
-            items: [],
-            totalItems: 0,
-            lastUpdated: 0,
           },
         };
       }
@@ -226,6 +202,19 @@ describe("PlayHTMLPopup", () => {
         preview!.compareDocumentPosition(collection!) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
+    } finally {
+      cleanup(root, container);
+    }
+  });
+
+  it("opens without writing anything to the satchel inventory", async () => {
+    const { root, container } = await renderPopup();
+
+    try {
+      const writtenKeys = vi
+        .mocked(browser.storage.local.set)
+        .mock.calls.flatMap(([items]) => Object.keys(items));
+      expect(writtenKeys).not.toContain("gameInventory");
     } finally {
       cleanup(root, container);
     }

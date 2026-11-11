@@ -32,8 +32,6 @@ import {
   stepShareLink,
 } from "./shareLinkState";
 
-export { LINK_SETTLE_MS, LINK_UPDATE_GAP_MS } from "./shareLinkState";
-
 export interface PublishSectionProps {
   /** The live share, if this collage has one. */
   share: CollagePublication | undefined;

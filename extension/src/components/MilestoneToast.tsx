@@ -1,7 +1,7 @@
 // ABOUTME: React component for the milestone toast rendered inside a shadow root.
 // ABOUTME: Used by the content script (injected), the setup page, and the preview page.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 export type MilestoneToastType =
   | "longGapReturn"
@@ -205,7 +205,6 @@ export function MilestoneToast({
 }: Props) {
   const [visible, setVisible] = useState(!!isStatic);
   const [hiding, setHiding] = useState(false);
-  const toastRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isStatic) return;
@@ -254,7 +253,7 @@ export function MilestoneToast({
     .join(" ");
 
   return (
-    <div ref={toastRef} className={cls}>
+    <div className={cls}>
       <button
         type="button"
         className="wwo-toast-close"

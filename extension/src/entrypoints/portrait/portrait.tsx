@@ -1,13 +1,7 @@
 // ABOUTME: Portrait page entrypoint — full movement visualization using local IndexedDB data
 // ABOUTME: Loads all locally-collected events and passes them to MovementCanvas for rendering
 
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-} from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { ExtensionPageNav } from "../../components/ExtensionPageNav";
 import { PortraitCard } from "../../components/PortraitCard";
 import { createRoot } from "react-dom/client";
@@ -16,16 +10,10 @@ import "../../styles/options.scss";
 import "@movement/portrait-styles.scss";
 import type { CollectionEvent, DayCounts } from "@movement/types";
 import { MovementCanvas } from "@movement/components/MovementCanvas";
-import { useCursorTrails } from "@movement/hooks/useCursorTrails";
 import {
   DEFAULT_ACTIVE_VISUALIZATIONS,
   deriveRequiredEventTypes,
 } from "@movement/components/registry";
-import { DomainPortraitExport } from "../../components/DomainPortraitExport";
-import {
-  captureDomPortrait,
-  domainPortraitFilename,
-} from "../../utils/portraitExport";
 import type { PortraitCardProps } from "../../components/PortraitCard";
 import type { ScreenTimeSession } from "../../storage/LocalEventStore";
 import { portraitDayFromSearch } from "../../utils/portraitDay";
@@ -46,8 +34,6 @@ const PortraitPage = () => {
   const [events, setEvents] = useState<CollectionEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [hovering, setHovering] = useState(false);
   const [selectedDays, setSelectedDays] = useState<DayRange | null>(() => {
     const day = portraitDayFromSearch(window.location.search);
     return day ? singleDay(day) : null;
@@ -57,7 +43,6 @@ const PortraitPage = () => {
     DEFAULT_ACTIVE_VISUALIZATIONS,
   );
   const [cardMinimized, setCardMinimized] = useState(false);
-  const exportContainerRef = useRef<HTMLDivElement>(null);
 
   const loadEvents = useCallback(
     async (days?: DayRange | null) => {
@@ -247,76 +232,6 @@ const PortraitPage = () => {
     };
   }, [events, globalStats, dayScreenTime, selectedDays]);
 
-  // Compute trail states for frozen export
-  const viewportSize = useMemo(() => ({ width: 800, height: 1000 }), []);
-  const cursorSettings = useMemo(
-    () => ({
-      trailOpacity: 0.7,
-      randomizeColors: true,
-      filters: [],
-      pidFilter: "",
-      eventFilter: { move: true, click: true, hold: true, cursor_change: true },
-      trailStyle: "chaotic" as const,
-      chaosIntensity: 1.0,
-      trailAnimationMode: "stagger" as const,
-      maxConcurrentTrails: 15,
-      overlapFactor: 0.75,
-      minGapBetweenTrails: 0.2,
-      documentSpace: false,
-    }),
-    [],
-  );
-
-  const { trailStates, timeBounds, cycleDuration } = useCursorTrails(
-    events,
-    viewportSize,
-    cursorSettings,
-  );
-
-  const timeRange = useMemo(() => {
-    const duration = cycleDuration > 0 ? cycleDuration : 60000;
-    return { min: timeBounds.min || 0, max: timeBounds.max || 0, duration };
-  }, [timeBounds, cycleDuration]);
-
-  const handleExportDomainPortrait = useCallback(async () => {
-    if (!portraitStats || exporting) return;
-    setExporting(true);
-
-    // Mount off-screen div, wait one frame, capture
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-
-    const root = createRoot(container);
-    root.render(
-      <DomainPortraitExport
-        domain=""
-        stats={portraitStats}
-        trailStates={trailStates}
-        timeRange={timeRange}
-      />,
-    );
-
-    // Wait two frames for React to flush and paint
-    await new Promise((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(resolve)),
-    );
-
-    const el = container.querySelector("div") as HTMLElement | null;
-    if (el) {
-      try {
-        await captureDomPortrait(el, domainPortraitFilename("portrait"));
-      } catch (err) {
-        console.error("[Portrait] Export failed:", err);
-      }
-    }
-
-    root.unmount();
-    document.body.removeChild(container);
-    setExporting(false);
-  }, [portraitStats, trailStates, timeRange, exporting]);
-
-  const overlayVisible = hovering || exporting;
-
   return (
     <div
       style={{
@@ -326,8 +241,6 @@ const PortraitPage = () => {
         position: "relative",
         background: "var(--bg)",
       }}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
     >
       <div
         style={{

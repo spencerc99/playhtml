@@ -4,7 +4,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   RESERVED_ACCELERATORS,
-  acceleratorName,
+  acceleratorNames,
+  isReservedAccelerator,
   isTypingTarget,
   releaseTypingFocus,
   studioCommandFor,
@@ -288,29 +289,59 @@ describe("reserved accelerators", () => {
       { ...IDLE, hasClipboard: true },
       { ...IDLE, hasSelection: false },
     ];
-    for (const key of [...letters, ...digits, "[", "]", "Tab"]) {
+    const checked = new Set<string>();
+    const keys = [...letters, ...digits, "[", "]", "Tab", "PageUp", "PageDown"];
+    for (const key of keys) {
       for (const shiftKey of [false, true]) {
         for (const held of [{ metaKey: true }, { ctrlKey: true }]) {
           const event = press(key, { ...held, shiftKey });
-          const name = acceleratorName(event);
-          if (!name || !RESERVED_ACCELERATORS.includes(name)) continue;
+          if (!isReservedAccelerator(event)) continue;
+          for (const name of acceleratorNames(event)) checked.add(name);
           for (const context of contexts) {
             expect(
               studioCommandFor(event, context),
-              `${name} is reserved by the browser and must not be bound`,
+              `${acceleratorNames(event).join(" / ")} is reserved by the browser and must not be bound`,
             ).toBeNull();
           }
         }
       }
     }
+    // Every reserved accelerator is actually reached by a press above.
+    for (const reserved of RESERVED_ACCELERATORS) {
+      expect(checked, `${reserved} was never exercised`).toContain(reserved);
+    }
   });
 
   it("names an accelerator the way the reserved list spells it", () => {
-    expect(acceleratorName(press("w", { metaKey: true }))).toBe("accel+w");
+    expect(acceleratorNames(press("w", { metaKey: true }))).toEqual([
+      "accel+w",
+    ]);
     expect(
-      acceleratorName(press("t", { ctrlKey: true, shiftKey: true })),
-    ).toBe("accel+shift+t");
-    expect(acceleratorName(press("r"))).toBeNull();
+      acceleratorNames(press("t", { ctrlKey: true, shiftKey: true })),
+    ).toEqual(["accel+shift+t", "ctrl+shift+t"]);
+    expect(acceleratorNames(press("r"))).toEqual([]);
+  });
+
+  it("recognizes the ctrl shortcuts that switch tabs on every platform", () => {
+    for (const held of [{}, { metaKey: true }]) {
+      expect(isReservedAccelerator(press("Tab", { ...held, ctrlKey: true }))).toBe(
+        true,
+      );
+      expect(
+        isReservedAccelerator(
+          press("Tab", { ...held, ctrlKey: true, shiftKey: true }),
+        ),
+      ).toBe(true);
+      expect(
+        isReservedAccelerator(press("PageUp", { ...held, ctrlKey: true })),
+      ).toBe(true);
+      expect(
+        isReservedAccelerator(press("PageDown", { ...held, ctrlKey: true })),
+      ).toBe(true);
+    }
+    // Cmd+tab belongs to the operating system's app switcher, not the page's
+    // reserved list.
+    expect(isReservedAccelerator(press("Tab", { metaKey: true }))).toBe(false);
   });
 
   it("lists the combinations that cannot be intercepted at all", () => {

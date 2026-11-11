@@ -1,3 +1,6 @@
+// ABOUTME: Lists collected satchel items with previews, per-item removal, and a clear-all action.
+// ABOUTME: Shown from the Bag settings section of the extension Settings page.
+
 import React from "react";
 import { GameInventory, InventoryItem } from "../types";
 

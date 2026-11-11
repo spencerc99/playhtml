@@ -60,7 +60,7 @@ interface OverlaySettings {
   documentSpace: boolean;
 }
 
-export const defaultSettings: OverlaySettings = {
+const defaultSettings: OverlaySettings = {
   showCursorTrails: true,
   showCursorClicks: false,
   showTyping: false,
@@ -74,7 +74,9 @@ export const defaultSettings: OverlaySettings = {
   documentSpace: false,
 };
 
-interface Props {
+// A type alias rather than an interface, so it fits injectShadowReact's
+// Record<string, unknown> props constraint.
+type Props = {
   visible: boolean;
   currentUrl: string;
   onClose: () => void;
@@ -82,11 +84,11 @@ interface Props {
   initialSource?: TrailSource;
   /** Open with the controls hidden, for clean recordings and stills. */
   initialUiHidden?: boolean;
-}
+};
 
 const DOUBLE_TAP_THRESHOLD_MS = 300;
 
-export type OverlayLoadState = "loading" | "ready" | "empty" | "error";
+type OverlayLoadState = "loading" | "ready" | "empty" | "error";
 
 export function HistoricalOverlay({
   visible,
@@ -400,12 +402,19 @@ export function HistoricalOverlay({
     return () => window.removeEventListener("resize", updateSize);
   }, []);
 
-  // Manage SoundEngine lifecycle — mirrors MovementCanvas pattern
+  // Manage SoundEngine lifecycle. An engine whose init finishes after this
+  // effect is cleaned up (overlay closed or sound toggled off) is disposed
+  // instead of stored, so its AudioContext does not outlive the overlay.
   useEffect(() => {
+    let cancelled = false;
     if (soundEnabled) {
       if (!soundEngineRef.current) {
         const engine = new SoundEngine();
         engine.init().then(() => {
+          if (cancelled) {
+            engine.dispose();
+            return;
+          }
           engine.setCanvasWidth(viewportSize.width);
           soundEngineRef.current = engine;
         });
@@ -415,6 +424,7 @@ export function HistoricalOverlay({
       soundEngineRef.current = null;
     }
     return () => {
+      cancelled = true;
       soundEngineRef.current?.dispose();
       soundEngineRef.current = null;
     };
@@ -455,11 +465,9 @@ export function HistoricalOverlay({
   );
 
   const {
-    trails,
     trailStates,
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
-    documentCanvasSize,
   } = useCursorTrails(
     events as unknown as MovementCollectionEvent[],
     viewportSize,
@@ -558,18 +566,6 @@ export function HistoricalOverlay({
     viewportSize,
     viewportSettings,
   );
-
-  // Compute date range
-  const dateRange = useMemo(() => {
-    if (events.length === 0) return null;
-    const timestamps = events.map((e) => e.ts);
-    const oldest = Math.min(...timestamps);
-    const newest = Math.max(...timestamps);
-    return {
-      oldest: new Date(oldest).toISOString(),
-      newest: new Date(newest).toISOString(),
-    };
-  }, [events]);
 
   async function handleCapturePagePortrait() {
     try {

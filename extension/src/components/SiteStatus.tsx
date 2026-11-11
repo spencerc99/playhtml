@@ -1,3 +1,6 @@
+// ABOUTME: Shows the active tab's hostname and whether playhtml elements were found on it.
+// ABOUTME: Shown in the Bag settings section of the extension Settings page.
+
 import React from "react";
 import browser from "webextension-polyfill";
 import { PlayHTMLStatus } from "../types";

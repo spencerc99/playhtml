@@ -1,5 +1,5 @@
 // ABOUTME: Tests local event buffering before events cross into the background worker.
-// ABOUTME: Verifies batching, upload flushing, and cached event metadata lookups.
+// ABOUTME: Verifies batching, upload flushing, disposal, and cached event metadata lookups.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
@@ -239,6 +239,57 @@ describe("EventBuffer", () => {
     }
 
     expect(error).toHaveBeenCalledTimes(retryDelays.length + 1);
+  });
+
+  it("stops sending and retrying once disposed", async () => {
+    const buffer = new EventBuffer();
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let storeAttempts = 0;
+    vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
+      if ((message as { type?: string }).type === "STORE_EVENTS") {
+        storeAttempts++;
+        return Promise.reject(new Error("Extension context invalidated."));
+      }
+      return Promise.resolve({ success: true });
+    });
+
+    await buffer.addEvent(testEvent("failed"));
+    await buffer.flushBatch();
+    expect(storeAttempts).toBe(1);
+    expect(error).toHaveBeenCalledTimes(1);
+
+    // A retry is scheduled; disposing cancels it and drops the event.
+    await buffer.addEvent(testEvent("buffered"));
+    buffer.dispose();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(storeAttempts).toBe(1);
+
+    await buffer.addEvent(testEvent("after-dispose"));
+    await buffer.flushBatch();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a store retry that fails after disposal", async () => {
+    const buffer = new EventBuffer();
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let rejectStore: (reason: Error) => void = () => {};
+    vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
+      if ((message as { type?: string }).type === "STORE_EVENTS") {
+        return new Promise((_, reject) => {
+          rejectStore = reject;
+        });
+      }
+      return Promise.resolve({ success: true });
+    });
+
+    await buffer.addEvent(clickEvent("in-flight"));
+    buffer.dispose();
+    rejectStore(new Error("Extension context invalidated."));
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledTimes(1);
   });
 
   it("reuses participant and session lookups for event metadata", async () => {

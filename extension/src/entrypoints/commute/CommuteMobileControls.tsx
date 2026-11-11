@@ -147,7 +147,12 @@ export function CommuteMobileControls({
             <button
               className="commute-mobile-fullscreen"
               type="button"
-              onClick={() => void toggleFullscreen()}
+              onClick={() => {
+                // The browser can refuse fullscreen; the ride works without it.
+                toggleFullscreen().catch((error: unknown) => {
+                  console.warn("[commute] fullscreen toggle failed:", error);
+                });
+              }}
               aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
               title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
             >

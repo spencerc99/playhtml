@@ -258,9 +258,6 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   }
 
   /**
-   * Schedule a real-time update (throttled to ~60fps)
-   */
-  /**
    * Applies (or clears) installation pace. Faster sampling with a smaller
    * movement threshold makes a browsing machine's marks arrive close to live.
    */
@@ -270,6 +267,9 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       pace?.movementThresholdPx ?? this.defaultMovementThreshold;
   }
 
+  /**
+   * Schedule a real-time update (throttled to ~60fps)
+   */
   private scheduleRealTimeUpdate(): void {
     const now = Date.now();
     if (now - this.lastRealTimeTime >= this.realTimeRate) {

@@ -1,5 +1,5 @@
 // ABOUTME: Uploads collected browsing events to the Cloudflare Worker for storage.
-// ABOUTME: Handles batching, server backfill mode, and worker URL configuration.
+// ABOUTME: Strips URL fragments from outgoing payloads and resolves the worker URL configuration.
 
 import browser from 'webextension-polyfill';
 import type { CollectionEvent, NavigationEventData } from '../collectors/types';

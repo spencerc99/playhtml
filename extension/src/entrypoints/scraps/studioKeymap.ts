@@ -317,17 +317,28 @@ export const RESERVED_ACCELERATORS: string[] = [
 ];
 
 /**
- * The accelerator an event names, in the form the reserved list uses, or null
- * when the event is a bare key the browser does not claim.
+ * Every accelerator an event names, in the form the reserved list uses, or an
+ * empty list when the event is a bare key the browser does not claim. "accel"
+ * is cmd on a Mac and ctrl elsewhere, so a press with ctrl held names both its
+ * "accel" form and its "ctrl" form, the latter for shortcuts such as ctrl+tab
+ * that use ctrl on every platform.
  */
-export function acceleratorName(event: KeyEventShape): string | null {
-  const held: string[] = [];
-  if (event.metaKey || event.ctrlKey) held.push("accel");
-  else if (event.ctrlKey) held.push("ctrl");
-  if (held.length === 0) return null;
-  if (event.shiftKey) held.push("shift");
-  if (event.altKey) held.push("alt");
-  return [...held, event.key.toLowerCase()].join("+");
+export function acceleratorNames(event: KeyEventShape): string[] {
+  if (!event.metaKey && !event.ctrlKey) return [];
+  const rest: string[] = [];
+  if (event.shiftKey) rest.push("shift");
+  if (event.altKey) rest.push("alt");
+  rest.push(event.key.toLowerCase());
+  const names = [["accel", ...rest].join("+")];
+  if (event.ctrlKey) names.push(["ctrl", ...rest].join("+"));
+  return names;
+}
+
+/** Whether an event is one of the accelerators the browser keeps for itself. */
+export function isReservedAccelerator(event: KeyEventShape): boolean {
+  return acceleratorNames(event).some((name) =>
+    RESERVED_ACCELERATORS.includes(name),
+  );
 }
 
 export interface ShortcutEntry {

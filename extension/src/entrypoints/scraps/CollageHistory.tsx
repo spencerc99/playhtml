@@ -22,6 +22,7 @@ import {
   encodeCollageFile,
   importCollageFile,
 } from "./collageFile";
+import { downloadFile } from "./ExportReady";
 import { THUMBNAIL_GRAIN_STRENGTH, paperBackground } from "./paperGrain";
 import { GLYPHS } from "./PieceActions";
 import {
@@ -42,6 +43,10 @@ interface CollageHistoryProps {
 
 /** A day, so a collage touched again the day it was made reads as unchanged. */
 const DAY_MS = 86_400_000;
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 function formatDate(ts: number): string {
   return new Date(ts).toLocaleDateString(undefined, {
@@ -105,25 +110,33 @@ export function CollageHistory({
    * is there to open the moment the button is pressed.
    */
   const duplicate = async (id: string) => {
-    const source = await loadCollage(id);
-    if (!source) {
-      setError("that collage could not be opened to copy");
-      return;
+    try {
+      const source = await loadCollage(id);
+      if (!source) {
+        setError("that collage could not be opened to copy");
+        return;
+      }
+      const copy = duplicateCollage(source);
+      await saveCollage(copy);
+      inBackground(keepCollageImages(copy));
+      setError(null);
+      setSummaries((current) =>
+        current ? [summarizeCollage(copy), ...current] : current,
+      );
+    } catch (copyError) {
+      setError(`could not copy that collage — ${errorText(copyError)}`);
     }
-    const copy = duplicateCollage(source);
-    await saveCollage(copy);
-    inBackground(keepCollageImages(copy));
-    setError(null);
-    setSummaries((current) =>
-      current ? [summarizeCollage(copy), ...current] : current,
-    );
   };
 
   const open = (id: string) => {
-    void loadCollage(id).then((loaded) => {
-      if (loaded) onEdit(loaded);
-      else setError("that collage could not be opened");
-    });
+    loadCollage(id)
+      .then((loaded) => {
+        if (loaded) onEdit(loaded);
+        else setError("that collage could not be opened");
+      })
+      .catch((openError: unknown) => {
+        setError(`could not open that collage — ${errorText(openError)}`);
+      });
   };
 
   const readable = useMemo(
@@ -145,18 +158,14 @@ export function CollageHistory({
         return;
       }
       const text = await encodeCollageFile(record);
-      const url = URL.createObjectURL(
+      downloadFile(
         new Blob([text], { type: "application/json" }),
+        collageFileName(record.title),
       );
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = collageFileName(record.title);
-      link.click();
-      URL.revokeObjectURL(url);
       setError(null);
     } catch (saveError) {
       setError(
-        `could not save that collage as a file — ${saveError instanceof Error ? saveError.message : String(saveError)}`,
+        `could not save that collage as a file — ${errorText(saveError)}`,
       );
     }
   };
@@ -200,7 +209,13 @@ export function CollageHistory({
         return;
       }
     }
-    await deleteCollage(id);
+    try {
+      await deleteCollage(id);
+    } catch (deleteError) {
+      setError(`could not delete that collage — ${errorText(deleteError)}`);
+      setConfirmingId(null);
+      return;
+    }
     inBackground(releaseCollageImages(id));
     // Keeps the other copy of the extension on an iPhone from bringing it back.
     inBackground(recordCollageDeletion(id));

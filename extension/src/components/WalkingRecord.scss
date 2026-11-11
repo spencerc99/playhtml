@@ -208,7 +208,7 @@ button:focus-visible {
   min-height: 36px;
   align-items: center;
   margin-top: 14px;
-  color: #8a8279;
+  color: $text-muted;
   font-family: $font-mono;
   font-size: 10.5px;
 }
@@ -219,7 +219,7 @@ button:focus-visible {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #8a8279;
+  color: $text-muted;
   cursor: pointer;
   font-family: $font-mono;
   font-size: 10.5px;

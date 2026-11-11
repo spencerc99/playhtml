@@ -1297,7 +1297,6 @@ function Banner({
   currentStop,
   hasSeat,
   routeComplete,
-  waitingForFreshStops,
   slowModePlatformPhase,
 }: {
   phase: CommutePhase;
@@ -1306,7 +1305,6 @@ function Banner({
   currentStop: CommuteStop;
   hasSeat: boolean;
   routeComplete: boolean;
-  waitingForFreshStops: boolean;
   slowModePlatformPhase?: SlowModePlatformPhase;
 }) {
   let message: React.ReactNode;
@@ -1334,11 +1332,6 @@ function Banner({
     instruction =
       "the next train will use new sites — this route will not repeat";
     mobileMessage = phase === "riding" ? "returning home" : "home station";
-  } else if (waitingForFreshStops) {
-    message = "waiting for a new destination";
-    aside = "checking the recent web";
-    instruction = "the next train will depart when an unseen stop appears";
-    mobileMessage = "waiting for a stop";
   } else if (atOrigin) {
     message = destinationLabel("next train to");
     if (slowModePlatformPhase === "boarding") {
@@ -1697,7 +1690,6 @@ function InternetCommute({
           }
           hasSeat={hasSeat}
           routeComplete={timing.complete}
-          waitingForFreshStops={false}
           slowModePlatformPhase={slowModePlatformPhase}
         />
 

@@ -106,9 +106,6 @@ export abstract class BaseCollector<T = unknown> {
   }
   
   /**
-   * Set the callback for real-time events (live streaming)
-   */
-  /**
    * Milliseconds between archival samples. Installation machines lower this so
    * the screens read as live; ordinary browsing keeps the collector's default.
    */
@@ -116,6 +113,9 @@ export abstract class BaseCollector<T = unknown> {
     this.sampleRate = Math.max(16, rateMs);
   }
 
+  /**
+   * Set the callback for real-time events (live streaming)
+   */
   setRealTimeCallback(callback: (data: T) => void): void {
     this.onRealTimeCallback = callback;
   }
