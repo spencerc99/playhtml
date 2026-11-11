@@ -1716,11 +1716,6 @@ export function CollageStudio({
     turnOver,
   ]);
 
-  /**
-   * Carries the pieces a move gesture holds to follow the pointer. Shift keeps
-   * the move to the axis the drag has mostly travelled along, decided afresh
-   * each time so the axis can change mid-drag.
-   */
   /** Lines shown while a carried piece is caught on another or the frame. */
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   /**
@@ -1740,6 +1735,11 @@ export function CollageStudio({
   const slidePaceRef = useRef<{ at: Point; time: number } | null>(null);
   useEffect(() => () => slideRef.current?.stop(), []);
 
+  /**
+   * Carries the pieces a move gesture holds to follow the pointer. Shift keeps
+   * the move to the axis the drag has mostly travelled along, decided afresh
+   * each time so the axis can change mid-drag.
+   */
   const carry = useCallback(
     (
       origins: readonly CollagePiece[],
@@ -2675,14 +2675,13 @@ export function CollageStudio({
     setNotice({ tone: "problem", text });
   }, []);
 
-  const onCutoutFailed = useCallback((pieceId: string, reason: string) => {
+  const onCutoutFailed = useCallback((_pieceId: string, reason: string) => {
     setNotice({
       tone: "problem",
       text: `a background could not be removed — ${reason}`,
     });
     // The piece keeps its cutout so the slider can be retried, but nothing
     // pretends the cut happened.
-    void pieceId;
   }, []);
 
   // Modal transforms and handle drags speak through the same slip.

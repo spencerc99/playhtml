@@ -1898,7 +1898,6 @@ export class CursorClientAwareness {
 
     // Convert our cursor to client coordinates so distance is in pixels (visibilityThreshold is in px)
     const ourClientCoords = this.storageToClient(this.currentCursor.x, this.currentCursor.y);
-
     const presenceById = new Map<string, CursorPresence>();
     for (const item of this.spatialGrid.getAll()) {
       presenceById.set(item.id, item.data);

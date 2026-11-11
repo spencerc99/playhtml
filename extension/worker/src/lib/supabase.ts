@@ -31,8 +31,6 @@ export function createSupabaseClient(env: Env) {
  * The ingest endpoint is public but validated. Admin endpoints require ADMIN_KEY
  * because even though data is anonymous, we're collecting it from real users
  * and should protect access to aggregated/exported data.
- * 
- * Future: Consider adding CORS restrictions to admin endpoints as additional layer.
  */
 export interface Env {
   SUPABASE_URL: string;

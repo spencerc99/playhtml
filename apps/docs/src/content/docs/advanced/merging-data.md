@@ -154,12 +154,12 @@ const entriesRef = useRef(data.entries);
 entriesRef.current = data.entries;
 
 useEffect(() => {
-  if (entriesRef.current[me.id]?.name === me.name) return;
+  if (entriesRef.current[me.pid]?.name === me.name) return;
 
   setData((draft) => {
-    draft.entries[me.id] = me;
+    draft.entries[me.pid] = me;
   });
-}, [me.id, me.name]);
+}, [me.pid, me.name]);
 ```
 
 The effect depends on local identity, not the shared collection it writes. The keyed write also converges: writing the same id twice updates the same entry instead of adding another one.

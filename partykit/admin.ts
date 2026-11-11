@@ -193,7 +193,6 @@ export class AdminHandler {
           .select("name, document, created_at")
           .eq("name", this.context.name)
           .maybeSingle();
-
         if (docError) {
           return new Response(
             JSON.stringify({
@@ -373,7 +372,6 @@ export class AdminHandler {
         .select("document")
         .eq("name", this.context.name)
         .maybeSingle();
-
       if (docError) {
         return new Response(
           JSON.stringify({
@@ -928,10 +926,9 @@ export class AdminHandler {
     if (persistenceError) return persistenceError;
 
     const roomId = this.context.name;
-    console.log(`[Hard Reset] Starting for room: ${roomId}`);
 
     try {
-      // Use the centralized performHardReset method
+      // performHardReset logs its own progress and failures.
       const result = await this.context.performHardReset();
 
       const sizeReduction = result.beforeSize - result.afterSize;
@@ -963,13 +960,6 @@ export class AdminHandler {
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      const errorStack = error instanceof Error ? error.stack : undefined;
-
-      console.error(
-        `[Hard Reset] Failed for room ${roomId}:`,
-        errorMessage,
-        errorStack || error
-      );
 
       return new Response(
         JSON.stringify({

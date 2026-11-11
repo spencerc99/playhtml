@@ -35,6 +35,7 @@ import { useCursorTrails } from "@movement/hooks/useCursorTrails";
 import { useKeyboardTyping } from "@movement/hooks/useKeyboardTyping";
 import { useViewportScroll } from "@movement/hooks/useViewportScroll";
 import { SoundEngine } from "@movement/sound/SoundEngine";
+import { DEV_MODE_KEY } from "../features/debugModes/debugModes";
 
 // Note: Styles are inlined below since this component is injected into arbitrary web pages
 // and external stylesheets don't get bundled with content script injections
@@ -138,13 +139,15 @@ export function HistoricalOverlay({
   // first gesture, then auto-resumes via the engine's internal tick.
   const [soundEnabled, setSoundEnabled] = useState(true);
   const soundEngineRef = useRef<SoundEngine | null>(null);
+  // Mirrors the ref so the trails re-render once the engine is ready.
+  const [soundEngine, setSoundEngine] = useState<SoundEngine | null>(null);
 
   // Load dev mode setting from storage once on mount
   useEffect(() => {
     browser.storage.local
-      .get(["dev_mode"])
+      .get([DEV_MODE_KEY])
       .then((result) => {
-        setDevMode(Boolean(result["dev_mode"]));
+        setDevMode(Boolean(result[DEV_MODE_KEY]));
       })
       .catch(() => {});
   }, []);
@@ -362,6 +365,8 @@ export function HistoricalOverlay({
     setPortraitStats(null);
     setPortraitStatsLoaded(false);
 
+    // Ignores a response that lands after the mode or page has changed.
+    let cancelled = false;
     (async () => {
       try {
         const res: any = await browser.runtime.sendMessage({
@@ -370,6 +375,7 @@ export function HistoricalOverlay({
           // Page-level lookup: pass the raw URL (background normalizes it)
           ...(actualMode !== "domain" ? { url: currentUrl } : {}),
         });
+        if (cancelled) return;
         if (res?.success && res.stats) {
           setPortraitStats({
             domain:
@@ -383,10 +389,14 @@ export function HistoricalOverlay({
         }
         setPortraitStatsLoaded(true);
       } catch (e) {
+        if (cancelled) return;
         console.error("[HistoricalOverlay] Failed to fetch portrait stats", e);
         setPortraitStatsLoaded(true);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [visible, actualMode, currentUrl, domain]);
 
   // Track viewport size
@@ -417,16 +427,19 @@ export function HistoricalOverlay({
           }
           engine.setCanvasWidth(viewportSize.width);
           soundEngineRef.current = engine;
+          setSoundEngine(engine);
         });
       }
     } else if (soundEngineRef.current) {
       soundEngineRef.current.dispose();
       soundEngineRef.current = null;
+      setSoundEngine(null);
     }
     return () => {
       cancelled = true;
       soundEngineRef.current?.dispose();
       soundEngineRef.current = null;
+      setSoundEngine(null);
     };
   }, [soundEnabled]);
 
@@ -1154,7 +1167,7 @@ export function HistoricalOverlay({
               showClickRipples={!settings.showCursorClicks}
               windowSize={settings.maxConcurrentTrails * 3}
               documentSpace={settings.documentSpace}
-              soundEngine={soundEnabled ? soundEngineRef.current : null}
+              soundEngine={soundEnabled ? soundEngine : null}
               settings={{
                 strokeWidth: settings.strokeWidth,
                 trailOpacity: settings.trailOpacity,

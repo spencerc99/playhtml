@@ -134,11 +134,10 @@ export function useFollowerCoordination(
         return;
       }
 
-      // type === "claim": record the peer's claim.
-      claimsRef.current.set(msg.cursor, {
-        by: msg.by,
-        ts: typeof msg.ts === "number" ? msg.ts : now(),
-      });
+      // type === "claim": record the peer's claim, stamped with when WE heard
+      // it. The sender's ts is its own performance.now(), whose origin is that
+      // window's load time, so it cannot be compared with this window's clock.
+      claimsRef.current.set(msg.cursor, { by: msg.by, ts: now() });
 
       // Race resolution: if a peer claims the cursor WE currently ride, the
       // lower id keeps it (string compare). If the peer's id is lower, we yield

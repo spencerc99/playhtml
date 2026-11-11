@@ -147,7 +147,6 @@ let publicSyncedStore = createReadOnlyStore(store.play);
 let developmentModule: typeof import("./development") | null = null;
 
 function getDefaultRoom({ includeSearch }: DefaultRoomOptions): string {
-  // TODO: Strip filename extension
   const transformedPathname = window.location.pathname.replace(/\.[^/.]+$/, "");
 
   return includeSearch
@@ -2821,7 +2820,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
   }
   // Set up the common classes for affected elements.
   element.classList.add(`__playhtml-element`);
-  element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
+  element.style.setProperty("--jiggle-delay", `${Math.random()}s`);
 
   attachSyncedStoreObserver(tag as string, elementId);
 }

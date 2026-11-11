@@ -204,30 +204,6 @@ export interface ActiveViewport {
   backgroundSeed: number;
 }
 
-// Navigation graph types for animated navigation visualization
-export interface NavigationNode {
-  id: string;
-  domain: string;
-  fullUrl: string;
-  visitCount: number;
-  totalTimeMs: number;
-  participants: Set<string>;
-  firstVisitTs: number;
-  lastVisitTs: number;
-  x: number;
-  y: number;
-  domainColor: string;  // Color assigned based on domain for visual grouping
-}
-
-export interface NavigationEdge {
-  id: string;
-  source: string;
-  target: string;
-  traversalCount: number;
-  participants: Set<string>;
-  wobblePath: Array<{ x: number; y: number }>;
-}
-
 // Timeline visualization types for branching roots view
 export interface TimelineNode {
   id: string; // normalized URL

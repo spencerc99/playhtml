@@ -121,6 +121,7 @@ export class FollowManager {
 
   // Scroll tether
   private tetherRafId: number | null = null;
+  private tetherScrollOff: (() => void) | null = null;
   private userOverrideUntil = 0;
 
   // Mutual follow callback
@@ -143,7 +144,8 @@ export class FollowManager {
       try {
         const { publicKey, color } = JSON.parse(stored);
         this.presence.setMyPresence("navigatingTo", null);
-        setTimeout(() => this.follow(publicKey, color), 1000);
+        const restore = setTimeout(() => this.follow(publicKey, color), 1000);
+        this.cleanups.push(() => clearTimeout(restore));
       } catch {
         /* ignore invalid stored data */
       }
@@ -496,7 +498,8 @@ export class FollowManager {
       this.userOverrideUntil = Date.now() + 60000;
     };
     window.addEventListener("scroll", onScroll, { passive: true });
-    this.cleanups.push(() => window.removeEventListener("scroll", onScroll));
+    this.tetherScrollOff = () =>
+      window.removeEventListener("scroll", onScroll);
 
     const tick = () => {
       this.tetherRafId = requestAnimationFrame(tick);
@@ -547,6 +550,8 @@ export class FollowManager {
       cancelAnimationFrame(this.tetherRafId);
       this.tetherRafId = null;
     }
+    this.tetherScrollOff?.();
+    this.tetherScrollOff = null;
   }
 
   // --- Navigation watching ---
@@ -736,13 +741,18 @@ export class FollowManager {
   }
 
   private showLeftToast(): void {
+    // The navigation watch calls this every tick; schedule one unfollow.
+    if (this.leftToastTimeout) return;
     if (this.statusBarElement && this.followState) {
       this.statusBarElement.textContent = "";
       this.statusBarElement.append(
         colorDot(this.followState.targetColor),
         " left Wikipedia",
       );
-      this.leftToastTimeout = setTimeout(() => this.unfollow(), 3000);
+      this.leftToastTimeout = setTimeout(() => {
+        this.leftToastTimeout = null;
+        this.unfollow();
+      }, 3000);
     }
   }
 
@@ -750,7 +760,6 @@ export class FollowManager {
     if (this.statusBarElement) {
       this.statusBarElement.textContent = "";
       this.statusBarElement.append(muted("lost them"));
-      setTimeout(() => this.removeFollowUI(), 2000);
     }
   }
 

@@ -18,6 +18,7 @@ import {
   colorizeLuminosity,
 } from "../utils/colorStyle";
 import { getViewportTitleText } from "../utils/titleText";
+import { hashString, seededRandom } from "../utils/styleUtils";
 import {
   InstallationPlaybackQueue,
   INSTALLATION_ARRIVAL_MS,
@@ -73,23 +74,6 @@ interface ViewportClock {
 let viewportIdCounter = 0;
 const generateViewportId = () =>
   `viewport-${++viewportIdCounter}-${Date.now()}`;
-
-// Seeded random for consistent variation
-const seededRandom = (seed: number, offset: number = 0) => {
-  const x = Math.sin(seed + offset * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-};
-
-// Hash function for generating seeds
-const hashString = (str: string): number => {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash);
-};
 
 export function getScrollQueueIndex(
   currentIndex: number,
@@ -2009,7 +1993,7 @@ const DynamicViewportRect = memo(
             </g>
           </g>
 
-          {/* Abstract pixelated page preview via iframe */}
+          {/* Live page preview via iframe */}
           {settings.showPagePreview && animation.pageUrl && (
             <PagePreview
               url={animation.pageUrl}

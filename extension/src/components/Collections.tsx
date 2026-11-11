@@ -57,6 +57,7 @@ import {
   redactWithLegibility,
 } from "../utils/keyboardRedaction";
 import { useVisibleCollectorTypes } from "./useVisibleCollectorTypes";
+import { DEV_MODE_KEY } from "../features/debugModes/debugModes";
 import "./Collections.scss";
 
 interface CollectionsProps {
@@ -66,7 +67,6 @@ interface CollectionsProps {
 
 const PRIVACY_LEVEL_KEY = LEGIBILITY_KEY;
 const FILTER_SUBSTRINGS_KEY = "collection_keyboard_filter_substrings";
-const DEV_MODE_KEY = "dev_mode";
 
 interface StorageStats {
   totalEvents: number;

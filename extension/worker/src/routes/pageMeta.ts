@@ -788,8 +788,8 @@ export async function handlePageMeta(request: Request, _env: Env): Promise<Respo
       'Cache-Control': CACHE_CONTROL,
     },
   });
-  // Cache the response (including the 'none' case — failures are also
-  // worth caching briefly to avoid hammering a failing site).
+  // Cache the response for the full TTL, including the 'none' case, so a
+  // failing site isn't fetched again on every lookup.
   await cache.put(cacheKey, resp.clone());
   return resp;
 }

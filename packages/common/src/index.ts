@@ -166,7 +166,7 @@ export interface ElementEventHandlerData<T = any, U = any, V = any> {
    *
    * - Value form: setData(value)
    *   Replaces the entire data snapshot. Use for canonical replacement
-   *   scenarios (e.g., mirroring DOM state) or in legacy plain mode.
+   *   scenarios (e.g., mirroring DOM state).
    *   Example: setData({ on: true })
    */
   setData: (data: T | ((draft: T) => void)) => void;

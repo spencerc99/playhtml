@@ -736,11 +736,18 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   // Manage SoundEngine lifecycle
   useEffect(() => {
+    // Set by the cleanup so an engine whose init() resolves after sound was
+    // turned off (or the canvas unmounted) is disposed instead of adopted.
+    let cancelled = false;
     if (soundEnabled) {
       if (!soundEngineRef.current) {
         const engine = new SoundEngine();
         if (soundDev && live) engine.enablePerformanceMonitoring();
         engine.init().then(() => {
+          if (cancelled) {
+            engine.dispose();
+            return;
+          }
           engine.setCanvasWidth(viewportSize.width);
           engine.setConfig({
             mode: settings.soundMode,
@@ -773,6 +780,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       }
     }
     return () => {
+      cancelled = true;
       soundEngineRef.current?.dispose();
       soundEngineRef.current = null;
       setSoundEngineReady(null);

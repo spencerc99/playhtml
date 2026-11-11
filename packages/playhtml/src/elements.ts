@@ -124,7 +124,6 @@ export class ElementHandler<T = any, U = any, V = any> {
       triggerAwarenessUpdate,
       devMode,
     } = elementData;
-    // console.log("constructing ", element.id);
     this.scheduleSetupDataWrite = options.scheduleSetupDataWrite;
     this.getUsers = options.getUsers ?? (() => []);
     this.getMeFor = options.getMe;
@@ -597,23 +596,19 @@ export class ElementHandler<T = any, U = any, V = any> {
    *
    * Semantics:
    * - Mutator form: setData((draft) => { ... })
-   *   When data is backed by SyncedStore/Yjs (dataMode = "syncedstore"),
-   *   the draft is a live CRDT proxy. You can mutate nested arrays/objects
-   *   and the change will be merged across clients without conflicts.
-   *   Example:
+   *   The draft is a live SyncedStore/Yjs proxy. You can mutate nested
+   *   arrays/objects and the change will be merged across clients without
+   *   conflicts. Example:
    *     setData(d => { d.list.push(item); });
    *
    * - Value form: setData(value)
    *   Replaces the entire data snapshot. Use this when you need canonical
-   *   replacement semantics (e.g., snapshot from a mirror) or when running
-   *   in legacy plain mode. Example:
+   *   replacement semantics (e.g., snapshot from a mirror). Example:
    *     setData({ on: true });
    *
    * Notes:
-   * - In plain mode, only the value form results in a sync; mutating draft
-   *   is a no-op. Prefer the mutator form for merge-friendly edits.
-   * - Directly mutating eventData.data may work in SyncedStore mode, but the
-   *   recommended portable pattern is setData(draft => { ... }).
+   * - eventData.data is a plain snapshot; mutating it does not sync. Write
+   *   through setData(draft => { ... }).
    */
   setData(data: ElementDataWrite<T>): void {
     // Writing shared data from inside a view render is a re-render loop:

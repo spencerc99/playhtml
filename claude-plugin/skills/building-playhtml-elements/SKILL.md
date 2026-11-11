@@ -203,7 +203,7 @@ See https://playhtml.fun/docs/advanced/cursors/ for full API.
 1. **Direct element-property setup** (vanilla): Use `playhtml.register(elementOrId, initializer)` so setup does not depend on assigning callbacks to a DOM node before initialization.
 2. **Missing `id`**: No id = no sync. Silent failure.
 3. **Wrong data type**: presence for persistent data (it disappears on disconnect) or `defaultData` for ephemeral user state (it leaves stale data). Refer to the Data Types table.
-4. **Bad array mutations**: In mutator form, the draft is a Yjs CRDT proxy. Use `push()`/`splice()` only — `shift()`, `pop()`, and `items[i] = x` don't sync correctly.
+4. **Bad array mutations**: In mutator form, the draft is a Yjs CRDT proxy. Use `push()`/`splice()` only — `shift()`, `pop()`, and `items[i] = x` throw at runtime. Use `splice(0, 1)`, `splice(-1, 1)`, and `splice(i, 1, x)` instead.
 5. **Replacement form loses fields**: `setData({ x: 5 })` erases `y`. Use replacement only for whole-value writes, or use mutator form for field-level changes.
 6. **Deep nesting**: CRDTs work best with flat data. Avoid deeply nested objects.
 7. **High-frequency updates**: Don't `setData` on every mousemove. Debounce, or use `setLocalData`/presence (rate limited to ~20 writes/s; use cursors for pointer position).

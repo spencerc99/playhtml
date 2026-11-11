@@ -43,6 +43,7 @@ function logEdgeRateLimitBlock(ip: string, pathname: string): void {
     `[ServerLimits] Edge rate limit: blocking ip=${ip} path=${pathname}`
   );
 }
+// Matches the period configured on the binding in wrangler.jsonc.
 const EDGE_RATE_LIMIT_RETRY_AFTER_SECONDS = 60;
 
 const DURABLE_OBJECT_OVERLOAD_MESSAGE =

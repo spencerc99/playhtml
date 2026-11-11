@@ -13,6 +13,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import {
   findMissingWorkspaceArtifacts,
   findShadowingJavaScript,
@@ -135,17 +137,25 @@ test("keeps extension checks prepared and non-emitting", () => {
 });
 
 test("typechecks every shipped Internet Scraps route", () => {
-  const websiteTsconfig = readFileSync(
-    new URL("../extension/website/tsconfig.json", import.meta.url),
-    "utf8",
+  const websiteRoot = fileURLToPath(
+    new URL("../extension/website/", import.meta.url),
+  );
+  const configPath = join(websiteRoot, "tsconfig.json");
+  const { config, error } = ts.readConfigFile(configPath, ts.sys.readFile);
+  assert.equal(error, undefined);
+  const { fileNames } = ts.parseJsonConfigFileContent(
+    config,
+    ts.sys,
+    websiteRoot,
+    undefined,
+    configPath,
   );
 
-  // The include globs cover every route folder, so a route is only skipped
-  // when the exclude list names it.
-  assert.match(websiteTsconfig, /"include":\s*\[\s*"\*\*\/\*\.ts",\s*"\*\*\/\*\.tsx"\s*\]/);
-  const exclude = websiteTsconfig.match(/"exclude":\s*\[([^\]]*)\]/);
-  assert.ok(exclude, "extension/website/tsconfig.json has an exclude list");
   for (const route of ["scraps-grid", "scraps-pile", "scraps-preview"]) {
-    assert.doesNotMatch(exclude[1], new RegExp(`"${route}`));
+    const routeEntry = join(websiteRoot, route, `${route}.tsx`);
+    assert.ok(
+      fileNames.includes(routeEntry),
+      `${route}/${route}.tsx is not covered by extension/website/tsconfig.json`,
+    );
   }
 });

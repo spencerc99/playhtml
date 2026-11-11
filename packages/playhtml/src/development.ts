@@ -17,6 +17,7 @@ export { listSharedElements } from "./shared-elements";
 
 let activeElementObserver: MutationObserver | null = null;
 let activeDevRoot: HTMLElement | null = null;
+let activeDevStyle: HTMLStyleElement | null = null;
 // Polling tick that checks for new elementHandlers between MutationObserver
 // firings (playhtml's post-sync setup registers handlers on already-existing
 // DOM nodes, which doesn't fire the observer). Stored at module scope so
@@ -40,7 +41,6 @@ let activeWindowRejectionListener: ((ev: PromiseRejectionEvent) => void) | null 
 
 // Inspect mode installs document-level listeners that outlive the dev root node.
 let activeInspectModeTeardown: (() => void) | null = null;
-let activeDevStyle: HTMLStyleElement | null = null;
 // Restores the page's body margins if the panel is open at teardown.
 let activeBodyMarginRestore: (() => void) | null = null;
 

@@ -3,6 +3,7 @@
 
 import { createSupabaseClient, type Env } from '../lib/supabase';
 import { getLaterEventFilter } from '../lib/eventCursorFilter';
+import { getAdminAuthError } from '../lib/adminAuth';
 import type { CollectionEvent, EventMeta } from '@playhtml/extension-types';
 
 const EXPORT_PAGE_SIZE = 1000;
@@ -74,23 +75,13 @@ export async function loadExportEventRows(
  * 
  * SECURITY: Requires ADMIN_KEY authentication.
  * Protects bulk export of user-collected data.
- * 
- * TODO: Consider adding CORS restrictions as additional security layer.
  */
 export async function handleExport(
   request: Request,
   env: Env
 ): Promise<Response> {
-  // Authenticate with ADMIN_KEY (server-side only, never from browser extension)
-  const authHeader = request.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-  
-  const token = authHeader.substring(7);
-  if (token !== env.ADMIN_KEY) {
-    return new Response('Unauthorized', { status: 401 });
-  }
+  const authError = getAdminAuthError(request, env.ADMIN_KEY);
+  if (authError) return authError;
   
   try {
     const body = await request.json() as ExportRequestBody;

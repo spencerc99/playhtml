@@ -110,7 +110,6 @@
     "@types/node": "^20.3.3",
     "@types/randomcolor": "^0.5.9",
     "@types/react": "^18.2.48",
-    "@types/react-is": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.1",
     "agentation": "^2.2.1",
     "ajv": "^8.18.0",
@@ -121,7 +120,6 @@
     "supabase": "2.109.1",
     "typescript": "^5.0.2",
     "vite": "^7.1.2",
-    "vite-plugin-mpa": "^1.2.0",
     "wrangler": "^4.81.1"
   },
   "dependencies": {
