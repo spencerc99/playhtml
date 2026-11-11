@@ -268,7 +268,7 @@ export class PartyServer extends YServer {
   // epoch). In-memory, so a DO reload re-enables every bridge.
   private bridgeHealth = new BridgeHealth();
 
-  // Preserve the same debounce timing as the old y-partykit callback config
+  // Debounce for YServer's onSave persistence callback.
   static callbackOptions = {
     debounceWait: 3000,
     debounceMaxWait: 15000,
@@ -1535,7 +1535,12 @@ export class PartyServer extends YServer {
           const response = await sourceRoom.fetch(
             internalRequest("/subscribe", subscribeRequest)
           );
-          if (!response.ok) return;
+          if (!response.ok) {
+            console.warn(
+              `[Bridge] Subscribe request rejected: consumer=${this.name} source=${sourceRoomId} status=${response.status}`
+            );
+            return;
+          }
 
           const subscribeResponse =
             (await response.json()) as SubscribeResponse;
@@ -1559,7 +1564,11 @@ export class PartyServer extends YServer {
               ORIGIN_S2C
             );
           }
-        } catch {}
+        } catch (error) {
+          console.warn(
+            `[Bridge] Subscribe and hydrate failed: consumer=${this.name} source=${sourceRoomId}: ${getErrorMessage(error)}`
+          );
+        }
       })
     );
 
@@ -1662,52 +1671,61 @@ export class PartyServer extends YServer {
     sender: Party.Connection<unknown>,
     message: string
   ): Promise<void> {
-    if (typeof message === "string") {
-      try {
-        const parsed = JSON.parse(message);
+    if (typeof message !== "string") return;
 
-        if (parsed.type === "add-shared-reference") {
-          if (!this.canWriteSharedData()) {
-            console.warn(
-              `[Bridge] Ignoring add-shared-reference for room ${this.name}: document hydration or persistence unavailable.`
-            );
-            return;
-          }
-          // Handle dynamic addition of shared reference
-          // TODO: this MIGHT still has some data inconsistencies when a source renders a dynamic element and changes it and then when we add the shared reference, it doesn't get the updated data
-          await this.handleAddSharedReference(parsed.reference, sender);
-        } else if (parsed.type === "export-permissions") {
-          // Handle individual permission requests
-          await this.handleExportPermissions(parsed.elementIds, sender);
-        } else if (parsed.type === "register-shared-element") {
-          if (!this.canWriteSharedData()) {
-            console.warn(
-              `[Bridge] Ignoring register-shared-element for room ${this.name}: document hydration or persistence unavailable.`
-            );
-            return;
-          }
-          // Handle dynamic registration of shared source element
-          // TODO: this still has some data inconsistencies when a consumer renders a dynamic element and changes it and then when we register the shared element, it doesn't get the updated data
-          await this.handleRegisterSharedElement(parsed.element, sender);
-        } else {
-          // Broadcast other messages normally
-          this.broadcastCustomMessage(message);
+    let parsed: any;
+    try {
+      parsed = JSON.parse(message);
+    } catch {
+      // Non-JSON custom messages are relayed to everyone unchanged.
+      this.broadcastCustomMessage(message);
+      return;
+    }
+
+    const messageType =
+      parsed !== null && typeof parsed === "object" ? parsed.type : undefined;
+    try {
+      if (messageType === "add-shared-reference") {
+        if (!this.canWriteSharedData()) {
+          console.warn(
+            `[Bridge] Ignoring add-shared-reference for room ${this.name}: document hydration or persistence unavailable.`
+          );
+          return;
         }
-      } catch (error) {
-        // If not valid JSON, broadcast as-is (existing behavior)
+        // Handle dynamic addition of shared reference
+        // TODO: this MIGHT still has some data inconsistencies when a source renders a dynamic element and changes it and then when we add the shared reference, it doesn't get the updated data
+        await this.handleAddSharedReference(parsed.reference);
+      } else if (messageType === "export-permissions") {
+        // Handle individual permission requests
+        await this.handleExportPermissions(parsed.elementIds, sender);
+      } else if (messageType === "register-shared-element") {
+        if (!this.canWriteSharedData()) {
+          console.warn(
+            `[Bridge] Ignoring register-shared-element for room ${this.name}: document hydration or persistence unavailable.`
+          );
+          return;
+        }
+        // Handle dynamic registration of shared source element
+        // TODO: this still has some data inconsistencies when a consumer renders a dynamic element and changes it and then when we register the shared element, it doesn't get the updated data
+        await this.handleRegisterSharedElement(parsed.element);
+      } else {
+        // Broadcast other messages normally
         this.broadcastCustomMessage(message);
       }
+    } catch (error) {
+      // Control messages are never relayed to other clients, even when their
+      // handler fails.
+      console.warn(
+        `[Bridge] Control message failed for room ${this.name}: type=${String(messageType)}: ${getErrorMessage(error)}`
+      );
     }
   }
 
-  private async handleAddSharedReference(
-    reference: {
-      domain: string;
-      path: string;
-      elementId: string;
-    },
-    sender: Party.Connection<unknown>
-  ): Promise<void> {
+  private async handleAddSharedReference(reference: {
+    domain: string;
+    path: string;
+    elementId: string;
+  }): Promise<void> {
     if (!reference?.domain || !reference?.path || !reference?.elementId) return;
 
     const sourceRoomId = getSourceRoomId(reference.domain, reference.path);
@@ -1732,14 +1750,11 @@ export class PartyServer extends YServer {
     this.sendCustomMessage(sender, JSON.stringify({ permissions: filtered }));
   }
 
-  private async handleRegisterSharedElement(
-    element: {
-      elementId: string;
-      permissions: SharedElementPermissions;
-      path?: string;
-    },
-    sender: Party.Connection<unknown>
-  ): Promise<void> {
+  private async handleRegisterSharedElement(element: {
+    elementId: string;
+    permissions: SharedElementPermissions;
+    path?: string;
+  }): Promise<void> {
     if (!element || !element.elementId) return;
 
     // Update shared permissions for this source room
@@ -1786,7 +1801,11 @@ export class PartyServer extends YServer {
           }
         )
       );
-    } catch {}
+    } catch (error) {
+      console.warn(
+        `[Bridge] Shared element fanout failed: source=${this.name} elementId=${element.elementId}: ${getErrorMessage(error)}`
+      );
+    }
   }
 
   // Counts joined sockets. Pending and held ones are excluded like everywhere

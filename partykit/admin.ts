@@ -4,12 +4,10 @@ import { Buffer } from "node:buffer";
 import { env } from "cloudflare:workers";
 import * as Y from "yjs";
 import { supabase } from "./db";
-import { PartyServer } from "./party";
+import type { PartyServer } from "./party";
 import { docToJson } from "./docUtils";
 import { removeRecordsByTargets, type RemoveTarget } from "./moderation";
 import { getAdminAuthError } from "./adminAuth";
-
-export { getAdminAuthError } from "./adminAuth";
 
 function compareKeys(
   obj1: any,
@@ -190,11 +188,28 @@ export class AdminHandler {
       try {
         // Create fresh Y.Doc and load data directly (same as debug reconstruction)
         const yDoc = new Y.Doc();
-        const { data: docData } = await supabase
+        const { data: docData, error: docError } = await supabase
           .from("documents")
           .select("name, document, created_at")
           .eq("name", this.context.name)
           .maybeSingle();
+
+        if (docError) {
+          return new Response(
+            JSON.stringify({
+              error: "Failed to inspect room",
+              message: docError.message,
+              roomId: this.context.name,
+            }),
+            {
+              status: 500,
+              headers: {
+                "content-type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
+            }
+          );
+        }
 
         if (docData?.document) {
           // Calculate document size (base64 length)
@@ -353,11 +368,24 @@ export class AdminHandler {
     try {
       // Method 1: Direct Y.Doc approach (what admin console uses)
       const directYDoc = new Y.Doc();
-      const { data: docData } = await supabase
+      const { data: docData, error: docError } = await supabase
         .from("documents")
         .select("document")
         .eq("name", this.context.name)
         .maybeSingle();
+
+      if (docError) {
+        return new Response(
+          JSON.stringify({
+            error: "Failed to compare data methods",
+            message: docError.message,
+          }),
+          {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          }
+        );
+      }
 
       let directData = null;
       if (docData?.document) {
@@ -401,7 +429,7 @@ export class AdminHandler {
             hasData: directData && Object.keys(directData).length > 0,
           },
           live: {
-            description: "Document from y-partykit (live server method)",
+            description: "Document from the running room (live server method)",
             data: liveData,
             hasData:
               liveData && !liveData.error && Object.keys(liveData).length > 0,
@@ -664,10 +692,6 @@ export class AdminHandler {
   ): Promise<Response> {
     const authError = this.checkAdminAuth(request);
     if (authError) return authError;
-
-    if (request.method !== "POST") {
-      return new Response("Method Not Allowed", { status: 405 });
-    }
 
     try {
       const body = (await request.json()) as any;

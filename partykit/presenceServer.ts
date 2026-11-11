@@ -39,6 +39,7 @@ import {
   ROOM_FULL_CLOSE_CODE,
   ROOM_FULL_CLOSE_REASON,
 } from "./serverLimits";
+import { getErrorMessage } from "./persistenceMode";
 import {
   persistPresenceConnectionState,
   projectPresenceClientIdentity,
@@ -427,9 +428,4 @@ export class PresenceServer extends Server<Env> {
       ...PRESENCE_CLOSE_DIAGNOSTIC_POLICY,
     });
   }
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
 }

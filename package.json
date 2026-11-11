@@ -97,7 +97,7 @@
     "smoke:partykit:soak": "cd smoke-tests && bun run test:partykit:soak",
     "smoke:partykit:presence-local": "node smoke-tests/partykit/local-presence-smoke.mjs",
     "smoke:partykit:presence-cursor": "cd smoke-tests && bun run test:partykit:presence-cursor",
-    "generate-types": "bunx wrangler types --config partykit/wrangler.jsonc --include-runtime=false"
+    "generate-types": "bunx wrangler types partykit/worker-configuration.d.ts --config partykit/wrangler.jsonc --include-runtime=false"
   },
   "overrides": {
     "yjs": "13.6.18"

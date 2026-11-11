@@ -369,14 +369,6 @@ export class RoomCircuitBreaker {
     return { quarantined: false, retryAt };
   }
 
-  async deferFailedLoad(failureCount: number): Promise<void> {
-    const result = await this.handleRepeatedFailures({
-      kind: "load",
-      failureCount,
-    });
-    this.loadDeferredUntil = result.quarantined ? null : result.retryAt;
-  }
-
   /**
    * A returned load error proves the isolate survived, so it is not evidence
    * of the vanished work this circuit breaker quarantines.
