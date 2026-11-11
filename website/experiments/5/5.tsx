@@ -321,11 +321,6 @@ const Main = withSharedState(
       }
     };
 
-    // Add debug effect to check ref
-    useEffect(() => {
-      console.log("Main ref:", mainRef.current);
-    }, [mainRef.current]);
-
     // Scroll helper function
     const scrollToCurrentMinute = (behavior: ScrollBehavior = "smooth") => {
       if (currentMinuteRef.current) {
