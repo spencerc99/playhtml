@@ -487,9 +487,3 @@ TagType.CanMirror;
 ## Examples
 
 The repo has a collection of runnable React examples at [`packages/react/examples`](https://github.com/spencerc99/playhtml/tree/main/packages/react/examples). Live versions are visible at [playhtml.fun/experiments/one/](https://playhtml.fun/experiments/one/) and [playhtml.fun/experiments/two/](https://playhtml.fun/experiments/two/).
-
-## Open considerations
-
-A few things still in flux in the React package:
-
-- **Hook ergonomics.** A pure-hook interface (`useSharedState({ id, defaultData })`) is being evaluated as an alternative to the HOC form. The blocker is that hooks have no natural place to pin a stable `id`.

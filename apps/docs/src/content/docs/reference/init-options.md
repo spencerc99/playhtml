@@ -59,17 +59,9 @@ When navigation changes the room, the document resets to the new room (page and 
 
 ## `host`
 
-**Type:** `string` &nbsp; **Default:** the public playhtml PartyKit host
+**Type:** `string` &nbsp; **Default:** `"api.playhtml.fun"`
 
-Pass your own PartyKit host if you want to self-host the syncing server for extra control, custom server-side logic, or data-residency requirements.
-
-```js
-playhtml.init({
-  host: "mypartykit.user.partykit.dev",
-});
-```
-
-You're responsible for deploying a compatible PartyKit worker. See the [playhtml repo](https://github.com/spencerc99/playhtml) for the current worker implementation.
+The sync server to connect to. Leave it unset unless you run your own copy of the server from the `partykit/` folder of the [playhtml repo](https://github.com/spencerc99/playhtml).
 
 ## `events`
 
@@ -176,7 +168,6 @@ interface CursorOptions {
     | React.RefObject<HTMLElement>;
   shouldRenderCursor?: (presence) => boolean;
   getCursorStyle?: (presence) => Partial<CSSStyleDeclaration>;
-  playerIdentity?: PlayerIdentity; // advanced: seed your identity
   proximityThreshold?: number;
   // `identity` is deprecated; use the fourth `user` argument
   onProximityEntered?: (identity, positions, angle, user) => void;

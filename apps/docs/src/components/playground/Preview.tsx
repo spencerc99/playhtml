@@ -24,14 +24,14 @@ export function Preview(props: PreviewProps) {
 
   // (Re)mount the iframe whenever source, roomId, reloadNonce, or the
   // PlayHTML module URL changes. We replace the iframe element entirely so
-  // the old playhtml provider tears down cleanly (per spec §4.9).
+  // the old playhtml provider tears down cleanly.
   useEffect(() => {
     if (!containerRef.current) return;
     if (!playhtmlModuleUrl) return;
 
     const iframe = document.createElement("iframe");
-    // Sandbox: scripts + popups only, no allow-same-origin. Per spec §4.2
-    // — the recipe runs in its own opaque origin so it can't touch the
+    // Sandbox: scripts + popups only, no allow-same-origin, so
+    // the recipe runs in its own opaque origin so it can't touch the
     // parent. Images load fine cross-origin (the sandbox doesn't gate
     // those); same-origin fetches that the iframe might need (e.g. CSS,
     // assets it expects to live alongside) wouldn't work, but recipes

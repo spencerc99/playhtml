@@ -1,21 +1,17 @@
 // ABOUTME: Verifies the capabilities page renders finished live capability demos.
 // ABOUTME: Guards against placeholder demos and mismatched capability examples.
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, test } from "vitest";
 
-const capabilitiesPage = readFileSync(
-  join(import.meta.dir, "capabilities.mdx"),
-  "utf8",
-);
-const customElementsPage = readFileSync(
-  join(import.meta.dir, "custom-elements.mdx"),
-  "utf8",
-);
-const mirrorRecipes = readFileSync(
-  join(import.meta.dir, "../../components/playground/recipes/mirror-basics.ts"),
-  "utf8",
-);
+const here = dirname(fileURLToPath(import.meta.url));
+const read = (relativePath: string) =>
+  readFileSync(join(here, relativePath), "utf8");
+
+const capabilitiesPage = read("../content/docs/capabilities.mdx");
+const customElementsPage = read("../content/docs/custom-elements.mdx");
+const mirrorRecipes = read("../components/playground/recipes/mirror-basics.ts");
 
 describe("capabilities can-mirror vignettes", () => {
   test("links can-mirror to the dedicated examples", () => {

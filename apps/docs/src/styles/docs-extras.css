@@ -466,7 +466,7 @@ header.header {
 }
 
 /* ---------------------------------------------------------------------
-   8. Buttons (Starlight LinkButton / action)
+   7. Buttons (Starlight LinkButton / action)
    --------------------------------------------------------------------- */
 
 .sl-link-button,
@@ -512,7 +512,7 @@ header.header {
 }
 
 /* ---------------------------------------------------------------------
-   9. Card grid (Starlight <Card> / <CardGrid>)
+   8. Card grid (Starlight <Card> / <CardGrid>)
    --------------------------------------------------------------------- */
 
 /* Cards are the homepage's toy-box card: near-white dotted paper, ink
@@ -599,7 +599,7 @@ starlight-card,
 }
 
 /* ---------------------------------------------------------------------
-   10. Code blocks (Expressive Code in Starlight)
+   9. Code blocks (Expressive Code in Starlight)
    --------------------------------------------------------------------- */
 
 .expressive-code,
@@ -635,7 +635,7 @@ starlight-card,
 }
 
 /* ---------------------------------------------------------------------
-   11. Asides (:::note, :::tip, :::caution, :::danger)
+   10. Asides (:::note, :::tip, :::caution, :::danger)
    --------------------------------------------------------------------- */
 
 .starlight-aside {
@@ -668,7 +668,7 @@ starlight-card,
 }
 
 /* ---------------------------------------------------------------------
-   12. Presence bar (in the header)
+   11. Presence bar (in the header)
    --------------------------------------------------------------------- */
 
 .ph-presence {
@@ -810,7 +810,7 @@ starlight-card,
 }
 
 /* ---------------------------------------------------------------------
-   13. Scroll rail (right gutter)
+   12. Scroll rail (right gutter)
    --------------------------------------------------------------------- */
 
 .ph-docs-scroll-rail {
@@ -1035,7 +1035,7 @@ nav.sidebar a:has(> .ph-sidebar-pip-stack) {
 }
 
 /* ---------------------------------------------------------------------
-   14. Copy-trace snippet
+   13. Copy-trace snippet
    --------------------------------------------------------------------- */
 
 .ph-copy {
@@ -1467,7 +1467,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   15. Interactive toggle demo (can-toggle)
+   14. Interactive toggle demo (can-toggle)
    --------------------------------------------------------------------- */
 
 .ph-toggle {
@@ -1519,7 +1519,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   17. Tables
+   15. Tables
    --------------------------------------------------------------------- */
 
 .sl-markdown-content table {
@@ -1543,7 +1543,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   17b. Capabilities page — demo slots, tabs chrome
+   15b. Capabilities page — demo slots, tabs chrome
    ---------------------------------------------------------------------
    The capabilities page is a catalog where each can-* section has:
    - a "demo slot" (live interactive example; a React island mounts into it)
@@ -1666,7 +1666,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   17c. Data-layer live demos
+   15c. Data-layer live demos
    ---------------------------------------------------------------------
    Three small inline demos that drop into the concept pages under /data/*:
    - .ph-rain-demo         (events)          — fire hydrant + rain
@@ -2032,7 +2032,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   17e. Capabilities page — inline demos (can-move … can-duplicate)
+   15d. Capabilities page — inline demos (can-move … can-duplicate)
    --------------------------------------------------------------------- */
 
 .ph-grow-balloon-wrap {
@@ -2273,7 +2273,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   17d. can-mirror playground (/docs/advanced/mirror-playground/)
+   15e. can-mirror playground (/docs/advanced/mirror-playground/)
    ---------------------------------------------------------------------
    Each section on the playground page wraps a single demo in a
    .ph-mirror-sample card so the live elements don't blend into the
@@ -2373,7 +2373,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   18. Reduced-motion + small-screen tuning
+   16. Reduced-motion + small-screen tuning
    --------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
