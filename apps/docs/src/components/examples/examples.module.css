@@ -234,10 +234,6 @@
   min-width: 0;
 }
 
-.sitesBand {
-  margin-bottom: 2.25rem;
-}
-
 .groupTitle {
   margin: 0 0 0.65rem;
   color: var(--ph-ink-2);
@@ -319,58 +315,55 @@
   min-height: 0;
 }
 
-/* Community sites mirror the playhtml.fun gallery tiles. */
-.sitesIntro {
-  margin: -0.2rem 0 0.9rem;
-  color: var(--ph-ink-2);
-  font-size: 0.92rem;
-  line-height: 1.5;
+/* "Made with playhtml": a scrolling ribbon of gallery screenshots. */
+.ribbon {
+  margin-bottom: 2.25rem;
 }
 
-.sitesIntro a {
-  color: var(--sl-color-text-accent);
-}
-
-.siteGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
-  align-items: start;
-  gap: 1.35rem;
-}
-
-.siteTile {
+.ribbonRow {
   display: flex;
-  flex-direction: column;
+  gap: 1rem;
+  padding: 0.15rem 0.25rem 0.75rem 0;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+
+.ribbonItem {
+  flex: none;
+  width: 11rem;
   min-width: 0;
-  overflow: hidden;
   color: var(--ph-ink);
   text-decoration: none;
-  background: var(--ph-code-paper);
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 8px;
-  box-shadow: 3px 3px 0 var(--ph-ink);
-  transition: transform var(--ph-motion-fast);
+  scroll-snap-align: start;
 }
 
-.siteTile:hover {
+.ribbonItem:hover {
   color: var(--ph-ink);
-  transform: translate(-2px, -2px);
 }
 
-.siteTile:focus-visible {
+.ribbonItem:focus-visible {
   outline: 2px solid var(--sl-color-text-accent);
   outline-offset: 3px;
 }
 
-.siteShot {
-  display: block;
+.ribbonShot {
+  display: grid;
+  place-items: center;
   aspect-ratio: 4 / 3;
   overflow: hidden;
   background: var(--ph-paper-deep);
-  border-bottom: 1.5px solid var(--ph-ink);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 var(--ph-ink);
+  transition: transform var(--ph-motion-fast);
 }
 
-.siteShot img {
+.ribbonItem:hover .ribbonShot {
+  transform: translate(-2px, -2px) rotate(-1deg);
+}
+
+.ribbonShot img {
   display: block;
   width: 100%;
   height: 100%;
@@ -378,59 +371,33 @@
   object-position: top center;
 }
 
-.siteText {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-  padding: 0.7rem 0.8rem 0.75rem;
-  font-family: var(--ph-font-body);
+.ribbonPlaceholder {
+  padding: 0 0.5rem;
+  overflow-wrap: anywhere;
+  color: var(--ph-ink-3);
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
+  text-align: center;
 }
 
-.siteText b {
-  font-size: 1rem;
-  line-height: 1.25;
-}
-
-.siteText > span {
+.ribbonTitle,
+.ribbonAuthor {
+  display: block;
   overflow: hidden;
-  color: var(--ph-ink-2);
-  font-size: 0.875rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.siteDesc {
-  display: -webkit-box;
-  overflow: hidden;
+.ribbonTitle {
+  margin-top: 0.45rem;
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.ribbonAuthor {
   color: var(--ph-ink-3);
-  font-size: 0.875rem;
-  font-style: normal;
-  line-height: 1.35;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.siteText > .siteHost {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--ph-ultramarine);
   font-family: var(--ph-font-mono);
-  font-size: 0.75rem;
-}
-
-.siteHost > span:first-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
-}
-
-.siteTile:hover .siteHost > span:first-child {
-  text-decoration-thickness: 2px;
+  font-size: 0.72rem;
 }
 
 .cardBody {
@@ -593,7 +560,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .card,
-  .siteTile,
+  .ribbonShot,
   .primaryAction,
   .secondaryAction {
     transition: none;

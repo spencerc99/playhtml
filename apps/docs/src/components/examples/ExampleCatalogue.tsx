@@ -16,30 +16,9 @@ type ExampleCatalogueProps = {
   examples: readonly CatalogueExampleSummary[];
 };
 
-// The docs show one row of the newest sites. Everything else is in the gallery.
+// A scrolling ribbon of the newest sites. Everything else is in the gallery.
+const NEWEST_SITES_SHOWN = 10;
 const GALLERY_URL = "https://playhtml.fun/gallery/";
-
-// Counts the columns the responsive card grid currently resolves to, so the
-// sites preview fills exactly one row at any width.
-function useGridColumns(grid: HTMLElement | null): number {
-  const [columns, setColumns] = useState(1);
-
-  useEffect(() => {
-    if (!grid) return;
-
-    const measure = () => {
-      const template = getComputedStyle(grid).gridTemplateColumns;
-      const count = template.split(" ").filter(Boolean).length;
-      setColumns(Math.max(1, count));
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(grid);
-    return () => observer.disconnect();
-  }, [grid]);
-
-  return columns;
-}
 
 function SearchIcon() {
   return (
@@ -113,17 +92,17 @@ function ExampleCard({ example }: { example: CatalogueExampleSummary }) {
   );
 }
 
-// Mirrors the playhtml.fun gallery tile: the whole card links to the site.
-function SiteCard({ site }: { site: SiteSummary }) {
+// One screenshot in the "Made with playhtml" ribbon; links to the site.
+function SiteThumb({ site }: { site: SiteSummary }) {
   return (
     <a
-      className={styles.siteTile}
+      className={styles.ribbonItem}
       data-source="site"
       href={site.href}
       target="_blank"
       rel="noreferrer"
     >
-      <span className={styles.siteShot}>
+      <span className={styles.ribbonShot}>
         {site.imageUrl ? (
           <img
             src={site.imageUrl}
@@ -131,19 +110,14 @@ function SiteCard({ site }: { site: SiteSummary }) {
             loading="lazy"
             referrerPolicy="no-referrer"
           />
-        ) : null}
-      </span>
-      <span className={styles.siteText}>
-        <b>{site.title}</b>
-        {site.description && (
-          <i className={styles.siteDesc}>{site.description}</i>
+        ) : (
+          <span className={styles.ribbonPlaceholder}>{site.hostname}</span>
         )}
-        {site.author && <span>by {site.author}</span>}
-        <span className={styles.siteHost}>
-          <span>{site.hostname}</span>
-          <span aria-hidden="true">{"\u2197"}</span>
-        </span>
       </span>
+      <span className={styles.ribbonTitle}>{site.title}</span>
+      {site.author && (
+        <span className={styles.ribbonAuthor}>by {site.author}</span>
+      )}
     </a>
   );
 }
@@ -154,9 +128,6 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
   const [sitesState, setSitesState] = useState<"loading" | "loaded" | "failed">(
     "loading",
   );
-  // Callback ref, since the grid mounts only once the sites have loaded.
-  const [sitesGrid, setSitesGrid] = useState<HTMLDivElement | null>(null);
-  const siteColumns = useGridColumns(sitesGrid);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -195,7 +166,7 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
     () => filterExamples(examples, query),
     [examples, query],
   );
-  const newestSites = sites.slice(0, siteColumns);
+  const newestSites = sites.slice(0, NEWEST_SITES_SHOWN);
   const showEmptyState = visibleExamples.length === 0;
 
   return (
@@ -203,36 +174,22 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
       className={`${styles.catalogue} not-content`}
       aria-label="Examples catalogue"
     >
-      {sitesState !== "failed" && (
-        <section
-          className={`${styles.resultGroup} ${styles.sitesBand}`}
-          aria-labelledby="sites-heading"
-        >
+      {sitesState === "loaded" && newestSites.length > 0 && (
+        <section className={styles.ribbon} aria-labelledby="sites-heading">
           <div className={styles.groupHeader}>
             <h2 id="sites-heading" className={styles.groupTitle}>
-              From the gallery
+              Made with playhtml
             </h2>
             <a className={styles.showAll} href={GALLERY_URL}>
-              See every site
+              From the gallery
               <ArrowIcon />
             </a>
           </div>
-          <p className={styles.sitesIntro}>
-            Sites people made with playhtml. We collect them in the{" "}
-            <a href={GALLERY_URL}>playhtml.fun gallery</a>; the newest show
-            here.
-          </p>
-          {sitesState === "loading" ? (
-            <p className={styles.sitesStatus} role="status">
-              Loading sites…
-            </p>
-          ) : (
-            <div ref={setSitesGrid} className={styles.siteGrid}>
-              {newestSites.map((site) => (
-                <SiteCard key={site.id} site={site} />
-              ))}
-            </div>
-          )}
+          <div className={styles.ribbonRow}>
+            {newestSites.map((site) => (
+              <SiteThumb key={site.id} site={site} />
+            ))}
+          </div>
         </section>
       )}
 
