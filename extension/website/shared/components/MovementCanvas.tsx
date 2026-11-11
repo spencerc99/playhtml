@@ -598,6 +598,11 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
   );
   const [soundEnabled, setSoundEnabled] = useState(defaultSoundEnabled);
   const soundEngineRef = useRef<SoundEngine | null>(null);
+  // Callers of getSoundEngine waiting for the lifecycle effect's engine, so
+  // the dev panel and the effect share one engine instead of starting two.
+  const soundEngineWaitersRef = useRef<
+    { resolve: (engine: SoundEngine) => void; reject: (err: Error) => void }[]
+  >([]);
   /**
    * Whether this load asked for the sound dev surfaces. Read once: the flag
    * lives in the URL, and changing it is a navigation.
@@ -736,6 +741,8 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   // Manage SoundEngine lifecycle
   useEffect(() => {
+    // The waiter list is one array for the canvas's lifetime.
+    const engineWaiters = soundEngineWaitersRef.current;
     // Set by the cleanup so an engine whose init() resolves after sound was
     // turned off (or the canvas unmounted) is disposed instead of adopted.
     let cancelled = false;
@@ -770,6 +777,13 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
           // the archive without the panel this does nothing.
           applyArrangement(engine);
           setSoundEngineReady(engine);
+          const waiters = engineWaiters.splice(0);
+          for (const waiter of waiters) waiter.resolve(engine);
+        }).catch((err: unknown) => {
+          console.error("[MovementCanvas] sound engine failed to start:", err);
+          const error = err instanceof Error ? err : new Error(String(err));
+          const waiters = engineWaiters.splice(0);
+          for (const waiter of waiters) waiter.reject(error);
         });
       }
     } else {
@@ -784,6 +798,14 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       soundEngineRef.current?.dispose();
       soundEngineRef.current = null;
       setSoundEngineReady(null);
+      // Only a run that was starting sound can strand a waiter; the "off"
+      // run's cleanup is what runs as getSoundEngine turns sound on.
+      if (soundEnabled) {
+        const waiters = engineWaiters.splice(0);
+        for (const waiter of waiters) {
+          waiter.reject(new Error("Sound was turned off before it started"));
+        }
+      }
     };
   }, [soundEnabled]);
 
@@ -846,16 +868,16 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
       await existing.resume();
       return existing;
     }
-    setSoundEnabled(true);
-    const engine = new SoundEngine();
-    if (soundDev && live) engine.enablePerformanceMonitoring();
-    await engine.init();
-    engine.setCanvasWidth(window.innerWidth);
-    applyArrangement(engine);
-    soundEngineRef.current = engine;
-    setSoundEngineReady(engine);
+    // The sound lifecycle effect builds the engine (and applies the
+    // arrangement) once sound is on; wait for that one rather than starting a
+    // second engine alongside it.
+    const engine = await new Promise<SoundEngine>((resolve, reject) => {
+      soundEngineWaitersRef.current.push({ resolve, reject });
+      setSoundEnabled(true);
+    });
+    await engine.resume();
     return engine;
-  }, [applyArrangement, soundDev, live]);
+  }, []);
 
   // Derive which visualization categories are active
   const vizSet = useMemo(

@@ -19,6 +19,7 @@ import {
   type GuestbookEntry,
 } from "./auraGuestbookData";
 import styles from "./AuraGuestbook.module.scss";
+import { startBandAutoScroll } from "./bandAutoScroll";
 
 const MAX_MESSAGE_LENGTH = 400;
 const MAX_NAME_LENGTH = 20;
@@ -388,53 +389,7 @@ const VisitorOrbs = memo(function VisitorOrbs({
     if (!viewport) return;
     const isTouch = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
     if (!isTouch) return;
-    const maxScroll = viewport.scrollWidth - viewport.clientWidth;
-    if (maxScroll <= 4) return;
-
-    let rafId = 0;
-    let direction = 1;
-    let paused = false;
-    let resumeTimer: ReturnType<typeof setTimeout> | null = null;
-    const PIXELS_PER_SECOND = 16;
-    let lastTime = performance.now();
-
-    const tick = (now: number) => {
-      const dt = (now - lastTime) / 1000;
-      lastTime = now;
-      if (!paused) {
-        const next = viewport.scrollLeft + direction * PIXELS_PER_SECOND * dt;
-        if (next >= maxScroll) {
-          viewport.scrollLeft = maxScroll;
-          direction = -1;
-        } else if (next <= 0) {
-          viewport.scrollLeft = 0;
-          direction = 1;
-        } else {
-          viewport.scrollLeft = next;
-        }
-      }
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-
-    const pauseFor = (ms: number) => {
-      paused = true;
-      if (resumeTimer) clearTimeout(resumeTimer);
-      resumeTimer = setTimeout(() => {
-        paused = false;
-        lastTime = performance.now();
-      }, ms);
-    };
-    const onUserScroll = () => pauseFor(4000);
-    viewport.addEventListener("touchstart", onUserScroll, { passive: true });
-    viewport.addEventListener("wheel", onUserScroll, { passive: true });
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      if (resumeTimer) clearTimeout(resumeTimer);
-      viewport.removeEventListener("touchstart", onUserScroll);
-      viewport.removeEventListener("wheel", onUserScroll);
-    };
+    return startBandAutoScroll(viewport);
   }, [bandHeight, bandWidth]);
 
   return (

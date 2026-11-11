@@ -123,12 +123,9 @@ export function useViewportScroll(
 
     // Create ScrollAnimation objects from the shared session boundaries.
     const scrollAnimations: ScrollAnimation[] = [];
-    let totalMergedSessions = 0;
 
     groupsBySession.forEach((sessionGroups) => {
       const mergedSessions = sessionGroups.map((group) => group.events);
-
-      totalMergedSessions += mergedSessions.length;
 
       // Collect ALL resize/zoom events from ALL merged sessions in this session
       const allResizeEvents: CollectionEvent[] = [];

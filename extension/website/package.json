@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "tsc && eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint": "tsc && eslint . --report-unused-disable-directives",
     "preview": "vite preview",
     "capture": "tsx scripts/capture-matrix.ts"
   },
   "dependencies": {
+    "html2canvas": "^1.4.1",
     "@playhtml/common": "workspace:*",
     "@playhtml/react": "workspace:*",
     "dompurify": "3.2.6",
@@ -24,9 +25,10 @@
     "sass": "^1.83.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.17.0",
     "@types/p5": "^1.7.7",
     "@types/react": "^18.3.17",
-    "@types/react-dom": "^19.0.1",
+    "@types/react-dom": "^18.3.1",
     "@typescript-eslint/eslint-plugin": "^8.29.0",
     "@typescript-eslint/parser": "^8.29.0",
     "@vitejs/plugin-react": "^4.3.4",

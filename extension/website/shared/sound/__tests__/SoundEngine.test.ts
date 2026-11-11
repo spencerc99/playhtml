@@ -4055,6 +4055,40 @@ describe("offline rendering", () => {
     engine.dispose();
     expect(closed).toBe(false);
   });
+
+  it("unhooks its output from a caller-supplied context on dispose", async () => {
+    const provided = new TestAudioContext();
+    const engine = new SoundEngine(provided as unknown as BaseAudioContext);
+    await engine.init();
+    const feedsDestination = () =>
+      provided.nodes.filter((node) =>
+        node.connections.includes(provided.destination),
+      );
+    expect(feedsDestination().length).toBeGreaterThan(0);
+
+    engine.dispose();
+    expect(feedsDestination()).toEqual([]);
+    engine.dispose();
+    expect(feedsDestination()).toEqual([]);
+  });
+
+  it("reports a failed close of its own context without throwing", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const failure = new Error("InvalidStateError");
+    context.close = () => Promise.reject(failure);
+    const engine = new SoundEngine();
+    await engine.init();
+
+    expect(() => engine.dispose()).not.toThrow();
+    expect(() => engine.dispose()).not.toThrow();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(warn).toHaveBeenCalledWith(
+      "[SoundEngine] closing the audio context failed:",
+      failure,
+    );
+    warn.mockRestore();
+  });
 });
 
 describe("spotlight promotion across playback clocks", () => {

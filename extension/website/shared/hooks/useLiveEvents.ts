@@ -64,12 +64,17 @@ export function useLiveEvents(
         : STREAM_URL;
       ws = new WebSocket(url);
 
+      // `closed` belongs to this effect run, so a socket from a run that was
+      // torn down (types changed, unmount) can't touch state the next run's
+      // socket now owns.
       ws.onopen = () => {
+        if (closed) return;
         setConnected(true);
         backoffMs = 1000;
       };
 
       ws.onmessage = (msg) => {
+        if (closed) return;
         let frame: StreamFrame;
         try {
           frame = JSON.parse(msg.data as string) as StreamFrame;
@@ -116,8 +121,8 @@ export function useLiveEvents(
       };
 
       ws.onclose = () => {
-        setConnected(false);
         if (closed) return;
+        setConnected(false);
         reconnectTimer = setTimeout(connect, backoffMs);
         backoffMs = Math.min(backoffMs * 2, 15000);
       };
@@ -134,6 +139,7 @@ export function useLiveEvents(
       closed = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       ws?.close();
+      setConnected(false);
     };
   }, [typesKey]);
 
