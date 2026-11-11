@@ -14,11 +14,17 @@
       "login": "alexwennerberg",
       "name": "Alex Wennerberg",
       "contributions": "README fixes"
+    },
+    {
+      "login": "W-A-James",
+      "name": "Warren James",
+      "contributions": "Per-site privacy: turning collection off for a site"
     }
   ],
   "ignore": [],
   "emails": {
     "spencerc99@gmail.com": "spencerc99",
-    "git@jessa0.com": "jessa0"
+    "git@jessa0.com": "jessa0",
+    "warren.james.dev@gmail.com": "W-A-James"
   }
 }
