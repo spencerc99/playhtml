@@ -3664,9 +3664,13 @@ function removePlayEventListener(type: string, id: string) {
     return;
   }
 
-  handlers.splice(index, 1);
-  if (handlers.length === 0) {
+  // Replace the array rather than splicing it, so a dispatch already iterating
+  // the previous array (a listener removing itself) still reaches the rest.
+  const remaining = handlers.filter((handler) => handler.id !== id);
+  if (remaining.length === 0) {
     eventHandlers.delete(type);
+  } else {
+    eventHandlers.set(type, remaining);
   }
 }
 

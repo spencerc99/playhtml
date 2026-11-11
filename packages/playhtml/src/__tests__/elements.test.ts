@@ -363,6 +363,61 @@ describe("ElementHandler", () => {
     expect(onChange).toHaveBeenCalledWith({ a: 3 });
   });
 
+  it("drops a pending setDataDebounced write on destroy", () => {
+    vi.useFakeTimers();
+    const onChange = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: { a: 1 },
+      debounceMs: 50,
+      updateElement: vi.fn(),
+      onChange,
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: () => {},
+    } as unknown as ElementData);
+
+    handler.setDataDebounced({ a: 3 });
+    handler.destroy();
+    vi.advanceTimersByTime(1_000);
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("sends a debounced write pending across a rebuild through the current onChange", () => {
+    vi.useFakeTimers();
+    const firstOnChange = vi.fn();
+    const secondOnChange = vi.fn();
+    const base = {
+      element,
+      defaultData: { a: 1 },
+      updateElement: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: () => {},
+    };
+    const handler = new ElementHandler({
+      ...base,
+      debounceMs: 50,
+      onChange: firstOnChange,
+    } as unknown as ElementData);
+
+    handler.setDataDebounced({ a: 3 });
+    handler.reinitializeElementData({
+      ...base,
+      debounceMs: 50,
+      onChange: secondOnChange,
+    } as unknown as ElementData);
+    vi.advanceTimersByTime(60);
+
+    expect(firstOnChange).not.toHaveBeenCalled();
+    expect(secondOnChange).toHaveBeenCalledTimes(1);
+    expect(secondOnChange).toHaveBeenCalledWith({ a: 3 });
+
+    handler.setDataDebounced({ a: 4 });
+    handler.destroy();
+    vi.advanceTimersByTime(1_000);
+    expect(secondOnChange).toHaveBeenCalledTimes(1);
+  });
+
   it("awareness setters call updateElementAwareness and onAwarenessChange", () => {
     const updateElement = vi.fn();
     const onChange = vi.fn();

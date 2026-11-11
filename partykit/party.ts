@@ -229,6 +229,10 @@ export class PartyServer extends YServer {
   };
 
   private documentMaintenanceInProgress = false;
+  // True between a snapshot restore saving to the database and that snapshot
+  // replacing the live document. Saves must stay paused for that whole span,
+  // or an autosave of the stale live document would overwrite the commit.
+  private committedSnapshotAwaitingLoad = false;
   private documentWriteTail: Promise<void> = Promise.resolve();
   private documentGeneration = 0;
   private persistenceObserverAttached = false;
@@ -537,8 +541,12 @@ export class PartyServer extends YServer {
     );
   }
 
+  // Worker env bindings are fixed for the isolate's lifetime, so the limits
+  // are read once per room instance instead of on every message.
+  private serverLimits: ServerLimits | undefined;
+
   private getServerLimits(): ServerLimits {
-    return {
+    this.serverLimits ??= {
       maxMessagesPerWindow: readPositiveNumberEnv(
         "MESSAGE_RATE_LIMIT",
         DEFAULT_MESSAGE_RATE_LIMIT
@@ -556,6 +564,7 @@ export class PartyServer extends YServer {
         DEFAULT_DOCUMENT_WARNING_BYTES
       ),
     };
+    return this.serverLimits;
   }
 
   private checkConnectionMessageRate(connection: Party.Connection) {
@@ -1283,6 +1292,7 @@ export class PartyServer extends YServer {
       // The persisted snapshot is authoritative now. Keep autosave paused until
       // the live document catches up so a later save cannot restore stale state.
       committedSnapshotRequiresReload = true;
+      this.committedSnapshotAwaitingLoad = true;
 
       // Set reset epoch for client detection
       await this.setResetEpoch(resetEpoch);
@@ -1309,6 +1319,7 @@ export class PartyServer extends YServer {
       replaceDocFromSnapshot(liveYDoc, updatedBase64);
       setDocResetEpoch(liveYDoc, resetEpoch);
       committedSnapshotRequiresReload = false;
+      this.committedSnapshotAwaitingLoad = false;
       if (options?.completeHydration !== false) {
         this.markDocumentHydrated();
       }
@@ -1387,7 +1398,9 @@ export class PartyServer extends YServer {
           committed,
         };
       } finally {
-        this.documentMaintenanceInProgress = false;
+        // Release the pause taken above unless a committed snapshot still has
+        // to replace the live document.
+        this.documentMaintenanceInProgress = this.committedSnapshotAwaitingLoad;
       }
     });
   }
@@ -1606,20 +1619,23 @@ export class PartyServer extends YServer {
     elementIds: Set<string>
   ): Record<string, Record<string, any>> {
     const result: Record<string, Record<string, any>> = {};
-    // Bind SyncedStore to this doc to operate on the same structure clients use
-    const store = syncedStore<{ play: Record<string, any> }>({ play: {} }, doc);
-    const playY = getYjsValue(store.play) as unknown as Y.Map<any>;
-    if (!playY) return result;
-    playY.forEach((tagMap: any, tag: string) => {
+    if (elementIds.size === 0) return result;
+    // SyncedStore keeps play data in the root "play" Y.Map (tag -> Y.Map of
+    // element id -> value), so only the requested ids are looked up in each tag.
+    const playY = doc.getMap<unknown>("play");
+    playY.forEach((tagMap, tag) => {
       if (!(tagMap instanceof Y.Map)) return;
       const outForTag: Record<string, any> = {};
-      tagMap.forEach((val: any, elementId: string) => {
-        if (!elementIds.has(elementId)) return;
+      let found = false;
+      for (const elementId of elementIds) {
+        if (!tagMap.has(elementId)) continue;
+        const val = tagMap.get(elementId);
         // Prefer toJSON to get plain values
-        const plain = typeof val?.toJSON === "function" ? val.toJSON() : val;
-        outForTag[elementId] = plain;
-      });
-      if (Object.keys(outForTag).length) {
+        outForTag[elementId] =
+          typeof val?.toJSON === "function" ? val.toJSON() : val;
+        found = true;
+      }
+      if (found) {
         result[tag] = outForTag;
       }
     });

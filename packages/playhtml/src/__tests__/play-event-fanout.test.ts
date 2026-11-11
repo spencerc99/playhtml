@@ -41,4 +41,31 @@ describe("play event fan-out", () => {
     );
     errorSpy.mockRestore();
   });
+
+  it("still delivers to the next listener when a listener removes itself", async () => {
+    const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as any[];
+    await playhtml.init({ host: "http://localhost:1999" } as any);
+    const provider = providers[providers.length - 1];
+
+    const calls: string[] = [];
+    const firstId = playhtml.registerPlayEventListener("confetti", {
+      onEvent: () => {
+        calls.push("first");
+        playhtml.removePlayEventListener("confetti", firstId);
+      },
+    });
+    playhtml.registerPlayEventListener("confetti", {
+      onEvent: () => calls.push("second"),
+    });
+
+    const send = () =>
+      provider.emit(
+        "custom-message",
+        JSON.stringify({ type: "confetti", eventPayload: {} }),
+      );
+    send();
+    send();
+
+    expect(calls).toEqual(["first", "second", "second"]);
+  });
 });

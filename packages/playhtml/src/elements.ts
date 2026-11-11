@@ -15,14 +15,31 @@ import {
   observeElementChanges,
 } from "@playhtml/common";
 
-// @ts-ignore
-const debounce = (fn: Function, ms = 300) => {
-  let timeoutId: ReturnType<typeof setTimeout>;
-  return function (this: any, ...args: any[]) {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => fn.apply(this, args), ms);
-  };
+type Debounced<A extends unknown[]> = ((...args: A) => void) & {
+  cancel(): void;
 };
+
+// Delays fn until getMs() (default 300) after the latest call; cancel() drops
+// a pending call.
+function debounce<A extends unknown[]>(
+  fn: (...args: A) => void,
+  getMs: () => number | undefined,
+): Debounced<A> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const debounced = (...args: A) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      timeoutId = undefined;
+      fn(...args);
+    }, getMs() ?? 300);
+  };
+  return Object.assign(debounced, {
+    cancel() {
+      clearTimeout(timeoutId);
+      timeoutId = undefined;
+    },
+  });
+}
 
 type ElementDataWrite<T> = T | ((draft: T) => void);
 
@@ -50,7 +67,14 @@ export class ElementHandler<T = any, U = any, V = any> {
   _data: T;
   onChange: (data: T) => void;
   onAwarenessChange: (data: V) => void;
-  debouncedOnChange: (data: T) => void;
+  // One debounced writer for the handler's lifetime. It calls the current
+  // onChange with the current debounceMs, so a rebuild keeps a pending write
+  // and destroy() can cancel it.
+  debouncedOnChange: Debounced<[T]> = debounce(
+    (data: T) => this.onChange(data),
+    () => this.debounceMs,
+  );
+  private debounceMs: number | undefined;
   resetShortcut?: ModifierKey;
   // TODO: change this to receive the delta instead of the whole data object so you don't have to maintain
   // internal state for expressing the delta.
@@ -120,7 +144,6 @@ export class ElementHandler<T = any, U = any, V = any> {
       view,
       updateElementAwareness,
       onMount,
-      debounceMs,
       triggerAwarenessUpdate,
       devMode,
     } = elementData;
@@ -139,7 +162,6 @@ export class ElementHandler<T = any, U = any, V = any> {
         : (defaultLocalData as U);
     this.triggerAwarenessUpdate = triggerAwarenessUpdate;
     this.onChange = onChange;
-    this.debouncedOnChange = debounce(this.onChange, debounceMs);
     this.onAwarenessChange = onAwarenessChange;
     this.update = update ?? updateElement;
     this.updateElementAwareness = updateElementAwareness;
@@ -173,6 +195,9 @@ export class ElementHandler<T = any, U = any, V = any> {
    * Called by removePlayElement / unregister(). Idempotent.
    */
   destroy(): void {
+    // A pending setDataDebounced write would land after teardown (on a deleted
+    // record or a destroyed doc), so it is dropped.
+    this.debouncedOnChange.cancel();
     this.descendantObserver?.disconnect();
     this.descendantObserver = undefined;
     if (this.clickListener) {
@@ -225,7 +250,7 @@ export class ElementHandler<T = any, U = any, V = any> {
   }: ElementData<T, U, V>) {
     this.triggerAwarenessUpdate = triggerAwarenessUpdate;
     this.onChange = onChange;
-    this.debouncedOnChange = debounce(this.onChange, debounceMs);
+    this.debounceMs = debounceMs;
     this.onAwarenessChange = onAwarenessChange;
     this.update = update ?? updateElement;
     this.view = view;
