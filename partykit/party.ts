@@ -103,6 +103,7 @@ import {
   parseClientResetEpoch,
 } from "./resetEpochPolicy";
 import { BridgeHealth } from "./bridgeHealth";
+import { collectChangedPlayElementIds, touchesAny } from "./bridgeDirty";
 import { getBridgeApplyTargetResetEpoch } from "./bridgeEpochPolicy";
 import { getPermittedSharedElementIds } from "./bridgePermissionPolicy";
 import { createBridgeRequest, getBridgeAuthFailure } from "./bridgeAuth";
@@ -262,6 +263,10 @@ export class PartyServer extends YServer {
 
   // Pending bridge flush timer — batches bridge fan-out across rapid updates
   private bridgeFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  // Play element ids changed since the last bridge flush ("*" = can't narrow).
+  // Only peers that share one of these get an apply, so edits to elements
+  // nobody shares never fan out.
+  private pendingBridgeChanges = new Set<string>();
   private static readonly BRIDGE_DEBOUNCE_MS = 500;
 
   // Per-peer circuit breaker: stops re-sending bridge applies to a peer that
@@ -3354,6 +3359,10 @@ export class PartyServer extends YServer {
       return;
     }
 
+    const changed = this.pendingBridgeChanges;
+    this.pendingBridgeChanges = new Set();
+    if (!changed.size) return;
+
     const subscribers = await this.pruneBridgeLeases();
 
     // Push to subscribers (source -> consumer direction)
@@ -3363,6 +3372,7 @@ export class PartyServer extends YServer {
         subscribers.map(
           async ({ consumerRoomId, elementIds, consumerResetEpoch }) => {
             if (!elementIds || !elementIds.length) return;
+            if (!touchesAny(changed, elementIds)) return;
             const sharedElementIds = getPermittedSharedElementIds(
               elementIds,
               permissions
@@ -3391,6 +3401,7 @@ export class PartyServer extends YServer {
     const refs = await this.getSharedReferences();
     for (const { sourceRoomId, elementIds, sourceResetEpoch } of refs) {
       if (!elementIds?.length) continue;
+      if (!touchesAny(changed, elementIds)) continue;
       const subtrees = this.extractPlaySubtrees(yDoc, new Set(elementIds));
       if (!Object.keys(subtrees).length) continue;
       await this.sendBridgeApply(sourceRoomId, {
@@ -3468,8 +3479,10 @@ export class PartyServer extends YServer {
     if (this.observersAttached) return;
     const yDoc = this.document;
 
-    yDoc.on("update", (_update: Uint8Array, origin: any) => {
+    const playMap = yDoc.getMap("play");
+    yDoc.on("afterTransaction", (transaction: Y.Transaction) => {
       // Ignore echoed updates from bridge apply operations
+      const origin = transaction.origin;
       if (origin === ORIGIN_C2S || origin === ORIGIN_S2C) return;
 
       // Fast bail: if no subscribers or refs are cached, skip entirely
@@ -3481,6 +3494,14 @@ export class PartyServer extends YServer {
       ) {
         return;
       }
+
+      collectChangedPlayElementIds(
+        transaction,
+        playMap,
+        this.pendingBridgeChanges
+      );
+      // Nothing under play changed yet (page data, no-op transaction): skip.
+      if (!this.pendingBridgeChanges.size) return;
 
       this.scheduleBridgeFlush(yDoc);
     });

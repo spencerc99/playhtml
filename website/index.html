@@ -472,13 +472,12 @@
             aria-label="walking together event page"
           >
             <video
-              src="/home/event-walk.mp4"
+              data-lazy-video="/home/event-walk.mp4"
               poster="/home/event-walk-poster.jpg"
-              autoplay
               muted
               loop
               playsinline
-              preload="metadata"
+              preload="none"
               aria-label="Cursor trails drawing in during an internet walk, then everyone collaging the scraps they found"
             ></video>
             <span class="ph-events__stamp" aria-hidden="true"
@@ -664,13 +663,12 @@
         <div class="ph-wwo__card">
           <video
             class="ph-wwo__bg"
-            src="/home/trails.mp4"
+            data-lazy-video="/home/trails.mp4"
             poster="/home/trails-poster.jpg"
-            autoplay
             muted
             loop
             playsinline
-            preload="metadata"
+            preload="none"
             aria-label="Cursor trails, collected scraps and people following each other on Wikipedia, recorded with we were online"
           ></video>
           <div class="ph-wwo__hero">
@@ -920,11 +918,13 @@
       </nav>
     </footer>
     <!-- Every click on a letter gives it a new random color, shared with
-         everyone. The wrapper stores one color per letter id. -->
+         everyone. The wrapper stores one color per letter id. It's marked
+         shared so the docs footer wordmark reads and writes the same colors. -->
     <div
       class="ph-footer__big"
       id="wordmark-colors"
       can-play
+      shared
       aria-label="playhtml"
     >
       <span class="letter" id="wm-p">p</span

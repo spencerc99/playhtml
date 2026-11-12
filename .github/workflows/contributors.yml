@@ -1,0 +1,58 @@
+name: Update contributors
+
+# contributors.json is the hand-edited list (who, and what they did). This
+# catches people who landed a commit or Co-authored-by trailer but aren't in
+# the file yet, and opens or refreshes a PR adding them with a blank
+# description to fill in. Bots and coding agents are filtered out.
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "0 15 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: contributors
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      BRANCH: chore/update-contributors
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Regenerate contributors
+        run: node scripts/update-contributors.mjs --write
+
+      - name: Open or update PR
+        run: |
+          if git diff --quiet -- README.md contributors.json; then
+            echo "Contributors are up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git commit -m "docs: add new contributors" -- README.md contributors.json
+          git push --force origin "$BRANCH"
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --head "$BRANCH" --base main \
+              --title "docs: add new contributors" \
+              --body "Git history shows new contributors who aren't in \`contributors.json\` yet. Fill in \`contributions\` for each (what they did), run \`bun run contributors\`, and push to this branch. Move anyone who shouldn't be listed to \`ignore\`."
+          fi
