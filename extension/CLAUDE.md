@@ -321,7 +321,6 @@ Cloudflare Worker + Supabase PostgreSQL + Resend:
 
 - `POST /events`: Public event ingestion (rate limited)
 - `GET /events/recent`: Public (for artwork visualizations)
-- `GET /events/stats`, `POST /events/export`: Admin key required
 - `POST /subscribe`: Public mailing-list signup (rate limited 5/min/IP). Adds the contact to Resend, then sends an email on every call: the welcome email for `website`, the updates email for `extension-setup`. Repeat signups send it again; only Resend's 24-hour idempotency key (one per email and template) suppresses a resend inside that window. Responds `{ ok, alreadySubscribed }`. Used by both the website (`<DownloadGate />` on mobile) and the extension setup form. Body: `{ email, source: 'website' | 'extension-setup' }`.
 
 **Resend integration:** the worker uses Resend Audiences/Contacts as the mailing-list store and welcome-email sender. Email addresses are NOT linked to browsing data — the `/subscribe` endpoint accepts only `email + source`, never participant or session IDs. The email templates live in `worker/src/emails/WelcomeEmail.tsx` as plain HTML and plaintext template strings.

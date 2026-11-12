@@ -42,7 +42,7 @@ compatibility_flags = ["global_fetch_strictly_public"]
 #   data, such as /events/restore, /events/delete-site, /access-requests and
 #   PUT /participants/:pid. The last two refuse unsigned requests only while
 #   REQUIRE_PARTICIPANT_SIGNATURES is "true"; a signature that is sent is always checked.
-# - ADMIN_KEY: /admin/*, /events/stats, /events/export, /commute/review (also
+# - ADMIN_KEY: /admin/*, /commute/review (also
 #   origin-allowlisted), and internet map bundles (which INTERNET_MAP_PASSWORD also opens).
 # - Public: event ingest, feedback, subscribe, quarantine tape, commute summaries and
 #   shared collages, each validated and rate limited where it writes. Deleting a
@@ -58,6 +58,12 @@ workers_dev = true
 
 [[routes]]
 pattern = "assets.wewere.online"
+custom_domain = true
+
+# The whole API on a wewere.online subdomain, so cacheable routes such as
+# /page-meta get the edge cache. Added once in the dashboard like the one above.
+[[routes]]
+pattern = "api.wewere.online"
 custom_domain = true
 
 # Without this, `wrangler dev` hands the Worker every request as if it were

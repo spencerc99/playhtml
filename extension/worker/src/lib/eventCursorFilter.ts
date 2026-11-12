@@ -11,10 +11,3 @@ export function getEarlierEventFilter(ts: string, id: string): string {
   const quotedId = quoteEventCursorValue(id);
   return `ts.lt.${quotedTs},and(ts.eq.${quotedTs},id.lt.${quotedId})`;
 }
-
-/** Rows strictly after (ts, id), for oldest-first pagination. */
-export function getLaterEventFilter(ts: string, id: string): string {
-  const quotedTs = quoteEventCursorValue(ts);
-  const quotedId = quoteEventCursorValue(id);
-  return `ts.gt.${quotedTs},and(ts.eq.${quotedTs},id.gt.${quotedId})`;
-}

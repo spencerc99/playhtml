@@ -4,6 +4,10 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import '../../styles/options.scss';
+import "@fontsource/martian-mono/latin-400.css";
+import "@fontsource/martian-mono/latin-500.css";
+import "@fontsource/martian-mono/latin-600.css";
+import "@fontsource/martian-mono/latin-700.css";
 import { OptionsPage } from '../../components/OptionsPage';
 
 const container = document.getElementById('root');

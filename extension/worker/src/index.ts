@@ -7,8 +7,6 @@ import { handleRecent } from './routes/recent';
 import { handleRestore } from './routes/restore';
 import { handleSiteDelete } from './routes/siteDelete';
 import { handleDailyCounts } from './routes/dailyCounts';
-import { handleStats } from './routes/stats';
-import { handleExport } from './routes/export';
 import { handleParticipantUpsert } from './routes/participants';
 import { handleSubscribe } from './routes/subscribe';
 import { handleFeedback } from './routes/feedback';
@@ -170,14 +168,6 @@ export default {
       return handleDailyCounts(request, env);
     }
     
-    if (path === '/events/stats' && request.method === 'GET') {
-      return handleStats(request, env);
-    }
-    
-    if (path === '/events/export' && request.method === 'POST') {
-      return handleExport(request, env);
-    }
-
     if (path === '/subscribe' && request.method === 'POST') {
       return handleSubscribe(request, env);
     }
