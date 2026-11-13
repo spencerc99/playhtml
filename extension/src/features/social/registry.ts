@@ -4,8 +4,10 @@
 import type { SocialExperiment } from "./types";
 import { bottlesExperiment } from "./bottles";
 import { quarantineTapeExperiment } from "./quarantine-tape";
+import { animateExperiment } from "./animate";
 
 export const SOCIAL_EXPERIMENTS: SocialExperiment[] = [
   bottlesExperiment,
   quarantineTapeExperiment,
+  animateExperiment,
 ];

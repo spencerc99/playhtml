@@ -36,6 +36,13 @@ const FEATURE_DEFINITIONS = {
     defaultStage: "internal",
     requiresReload: true,
   },
+  ANIMATE: {
+    name: "Animate",
+    description:
+      "Pick something on a page and get a few suggestions for how everyone could play with it.",
+    defaultStage: "internal",
+    requiresReload: true,
+  },
   INVENTORY: {
     name: "Satchel",
     description: "Collect and carry objects found on PlayHTML pages.",
