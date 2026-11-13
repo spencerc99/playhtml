@@ -96,6 +96,55 @@ describe("Satchel", () => {
     }
   });
 
+  it("keeps the nub on the right edge after the kit closes", async () => {
+    const { container, root } = await renderSatchel();
+    const innerWidth = window.innerWidth;
+    try {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: 1000 });
+      const nub = container.querySelector<HTMLDivElement>(".wwo-nub");
+      Object.assign(nub!, { setPointerCapture: vi.fn() });
+      await act(async () => {
+        nub?.dispatchEvent(
+          new PointerEvent("pointerdown", { bubbles: true, clientX: 500, clientY: 200 }),
+        );
+        nub?.dispatchEvent(
+          new PointerEvent("pointermove", { bubbles: true, clientX: 900, clientY: 200 }),
+        );
+        nub?.dispatchEvent(
+          new PointerEvent("pointerup", { bubbles: true, clientX: 900, clientY: 200 }),
+        );
+      });
+      expect(container.querySelector(".wwo-nub")?.classList).toContain("edge-r");
+
+      // A click on the docked nub opens the kit, which unmounts the nub.
+      const docked = container.querySelector<HTMLDivElement>(".wwo-nub");
+      Object.assign(docked!, { setPointerCapture: vi.fn() });
+      await act(async () => {
+        docked?.dispatchEvent(
+          new PointerEvent("pointerdown", { bubbles: true, clientX: 990, clientY: 200 }),
+        );
+        docked?.dispatchEvent(
+          new PointerEvent("pointerup", { bubbles: true, clientX: 990, clientY: 200 }),
+        );
+      });
+      expect(container.querySelector(".wwo-nub")).toBeNull();
+
+      const close = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("close"),
+      );
+      await act(async () => close?.click());
+
+      const remounted = container.querySelector<HTMLDivElement>(".wwo-nub");
+      expect(remounted?.classList).toContain("edge-r");
+      expect(remounted?.classList).not.toContain("edge-l");
+      expect(remounted?.style.right).toBe("-8px");
+      expect(remounted?.style.left).toBe("auto");
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: innerWidth });
+      cleanupRoot(root, container);
+    }
+  });
+
   it("arms a numbered item while the kit is open", async () => {
     const { container, inventory, root } = await renderSatchel();
     try {

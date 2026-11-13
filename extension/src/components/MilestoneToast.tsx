@@ -205,7 +205,6 @@ export function MilestoneToast({
 }: Props) {
   const [visible, setVisible] = useState(!!isStatic);
   const [hiding, setHiding] = useState(false);
-  const toastRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isStatic) return;
@@ -219,14 +218,30 @@ export function MilestoneToast({
     };
   }, [isStatic]);
 
+  // One dismissal per toast: auto-hide and a click can both ask to dismiss,
+  // and the exit timer must not outlive the component.
+  const dismissedRef = useRef(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (exitTimerRef.current !== null) clearTimeout(exitTimerRef.current);
+    },
+    [],
+  );
+
   const dismiss = () => {
+    if (dismissedRef.current) return;
+    dismissedRef.current = true;
     if (isStatic) {
       onDismiss?.();
       return;
     }
     setVisible(false);
     setHiding(true);
-    setTimeout(() => onDismiss?.(), 400);
+    exitTimerRef.current = setTimeout(() => {
+      exitTimerRef.current = null;
+      onDismiss?.();
+    }, 400);
   };
 
   useEffect(() => {
@@ -254,7 +269,7 @@ export function MilestoneToast({
     .join(" ");
 
   return (
-    <div ref={toastRef} className={cls}>
+    <div className={cls}>
       <button
         type="button"
         className="wwo-toast-close"

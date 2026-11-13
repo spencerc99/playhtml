@@ -1,5 +1,5 @@
 /* ABOUTME: Styles the examples catalogue with the docs paper-and-ink design system. */
-/* ABOUTME: Defines responsive cards, source filters, loading, and failure states. */
+/* ABOUTME: Defines search, responsive cards, result groups, and the sites loading state. */
 
 .catalogue {
   container-type: inline-size;
@@ -73,80 +73,12 @@
   opacity: 1;
 }
 
-.filters {
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.filterLabel {
-  display: block;
-  margin-bottom: 0.4rem;
-  color: var(--ph-ink-2);
-  font-family: var(--ph-font-mono);
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-}
-
-.filterButtons {
-  display: flex;
-  gap: 0.45rem;
-}
-
-.filterButtons button,
-.sitesError button {
-  box-sizing: border-box;
-  min-height: 2.35rem;
-  margin: 0;
-  padding: 0.45rem 0.8rem;
-  color: var(--ph-ink-2);
-  font: 700 0.88rem var(--ph-font-body);
-  line-height: 1.2;
-  background: var(--ph-paper);
-  border: 1px solid var(--ph-hairline);
-  border-radius: 4px;
-  cursor: pointer;
-  transition:
-    color var(--ph-motion-fast),
-    background var(--ph-motion-fast),
-    border-color var(--ph-motion-fast);
-}
-
-.filterButtons button:hover,
-.sitesError button:hover {
-  color: var(--ph-ink);
-  border-color: var(--ph-ink);
-}
-
-.filterButtons button[aria-pressed="true"] {
-  color: var(--ph-paper);
-  background: var(--ph-ultramarine);
-  border-color: var(--ph-ink);
-  box-shadow: 1px 1px 0 var(--ph-ink);
-}
-
-.filterButtons button:focus-visible,
-.sitesError button:focus-visible,
 .catalogue a:focus-visible {
   outline: 3px solid var(--ph-mustard);
   outline-offset: 2px;
 }
 
-.resultsHeader {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-top: 1.3rem;
-  padding-bottom: 0.65rem;
-  border-bottom: 1px dashed var(--ph-hairline);
-}
-
 .resultCount,
-.attribution,
 .sitesStatus {
   margin: 0;
   color: var(--ph-ink-3);
@@ -161,15 +93,6 @@
   text-transform: uppercase;
 }
 
-.attribution a,
-.errorActions a {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-}
-
-.attribution svg,
-.errorActions svg,
 .cardActions svg {
   width: 0.95rem;
   fill: none;
@@ -181,47 +104,6 @@
 
 .sitesStatus {
   padding: 0.8rem 0;
-}
-
-.sitesError {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-top: 1rem;
-  padding: 0.85rem 1rem;
-  background: var(--ph-mustard-wash);
-  border: 1px solid var(--ph-mustard);
-  border-left: 4px solid var(--ph-mustard);
-  border-radius: 4px;
-}
-
-.sitesError > div:first-child {
-  display: grid;
-  gap: 0.15rem;
-}
-
-.sitesError strong {
-  color: var(--ph-ink);
-  font-family: var(--ph-font-display);
-  font-size: 0.95rem;
-}
-
-.sitesError span {
-  color: var(--ph-ink-2);
-  font-size: 0.86rem;
-}
-
-.errorActions {
-  display: flex;
-  align-items: center;
-  flex: 0 0 auto;
-  gap: 0.7rem;
-}
-
-.errorActions a {
-  font-size: 0.86rem;
-  font-weight: 700;
 }
 
 .resultGroups {
@@ -538,17 +420,6 @@
 }
 
 @media (max-width: 35rem) {
-  .resultsHeader,
-  .sitesError {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .errorActions {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
   .card {
     min-height: 0;
   }

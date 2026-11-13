@@ -28,6 +28,7 @@ const packageDirs = {
   playhtml: "packages/playhtml",
   "@playhtml/react": "packages/react",
   "@playhtml/common": "packages/common",
+  "@playhtml/extension-types": "packages/extension-types",
 };
 
 // Discord caps each description at 4096 and total embed payload at 6000 chars.

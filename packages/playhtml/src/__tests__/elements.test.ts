@@ -79,6 +79,22 @@ describe("ElementHandler", () => {
     expect(reset).toHaveBeenCalledTimes(1);
   });
 
+  it("element.reset() writes the default data when called off the element", () => {
+    const writes: unknown[] = [];
+    new ElementHandler({
+      element,
+      defaultData: { count: 0 },
+      resetShortcut: "shiftKey",
+      onChange: (data: unknown) => writes.push(data),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: vi.fn(),
+    } as unknown as ElementData);
+
+    (element as any).reset();
+
+    expect(writes).toEqual([{ count: 0 }]);
+  });
+
   it("removes an active drag's document listeners on destroy", () => {
     const onDrag = vi.fn();
     const handler = new ElementHandler({
@@ -347,6 +363,61 @@ describe("ElementHandler", () => {
     expect(onChange).toHaveBeenCalledWith({ a: 3 });
   });
 
+  it("drops a pending setDataDebounced write on destroy", () => {
+    vi.useFakeTimers();
+    const onChange = vi.fn();
+    const handler = new ElementHandler({
+      element,
+      defaultData: { a: 1 },
+      debounceMs: 50,
+      updateElement: vi.fn(),
+      onChange,
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: () => {},
+    } as unknown as ElementData);
+
+    handler.setDataDebounced({ a: 3 });
+    handler.destroy();
+    vi.advanceTimersByTime(1_000);
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("sends a debounced write pending across a rebuild through the current onChange", () => {
+    vi.useFakeTimers();
+    const firstOnChange = vi.fn();
+    const secondOnChange = vi.fn();
+    const base = {
+      element,
+      defaultData: { a: 1 },
+      updateElement: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: () => {},
+    };
+    const handler = new ElementHandler({
+      ...base,
+      debounceMs: 50,
+      onChange: firstOnChange,
+    } as unknown as ElementData);
+
+    handler.setDataDebounced({ a: 3 });
+    handler.reinitializeElementData({
+      ...base,
+      debounceMs: 50,
+      onChange: secondOnChange,
+    } as unknown as ElementData);
+    vi.advanceTimersByTime(60);
+
+    expect(firstOnChange).not.toHaveBeenCalled();
+    expect(secondOnChange).toHaveBeenCalledTimes(1);
+    expect(secondOnChange).toHaveBeenCalledWith({ a: 3 });
+
+    handler.setDataDebounced({ a: 4 });
+    handler.destroy();
+    vi.advanceTimersByTime(1_000);
+    expect(secondOnChange).toHaveBeenCalledTimes(1);
+  });
+
   it("awareness setters call updateElementAwareness and onAwarenessChange", () => {
     const updateElement = vi.fn();
     const onChange = vi.fn();
@@ -493,5 +564,29 @@ describe("CanGrow onMount cleanup", () => {
     // alt/cut style here; a cleaned-up one leaves it untouched.
     document.dispatchEvent(new KeyboardEvent("keydown", { altKey: true }));
     expect(element.style.cursor).toBe(cursorAfterMouseEnter);
+  });
+});
+
+describe("CanHover onMount cleanup", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("stops publishing hover presence after cleanup", () => {
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    const published: unknown[] = [];
+    const cleanup = TagTypeToElement[TagType.CanHover].onMount!({
+      getElement: () => element,
+      setMyPresence: (value: unknown) => published.push(value),
+    } as any);
+
+    element.dispatchEvent(new MouseEvent("mouseenter"));
+    expect(published).toEqual([{ hover: true }]);
+
+    (cleanup as () => void)();
+    element.dispatchEvent(new MouseEvent("mouseleave"));
+    element.dispatchEvent(new MouseEvent("mouseenter"));
+    expect(published).toEqual([{ hover: true }]);
   });
 });

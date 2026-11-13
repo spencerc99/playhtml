@@ -120,6 +120,10 @@ export function useFollowerCoordination(
 
     const channel = new BroadcastChannel(CHANNEL_NAME);
     channelRef.current = channel;
+    // Both refs hold one value for the hook's lifetime; the cleanup releases
+    // under this id and empties this map.
+    const id = idRef.current;
+    const claims = claimsRef.current;
 
     channel.onmessage = (event: MessageEvent<ClaimMessage>) => {
       const msg = event.data;
@@ -134,11 +138,10 @@ export function useFollowerCoordination(
         return;
       }
 
-      // type === "claim": record the peer's claim.
-      claimsRef.current.set(msg.cursor, {
-        by: msg.by,
-        ts: typeof msg.ts === "number" ? msg.ts : now(),
-      });
+      // type === "claim": record the peer's claim, stamped with when WE heard
+      // it. The sender's ts is its own performance.now(), whose origin is that
+      // window's load time, so it cannot be compared with this window's clock.
+      claimsRef.current.set(msg.cursor, { by: msg.by, ts: now() });
 
       // Race resolution: if a peer claims the cursor WE currently ride, the
       // lower id keeps it (string compare). If the peer's id is lower, we yield
@@ -167,14 +170,14 @@ export function useFollowerCoordination(
         const release: ClaimMessage = {
           type: "release",
           cursor: myClaimRef.current,
-          by: idRef.current,
+          by: id,
         };
         channel.postMessage(release);
       }
       channel.onmessage = null;
       channel.close();
       channelRef.current = null;
-      claimsRef.current.clear();
+      claims.clear();
       myClaimRef.current = null;
     };
   }, [isFollower, broadcastClaim]);

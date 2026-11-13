@@ -276,4 +276,34 @@ describe("Collections", () => {
       cleanupRoot(root, container);
     }
   });
+
+  it("saves a keyboard legibility change without asking the active tab for collectors", async () => {
+    const { container, root } = await renderCollections();
+
+    try {
+      vi.mocked(browser.tabs.query).mockClear();
+      vi.mocked(browser.tabs.sendMessage).mockClear();
+      const partial = Array.from(
+        container.querySelectorAll<HTMLButtonElement>(
+          ".collector-card__legibility-stop",
+        ),
+      ).find((button) => button.textContent === "Partial");
+      if (!partial) throw new Error("no Partial legibility stop");
+
+      await act(async () => {
+        partial.click();
+      });
+
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
+        collection_keyboard_privacy_level: 50,
+      });
+      expect(partial.className).toContain(
+        "collector-card__legibility-stop--active",
+      );
+      expect(browser.tabs.query).not.toHaveBeenCalled();
+      expect(browser.tabs.sendMessage).not.toHaveBeenCalled();
+    } finally {
+      cleanupRoot(root, container);
+    }
+  });
 });

@@ -132,19 +132,13 @@ If someone refreshes the page and expects the state to still be there, it's data
 
 Syncing on every `mousemove` or `scroll` floods the connection and slows the page for everyone. Three options, in order of preference:
 
-**Use built-in handlers.** `onDrag`, `onMount` already debounce:
+**Use a built-in capability.** For dragging, `can-move` already handles the pointer events and position sync:
 
-```js
-playhtml.register("draggable", {
-  defaultData: { x: 0, y: 0 },
-  onDrag: (event, { setData }) => {
-    setData({ x: event.clientX, y: event.clientY });
-  },
-  update: ({ element, data }) => {
-    element.style.translate = `${data.x}px ${data.y}px`;
-  },
-});
+```html
+<div can-move id="sticker">drag me</div>
 ```
+
+If you write your own `onDrag`, note that it isn't debounced: it runs on every pointer move during a drag, like `mousemove`. Use one of the patterns below inside it.
 
 **Debounce yourself** when you need your own event:
 
@@ -320,46 +314,26 @@ function handleDeleteWord(id: string) {
 }
 ```
 
-### Admin cleanup (bulk)
+### Sweeping orphaned data
 
-For sites that didn't clean up at runtime and need to sweep orphans, there's an admin endpoint.
+If elements were deleted without calling `deleteElementData`, their data is still in the room. To clean it up, compare the ids saved in the room against the ids your app still uses, and delete the rest. `playhtml.syncedStore` is a read-only view of every element's saved data, keyed by capability and then element id:
 
-```
-POST /parties/main/{roomId}/admin/cleanup-orphans
-```
+```js
+await playhtml.ready;
 
-```json
-{
-  "tag": "can-move",
-  "activeIds": ["id1", "id2", "id3"],
-  "dryRun": false
+// The ids that still exist, from your own data (not from playhtml).
+const activeIds = new Set(words.map((w) => w.id));
+
+const saved = playhtml.syncedStore["can-move"] ?? {};
+const orphans = Object.keys(saved).filter((id) => !activeIds.has(id));
+console.log(`Removing ${orphans.length} orphaned can-move entries`, orphans);
+
+for (const id of orphans) {
+  playhtml.deleteElementData("can-move", id);
 }
 ```
 
-```json
-{
-  "ok": true,
-  "tag": "can-move",
-  "total": 5000,
-  "active": 100,
-  "removed": 4900,
-  "message": "Removed 4900 orphaned entries"
-}
-```
-
-There's a helper script in the repo for doing this from a terminal:
-
-```bash
-export ADMIN_TOKEN=your_token_here
-
-# Dry run first to see what would be removed
-DRY_RUN=true bun scripts/cleanup-orphans.ts "playhtml.fun-fridge" "can-move" "id1" "id2" "id3"
-
-# Actually perform the cleanup
-bun scripts/cleanup-orphans.ts "playhtml.fun-fridge" "can-move" "id1" "id2" "id3"
-```
-
-**Practice:** always dry-run first; always derive the `activeIds` list from your own data store, never from the playhtml state you're about to delete.
+Deletes sync to everyone and can't be undone. Log the list and check it before you run the loop, and build `activeIds` from your own data, never from the playhtml data you're about to delete.
 
 ## Performance checklist
 

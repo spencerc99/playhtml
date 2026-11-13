@@ -58,7 +58,10 @@ export function useCursorEventPool(
 
         setDeepening(true);
         while (!cancelled && all.length < maxEvents) {
-          const oldestTs = Math.min(...all.map((e) => e.ts));
+          // A loop, not Math.min(...spread): the pool grows past 65,536
+          // events, which is Safari's argument-count limit.
+          let oldestTs = Infinity;
+          for (const e of all) if (e.ts < oldestTs) oldestTs = e.ts;
           const page = await fetchPage(oldestTs);
           if (cancelled) return;
           if (page.length === 0) break;

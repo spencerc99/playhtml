@@ -328,15 +328,6 @@ export function publishedImageIndex(ref: string): number | null {
   return index < PUBLISHED_COLLAGE_LIMITS.maxImages ? index : null;
 }
 
-export function isPublishedCollageImageType(
-  value: unknown,
-): value is PublishedCollageImageType {
-  return (
-    typeof value === "string" &&
-    (PUBLISHED_COLLAGE_IMAGE_TYPES as readonly string[]).includes(value)
-  );
-}
-
 /** The page a shared collage is viewed on. */
 export function publishedCollageViewerUrl(
   id: string,

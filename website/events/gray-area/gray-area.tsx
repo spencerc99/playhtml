@@ -1,7 +1,6 @@
 // ABOUTME: Renders the Gray Area collaborative workshop page.
 // ABOUTME: Stores attendee details and connects the page to playhtml cursors.
 import ReactDOM from "react-dom";
-import React from "react";
 import { PlayProvider } from "@playhtml/react";
 import { Cursors, Guestbook, PlayhtmlToolBox } from "../events";
 import { useStickyState } from "../../hooks/useStickyState";
@@ -16,10 +15,10 @@ function Main() {
       if (window.cursors) window.cursors.name = newName ?? "";
     },
   );
-  const [from, setFrom] = useStickyState<string | null>("from", null);
+  const [from] = useStickyState<string | null>("from", null);
 
   return (
-    <PlayProvider>
+    <PlayProvider initOptions={{ cursors: { enabled: true } }}>
       <Cursors />
       <div id="workshopContent">
         <PlayhtmlToolBox />
@@ -39,13 +38,6 @@ function Main() {
                 join this{" "}
                 <a href="https://discord.gg/pSK5cBtm">discord channel</a> (we'll
                 be using it as our class chat to share links, etc.)
-              </li>
-              <li>
-                get set up with Gray Area's Wifi.
-                <br />
-                network name: "Gray Area Residents"
-                <br />
-                password: Incubator2024
               </li>
             </ol>
           </p>

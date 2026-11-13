@@ -1,3 +1,6 @@
+// ABOUTME: Lists collected satchel items with previews, per-item removal, and a clear-all action.
+// ABOUTME: Shown from the Bag settings section of the extension Settings page.
+
 import React from "react";
 import { GameInventory, InventoryItem } from "../types";
 
@@ -6,6 +9,138 @@ interface InventoryProps {
   onBack: () => void;
   onRemoveItem: (itemId: string) => void;
   onClearInventory: () => void;
+}
+
+const PREVIEW_IMAGE_STYLE: React.CSSProperties = {
+  maxWidth: "90px",
+  maxHeight: "50px",
+  objectFit: "contain",
+};
+
+const FALLBACK_SITE_ICON = `data:image/svg+xml;base64,${btoa(
+  [
+    '<svg width="32" height="32" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">',
+    '<rect width="32" height="32" fill="#4a9a8a" rx="4"/>',
+    '<circle cx="16" cy="16" r="8" fill="none" stroke="white" stroke-width="1.5"/>',
+    '<ellipse cx="16" cy="16" rx="4" ry="8" fill="none" stroke="white" stroke-width="1.5"/>',
+    '<line x1="8" y1="16" x2="24" y2="16" stroke="white" stroke-width="1.5"/>',
+    "</svg>",
+  ].join(""),
+)}`;
+
+/** Image sources collected from pages: only web images and inline raster/SVG data. */
+export function getSafeImageSrc(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  if (/^data:image\//i.test(value)) return value;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:"
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Colors collected from pages: hex, rgb/hsl functions with plain numbers, or a color keyword. */
+export function getSafeColor(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const color = value.trim();
+  if (/^#[0-9a-f]{3,8}$/i.test(color)) return color;
+  if (/^(rgb|rgba|hsl|hsla)\([0-9.,%\s/-]+\)$/i.test(color)) return color;
+  if (/^[a-z]+$/i.test(color)) return color;
+  return null;
+}
+
+function getSiteFavicon(item: InventoryItem): string {
+  const favicon = getSafeImageSrc(item.data?.favicon);
+  if (favicon) return favicon;
+  try {
+    return `${new URL(item.sourceUrl).origin}/favicon.ico`;
+  } catch {
+    return FALLBACK_SITE_ICON;
+  }
+}
+
+function ImagePreview({ src, label }: { src: string; label?: string }) {
+  const [failed, setFailed] = React.useState(false);
+  if (failed) {
+    return label ? (
+      <div style={{ fontSize: "10px", color: "#6b7280", textAlign: "center" }}>
+        {label}
+      </div>
+    ) : null;
+  }
+  return (
+    <img src={src} style={PREVIEW_IMAGE_STYLE} onError={() => setFailed(true)} />
+  );
+}
+
+function ElementPreview({ item }: { item: InventoryItem }) {
+  const snapshot = item.data?.snapshot;
+
+  // Legacy items stored the snapshot as an image source string.
+  if (typeof snapshot === "string") {
+    const src = getSafeImageSrc(snapshot);
+    return src ? <ImagePreview src={src} /> : null;
+  }
+
+  if (snapshot && typeof snapshot === "object") {
+    const metadata = snapshot.metadata ?? {};
+    const tagName =
+      typeof metadata.tagName === "string" ? metadata.tagName : undefined;
+
+    if (metadata.hasImage) {
+      const src = getSafeImageSrc(metadata.imageUrl);
+      if (src) return <ImagePreview src={src} label={tagName} />;
+    }
+
+    const textContent =
+      typeof metadata.textContent === "string"
+        ? metadata.textContent.slice(0, 30)
+        : "";
+    const text = textContent || tagName || "element";
+
+    return (
+      <div
+        style={{
+          width: "90px",
+          height: "50px",
+          background: getSafeColor(snapshot.styles?.backgroundColor) ?? "#f9fafb",
+          color: getSafeColor(snapshot.styles?.color) ?? "#1f2937",
+          fontSize: "9px",
+          padding: "4px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          overflow: "hidden",
+          wordBreak: "break-word",
+        }}
+      >
+        {text}
+      </div>
+    );
+  }
+
+  // Items without snapshot data show their type.
+  return (
+    <div
+      style={{
+        width: "90px",
+        height: "50px",
+        background: "#f9fafb",
+        color: "#6b7280",
+        fontSize: "9px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+      }}
+    >
+      {item.type}
+    </div>
+  );
 }
 
 // TODO: for inventory:
@@ -19,77 +154,6 @@ export function Inventory({
   onRemoveItem,
   onClearInventory,
 }: InventoryProps) {
-  // SECURITY: This function interpolates user-controlled page data (textContent, imageUrl,
-  // tagName, CSS values) directly into an HTML string rendered via dangerouslySetInnerHTML.
-  // All fields are XSS vectors. Sanitize before enabling this feature for real users.
-  const generateElementPreview = (item: InventoryItem): string => {
-    // Handle legacy items that might have old snapshot format
-    if (typeof item.data?.snapshot === "string") {
-      return `<img src="${item.data.snapshot}" style="max-width: 90px; max-height: 50px; object-fit: contain;" />`;
-    }
-
-    // Handle new snapshot format
-    if (item.data?.snapshot && typeof item.data.snapshot === "object") {
-      const snapshot = item.data.snapshot;
-
-      // For images, show the actual image
-      if (snapshot.metadata?.hasImage && snapshot.metadata?.imageUrl) {
-        return `
-          <img src="${snapshot.metadata.imageUrl}" 
-               style="max-width: 90px; max-height: 50px; object-fit: contain;" 
-               onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
-          <div style="display: none; font-size: 10px; color: #6b7280; text-align: center;">
-            ${snapshot.metadata.tagName}
-          </div>
-        `;
-      }
-
-      // For other elements, create a styled preview
-      const text =
-        snapshot.metadata?.textContent?.slice(0, 30) ||
-        snapshot.metadata?.tagName ||
-        "element";
-      const bgColor = snapshot.styles?.backgroundColor || "#f9fafb";
-      const textColor = snapshot.styles?.color || "#1f2937";
-
-      return `
-        <div style="
-          width: 90px; 
-          height: 50px; 
-          background: ${bgColor};
-          color: ${textColor};
-          font-size: 9px;
-          padding: 4px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          text-align: center;
-          overflow: hidden;
-          word-break: break-word;
-        ">
-          ${text}
-        </div>
-      `;
-    }
-
-    // Fallback for items without proper snapshot data
-    return `
-      <div style="
-        width: 90px; 
-        height: 50px; 
-        background: #f9fafb;
-        color: #6b7280;
-        font-size: 9px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-      ">
-        ${item.type}
-      </div>
-    `;
-  };
-
   const getItemTypeColor = (type: InventoryItem["type"]) => {
     switch (type) {
       case "element":
@@ -208,10 +272,7 @@ export function Inventory({
                 >
                   {item.type === "site_signature" ? (
                     <img
-                      src={
-                        item.data?.favicon ||
-                        `${new URL(item.sourceUrl).origin}/favicon.ico`
-                      }
+                      src={getSiteFavicon(item)}
                       alt="Site favicon"
                       style={{
                         width: "32px",
@@ -220,17 +281,10 @@ export function Inventory({
                         objectFit: "cover",
                       }}
                       onError={(e) => {
-                        // Fallback to generic site icon SVG
-                        (
-                          e.target as HTMLImageElement
-                        ).src = `data:image/svg+xml;base64,${btoa(`
-                          <svg width="32" height="32" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-                            <rect width="32" height="32" fill="#4a9a8a" rx="4"/>
-                            <circle cx="16" cy="16" r="8" fill="none" stroke="white" stroke-width="1.5"/>
-                            <ellipse cx="16" cy="16" rx="4" ry="8" fill="none" stroke="white" stroke-width="1.5"/>
-                            <line x1="8" y1="16" x2="24" y2="16" stroke="white" stroke-width="1.5"/>
-                          </svg>
-                        `)}`;
+                        const image = e.target as HTMLImageElement;
+                        if (image.src !== FALLBACK_SITE_ICON) {
+                          image.src = FALLBACK_SITE_ICON;
+                        }
                       }}
                     />
                   ) : (
@@ -244,10 +298,9 @@ export function Inventory({
                         alignItems: "center",
                         justifyContent: "center",
                       }}
-                      dangerouslySetInnerHTML={{
-                        __html: generateElementPreview(item),
-                      }}
-                    />
+                    >
+                      <ElementPreview item={item} />
+                    </div>
                   )}
                 </div>
 

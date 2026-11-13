@@ -146,14 +146,15 @@ describe("CommuteMobileControls", () => {
     act(() => root.unmount());
   });
 
-  it("keeps the train unobstructed by contextual action buttons", () => {
+  it("replaces the boarding panel with the joystick once boarded", () => {
     const { container, root } = renderControls({
       boarded: true,
       onBoard: vi.fn(),
       onMove: vi.fn(),
     });
 
-    expect(container.querySelector(".commute-mobile-action")).toBeNull();
+    expect(container.querySelector(".commute-mobile-board")).toBeNull();
+    expect(container.querySelector(".commute-mobile-joystick")).not.toBeNull();
     act(() => root.unmount());
   });
 

@@ -1,5 +1,5 @@
 // ABOUTME: System-styled toast surfacing a new announcement on a matching page.
-// ABOUTME: Click anywhere → opens CTA + dismisses; × dismisses; auto-dismiss after 8s (paused on hover).
+// ABOUTME: Its link opens the CTA and dismisses; × dismisses; auto-dismisses after 8s (paused on hover).
 
 import { useEffect, useRef, useState } from "react";
 import type { Announcement } from "./announcements";
@@ -43,6 +43,10 @@ export function AnnouncementToast({ announcement, onShown, onDismiss, onCtaClick
     setTimeout(onDismiss, 200);
   }
 
+  // Extension-page CTAs only appear on popup postcards; a page toast can only
+  // link out to the web.
+  const ctaHref = announcement.cta?.href;
+
   function handleClose() {
     dismiss();
   }
@@ -69,6 +73,21 @@ export function AnnouncementToast({ announcement, onShown, onDismiss, onCtaClick
         </button>
       </div>
       <p className="announcement-toast__body">{announcement.body}</p>
+      {ctaHref && (
+        <a
+          className="announcement-toast__cta"
+          href={ctaHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(event) => {
+            event.preventDefault();
+            onCtaClick(announcement.id, ctaHref);
+            dismiss();
+          }}
+        >
+          {announcement.cta?.label}
+        </a>
+      )}
     </div>
   );
 }

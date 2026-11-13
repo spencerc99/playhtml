@@ -127,9 +127,6 @@ export type TimpaniVariant =
   /** One sustained tone crescendoing instead of a tremolo. */
   | "swell";
 
-/** Every timpani variant, in the order a selector should present them. */
-export const TIMPANI_VARIANTS: TimpaniVariant[] = ["root", "rootFifth", "swell"];
-
 /**
  * How the cantus firmus is voiced.
  *
@@ -144,9 +141,6 @@ export type CantusVariant =
   | "soprano"
   /** Tenor plus a second voice a chord tone above, alternating rather than together. */
   | "duet";
-
-/** Every cantus variant, in the order a selector should present them. */
-export const CANTUS_VARIANTS: CantusVariant[] = ["tenor", "soprano", "duet"];
 
 /**
  * One accent sound playable in isolation, on demand, for auditioning. Each

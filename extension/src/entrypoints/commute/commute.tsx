@@ -33,6 +33,7 @@ import {
 import { estimateServerTimeOffset } from "./commuteService";
 import { startVisibleInterval } from "../../utils/visibleInterval";
 import {
+  crossesCommuteClockSecond,
   DEPARTURE_SECONDS,
   getSlowModePlatformPhase,
   getSlowModePresentationTiming,
@@ -55,6 +56,7 @@ import {
   COMMUTE_WALK_SPEED,
   findNearbyCommuteSeat,
   getCommuteArrivalRiderId,
+  getCommuteStopExitNavigation,
   getCommutePointFromClient,
   getMyCommuteRiderStart,
   getCommuteRiderStart,
@@ -967,18 +969,23 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       }
 
       exitPending.current = true;
+      const navigation = getCommuteStopExitNavigation(
+        navigateCurrentTab,
+        props.onExitStop !== undefined,
+      );
       props.onExitStop?.(props.currentStop);
       showToast(`doors open — see you at ${props.currentStop.domain}`);
+      if (navigation === "handler") return;
       window.setTimeout(
         () => {
-          if (navigateCurrentTab) {
+          if (navigation === "current-tab") {
             window.location.assign(props.currentStop.url);
-          } else if (!props.onExitStop) {
+          } else {
             window.open(props.currentStop.url, "_blank", "noopener,noreferrer");
             exitPending.current = false;
           }
         },
-        navigateCurrentTab ? 250 : 600,
+        navigation === "current-tab" ? 250 : 600,
       );
     };
     exitTrainRef.current = exitTrain;
@@ -1297,7 +1304,6 @@ function Banner({
   currentStop,
   hasSeat,
   routeComplete,
-  waitingForFreshStops,
   slowModePlatformPhase,
 }: {
   phase: CommutePhase;
@@ -1306,7 +1312,6 @@ function Banner({
   currentStop: CommuteStop;
   hasSeat: boolean;
   routeComplete: boolean;
-  waitingForFreshStops: boolean;
   slowModePlatformPhase?: SlowModePlatformPhase;
 }) {
   let message: React.ReactNode;
@@ -1334,11 +1339,6 @@ function Banner({
     instruction =
       "the next train will use new sites — this route will not repeat";
     mobileMessage = phase === "riding" ? "returning home" : "home station";
-  } else if (waitingForFreshStops) {
-    message = "waiting for a new destination";
-    aside = "checking the recent web";
-    instruction = "the next train will depart when an unseen stop appears";
-    mobileMessage = "waiting for a stop";
   } else if (atOrigin) {
     message = destinationLabel("next train to");
     if (slowModePlatformPhase === "boarding") {
@@ -1579,9 +1579,22 @@ function InternetCommute({
     return () => window.clearTimeout(timer);
   }, [assignment.stops.length]);
 
+  // The interval reads the current anchors through a ref so it can skip ticks
+  // that leave every rendered whole-second value unchanged.
+  const clockAnchors = useRef<number[]>([]);
+  clockAnchors.current = [
+    assignment.createdAt - serverTimeOffsetMs,
+    slowModeIntroStartedAt,
+  ];
+
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setClockNow(Date.now());
+      const now = Date.now();
+      setClockNow((previous) =>
+        crossesCommuteClockSecond(previous, now, clockAnchors.current)
+          ? now
+          : previous,
+      );
     }, 250);
     return () => window.clearInterval(timer);
   }, []);
@@ -1697,7 +1710,6 @@ function InternetCommute({
           }
           hasSeat={hasSeat}
           routeComplete={timing.complete}
-          waitingForFreshStops={false}
           slowModePlatformPhase={slowModePlatformPhase}
         />
 

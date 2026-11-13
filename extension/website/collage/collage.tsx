@@ -16,6 +16,7 @@ import {
   type ScrapOrigin,
 } from "@movement/components/ScrapLightbox";
 import { useChromeToggle } from "@movement/hooks/useChromeToggle";
+import { usePrefersReducedMotion } from "@movement/hooks/usePrefersReducedMotion";
 import { COLLAGE_STYLES } from "@movement/components/ScrapCollage";
 import { paperBackground } from "@extension/entrypoints/scraps/paperGrain";
 import { PieceMaterial } from "@extension/entrypoints/scraps/PieceMaterial";
@@ -210,21 +211,6 @@ function useWindowSize() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
   return size;
-}
-
-function usePrefersReducedMotion(): boolean {
-  const query = "(prefers-reduced-motion: reduce)";
-  const [reduced, setReduced] = useState(
-    () => window.matchMedia?.(query).matches ?? false,
-  );
-  useEffect(() => {
-    const media = window.matchMedia?.(query);
-    if (!media) return;
-    const onChange = () => setReduced(media.matches);
-    media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
-  }, []);
-  return reduced;
 }
 
 /** Holding i shows the sources, by the same rules the studio's peek follows. */

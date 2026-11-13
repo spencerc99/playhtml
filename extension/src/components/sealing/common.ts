@@ -111,9 +111,3 @@ export function easeInOutCubic(t: number): number {
 export function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
 }
-export function easeInQuad(t: number): number {
-  return t * t;
-}
-export function easeOutQuart(t: number): number {
-  return 1 - Math.pow(1 - t, 4);
-}

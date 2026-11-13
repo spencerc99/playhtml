@@ -5,7 +5,7 @@ sidebar:
   order: 7
 ---
 
-The full type surface of `@playhtml/react`. For a gentler introduction, see [Using React](/docs/using-react/). For concept-by-concept usage, each page under _Data_ and _Capabilities_ has a React tab alongside the vanilla form.
+The full type surface of `@playhtml/react`. For a gentler introduction, see [Getting started](/docs/). For concept-by-concept usage, the pages under _Building blocks_ show a React tab alongside the vanilla form.
 
 ## `<PlayProvider>`
 
@@ -169,7 +169,7 @@ interface CanMoveElementProps {
 
 Bounds apply only during dragging. Setup does not rewrite the element's initial CSS layout or persisted position.
 
-The effective keep-visible slice on each axis is `max(boundsMinVisible × size, boundsMinVisiblePx)`. Set both knobs to `0` to opt fully out of the keep-visible guarantee. See [`can-move` in the capabilities reference](/docs/capabilities/#can-move) for the interaction details.
+The effective keep-visible slice on each axis is `max(boundsMinVisible × size, boundsMinVisiblePx)`. Set both knobs to `0` to opt fully out of the keep-visible guarantee. See [`can-move` in the capabilities reference](/docs/reference/capabilities/#can-move) for the interaction details.
 
 ```tsx
 import { CanMoveElement } from "@playhtml/react";
@@ -227,8 +227,8 @@ These props let an element participate in [cross-page / cross-site sharing](/doc
 
 ```tsx
 // Source — publishes its toggle state for any page to consume
-<CanToggleElement id="light" shared>
-  <div className="light" />
+<CanToggleElement shared>
+  <div id="light" className="light" />
 </CanToggleElement>
 
 // Consumer — mirrors the light from another page, read-only via the toggle's readOnly prop
@@ -362,7 +362,7 @@ const {
 } = usePlayContext();
 ```
 
-Usually you'll wrap these in a hook to bind a listener to the component's lifecycle. See [Events](/docs/data/events/) for the `useConfetti` pattern.
+Register listeners inside a `useEffect` and remove them in its cleanup so they follow the component's lifecycle. See [Events](/docs/data/events/) for a full example.
 
 ## Hooks
 
@@ -487,9 +487,3 @@ TagType.CanMirror;
 ## Examples
 
 The repo has a collection of runnable React examples at [`packages/react/examples`](https://github.com/spencerc99/playhtml/tree/main/packages/react/examples). Live versions are visible at [playhtml.fun/experiments/one/](https://playhtml.fun/experiments/one/) and [playhtml.fun/experiments/two/](https://playhtml.fun/experiments/two/).
-
-## Open considerations
-
-A few things still in flux in the React package:
-
-- **Hook ergonomics.** A pure-hook interface (`useSharedState({ id, defaultData })`) is being evaluated as an alternative to the HOC form. The blocker is that hooks have no natural place to pin a stable `id`.

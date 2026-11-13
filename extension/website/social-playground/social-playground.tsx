@@ -208,13 +208,15 @@ function BottlePreview() {
     textEl?.addEventListener("input", sync);
     emptyEl?.addEventListener("change", sync);
     canReplyEl?.addEventListener("change", sync);
-    resetBtn?.addEventListener("click", () => setKey((k) => k + 1));
+    const reset = () => setKey((k) => k + 1);
+    resetBtn?.addEventListener("click", reset);
     seedBtn?.addEventListener("click", seed);
     return () => {
       colorEl?.removeEventListener("input", sync);
       textEl?.removeEventListener("input", sync);
       emptyEl?.removeEventListener("change", sync);
       canReplyEl?.removeEventListener("change", sync);
+      resetBtn?.removeEventListener("click", reset);
       seedBtn?.removeEventListener("click", seed);
     };
   }, []);

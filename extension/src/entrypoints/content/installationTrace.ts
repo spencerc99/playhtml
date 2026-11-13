@@ -141,11 +141,6 @@ export function rippleRings(ripple: Ripple, now: number): RippleRing[] {
   return rings;
 }
 
-/** True once a click mark has faded out entirely. */
-export function rippleDone(ripple: Ripple, now: number): boolean {
-  return now > ripple.startTime && rippleRings(ripple, now).length === 0;
-}
-
 /** True while a click mark is still changing on screen. */
 export function rippleAnimating(ripple: Ripple, now: number): boolean {
   const holdMultiplier = ripple.holdDuration

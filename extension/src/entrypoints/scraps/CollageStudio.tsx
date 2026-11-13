@@ -69,6 +69,7 @@ import {
   type ArrangementHistory,
 } from "./arrangementHistory";
 import {
+  ACCEL_KEY_NAME,
   leavesKeysAlone,
   releaseTypingFocus,
   studioCommandFor,
@@ -383,11 +384,7 @@ type Gesture =
 const SNAP_LEARNED_KEY = "wwo-collage-snap-learned";
 
 /** The slip shown while carrying pieces, until snapping has been found. */
-const SNAP_HINT = `hold ${
-  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent)
-    ? "cmd"
-    : "ctrl"
-} to snap`;
+const SNAP_HINT = `hold ${ACCEL_KEY_NAME} to snap`;
 
 function readSnapLearned(): boolean {
   try {
@@ -411,6 +408,11 @@ interface CollageStudioProps {
   editing: CollageRecord | null;
   onSaved: (record: CollageRecord) => void;
   onLeave: () => void;
+  /**
+   * Told as the studio goes, with a promise that settles once what it still
+   * had to store has landed, so the collage is only reopened after that.
+   */
+  onClosed?: (stored: Promise<void>) => void;
   /** Timers the autosave runs on, so a test can drive the schedule directly. */
   autosaveTimers?: AutosaveTimers;
   /** Whether the export menu offers a view-only link. The host decides, since
@@ -469,13 +471,12 @@ function placedPiece(
   };
 }
 
-/** The day a collage was started, the way the history cards write it. */
-
 export function CollageStudio({
   scraps,
   editing,
   onSaved,
   onLeave,
+  onClosed,
   autosaveTimers,
   canPublish = false,
   signer,
@@ -691,6 +692,7 @@ export function CollageStudio({
     },
     startsStored: editing !== null,
     reopening: editing,
+    ...(onClosed ? { onClosed } : {}),
     ...(autosaveTimers ? { timers: autosaveTimers } : {}),
   });
   const { noteChange, flush } = autosave;
@@ -1568,161 +1570,130 @@ export function CollageStudio({
     [cropPending, finishRunning, history, sound],
   );
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const command = studioCommandFor(
-        {
-          key: event.key,
-          code: event.code,
-          metaKey: event.metaKey,
-          ctrlKey: event.ctrlKey,
-          shiftKey: event.shiftKey,
-          altKey: event.altKey,
-          target: event.target as HTMLElement | null,
-        },
-        {
-          mode,
-          hasSelection: selectedPieces.length > 0,
-          multiple,
-          hasClipboard: clipboard !== null,
-        },
-      );
-      if (!command) return;
-      event.preventDefault();
+  // The handler reads this render's state, so it is replaced every render;
+  // the listener itself is bound once and always calls the latest one,
+  // rather than being rebound on every frame of a drag.
+  const onKeyDown = (event: KeyboardEvent) => {
+    const command = studioCommandFor(
+      {
+        key: event.key,
+        code: event.code,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        target: event.target as HTMLElement | null,
+      },
+      {
+        mode,
+        hasSelection: selectedPieces.length > 0,
+        multiple,
+        hasClipboard: clipboard !== null,
+      },
+    );
+    if (!command) return;
+    event.preventDefault();
 
-      switch (command.kind) {
-        case "delete":
-          removeSelected();
-          break;
-        case "duplicate":
-          if (selectedPieces.length > 0) duplicatePieces(selectedPieces);
-          break;
-        case "copy":
-          if (selectedPieces.length > 0) setClipboard(selectedPieces);
-          break;
-        case "paste":
-          if (clipboard) duplicatePieces(clipboard);
-          break;
-        case "undo":
-          stepHistory("undo");
-          break;
-        case "redo":
-          stepHistory("redo");
-          break;
-        case "withhold":
-          break;
-        case "enterCrop":
-          enterCrop();
-          break;
-        case "beginRotate":
-          beginTransform("rotate");
-          break;
-        case "beginScale":
-          beginTransform("scale");
-          break;
-        case "cutout":
-          beginCutout();
-          break;
-        case "flip":
-          flipSelection(command.axis);
-          break;
-        case "toggleDrawer":
-          updateDrawer({ collapsed: !drawer.collapsed });
-          break;
-        case "confirm":
-          if (crop) commitCrop();
-          else if (cutoutSession) confirmCutout();
-          else confirmTransform();
-          break;
-        case "cancel":
-          if (crop) cancelCrop();
-          else if (cutoutSession) cancelCutout();
-          else cancelTransform();
-          break;
-        case "deselect":
-          setSelection(EMPTY_SELECTION);
-          break;
-        case "selectAll":
-          setSelection(selectAll(ordered));
-          break;
-        case "selectNext":
-          stepSelection(1);
-          break;
-        case "selectPrevious":
-          stepSelection(-1);
-          break;
-        case "selectInStack": {
-          // Stepping into a pile only changes what is in hand, never the
-          // order the pieces are stacked in.
-          const next = neighborInStack(
-            reachable,
-            selection.primary,
-            command.direction,
-          );
-          if (next) selectPiece(next);
-          break;
-        }
-        case "nudge":
-          if (selectedPieces.length > 0) {
-            // A burst of nudges to the same hand undoes as one step.
-            editPieces(
-              translateGroup(selectedPieces, command.dx, command.dy),
-              `nudge:${selection.ids.join(",")}`,
-            );
-          }
-          break;
-        case "order":
-          restackSelection(command.to);
-          break;
-        case "showKeys":
-          setShowKeys((value) => !value);
-          break;
-        case "turnOver":
-          turnOver();
-          break;
+    switch (command.kind) {
+      case "delete":
+        removeSelected();
+        break;
+      case "duplicate":
+        if (selectedPieces.length > 0) duplicatePieces(selectedPieces);
+        break;
+      case "copy":
+        if (selectedPieces.length > 0) setClipboard(selectedPieces);
+        break;
+      case "paste":
+        if (clipboard) duplicatePieces(clipboard);
+        break;
+      case "undo":
+        stepHistory("undo");
+        break;
+      case "redo":
+        stepHistory("redo");
+        break;
+      case "withhold":
+        break;
+      case "enterCrop":
+        enterCrop();
+        break;
+      case "beginRotate":
+        beginTransform("rotate");
+        break;
+      case "beginScale":
+        beginTransform("scale");
+        break;
+      case "cutout":
+        beginCutout();
+        break;
+      case "flip":
+        flipSelection(command.axis);
+        break;
+      case "toggleDrawer":
+        updateDrawer({ collapsed: !drawer.collapsed });
+        break;
+      case "confirm":
+        if (crop) commitCrop();
+        else if (cutoutSession) confirmCutout();
+        else confirmTransform();
+        break;
+      case "cancel":
+        if (crop) cancelCrop();
+        else if (cutoutSession) cancelCutout();
+        else cancelTransform();
+        break;
+      case "deselect":
+        setSelection(EMPTY_SELECTION);
+        break;
+      case "selectAll":
+        setSelection(selectAll(ordered));
+        break;
+      case "selectNext":
+        stepSelection(1);
+        break;
+      case "selectPrevious":
+        stepSelection(-1);
+        break;
+      case "selectInStack": {
+        // Stepping into a pile only changes what is in hand, never the
+        // order the pieces are stacked in.
+        const next = neighborInStack(
+          reachable,
+          selection.primary,
+          command.direction,
+        );
+        if (next) selectPiece(next);
+        break;
       }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [
-    beginTransform,
-    cancelCrop,
-    drawer.collapsed,
-    updateDrawer,
-    cancelTransform,
-    clipboard,
-    commit,
-    commitCrop,
-    confirmTransform,
-    crop,
-    beginCutout,
-    cancelCutout,
-    confirmCutout,
-    cutoutSession,
-    duplicatePieces,
-    editPieces,
-    enterCrop,
-    flipSelection,
-    mode,
-    multiple,
-    ordered,
-    pieces,
-    reachable,
-    removeSelected,
-    restackSelection,
-    selectPiece,
-    selectedPieces,
-    selection,
-    stepHistory,
-    stepSelection,
-    turnOver,
-  ]);
+      case "nudge":
+        if (selectedPieces.length > 0) {
+          // A burst of nudges to the same hand undoes as one step.
+          editPieces(
+            translateGroup(selectedPieces, command.dx, command.dy),
+            `nudge:${selection.ids.join(",")}`,
+          );
+        }
+        break;
+      case "order":
+        restackSelection(command.to);
+        break;
+      case "showKeys":
+        setShowKeys((value) => !value);
+        break;
+      case "turnOver":
+        turnOver();
+        break;
+    }
+  };
+  const onKeyDownRef = useRef(onKeyDown);
+  onKeyDownRef.current = onKeyDown;
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => onKeyDownRef.current(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
 
-  /**
-   * Carries the pieces a move gesture holds to follow the pointer. Shift keeps
-   * the move to the axis the drag has mostly travelled along, decided afresh
-   * each time so the axis can change mid-drag.
-   */
   /** Lines shown while a carried piece is caught on another or the frame. */
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   /**
@@ -1742,6 +1713,11 @@ export function CollageStudio({
   const slidePaceRef = useRef<{ at: Point; time: number } | null>(null);
   useEffect(() => () => slideRef.current?.stop(), []);
 
+  /**
+   * Carries the pieces a move gesture holds to follow the pointer. Shift keeps
+   * the move to the axis the drag has mostly travelled along, decided afresh
+   * each time so the axis can change mid-drag.
+   */
   const carry = useCallback(
     (
       origins: readonly CollagePiece[],
@@ -2211,7 +2187,6 @@ export function CollageStudio({
     // there lets go of what is in hand and a quick swipe does nothing. Only a
     // finger held still first draws a selection box.
     if (phone && event.pointerType === "touch") {
-      event.currentTarget.setPointerCapture(event.pointerId);
       pressRef.current = {
         at,
         downAt: performance.now(),
@@ -2643,13 +2618,7 @@ export function CollageStudio({
       });
       saveFile(video, `${collageExportName(title)}.mp4`);
     } catch (error) {
-      const text =
-        error instanceof CollageBakeError
-          ? `could not export mp4 — these could not be drawn: ${error.failures
-              .map((failure) => failure.label)
-              .join(", ")}`
-          : `could not export mp4 — ${error instanceof Error ? error.message : String(error)}`;
-      setNotice({ tone: "problem", text });
+      setNotice({ tone: "problem", text: exportProblem("mp4", error) });
     } finally {
       setVideoProgress(null);
     }
@@ -2684,14 +2653,13 @@ export function CollageStudio({
     setNotice({ tone: "problem", text });
   }, []);
 
-  const onCutoutFailed = useCallback((pieceId: string, reason: string) => {
+  const onCutoutFailed = useCallback((_pieceId: string, reason: string) => {
     setNotice({
       tone: "problem",
       text: `a background could not be removed — ${reason}`,
     });
     // The piece keeps its cutout so the slider can be retried, but nothing
     // pretends the cut happened.
-    void pieceId;
   }, []);
 
   // Modal transforms and handle drags speak through the same slip.

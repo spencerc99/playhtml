@@ -39,25 +39,7 @@ Lists include you and are in join order. For everyone but you: `everyone.filter(
 
 The same person has the same `pid`, `name`, and `color` everywhere; only `presence` depends on where you read it. Identity is saved in `localStorage` per browser and is not synced across devices.
 
-### `PlayerIdentity` (advanced)
-
-`PlayerIdentity` is the lower-level object playhtml stores and sends. You only need it to seed identity with the `cursors.playerIdentity` init option or to set a custom cursor style. Everywhere else, use `Person`. `publicKey` is the same value as `pid`, and `playerStyle.colorPalette[0]` is `color`.
-
-```ts
-interface PlayerIdentity {
-  publicKey: string;
-  name?: string;
-  playerStyle: {
-    colorPalette: string[];
-    cursorStyle?: string;
-  };
-  createdAt?: number;
-}
-```
-
-Keep private keys, local profile data, and browsing history in your own app storage instead of adding them to this object.
-
-When the "we were online" browser extension is installed, it can inject identity via the `playhtml:configure-identity` DOM event. playhtml merges the extension's color and `pid` automatically.
+To set your own name or color, assign [`playhtml.people.me.name` / `.color`](#me).
 
 ---
 

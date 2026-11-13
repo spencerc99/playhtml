@@ -1,9 +1,9 @@
 // ABOUTME: Tests local event buffering before events cross into the background worker.
-// ABOUTME: Verifies batching, upload flushing, and cached event metadata lookups.
+// ABOUTME: Verifies batching, upload flushing, disposal, metadata lookups, and holding events until identity resolves.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import browser from "webextension-polyfill";
-import { EventBuffer } from "../storage/EventBuffer";
+import { EventBuffer, MAX_HELD_EVENTS } from "../storage/EventBuffer";
 import { requestSessionId } from "../storage/participant";
 import type { CollectionEvent } from "../collectors/types";
 
@@ -241,7 +241,58 @@ describe("EventBuffer", () => {
     expect(error).toHaveBeenCalledTimes(retryDelays.length + 1);
   });
 
-  it("reuses participant and session lookups for event metadata", async () => {
+  it("stops sending and retrying once disposed", async () => {
+    const buffer = new EventBuffer();
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let storeAttempts = 0;
+    vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
+      if ((message as { type?: string }).type === "STORE_EVENTS") {
+        storeAttempts++;
+        return Promise.reject(new Error("Extension context invalidated."));
+      }
+      return Promise.resolve({ success: true });
+    });
+
+    await buffer.addEvent(testEvent("failed"));
+    await buffer.flushBatch();
+    expect(storeAttempts).toBe(1);
+    expect(error).toHaveBeenCalledTimes(1);
+
+    // A retry is scheduled; disposing cancels it and drops the event.
+    await buffer.addEvent(testEvent("buffered"));
+    buffer.dispose();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(storeAttempts).toBe(1);
+
+    await buffer.addEvent(testEvent("after-dispose"));
+    await buffer.flushBatch();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a store retry that fails after disposal", async () => {
+    const buffer = new EventBuffer();
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let rejectStore: (reason: Error) => void = () => {};
+    vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
+      if ((message as { type?: string }).type === "STORE_EVENTS") {
+        return new Promise((_, reject) => {
+          rejectStore = reject;
+        });
+      }
+      return Promise.resolve({ success: true });
+    });
+
+    await buffer.addEvent(clickEvent("in-flight"));
+    buffer.dispose();
+    rejectStore(new Error("Extension context invalidated."));
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses the session lookup and leaves the participant ID for storage time", async () => {
     const buffer = new EventBuffer();
 
     const first = await buffer.createEvent("cursor", {
@@ -251,39 +302,123 @@ describe("EventBuffer", () => {
     });
     await buffer.createEvent("viewport", { event: "scroll", scrollY: 0.3 });
 
-    expect(first.meta.pid).toBe("test-participant-id");
-    expect(browser.runtime.sendMessage).toHaveBeenCalledOnce();
-    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
-      type: "GET_PUBLIC_PLAYER_IDENTITY",
-    });
+    expect(first.meta.sid).toBe("test-session-id");
+    expect(first.meta.pid).toBeUndefined();
+    expect(browser.runtime.sendMessage).not.toHaveBeenCalled();
     expect(requestSessionId).toHaveBeenCalledTimes(1);
   });
 
-  it("does not cache temporary participant IDs", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const identities = [
-      null,
-      {
-        publicKey: "pk_real",
-        playerStyle: { colorPalette: ["#4a9a8a"] },
-      },
-    ];
-    vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
-      if ((message as { type?: string }).type === "GET_PUBLIC_PLAYER_IDENTITY") {
-        return Promise.resolve(identities.shift());
-      }
-      return Promise.resolve({});
-    });
+  it("stamps the participant's identity on stored events and asks for it once", async () => {
     const buffer = new EventBuffer();
 
-    const first = await buffer.createEvent("cursor", { event: "move" });
-    const second = await buffer.createEvent("cursor", { event: "move" });
+    await buffer.addEvent(await buffer.createEvent("cursor", { event: "move" }));
+    await buffer.flushBatch();
+    await buffer.addEvent(await buffer.createEvent("cursor", { event: "move" }));
+    await buffer.flushBatch();
 
-    expect(first.meta.pid.startsWith("pk_temp_")).toBe(true);
-    expect(second.meta.pid).toBe("pk_real");
-    expect(browser.runtime.sendMessage).toHaveBeenCalledTimes(2);
-    expect(warn).toHaveBeenCalledWith(
-      "[EventBuffer] playerIdentity not found, using temporary ID",
+    const calls = vi.mocked(browser.runtime.sendMessage).mock.calls.map(
+      ([message]) => message as { type: string; events?: CollectionEvent[] },
     );
+    expect(
+      calls.filter((message) => message.type === "GET_PUBLIC_PLAYER_IDENTITY"),
+    ).toHaveLength(1);
+    const stored = calls
+      .filter((message) => message.type === "STORE_EVENTS")
+      .flatMap((message) => message.events ?? []);
+    expect(stored).toHaveLength(2);
+    expect(stored.every((event) => event.meta.pid === "test-participant-id")).toBe(true);
+  });
+
+  it("holds events without an identity and stores them once it resolves", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let identity: unknown = null;
+    vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
+      if ((message as { type?: string }).type === "GET_PUBLIC_PLAYER_IDENTITY") {
+        return Promise.resolve(identity);
+      }
+      return Promise.resolve({ success: true });
+    });
+    const buffer = new EventBuffer();
+    const storedEvents = () =>
+      vi
+        .mocked(browser.runtime.sendMessage)
+        .mock.calls.map(([message]) => message as { type: string; events?: CollectionEvent[] })
+        .filter((message) => message.type === "STORE_EVENTS")
+        .flatMap((message) => message.events ?? []);
+
+    await buffer.addEvent(await buffer.createEvent("cursor", { event: "move" }));
+    await buffer.addEvent(await buffer.createEvent("cursor", { event: "click" }));
+    await buffer.flushBatch();
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(storedEvents()).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      "[EventBuffer] No player identity yet; holding events until there is one",
+    );
+
+    identity = {
+      publicKey: "pk_real",
+      playerStyle: { colorPalette: ["#4a9a8a"] },
+    };
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    const stored = storedEvents();
+    expect(stored).toHaveLength(2);
+    expect(stored.map((event) => event.meta.pid)).toEqual(["pk_real", "pk_real"]);
+    expect(
+      stored.some((event) => event.meta.pid.startsWith("pk_temp_")),
+    ).toBe(false);
+    expect(browser.runtime.sendMessage).toHaveBeenCalledWith({
+      type: "FLUSH_PENDING_UPLOADS",
+    });
+  });
+
+  it("drops the oldest held events past the cap with one warning", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let identity: unknown = null;
+    vi.mocked(browser.runtime.sendMessage).mockImplementation((message) => {
+      if ((message as { type?: string }).type === "GET_PUBLIC_PLAYER_IDENTITY") {
+        return Promise.resolve(identity);
+      }
+      return Promise.resolve({ success: true });
+    });
+    const buffer = new EventBuffer();
+    const ids: string[] = [];
+
+    for (let i = 0; i < MAX_HELD_EVENTS + 10; i++) {
+      const event = await buffer.createEvent("cursor", { event: "move" });
+      ids.push(event.id);
+      await buffer.addEvent(event);
+    }
+
+    expect(warn).toHaveBeenCalledWith(
+      `[EventBuffer] Holding more than ${MAX_HELD_EVENTS} unsaved events; dropping the oldest`,
+    );
+    expect(
+      warn.mock.calls.filter(([message]) =>
+        String(message).includes("dropping the oldest"),
+      ),
+    ).toHaveLength(1);
+
+    // Waiting on identity is paced by the retry timer, not by each new event.
+    expect(
+      vi
+        .mocked(browser.runtime.sendMessage)
+        .mock.calls.filter(
+          ([message]) =>
+            (message as { type: string }).type === "GET_PUBLIC_PLAYER_IDENTITY",
+        ).length,
+    ).toBeLessThanOrEqual(2);
+
+    identity = { publicKey: "pk_real", playerStyle: { colorPalette: [] } };
+    await buffer.flushBatch();
+
+    const stored = vi
+      .mocked(browser.runtime.sendMessage)
+      .mock.calls.map(([message]) => message as { type: string; events?: CollectionEvent[] })
+      .filter((message) => message.type === "STORE_EVENTS")
+      .flatMap((message) => message.events ?? []);
+    expect(stored.map((event) => event.id)).toEqual(ids.slice(10));
   });
 });

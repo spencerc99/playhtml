@@ -1,23 +1,46 @@
 // ABOUTME: Persists the participant's primary cursor color for extension UI.
-// ABOUTME: Updates local identity storage and best-effort server color sync.
+// ABOUTME: Updates local identity storage and best-effort server color sync, signed with the identity key.
 
 import type { PlayerIdentity } from "../types";
 import { getConfig } from "./sync";
 import {
-  getPublicPlayerIdentity,
   getStoredPlayerIdentity,
   saveStoredPlayerIdentity,
+  type StoredPlayerIdentity,
 } from "./playerIdentity";
+import {
+  signParticipantColorRequest,
+  type ParticipantColorBody,
+} from "../utils/participantColorRequest";
 
-async function syncPlayerColor(pid: string, color: string): Promise<void> {
+/**
+ * Sends the color to the Worker. Failures (network errors, 401 for an
+ * identity the Worker cannot verify, 5xx) only log: the local color is
+ * already saved, and the next startup sync tries again.
+ */
+async function syncPlayerColor(
+  identity: StoredPlayerIdentity,
+  color: string,
+): Promise<void> {
   try {
+    const pid = identity.public.publicKey;
+    const signed = await signParticipantColorRequest(identity.privateKey, {
+      pid,
+      color,
+      signedAt: Date.now(),
+    });
+    const body: ParticipantColorBody = {
+      cursor_color: color,
+      signedAt: signed.signedAt,
+      signature: signed.signature,
+    };
     const { workerUrl } = await getConfig();
     const response = await fetch(
       `${workerUrl}/participants/${encodeURIComponent(pid)}`,
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cursor_color: color }),
+        body: JSON.stringify(body),
       },
     );
 
@@ -30,10 +53,10 @@ async function syncPlayerColor(pid: string, color: string): Promise<void> {
 }
 
 export async function syncStoredPlayerColor(): Promise<void> {
-  const identity = await getPublicPlayerIdentity();
-  const color = identity?.playerStyle.colorPalette[0];
-  if (!identity?.publicKey || !color) return;
-  await syncPlayerColor(identity.publicKey, color);
+  const identity = await getStoredPlayerIdentity();
+  const color = identity?.public.playerStyle.colorPalette[0];
+  if (!identity?.public.publicKey || !color) return;
+  await syncPlayerColor(identity, color);
 }
 
 export async function savePlayerColor(color: string): Promise<PlayerIdentity | null> {
@@ -53,14 +76,12 @@ export async function savePlayerColor(color: string): Promise<PlayerIdentity | n
       colorPalette,
     },
   };
+  const updatedStored: StoredPlayerIdentity = { ...stored, public: updated };
 
-  await saveStoredPlayerIdentity({
-    ...stored,
-    public: updated,
-  });
+  await saveStoredPlayerIdentity(updatedStored);
 
   if (updated.publicKey) {
-    await syncPlayerColor(updated.publicKey, color);
+    await syncPlayerColor(updatedStored, color);
   }
 
   return updated;

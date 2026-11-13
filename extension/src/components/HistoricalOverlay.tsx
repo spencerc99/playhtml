@@ -35,6 +35,7 @@ import { useCursorTrails } from "@movement/hooks/useCursorTrails";
 import { useKeyboardTyping } from "@movement/hooks/useKeyboardTyping";
 import { useViewportScroll } from "@movement/hooks/useViewportScroll";
 import { SoundEngine } from "@movement/sound/SoundEngine";
+import { DEV_MODE_KEY } from "../features/debugModes/debugModes";
 
 // Note: Styles are inlined below since this component is injected into arbitrary web pages
 // and external stylesheets don't get bundled with content script injections
@@ -60,7 +61,7 @@ interface OverlaySettings {
   documentSpace: boolean;
 }
 
-export const defaultSettings: OverlaySettings = {
+const defaultSettings: OverlaySettings = {
   showCursorTrails: true,
   showCursorClicks: false,
   showTyping: false,
@@ -74,7 +75,9 @@ export const defaultSettings: OverlaySettings = {
   documentSpace: false,
 };
 
-interface Props {
+// A type alias rather than an interface, so it fits injectShadowReact's
+// Record<string, unknown> props constraint.
+type Props = {
   visible: boolean;
   currentUrl: string;
   onClose: () => void;
@@ -82,11 +85,21 @@ interface Props {
   initialSource?: TrailSource;
   /** Open with the controls hidden, for clean recordings and stills. */
   initialUiHidden?: boolean;
-}
+};
 
 const DOUBLE_TAP_THRESHOLD_MS = 300;
 
-export type OverlayLoadState = "loading" | "ready" | "empty" | "error";
+type OverlayLoadState = "loading" | "ready" | "empty" | "error";
+
+/**
+ * Cmd+Shift+9 (Mac) or Ctrl+Shift+9 toggles forced server backfill. Shift turns
+ * the "9" key into "(" on US layouts, so this matches the physical key.
+ */
+export function isServerBackfillShortcut(
+  event: Pick<KeyboardEvent, "code" | "metaKey" | "ctrlKey" | "shiftKey">,
+): boolean {
+  return (event.metaKey || event.ctrlKey) && event.shiftKey && event.code === "Digit9";
+}
 
 export function HistoricalOverlay({
   visible,
@@ -136,13 +149,15 @@ export function HistoricalOverlay({
   // first gesture, then auto-resumes via the engine's internal tick.
   const [soundEnabled, setSoundEnabled] = useState(true);
   const soundEngineRef = useRef<SoundEngine | null>(null);
+  // Mirrors the ref so the trails re-render once the engine is ready.
+  const [soundEngine, setSoundEngine] = useState<SoundEngine | null>(null);
 
   // Load dev mode setting from storage once on mount
   useEffect(() => {
     browser.storage.local
-      .get(["dev_mode"])
+      .get([DEV_MODE_KEY])
       .then((result) => {
-        setDevMode(Boolean(result["dev_mode"]));
+        setDevMode(Boolean(result[DEV_MODE_KEY]));
       })
       .catch(() => {});
   }, []);
@@ -319,8 +334,7 @@ export function HistoricalOverlay({
     if (!visible) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const modifierPressed = (e.metaKey || e.ctrlKey) && e.shiftKey;
-      if (modifierPressed && e.key === "9") {
+      if (isServerBackfillShortcut(e)) {
         e.preventDefault();
         setForceServerBackfill((prev) => {
           const newState = !prev;
@@ -360,6 +374,8 @@ export function HistoricalOverlay({
     setPortraitStats(null);
     setPortraitStatsLoaded(false);
 
+    // Ignores a response that lands after the mode or page has changed.
+    let cancelled = false;
     (async () => {
       try {
         const res: any = await browser.runtime.sendMessage({
@@ -368,6 +384,7 @@ export function HistoricalOverlay({
           // Page-level lookup: pass the raw URL (background normalizes it)
           ...(actualMode !== "domain" ? { url: currentUrl } : {}),
         });
+        if (cancelled) return;
         if (res?.success && res.stats) {
           setPortraitStats({
             domain:
@@ -381,10 +398,14 @@ export function HistoricalOverlay({
         }
         setPortraitStatsLoaded(true);
       } catch (e) {
+        if (cancelled) return;
         console.error("[HistoricalOverlay] Failed to fetch portrait stats", e);
         setPortraitStatsLoaded(true);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [visible, actualMode, currentUrl, domain]);
 
   // Track viewport size
@@ -400,23 +421,34 @@ export function HistoricalOverlay({
     return () => window.removeEventListener("resize", updateSize);
   }, []);
 
-  // Manage SoundEngine lifecycle — mirrors MovementCanvas pattern
+  // Manage SoundEngine lifecycle. An engine whose init finishes after this
+  // effect is cleaned up (overlay closed or sound toggled off) is disposed
+  // instead of stored, so its AudioContext does not outlive the overlay.
   useEffect(() => {
+    let cancelled = false;
     if (soundEnabled) {
       if (!soundEngineRef.current) {
         const engine = new SoundEngine();
         engine.init().then(() => {
+          if (cancelled) {
+            engine.dispose();
+            return;
+          }
           engine.setCanvasWidth(viewportSize.width);
           soundEngineRef.current = engine;
+          setSoundEngine(engine);
         });
       }
     } else if (soundEngineRef.current) {
       soundEngineRef.current.dispose();
       soundEngineRef.current = null;
+      setSoundEngine(null);
     }
     return () => {
+      cancelled = true;
       soundEngineRef.current?.dispose();
       soundEngineRef.current = null;
+      setSoundEngine(null);
     };
   }, [soundEnabled]);
 
@@ -455,11 +487,9 @@ export function HistoricalOverlay({
   );
 
   const {
-    trails,
     trailStates,
     timeBounds: cursorTimeBounds,
     cycleDuration: cursorCycleDuration,
-    documentCanvasSize,
   } = useCursorTrails(
     events as unknown as MovementCollectionEvent[],
     viewportSize,
@@ -558,18 +588,6 @@ export function HistoricalOverlay({
     viewportSize,
     viewportSettings,
   );
-
-  // Compute date range
-  const dateRange = useMemo(() => {
-    if (events.length === 0) return null;
-    const timestamps = events.map((e) => e.ts);
-    const oldest = Math.min(...timestamps);
-    const newest = Math.max(...timestamps);
-    return {
-      oldest: new Date(oldest).toISOString(),
-      newest: new Date(newest).toISOString(),
-    };
-  }, [events]);
 
   async function handleCapturePagePortrait() {
     try {
@@ -1158,7 +1176,7 @@ export function HistoricalOverlay({
               showClickRipples={!settings.showCursorClicks}
               windowSize={settings.maxConcurrentTrails * 3}
               documentSpace={settings.documentSpace}
-              soundEngine={soundEnabled ? soundEngineRef.current : null}
+              soundEngine={soundEnabled ? soundEngine : null}
               settings={{
                 strokeWidth: settings.strokeWidth,
                 trailOpacity: settings.trailOpacity,

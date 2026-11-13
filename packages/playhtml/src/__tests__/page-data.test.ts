@@ -1,6 +1,6 @@
 // ABOUTME: Verifies persistent page-data values and subscriptions with real shared documents.
 // ABOUTME: Covers value replacement, draft updates, and channel lifecycle behavior.
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import { getYjsDoc, syncedStore } from "@syncedstore/core";
 import * as Y from "yjs";
 import { playhtml } from "../index";
@@ -264,6 +264,26 @@ describe("playhtml.createPageData", () => {
 
     expect(updates.length).toBe(1);
     expect(updates[0]).toEqual({ count: 1 });
+  });
+
+  it("a throwing onUpdate subscriber does not stop the others", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const channel = playhtml.createPageData("test-throwing-sub", { count: 0 });
+    const updates: any[] = [];
+    channel.onUpdate(() => {
+      throw new Error("subscriber failed");
+    });
+    channel.onUpdate((data) => updates.push(data));
+
+    channel.setData({ count: 1 });
+    await new Promise((r) => queueMicrotask(r));
+
+    expect(updates).toEqual([{ count: 1 }]);
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[playhtml] page data "test-throwing-sub" subscriber callback threw:',
+      expect.objectContaining({ message: "subscriber failed" }),
+    );
+    errorSpy.mockRestore();
   });
 
   it("onUpdate unsubscribe stops callbacks", async () => {

@@ -1,5 +1,5 @@
 // ABOUTME: Exercises fingerprint downloads against a real local HTTP server.
-// ABOUTME: Verifies exact byte matching, response validation, and bounded body reads.
+// ABOUTME: Verifies exact byte matching, response validation, bounded body reads, and handing bytes to the copier.
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createServer } from "node:http";
@@ -13,6 +13,7 @@ import {
 
 import { indexedDB, IDBKeyRange } from "fake-indexeddb";
 import { LocalEventStore } from "../storage/LocalEventStore";
+import { makeImageCopy, type DownloadedBytes } from "../storage/imageCopyMaking";
 import type { CollectionEvent } from "../collectors/types";
 
 const svg =
@@ -294,4 +295,67 @@ describe("image fingerprints", () => {
       (store as unknown as { db: IDBDatabase }).db?.close();
     }
   }, 25000);
+
+  it("hands its download over so the local copy needs no second request", async () => {
+    const store = new LocalEventStore();
+    const handed: Array<[string, DownloadedBytes]> = [];
+    const fingerprints = new ImageFingerprints(store, (src, image) =>
+      handed.push([src, image]),
+    );
+    const src = `${origin}/handoff`;
+    try {
+      const accepted = await store.addEvents([
+        {
+          id: "handoff",
+          type: "element",
+          ts: 1,
+          domain: "example.com",
+          meta: {
+            pid: "test",
+            sid: "test",
+            url: "https://example.com/handoff",
+            vw: 100,
+            vh: 100,
+            tz: "UTC",
+          },
+          data: {
+            kind: "image",
+            src,
+            naturalWidth: 100,
+            naturalHeight: 100,
+            pageTitle: "Test",
+          },
+        },
+      ]);
+      expect(await fingerprints.process(accepted)).toEqual({
+        checked: 1,
+        skipped: 0,
+      });
+      expect(handed).toHaveLength(1);
+      const [handedSrc, image] = handed[0];
+      expect(handedSrc).toBe(src);
+      expect(image.mimeType).toBe("image/svg+xml");
+
+      const requestCount = requests.length;
+      const fromHandoff = await makeImageCopy(src, image);
+      expect(requests).toHaveLength(requestCount);
+
+      const downloaded = await makeImageCopy(src);
+      expect(requests).toHaveLength(requestCount + 1);
+      const saved = (await store.queryByType("element")).find(
+        (item) => item.id === "handoff",
+      )!;
+      expect(fromHandoff.hash).toBe(
+        (saved.data as { contentHash: string }).contentHash,
+      );
+      expect({ ...fromHandoff, blob: undefined }).toEqual({
+        ...downloaded,
+        blob: undefined,
+      });
+      expect(fromHandoff.blob.size).toBe(downloaded.blob.size);
+      expect(fromHandoff.blob.type).toBe(downloaded.blob.type);
+    } finally {
+      (store as unknown as { db: IDBDatabase }).db?.close();
+    }
+  });
 });

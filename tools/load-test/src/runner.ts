@@ -14,11 +14,30 @@ import {
   printHistory,
 } from "./report.js";
 
+const PROD_HOST = "api.playhtml.fun";
+const PROD_CONFIRM_FLAG = "--i-know-this-is-prod";
+
 const TARGETS: Record<string, string> = {
   local: "localhost:1999",
-  staging: "staging.playhtml.spencerc99.partykit.dev",
-  prod: "playhtml.spencerc99.partykit.dev",
+  staging: "api-staging.playhtml.fun",
+  prod: PROD_HOST,
 };
+
+/**
+ * Resolves a target name (or a raw host) to the host clients connect to.
+ * Production takes real traffic, so it only resolves with the confirm flag.
+ */
+function resolveHost(target: string, confirmProd: boolean): string {
+  const host = TARGETS[target] ?? target;
+  if (host === PROD_HOST && !confirmProd) {
+    console.error(
+      `Refusing to load-test production (${PROD_HOST}) without ${PROD_CONFIRM_FLAG}. ` +
+        `Use --target staging, or add ${PROD_CONFIRM_FLAG} if you mean to load the live server.`
+    );
+    process.exit(1);
+  }
+  return host;
+}
 
 const TICK_MS = 100; // 10Hz tick rate
 const SNAPSHOT_INTERVAL_MS = 5_000;
@@ -41,11 +60,13 @@ function parseArgs() {
     rampUp: get("--ramp-up") ? parseInt(get("--ramp-up")!, 10) : undefined,
     target: get("--target") ?? "local",
     room: get("--room"),
+    confirmProd: has(PROD_CONFIRM_FLAG),
   };
 }
 
 async function runScenario(
   scenarioName: string,
+  host: string,
   params: ScenarioParams & { room?: string }
 ): Promise<void> {
   const scenario = scenarios[scenarioName];
@@ -54,7 +75,6 @@ async function runScenario(
     process.exit(1);
   }
 
-  const host = TARGETS[params.target] ?? params.target;
   const roomId = params.room ?? `load-test-${scenarioName}-${Date.now()}`;
   const runId = randomUUID().slice(0, 8);
 
@@ -152,6 +172,7 @@ async function main() {
 
   // --config <name>
   if (args.config) {
+    const host = resolveHost(args.target, args.confirmProd);
     const configPath = new URL(`../configs/${args.config}.json`, import.meta.url).pathname;
     const config = JSON.parse(await Bun.file(configPath).text());
     for (const run of config.runs) {
@@ -164,13 +185,14 @@ async function main() {
         rampUpSeconds: run.rampUpSeconds ?? scenario.defaults.rampUpSeconds,
         target: args.target,
       };
-      await runScenario(run.scenario, params);
+      await runScenario(run.scenario, host, params);
     }
     return;
   }
 
   // --scenario <name>
   if (args.scenario) {
+    const host = resolveHost(args.target, args.confirmProd);
     const scenario = scenarios[args.scenario];
     if (!scenario) {
       console.error(`Unknown scenario: ${args.scenario}. Available: ${Object.keys(scenarios).join(", ")}`);
@@ -184,16 +206,18 @@ async function main() {
       target: args.target,
       room: args.room,
     };
-    await runScenario(args.scenario, params);
+    await runScenario(args.scenario, host, params);
     return;
   }
 
   console.log(`
 Usage:
-  bun tools/load-test/src/runner.ts --scenario <name> [--users N] [--duration S] [--target local|prod]
-  bun tools/load-test/src/runner.ts --config <name> [--target local|prod]
+  bun tools/load-test/src/runner.ts --scenario <name> [--users N] [--duration S] [--target local|staging|prod]
+  bun tools/load-test/src/runner.ts --config <name> [--target local|staging|prod]
   bun tools/load-test/src/runner.ts --compare <run-id-1> <run-id-2>
-  bun tools/load-test/src/runner.ts --history [--scenario <name>] [--target local|prod]
+  bun tools/load-test/src/runner.ts --history [--scenario <name>] [--target local|staging|prod]
+
+  --target prod loads the live server and also needs ${PROD_CONFIRM_FLAG}.
 
 Scenarios: ${Object.keys(scenarios).join(", ")}
   `);

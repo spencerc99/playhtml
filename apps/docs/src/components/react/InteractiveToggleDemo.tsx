@@ -4,11 +4,7 @@
 import React from "react";
 import { CanToggleElement } from "@playhtml/react";
 
-export function InteractiveToggleDemo({
-  id = "ph-docs-toggle-demo",
-}: {
-  id?: string;
-}) {
+export function InteractiveToggleDemo() {
   return (
     <CanToggleElement standalone>
       {({ data }) => {
@@ -16,7 +12,7 @@ export function InteractiveToggleDemo({
         const on = typeof data === "object" ? data.on : Boolean(data);
         return (
           <button
-            id={id}
+            id="ph-docs-toggle-demo"
             type="button"
             className={`ph-toggle ${on ? "is-on" : "is-off"}`}
             aria-pressed={on}

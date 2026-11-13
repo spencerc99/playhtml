@@ -1,5 +1,5 @@
 // ABOUTME: Renders quick action buttons for testing connection, picking elements, and navigation
-// ABOUTME: Used in the main popup home view for primary user interactions
+// ABOUTME: Shown in the Bag settings section of the extension Settings page
 import React from "react";
 import { GameInventory } from "../types";
 import "./QuickActions.scss";

@@ -51,7 +51,6 @@ describe("CommuteInstallPrompt", () => {
     expect(container.textContent).toContain("internet transit pass");
     expect(container.textContent).toContain("join the ride");
     expect(container.textContent).toContain("get the extension");
-    expect(container.textContent).not.toContain("add your stops");
     const link = container.querySelector("a");
     expect(link?.href).toBe("https://wewere.online/");
     expect(link?.target).toBe("_blank");

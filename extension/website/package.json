@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "tsc && eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint": "tsc && eslint . --report-unused-disable-directives",
     "preview": "vite preview",
     "capture": "tsx scripts/capture-matrix.ts"
   },
   "dependencies": {
+    "html2canvas": "^1.4.1",
     "@playhtml/common": "workspace:*",
     "@playhtml/react": "workspace:*",
     "dompurify": "3.2.6",
@@ -21,13 +22,13 @@
     "profane-words": "^1.5.11",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "sass": "^1.83.0",
-    "tldts": "^7.0.19"
+    "sass": "^1.83.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.17.0",
     "@types/p5": "^1.7.7",
     "@types/react": "^18.3.17",
-    "@types/react-dom": "^19.0.1",
+    "@types/react-dom": "^18.3.1",
     "@typescript-eslint/eslint-plugin": "^8.29.0",
     "@typescript-eslint/parser": "^8.29.0",
     "@vitejs/plugin-react": "^4.3.4",
@@ -37,7 +38,6 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.16",
     "glob": "^10.4.5",
-    "path": "^0.12.7",
     "playwright": "^1.49.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",

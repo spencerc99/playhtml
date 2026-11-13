@@ -95,34 +95,6 @@ export interface CommuteTiming {
   complete: boolean;
 }
 
-export function getSlowModeProgress(
-  timing: Pick<CommuteTiming, "atOrigin" | "phase" | "stopIndex">,
-  stopCount: number,
-): { completedIndex: number; stopsLeft: number } {
-  const completedIndex = timing.atOrigin
-    ? -1
-    : timing.phase === "stopped"
-      ? timing.stopIndex
-      : timing.stopIndex - 1;
-  return {
-    completedIndex,
-    stopsLeft: Math.max(0, stopCount - 2 - completedIndex),
-  };
-}
-
-export function getCommuteRouteDurationSeconds(stopCount: number): number {
-  if (stopCount < 1) {
-    throw new Error("Internet Commute requires at least one stop");
-  }
-
-  return (
-    INITIAL_PLATFORM_SECONDS +
-    stopCount * (TRAVEL_SECONDS + ARRIVAL_SECONDS + PLATFORM_SECONDS) +
-    RETURN_TRAVEL_SECONDS +
-    RETURN_ARRIVAL_SECONDS
-  );
-}
-
 export function getCommuteTiming(
   elapsedSeconds: number,
   stopCount: number,
@@ -229,4 +201,22 @@ export function getCommuteTiming(
     atOrigin: false,
     complete: false,
   };
+}
+
+/**
+ * True when moving the clock from `previousNow` to `nextNow` changes the whole
+ * second elapsed since any of `anchors` (all in milliseconds). Everything the
+ * commute renders from its clock is a whole-second value, so ticks that change
+ * none of them need no re-render.
+ */
+export function crossesCommuteClockSecond(
+  previousNow: number,
+  nextNow: number,
+  anchors: readonly number[],
+): boolean {
+  return anchors.some(
+    (anchor) =>
+      Math.floor((previousNow - anchor) / 1_000) !==
+      Math.floor((nextNow - anchor) / 1_000),
+  );
 }

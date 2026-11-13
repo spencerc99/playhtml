@@ -4,6 +4,10 @@ on:
   pull_request:
     branches: [ main ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   sound-changes:
     runs-on: ubuntu-latest
@@ -44,18 +48,26 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         # Astro 6 (apps/docs) requires Node >= 22.12.
-        node-version: '22'
+        node-version-file: .nvmrc
 
     - name: Setup Bun
-      uses: oven-sh/setup-bun@v1
+      uses: oven-sh/setup-bun@v2
       with:
-        bun-version: latest
+        bun-version: 1.3.13
+
+    - name: Cache Bun install cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.bun/install/cache
+        key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-bun-
 
     - name: Prepare workspace
       run: bun run setup
@@ -77,6 +89,18 @@ jobs:
 
     - name: Run extension Worker tests
       run: bun run test:extension-worker
+
+    - name: Run extension types tests
+      run: bun run test:extension-types
+
+    - name: Run PartyKit server tests
+      run: bun run test:partykit
+
+    - name: Run website tests
+      run: bun run test:website
+
+    - name: Run repo script tests
+      run: bun run test:scripts
 
     - name: Lint
       run: bun run lint
@@ -113,15 +137,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
-      - uses: oven-sh/setup-bun@v1
+          node-version-file: .nvmrc
+      - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
-      - name: Prepare workspace
-        run: bun run setup
+          bun-version: 1.3.13
+      - name: Cache Bun install cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-sound-${{ hashFiles('bun.lock', 'scripts/sound-samples/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-sound-
+      # The scans import extension/website/shared/sound by relative path and only
+      # need installed dependencies, not built packages.
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
       - name: Install native audio library
         run: sudo apt-get update && sudo apt-get install -y libjack-jackd2-0
       - name: Install native audio renderer

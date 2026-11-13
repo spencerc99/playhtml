@@ -167,6 +167,34 @@ describe("rail 2: lifecycle & guards", () => {
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
+  it("runs the onMount cleanup and stops rendering on deleteElementData()", async () => {
+    const el = document.createElement("div");
+    el.id = "deleted-lifecycle";
+    document.body.appendChild(el);
+
+    const cleanup = vi.fn();
+    const view = vi.fn(() => html`<span>hi</span>`);
+    playhtml.register("deleted-lifecycle", {
+      defaultData: {},
+      view,
+      onMount: () => cleanup,
+    });
+    await tick();
+    expect(cleanup).not.toHaveBeenCalled();
+
+    playhtml.deleteElementData("can-play", "deleted-lifecycle");
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(elementHandlers.get("can-play")?.has("deleted-lifecycle")).toBe(
+      false,
+    );
+
+    // Adding a child would re-run the view while the descendant observer is live.
+    const renders = view.mock.calls.length;
+    el.appendChild(document.createElement("p"));
+    await tick();
+    expect(view.mock.calls.length).toBe(renders);
+  });
+
   it("rejects setLocalData called during render (no infinite recursion)", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const el = document.createElement("div");

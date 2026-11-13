@@ -467,23 +467,28 @@ function addEntry(
   entry.byStableId.set(stableId, value);
 }
 
-function buildElementPresenceShards(
+export function buildElementPresenceShards(
   localTags: Map<string, Record<string, unknown>>,
 ): ElementPresenceShard[] {
   const shards: ElementPresenceShard[] = [];
   let entries: ElementPresenceEntry[] = [];
+  // A shard serializes as its empty form with the entries' own JSON joined by
+  // commas inside the array, so its size is tracked by adding each entry's
+  // bytes plus one separator instead of re-serializing the whole shard.
+  const emptyShardBytes = jsonByteLength(createElementPresenceShard([]));
+  let shardBytes = emptyShardBytes;
 
   for (const entry of getSortedElementPresenceEntries(localTags)) {
-    const candidate = [...entries, entry];
-    if (
-      entries.length > 0 &&
-      jsonByteLength(createElementPresenceShard(candidate)) >
-        MAX_PRESENCE_VALUE_BYTES
-    ) {
+    const entryBytes = jsonByteLength(entry);
+    const candidateBytes =
+      entries.length > 0 ? shardBytes + 1 + entryBytes : shardBytes + entryBytes;
+    if (entries.length > 0 && candidateBytes > MAX_PRESENCE_VALUE_BYTES) {
       shards.push(createElementPresenceShard(entries));
       entries = [entry];
+      shardBytes = emptyShardBytes + entryBytes;
     } else {
-      entries = candidate;
+      entries.push(entry);
+      shardBytes = candidateBytes;
     }
   }
 

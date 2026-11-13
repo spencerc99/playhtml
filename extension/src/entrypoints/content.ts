@@ -20,6 +20,7 @@ import { NavigationCollector } from "../collectors/NavigationCollector";
 import { ViewportCollector } from "../collectors/ViewportCollector";
 import { KeyboardCollector } from "../collectors/KeyboardCollector";
 import { ScrapCollector } from "../collectors/ScrapCollector";
+import type { CollectionEventType } from "../collectors/types";
 import {
   DEV_MODE_KEY,
   SCRAPS_DEBUG_KEY,
@@ -121,11 +122,7 @@ export default defineContentScript({
             });
           }
 
-          // Check if page already has PlayHTML
-          this.detectExistingPlayHTML();
-
           // Initialize extension features
-          this.setupElementPicker();
           this.setupPresenceDetection();
 
           if (await isFeatureEnabled("PAGE_COLLECTION")) {
@@ -142,19 +139,6 @@ export default defineContentScript({
         }
       }
 
-      private detectExistingPlayHTML() {
-        // Look for existing PlayHTML elements
-        const existingElements = document.querySelectorAll(
-          "[can-move], [can-spin], [can-toggle], [can-grow], [can-duplicate], [can-mirror], [can-play]",
-        );
-
-        if (existingElements.length > 0) {
-          // TODO: Coordinate with existing PlayHTML instance
-        }
-
-        return existingElements.length;
-      }
-
       public checkPlayHTMLStatus() {
         const existingElements = document.querySelectorAll(
           "[can-move], [can-spin], [can-toggle], [can-grow], [can-duplicate], [can-mirror], [can-play]",
@@ -163,10 +147,6 @@ export default defineContentScript({
           elementCount: existingElements.length,
           detected: existingElements.length > 0,
         };
-      }
-
-      private setupElementPicker() {
-        // Element picker will be activated on demand
       }
 
       private findBestTarget(startElement: HTMLElement): HTMLElement | null {
@@ -385,7 +365,7 @@ export default defineContentScript({
           // Clean up
           isActive = false;
           document.removeEventListener("mousemove", handleMouseMove);
-          document.removeEventListener("click", handleClick);
+          document.removeEventListener("click", handleClick, true);
           document.removeEventListener("keydown", handleEscape);
           overlay.remove();
           highlight.remove();
@@ -395,7 +375,7 @@ export default defineContentScript({
           if (e.key === "Escape") {
             isActive = false;
             document.removeEventListener("mousemove", handleMouseMove);
-            document.removeEventListener("click", handleClick);
+            document.removeEventListener("click", handleClick, true);
             document.removeEventListener("keydown", handleEscape);
             overlay.remove();
             highlight.remove();
@@ -569,7 +549,7 @@ export default defineContentScript({
               data: {
                 domain: currentDomain,
                 title: siteTitle,
-                favicon: this.getFaviconUrl(),
+                favicon: getFaviconUrl(),
                 discoveredAt: Date.now(),
               },
             });
@@ -577,10 +557,6 @@ export default defineContentScript({
         } catch (error) {
           console.error("Failed to check site discovery:", error);
         }
-      }
-
-      private getFaviconUrl(): string {
-        return getFaviconUrl();
       }
 
       private setupCollectionDetection() {
@@ -1031,14 +1007,16 @@ export default defineContentScript({
           "playhtml:ready",
           () => {
             dispatch();
-            console.log(
-              "[we-were-online] Re-dispatched identity after playhtml ready signal",
-            );
+            if (VERBOSE)
+              console.log(
+                "[we-were-online] Re-dispatched identity after playhtml ready signal",
+              );
           },
           { once: true },
         );
 
-        console.log("[we-were-online] Dispatched identity injection event");
+        if (VERBOSE)
+          console.log("[we-were-online] Dispatched identity injection event");
       }
 
       /**
@@ -1152,7 +1130,7 @@ export default defineContentScript({
         // own cursor instance here — but bottles still get one later via
         // ensureGlobalFeatures, in their own extension-owned room.
         if (await this.detectNativePlayhtml()) {
-          console.log("[we-were-online] Native playhtml detected");
+          if (VERBOSE) console.log("[we-were-online] Native playhtml detected");
           this.injectIdentityIntoMainWorld();
           this.listenForPresenceCount();
           return;
@@ -1234,8 +1212,13 @@ export default defineContentScript({
         }
       }
 
+      // Registered once per page; a bfcache restore re-runs presence setup and
+      // must not stack another listener.
+      private listeningForPresenceCount = false;
+
       private listenForPresenceCount() {
-        if (!("cursors" in window)) return;
+        if (this.listeningForPresenceCount || !("cursors" in window)) return;
+        this.listeningForPresenceCount = true;
 
         const emit = () => {
           currentPresenceCount = (window as any).cursors.allColors.length;
@@ -1416,6 +1399,11 @@ export default defineContentScript({
 
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();
+        // The context may have been invalidated while this was starting.
+        if (ctx?.isInvalid) {
+          collectorManager.shutdown();
+          return;
+        }
 
         // Best-effort final flush; browsers may not wait for async unload work.
         window.addEventListener("beforeunload", () => {
@@ -1427,30 +1415,6 @@ export default defineContentScript({
           );
         }
 
-        // One-time migration of page-origin IndexedDB events to extension-origin
-        const migrationKey = `migration_v1_done_${window.location.hostname}`;
-        try {
-          const migrationResult = await browser.storage.local.get([
-            migrationKey,
-          ]);
-          if (!migrationResult[migrationKey]) {
-            const { LocalEventStore } = await import(
-              "../storage/LocalEventStore"
-            );
-            const pageStore = new LocalEventStore();
-            const events = await pageStore.getAllEvents();
-            if (events.length > 0) {
-              await browser.runtime.sendMessage({
-                type: "STORE_EVENTS",
-                events,
-              });
-            }
-            await browser.storage.local.set({ [migrationKey]: true });
-          }
-        } catch (e) {
-          // Migration is best-effort; don't break collection if it fails
-          console.warn("[Content] Migration failed:", e);
-        }
       } catch (error) {
         console.error(
           "[Collections] Failed to initialize collector manager:",
@@ -1503,6 +1467,9 @@ export default defineContentScript({
       }
     });
     ctx?.onInvalidated(teardownExtension);
+    // Once the extension context is gone the background is unreachable, so
+    // collectors stop listening and buffered events are dropped, not retried.
+    ctx?.onInvalidated(() => collectorManager?.shutdown());
 
     // Keyboard shortcut for overlay (Cmd/Ctrl+Shift+H)
     document.addEventListener("keydown", (e) => {
@@ -1671,39 +1638,6 @@ export default defineContentScript({
           return true;
         }
 
-        if (message.type === "FLUSH_EVENTS") {
-          if (!collectorManager) {
-            sendResponse({
-              success: false,
-              error: "Collector manager not initialized",
-            });
-            return true;
-          }
-          collectorManager
-            .flushEvents()
-            .then(() => {
-              browser.runtime
-                .sendMessage({ type: "GET_PENDING_COUNT" })
-                .then((res: any) => {
-                  sendResponse({
-                    success: true,
-                    pendingCount: res?.count ?? 0,
-                  });
-                })
-                .catch(() => {
-                  sendResponse({ success: true, pendingCount: 0 });
-                });
-            })
-            .catch((error) => {
-              console.error("Failed to flush events:", error);
-              sendResponse({
-                success: false,
-                error: error.message || String(error),
-              });
-            });
-          return true;
-        }
-
         if (message.type === "GET_PRESENCE_COUNT") {
           sendResponse({ count: currentPresenceCount });
           return true;
@@ -1717,23 +1651,17 @@ export default defineContentScript({
       try {
         browser.storage.onChanged.addListener((changes, area) => {
           if (area !== "local" || !collectorManager) return;
+          const modeKeyPrefix = collectionModeStorageKey("");
           for (const key of Object.keys(changes)) {
-            if (key.startsWith("collection_mode_")) {
-              const type = key.replace("collection_mode_", "");
-              const next = changes[key]?.newValue;
-              const normalized =
-                next === "off" || next === "local" || next === "shared"
-                  ? next
-                  : "local";
-              if (normalized === "off") {
-                collectorManager
-                  .disableCollector(type as any)
-                  .catch(console.error);
-              } else {
-                collectorManager
-                  .enableCollector(type as any)
-                  .catch(console.error);
-              }
+            if (!key.startsWith(modeKeyPrefix)) continue;
+            const type = key.slice(modeKeyPrefix.length) as CollectionEventType;
+            // Only collectors registered on this page can change mode here.
+            if (!collectorManager.getCollector(type)) continue;
+            const mode = normalizeCollectionMode(type, changes[key]?.newValue);
+            if (mode === "off") {
+              collectorManager.disableCollector(type).catch(console.error);
+            } else {
+              collectorManager.enableCollector(type).catch(console.error);
             }
           }
         });

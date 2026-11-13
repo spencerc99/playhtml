@@ -351,7 +351,7 @@ function App() {
               filter: brightness(1.2) saturate(1.6) drop-shadow(0px 0px 50px rgba(247, 220, 156, 0.85));
             }
 
-            .hoverBox.hovered {
+            #hoverBox[data-playhtml-hover] {
               background: blue !important;
               transform: scale(1.1);
             }

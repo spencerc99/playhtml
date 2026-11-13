@@ -5,6 +5,7 @@ import React, { useLayoutEffect, useRef, useState } from "react";
 import type { PieceBox } from "./collageGeometry";
 import type { CollagePiece } from "./collageRecord";
 import { placeBesidePiece } from "./studioPanels";
+import { ACCEL_KEY_NAME } from "./studioKeymap";
 
 const STROKE = {
   fill: "none",
@@ -290,7 +291,7 @@ export function PieceActions({
     {
       key: "duplicate",
       label: "Duplicate",
-      hint: "cmd + D",
+      hint: `${ACCEL_KEY_NAME} + D`,
       glyph: GLYPHS.duplicate,
       run: onDuplicate,
     },

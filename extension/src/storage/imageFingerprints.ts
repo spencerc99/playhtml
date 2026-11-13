@@ -1,18 +1,23 @@
 // ABOUTME: Computes exact image fingerprints with bounded downloads and concurrency.
-// ABOUTME: Adds local metadata to accepted scraps without storing image files or deleting encounters.
+// ABOUTME: Adds local metadata to accepted scraps and hands the downloaded bytes to whoever copies the image.
 
 import type { CollectionEvent, ImageScrapData } from "../collectors/types";
 import { isImageContentHash } from "@movement/utils/scrapIdentity";
 import type { LocalEventStore } from "./LocalEventStore";
+import { contentHash, type DownloadedBytes } from "./imageCopyMaking";
 
 export const MAX_FINGERPRINT_BYTES = 5 * 1024 * 1024;
 const MAX_PENDING_IMAGES = 32;
 const DOWNLOAD_TIMEOUT_MS = 10_000;
 
+interface FingerprintedImage extends DownloadedBytes {
+  hash: string;
+}
+
 async function downloadImageFingerprint(
   src: string,
   signal: AbortSignal,
-): Promise<string | undefined> {
+): Promise<FingerprintedImage | undefined> {
   const url = new URL(src);
   if (
     !["http:", "https:"].includes(url.protocol) ||
@@ -27,14 +32,14 @@ async function downloadImageFingerprint(
     redirect: "error",
     signal,
   });
-  if (
-    !response.ok ||
-    !response.headers
-      .get("content-type")
-      ?.toLowerCase()
-      .startsWith("image/") ||
-    !response.body
-  )
+  // Parsed the way the image copier reads it, so its copy from these bytes
+  // matches one it would make from its own download.
+  const mimeType = response.headers
+    .get("content-type")
+    ?.split(";")[0]
+    .trim()
+    .toLowerCase();
+  if (!response.ok || !mimeType?.startsWith("image/") || !response.body)
     return;
   const declaredSize = Number(response.headers.get("content-length"));
   if (declaredSize > MAX_FINGERPRINT_BYTES) return;
@@ -72,15 +77,18 @@ async function downloadImageFingerprint(
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
+  return { hash: await contentHash(bytes), bytes, mimeType };
 }
 
 export async function fetchImageFingerprint(
   src: string,
 ): Promise<string | undefined> {
+  return (await fetchFingerprintedImage(src))?.hash;
+}
+
+async function fetchFingerprintedImage(
+  src: string,
+): Promise<FingerprintedImage | undefined> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
   try {
@@ -99,7 +107,14 @@ export class ImageFingerprints {
   private waiting: Array<() => void> = [];
   private pending = new Map<string, Promise<string | undefined>>();
 
-  constructor(private store: LocalEventStore) {}
+  /**
+   * `onDownloaded` receives each image's bytes once they are hashed, so the
+   * local copy can be made without downloading the image again.
+   */
+  constructor(
+    private store: LocalEventStore,
+    private onDownloaded?: (src: string, image: DownloadedBytes) => void,
+  ) {}
 
   private fingerprint(src: string): Promise<string | undefined> {
     const pending = this.pending.get(src);
@@ -109,11 +124,12 @@ export class ImageFingerprints {
     const result = new Promise<string | undefined>((resolve) => {
       const run = () => {
         this.active++;
-        void fetchImageFingerprint(src).then((hash) => {
+        void fetchFingerprintedImage(src).then((image) => {
           this.pending.delete(src);
           this.active--;
           this.waiting.shift()?.();
-          resolve(hash);
+          if (image) this.onDownloaded?.(src, image);
+          resolve(image?.hash);
         });
       };
       if (this.active < 2) run();

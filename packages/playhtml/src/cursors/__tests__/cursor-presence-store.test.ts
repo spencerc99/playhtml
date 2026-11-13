@@ -245,10 +245,51 @@ describe("CursorPresenceStore", () => {
       },
     });
     // Still fresh right after arrival.
-    expect(store.getRemotePresences("local").get("pk_x")?.cursor).not.toBeNull();
+    expect(
+      store.getRemotePresences("local").get("pk_x")?.cursor,
+    ).not.toBeNull();
 
     // Advance past the staleness window; the periodic sweep drops the cursor.
     vi.advanceTimersByTime(31_000);
-    expect(store.getRemotePresences("local").get("pk_x")?.cursor ?? null).toBeNull();
+    expect(
+      store.getRemotePresences("local").get("pk_x")?.cursor ?? null,
+    ).toBeNull();
+  });
+
+  it("reuses the derived presences until the peer map changes", () => {
+    const now = Date.now();
+    const { store, applySync, applyChanges } = makeStore();
+    applySync({
+      "conn-1": {
+        identity: alice,
+        cursor: { cursor: { x: 1, y: 2, pointer: "mouse" }, at: now },
+      },
+    });
+
+    const first = store.getRemotePresences("pk_self");
+    expect(store.getRemotePresences("pk_self")).toBe(first);
+    // A different local key derives a different view.
+    expect(store.getRemotePresences(alice.publicKey).size).toBe(0);
+
+    applyChanges({
+      "conn-2": {
+        identity: bob,
+        cursor: { cursor: { x: 5, y: 6, pointer: "mouse" }, at: now },
+      },
+    });
+    const second = store.getRemotePresences("pk_self");
+    expect(second).not.toBe(first);
+    expect(Array.from(second.keys())).toEqual([alice.publicKey, bob.publicKey]);
+
+    applyChanges({}, { "conn-2": ["cursor"] });
+    expect(
+      store.getRemotePresences("pk_self").get(bob.publicKey)?.cursor,
+    ).toBeNull();
+
+    // The periodic sweep expiring a cursor also invalidates the cached view.
+    vi.advanceTimersByTime(31_000);
+    expect(
+      store.getRemotePresences("pk_self").get(alice.publicKey)?.cursor,
+    ).toBeNull();
   });
 });

@@ -1,7 +1,8 @@
 // ABOUTME: Finds shared playhtml sources and consumers in the current document.
 // ABOUTME: Supports runtime diagnostics without loading the full development toolbar.
 
-import { normalizePath } from "@playhtml/common";
+import { normalizePath, parseDataSource } from "@playhtml/common";
+import { parseSharedPermission } from "./sharing";
 
 export function listSharedElements() {
   const out: Array<{
@@ -25,9 +26,7 @@ export function listSharedElements() {
       elementId: id,
       dataSource: ds,
       normalized: ds,
-      permissions: element.getAttribute("shared")?.includes("read-only")
-        ? "read-only"
-        : "read-write",
+      permissions: parseSharedPermission(element.getAttribute("shared")),
       element,
     });
   });
@@ -35,12 +34,13 @@ export function listSharedElements() {
   document.querySelectorAll("[data-source]").forEach((el) => {
     const element = el as HTMLElement;
     const raw = element.getAttribute("data-source") || "";
-    const [domainAndPath, elementId] = raw.split("#");
-    if (!domainAndPath || !elementId) return;
-    const firstSlash = domainAndPath.indexOf("/");
-    const domain =
-      firstSlash === -1 ? domainAndPath : domainAndPath.slice(0, firstSlash);
-    const path = firstSlash === -1 ? "/" : domainAndPath.slice(firstSlash);
+    let reference: ReturnType<typeof parseDataSource>;
+    try {
+      reference = parseDataSource(raw);
+    } catch {
+      return;
+    }
+    const { domain, path, elementId } = reference;
     const normalized = `${domain}${normalizePath(path)}#${elementId}`;
     out.push({
       type: "consumer",

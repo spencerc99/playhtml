@@ -10,7 +10,7 @@ export interface LatencySnapshot {
   p95: number;
   p99: number;
   errorRate: number;       // 0-1
-  propagationRate: number; // 0-1 (writes observed by others within timeout)
+  propagationRate: number; // 0-1 (writes followed by a remote update within WRITE_TIMEOUT_MS)
   writesPerSec: number;
   awarenessPerSec: number;
 }
@@ -58,10 +58,14 @@ export class MetricsCollector {
     const awareness = inWindow.filter((e) => e.type === "awareness-sent");
     const errors = inWindow.filter((e) => e.type === "disconnect" || e.type === "error");
 
-    const totalExpected = writes.length + timedOut.length;
-    const propagationRate = totalExpected > 0
-      ? 1 - timedOut.length / totalExpected
-      : 1;
+    const propagated = inWindow.reduce(
+      (n, e) =>
+        e.type === "write-received" ? n + ((e.data?.propagatedWrites as number | undefined) ?? 0) : n,
+      0
+    );
+    const resolvedWrites = propagated + timedOut.length;
+    // A window where no write resolved either way has nothing to report against.
+    const propagationRate = resolvedWrites > 0 ? propagated / resolvedWrites : 1;
 
     const windowSec = (windowEnd - windowStart) / 1000;
 

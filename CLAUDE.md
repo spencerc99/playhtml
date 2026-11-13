@@ -19,8 +19,6 @@ playhtml is a collaborative, interactive HTML library: data attributes turn elem
 - **website/**: `playhtml.fun` demo site. Test pages go here.
 - **apps/docs/**: Astro + Starlight docs, served under `/docs/`
 
-`packages/extension/` is a WXT build artifact, not a package.
-
 ## Commands
 
 - `bun run setup`: install, build packages, verify the workspace (`bun run setup:agent` adds headless Chromium; use it as the cloud agent setup script, not a `SessionStart` hook). `bun run doctor` reports what's missing.

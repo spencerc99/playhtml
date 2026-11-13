@@ -32,13 +32,40 @@ export type StoredCursorPresence = CursorPresence & {
  * from the folded map, leaving the identity-only peer, exactly as before.
  */
 export class CursorPresenceStore {
+  // getRemotePresences result, reused until the peer map changes or a
+  // different local key is asked for.
+  private remotePresencesCache: {
+    revision: number;
+    localPublicKey: string;
+    presences: ReadonlyMap<string, StoredCursorPresence>;
+  } | null = null;
+
   constructor(private peerStore: PeerStore) {}
 
   private get peers(): Map<string, PeerChannels> {
     return this.peerStore.getPeers();
   }
 
-  getRemotePresences(localPublicKey: string): Map<string, StoredCursorPresence> {
+  getRemotePresences(
+    localPublicKey: string,
+  ): ReadonlyMap<string, StoredCursorPresence> {
+    const revision = this.peerStore.getRevision();
+    const cached = this.remotePresencesCache;
+    if (
+      cached &&
+      cached.revision === revision &&
+      cached.localPublicKey === localPublicKey
+    ) {
+      return cached.presences;
+    }
+    const presences = this.buildRemotePresences(localPublicKey);
+    this.remotePresencesCache = { revision, localPublicKey, presences };
+    return presences;
+  }
+
+  private buildRemotePresences(
+    localPublicKey: string,
+  ): Map<string, StoredCursorPresence> {
     const presences = new Map<string, StoredCursorPresence>();
     const connectionIds = Array.from(this.peers.keys()).sort();
 

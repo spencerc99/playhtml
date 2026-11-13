@@ -2,7 +2,7 @@
 // ABOUTME: Once shared, the link updates itself in place a few seconds after the collage or its signature stops changing (see shareLinkState).
 // ABOUTME: Both states ask whether to sign it, stamping the share with the maker's cursor colour and name.
 
-import React, { useEffect, useReducer, useState } from "react";
+import React, { useEffect, useReducer, useRef, useState } from "react";
 import type { CollageRecord, CollagePublication } from "./collageRecord";
 import {
   CollagePublishError,
@@ -31,8 +31,6 @@ import {
   linkStatus,
   stepShareLink,
 } from "./shareLinkState";
-
-export { LINK_SETTLE_MS, LINK_UPDATE_GAP_MS } from "./shareLinkState";
 
 export interface PublishSectionProps {
   /** The live share, if this collage has one. */
@@ -71,6 +69,9 @@ const STATUS_TEXT: Record<ReturnType<typeof linkStatus>, string> = {
   pending: "changes go up in a moment",
   upToDate: "up to date",
 };
+
+/** Said in place of the status while a signed link cannot catch up. */
+const STUCK_TEXT = "not updated";
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -113,6 +114,8 @@ export function PublishSection({
     withName: share?.signature ? share.signature.name !== undefined : true,
   }));
   const [changingSignature, setChangingSignature] = useState(false);
+  /** Why the maker could not be read, once loading them has given up. */
+  const [signerProblem, setSignerProblem] = useState<string | null>(null);
 
   useEffect(() => {
     if (!signer) return;
@@ -120,11 +123,14 @@ export function PublishSection({
     signer
       .load()
       .then((next) => {
-        if (!cancelled) setIdentity(next);
+        if (cancelled) return;
+        setIdentity(next);
+        if (next === null) setSignerProblem("who is sharing could not be read");
       })
-      .catch((error: unknown) =>
-        console.warn("[collage publish] could not read who is sharing:", error),
-      );
+      .catch((error: unknown) => {
+        console.warn("[collage publish] could not read who is sharing:", error);
+        if (!cancelled) setSignerProblem(reason(error));
+      });
     return () => {
       cancelled = true;
     };
@@ -231,7 +237,30 @@ export function PublishSection({
   // A shared link follows the collage: once it and its signature have been
   // still for a moment, the link catches up. Nothing runs until the maker is
   // known, so a link is never re-signed as anonymous while they load.
-  const ready = !signer || identity !== null;
+  // An unsigned link needs no maker, so it is never held back waiting for one.
+  const ready = !signer || identity !== null || !choice.signing;
+  /**
+   * A signed link whose maker could not be read cannot be brought up to date
+   * without losing its stamp, so it is left as it is and says so whenever the
+   * collage has moved on from it.
+   */
+  const stuck =
+    share !== undefined &&
+    !ready &&
+    signerProblem !== null &&
+    publicationContentKey(record(), share.signature) !== share.contentKey;
+  const stuckToldRef = useRef(false);
+  useEffect(() => {
+    if (!stuck) {
+      stuckToldRef.current = false;
+      return;
+    }
+    if (stuckToldRef.current) return;
+    stuckToldRef.current = true;
+    onProblem(`could not update the link — ${signerProblem}`);
+    // onProblem only shows the notice; it is not what the warning follows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stuck, signerProblem]);
   useEffect(() => {
     const check = {
       key:
@@ -365,7 +394,7 @@ export function PublishSection({
       </div>
       <div className="collage-export__row collage-share__foot">
         <span className="collage-studio__label" aria-live="polite">
-          {STATUS_TEXT[linkStatus(link)]}
+          {stuck ? STUCK_TEXT : STATUS_TEXT[linkStatus(link)]}
         </span>
         <button
           type="button"

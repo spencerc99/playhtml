@@ -983,3 +983,39 @@ describe("can-mirror: CRDT-backed two-client sync", () => {
   });
 
 });
+
+describe("can-mirror: onMount cleanup", () => {
+  it("stops observing and publishing after cleanup", async () => {
+    const element = elementFromHTML(`<div id="m"><input type="text" /></div>`);
+    document.body.appendChild(element);
+    let writes = 0;
+    const published: unknown[] = [];
+    const cleanup = canMirrorInitializer.onMount!({
+      getElement: () => element,
+      setData: () => {
+        writes += 1;
+      },
+      setMyAwareness: (value: unknown) => {
+        published.push(value);
+      },
+    } as any);
+    expect(typeof cleanup).toBe("function");
+    expect((element as any).__playhtml_observer).toBeDefined();
+
+    (cleanup as () => void)();
+    expect((element as any).__playhtml_observer).toBeUndefined();
+
+    element.setAttribute("data-color", "red");
+    element.appendChild(document.createElement("span"));
+    element.dispatchEvent(new MouseEvent("mouseenter"));
+    element.dispatchEvent(new FocusEvent("focusin"));
+    element.querySelector("input")!.dispatchEvent(
+      new Event("input", { bubbles: true }),
+    );
+    element.dispatchEvent(new Event("change"));
+    await flush();
+
+    expect(writes).toBe(0);
+    expect(published).toEqual([]);
+  });
+});

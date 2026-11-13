@@ -4,7 +4,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   RESERVED_ACCELERATORS,
-  acceleratorName,
+  acceleratorNames,
+  isReservedAccelerator,
   isTypingTarget,
   releaseTypingFocus,
   studioCommandFor,
@@ -277,6 +278,36 @@ describe("ordering", () => {
   });
 });
 
+/**
+ * A press as a US keyboard reports it: shift changes the printed character of
+ * a digit or a bracket, while the physical key stays the same.
+ */
+function physicalPress(
+  base: string,
+  overrides: Partial<KeyEventShape> = {},
+): KeyEventShape {
+  const shifted: Record<string, string> = {
+    "1": "!", "2": "@", "3": "#", "4": "$", "5": "%",
+    "6": "^", "7": "&", "8": "*", "9": "(", "[": "{", "]": "}",
+  };
+  const codes: Record<string, string> = {
+    "[": "BracketLeft",
+    "]": "BracketRight",
+    Tab: "Tab",
+    PageUp: "PageUp",
+    PageDown: "PageDown",
+  };
+  const code = /^[0-9]$/.test(base)
+    ? `Digit${base}`
+    : /^[a-z]$/.test(base)
+      ? `Key${base.toUpperCase()}`
+      : codes[base];
+  const key = overrides.shiftKey
+    ? (shifted[base] ?? (base.length === 1 ? base.toUpperCase() : base))
+    : base;
+  return press(key, { code, ...overrides });
+}
+
 describe("reserved accelerators", () => {
   /** Every accelerator the studio could plausibly be asked about. */
   const letters = "abcdefghijklmnopqrstuvwxyz".split("");
@@ -288,29 +319,82 @@ describe("reserved accelerators", () => {
       { ...IDLE, hasClipboard: true },
       { ...IDLE, hasSelection: false },
     ];
-    for (const key of [...letters, ...digits, "[", "]", "Tab"]) {
+    const checked = new Set<string>();
+    const keys = [...letters, ...digits, "[", "]", "Tab", "PageUp", "PageDown"];
+    for (const key of keys) {
       for (const shiftKey of [false, true]) {
         for (const held of [{ metaKey: true }, { ctrlKey: true }]) {
-          const event = press(key, { ...held, shiftKey });
-          const name = acceleratorName(event);
-          if (!name || !RESERVED_ACCELERATORS.includes(name)) continue;
+          const event = physicalPress(key, { ...held, shiftKey });
+          if (!isReservedAccelerator(event)) continue;
+          for (const name of acceleratorNames(event)) checked.add(name);
           for (const context of contexts) {
             expect(
               studioCommandFor(event, context),
-              `${name} is reserved by the browser and must not be bound`,
+              `${acceleratorNames(event).join(" / ")} is reserved by the browser and must not be bound`,
             ).toBeNull();
           }
         }
       }
     }
+    // Every reserved accelerator is actually reached by a press above.
+    for (const reserved of RESERVED_ACCELERATORS) {
+      expect(checked, `${reserved} was never exercised`).toContain(reserved);
+    }
   });
 
   it("names an accelerator the way the reserved list spells it", () => {
-    expect(acceleratorName(press("w", { metaKey: true }))).toBe("accel+w");
+    expect(acceleratorNames(press("w", { metaKey: true }))).toEqual([
+      "accel+w",
+    ]);
     expect(
-      acceleratorName(press("t", { ctrlKey: true, shiftKey: true })),
-    ).toBe("accel+shift+t");
-    expect(acceleratorName(press("r"))).toBeNull();
+      acceleratorNames(press("t", { ctrlKey: true, shiftKey: true })),
+    ).toEqual(["accel+shift+t", "ctrl+shift+t"]);
+    expect(acceleratorNames(press("r"))).toEqual([]);
+  });
+
+  it("recognizes shifted brackets by the physical key, not the character", () => {
+    expect(
+      acceleratorNames(
+        press("{", { metaKey: true, shiftKey: true, code: "BracketLeft" }),
+      ),
+    ).toEqual(["accel+shift+["]);
+    expect(
+      isReservedAccelerator(
+        press("}", { ctrlKey: true, shiftKey: true, code: "BracketRight" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("reads letters from the layout, so a moved key keeps its meaning", () => {
+    // On AZERTY the key printed "w" sits where QWERTY has "z".
+    expect(
+      isReservedAccelerator(press("w", { metaKey: true, code: "KeyZ" })),
+    ).toBe(true);
+    expect(
+      isReservedAccelerator(press("z", { metaKey: true, code: "KeyW" })),
+    ).toBe(false);
+  });
+
+  it("recognizes the ctrl shortcuts that switch tabs on every platform", () => {
+    for (const held of [{}, { metaKey: true }]) {
+      expect(isReservedAccelerator(press("Tab", { ...held, ctrlKey: true }))).toBe(
+        true,
+      );
+      expect(
+        isReservedAccelerator(
+          press("Tab", { ...held, ctrlKey: true, shiftKey: true }),
+        ),
+      ).toBe(true);
+      expect(
+        isReservedAccelerator(press("PageUp", { ...held, ctrlKey: true })),
+      ).toBe(true);
+      expect(
+        isReservedAccelerator(press("PageDown", { ...held, ctrlKey: true })),
+      ).toBe(true);
+    }
+    // Cmd+tab belongs to the operating system's app switcher, not the page's
+    // reserved list.
+    expect(isReservedAccelerator(press("Tab", { metaKey: true }))).toBe(false);
   });
 
   it("lists the combinations that cannot be intercepted at all", () => {

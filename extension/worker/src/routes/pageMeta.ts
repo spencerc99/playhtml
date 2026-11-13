@@ -3,6 +3,7 @@
 
 import { parse } from 'tldts';
 import type { Env } from '../lib/supabase';
+import { createIpRateLimiter } from '../lib/ipRateLimit';
 import {
   classifyPublicPage,
   type PublicPageInspection,
@@ -17,13 +18,16 @@ const CORS_HEADERS = {
 // needs fresh metadata they can hard-refresh.
 const CACHE_TTL_SECONDS = 60 * 60 * 24; // 24h
 const CACHE_CONTROL = `public, max-age=${CACHE_TTL_SECONDS}, s-maxage=${CACHE_TTL_SECONDS}`;
+// A lookup that found no title (network error, blocked fetch, untitled page)
+// is cached briefly: long enough to absorb a portrait's burst of repeats,
+// short enough that a site that was down recovers within minutes.
+const FAILED_LOOKUP_TTL_SECONDS = 60 * 5; // 5m
+const FAILED_LOOKUP_CACHE_CONTROL = `public, max-age=${FAILED_LOOKUP_TTL_SECONDS}, s-maxage=${FAILED_LOOKUP_TTL_SECONDS}`;
 
 // Portrait sessions can fan out hundreds of unique URLs on load; 300/min/IP
 // is comfortable without inviting abuse. Edge cache absorbs repeat lookups
 // across users so per-IP cost stays bounded even on busy pages.
-const RATE_LIMIT_MAX = 300;
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX_TRACKED_IPS = 10_000;
+const rateLimiter = createIpRateLimiter(300, 60_000);
 
 // Cap body reads at 256 KiB. Real pages have <title> in the first few KB; a
 // hostile response that streams indefinitely would otherwise sit on a worker
@@ -36,27 +40,6 @@ const MAX_REDIRECTS = 5;
 // key includes this version, so a deploy with a new version effectively
 // resets the cache without us needing to manually purge.
 const CACHE_VERSION = 'v6';
-const ipHits = new Map<string, number[]>();
-
-function rateLimited(ip: string, now: number): boolean {
-  const cutoff = now - RATE_LIMIT_WINDOW_MS;
-  const hits = (ipHits.get(ip) || []).filter((t) => t > cutoff);
-  if (hits.length >= RATE_LIMIT_MAX) {
-    ipHits.set(ip, hits);
-    return true;
-  }
-  hits.push(now);
-  ipHits.set(ip, hits);
-  if (ipHits.size > RATE_LIMIT_MAX_TRACKED_IPS) {
-    const toDrop = Math.floor(RATE_LIMIT_MAX_TRACKED_IPS / 2);
-    let i = 0;
-    for (const key of ipHits.keys()) {
-      if (i++ >= toDrop) break;
-      ipHits.delete(key);
-    }
-  }
-  return false;
-}
 
 function jsonResponse(status: number, body: unknown, extra?: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
@@ -761,7 +744,11 @@ export async function fetchPublicPageContext(raw: string): Promise<{
   };
 }
 
-export async function handlePageMeta(request: Request, _env: Env): Promise<Response> {
+export async function handlePageMeta(
+  request: Request,
+  _env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> {
   const reqUrl = new URL(request.url);
   const raw = reqUrl.searchParams.get('url');
   if (!raw) return jsonResponse(400, { error: 'missing url' });
@@ -771,7 +758,7 @@ export async function handlePageMeta(request: Request, _env: Env): Promise<Respo
   const target = canonicalizeUrl(validated);
 
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  if (rateLimited(ip, Date.now())) {
+  if (rateLimiter.isLimited(ip, Date.now())) {
     return jsonResponse(429, { error: 'rate limited' });
   }
 
@@ -807,11 +794,16 @@ export async function handlePageMeta(request: Request, _env: Env): Promise<Respo
     status: 200,
     headers: {
       ...CORS_HEADERS,
-      'Cache-Control': CACHE_CONTROL,
+      'Cache-Control': meta.source === 'none' ? FAILED_LOOKUP_CACHE_CONTROL : CACHE_CONTROL,
     },
   });
-  // Cache the response (including the 'none' case — failures are also
-  // worth caching briefly to avoid hammering a failing site).
-  await cache.put(cacheKey, resp.clone());
+  // The edge cache honors the response's Cache-Control, so a titled result is
+  // kept for 24h and a 'none' result for 5 minutes. The write finishes after
+  // the response is sent.
+  ctx.waitUntil(
+    cache.put(cacheKey, resp.clone()).catch((error: unknown) => {
+      console.error('[page-meta] cache write failed:', error);
+    }),
+  );
   return resp;
 }

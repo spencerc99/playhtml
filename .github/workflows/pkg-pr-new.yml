@@ -1,20 +1,21 @@
 name: pkg.pr.new
 
 on:
-  push:
-    branches-ignore:
-      - main
   pull_request:
+    paths:
+      - "packages/**"
+      - "bun.lock"
+      - "package.json"
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.13
 
       - name: Install
         run: bun install --frozen-lockfile

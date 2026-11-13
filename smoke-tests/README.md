@@ -84,6 +84,12 @@ bun smoke:partykit:presence-local
 PARTYKIT_HOST=localhost:1999 \
   bun smoke:partykit:presence-cursor
 
+# Verifies a client on a stale reset epoch is held open (not closed into a
+# reconnect loop) after an admin hard reset, and a fresh client is admitted.
+# Runs only against a local server unless ALLOW_REMOTE_HARD_RESET=1.
+PARTYKIT_HOST=localhost:1999 SMOKE_ENV_FILE=/path/to/.dev.vars \
+  bun run --cwd smoke-tests test:partykit:stale-admission
+
 # Runs the standard PartyKit checks.
 SMOKE_ENV_FILE=/path/to/.dev.vars bun smoke:partykit
 ```
@@ -120,11 +126,16 @@ Config:
 - `PARTYKIT_PRESENCE_SOAK_DURATION_MS`: duration for the presence cursor soak. Defaults to `20000`.
 - `PARTYKIT_PRESENCE_SOAK_SETTLE_MS`: wait after sends for final broadcasts. Defaults to `1000`.
 - `PARTYKIT_PRESENCE_SOAK_CONNECT_TIMEOUT_MS`: connection timeout per smoke client. Defaults to `20000`.
+- `PARTYKIT_SMOKE_DOMAIN`: domain the bridge smoke derives its source and consumer rooms from. Defaults to `codex-bridge-integration.test`.
+- `PLAYHTML_PARTYKIT_SMOKE_PORT`: port for the local presence-only Worker started by `smoke:partykit:presence-local`. Defaults to `1998`.
 - `SMOKE_ENV_FILE`: optional `.dev.vars` or `.env` file to load before the script reads `ADMIN_TOKEN`.
-- `ADMIN_TOKEN`: required for `test:partykit:compaction`.
+- `ADMIN_TOKEN`: required for the compaction, stale-compaction, emergency, soak, and stale-admission smokes.
+- `PARTYKIT_SOAK_UPSERT_INTERVAL_MS`: delay between one client's roster upserts in the soak. Defaults to `10`.
+- `PARTYKIT_SOAK_SYNC_TIMEOUT_MS`: per-client sync timeout in the soak. Defaults to `30000`.
 - `PARTYKIT_HIBERNATION_WAIT_MS`: idle wait for the hibernation smoke. Defaults to `90000`.
 - `PARTYKIT_EMPTY_ROOM_COMPACT_DELAY_MS`: expected server empty-room compaction delay. Defaults to `300000`.
 - `PARTYKIT_STALE_COMPACTION_SETTLE_MS`: extra wait after the empty-room compaction delay for the stale-source smoke. Defaults to `20000`.
+- `PARTYKIT_STALE_SOURCE_AUTOSAVE_SETTLE_MS`: wait for the stale source's autosave in the stale-source smoke. Defaults to `3000`.
 - `PARTYKIT_SKIP_COMPACTION_SETTLE_CHECK=1`: skips the extra no-op alarm wait after reconnect.
 - `PARTYKIT_EMERGENCY_TARGET_RAW_BYTES`: target local raw Y.Doc size for the emergency smoke. Defaults to `120000`.
 - `PARTYKIT_EMERGENCY_BATCH_SIZE`: temp entry batch size while building the emergency smoke doc. Defaults to `2000`.
@@ -137,5 +148,5 @@ Add its URL path to `PAGES`. Add new error patterns to
 
 ## CI
 
-The `smoke` job in `.github/workflows/pr-validation.yml` builds the site,
+The `build-site` job in `.github/workflows/pr-validation.yml` builds the site,
 installs Chromium, and runs this suite on every PR.

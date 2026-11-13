@@ -1,6 +1,8 @@
 // ABOUTME: Styles for announcement postcards (popup) and toasts (content scripts).
 // ABOUTME: Letter-notification — pulsing dot, subject-only collapsed row, wwo cancellation watermark.
 
+@use "../styles/variables" as *;
+
 .announcement-stack {
   display: flex;
   flex-direction: column;
@@ -13,13 +15,13 @@
 
 .announcement-postcard {
   position: relative;
-  background: #f5f0e8;
+  background: $surface;
   border: 1px solid rgba(90, 78, 65, 0.22);
   border-radius: 3px;
   padding: 8px 10px 9px;
   cursor: pointer;
   font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
-  color: #3d3833;
+  color: $text;
   box-shadow:
     0 1px 0 rgba(90, 78, 65, 0.06),
     0 3px 8px rgba(0, 0, 0, 0.05);
@@ -111,7 +113,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: radial-gradient(circle at 30% 30%, #d8835d 0%, #c4724e 55%, #9a4f30 100%);
+    background: radial-gradient(circle at 30% 30%, #d8835d 0%, $accent-rust 55%, #9a4f30 100%);
     box-shadow: 0 1px 1.5px rgba(154, 79, 48, 0.35);
     animation: announcement-dot-pulse 2.4s ease-in-out infinite;
   }
@@ -124,7 +126,7 @@
     font-size: 12px;
     font-weight: 700;
     line-height: 1.25;
-    color: #3d3833;
+    color: $text;
     white-space: normal;
   }
 
@@ -139,7 +141,7 @@
     padding: 0 2px;
     transition: color 120ms ease;
     &:hover {
-      color: #3d3833;
+      color: $text;
     }
   }
 
@@ -153,19 +155,19 @@
     margin: 0 0 8px;
     font-size: 11.5px;
     line-height: 1.45;
-    color: #3d3833;
+    color: $text;
   }
 
   &__cta {
     display: inline-block;
-    color: #c4724e;
+    color: $accent-rust;
     font-size: 11.5px;
     font-weight: 600;
     text-decoration: underline;
     text-decoration-color: rgba(196, 114, 78, 0.4);
     text-underline-offset: 2px;
     &:hover {
-      text-decoration-color: #c4724e;
+      text-decoration-color: $accent-rust;
     }
   }
 }

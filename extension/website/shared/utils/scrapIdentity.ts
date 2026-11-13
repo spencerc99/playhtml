@@ -1,22 +1,14 @@
 // ABOUTME: Builds canonical identities for scrap artwork and source pages.
 // ABOUTME: Shares URL and content-hash validation across collection, storage, and display.
 
+import { hashString } from "./styleUtils";
+
 /**
  * Canonical identity for near-duplicate detection: two scraps with the same
  * canonical key are treated as the same underlying thing even though their
  * raw capture differs (different computed style values, different rendered
  * size, different CDN query params).
  */
-
-function hashString(value: string): number {
-  let hash = 0;
-  for (let i = 0; i < value.length; i++) {
-    const char = value.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash);
-}
 
 const PATH_DATA_PATTERN = /\bd="([^"]*)"/g;
 const VIEW_BOX_PATTERN = /\bviewBox="([^"]*)"/;

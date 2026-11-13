@@ -12,7 +12,7 @@ on:
           - fridge
           - mirror
           - live-chat
-          - walking-together
+          - lobby-presence
       users:
         description: "Total users (split across workers)"
         required: true
@@ -42,6 +42,11 @@ on:
         options:
           - staging
           - prod
+      i_know_this_is_prod:
+        description: "Required to run against prod: it loads the live server real users are on"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   setup:
@@ -73,12 +78,12 @@ jobs:
       matrix:
         worker_index: ${{ fromJson(needs.setup.outputs.worker_indices) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.13
 
       - name: Install dependencies
         working-directory: tools/load-test
@@ -86,7 +91,9 @@ jobs:
 
       - name: Run load test
         working-directory: tools/load-test
+        # The runner refuses --target prod unless it also gets --i-know-this-is-prod.
         run: |
+          set -o pipefail
           bun src/runner.ts \
             --scenario ${{ inputs.scenario }} \
             --users ${{ needs.setup.outputs.users_per_worker }} \
@@ -94,6 +101,7 @@ jobs:
             --ramp-up ${{ inputs.ramp_up }} \
             --target ${{ inputs.target }} \
             --room ${{ needs.setup.outputs.room_id }} \
+            ${{ inputs.i_know_this_is_prod && '--i-know-this-is-prod' || '' }} \
             2>&1 | tee results.txt
 
       - name: Upload results

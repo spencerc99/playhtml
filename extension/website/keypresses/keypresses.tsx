@@ -1,84 +1,22 @@
 // ABOUTME: Entry point for the Internet Keypresses visualization
 // ABOUTME: Fetches keyboard events with pagination and domain filtering, passes them to KeypressesGrid
 import "./keypresses.scss";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import ReactDOM from "react-dom/client";
-import { CollectionEvent } from "../shared/types";
 import { KeypressesGrid } from "../shared/components/KeypressesGrid";
 import { RECENT_EVENTS_URL } from "../shared/config";
+import { useKeypressEvents } from "./useKeypressEvents";
 
 const API_URL = RECENT_EVENTS_URL;
 const PAGE_SIZE = 20000;
 const DOMAIN_FILTER_KEY = "keypresses-domain-filter";
 
 const InternetKeypresses = () => {
-  const [events, setEvents] = useState<CollectionEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
   const [domainFilter, setDomainFilter] = useState<string>(
     () => localStorage.getItem(DOMAIN_FILTER_KEY) ?? "",
   );
-  const fetchingRef = useRef(false);
-
-  const fetchPage = useCallback(async (domain: string, beforeTs?: number) => {
-    if (fetchingRef.current) return;
-    fetchingRef.current = true;
-
-    if (!beforeTs) setLoading(true);
-    setError(null);
-
-    try {
-      const params = new URLSearchParams({
-        limit: String(PAGE_SIZE),
-        type: "keyboard",
-      });
-      if (domain) {
-        params.set("domain", domain);
-      }
-      if (beforeTs) {
-        params.set("to", new Date(beforeTs - 1).toISOString());
-      }
-      const response = await fetch(`${API_URL}?${params}`);
-      if (!response.ok)
-        throw new Error(`Failed to fetch keyboard events: ${response.status}`);
-      const data: CollectionEvent[] = await response.json();
-
-      if (data.length === 0) {
-        setHasMore(false);
-      } else {
-        setEvents((prev) => beforeTs ? [...prev, ...data] : data);
-        if (data.length < PAGE_SIZE) {
-          setHasMore(false);
-        }
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch events");
-      console.error("Error fetching events:", err);
-    } finally {
-      setLoading(false);
-      fetchingRef.current = false;
-    }
-  }, []);
-
-  // Fetch on mount and when domain filter changes
-  useEffect(() => {
-    setHasMore(true);
-    setEvents([]);
-    fetchPage(domainFilter);
-  }, [domainFilter, fetchPage]);
-
-  const handleRefresh = useCallback(() => {
-    setHasMore(true);
-    setEvents([]);
-    fetchPage(domainFilter);
-  }, [domainFilter, fetchPage]);
-
-  const handleFetchOlder = useCallback(() => {
-    if (!hasMore || fetchingRef.current || events.length === 0) return;
-    const oldestTs = Math.min(...events.map((e) => e.ts));
-    fetchPage(domainFilter, oldestTs);
-  }, [events, hasMore, domainFilter, fetchPage]);
+  const { events, loading, error, hasMore, refresh, fetchOlder } =
+    useKeypressEvents(API_URL, PAGE_SIZE, domainFilter);
 
   const handleDomainFilterChange = useCallback((domain: string) => {
     setDomainFilter(domain);
@@ -89,8 +27,8 @@ const InternetKeypresses = () => {
       events={events}
       loading={loading}
       error={error}
-      onRefresh={handleRefresh}
-      onFetchOlder={handleFetchOlder}
+      onRefresh={refresh}
+      onFetchOlder={fetchOlder}
       hasMore={hasMore}
       onDomainFilterChange={handleDomainFilterChange}
     />

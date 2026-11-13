@@ -35,6 +35,7 @@ export class CollectorManager {
   // True while the person has turned collection off for this site. Collectors
   // stay stopped, but mode changes are still saved so they apply elsewhere.
   private siteOff = false;
+  private shutDown = false;
 
   constructor() {
     this.eventBuffer = new EventBuffer();
@@ -123,6 +124,7 @@ export class CollectorManager {
     
     // Set up event emission callback
     collector.setEmitCallback(async (data) => {
+      if (this.shutDown) return;
       try {
         const event = await this.eventBuffer.createEvent(collector.type, data);
         await this.eventBuffer.addEvent(event);
@@ -143,6 +145,7 @@ export class CollectorManager {
    * Enable a collector
    */
   async enableCollector(type: CollectionEventType): Promise<void> {
+    if (this.shutDown) return;
     if (VERBOSE) {
       console.log(`[CollectorManager] Enabling collector: ${type}`);
     }
@@ -162,6 +165,7 @@ export class CollectorManager {
    * Disable a collector
    */
   async disableCollector(type: CollectionEventType): Promise<void> {
+    if (this.shutDown) return;
     const collector = this.collectors.get(type);
     if (collector) {
       collector.disable();
@@ -209,7 +213,7 @@ export class CollectorManager {
       
       // Apply saved state to all registered collectors
       for (const [type, collector] of this.collectors.entries()) {
-        if (enabledCollectors[type] && !this.siteOff) {
+        if (enabledCollectors[type] && !this.siteOff && !this.shutDown) {
           collector.enable();
         } else {
           collector.disable();
@@ -313,6 +317,21 @@ export class CollectorManager {
     }
     await Promise.all(stoppingCollectors.map((collector) => collector.waitForPendingEvents()));
     await this.eventBuffer.manualFlush();
+  }
+
+  /**
+   * Synchronously stop every collector and the event buffer's timers without
+   * flushing or saving collector state. For a content script whose extension
+   * context is gone: the background cannot be reached, so nothing is sent.
+   */
+  shutdown(): void {
+    this.shutDown = true;
+    this.stopInstallationPaceWatch?.();
+    this.stopInstallationPaceWatch = null;
+    for (const collector of this.collectors.values()) {
+      collector.disable();
+    }
+    this.eventBuffer.dispose();
   }
 
   /**

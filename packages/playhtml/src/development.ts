@@ -17,6 +17,7 @@ export { listSharedElements } from "./shared-elements";
 
 let activeElementObserver: MutationObserver | null = null;
 let activeDevRoot: HTMLElement | null = null;
+let activeDevStyle: HTMLStyleElement | null = null;
 // Polling tick that checks for new elementHandlers between MutationObserver
 // firings (playhtml's post-sync setup registers handlers on already-existing
 // DOM nodes, which doesn't fire the observer). Stored at module scope so
@@ -40,6 +41,8 @@ let activeWindowRejectionListener: ((ev: PromiseRejectionEvent) => void) | null 
 
 // Inspect mode installs document-level listeners that outlive the dev root node.
 let activeInspectModeTeardown: (() => void) | null = null;
+// Restores the page's body margins if the panel is open at teardown.
+let activeBodyMarginRestore: (() => void) | null = null;
 
 const INSPECT_STATE_SELECTOR =
   ".ph-inspect-highlight, .ph-inspect-highlight-hover, .ph-inspect-selected";
@@ -774,6 +777,7 @@ export function setupDevUI(
   const styleEl = document.createElement("style");
   styleEl.textContent = DEV_STYLES;
   document.head.appendChild(styleEl);
+  activeDevStyle = styleEl;
 
   // ── State ──
   let inspectMode = false;
@@ -1527,7 +1531,7 @@ export function setupDevUI(
       if (!window.confirm("Reset all playhtml element data?")) return;
       elementHandlers.forEach((idMap) => {
         idMap.forEach((handler) => {
-          handler.setData(handler.defaultData);
+          handler.reset();
         });
       });
       renderDataWalker();
@@ -1618,7 +1622,7 @@ export function setupDevUI(
           resetBtn.textContent = "reset";
           resetBtn.onclick = (e) => {
             e.stopPropagation();
-            handler.setData(handler.defaultData);
+            handler.reset();
             renderDataWalker();
           };
 
@@ -1798,6 +1802,11 @@ export function setupDevUI(
   let sidebarHeight = 240;
   const originalBodyMarginRight = document.body.style.marginRight;
   const originalBodyMarginBottom = document.body.style.marginBottom;
+  activeBodyMarginRestore = () => {
+    if (!bar.classList.contains("ph-open")) return;
+    document.body.style.marginRight = originalBodyMarginRight;
+    document.body.style.marginBottom = originalBodyMarginBottom;
+  };
 
   function getPosition(): "right" | "bottom" {
     return root.dataset.position === "bottom" ? "bottom" : "right";
@@ -1917,9 +1926,11 @@ export function setupDevUI(
 
   // ── Scroll tree to a specific element row and expand it ──
   function scrollTreeToElement(elementId: string) {
-    const row = dataArea.querySelector(
-      `.ph-tree-item[data-element-id="${elementId}"]`
-    ) as HTMLElement | null;
+    // Compare the attribute directly so ids with quotes or other selector
+    // syntax still match.
+    const row = Array.from(
+      dataArea.querySelectorAll<HTMLElement>(".ph-tree-item[data-element-id]"),
+    ).find((item) => item.getAttribute("data-element-id") === elementId);
     if (!row) return;
     row.scrollIntoView({ behavior: "smooth", block: "nearest" });
     // Expand the children container that follows this row
@@ -2079,6 +2090,14 @@ export function teardownDevUI(): void {
     activeElementPoll = null;
   }
   clearDataUpdateSubscriptions();
+  if (activeBodyMarginRestore) {
+    activeBodyMarginRestore();
+    activeBodyMarginRestore = null;
+  }
+  if (activeDevStyle) {
+    activeDevStyle.remove();
+    activeDevStyle = null;
+  }
   if (activeDevRoot && activeDevRoot.parentElement) {
     activeDevRoot.parentElement.removeChild(activeDevRoot);
     activeDevRoot = null;
