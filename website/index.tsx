@@ -21,6 +21,7 @@ import {
 import {
   setupExperimentsTracesHost,
   setupHereNow,
+  setupHoverCat,
   setupPersistentNote,
   setupSnippetCopies,
   setupTipJar,
@@ -58,6 +59,7 @@ setupSponsorGoal();
 loadLiveCounts();
 setupGuestbookNameInput();
 setupHereNow();
+setupHoverCat();
 setupSnippetCopies();
 setupPersistentNote();
 setupWordmarkColors();

@@ -1,5 +1,5 @@
 // ABOUTME: Registers the homepage's vanilla can-play elements with playhtml.
-// ABOUTME: Covers the here-now count, the snippet copy counter, the persistent note, tip jar and wordmark colors.
+// ABOUTME: Covers the here-now count, the can-hover cat, the snippet copy counter, the persistent note, tip jar and wordmark colors.
 
 import { playhtml } from "playhtml";
 import { setLabelText } from "./pageChrome";
@@ -112,6 +112,50 @@ export function setupHereNow() {
       },
     },
   );
+}
+
+type HoverPresence = { hover: boolean };
+type HoverPerson = { color: string; presence?: HoverPresence };
+
+const CursorPath = "M1 1 L1 13 L4.5 9.8 L7 15 L9 14 L6.6 9 L11 9 Z";
+const MaxCatStage = 4;
+
+// The toy box's can-hover cat. can-hover already shares who is hovering, so
+// this only swaps in an update() that counts them: each extra person petting
+// wakes it a little more (data-awake 0-4, animated in CSS), and a small
+// cursor in each petter's color sits by it.
+export function setupHoverCat() {
+  const cat = document.getElementById("home-cat");
+  const petting = cat?.querySelector<HTMLElement>(".ph-cat__petting");
+  if (!cat || !petting) return;
+
+  Object.assign(cat, {
+    update: ({ everyone }: { everyone: HoverPerson[] }) => {
+      const petters = everyone.filter((person) => person.presence?.hover);
+      cat.toggleAttribute("data-playhtml-hover", petters.length > 0);
+      cat.dataset.awake = String(Math.min(petters.length, MaxCatStage));
+      petting.replaceChildren(
+        ...petters.slice(0, 8).map((person) => {
+          const svg = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "svg",
+          );
+          svg.setAttribute("viewBox", "0 0 14 16");
+          const path = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "path",
+          );
+          path.setAttribute("d", CursorPath);
+          path.setAttribute("fill", person.color);
+          path.setAttribute("stroke", "#1c1c1c");
+          path.setAttribute("stroke-width", "1");
+          path.setAttribute("stroke-linejoin", "round");
+          svg.append(path);
+          return svg;
+        }),
+      );
+    },
+  });
 }
 
 function renderTally(count: number) {
