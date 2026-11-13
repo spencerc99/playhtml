@@ -74,7 +74,7 @@ Before building or changing playhtml elements, read `claude-plugin/skills/buildi
 | Changed the public core API | Update both starter templates (`CONTRIBUTING.md`) |
 | Changed package deps or exports | Follow the package boundary rules and run the tarball install simulation (`CONTRIBUTING.md`) |
 | Added a new extension feature | Real-browser verification (above) |
-| Changed anything in `claude-plugin/` | Bump `version` in `claude-plugin/.claude-plugin/plugin.json`. Installed copies only update when it changes. |
+| Touched the Claude plugin manifests | Never add a `version` field to `plugin.json` or `marketplace.json`. Without one, each commit counts as an update; a pinned version freezes installed copies until someone bumps it. |
 | Made a user-noticeable extension change, or changed a manifest permission | Follow `extension/CLAUDE.md` (`PENDING.md`, `STORE_LISTING.md`) |
 
 - **Commits:** short imperative subject, scoped when helpful (`react:`, `extension:`).
