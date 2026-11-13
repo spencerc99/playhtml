@@ -1,6 +1,7 @@
 // ABOUTME: Rendering component for the Internet Movement visualization
 // ABOUTME: Accepts events + fetch callback as props; owns settings state and all animation hooks
 
+import { useActiveLocations } from "../hooks/useActiveLocations";
 import React, {
   useState,
   useEffect,
@@ -54,7 +55,6 @@ import {
 import {
   extractDomain,
   formatFilterChip,
-  summarizeActiveLocations,
   type FilterChip,
 } from "../utils/eventUtils";
 import { buildShareUrl } from "../utils/shareUrl";
@@ -1279,7 +1279,7 @@ export const MovementCanvas: React.FC<MovementCanvasProps> = ({
 
   // Recent activity (live mode) from the raw event stream, not the capped drawn
   // trails: how many people + the geographic spread of their timezones.
-  const activity = useMemo(() => summarizeActiveLocations(events), [events]);
+  const activity = useActiveLocations(events);
 
   // The keyboard hook is invoked here (before timeRange) because its
   // cycleDuration feeds the canvas's shared animation cycle. Without this,
