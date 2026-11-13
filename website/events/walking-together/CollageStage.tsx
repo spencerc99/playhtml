@@ -1,14 +1,14 @@
 // ABOUTME: The collage stage of a walking-together session, shown after the walk.
 // ABOUTME: Everyone places their collected scraps onto one shared table collage.
 import React from "react";
-import { usePageData, usePresence } from "@playhtml/react";
+import { usePageData, usePeople } from "@playhtml/react";
 import { CollageTable } from "./collage/CollageTable";
-import type { CollageData, CollageLive } from "./collage/pieces";
+import type { CollageData, CollagePresence } from "./collage/pieces";
 
 // The collage belongs to the whole page, not to one element, so it lives in
-// a page data channel. In-progress drags are presence: live, never persisted.
+// a page data channel. In-progress drags are presence: live, never saved.
 const COLLAGE_DATA_NAME = "walking-together-collage";
-const DRAG_PRESENCE_CHANNEL = "walking-together-collage-drag";
+const DRAG_PRESENCE_KEY = "walking-together-collage-drag";
 
 const EMPTY_COLLAGE: CollageData = {
   pieces: {},
@@ -28,14 +28,13 @@ export function CollageStage({ active }: { active: boolean }) {
     COLLAGE_DATA_NAME,
     EMPTY_COLLAGE,
   );
-  const { presences, setMyPresence } = usePresence<
-    typeof DRAG_PRESENCE_CHANNEL,
-    CollageLive
-  >(DRAG_PRESENCE_CHANNEL);
+  const { everyone, setMyPresence } = usePeople(DRAG_PRESENCE_KEY);
 
-  const peers = Array.from(presences.values()).map((view) => ({
-    user: { isMe: view.isMe },
-    live: view[DRAG_PRESENCE_CHANNEL],
+  const peers = everyone.map((person) => ({
+    isMe: person.isMe,
+    presence: person.presence[DRAG_PRESENCE_KEY] as
+      | Partial<CollagePresence>
+      | undefined,
   }));
 
   if (!active) return null;
@@ -46,7 +45,7 @@ export function CollageStage({ active }: { active: boolean }) {
         data={data}
         setData={setData}
         peers={peers}
-        setLive={setMyPresence}
+        setMyDraft={(draft) => setMyPresence(DRAG_PRESENCE_KEY, draft)}
       />
     </div>
   );

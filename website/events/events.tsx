@@ -2,6 +2,7 @@ import { withSharedState } from "@playhtml/react";
 import randomColor from "randomcolor";
 import React, { useEffect } from "react";
 import "./events.scss";
+import { getMe } from "../utils/useMe";
 
 const NumCursors = 50;
 
@@ -163,7 +164,7 @@ export const Guestbook = withSharedState(
           <span>
             <b
               style={{
-                color: window.cursors?.color || "black",
+                color: getMe()?.color || "black",
               }}
             >
               {name || "Anonymous"}
@@ -249,8 +250,8 @@ export const URLChat = withSharedState(
     const handleSubmit = (e: React.FormEvent) => {
       const newUrl: SharedURL = {
         url: inputUrl,
-        userName: window.cursors?.name || "Anonymous",
-        userColor: window.cursors?.color || "#000000",
+        userName: getMe()?.name || "Anonymous",
+        userColor: getMe()?.color || "#000000",
         timestamp: Date.now(),
       };
 

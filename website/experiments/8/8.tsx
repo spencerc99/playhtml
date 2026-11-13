@@ -4,6 +4,7 @@ import "./8.scss";
 import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { PlayProvider, withSharedState, usePlayContext } from "@playhtml/react";
+import { playhtml } from "playhtml";
 import { OnlineNowIndicator } from "../../components/DataModes";
 import {
   BOTTOM_BAR_HEIGHT_PX,
@@ -16,8 +17,8 @@ import {
   getScrollEndY,
   getTypingCursorPosition,
   isScrollAtEnd,
-  shouldPublishTypingAwareness,
-  type TypingCursorAwareness,
+  shouldPublishTypingPresence,
+  type TypingCursorPresence,
 } from "./layout";
 import {
   canStartIntroScroll,
@@ -51,9 +52,9 @@ const Main = withSharedState(
     defaultData: {
       letters: [] as CellData[],
     },
-    myDefaultAwareness: undefined as undefined | TypingCursorAwareness,
+    defaultPresence: undefined as undefined | TypingCursorPresence,
   },
-  ({ data, setData, awareness, myAwareness, setMyAwareness }) => {
+  ({ data, setData, everyone, me, setMyPresence }) => {
     const { cursors, isLoading } = usePlayContext();
     const myColor = cursors.color;
     const gridRef = useRef<HTMLDivElement>(null);
@@ -317,17 +318,17 @@ const Main = withSharedState(
     }, [totalCells, bottomBarHeightPx, introState]);
 
     useEffect(() => {
-      const nextAwareness = { color: myColor, cursorPos: cursorPosition };
+      const nextPresence = { color: myColor, cursorPos: cursorPosition };
 
       if (
-        shouldPublishTypingAwareness({
-          current: myAwareness,
-          next: nextAwareness,
+        shouldPublishTypingPresence({
+          current: me.presence,
+          next: nextPresence,
         })
       ) {
-        setMyAwareness(nextAwareness);
+        setMyPresence(nextPresence);
       }
-    }, [myColor, cursorPosition, myAwareness, setMyAwareness]);
+    }, [myColor, cursorPosition, me.presence, setMyPresence]);
 
     // Handle keyboard input
     useEffect(() => {
@@ -366,12 +367,9 @@ const Main = withSharedState(
       return () => window.removeEventListener("keydown", handleKeyDown);
     }, [myColor, setData]);
 
-    const otherCursors = getRemoteTypingCursors({
-      awareness: awareness || [],
-      myAwareness,
-    });
+    const otherCursors = getRemoteTypingCursors(everyone);
 
-    // Get all active players from cursor awareness
+    // Get all active players from the cursor colors
     const activePlayers = cursors.allColors.map((color, index) => ({
       color,
       isMe: color === myColor,
@@ -383,7 +381,7 @@ const Main = withSharedState(
 
     const handleNameSubmit = () => {
       if (nameInput.trim()) {
-        window.cursors.name = nameInput.trim();
+        playhtml.people.me.name = nameInput.trim();
       }
     };
 
@@ -537,7 +535,7 @@ const Main = withSharedState(
                               className="color-option"
                               style={{ backgroundColor: color.value }}
                               onClick={() => {
-                                window.cursors.color = color.value;
+                                playhtml.people.me.color = color.value;
                               }}
                               aria-label={`Use ${color.name}`}
                               aria-pressed={myColor === color.value}

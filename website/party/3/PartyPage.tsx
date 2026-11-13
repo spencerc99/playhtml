@@ -14,13 +14,11 @@ import { createPortal } from "react-dom";
 import {
   CanToggleElement,
   playhtml,
-  useCursorPresences,
+  usePeople,
   usePlayContext,
-  usePlayerIdentity,
-  usePresence,
-  useUsers,
   withSharedState,
 } from "@playhtml/react";
+import { useMe } from "../../utils/useMe";
 import { initEmotes } from "@extension/features/emotes";
 import {
   BITE_REQUIREMENT,
@@ -42,7 +40,7 @@ import {
   type PartyData,
   type PartyIdentity,
   type PartyWish,
-  type PopperAwareness,
+  type PopperPresence,
   type WishesData,
 } from "./partyState";
 import { PARTY_EMOTES } from "./partyEmotes";
@@ -332,12 +330,14 @@ function PartyHatShape({ hat }: { hat: PartyHat }) {
   );
 }
 
-function PartyHatPile({ identity }: { identity: PartyIdentity }) {
-  const { presences, setMyPresence } = usePresence<
-    "partyHat",
-    PartyHatPresence
-  >("partyHat");
-  const selectedHat = presences.get(identity.pid)?.partyHat?.hat;
+function partyHatOf(presence: Record<string, unknown>): unknown {
+  return (presence.partyHat as Partial<PartyHatPresence> | null | undefined)
+    ?.hat;
+}
+
+function PartyHatPile() {
+  const { me, setMyPresence } = usePeople("partyHat");
+  const selectedHat = partyHatOf(me.presence);
 
   return (
     <section className="party-hat-pile" aria-labelledby="party-hat-pile-title">
@@ -353,11 +353,7 @@ function PartyHatPile({ identity }: { identity: PartyIdentity }) {
               aria-label={`${selected ? "Take off" : "Wear"} ${hat} party hat`}
               aria-pressed={selected}
               onClick={() => {
-                if (selected) {
-                  playhtml.presence.setMyPresence("partyHat", null);
-                  return;
-                }
-                setMyPresence({ hat });
+                setMyPresence("partyHat", selected ? null : { hat });
               }}
             >
               <PartyHatShape hat={hat} />
@@ -370,20 +366,16 @@ function PartyHatPile({ identity }: { identity: PartyIdentity }) {
 }
 
 function PartyCursorAccessories() {
-  const cursorPresences = useCursorPresences();
-  const { presences } = usePresence<"partyHat", PartyHatPresence>("partyHat");
-  const playerIdentity = usePlayerIdentity();
-  const myCursor = playerIdentity.pid
-    ? cursorPresences.get(playerIdentity.pid)?.cursor
-    : null;
+  const { everyone, me } = usePeople(["partyHat", "cursor"]);
+  const myCursor = me.pid ? me.presence.cursor : null;
 
   return createPortal(
     <div className="party-cursor-accessories" aria-hidden="true">
-      {[...presences].map(([pid, presence]) => {
-        const hat = presence.partyHat?.hat;
-        const cursor = cursorPresences.get(pid)?.cursor;
+      {everyone.map(({ pid, isMe, presence }) => {
+        const hat = partyHatOf(presence);
+        const cursor = presence.cursor;
         if (!cursor || !isPartyHat(hat)) return null;
-        if (pid !== playerIdentity.pid) {
+        if (!isMe) {
           const cursorElement = [
             ...document.querySelectorAll<HTMLElement>(
               "[data-party-cursor-pid]",
@@ -408,16 +400,16 @@ function PartyCursorAccessories() {
           </span>
         );
       })}
-      {myCursor && playerIdentity.name?.trim() && (
+      {myCursor && me.name?.trim() && (
         <span
           className="party-cursor-nametag"
           style={{
             left: myCursor.x,
             top: myCursor.y,
-            "--party-cursor-color": playerIdentity.color,
+            "--party-cursor-color": me.color,
           } as CSSProperties}
         >
-          {playerIdentity.name}
+          {me.name}
         </span>
       )}
     </div>,
@@ -1634,16 +1626,16 @@ function WishesStation({
 function PartyPopper({
   data,
   setData,
-  awareness,
-  setMyAwareness,
+  popperPresences,
+  setMyPresence,
   identity,
   emitEvent,
   soundOn,
 }: {
   data: PartyData;
   setData: (setter: PartyData | ((draft: PartyData) => void)) => void;
-  awareness: PopperAwareness[];
-  setMyAwareness: (awareness: PopperAwareness) => void;
+  popperPresences: PopperPresence[];
+  setMyPresence: (presence: PopperPresence) => void;
   identity: PartyIdentity;
   emitEvent: (message: string, effect?: PartyEffect) => void;
   soundOn: boolean;
@@ -1655,7 +1647,7 @@ function PartyPopper({
     "someone else has to be here for this one.",
   );
   const chargeRef = useRef(0);
-  const holders = awareness.filter(
+  const holders = popperPresences.filter(
     (person) => person.holdingPopper && person.holdId,
   );
   const otherHolder = holders.find((person) => person.pid !== identity.pid);
@@ -1666,22 +1658,22 @@ function PartyPopper({
   );
 
   const release = useCallback(() => {
-    setMyAwareness({ ...identity, holdingPopper: false, holdId: "" });
+    setMyPresence({ ...identity, holdingPopper: false, holdId: "" });
     setHoldId("");
     chargeRef.current = 0;
     setCharge(0);
-  }, [identity, setMyAwareness]);
+  }, [identity, setMyPresence]);
 
   const startHolding = useCallback(() => {
     if (holdId) return;
     const nextHoldId = createId("hold");
     setHoldId(nextHoldId);
-    setMyAwareness({
+    setMyPresence({
       ...identity,
       holdingPopper: true,
       holdId: nextHoldId,
     });
-  }, [holdId, identity, setMyAwareness]);
+  }, [holdId, identity, setMyPresence]);
 
   useEffect(() => {
     window.addEventListener("pointerup", release);
@@ -1828,7 +1820,7 @@ function PartyRoom({
     registerPlayEventListener,
     removePlayEventListener,
   } = usePlayContext();
-  const users = useUsers();
+  const { everyone: users } = usePeople();
   const [eventLine, setEventLine] = useState<string | null>(null);
   const [effect, setEffect] = useState<PartyEffect | null>(null);
   const effectTimer = useRef<number | null>(null);
@@ -2064,12 +2056,12 @@ function PartyRoom({
     soundOn,
     users,
   };
-  const setPartyAwareness = useRef<
-    ((awareness: PopperAwareness) => void) | null
+  const setPartyPresence = useRef<
+    ((presence: PopperPresence) => void) | null
   >(null);
 
   useEffect(() => {
-    setPartyAwareness.current?.({
+    setPartyPresence.current?.({
       ...identity,
       holdingPopper: false,
       holdId: "",
@@ -2078,17 +2070,17 @@ function PartyRoom({
 
   const SharedRoom = useMemo(
     () =>
-      withSharedState<PartyData, PopperAwareness, { identity: PartyIdentity }>(
+      withSharedState<PartyData, PopperPresence, { identity: PartyIdentity }>(
         (props) => ({
           defaultData: { popperCount: 0, lastPopperPair: "" },
-          myDefaultAwareness: {
+          defaultPresence: {
             ...props.identity,
             holdingPopper: false,
             holdId: "",
           },
         }),
-        ({ data, setData, awareness, setMyAwareness }, props) => {
-          setPartyAwareness.current = setMyAwareness;
+        ({ data, setData, everyone, setMyPresence }, props) => {
+          setPartyPresence.current = setMyPresence;
           const {
             camera,
             cameraTravel,
@@ -2153,8 +2145,8 @@ function PartyRoom({
                   <PartyPopper
                     data={data}
                     setData={setData}
-                    awareness={awareness}
-                    setMyAwareness={setMyAwareness}
+                    popperPresences={everyone.map((person) => person.presence)}
+                    setMyPresence={setMyPresence}
                     identity={props.identity}
                     emitEvent={emitEvent}
                     soundOn={soundOn}
@@ -2223,7 +2215,7 @@ function PartyRoom({
                     door photo by the iop
                   </a>
                 </div>
-                <PartyHatPile identity={props.identity} />
+                <PartyHatPile />
                 <CakeStation
                   identity={props.identity}
                   emitEvent={emitEvent}
@@ -2291,7 +2283,7 @@ function PartyRoom({
 }
 
 export function PartyPage() {
-  const playerIdentity = usePlayerIdentity();
+  const myIdentity = useMe();
   const { isLoading } = usePlayContext();
   const [arrived, setArrived] = useState<boolean | null>(null);
   const [soundOn, setSoundOnState] = useState(true);
@@ -2304,41 +2296,41 @@ export function PartyPage() {
     setArrived(
       !shouldShowArrivalNametag({
         hasArrivedBefore: localStorage.getItem(ARRIVAL_KEY) === "true",
-        name: playerIdentity.name,
+        name: myIdentity.name,
         skipEntry,
       }),
     );
     setSoundOnState(localStorage.getItem(SOUND_KEY) !== "off");
-  }, [isLoading, playerIdentity.name]);
+  }, [isLoading, myIdentity.name]);
 
   const setSoundOn = useCallback((value: boolean) => {
     setSoundOnState(value);
     localStorage.setItem(SOUND_KEY, value ? "on" : "off");
   }, []);
 
-  if (isLoading || arrived === null || !playerIdentity.pid) {
+  if (isLoading || arrived === null || !myIdentity.pid) {
     return <main className="party-loading">setting the table…</main>;
   }
 
   const identity: PartyIdentity = {
-    pid: playerIdentity.pid,
-    name: identityLabel(playerIdentity.name),
-    color: playerIdentity.color || PARTY_COLORS[0],
+    pid: myIdentity.pid,
+    name: identityLabel(myIdentity.name),
+    color: myIdentity.color || PARTY_COLORS[0],
   };
 
   return (
     <>
       {!arrived && (
         <ArrivalNametag
-          initialName={playerIdentity.name ?? ""}
+          initialName={myIdentity.name ?? ""}
           initialColor={
-            PARTY_COLORS.some((choice) => choice === playerIdentity.color)
-              ? playerIdentity.color
+            PARTY_COLORS.some((choice) => choice === myIdentity.color)
+              ? myIdentity.color
               : PARTY_COLORS[0]
           }
           onEnter={(name, color) => {
-            playhtml.users.me.name = name || undefined;
-            playhtml.users.me.color = color;
+            playhtml.people.me.name = name || undefined;
+            playhtml.people.me.color = color;
             if (name) {
               localStorage.setItem(ARRIVAL_KEY, "true");
             } else {
