@@ -78,3 +78,5 @@ extension/website/public/internet-map/data/
 
 # directedit: copy edits it could not place, waiting for an agent
 .directedits.md
+
+.agents
