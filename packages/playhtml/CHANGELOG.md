@@ -1,5 +1,15 @@
 # Change Log
 
+## 2.16.1
+
+### Patch Changes
+
+- cc47b96: `can-mirror` elements now share presence only while someone is hovering or focusing them, instead of publishing an idle `{ hover: false, focus: false }` for every element on load. Pages with hundreds of mirrored elements no longer hit the element presence limit, so hover and focus sync on every element again, and the "Element awareness exceeded 8 shards" console error is logged once instead of on every hover.
+- 9c31f89: playhtml now ships a single-file browser build (`dist/playhtml.browser.js`) and points the package's `jsdelivr` and `unpkg` fields at it, so `import { playhtml } from "https://cdn.jsdelivr.net/npm/playhtml/dist/playhtml.es.js"` works directly in a `<script type="module">`. The default stylesheet also loads from jsDelivr instead of unpkg. Bundlers and npm installs keep using the existing code-split build.
+- a8fb827: Fix a room reset (an admin hard reset or compaction) getting undone right away. When the server reset a room, the old connection could reconnect on its own with the page's pre-reset copy of the room before playhtml swapped in a fresh one, which merged all the deleted history back into the room and stopped it from saving. playhtml now drops the old connection before it records the new reset.
+- Updated dependencies [cc47b96]
+  - @playhtml/common@0.11.1
+
 ## 2.16.0
 
 ### Minor Changes
