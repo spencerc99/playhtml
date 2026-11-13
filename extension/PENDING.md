@@ -1,5 +1,7 @@
 # Unreleased
 
+- Participant color updates are now protected by your extension identity.
+
 <!--
 Add a bullet here in any PR that touches extension/**. The release-prep workflow
 watches this file: when there are bullets, it opens (or updates) a release PR
