@@ -78,3 +78,6 @@ extension/website/public/internet-map/data/
 
 # directedit: copy edits it could not place, waiting for an agent
 .directedits.md
+
+# filming snapshots of live rooms (smoke-tests/filming)
+smoke-tests/filming/snapshots/

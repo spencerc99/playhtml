@@ -27,6 +27,18 @@ For each page in `smoke.spec.ts`'s `PAGES` list:
 Cross-origin failures (PartyKit WebSocket, Google Fonts) are deliberately
 ignored — this is a build-output smoke test, not a backend integration test.
 
+## Filming copy of the homepage
+
+`smoke-tests/filming/` runs playhtml.fun locally on a read-only snapshot of
+the live homepage room, with simulated people (headless browsers) moving
+cursors and playing with the toys. See `filming/README.md`.
+
+```bash
+bun run film:export   # once
+bun run film
+bun run film:bots -- --count 5
+```
+
 ## PartyKit staging smoke tests
 
 The PartyKit smoke scripts run against a real deployed Worker and Supabase.
