@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appendGuestbookEntry,
+  filterHiddenGuestbookEntries,
   getGuestbookDotColors,
   getLoopedEntryIndex,
   getRenderedPileCardIndexes,
@@ -125,6 +126,17 @@ describe("appendGuestbookEntry", () => {
       entry("#123456", 1),
       entry("#abcdef", 2),
       nextEntry,
+    ]);
+  });
+});
+
+describe("filterHiddenGuestbookEntries", () => {
+  it("drops only entries whose name and timestamp are hidden", () => {
+    const entries = [entry("red", 1), entry("blue", 2), entry("red", 3)];
+    const hidden = new Set(["person-2:2", "someone-else:3"]);
+    expect(filterHiddenGuestbookEntries(entries, hidden)).toEqual([
+      entries[0],
+      entries[2],
     ]);
   });
 });
