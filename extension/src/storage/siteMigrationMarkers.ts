@@ -11,6 +11,10 @@ type LocalStorageArea = Pick<Storage.LocalStorageArea, 'get' | 'set' | 'remove'>
 /**
  * Deletes every per-site migration marker from extension storage. Returns how
  * many were removed; 0 once the cleanup has already run.
+ *
+ * TODO: remove this function, its call in background.ts, and its test once the
+ * release after 0.1.30 has been out long enough for installs to have run it
+ * (a few months). The SITE_MIGRATION_MARKERS_REMOVED_KEY flag can stay behind.
  */
 export async function removeSiteMigrationMarkers(
   storage: LocalStorageArea,
