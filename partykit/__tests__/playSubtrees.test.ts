@@ -115,6 +115,37 @@ describe("extractPlaySubtrees", () => {
     );
   });
 
+  it("returns each requested id under every tag that holds it", () => {
+    const doc = makeDoc();
+    expect(
+      server.extractPlaySubtrees(doc, new Set(["lamp", "shared", "missing"])),
+    ).toEqual({
+      "can-play": {
+        lamp: { on: false },
+        shared: { nested: { deep: [1, [2, 3]] } },
+      },
+      "can-move": { shared: { x: 4, y: 5 } },
+      "can-toggle": { lamp: true },
+    });
+  });
+
+  it("reflects later edits and leaves out deleted ids", () => {
+    const doc = makeDoc();
+    expect(
+      server.extractPlaySubtrees(
+        doc,
+        new Set(["guestbook", "gone", "counter"]),
+      ),
+    ).toEqual({
+      "can-play": {
+        guestbook: {
+          entries: [{ name: "a", at: 1 }, { name: "b" }, { name: "c" }],
+        },
+        counter: 3,
+      },
+    });
+  });
+
   it("returns nothing for a document without play data", () => {
     const doc = new Y.Doc();
     expect(server.extractPlaySubtrees(doc, new Set(["lamp"]))).toEqual({});
