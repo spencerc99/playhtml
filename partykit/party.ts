@@ -254,6 +254,21 @@ export class PartyServer extends YServer {
   private cachedSharedPerms: Record<string, SharedElementPermissions> | null =
     null;
   private persistenceMode: PersistenceMode = { kind: "available" };
+  // scheduleNextAlarm reads subscribers, shared references, the empty-room
+  // compaction deadline, the save retry, and the breaker's load retry. Every
+  // write to those (and every breaker storage or alarm write) bumps
+  // alarmInputsVersion. scheduledAlarm records the version a full
+  // scheduleNextAlarm run read and the alarm it left in storage, so a connect
+  // can skip the run when the result cannot differ. A fresh instance starts
+  // with nothing recorded and always runs it.
+  private alarmInputsVersion = 0;
+  private scheduledAlarm: {
+    inputsVersion: number;
+    alarm: number | null;
+  } | null = null;
+  // The stored empty-room compaction deadline: undefined until this instance
+  // has read or written the key, then kept in step with every write.
+  private knownEmptyRoomCompactAfter: number | null | undefined = undefined;
   private roomCircuitBreakerInstance: RoomCircuitBreaker | null = null;
   // Tracks the two startup phases separately because a deferred room hydrates
   // after the platform's one-time onStart hook has already returned.
@@ -286,7 +301,7 @@ export class PartyServer extends YServer {
     if (!this.roomCircuitBreakerInstance) {
       this.roomCircuitBreakerInstance = new RoomCircuitBreaker({
         roomName: this.name,
-        storage: this.ctx.storage,
+        storage: this.trackAlarmInputWrites(this.ctx.storage),
         getQuarantineControl: () => env.QUARANTINE_CONTROL ?? null,
         readPositiveNumber: readPositiveNumberEnv,
         defaults: {
@@ -386,7 +401,9 @@ export class PartyServer extends YServer {
 
   async setSubscribers(subscribers: Subscriber[]): Promise<void> {
     this.cachedSubscribers = subscribers;
+    this.markAlarmInputsChanged();
     await this.ctx.storage.put(STORAGE_KEYS.subscribers, subscribers);
+    this.markAlarmInputsChanged();
   }
 
   async getSharedReferences(): Promise<SharedRefEntry[]> {
@@ -401,7 +418,9 @@ export class PartyServer extends YServer {
 
   async setSharedReferences(references: SharedRefEntry[]): Promise<void> {
     this.cachedSharedRefs = references;
+    this.markAlarmInputsChanged();
     await this.ctx.storage.put(STORAGE_KEYS.sharedReferences, references);
+    this.markAlarmInputsChanged();
   }
 
   async getSharedPermissions(): Promise<
@@ -462,29 +481,63 @@ export class PartyServer extends YServer {
   }
 
   private async scheduleDocumentSaveRetry(): Promise<void> {
+    this.markAlarmInputsChanged();
     await this.ctx.storage.put(STORAGE_KEYS.documentSaveRetry, {
       retryAt: Date.now() + DEFAULT_DOCUMENT_SAVE_RETRY_MS,
     } satisfies DocumentSaveRetry);
+    this.markAlarmInputsChanged();
     await this.scheduleNextAlarm();
   }
 
   private async clearDocumentSaveRetry(): Promise<void> {
+    this.markAlarmInputsChanged();
     await this.ctx.storage.delete(STORAGE_KEYS.documentSaveRetry);
+    this.markAlarmInputsChanged();
   }
 
   private async getEmptyRoomCompactAfter(): Promise<number | null> {
+    if (this.knownEmptyRoomCompactAfter !== undefined) {
+      return this.knownEmptyRoomCompactAfter;
+    }
     const value = await this.ctx.storage.get(
       STORAGE_KEYS.emptyRoomCompactAfter
     );
-    return typeof value === "number" ? value : null;
+    // A write issued while the read was in flight is newer than the value read.
+    if (this.knownEmptyRoomCompactAfter === undefined) {
+      this.knownEmptyRoomCompactAfter =
+        typeof value === "number" ? value : null;
+    }
+    return this.knownEmptyRoomCompactAfter;
   }
 
+  // Deletes the deadline only when it is set or not yet known. The in-memory
+  // value is updated before the storage call so that it matches the order in
+  // which writes reach storage; a failed write makes it unknown again.
   private async clearEmptyRoomCompactAfter(): Promise<void> {
-    await this.ctx.storage.delete(STORAGE_KEYS.emptyRoomCompactAfter);
+    if (this.knownEmptyRoomCompactAfter === null) return;
+    this.knownEmptyRoomCompactAfter = null;
+    this.markAlarmInputsChanged();
+    try {
+      await this.ctx.storage.delete(STORAGE_KEYS.emptyRoomCompactAfter);
+    } catch (error) {
+      this.knownEmptyRoomCompactAfter = undefined;
+      throw error;
+    } finally {
+      this.markAlarmInputsChanged();
+    }
   }
 
   private async setEmptyRoomCompactAfter(timestamp: number): Promise<void> {
-    await this.ctx.storage.put(STORAGE_KEYS.emptyRoomCompactAfter, timestamp);
+    this.knownEmptyRoomCompactAfter = timestamp;
+    this.markAlarmInputsChanged();
+    try {
+      await this.ctx.storage.put(STORAGE_KEYS.emptyRoomCompactAfter, timestamp);
+    } catch (error) {
+      this.knownEmptyRoomCompactAfter = undefined;
+      throw error;
+    } finally {
+      this.markAlarmInputsChanged();
+    }
   }
 
   private async getEmergencyCompactCheckAfter(): Promise<number | null> {
@@ -1387,7 +1440,63 @@ export class PartyServer extends YServer {
     });
   }
 
+  private markAlarmInputsChanged(): void {
+    this.alarmInputsVersion = (this.alarmInputsVersion ?? 0) + 1;
+  }
+
+  // The circuit breaker writes the load retry, quarantine state, and the alarm
+  // itself straight to storage. Its storage handle counts every write as an
+  // alarm input change; over-counting only costs a skipped optimization.
+  private trackAlarmInputWrites(
+    storage: DurableObjectStorage
+  ): DurableObjectStorage {
+    const markChanged = () => this.markAlarmInputsChanged();
+    const writeMethods = new Set<PropertyKey>([
+      "put",
+      "delete",
+      "deleteAll",
+      "setAlarm",
+      "deleteAlarm",
+      "transaction",
+    ]);
+    return new Proxy(storage, {
+      get(target, property) {
+        const value = Reflect.get(target, property, target);
+        if (typeof value !== "function") return value;
+        if (!writeMethods.has(property)) return value.bind(target);
+        return async (...args: unknown[]) => {
+          markChanged();
+          try {
+            return await value.apply(target, args);
+          } finally {
+            markChanged();
+          }
+        };
+      },
+    });
+  }
+
+  // Connect-path entry to scheduleNextAlarm. Skips the run only when no input
+  // has changed since the last full run on this instance and the alarm that
+  // run left in storage is still in the future (or there was none). Under
+  // those conditions a full run computes a time no earlier than the stored
+  // alarm, so shouldSetAlarm is false and it would change nothing: the only
+  // time-dependent candidate is now + prune interval, which only grows.
+  private async scheduleNextAlarmIfInputsChanged(): Promise<void> {
+    const scheduled = this.scheduledAlarm;
+    if (
+      scheduled &&
+      scheduled.inputsVersion === (this.alarmInputsVersion ?? 0) &&
+      (scheduled.alarm === null || scheduled.alarm > Date.now()) &&
+      !this.circuitBreaker.isQuarantined()
+    ) {
+      return;
+    }
+    await this.scheduleNextAlarm();
+  }
+
   private async scheduleNextAlarm(): Promise<void> {
+    this.scheduledAlarm = null;
     // A quarantined room must not schedule work that wakes it up: every wake is
     // another chance to retry the load that killed the isolate.
     if (this.circuitBreaker.isQuarantined()) {
@@ -1395,6 +1504,7 @@ export class PartyServer extends YServer {
       return;
     }
 
+    const inputsVersion = this.alarmInputsVersion ?? 0;
     const now = Date.now();
     const subs = await this.getSubscribers();
     const refs = await this.getSharedReferences();
@@ -1423,12 +1533,16 @@ export class PartyServer extends YServer {
 
     if (nextAlarm === null) {
       await this.ctx.storage.deleteAlarm?.();
+      this.scheduledAlarm = { inputsVersion, alarm: null };
       return;
     }
 
     const previousAlarm = await this.ctx.storage.getAlarm?.();
     if (shouldSetAlarm({ previousAlarm, nextAlarm, now })) {
       await this.ctx.storage.setAlarm?.(nextAlarm);
+      this.scheduledAlarm = { inputsVersion, alarm: nextAlarm };
+    } else {
+      this.scheduledAlarm = { inputsVersion, alarm: previousAlarm ?? null };
     }
   }
 
@@ -1910,8 +2024,10 @@ export class PartyServer extends YServer {
 
     await this.clearEmptyRoomCompactAfter();
 
-    // Opportunistically schedule an alarm if bridge leases or compaction need one
-    await this.scheduleNextAlarm();
+    // Opportunistically schedule an alarm if bridge leases or compaction need
+    // one. Reconnect storms admit many sockets in a row, so this skips the
+    // storage work when nothing the alarm depends on has changed.
+    await this.scheduleNextAlarmIfInputsChanged();
 
     // Parse shared references from the connecting client (for consumer rooms)
     // Parse from the WebSocket request URL
@@ -3242,6 +3358,8 @@ export class PartyServer extends YServer {
 
   // PartyKit Alarm: invoked when storage alarm rings
   override async onAlarm(): Promise<void> {
+    // The platform consumed the stored alarm to deliver this call.
+    this.markAlarmInputsChanged();
     const loadDeferred = await this.circuitBreaker.getLoadDeferredResponse();
     if (loadDeferred) {
       const documentSaveRetry = await this.getDocumentSaveRetry();
