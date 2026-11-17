@@ -670,6 +670,46 @@ describe("playhtml.handleNavigation", () => {
     }
   });
 
+  it("drops the old provider before storing the new epoch on room-reset", async () => {
+    const origPath = window.location.pathname + window.location.search;
+    const providers = ((globalThis as any).PLAYHTML_TEST_PROVIDERS = []);
+    try {
+      history.replaceState(null, "", "/server-reset-race");
+      await playhtml.init({
+        host: "http://localhost:1999",
+        room: "/server-reset-race",
+      } as any);
+
+      const providerBefore = providers[providers.length - 1];
+      let epochSeenAtTeardown: string | null | undefined;
+      const destroy = providerBefore.destroy.bind(providerBefore);
+      providerBefore.destroy = () => {
+        if (epochSeenAtTeardown === undefined) {
+          epochSeenAtTeardown =
+            providerBefore.options.params().clientResetEpoch;
+        }
+        destroy();
+      };
+
+      providerBefore.emit(
+        "custom-message",
+        JSON.stringify({ type: "room-reset", resetEpoch: 4242 }),
+      );
+
+      // Synchronously, with no await: the old provider (and its pre-reset
+      // doc) is gone before any reconnect could carry the new epoch.
+      expect(epochSeenAtTeardown).toBeNull();
+      await new Promise((r) => queueMicrotask(r));
+      await new Promise((r) => queueMicrotask(r));
+      const providerAfter = providers[providers.length - 1];
+      expect(providerAfter).not.toBe(providerBefore);
+      expect(providerAfter.options.params().clientResetEpoch).toBe("4242");
+    } finally {
+      history.replaceState(null, "", origPath);
+      localStorage.clear();
+    }
+  });
+
   it("remembers a reset-epoch notice without reconnecting and sends it on reconnect", async () => {
     const origPath = window.location.pathname + window.location.search;
     const providers = ((globalThis as any).PLAYHTML_TEST_PROVIDERS = []);

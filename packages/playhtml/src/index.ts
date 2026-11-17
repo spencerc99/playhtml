@@ -1399,6 +1399,14 @@ function handleMainProviderSync(connected: boolean): void {
 }
 
 function queueServerRoomReset(resetEpoch: number): void {
+  if (!roomResetPromise) {
+    // Drop the old provider before anything awaits and before the new epoch is
+    // stored. The server closes every socket right after sending room-reset,
+    // and the old provider would otherwise reconnect on its own with the old
+    // doc (all its pre-reset history) and the new epoch, so the server admits
+    // it and the deleted history merges straight back into the compacted room.
+    teardownMainProvider();
+  }
   storeResetEpochForRoom(__currentRoomId, resetEpoch);
 
   if (roomResetPromise) {
@@ -2828,7 +2836,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
   }
   // Set up the common classes for affected elements.
   element.classList.add(`__playhtml-element`);
-  element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
+  element.style.setProperty("--jiggle-delay", `${Math.random().toFixed(2)}s`);
 
   attachSyncedStoreObserver(tag as string, elementId);
 }

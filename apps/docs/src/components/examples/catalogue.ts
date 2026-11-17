@@ -113,6 +113,32 @@ function parseSiteDescription(description: string | undefined): {
   };
 }
 
+function splitTitleCredit(title: string | undefined): {
+  title?: string;
+  by?: string;
+} {
+  if (!title) return {};
+  const match = title.match(/^(.+)\s+by\s+(.+?)$/i);
+  if (!match) return { title };
+  return { title: match[1].trim(), by: match[2].trim() };
+}
+
+function usableBlockTitle(
+  title: string | undefined,
+  author: string | undefined,
+  hostname: string,
+): string | undefined {
+  if (!title) return undefined;
+  const normalized = title.toLowerCase();
+  if (normalized === hostname.toLowerCase().replace(/^www\./, "")) {
+    return undefined;
+  }
+  if (normalized === hostname.toLowerCase()) return undefined;
+  // Older blocks used the person's name as the block title.
+  if (author && author.toLowerCase().startsWith(normalized)) return undefined;
+  return title;
+}
+
 function mapArenaBlock(value: unknown): SiteSummary | undefined {
   if (!isRecord(value)) return undefined;
   if (value.type !== "Link" || value.visibility !== "public") return undefined;
@@ -129,14 +155,21 @@ function mapArenaBlock(value: unknown): SiteSummary | undefined {
   const image = readNestedRecord(value, "image");
   const smallImage = image ? readNestedRecord(image, "small") : undefined;
   const sourceTitle = source ? readString(source.title) : undefined;
-  const title = sourceTitle ?? readString(value.title) ?? destination.hostname;
   const descriptionText = description
     ? readString(description.plain)
     : undefined;
   const siteDescription = parseSiteDescription(descriptionText);
+  // The block title is what the channel owner edits on Are.na, so it wins
+  // over the scraped page title. "Name by Person" also credits the person.
+  const blockTitle = splitTitleCredit(readString(value.title));
   const author =
     (metadata ? readString(metadata.author) : undefined) ??
-    siteDescription.author;
+    siteDescription.author ??
+    blockTitle.by;
+  const title =
+    usableBlockTitle(blockTitle.title, author, destination.hostname) ??
+    sourceTitle ??
+    destination.hostname;
 
   return {
     id: `arena-${id}`,

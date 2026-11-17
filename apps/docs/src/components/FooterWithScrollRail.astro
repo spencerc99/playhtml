@@ -3,6 +3,7 @@ import Default from '@astrojs/starlight/components/Footer.astro';
 import { DocsScrollRail } from './react/DocsScrollRail';
 import { DocsSidebarPresence } from './react/DocsSidebarPresence';
 import { AgentationDevToolbar } from './react/AgentationDevToolbar';
+import DocsWordmark from './DocsWordmark.astro';
 ---
 <div class="ph-docs-scroll-rail" aria-hidden="true">
   <DocsScrollRail client:only="react" />
@@ -11,3 +12,4 @@ import { AgentationDevToolbar } from './react/AgentationDevToolbar';
 <DocsSidebarPresence client:only="react" />
 {import.meta.env.DEV && <AgentationDevToolbar client:only="react" />}
 <Default />
+<DocsWordmark />

@@ -146,8 +146,8 @@ describe("Internet place suggestions", () => {
       placement: {
         type: "choice",
         choice: "featured",
-        confidence: 0.64,
-        probabilities: { featured: 0.64, regular: 0.3, scenery: 0.06 },
+        confidence: 0.7,
+        probabilities: { featured: 0.7, regular: 0.24, scenery: 0.06 },
       },
       scope: {
         type: "choice",
@@ -166,15 +166,15 @@ describe("Internet place suggestions", () => {
       placement: "featured",
       scope: "hostname",
       reason: "human-community",
-      confidence: 0.64,
+      confidence: 0.7,
       rationale:
-        "The model chose featured at hostname scope with 64% confidence.",
+        "The model chose featured at hostname scope with 70% confidence.",
       uncertainties: [
-        "The model also weighed regular at 30%.",
+        "The model also weighed regular at 24%.",
         "The hostname scope is uncertain (40%).",
       ],
       stopProbability: expect.closeTo(0.94, 5),
-      probabilities: { featured: 0.64, regular: 0.3, scenery: 0.06 },
+      probabilities: { featured: 0.7, regular: 0.24, scenery: 0.06 },
     });
     expect(parseClefSuggestion({ result: { answers } })?.placement).toBe(
       "featured",
@@ -203,6 +203,40 @@ describe("Internet place suggestions", () => {
     expect(
       parseClefSuggestion({ response: JSON.stringify(suggestion) }),
     ).toBeNull();
+  });
+
+  it("makes a featured answer below the featured bar a regular stop", () => {
+    const answers = (featured: number, regular: number) => ({
+      placement: {
+        choice: "featured",
+        confidence: featured,
+        probabilities: { featured, regular, scenery: 1 - featured - regular },
+      },
+      scope: { choice: "page", confidence: 0.8, probabilities: {} },
+      reason: {
+        choice: "editorial-or-cultural",
+        confidence: 0.7,
+        probabilities: {},
+      },
+    });
+    expect(parseClefSuggestion({ answers: answers(0.59, 0.36) })).toEqual({
+      placement: "regular",
+      scope: "page",
+      reason: "editorial-or-cultural",
+      confidence: 0.36,
+      rationale:
+        "The model leaned featured at 59%, below the 65% bar, so this is a regular stop at page scope.",
+      uncertainties: ["The model also weighed featured at 59%."],
+      stopProbability: expect.closeTo(0.95, 5),
+      probabilities: {
+        featured: 0.59,
+        regular: 0.36,
+        scenery: expect.closeTo(0.05, 5),
+      },
+    });
+    expect(
+      parseClefSuggestion({ answers: answers(0.65, 0.3) })?.placement,
+    ).toBe("featured");
   });
 
   it("asks Clef about sanitized evidence and caches its suggestion", async () => {
@@ -714,6 +748,20 @@ describe("Internet place suggestions", () => {
     expect(getReviewNeed(undefined)).toBe("pending");
     expect(getReviewNeed({ ...base, placement: "hidden" })).toBe("hidden");
     expect(getReviewNeed({ ...base, placement: "featured" })).toBe("promote");
+    expect(
+      getReviewNeed({
+        ...base,
+        placement: "regular",
+        probabilities: { regular: 0.6, featured: 0.3, scenery: 0.1 },
+      }),
+    ).toBe("promote");
+    expect(
+      getReviewNeed({
+        ...base,
+        placement: "scenery",
+        probabilities: { scenery: 0.6, featured: 0.35, regular: 0.05 },
+      }),
+    ).not.toBe("promote");
     expect(
       getReviewNeed({ ...base, placement: "regular", stopProbability: 0.55 }),
     ).toBe("unsure");

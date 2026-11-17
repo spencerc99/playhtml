@@ -109,6 +109,30 @@ All data is currently stored by a [PartyKit](https://partykit.dev) instance unde
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Contributions for new built-in capabilities are especially welcome — the same `can-play` API powers all of them.
 
+### Contributors
+
+Thank you to everyone who has helped build playhtml.
+
+<!-- contributors:start -->
+<!-- Generated from contributors.json by scripts/update-contributors.mjs. Edit that file, then run: bun run contributors -->
+<table>
+  <tr>
+    <td align="center" valign="top">
+      <a href="https://github.com/spencerc99"><img src="https://avatars.githubusercontent.com/spencerc99?s=128" width="64" height="64" alt="spencerc99" /><br /><sub><b>Spencer Chang</b></sub></a><br /><sub>Creator and maintainer</sub>
+    </td>
+    <td align="center" valign="top">
+      <a href="https://github.com/jessa0"><img src="https://avatars.githubusercontent.com/jessa0?s=128" width="64" height="64" alt="jessa0" /><br /><sub><b>Jessa</b></sub></a><br /><sub>Moved the sync server to PartyServer</sub>
+    </td>
+    <td align="center" valign="top">
+      <a href="https://github.com/alexwennerberg"><img src="https://avatars.githubusercontent.com/alexwennerberg?s=128" width="64" height="64" alt="alexwennerberg" /><br /><sub><b>Alex Wennerberg</b></sub></a><br /><sub>README fixes</sub>
+    </td>
+    <td align="center" valign="top">
+      <a href="https://github.com/W-A-James"><img src="https://avatars.githubusercontent.com/W-A-James?s=128" width="64" height="64" alt="W-A-James" /><br /><sub><b>Warren James</b></sub></a><br /><sub>Per-site privacy: turning collection off for a site</sub>
+    </td>
+  </tr>
+</table>
+<!-- contributors:end -->
+
 ## Support & Maintenance
 
 If you enjoy using this, please consider [sponsoring the project](https://github.com/sponsors/spencerc99). This helps fund the hosting costs for the syncing and persistence services and keeps the library maintained over time.

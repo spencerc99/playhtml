@@ -235,3 +235,33 @@ export function setupSponsorGoal() {
     bar.querySelector<HTMLElement>("span")!.style.width = `${percent}%`;
   }
 }
+
+// The homepage videos are a few MB each, so they wait until they are close to
+// the screen instead of competing with the first load (and the playhtml room
+// sync) on slow connections. The poster shows until then.
+export function setupLazyVideos() {
+  const videos = Array.from(
+    document.querySelectorAll<HTMLVideoElement>("video[data-lazy-video]"),
+  );
+  const start = (video: HTMLVideoElement) => {
+    const src = video.dataset.lazyVideo;
+    if (!src || video.getAttribute("src")) return;
+    video.src = src;
+    video.play().catch(() => {});
+  };
+  if (!("IntersectionObserver" in window)) {
+    videos.forEach(start);
+    return;
+  }
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        observer.unobserve(entry.target);
+        start(entry.target as HTMLVideoElement);
+      }
+    },
+    { rootMargin: "200px 0px" },
+  );
+  videos.forEach((video) => observer.observe(video));
+}

@@ -315,38 +315,89 @@
   min-height: 0;
 }
 
-.siteMedia {
-  position: relative;
+/* "Made with playhtml": a scrolling ribbon of gallery screenshots. */
+.ribbon {
+  margin-bottom: 2.25rem;
+}
+
+.ribbonRow {
+  display: flex;
+  gap: 1rem;
+  padding: 0.15rem 0.25rem 0.75rem 0;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+
+.ribbonItem {
+  flex: none;
+  width: 11rem;
+  min-width: 0;
+  color: var(--ph-ink);
+  text-decoration: none;
+  scroll-snap-align: start;
+}
+
+.ribbonItem:hover {
+  color: var(--ph-ink);
+}
+
+.ribbonItem:focus-visible {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: 3px;
+}
+
+.ribbonShot {
   display: grid;
-  min-height: 10.5rem;
-  aspect-ratio: 16 / 10;
-  overflow: hidden;
-  border-bottom: 1px solid var(--ph-hairline);
-}
-
-.siteMedia {
   place-items: center;
-  color: var(--ph-ink-3);
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
   background: var(--ph-paper-deep);
+  border: 1.5px solid var(--ph-ink);
+  border-radius: 6px;
+  box-shadow: 2px 2px 0 var(--ph-ink);
+  transition: transform var(--ph-motion-fast);
 }
 
-.siteMedia img {
+.ribbonItem:hover .ribbonShot {
+  transform: translate(-2px, -2px) rotate(-1deg);
+}
+
+.ribbonShot img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform var(--ph-motion-slow);
+  object-position: top center;
 }
 
-.card:hover .siteMedia img {
-  transform: scale(1.025);
-}
-
-.sitePlaceholder {
-  max-width: 85%;
+.ribbonPlaceholder {
+  padding: 0 0.5rem;
   overflow-wrap: anywhere;
+  color: var(--ph-ink-3);
   font-family: var(--ph-font-mono);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   text-align: center;
+}
+
+.ribbonTitle,
+.ribbonAuthor {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ribbonTitle {
+  margin-top: 0.45rem;
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.ribbonAuthor {
+  color: var(--ph-ink-3);
+  font-family: var(--ph-font-mono);
+  font-size: 0.72rem;
 }
 
 .cardBody {
@@ -381,13 +432,7 @@
   background: var(--ph-ultramarine-wash);
 }
 
-.siteBadge {
-  color: var(--ph-sage-deep);
-  background: var(--ph-sage-wash);
-}
-
-.difficulty,
-.hostname {
+.difficulty {
   overflow: hidden;
   color: var(--ph-ink-3);
   font-family: var(--ph-font-mono);
@@ -420,14 +465,6 @@
   line-height: 1.5;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
-}
-
-.author {
-  margin: 0.35rem 0 0;
-  color: var(--ph-ink-3);
-  font-family: var(--ph-font-mono);
-  font-size: 0.72rem;
-  line-height: 1.4;
 }
 
 .tagList {
@@ -523,7 +560,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .card,
-  .siteMedia img,
+  .ribbonShot,
   .primaryAction,
   .secondaryAction {
     transition: none;

@@ -12,22 +12,40 @@ playhtml makes HTML elements collaborative and real-time via Yjs CRDTs.
 playhtml is for people making their own internet playgrounds. The experience is theirs to design; your job is to make their idea work, not to fill in the idea for them.
 
 - **Build only what was asked.** Do not add mechanics, rules, sounds, music, animations, motion, scoring, timers, themes, or extra features the person did not describe. A "musical chairs with cursors" request does not authorize you to pick the music, make cursors circle, or invent the elimination rules.
-- **Ask about experience decisions before building.** If the request leaves open how the interaction works (what people do, what happens in response, how it starts and ends, what everyone else sees), list those open questions briefly and wait for answers. Do not pick for them.
-- **Confirm the plan first for anything bigger than a single element.** Restate the interaction in a few plain sentences and get a yes before writing code.
-- **Fit the page, with a lighter touch than usual.** On a page with its own style, match its character: reuse its colors, fonts, borders, illustrations, and level of playfulness, so the new element looks like it was always there. A colorful, hand-made page should get colorful, hand-made-feeling pieces, not a single-color placeholder. On a blank page, keep the styling modest and let the interaction be the interesting part. In both cases, lean a bit more restrained than you normally would: the look is the person's call, so leave room for them to make it theirs. If the look clearly matters to them, ask what they want.
+- **Ask before building.** If the request leaves anything open, ask about it first. See "Before Building: One Round of Questions" below.
+- **Fit the page, with a lighter touch than usual.** On a page with its own style, match its character: reuse its colors, fonts, borders, illustrations, and level of playfulness, so the new element looks like it was always there. A colorful, hand-made page should get colorful, hand-made-feeling pieces, not a single-color placeholder. On a blank page, keep the styling modest and let the interaction be the interesting part. In both cases, lean a bit more restrained than you normally would: the look is the person's call, so leave room for them to make it theirs. If the request doesn't say how it should look or feel, include that in your questions.
 - **Offer ideas, don't ship them.** If you see a good addition, mention it in one line after the working version. The person decides.
 
 If the person says to surprise them or to use your judgment, you may make those choices, and say which ones you made.
 
-## Before Implementing — Ask These Questions
+## Before Building: One Round of Questions
 
-Along with any open experience decisions above, if the request is ambiguous on ANY of these, **stop and ask**:
+Before writing code, check the request against the list below. Collect everything it leaves open and ask it all in **one message**, then wait for answers. Don't ask one question at a time, and don't ask about anything the request or the existing page already answers.
 
-1. **Persistence**: Should data survive page refresh? (`defaultData`=yes, presence=no)
-2. **Shared vs per-user**: Should all users see the same state, or does each user have their own?
-3. **Vanilla HTML or React?**
+Make the questions easy to answer:
 
-These determine which API and data type to use. Getting them wrong means a rewrite.
+- Group them under the headings below and number them, so the person can reply "1: a, 3: b".
+- Keep each one short and concrete. Offer 2–3 options when that helps.
+- Ask about design as seriously as about code. How it looks and feels is the person's call, not a detail to fill in.
+
+**The interaction**
+
+1. What do people do, and what happens in response? How does it start and end?
+2. When someone acts, what do others see? Live only (cursors, presence), traces left for later visitors, or both?
+3. What happens when only one person is on the page?
+
+**The look**
+
+4. Should it match the page's existing style or have its own? Any mood, colors, or references?
+5. Where does it sit on the page, and how big is it? Should anything move or animate?
+
+**The data** (these decide which API and data type to use; getting them wrong means a rewrite)
+
+6. Should it survive a page refresh? (`defaultData` = yes, presence = no)
+7. Does everyone see the same state, or does each person have their own?
+8. Vanilla HTML or React?
+
+If nothing is open, skip the questions. For anything bigger than a single element, still restate the plan in a few plain sentences and get a yes before writing code.
 
 ## Data Types
 
@@ -210,3 +228,20 @@ See https://playhtml.fun/docs/advanced/cursors/ for full API.
    - **Worst case — self-triggering write loop**: a callback that writes shared data AND re-runs when that data changes. See the "NEVER write shared data…" section above. Treat it as a hard rule.
 8. **Computed values in state**: Don't store what you can calculate. Compute in `update`/render.
 9. **Missing PlayProvider** (React): `withSharedState` silently fails without it.
+
+## When You Need More Detail
+
+If this guide doesn't cover what you need, look in this order:
+
+1. **Reference docs** (exact options, arguments, return values):
+   - [Element initializer API](https://playhtml.fun/docs/reference/element-api/): everything `register` / `can-play` accepts
+   - [Registration API](https://playhtml.fun/docs/reference/view-api/): `playhtml.register` and handles
+   - [`playhtml.init()` options](https://playhtml.fun/docs/reference/init-options/)
+   - [playhtml client](https://playhtml.fun/docs/reference/playhtml-client/): everything on the `playhtml` object
+   - [People & presence](https://playhtml.fun/docs/reference/presence/)
+   - [React API](https://playhtml.fun/docs/reference/react-api/)
+   - [Capabilities](https://playhtml.fun/docs/reference/capabilities/)
+2. **Guides**: [getting started](https://playhtml.fun/docs/), [built-in elements](https://playhtml.fun/docs/capabilities/), [custom elements](https://playhtml.fun/docs/custom-elements/), [core concepts](https://playhtml.fun/docs/concepts/), [data best practices](https://playhtml.fun/docs/advanced/data-best-practices/), [page-level data](https://playhtml.fun/docs/data/page-data/), [events](https://playhtml.fun/docs/data/events/), [examples](https://playhtml.fun/docs/examples/).
+3. **Installed types**: if the package is in `node_modules`, read `node_modules/playhtml/dist/main.d.ts` or `node_modules/@playhtml/react/dist/main.d.ts`. They list every export with comments.
+
+Don't read the `.js` files in `dist/`. They are minified bundles: large, hard to read, and they don't say what's public API.

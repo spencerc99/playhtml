@@ -12,6 +12,7 @@ import {
 import {
   loadLiveCounts,
   setupCodePeeks,
+  setupLazyVideos,
   setupLabels,
   setupMirrorDemo,
   setupSponsorGoal,
@@ -49,6 +50,7 @@ function getLocalPreviewInitOptions() {
 }
 
 setupToyboxScale();
+setupLazyVideos();
 setupLabels();
 setupCodePeeks();
 setupMirrorDemo();
