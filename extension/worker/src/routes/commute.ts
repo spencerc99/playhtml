@@ -62,6 +62,7 @@ async function fetchRecentEvents(
     type: type === 'all' ? null : type,
     limit,
     domain: null,
+    urlHashes: null,
     pid: null,
     from: null,
     to: null,

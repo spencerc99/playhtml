@@ -1,6 +1,7 @@
 // ABOUTME: Tests stable pagination for recent extension events.
 // ABOUTME: Verifies live inserts cannot shift later pages onto duplicate rows.
 
+import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { Env } from '../lib/supabase';
 
@@ -11,6 +12,7 @@ const { createSupabaseClient } = vi.hoisted(() => ({
 vi.mock('../lib/supabase', () => ({ createSupabaseClient }));
 
 import { getEarlierEventFilter } from '../lib/eventCursorFilter';
+import { pageEventUrlVariants, parseUrlHashes } from '../../../src/utils/pageEventUrls';
 import {
   getRecentEventTypeFilter,
   handleRecent,
@@ -197,6 +199,7 @@ const ALL_NAVIGATION = {
   type: 'navigation',
   limit: 1000,
   domain: null,
+  urlHashes: null,
   pid: null,
   from: null,
   to: null,
@@ -284,5 +287,168 @@ describe('recent events with page metadata', () => {
     expect(lookupFailure.headers.get('Access-Control-Allow-Origin')).toBe('*');
     expect(error).toHaveBeenCalledWith('Recent events error:', expect.any(Error));
     error.mockRestore();
+  });
+});
+
+describe('recent events for one page', () => {
+  const env = {} as Env;
+  const md5 = (text: string) => createHash('md5').update(text, 'utf8').digest('hex');
+
+  /** Answers page_events_page from `rows` by md5(url) and its keyset arguments, recording every call. */
+  function fakePageIndex(rows: Record<string, unknown>[]) {
+    const rpcCalls: Array<[string, Record<string, unknown>]> = [];
+    const tables: string[] = [];
+    const client = {
+      rpc: async (name: string, args: Record<string, unknown>) => {
+        rpcCalls.push([name, args]);
+        const hashes = args.p_url_hashes as string[];
+        const beforeTs = (args.p_before_ts as string | undefined) ?? null;
+        const beforeId = (args.p_before_id as string | undefined) ?? null;
+        const data = rows
+          .filter((row) => hashes.includes(md5(row.url as string)))
+          .filter((row) => args.p_type === null || row.type === args.p_type)
+          .filter((row) => {
+            if (beforeTs === null) return true;
+            const ts = row.ts as string;
+            return ts < beforeTs || (ts === beforeTs && (row.id as string) < (beforeId as string));
+          })
+          .sort((a, b) =>
+            (b.ts as string).localeCompare(a.ts as string) ||
+            (b.id as string).localeCompare(a.id as string),
+          )
+          .slice(0, args.p_limit as number);
+        return { data, error: null };
+      },
+      from(table: string) {
+        tables.push(table);
+        if (table !== 'participants') throw new Error(`unexpected table ${table}`);
+        return { select: () => ({ in: async () => ({ data: [], error: null }) }) };
+      },
+    };
+    createSupabaseClient.mockReturnValue(client);
+    return { rpcCalls, tables };
+  }
+
+  const PAGE = 'https://en.wikipedia.org/wiki/Cat';
+  const PAGE_HASHES = [md5(PAGE), md5(`${PAGE}/`)];
+
+  it('parses 1-4 comma-separated md5 digests and nothing else', () => {
+    expect(parseUrlHashes(PAGE_HASHES.join(','))).toEqual(PAGE_HASHES);
+    expect(parseUrlHashes(`${PAGE_HASHES[0]},${PAGE_HASHES[0]}`)).toEqual([PAGE_HASHES[0]]);
+    expect(parseUrlHashes('')).toBeNull();
+    expect(parseUrlHashes(PAGE_HASHES[0].toUpperCase())).toBeNull();
+    expect(parseUrlHashes(`${PAGE_HASHES[0]},`)).toBeNull();
+    expect(parseUrlHashes(Array(5).fill(PAGE_HASHES[0]).join(','))).toBeNull();
+    expect(parseUrlHashes(PAGE)).toBeNull();
+  });
+
+  it('lists the stored forms of a page URL', () => {
+    expect(pageEventUrlVariants('https://en.wikipedia.org/wiki/Cat#History')).toEqual([
+      'https://en.wikipedia.org/wiki/Cat',
+      'https://en.wikipedia.org/wiki/Cat/',
+    ]);
+    expect(pageEventUrlVariants('https://www.youtube.com/watch?v=abc')).toEqual([
+      'https://www.youtube.com/watch?v=abc',
+      'https://www.youtube.com/watch/?v=abc',
+      'https://www.youtube.com/watch',
+      'https://www.youtube.com/watch/',
+    ]);
+    expect(pageEventUrlVariants('https://example.com')).toEqual(['https://example.com/']);
+    expect(() => pageEventUrlVariants('file:///Users/me/page.html')).toThrow();
+    expect(() => pageEventUrlVariants('not a url')).toThrow();
+  });
+
+  it('reads the page index by hash with no domain filter', async () => {
+    const rows = [
+      { ...makeRow(0), url: PAGE },
+      { ...makeRow(1), url: `${PAGE}/` },
+      { ...makeRow(2), url: 'https://en.wikipedia.org/wiki/Dog' },
+    ];
+    const { rpcCalls, tables } = fakePageIndex(rows);
+
+    const result = await loadRecentEvents(env, {
+      type: 'cursor',
+      limit: 1000,
+      domain: null,
+      urlHashes: PAGE_HASHES,
+      pid: null,
+      from: '2026-01-01T00:00:00.000Z',
+      to: null,
+      requireTitle: false,
+    });
+    if (result.error) throw new Error(result.error.message);
+
+    expect(result.events.map((event) => event.meta.url)).toEqual([PAGE, `${PAGE}/`]);
+    expect(rpcCalls).toEqual([
+      [
+        'page_events_page',
+        {
+          p_url_hashes: PAGE_HASHES,
+          p_type: 'cursor',
+          p_from: '2026-01-01T00:00:00.000Z',
+          p_to: null,
+          p_limit: 1000,
+        },
+      ],
+    ]);
+    expect(tables).not.toContain('collection_events');
+  });
+
+  it('pages through the page index after the last row', async () => {
+    const rows = Array.from({ length: 1500 }, (_, index) => ({ ...makeRow(index), url: PAGE }));
+    const { rpcCalls } = fakePageIndex(rows);
+
+    const result = await loadRecentEvents(env, {
+      type: null,
+      limit: 1200,
+      domain: null,
+      urlHashes: [md5(PAGE)],
+      pid: null,
+      from: null,
+      to: null,
+      requireTitle: false,
+    });
+    if (result.error) throw new Error(result.error.message);
+
+    expect(result.events).toHaveLength(1200);
+    expect(new Set(result.events.map((event) => event.id)).size).toBe(1200);
+    expect(rpcCalls).toHaveLength(2);
+    expect(rpcCalls[1][1]).toMatchObject({
+      p_before_ts: makeRow(999).ts,
+      p_before_id: makeRow(999).id,
+      p_limit: 200,
+    });
+  });
+
+  it('handles GET /events/recent?urlHash= through the page index', async () => {
+    const { rpcCalls } = fakePageIndex([{ ...makeRow(0), url: PAGE }]);
+
+    const response = await handleRecent(
+      new Request(
+        `https://worker.example/events/recent?type=cursor&limit=5000&urlHash=${PAGE_HASHES.join('%2C')}`,
+      ),
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toHaveLength(1);
+    expect(rpcCalls[0][1]).toMatchObject({ p_url_hashes: PAGE_HASHES, p_limit: 1000 });
+  });
+
+  it.each([
+    [`urlHash=${md5(PAGE)}&domain=en.wikipedia.org`, 'urlHash cannot be combined with domain or pid'],
+    [`urlHash=${md5(PAGE)}&pid=someone`, 'urlHash cannot be combined with domain or pid'],
+    [`urlHash=${encodeURIComponent(PAGE)}`, 'Invalid urlHash (expected 1-4 comma-separated md5 hex digests)'],
+    ['urlHash=', 'Invalid urlHash (expected 1-4 comma-separated md5 hex digests)'],
+    [`urlHash=${Array(5).fill(md5(PAGE)).join(',')}`, 'Invalid urlHash (expected 1-4 comma-separated md5 hex digests)'],
+  ])('answers 400 to %s', async (query, message) => {
+    const { rpcCalls } = fakePageIndex([]);
+    const response = await handleRecent(
+      new Request(`https://worker.example/events/recent?${query}`),
+      env,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: message });
+    expect(rpcCalls).toHaveLength(0);
   });
 });
