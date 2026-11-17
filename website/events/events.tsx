@@ -8,6 +8,7 @@ import {
   timerElapsedMs,
   type TimerData,
 } from "./eventTimer";
+import { newestFirst } from "./guestbookOrder";
 
 const NumCursors = 50;
 
@@ -197,7 +198,7 @@ export const Guestbook = withSharedState(
           </button>
         </div>
         <hr />
-        {[...data].reverse().map((entry, i) => (
+        {newestFirst(data).map((entry, i) => (
           <div
             key={i}
             className="guestbook-entry"
