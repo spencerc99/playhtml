@@ -615,7 +615,6 @@ export function Collections({
       const clamped = Math.max(0, Math.min(100, Math.round(pct)));
       await browser.storage.local.set({ [PRIVACY_LEVEL_KEY]: clamped });
       setKeyboardLegibilityPct(clamped);
-      await loadCollectors();
     } catch (error) {
       console.error("Failed to update keyboard legibility:", error);
       alert("Failed to update keyboard legibility. Please try again.");
