@@ -8,6 +8,7 @@ import {
   getPresenceSocketForRoom,
   getPresenceSockets,
   sentChannelUpdates,
+  sentMessages,
 } from "./presence-test-utils";
 
 describe("element awareness sync", () => {
@@ -392,5 +393,32 @@ describe("element awareness sync", () => {
       .setMyAwareness({ active: true });
 
     expect(updateCounts).toEqual(new Map([["targeted-50", 1]]));
+  });
+
+  it("clears the element's local awareness on deleteElementData", async () => {
+    const el = document.createElement("div");
+    el.id = "deleted-presence";
+    el.setAttribute("can-play", "");
+    (el as any).defaultData = {};
+    (el as any).updateElement = vi.fn();
+    document.body.appendChild(el);
+    await playhtml.setupPlayElementForTag(el, "can-play");
+
+    elementHandlers.get("can-play")!
+      .get("deleted-presence")!
+      .setMyAwareness({ active: true } as any);
+    await flushPresencePublishes();
+    const socket = getPresenceSocketForRoom(playhtml.roomId);
+    expect(sentChannelUpdates(socket, "element:shard:0").at(-1)).toMatchObject({
+      entries: [["can-play", "deleted-presence", { active: true }]],
+    });
+
+    playhtml.deleteElementData("can-play", "deleted-presence");
+    await flushPresencePublishes();
+
+    expect(sentMessages(socket).at(-1)).toEqual({
+      type: "presence-clear",
+      channel: "element:shard:0",
+    });
   });
 });
