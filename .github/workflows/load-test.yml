@@ -42,6 +42,11 @@ on:
         options:
           - staging
           - prod
+      i_know_this_is_prod:
+        description: "Required to run against prod: it loads the live server real users are on"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   setup:
@@ -86,6 +91,7 @@ jobs:
 
       - name: Run load test
         working-directory: tools/load-test
+        # The runner refuses --target prod unless it also gets --i-know-this-is-prod.
         run: |
           set -o pipefail
           bun src/runner.ts \
@@ -95,6 +101,7 @@ jobs:
             --ramp-up ${{ inputs.ramp_up }} \
             --target ${{ inputs.target }} \
             --room ${{ needs.setup.outputs.room_id }} \
+            ${{ inputs.i_know_this_is_prod && '--i-know-this-is-prod' || '' }} \
             2>&1 | tee results.txt
 
       - name: Upload results

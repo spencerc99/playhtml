@@ -24,7 +24,7 @@ export interface ClientEvent {
 
 export interface VirtualClientOptions {
   roomId: string;
-  host: string; // e.g. "localhost:1999" or "playhtml.spencerc99.partykit.dev"
+  host: string; // e.g. "localhost:1999" or "api-staging.playhtml.fun"
   clientId: string;
 }
 
