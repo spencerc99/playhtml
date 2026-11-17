@@ -1583,12 +1583,12 @@ const AdminConsole: React.FC = () => {
       const res = await fetch(url, { method: "POST" });
       if (!res.ok) {
         let errorMessage = `${res.status} ${res.statusText}`;
+        const text = await res.text();
         try {
-          const errorData = await res.json();
+          const errorData = JSON.parse(text);
           errorMessage = errorData.error || errorData.message || errorMessage;
         } catch {
-          // If response isn't JSON, use status text
-          const text = await res.text();
+          // The body is not JSON: show the raw text when there is any
           if (text) errorMessage = text;
         }
         throw new Error(errorMessage);
