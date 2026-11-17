@@ -229,6 +229,10 @@ export class PartyServer extends YServer {
   };
 
   private documentMaintenanceInProgress = false;
+  // True between a snapshot restore saving to the database and that snapshot
+  // replacing the live document. Saves must stay paused for that whole span,
+  // or an autosave of the stale live document would overwrite the commit.
+  private committedSnapshotAwaitingLoad = false;
   private documentWriteTail: Promise<void> = Promise.resolve();
   private documentGeneration = 0;
   private persistenceObserverAttached = false;
@@ -1283,6 +1287,7 @@ export class PartyServer extends YServer {
       // The persisted snapshot is authoritative now. Keep autosave paused until
       // the live document catches up so a later save cannot restore stale state.
       committedSnapshotRequiresReload = true;
+      this.committedSnapshotAwaitingLoad = true;
 
       // Set reset epoch for client detection
       await this.setResetEpoch(resetEpoch);
@@ -1309,6 +1314,7 @@ export class PartyServer extends YServer {
       replaceDocFromSnapshot(liveYDoc, updatedBase64);
       setDocResetEpoch(liveYDoc, resetEpoch);
       committedSnapshotRequiresReload = false;
+      this.committedSnapshotAwaitingLoad = false;
       if (options?.completeHydration !== false) {
         this.markDocumentHydrated();
       }
@@ -1387,7 +1393,9 @@ export class PartyServer extends YServer {
           committed,
         };
       } finally {
-        this.documentMaintenanceInProgress = false;
+        // Release the pause taken above unless a committed snapshot still has
+        // to replace the live document.
+        this.documentMaintenanceInProgress = this.committedSnapshotAwaitingLoad;
       }
     });
   }

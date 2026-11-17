@@ -176,6 +176,7 @@ function buildRoom(storage: FakeStorage, name: string, doc?: Y.Doc) {
     realtimeSyncStarted: { value: true, writable: true },
     documentLoadCompleted: { value: false, writable: true },
     documentMaintenanceInProgress: { value: false, writable: true },
+    committedSnapshotAwaitingLoad: { value: false, writable: true },
     documentWriteTail: { value: Promise.resolve(), writable: true },
     documentGeneration: { value: 0, writable: true },
     persistenceObserverAttached: { value: false, writable: true },
@@ -3040,6 +3041,63 @@ describe("quarantine data safety", () => {
 
     expect(room.documentMaintenanceInProgress).toBe(false);
     expect(room.document.getMap("play").get("greeting")).toBe("hello");
+  });
+
+  test("an admin play-data edit keeps saves blocked when epoch storage fails after commit", async () => {
+    const { room, storage } = createRoom();
+    room.documentLoadCompleted = true;
+    room.document.getMap("play").set("greeting", "stale live value");
+    const originalPut = storage.put.bind(storage);
+    storage.put = async (key: string, value: unknown) => {
+      if (key === "resetEpoch") {
+        throw new Error("epoch storage unavailable");
+      }
+      await originalPut(key, value);
+    };
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await expect(
+        room.mutateAdminPlayData((playData: Record<string, any>) => {
+          playData.greeting = "admin edit";
+          return { kind: "commit", result: null };
+        })
+      ).rejects.toThrow("epoch storage unavailable");
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(upsertCalls).toHaveLength(1);
+    const committedDocument = persistedRow.document;
+    expect(room.documentMaintenanceInProgress).toBe(true);
+    expect(room.roomState()).toBe("save-paused");
+
+    await room.onSave();
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(persistedRow.document).toBe(committedDocument);
+  });
+
+  test("an admin play-data edit releases the save lock when it fails before committing", async () => {
+    const { room } = createRoom();
+    room.documentLoadCompleted = true;
+    upsertError = new Error("database unavailable");
+    const originalError = console.error;
+    console.error = () => {};
+
+    try {
+      await expect(
+        room.mutateAdminPlayData((playData: Record<string, any>) => {
+          playData.greeting = "admin edit";
+          return { kind: "commit", result: null };
+        })
+      ).rejects.toThrow("database unavailable");
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(room.documentMaintenanceInProgress).toBe(false);
   });
 
   test("a hard reset refuses to run while quarantined", async () => {
