@@ -4,6 +4,7 @@
 import type { PresenceView } from "@playhtml/common";
 import type { CustomSiteDeps } from "./index";
 import { FollowManager } from "../features/FollowManager";
+import { registerExtensionShadowRoot } from "../features/extensionPageUi";
 
 const LOBBY_HEARTBEAT_MS = 60_000;
 
@@ -438,11 +439,23 @@ export async function initWikipedia(deps: CustomSiteDeps): Promise<() => void> {
   function syncPanel() {
     const state = chatManager.getState();
     if (state.isOpen && !panelUI) {
-      panelUI = injectShadowReact(ChatPanel as any, buildPanelProps(), {
+      const ui = injectShadowReact(ChatPanel as any, buildPanelProps(), {
         hostId: "wewere-chat-panel-host",
         hostStyle: "position:fixed;bottom:48px;right:16px;z-index:2147483639;",
         css: CHAT_PANEL_CSS,
       });
+      // Page shortcuts (follow, emotes) must see typing in the closed root.
+      const unregisterShadow = registerExtensionShadowRoot(
+        ui.host,
+        ui.container.getRootNode() as ShadowRoot,
+      );
+      panelUI = {
+        render: ui.render,
+        destroy: () => {
+          unregisterShadow();
+          ui.destroy();
+        },
+      };
     } else if (state.isOpen && panelUI) {
       panelUI.render(buildPanelProps());
     } else if (!state.isOpen && panelUI) {
