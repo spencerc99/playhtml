@@ -1,5 +1,5 @@
-// ABOUTME: Tests rendering persisted words in the one-word story.
-// ABOUTME: Ensures untrusted shared text remains text instead of markup.
+// ABOUTME: Tests rendering and submitting words in the one-word story.
+// ABOUTME: Ensures shared text stays text, colors are six-digit hex, and words are trimmed.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
