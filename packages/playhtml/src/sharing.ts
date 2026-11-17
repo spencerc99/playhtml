@@ -11,6 +11,18 @@ export function setSharedPermission(
   sharedPermissions.set(elementId, permission);
 }
 
+/**
+ * Reads a `shared` attribute value as a permission mode. Empty or absent means
+ * read-write; "read-only" anywhere in the value, or exactly "ro", means read-only.
+ */
+export function parseSharedPermission(
+  attrValue: string | null,
+): "read-only" | "read-write" {
+  if (!attrValue) return "read-write";
+  const val = attrValue.toLowerCase();
+  return val.includes("read-only") || val === "ro" ? "read-only" : "read-write";
+}
+
 // Shared elements interfaces
 interface SharedElement {
   elementId: string;

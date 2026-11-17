@@ -2,6 +2,7 @@
 // ABOUTME: Supports runtime diagnostics without loading the full development toolbar.
 
 import { normalizePath } from "@playhtml/common";
+import { parseSharedPermission } from "./sharing";
 
 export function listSharedElements() {
   const out: Array<{
@@ -25,9 +26,7 @@ export function listSharedElements() {
       elementId: id,
       dataSource: ds,
       normalized: ds,
-      permissions: element.getAttribute("shared")?.includes("read-only")
-        ? "read-only"
-        : "read-write",
+      permissions: parseSharedPermission(element.getAttribute("shared")),
       element,
     });
   });
