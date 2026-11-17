@@ -118,11 +118,8 @@ export function useNavigationTimeline(
       .slice(0, settings.maxSessions);
 
     if (validSessions.length === 0) {
-      console.log("[Timeline] No valid sessions after filtering");
       return null;
     }
-
-    console.log(`[Timeline] Processing ${validSessions.length} sessions`);
 
     // Build domain color map
     const domainSet = new Set<string>();
@@ -310,10 +307,6 @@ export function useNavigationTimeline(
         node.y = Math.max(margin, Math.min(settings.canvasHeight - margin, node.y));
       });
     }
-
-    console.log(
-      `[Timeline] Created ${nodes.size} nodes, ${edges.length} edges, ${sessions.length} sessions`
-    );
 
     return {
       nodes,
