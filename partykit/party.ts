@@ -1610,20 +1610,23 @@ export class PartyServer extends YServer {
     elementIds: Set<string>
   ): Record<string, Record<string, any>> {
     const result: Record<string, Record<string, any>> = {};
-    // Bind SyncedStore to this doc to operate on the same structure clients use
-    const store = syncedStore<{ play: Record<string, any> }>({ play: {} }, doc);
-    const playY = getYjsValue(store.play) as unknown as Y.Map<any>;
-    if (!playY) return result;
-    playY.forEach((tagMap: any, tag: string) => {
+    if (elementIds.size === 0) return result;
+    // SyncedStore keeps play data in the root "play" Y.Map (tag -> Y.Map of
+    // element id -> value), so only the requested ids are looked up in each tag.
+    const playY = doc.getMap<unknown>("play");
+    playY.forEach((tagMap, tag) => {
       if (!(tagMap instanceof Y.Map)) return;
       const outForTag: Record<string, any> = {};
-      tagMap.forEach((val: any, elementId: string) => {
-        if (!elementIds.has(elementId)) return;
+      let found = false;
+      for (const elementId of elementIds) {
+        if (!tagMap.has(elementId)) continue;
+        const val = tagMap.get(elementId);
         // Prefer toJSON to get plain values
-        const plain = typeof val?.toJSON === "function" ? val.toJSON() : val;
-        outForTag[elementId] = plain;
-      });
-      if (Object.keys(outForTag).length) {
+        outForTag[elementId] =
+          typeof val?.toJSON === "function" ? val.toJSON() : val;
+        found = true;
+      }
+      if (found) {
         result[tag] = outForTag;
       }
     });
