@@ -3095,9 +3095,44 @@ function setupPlayElementDescendants(element: HTMLElement): void {
   });
 
   descendants.forEach((descendant) => {
+    // Already bound on the last pass: re-apply its own shared data (this
+    // root's update may have written a stale copy of its subtree) instead of
+    // re-running full setup, which rebuilt every nested handler on every
+    // update of the root.
+    if (previousDescendants && reapplyBoundDescendant(descendant, previousDescendants)) {
+      return;
+    }
     setupPlayElement(descendant);
   });
   mirrorDescendantElementsByRoot.set(element, currentDescendants);
+}
+
+/**
+ * Re-applies shared data to a descendant whose every tag was bound to this
+ * same DOM element on the previous pass. Returns false when it needs a full
+ * setup instead (new element, new tag, or a handler that went away).
+ */
+function reapplyBoundDescendant(
+  descendant: HTMLElement,
+  previousDescendants: Map<string, HTMLElement>,
+): boolean {
+  const descendantId = getIdForElement(descendant);
+  if (!descendantId) return false;
+  const bound: Array<[string, ElementHandler]> = [];
+  for (const tag of getTagTypes()) {
+    if (!descendant.hasAttribute(tag)) continue;
+    if (previousDescendants.get(`${tag}:${descendantId}`) !== descendant) {
+      return false;
+    }
+    const handler = elementHandlers.get(tag)?.get(descendantId);
+    if (!handler || handler.element !== descendant) return false;
+    bound.push([tag, handler]);
+  }
+  if (bound.length === 0) return false;
+  for (const [tag, handler] of bound) {
+    applySharedElementDataToHandler(tag, descendantId, handler);
+  }
+  return true;
 }
 
 /**
