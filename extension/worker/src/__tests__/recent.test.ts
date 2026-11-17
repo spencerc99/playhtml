@@ -12,7 +12,7 @@ const { createSupabaseClient } = vi.hoisted(() => ({
 vi.mock('../lib/supabase', () => ({ createSupabaseClient }));
 
 import { getEarlierEventFilter } from '../lib/eventCursorFilter';
-import { pageEventUrlVariants, parseUrlHashes } from '../../../src/utils/pageEventUrls';
+import { parseUrlHashes } from '../../../src/utils/pageEventUrls';
 import {
   getRecentEventTypeFilter,
   handleRecent,
@@ -294,19 +294,20 @@ describe('recent events for one page', () => {
   const env = {} as Env;
   const md5 = (text: string) => createHash('md5').update(text, 'utf8').digest('hex');
 
-  /** Answers page_events_page from `rows` by md5(url) and its keyset arguments, recording every call. */
+  /**
+   * Answers page_events_page with `rows`, newest first, after its keyset
+   * arguments, recording every call. Which rows match a page is the SQL
+   * function's job and is tested in supabase/tests/page_events_page.test.sh.
+   */
   function fakePageIndex(rows: Record<string, unknown>[]) {
     const rpcCalls: Array<[string, Record<string, unknown>]> = [];
     const tables: string[] = [];
     const client = {
       rpc: async (name: string, args: Record<string, unknown>) => {
         rpcCalls.push([name, args]);
-        const hashes = args.p_url_hashes as string[];
         const beforeTs = (args.p_before_ts as string | undefined) ?? null;
         const beforeId = (args.p_before_id as string | undefined) ?? null;
         const data = rows
-          .filter((row) => hashes.includes(md5(row.url as string)))
-          .filter((row) => args.p_type === null || row.type === args.p_type)
           .filter((row) => {
             if (beforeTs === null) return true;
             const ts = row.ts as string;
@@ -342,29 +343,8 @@ describe('recent events for one page', () => {
     expect(parseUrlHashes(PAGE)).toBeNull();
   });
 
-  it('lists the stored forms of a page URL', () => {
-    expect(pageEventUrlVariants('https://en.wikipedia.org/wiki/Cat#History')).toEqual([
-      'https://en.wikipedia.org/wiki/Cat',
-      'https://en.wikipedia.org/wiki/Cat/',
-    ]);
-    expect(pageEventUrlVariants('https://www.youtube.com/watch?v=abc')).toEqual([
-      'https://www.youtube.com/watch?v=abc',
-      'https://www.youtube.com/watch/?v=abc',
-      'https://www.youtube.com/watch',
-      'https://www.youtube.com/watch/',
-    ]);
-    expect(pageEventUrlVariants('https://example.com')).toEqual(['https://example.com/']);
-    expect(() => pageEventUrlVariants('file:///Users/me/page.html')).toThrow();
-    expect(() => pageEventUrlVariants('not a url')).toThrow();
-  });
-
   it('reads the page index by hash with no domain filter', async () => {
-    const rows = [
-      { ...makeRow(0), url: PAGE },
-      { ...makeRow(1), url: `${PAGE}/` },
-      { ...makeRow(2), url: 'https://en.wikipedia.org/wiki/Dog' },
-    ];
-    const { rpcCalls, tables } = fakePageIndex(rows);
+    const { rpcCalls, tables } = fakePageIndex([{ ...makeRow(0), url: PAGE }]);
 
     const result = await loadRecentEvents(env, {
       type: 'cursor',
@@ -378,7 +358,6 @@ describe('recent events for one page', () => {
     });
     if (result.error) throw new Error(result.error.message);
 
-    expect(result.events.map((event) => event.meta.url)).toEqual([PAGE, `${PAGE}/`]);
     expect(rpcCalls).toEqual([
       [
         'page_events_page',
