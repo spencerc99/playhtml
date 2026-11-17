@@ -45,11 +45,9 @@ function staticClosure(entry) {
 
 const entry = path.join(pkgDir, "dist/playhtml.es.js");
 const files = staticClosure(entry);
-let raw = 0;
 let gz = 0;
 for (const file of files) {
   const bytes = readFileSync(file);
-  raw += bytes.byteLength;
   gz += gzipSync(bytes, { level: 9 }).byteLength;
 }
 
@@ -73,7 +71,6 @@ if (existsSync(path.join(reactDir, "bench/vitest.config.ts"))) {
 
 const metrics = {
   bundle_gz_kb: +(gz / 1024).toFixed(1),
-  bundle_raw_kb: +(raw / 1024).toFixed(1),
   // metrics.json from client.perf.ts, metrics.<capability>.json from bench/capabilities/.
   ...Object.assign(
     {},

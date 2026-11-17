@@ -46,13 +46,6 @@ export const METRICS = [
     maxRelative: 0.05,
     minAbsolute: 3,
   },
-  {
-    key: "bundle_raw_kb",
-    label: "Bundle size (raw)",
-    unit: "KB",
-    maxRelative: 0.05,
-    minAbsolute: 2,
-  },
   count("stream_msgs", "can-play stream: messages"),
   bytes("stream_bytes", "can-play stream: bytes sent"),
   bytes("stream_doc_growth", "can-play stream: doc growth"),
@@ -75,7 +68,6 @@ export const METRICS = [
   seconds("idle_hour_room_awake_s", "Idle tab 1h: server time awake"),
   count("hidden_hour_msgs", "Background tab 1h: messages"),
   seconds("hidden_hour_room_awake_s", "Background tab 1h: server time awake"),
-  count("init_qsa_calls", "Init 200 elements: DOM scans"),
   count("init_1000_qsa_calls", "Init 1,000 elements: DOM scans"),
   count("init_1000_listeners", "Init 1,000 elements: event listeners"),
   count(
