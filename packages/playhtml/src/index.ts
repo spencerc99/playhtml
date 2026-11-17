@@ -39,7 +39,7 @@ import type {
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import type { Map as YMap } from "yjs";
 import { ElementHandler } from "./elements";
-import { hashElement } from "./utils";
+import { cloneStoreValue, hashElement, warnHashedElementId } from "./utils";
 import type { CursorClientAwareness } from "./cursors/cursor-client";
 import { getPresencePage } from "./cursors/presence-page";
 import { createUsersAPI, defaultSeedIdentity } from "./users";
@@ -2019,7 +2019,7 @@ function createPlayElementData<T extends TagType, TData = any>(
     myDefaultAwareness: undefined,
     devMode: configuredOptions?.developmentMode ?? false,
     // Always provide a plain snapshot to render paths
-    data: clonePlain(dataProxy),
+    data: cloneStoreValue(dataProxy),
     awareness: initialLive !== undefined ? [initialLive] : undefined,
     element,
     onChange: (newData: TData) => {
@@ -2751,6 +2751,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
       element.id = btoa(`${tag}-${selectorId}-${selectorIdx}`);
       selectorIdsToAvailableIdx.set(selectorId, selectorIdx + 1);
     } else {
+      if (isDevMode()) warnHashedElementId(tag, element);
       element.id = await hashElement(tag, element);
     }
   }
@@ -2855,7 +2856,7 @@ function applySharedElementDataToHandler(
   remoteApplyingKeys.add(applyKey);
   try {
     // @ts-ignore private usage intended
-    handler.__data = clonePlain(proxy);
+    handler.__data = cloneStoreValue(proxy);
     if (tag === TagType.CanMirror) {
       setupPlayElementDescendants(handler.element);
     }
