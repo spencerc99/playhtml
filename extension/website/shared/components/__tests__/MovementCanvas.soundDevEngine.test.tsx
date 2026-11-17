@@ -1,19 +1,21 @@
 // ABOUTME: Verifies the sound dev panel and the canvas share one sound engine.
-// ABOUTME: Starting sound from the panel must not build a second engine next to the canvas's own.
+// ABOUTME: Also covers a failed start and an engine that finishes starting after the canvas is gone.
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { CollectionEvent } from "../../types";
 
-const engines: unknown[] = [];
+const engines: { dispose: ReturnType<typeof vi.fn> }[] = [];
+// Each test may swap how the next engine's init() settles.
+let initEngine: () => Promise<void> = () => Promise.resolve();
 
 vi.mock("../../sound/SoundEngine", () => {
   class FakeSoundEngine {
     constructor() {
       engines.push(this);
     }
-    init = vi.fn(() => Promise.resolve());
+    init = vi.fn(() => initEngine());
     setCanvasWidth = vi.fn();
     setConfig = vi.fn();
     setCantus = vi.fn();
@@ -52,16 +54,16 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/archive/?sounddev=1");
   engines.length = 0;
   getEngine = null;
+  initEngine = () => Promise.resolve();
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   window.localStorage.clear();
   window.history.replaceState({}, "", "/");
 });
 
-it("starts one engine when the panel asks for sound while it is off", async () => {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
+function renderCanvas(container: HTMLElement) {
   const root = createRoot(container);
   act(() => {
     root.render(
@@ -77,6 +79,13 @@ it("starts one engine when the panel asks for sound while it is off", async () =
       }),
     );
   });
+  return root;
+}
+
+it("starts one engine when the panel asks for sound while it is off", async () => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = renderCanvas(container);
   expect(getEngine).not.toBeNull();
   expect(engines).toHaveLength(0);
 
@@ -93,4 +102,60 @@ it("starts one engine when the panel asks for sound while it is off", async () =
   expect(second).toBe(engines[0]);
   act(() => root.unmount());
   container.remove();
+});
+
+it("rejects the panel's request when the engine fails to start", async () => {
+  const failure = new Error("audio context refused");
+  initEngine = () => Promise.reject(failure);
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = renderCanvas(container);
+
+  let request: Promise<unknown> = Promise.resolve();
+  let outcome: unknown = null;
+  await act(async () => {
+    request = getEngine!().catch((err: unknown) => {
+      outcome = err;
+    });
+  });
+  await request;
+
+  expect(outcome).toBe(failure);
+  expect(logged).toHaveBeenCalledWith(
+    "[MovementCanvas] sound engine failed to start:",
+    failure,
+  );
+  act(() => root.unmount());
+  container.remove();
+});
+
+it("disposes an engine that finishes starting after the canvas is gone", async () => {
+  let finishInit: () => void = () => {};
+  initEngine = () =>
+    new Promise<void>((resolve) => {
+      finishInit = resolve;
+    });
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = renderCanvas(container);
+
+  let request: Promise<unknown> = Promise.resolve();
+  let outcome: unknown = null;
+  await act(async () => {
+    request = getEngine!().catch((err: unknown) => {
+      outcome = err;
+    });
+  });
+  expect(engines).toHaveLength(1);
+
+  act(() => root.unmount());
+  container.remove();
+  await request;
+  expect(outcome).toEqual(new Error("Sound was turned off before it started"));
+
+  finishInit();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(engines[0].dispose).toHaveBeenCalledTimes(1);
 });
