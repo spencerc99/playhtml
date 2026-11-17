@@ -3048,8 +3048,9 @@ describe("quarantine data safety", () => {
     room.documentLoadCompleted = true;
     room.document.getMap("play").set("greeting", "stale live value");
     const originalPut = storage.put.bind(storage);
+    let epochStorageAvailable = false;
     storage.put = async (key: string, value: unknown) => {
-      if (key === "resetEpoch") {
+      if (key === "resetEpoch" && !epochStorageAvailable) {
         throw new Error("epoch storage unavailable");
       }
       await originalPut(key, value);
@@ -3083,6 +3084,18 @@ describe("quarantine data safety", () => {
 
     expect(upsertCalls).toHaveLength(1);
     expect(persistedRow.document).toBe(committedDocument);
+
+    epochStorageAvailable = true;
+    await room.restoreFromSnapshot(SMALL_DOCUMENT, { bumpEpoch: true });
+
+    expect(room.documentMaintenanceInProgress).toBe(false);
+    expect(room.document.getMap("play").get("greeting")).toBe("hello");
+
+    // A later edit that changes nothing must not bring the pause back.
+    await room.mutateAdminPlayData(() => ({ kind: "skip", result: null }));
+
+    expect(room.documentMaintenanceInProgress).toBe(false);
+    expect(room.roomState()).not.toBe("save-paused");
   });
 
   test("an admin play-data edit releases the save lock when it fails before committing", async () => {
