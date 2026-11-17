@@ -35,4 +35,24 @@ describe("built-in capability with a custom update callback", () => {
     expect(updateElement).toHaveBeenCalled();
     errorSpy.mockRestore();
   });
+
+  it("sets up can-grow when the element supplies update", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const element = document.createElement("div");
+    element.id = "custom-update-grow";
+    element.setAttribute("can-grow", "");
+    const update = vi.fn();
+    (element as any).update = update;
+    document.body.appendChild(element);
+
+    playhtml.setupPlayElement(element);
+    await tick();
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(elementHandlers.get("can-grow")?.has("custom-update-grow")).toBe(
+      true,
+    );
+    expect(update).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
 });
