@@ -1,5 +1,5 @@
 // ABOUTME: Captures cursor movement, clicks, holds, and cursor style changes.
-// ABOUTME: Samples sparsely for archival, with an optional 60fps real-time callback that nothing sets.
+// ABOUTME: Samples sparsely for archival upload (250ms / 15px by default).
 
 import { BaseCollector } from './BaseCollector';
 import type { CursorEventData } from './types';
@@ -7,11 +7,9 @@ import { normalizePosition, getElementSelector } from './types';
 import { VERBOSE } from '../config';
 
 /**
- * CursorCollector captures cursor movement:
- *
- * 1. Sparse sampling (250ms, 15px) to EventBuffer for archival
- * 2. A 60fps real-time callback, emitted only when one is set through
- *    setRealTimeCallback (no extension code sets one)
+ * CursorCollector captures cursor movement with sparse sampling (250ms, 15px)
+ * to EventBuffer for archival, plus discrete clicks, holds, and cursor style
+ * changes.
  */
 export class CursorCollector extends BaseCollector<CursorEventData> {
   readonly type = 'cursor' as const;
@@ -20,11 +18,8 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   private mouseMoveHandler?: (e: MouseEvent) => void;
   private touchMoveHandler?: (e: TouchEvent) => void;
   private mouseOverHandler?: (e: MouseEvent) => void;
-  private animationFrameId?: number;
   private sampleTimer: number | null = null;
   protected sampleRate = 250; // ms between samples for archival
-  private realTimeRate = 16; // ~60fps for real-time (16ms)
-  private lastRealTimeTime = 0;
   private minMovementThreshold = 15; // pixels - minimum movement to trigger a sample
   /** Collector default, restored when installation pace turns off. */
   private readonly defaultSampleRate = 250;
@@ -65,7 +60,6 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     if (VERBOSE) {
       console.log('[CursorCollector] Starting cursor collection...');
     }
-    this.lastRealTimeTime = Date.now();
 
     this.lastSampledX = this.currentX;
     this.lastSampledY = this.currentY;
@@ -82,10 +76,6 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       }
       if (target instanceof HTMLElement && this.lastCursorStyleTarget === null) {
         this.mouseOverHandler?.(e);
-      }
-
-      if (this.hasRealTimeCallback()) {
-        this.scheduleRealTimeUpdate();
       }
 
       // Schedule archival sample if movement is significant enough
@@ -207,9 +197,6 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
     document.addEventListener('mousedown', this.mouseDownHandler, { passive: true });
     document.addEventListener('mouseup', this.mouseUpHandler, { passive: true });
 
-    if (this.hasRealTimeCallback()) {
-      this.startRealTimeLoop();
-    }
     if (VERBOSE) {
       console.log('[CursorCollector] Started successfully');
     }
@@ -241,11 +228,6 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
       this.mouseUpHandler = undefined;
     }
 
-    if (this.animationFrameId) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = undefined;
-    }
-
     if (this.sampleTimer !== null) {
       clearTimeout(this.sampleTimer);
       this.sampleTimer = null;
@@ -269,17 +251,6 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   }
 
   /**
-   * Schedule a real-time update (throttled to ~60fps)
-   */
-  private scheduleRealTimeUpdate(): void {
-    const now = Date.now();
-    if (now - this.lastRealTimeTime >= this.realTimeRate) {
-      this.emitRealTimeData();
-      this.lastRealTimeTime = now;
-    }
-  }
-
-  /**
    * Schedule an archival sample via timer (debounced to sampleRate ms)
    * The timer fires once per sample window, capturing the last cursor position
    */
@@ -298,50 +269,6 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
   }
 
   /**
-   * Start animation frame loop for real-time streaming
-   */
-  private startRealTimeLoop(): void {
-    const loop = () => {
-      if (!this.enabled) return;
-
-      // Emit real-time data if enough time has passed
-      const now = Date.now();
-      if (now - this.lastRealTimeTime >= this.realTimeRate) {
-        this.emitRealTimeData();
-        this.lastRealTimeTime = now;
-      }
-
-      this.animationFrameId = requestAnimationFrame(loop);
-    };
-
-    this.animationFrameId = requestAnimationFrame(loop);
-  }
-
-  /**
-   * Emit real-time cursor data to the real-time callback, when one is set
-   */
-  private emitRealTimeData(): void {
-    const normalized = normalizePosition(
-      this.currentX,
-      this.currentY,
-      window.innerWidth,
-      window.innerHeight
-    );
-
-    const data: CursorEventData = {
-      x: normalized.x,
-      y: normalized.y,
-      t: this.getCurrentTarget(),
-      cursor: this.currentCursorStyle,
-      event: 'move',
-    };
-
-    // Emit to the real-time callback
-    if (!this.hasRealTimeCallback()) return;
-    this.emitRealTime(data);
-  }
-
-  /**
    * Emit a discrete event (click, hold, cursor_change)
    * These are emitted immediately to the buffer (not throttled)
    */
@@ -354,9 +281,6 @@ export class CursorCollector extends BaseCollector<CursorEventData> {
 
     // Emit to buffer for archival
     this.emit(data);
-
-    // Also emit to real-time stream for live visualization
-    this.emitRealTime(data);
   }
 
   private handleClick(clickData: CursorEventData): void {
