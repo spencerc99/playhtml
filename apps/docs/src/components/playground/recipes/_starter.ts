@@ -36,7 +36,7 @@ export const starterRecipe: RunnableRecipe = {
     #lamp.toggled { filter: brightness(1.2) drop-shadow(0 0 50px rgb(247 220 156)); }
     #catOrDog.toggled { content: url("${IMG_BASE}/dog.png"); }
     #hoverBox { width: 100px; height: 100px; background: red; }
-    #hoverBox.hovered { background: blue; }
+    #hoverBox[data-playhtml-hover] { background: blue; }
     #shootingStar { position: fixed; top: -36px; left: -36px; font-size: 36px; color: gold; }
     .reacted { background: #ff6b6b; }
   </style>
@@ -53,7 +53,8 @@ export const starterRecipe: RunnableRecipe = {
     <img id="catOrDog" can-toggle src="${IMG_BASE}/cat.jpg" alt="Toggle me" />
     <img id="plant" can-grow src="${IMG_BASE}/plant.png" alt="Grow me" />
     <div id="hoverBox" can-hover></div>
-    <button id="duplicateBtn" can-duplicate>Click to clone me!</button>
+    <span id="star" style="font-size: 32px">★</span>
+    <button id="duplicateBtn" can-duplicate="star">add a star</button>
   </section>
 
   <!-- can-mirror: changes to the element are shared, here its color. -->

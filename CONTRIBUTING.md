@@ -42,7 +42,7 @@ If you checked the docs and no update is needed, call that out in your PR summar
 When the public core API changes, update both starters in the same PR and check them live in a browser:
 
 - `templates/react-starter/` (React API: `src/App.tsx`, `src/index.css`). It is Vite + TS with no `tsconfig.json` of its own, so `npm run build`'s `tsc` step picks up the monorepo root config and fails. Verify with `npx vite build` plus a live browser test instead.
-- `templates/html-starter/` (vanilla API: `index.html`, `style.css`, `script.js`). Static files loading `playhtml@latest` from unpkg.
+- `templates/html-starter/` (vanilla API: one `index.html`, kept the same as the `/docs/play` starter in `apps/docs/src/components/playground/recipes/_starter.ts`). A static file loading `playhtml@latest` from unpkg.
 
 The starters depend on the published `playhtml` / `@playhtml/react` (`"latest"`), so they pick up code changes on release, but their own imports, props, selectors, and example markup don't update themselves. Use only real API methods: there is no `playhtml.setupCustomElement`. Vanilla custom elements use `playhtml.register(elementOrId, { defaultData, update, ... })`; `playhtml.setupPlayElement(el)` sets up a built-in capability on an element added after `init()`.
 
