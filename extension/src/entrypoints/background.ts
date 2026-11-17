@@ -372,7 +372,9 @@ async function drainPendingUploads(): Promise<void> {
       await uploadEvents(uploadable)
     }
 
-    // Mark all pending events uploaded (local-mode events are marked too so they don't pile up)
+    // Mark all pending events uploaded. Local-mode events and batches the
+    // worker rejected outright are marked too: they stay in local history
+    // but are not sent again.
     await store.markEventsAsUploaded(pending.map((e) => e.id))
   } catch (e) {
     console.error('[Background] flushPendingUploads error:', e)
