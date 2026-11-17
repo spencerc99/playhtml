@@ -111,7 +111,7 @@ describe("can-mirror: attributes", () => {
 
   it("mirrors a changed attribute value", async () => {
     const source = mountClient(
-      elementFromHTML(`<div id="a" class="off"></div>`)
+      elementFromHTML(`<div id="a" class="off"></div>`),
     );
     const sink = mountClient(elementFromHTML(`<div id="a" class="off"></div>`));
 
@@ -123,10 +123,10 @@ describe("can-mirror: attributes", () => {
 
   it("mirrors a removed attribute", async () => {
     const source = mountClient(
-      elementFromHTML(`<div id="a" data-temp="x"></div>`)
+      elementFromHTML(`<div id="a" data-temp="x"></div>`),
     );
     const sink = mountClient(
-      elementFromHTML(`<div id="a" data-temp="x"></div>`)
+      elementFromHTML(`<div id="a" data-temp="x"></div>`),
     );
 
     source.element.removeAttribute("data-temp");
@@ -144,16 +144,16 @@ describe("can-mirror: attributes", () => {
     await sync(source, sink);
 
     expect(sink.element.querySelector("span")!.getAttribute("data-temp")).toBe(
-      "x"
+      "x",
     );
   });
 
   it("mirrors the native open attribute on <details>", async () => {
     const source = mountClient(
-      elementFromHTML(`<details id="d"><summary>x</summary></details>`)
+      elementFromHTML(`<details id="d"><summary>x</summary></details>`),
     );
     const sink = mountClient(
-      elementFromHTML(`<details id="d"><summary>x</summary></details>`)
+      elementFromHTML(`<details id="d"><summary>x</summary></details>`),
     );
 
     (source.element as HTMLDetailsElement).open = true;
@@ -187,7 +187,7 @@ describe("can-mirror: attributes", () => {
     expect(attrs["data-playhtml-hover"]).toBeUndefined();
     expect(sink.element.hasAttribute("data-playhtml-hover")).toBe(false);
     expect(
-      Array.from(sink.element.querySelectorAll("p")).map((p) => p.textContent)
+      Array.from(sink.element.querySelectorAll("p")).map((p) => p.textContent),
     ).toEqual(["a"]);
   });
 
@@ -205,12 +205,12 @@ describe("can-mirror: attributes", () => {
 
   it("keeps local inspect classes while applying mirrored class state", async () => {
     const source = mountClient(
-      elementFromHTML(`<div id="a" class="__playhtml-element"></div>`)
+      elementFromHTML(`<div id="a" class="__playhtml-element"></div>`),
     );
     const sink = mountClient(
       elementFromHTML(
-        `<div id="a" class="__playhtml-element ph-inspect-highlight"></div>`
-      )
+        `<div id="a" class="__playhtml-element ph-inspect-highlight"></div>`,
+      ),
     );
 
     source.element.setAttribute("data-rev", "1");
@@ -224,7 +224,7 @@ describe("can-mirror: attributes", () => {
 
   it("excludes playhtml loading markers from mirrored state", () => {
     const element = elementFromHTML(
-      `<div id="a" class="removal-target __playhtml-element playhtml-loading" aria-busy="true" aria-live="polite"></div>`
+      `<div id="a" class="removal-target __playhtml-element playhtml-loading" aria-busy="true" aria-live="polite"></div>`,
     );
 
     const state = canMirrorInitializer.defaultData!(element) as any;
@@ -236,7 +236,7 @@ describe("can-mirror: attributes", () => {
 
   it("excludes custom loading classes from mirrored state", () => {
     const element = elementFromHTML(
-      `<div id="a" class="removal-target playhtml-loading waiting" loading-class="waiting"></div>`
+      `<div id="a" class="removal-target playhtml-loading waiting" loading-class="waiting"></div>`,
     );
 
     const state = canMirrorInitializer.defaultData!(element) as any;
@@ -248,13 +248,13 @@ describe("can-mirror: attributes", () => {
   it("mirrors a custom loading class after loading finishes", async () => {
     const source = mountClient(
       elementFromHTML(
-        `<div id="a" class="removal-target" loading-class="ready"></div>`
-      )
+        `<div id="a" class="removal-target" loading-class="ready"></div>`,
+      ),
     );
     const sink = mountClient(
       elementFromHTML(
-        `<div id="a" class="removal-target" loading-class="ready"></div>`
-      )
+        `<div id="a" class="removal-target" loading-class="ready"></div>`,
+      ),
     );
 
     source.element.classList.add("ready");
@@ -266,9 +266,11 @@ describe("can-mirror: attributes", () => {
 
   it("applies loading-time default state without restoring loading markers", () => {
     const element = elementFromHTML(
-      `<div id="a" class="removal-target __playhtml-element playhtml-loading" aria-busy="true" aria-live="polite"></div>`
+      `<div id="a" class="removal-target __playhtml-element playhtml-loading" aria-busy="true" aria-live="polite"></div>`,
     );
-    const defaultState = canMirrorInitializer.defaultData!(element) as ElementState;
+    const defaultState = canMirrorInitializer.defaultData!(
+      element,
+    ) as ElementState;
     element.className = "removal-target __playhtml-element is-active";
     element.removeAttribute("aria-busy");
     element.removeAttribute("aria-live");
@@ -282,7 +284,6 @@ describe("can-mirror: attributes", () => {
     expect(element.hasAttribute("aria-busy")).toBe(false);
     expect(element.hasAttribute("aria-live")).toBe(false);
   });
-
 });
 
 describe("can-mirror: child add/remove", () => {
@@ -301,10 +302,10 @@ describe("can-mirror: child add/remove", () => {
 
   it("mirrors a removed child", async () => {
     const source = mountClient(
-      elementFromHTML(`<ul id="l"><li>a</li><li>b</li></ul>`)
+      elementFromHTML(`<ul id="l"><li>a</li><li>b</li></ul>`),
     );
     const sink = mountClient(
-      elementFromHTML(`<ul id="l"><li>a</li><li>b</li></ul>`)
+      elementFromHTML(`<ul id="l"><li>a</li><li>b</li></ul>`),
     );
 
     source.element.removeChild(source.element.lastElementChild!);
@@ -357,12 +358,12 @@ describe("can-mirror: child add/remove", () => {
 
   it("keeps local inspect labels while applying mirrored children", async () => {
     const source = mountClient(
-      elementFromHTML(`<div id="a"><span>real</span></div>`)
+      elementFromHTML(`<div id="a"><span>real</span></div>`),
     );
     const sink = mountClient(
       elementFromHTML(
-        `<div id="a"><span>real</span><div class="ph-inspect-label">#a</div></div>`
-      )
+        `<div id="a"><span>real</span><div class="ph-inspect-label">#a</div></div>`,
+      ),
     );
 
     const remoteChild = document.createElement("span");
@@ -372,21 +373,21 @@ describe("can-mirror: child add/remove", () => {
 
     expect(
       Array.from(sink.element.querySelectorAll(":scope > span")).map(
-        (span) => span.textContent
-      )
+        (span) => span.textContent,
+      ),
     ).toEqual(["real", "remote"]);
     expect(
-      sink.element.querySelectorAll(":scope > .ph-inspect-label")
+      sink.element.querySelectorAll(":scope > .ph-inspect-label"),
     ).toHaveLength(1);
     expect((sink.state as any).children).toHaveLength(1);
   });
 
   it("does not recreate inspect labels from incoming mirrored state", async () => {
     const source = mountClient(
-      elementFromHTML(`<div id="a"><span>real</span></div>`)
+      elementFromHTML(`<div id="a"><span>real</span></div>`),
     );
     const sink = mountClient(
-      elementFromHTML(`<div id="a"><span>real</span></div>`)
+      elementFromHTML(`<div id="a"><span>real</span></div>`),
     );
     const incoming = wire(source.state) as any;
     incoming.children.push({
@@ -400,7 +401,7 @@ describe("can-mirror: child add/remove", () => {
 
     expect(sink.element.querySelectorAll(":scope > span")).toHaveLength(1);
     expect(
-      sink.element.querySelectorAll(":scope > .ph-inspect-label")
+      sink.element.querySelectorAll(":scope > .ph-inspect-label"),
     ).toHaveLength(0);
   });
 
@@ -414,7 +415,9 @@ describe("can-mirror: child add/remove", () => {
     await sync(source, sink);
 
     expect(
-      Array.from(sink.element.querySelectorAll("li")).map((li) => li.textContent)
+      Array.from(sink.element.querySelectorAll("li")).map(
+        (li) => li.textContent,
+      ),
     ).toEqual(["a", "b"]);
   });
 
@@ -427,9 +430,9 @@ describe("can-mirror: child add/remove", () => {
     source.element.appendChild(source.element.firstElementChild!);
     await sync(source, sink);
 
-    expect(
-      Array.from(sink.element.children).map((c) => c.textContent)
-    ).toEqual(["b", "c", "a"]);
+    expect(Array.from(sink.element.children).map((c) => c.textContent)).toEqual(
+      ["b", "c", "a"],
+    );
     expectMirrored(source.element, sink.element);
   });
 });
@@ -445,7 +448,7 @@ describe("can-mirror: mixed text and element children", () => {
     await sync(source, sink);
 
     expect(
-      Array.from(sink.element.childNodes).map((n) => n.textContent)
+      Array.from(sink.element.childNodes).map((n) => n.textContent),
     ).toEqual(["intro ", " middle ", "second"]);
     expectMirrored(source.element, sink.element);
   });
@@ -454,7 +457,7 @@ describe("can-mirror: mixed text and element children", () => {
     // Sink starts where DOM/state diverge by node kind at the same index,
     // forcing the apply path to replace rather than update in place.
     const source = mountClient(
-      elementFromHTML(`<div id="m"><span>only</span></div>`)
+      elementFromHTML(`<div id="m"><span>only</span></div>`),
     );
     const sink = mountClient(elementFromHTML(`<div id="m">plain text</div>`));
 
@@ -468,9 +471,11 @@ describe("can-mirror: mixed text and element children", () => {
 
   it("replaces an element whose tag changes at a position", async () => {
     const source = mountClient(
-      elementFromHTML(`<div id="m"><b>bold</b></div>`)
+      elementFromHTML(`<div id="m"><b>bold</b></div>`),
     );
-    const sink = mountClient(elementFromHTML(`<div id="m"><i>italic</i></div>`));
+    const sink = mountClient(
+      elementFromHTML(`<div id="m"><i>italic</i></div>`),
+    );
 
     await sync(source, sink);
 
@@ -484,10 +489,10 @@ describe("can-mirror: character data", () => {
     // Contenteditable surfaces browser edits through input events, which
     // resnapshot form state and child structure together.
     const source = mountClient(
-      elementFromHTML(`<p id="p" contenteditable="true">hello</p>`)
+      elementFromHTML(`<p id="p" contenteditable="true">hello</p>`),
     );
     const sink = mountClient(
-      elementFromHTML(`<p id="p" contenteditable="true">hello</p>`)
+      elementFromHTML(`<p id="p" contenteditable="true">hello</p>`),
     );
 
     source.element.firstChild!.textContent = "goodbye";
@@ -512,10 +517,10 @@ describe("can-mirror: character data", () => {
 describe("can-mirror: form state", () => {
   it("mirrors a checkbox checked toggle", async () => {
     const source = mountClient(
-      elementFromHTML(`<div id="c"><input type="checkbox"></div>`)
+      elementFromHTML(`<div id="c"><input type="checkbox"></div>`),
     );
     const sink = mountClient(
-      elementFromHTML(`<div id="c"><input type="checkbox"></div>`)
+      elementFromHTML(`<div id="c"><input type="checkbox"></div>`),
     );
 
     const box = source.element.querySelector("input")!;
@@ -528,10 +533,10 @@ describe("can-mirror: form state", () => {
 
   it("mirrors a text input value", async () => {
     const source = mountClient(
-      elementFromHTML(`<div id="t"><input type="text"></div>`)
+      elementFromHTML(`<div id="t"><input type="text"></div>`),
     );
     const sink = mountClient(
-      elementFromHTML(`<div id="t"><input type="text"></div>`)
+      elementFromHTML(`<div id="t"><input type="text"></div>`),
     );
 
     const input = source.element.querySelector("input")!;
@@ -544,10 +549,10 @@ describe("can-mirror: form state", () => {
 
   it("mirrors a textarea value", async () => {
     const source = mountClient(
-      elementFromHTML(`<div id="t"><textarea></textarea></div>`)
+      elementFromHTML(`<div id="t"><textarea></textarea></div>`),
     );
     const sink = mountClient(
-      elementFromHTML(`<div id="t"><textarea></textarea></div>`)
+      elementFromHTML(`<div id="t"><textarea></textarea></div>`),
     );
 
     const ta = source.element.querySelector("textarea")!;
@@ -590,10 +595,10 @@ describe("can-mirror: form state", () => {
 describe("can-mirror: contenteditable", () => {
   it("mirrors text typed into a contenteditable div", async () => {
     const source = mountClient(
-      elementFromHTML(`<div id="e" contenteditable="true">start</div>`)
+      elementFromHTML(`<div id="e" contenteditable="true">start</div>`),
     );
     const sink = mountClient(
-      elementFromHTML(`<div id="e" contenteditable="true">start</div>`)
+      elementFromHTML(`<div id="e" contenteditable="true">start</div>`),
     );
 
     source.element.firstChild!.textContent = "start edited";
@@ -616,7 +621,7 @@ describe("can-mirror: contenteditable", () => {
     await sync(source, sink);
 
     expect(
-      Array.from(sink.element.querySelectorAll("li")).map((l) => l.textContent)
+      Array.from(sink.element.querySelectorAll("li")).map((l) => l.textContent),
     ).toEqual(["one", "two"]);
   });
 });
@@ -669,7 +674,9 @@ describe("can-mirror: minimal shared writes", () => {
   });
 
   it("appending a child keeps the existing child entries", async () => {
-    const client = mountClient(elementFromHTML(`<ul id="l">${siblings(50)}</ul>`));
+    const client = mountClient(
+      elementFromHTML(`<ul id="l">${siblings(50)}</ul>`),
+    );
     const root = client.state as any;
     const before = root.children.slice();
 
@@ -735,8 +742,12 @@ describe("can-mirror: minimal shared writes", () => {
   });
 
   it("mirrors a burst of appends made in one go", async () => {
-    const source = mountClient(elementFromHTML(`<ul id="l">${siblings(20)}</ul>`));
-    const sink = mountClient(elementFromHTML(`<ul id="l">${siblings(20)}</ul>`));
+    const source = mountClient(
+      elementFromHTML(`<ul id="l">${siblings(20)}</ul>`),
+    );
+    const sink = mountClient(
+      elementFromHTML(`<ul id="l">${siblings(20)}</ul>`),
+    );
     for (let i = 0; i < 30; i++) {
       const p = document.createElement("p");
       p.textContent = `new ${i}`;
@@ -846,6 +857,61 @@ describe("can-mirror: nested can-mirror children own their contents", () => {
   });
 });
 
+describe("can-mirror: local style properties", () => {
+  it("does not share playhtml's per-element --jiggle-delay", async () => {
+    const client = mountClient(
+      elementFromHTML(
+        `<div id="s" style="color: red; --jiggle-delay: 0.31s;"><p>a</p></div>`,
+      ),
+    );
+    expect((client.state as any).attributes.style).toBe("color: red;");
+
+    client.element.style.setProperty("--jiggle-delay", "0.9s");
+    await flush();
+    expect((client.state as any).attributes.style).toBe("color: red;");
+  });
+
+  it("leaves out the style attribute when it only holds local properties", () => {
+    const client = mountClient(
+      elementFromHTML(`<div id="s" style="--jiggle-delay: 0.31s;"></div>`),
+    );
+    expect("style" in (client.state as any).attributes).toBe(false);
+  });
+
+  it("keeps the local --jiggle-delay when applying remote styles", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="s" style="--jiggle-delay: 0.1s;"></div>`),
+    );
+    const sink = mountClient(
+      elementFromHTML(`<div id="s" style="--jiggle-delay: 0.7s;"></div>`),
+    );
+    source.element.style.color = "blue";
+    await sync(source, sink);
+    expect(sink.element.style.color).toBe("blue");
+    expect(sink.element.style.getPropertyValue("--jiggle-delay").trim()).toBe(
+      "0.7s",
+    );
+
+    source.element.style.removeProperty("color");
+    await sync(source, sink);
+    expect(sink.element.style.color).toBe("");
+    expect(sink.element.style.getPropertyValue("--jiggle-delay").trim()).toBe(
+      "0.7s",
+    );
+  });
+
+  it("keeps semicolons inside style values intact", () => {
+    const client = mountClient(
+      elementFromHTML(
+        `<div id="s" style="background: url('a;b.png'); --jiggle-delay: 0.2s;"></div>`,
+      ),
+    );
+    expect((client.state as any).attributes.style).toBe(
+      "background: url('a;b.png');",
+    );
+  });
+});
+
 describe("can-mirror: own presence", () => {
   it("publishes no presence until the visitor hovers or focuses", () => {
     expect(canMirrorInitializer.myDefaultAwareness).toBeUndefined();
@@ -875,10 +941,10 @@ describe("can-mirror: own presence", () => {
 describe("can-mirror: apply-side robustness", () => {
   it("is a no-op when incoming state already matches the DOM", async () => {
     const source = mountClient(
-      elementFromHTML(`<div id="a" class="x">text</div>`)
+      elementFromHTML(`<div id="a" class="x">text</div>`),
     );
     const sink = mountClient(
-      elementFromHTML(`<div id="a" class="x">text</div>`)
+      elementFromHTML(`<div id="a" class="x">text</div>`),
     );
 
     const before = sink.element.outerHTML;
@@ -889,7 +955,7 @@ describe("can-mirror: apply-side robustness", () => {
   it("removes an attribute the sink had but the incoming state lacks", async () => {
     const source = mountClient(elementFromHTML(`<div id="a"></div>`));
     const sink = mountClient(
-      elementFromHTML(`<div id="a" data-stale="1"></div>`)
+      elementFromHTML(`<div id="a" data-stale="1"></div>`),
     );
 
     sink.applyRemote(wire(source.state));
@@ -996,7 +1062,7 @@ function makeClientDoc() {
 function mountObserver(
   element: HTMLElement,
   doc: Y.Doc,
-  proxy: () => any
+  proxy: () => any,
 ): CrdtClient {
   document.body.appendChild(element);
   canMirrorInitializer.onMount!({
@@ -1027,7 +1093,7 @@ function makeRoom(id: string, elementA: HTMLElement, elementB: HTMLElement) {
   const a = makeClientDoc();
   a.store.play[TAG] = {};
   (a.store.play[TAG] as any)[id] = wire(
-    canMirrorInitializer.defaultData!(elementA) as ElementState
+    canMirrorInitializer.defaultData!(elementA) as ElementState,
   );
   const aProxy = () => (a.store.play[TAG] as any)[id];
 
@@ -1052,7 +1118,11 @@ function mergeDocs(a: CrdtClient, b: CrdtClient) {
 describe("can-mirror: CRDT-backed two-client sync", () => {
   it("propagates a child removal through a real Yjs merge", async () => {
     const html = `<div id="g"><img src="cat.jpg"><img src="cat.jpg"><img src="cat.jpg"></div>`;
-    const { a, b } = makeRoom("g", elementFromHTML(html), elementFromHTML(html));
+    const { a, b } = makeRoom(
+      "g",
+      elementFromHTML(html),
+      elementFromHTML(html),
+    );
 
     a.element.removeChild(a.element.lastChild!);
     await flush();
@@ -1068,7 +1138,7 @@ describe("can-mirror: CRDT-backed two-client sync", () => {
     const { a, b } = makeRoom(
       "g",
       elementFromHTML(`<ul id="g"></ul>`),
-      elementFromHTML(`<ul id="g"></ul>`)
+      elementFromHTML(`<ul id="g"></ul>`),
     );
 
     // Add five, remove the middle three one at a time, add two more.
@@ -1105,7 +1175,11 @@ describe("can-mirror: CRDT-backed two-client sync", () => {
 
   it("converges when two clients edit different attributes concurrently", async () => {
     const html = `<div id="d"></div>`;
-    const { a, b } = makeRoom("d", elementFromHTML(html), elementFromHTML(html));
+    const { a, b } = makeRoom(
+      "d",
+      elementFromHTML(html),
+      elementFromHTML(html),
+    );
 
     // Concurrent, non-conflicting attribute writes on each client.
     a.element.setAttribute("data-from-a", "1");
@@ -1121,7 +1195,7 @@ describe("can-mirror: CRDT-backed two-client sync", () => {
     // different orders per client, which is semantically identical in HTML.
     const attrMap = (el: HTMLElement) =>
       Object.fromEntries(
-        Array.from(el.attributes).map((at) => [at.name, at.value])
+        Array.from(el.attributes).map((at) => [at.name, at.value]),
       );
     for (const c of [a, b]) {
       expect(c.element.getAttribute("data-from-a")).toBe("1");
@@ -1132,7 +1206,11 @@ describe("can-mirror: CRDT-backed two-client sync", () => {
 
   it("propagates class removal through a real Yjs merge", async () => {
     const html = `<div id="d" class="card"></div>`;
-    const { a, b } = makeRoom("d", elementFromHTML(html), elementFromHTML(html));
+    const { a, b } = makeRoom(
+      "d",
+      elementFromHTML(html),
+      elementFromHTML(html),
+    );
 
     a.element.classList.add("active");
     await flush();
@@ -1181,5 +1259,4 @@ describe("can-mirror: CRDT-backed two-client sync", () => {
     expect(updateCount).toBe(0);
     expect(a.proxy().children.length).toBe(1);
   });
-
 });
