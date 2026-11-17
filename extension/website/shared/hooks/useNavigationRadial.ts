@@ -35,7 +35,7 @@ export interface UseNavigationRadialResult {
 function normalizeUrl(url: string): string {
   try {
     const urlObj = new URL(url.startsWith("http") ? url : `https://${url}`);
-    return urlObj.hostname.replace("www.", "") + urlObj.pathname;
+    return urlObj.hostname.replace(/^www\./, "") + urlObj.pathname;
   } catch {
     return url;
   }
