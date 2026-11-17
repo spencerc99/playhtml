@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   IDBDatabase as fakeIDBDatabase,
   IDBKeyRange as fakeIDBKeyRange,
+  IDBObjectStore as fakeIDBObjectStore,
   indexedDB as fakeIndexedDB,
 } from "fake-indexeddb";
 import { CollageHistory } from "../entrypoints/scraps/CollageHistory";
@@ -382,14 +383,53 @@ describe("a collage store that fails", () => {
   it("keeps the card and says so when a collage cannot be deleted", async () => {
     await saveCollage(record());
     const { view } = await mount();
-    breakStore();
-    await act(async () => buttonNamed(view, "Delete a walk").click());
-    await act(async () => buttonNamed(view, "delete for good").click());
-    await settle();
+    // Loading the collage to find its shared link still works; only the
+    // delete itself fails.
+    const deletes = vi
+      .spyOn(fakeIDBObjectStore.prototype, "delete")
+      .mockImplementation(() => {
+        throw new Error("the drawer is stuck");
+      });
+    try {
+      await act(async () => buttonNamed(view, "Delete a walk").click());
+      await act(async () => buttonNamed(view, "delete for good").click());
+      await settle();
+      expect(deletes).toHaveBeenCalledWith("collage_1");
+    } finally {
+      deletes.mockRestore();
+    }
     expect(view.querySelector(".collage-notice")?.textContent).toBe(
       "could not delete that collage — the drawer is stuck",
     );
     expect(view.querySelectorAll(".collage-card")).toHaveLength(1);
+    expect(await listCollages()).toHaveLength(1);
+  });
+});
+
+describe("a collage that cannot be read", () => {
+  it("is listed and can be deleted without being opened first", async () => {
+    await saveCollage(record());
+    // A row whose pieces were lost, so it can be listed but never loaded.
+    await saveCollage({
+      ...record({ id: "collage_torn", title: "a torn one" }),
+      pieces: "torn" as never,
+    });
+    const { view } = await mount();
+    const card = view.querySelector(".collage-card--unreadable");
+    if (!(card instanceof HTMLElement)) throw new Error("no unreadable card");
+    expect(card.querySelector(".collage-card__title")?.textContent).toBe(
+      "a torn one",
+    );
+
+    await act(async () => buttonNamed(card, "delete").click());
+    await act(async () => buttonNamed(card, "delete for good").click());
+    await settle();
+
+    expect(view.querySelector(".collage-notice")).toBeNull();
+    expect(view.querySelector(".collage-card--unreadable")).toBeNull();
+    expect((await listCollages()).map((entry) => entry.id)).toEqual([
+      "collage_1",
+    ]);
   });
 });
 
