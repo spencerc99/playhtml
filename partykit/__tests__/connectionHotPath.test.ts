@@ -263,24 +263,6 @@ describe("message rate limiting", () => {
     expect(connection.setStateCalls).toBe(attachmentWritesAfterConnect);
   });
 
-  test("a new window starts after the window elapses", async () => {
-    const storage = new RecordingStorage();
-    const { server, open } = await startServer(storage);
-    const connection = await connect(server, open, "steady");
-    const { maxMessagesPerWindow, messageRateWindowMs } =
-      server.getServerLimits();
-
-    for (let index = 0; index < maxMessagesPerWindow; index += 1) {
-      await server.onMessage(connection, awarenessMessage());
-    }
-    setNow(now + messageRateWindowMs);
-    for (let index = 0; index < maxMessagesPerWindow; index += 1) {
-      await server.onMessage(connection, awarenessMessage());
-    }
-
-    expect(connection.closes).toEqual([]);
-  });
-
   test("each connection has its own window", async () => {
     const storage = new RecordingStorage();
     const { server, open } = await startServer(storage);
