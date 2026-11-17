@@ -80,11 +80,13 @@ export class EventBuffer {
   private awaitingIdentity = false;
   private warnedMissingIdentity = false;
   private warnedHeldOverflow = false;
+  private disposed = false;
 
   /**
    * Add an event — stores it in the background service worker and schedules a flush
    */
   async addEvent(event: UnattributedEvent): Promise<void> {
+    if (this.disposed) return;
     const eventWithFlag: HeldEvent = { ...event, uploaded: false };
 
     this.pendingEvents.push(eventWithFlag);
@@ -116,8 +118,26 @@ export class EventBuffer {
     this.batchIntervalMs = pace?.batchIntervalMs ?? BATCH_INTERVAL_MS;
   }
 
+  /**
+   * Stops all timers and drops buffered events without sending them. Used when
+   * the extension context is gone and the background can no longer be reached,
+   * so retries would loop forever. Later events are ignored.
+   */
+  dispose(): void {
+    this.disposed = true;
+    if (this.batchTimer !== null) {
+      clearTimeout(this.batchTimer);
+      this.batchTimer = null;
+    }
+    if (this.storeTimer !== null) {
+      clearTimeout(this.storeTimer);
+      this.storeTimer = null;
+    }
+    this.pendingEvents = [];
+  }
+
   private scheduleStoreFlush(): void {
-    if (this.storeTimer !== null) return;
+    if (this.disposed || this.storeTimer !== null) return;
 
     this.storeTimer = window.setTimeout(() => {
       this.storeTimer = null;
@@ -126,7 +146,7 @@ export class EventBuffer {
   }
 
   private scheduleStoreRetry(): void {
-    if (this.storeTimer !== null) return;
+    if (this.disposed || this.storeTimer !== null) return;
 
     const retryDelayMs = this.storeRetryDelayMs;
     this.storeRetryDelayMs = Math.min(retryDelayMs * 2, STORE_RETRY_MAX_MS);
@@ -137,6 +157,7 @@ export class EventBuffer {
   }
 
   private requeueEventsForStorageRetry(events: HeldEvent[]): void {
+    if (this.disposed) return;
     this.pendingEvents.unshift(...events);
     this.dropOverflow();
     this.scheduleStoreRetry();
@@ -199,6 +220,7 @@ export class EventBuffer {
     const participantId = needsIdentity
       ? await this.resolveParticipantId()
       : null;
+    if (this.disposed) return false;
     if (needsIdentity && !participantId) {
       this.scheduleStoreRetry();
       return false;
@@ -251,6 +273,7 @@ export class EventBuffer {
    * Schedule a batch flush (debounced)
    */
   private scheduleBatch(): void {
+    if (this.disposed) return;
     if (this.batchTimer) {
       clearTimeout(this.batchTimer);
     }
@@ -268,6 +291,7 @@ export class EventBuffer {
    * Trigger upload of pending events via background service worker
    */
   async flushBatch(): Promise<void> {
+    if (this.disposed) return;
     if (this.batchTimer !== null) {
       clearTimeout(this.batchTimer);
       this.batchTimer = null;

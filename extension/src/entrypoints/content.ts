@@ -1416,6 +1416,11 @@ export default defineContentScript({
 
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();
+        // The context may have been invalidated while this was starting.
+        if (ctx?.isInvalid) {
+          collectorManager.shutdown();
+          return;
+        }
 
         // Best-effort final flush; browsers may not wait for async unload work.
         window.addEventListener("beforeunload", () => {
@@ -1503,6 +1508,9 @@ export default defineContentScript({
       }
     });
     ctx?.onInvalidated(teardownExtension);
+    // Once the extension context is gone the background is unreachable, so
+    // collectors stop listening and buffered events are dropped, not retried.
+    ctx?.onInvalidated(() => collectorManager?.shutdown());
 
     // Keyboard shortcut for overlay (Cmd/Ctrl+Shift+H)
     document.addEventListener("keydown", (e) => {
