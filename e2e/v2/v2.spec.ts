@@ -126,3 +126,91 @@ test("disconnect replay delivers an offline write after reconnect", async ({
       .toEqual(["replayed-after-disconnect"]);
   });
 });
+
+type PlayHTMLWindow = Window & {
+  playhtml: {
+    registerPlayEventListener(
+      type: string,
+      event: { onEvent: (payload: unknown) => void },
+    ): string;
+    dispatchPlayEvent(message: { type: string; eventPayload?: unknown }): void;
+    deleteElementData(tag: string, elementId: string): void;
+    __v2Store: {
+      getSnapshot(): { state: Record<string, Record<string, unknown>> };
+    };
+  };
+  receivedPlayEvents: unknown[];
+};
+
+test("a play event fires once on the sender and once on the other page", async ({
+  browser,
+}, testInfo) => {
+  await withV2PagePair(
+    browser,
+    testInfo,
+    pagePath,
+    async ({ pageA, pageB }) => {
+      for (const page of [pageA, pageB]) {
+        await page.evaluate(() => {
+          const win = window as unknown as PlayHTMLWindow;
+          win.receivedPlayEvents = [];
+          win.playhtml.registerPlayEventListener("e2e-confetti", {
+            onEvent: (payload) => win.receivedPlayEvents.push(payload),
+          });
+        });
+      }
+
+      await pageA.evaluate(() => {
+        (window as unknown as PlayHTMLWindow).playhtml.dispatchPlayEvent({
+          type: "e2e-confetti",
+          eventPayload: { color: "red" },
+        });
+      });
+
+      const received = (page: Page) =>
+        page.evaluate(
+          () => (window as unknown as PlayHTMLWindow).receivedPlayEvents,
+        );
+      await expect.poll(() => received(pageB)).toEqual([{ color: "red" }]);
+      await expect.poll(() => received(pageA)).toEqual([{ color: "red" }]);
+    },
+  );
+});
+
+test("deleting an element's data removes it for the other page and after a reload", async ({
+  browser,
+}, testInfo) => {
+  await withV2PagePair(
+    browser,
+    testInfo,
+    pagePath,
+    async ({ pageA, pageB }) => {
+      const storedToggle = (page: Page) =>
+        page.evaluate(
+          () =>
+            (
+              window as unknown as PlayHTMLWindow
+            ).playhtml.__v2Store.getSnapshot().state["can-toggle"]?.toggle,
+        );
+      await pageA.locator("#toggle").click();
+      await expect(pageB.locator("#toggle")).toHaveClass(/toggled/);
+      await expect.poll(() => storedToggle(pageB)).toBeDefined();
+
+      await pageA.evaluate(() => {
+        (window as unknown as PlayHTMLWindow).playhtml.deleteElementData(
+          "can-toggle",
+          "toggle",
+        );
+      });
+
+      await expect.poll(() => storedToggle(pageB)).toBeUndefined();
+      await expect.poll(() => storedToggle(pageA)).toBeUndefined();
+
+      // A reload hydrates from the room: the toggle starts from its default
+      // again instead of the deleted "on" state.
+      await pageB.reload();
+      await waitForV2Ready(pageB);
+      await expect(pageB.locator("#toggle")).not.toHaveClass(/toggled/);
+    },
+  );
+});
