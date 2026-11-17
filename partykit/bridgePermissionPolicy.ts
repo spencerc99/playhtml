@@ -64,18 +64,21 @@ function samePermissions(
 
 // Builds the map a connecting source page declares; it replaces the room's
 // stored map. Malformed entries are skipped, and distinct ids beyond
-// `maxEntries` are ignored.
+// `maxEntries` are ignored. A declaration with no well-formed entry leaves the
+// stored map as it is, the same as an empty declaration.
 export function replaceSharedElementPermissions(
   existing: SharedElementPermissionMap,
   declared: unknown[],
   maxEntries: number
 ): SharedPermissionsUpdate {
   const permissions: SharedElementPermissionMap = {};
+  let declaredCount = 0;
   let count = 0;
   let ignoredForCap = 0;
   for (const entry of declared) {
     const declaration = readDeclaration(entry);
     if (!declaration) continue;
+    declaredCount += 1;
     const { elementId, permission } = declaration;
     const isNew =
       getSharedElementPermission(permissions, elementId) === undefined;
@@ -85,6 +88,9 @@ export function replaceSharedElementPermissions(
     }
     if (isNew) count += 1;
     permissions[elementId] = permission;
+  }
+  if (declaredCount === 0) {
+    return { permissions: existing, changed: false, ignoredForCap: 0 };
   }
   return {
     permissions,

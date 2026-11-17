@@ -302,6 +302,25 @@ describe("shared element permissions on the source room", () => {
     source.destroy();
   });
 
+  it("keeps the stored map when a connect declares only malformed entries", async () => {
+    const stored: PermissionMap = { open: "read-write", locked: "read-only" };
+    const source = await createSourceRoom(stored);
+
+    await connectSource(source.room, [
+      null as any,
+      "open" as any,
+      { permissions: "read-write" } as any,
+      { elementId: "", permissions: "read-write" },
+      { elementId: "__proto__", permissions: "read-write" },
+    ]);
+
+    expect(source.storage.puts).not.toContain("sharedPermissions");
+    expect(source.storedPermissions()).toEqual(stored);
+    expect((await applyConsumerWrite(source.room)).status).toBe(200);
+    expect(toggles(source.document)).toEqual(OPEN_WRITTEN_ONLY);
+    source.destroy();
+  });
+
   it("does not treat Object.prototype names as shared elements", async () => {
     const source = await createSourceRoom({ open: "read-write" });
 
