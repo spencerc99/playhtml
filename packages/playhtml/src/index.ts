@@ -2820,7 +2820,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
   }
   // Set up the common classes for affected elements.
   element.classList.add(`__playhtml-element`);
-  element.style.setProperty("--jiggle-delay", `${Math.random()}s`);
+  element.style.setProperty("--jiggle-delay", `${Math.random().toFixed(2)}s`);
 
   attachSyncedStoreObserver(tag as string, elementId);
 }
