@@ -127,12 +127,15 @@ export const METRICS = [
     ),
     timing(
       "mirror_list_edit_ms",
-      "1,000-item list, add one item: time (mean of 10)",
+      "1,000-item list, add one item: time (median of 10)",
     ),
-    timing("mirror_list_bulk_ms", "1,000-item list, add 500 at once: time"),
+    timing(
+      "mirror_list_bulk_ms",
+      "1,000-item list, add 500 at once: time (median of 3)",
+    ),
     timing(
       "mirror_board_remote_ms",
-      "Board of 30 nested cards, apply one remote restyle: time (median)",
+      "Board of 30 nested cards, apply one remote restyle: time (median of 20)",
     ),
   ]),
 ];
