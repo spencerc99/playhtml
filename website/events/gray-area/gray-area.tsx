@@ -40,13 +40,6 @@ function Main() {
                 <a href="https://discord.gg/pSK5cBtm">discord channel</a> (we'll
                 be using it as our class chat to share links, etc.)
               </li>
-              <li>
-                get set up with Gray Area's Wifi.
-                <br />
-                network name: "Gray Area Residents"
-                <br />
-                password: Incubator2024
-              </li>
             </ol>
           </p>
           <p>
