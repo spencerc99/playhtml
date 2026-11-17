@@ -120,7 +120,7 @@ export default defineConfig({
       // Individual example pages stay hidden (`sidebar.hidden`) and are
       // linked from the examples index.
       //
-      // ⚠️ When adding a page: in advanced/ / integrations/ / reference/,
+      // Adding a page: in advanced/ / integrations/ / reference/,
       // set `sidebar: { order: N }` in its frontmatter and you're done.
       // Anywhere else, add an entry to the hand-rolled groups here too.
       //
