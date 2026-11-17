@@ -1,5 +1,5 @@
 // ABOUTME: Returns one room from the v2 protocol to v1, keeping every write made on v2.
-// ABOUTME: Usage: `SUPABASE_URL=... SUPABASE_KEY=... bun partykit/scripts/rollback-room.ts <room-name> [--apply]`; without --apply it only reports what it would write.
+// ABOUTME: Usage: `SUPABASE_URL=... SUPABASE_KEY=... DOCUMENTS_TABLE=documents|documents_staging bun partykit/scripts/rollback-room.ts <room-name> [--apply]`; without --apply it only reports what it would write.
 
 import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -9,12 +9,14 @@ import {
   convertDocumentToSnapshot,
   convertSnapshotToDocument,
 } from "../convert";
+import { parseDocumentsTable } from "../documentsTable";
 
 export type RollbackRoomOptions = {
   room: string;
   apply: boolean;
   supabaseUrl?: string;
   supabaseKey?: string;
+  documentsTable?: string;
   now?: () => number;
 };
 
@@ -90,17 +92,21 @@ export async function rollbackRoom({
   apply,
   supabaseUrl = process.env.SUPABASE_URL,
   supabaseKey = process.env.SUPABASE_KEY,
+  documentsTable = process.env.DOCUMENTS_TABLE,
   now = Date.now,
 }: RollbackRoomOptions): Promise<RollbackRoomSummary> {
   if (!supabaseUrl || !supabaseKey) {
     throw new Error("SUPABASE_URL and SUPABASE_KEY must be set.");
   }
+  // Production and staging rooms live in one project, so the table is never
+  // assumed.
+  const table = parseDocumentsTable(documentsTable);
   const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false },
   });
 
   const { data, error } = await supabase
-    .from("documents")
+    .from(table)
     .select("document_json, protocol_version")
     .eq("name", room)
     .maybeSingle();
@@ -120,7 +126,7 @@ export async function rollbackRoom({
     // The sequence filter makes this a no-op if the v2 room saved again after
     // the read above, so a write made in between is never dropped.
     const { data: updated, error: updateError } = await supabase
-      .from("documents")
+      .from(table)
       .update({ document, protocol_version: 1 })
       .eq("name", room)
       .eq("protocol_version", 2)
@@ -160,7 +166,7 @@ async function main(): Promise<void> {
   );
   if (positional.length !== 1 || unknown.length > 0) {
     throw new Error(
-      "Usage: bun partykit/scripts/rollback-room.ts <room-name> [--apply]",
+      "Usage: DOCUMENTS_TABLE=<table> bun partykit/scripts/rollback-room.ts <room-name> [--apply]",
     );
   }
 

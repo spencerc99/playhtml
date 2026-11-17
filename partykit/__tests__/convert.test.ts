@@ -9,7 +9,7 @@ import {
   convertSnapshotToDocument,
 } from "../convert";
 import { encodeDocToBase64, getDocResetEpoch, jsonToDoc } from "../docUtils";
-import { buildRollbackDocument } from "../scripts/rollback-room";
+import { buildRollbackDocument, rollbackRoom } from "../scripts/rollback-room";
 
 function convertPlayData(playData: Record<string, unknown>): RoomSnapshot {
   const doc = jsonToDoc(playData);
@@ -245,5 +245,19 @@ describe("buildRollbackDocument", () => {
     expect(decoded.snapshot.state["can-toggle"]).toEqual({
       lamp: { on: true },
     });
+  });
+});
+
+describe("rollbackRoom", () => {
+  it("refuses to run without being told which table holds the room", async () => {
+    await expect(
+      rollbackRoom({
+        room: "example.com-%2F",
+        apply: false,
+        supabaseUrl: "http://localhost:1",
+        supabaseKey: "unused",
+        documentsTable: undefined,
+      }),
+    ).rejects.toThrow("DOCUMENTS_TABLE must be one of");
   });
 });
