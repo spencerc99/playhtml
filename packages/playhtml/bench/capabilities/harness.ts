@@ -96,6 +96,8 @@ export async function measureTraffic(run: () => Promise<void>) {
   };
 }
 
+let fakeClock = 0;
+
 // Simulated clock: `frames` frames 16 ms apart, as on a 60 Hz display, with
 // `step` running at the start of each. Pending sends finish before it returns.
 export async function runFrames(frames: number, step: (frame: number) => void) {
@@ -109,12 +111,18 @@ export async function runFrames(frames: number, step: (frame: number) => void) {
       "cancelAnimationFrame",
     ],
   });
+  // Start each run well past anything sent before it. Send pacing compares
+  // Date.now() with the last send, and the real time between runs varies, so
+  // without this the first sends of a run could batch differently each time.
+  fakeClock = Math.max(Date.now(), fakeClock) + 60_000;
+  vi.setSystemTime(fakeClock);
   try {
     for (let frame = 1; frame <= frames; frame += 1) {
       step(frame);
       await vi.advanceTimersByTimeAsync(16);
     }
     await vi.advanceTimersByTimeAsync(1000);
+    fakeClock = Date.now();
   } finally {
     vi.useRealTimers();
   }
