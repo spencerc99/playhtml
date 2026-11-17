@@ -110,3 +110,24 @@ it("does nothing when the band already fits", () => {
   expect(observerCallback).toBeNull();
   stop();
 });
+
+it("keeps moving when the browser rounds scrollLeft to whole pixels", () => {
+  const el = viewport();
+  let stored = 0;
+  Object.defineProperty(el, "scrollLeft", {
+    get: () => stored,
+    set: (value: number) => {
+      stored = Math.round(value);
+    },
+  });
+  const stop = startBandAutoScroll(el);
+  observerCallback?.([{ isIntersecting: true }]);
+
+  // One second of 120Hz frames; each frame moves about 0.13px.
+  const start = performance.now();
+  for (let i = 1; i <= 120; i++) runFrame(start + (i * 1000) / 120);
+
+  expect(stored).toBeGreaterThanOrEqual(14);
+  expect(stored).toBeLessThanOrEqual(18);
+  stop();
+});

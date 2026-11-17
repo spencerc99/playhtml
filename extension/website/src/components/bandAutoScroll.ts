@@ -19,21 +19,23 @@ export function startBandAutoScroll(viewport: HTMLElement): () => void {
   let onScreen = false;
   let resumeTimer: ReturnType<typeof setTimeout> | null = null;
   let lastTime = 0;
+  // Browsers round scrollLeft to whole pixels, and one frame moves less than
+  // that, so the position is tracked here and written out each frame.
+  let position = viewport.scrollLeft;
 
   const tick = (now: number) => {
     const dt = (now - lastTime) / 1000;
     lastTime = now;
     if (!paused) {
-      const next = viewport.scrollLeft + direction * PIXELS_PER_SECOND * dt;
-      if (next >= maxScroll) {
-        viewport.scrollLeft = maxScroll;
+      position += direction * PIXELS_PER_SECOND * dt;
+      if (position >= maxScroll) {
+        position = maxScroll;
         direction = -1;
-      } else if (next <= 0) {
-        viewport.scrollLeft = 0;
+      } else if (position <= 0) {
+        position = 0;
         direction = 1;
-      } else {
-        viewport.scrollLeft = next;
       }
+      viewport.scrollLeft = position;
     }
     rafId = requestAnimationFrame(tick);
   };
@@ -63,6 +65,7 @@ export function startBandAutoScroll(viewport: HTMLElement): () => void {
     if (resumeTimer) clearTimeout(resumeTimer);
     resumeTimer = setTimeout(() => {
       paused = false;
+      position = viewport.scrollLeft;
       lastTime = performance.now();
     }, USER_SCROLL_PAUSE_MS);
   };
