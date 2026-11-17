@@ -74,7 +74,7 @@ export async function handleQuarantineControlRequest(
     });
   }
 
-  const authError = getAdminAuthError(request, adminToken);
+  const authError = await getAdminAuthError(request, adminToken);
   if (authError) return authError;
 
   try {

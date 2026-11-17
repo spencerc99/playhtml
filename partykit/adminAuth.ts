@@ -1,38 +1,57 @@
 // ABOUTME: Authenticates administrative PartyServer and Worker requests.
 // ABOUTME: Keeps shared token handling independent from room and control handlers.
-export function getAdminAuthError(
+import { secretMatches } from "./secretMatch";
+
+function jsonError(message: string, status: number): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: {
+      "content-type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    },
+  });
+}
+
+function bearerToken(request: Request): string | null {
+  const authorization = request.headers.get("Authorization");
+  if (!authorization) return null;
+  const match = /^Bearer\s+(.+)$/i.exec(authorization.trim());
+  return match ? match[1] : null;
+}
+
+// The Authorization header is the supported way to send the admin token. The
+// `?token=` query parameter is a fallback; each use logs a warning (path only,
+// never the token) so its remaining callers are visible in server logs.
+function presentedToken(request: Request): string | null {
+  const fromHeader = bearerToken(request);
+  if (fromHeader) return fromHeader;
+
+  const url = new URL(request.url);
+  const fromQuery = url.searchParams.get("token");
+  if (!fromQuery) return null;
+  console.warn(
+    `[AdminAuth] admin token sent as ?token= query parameter (deprecated, use Authorization header): ${request.method} ${url.pathname}`,
+  );
+  return fromQuery;
+}
+
+export async function getAdminAuthError(
   request: Request,
-  adminToken: string | undefined
-): Response | null {
+  adminToken: string | undefined,
+): Promise<Response | null> {
   // Fail closed: a missing ADMIN_TOKEN (unset secret, misconfigured
   // deployment) must not silently authorize every admin request — these
   // routes can overwrite or destroy live room data.
   if (!adminToken) {
-    return new Response(
-      JSON.stringify({ error: "Admin endpoint misconfigured: ADMIN_TOKEN is not set" }),
-      {
-        status: 500,
-        headers: {
-          "content-type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        },
-      }
+    return jsonError(
+      "Admin endpoint misconfigured: ADMIN_TOKEN is not set",
+      500,
     );
   }
 
-  const url = new URL(request.url);
-  const token =
-    url.searchParams.get("token") ||
-    request.headers.get("Authorization")?.replace("Bearer ", "");
-
-  if (!token || token !== adminToken) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: {
-        "content-type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
+  const token = presentedToken(request);
+  if (!token || !(await secretMatches(token, adminToken))) {
+    return jsonError("Unauthorized", 401);
   }
 
   return null;

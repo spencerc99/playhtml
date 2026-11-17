@@ -25,7 +25,7 @@ import {
   formatAdminResetSuccess,
   formatAdminResetWarning,
 } from "./adminMessages";
-import { HOSTS, type EnvName } from "./adminHosts";
+import { adminFetch, HOSTS, type EnvName } from "./adminHosts";
 import {
   QuarantinedRoomsOverview,
   RoomQuarantinePanel,
@@ -510,11 +510,9 @@ async function validateAdminToken(
     // Use a dummy room ID to test authentication
     // The endpoint will return 401 if token is invalid, 404 if token is valid but room doesn't exist
     const testRoomId = encodeURIComponent("__auth-test__");
-    const url = `${host}/parties/main/${testRoomId}/admin/inspect?token=${encodeURIComponent(
-      token
-    )}`;
+    const url = `${host}/parties/main/${testRoomId}/admin/inspect`;
 
-    const response = await fetch(url, {
+    const response = await adminFetch(url, token, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -1200,11 +1198,9 @@ const AdminConsole: React.FC = () => {
     }
 
     const baseUrl = getRoomBaseUrl(roomId);
-    const url = `${baseUrl}/admin/inspect?token=${encodeURIComponent(
-      adminToken
-    )}`;
+    const url = `${baseUrl}/admin/inspect`;
 
-    const response = await fetch(url, {
+    const response = await adminFetch(url, adminToken, {
       method: "GET",
       headers: { "Content-Type": "application/json" },
     });
@@ -1238,10 +1234,9 @@ const AdminConsole: React.FC = () => {
     }));
 
     try {
-      const response = await fetch(
-        `${HOSTS[hostEnv]}/admin/quarantines?token=${encodeURIComponent(
-          adminToken
-        )}`
+      const response = await adminFetch(
+        `${HOSTS[hostEnv]}/admin/quarantines`,
+        adminToken
       );
       const body = await response.json();
 
@@ -1304,11 +1299,9 @@ const AdminConsole: React.FC = () => {
 
     try {
       const baseUrl = getRoomBaseUrl(currentRoomId);
-      const url = `${baseUrl}/admin/raw-data?token=${encodeURIComponent(
-        adminToken
-      )}`;
+      const url = `${baseUrl}/admin/raw-data`;
 
-      const response = await fetch(url, {
+      const response = await adminFetch(url, adminToken, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       });
@@ -1387,11 +1380,9 @@ const AdminConsole: React.FC = () => {
         );
 
         const baseUrl = getRoomBaseUrl(currentRoomId);
-        const url = `${baseUrl}/admin/restore-raw-document?token=${encodeURIComponent(
-          adminToken
-        )}`;
+        const url = `${baseUrl}/admin/restore-raw-document`;
 
-        const response = await fetch(url, {
+        const response = await adminFetch(url, adminToken, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ base64Document }),
@@ -1433,11 +1424,9 @@ const AdminConsole: React.FC = () => {
 
     try {
       const baseUrl = getRoomBaseUrl(currentRoomId);
-      const url = `${baseUrl}/admin/raw-data?token=${encodeURIComponent(
-        adminToken
-      )}`;
+      const url = `${baseUrl}/admin/raw-data`;
 
-      const response = await fetch(url, {
+      const response = await adminFetch(url, adminToken, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       });
@@ -1470,11 +1459,9 @@ const AdminConsole: React.FC = () => {
       addLog("info", "Comparing data extraction methods...");
 
       const baseUrl = getRoomBaseUrl(targetRoomId);
-      const url = `${baseUrl}/admin/live-compare?token=${encodeURIComponent(
-        adminToken
-      )}`;
+      const url = `${baseUrl}/admin/live-compare`;
 
-      const response = await fetch(url, {
+      const response = await adminFetch(url, adminToken, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       });
@@ -1513,10 +1500,8 @@ const AdminConsole: React.FC = () => {
 
     try {
       const baseUrl = getRoomBaseUrl(currentRoomId);
-      const url = `${baseUrl}/admin/force-save-live?token=${encodeURIComponent(
-        adminToken
-      )}`;
-      const res = await fetch(url, { method: "POST" });
+      const url = `${baseUrl}/admin/force-save-live`;
+      const res = await adminFetch(url, adminToken, { method: "POST" });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       addLog("info", "Force-saved live doc to DB");
       alert("✅ Live doc saved to DB. Re-running comparison.");
@@ -1539,10 +1524,8 @@ const AdminConsole: React.FC = () => {
 
     try {
       const baseUrl = getRoomBaseUrl(currentRoomId);
-      const url = `${baseUrl}/admin/force-reload-live?token=${encodeURIComponent(
-        adminToken
-      )}`;
-      const res = await fetch(url, { method: "POST" });
+      const url = `${baseUrl}/admin/force-reload-live`;
+      const res = await adminFetch(url, adminToken, { method: "POST" });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const result = await res.json();
       addLog("info", "Force-reloaded live doc from DB", result);
@@ -1577,10 +1560,8 @@ const AdminConsole: React.FC = () => {
     try {
       addLog("info", "Starting Hard Reset (GC)...");
       const baseUrl = getRoomBaseUrl(currentRoomId);
-      const url = `${baseUrl}/admin/hard-reset?token=${encodeURIComponent(
-        adminToken
-      )}`;
-      const res = await fetch(url, { method: "POST" });
+      const url = `${baseUrl}/admin/hard-reset`;
+      const res = await adminFetch(url, adminToken, { method: "POST" });
       if (!res.ok) {
         let errorMessage = `${res.status} ${res.statusText}`;
         try {
@@ -1630,11 +1611,9 @@ const AdminConsole: React.FC = () => {
 
       addLog("info", "Saving authoritative database snapshot...");
       const baseUrl = getRoomBaseUrl(currentRoomId);
-      const url = `${baseUrl}/admin/save-edited-data?token=${encodeURIComponent(
-        adminToken
-      )}`;
+      const url = `${baseUrl}/admin/save-edited-data`;
 
-      const response = await fetch(url, {
+      const response = await adminFetch(url, adminToken, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: parsedData }),
@@ -1750,10 +1729,8 @@ const AdminConsole: React.FC = () => {
 
     try {
       const baseUrl = getRoomBaseUrl(currentRoomId);
-      const url = `${baseUrl}/admin/moderation-remove?token=${encodeURIComponent(
-        adminToken
-      )}`;
-      const response = await fetch(url, {
+      const url = `${baseUrl}/admin/moderation-remove`;
+      const response = await adminFetch(url, adminToken, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targets }),
@@ -1831,11 +1808,9 @@ const AdminConsole: React.FC = () => {
       addLog("info", `Running dry run cleanup for ${selectedCleanupTag}...`);
 
       const baseUrl = getRoomBaseUrl(currentRoomId);
-      const url = `${baseUrl}/admin/cleanup-orphans?token=${encodeURIComponent(
-        adminToken
-      )}`;
+      const url = `${baseUrl}/admin/cleanup-orphans`;
 
-      const response = await fetch(url, {
+      const response = await adminFetch(url, adminToken, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1900,11 +1875,9 @@ const AdminConsole: React.FC = () => {
       addLog("info", `Executing cleanup for ${selectedCleanupTag}...`);
 
       const baseUrl = getRoomBaseUrl(currentRoomId);
-      const url = `${baseUrl}/admin/cleanup-orphans?token=${encodeURIComponent(
-        adminToken
-      )}`;
+      const url = `${baseUrl}/admin/cleanup-orphans`;
 
-      const response = await fetch(url, {
+      const response = await adminFetch(url, adminToken, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2207,10 +2180,8 @@ const AdminConsole: React.FC = () => {
 
     try {
       const baseUrl = getRoomBaseUrl(currentRoomId);
-      const url = `${baseUrl}/admin/remove-subscriber?token=${encodeURIComponent(
-        adminToken
-      )}`;
-      const res = await fetch(url, {
+      const url = `${baseUrl}/admin/remove-subscriber`;
+      const res = await adminFetch(url, adminToken, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ consumerRoomId }),
