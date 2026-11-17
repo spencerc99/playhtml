@@ -171,6 +171,41 @@ describe("background local retention", () => {
     );
   });
 
+  it("runs one milestone check at a time when the alarm fires during a check, then one follow-up", async () => {
+    let releaseFirstCheck: () => void = () => {};
+    storeMock.getGlobalStats.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseFirstCheck = () =>
+            resolve({
+              hourBuckets: new Array(24).fill(0),
+              milestoneActivity: null,
+            });
+        }),
+    );
+    const background = await import("../entrypoints/background");
+    const startBackground = background.default as unknown as () => void;
+    startBackground();
+
+    const alarmListener =
+      browserMock.alarms.onAlarm.addListener.mock.calls[0]?.[0];
+    const firstCheck = alarmListener?.({ name: "checkMilestones" });
+    await vi.waitFor(() =>
+      expect(storeMock.getGlobalStats).toHaveBeenCalledOnce(),
+    );
+    await alarmListener?.({ name: "checkMilestones" });
+
+    expect(storeMock.getGlobalStats).toHaveBeenCalledOnce();
+    releaseFirstCheck();
+    await firstCheck;
+
+    // The alarm that arrived mid-check runs once afterwards.
+    await vi.waitFor(
+      () => expect(storeMock.getGlobalStats).toHaveBeenCalledTimes(2),
+      { timeout: 3000 },
+    );
+  });
+
   it("checks milestones without reading raw event history", async () => {
     const background = await import("../entrypoints/background");
 
