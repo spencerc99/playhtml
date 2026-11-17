@@ -3,11 +3,36 @@
 // NOTE: runs assume freshly seeded rooms (partykit/scripts/seed-prod-rooms.ts
 // plus a party-server restart); repeated unseeded runs accumulate drag drift.
 
-import { expect, test, type Page } from "@playwright/test";
+import path from "node:path";
+import {
+  expect,
+  test,
+  type BrowserContext,
+  type Page,
+} from "@playwright/test";
 import { waitForV2Ready } from "./fixtures";
 import prodRooms from "./prod-rooms.json";
 
 const partyHost = process.env.PLAYHTML_E2E_PARTY ?? "localhost:2000";
+
+const publishedLibraryUrl = "https://unpkg.com/playhtml@latest";
+// The test command runs from the repository root.
+const builtLibraryPath = path.resolve(
+  "packages/playhtml/dist/playhtml.browser.js",
+);
+
+// Some site pages import the published library from a CDN. The published
+// library is not the code under test, so those imports get this checkout's
+// build instead.
+async function serveBuiltLibrary(context: BrowserContext): Promise<void> {
+  await context.route(publishedLibraryUrl, (route) =>
+    route.fulfill({
+      path: builtLibraryPath,
+      contentType: "text/javascript",
+      headers: { "access-control-allow-origin": "*" },
+    }),
+  );
+}
 
 type PageErrors = {
   pageErrors: string[];
@@ -52,6 +77,13 @@ async function waitForPageReady(page: Page): Promise<void> {
           ?.isLoading,
     ),
   ).toBe(false);
+  // A page that ignored the version 2 opt-in would still load and sync through
+  // its normal server, so the connected host is checked directly.
+  expect(
+    await page.evaluate(
+      () => (window as Window & { playhtml?: { host: string } }).playhtml?.host,
+    ),
+  ).toBe(partyHost);
   await expect
     .poll(() => page.locator(".__playhtml-element").count())
     .toBeGreaterThan(0);
@@ -321,6 +353,10 @@ for (const room of prodRooms) {
   test(`seeded production room: ${room.prodRoom}`, async ({ browser }) => {
     const contextA = await browser.newContext();
     const contextB = await browser.newContext();
+    await Promise.all([
+      serveBuiltLibrary(contextA),
+      serveBuiltLibrary(contextB),
+    ]);
     const pageA = await contextA.newPage();
     const pageB = await contextB.newPage();
     const errorsA = attachErrorCollectors(pageA);
