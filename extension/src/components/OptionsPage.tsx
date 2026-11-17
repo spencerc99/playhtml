@@ -173,7 +173,7 @@ export function OptionsPage() {
   const [color, setColor] = useState("#4a9a8a");
   const [savingColor, setSavingColor] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [newTabTakeover, setNewTabTakeover] = useState(true);
+  const [newTabTakeover, setNewTabTakeover] = useState(false);
   const [milestoneToastsEnabled, setMilestoneToastsEnabled] = useState(true);
   const [setupEmail, setSetupEmail] = useState<string | null>(null);
   const [emailDraft, setEmailDraft] = useState("");
@@ -211,7 +211,8 @@ export function OptionsPage() {
         setIdentity(playerIdentity);
         const savedColor = playerIdentity?.playerStyle.colorPalette[0];
         if (savedColor) setColor(savedColor);
-        setNewTabTakeover(stored[NEWTAB_TAKEOVER_KEY] !== false);
+        // Matches the new tab redirect: an unset key means opted out.
+        setNewTabTakeover(Boolean(stored[NEWTAB_TAKEOVER_KEY]));
         setMilestoneToastsEnabled(
           stored[MILESTONE_TOASTS_ENABLED_KEY] !== false,
         );
@@ -255,7 +256,7 @@ export function OptionsPage() {
       .querySelectorAll<HTMLElement>(".options-page__section")
       .forEach((section) => observer.observe(section));
     return () => observer.disconnect();
-  }, [bagSettingsEnabled]);
+  }, [bagSettingsEnabled, internalAccess]);
 
   const handleOpenColorPicker = () => colorInputRef.current?.click();
 
