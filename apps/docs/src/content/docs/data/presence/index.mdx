@@ -242,16 +242,19 @@ Use element presence when the signal belongs to one element, like "who has joine
   </TabItem>
   <TabItem label="React">
 ```tsx
-<CanPlayElement id="ready-count" defaultData={{}} defaultPresence={{ ready: false }}>
-  {({ everyone, me, setMyPresence }) => {
+import { withSharedState } from "@playhtml/react";
+
+export const ReadyCount = withSharedState(
+  { id: "ready-count", defaultData: {}, defaultPresence: { ready: false } },
+  ({ everyone, me, setMyPresence }) => {
     const ready = everyone.filter((person) => person.presence.ready).length;
     return (
       <button onClick={() => setMyPresence({ ready: !me.presence.ready })}>
         {ready} of {everyone.length} ready
       </button>
     );
-  }}
-</CanPlayElement>
+  },
+);
 ````
 
   </TabItem>
@@ -295,6 +298,7 @@ Page presence covers everyone on the page. When you want presence **scoped to so
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 ```js
+await playhtml.ready;
 const room = playhtml.createPresenceRoom("lobby-42");
 
 room.people.setMyPresence("status", { text: "ready" });

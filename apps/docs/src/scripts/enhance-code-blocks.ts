@@ -303,7 +303,7 @@ function enhanceBlock(pre: HTMLPreElement): EnhancedBlock | null {
     // the copier sees is what every other reader sees.
     dispatchCopyEffect(elementId, codeText);
 
-    // Bump shared wear. The updateElement callback registered below will
+    // Bump shared wear. The update callback registered below will
     // run on this client as well as every other reader's, so we don't need
     // to update the DOM optimistically.
     const handle = playhtml.getHandle(elementId, "can-play");
@@ -329,7 +329,7 @@ async function registerWithPlayhtml(block: EnhancedBlock): Promise<void> {
     let lastWear = -1;
     playhtml.register<WearData>(block.wrap, {
       defaultData: { wear: 0 },
-      updateElement: ({ data }) => {
+      update: ({ data }) => {
         const wear = Number(data?.wear ?? 0);
         block.wrap.setAttribute("data-wear", String(wear));
         if (lastWear < 0) {
