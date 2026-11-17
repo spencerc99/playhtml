@@ -57,6 +57,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -102,12 +103,36 @@ it("stops scrolling while the tab is hidden", () => {
   expect(frames.size).toBe(0);
 });
 
-it("does nothing when the band already fits", () => {
+it("does nothing when the band overflows by only a few pixels", () => {
   const el = document.createElement("div");
-  Object.defineProperty(el, "scrollWidth", { value: 300 });
+  Object.defineProperty(el, "scrollWidth", { value: 303 });
   Object.defineProperty(el, "clientWidth", { value: 300 });
   const stop = startBandAutoScroll(el);
-  expect(observerCallback).toBeNull();
+  observerCallback?.([{ isIntersecting: true }]);
+  runFrame(performance.now() + 1000);
+
+  expect(frames.size).toBe(0);
+  expect(el.scrollLeft).toBe(0);
+  stop();
+});
+
+it("resumes from where the visitor scrolled to", () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const el = viewport();
+  const stop = startBandAutoScroll(el);
+  observerCallback!([{ isIntersecting: true }]);
+  runFrame(performance.now() + 1000);
+  expect(el.scrollLeft).toBeGreaterThan(10);
+
+  el.dispatchEvent(new Event("wheel"));
+  el.scrollLeft = 200;
+  runFrame(performance.now() + 1000);
+  expect(el.scrollLeft).toBe(200);
+
+  vi.advanceTimersByTime(4000);
+  runFrame(performance.now() + 1000);
+  expect(el.scrollLeft).toBeGreaterThan(210);
+  expect(el.scrollLeft).toBeLessThan(220);
   stop();
 });
 
