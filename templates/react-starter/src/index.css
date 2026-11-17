@@ -1,35 +1,15 @@
-:root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+body { font-family: system-ui, sans-serif; background: #69f7be; margin: 0; padding: 2rem 1rem; text-align: center; }
+h1, h2 { color: #2800ff; }
+h1 { font-size: 64px; margin: 0; }
+section { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center; justify-content: center; margin: 2rem 0; }
+img { width: 200px; }
+button, input { font: inherit; background: white; border: 1px solid black; padding: 0.5rem 1rem; }
+ul { list-style: none; padding: 0; }
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-button {
-  font-family: inherit;
-}
-
-/* CanHoverElement sets [data-playhtml-hover] while anyone on the page is
-   hovering, so the effect is shared. Style that attribute instead of :hover. */
-#hoverBox {
-  transition: background 0.2s ease, transform 0.2s ease;
-}
-
-#hoverBox[data-playhtml-hover] {
-  background: blue !important;
-  transform: scale(1.1);
-}
+/* Each capability adds a class or attribute you can hook into. */
+#lamp.toggled { filter: brightness(1.2) drop-shadow(0 0 50px rgb(247 220 156)); }
+#catOrDog.toggled { content: url("/dog.png"); }
+#hoverBox { width: 100px; height: 100px; background: red; }
+#hoverBox[data-playhtml-hover] { background: blue; }
+#shootingStar { position: fixed; top: -36px; left: -36px; font-size: 36px; color: gold; }
+.reacted { background: #ff6b6b; }
