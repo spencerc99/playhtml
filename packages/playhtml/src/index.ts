@@ -2512,6 +2512,7 @@ export async function resetPlayHTML(): Promise<void> {
       map.clear();
     }
     elementHandlers.clear();
+    eventHandlers.clear();
     pageDataRefCounts.clear();
     pageDataListeners.clear();
     mainProviderSyncWaiters.clear();
