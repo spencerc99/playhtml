@@ -254,13 +254,11 @@ const StatsPage = () => {
   );
 
   const toggleDomain = (domain: string) => {
-    setExpandedDomain((prev) => {
-      const next = prev === domain ? null : domain;
-      if (next) {
-        void loadPageSessions(next);
-      }
-      return next;
-    });
+    const next = expandedDomain === domain ? null : domain;
+    setExpandedDomain(next);
+    if (next) {
+      void loadPageSessions(next);
+    }
   };
 
   return (

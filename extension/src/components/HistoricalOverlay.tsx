@@ -378,6 +378,8 @@ export function HistoricalOverlay({
     setPortraitStats(null);
     setPortraitStatsLoaded(false);
 
+    // Ignores a response that lands after the mode or page has changed.
+    let cancelled = false;
     (async () => {
       try {
         const res: any = await browser.runtime.sendMessage({
@@ -386,6 +388,7 @@ export function HistoricalOverlay({
           // Page-level lookup: pass the raw URL (background normalizes it)
           ...(actualMode !== "domain" ? { url: currentUrl } : {}),
         });
+        if (cancelled) return;
         if (res?.success && res.stats) {
           setPortraitStats({
             domain:
@@ -399,10 +402,14 @@ export function HistoricalOverlay({
         }
         setPortraitStatsLoaded(true);
       } catch (e) {
+        if (cancelled) return;
         console.error("[HistoricalOverlay] Failed to fetch portrait stats", e);
         setPortraitStatsLoaded(true);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [visible, actualMode, currentUrl, domain]);
 
   // Track viewport size
