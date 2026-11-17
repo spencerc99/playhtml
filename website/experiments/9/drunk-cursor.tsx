@@ -69,7 +69,7 @@ const DrunkCursorController = withSharedState(
     const lastInterferenceTimeRef = useRef(0);
     const lastUpdateTimeRef = useRef(0); // Track last mousemove time for wobble detection
     const wobblePhaseRef = useRef({ x: 0, y: 0, lastResetX: 0, lastResetY: 0 }); // Track wobble phase for smooth/jerk pattern
-    const { isLoading, cursors } = useContext(PlayContext);
+    const { isLoading } = useContext(PlayContext);
     const { everyone: cursorPeople, me: pageMe } = usePeople("cursor");
     const myStableId = pageMe.pid || null;
     const drunkDecayIntervalRef = useRef<number | null>(null);
@@ -556,8 +556,7 @@ const DrunkCursorController = withSharedState(
         let baseColor: string | undefined;
 
         if (isMyCursor) {
-          // Same source as playhtml's own cursor color
-          baseColor = cursors?.color;
+          baseColor = pageMe.color;
         }
         if (!baseColor) {
           // Other users: their person color
@@ -565,15 +564,15 @@ const DrunkCursorController = withSharedState(
         }
         if (!baseColor) {
           // Fallback to my color
-          baseColor = pageMe.color || cursors?.color;
+          baseColor = pageMe.color;
         }
 
         return baseColor;
       },
-      [cursorPresences, cursors, pageMe.color],
+      [cursorPresences, pageMe.color],
     );
 
-    const myColor = cursors?.color;
+    const myColor = pageMe.color;
 
     // Welcome modal: show on first visit, persist dismissal in localStorage
     const [welcomeDismissed, setWelcomeDismissed] = useState(() => {
@@ -892,8 +891,8 @@ const DrunkCursorController = withSharedState(
                       height: isFullyActive
                         ? "100%"
                         : isPartiallyActive
-                        ? `${fillPercentage}%`
-                        : "0%",
+                          ? `${fillPercentage}%`
+                          : "0%",
                     }}
                   >
                     <img
@@ -1104,7 +1103,7 @@ const DrunkCursorController = withSharedState(
               ? state === "draining" || state === "falling"
                 ? slotAnim.consumedType
                 : slotAnim.nextType
-              : drinkTypes[i] ?? "beer";
+              : (drinkTypes[i] ?? "beer");
             const isWater = displayType === "water";
 
             // Don't render hidden drinks

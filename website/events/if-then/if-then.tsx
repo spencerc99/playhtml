@@ -2,8 +2,8 @@
 // ABOUTME: Stores attendee details and connects the page to playhtml cursors.
 import ReactDOM from "react-dom";
 import { PlayProvider } from "@playhtml/react";
+import { playhtml } from "playhtml";
 import { useStickyState } from "../../hooks/useStickyState";
-import { getMe } from "../../utils/useMe";
 import { Cursors, PlayhtmlToolBox, Guestbook } from "../events";
 import React from "react";
 
@@ -12,9 +12,10 @@ function Main() {
     "username",
     null,
     (newName) => {
-      // Cursor identity is exposed through settable properties, not methods.
-      const me = getMe();
-      if (me) me.name = newName ?? "";
+      // Your name only saves once playhtml has connected.
+      playhtml.ready.then(() => {
+        playhtml.people.me.name = newName ?? "";
+      });
     },
   );
   const [from, setFrom] = useStickyState<string | null>("from", null);

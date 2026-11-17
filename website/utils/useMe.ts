@@ -42,15 +42,3 @@ export function useMe(): MyIdentity {
 
   return me;
 }
-
-/**
- * `playhtml.people.me` (name and color are settable), or `null` before
- * playhtml has started. For code that can run before init.
- */
-export function getMe(): typeof playhtml.people.me | null {
-  try {
-    return playhtml.people.me;
-  } catch {
-    return null;
-  }
-}

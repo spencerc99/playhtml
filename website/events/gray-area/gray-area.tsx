@@ -3,9 +3,9 @@
 import ReactDOM from "react-dom";
 import React from "react";
 import { PlayProvider } from "@playhtml/react";
+import { playhtml } from "playhtml";
 import { Cursors, Guestbook, PlayhtmlToolBox } from "../events";
 import { useStickyState } from "../../hooks/useStickyState";
-import { getMe } from "../../utils/useMe";
 import "./gray-area.scss";
 
 function Main() {
@@ -13,8 +13,10 @@ function Main() {
     "username",
     null,
     (newName) => {
-      const me = getMe();
-      if (me) me.name = newName ?? "";
+      // Your name only saves once playhtml has connected.
+      playhtml.ready.then(() => {
+        playhtml.people.me.name = newName ?? "";
+      });
     },
   );
   const [from, setFrom] = useStickyState<string | null>("from", null);

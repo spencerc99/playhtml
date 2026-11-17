@@ -2,13 +2,10 @@
 // ABOUTME: Coordinates the walk/collage stages, URL posting, cursor prompts, roster, and portraits.
 import ReactDOM from "react-dom";
 import React, { useState } from "react";
-import {
-  PlayProvider,
-  withSharedState,
-  usePageData,
-} from "@playhtml/react";
+import { PlayProvider, withSharedState, usePageData } from "@playhtml/react";
+import { playhtml } from "playhtml";
 import { useStickyState } from "../../hooks/useStickyState";
-import { getMe, useMe } from "../../utils/useMe";
+import { useMe } from "../../utils/useMe";
 import {
   resolveSession,
   roomForCurrentPage,
@@ -81,8 +78,10 @@ export function UserSetup() {
     "username",
     null,
     (newName) => {
-      const me = getMe();
-      if (me) me.name = newName ?? "";
+      // Your name only saves once playhtml has connected.
+      playhtml.ready.then(() => {
+        playhtml.people.me.name = newName ?? "";
+      });
     },
   );
 
@@ -224,8 +223,8 @@ export const URLChat = withSharedState(
 
       const newUrl: SharedURL = {
         url: inputUrl,
-        userName: getMe()?.name || "Anonymous",
-        userColor: getMe()?.color || "#000000",
+        userName: playhtml.people.me.name || "Anonymous",
+        userColor: playhtml.people.me.color || "#000000",
         timestamp: Date.now(),
       };
 
@@ -269,7 +268,9 @@ export const URLChat = withSharedState(
                 fontFamily: "monospace",
               }}
               onClick={() => {
-                if (window.confirm("Clear every link from the chat for everyone?"))
+                if (
+                  window.confirm("Clear every link from the chat for everyone?")
+                )
                   setData({ urls: [] });
               }}
             >
@@ -494,9 +495,7 @@ function StageSwitch({ session }: { session: WorkshopSession }) {
       <WalkChatDock stage={stage}>
         <URLChat />
       </WalkChatDock>
-      {session.hasCollageStage && (
-        <CollageStage active={stage === "collage"} />
-      )}
+      {session.hasCollageStage && <CollageStage active={stage === "collage"} />}
       <RosterAdmin />
     </div>
   );
