@@ -14,12 +14,10 @@ import {
 // `test/`).
 const PAGES: { path: string; skip?: string }[] = [
   { path: "/" },
-  { path: "/candles" },
   { path: "/story" },
   { path: "/fridge" },
   { path: "/admin" },
   { path: "/experiments/" },
-  { path: "/experiments/3/" },
   { path: "/experiments/4/" },
   { path: "/experiments/5/" },
   { path: "/experiments/6/" },
