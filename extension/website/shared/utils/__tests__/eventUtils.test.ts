@@ -8,6 +8,7 @@ import {
   extractDomain,
   getColorForEvent,
   getColorForParticipant,
+  oldestTs,
   parseColorToHsl,
 } from "../eventUtils";
 
@@ -80,5 +81,20 @@ describe("extractDomain", () => {
 
   it("accepts bare hostnames", () => {
     expect(extractDomain("www.example.com")).toBe("example.com");
+  });
+});
+
+describe("oldestTs", () => {
+  it("finds the earliest timestamp in a list longer than Safari's argument limit", () => {
+    const events = Array.from(
+      { length: 70_000 },
+      (_, i) => ({ ts: 1_000_000 - i }) as CollectionEvent,
+    );
+    events[40_000] = { ts: 5 } as CollectionEvent;
+    expect(oldestTs(events)).toBe(5);
+  });
+
+  it("throws on an empty list", () => {
+    expect(() => oldestTs([])).toThrow("oldestTs needs at least one event");
   });
 });

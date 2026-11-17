@@ -2,6 +2,7 @@
 // ABOUTME: A new domain or refresh aborts the in-flight load so only the latest request's events show.
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { CollectionEvent } from "../shared/types";
+import { oldestTs } from "../shared/utils/eventUtils";
 
 export interface KeypressEvents {
   events: CollectionEvent[];
@@ -89,8 +90,7 @@ export function useKeypressEvents(
 
   const fetchOlder = useCallback(() => {
     if (!hasMore || requestRef.current || events.length === 0) return;
-    const oldestTs = Math.min(...events.map((e) => e.ts));
-    fetchPage(domain, oldestTs);
+    fetchPage(domain, oldestTs(events));
   }, [events, hasMore, domain, fetchPage]);
 
   return { events, loading, error, hasMore, refresh, fetchOlder };
