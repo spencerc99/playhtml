@@ -1,10 +1,11 @@
 // ABOUTME: Regression tests for content-script internal development feature gates.
-// ABOUTME: Verifies hidden inventory features do not run on every page.
+// ABOUTME: Verifies hidden inventory features do not run on every page and no per-site keys are written.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const storageGet = vi.hoisted(() => vi.fn());
 const storageSet = vi.hoisted(() => vi.fn());
+const collectorInit = vi.hoisted(() => vi.fn());
 const runtimeSendMessage = vi.hoisted(() => vi.fn());
 const maybeInjectAnnouncementToast = vi.hoisted(() =>
   vi.fn().mockResolvedValue(undefined),
@@ -41,7 +42,7 @@ vi.mock("../collectors/CollectorManager", () => ({
   CollectorManager: class {
     registerCollector = vi.fn();
     setSiteOff = vi.fn().mockResolvedValue(undefined);
-    init = vi.fn().mockResolvedValue(undefined);
+    init = collectorInit;
     stopAll = vi.fn();
     pauseAll = vi.fn();
     resumeAll = vi.fn();
@@ -72,10 +73,23 @@ vi.mock("../announcements/inject-toast", () => ({
 async function waitForContentInitialization(): Promise<void> {
   await vi.waitFor(() => {
     expect(maybeInjectAnnouncementToast).toHaveBeenCalledOnce();
-    expect(storageGet).toHaveBeenCalledWith([
-      `migration_v1_done_${window.location.hostname}`,
-    ]);
-  });
+    expect(collectorInit).toHaveBeenCalledOnce();
+  }, { timeout: 5000 });
+}
+
+/** Content scripts must not keep per-site bookkeeping in extension storage. */
+function expectNoPerSiteMigrationKeys(): void {
+  const touched = [...storageGet.mock.calls, ...storageSet.mock.calls].flatMap(
+    ([keys]) =>
+      typeof keys === "string"
+        ? [keys]
+        : Array.isArray(keys)
+          ? keys
+          : Object.keys(keys ?? {}),
+  );
+  expect(touched.filter((key) => key.startsWith("migration_v1_done_"))).toEqual(
+    [],
+  );
 }
 
 describe("content internal development features", () => {
@@ -99,18 +113,14 @@ describe("content internal development features", () => {
         });
       }
 
-      return Promise.resolve(
-        Object.fromEntries(
-          keys
-            .filter((key) => key.startsWith("migration_v1_done_"))
-            .map((key) => [key, true]),
-        ),
-      );
+      return Promise.resolve({});
     });
 
     storageSet.mockReset();
     storageSet.mockResolvedValue(undefined);
     maybeInjectAnnouncementToast.mockClear();
+    collectorInit.mockReset();
+    collectorInit.mockResolvedValue(undefined);
 
     runtimeSendMessage.mockReset();
     runtimeSendMessage.mockImplementation((message: { type?: string }) => {
@@ -149,6 +159,7 @@ describe("content internal development features", () => {
     expect(storageGet).toHaveBeenCalledWith("wwoFeatureAccess");
     expect(storageGet).not.toHaveBeenCalledWith(["gameInventory"]);
     expect(mutationObserver).not.toHaveBeenCalled();
+    expectNoPerSiteMigrationKeys();
   });
 
   it("bounds public identity fields before injecting them", async () => {
@@ -164,14 +175,7 @@ describe("content internal development features", () => {
       if (keys === "wwoFeatureOverrides") {
         return Promise.resolve({ wwoFeatureOverrides: { COPRESENCE: true } });
       }
-      if (!Array.isArray(keys)) return Promise.resolve({});
-      return Promise.resolve(
-        Object.fromEntries(
-          keys
-            .filter((key) => key.startsWith("migration_v1_done_"))
-            .map((key) => [key, true]),
-        ),
-      );
+      return Promise.resolve({});
     });
     publicIdentityResponse.value = {
       publicKey: "pk_test",

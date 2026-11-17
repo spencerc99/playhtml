@@ -13,6 +13,7 @@ import type {
 import { uploadEvents } from '../storage/sync'
 import { restoreEventsFromServer } from '../storage/restore'
 import type { CollectionEvent } from '@playhtml/extension-types'
+import { removeSiteMigrationMarkers } from '../storage/siteMigrationMarkers'
 import type { ScrapEventData, ScrapPosition } from '../collectors/types'
 import { getScrapKey } from '../collectors/scrapUtils'
 import {
@@ -458,6 +459,11 @@ export default defineBackground(() => {
       initializePlayerIdentity().then(() => initializeIdentityServices())
       grandfatherNewTabTakeover(details.previousVersion).catch((e) => {
         console.warn('Failed to carry over the new tab preference', e)
+      })
+      // Earlier versions wrote a migration marker for every site visited;
+      // they are removed once, on the first update that no longer writes them.
+      removeSiteMigrationMarkers(browser.storage.local).catch((e) => {
+        console.warn('Failed to remove site migration markers', e)
       })
     } else {
       initializePlayerIdentity().then(() => initializeIdentityServices())
