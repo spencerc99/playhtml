@@ -82,17 +82,10 @@ export function useInstallationEvents(
         : null;
 
     writeEvents(archive.events)
-      .then((): Promise<void> => {
-        if (cancelled) return Promise.resolve();
-        // Read back the version we just wrote so the ping carries it.
-        return readEvents().then((stored) => {
-          if (cancelled || !channel) return;
-          const message: EventsReadyMessage = {
-            type: "events-ready",
-            version: stored?.version ?? 0,
-          };
-          channel.postMessage(message);
-        });
+      .then((version) => {
+        if (cancelled || !channel) return;
+        const message: EventsReadyMessage = { type: "events-ready", version };
+        channel.postMessage(message);
       })
       .catch((err) => {
         console.warn("Failed to relay installation events:", err);
