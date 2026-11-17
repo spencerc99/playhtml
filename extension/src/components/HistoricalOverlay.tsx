@@ -146,6 +146,8 @@ export function HistoricalOverlay({
   // first gesture, then auto-resumes via the engine's internal tick.
   const [soundEnabled, setSoundEnabled] = useState(true);
   const soundEngineRef = useRef<SoundEngine | null>(null);
+  // Mirrors the ref so the trails re-render once the engine is ready.
+  const [soundEngine, setSoundEngine] = useState<SoundEngine | null>(null);
 
   // Load dev mode setting from storage once on mount
   useEffect(() => {
@@ -409,23 +411,34 @@ export function HistoricalOverlay({
     return () => window.removeEventListener("resize", updateSize);
   }, []);
 
-  // Manage SoundEngine lifecycle — mirrors MovementCanvas pattern
+  // Manage SoundEngine lifecycle. An engine whose init finishes after this
+  // effect is cleaned up (overlay closed or sound toggled off) is disposed
+  // instead of stored, so its AudioContext does not outlive the overlay.
   useEffect(() => {
+    let cancelled = false;
     if (soundEnabled) {
       if (!soundEngineRef.current) {
         const engine = new SoundEngine();
         engine.init().then(() => {
+          if (cancelled) {
+            engine.dispose();
+            return;
+          }
           engine.setCanvasWidth(viewportSize.width);
           soundEngineRef.current = engine;
+          setSoundEngine(engine);
         });
       }
     } else if (soundEngineRef.current) {
       soundEngineRef.current.dispose();
       soundEngineRef.current = null;
+      setSoundEngine(null);
     }
     return () => {
+      cancelled = true;
       soundEngineRef.current?.dispose();
       soundEngineRef.current = null;
+      setSoundEngine(null);
     };
   }, [soundEnabled]);
 
@@ -1167,7 +1180,7 @@ export function HistoricalOverlay({
               showClickRipples={!settings.showCursorClicks}
               windowSize={settings.maxConcurrentTrails * 3}
               documentSpace={settings.documentSpace}
-              soundEngine={soundEnabled ? soundEngineRef.current : null}
+              soundEngine={soundEnabled ? soundEngine : null}
               settings={{
                 strokeWidth: settings.strokeWidth,
                 trailOpacity: settings.trailOpacity,
