@@ -79,7 +79,7 @@ export async function initPage(room: string, options: object = {}) {
 
 // Sync traffic this client sends while `run` executes: Yjs messages, their
 // bytes, and how much the shared document grew (what every late joiner loads).
-export async function measureTraffic(run: () => Promise<void>) {
+export async function measureTraffic(run: () => Promise<unknown>) {
   const p = provider();
   const before = Y.encodeStateAsUpdate(p.doc).byteLength;
   p.ws.send.mockClear();
@@ -100,7 +100,13 @@ let fakeClock = 0;
 
 // Simulated clock: `frames` frames 16 ms apart, as on a 60 Hz display, with
 // `step` running at the start of each. Pending sends finish before it returns.
-export async function runFrames(frames: number, step: (frame: number) => void) {
+// Returns each frame's wall-clock time: the step plus the work it set off
+// (observers, animation-frame flushes, timers due within the frame).
+export async function runFrames(
+  frames: number,
+  step: (frame: number) => void,
+): Promise<number[]> {
+  const frameTimes: number[] = [];
   vi.useFakeTimers({
     toFake: [
       "setTimeout",
@@ -118,14 +124,17 @@ export async function runFrames(frames: number, step: (frame: number) => void) {
   vi.setSystemTime(fakeClock);
   try {
     for (let frame = 1; frame <= frames; frame += 1) {
+      const start = now();
       step(frame);
       await vi.advanceTimersByTimeAsync(16);
+      frameTimes.push(now() - start);
     }
     await vi.advanceTimersByTimeAsync(1000);
     fakeClock = Date.now();
   } finally {
     vi.useRealTimers();
   }
+  return frameTimes;
 }
 
 let peerCount = 0;
@@ -159,7 +168,7 @@ export function remotePeer() {
 // this client does to show other people's changes.
 export async function countDomWrites(
   root: Node,
-  run: () => Promise<void>,
+  run: () => Promise<unknown>,
 ): Promise<number> {
   let writes = 0;
   const observer = new MutationObserver((records) => {

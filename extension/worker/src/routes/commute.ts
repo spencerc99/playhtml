@@ -28,7 +28,7 @@ import {
   resolveInternetPlacePolicy,
   type InternetPlacePolicy,
 } from '../../../shared/internetPlaceCatalog';
-import { handleRecent, loadRecentParticipantIds } from './recent';
+import { loadRecentEvents, loadRecentParticipantIds } from './recent';
 import { getAdminAuthError } from '../lib/adminAuth';
 import { createTimedMemo } from '../lib/timedMemo';
 
@@ -39,7 +39,6 @@ const ACTIVE_PEOPLE_EVENT_LIMIT = 1000;
 // once per window and shares that build with every request in between.
 const COMMUTE_RESPONSE_TTL_MS = 30_000;
 const COMMUTE_RESPONSE_ABANDON_LOAD_MS = 20_000;
-const COMMUTE_EVENTS_BASE_URL = 'https://commute.internal/';
 const REVIEW_NAVIGATION_LIMIT = 10_000;
 const REVIEW_DESTINATION_LIMIT = 200;
 const REVIEW_SCENERY_LIMIT = 200;
@@ -59,23 +58,19 @@ async function fetchRecentEvents(
   type: 'navigation' | 'all',
   limit: number,
 ): Promise<CollectionEvent[]> {
-  const url = new URL('/events/recent', COMMUTE_EVENTS_BASE_URL);
-  url.searchParams.set('type', type);
-  url.searchParams.set('limit', limit.toString());
-  if (type === 'navigation') {
-    url.searchParams.set('require_title', 'true');
+  const { events, error } = await loadRecentEvents(env, {
+    type: type === 'all' ? null : type,
+    limit,
+    domain: null,
+    pid: null,
+    from: null,
+    to: null,
+    requireTitle: type === 'navigation',
+  });
+  if (error) {
+    throw new Error(`Recent ${type} request failed: ${error.message}`);
   }
-
-  const response = await handleRecent(new Request(url), env);
-  if (!response.ok) {
-    throw new Error(`Recent ${type} request failed: ${response.status}`);
-  }
-
-  const payload = await response.json();
-  if (!Array.isArray(payload)) {
-    throw new Error(`Recent ${type} response is malformed`);
-  }
-  return payload as CollectionEvent[];
+  return events;
 }
 
 export async function handleCommute(
