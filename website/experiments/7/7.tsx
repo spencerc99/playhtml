@@ -318,7 +318,6 @@ const Main = withSharedState(
       Map<string, HandHold>
     >(new Map());
     const mainRef = useRef<HTMLDivElement>(null);
-    const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
     const [starAnimations, setStarAnimations] = useState<
       Array<{
         id: string;
@@ -511,16 +510,6 @@ const Main = withSharedState(
       configureCursors,
     ]);
 
-
-    // Track mouse position
-    useEffect(() => {
-      const handleMouseMove = (e: MouseEvent) => {
-        setMousePosition({ x: e.clientX, y: e.clientY });
-      };
-
-      window.addEventListener("mousemove", handleMouseMove);
-      return () => window.removeEventListener("mousemove", handleMouseMove);
-    }, []);
 
     // Render stars
     const renderStars = useMemo(() => {
