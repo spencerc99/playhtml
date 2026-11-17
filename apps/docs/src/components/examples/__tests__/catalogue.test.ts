@@ -72,6 +72,7 @@ describe("mapArenaSites", () => {
         id: "arena-42",
         title: "Music Room",
         description: "Make a beat together.",
+        author: "Casey",
         href: "https://music.example/room",
         hostname: "music.example",
         imageUrl: "https://images.example/small.png",
@@ -136,6 +137,39 @@ describe("mapArenaSites", () => {
     expect(site.author).toBe("Casey Example");
     expect(site.description).toBe("Make a beat together.");
     expect(filterSites([site], "Casey Example")).toEqual([site]);
+  });
+
+  it("prefers the edited block title over the scraped page title", () => {
+    const [site] = mapArenaSites({
+      data: [
+        {
+          id: 45,
+          type: "Link",
+          visibility: "public",
+          title: "Bench by Max Zlotskiy",
+          source: { url: "https://bench.example/", title: "Birdies" },
+        },
+      ],
+    });
+
+    expect(site.title).toBe("Bench");
+    expect(site.author).toBe("Max Zlotskiy");
+  });
+
+  it("falls back to the page title when the block title is the hostname", () => {
+    const [site] = mapArenaSites({
+      data: [
+        {
+          id: 46,
+          type: "Link",
+          visibility: "public",
+          title: "www.bench.example",
+          source: { url: "https://www.bench.example/", title: "Birdies" },
+        },
+      ],
+    });
+
+    expect(site.title).toBe("Birdies");
   });
 
   it("maps the author field from Are.na metadata", () => {

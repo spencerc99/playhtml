@@ -1,0 +1,63 @@
+---
+// ABOUTME: The big playhtml wordmark at the bottom of every docs page.
+// ABOUTME: Reads and writes the playhtml.fun homepage footer's shared letter colors.
+---
+
+<!-- Same data as the homepage footer wordmark (#wordmark-colors, marked
+     `shared` there). Click a letter to give it a new color everywhere. Each
+     letter's data-key matches the homepage letter id it shares a color with. -->
+<div
+  class="ph-docs-wordmark"
+  id="wordmark-colors"
+  data-source="playhtml.fun#wordmark-colors"
+  can-play
+  aria-label="playhtml"
+>
+  <span class="letter" data-key="wm-p">p</span><span class="letter" data-key="wm-l">l</span><span class="letter" data-key="wm-a">a</span><span class="letter" data-key="wm-y">y</span><span class="letter" data-key="h">h</span><span class="letter" data-key="t">t</span><span class="letter" data-key="m">m</span><span class="letter" data-key="l">l</span>
+</div>
+
+<script>
+  import { setupDocsWordmark } from "../scripts/docs-wordmark";
+  setupDocsWordmark();
+</script>
+
+<style>
+  /* Quiet version of the homepage footer wordmark: no band, unclicked letters
+     are a faint ghost, colored ones glow. Cropped at the bottom of the page. */
+  .ph-docs-wordmark {
+    margin-top: 3rem;
+    height: 0.74em;
+    overflow: hidden;
+    text-align: center;
+    white-space: nowrap;
+    font-family: "Carter One", var(--ph-font-display, sans-serif);
+    font-size: clamp(72px, 10vw, 150px);
+    line-height: 0.95;
+    letter-spacing: -0.01em;
+    color: var(--sl-color-white);
+    user-select: none;
+  }
+  .ph-docs-wordmark .letter {
+    display: inline-block;
+    cursor: pointer;
+    opacity: 0.14;
+    transition:
+      color 0.2s ease,
+      opacity 0.2s ease,
+      text-shadow 0.2s ease;
+  }
+  .ph-docs-wordmark .letter:hover {
+    opacity: 0.35;
+  }
+  .ph-docs-wordmark .letter[data-lit] {
+    opacity: 1;
+    color: var(--letter-color);
+    text-shadow: 0 0 24px
+      color-mix(in srgb, var(--letter-color) 70%, transparent);
+  }
+  @media print {
+    .ph-docs-wordmark {
+      display: none;
+    }
+  }
+</style>

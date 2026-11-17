@@ -25,13 +25,13 @@
     <meta property="og:url" content="https://playhtml.fun/" />
     <meta
       property="og:image"
-      content="https://playhtml.fun/social/playhtml-home.png"
+      content="https://playhtml.fun/social/playhtml-home-2026.png"
     />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta
       property="og:image:alt"
-      content="The playhtml homepage with a shared lamp, collaborative cursor, and live site controls."
+      content="The playhtml homepage headline, Making the web more alive &amp; fun, surrounded by shared toys, a lamp, plant, fire hydrant, visit counter and click counters."
     />
     <meta name="twitter:card" content="summary_large_image" />
     <meta
@@ -44,11 +44,11 @@
     />
     <meta
       name="twitter:image"
-      content="https://playhtml.fun/social/playhtml-home.png"
+      content="https://playhtml.fun/social/playhtml-home-2026.png"
     />
     <meta
       name="twitter:image:alt"
-      content="The playhtml homepage with a shared lamp, collaborative cursor, and live site controls."
+      content="The playhtml homepage headline, Making the web more alive &amp; fun, surrounded by shared toys, a lamp, plant, fire hydrant, visit counter and click counters."
     />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -362,9 +362,11 @@
             <div class="ph-card ph-how__card ph-how__card--code">
               <span class="ph-num ph-num--brick">1</span>
               <div class="ph-code">
-                <pre><span class="t">&lt;div</span> <span class="a">id</span>=<span class="s">"note"</span> <mark>can-move</mark><span class="t">&gt;</span>drag me<span class="t">&lt;/div&gt;</span>
-<span class="t">&lt;script</span> <span class="a">type</span>=<span class="s">"module"</span>
-  <span class="a">src</span>=<span class="s">"https://unpkg.com/playhtml/dist/init.es.js"</span><span class="t">&gt;&lt;/script&gt;</span></pre>
+                <pre><span class="t">&lt;div</span> <span class="a">id</span>=<span class="s">"note"</span> <mark>can-move</mark><span class="t">&gt;</span>
+  drag me<span class="t">&lt;/div&gt;</span>
+<span class="t">&lt;script</span> <span class="a">type</span>=<span class="s">"module"</span> <span class="a">src</span>=
+  <span class="s">"https://unpkg.com/playhtml/</span>
+<span class="s">  dist/init.es.js"</span><span class="t">&gt;&lt;/script&gt;</span></pre>
                 <div class="ph-code__bar">
                   <span class="ph-tally" aria-hidden="true"></span>
                   <span id="copy-snippet-count" can-play>copy it</span>
@@ -470,13 +472,12 @@
             aria-label="walking together event page"
           >
             <video
-              src="/home/event-walk.mp4"
+              data-lazy-video="/home/event-walk.mp4"
               poster="/home/event-walk-poster.jpg"
-              autoplay
               muted
               loop
               playsinline
-              preload="metadata"
+              preload="none"
               aria-label="Cursor trails drawing in during an internet walk, then everyone collaging the scraps they found"
             ></video>
             <span class="ph-events__stamp" aria-hidden="true"
@@ -662,13 +663,12 @@
         <div class="ph-wwo__card">
           <video
             class="ph-wwo__bg"
-            src="/home/trails.mp4"
+            data-lazy-video="/home/trails.mp4"
             poster="/home/trails-poster.jpg"
-            autoplay
             muted
             loop
             playsinline
-            preload="metadata"
+            preload="none"
             aria-label="Cursor trails, collected scraps and people following each other on Wikipedia, recorded with we were online"
           ></video>
           <div class="ph-wwo__hero">
@@ -918,11 +918,13 @@
       </nav>
     </footer>
     <!-- Every click on a letter gives it a new random color, shared with
-         everyone. The wrapper stores one color per letter id. -->
+         everyone. The wrapper stores one color per letter id. It's marked
+         shared so the docs footer wordmark reads and writes the same colors. -->
     <div
       class="ph-footer__big"
       id="wordmark-colors"
       can-play
+      shared
       aria-label="playhtml"
     >
       <span class="letter" id="wm-p">p</span
