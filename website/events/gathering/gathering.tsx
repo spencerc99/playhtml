@@ -3,6 +3,10 @@ import React, { useState } from "react";
 import { PlayProvider, withSharedState } from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
 import "./walking-together.scss";
+import {
+  activitySecondsLeft,
+  shouldWriteActivityAdvance,
+} from "./activityAdvance";
 
 interface SharedURL {
   url: string;
@@ -267,8 +271,8 @@ export const GroupActivityDisplay = withSharedState(
     React.useEffect(() => {
       const tick = () => {
         const d = dataRef.current;
-        const elapsed = Math.floor((Date.now() - d.lastChangeTime) / 1000);
-        const remaining = 30 - elapsed;
+        const now = Date.now();
+        const remaining = activitySecondsLeft(d.lastChangeTime, now);
 
         if (remaining > 0) {
           setTimeLeft(remaining);
@@ -277,8 +281,12 @@ export const GroupActivityDisplay = withSharedState(
 
         setTimeLeft(0);
         if (
-          isGatheringAdmin() &&
-          advancedFromRef.current !== d.lastChangeTime
+          shouldWriteActivityAdvance({
+            lastChangeTime: d.lastChangeTime,
+            now,
+            isAdmin: isGatheringAdmin(),
+            advancedFrom: advancedFromRef.current,
+          })
         ) {
           advancedFromRef.current = d.lastChangeTime;
           setData({
