@@ -536,8 +536,7 @@ const Main = withSharedState(
         .filter((handHold): handHold is HandHold => handHold !== undefined);
 
       return allHandHolds.map((handHold) => {
-        const myIdentity = getMyPlayerIdentity();
-        const user1Color = myIdentity.color;
+        const user1Color = handHold.user1.playerStyle.colorPalette[0];
         const user2Color = handHold.user2.playerStyle.colorPalette[0];
 
         // Calculate positions so hands appear to be overlapping/holding
