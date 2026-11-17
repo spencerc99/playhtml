@@ -33,7 +33,7 @@ mock.module("cloudflare:workers", () => ({
   DurableObject: class {
     constructor(
       public ctx: unknown,
-      public env: unknown
+      public env: unknown,
     ) {}
   },
   WorkerEntrypoint: class {},
@@ -151,7 +151,7 @@ function createConnection(id: string): FakeConnection {
  */
 async function startServer(
   storage: RecordingStorage,
-  name = "example-room"
+  name = "example-room",
 ): Promise<{ server: any; open: FakeConnection[] }> {
   const ctx = {
     storage,
@@ -173,12 +173,12 @@ async function connect(
   server: any,
   open: FakeConnection[],
   id: string,
-  query = ""
+  query = "",
 ): Promise<FakeConnection> {
   const connection = createConnection(id);
   await server.onConnect(connection, {
     request: new Request(
-      `https://example.com/parties/main/example-room?_pk=${id}${query}`
+      `https://example.com/parties/main/example-room?_pk=${id}${query}`,
     ),
   });
   open.push(connection);
@@ -188,7 +188,7 @@ async function connect(
 async function disconnect(
   server: any,
   open: FakeConnection[],
-  connection: FakeConnection
+  connection: FakeConnection,
 ): Promise<void> {
   open.splice(open.indexOf(connection), 1);
   await server.onClose(connection, 1000, "", true);
@@ -203,7 +203,7 @@ function awarenessMessage(): Uint8Array {
 
 function sharedReferencesQuery(elementId: string): string {
   return `&sharedReferences=${encodeURIComponent(
-    JSON.stringify([{ domain: "source.example", path: "/", elementId }])
+    JSON.stringify([{ domain: "source.example", path: "/", elementId }]),
   )}`;
 }
 
@@ -313,8 +313,8 @@ function storageSnapshot(storage: RecordingStorage) {
     alarm: storage.alarm,
     values: Object.fromEntries(
       Array.from(storage.values.entries()).sort(([a], [b]) =>
-        a.localeCompare(b)
-      )
+        a.localeCompare(b),
+      ),
     ),
   };
 }
@@ -372,7 +372,7 @@ async function createTwins() {
     },
     expectSame() {
       expect(storageSnapshot(optimized.storage)).toEqual(
-        storageSnapshot(forced.storage)
+        storageSnapshot(forced.storage),
       );
     },
   };
@@ -398,10 +398,10 @@ describe("alarm scheduling on connect", () => {
     const { optimizedLog, forcedLog } = await twins.connect();
 
     expect(optimizedLog.filter((entry) => entry.startsWith("delete:"))).toEqual(
-      []
+      [],
     );
     expect(
-      optimizedLog.filter((entry) => ALARM_INPUT_READS.includes(entry))
+      optimizedLog.filter((entry) => ALARM_INPUT_READS.includes(entry)),
     ).toEqual([]);
     expect(optimizedLog.filter((entry) => entry.includes("Alarm"))).toEqual([]);
     // The forced twin still does the full run, so the comparison is meaningful.
@@ -436,13 +436,13 @@ describe("alarm scheduling on connect", () => {
       // connect clears it.
       await twins.closeAll();
       expect(twins.optimized.storage.values.has("emptyRoomCompactAfter")).toBe(
-        true
+        true,
       );
       const compactAlarm = twins.optimized.storage.alarm;
       expect(compactAlarm).toBe(now + 5 * 60 * 1000);
       await twins.connect();
       expect(twins.optimized.storage.values.has("emptyRoomCompactAfter")).toBe(
-        false
+        false,
       );
       await twins.connect();
 
@@ -454,12 +454,12 @@ describe("alarm scheduling on connect", () => {
 
       // A load retry written by the circuit breaker.
       await twins.both((server) =>
-        server.circuitBreaker.storage.put("loadRetryAfter", now + 30_000)
+        server.circuitBreaker.storage.put("loadRetryAfter", now + 30_000),
       );
       await twins.connect();
       expect(twins.optimized.storage.alarm).toBe(now + 30_000);
       await twins.both((server) =>
-        server.circuitBreaker.storage.delete("loadRetryAfter")
+        server.circuitBreaker.storage.delete("loadRetryAfter"),
       );
       await twins.connect();
 
@@ -485,7 +485,7 @@ describe("alarm scheduling on connect", () => {
       await twins.both((server) => server.onAlarm());
       await twins.connect();
       await twins.both((server) =>
-        server.circuitBreaker.storage.delete("alarmRetryAfter")
+        server.circuitBreaker.storage.delete("alarmRetryAfter"),
       );
       await twins.connect();
 
@@ -497,13 +497,13 @@ describe("alarm scheduling on connect", () => {
           failureKind: null,
           failureCount: 0,
           skipExternalWrite: true,
-        })
+        }),
       );
       expect(twins.optimized.storage.alarm).toBeNull();
       await twins.connect();
       expect(twins.optimized.storage.alarm).toBeNull();
       await twins.both((server) =>
-        server.circuitBreaker.clearQuarantine({ recoveryCompleted: true })
+        server.circuitBreaker.clearQuarantine({ recoveryCompleted: true }),
       );
       await twins.connect();
 
@@ -519,7 +519,7 @@ describe("alarm scheduling on connect", () => {
       await twins.both((server) =>
         server.mergeAndStoreSharedRefs([
           { sourceRoomId: "source.example-%2F", elementIds: ["shared-b"] },
-        ])
+        ]),
       );
       await twins.connect();
       expect(twins.optimized.storage.alarm).not.toBeNull();
@@ -534,7 +534,7 @@ describe("alarm scheduling on connect", () => {
     }
 
     expect(errors.some((args) => String(args[0]).includes("QUARANTINE"))).toBe(
-      true
+      true,
     );
   });
 
@@ -550,7 +550,7 @@ describe("alarm scheduling on connect", () => {
 
       await twins.connect();
       expect(twins.optimized.storage.values.has("emptyRoomCompactAfter")).toBe(
-        false
+        false,
       );
       expect(twins.optimized.storage.alarm).toBeNull();
 
@@ -563,7 +563,7 @@ describe("alarm scheduling on connect", () => {
       console.log = originalLog;
     }
     expect(
-      logs.some((args) => String(args[0]).includes("Empty-room compaction"))
+      logs.some((args) => String(args[0]).includes("Empty-room compaction")),
     ).toBe(true);
   });
 
@@ -580,7 +580,7 @@ describe("alarm scheduling on connect", () => {
           server,
           open,
           "before-restart",
-          sharedReferencesQuery("shared-a")
+          sharedReferencesQuery("shared-a"),
         );
         await disconnect(server, open, connection);
       }
@@ -602,11 +602,97 @@ describe("alarm scheduling on connect", () => {
     await connect(restartedTwin.server, restartedTwin.open, "after-restart");
 
     expect(storageSnapshot(original.storage)).toEqual(
-      storageSnapshot(twin.storage)
+      storageSnapshot(twin.storage),
     );
     expect(original.storage.values.has("emptyRoomCompactAfter")).toBe(false);
     // Startup re-armed the alarm for the compaction deadline. Clearing the
     // deadline on connect leaves that earlier alarm in place, as it always has.
     expect(original.storage.alarm).toBe(compactAfter as number);
+  });
+});
+
+describe("empty-room compaction deadline cache", () => {
+  test("a failed delete makes the next connect clear the stored deadline", async () => {
+    const storage = new RecordingStorage();
+    const logs: unknown[][] = [];
+    const errors: unknown[][] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = (...args: unknown[]) => logs.push(args);
+    console.error = (...args: unknown[]) => errors.push(args);
+    const originalDelete = storage.delete.bind(storage);
+    let failDeletes = false;
+    storage.delete = async (key: string) => {
+      if (failDeletes && key === "emptyRoomCompactAfter") {
+        storage.log.push(`delete:${key}`);
+        throw new Error("storage delete unavailable");
+      }
+      return originalDelete(key);
+    };
+
+    try {
+      const { server, open } = await startServer(storage);
+      const first = await connect(server, open, "first");
+      await disconnect(server, open, first);
+      expect(storage.values.has("emptyRoomCompactAfter")).toBe(true);
+
+      failDeletes = true;
+      await expect(connect(server, open, "second")).rejects.toThrow(
+        "storage delete unavailable",
+      );
+      failDeletes = false;
+      expect(storage.values.has("emptyRoomCompactAfter")).toBe(true);
+
+      const mark = storage.log.length;
+      await connect(server, open, "third");
+
+      expect(logSince(storage, mark)).toContain("delete:emptyRoomCompactAfter");
+      expect(storage.values.has("emptyRoomCompactAfter")).toBe(false);
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+    }
+
+    expect(errors).toEqual([]);
+  });
+
+  test("a failed put makes the next alarm schedule read the deadline from storage", async () => {
+    const storage = new RecordingStorage();
+    const logs: unknown[][] = [];
+    const errors: unknown[][] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = (...args: unknown[]) => logs.push(args);
+    console.error = (...args: unknown[]) => errors.push(args);
+    const originalPut = storage.put.bind(storage);
+    storage.put = async (key: string, value: unknown) => {
+      if (key === "emptyRoomCompactAfter") {
+        storage.log.push(`put:${key}`);
+        throw new Error("storage put unavailable");
+      }
+      return originalPut(key, value);
+    };
+
+    try {
+      const { server, open } = await startServer(storage);
+      const connection = await connect(server, open, "only");
+      await disconnect(server, open, connection);
+      expect(storage.values.has("emptyRoomCompactAfter")).toBe(false);
+
+      const mark = storage.log.length;
+      await server.scheduleNextAlarm();
+
+      expect(logSince(storage, mark)).toContain("get:emptyRoomCompactAfter");
+      expect(storage.alarm).toBeNull();
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+    }
+
+    expect(errors).toHaveLength(1);
+    expect(String(errors[0][0])).toContain(
+      "Empty-room compaction scheduling failed after close",
+    );
+    expect((errors[0][1] as Error).message).toBe("storage put unavailable");
   });
 });
