@@ -16,6 +16,7 @@ import {
   eventMatchesAnyFilter,
   type FilterChip,
 } from "../utils/eventUtils";
+import { hashString, seededRandom } from "../utils/styleUtils";
 
 export interface NavigationRadialSettings {
   filters: readonly FilterChip[];
@@ -35,24 +36,10 @@ export interface UseNavigationRadialResult {
 function normalizeUrl(url: string): string {
   try {
     const urlObj = new URL(url.startsWith("http") ? url : `https://${url}`);
-    return urlObj.hostname.replace("www.", "") + urlObj.pathname;
+    return urlObj.hostname.replace(/^www\./, "") + urlObj.pathname;
   } catch {
     return url;
   }
-}
-
-function seededRandom(seed: number, offset: number = 0): number {
-  const x = Math.sin(seed + offset * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash = hash & hash;
-  }
-  return Math.abs(hash);
 }
 
 /** Local date YYYY-MM-DD for day segmentation. Use event creator's timezone when available (meta.tz). */
@@ -121,7 +108,6 @@ export function useNavigationRadial(
       .slice(0, settings.maxSessions);
 
     if (validSessions.length === 0) {
-      console.log("[Radial] No valid sessions after filtering");
       return null;
     }
 
@@ -293,9 +279,6 @@ export function useNavigationRadial(
       return aFirst - bFirst;
     });
 
-    const sessionsByDay = new Map<string, number>();
-    sessions.forEach((s) => sessionsByDay.set(s.dayKey, (sessionsByDay.get(s.dayKey) ?? 0) + 1));
-    console.log("[Radial] Created", nodes.size, "domain nodes,", sessions.length, "sessions. Sessions per day (local):", Object.fromEntries(sessionsByDay));
     return { nodes, sessions };
   }, [
     navigationEvents,

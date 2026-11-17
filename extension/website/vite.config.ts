@@ -8,6 +8,13 @@ import agentation from "../../scripts/vite-plugin-agentation.mjs";
 import path from "path";
 import { glob } from "glob";
 
+// Benches that only work with files on a developer's machine. `vite dev`
+// still serves them; production builds leave them out.
+const DEV_ONLY_PAGES = [
+  // Reads a gitignored local scraps export.
+  "scraps-strip-dev",
+];
+
 // https://vitejs.dev/config/
 export default defineConfig({
   // directedit: Alt+E to edit copy in place. Saves to source in dev; on Cloudflare
@@ -51,7 +58,11 @@ export default defineConfig({
     target: "es2022",
     rollupOptions: {
       input: glob.sync(path.resolve(__dirname, "**/*.html"), {
-        ignore: ["**/node_modules/**", "**/dist/**"],
+        ignore: [
+          "**/node_modules/**",
+          "**/dist/**",
+          ...DEV_ONLY_PAGES.map((page) => path.resolve(__dirname, page, "**")),
+        ],
       }),
     },
     emptyOutDir: true,
