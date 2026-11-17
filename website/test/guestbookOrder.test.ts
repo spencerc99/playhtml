@@ -12,11 +12,16 @@ describe("event guestbook order", () => {
     ]);
   });
 
-  test("leaves the shared entries in their saved order across renders", () => {
+  test("leaves the shared entries in their saved order", () => {
     const shared = ["first", "second", "third"];
-    newestFirst(shared);
-    newestFirst(shared);
+    const shown = newestFirst(shared);
+    expect(shown).not.toBe(shared);
     expect(shared).toEqual(["first", "second", "third"]);
+  });
+
+  test("shows the same order on every render", () => {
+    const shared = ["first", "second", "third"];
+    expect(newestFirst(shared)[0]).toBe("third");
     expect(newestFirst(shared)[0]).toBe("third");
   });
 });
