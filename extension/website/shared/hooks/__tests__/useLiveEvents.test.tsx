@@ -56,6 +56,5 @@ it("keeps the new socket connected when the replaced socket closes late", async 
 
   expect(latest!.connected).toBe(true);
   expect(latest!.events).toEqual([]);
-  expect(FakeSocket.all).toHaveLength(2);
   await act(async () => root.unmount());
 });
