@@ -59,6 +59,41 @@ it("ignores a slower response for a domain that was replaced", async () => {
   await act(async () => root.unmount());
 });
 
+it("ignores a replaced domain's response that arrives after the abort", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  // This fetch ignores the abort signal, so the replaced request still
+  // delivers its body and only the hook's own check can drop it.
+  const pending = new Map<string, (events: CollectionEvent[]) => void>();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string) => {
+      const domain = new URL(url).searchParams.get("domain") ?? "";
+      return new Promise((resolve) => {
+        pending.set(domain, (events) =>
+          resolve({ ok: true, status: 200, json: async () => events }),
+        );
+      });
+    }),
+  );
+
+  let latest: KeypressEvents | null = null;
+  const Probe = ({ domain }: { domain: string }) => {
+    latest = useKeypressEvents("https://api.test/events", 10, domain);
+    return null;
+  };
+  const root = createRoot(document.createElement("div"));
+  await act(async () => root.render(<Probe domain="a.com" />));
+  await act(async () => root.render(<Probe domain="b.com" />));
+
+  await act(async () => pending.get("b.com")!([keyEvent("b1", "b.com")]));
+  await act(async () => pending.get("a.com")!([keyEvent("a1", "a.com")]));
+
+  expect(latest!.events.map((e) => e.id)).toEqual(["b1"]);
+  expect(latest!.loading).toBe(false);
+  expect(latest!.error).toBeNull();
+  await act(async () => root.unmount());
+});
+
 it("loads the new domain even while the previous domain is still loading", async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const requested: string[] = [];
