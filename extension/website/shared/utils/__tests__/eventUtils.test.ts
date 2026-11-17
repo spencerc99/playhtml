@@ -85,9 +85,11 @@ describe("extractDomain", () => {
 });
 
 describe("oldestTs", () => {
-  it("finds the earliest timestamp in a list longer than Safari's argument limit", () => {
+  it("finds the earliest timestamp in a list too long to spread into Math.min", () => {
+    // Safari's argument limit is 65,536; Node's is higher, so the list is long
+    // enough that a spread would throw here too.
     const events = Array.from(
-      { length: 70_000 },
+      { length: 500_000 },
       (_, i) => ({ ts: 1_000_000 - i }) as CollectionEvent,
     );
     events[40_000] = { ts: 5 } as CollectionEvent;
