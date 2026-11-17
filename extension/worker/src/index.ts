@@ -47,6 +47,11 @@ import {
 import { handleInternetMapFile } from './routes/internetMap';
 import { handlePublishedCollages, matchPublishedCollageRoute } from './routes/publishedCollages';
 import { isAllowedOrigin, forbiddenResponse } from './lib/originAllowlist';
+import {
+  PREFLIGHT_ALLOW_HEADERS,
+  publicReadAccess,
+  unauthorizedResponse,
+} from './lib/publicReadAccess';
 import { decodePathSegment } from './lib/requestInput';
 import type { Env } from './lib/supabase';
 
@@ -84,7 +89,7 @@ export default {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Headers': PREFLIGHT_ALLOW_HEADERS,
         },
       });
     }
@@ -99,8 +104,13 @@ export default {
       return handleStream(request, env);
     }
 
+    // Accepts an allowed origin or a participant-key signature: the
+    // extension's service worker and extension pages send no Origin or
+    // Referer on a GET (see publicReadAccess).
     if (path === '/events/recent' && request.method === 'GET') {
-      if (!isAllowedOrigin(request)) return forbiddenResponse();
+      const access = await publicReadAccess(request);
+      if (access === 'forbidden') return forbiddenResponse();
+      if (access === 'unauthorized') return unauthorizedResponse();
       return handleRecent(request, env);
     }
 
