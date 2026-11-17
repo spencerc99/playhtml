@@ -254,30 +254,29 @@ describe("shared element permissions on the source room", () => {
     source.destroy();
   });
 
-  for (const declared of ["ro", "read-only", "RO"]) {
-    it(`treats "${declared}" as read-only on connect and register`, async () => {
-      const connected = await createSourceRoom();
-      await connectSource(connected.room, [
-        { elementId: "open", permissions: "read-write" },
-        { elementId: "locked", permissions: declared },
-      ]);
-      const registered = await createSourceRoom({ open: "read-write" });
-      await registerSharedElement(registered.room, {
-        elementId: "locked",
-        permissions: declared,
-      });
-
-      for (const source of [connected, registered]) {
-        expect(source.storedPermissions()).toEqual({
-          open: "read-write",
-          locked: "read-only",
-        });
-        expect((await applyConsumerWrite(source.room)).status).toBe(200);
-        expect(toggles(source.document)).toEqual(OPEN_WRITTEN_ONLY);
-        source.destroy();
-      }
+  // parseSharedElementPermission's unit test covers the other spellings.
+  it('treats "ro" as read-only on connect and register', async () => {
+    const connected = await createSourceRoom();
+    await connectSource(connected.room, [
+      { elementId: "open", permissions: "read-write" },
+      { elementId: "locked", permissions: "ro" },
+    ]);
+    const registered = await createSourceRoom({ open: "read-write" });
+    await registerSharedElement(registered.room, {
+      elementId: "locked",
+      permissions: "ro",
     });
-  }
+
+    for (const source of [connected, registered]) {
+      expect(source.storedPermissions()).toEqual({
+        open: "read-write",
+        locked: "read-only",
+      });
+      expect((await applyConsumerWrite(source.room)).status).toBe(200);
+      expect(toggles(source.document)).toEqual(OPEN_WRITTEN_ONLY);
+      source.destroy();
+    }
+  });
 
   it("skips malformed declarations instead of failing the connect", async () => {
     const source = await createSourceRoom();
@@ -321,7 +320,7 @@ describe("shared element permissions on the source room", () => {
     source.destroy();
   });
 
-  it("returns no data for Object.prototype names on subscribe", async () => {
+  it("serves and accepts writes only for declared ids, never Object.prototype names", async () => {
     const source = await createSourceRoom({ open: "read-write" });
 
     const response = await subscribe(source.room, [
@@ -334,22 +333,11 @@ describe("shared element permissions on the source room", () => {
     expect((await response.json()).subtrees).toEqual({
       "can-toggle": { open: { active: false } },
     });
+    // `locked` is undeclared here, so its write is rejected along with
+    // `constructor`'s.
+    expect((await applyConsumerWrite(source.room)).status).toBe(200);
+    expect(toggles(source.document)).toEqual(OPEN_WRITTEN_ONLY);
     source.destroy();
-  });
-
-  it("rejects consumer writes to read-only and unshared elements", async () => {
-    const unshared = await createSourceRoom({ open: "read-write" });
-    expect((await applyConsumerWrite(unshared.room)).status).toBe(200);
-    expect(toggles(unshared.document)).toEqual(OPEN_WRITTEN_ONLY);
-
-    const readOnly = await createSourceRoom({
-      open: "read-write",
-      locked: "read-only",
-    });
-    expect((await applyConsumerWrite(readOnly.room)).status).toBe(200);
-    expect(toggles(readOnly.document)).toEqual(OPEN_WRITTEN_ONLY);
-    unshared.destroy();
-    readOnly.destroy();
   });
 
   it("does not write storage when the map is unchanged", async () => {
