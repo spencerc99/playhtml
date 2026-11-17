@@ -28,6 +28,22 @@ export async function readJsonObject(
 const ISO_DATE_PATTERN =
   /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
 
+/**
+ * True when the leading YYYY-MM-DD names a day that exists. `Date.parse` rolls
+ * "2026-02-31" forward to March instead of rejecting it.
+ */
+function isRealCalendarDate(raw: string): boolean {
+  const year = Number(raw.slice(0, 4));
+  const month = Number(raw.slice(5, 7));
+  const day = Number(raw.slice(8, 10));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
 export type OptionalParam<T> = { ok: true; value: T | null } | { ok: false };
 
 /**
@@ -40,7 +56,11 @@ export function parseOptionalIsoDate(
 ): OptionalParam<string> {
   const raw = params.get(name);
   if (!raw) return { ok: true, value: null };
-  if (!ISO_DATE_PATTERN.test(raw) || Number.isNaN(Date.parse(raw))) {
+  if (
+    !ISO_DATE_PATTERN.test(raw) ||
+    Number.isNaN(Date.parse(raw)) ||
+    !isRealCalendarDate(raw)
+  ) {
     return { ok: false };
   }
   return { ok: true, value: raw };

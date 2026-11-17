@@ -43,6 +43,17 @@ describe('parseOptionalIsoDate', () => {
   it.each(['yesterday', '1', '2026-13-45', '2026-11-11 10:00'])('rejects %s', (value) => {
     expect(parseOptionalIsoDate(params(value), 'from')).toEqual({ ok: false });
   });
+
+  it.each(['2026-02-31', '2026-04-31', '2025-02-29', '2026-02-30T10:00:00Z'])(
+    'rejects %s, a day that does not exist',
+    (value) => {
+      expect(parseOptionalIsoDate(params(value), 'from')).toEqual({ ok: false });
+    },
+  );
+
+  it('accepts a leap day', () => {
+    expect(parseOptionalIsoDate(params('2024-02-29'), 'from').ok).toBe(true);
+  });
 });
 
 describe('parseOptionalPositiveInt', () => {
