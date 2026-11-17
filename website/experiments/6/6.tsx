@@ -250,7 +250,6 @@ const Main = withSharedState(
           const deviceInfo = getCurrentDeviceInfo();
           const timestamp = Date.now();
 
-          console.log("setting data", sizeKey);
           setData((draft) => {
             if (!draft.sizes[sizeKey]) {
               draft.sizes[sizeKey] = {

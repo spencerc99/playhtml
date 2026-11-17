@@ -4,27 +4,11 @@ import { PlayProvider, withSharedState } from "@playhtml/react";
 import { useStickyState } from "../../hooks/useStickyState";
 import "./walking-together.scss";
 
-interface CursorParty {
-  color: string;
-  count: number;
-  name: string;
-}
-
-declare global {
-  interface Window {
-    cursors?: CursorParty;
-  }
-}
-
 interface SharedURL {
   url: string;
   userName: string;
   userColor: string;
   timestamp: number;
-}
-
-function shuffleArray<T>(array: T[]): T[] {
-  return array.sort(() => Math.random() - 0.5);
 }
 
 const CURSOR_INSTRUCTIONS = [

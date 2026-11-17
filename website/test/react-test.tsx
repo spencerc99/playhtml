@@ -28,7 +28,6 @@ import { Poll } from "../../packages/react/examples/Poll";
 import { SharedTimer } from "../../packages/react/examples/SharedTimer";
 import { SharedSlider } from "../../packages/react/examples/SharedSlider";
 import { LiveReactions } from "../../packages/react/examples/LiveReactions";
-// import { CursorOverlap } from "../../packages/react/examples/CursorOverlap";
 import { SharedSound } from "../../packages/react/examples/SharedSound";
 import { UniquePeoplePill } from "../../packages/react/examples/UniquePeoplePill";
 

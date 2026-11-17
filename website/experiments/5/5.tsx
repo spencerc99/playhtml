@@ -101,7 +101,6 @@ function calculateGridDimensions(
   // 3. Have enough cells for all minutes (1440)
   // 4. Minimize extra empty cells
 
-  const aspectRatio = windowWidth / windowHeight;
   const totalCells = MINUTES_IN_DAY; // 1440
 
   let bestColumns = 0;
@@ -320,11 +319,6 @@ const Main = withSharedState(
         console.error("Error toggling fullscreen:", error);
       }
     };
-
-    // Add debug effect to check ref
-    useEffect(() => {
-      console.log("Main ref:", mainRef.current);
-    }, [mainRef.current]);
 
     // Scroll helper function
     const scrollToCurrentMinute = (behavior: ScrollBehavior = "smooth") => {

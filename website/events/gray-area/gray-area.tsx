@@ -1,7 +1,6 @@
 // ABOUTME: Renders the Gray Area collaborative workshop page.
 // ABOUTME: Stores attendee details and connects the page to playhtml cursors.
 import ReactDOM from "react-dom";
-import React from "react";
 import { PlayProvider } from "@playhtml/react";
 import { Cursors, Guestbook, PlayhtmlToolBox } from "../events";
 import { useStickyState } from "../../hooks/useStickyState";
@@ -16,7 +15,7 @@ function Main() {
       if (window.cursors) window.cursors.name = newName ?? "";
     },
   );
-  const [from, setFrom] = useStickyState<string | null>("from", null);
+  const [from] = useStickyState<string | null>("from", null);
 
   return (
     <PlayProvider initOptions={{ cursors: { enabled: true } }}>
