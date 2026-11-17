@@ -39,7 +39,7 @@ import type {
 import { syncedStore, getYjsDoc, getYjsValue } from "@syncedstore/core";
 import type { Map as YMap } from "yjs";
 import { ElementHandler } from "./elements";
-import { hashElement } from "./utils";
+import { cloneStoreValue, hashElement, warnHashedElementId } from "./utils";
 import type { CursorClientAwareness } from "./cursors/cursor-client";
 import { getPresencePage } from "./cursors/presence-page";
 import { createUsersAPI, defaultSeedIdentity } from "./users";
@@ -2019,7 +2019,7 @@ function createPlayElementData<T extends TagType, TData = any>(
     myDefaultAwareness: undefined,
     devMode: configuredOptions?.developmentMode ?? false,
     // Always provide a plain snapshot to render paths
-    data: clonePlain(dataProxy),
+    data: cloneStoreValue(dataProxy),
     awareness: initialLive !== undefined ? [initialLive] : undefined,
     element,
     onChange: (newData: TData) => {
@@ -2751,6 +2751,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
       element.id = btoa(`${tag}-${selectorId}-${selectorIdx}`);
       selectorIdsToAvailableIdx.set(selectorId, selectorIdx + 1);
     } else {
+      if (isDevMode()) warnHashedElementId(tag, element);
       element.id = await hashElement(tag, element);
     }
   }
@@ -2836,7 +2837,7 @@ async function setupPlayElementForTag<T extends TagType | string>(
   }
   // Set up the common classes for affected elements.
   element.classList.add(`__playhtml-element`);
-  element.style.setProperty("--jiggle-delay", `${Math.random() * 1}s;}`);
+  element.style.setProperty("--jiggle-delay", `${Math.random().toFixed(2)}s`);
 
   attachSyncedStoreObserver(tag as string, elementId);
 }
@@ -2855,7 +2856,7 @@ function applySharedElementDataToHandler(
   remoteApplyingKeys.add(applyKey);
   try {
     // @ts-ignore private usage intended
-    handler.__data = clonePlain(proxy);
+    handler.__data = cloneStoreValue(proxy);
     if (tag === TagType.CanMirror) {
       setupPlayElementDescendants(handler.element);
     }
@@ -3095,9 +3096,44 @@ function setupPlayElementDescendants(element: HTMLElement): void {
   });
 
   descendants.forEach((descendant) => {
+    // Already bound on the last pass: re-apply its own shared data (this
+    // root's update may have written a stale copy of its subtree) instead of
+    // re-running full setup, which rebuilt every nested handler on every
+    // update of the root.
+    if (previousDescendants && reapplyBoundDescendant(descendant, previousDescendants)) {
+      return;
+    }
     setupPlayElement(descendant);
   });
   mirrorDescendantElementsByRoot.set(element, currentDescendants);
+}
+
+/**
+ * Re-applies shared data to a descendant whose every tag was bound to this
+ * same DOM element on the previous pass. Returns false when it needs a full
+ * setup instead (new element, new tag, or a handler that went away).
+ */
+function reapplyBoundDescendant(
+  descendant: HTMLElement,
+  previousDescendants: Map<string, HTMLElement>,
+): boolean {
+  const descendantId = getIdForElement(descendant);
+  if (!descendantId) return false;
+  const bound: Array<[string, ElementHandler]> = [];
+  for (const tag of getTagTypes()) {
+    if (!descendant.hasAttribute(tag)) continue;
+    if (previousDescendants.get(`${tag}:${descendantId}`) !== descendant) {
+      return false;
+    }
+    const handler = elementHandlers.get(tag)?.get(descendantId);
+    if (!handler || handler.element !== descendant) return false;
+    bound.push([tag, handler]);
+  }
+  if (bound.length === 0) return false;
+  for (const [tag, handler] of bound) {
+    applySharedElementDataToHandler(tag, descendantId, handler);
+  }
+  return true;
 }
 
 /**

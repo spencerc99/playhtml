@@ -2,7 +2,7 @@
 title: "Navigation & SPAs"
 description: "How playhtml handles client-side navigation: React Router, Next.js, Astro ViewTransitions, htmx boost, Turbo."
 sidebar:
-  order: 4
+  order: 6
 ---
 
 playhtml works out of the box on full-page-reload sites. For single-page apps (SPAs) and frameworks with client-side navigation (React Router, Next.js, Astro ViewTransitions, htmx boost, Turbo), you'll want the patterns on this page so cursors, rooms, and element handlers stay consistent across navigation.

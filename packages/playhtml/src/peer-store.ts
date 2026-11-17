@@ -57,6 +57,19 @@ function namespaceOf(channel: string): PeerNamespace {
   return "cursor";
 }
 
+/** Remote connection ids a presence-changes message updated or removed. */
+function changedPeerIds(
+  message: PresenceChangesMessage,
+  localConnectionId: string | undefined,
+): Set<string> {
+  const ids = new Set([
+    ...Object.keys(message.updates),
+    ...Object.keys(message.removes),
+  ]);
+  if (localConnectionId !== undefined) ids.delete(localConnectionId);
+  return ids;
+}
+
 /**
  * The single consumer of presence-sync / presence-changes on a socket. Folds
  * every channel into per-connection records, then dispatches only to the
@@ -144,7 +157,8 @@ export class PeerStore {
     }
     if (message.type === "presence-changes") {
       const touched = this.applyChanges(message);
-      this.pruneExpired(Date.now(), touched);
+      // Only the peers this message carried; silent peers are left to the sweep.
+      this.pruneExpired(Date.now(), touched, changedPeerIds(message, this.localConnectionId));
       if (touched.size > 0) this.notify(touched);
     }
     // presence-rate / presence-error are handled by the cursor client directly
@@ -269,7 +283,8 @@ export class PeerStore {
 
   /**
    * Delete every peer channel whose stamped `at` has aged past the staleness
-   * window, recording the touched namespaces into `touched`. Never removes a
+   * window, recording the touched namespaces into `touched`. With
+   * `onlyConnectionIds`, checks just those peers; otherwise all. Never removes a
    * peer wholesale for having only unstamped channels (identity persists) —
    * only prunes a now-empty peer row. Unstamped channels (identity) are always
    * live, so they are never swept. This is the single implementation of
@@ -278,8 +293,15 @@ export class PeerStore {
   private pruneExpired(
     now: number,
     touched: Set<PeerNamespace> = new Set(),
+    onlyConnectionIds?: Iterable<string>,
   ): Set<PeerNamespace> {
-    for (const [connectionId, channels] of this.peers) {
+    const rows = onlyConnectionIds
+      ? [...onlyConnectionIds].flatMap((id): Array<[string, PeerChannels]> => {
+          const channels = this.peers.get(id);
+          return channels ? [[id, channels]] : [];
+        })
+      : this.peers;
+    for (const [connectionId, channels] of rows) {
       for (const [channel, value] of Object.entries(channels)) {
         const maxAgeMs =
           namespaceOf(channel) === "cursor" ? CURSOR_STALE_MS : PRESENCE_STALE_MS;

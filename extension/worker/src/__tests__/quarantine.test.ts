@@ -11,6 +11,7 @@ interface FakeState {
   inserted: any | null;
   updated: any | null;
   countValue: number;
+  countError: { message: string } | null;
 }
 let fake: FakeState;
 
@@ -55,7 +56,7 @@ function makeBuilder() {
     then(resolve: (v: any) => void) {
       // terminal await on a select (list) or head-count query
       if (b._head) {
-        resolve({ data: null, error: null, count: fake.countValue });
+        resolve({ data: null, error: fake.countError, count: fake.countError ? null : fake.countValue });
       } else {
         resolve({ data: b._matching(), error: null });
       }
@@ -102,7 +103,7 @@ const EDGE_B = { wall: 'right', t: 0.5 };
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  fake = { rows: [], inserted: null, updated: null, countValue: 0 };
+  fake = { rows: [], inserted: null, updated: null, countValue: 0, countError: null };
   consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   __resetRateLimitForTests();
 });
@@ -228,6 +229,20 @@ describe('POST /quarantine/rip', () => {
       ENV,
     );
     expect(fake.updated.rips_required).toBe(3);
+  });
+
+  it('503s without writing a rip when the strip count fails', async () => {
+    fake.rows = [{ ...baseStrip }];
+    fake.countError = { message: 'database unavailable' };
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await handleQuarantineRip(
+      post('/quarantine/rip', { url: 'https://x.com/p', stripId: 'r1', by: 'p1', pos: 0.5 }),
+      ENV,
+    );
+    expect(res.status).toBe(503);
+    expect(fake.updated).toBeNull();
+    expect(error).toHaveBeenCalledWith('[Quarantine] rip strip count failed:', fake.countError);
+    error.mockRestore();
   });
 
   it('does not recompute ripsRequired once snapshotted', async () => {

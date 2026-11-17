@@ -1,5 +1,5 @@
 // ABOUTME: Verifies public and guarded routes at the extension Worker boundary.
-// ABOUTME: Covers headerless access to the sanitized Internet Commute response.
+// ABOUTME: Covers headerless commute access and 400s for malformed paths, queries, and bodies.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../lib/supabase';
@@ -107,4 +107,56 @@ describe('Worker route access', () => {
     expect(response.status).toBe(204);
     expect(handleAdminInstallationReload).toHaveBeenCalledWith(request, env);
   });
+  const ORIGIN = { Origin: 'https://wewere.online' };
+
+  it.each([
+    ['GET', '/feature-access/%E0%A4%A'],
+    ['PUT', '/participants/%zz'],
+    ['PUT', '/admin/access-control/features/%'],
+    ['PUT', '/admin/access-control/cohorts/%E0'],
+    ['PUT', '/admin/access-control/people/%E0%A4%A'],
+  ])('answers 400 to a broken percent escape on %s %s', async (method, path) => {
+    const response = await worker.fetch(
+      new Request(`https://worker.example${path}`, { method }),
+      {} as Env,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Invalid path encoding' });
+  });
+
+  it.each([
+    '/events/recent?limit=abc',
+    '/events/recent?limit=0',
+    '/events/recent?from=yesterday',
+    '/events/recent?to=2026-99-99',
+    '/events/daily-counts?from=nope',
+    '/events/daily-counts?to=12345',
+  ])('answers 400 to malformed query %s', async (path) => {
+    const response = await worker.fetch(
+      new Request(`https://worker.example${path}`, { headers: ORIGIN }),
+      {} as Env,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it.each(['/subscribe', '/quarantine/strip', '/quarantine/rip'])(
+    'answers 400 to a JSON null body on %s',
+    async (path) => {
+      const response = await worker.fetch(
+        new Request(`https://worker.example${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': `198.51.100.${path.length}` },
+          body: 'null',
+        }),
+        {} as Env,
+        {} as ExecutionContext,
+      );
+
+      expect(response.status).toBe(400);
+    },
+  );
 });

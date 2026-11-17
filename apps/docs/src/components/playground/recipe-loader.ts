@@ -117,8 +117,8 @@ export function isValidRoomId(roomId: string): boolean {
 
 /**
  * Build a hash payload for the current source. Returns the new hash
- * (without leading #) or null if the compressed size would exceed the
- * URL ceiling.
+ * (without leading #), its compressed size, and `tooLarge` when that size
+ * exceeds the URL ceiling.
  */
 export function encodeHashPayload(args: {
   recipeId: string;
@@ -156,12 +156,13 @@ function decodePayload(compressed: string): Payload | null {
 
 /**
  * Save a draft of the current in-progress source. Called on every
- * debounced edit. Skipped when the source matches the canonical recipe.
+ * debounced edit. When the source matches the canonical recipe, clears
+ * any existing draft instead.
  */
 export function saveDraft(recipeId: string, source: string, canonicalSource: string): void {
   if (typeof localStorage === "undefined") return;
   if (source === canonicalSource) {
-    // No edits — clear any existing draft to prevent stale restore banners.
+    // No edits: clear any existing draft so a reload shows the canonical recipe.
     localStorage.removeItem(DRAFT_PREFIX + recipeId);
     return;
   }
@@ -218,18 +219,4 @@ export function pruneStaleDrafts(): void {
   for (const key of toRemove) {
     localStorage.removeItem(key);
   }
-}
-
-/**
- * Format a "minutes/hours/days ago" string for the draft restore banner.
- */
-export function formatRelativeTime(ts: number): string {
-  const seconds = Math.floor((Date.now() - ts) / 1000);
-  if (seconds < 60) return "just now";
-  const mins = Math.floor(seconds / 60);
-  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
 }

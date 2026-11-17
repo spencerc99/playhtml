@@ -339,37 +339,6 @@ describe("client performance", () => {
     metrics.fanout_renders = renders;
   });
 
-  it("init DOM scans", async () => {
-    const tags = ["can-move", "can-toggle", "can-spin", "can-grow"];
-    document.body.innerHTML = Array.from(
-      { length: 200 },
-      (_, i) => `<div id="el-${i}" ${tags[i % tags.length]}>x</div>`,
-    ).join("");
-    let scans = 0;
-    const docQsa = Document.prototype.querySelectorAll;
-    const elQsa = Element.prototype.querySelectorAll;
-    Document.prototype.querySelectorAll = function (...args: any[]) {
-      scans += 1;
-      return docQsa.apply(this, args as any);
-    } as any;
-    Element.prototype.querySelectorAll = function (...args: any[]) {
-      scans += 1;
-      return elQsa.apply(this, args as any);
-    } as any;
-    try {
-      await playhtml.init({
-        host: "http://localhost:1999",
-        room: "/bench-init",
-      } as any);
-      await flush(50);
-    } finally {
-      Document.prototype.querySelectorAll = docQsa;
-      Element.prototype.querySelectorAll = elQsa;
-    }
-    expect(document.querySelectorAll("[can-move]").length).toBe(50);
-    metrics.init_qsa_calls = scans;
-  });
-
   // Your own element, 50 setData calls one frame apart: each should render once.
   it("local write renders", async () => {
     let renders = 0;

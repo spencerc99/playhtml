@@ -4,6 +4,7 @@
 import type { PageDataChannel, PageDataSetter } from "@playhtml/common";
 import { clonePlain, deepReplaceIntoProxy } from "@playhtml/common";
 import { getYjsValue } from "@syncedstore/core";
+import { cloneStoreValue } from "./utils";
 import type * as Y from "yjs";
 
 const PAGE_TAG = "__page__";
@@ -51,7 +52,7 @@ function notifyPageDataListeners<T>(
 ): void {
   const currentProxy = deps.getStorePlay()[PAGE_TAG]?.[name];
   if (currentProxy === undefined) return;
-  const plain = clonePlain(currentProxy) as T;
+  const plain = cloneStoreValue(currentProxy) as T;
   for (const cb of listeners) {
     cb(plain);
   }
@@ -206,7 +207,7 @@ export function createPageDataChannel<T>(
     getData(): T {
       if (destroyed) throw new Error(`PageDataChannel "${name}" has been destroyed`);
       const value = storePlay()[PAGE_TAG]?.[name];
-      return clonePlain(value === undefined ? defaultValue : value) as T;
+      return cloneStoreValue(value === undefined ? defaultValue : value) as T;
     },
 
     setData(data: PageDataSetter<T>): void {

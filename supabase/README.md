@@ -63,26 +63,30 @@ bunx supabase link --project-ref ptirehwbzcdbzomsxmji
 bunx supabase migration list
 ```
 
-The migration history includes the production schema baseline and the earlier recorded extension
-index removal. `migration list` must show the same timestamps locally and remotely before enabling
-production deployment or running `db push`.
-
 Create and test every schema change locally. Do not change production through the Dashboard SQL or
 Table editors because those changes bypass the repository migration history.
 
-## Pull request previews
+## Deploying migrations
 
-After the production baseline is verified:
+Supabase's GitHub integration deploys to production from `main`: merging a pull request that adds a
+migration applies it to production as written, unattended. Automatic preview branching is off, so
+pull requests do not get their own database.
 
-1. Connect this repository under Supabase **Project Settings → Integrations → GitHub**.
-2. Set the working directory to `.`.
-3. Enable automatic branching and **Supabase changes only**.
-4. Require the `Supabase Preview` check in the GitHub ruleset for `main`.
-5. Enable production deployment from `main`.
+Large production tables (`collection_events`, `page_metadata_history`) need migrations that are safe
+to run unattended: build indexes `CONCURRENTLY`, batch data changes with commits, add `NOT NULL`
+through a `NOT VALID` check and a later `VALIDATE`, and keep lock-taking DDL behind a short
+`lock_timeout`. If a migration cannot be written that way, apply it by hand before merging.
 
-Supabase creates an isolated database for pull requests that change `supabase/**`. It runs the
-migrations and seed file there. Merging the pull request applies new migrations to production and
-deletes the preview database.
+`supabase/scripts/catch-up-production.sh` (`bun run db:prod:catch-up`) applied the migrations that
+were merged before production deployment was turned on. It checks what is recorded first and is
+safe to rerun.
 
-The preview database has its own URL and keys. The Cloudflare Workers do not use those credentials
-automatically; integration tests or a Worker preview deployment must receive them explicitly.
+## Database tests
+
+`supabase/tests/*.test.sh` load a single migration into a throwaway `postgres:15-alpine` Docker
+container and check its behavior against real PostgreSQL. They need Docker but not the Supabase
+stack:
+
+```sh
+bun run --cwd extension/worker test:db
+```
