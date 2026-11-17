@@ -56,6 +56,12 @@ workers_dev = true
 pattern = "assets.wewere.online"
 custom_domain = true
 
+# The whole API on a wewere.online subdomain, so cacheable routes such as
+# /page-meta get the edge cache. Added once in the dashboard like the one above.
+[[routes]]
+pattern = "api.wewere.online"
+custom_domain = true
+
 # Without this, `wrangler dev` hands the Worker every request as if it were
 # for the first route's host, which would make local dev the assets host.
 [dev]
