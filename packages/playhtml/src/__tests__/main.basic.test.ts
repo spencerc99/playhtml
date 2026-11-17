@@ -56,6 +56,10 @@ describe("playhtml basic setup with SyncedStore", () => {
 
     // Verify element has the generic playhtml class for easy selection
     expect(el.classList.contains("__playhtml-element")).toBe(true);
+    // A valid per-element animation offset (browsers drop malformed values)
+    expect(el.style.getPropertyValue("--jiggle-delay")).toMatch(
+      /^\d\.\d{2}s$/,
+    );
     // Verify element has the attribute for CSS targeting
     expect(el.hasAttribute("can-toggle")).toBe(true);
 

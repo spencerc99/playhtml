@@ -761,6 +761,61 @@ describe("can-mirror: minimal shared writes", () => {
   });
 });
 
+describe("can-mirror: local style properties", () => {
+  it("does not share playhtml's per-element --jiggle-delay", async () => {
+    const client = mountClient(
+      elementFromHTML(
+        `<div id="s" style="color: red; --jiggle-delay: 0.31s;"><p>a</p></div>`,
+      ),
+    );
+    expect((client.state as any).attributes.style).toBe("color: red;");
+
+    client.element.style.setProperty("--jiggle-delay", "0.9s");
+    await flush();
+    expect((client.state as any).attributes.style).toBe("color: red;");
+  });
+
+  it("leaves out the style attribute when it only holds local properties", () => {
+    const client = mountClient(
+      elementFromHTML(`<div id="s" style="--jiggle-delay: 0.31s;"></div>`),
+    );
+    expect("style" in (client.state as any).attributes).toBe(false);
+  });
+
+  it("keeps the local --jiggle-delay when applying remote styles", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="s" style="--jiggle-delay: 0.1s;"></div>`),
+    );
+    const sink = mountClient(
+      elementFromHTML(`<div id="s" style="--jiggle-delay: 0.7s;"></div>`),
+    );
+    source.element.style.color = "blue";
+    await sync(source, sink);
+    expect(sink.element.style.color).toBe("blue");
+    expect(sink.element.style.getPropertyValue("--jiggle-delay").trim()).toBe(
+      "0.7s",
+    );
+
+    source.element.style.removeProperty("color");
+    await sync(source, sink);
+    expect(sink.element.style.color).toBe("");
+    expect(sink.element.style.getPropertyValue("--jiggle-delay").trim()).toBe(
+      "0.7s",
+    );
+  });
+
+  it("keeps semicolons inside style values intact", () => {
+    const client = mountClient(
+      elementFromHTML(
+        `<div id="s" style="background: url('a;b.png'); --jiggle-delay: 0.2s;"></div>`,
+      ),
+    );
+    expect((client.state as any).attributes.style).toBe(
+      "background: url('a;b.png');",
+    );
+  });
+});
+
 describe("can-mirror: own presence", () => {
   it("publishes no presence until the visitor hovers or focuses", () => {
     expect(canMirrorInitializer.myDefaultAwareness).toBeUndefined();

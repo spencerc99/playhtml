@@ -14,6 +14,9 @@ const LOCAL_CLASS_NAMES = [
   "ph-inspect-selected",
   "playhtml-loading",
 ];
+// Inline style properties playhtml sets per element and per visitor (a random
+// animation offset), never shared.
+const LOCAL_STYLE_PROPERTIES = new Set(["--jiggle-delay"]);
 const LOCAL_LOADING_ATTRIBUTE_VALUES: Record<string, string> = {
   "aria-busy": "true",
   "aria-live": "polite",
@@ -602,7 +605,57 @@ function getMirroredAttributeValue(
     );
     return mirroredClassValue || null;
   }
+  if (name === "style") {
+    return splitStyleValue(value).mirrored || null;
+  }
   return value;
+}
+
+/** Splits inline style into shared declarations and local-only ones. */
+function splitStyleValue(value: string): { mirrored: string; local: string } {
+  const declarations: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let start = 0;
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i];
+    if (quote) {
+      if (char === quote && value[i - 1] !== "\\") quote = null;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === "(") {
+      depth += 1;
+    } else if (char === ")") {
+      depth = Math.max(0, depth - 1);
+    } else if (char === ";" && depth === 0) {
+      declarations.push(value.slice(start, i));
+      start = i + 1;
+    }
+  }
+  declarations.push(value.slice(start));
+
+  const local: string[] = [];
+  const mirrored: string[] = [];
+  for (const declaration of declarations) {
+    const trimmed = declaration.trim();
+    if (!trimmed) continue;
+    const property = trimmed.slice(0, trimmed.indexOf(":")).trim().toLowerCase();
+    (LOCAL_STYLE_PROPERTIES.has(property) ? local : mirrored).push(trimmed);
+  }
+  // Leave values without local properties untouched so existing shared
+  // state compares equal.
+  if (local.length === 0) return { mirrored: value, local: "" };
+  const join = (parts: string[]) =>
+    parts.length ? `${parts.join("; ")};` : "";
+  return { mirrored: join(mirrored), local: join(local) };
+}
+
+function mergeStyleValue(mirroredValue: string, currentValue: string): string {
+  const { local } = splitStyleValue(currentValue);
+  if (!local) return mirroredValue;
+  const mirrored = splitStyleValue(mirroredValue).mirrored.trim();
+  if (!mirrored) return local;
+  return `${mirrored}${mirrored.endsWith(";") ? "" : ";"} ${local}`;
 }
 
 function getMirroredAttributes(
@@ -797,7 +850,9 @@ function updateAttributesFromState(
             element.getAttribute("class") || "",
             context.localClassNames,
           )
-        : value;
+        : key === "style"
+          ? mergeStyleValue(value, element.getAttribute("style") || "")
+          : value;
     if (element.getAttribute(key) !== nextValue) {
       element.setAttribute(key, nextValue);
     }
@@ -814,6 +869,13 @@ function updateAttributesFromState(
       );
       if (!("class" in attrs) && localClassValue) {
         element.setAttribute("class", localClassValue);
+        return;
+      }
+    }
+    if (attr.name === "style" && !("style" in attrs)) {
+      const { local } = splitStyleValue(attr.value);
+      if (local) {
+        if (attr.value !== local) element.setAttribute("style", local);
         return;
       }
     }
