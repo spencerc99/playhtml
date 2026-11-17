@@ -567,6 +567,32 @@ describe("CanGrow onMount cleanup", () => {
   });
 });
 
+describe("CanGrow cursor", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("shows not-allowed when hovering an element already at its maximum size", () => {
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    const canGrow = TagTypeToElement[TagType.CanGrow];
+    const handler = new ElementHandler({
+      element,
+      defaultData: { scale: canGrow.defaultLocalData!.maxScale },
+      defaultLocalData: canGrow.defaultLocalData,
+      updateElement: canGrow.updateElement,
+      onMount: canGrow.onMount,
+      onChange: vi.fn(),
+      onAwarenessChange: vi.fn(),
+      triggerAwarenessUpdate: () => {},
+    } as unknown as ElementData);
+
+    element.dispatchEvent(new MouseEvent("mouseenter"));
+    expect(element.style.cursor).toBe("not-allowed");
+    handler.destroy();
+  });
+});
+
 describe("CanHover onMount cleanup", () => {
   afterEach(() => {
     document.body.innerHTML = "";
