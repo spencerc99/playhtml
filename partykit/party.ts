@@ -272,7 +272,7 @@ export class PartyServer extends YServer {
   // epoch). In-memory, so a DO reload re-enables every bridge.
   private bridgeHealth = new BridgeHealth();
 
-  // Preserve the same debounce timing as the old y-partykit callback config
+  // Debounce for YServer's onSave persistence callback.
   static callbackOptions = {
     debounceWait: 3000,
     debounceMaxWait: 15000,

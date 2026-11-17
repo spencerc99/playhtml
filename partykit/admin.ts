@@ -427,7 +427,7 @@ export class AdminHandler {
             hasData: directData && Object.keys(directData).length > 0,
           },
           live: {
-            description: "Document from y-partykit (live server method)",
+            description: "Document from the running room (live server method)",
             data: liveData,
             hasData:
               liveData && !liveData.error && Object.keys(liveData).length > 0,

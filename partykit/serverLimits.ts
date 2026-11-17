@@ -27,8 +27,6 @@ export type ConnectionRateLimiter = {
   limit(options: { key: string }): Promise<{ success: boolean }>;
 };
 
-// Matches the period configured on the binding in wrangler.jsonc.
-
 // Blocked IPs already logged in this isolate, so a flood from one IP logs once
 // a minute instead of once per request. Bounded so it can't grow without end.
 const EDGE_RATE_LIMIT_LOG_INTERVAL_MS = 60_000;
@@ -45,6 +43,7 @@ function logEdgeRateLimitBlock(ip: string, pathname: string): void {
     `[ServerLimits] Edge rate limit: blocking ip=${ip} path=${pathname}`
   );
 }
+// Matches the period configured on the binding in wrangler.jsonc.
 const EDGE_RATE_LIMIT_RETRY_AFTER_SECONDS = 60;
 
 const DURABLE_OBJECT_OVERLOAD_MESSAGE =
