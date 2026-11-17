@@ -25,7 +25,7 @@ export function docToJson(doc: Y.Doc): Record<string, any> | null {
   const store = syncedStore<{ play: Record<string, any> }>({ play: {} }, doc);
   const playData = clonePlain(store.play);
   const hasAnyData = Object.keys(playData).some(
-    (tag) => Object.keys(playData[tag] || {}).length > 0
+    (tag) => Object.keys(playData[tag] || {}).length > 0,
   );
   return hasAnyData ? playData : null;
 }
@@ -39,7 +39,7 @@ export function docToJson(doc: Y.Doc): Record<string, any> | null {
  */
 export function replaceDocState(
   doc: Y.Doc,
-  playData: Record<string, any>
+  playData: Record<string, any>,
 ): void {
   const store = syncedStore<{ play: Record<string, any> }>({ play: {} }, doc);
 
@@ -82,7 +82,7 @@ export function clearDocState(doc: Y.Doc): void {
  */
 export function replaceDocFromSnapshot(
   doc: Y.Doc,
-  snapshotBase64: string
+  snapshotBase64: string,
 ): void {
   const buffer = new Uint8Array(Buffer.from(snapshotBase64, "base64"));
 
@@ -159,30 +159,87 @@ export function encodeDocToBase64(doc: Y.Doc): string {
   return Buffer.from(content).toString("base64");
 }
 
-function updateHasContent(update: Uint8Array): boolean {
-  const decoded = Y.decodeUpdate(update);
-  return decoded.structs.length > 0 || decoded.ds.clients.size > 0;
+type ClockRange = { clock: number; len: number };
+
+function sortedMergedRanges(ranges: ClockRange[]): ClockRange[] {
+  const sorted = ranges
+    .map(({ clock, len }) => ({ clock, len }))
+    .sort((a, b) => a.clock - b.clock);
+  const merged: ClockRange[] = [];
+  for (const range of sorted) {
+    const last = merged[merged.length - 1];
+    if (last !== undefined && last.clock + last.len >= range.clock) {
+      last.len =
+        Math.max(last.clock + last.len, range.clock + range.len) - last.clock;
+    } else {
+      merged.push(range);
+    }
+  }
+  return merged;
+}
+
+function rangeIsCovered(range: ClockRange, covering: ClockRange[]): boolean {
+  let low = 0;
+  let high = covering.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const candidate = covering[mid];
+    if (candidate.clock + candidate.len <= range.clock) {
+      low = mid + 1;
+    } else if (candidate.clock > range.clock) {
+      high = mid - 1;
+    } else {
+      return range.clock + range.len <= candidate.clock + candidate.len;
+    }
+  }
+  return false;
 }
 
 /**
  * Returns whether `documentBase64` contains every Yjs update from
- * `snapshotBase64`.
+ * `snapshotBase64`: every struct in the snapshot is within the document's
+ * state vector, and every range the snapshot deletes is also deleted in the
+ * document. Works on encoded updates without building Y.Docs.
+ *
+ * Pending structs (ones after a clock gap) are never treated as contained, so
+ * the answer can be a conservative false for updates that carry them.
  */
 export function documentContainsSnapshot(
   documentBase64: string,
-  snapshotBase64: string
+  snapshotBase64: string,
 ): boolean {
-  const doc = new Y.Doc();
-  Y.applyUpdate(doc, new Uint8Array(Buffer.from(documentBase64, "base64")));
+  const documentUpdate = new Uint8Array(Buffer.from(documentBase64, "base64"));
+  const snapshotUpdate = new Uint8Array(Buffer.from(snapshotBase64, "base64"));
+  const documentStateVector = Y.encodeStateVectorFromUpdate(documentUpdate);
 
-  const snapshot = new Y.Doc();
-  Y.applyUpdate(snapshot, new Uint8Array(Buffer.from(snapshotBase64, "base64")));
-
-  const missingFromDocument = Y.encodeStateAsUpdate(
-    snapshot,
-    Y.encodeStateVector(doc)
+  // diffUpdate keeps only snapshot structs past the document's state vector
+  // and always carries the snapshot's full delete set.
+  const snapshotRemainder = Y.decodeUpdate(
+    Y.diffUpdate(snapshotUpdate, documentStateVector),
   );
-  return !updateHasContent(missingFromDocument);
+  if (snapshotRemainder.structs.some((struct) => !(struct instanceof Y.Skip))) {
+    return false;
+  }
+  if (snapshotRemainder.ds.clients.size === 0) {
+    return true;
+  }
+
+  // Diffing the document against its own state vector drops its integrated
+  // structs and leaves its delete set.
+  const documentDeletes = Y.decodeUpdate(
+    Y.diffUpdate(documentUpdate, documentStateVector),
+  ).ds;
+  for (const [client, ranges] of snapshotRemainder.ds.clients) {
+    const covering = sortedMergedRanges(
+      documentDeletes.clients.get(client) ?? [],
+    );
+    for (const range of sortedMergedRanges(ranges)) {
+      if (!rangeIsCovered(range, covering)) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 /**

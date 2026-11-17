@@ -37,7 +37,7 @@ describe("documentContainsSnapshot", () => {
     replaceDocState(liveDoc, attendancePlayData(["Ada", "Ben"]));
 
     expect(
-      documentContainsSnapshot(encodeDocToBase64(liveDoc), persistedBase64)
+      documentContainsSnapshot(encodeDocToBase64(liveDoc), persistedBase64),
     ).toBe(true);
   });
 
@@ -48,8 +48,8 @@ describe("documentContainsSnapshot", () => {
     expect(
       documentContainsSnapshot(
         encodeDocToBase64(liveDoc),
-        encodeDocToBase64(persistedDoc)
-      )
+        encodeDocToBase64(persistedDoc),
+      ),
     ).toBe(false);
   });
 
@@ -64,24 +64,24 @@ describe("documentContainsSnapshot", () => {
     expect(
       documentContainsSnapshot(
         encodeDocToBase64(liveDoc),
-        encodeDocToBase64(persistedDoc)
-      )
+        encodeDocToBase64(persistedDoc),
+      ),
     ).toBe(false);
     expect(
       documentContainsSnapshot(
         encodeDocToBase64(persistedDoc),
-        encodeDocToBase64(liveDoc)
-      )
+        encodeDocToBase64(liveDoc),
+      ),
     ).toBe(false);
   });
 
-  it("rejects snapshots with deletion-only updates missing from the live document", () => {
+  it("rejects a snapshot whose deletion the live document has not applied", () => {
     const baseDoc = jsonToDoc(attendancePlayData(["Ada", "Ben"]));
     const liveDoc = cloneDoc(baseDoc);
     const persistedDoc = cloneDoc(baseDoc);
     const store = syncedStore<{ play: Record<string, any> }>(
       { play: {} },
-      persistedDoc
+      persistedDoc,
     );
 
     persistedDoc.transact(() => {
@@ -91,9 +91,73 @@ describe("documentContainsSnapshot", () => {
     expect(
       documentContainsSnapshot(
         encodeDocToBase64(liveDoc),
-        encodeDocToBase64(persistedDoc)
-      )
+        encodeDocToBase64(persistedDoc),
+      ),
     ).toBe(false);
+
+    Y.applyUpdate(liveDoc, Y.encodeStateAsUpdate(persistedDoc));
+    expect(
+      documentContainsSnapshot(
+        encodeDocToBase64(liveDoc),
+        encodeDocToBase64(persistedDoc),
+      ),
+    ).toBe(true);
+  });
+
+  it("accepts identical documents that contain deletions", () => {
+    const doc = jsonToDoc(attendancePlayData(["Ada"]));
+    replaceDocState(doc, attendancePlayData(["Ada", "Ben"]));
+    replaceDocState(doc, attendancePlayData(["Cam"]));
+    const encoded = encodeDocToBase64(doc);
+
+    expect(documentContainsSnapshot(encoded, encoded)).toBe(true);
+    expect(
+      documentContainsSnapshot(encodeDocToBase64(cloneDoc(doc)), encoded),
+    ).toBe(true);
+  });
+
+  it("accepts a live document strictly ahead of a snapshot with deletions", () => {
+    const liveDoc = jsonToDoc(attendancePlayData(["Ada"]));
+    replaceDocState(liveDoc, attendancePlayData(["Ada", "Ben"]));
+    const persistedBase64 = encodeDocToBase64(liveDoc);
+
+    replaceDocState(liveDoc, attendancePlayData(["Ada", "Ben", "Cam"]));
+    const liveBase64 = encodeDocToBase64(liveDoc);
+
+    expect(documentContainsSnapshot(liveBase64, persistedBase64)).toBe(true);
+    expect(documentContainsSnapshot(persistedBase64, liveBase64)).toBe(false);
+  });
+
+  it("rejects a snapshot with a struct the document lacks", () => {
+    const liveDoc = jsonToDoc(attendancePlayData(["Ada"]));
+    replaceDocState(liveDoc, attendancePlayData(["Ben"]));
+    const persistedDoc = cloneDoc(liveDoc);
+    persistedDoc.getMap("extra").set("added", 1);
+
+    expect(
+      documentContainsSnapshot(
+        encodeDocToBase64(liveDoc),
+        encodeDocToBase64(persistedDoc),
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts documents edited by different clients once they are synced", () => {
+    const first = new Y.Doc();
+    const second = new Y.Doc();
+    first.getMap("play").set("a", 1);
+    second.getMap("play").set("b", 2);
+    first.getMap("play").set("a", 3);
+    second.getArray("list").insert(0, [1, 2, 3]);
+    second.getArray("list").delete(1, 1);
+
+    Y.applyUpdate(first, Y.encodeStateAsUpdate(second));
+    Y.applyUpdate(second, Y.encodeStateAsUpdate(first));
+
+    const firstBase64 = encodeDocToBase64(first);
+    const secondBase64 = encodeDocToBase64(second);
+    expect(documentContainsSnapshot(firstBase64, secondBase64)).toBe(true);
+    expect(documentContainsSnapshot(secondBase64, firstBase64)).toBe(true);
   });
 
   it("handles empty document boundaries", () => {
