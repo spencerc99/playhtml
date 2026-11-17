@@ -2,7 +2,7 @@
 title: "Cursors"
 description: "Show everyone's cursors live, and read them to draw your own."
 sidebar:
-  order: 7
+  order: 9
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
@@ -207,18 +207,9 @@ The element is built once per person, so read anything that changes often (like 
 cursors: {
   enabled: true,
 
-  // Seed your identity (advanced; most sites set playhtml.people.me instead)
-  playerIdentity: {
-    publicKey: "alice",
-    name: "Alice",
-    playerStyle: {
-      colorPalette: ["#3b82f6", "#8b5cf6", "#ec4899"]
-    }
-  },
-
   // Proximity detection
   proximityThreshold: 150,  // pixels
-  // The first argument (playerIdentity) is deprecated; use the fourth, `user`
+  // The first argument is deprecated; use the fourth, `user`
   onProximityEntered: (_identity, positions, angle, user) => {
     console.log("Someone nearby!", user.name);
   },

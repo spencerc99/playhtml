@@ -646,6 +646,176 @@ describe("can-mirror: awareness (hover/focus)", () => {
   });
 });
 
+describe("can-mirror: minimal shared writes", () => {
+  const siblings = (n: number) =>
+    Array.from({ length: n }, (_, i) => `<p>item ${i}</p>`).join("");
+
+  it("typing in an input rewrites only that input, not its siblings", async () => {
+    const client = mountClient(
+      elementFromHTML(`<div id="f">${siblings(50)}<input /></div>`),
+    );
+    const root = client.state as any;
+    const siblingStates = root.children.slice(0, 50);
+    const input = client.element.querySelector("input")!;
+
+    input.value = "hello";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush();
+
+    root.children.slice(0, 50).forEach((child: unknown, i: number) => {
+      expect(child).toBe(siblingStates[i]);
+    });
+    expect(root.children[50].formState).toEqual({ value: "hello" });
+  });
+
+  it("appending a child keeps the existing child entries", async () => {
+    const client = mountClient(elementFromHTML(`<ul id="l">${siblings(50)}</ul>`));
+    const root = client.state as any;
+    const before = root.children.slice();
+
+    const li = document.createElement("p");
+    li.textContent = "new";
+    client.element.appendChild(li);
+    await flush();
+
+    expect(root.children).toHaveLength(51);
+    before.forEach((child: unknown, i: number) => {
+      expect(root.children[i]).toBe(child);
+    });
+  });
+
+  it("syncs a nested input's value to the right entry", async () => {
+    const source = mountClient(
+      elementFromHTML(
+        `<form id="f"><p>a</p><label>name <input /></label><select><option>x</option><option>y</option></select></form>`,
+      ),
+    );
+    const sink = mountClient(
+      elementFromHTML(
+        `<form id="f"><p>a</p><label>name <input /></label><select><option>x</option><option>y</option></select></form>`,
+      ),
+    );
+    const input = source.element.querySelector("input")!;
+    input.value = "ada";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    const select = source.element.querySelector("select")!;
+    select.selectedIndex = 1;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await sync(source, sink);
+
+    expect(sink.element.querySelector("input")!.value).toBe("ada");
+    expect(sink.element.querySelector("select")!.selectedIndex).toBe(1);
+  });
+
+  it("unchecks the previous radio in shared state so late joiners see the latest pick", async () => {
+    const html = `<form id="r"><input type="radio" name="g" value="a" /><input type="radio" name="g" value="b" /></form>`;
+    const source = mountClient(elementFromHTML(html));
+    const [a, b] = Array.from(
+      source.element.querySelectorAll("input"),
+    ) as HTMLInputElement[];
+
+    b.checked = true;
+    b.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+    a.checked = true;
+    a.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+
+    const root = source.state as any;
+    expect(root.children[0].formState).toEqual({ checked: true });
+    expect(root.children[1].formState).toEqual({ checked: false });
+
+    const late = mountClient(elementFromHTML(html));
+    await sync(source, late);
+    const [lateA, lateB] = Array.from(
+      late.element.querySelectorAll("input"),
+    ) as HTMLInputElement[];
+    expect(lateA.checked).toBe(true);
+    expect(lateB.checked).toBe(false);
+  });
+
+  it("mirrors a burst of appends made in one go", async () => {
+    const source = mountClient(elementFromHTML(`<ul id="l">${siblings(20)}</ul>`));
+    const sink = mountClient(elementFromHTML(`<ul id="l">${siblings(20)}</ul>`));
+    for (let i = 0; i < 30; i++) {
+      const p = document.createElement("p");
+      p.textContent = `new ${i}`;
+      source.element.appendChild(p);
+    }
+    source.element.firstElementChild!.remove();
+    await sync(source, sink);
+    expectMirrored(source.element, sink.element);
+  });
+
+  it("still mirrors contenteditable typing that changes nested text", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="c" contenteditable><b>bold</b> tail</div>`),
+    );
+    const sink = mountClient(
+      elementFromHTML(`<div id="c" contenteditable><b>bold</b> tail</div>`),
+    );
+    source.element.querySelector("b")!.firstChild!.textContent = "bolder";
+    source.element.dispatchEvent(new Event("input", { bubbles: true }));
+    await sync(source, sink);
+    expectMirrored(source.element, sink.element);
+  });
+});
+
+describe("can-mirror: local style properties", () => {
+  it("does not share playhtml's per-element --jiggle-delay", async () => {
+    const client = mountClient(
+      elementFromHTML(
+        `<div id="s" style="color: red; --jiggle-delay: 0.31s;"><p>a</p></div>`,
+      ),
+    );
+    expect((client.state as any).attributes.style).toBe("color: red;");
+
+    client.element.style.setProperty("--jiggle-delay", "0.9s");
+    await flush();
+    expect((client.state as any).attributes.style).toBe("color: red;");
+  });
+
+  it("leaves out the style attribute when it only holds local properties", () => {
+    const client = mountClient(
+      elementFromHTML(`<div id="s" style="--jiggle-delay: 0.31s;"></div>`),
+    );
+    expect("style" in (client.state as any).attributes).toBe(false);
+  });
+
+  it("keeps the local --jiggle-delay when applying remote styles", async () => {
+    const source = mountClient(
+      elementFromHTML(`<div id="s" style="--jiggle-delay: 0.1s;"></div>`),
+    );
+    const sink = mountClient(
+      elementFromHTML(`<div id="s" style="--jiggle-delay: 0.7s;"></div>`),
+    );
+    source.element.style.color = "blue";
+    await sync(source, sink);
+    expect(sink.element.style.color).toBe("blue");
+    expect(sink.element.style.getPropertyValue("--jiggle-delay").trim()).toBe(
+      "0.7s",
+    );
+
+    source.element.style.removeProperty("color");
+    await sync(source, sink);
+    expect(sink.element.style.color).toBe("");
+    expect(sink.element.style.getPropertyValue("--jiggle-delay").trim()).toBe(
+      "0.7s",
+    );
+  });
+
+  it("keeps semicolons inside style values intact", () => {
+    const client = mountClient(
+      elementFromHTML(
+        `<div id="s" style="background: url('a;b.png'); --jiggle-delay: 0.2s;"></div>`,
+      ),
+    );
+    expect((client.state as any).attributes.style).toBe(
+      "background: url('a;b.png');",
+    );
+  });
+});
+
 describe("can-mirror: own presence", () => {
   it("publishes no presence until the visitor hovers or focuses", () => {
     expect(canMirrorInitializer.myDefaultAwareness).toBeUndefined();

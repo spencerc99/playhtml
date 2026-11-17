@@ -23,10 +23,10 @@ describe("homepage metadata", () => {
       '<link rel="canonical" href="https://playhtml.fun/"',
     );
     expect(html).toContain('property="og:image"');
-    expect(html).toContain("https://playhtml.fun/social/playhtml-home.png");
+    expect(html).toContain("https://playhtml.fun/social/playhtml-home-2026.png");
     expect(html).toContain('name="twitter:card" content="summary_large_image"');
     expect(html).toContain('href="/icon.png"');
-    expectPublicAsset("website/public/social/playhtml-home.png");
+    expectPublicAsset("website/public/social/playhtml-home-2026.png");
     expect(
       readFileSync(path.join(repoRoot, "website/public/icon.png")).equals(
         readFileSync(path.join(repoRoot, "apps/docs/public/icon.png")),

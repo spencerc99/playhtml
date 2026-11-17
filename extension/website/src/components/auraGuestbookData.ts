@@ -8,6 +8,20 @@ export interface GuestbookEntry {
   timestamp: number;
 }
 
+// Entries hidden by moderation, keyed by timestamp. The shared data is left
+// as is, so removing a key brings the card back.
+export const HIDDEN_GUESTBOOK_ENTRIES: ReadonlySet<number> = new Set([
+  1792158029837, 1792175856314,
+]);
+
+export function filterHiddenGuestbookEntries(
+  entries: GuestbookEntry[],
+  hidden: ReadonlySet<number> = HIDDEN_GUESTBOOK_ENTRIES,
+): GuestbookEntry[] {
+  if (hidden.size === 0) return entries;
+  return entries.filter((entry) => !hidden.has(entry.timestamp));
+}
+
 export function appendGuestbookEntry(
   entries: GuestbookEntry[],
   entry: GuestbookEntry,

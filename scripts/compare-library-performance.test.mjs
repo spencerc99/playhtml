@@ -14,7 +14,6 @@ import {
 const base = {
   ...Object.fromEntries(METRICS.map((metric) => [metric.key, 100])),
   bundle_gz_kb: 65.2,
-  bundle_raw_kb: 217.6,
   stream_msgs: 193,
   stream_bytes: 17811,
   stream_doc_growth: 10690,
@@ -23,7 +22,7 @@ const base = {
   edit_bytes: 1928,
   edit_doc_growth: 1200,
   fanout_renders: 100,
-  init_qsa_calls: 26,
+  init_1000_qsa_calls: 26,
 };
 
 function statusOf(comparison, key) {
@@ -44,7 +43,7 @@ test("flags increases past both the relative and absolute threshold", () => {
       bundle_gz_kb: 70.0, // +7.4%, +4.8 KB
       stream_bytes: 17900, // +0.5%, under 10%
       fanout_renders: 200, // +100%
-      init_qsa_calls: 20, // fewer scans
+      init_1000_qsa_calls: 20, // fewer scans
     },
     { failOnRegression: true },
   );
@@ -52,7 +51,7 @@ test("flags increases past both the relative and absolute threshold", () => {
   assert.equal(statusOf(comparison, "bundle_gz_kb"), "regression");
   assert.equal(statusOf(comparison, "stream_bytes"), "ok");
   assert.equal(statusOf(comparison, "fanout_renders"), "regression");
-  assert.equal(statusOf(comparison, "init_qsa_calls"), "improved");
+  assert.equal(statusOf(comparison, "init_1000_qsa_calls"), "improved");
 
   const markdown = formatMarkdownReport(comparison);
   assert.match(markdown, /<!-- library-performance-report -->/);
@@ -82,24 +81,24 @@ test("a typical feature-sized bundle increase is not flagged", () => {
 test("a metric the PR stops reporting fails the check", () => {
   const comparison = compareResults(
     base,
-    { ...base, init_qsa_calls: undefined, fanout_renders: Number.NaN },
+    { ...base, init_1000_qsa_calls: undefined, fanout_renders: Number.NaN },
     { failOnRegression: true },
   );
-  assert.equal(statusOf(comparison, "init_qsa_calls"), "missing");
+  assert.equal(statusOf(comparison, "init_1000_qsa_calls"), "missing");
   assert.equal(statusOf(comparison, "fanout_renders"), "missing");
   assert.equal(failureCount(comparison), 2);
   assert.match(
     formatMarkdownReport(comparison),
-    /no longer reports `fanout_renders`, `init_qsa_calls`\. This check fails/,
+    /no longer reports `fanout_renders`, `init_1000_qsa_calls`\. This check fails/,
   );
 });
 
 test("a metric new in the PR passes", () => {
   const comparison = compareResults(
-    { ...base, init_qsa_calls: undefined },
+    { ...base, init_1000_qsa_calls: undefined },
     base,
   );
-  assert.equal(statusOf(comparison, "init_qsa_calls"), "new");
+  assert.equal(statusOf(comparison, "init_1000_qsa_calls"), "new");
   assert.equal(failureCount(comparison), 0);
 });
 
@@ -127,4 +126,52 @@ test("a render count that used to be zero is flagged at one", () => {
     statusOf(comparison, "react_remote_unrelated_renders"),
     "regression",
   );
+});
+
+test("capability metrics get their own collapsed section unless something moved", () => {
+  const mirror = METRICS.filter((metric) => metric.capability === "can-mirror");
+  assert.ok(mirror.length > 0);
+  const same = formatMarkdownReport(compareResults(base, { ...base }));
+  assert.match(same, /## Per capability/);
+  assert.match(
+    same,
+    /<details><summary><b>can-mirror<\/b>: no change<\/summary>/,
+  );
+
+  const moved = formatMarkdownReport(
+    compareResults(base, {
+      ...base,
+      mirror_init_presence_msgs: 50, // was 100
+      mirror_board_remote_dom_writes: 300,
+    }),
+  );
+  assert.match(
+    moved,
+    /<details open><summary><b>can-mirror<\/b>: 1 flagged, 1 improved<\/summary>/,
+  );
+  // Capability rows stay out of the core table.
+  const coreTable = moved.split("## Per capability")[0];
+  assert.doesNotMatch(coreTable, /50-field form/);
+});
+
+test("a capability opens for changes within threshold and for new metrics", () => {
+  const within = formatMarkdownReport(
+    compareResults(base, { ...base, mirror_list_remove_bytes: 140 }), // +40 B
+  );
+  assert.match(
+    within,
+    /<details open><summary><b>can-mirror<\/b>: 1 changed within threshold<\/summary>/,
+  );
+
+  const { mirror_list_remove_bytes: _dropped, ...older } = base;
+  const added = formatMarkdownReport(compareResults(older, { ...base }));
+  assert.match(
+    added,
+    /<details open><summary><b>can-mirror<\/b>: new<\/summary>/,
+  );
+
+  const timingOnly = formatMarkdownReport(
+    compareResults(base, { ...base, mirror_list_bulk_ms: 500 }),
+  );
+  assert.match(timingOnly, /<details><summary><b>can-mirror<\/b>: no change/);
 });

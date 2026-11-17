@@ -82,7 +82,9 @@ export function LoadingStateDemo() {
           loading-behavior={behavior}
           loading-style={styleApplies ? style : undefined}
           aria-busy={loading || undefined}
-          onClick={() => setCount((n) => n + 1)}
+          onClick={() => {
+            if (!loading) setCount((n) => n + 1);
+          }}
         >
           <span aria-hidden="true">♥</span> {count}
         </button>

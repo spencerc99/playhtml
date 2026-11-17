@@ -10,8 +10,7 @@
    - Structure carries the playfulness. No sticker tilts. No rainbow
      sparkles. No handwriting fonts.
    - Bricolage Grotesque carries headings, Play carries body, Plex Mono
-     carries code, Carter One appears only on the literal wordmark,
-     Yellowtail appears only on live-demo badges.
+     carries code, Carter One appears only on the literal wordmark.
    - Dark mode is stubbed out via `[data-theme='dark']` token overrides
      so adding a real dark treatment later is a palette pass, not a
      rewrite.
@@ -63,7 +62,6 @@
   --ph-font-mono:
     "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --ph-font-wordmark: "Carter One", var(--ph-font-display);
-  --ph-font-neon: "Yellowtail", var(--ph-font-display);
 
   /* Motion */
   --ph-motion-fast: 120ms cubic-bezier(0.2, 0.8, 0.3, 1);
@@ -300,9 +298,9 @@ header.header {
   border-bottom: 1px solid var(--ph-hairline);
 }
 
-/* Presence lives inline in the header's right-group (injected via the
- * SocialIcons override). The wrapper keeps its React island from collapsing
- * to 0 width before hydration. */
+/* Presence lives inline in the header's right group (Header.astro) and in the
+ * phone menu footer (the SocialIcons override). The wrapper keeps its React
+ * island from collapsing to 0 width before hydration. */
 .ph-presence-slot {
   display: inline-flex;
   align-items: center;
@@ -468,7 +466,7 @@ header.header {
 }
 
 /* ---------------------------------------------------------------------
-   8. Buttons (Starlight LinkButton / action)
+   7. Buttons (Starlight LinkButton / action)
    --------------------------------------------------------------------- */
 
 .sl-link-button,
@@ -514,7 +512,7 @@ header.header {
 }
 
 /* ---------------------------------------------------------------------
-   9. Card grid (Starlight <Card> / <CardGrid>)
+   8. Card grid (Starlight <Card> / <CardGrid>)
    --------------------------------------------------------------------- */
 
 /* Cards are the homepage's toy-box card: near-white dotted paper, ink
@@ -601,7 +599,7 @@ starlight-card,
 }
 
 /* ---------------------------------------------------------------------
-   10. Code blocks (Expressive Code in Starlight)
+   9. Code blocks (Expressive Code in Starlight)
    --------------------------------------------------------------------- */
 
 .expressive-code,
@@ -637,7 +635,7 @@ starlight-card,
 }
 
 /* ---------------------------------------------------------------------
-   11. Asides (:::note, :::tip, :::caution, :::danger)
+   10. Asides (:::note, :::tip, :::caution, :::danger)
    --------------------------------------------------------------------- */
 
 .starlight-aside {
@@ -670,7 +668,7 @@ starlight-card,
 }
 
 /* ---------------------------------------------------------------------
-   12. Presence bar (in the header)
+   11. Presence bar (in the header)
    --------------------------------------------------------------------- */
 
 .ph-presence {
@@ -812,7 +810,7 @@ starlight-card,
 }
 
 /* ---------------------------------------------------------------------
-   13. Scroll rail (right gutter)
+   12. Scroll rail (right gutter)
    --------------------------------------------------------------------- */
 
 .ph-docs-scroll-rail {
@@ -1037,7 +1035,7 @@ nav.sidebar a:has(> .ph-sidebar-pip-stack) {
 }
 
 /* ---------------------------------------------------------------------
-   14. Copy-trace snippet
+   13. Copy-trace snippet
    --------------------------------------------------------------------- */
 
 .ph-copy {
@@ -1469,7 +1467,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   15. Interactive toggle demo (can-toggle)
+   14. Interactive toggle demo (can-toggle)
    --------------------------------------------------------------------- */
 
 .ph-toggle {
@@ -1521,23 +1519,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   16. "Live" neon badge — the single Yellowtail moment
-   --------------------------------------------------------------------- */
-
-.ph-live-badge {
-  display: inline-block;
-  font-family: var(--ph-font-neon);
-  font-size: 1.2em;
-  color: var(--ph-brick);
-  text-shadow:
-    0 0 6px rgba(192, 55, 60, 0.35),
-    0 0 16px rgba(192, 55, 60, 0.18);
-  transform: rotate(-4deg);
-  padding-inline: 0.25em;
-}
-
-/* ---------------------------------------------------------------------
-   17. Tables
+   15. Tables
    --------------------------------------------------------------------- */
 
 .sl-markdown-content table {
@@ -1561,7 +1543,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   17b. Capabilities page — demo slots, tabs chrome
+   15b. Capabilities page — demo slots, tabs chrome
    ---------------------------------------------------------------------
    The capabilities page is a catalog where each can-* section has:
    - a "demo slot" (live interactive example; a React island mounts into it)
@@ -1599,13 +1581,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   text-transform: uppercase;
   color: var(--ph-ink-2);
 }
-.ph-demo-slot__placeholder {
-  font-family: var(--ph-font-mono);
-  font-size: 0.78rem;
-  color: var(--ph-ink-3);
-  text-align: center;
-  line-height: 1.6;
-}
 
 /* "Two things to know" — collapsed gotchas above the capability demos. Only
    the summaries show until a reader opens one. */
@@ -1640,54 +1615,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 .sl-markdown-content .ph-know details > :not(summary) {
   margin: 0.25rem 0 0.75rem 1.1rem;
   color: var(--ph-ink-2);
-}
-
-/* Media placeholder: renders where a real photo will eventually sit. The
-   author grep's for "TODO-IMAGE" to find every instance. Keep this VERY
-   obviously a placeholder — we don't want it to read as finished. */
-.ph-media-placeholder {
-  --ph-placeholder-aspect: 4 / 3;
-  position: relative;
-  display: block;
-  width: 100%;
-  aspect-ratio: var(--ph-placeholder-aspect);
-  background: repeating-linear-gradient(
-    45deg,
-    var(--ph-paper-warm) 0px,
-    var(--ph-paper-warm) 10px,
-    var(--ph-paper-deep) 10px,
-    var(--ph-paper-deep) 11px
-  );
-  border: 1.5px dashed var(--ph-ink);
-  border-radius: 4px;
-  margin: 1rem 0;
-  overflow: hidden;
-}
-.ph-media-placeholder::after {
-  content: "image: " attr(data-subject);
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--ph-font-mono);
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  color: var(--ph-ink-2);
-  background: rgba(244, 239, 229, 0.88);
-  padding: 0.4rem 0.75rem;
-  text-align: center;
-}
-.ph-media-placeholder--square {
-  --ph-placeholder-aspect: 1;
-  max-width: 220px;
-}
-.ph-media-placeholder--wide {
-  --ph-placeholder-aspect: 16 / 9;
-}
-.ph-media-placeholder--portrait {
-  --ph-placeholder-aspect: 3 / 4;
-  max-width: 280px;
 }
 
 /* Composed-examples footer cards: links out to the live experiments room
@@ -1739,7 +1666,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   17c. Data-layer live demos
+   15c. Data-layer live demos
    ---------------------------------------------------------------------
    Three small inline demos that drop into the concept pages under /data/*:
    - .ph-rain-demo         (events)          — fire hydrant + rain
@@ -2031,30 +1958,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   transform: translateY(-1px);
   box-shadow: var(--ph-shadow-brick);
 }
-.ph-live-reactions__fire {
-  padding: 0.5rem 1rem;
-  border: 1.5px solid var(--ph-ink);
-  border-radius: 6px;
-  background: var(--ph-paper);
-  font-family: var(--ph-font-mono);
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ph-ink);
-  cursor: pointer;
-  box-shadow: var(--ph-shadow-brick);
-  transition:
-    transform 100ms ease,
-    box-shadow 100ms ease;
-}
-.ph-live-reactions__fire:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 0 var(--ph-ink);
-}
-.ph-live-reactions__fire:active {
-  transform: translate(1px, 1px);
-  box-shadow: var(--ph-shadow-brick-pressed);
-}
 .ph-live-reactions__stage {
   position: relative;
   width: 100%;
@@ -2129,7 +2032,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   17e. Capabilities page — inline demos (can-move … can-duplicate)
+   15d. Capabilities page — inline demos (can-move … can-duplicate)
    --------------------------------------------------------------------- */
 
 .ph-grow-balloon-wrap {
@@ -2209,17 +2112,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-}
-
-.ph-dup-meadow__caption {
-  margin: 0;
-  font-family: var(--ph-font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ph-ink-3);
-  text-align: center;
-  line-height: 1.45;
 }
 
 /* Grassy strip: one row, negative overlap to crowd; overflow hidden clips the warren (no grow / scroll). */
@@ -2381,7 +2273,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   17d. can-mirror playground (/docs/advanced/mirror-playground/)
+   15e. can-mirror playground (/docs/advanced/mirror-playground/)
    ---------------------------------------------------------------------
    Each section on the playground page wraps a single demo in a
    .ph-mirror-sample card so the live elements don't blend into the
@@ -2481,7 +2373,7 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 }
 
 /* ---------------------------------------------------------------------
-   18. Reduced-motion + small-screen tuning
+   16. Reduced-motion + small-screen tuning
    --------------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -2495,9 +2387,6 @@ article pre.astro-code:not([data-ph-copy-enhanced]) {
 
 @media (max-width: 640px) {
   .ph-docs-scroll-rail {
-    display: none;
-  }
-  .ph-presence__label {
     display: none;
   }
 }

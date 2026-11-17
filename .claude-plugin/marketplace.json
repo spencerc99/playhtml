@@ -11,8 +11,7 @@
     {
       "name": "playhtml",
       "source": "./claude-plugin",
-      "description": "Skill for building collaborative, real-time HTML elements with playhtml. Covers APIs, data types, and common mistakes.",
-      "version": "1.0.0"
+      "description": "Skill for building collaborative, real-time HTML elements with playhtml. Covers APIs, data types, and common mistakes."
     }
   ]
 }

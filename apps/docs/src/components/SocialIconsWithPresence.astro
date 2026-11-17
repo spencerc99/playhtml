@@ -1,8 +1,7 @@
 ---
-// Inject the presence HUD into Starlight's right-group, immediately before the
-// default social icons (GitHub). This replaces the earlier "sub-row" approach
-// so presence lives inline with the rest of the header chrome and never fights
-// the theme selector for space.
+// Puts the presence HUD before Starlight's default social icons. Our Header
+// override renders its own presence HUD, so this only shows up where Starlight
+// still renders SocialIcons: the phone menu footer.
 import Default from '@astrojs/starlight/components/SocialIcons.astro';
 import { DocsPresenceBar } from './react/DocsPresenceBar';
 ---
