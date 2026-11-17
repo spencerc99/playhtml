@@ -1,5 +1,5 @@
 // ABOUTME: Verifies that incoming play events reach every registered listener.
-// ABOUTME: A listener that throws is logged and does not stop the others.
+// ABOUTME: A listener that throws is logged and does not stop the others; a reset drops them.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { playhtml, resetPlayHTML } from "../index";
 
@@ -69,5 +69,28 @@ describe("play event fan-out", () => {
     send();
 
     expect(calls).toEqual(["first", "second", "second"]);
+  });
+
+  it("does not keep listeners from before a reset", async () => {
+    const providers = (globalThis as any).PLAYHTML_TEST_PROVIDERS as any[];
+    const calls: unknown[] = [];
+    const events = {
+      confetti: {
+        type: "confetti",
+        onEvent: (payload: unknown) => calls.push(payload),
+      },
+    };
+
+    await playhtml.init({ host: "http://localhost:1999", events } as any);
+    await resetPlayHTML();
+    await playhtml.init({ host: "http://localhost:1999", events } as any);
+    const provider = providers[providers.length - 1];
+
+    provider.emit(
+      "custom-message",
+      JSON.stringify({ type: "confetti", eventPayload: { n: 1 } }),
+    );
+
+    expect(calls).toEqual([{ n: 1 }]);
   });
 });
