@@ -167,20 +167,30 @@ describe("rail 2: lifecycle & guards", () => {
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
-  it("runs the onMount cleanup and stops rendering on deleteElementData()", async () => {
+  it("runs the onMount cleanup and stops binding descendants on deleteElementData()", async () => {
     const el = document.createElement("div");
     el.id = "deleted-lifecycle";
     document.body.appendChild(el);
 
     const cleanup = vi.fn();
-    const view = vi.fn(() => html`<span>hi</span>`);
     playhtml.register("deleted-lifecycle", {
       defaultData: {},
-      view,
+      view: () => html`<span>hi</span>`,
       onMount: () => cleanup,
     });
     await tick();
     expect(cleanup).not.toHaveBeenCalled();
+
+    // While the element is live, its descendant observer sets up a capability
+    // child as soon as it is added.
+    const before = document.createElement("div");
+    before.id = "deleted-lifecycle-child-before";
+    before.setAttribute("can-toggle", "");
+    el.appendChild(before);
+    await tick();
+    expect(
+      elementHandlers.get("can-toggle")?.has("deleted-lifecycle-child-before"),
+    ).toBe(true);
 
     playhtml.deleteElementData("can-play", "deleted-lifecycle");
     expect(cleanup).toHaveBeenCalledTimes(1);
@@ -188,11 +198,16 @@ describe("rail 2: lifecycle & guards", () => {
       false,
     );
 
-    // Adding a child would re-run the view while the descendant observer is live.
-    const renders = view.mock.calls.length;
-    el.appendChild(document.createElement("p"));
+    // After the delete, the observer is disconnected and the same stimulus
+    // sets nothing up.
+    const after = document.createElement("div");
+    after.id = "deleted-lifecycle-child-after";
+    after.setAttribute("can-toggle", "");
+    el.appendChild(after);
     await tick();
-    expect(view.mock.calls.length).toBe(renders);
+    expect(
+      elementHandlers.get("can-toggle")?.has("deleted-lifecycle-child-after"),
+    ).toBe(false);
   });
 
   it("rejects setLocalData called during render (no infinite recursion)", async () => {
