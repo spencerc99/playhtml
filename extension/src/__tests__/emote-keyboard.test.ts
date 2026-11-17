@@ -1,7 +1,7 @@
-// ABOUTME: Verifies the emote number-key shortcuts in initEmotes.
-// ABOUTME: Typing digits into inputs must not broadcast emotes.
+// ABOUTME: Verifies the emote number-key shortcuts and the proximity hint poll in initEmotes.
+// ABOUTME: Typing digits into inputs must not broadcast emotes; the hint poll stops once shown.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PresenceAPI } from "@playhtml/common";
 import { initEmotes } from "../features/emotes";
 
@@ -55,5 +55,38 @@ describe("initEmotes keyboard", () => {
       new KeyboardEvent("keydown", { key: "2", bubbles: true }),
     );
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe("initEmotes proximity hint", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = "";
+  });
+
+  it("stops polling for nearby cursors once the hint has been shown", () => {
+    const peers = new Map([["pk_peer", { cursor: { x: 0, y: 0 } }]]);
+    let reads = 0;
+    const { deps } = createDeps(peers);
+    const getCursorPresences = deps.cursorClient.getCursorPresences;
+    deps.cursorClient.getCursorPresences = () => {
+      reads += 1;
+      return getCursorPresences();
+    };
+    const cleanup = initEmotes(deps);
+    window.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 1, clientY: 1 }),
+    );
+    expect(vi.getTimerCount()).toBe(1);
+    vi.advanceTimersByTime(500);
+    expect(reads).toBeGreaterThan(0);
+    // Let the hint's own hide timer run out; no proximity poll should remain.
+    vi.advanceTimersByTime(60_000);
+    expect(vi.getTimerCount()).toBe(0);
+    cleanup();
   });
 });
