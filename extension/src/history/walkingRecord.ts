@@ -7,7 +7,6 @@ import type {
   NavigationEventData,
 } from "../collectors/types";
 import {
-  WALKING_RECORD_FAVICON_DOMAIN_LIMIT,
   type ScreenTimeSession,
   type WalkingRecordActivity,
   type WalkingRecordTrace,
@@ -1090,21 +1089,6 @@ export function getWalkingRecordTraceTargets(
   record: WalkingRecord,
 ): WalkingRecordTraceTarget[] {
   return record.dayPlates.flatMap((plate) => plate.traceTargets);
-}
-
-export function getWalkingRecordFaviconDomains(
-  record: WalkingRecord,
-): string[] {
-  return [
-    ...new Set([
-      ...record.timeSpent.flatMap((entry) => (entry.href ? [entry.site] : [])),
-      ...record.settledPlaces.map((place) => place.site),
-      ...record.departures.flatMap((departure) => [
-        departure.from,
-        departure.to,
-      ]),
-    ]),
-  ].slice(0, WALKING_RECORD_FAVICON_DOMAIN_LIMIT);
 }
 
 export function attachWalkingRecordFavicons(

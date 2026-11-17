@@ -43,7 +43,6 @@ interface PageStat {
 
 interface EnrichedDomain extends DomainEntry {
   stats: DomainStats | null;
-  loading: boolean;
   pagesLoading: boolean;
 }
 
@@ -151,7 +150,6 @@ const StatsPage = () => {
       const enrichedWithStats: EnrichedDomain[] = topDomains.map((d) => ({
         ...d,
         stats: statsFromDomainEntry(d),
-        loading: false,
         pagesLoading: false,
       }));
 
@@ -319,8 +317,7 @@ const StatsPage = () => {
                   isExpanded && domain.stats?.sessions
                     ? computeTopPages(domain.stats.sessions, TOP_PAGES)
                     : null;
-                const hasPages =
-                  !domain.loading && (domain.stats?.uniquePageCount ?? 0) > 0;
+                const hasPages = (domain.stats?.uniquePageCount ?? 0) > 0;
 
                 return (
                   <div
@@ -352,11 +349,7 @@ const StatsPage = () => {
                           </span>
                           <div className="domain-row__right">
                             <span className="domain-row__time">
-                              {domain.loading ? (
-                                <span className="domain-row__time--loading">
-                                  …
-                                </span>
-                              ) : time != null ? (
+                              {time != null ? (
                                 formatDuration(time)
                               ) : (
                                 <span className="domain-row__time--none">
@@ -371,7 +364,7 @@ const StatsPage = () => {
                             )}
                           </div>
                         </div>
-                        {!domain.loading && barWidth > 0 && (
+                        {barWidth > 0 && (
                           <div className="domain-row__bar-track">
                             <div
                               className="domain-row__bar"

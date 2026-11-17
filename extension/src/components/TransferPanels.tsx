@@ -14,7 +14,7 @@ function CursorMark({ color, size = 18 }: { color: string; size?: number }) {
 }
 
 /** A public ID short enough to read: its start and end. */
-export function shortPublicId(publicKey: string): string {
+function shortPublicId(publicKey: string): string {
   if (publicKey.length <= 14) return publicKey;
   return `${publicKey.slice(0, 7)}…${publicKey.slice(-6)}`;
 }
@@ -40,7 +40,7 @@ function plural(count: number, one: string, many = `${one}s`): string {
   return `${count.toLocaleString()} ${count === 1 ? one : many}`;
 }
 
-export function formatBytes(bytes: number): string {
+function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 }
