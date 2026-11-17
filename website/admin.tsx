@@ -364,7 +364,7 @@ export const JSONViewer: React.FC<{
     if (typeof obj === "object") {
       const keys = Object.keys(obj);
       if (keys.length === 0) {
-        return <span className="json-bracket">{}</span>;
+        return <span className="json-bracket">{"{}"}</span>;
       }
 
       const id = `object-${path}`;
