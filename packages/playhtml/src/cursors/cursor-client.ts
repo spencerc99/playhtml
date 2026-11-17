@@ -285,11 +285,6 @@ function getSvgForCursor(color: string): string {
   </svg>`;
 }
 
-function getCursorStyleForUser(color: string): string {
-  const userCursorSvgEncoded = encodeSVG(getSvgForCursor(color));
-  return `url("data:image/svg+xml,${userCursorSvgEncoded}"), auto`;
-}
-
 /**
  * Convert a camelCase CSS property (e.g. "backgroundColor") to kebab-case
  * (e.g. "background-color") for use with CSSStyleDeclaration.setProperty /
@@ -406,6 +401,14 @@ export class CursorClientAwareness {
   } | null = null;
   private cursorEventCleanups: Array<() => void> = [];
   private ownCursorSvgCache: { color: string; svg: string } | null = null;
+  private lastDocumentCursor: string | null = null;
+  // The page's own inline cursor before this client first wrote one, and the
+  // value as the browser stored our latest write. destroy() restores the
+  // former only while the page still shows the latter.
+  private pageCursorBeforeClient: string | null = null;
+  private appliedDocumentCursor: string | null = null;
+  // The object this client installed as window.cursors.
+  private globalApi: NonNullable<Window["cursors"]> | null = null;
   private visibilityThreshold: number | undefined;
   private isStylesAdded: boolean = false;
   private globalApiListeners = new Map<keyof CursorEvents, Set<Function>>();
@@ -570,7 +573,7 @@ export class CursorClientAwareness {
   private handleSelfIdentityChange(): void {
     this.ownCursorSvgCache = null;
     const nextColor = getPrimaryColor(this.playerIdentity);
-    document.documentElement.style.cursor = getCursorStyleForUser(nextColor);
+    this.setDocumentCursor(this.getOwnCursorStyle());
     this.updateCursorAwareness();
 
     const nextName = this.playerIdentity.name;
@@ -605,9 +608,7 @@ export class CursorClientAwareness {
     this.setupPresenceTransportHandling();
 
     // Set initial cursor style (throws if identity has no primary color)
-    document.documentElement.style.cursor = getCursorStyleForUser(
-      getPrimaryColor(this.playerIdentity),
-    );
+    this.setDocumentCursor(this.getOwnCursorStyle());
   }
 
   private setupPresenceTransportHandling(): void {
@@ -1003,6 +1004,23 @@ export class CursorClientAwareness {
     return this.ownCursorSvgCache.svg;
   }
 
+  private getOwnCursorStyle(): string {
+    return `url("data:image/svg+xml,${this.getOwnCursorSvg()}"), auto`;
+  }
+
+  // Writes the page cursor only when the value differs from the last one
+  // written, so pointer frames do not rewrite an unchanged data URL.
+  private setDocumentCursor(style: string): void {
+    if (style === this.lastDocumentCursor) return;
+    const rootStyle = document.documentElement.style;
+    if (this.pageCursorBeforeClient === null) {
+      this.pageCursorBeforeClient = rootStyle.cursor;
+    }
+    this.lastDocumentCursor = style;
+    rootStyle.cursor = style;
+    this.appliedDocumentCursor = rootStyle.cursor;
+  }
+
   private addCursorEventListener(
     target: EventTarget,
     type: string,
@@ -1071,13 +1089,9 @@ export class CursorClientAwareness {
         }
       }
 
-      if (pointer === "mouse") {
-        document.documentElement.style.cursor = getCursorStyleForUser(
-          getPrimaryColor(this.playerIdentity),
-        );
-      } else {
-        document.documentElement.style.cursor = "auto";
-      }
+      this.setDocumentCursor(
+        pointer === "mouse" ? this.getOwnCursorStyle() : "auto",
+      );
     }
 
     const storageCoords = this.clientToStorage(sample.clientX, sample.clientY);
@@ -1676,7 +1690,7 @@ export class CursorClientAwareness {
 
     // Identity fields delegate to the users module, which owns mutation and
     // persistence; this client only reacts via onSelfChange.
-    window.cursors = {
+    this.globalApi = {
       get allColors() {
         return selectAllColors(self.users.getAll());
       },
@@ -1705,6 +1719,7 @@ export class CursorClientAwareness {
         }
       },
     };
+    window.cursors = this.globalApi;
   }
 
   private emitGlobalEvent<K extends keyof CursorEvents>(
@@ -2054,6 +2069,21 @@ export class CursorClientAwareness {
     this.presenceTransportUnsubscribe?.();
     this.presenceTransportUnsubscribe = null;
     this.presenceTransport.clear("cursor");
+
+    // Release page-global state this client installed, unless something newer
+    // (another client, or the page itself) has replaced it since.
+    if (this.globalApi && window.cursors === this.globalApi) {
+      delete window.cursors;
+    }
+    this.globalApi = null;
+    if (
+      this.appliedDocumentCursor !== null &&
+      document.documentElement.style.cursor === this.appliedDocumentCursor
+    ) {
+      document.documentElement.style.cursor = this.pageCursorBeforeClient ?? "";
+    }
+    this.appliedDocumentCursor = null;
+    this.lastDocumentCursor = null;
   }
 
   // Debug method to inspect spatial partitioning efficiency
