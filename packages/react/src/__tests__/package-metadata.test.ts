@@ -13,8 +13,11 @@ describe("@playhtml/react package contract", () => {
       readFileSync(path.resolve(packageRoot, "package.json"), "utf8"),
     );
 
-    expect(packageJson.dependencies).not.toHaveProperty("playhtml");
-    expect(packageJson.dependencies).not.toHaveProperty("@playhtml/common");
+    // A package with no runtime dependencies omits the block entirely.
+    const dependencies = packageJson.dependencies ?? {};
+
+    expect(dependencies).not.toHaveProperty("playhtml");
+    expect(dependencies).not.toHaveProperty("@playhtml/common");
     expect(packageJson.peerDependencies).toHaveProperty(
       "playhtml",
       "workspace:^",
@@ -25,6 +28,18 @@ describe("@playhtml/react package contract", () => {
       "workspace:^",
     );
     expect(packageJson.devDependencies).not.toHaveProperty("@playhtml/common");
+  });
+
+  it("uses the app's React instead of installing its own copy", () => {
+    const packageJson = JSON.parse(
+      readFileSync(path.resolve(packageRoot, "package.json"), "utf8"),
+    );
+    const dependencies = packageJson.dependencies ?? {};
+
+    for (const name of ["react", "react-dom"]) {
+      expect(dependencies, name).not.toHaveProperty(name);
+      expect(packageJson.peerDependencies, name).toHaveProperty(name);
+    }
   });
 
   it("leaves playhtml as a runtime import in the library bundle", () => {
