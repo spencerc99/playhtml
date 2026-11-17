@@ -184,21 +184,21 @@ const OPEN_WRITTEN_ONLY = {
   constructor: { active: false },
 };
 
-async function exportPermissions(
-  room: any,
-  elementIds: string[]
-): Promise<Record<string, string>> {
-  const response = await room.onRequest(
+async function subscribe(room: any, elementIds: string[]): Promise<Response> {
+  return room.onRequest(
     new Request("https://example.com/parties/main/source-room", {
       method: "POST",
       headers: new Headers({
         "content-type": "application/json",
         [BRIDGE_SECRET_HEADER]: SECRET,
       }),
-      body: JSON.stringify({ action: "export-permissions", elementIds }),
+      body: JSON.stringify({
+        action: "subscribe",
+        consumerRoomId: "consumer-room",
+        elementIds,
+      }),
     })
   );
-  return (await response.json()).permissions;
 }
 
 async function captureWarnings<T>(
@@ -321,14 +321,19 @@ describe("shared element permissions on the source room", () => {
     source.destroy();
   });
 
-  it("does not treat Object.prototype names as shared elements", async () => {
+  it("returns no data for Object.prototype names on subscribe", async () => {
     const source = await createSourceRoom({ open: "read-write" });
 
-    expect(
-      await exportPermissions(source.room, ["constructor", "toString", "open"])
-    ).toEqual({ open: "read-write" });
-    expect((await applyConsumerWrite(source.room)).status).toBe(200);
-    expect(toggles(source.document)).toEqual(OPEN_WRITTEN_ONLY);
+    const response = await subscribe(source.room, [
+      "constructor",
+      "toString",
+      "open",
+    ]);
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).subtrees).toEqual({
+      "can-toggle": { open: { active: false } },
+    });
     source.destroy();
   });
 
