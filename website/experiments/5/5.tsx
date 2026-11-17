@@ -646,6 +646,7 @@ const AnimatedCounter = ({
 
   useEffect(() => {
     let startTime: number | null = null;
+    let frameId = 0;
     const step = (timestamp: number) => {
       if (!startTime) startTime = timestamp;
       const progress = Math.min((timestamp - startTime) / duration, 1);
@@ -655,12 +656,12 @@ const AnimatedCounter = ({
           : Math.ceil(start - progress * (start - end));
       setCounter(value);
       if (progress < 1) {
-        window.requestAnimationFrame(step);
+        frameId = window.requestAnimationFrame(step);
       }
     };
-    window.requestAnimationFrame(step);
+    frameId = window.requestAnimationFrame(step);
     return () => {
-      window.cancelAnimationFrame(window.requestAnimationFrame(step));
+      window.cancelAnimationFrame(frameId);
     };
   }, [start, end, duration, direction]);
 
