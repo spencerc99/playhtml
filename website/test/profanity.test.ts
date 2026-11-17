@@ -1,7 +1,6 @@
 // ABOUTME: Tests the shared profanity matcher used by the guestbook and the fridge.
 // ABOUTME: Covers whole-word matching, case, and list entries containing regex characters.
 import { describe, expect, test } from "bun:test";
-import profaneWords from "profane-words";
 import { buildProfanityMatcher, containsProfanity } from "../utils/profanity";
 
 describe("profanity matcher", () => {
@@ -27,24 +26,25 @@ describe("profanity matcher", () => {
     expect(matcher.test("aab")).toBe(false);
   });
 
-  test("agrees with a per-word \\b check for alphanumeric list entries", () => {
-    const plainWords = profaneWords.filter((word) => /^\w+$/.test(word));
-    const matcher = buildProfanityMatcher(plainWords);
-    const samples = [
-      "hello",
-      "nice fridge",
-      "assistant",
-      "class",
-      "a damn good day",
-      "Hell yes",
-      "shitake",
-      "bass player",
+  test("flags whole listed words in sentences and ignores them inside longer words", () => {
+    const samples: Array<[string, boolean]> = [
+      ["a damn good day", true],
+      ["what a bastard", true],
+      ["Crap, I missed it", true],
+      ["hello", false],
+      ["nice fridge", false],
+      ["assistant", false],
+      ["class", false],
+      ["shitake", false],
+      ["bass player", false],
+      // "hell" is not on the list.
+      ["Hell yes", false],
     ];
-    for (const sample of samples) {
-      const expected = plainWords.some((word) =>
-        new RegExp(`\\b${word}\\b`, "i").test(sample),
-      );
-      expect(matcher.test(sample)).toBe(expected);
+    for (const [sample, expected] of samples) {
+      expect({ sample, flagged: containsProfanity(sample) }).toEqual({
+        sample,
+        flagged: expected,
+      });
     }
   });
 });
