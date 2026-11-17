@@ -88,6 +88,9 @@ const DOUBLE_TAP_THRESHOLD_MS = 300;
 
 export type OverlayLoadState = "loading" | "ready" | "empty" | "error";
 
+/** Shown in place of the trails when a load fails; the dev bar has the details. */
+export const LOAD_FAILED_TEXT = "couldn't load trails";
+
 export function HistoricalOverlay({
   visible,
   currentUrl,
@@ -247,9 +250,13 @@ export function HistoricalOverlay({
       } catch (err) {
         if (cancelled) return;
         console.error("[HistoricalOverlay] Failed to load data:", err);
+        // Earlier trails belong to a different request; the failed one
+        // replaces them, so the canvas shows the failure rather than them.
+        setEvents([]);
         setError(
           err instanceof Error ? err.message : "Failed to load historical data",
         );
+        setLoadedSource(source);
         setLoading(false);
       }
     };
@@ -1164,7 +1171,7 @@ export function HistoricalOverlay({
             pointerEvents: "none",
           }}
         >
-          {loading ? "loading..." : "no data"}
+          {loading ? "loading..." : error ? LOAD_FAILED_TEXT : "no data"}
         </div>
       )}
 

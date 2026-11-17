@@ -12,7 +12,15 @@ import type {
 } from '../storage/LocalEventStore'
 import { uploadEvents } from '../storage/sync'
 import { restoreEventsFromServer } from '../storage/restore'
-import type { CollectionEvent } from '@playhtml/extension-types'
+import {
+  getValidEventTypes,
+  type CollectionEvent,
+  type CollectionEventType,
+} from '@playhtml/extension-types'
+import {
+  FETCH_SERVER_EVENTS_MESSAGE,
+  fetchRecentServerEvents,
+} from '../storage/historyLoader'
 import { removeSiteMigrationMarkers } from '../storage/siteMigrationMarkers'
 import type { ScrapEventData, ScrapPosition } from '../collectors/types'
 import { getScrapKey } from '../collectors/scrapUtils'
@@ -323,6 +331,13 @@ async function getExtensionLocalUsageBytes(): Promise<number | null> {
 
   if (usageParts.length === 0) return null
   return usageParts.reduce((sum, bytes) => sum + bytes, 0)
+}
+
+function isCollectionEventType(value: unknown): value is CollectionEventType {
+  return (
+    typeof value === 'string' &&
+    (getValidEventTypes() as string[]).includes(value)
+  )
 }
 
 let uploadFlush: Promise<void> | null = null
@@ -882,6 +897,37 @@ export default defineBackground(() => {
           console.error('[Background] FLUSH_PENDING_UPLOADS error:', e)
           reply({ success: false })
         })
+      return true
+    }
+
+    if (message.type === FETCH_SERVER_EVENTS_MESSAGE) {
+      // Content scripts read shared events through here: their own fetch
+      // carries the page's Origin, which the Worker refuses.
+      if (
+        typeof message.domain !== 'string' ||
+        !isCollectionEventType(message.eventType) ||
+        typeof message.limit !== 'number' ||
+        !Number.isFinite(message.limit) ||
+        message.limit <= 0
+      ) {
+        reply({ ok: false, error: 'Could not load shared trails: bad request' })
+        return
+      }
+      fetchRecentServerEvents({
+        domain: message.domain,
+        type: message.eventType,
+        limit: message.limit,
+      })
+        .then((events) => reply({ ok: true, events }))
+        .catch((error: unknown) =>
+          reply({
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Could not load shared trails',
+          }),
+        )
       return true
     }
 
