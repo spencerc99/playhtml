@@ -7,3 +7,6 @@ SUPABASE_SECRET_KEY=your-secret-key-here
 ADMIN_KEY=your-admin-key-here
 RESEND_API_KEY=your-resend-api-key-here
 CODA_API_TOKEN=your-coda-api-token-here
+
+# Optional: TypeSafe Jev key. When set, the site categorizer asks Jev instead of Clef.
+JEV_TOKEN=your-jev-key

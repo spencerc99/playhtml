@@ -1,0 +1,26 @@
+---
+// ABOUTME: The header's wordmark, inline site nav, and the menu the nav folds into on narrower
+// ABOUTME: screens. Shared by the docs header and the /play editor header.
+import SiteNavLinks from "./SiteNavLinks.astro";
+---
+
+<a class="ph-header__wordmark" href="/" aria-label="playhtml home" translate="no"
+  >playhtml</a
+>
+<nav class="ph-header__nav" aria-label="Site">
+  <SiteNavLinks />
+</nav>
+<details class="ph-header__menu">
+  <summary aria-label="Site menu">
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path
+        d="M3 5h14M3 10h14M3 15h14"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"></path>
+    </svg>
+  </summary>
+  <nav class="ph-header__menu-panel" aria-label="Site menu">
+    <SiteNavLinks />
+  </nav>
+</details>

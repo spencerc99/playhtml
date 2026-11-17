@@ -13,7 +13,7 @@ export const siteNavLinks: SiteNavLink[] = [
   { key: "docs", label: "docs", href: "/docs/" },
   { key: "examples", label: "examples", href: "/docs/examples/" },
   { key: "gallery", label: "gallery", href: "/gallery/" },
-  { key: "events", label: "events", href: "/events/walking-together/" },
+  { key: "events", label: "events", href: "/events/" },
   {
     key: "wwo",
     label: "we were online",

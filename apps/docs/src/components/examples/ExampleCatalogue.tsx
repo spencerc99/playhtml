@@ -16,55 +16,9 @@ type ExampleCatalogueProps = {
   examples: readonly CatalogueExampleSummary[];
 };
 
-// With no search, examples preview whole rows; "Show all" expands in place.
-const EXAMPLE_PREVIEW_ROWS = 2;
-// The docs show only the newest sites. Everything else is in the gallery.
-const NEWEST_SITES_SHOWN = 4;
+// A scrolling ribbon of the newest sites. Everything else is in the gallery.
+const NEWEST_SITES_SHOWN = 10;
 const GALLERY_URL = "https://playhtml.fun/gallery/";
-
-// Counts the columns the responsive card grid currently resolves to, so a
-// preview can fill whole rows at any width.
-function useGridColumns(grid: HTMLElement | null): number {
-  const [columns, setColumns] = useState(1);
-
-  useEffect(() => {
-    if (!grid) return;
-
-    const measure = () => {
-      const template = getComputedStyle(grid).gridTemplateColumns;
-      const count = template.split(" ").filter(Boolean).length;
-      setColumns(Math.max(1, count));
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(grid);
-    return () => observer.disconnect();
-  }, [grid]);
-
-  return columns;
-}
-
-function ShowAllButton({
-  expanded,
-  total,
-  onToggle,
-}: {
-  expanded: boolean;
-  total: number;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={styles.showAll}
-      aria-expanded={expanded}
-      onClick={onToggle}
-    >
-      {expanded ? "Show less" : `Show all ${total}`}
-      {!expanded && <ArrowIcon />}
-    </button>
-  );
-}
 
 function SearchIcon() {
   return (
@@ -138,48 +92,33 @@ function ExampleCard({ example }: { example: CatalogueExampleSummary }) {
   );
 }
 
-function SiteCard({ site }: { site: SiteSummary }) {
+// One screenshot in the "Made with playhtml" ribbon; links to the site.
+function SiteThumb({ site }: { site: SiteSummary }) {
   return (
-    <article className={styles.card} data-source="site">
-      <div className={styles.siteMedia}>
+    <a
+      className={styles.ribbonItem}
+      data-source="site"
+      href={site.href}
+      target="_blank"
+      rel="noreferrer"
+    >
+      <span className={styles.ribbonShot}>
         {site.imageUrl ? (
           <img
             src={site.imageUrl}
-            alt={site.imageAlt ?? ""}
+            alt={site.imageAlt ?? `Screenshot of ${site.title}`}
             loading="lazy"
             referrerPolicy="no-referrer"
           />
         ) : (
-          <span className={styles.sitePlaceholder}>{site.hostname}</span>
+          <span className={styles.ribbonPlaceholder}>{site.hostname}</span>
         )}
-      </div>
-
-      <div className={styles.cardBody}>
-        <div className={styles.cardMeta}>
-          <span className={`${styles.sourceBadge} ${styles.siteBadge}`}>
-            Site
-          </span>
-          <span className={styles.hostname}>{site.hostname}</span>
-        </div>
-        <h2 className={styles.cardTitle}>{site.title}</h2>
-        {site.author && <p className={styles.author}>by {site.author}</p>}
-        {site.description && (
-          <p className={styles.cardDescription}>{site.description}</p>
-        )}
-      </div>
-
-      <div className={styles.cardActions}>
-        <a
-          className={`${styles.primaryAction} sl-link-button primary`}
-          href={site.href}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Visit site
-          <ExternalIcon />
-        </a>
-      </div>
-    </article>
+      </span>
+      <span className={styles.ribbonTitle}>{site.title}</span>
+      {site.author && (
+        <span className={styles.ribbonAuthor}>by {site.author}</span>
+      )}
+    </a>
   );
 }
 
@@ -189,10 +128,6 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
   const [sitesState, setSitesState] = useState<"loading" | "loaded" | "failed">(
     "loading",
   );
-  const [examplesExpanded, setExamplesExpanded] = useState(false);
-  // Callback ref, since the grid mounts only once its results exist.
-  const [examplesGrid, setExamplesGrid] = useState<HTMLDivElement | null>(null);
-  const exampleColumns = useGridColumns(examplesGrid);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -231,15 +166,7 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
     () => filterExamples(examples, query),
     [examples, query],
   );
-  const isPreview = query.trim() === "";
-  const newestSites = isPreview ? sites.slice(0, NEWEST_SITES_SHOWN) : [];
-  const examplePreviewCount = exampleColumns * EXAMPLE_PREVIEW_ROWS;
-  const examplesCollapsible =
-    isPreview && visibleExamples.length > examplePreviewCount;
-  const shownExamples =
-    examplesCollapsible && !examplesExpanded
-      ? visibleExamples.slice(0, examplePreviewCount)
-      : visibleExamples;
+  const newestSites = sites.slice(0, NEWEST_SITES_SHOWN);
   const showEmptyState = visibleExamples.length === 0;
 
   return (
@@ -247,6 +174,25 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
       className={`${styles.catalogue} not-content`}
       aria-label="Examples catalogue"
     >
+      {sitesState === "loaded" && newestSites.length > 0 && (
+        <section className={styles.ribbon} aria-labelledby="sites-heading">
+          <div className={styles.groupHeader}>
+            <h2 id="sites-heading" className={styles.groupTitle}>
+              Made with playhtml
+            </h2>
+            <a className={styles.showAll} href={GALLERY_URL}>
+              From the gallery
+              <ArrowIcon />
+            </a>
+          </div>
+          <div className={styles.ribbonRow}>
+            {newestSites.map((site) => (
+              <SiteThumb key={site.id} site={site} />
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className={styles.controls}>
         <label className={styles.searchLabel}>
           <span>Search examples</span>
@@ -263,40 +209,7 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
         </label>
       </div>
 
-      <p className={styles.resultCount} aria-live="polite">
-        {visibleExamples.length}{" "}
-        {visibleExamples.length === 1 ? "example" : "examples"}
-      </p>
-
       <div id="examples-catalogue-results" className={styles.resultGroups}>
-        {isPreview && sitesState !== "failed" && (
-          <section
-            className={styles.resultGroup}
-            aria-labelledby="sites-heading"
-          >
-            <div className={styles.groupHeader}>
-              <h2 id="sites-heading" className={styles.groupTitle}>
-                Newest community sites
-              </h2>
-              <a className={styles.showAll} href={GALLERY_URL}>
-                See all in the gallery
-                <ArrowIcon />
-              </a>
-            </div>
-            {sitesState === "loading" ? (
-              <p className={styles.sitesStatus} role="status">
-                Loading sites…
-              </p>
-            ) : (
-              <div className={styles.cardGrid}>
-                {newestSites.map((site) => (
-                  <SiteCard key={site.id} site={site} />
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
         {visibleExamples.length > 0 && (
           <section
             className={styles.resultGroup}
@@ -306,16 +219,13 @@ export function ExampleCatalogue({ examples }: ExampleCatalogueProps) {
               <h2 id="examples-heading" className={styles.groupTitle}>
                 Examples
               </h2>
-              {examplesCollapsible && (
-                <ShowAllButton
-                  expanded={examplesExpanded}
-                  total={visibleExamples.length}
-                  onToggle={() => setExamplesExpanded((value) => !value)}
-                />
-              )}
+              <p className={styles.resultCount} aria-live="polite">
+                {visibleExamples.length}{" "}
+                {visibleExamples.length === 1 ? "example" : "examples"}
+              </p>
             </div>
-            <div ref={setExamplesGrid} className={styles.cardGrid}>
-              {shownExamples.map((example) => (
+            <div className={styles.cardGrid}>
+              {visibleExamples.map((example) => (
                 <ExampleCard key={example.id} example={example} />
               ))}
             </div>

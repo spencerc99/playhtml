@@ -1399,6 +1399,14 @@ function handleMainProviderSync(connected: boolean): void {
 }
 
 function queueServerRoomReset(resetEpoch: number): void {
+  if (!roomResetPromise) {
+    // Drop the old provider before anything awaits and before the new epoch is
+    // stored. The server closes every socket right after sending room-reset,
+    // and the old provider would otherwise reconnect on its own with the old
+    // doc (all its pre-reset history) and the new epoch, so the server admits
+    // it and the deleted history merges straight back into the compacted room.
+    teardownMainProvider();
+  }
   storeResetEpochForRoom(__currentRoomId, resetEpoch);
 
   if (roomResetPromise) {
@@ -1810,7 +1818,7 @@ async function initPlayHTMLOnce() {
   // Import default styles
   const playStyles = document.createElement("link");
   playStyles.rel = "stylesheet";
-  playStyles.href = "https://unpkg.com/playhtml@latest/dist/style.css";
+  playStyles.href = "https://cdn.jsdelivr.net/npm/playhtml/dist/style.css";
   document.head.appendChild(playStyles);
 
   if (configuredOptions?.developmentMode) {
@@ -2036,6 +2044,12 @@ function createPlayElementData<T extends TagType, TData = any>(
       });
     },
     onAwarenessChange: (elementAwarenessData) => {
+      // `undefined` can't travel as JSON, so treat it as "no presence here" and
+      // drop the entry instead of publishing an empty slot for this element.
+      if (elementAwarenessData === undefined) {
+        elementAwarenessClient?.removeLocalAwareness(tag, elementId);
+        return;
+      }
       elementAwarenessClient?.setLocalAwareness(
         tag,
         elementId,

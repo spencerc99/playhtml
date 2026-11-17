@@ -91,8 +91,8 @@ export function matchesScrapFilters(
     )
   )
     return false;
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return true;
+  const { words, phrases } = parseScrapSearch(query);
+  if (words.length === 0 && phrases.length === 0) return true;
   const text = [
     ...locations.flatMap((source) => [
       source.pageTitle,
@@ -107,7 +107,49 @@ export function matchesScrapFilters(
   ]
     .join(" ")
     .toLowerCase();
-  return words.every((word) => text.includes(word));
+  return (
+    words.every((word) => text.includes(word)) &&
+    phrases.every((phrase) => containsWholePhrase(text, phrase))
+  );
+}
+
+/**
+ * A search split into loose words, which match anywhere ("eye" finds
+ * "monkey"), and quoted phrases, which match only as whole words ("\"eye\""
+ * finds "an eye" but not "eyeliner"). A quote still being typed counts as
+ * closed at the end.
+ */
+export function parseScrapSearch(search: string): {
+  words: string[];
+  phrases: string[];
+} {
+  const phrases: string[] = [];
+  const rest = search
+    .toLowerCase()
+    // Typed quotes often arrive curly, from a phone or a Mac's smart quotes.
+    .replace(/[\u201c\u201d\u201e]/g, '"')
+    .replace(/"([^"]*)("|$)/g, (_, phrase: string) => {
+      const trimmed = phrase.trim().replace(/\s+/g, " ");
+      if (trimmed) phrases.push(trimmed);
+      return " ";
+    });
+  return { words: rest.split(/\s+/).filter(Boolean), phrases };
+}
+
+/** Whether the search asks for an exact match anywhere, with quotes. */
+export function hasExactScrapSearch(search: string): boolean {
+  return parseScrapSearch(search).phrases.length > 0;
+}
+
+function containsWholePhrase(text: string, phrase: string): boolean {
+  const pattern = phrase
+    .split(" ")
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s+");
+  return new RegExp(
+    `(?<![\\p{L}\\p{N}])${pattern}(?![\\p{L}\\p{N}])`,
+    "u",
+  ).test(text);
 }
 
 /**

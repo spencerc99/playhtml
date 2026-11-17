@@ -21,6 +21,14 @@ import {
   supportsSharedCollection,
 } from '../collectors/modes'
 import {
+  SITE_SETTINGS_KEY,
+  normalizeSiteHost,
+  parseSiteSettings,
+  siteCovers,
+  siteLevelFor,
+} from '../storage/siteSettings'
+import { deleteSiteEventsFromServer } from '../storage/siteDelete'
+import {
   ensurePlayerIdentity,
   getPlayerProfile,
   getPublicPlayerIdentity,
@@ -323,10 +331,15 @@ async function flushPendingUploads(): Promise<void> {
 
     const types = Array.from(new Set(pending.map((e) => e.type)))
     const keys = types.map((t) => collectionModeStorageKey(t))
-    const result = await browser.storage.local.get(keys)
+    const result = await browser.storage.local.get([...keys, SITE_SETTINGS_KEY])
 
+    const siteSettings = parseSiteSettings(result[SITE_SETTINGS_KEY])
     const uploadable = pending.filter((e) => {
       if (!supportsSharedCollection(e.type)) return false
+      // Sites set to "just me" (or off) keep their events on this device.
+      if (siteLevelFor(siteSettings, e.meta?.url ?? '') !== 'everyone') {
+        return false
+      }
       const mode = normalizeCollectionMode(
         e.type,
         result[collectionModeStorageKey(e.type)],
@@ -1310,6 +1323,49 @@ export default defineBackground(() => {
           reply({ success: true })
         } catch (e) {
           console.error('[Background] FINISH_IMPORT error:', e)
+          reply({ success: false, error: String(e) })
+        }
+      })()
+      return true
+    }
+
+    if (message.type === 'DELETE_SITE_DATA') {
+      // Only the extension's own pages may delete history.
+      if (!sender.url?.startsWith(browser.runtime.getURL('/'))) {
+        reply({ success: false, error: 'DELETE_SITE_DATA is only accepted from extension pages' })
+        return true
+      }
+      const host = normalizeSiteHost(String(message.host ?? ''))
+      if (!host) {
+        reply({ success: false, error: 'DELETE_SITE_DATA needs a site' })
+        return true
+      }
+      ;(async () => {
+        try {
+          // Server first: if it fails, the local copy is still there to retry from.
+          let serverDeleted = 0
+          const identity = await getStoredPlayerIdentity()
+          if (identity) {
+            serverDeleted = await deleteSiteEventsFromServer(
+              {
+                publicKey: identity.public.publicKey,
+                privateKey: identity.privateKey,
+              },
+              host,
+            )
+          }
+          const { deleted, scrapIds } = await store.deleteEventsForSite(
+            (domain) => siteCovers(host, domain),
+          )
+          if (scrapIds.length > 0) {
+            await recordScrapDeletions(scrapIds).catch((e) =>
+              console.warn('[Background] could not record scrap deletions:', e),
+            )
+            runDeviceSyncPass().catch(() => {})
+          }
+          reply({ success: true, localDeleted: deleted, serverDeleted })
+        } catch (e) {
+          console.error('[Background] DELETE_SITE_DATA error:', e)
           reply({ success: false, error: String(e) })
         }
       })()

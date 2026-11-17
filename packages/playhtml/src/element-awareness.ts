@@ -72,6 +72,7 @@ export class ElementAwarenessClient {
   private onAwarenessChange:
     ElementAwarenessClientOptions["onAwarenessChange"];
   private localTags = new Map<string, Record<string, unknown>>();
+  private lastOverflowWarning: string | null = null;
   private currentAwareness: ElementAwarenessMap = new Map();
   private publishedChannels = new Set<string>();
   // Shard channels whose clear may not have reached the server yet. A dropped
@@ -261,12 +262,20 @@ export class ElementAwarenessClient {
       const droppedTags = collectShardTags(
         allShards.slice(MAX_ELEMENT_PRESENCE_SHARDS),
       );
-      console.error(
-        `[playhtml] Element awareness exceeded ${MAX_ELEMENT_PRESENCE_SHARDS} shards ` +
-          `(~${MAX_ELEMENT_PRESENCE_SHARDS * MAX_PRESENCE_VALUE_BYTES} bytes); ` +
-          `dropping overflow so under-budget elements keep syncing. ` +
-          `Affected tags: ${droppedTags.join(", ")}.`,
-      );
+      // Log once per set of dropped tags: this runs on every publish (each
+      // hover), so an unconditional log floods the console.
+      const overflowKey = droppedTags.join(",");
+      if (overflowKey !== this.lastOverflowWarning) {
+        this.lastOverflowWarning = overflowKey;
+        console.error(
+          `[playhtml] Element awareness exceeded ${MAX_ELEMENT_PRESENCE_SHARDS} shards ` +
+            `(~${MAX_ELEMENT_PRESENCE_SHARDS * MAX_PRESENCE_VALUE_BYTES} bytes); ` +
+            `dropping overflow so under-budget elements keep syncing. ` +
+            `Affected tags: ${droppedTags.join(", ")}.`,
+        );
+      }
+    } else {
+      this.lastOverflowWarning = null;
     }
 
     for (let i = 0; i < shards.length; i += 1) {

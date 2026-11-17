@@ -53,9 +53,15 @@ interface TextState {
 
 export const canMirrorInitializer: ElementInitializer<ElementState> = {
   defaultData: (element: HTMLElement) => constructInitialState(element),
-  myDefaultAwareness: { hover: false, focus: false },
   onMount: ({ getElement, setData, setMyAwareness }) => {
     const element = getElement();
+
+    // Publish presence only while this visitor is hovering or focused. An idle
+    // element sends nothing (peers treat a missing entry as idle), so pages with
+    // hundreds of mirrored elements don't fill the element presence budget.
+    const publishInteraction = (hover: boolean, focus: boolean) => {
+      setMyAwareness(hover || focus ? { hover, focus } : undefined);
+    };
 
     const setDataAny = setData as unknown as (data: any) => void;
 
@@ -85,58 +91,64 @@ export const canMirrorInitializer: ElementInitializer<ElementState> = {
     // TODO: auto-duplicate :hover CSS rules to [data-playhtml-hover] via CSSOM
     // so users don't need to manually rewrite their hover styles.
     element.addEventListener("mouseenter", () => {
-      setMyAwareness({ hover: true, focus: element.hasAttribute("data-playhtml-focus") });
+      publishInteraction(true, element.hasAttribute("data-playhtml-focus"));
       element.setAttribute("data-playhtml-hover", "");
     });
     element.addEventListener("mouseleave", () => {
-      setMyAwareness({ hover: false, focus: element.hasAttribute("data-playhtml-focus") });
+      publishInteraction(false, element.hasAttribute("data-playhtml-focus"));
       element.removeAttribute("data-playhtml-hover");
     });
 
     // Sync :focus via awareness (ephemeral, per-user).
     element.addEventListener("focusin", () => {
-      setMyAwareness({ hover: element.hasAttribute("data-playhtml-hover"), focus: true });
+      publishInteraction(element.hasAttribute("data-playhtml-hover"), true);
       element.setAttribute("data-playhtml-focus", "");
     });
     element.addEventListener("focusout", () => {
-      setMyAwareness({ hover: element.hasAttribute("data-playhtml-hover"), focus: false });
+      publishInteraction(element.hasAttribute("data-playhtml-hover"), false);
       element.removeAttribute("data-playhtml-focus");
     });
 
     // Sync form element internal state (checked, value, selectedIndex).
     // These IDL properties don't trigger attribute mutations, so we listen
-    // for input/change events and push a full state snapshot.
-    const syncFormStateRecursive = (
-      currentState: HTMLElementState,
-      draft: any
-    ) => {
-      if (currentState.formState) {
-        draft.formState = currentState.formState;
-      }
-      if (currentState.children && draft.children) {
-        for (let i = 0; i < currentState.children.length; i++) {
-          const childState = currentState.children[i];
-          if (
-            childState.nodeType === NodeType.HTMLElement &&
-            draft.children[i]
-          ) {
-            syncFormStateRecursive(
-              childState as HTMLElementState,
-              draft.children[i]
-            );
-          }
+    // for input/change events. Contenteditable typing also lands here, since
+    // the observer doesn't watch the subtree. Reconcile against a fresh
+    // snapshot and write only what differs: replacing the whole subtree on
+    // every keystroke re-sent (and permanently stored) every sibling.
+    const syncInputState = (event: Event) => {
+      // Fast path: a form control changed. Write just its form state, found by
+      // its position, without snapshotting the whole element on every key.
+      // Radios take the full path: checking one silently unchecks the others
+      // in its group (no event fires on them), so their entries must update too.
+      const target = event.target;
+      if (
+        (target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement ||
+          target instanceof HTMLSelectElement) &&
+        !target.isContentEditable &&
+        !(target instanceof HTMLInputElement && target.type === "radio")
+      ) {
+        const path = getMirroredPath(element, target);
+        const formState = captureFormState(target as HTMLElement);
+        if (path && formState) {
+          let applied = false;
+          setDataAny((draft: any) => {
+            const node = getStateAtPath(draft, path);
+            if (
+              node &&
+              isHTMLElementState(node) &&
+              node.tagName === target.tagName.toLowerCase()
+            ) {
+              reconcileFormStateInPlace(node, formState);
+              applied = true;
+            }
+          });
+          if (applied) return;
         }
       }
-    };
-    const syncInputState = () => {
+      const current = constructInitialState(element);
       setDataAny((draft: any) => {
-        const current = constructInitialState(element) as HTMLElementState;
-        syncFormStateRecursive(current, draft);
-        // Also sync children for contenteditable elements where browser input
-        // behavior can coalesce text and child changes into a single event.
-        if (current.children) {
-          draft.children.splice(0, draft.children.length, ...current.children);
-        }
+        reconcileStateInPlace(draft, current);
       });
     };
     element.addEventListener("input", syncInputState);
@@ -259,12 +271,18 @@ function applyMutationsInPlace(
   state: ElementState,
   mutations: MutationRecord[]
 ): void {
+  // updateChildList resyncs a target's whole child list from the live DOM, so
+  // one pass per target covers every childList record for it. Running it per
+  // record made bulk edits quadratic (200 appends took about a second).
+  const childListTargets = new Set<Node>();
   mutations.forEach((mutation) => {
     switch (mutation.type) {
       case "attributes":
         updateAttributes(state, mutation);
         break;
       case "childList":
+        if (childListTargets.has(mutation.target)) break;
+        childListTargets.add(mutation.target);
         updateChildList(state, mutation);
         break;
       case "characterData":
@@ -323,13 +341,150 @@ function updateChildList(state: ElementState, mutation: MutationRecord) {
     }
   });
   const mirroredCurrentChildren = getMirroredChildStates(state.children);
-  if (
-    mirroredCurrentChildren.length === state.children.length &&
-    areChildStatesEqual(mirroredCurrentChildren, newChildren)
-  ) {
+  if (mirroredCurrentChildren.length !== state.children.length) {
+    // Local-only entries slipped into shared state; rewrite from the DOM.
+    state.children.splice(0, state.children.length, ...newChildren);
     return;
   }
-  state.children.splice(0, state.children.length, ...newChildren);
+  reconcileChildrenInPlace(state.children, newChildren);
+}
+
+// --- Minimal in-place writes (Yjs proxy compatible) ---
+
+function canReconcileInPlace(a: ElementState, b: ElementState): boolean {
+  if (a.nodeType !== b.nodeType) return false;
+  if (isHTMLElementState(a) && isHTMLElementState(b)) {
+    return a.tagName === b.tagName;
+  }
+  return true;
+}
+
+/**
+ * Brings `draft` (a shared-state proxy) in line with `next`, writing only the
+ * fields that differ. Each write becomes a sync message and stays in the
+ * room's saved history, so rewriting unchanged siblings is expensive.
+ */
+function reconcileStateInPlace(draft: ElementState, next: ElementState): void {
+  if (draft.nodeType === NodeType.Text && next.nodeType === NodeType.Text) {
+    if (draft.textContent !== next.textContent) {
+      draft.textContent = next.textContent;
+    }
+    return;
+  }
+  if (!isHTMLElementState(draft) || !isHTMLElementState(next)) return;
+
+  for (const [name, value] of Object.entries(next.attributes)) {
+    if (draft.attributes[name] !== value) draft.attributes[name] = value;
+  }
+  for (const name of Object.keys(draft.attributes)) {
+    if (!(name in next.attributes)) delete draft.attributes[name];
+  }
+
+  reconcileFormStateInPlace(draft, next.formState);
+  reconcileChildrenInPlace(draft.children, next.children);
+}
+
+function reconcileFormStateInPlace(
+  draft: HTMLElementState,
+  next: HTMLElementState["formState"],
+): void {
+  if (!next) {
+    if (draft.formState) delete draft.formState;
+    return;
+  }
+  if (!draft.formState) {
+    draft.formState = { ...next };
+    return;
+  }
+  const fields = ["checked", "value", "selectedIndex"] as const;
+  for (const field of fields) {
+    const value = next[field];
+    if (value === undefined) {
+      if (field in draft.formState) delete draft.formState[field];
+    } else if (draft.formState[field] !== value) {
+      (draft.formState as Record<string, unknown>)[field] = value;
+    }
+  }
+}
+
+/** Child indexes (among mirrored nodes) from `root` down to `target`. */
+function getMirroredPath(root: HTMLElement, target: Node): number[] | null {
+  const path: number[] = [];
+  let node: Node = target;
+  while (node !== root) {
+    const parent = node.parentNode;
+    if (!parent || !isMirroredNode(node)) return null;
+    let index = 0;
+    for (const sibling of Array.from(parent.childNodes)) {
+      if (sibling === node) break;
+      if (isMirroredNode(sibling)) index += 1;
+    }
+    path.unshift(index);
+    node = parent;
+  }
+  return path;
+}
+
+function getStateAtPath(
+  state: ElementState,
+  path: number[],
+): ElementState | undefined {
+  let node: ElementState | undefined = state;
+  for (const index of path) {
+    if (!node || !isHTMLElementState(node)) return undefined;
+    node = node.children[index];
+  }
+  return node;
+}
+
+/**
+ * Updates a shared children array to match `next`: unchanged children at the
+ * start and end are left alone, same-kind children in the changed middle are
+ * updated in place, and only the rest is spliced. Appending one item to a
+ * long list then sends one item, not the whole list.
+ */
+function reconcileChildrenInPlace(
+  children: ElementState[],
+  next: ElementState[],
+): void {
+  let start = 0;
+  while (
+    start < children.length &&
+    start < next.length &&
+    areStatesEqual(children[start], next[start])
+  ) {
+    start += 1;
+  }
+  let endOld = children.length;
+  let endNew = next.length;
+  while (
+    endOld > start &&
+    endNew > start &&
+    areStatesEqual(children[endOld - 1], next[endNew - 1])
+  ) {
+    endOld -= 1;
+    endNew -= 1;
+  }
+  if (start === endOld && start === endNew) return;
+
+  const oldCount = endOld - start;
+  const newCount = endNew - start;
+  if (oldCount === newCount) {
+    let allInPlace = true;
+    for (let i = 0; i < oldCount; i++) {
+      if (!canReconcileInPlace(children[start + i], next[start + i])) {
+        allInPlace = false;
+        break;
+      }
+    }
+    if (allInPlace) {
+      for (let i = 0; i < oldCount; i++) {
+        reconcileStateInPlace(children[start + i], next[start + i]);
+      }
+      return;
+    }
+  }
+  children.splice(start, oldCount, ...next.slice(start, endNew));
 }
 
 function updateCharacterData(state: ElementState, mutation: MutationRecord) {
@@ -377,18 +532,6 @@ function isLocalElementState(state: ElementState): boolean {
 
 function getMirroredChildStates(children: ElementState[]): ElementState[] {
   return children.filter((child) => !isLocalElementState(child));
-}
-
-function areChildStatesEqual(
-  children1: ElementState[],
-  children2: ElementState[],
-): boolean {
-  if (children1.length !== children2.length) {
-    return false;
-  }
-  return children1.every((child, index) =>
-    areStatesEqual(child, children2[index])
-  );
 }
 
 interface MirrorContext {

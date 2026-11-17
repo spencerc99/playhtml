@@ -32,6 +32,8 @@
   "main": "./dist/playhtml.es.js",
   "types": "./dist/main.d.ts",
   "module": "./dist/playhtml.es.js",
+  "unpkg": "./dist/playhtml.browser.js",
+  "jsdelivr": "./dist/playhtml.browser.js",
   "homepage": "https://playhtml.fun",
   "files": [
     "dist",
@@ -52,7 +54,7 @@
     }
   },
   "scripts": {
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && vite build -c vite.browser.config.ts",
     "test": "vitest run --no-typecheck",
     "test:watch": "vitest --no-typecheck"
   },

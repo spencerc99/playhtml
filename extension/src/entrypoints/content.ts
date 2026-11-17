@@ -46,6 +46,7 @@ import {
 } from "../features/sessionScraps/sessionScrapsBridge";
 import { watchInstallationContent } from "./content/installationContent";
 import { MILESTONE_TOASTS_ENABLED_KEY } from "../milestones/state";
+import { getSiteLevel, watchSiteLevel } from "../storage/siteSettings";
 
 // Scraps are local-only, so normalize any unsupported stored mode before the
 // collector starts.
@@ -111,11 +112,14 @@ export default defineContentScript({
             ? presenceIdentity
             : undefined;
 
-          // Notify background about site discovery
-          await browser.runtime.sendMessage({
-            type: "UPDATE_SITE_DISCOVERY",
-            domain: window.location.hostname,
-          });
+          // Notify background about site discovery, unless the person
+          // turned this site off.
+          if ((await getSiteLevel(window.location.hostname)) !== "off") {
+            await browser.runtime.sendMessage({
+              type: "UPDATE_SITE_DISCOVERY",
+              domain: window.location.hostname,
+            });
+          }
 
           // Check if page already has PlayHTML
           this.detectExistingPlayHTML();
@@ -1400,6 +1404,15 @@ export default defineContentScript({
           collectorManager.registerCollector(scrapCollector);
           watchScrapsDebugOverlay(scrapCollector);
         }
+
+        // A site the person turned off starts nothing, so check before init.
+        const manager = collectorManager;
+        await manager.setSiteOff(
+          (await getSiteLevel(window.location.hostname)) === "off",
+        );
+        watchSiteLevel(window.location.hostname, (level) => {
+          void manager.setSiteOff(level === "off").catch(console.error);
+        });
 
         // Initialize manager (loads saved enabled state)
         await collectorManager.init();

@@ -828,6 +828,45 @@ describe("LocalEventStore aggregates", () => {
   });
 });
 
+describe("LocalEventStore site deletion", () => {
+  function on(id: string, type: CollectionEvent["type"], url: string) {
+    const base = contentScriptEvent(id, type);
+    return { ...base, meta: { ...base.meta, url } };
+  }
+
+  it("deletes a site's events and its subdomains, keeps others, and recounts stats", async () => {
+    const store = createStore();
+    await store.addEvents([
+      on("a", "navigation", "https://www.chase.com/home"),
+      on("b", "cursor", "https://secure.chase.com/login"),
+      on("c", "element", "https://chase.com/offers"),
+      on("d", "cursor", "https://notchase.com/"),
+      on("e", "navigation", "https://example.com/page"),
+    ]);
+    expect((await store.getAllDomains()).map((d) => d.domain).sort()).toEqual(
+      ["chase.com", "example.com", "notchase.com", "secure.chase.com"],
+    );
+
+    const { siteCovers } = await import("../storage/siteSettings");
+    const result = await store.deleteEventsForSite((domain) =>
+      siteCovers("chase.com", domain),
+    );
+
+    expect(result).toEqual({ deleted: 3, scrapIds: ["c"] });
+    expect((await store.getAllEvents()).map((e) => e.id).sort()).toEqual([
+      "d",
+      "e",
+    ]);
+    expect((await store.getAllDomains()).map((d) => d.domain).sort()).toEqual(
+      ["example.com", "notchase.com"],
+    );
+    expect((await store.getGlobalStats())?.eventsByType).toEqual(
+      expect.objectContaining({ cursor: 1, navigation: 1 }),
+    );
+    expect((await store.getGlobalStats())?.eventsByType.element ?? 0).toBe(0);
+  });
+});
+
 describe("LocalEventStore walking record events", () => {
   it("derives screen time while reading walking-record events", async () => {
     const store = createStore();

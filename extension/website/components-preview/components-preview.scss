@@ -1,26 +1,30 @@
 /* ABOUTME: Styles for the portrait card design directions preview page */
 /* ABOUTME: Light paper palette matching the extension popup */
 
-@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,200;0,400;1,200;1,400&family=Lora:ital,wght@0,600;0,700;1,400&family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;500&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,200;0,400;1,200;1,400&family=Lora:ital,wght@0,600;0,700;1,400&family=Atkinson+Hyperlegible:wght@400;700&family=Martian+Mono:wght@400;500&display=swap");
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
 body {
   background: #faf7f2;
   color: #3d3833;
-  font-family: 'Atkinson Hyperlegible', sans-serif;
+  font-family: "Atkinson Hyperlegible", sans-serif;
   min-height: 100vh;
   padding: 48px 32px 80px;
 }
 
 .page-header {
   margin-bottom: 56px;
-  border-bottom: 1px solid rgba(90,78,65,0.12);
+  border-bottom: 1px solid rgba(90, 78, 65, 0.12);
   padding-bottom: 24px;
 }
 
 .page-title {
-  font-family: 'Source Serif 4', Georgia, serif;
+  font-family: "Source Serif 4", Georgia, serif;
   font-style: italic;
   font-weight: 200;
   font-size: 28px;
@@ -62,20 +66,27 @@ body {
 
 .sidebar-nav__link {
   display: block;
-  font-family: 'Martian Mono', monospace;
+  font-family: "Martian Mono", monospace;
   font-size: 10px;
   letter-spacing: 0.08em;
   color: #b5aea5;
   text-decoration: none;
   padding: 5px 8px;
   border-left: 2px solid transparent;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 
-  &:hover { color: #8a8279; }
-  &--active { color: #3d3833; border-left-color: #4a9a8a; }
+  &:hover {
+    color: #8a8279;
+  }
+  &--active {
+    color: #3d3833;
+    border-left-color: #4a9a8a;
+  }
 }
 
 .page-main {
@@ -101,7 +112,7 @@ body {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #b5aea5;
-  font-family: 'Martian Mono', monospace;
+  font-family: "Martian Mono", monospace;
 }
 
 .variant-name {
@@ -124,7 +135,10 @@ body {
   }
 }
 
-.wiki-excerpt a { color: #0645ad; text-decoration: none; }
+.wiki-excerpt a {
+  color: #0645ad;
+  text-decoration: none;
+}
 
 /* Mock popup frames — approximate the 350px extension popup around PopupNav */
 .popup-variants {
@@ -141,7 +155,7 @@ body {
 }
 
 .popup-variant__label {
-  font-family: 'Lora', Georgia, serif;
+  font-family: "Lora", Georgia, serif;
   font-weight: 600;
   font-size: 15px;
   color: #3d3833;
@@ -157,7 +171,7 @@ body {
 }
 
 .popup-frame__count {
-  font-family: 'Martian Mono', monospace;
+  font-family: "Martian Mono", monospace;
   font-size: 9px;
   color: #b5aea5;
   margin-bottom: 8px;
@@ -197,7 +211,7 @@ body {
 }
 
 .popup-frame__wordmark {
-  font-family: 'Source Serif 4', Georgia, serif;
+  font-family: "Source Serif 4", Georgia, serif;
   font-style: italic;
   font-weight: 200;
   font-size: 18px;
@@ -218,7 +232,7 @@ body {
   justify-content: center;
   border: 1px dashed rgba(90, 78, 65, 0.25);
   border-radius: 8px;
-  font-family: 'Martian Mono', monospace;
+  font-family: "Martian Mono", monospace;
   font-size: 10px;
   color: #b5aea5;
 }
@@ -232,5 +246,78 @@ body {
   .variants-grid {
     grid-template-columns: 1fr;
   }
-  .sidebar-nav { display: none; }
+  .sidebar-nav {
+    display: none;
+  }
+}
+
+/* Site privacy playground */
+.site-privacy-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+  max-width: 1200px;
+  padding: 0 40px 40px;
+}
+
+.site-privacy-preview__sites {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+
+.site-privacy-preview__site {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(90, 78, 65, 0.25);
+  border-radius: 999px;
+  background: #faf7f2;
+  color: #6f675f;
+  font:
+    12px "Martian Mono",
+    monospace;
+  cursor: pointer;
+
+  &--on {
+    border-color: #3d3833;
+    background: #3d3833;
+    color: #faf7f2;
+  }
+}
+
+.site-privacy-preview__popup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.site-privacy-preview__settings {
+  max-width: 640px;
+}
+
+.site-privacy-preview__reset {
+  margin-top: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #6f675f;
+  font:
+    11px "Martian Mono",
+    monospace;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  .site-privacy-preview {
+    padding: 0 0 32px;
+  }
+
+  .site-privacy-preview__popup {
+    width: 100%;
+    max-width: 350px;
+    box-sizing: border-box;
+    padding: 12px;
+  }
 }

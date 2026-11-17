@@ -18,6 +18,8 @@
     "setup:agent": "bun run setup && bunx playwright install --with-deps chromium",
     "doctor": "node scripts/check-workspace-readiness.mjs",
     "test:doctor": "node --test scripts/check-workspace-readiness.test.mjs",
+    "contributors": "node scripts/update-contributors.mjs --write",
+    "test:contributors": "node --test scripts/update-contributors.test.mjs",
     "dev": "vite --config vite.config.site.mts",
     "dev-docs": "cd apps/docs && bun run dev",
     "dev-server": "bunx wrangler dev --config partykit/wrangler.jsonc --port ${PLAYHTML_PARTYKIT_PORT:-1999}",

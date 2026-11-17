@@ -108,6 +108,47 @@ describe("Collector Integration", () => {
     });
   });
 
+  describe("site turned off", () => {
+    it("starts nothing when the site is off before init, and keeps saved modes", async () => {
+      storageData.collection_mode_cursor = "shared";
+      storageData.collection_mode_navigation = "local";
+      const cursorCollector = new CursorCollector();
+      const navigationCollector = new NavigationCollector();
+      manager.registerCollector(cursorCollector);
+      manager.registerCollector(navigationCollector);
+
+      await manager.setSiteOff(true);
+      await manager.init();
+
+      expect(cursorCollector.isEnabled()).toBe(false);
+      expect(navigationCollector.isEnabled()).toBe(false);
+      expect(storageData.collection_enabled_collectors).toEqual({
+        cursor: true,
+        navigation: true,
+      });
+
+      // A mode change made elsewhere is saved but does not start collection here.
+      await manager.enableCollector("cursor");
+      expect(cursorCollector.isEnabled()).toBe(false);
+
+      await manager.setSiteOff(false);
+      expect(cursorCollector.isEnabled()).toBe(true);
+      expect(navigationCollector.isEnabled()).toBe(true);
+    });
+
+    it("stops running collectors when the site is turned off", async () => {
+      storageData.collection_mode_cursor = "shared";
+      const cursorCollector = new CursorCollector();
+      manager.registerCollector(cursorCollector);
+      await manager.init();
+      expect(cursorCollector.isEnabled()).toBe(true);
+
+      await manager.setSiteOff(true);
+      expect(cursorCollector.isEnabled()).toBe(false);
+      expect(storageData.collection_enabled_collectors).toEqual({ cursor: true });
+    });
+  });
+
   describe("enable/disable collectors", () => {
     it("enables a collector independently", async () => {
       const cursorCollector = new CursorCollector();

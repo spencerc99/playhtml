@@ -1,6 +1,6 @@
 ---
 title: "Getting started"
-description: "Install playhtml and ship your first live element in under a minute."
+description: "Add playhtml to a page and make your first shared element."
 sidebar:
   order: 1
 ---
@@ -8,28 +8,33 @@ sidebar:
 import { Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
 import { InteractiveToggleDemo } from '@/components/react/InteractiveToggleDemo';
 
-playhtml turns any HTML element into a live, collaborative one with a single attribute. This guide gets you from empty page to a working shared toggle.
+playhtml makes HTML elements live and shared. Add an attribute like `can-toggle` to an element, and when anyone changes it, everyone on the page sees the change. The new state is saved for the next visitor too.
 
-Pick your setup:
+You don't need a backend. Elements sync through a server we run, or you can [run your own](/docs/reference/init-options/#host).
+
+## Try it
+
+This switch is shared with everyone reading this page right now. Flip it.
+
+<InteractiveToggleDemo client:only="react" />
+
+## Make your own
 
 <Tabs syncKey="framework">
   <TabItem label="Vanilla HTML">
 
-There are two paths. Pick the one that matches your project.
-
-### Path A: drop-in script (no build, no module syntax)
-
-The fastest path, with no `import` and no `playhtml.init()` call. Add the script tag at the end of your `<body>`, after your interactive elements:
+Add `can-toggle` and a unique `id` to an element, then add the playhtml script at the end of `<body>`:
 
 ```html
 <body>
   <div id="my-light" class="light" can-toggle></div>
+
   <style>
-    /* can-toggle adds the "toggled" class when it's on */
     .light {
       width: 80px; height: 80px; border-radius: 50%;
       background: gold; filter: brightness(0.4);
     }
+    /* can-toggle adds the "toggled" class when the light is on */
     .light.toggled {
       filter: brightness(1.2) drop-shadow(0 0 24px gold);
     }
@@ -39,75 +44,36 @@ The fastest path, with no `import` and no `playhtml.init()` call. Add the script
 </body>
 ```
 
-Give every interactive element a unique `id`. That's how state is keyed and synced across everyone on the page.
+Open the page in two windows and click the light. It turns on in both.
 
-> Why end-of-body? The drop-in script runs `playhtml.init()` immediately, and `init()` scans the DOM for capability attributes (`can-toggle`, `can-move`, etc.) when it runs. Place it after the elements it should find.
+The `id` is how playhtml tells elements apart, so each one needs its own. The script goes after your elements because it looks for them as soon as it loads.
 
-> Want options like cursors? Use Path B. The drop-in script calls `playhtml.init({})` with no options.
-
-### Path B: import + manual init (when you need options or a bundler)
-
-Reach for this when you want to pass options to `init()` (cursors, custom rooms, etc.) or you're already using a bundler.
-
-**From a CDN, no build step:** put the script at the end of `<body>` so the elements exist when `init()` runs.
+**To pass options**, like showing everyone's cursors, import playhtml and call `init()` yourself instead of using the script tag above:
 
 ```html
-<body>
-  <div id="my-light" class="light" can-toggle></div>
-  <style>
-    /* can-toggle adds the "toggled" class when it's on */
-    .light {
-      width: 80px; height: 80px; border-radius: 50%;
-      background: gold; filter: brightness(0.4);
-    }
-    .light.toggled {
-      filter: brightness(1.2) drop-shadow(0 0 24px gold);
-    }
-  </style>
-
-  <script type="module">
-    import { playhtml } from "https://unpkg.com/playhtml";
-    playhtml.init({ cursors: { enabled: true } });
-  </script>
-</body>
+<script type="module">
+  import { playhtml } from "https://unpkg.com/playhtml";
+  playhtml.init({ cursors: { enabled: true } });
+</script>
 ```
-
-**From npm with a bundler:**
-
-```bash
-npm install playhtml
-```
-
-```js
-import { playhtml } from "playhtml";
-playhtml.init({ cursors: { enabled: true } });
-```
-
-Bundlers usually handle script placement for you; just make sure `init()` runs after your interactive elements are in the DOM (e.g. on `DOMContentLoaded` or after your framework mounts).
-
-Either way, give every interactive element a unique `id`. That's how state is keyed and synced across everyone on the page.
 
   </TabItem>
   <TabItem label="React">
 
-### Install
+Install playhtml and its React package (React 16.8 and up):
 
 ```bash
 npm install playhtml @playhtml/react
 ```
 
-Works with React 16.8 and above, including React 17, 18, and 19.
-
-### Initialize
-
-Wrap your tree in `PlayProvider` once, then drop in a capability component. Anything you'd pass to `playhtml.init()` goes in `initOptions`. Cursors are opt-in.
+Wrap your app in `PlayProvider` once, then wrap an element in `CanToggleElement`. The element needs a unique `id`.
 
 ```tsx
 import { PlayProvider, CanToggleElement } from "@playhtml/react";
 
 export function App() {
   return (
-    <PlayProvider initOptions={{ cursors: { enabled: true } }}>
+    <PlayProvider>
       <CanToggleElement>
         <div id="my-light" className="light" />
       </CanToggleElement>
@@ -116,7 +82,7 @@ export function App() {
 }
 ```
 
-`CanToggleElement` adds the `toggled` class to the div when it's on, so give both states a look in your CSS:
+`CanToggleElement` adds the `toggled` class when the light is on:
 
 ```css
 .light {
@@ -128,68 +94,29 @@ export function App() {
 }
 ```
 
-Want to render from the shared state? Pass a function as the child. Clicking still flips `on` for everyone:
+Open the page in two windows and click the light. It turns on in both.
 
-```tsx
-import { CanToggleElement } from "@playhtml/react";
-
-<CanToggleElement>
-  {({ data }) => (
-    <button id="my-switch">{data.on ? "on" : "off"}</button>
-  )}
-</CanToggleElement>
-```
-
-You need one `PlayProvider` per React root, so most apps wrap their whole tree once. A separate root (like an Astro island) needs its own provider, or pass `standalone` to the element.
-
-### Make your own
-
-For anything the built-ins don't cover, wrap a component with `withSharedState` to give it shared `data` and a `setData` callback:
-
-```tsx
-import { withSharedState } from "@playhtml/react";
-
-export const ToggleSquare = withSharedState(
-  { defaultData: { on: false } },
-  ({ data, setData }) => (
-    <div
-      style={{ background: data.on ? "green" : "red", width: 200, height: 200 }}
-      onClick={() => setData({ on: !data.on })}
-    />
-  ),
-);
-```
-
-See [Custom elements](/docs/custom-elements/) for counters, lists, and per-person presence, and the [React API](/docs/reference/react-api/) for every component and hook.
+To pass options, like showing everyone's cursors, use `<PlayProvider initOptions={{ cursors: { enabled: true } }}>`.
 
   </TabItem>
 </Tabs>
 
-## Try it live
-
-This toggle is shared with everyone reading this page right now. Click it to see it update for all readers.
-
-<InteractiveToggleDemo client:only="react" />
-
 ## Where to next
 
-- [Core concepts](/docs/concepts/): what playhtml shares (data about things on the page, the people on it, and events) and when to use each.
-- [Built-in elements](/docs/capabilities/): every built-in `can-*` attribute with live demos.
-- [People and presence](/docs/data/presence/): who's here, their names and colors, what they're doing right now, and cursors.
-- [Shared elements](/docs/advanced/shared-elements/): cross-page and cross-domain state.
-- [Building with AI](/docs/integrations/building-with-ai/): one link or skill that sets up any coding agent.
-- [API reference](/docs/reference/init-options/): the full `playhtml.init()` options table and React API types.
+Read these in order:
 
-## Join the Community
+1. [Core concepts](/docs/concepts/): the three things playhtml shares (data on elements, the people on the page, and events) and when to use each.
+2. [Built-in elements](/docs/capabilities/): every `can-*` attribute (move, spin, grow, and more) with live demos.
+3. [Custom elements](/docs/custom-elements/): build your own shared element, like a counter or a guestbook.
+4. [People and presence](/docs/data/presence/): who's on the page, their names and colors, and cursors.
 
-playhtml is built in the open with a small community of people making strange, playful, social corners of the web. Come hang out to:
+Using a coding agent? See [Building with AI](/docs/integrations/building-with-ai/).
 
-- Share what you've made, even if it's tiny or half-finished.
-- Get help when something isn't syncing the way you expect.
-- Swap ideas, request features, and see what others are building.
+## Join the community
+
+Share what you've made, get help, and see what others are building on Discord.
 
 <LinkCard
   title="Join the playhtml Discord"
-  description="Share your creations, get help, and meet other people building with playhtml."
   href="https://discord.com/invite/SKbsSf4ptU"
 />
