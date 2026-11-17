@@ -190,11 +190,27 @@ export class AdminHandler {
       try {
         // Create fresh Y.Doc and load data directly (same as debug reconstruction)
         const yDoc = new Y.Doc();
-        const { data: docData } = await supabase
+        const { data: docData, error: docError } = await supabase
           .from("documents")
           .select("name, document, created_at")
           .eq("name", this.context.name)
           .maybeSingle();
+        if (docError) {
+          return new Response(
+            JSON.stringify({
+              error: "Failed to inspect room",
+              message: docError.message,
+              roomId: this.context.name,
+            }),
+            {
+              status: 500,
+              headers: {
+                "content-type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
+            }
+          );
+        }
 
         if (docData?.document) {
           // Calculate document size (base64 length)
@@ -353,11 +369,23 @@ export class AdminHandler {
     try {
       // Method 1: Direct Y.Doc approach (what admin console uses)
       const directYDoc = new Y.Doc();
-      const { data: docData } = await supabase
+      const { data: docData, error: docError } = await supabase
         .from("documents")
         .select("document")
         .eq("name", this.context.name)
         .maybeSingle();
+      if (docError) {
+        return new Response(
+          JSON.stringify({
+            error: "Failed to compare data methods",
+            message: docError.message,
+          }),
+          {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          }
+        );
+      }
 
       let directData = null;
       if (docData?.document) {
