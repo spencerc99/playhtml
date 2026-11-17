@@ -515,3 +515,106 @@ describe("new element creation", () => {
     }
   });
 });
+
+describe("delete-element", () => {
+  const deleteElement: Operation = {
+    type: "delete-element",
+    capability: "play",
+    elementId: "element",
+    path: [],
+  };
+
+  it("removes the element, its array identities, and its empty capability", () => {
+    const next = apply(snapshot(), deleteElement);
+
+    expect(next.state).toEqual({});
+    expect(next.arrays).toEqual([]);
+    expect(checkSnapshotIntegrity(next)).toEqual({ ok: true });
+  });
+
+  it("keeps the other elements and array identities of the capability", () => {
+    const withSibling = apply(snapshot(), {
+      type: "set",
+      capability: "play",
+      elementId: "sibling",
+      path: [],
+      value: { items: ["x"] },
+      arrays: [{ path: ["items"], itemIds: ["item-x"] }],
+    });
+
+    const next = apply(withSibling, deleteElement);
+
+    expect(next.state).toEqual({ play: { sibling: { items: ["x"] } } });
+    expect(next.arrays).toEqual([
+      {
+        capability: "play",
+        elementId: "sibling",
+        path: ["items"],
+        itemIds: ["item-x"],
+      },
+    ]);
+    expect(checkSnapshotIntegrity(next)).toEqual({ ok: true });
+  });
+
+  it("does not change the input snapshot", () => {
+    const input = snapshot();
+
+    apply(input, deleteElement);
+
+    expect(input).toEqual(snapshot());
+  });
+
+  it("changes nothing when the element does not exist", () => {
+    const next = apply(snapshot(), { ...deleteElement, elementId: "missing" });
+
+    expect(next).toEqual(snapshot());
+  });
+
+  it("changes nothing when the capability does not exist", () => {
+    const next = apply(snapshot(), { ...deleteElement, capability: "other" });
+
+    expect(next).toEqual(snapshot());
+  });
+
+  it("rejects a path that is not empty and leaves the element in place", () => {
+    const input = snapshot();
+    const result = applyOperationInPlace(input, {
+      ...deleteElement,
+      path: ["count"],
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "invalid-operation" });
+    expect(input).toEqual(snapshot());
+  });
+
+  it("deletes in place and leaves a snapshot that passes validation", () => {
+    const input = snapshot();
+    const result = applyOperationInPlace(input, deleteElement, {
+      validate: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(input.state).toEqual({});
+    expect(input.arrays).toEqual([]);
+  });
+
+  it("lets a later set create the element again", () => {
+    const input = snapshot();
+    applyOperationInPlace(input, deleteElement);
+    const result = applyOperationInPlace(
+      input,
+      {
+        type: "set",
+        capability: "play",
+        elementId: "element",
+        path: [],
+        value: { count: 0 },
+        arrays: [],
+      },
+      { validate: true },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(input.state).toEqual({ play: { element: { count: 0 } } });
+  });
+});

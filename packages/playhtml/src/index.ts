@@ -232,6 +232,7 @@ let v2Transport: V2Transport | null = null;
 let v2Store: V2Store | null = null;
 let v2TransportMessageUnsubscribe: (() => void) | null = null;
 let v2TransportStatusUnsubscribe: (() => void) | null = null;
+let v2TransportPlayEventUnsubscribe: (() => void) | null = null;
 let v2StoreStatusUnsubscribe: (() => void) | null = null;
 const v2ElementUnsubscribeByKey = new Map<string, () => void>();
 const v2ElementApplyFrameByKey = new Map<string, number>();
@@ -664,7 +665,27 @@ function getTagTypes(): (TagType | string)[] {
 }
 
 function sendPlayEvent(eventMessage: EventMessage) {
+  if (configuredOptions?.v2) {
+    if (!v2Transport) {
+      throw new Error("playhtml cannot send an event before it has connected");
+    }
+    v2Transport.sendPlayEvent({
+      type: eventMessage.type,
+      ...(eventMessage.eventPayload === undefined
+        ? {}
+        : { eventPayload: eventMessage.eventPayload }),
+    });
+    return;
+  }
   yprovider.sendMessage(JSON.stringify(eventMessage));
+}
+
+function deliverPlayEvent(type: string, eventPayload: unknown): void {
+  const handlers = eventHandlers.get(type);
+  if (!handlers) return;
+  for (const handler of handlers) {
+    handler.onEvent(eventPayload);
+  }
 }
 
 function onMessage(data: string) {
@@ -726,9 +747,7 @@ function onMessage(data: string) {
     return;
   }
 
-  for (const handler of maybeHandlers) {
-    handler.onEvent(eventPayload);
-  }
+  deliverPlayEvent(type, eventPayload);
 }
 
 // The one source of truth for where this instance is in its life (see
@@ -1235,6 +1254,8 @@ function teardownV2Connection(): void {
   v2TransportMessageUnsubscribe = null;
   v2TransportStatusUnsubscribe?.();
   v2TransportStatusUnsubscribe = null;
+  v2TransportPlayEventUnsubscribe?.();
+  v2TransportPlayEventUnsubscribe = null;
   v2Transport?.close();
   v2Transport = null;
   v2Store = null;
@@ -1256,6 +1277,9 @@ function buildV2Connection(args: {
       if (event.type === "connected" || event.type === "disconnected") {
         reportV2Status(event);
       }
+    });
+    v2TransportPlayEventUnsubscribe = transport.subscribePlayEvent((event) => {
+      deliverPlayEvent(event.type, event.eventPayload);
     });
     v2TransportMessageUnsubscribe = transport.subscribeMessage((message) => {
       if (message.type === "snapshot") {
@@ -3895,9 +3919,20 @@ function deleteElementData(tag: string, elementId: string): void {
     const handler = elementHandlers.get(tag)?.get(elementId);
     handler?.destroy();
     elementHandlers.get(tag)?.delete(elementId);
-    console.warn(
-      `[PLAYHTML] deleteElementData is not supported by the version 2 protocol: ${key}`,
-    );
+    if (!v2Store) {
+      throw new Error("playhtml version 2 store is not connected");
+    }
+    if (
+      findSharedReferencesOnPage().some(
+        (reference) => reference.elementId === elementId,
+      )
+    ) {
+      console.warn(
+        `[PLAYHTML] Cannot remove data for ${key}: a shared element can only be deleted from the page that owns it`,
+      );
+      return;
+    }
+    v2Store.deleteElement(tag, elementId);
     return;
   }
 

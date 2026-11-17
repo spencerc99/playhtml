@@ -85,6 +85,14 @@ key or an array entry by stable item ID. It does not remove whatever value
 happens to occupy a numeric position. Removing a missing target should be an
 idempotent no-op so redelivery is safe.
 
+`delete-element` removes a whole element: its value, every array identity
+recorded for it, and its capability map once that map is empty. Its path is
+always empty. `remove` cannot do this because its path is relative to an
+element, so it can only drop a property inside one. Deleting a missing element
+is a no-op for the same redelivery reason. A later root `set` may create the
+element again. A room that displays an element shared from another page
+cannot delete it; only the page that owns the element can.
+
 The future apply engine should reject traversal through a missing path or a
 value of the wrong container type. It should not create implicit objects or
 arrays because a malformed operation could otherwise produce valid-looking
@@ -100,7 +108,13 @@ exactly-once and in-order per client. The `lastMutationIds` map is persisted
 with the room state (a restart cannot double-apply a replay) and returned in
 every snapshot (a reconnecting client discards confirmed pending operations).
 The map is bounded by pruning entries for clients not seen for a retention
-window, not by operation count. The broadcast echo carries the same
+window (`LAST_MUTATION_RETENTION_MS`, one day), not by operation count. The
+server records when each client last wrote, beside the snapshot rather than in
+it, and prunes when it saves. A client with an open connection is never
+pruned. Once a client is forgotten the server can no longer tell which of its
+operations it already applied, so a client drops any pending operation older
+than `PENDING_OPERATION_MAX_AGE_MS` (half the retention window) on reconnect
+instead of replaying it. The broadcast echo carries the same
 `clientId` and `mutationId` so the sender can retire the matching optimistic
 operation.
 
@@ -155,6 +169,15 @@ or unsupported-version writes with `operation-rejected`. The optional
 `operationId` is absent when a malformed message cannot be associated with an
 operation. The human-readable message is for diagnostics; client behavior
 should branch on `code`.
+
+Application events travel in a `play-event` message that wraps the
+application's own `{ type, eventPayload }`. The wrapper keeps an event named
+`operation` or `snapshot` from being read as a protocol message. The server
+relays an event to every connection, the sender included, and does nothing
+else with it: no sequence number, no persistence, no replay. An event sent
+while disconnected is dropped, because it describes a moment and would fire
+late. Events are delivered apart from the ordered operation stream, so one
+arriving before the first snapshot is harmless.
 
 Presence remains on its existing message contract. Combining durable room
 operations and ephemeral presence in one union was rejected because they have

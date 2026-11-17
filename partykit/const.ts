@@ -132,6 +132,9 @@ export const DEFAULT_V2_AUTOSAVE_DEBOUNCE_MS = 3000;
 export const DEFAULT_V2_AUTOSAVE_MAX_WAIT_MS = 15000;
 export const DEFAULT_V2_MAX_OPERATION_BYTES = 64 * 1024;
 export const DEFAULT_V2_DOCUMENT_WARNING_BYTES = 5 * 1024 * 1024;
+// Events are relayed to every connection, so one oversized event costs the
+// whole room. Matches the operation limit.
+export const DEFAULT_V2_MAX_PLAY_EVENT_CHARS = 64 * 1024;
 export const ORIGIN_S2C = "__bridge_s2c__";
 export const ORIGIN_C2S = "__bridge_c2s__";
 

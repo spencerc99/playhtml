@@ -6,14 +6,17 @@ import { parseDocumentsTable } from "./documentsTable";
 import type { Connection, ConnectionContext, WSMessage } from "partyserver";
 import { getServerByName } from "partyserver";
 import {
+  LAST_MUTATION_RETENTION_MS,
   PROTOCOL_VERSION,
   type ClientOperationMessage,
+  type RelayedPlayEvent,
   type Operation,
   type OperationRejectionCode,
   type RoomSnapshot,
   type SequencedOperation,
   type ServerOperationMessage,
   type ServerOperationRejectedMessage,
+  type ServerPlayEventMessage,
   type ServerSnapshotMessage,
 } from "@playhtml/common";
 import {
@@ -32,10 +35,15 @@ import {
   DEFAULT_V2_AUTOSAVE_MAX_WAIT_MS,
   DEFAULT_V2_DOCUMENT_WARNING_BYTES,
   DEFAULT_V2_MAX_OPERATION_BYTES,
+  DEFAULT_V2_MAX_PLAY_EVENT_CHARS,
   DEFAULT_SUBSCRIBER_LEASE_MS,
 } from "./const";
 import { getErrorMessage, retryWithinTimeout } from "./persistenceMode";
 import { PresenceServer } from "./presenceServer";
+import {
+  pruneForgottenClients,
+  type ClientLastSeen,
+} from "./mutationRetention";
 import { getBridgeAuthFailure } from "./bridgeAuth";
 import {
   V2_BRIDGE_STORAGE_KEYS,
@@ -63,7 +71,13 @@ type PersistedRoomDocument = {
   snapshot: RoomSnapshot;
   sequence: number;
   generation: number;
+  // Absent on rooms saved before last-seen times were tracked.
+  clientLastSeen?: ClientLastSeen;
 };
+
+// Connection state key holding the client id a connection writes as, so the
+// room still knows who is connected after it wakes from hibernation.
+const V2_CLIENT_ID_STATE_KEY = "v2ClientId";
 
 type DocumentsRow = {
   document: string | null;
@@ -104,7 +118,8 @@ function isProtocolOperation(value: unknown): value is Operation {
     value.type !== "set" &&
     value.type !== "insert" &&
     value.type !== "remove" &&
-    value.type !== "increment"
+    value.type !== "increment" &&
+    value.type !== "delete-element"
   ) {
     return false;
   }
@@ -153,11 +168,29 @@ function parsePersistedDocument(value: unknown): PersistedRoomDocument {
     }
   }
 
+  const clientLastSeen: ClientLastSeen = {};
+  if (value.clientLastSeen !== undefined) {
+    if (!isRecord(value.clientLastSeen)) {
+      throw new Error("Persisted v2 client last-seen metadata is invalid");
+    }
+    for (const [clientId, lastSeen] of Object.entries(value.clientLastSeen)) {
+      if (!isSafeNonNegativeInteger(lastSeen)) {
+        throw new Error("Persisted v2 client last-seen metadata is invalid");
+      }
+      clientLastSeen[clientId] = lastSeen;
+    }
+  }
+
   return {
     snapshot,
     sequence: value.sequence,
     generation: value.generation,
+    clientLastSeen,
   };
+}
+
+function isPlayEvent(value: unknown): value is RelayedPlayEvent {
+  return isRecord(value) && typeof value.type === "string";
 }
 
 export class PartyServerV2 extends PresenceServer {
@@ -166,6 +199,7 @@ export class PartyServerV2 extends PresenceServer {
   };
 
   private snapshot: RoomSnapshot = structuredClone(EMPTY_SNAPSHOT);
+  private clientLastSeen: ClientLastSeen = {};
   private sequence = 0;
   private generation = 0;
   private hydrated = false;
@@ -221,6 +255,11 @@ export class PartyServerV2 extends PresenceServer {
 
     if (parsed.type === "snapshot-request") {
       this.handleSnapshotRequest(connection, parsed);
+      return;
+    }
+
+    if (parsed.type === "play-event") {
+      this.handlePlayEvent(connection, parsed, message);
       return;
     }
 
@@ -516,6 +555,7 @@ export class PartyServerV2 extends PresenceServer {
     this.sequence += 1;
     this.snapshot.lastMutationIds[request.message.clientId] =
       request.message.mutationId;
+    this.clientLastSeen[request.message.clientId] = Date.now();
     const payload: SequencedOperation = {
       sequence: this.sequence,
       generation: this.generation,
@@ -597,6 +637,7 @@ export class PartyServerV2 extends PresenceServer {
     this.sequence += 1;
     this.snapshot.lastMutationIds[request.payload.clientId] =
       request.payload.mutationId;
+    this.clientLastSeen[request.payload.clientId] = Date.now();
     reference.sourceGeneration = request.sourceGeneration;
     reference.lastSourceSequence = request.sourceSequence;
     await this.setBridgeReferences(references);
@@ -855,12 +896,14 @@ export class PartyServerV2 extends PresenceServer {
       if (result.protocol_version === PROTOCOL_VERSION) {
         const persisted = parsePersistedDocument(result.document_json);
         this.snapshot = persisted.snapshot;
+        this.clientLastSeen = persisted.clientLastSeen ?? {};
         this.sequence = persisted.sequence;
         this.generation = persisted.generation;
       } else if (typeof result.document === "string") {
         const conversion = convertDocumentToSnapshot(result.document);
         if (!conversion.ok) throw new Error(conversion.error.message);
         this.snapshot = conversion.snapshot;
+        this.clientLastSeen = {};
         this.sequence = 0;
         this.generation = 0;
         convertedFromV1 = true;
@@ -944,6 +987,73 @@ export class PartyServerV2 extends PresenceServer {
     connection.send(JSON.stringify(this.createSnapshotMessage()));
   }
 
+  // Events are relayed to everyone connected, the sender included, and leave
+  // no trace: no sequence number, no save.
+  private handlePlayEvent(
+    connection: Connection,
+    parsed: Record<string, unknown>,
+    rawMessage: string,
+  ): void {
+    if (parsed.protocolVersion !== PROTOCOL_VERSION) {
+      this.reject(
+        connection,
+        "unsupported-protocol",
+        "Protocol version 2 is required",
+      );
+      return;
+    }
+    if (!isPlayEvent(parsed.event)) {
+      this.reject(connection, "invalid-message", "Event message is malformed");
+      return;
+    }
+    const maxChars = readPositiveNumberEnv(
+      "V2_MAX_PLAY_EVENT_CHARS",
+      DEFAULT_V2_MAX_PLAY_EVENT_CHARS,
+    );
+    if (rawMessage.length > maxChars) {
+      this.reject(
+        connection,
+        "size-limit",
+        `Event is ${rawMessage.length} characters; limit is ${maxChars}`,
+      );
+      return;
+    }
+    const relay: ServerPlayEventMessage = {
+      type: "play-event",
+      protocolVersion: PROTOCOL_VERSION,
+      event: {
+        type: parsed.event.type,
+        ...(parsed.event.eventPayload === undefined
+          ? {}
+          : { eventPayload: parsed.event.eventPayload }),
+      },
+    };
+    this.broadcast(JSON.stringify(relay));
+  }
+
+  private rememberConnectionClient(
+    connection: Connection,
+    clientId: string,
+  ): void {
+    const state = connection.state as Record<string, unknown> | null;
+    if (state?.[V2_CLIENT_ID_STATE_KEY] === clientId) return;
+    connection.setState((previous: unknown) => ({
+      ...((previous as Record<string, unknown> | null) ?? {}),
+      [V2_CLIENT_ID_STATE_KEY]: clientId,
+    }));
+  }
+
+  private getConnectedClientIds(): Set<string> {
+    const clientIds = new Set<string>();
+    for (const connection of this.getConnections()) {
+      const clientId = (connection.state as Record<string, unknown> | null)?.[
+        V2_CLIENT_ID_STATE_KEY
+      ];
+      if (typeof clientId === "string") clientIds.add(clientId);
+    }
+    return clientIds;
+  }
+
   private async handleOperationMessage(
     connection: Connection,
     parsed: Record<string, unknown>,
@@ -1015,9 +1125,21 @@ export class PartyServerV2 extends PresenceServer {
       return;
     }
 
+    this.rememberConnectionClient(connection, parsed.clientId);
+
     const sharedReference = await this.findBridgeReference(
       parsed.operation.elementId,
     );
+    if (sharedReference && parsed.operation.type === "delete-element") {
+      this.reject(
+        connection,
+        "permission-denied",
+        "A shared element can only be deleted from the page that owns it",
+        parsed.clientId,
+        parsed.mutationId,
+      );
+      return;
+    }
     if (sharedReference) {
       await this.forwardConsumerOperation(connection, sharedReference, parsed);
       return;
@@ -1040,6 +1162,7 @@ export class PartyServerV2 extends PresenceServer {
 
     this.sequence += 1;
     this.snapshot.lastMutationIds[parsed.clientId] = parsed.mutationId;
+    this.clientLastSeen[parsed.clientId] = Date.now();
     const response: ServerOperationMessage = {
       type: "operation",
       protocolVersion: PROTOCOL_VERSION,
@@ -1138,22 +1261,32 @@ export class PartyServerV2 extends PresenceServer {
 
   private async persistDocument(): Promise<void> {
     if (this.transient) return;
+    pruneForgottenClients({
+      lastMutationIds: this.snapshot.lastMutationIds,
+      clientLastSeen: this.clientLastSeen,
+      connectedClientIds: this.getConnectedClientIds(),
+      now: Date.now(),
+      retentionMs: LAST_MUTATION_RETENTION_MS,
+    });
     const documentJson: PersistedRoomDocument = {
       snapshot: this.snapshot,
       sequence: this.sequence,
       generation: this.generation,
+      clientLastSeen: this.clientLastSeen,
     };
     // The v1 `document` column is deliberately absent: the upsert leaves it
     // untouched for rollback, and resending it would re-upload the whole
     // legacy Yjs snapshot on every save.
-    const { error } = await supabase.from(parseDocumentsTable(env.DOCUMENTS_TABLE)).upsert(
-      {
-        name: this.name,
-        document_json: documentJson,
-        protocol_version: PROTOCOL_VERSION,
-      },
-      { onConflict: "name" },
-    );
+    const { error } = await supabase
+      .from(parseDocumentsTable(env.DOCUMENTS_TABLE))
+      .upsert(
+        {
+          name: this.name,
+          document_json: documentJson,
+          protocol_version: PROTOCOL_VERSION,
+        },
+        { onConflict: "name" },
+      );
     if (error) throw new Error(error.message);
   }
 

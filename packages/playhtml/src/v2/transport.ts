@@ -9,12 +9,16 @@ import type {
   JsonValue,
   Operation,
   OperationRejectionCode,
+  RelayedPlayEvent,
   ProtocolPath,
   RoomSnapshot,
   ServerOperationRejectedMessage,
   ServerToClientMessage,
 } from "@playhtml/common";
-import { PROTOCOL_VERSION } from "@playhtml/common";
+import {
+  PENDING_OPERATION_MAX_AGE_MS,
+  PROTOCOL_VERSION,
+} from "@playhtml/common";
 import { checkSnapshotIntegrity } from "@playhtml/common";
 import { pickReconnectionDelay } from "../presence-transport";
 
@@ -47,6 +51,7 @@ export type V2TransportStatusEvent =
 
 type MessageListener = (message: ServerToClientMessage) => void;
 type StatusListener = (event: V2TransportStatusEvent) => void;
+type PlayEventListener = (event: RelayedPlayEvent) => void;
 
 const SOCKET_OPEN_STATE = 1;
 const rejectionCodes = new Set<OperationRejectionCode>([
@@ -133,6 +138,8 @@ const isOperation = (value: unknown): value is Operation => {
             typeof value.target.itemId === "string";
     case "increment":
       return typeof value.delta === "number" && Number.isFinite(value.delta);
+    case "delete-element":
+      return Array.isArray(value.path) && value.path.length === 0;
     default:
       return false;
   }
@@ -178,6 +185,32 @@ const isPresenceMessage = (input: unknown): boolean => {
   } catch {
     return false;
   }
+};
+
+/**
+ * Reads a relayed application event. Events are not part of the ordered
+ * operation stream, so they are parsed and delivered apart from it.
+ */
+export const parsePlayEventMessage = (
+  input: unknown,
+): RelayedPlayEvent | undefined => {
+  if (typeof input !== "string") return undefined;
+  let value: unknown;
+  try {
+    value = JSON.parse(input) as unknown;
+  } catch {
+    return undefined;
+  }
+  if (
+    !isRecord(value) ||
+    value.type !== "play-event" ||
+    value.protocolVersion !== PROTOCOL_VERSION ||
+    !isRecord(value.event) ||
+    typeof value.event.type !== "string"
+  ) {
+    return undefined;
+  }
+  return value.event as unknown as RelayedPlayEvent;
 };
 
 export const parseServerMessage = (
@@ -253,11 +286,15 @@ export class V2Transport {
   private pending: ClientOperationMessage[] = [];
   private readonly messageListeners = new Set<MessageListener>();
   private readonly statusListeners = new Set<StatusListener>();
+  private readonly playEventListeners = new Set<PlayEventListener>();
+  private readonly pendingCreatedAt = new Map<number, number>();
+  private readonly now: () => number;
 
-  constructor(socketFactory?: V2SocketFactory) {
+  constructor(socketFactory?: V2SocketFactory, now: () => number = Date.now) {
     this.socketFactory =
       socketFactory ??
       ((options: PartySocketOptions) => new PartySocket(options));
+    this.now = now;
   }
 
   connect(
@@ -272,6 +309,7 @@ export class V2Transport {
     this.generation = options.generation;
     this.hasConnected = false;
     this.pending = [];
+    this.pendingCreatedAt.clear();
     this.socket = this.socketFactory({
       host,
       room,
@@ -295,6 +333,24 @@ export class V2Transport {
   send(message: ClientToServerMessage): void {
     if (message.type === "operation") this.rememberPending(message);
     this.sendIfOpen(message);
+  }
+
+  /**
+   * Sends an event for the server to relay to everyone in the room. An event
+   * sent while disconnected is dropped: it describes a moment, and replaying
+   * it after a reconnect would fire it late.
+   */
+  sendPlayEvent(event: RelayedPlayEvent): void {
+    this.sendIfOpen({
+      type: "play-event",
+      protocolVersion: PROTOCOL_VERSION,
+      event,
+    });
+  }
+
+  subscribePlayEvent(listener: PlayEventListener): () => void {
+    this.playEventListeners.add(listener);
+    return () => this.playEventListeners.delete(listener);
   }
 
   requestSnapshot(): void {
@@ -327,6 +383,11 @@ export class V2Transport {
   }
 
   private onMessage = (event: MessageEvent): void => {
+    const playEvent = parsePlayEventMessage(event.data);
+    if (playEvent) {
+      for (const listener of this.playEventListeners) listener(playEvent);
+      return;
+    }
     const message = parseServerMessage(event.data);
     if (!message) {
       // Presence rides the same room socket and has its own consumer; it is
@@ -364,6 +425,7 @@ export class V2Transport {
     }
     this.pending.push(message);
     this.pending.sort((left, right) => left.mutationId - right.mutationId);
+    this.pendingCreatedAt.set(message.mutationId, this.now());
   }
 
   private reconcilePending(message: ServerToClientMessage): void {
@@ -380,9 +442,20 @@ export class V2Transport {
       const confirmed = this.clientId
         ? (message.snapshot.lastMutationIds[this.clientId] ?? 0)
         : 0;
+      // An operation older than the limit is dropped rather than replayed:
+      // the server may have applied it and since forgotten this client, and
+      // would then apply it a second time.
+      const oldestAllowed = this.now() - PENDING_OPERATION_MAX_AGE_MS;
       this.pending = this.pending.filter(
-        (pending) => pending.mutationId > confirmed,
+        (pending) =>
+          pending.mutationId > confirmed &&
+          (this.pendingCreatedAt.get(pending.mutationId) ?? oldestAllowed) >=
+            oldestAllowed,
       );
+      const kept = new Set(this.pending.map((pending) => pending.mutationId));
+      for (const mutationId of this.pendingCreatedAt.keys()) {
+        if (!kept.has(mutationId)) this.pendingCreatedAt.delete(mutationId);
+      }
       return;
     }
 
@@ -394,6 +467,7 @@ export class V2Transport {
     );
     if (message.code === "stale-generation") {
       this.pending = [];
+      this.pendingCreatedAt.clear();
     } else if (
       message.mutationId !== undefined &&
       (message.clientId === undefined || message.clientId === this.clientId)
@@ -407,6 +481,7 @@ export class V2Transport {
     this.pending = this.pending.filter(
       (pending) => pending.mutationId !== mutationId,
     );
+    this.pendingCreatedAt.delete(mutationId);
   }
 
   private sendIfOpen(message: ClientToServerMessage): void {

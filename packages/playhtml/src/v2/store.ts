@@ -10,7 +10,10 @@ import type {
   ServerOperationRejectedMessage,
   ServerSnapshotMessage,
 } from "@playhtml/common";
-import { PROTOCOL_VERSION } from "@playhtml/common";
+import {
+  PENDING_OPERATION_MAX_AGE_MS,
+  PROTOCOL_VERSION,
+} from "@playhtml/common";
 import {
   applyOperationInPlace,
   replaceSnapshotElementInPlace,
@@ -34,6 +37,8 @@ export type V2StoreOptions = {
   readonly clientId?: string;
   readonly sequence?: number;
   readonly echoWaitElementIds?: readonly string[];
+  /** The clock used to age pending operations. Defaults to Date.now. */
+  readonly now?: () => number;
 };
 
 type ElementListener = (value: JsonValue | undefined) => void;
@@ -107,8 +112,11 @@ export class V2Store {
   private readonly elementListeners = new Map<string, Set<ElementListener>>();
   private readonly roomListeners = new Set<RoomListener>();
   private readonly statusListeners = new Set<StatusListener>();
+  private readonly pendingCreatedAt = new Map<number, number>();
+  private readonly now: () => number;
 
   constructor(options: V2StoreOptions) {
+    this.now = options.now ?? Date.now;
     this.clientId = options.clientId ?? crypto.randomUUID();
     this.authoritative = structuredClone(options.snapshot);
     this.view = structuredClone(options.snapshot);
@@ -182,6 +190,30 @@ export class V2Store {
     return messages;
   }
 
+  /**
+   * Removes an element from the room for everyone. Listeners for the element
+   * are told its value is now undefined.
+   */
+  deleteElement(capability: string, elementId: string): ClientOperationMessage {
+    const previousValue = getElementValue(this.view, capability, elementId);
+    const message = this.queueOperation({
+      type: "delete-element",
+      capability,
+      elementId,
+      path: [],
+    });
+    applyOwnedOperation(this.view, message.operation);
+    const key = this.elementKey(capability, elementId);
+    this.notifyChanges(
+      this.view,
+      this.view,
+      new Set([key]),
+      new Map([[key, previousValue]]),
+    );
+    this.scheduleOutgoingFlush();
+    return message;
+  }
+
   /** True while listeners for a local mutation are being notified. */
   isNotifyingLocalMutation(): boolean {
     return this.notifyingLocalMutation;
@@ -238,6 +270,7 @@ export class V2Store {
         (message) => message.mutationId !== envelope.mutationId,
       );
       this.echoWaitMutationIds.delete(envelope.mutationId);
+      this.pendingCreatedAt.delete(envelope.mutationId);
     }
     this.rederiveElement(
       envelope.operation.capability,
@@ -254,16 +287,23 @@ export class V2Store {
     this.serverSequence = message.sequence;
     const confirmedMutationId =
       message.snapshot.lastMutationIds[this.clientId] ?? 0;
-    this.pending = generationChanged
-      ? []
-      : this.pending.filter(
-          (pending) => pending.mutationId > confirmedMutationId,
-        );
-    this.outgoing = generationChanged
-      ? []
-      : this.outgoing.filter(
-          (pending) => pending.mutationId > confirmedMutationId,
-        );
+    // An operation older than the limit is dropped rather than replayed: the
+    // server may have applied it and since forgotten this client, and would
+    // then apply it a second time.
+    const oldestAllowed = this.now() - PENDING_OPERATION_MAX_AGE_MS;
+    const shouldReplay = (pending: ClientOperationMessage): boolean =>
+      pending.mutationId > confirmedMutationId &&
+      (this.pendingCreatedAt.get(pending.mutationId) ?? oldestAllowed) >=
+        oldestAllowed;
+    this.pending = generationChanged ? [] : this.pending.filter(shouldReplay);
+    this.outgoing = generationChanged ? [] : this.outgoing.filter(shouldReplay);
+    const kept = new Set(this.pending.map((pending) => pending.mutationId));
+    for (const mutationId of this.pendingCreatedAt.keys()) {
+      if (!kept.has(mutationId)) this.pendingCreatedAt.delete(mutationId);
+    }
+    for (const mutationId of this.echoWaitMutationIds) {
+      if (!kept.has(mutationId)) this.echoWaitMutationIds.delete(mutationId);
+    }
     if (generationChanged) {
       this.echoWaitMutationIds.clear();
     } else {
@@ -312,6 +352,7 @@ export class V2Store {
         (pending) => pending.mutationId !== message.mutationId,
       );
       this.echoWaitMutationIds.delete(message.mutationId);
+      this.pendingCreatedAt.delete(message.mutationId);
       if (rejected) {
         this.rederiveElement(
           rejected.operation.capability,
@@ -417,6 +458,7 @@ export class V2Store {
     };
     this.outgoing.push(message);
     this.pending.push(message);
+    this.pendingCreatedAt.set(message.mutationId, this.now());
     return message;
   }
 

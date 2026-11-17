@@ -573,6 +573,33 @@ const applyIncrement = (
   setValueAtPath(snapshot, operation, next);
 };
 
+// Removes the element, its array identities, and its capability map once that
+// map is empty. A leftover identity or empty map would fail the integrity
+// check the next time the room is loaded.
+const applyDeleteElement = (
+  snapshot: MutableSnapshot,
+  operation: Operation & { type: "delete-element" },
+): void => {
+  if (operation.path.length !== 0) {
+    throw new OperationError("Delete element path must be empty");
+  }
+  for (let index = snapshot.arrays.length - 1; index >= 0; index -= 1) {
+    const identity = snapshot.arrays[index];
+    if (
+      identity.capability === operation.capability &&
+      identity.elementId === operation.elementId
+    ) {
+      snapshot.arrays.splice(index, 1);
+    }
+  }
+  const capability = snapshot.state[operation.capability];
+  if (!capability) return;
+  delete capability[operation.elementId];
+  if (Object.keys(capability).length === 0) {
+    delete snapshot.state[operation.capability];
+  }
+};
+
 export type ApplyOperationOptions = {
   /**
    * Verify full snapshot integrity before and after the apply. The walk is
@@ -597,6 +624,9 @@ const applyMutableOperation = (
       break;
     case "increment":
       applyIncrement(snapshot, operation);
+      break;
+    case "delete-element":
+      applyDeleteElement(snapshot, operation);
       break;
   }
 };
@@ -664,6 +694,9 @@ const restoreElement = (
     snapshot.arrays.splice(entry.index, 0, entry.identity);
   }
 
+  if (retained.elementExisted && !snapshot.state[operation.capability]) {
+    snapshot.state[operation.capability] = {};
+  }
   const capability = snapshot.state[operation.capability];
   if (retained.elementExisted) {
     capability[operation.elementId] = retained.value;
@@ -724,6 +757,20 @@ export const applyOperationInPlace = (
     }
 
     retained = retainElement(mutable, operation);
+    if (operation.type === "delete-element") {
+      // The element is removed from the room itself: there is no replacement
+      // value to build in a working copy first.
+      applyDeleteElement(mutable, operation);
+      if (validate) {
+        const finalIntegrity = checkSnapshotIntegrity(snapshot);
+        if (!finalIntegrity.ok) {
+          throw new OperationError(
+            `Operation broke snapshot integrity: ${finalIntegrity.message}`,
+          );
+        }
+      }
+      return { ok: true, snapshot };
+    }
     const working = createElementWorkingSnapshot(mutable, operation, retained);
     applyMutableOperation(working, operation);
     const value = working.state[operation.capability]?.[operation.elementId];

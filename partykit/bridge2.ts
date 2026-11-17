@@ -87,7 +87,8 @@ const isOperation = (value: unknown): boolean =>
   (value.type === "set" ||
     value.type === "insert" ||
     value.type === "remove" ||
-    value.type === "increment") &&
+    value.type === "increment" ||
+    value.type === "delete-element") &&
   typeof value.capability === "string" &&
   typeof value.elementId === "string" &&
   Array.isArray(value.path);

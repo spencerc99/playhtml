@@ -127,12 +127,22 @@ export type IncrementOperation = OperationAddress & {
   readonly delta: number;
 };
 
+/**
+ * Removes a whole element and its array identities from the room. The path is
+ * always empty. Deleting an element that does not exist changes nothing, so
+ * redelivery is safe.
+ */
+export type DeleteElementOperation = OperationAddress & {
+  readonly type: "delete-element";
+};
+
 /** A state change accepted by the version 2 apply engine. */
 export type Operation =
   | SetOperation
   | InsertOperation
   | RemoveOperation
-  | IncrementOperation;
+  | IncrementOperation
+  | DeleteElementOperation;
 
 /** A monotonically increasing operation number assigned by the room server. */
 export type ServerSequence = number;
@@ -191,10 +201,27 @@ export type ClientSnapshotRequestMessage = {
   readonly protocolVersion: ProtocolVersion;
 };
 
+/**
+ * A one-shot application event. It is relayed to everyone connected right now
+ * and is never stored, ordered against operations, or replayed.
+ */
+export type RelayedPlayEvent = {
+  readonly type: string;
+  readonly eventPayload?: JsonValue;
+};
+
+/** A client request to relay one event to every connection in the room. */
+export type ClientPlayEventMessage = {
+  readonly type: "play-event";
+  readonly protocolVersion: ProtocolVersion;
+  readonly event: RelayedPlayEvent;
+};
+
 /** A message accepted from a version 2 client. */
 export type ClientToServerMessage =
   | ClientOperationMessage
-  | ClientSnapshotRequestMessage;
+  | ClientSnapshotRequestMessage
+  | ClientPlayEventMessage;
 
 /**
  * A server-ordered operation broadcast to every client, including its sender.
@@ -243,6 +270,28 @@ export type ServerOperationRejectedMessage = {
   readonly code: OperationRejectionCode;
   readonly message: string;
 };
+
+/** A server relay of one event to every client, including its sender. */
+export type ServerPlayEventMessage = {
+  readonly type: "play-event";
+  readonly protocolVersion: ProtocolVersion;
+  readonly event: RelayedPlayEvent;
+};
+
+/**
+ * How long the server remembers the last mutation number of a client that is
+ * no longer connected. A client away for longer than this is forgotten.
+ */
+export const LAST_MUTATION_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long a client may go without hearing from the server before it drops
+ * its unconfirmed operations instead of replaying them. Kept well under
+ * LAST_MUTATION_RETENTION_MS: once the server has forgotten a client it can
+ * no longer tell which of that client's operations it already applied, so a
+ * replay could apply one twice.
+ */
+export const PENDING_OPERATION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 /** A message sent by the version 2 room server. */
 export type ServerToClientMessage =

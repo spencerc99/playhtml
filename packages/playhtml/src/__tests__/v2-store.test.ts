@@ -12,7 +12,10 @@ import type {
   ServerSnapshotMessage,
   ServerToClientMessage,
 } from "@playhtml/common";
-import { PROTOCOL_VERSION } from "@playhtml/common";
+import {
+  PENDING_OPERATION_MAX_AGE_MS,
+  PROTOCOL_VERSION,
+} from "@playhtml/common";
 import { applyOperation, checkSnapshotIntegrity } from "@playhtml/common";
 import { V2Store, type V2StoreTransport } from "../v2/store";
 import {
@@ -54,6 +57,7 @@ class InProcessServer {
 
   receive(message: ClientToServerMessage): ServerToClientMessage | undefined {
     if (message.type === "snapshot-request") return this.snapshotMessage();
+    if (message.type === "play-event") return undefined;
     if (message.generation !== this.generation) {
       return {
         type: "operation-rejected",
@@ -205,6 +209,10 @@ class FakeSocket implements V2Socket {
       "message",
       new MessageEvent("message", { data: JSON.stringify(message) }),
     );
+  }
+
+  receiveRaw(data: string): void {
+    this.dispatch("message", new MessageEvent("message", { data }));
   }
 
   private dispatch(type: string, event: Event): void {
@@ -637,5 +645,211 @@ describe("V2Transport", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("V2Store element deletion", () => {
+  it("removes the element locally at once and sends a delete operation", async () => {
+    const server = new InProcessServer();
+    const { store, transport } = createStore();
+    const seen: unknown[] = [];
+    store.subscribe("play", "first", (value) => seen.push(value));
+
+    const message = store.deleteElement("play", "first");
+
+    expect(store.getSnapshot().state.play.first).toBeUndefined();
+    expect(store.getSnapshot().arrays).toEqual([]);
+    expect(seen).toEqual([undefined]);
+    expect(checkSnapshotIntegrity(store.getSnapshot())).toEqual({ ok: true });
+
+    await waitForOutgoingFlush();
+    expect(transport.sent).toEqual([message]);
+    expect(message.operation).toEqual({
+      type: "delete-element",
+      capability: "play",
+      elementId: "first",
+      path: [],
+    });
+
+    const echo = server.receive(message);
+    if (echo?.type !== "operation") throw new Error("Delete was not accepted");
+    store.applyServerOperation(echo.payload);
+    expect(store.getPendingOperations()).toEqual([]);
+    expect(store.getSnapshot().state).toEqual({
+      play: { second: { count: 0 } },
+    });
+    expect(server.snapshot.state).toEqual({ play: { second: { count: 0 } } });
+  });
+
+  it("tells a peer's listener the element is gone", () => {
+    const server = new InProcessServer();
+    const { store } = createStore();
+    const seen: unknown[] = [];
+    store.subscribe("play", "first", (value) => seen.push(value));
+
+    const remote = server.applyRemote("remote-client", 1, {
+      type: "delete-element",
+      capability: "play",
+      elementId: "first",
+      path: [],
+    });
+    store.applyServerOperation(remote.payload);
+
+    expect(seen).toEqual([undefined]);
+    expect(store.getSnapshot().state.play.first).toBeUndefined();
+    expect(checkSnapshotIntegrity(store.getSnapshot())).toEqual({ ok: true });
+  });
+
+  it("keeps the delete across a snapshot that does not confirm it yet", () => {
+    const server = new InProcessServer();
+    const { store } = createStore();
+
+    store.deleteElement("play", "first");
+    store.applyServerSnapshot(server.snapshotMessage());
+
+    expect(store.getSnapshot().state.play.first).toBeUndefined();
+    expect(store.getPendingOperations()).toHaveLength(1);
+  });
+});
+
+describe("pending operations past the replay age limit", () => {
+  it("the store drops an old unconfirmed operation on snapshot and keeps a fresh one", () => {
+    const server = new InProcessServer();
+    const transport = new StoreTransport();
+    let now = 1_000_000;
+    const store = new V2Store({
+      snapshot: initialSnapshot(),
+      generation: 1,
+      transport,
+      clientId: "local-client",
+      now: () => now,
+    });
+
+    store.mutate<{ count: number }>("play", "first", (draft) => {
+      draft.count = 1;
+    });
+    now += PENDING_OPERATION_MAX_AGE_MS + 1;
+    store.mutate<{ count: number }>("play", "second", (draft) => {
+      draft.count = 2;
+    });
+
+    store.applyServerSnapshot(server.snapshotMessage());
+
+    expect(
+      store.getPendingOperations().map((message) => message.mutationId),
+    ).toEqual([2]);
+    expect(element<{ count: number }>(store.getSnapshot(), "first").count).toBe(
+      0,
+    );
+    expect(
+      element<{ count: number }>(store.getSnapshot(), "second").count,
+    ).toBe(2);
+  });
+
+  it("the transport does not resend an old unconfirmed operation after a snapshot", () => {
+    const server = new InProcessServer();
+    const socket = new FakeSocket();
+    let now = 1_000_000;
+    const transport = new V2Transport(
+      () => socket,
+      () => now,
+    );
+    transport.connect("example.com", "room-1", {
+      clientId: "local-client",
+      generation: 1,
+    });
+    socket.open();
+    const operation = (mutationId: number): ClientOperationMessage => ({
+      type: "operation",
+      protocolVersion: PROTOCOL_VERSION,
+      generation: 1,
+      clientId: "local-client",
+      mutationId,
+      operation: {
+        type: "set",
+        capability: "play",
+        elementId: "second",
+        path: ["count"],
+        value: mutationId,
+        arrays: [],
+      },
+    });
+
+    transport.send(operation(1));
+    now += PENDING_OPERATION_MAX_AGE_MS + 1;
+    transport.send(operation(2));
+    socket.disconnect();
+    socket.receive(server.snapshotMessage());
+    socket.sent = [];
+    socket.open();
+
+    const resent = socket.sent
+      .map((message) => JSON.parse(message) as ClientToServerMessage)
+      .filter((message) => message.type === "operation");
+    expect(resent).toEqual([operation(2)]);
+  });
+});
+
+describe("V2Transport play events", () => {
+  const connect = () => {
+    const socket = new FakeSocket();
+    const transport = new V2Transport(() => socket);
+    transport.connect("example.com", "room-1", {
+      clientId: "local-client",
+      generation: 1,
+    });
+    return { socket, transport };
+  };
+
+  it("sends an event in its own envelope", () => {
+    const { socket, transport } = connect();
+    socket.open();
+    socket.sent = [];
+
+    transport.sendPlayEvent({ type: "confetti", eventPayload: { n: 1 } });
+
+    expect(socket.sent.map((message) => JSON.parse(message))).toEqual([
+      {
+        type: "play-event",
+        protocolVersion: PROTOCOL_VERSION,
+        event: { type: "confetti", eventPayload: { n: 1 } },
+      },
+    ]);
+  });
+
+  it("drops an event sent while disconnected instead of queueing it", () => {
+    const { socket, transport } = connect();
+
+    transport.sendPlayEvent({ type: "confetti" });
+    socket.open();
+
+    expect(
+      socket.sent
+        .map((message) => JSON.parse(message) as { type: string })
+        .filter((message) => message.type === "play-event"),
+    ).toEqual([]);
+  });
+
+  it("delivers a relayed event to event listeners and not to operation listeners", () => {
+    const { socket, transport } = connect();
+    const events: unknown[] = [];
+    const messages: unknown[] = [];
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    transport.subscribePlayEvent((event) => events.push(event));
+    transport.subscribeMessage((message) => messages.push(message));
+    socket.open();
+
+    socket.receiveRaw(
+      JSON.stringify({
+        type: "play-event",
+        protocolVersion: PROTOCOL_VERSION,
+        event: { type: "snapshot", eventPayload: "hello" },
+      }),
+    );
+
+    expect(events).toEqual([{ type: "snapshot", eventPayload: "hello" }]);
+    expect(messages).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

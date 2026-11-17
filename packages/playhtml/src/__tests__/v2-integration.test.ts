@@ -31,6 +31,7 @@ class InProcessServer {
 
   receive(message: ClientToServerMessage): ServerToClientMessage | undefined {
     if (message.type === "snapshot-request") return this.snapshotMessage();
+    if (message.type === "play-event") return undefined;
     const applied = applyOperation(this.snapshot, message.operation);
     if (!applied.ok) {
       return {
@@ -354,6 +355,101 @@ describe("playhtml version 2 integration", () => {
     expect(warn).toHaveBeenCalledWith(
       "[playhtml] Version 2 write rejected (permission-denied): Read-only element",
     );
+    expect(sentCount).toBeGreaterThan(0);
+  });
+
+  it("sends a play event over the operation socket and fires handlers when it is relayed back", async () => {
+    const server = new InProcessServer();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const onEvent = vi.fn();
+    const initialized = playhtml.init({
+      v2: true,
+      host: "localhost:1999",
+      room: "/v2-events",
+    });
+    const socket = await waitForV2Socket();
+    socket.receive(server.snapshotMessage());
+    await initialized;
+    playhtml.registerPlayEventListener("confetti", { onEvent });
+    const sentBefore = socket.sent.length;
+
+    playhtml.dispatchPlayEvent({
+      type: "confetti",
+      eventPayload: { color: "red" },
+    });
+
+    const sent = socket.sent
+      .slice(sentBefore)
+      .map((message) => JSON.parse(message));
+    expect(sent).toEqual([
+      {
+        type: "play-event",
+        protocolVersion: PROTOCOL_VERSION,
+        event: { type: "confetti", eventPayload: { color: "red" } },
+      },
+    ]);
+    // Handlers run when the server relays the event, as they do for everyone
+    // else in the room, not when it is sent.
+    expect(onEvent).not.toHaveBeenCalled();
+
+    (socket.receive as (message: unknown) => void)(sent[0]);
+
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(onEvent).toHaveBeenCalledWith({ color: "red" });
+  });
+
+  it("does not fail initialization when an event arrives before the first snapshot", async () => {
+    const server = new InProcessServer();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const initialized = playhtml.init({
+      v2: true,
+      host: "localhost:1999",
+      room: "/v2-early-event",
+    });
+    const socket = await waitForV2Socket();
+
+    (socket.receive as (message: unknown) => void)({
+      type: "play-event",
+      protocolVersion: PROTOCOL_VERSION,
+      event: { type: "confetti" },
+    });
+    socket.receive(server.snapshotMessage());
+
+    await expect(initialized).resolves.not.toThrow();
+  });
+
+  it("deletes an element's data from the room", async () => {
+    const server = new InProcessServer();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const element = document.createElement("div");
+    element.id = "v2-doomed";
+    element.setAttribute("can-play", "");
+    (element as any).defaultData = { count: 0, entries: ["a"] };
+    (element as any).updateElement = () => {};
+    document.body.appendChild(element);
+
+    const initialized = playhtml.init({
+      v2: true,
+      host: "localhost:1999",
+      room: "/v2-delete",
+    });
+    const socket = await waitForV2Socket();
+    socket.receive(server.snapshotMessage());
+    await initialized;
+    await waitForOutgoingFlush();
+    let sentCount = flushClientMessages(server, socket, 0);
+    expect(server.snapshot.state["can-play"]?.["v2-doomed"]).toEqual({
+      count: 0,
+      entries: ["a"],
+    });
+
+    playhtml.deleteElementData("can-play", "v2-doomed");
+    await waitForOutgoingFlush();
+    sentCount = flushClientMessages(server, socket, sentCount);
+
+    expect(server.snapshot.state).toEqual({});
+    expect(server.snapshot.arrays).toEqual([]);
+    expect(elementHandlers.get("can-play")?.get("v2-doomed")).toBeUndefined();
     expect(sentCount).toBeGreaterThan(0);
   });
 });

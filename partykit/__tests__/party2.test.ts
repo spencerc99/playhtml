@@ -548,6 +548,7 @@ describe("PartyServerV2 protocol", () => {
           arrays: [],
           lastMutationIds: { "client-1": 1 },
         },
+        clientLastSeen: { "client-1": expect.any(Number) },
       },
     });
   });
@@ -636,5 +637,385 @@ describe("PartyServerV2 protocol", () => {
     expect(persistedSnapshot().state).toEqual({
       "can-play": { counter: { count: 1 } },
     });
+  });
+});
+
+describe("PartyServerV2 play events", () => {
+  test("relays an event to every connection, the sender included, without saving", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const sender = await connectRoom(
+      room,
+      connections,
+      createConnection("sender"),
+    );
+    const peer = await connectRoom(room, connections, createConnection("peer"));
+    sender.sent = [];
+    peer.sent = [];
+
+    await room.onMessage(
+      sender as never,
+      JSON.stringify({
+        type: "play-event",
+        protocolVersion: 2,
+        event: { type: "confetti", eventPayload: { color: "red" } },
+      }),
+    );
+
+    const expected = {
+      type: "play-event",
+      protocolVersion: 2,
+      event: { type: "confetti", eventPayload: { color: "red" } },
+    };
+    expect(parsedMessages(sender)).toEqual([expected]);
+    expect(parsedMessages(peer)).toEqual([expected]);
+
+    await closeRoom(room, connections, sender);
+    await closeRoom(room, connections, peer);
+    expect(upsertCalls).toHaveLength(0);
+  });
+
+  test("relays an event named like a protocol message as an event", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const connection = await connectRoom(room, connections);
+    connection.sent = [];
+
+    await room.onMessage(
+      connection as never,
+      JSON.stringify({
+        type: "play-event",
+        protocolVersion: 2,
+        event: { type: "operation" },
+      }),
+    );
+
+    expect(parsedMessages(connection)).toEqual([
+      { type: "play-event", protocolVersion: 2, event: { type: "operation" } },
+    ]);
+    await closeRoom(room, connections, connection);
+  });
+
+  test("rejects a malformed event and relays nothing", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const sender = await connectRoom(
+      room,
+      connections,
+      createConnection("sender"),
+    );
+    const peer = await connectRoom(room, connections, createConnection("peer"));
+    sender.sent = [];
+    peer.sent = [];
+
+    await room.onMessage(
+      sender as never,
+      JSON.stringify({ type: "play-event", protocolVersion: 2, event: {} }),
+    );
+
+    expect(parsedMessages(sender)).toEqual([
+      expect.objectContaining({
+        type: "operation-rejected",
+        code: "invalid-message",
+      }),
+    ]);
+    expect(peer.sent).toEqual([]);
+    await closeRoom(room, connections, sender);
+    await closeRoom(room, connections, peer);
+  });
+
+  test("rejects an event over the size limit", async () => {
+    workerEnv.V2_MAX_PLAY_EVENT_CHARS = "200";
+    try {
+      const { room, connections } = createRoom();
+      await startRoom(room);
+      const sender = await connectRoom(
+        room,
+        connections,
+        createConnection("sender"),
+      );
+      const peer = await connectRoom(
+        room,
+        connections,
+        createConnection("peer"),
+      );
+      sender.sent = [];
+      peer.sent = [];
+
+      await room.onMessage(
+        sender as never,
+        JSON.stringify({
+          type: "play-event",
+          protocolVersion: 2,
+          event: { type: "confetti", eventPayload: "x".repeat(500) },
+        }),
+      );
+
+      expect(parsedMessages(sender)).toEqual([
+        expect.objectContaining({
+          type: "operation-rejected",
+          code: "size-limit",
+        }),
+      ]);
+      expect(peer.sent).toEqual([]);
+      await closeRoom(room, connections, sender);
+      await closeRoom(room, connections, peer);
+    } finally {
+      delete workerEnv.V2_MAX_PLAY_EVENT_CHARS;
+    }
+  });
+});
+
+describe("PartyServerV2 element deletion", () => {
+  test("deletes an element with its array identities and reloads the saved room", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const connection = await connectRoom(room, connections);
+    await room.onMessage(
+      connection as never,
+      JSON.stringify(
+        operationMessage({
+          operation: {
+            type: "set",
+            capability: "can-play",
+            elementId: "list",
+            path: [],
+            value: { items: ["a", "b"] },
+            arrays: [{ path: ["items"], itemIds: ["id-a", "id-b"] }],
+          },
+        }),
+      ),
+    );
+    connection.sent = [];
+
+    await room.onMessage(
+      connection as never,
+      JSON.stringify(
+        operationMessage({
+          mutationId: 2,
+          operation: {
+            type: "delete-element",
+            capability: "can-play",
+            elementId: "list",
+            path: [],
+          },
+        }),
+      ),
+    );
+
+    expect(parsedMessages(connection)).toEqual([
+      expect.objectContaining({
+        type: "operation",
+        payload: expect.objectContaining({
+          sequence: 2,
+          operation: expect.objectContaining({ type: "delete-element" }),
+        }),
+      }),
+    ]);
+    await closeRoom(room, connections, connection);
+    expect(persistedSnapshot().state).toEqual({});
+    expect(persistedSnapshot().arrays).toEqual([]);
+
+    const reloaded = createRoom();
+    await startRoom(reloaded.room);
+    const reloadedConnection = await connectRoom(
+      reloaded.room,
+      reloaded.connections,
+    );
+    expect(parsedMessages(reloadedConnection)).toContainEqual(
+      expect.objectContaining({
+        type: "snapshot",
+        sequence: 2,
+        snapshot: expect.objectContaining({ state: {}, arrays: [] }),
+      }),
+    );
+    await closeRoom(reloaded.room, reloaded.connections, reloadedConnection);
+  });
+
+  test("accepts deleting an element that does not exist", async () => {
+    const { room, connections } = createRoom();
+    await startRoom(room);
+    const connection = await connectRoom(room, connections);
+    connection.sent = [];
+
+    await room.onMessage(
+      connection as never,
+      JSON.stringify(
+        operationMessage({
+          operation: {
+            type: "delete-element",
+            capability: "can-play",
+            elementId: "missing",
+            path: [],
+          },
+        }),
+      ),
+    );
+
+    expect(parsedMessages(connection)).toEqual([
+      expect.objectContaining({ type: "operation" }),
+    ]);
+    await closeRoom(room, connections, connection);
+  });
+});
+
+describe("PartyServerV2 forgotten clients", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const realNow = Date.now;
+
+  function persistV2Row(clientLastSeen?: Record<string, number>): void {
+    persistedRow = {
+      document: null,
+      protocol_version: 2,
+      document_json: {
+        sequence: 3,
+        generation: 0,
+        snapshot: {
+          state: { "can-play": { counter: { count: 1 } } },
+          arrays: [],
+          lastMutationIds: { "old-client": 3 },
+        },
+        ...(clientLastSeen === undefined ? {} : { clientLastSeen }),
+      },
+    };
+  }
+
+  test("forgets a disconnected client once it is past the retention window", async () => {
+    const start = realNow();
+    persistV2Row({ "old-client": start });
+    Date.now = () => start + DAY_MS + 1;
+    try {
+      const { room, connections } = createRoom();
+      await startRoom(room);
+      const connection = await connectRoom(room, connections);
+      await room.onMessage(
+        connection as never,
+        JSON.stringify(operationMessage({ clientId: "new-client" })),
+      );
+      await closeRoom(room, connections, connection);
+    } finally {
+      Date.now = realNow;
+    }
+
+    expect(persistedSnapshot().lastMutationIds).toEqual({ "new-client": 1 });
+  });
+
+  test("keeps a disconnected client that is inside the retention window", async () => {
+    const start = realNow();
+    persistV2Row({ "old-client": start });
+    Date.now = () => start + DAY_MS - 1000;
+    try {
+      const { room, connections } = createRoom();
+      await startRoom(room);
+      const connection = await connectRoom(room, connections);
+      await room.onMessage(
+        connection as never,
+        JSON.stringify(operationMessage({ clientId: "new-client" })),
+      );
+      await closeRoom(room, connections, connection);
+    } finally {
+      Date.now = realNow;
+    }
+
+    expect(persistedSnapshot().lastMutationIds).toEqual({
+      "old-client": 3,
+      "new-client": 1,
+    });
+  });
+
+  test("never forgets a client that is still connected", async () => {
+    let now = realNow();
+    Date.now = () => now;
+    try {
+      const { room, connections } = createRoom();
+      await startRoom(room);
+      const idle = await connectRoom(
+        room,
+        connections,
+        createConnection("idle"),
+      );
+      const active = await connectRoom(
+        room,
+        connections,
+        createConnection("active"),
+      );
+      await room.onMessage(
+        idle as never,
+        JSON.stringify(operationMessage({ clientId: "idle-client" })),
+      );
+      await closeRoom(room, connections, active);
+
+      now += 3 * DAY_MS;
+      const returning = await connectRoom(
+        room,
+        connections,
+        createConnection("returning"),
+      );
+      await room.onMessage(
+        returning as never,
+        JSON.stringify(
+          operationMessage({
+            clientId: "returning-client",
+            operation: {
+              type: "set",
+              capability: "can-play",
+              elementId: "other",
+              path: [],
+              value: { count: 2 },
+              arrays: [],
+            },
+          }),
+        ),
+      );
+      // The room only saves by itself on the last disconnect or a timer, and
+      // the idle connection is still open, so the save is run directly.
+      await (
+        room as unknown as { flushAutosave(): Promise<void> }
+      ).flushAutosave();
+      expect(persistedSnapshot().lastMutationIds).toEqual({
+        "idle-client": 1,
+        "returning-client": 1,
+      });
+      await closeRoom(room, connections, returning);
+      await closeRoom(room, connections, idle);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  test("loads a room saved before last-seen times existed and starts its window then", async () => {
+    const start = realNow();
+    persistV2Row();
+    Date.now = () => start;
+    try {
+      const { room, connections } = createRoom();
+      await startRoom(room);
+      const connection = await connectRoom(room, connections);
+      expect(parsedMessages(connection)).toContainEqual(
+        expect.objectContaining({
+          type: "snapshot",
+          sequence: 3,
+          snapshot: expect.objectContaining({
+            lastMutationIds: { "old-client": 3 },
+          }),
+        }),
+      );
+      await room.onMessage(
+        connection as never,
+        JSON.stringify(operationMessage({ clientId: "new-client" })),
+      );
+      await closeRoom(room, connections, connection);
+    } finally {
+      Date.now = realNow;
+    }
+
+    expect(persistedSnapshot().lastMutationIds).toEqual({
+      "old-client": 3,
+      "new-client": 1,
+    });
+    expect(
+      (persistedRow?.document_json as { clientLastSeen: unknown })
+        .clientLastSeen,
+    ).toEqual({ "old-client": start, "new-client": start });
   });
 });
