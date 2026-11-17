@@ -8,6 +8,7 @@ import {
   getCommuteArrivalRiderId,
   getCommutePointFromClient,
   getCommutePointFromZone,
+  getCommuteStopExitNavigation,
   getMyCommuteRiderStart,
   getCommuteRiderStart,
   getSharedCommutePosition,
@@ -114,6 +115,13 @@ describe("mobile commute geometry", () => {
     expect(
       shouldExitCommuteThroughDoor(doorway, { x: 0, y: -1 }, doors, false),
     ).toBe(false);
+  });
+
+  it("leaves navigation to the exit handler so a door exit navigates once", () => {
+    expect(getCommuteStopExitNavigation(true, true)).toBe("handler");
+    expect(getCommuteStopExitNavigation(false, true)).toBe("handler");
+    expect(getCommuteStopExitNavigation(true, false)).toBe("current-tab");
+    expect(getCommuteStopExitNavigation(false, false)).toBe("new-tab");
   });
 
   it("places a standing rider on the aisle side of either seat row", () => {

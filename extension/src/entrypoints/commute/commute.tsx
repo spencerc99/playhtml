@@ -55,6 +55,7 @@ import {
   COMMUTE_WALK_SPEED,
   findNearbyCommuteSeat,
   getCommuteArrivalRiderId,
+  getCommuteStopExitNavigation,
   getCommutePointFromClient,
   getMyCommuteRiderStart,
   getCommuteRiderStart,
@@ -967,18 +968,23 @@ const CommuteCar = withSharedState<CarData, RiderAwareness, CommuteCarProps>(
       }
 
       exitPending.current = true;
+      const navigation = getCommuteStopExitNavigation(
+        navigateCurrentTab,
+        props.onExitStop !== undefined,
+      );
       props.onExitStop?.(props.currentStop);
       showToast(`doors open — see you at ${props.currentStop.domain}`);
+      if (navigation === "handler") return;
       window.setTimeout(
         () => {
-          if (navigateCurrentTab) {
+          if (navigation === "current-tab") {
             window.location.assign(props.currentStop.url);
-          } else if (!props.onExitStop) {
+          } else {
             window.open(props.currentStop.url, "_blank", "noopener,noreferrer");
             exitPending.current = false;
           }
         },
-        navigateCurrentTab ? 250 : 600,
+        navigation === "current-tab" ? 250 : 600,
       );
     };
     exitTrainRef.current = exitTrain;
