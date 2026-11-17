@@ -38,6 +38,17 @@ describe("createChatEchoTracker", () => {
     ]);
   });
 
+  it("does not echo an earlier message again when a peer's presence goes back to it", () => {
+    const take = createChatEchoTracker();
+    take(new Map());
+    const one = (id: string, text: string) =>
+      take(new Map([["peer-a", chatPresence(id, text)]])).map(({ text }) => text);
+
+    expect(one("m1", "first")).toEqual(["first"]);
+    expect(one("m2", "second")).toEqual(["second"]);
+    expect(one("m1", "first")).toEqual([]);
+  });
+
   it("ignores malformed chat presence", () => {
     const take = createChatEchoTracker();
     take(new Map());

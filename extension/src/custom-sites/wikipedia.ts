@@ -286,7 +286,7 @@ export function isPlainPrimaryClick(
 export function createChatEchoTracker(): (
   presences: Map<string, unknown>,
 ) => Array<{ pid: string; text: string; view: unknown }> {
-  const echoedIds = new Map<string, string>();
+  const echoedIds = new Set<string>();
   let seeded = false;
   return (presences) => {
     const seeding = !seeded;
@@ -299,8 +299,8 @@ export function createChatEchoTracker(): (
       if (typeof message.text !== "string" || typeof message.id !== "string") {
         return;
       }
-      if (echoedIds.get(pid) === message.id) return;
-      echoedIds.set(pid, message.id);
+      if (echoedIds.has(message.id)) return;
+      echoedIds.add(message.id);
       if (!seeding) echoes.push({ pid, text: message.text, view });
     });
     return echoes;
