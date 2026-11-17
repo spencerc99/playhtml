@@ -1,6 +1,6 @@
 import { withSharedState } from "@playhtml/react";
 import randomColor from "randomcolor";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import "./events.scss";
 
 const NumCursors = 50;
@@ -48,43 +48,86 @@ export function Cursors() {
   );
 }
 
+interface TimerData {
+  // Whole seconds shown when the timer was last paused or reset. Rooms saved
+  // before startedAt/pausedElapsedMs existed only have this field.
+  time: number;
+  isRunning: boolean;
+  // When the current run started (Date.now()), present only while running.
+  startedAt?: number;
+  // Milliseconds accumulated before the current run.
+  pausedElapsedMs?: number;
+}
+
+function timerElapsedMs(data: TimerData, now: number): number {
+  const base =
+    typeof data.pausedElapsedMs === "number"
+      ? data.pausedElapsedMs
+      : (data.time ?? 0) * 1000;
+  if (data.isRunning && typeof data.startedAt === "number") {
+    return base + Math.max(0, now - data.startedAt);
+  }
+  return base;
+}
+
+function formatTime(totalSeconds: number) {
+  const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(
+    2,
+    "0",
+  );
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
+}
+
+// Shared stopwatch. The room stores when the current run started and how much
+// time came before it; each visitor ticks the display locally. Shared data is
+// written only from the Start/Pause and Reset buttons.
 export const Timer = withSharedState(
   {
-    defaultData: { time: 0, isRunning: false },
+    defaultData: { time: 0, isRunning: false } as TimerData,
   },
   ({ data, setData }) => {
-    const { time, isRunning } = data;
+    const [now, setNow] = useState(() => Date.now());
+    // A room saved before startedAt existed can say it is running with no
+    // start time; it shows as paused until someone presses Start.
+    const isRunning = data.isRunning && typeof data.startedAt === "number";
 
     useEffect(() => {
-      let interval;
-      if (isRunning) {
-        interval = setInterval(() => {
-          setData({ time: time + 1, isRunning });
-        }, 1000);
-      } else if (!isRunning && time !== 0) {
-        clearInterval(interval);
-      }
+      if (!isRunning) return;
+      const interval = setInterval(() => setNow(Date.now()), 250);
       return () => clearInterval(interval);
-    }, [isRunning, time, setData]);
+    }, [isRunning]);
+
+    const elapsedSeconds = Math.floor(timerElapsedMs(data, now) / 1000);
 
     const handleStartPause = () => {
-      setData({ time, isRunning: !isRunning });
+      const clickedAt = Date.now();
+      const elapsedMs = timerElapsedMs(data, clickedAt);
+      if (isRunning) {
+        setData({
+          time: Math.floor(elapsedMs / 1000),
+          isRunning: false,
+          pausedElapsedMs: elapsedMs,
+        });
+      } else {
+        setNow(clickedAt);
+        setData({
+          time: Math.floor(elapsedMs / 1000),
+          isRunning: true,
+          startedAt: clickedAt,
+          pausedElapsedMs: elapsedMs,
+        });
+      }
     };
 
     const handleReset = () => {
-      setData({ time: 0, isRunning: false });
-    };
-
-    const formatTime = (time) => {
-      const hours = String(Math.floor(time / 3600)).padStart(2, "0");
-      const minutes = String(Math.floor((time % 3600) / 60)).padStart(2, "0");
-      const seconds = String(time % 60).padStart(2, "0");
-      return `${hours}:${minutes}:${seconds}`;
+      setData({ time: 0, isRunning: false, pausedElapsedMs: 0 });
     };
 
     return (
       <div id="timer" className="retro-timer">
-        <h2>{formatTime(time)}</h2>
+        <h2>{formatTime(elapsedSeconds)}</h2>
         <div className="buttons">
           <button onClick={handleStartPause}>
             {isRunning ? "Pause" : "Start"}
