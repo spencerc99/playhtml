@@ -1,6 +1,7 @@
 // ABOUTME: Background service worker — holds the extension-origin event store and
 // ABOUTME: coordinates event writes, uploads, and data reads for all extension surfaces
 import browser from 'webextension-polyfill'
+import { relaySameDocumentNavigations } from '../utils/sameDocumentNavigation'
 import type { Alarms } from 'webextension-polyfill'
 import { scrapEncounterDay } from '@movement/utils/scrapEncounterDay'
 import type { ScrapSource } from '@movement/utils/scrapPhotoGroups'
@@ -493,6 +494,12 @@ export default defineBackground(() => {
       }
     }
   })
+
+  // Single-page apps change URL through the History API, which the content
+  // script cannot observe from its isolated world.
+  relaySameDocumentNavigations(browser.webNavigation, (tabId, message, options) =>
+    browser.tabs.sendMessage(tabId, message, options),
+  )
 
   // Extension lifecycle
   browser.runtime.onInstalled.addListener((details) => {

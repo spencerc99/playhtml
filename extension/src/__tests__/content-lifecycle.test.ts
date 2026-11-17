@@ -1,5 +1,5 @@
 // ABOUTME: Regression tests for content-script page-lifecycle teardown/restore wiring.
-// ABOUTME: Verifies bfcache pageshow restores collaboration and listeners are not one-shot.
+// ABOUTME: Verifies bfcache restore, listeners that are not one-shot, and the same-document navigation message.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EXTENSION_INSTALL_ATTRIBUTE } from "../utils/extensionInstallMarker";
@@ -7,6 +7,7 @@ import { EXTENSION_INSTALL_ATTRIBUTE } from "../utils/extensionInstallMarker";
 const storageGet = vi.hoisted(() => vi.fn());
 const storageSet = vi.hoisted(() => vi.fn());
 const runtimeSendMessage = vi.hoisted(() => vi.fn());
+const onMessageAddListener = vi.hoisted(() => vi.fn());
 
 vi.mock("webextension-polyfill", () => ({
   default: {
@@ -23,7 +24,7 @@ vi.mock("webextension-polyfill", () => ({
       getURL: vi.fn((path: string) => `chrome-extension://test/${path}`),
       sendMessage: runtimeSendMessage,
       onMessage: {
-        addListener: vi.fn(),
+        addListener: onMessageAddListener,
       },
     },
   },
@@ -87,6 +88,7 @@ describe("content page-lifecycle wiring", () => {
     storageSet.mockReset();
     storageSet.mockResolvedValue(undefined);
 
+    onMessageAddListener.mockReset();
     runtimeSendMessage.mockReset();
     runtimeSendMessage.mockImplementation((message: { type?: string }) => {
       if (message.type === "GET_PUBLIC_PLAYER_IDENTITY") {
@@ -171,5 +173,34 @@ describe("content page-lifecycle wiring", () => {
     } finally {
       document.removeEventListener("playhtml:configure-identity", injected);
     }
+  });
+
+  it("answers the background's same-document navigation message", async () => {
+    const contentScript = (await import("../entrypoints/content"))
+      .default as { main: () => void };
+    const { SAME_DOCUMENT_NAVIGATION_MESSAGE } = await import(
+      "../utils/sameDocumentNavigation"
+    );
+
+    contentScript.main();
+    await vi.waitFor(() => {
+      expect(onMessageAddListener).toHaveBeenCalled();
+    });
+    const listener = onMessageAddListener.mock.calls[0][0] as (
+      message: unknown,
+      sender: unknown,
+      sendResponse: (response: unknown) => void,
+    ) => unknown;
+
+    window.history.pushState({}, "", "/spa-route");
+    const sendResponse = vi.fn();
+    const keepsChannelOpen = listener(
+      { type: SAME_DOCUMENT_NAVIGATION_MESSAGE, url: window.location.href },
+      {},
+      sendResponse,
+    );
+
+    expect(keepsChannelOpen).toBe(true);
+    expect(sendResponse).toHaveBeenCalledWith({ success: true });
   });
 });
