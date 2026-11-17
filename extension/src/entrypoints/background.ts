@@ -324,7 +324,27 @@ async function getExtensionLocalUsageBytes(): Promise<number | null> {
   return usageParts.reduce((sum, bytes) => sum + bytes, 0)
 }
 
-async function flushPendingUploads(): Promise<void> {
+let uploadFlush: Promise<void> | null = null
+let uploadFlushFollowUp: Promise<void> | null = null
+
+// Single-flight: every tab asks for a flush, and two concurrent drains would
+// read and upload the same pending events. A request that arrives during a
+// drain shares one follow-up drain that starts after the current one ends.
+function flushPendingUploads(): Promise<void> {
+  if (!uploadFlush) {
+    uploadFlush = drainPendingUploads().finally(() => {
+      uploadFlush = null
+    })
+    return uploadFlush
+  }
+  uploadFlushFollowUp ??= uploadFlush.then(() => {
+    uploadFlushFollowUp = null
+    return flushPendingUploads()
+  })
+  return uploadFlushFollowUp
+}
+
+async function drainPendingUploads(): Promise<void> {
   try {
     const pending = await store.getPendingEvents(500)
     if (pending.length === 0) return
@@ -496,7 +516,7 @@ export default defineBackground(() => {
 
   browser.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === 'checkMilestones') {
-      await runMilestoneCheck()
+      await runGuardedMilestoneCheck()
       return
     }
 
@@ -531,29 +551,36 @@ export default defineBackground(() => {
 
   // Single-flight + 1s trailing debounce. Rapid navigation events coalesce
   // into one check, and we never run two checks concurrently (the function
-  // reads-modifies-writes shared state).
+  // reads-modifies-writes shared state). The milestone alarm goes through the
+  // same guard.
   let milestoneCheckRunning = false
   let milestoneCheckQueued = false
   let milestoneCheckTimer: ReturnType<typeof setTimeout> | null = null
   function scheduleMilestoneCheck() {
     if (milestoneCheckTimer) return
-    milestoneCheckTimer = setTimeout(async () => {
+    milestoneCheckTimer = setTimeout(() => {
       milestoneCheckTimer = null
-      if (milestoneCheckRunning) {
-        milestoneCheckQueued = true
-        return
-      }
-      milestoneCheckRunning = true
-      try {
-        await runMilestoneCheck()
-      } finally {
-        milestoneCheckRunning = false
-        if (milestoneCheckQueued) {
-          milestoneCheckQueued = false
-          scheduleMilestoneCheck()
-        }
-      }
+      runGuardedMilestoneCheck().catch((e) => {
+        console.error('[Background] milestone check error:', e)
+      })
     }, 1000)
+  }
+
+  async function runGuardedMilestoneCheck() {
+    if (milestoneCheckRunning) {
+      milestoneCheckQueued = true
+      return
+    }
+    milestoneCheckRunning = true
+    try {
+      await runMilestoneCheck()
+    } finally {
+      milestoneCheckRunning = false
+      if (milestoneCheckQueued) {
+        milestoneCheckQueued = false
+        scheduleMilestoneCheck()
+      }
+    }
   }
 
   // Ensure player identity has an ECDSA keypair. Single-flight, because
