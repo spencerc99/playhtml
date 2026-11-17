@@ -734,6 +734,71 @@ describe('feature access control', () => {
       expect(lone.status).toBe(401);
       expect(await lone.json()).toEqual({ error: 'Malformed signature' });
     });
+
+    it('rejects a read signed more than five minutes in the future', async () => {
+      await addToCohort([PUBLIC_ID], 'internal');
+      workerEnv.REQUIRE_PARTICIPANT_SIGNATURES = 'true';
+
+      // Signed by the id's own key, so only the signing time is wrong.
+      const response = await handleFeatureAccessCheck(
+        await featureAccessRequest(PUBLIC_ID, { signedAt: Date.now() + 10 * 60_000 }),
+        workerEnv,
+        PUBLIC_ID,
+      );
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: 'Invalid signature' });
+    });
+
+    it('rejects a signing time that is not a number as malformed', async () => {
+      workerEnv.REQUIRE_PARTICIPANT_SIGNATURES = 'true';
+      const signed = await signFeatureAccessRequest(PRIVATE_KEY, {
+        publicId: PUBLIC_ID,
+        signedAt: Date.now(),
+      });
+
+      const response = await handleFeatureAccessCheck(
+        await featureAccessRequest(PUBLIC_ID, {
+          headers: { ...featureAccessHeaders(signed), 'X-WWO-Signed-At': 'soon' },
+        }),
+        workerEnv,
+        PUBLIC_ID,
+      );
+
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: 'Malformed signature' });
+    });
+
+    it('answers 401 and logs the error when the key cannot be read to verify', async () => {
+      workerEnv.REQUIRE_PARTICIPANT_SIGNATURES = 'true';
+      // Shaped like a participant key, but not a point on P-256, so importing it throws.
+      const offCurve = `pk_04${'1'.repeat(128)}`;
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        const response = await handleFeatureAccessCheck(
+          await featureAccessRequest(offCurve, {
+            headers: {
+              'X-WWO-Signed-At': String(Date.now()),
+              'X-WWO-Signature': '0'.repeat(128),
+            },
+          }),
+          workerEnv,
+          offCurve,
+        );
+
+        expect(response.status).toBe(401);
+        expect(response.headers.get('Cache-Control')).toBe('no-store');
+        expect(await response.json()).toEqual({ error: 'Invalid signature' });
+        expect(error).toHaveBeenCalledTimes(1);
+        expect(error).toHaveBeenCalledWith(
+          '[AccessControl] feature access signature check failed:',
+          expect.any(Error),
+        );
+      } finally {
+        error.mockRestore();
+      }
+    });
   });
 
   it('requires the admin key for policy reads and mutations', async () => {
