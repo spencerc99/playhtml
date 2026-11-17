@@ -3139,25 +3139,21 @@ export class LocalEventStore {
       const transaction = this.db.transaction([STORE_NAME], "readwrite");
       const store = transaction.objectStore(STORE_NAME);
 
-      let completed = 0;
-      const total = ids.length;
-
-      ids.forEach((id) => {
+      for (const id of ids) {
         const getRequest = store.get(id);
         getRequest.onsuccess = () => {
           const evt = getRequest.result;
-          if (evt) {
-            evt.uploaded = true;
-            evt.uploadState = UPLOAD_STATE_UPLOADED;
-            store.put(evt);
-          }
-          completed++;
-          if (completed === total) {
-            resolve();
-          }
+          if (!evt) return;
+          evt.uploaded = true;
+          evt.uploadState = UPLOAD_STATE_UPLOADED;
+          store.put(evt);
         };
-        getRequest.onerror = () => reject(getRequest.error);
-      });
+      }
+      // Resolves only once every put has committed; a failed request aborts
+      // the transaction and rejects.
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
     });
   }
 
