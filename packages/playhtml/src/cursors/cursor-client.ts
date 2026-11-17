@@ -1399,7 +1399,6 @@ export class CursorClientAwareness {
         cursor.pointer,
         cursorData.message,
         stableId,
-        cursorData,
       );
       cursorElement.dataset.pointerType = cursor.pointer;
       this.cursors.set(stableId, cursorElement);
@@ -1502,11 +1501,13 @@ export class CursorClientAwareness {
 
     // Handle visibility based on distance from our cursor
     if (this.currentCursor) {
-      // Convert our cursor to client coordinates for distance calculation
+      // Compare both cursors in viewport pixels, the same space
+      // updateAllCursorVisibility uses. targetCoords can be document or
+      // container-local coordinates, so it is not used here.
       const ourClientCoords = this.storageToClient(this.currentCursor.x, this.currentCursor.y);
-      // Use target coordinates for distance (viewport pixels)
+      const theirClientCoords = this.storageToClient(cursor.x, cursor.y);
       const distance = calculateDistance(
-        { x: targetCoords.x, y: targetCoords.y, pointer: cursor.pointer },
+        { x: theirClientCoords.x, y: theirClientCoords.y, pointer: cursor.pointer },
         {
           x: ourClientCoords.x,
           y: ourClientCoords.y,
@@ -1536,7 +1537,6 @@ export class CursorClientAwareness {
     pointer: string = "mouse",
     message?: string | null,
     pid?: string,
-    cursorData?: CursorPresence,
   ): HTMLElement {
     const element = document.createElement("div");
     element.className = "playhtml-cursor-other playhtml-cursor-fade-in";
@@ -1576,12 +1576,6 @@ export class CursorClientAwareness {
     // Add message and name if present
     this.updateCursorMessage(element, playerIdentity, message);
     this.updateCursorName(element, playerIdentity);
-
-    // Apply custom cursor styles if provided
-    if (this.options.getCursorStyle && cursorData) {
-      const customStyles = this.options.getCursorStyle(cursorData);
-      Object.assign(element.style, customStyles);
-    }
 
     return element;
   }
