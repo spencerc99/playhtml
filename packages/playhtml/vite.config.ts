@@ -4,8 +4,12 @@ import path from "path";
 import { defineConfig } from "vite";
 import dts from "vite-plugin-dts";
 
-const commonSourceImport = /from ["'](?:\.\.\/)+common\/src["']/g;
-const commonSourceDynamicImport = /import\(["'](?:\.\.\/)+common\/src["']\)/g;
+// The declaration bundler follows the alias below and writes paths into the
+// common package's source, with or without the file name.
+const commonSourceImport =
+  /from ["'](?:\.\.\/)+common\/src(?:\/index(?:\.ts)?)?["']/g;
+const commonSourceDynamicImport =
+  /import\(["'](?:\.\.\/)+common\/src(?:\/index(?:\.ts)?)?["']\)/g;
 
 export default defineConfig({
   plugins: [
@@ -25,6 +29,13 @@ export default defineConfig({
   // to fill in Node's `process`. A dependency that reads `process.env.NODE_ENV`
   // would otherwise throw "process is not defined" on load.
   define: { "process.env.NODE_ENV": JSON.stringify("production") },
+  resolve: {
+    // Bundle @playhtml/common from its source files, not its one-file build,
+    // so the parts only version 2 uses can go in the chunk that loads on demand.
+    alias: {
+      "@playhtml/common": path.resolve(__dirname, "../common/src/index.ts"),
+    },
+  },
   build: {
     // Vite's esbuild pass keeps whitespace in ES library output; terser strips
     // it, and preserve_annotations keeps pure annotations for downstream
@@ -34,6 +45,13 @@ export default defineConfig({
     terserOptions: { format: { preserve_annotations: true } },
     sourcemap: true,
     rollupOptions: {
+      // The protocol files run setup code when they load. Without this, that
+      // setup pins them to the main chunk even though only version 2 calls
+      // them; with it, they are left out of any chunk that uses nothing from
+      // them and still run their setup in the chunk that does.
+      treeshake: {
+        moduleSideEffects: (id) => !id.includes("/common/src/protocol/"),
+      },
       input: ["src/init.ts", "src/index.ts", "src/leafEditor.ts"],
       output: {
         inlineDynamicImports: false,

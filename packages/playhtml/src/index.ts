@@ -79,8 +79,8 @@ import { createElementPerson, createPeople, presenceFingerprint } from "./people
 import { safeInvoke } from "./presence-utils";
 import { CanMirrorDataQueue } from "./canMirrorDataQueue";
 import { resolveRoomHost } from "./roomHost";
-import { V2Store, type V2StoreStatusEvent } from "./v2/store";
-import { V2Transport, type V2TransportStatusEvent } from "./v2/transport";
+import type { V2Store, V2StoreStatusEvent } from "./v2/store";
+import type { V2Transport, V2TransportStatusEvent } from "./v2/transport";
 import {
   createV2PageDataChannel,
   type V2PageDataChannel,
@@ -231,6 +231,11 @@ function getCurrentRoomHost(): string {
 let yprovider: YProvider;
 let v2Transport: V2Transport | null = null;
 let v2Store: V2Store | null = null;
+// Loaded on the first version 2 connection, so version 1 pages skip the download.
+let v2Runtime: typeof import("./v2/runtime") | null = null;
+// Counts connection attempts and teardowns, so an attempt that was replaced
+// while its code was still downloading can tell and stop.
+let v2ConnectionAttempt = 0;
 let v2TransportMessageUnsubscribe: (() => void) | null = null;
 let v2TransportStatusUnsubscribe: (() => void) | null = null;
 let v2TransportPlayEventUnsubscribe: (() => void) | null = null;
@@ -1260,13 +1265,20 @@ function teardownV2Connection(): void {
   v2Transport?.close();
   v2Transport = null;
   v2Store = null;
+  v2ConnectionAttempt++;
 }
 
-function buildV2Connection(args: {
+async function buildV2Connection(args: {
   room: string;
   partykitHost: string;
 }): Promise<void> {
   const { room, partykitHost } = args;
+  const attempt = ++v2ConnectionAttempt;
+  if (!v2Runtime) {
+    v2Runtime = await import("./v2/runtime");
+    if (attempt !== v2ConnectionAttempt) return;
+  }
+  const { V2Store, V2Transport } = v2Runtime;
   const sharedElements = findSharedElementsOnPage();
   const sharedReferences = findSharedReferencesOnPage();
   const transport = new V2Transport();

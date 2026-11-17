@@ -91,15 +91,17 @@ class InProcessServer {
   }
 }
 
+// The version 2 code loads on demand, so the socket appears a few turns of
+// the event loop after init() is called.
 async function waitForV2Socket(): Promise<TestSocket> {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
     const sockets = (globalThis as any)
       .PLAYHTML_TEST_PRESENCE_SOCKETS as TestSocket[];
     const socket = sockets.find(
       (candidate) => candidate.options.party === "v2",
     );
     if (socket) return socket;
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 5));
   }
   throw new Error("Version 2 socket was not created");
 }
