@@ -82,6 +82,8 @@ function detectEnvironment(): EnvName {
 }
 
 // Environment Display Component (read-only)
+const UrlLoadDebounceMs = 500;
+
 const EnvironmentDisplay: React.FC<{
   currentEnv: EnvName;
 }> = ({ currentEnv }) => {
@@ -885,22 +887,35 @@ const AdminConsole: React.FC = () => {
     }
   };
 
+  // Typing a URL updates the room ID right away and loads the room once the
+  // input has been still for UrlLoadDebounceMs.
+  const urlLoadTimerRef = React.useRef<number | null>(null);
+  const cancelPendingUrlLoad = () => {
+    if (urlLoadTimerRef.current !== null) {
+      window.clearTimeout(urlLoadTimerRef.current);
+      urlLoadTimerRef.current = null;
+    }
+  };
+  useEffect(() => cancelPendingUrlLoad, []);
+
   const handleUrlChange = (url: string) => {
     setUrlInput(url);
+    cancelPendingUrlLoad();
     const derivedRoomId = deriveRoomIdFromUrl(url);
-    if (derivedRoomId) {
-      setCurrentRoomId(derivedRoomId);
+    if (!derivedRoomId) return;
+    setCurrentRoomId(derivedRoomId);
+    urlLoadTimerRef.current = window.setTimeout(() => {
+      urlLoadTimerRef.current = null;
       addLog(
         "info",
         `Derived room ID from URL: ${decodeRoomId(derivedRoomId)}`
       );
-      // Auto-load room if authenticated
       if (adminToken) {
-        // Call loadRoom directly with the derived room ID
-        // Note: loadRoom and updateURLWithRoom are defined later but will be available when this is called
-        loadRoom(derivedRoomId);
+        // Rooms loaded while typing replace the current history entry so
+        // each keystroke does not add one.
+        void loadRoom(derivedRoomId, { history: "replace" });
       }
-    }
+    }, UrlLoadDebounceMs);
   };
 
   const validateAndFormatJson = (
@@ -956,9 +971,10 @@ const AdminConsole: React.FC = () => {
         setBackupComparisonData(null);
         setBackupBase64(null);
         setDebugToolsEnabled(false);
-        // Load new room data if authenticated
+        // Load new room data if authenticated. The URL already names this
+        // room, so loading it must not push another history entry.
         if (stored || adminToken) {
-          loadRoom(roomId);
+          loadRoom(roomId, { history: "replace" });
         }
       } else {
         setCurrentRoomId("");
@@ -982,14 +998,22 @@ const AdminConsole: React.FC = () => {
     };
   }, [addLog]); // Remove adminToken dependency to avoid infinite loops
 
-  // Auto-load room if we have auth and room ID from URL
+  // Loads the room named in the page URL once each time a token is set.
+  // Later room switches go through loadRoom directly.
+  const loadedUrlRoomRef = React.useRef(false);
   useEffect(() => {
+    if (!adminToken) {
+      loadedUrlRoomRef.current = false;
+      return;
+    }
+    if (loadedUrlRoomRef.current) return;
+    loadedUrlRoomRef.current = true;
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get("room");
-    if (roomId && adminToken && !roomData) {
-      loadRoom(roomId);
+    if (roomId) {
+      loadRoom(roomId, { history: "replace" });
     }
-  }, [adminToken, roomData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [adminToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // OPFS helper functions for storing backup files
   const saveBackupToOPFS = async (file: File): Promise<void> => {
@@ -1113,13 +1137,25 @@ const AdminConsole: React.FC = () => {
     autoLoadBackup();
   }, [roomData, currentRoomId, savedBackupPath, currentBackupFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const updateURLWithRoom = (roomId: string) => {
+  const updateURLWithRoom = (
+    roomId: string,
+    history: "push" | "replace" = "push"
+  ) => {
     const url = new URL(window.location.href);
     url.searchParams.set("room", roomId);
-    window.history.pushState({ roomId }, "", url.toString());
+    if (url.toString() === window.location.href) return;
+    if (history === "replace") {
+      window.history.replaceState({ roomId }, "", url.toString());
+    } else {
+      window.history.pushState({ roomId }, "", url.toString());
+    }
   };
 
-  const loadRoom = async (roomId?: string) => {
+  const loadRoom = async (
+    roomId?: string,
+    options: { history?: "push" | "replace" } = {}
+  ) => {
+    cancelPendingUrlLoad();
     const targetRoomId = roomId || currentRoomId;
 
     if (!targetRoomId) {
@@ -1165,7 +1201,7 @@ const AdminConsole: React.FC = () => {
       setCurrentRoomId(encodedRoomId);
     }
     // Always update URL when loading (whether from button or programmatic call)
-    updateURLWithRoom(encodedRoomId);
+    updateURLWithRoom(encodedRoomId, options.history);
 
     try {
       // Always use the encoded room ID for API calls
