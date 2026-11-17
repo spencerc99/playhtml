@@ -12,13 +12,26 @@ import { playhtml, resetPlayHTML } from "../../src/index";
 // jsdom has no layout; the cursor client asks what is under the pointer.
 document.elementFromPoint ??= () => document.body;
 
-// playhtml stamps elements with a random animation delay that can-mirror
-// syncs as part of the style attribute; a seeded Math.random keeps byte counts
-// identical between runs.
+// A seeded Math.random keeps anything random that reaches synced state from
+// changing byte counts between runs.
 let seed = 1;
 Math.random = () => {
   seed = (seed * 16807) % 2147483647;
   return (seed - 1) / 2147483646;
+};
+
+// Browsers drop a custom property whose value has a top-level ";" or an
+// unmatched "}"; jsdom keeps it. playhtml's "--jiggle-delay" value ends in
+// ";}", so in jsdom it would land in the style attribute (and in can-mirror's
+// synced state) when it never does in a real browser. Match the browser.
+const setProperty = CSSStyleDeclaration.prototype.setProperty;
+CSSStyleDeclaration.prototype.setProperty = function (
+  name: string,
+  value: string | null,
+  priority?: string,
+) {
+  if (name.startsWith("--") && value && /[;}]/.test(value)) return;
+  return setProperty.call(this, name, value, priority);
 };
 
 export type Metrics = Record<string, number>;
