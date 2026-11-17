@@ -600,7 +600,7 @@ const Main = withSharedState(
                 className="randomize"
                 onClick={() => setCurrentColor(generateRandomColor())}
               >
-                🎲
+                ⚄
               </button>
               <button
                 className="add-color-button"

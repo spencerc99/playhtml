@@ -588,7 +588,7 @@ const LoginScreen: React.FC<{
         }}
       >
         <h1 style={{ marginTop: 0, marginBottom: "1.5rem" }}>
-          🛠️ PlayHTML Admin
+          PlayHTML Admin
         </h1>
         <a
           className="admin-office-link"
@@ -1214,7 +1214,7 @@ const AdminConsole: React.FC = () => {
         : "unknown";
       const displayRoomId = decodeRoomId(encodedRoomId);
       setRoomStatus({
-        message: `✅ Successfully loaded room: ${displayRoomId} (created ${createdDate})`,
+        message: `✓ Successfully loaded room: ${displayRoomId} (created ${createdDate})`,
         type: "success",
       });
       addLog("info", `Loaded room data for ${displayRoomId}`, data);
@@ -1381,7 +1381,7 @@ const AdminConsole: React.FC = () => {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Failed to export raw document: ${msg}`, error);
-      alert(`❌ Failed to export raw document: ${msg}`);
+      alert(`× Failed to export raw document: ${msg}`);
     }
   };
 
@@ -1460,7 +1460,7 @@ const AdminConsole: React.FC = () => {
       }
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Failed to restore raw document: ${msg}`, error);
-      alert(`❌ Failed to restore raw document: ${msg}`);
+      alert(`× Failed to restore raw document: ${msg}`);
     }
   };
 
@@ -1555,12 +1555,12 @@ const AdminConsole: React.FC = () => {
       const res = await fetch(url, { method: "POST" });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       addLog("info", "Force-saved live doc to DB");
-      alert("✅ Live doc saved to DB. Re-running comparison.");
+      alert("✓ Live doc saved to DB. Re-running comparison.");
       await compareDataMethods();
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Force save failed: ${msg}`);
-      alert(`❌ Force save failed: ${msg}`);
+      alert(`× Force save failed: ${msg}`);
     }
   };
 
@@ -1593,7 +1593,7 @@ const AdminConsole: React.FC = () => {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Force reload failed: ${msg}`);
-      alert(`❌ Force reload failed: ${msg}`);
+      alert(`× Force reload failed: ${msg}`);
     }
   };
 
@@ -1653,7 +1653,7 @@ const AdminConsole: React.FC = () => {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Hard Reset failed: ${msg}`, error);
-      alert(`❌ Hard Reset failed: ${msg}`);
+      alert(`× Hard Reset failed: ${msg}`);
     }
   };
 
@@ -1701,7 +1701,7 @@ const AdminConsole: React.FC = () => {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Failed to save edited data: ${msg}`, error);
-      alert(`❌ Failed to save edited data: ${msg}`);
+      alert(`× Failed to save edited data: ${msg}`);
     }
   };
 
@@ -1896,7 +1896,7 @@ const AdminConsole: React.FC = () => {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Dry run failed: ${msg}`, error);
-      alert(`❌ Dry run failed: ${msg}`);
+      alert(`× Dry run failed: ${msg}`);
     } finally {
       setIsCleanupRunning(false);
     }
@@ -1975,7 +1975,7 @@ const AdminConsole: React.FC = () => {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Cleanup failed: ${msg}`, error);
-      alert(`❌ Cleanup failed: ${msg}`);
+      alert(`× Cleanup failed: ${msg}`);
     } finally {
       setIsCleanupRunning(false);
     }
@@ -2005,7 +2005,7 @@ const AdminConsole: React.FC = () => {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Failed to load backup file: ${msg}`, error);
-      alert(`❌ Failed to load backup file: ${msg}`);
+      alert(`× Failed to load backup file: ${msg}`);
     }
   };
 
@@ -2234,7 +2234,7 @@ const AdminConsole: React.FC = () => {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       addLog("error", `Backup comparison failed: ${msg}`, error);
-      alert(`❌ Backup comparison failed: ${msg}`);
+      alert(`× Backup comparison failed: ${msg}`);
     }
   };
 
@@ -2376,7 +2376,7 @@ const AdminConsole: React.FC = () => {
     <div className="admin-container">
       <header className="admin-header">
         <div className="admin-header-title">
-          <h1>🛠️ PlayHTML Admin Console</h1>
+          <h1>PlayHTML Admin Console</h1>
           <a href="https://wewere.online/admin/">WWO Internal Office ↗</a>
         </div>
         <div>
@@ -2390,7 +2390,7 @@ const AdminConsole: React.FC = () => {
                 addLog("info", "Logged out");
               }}
             >
-              🔓 Logout
+              Logout
             </button>
             <span className={`auth-status authenticated`}>Authenticated</span>
           </div>
@@ -2457,11 +2457,10 @@ const AdminConsole: React.FC = () => {
                     <div className="ydoc-debug-info">
                       <div className="debug-stats">
                         <span className="stat-item">
-                          📊 {Object.keys(roomData.ydoc.play).length} capability
+                          {Object.keys(roomData.ydoc.play).length} capability
                           types
                         </span>
                         <span className="stat-item">
-                          🎯{" "}
                           {Object.values(roomData.ydoc.play).reduce(
                             (sum: number, tagData: any) =>
                               sum + Object.keys(tagData).length,
@@ -2529,21 +2528,21 @@ const AdminConsole: React.FC = () => {
                           if (isDangerous) {
                             color = "#e53e3e"; // Red
                             fontWeight = "bold";
-                            warningIcon = "⚠️";
+                            warningIcon = "⚠";
                             tooltip =
-                              "⚠️ Document size is dangerously large. Consider running Hard Reset (GC) to clean up history/tombstones.";
+                              "⚠ Document size is dangerously large. Consider running Hard Reset (GC) to clean up history/tombstones.";
                           } else if (isWarning) {
                             color = "#d69e2e"; // Orange
                             fontWeight = "500";
-                            warningIcon = "⚡";
+                            warningIcon = "△";
                             tooltip =
-                              "⚡ Document size is getting large. Consider running Hard Reset (GC) soon to prevent performance issues.";
+                              "△ Document size is getting large. Consider running Hard Reset (GC) soon to prevent performance issues.";
                           } else if (isCaution) {
                             color = "#c05621"; // Lighter amber/yellow
                             fontWeight = "normal";
-                            warningIcon = "💡";
+                            warningIcon = "○";
                             tooltip =
-                              "💡 Document size is moderate. Monitor and consider Hard Reset (GC) if it continues to grow.";
+                              "○ Document size is moderate. Monitor and consider Hard Reset (GC) if it continues to grow.";
                           }
 
                           return (
@@ -2824,7 +2823,7 @@ const AdminConsole: React.FC = () => {
                     {currentBackupFile ? (
                       <>
                         <span style={{ color: "#666" }}>
-                          📁 {currentBackupFile.name}
+                          ▤ {currentBackupFile.name}
                         </span>
                         {savedBackupPath && (
                           <span style={{ fontSize: "0.85em", color: "#999" }}>
@@ -2870,12 +2869,12 @@ const AdminConsole: React.FC = () => {
                                 )
                               ) {
                                 await clearBackupFromOPFS();
-                                alert("✅ Auto-saved backup cleared");
+                                alert("✓ Auto-saved backup cleared");
                               }
                             }}
                             title="Remove backup file from browser storage (OPFS)"
                           >
-                            🗑️ Clear Auto-Save
+                            × Clear Auto-Save
                           </button>
                         )}
                       </>
@@ -2889,7 +2888,7 @@ const AdminConsole: React.FC = () => {
                         onClick={handleUploadBackup}
                         disabled={!debugToolsEnabled}
                       >
-                        📤 Upload Backup
+                        ↑ Upload Backup
                       </button>
                     )}
                   </div>
@@ -3099,10 +3098,10 @@ const AdminConsole: React.FC = () => {
                           if (result.valid && result.formatted) {
                             setEditableJson(result.formatted);
                             setJsonError("");
-                            alert("✅ JSON is valid and has been formatted");
+                            alert("✓ JSON is valid and has been formatted");
                           } else {
                             setJsonError(result.error || "Invalid JSON");
-                            alert(`❌ Invalid JSON: ${result.error}`);
+                            alert(`× Invalid JSON: ${result.error}`);
                           }
                         }}
                         disabled={!editableJson.trim()}
@@ -3166,7 +3165,7 @@ const AdminConsole: React.FC = () => {
                         const result = validateAndFormatJson(editableJson);
                         if (!result.valid) {
                           setJsonError(result.error || "Invalid JSON");
-                          alert(`❌ Cannot save invalid JSON: ${result.error}`);
+                          alert(`× Cannot save invalid JSON: ${result.error}`);
                           return;
                         }
                         setJsonError("");
@@ -3179,7 +3178,7 @@ const AdminConsole: React.FC = () => {
                       }}
                       disabled={!editableJson.trim()}
                     >
-                      💾 Save Edited Data to Database
+                      Save Edited Data to Database
                     </button>
                   </div>
                 </>
@@ -3381,7 +3380,7 @@ const AdminConsole: React.FC = () => {
               onClick={handleHardReset}
               title="Recreate Y.Doc from scratch to remove all history/tombstones (Garbage Collection)"
             >
-              🔄 Hard Reset (GC)
+              ↻ Hard Reset (GC)
             </button>
           </div>
         </section>
@@ -3390,7 +3389,7 @@ const AdminConsole: React.FC = () => {
           <section className="cleanup-tools">
             <div className="data-section">
               <SectionHeader
-                title="🧹 Cleanup Orphaned Data"
+                title="Cleanup Orphaned Data"
                 sectionKey="cleanupTools"
                 isExpanded={sectionsExpanded.cleanupTools}
                 onToggle={toggleSection}
@@ -3478,7 +3477,7 @@ const AdminConsole: React.FC = () => {
                         disabled={!roomData || isCleanupRunning}
                         style={{ marginRight: "8px" }}
                       >
-                        {isCleanupRunning ? "Running..." : "🔍 Dry Run"}
+                        {isCleanupRunning ? "Running..." : "Dry Run"}
                       </button>
                       {cleanupDryRunResult && (
                         <button
@@ -3491,7 +3490,7 @@ const AdminConsole: React.FC = () => {
                         >
                           {isCleanupRunning
                             ? "Cleaning..."
-                            : `🗑️ Remove ${cleanupDryRunResult.orphaned} Orphaned`}
+                            : `× Remove ${cleanupDryRunResult.orphaned} Orphaned`}
                         </button>
                       )}
                     </div>
