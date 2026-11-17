@@ -364,6 +364,65 @@ describe("PeerStore", () => {
     expect("identity" in ghost).toBe(true);
   });
 
+  it("prunes a touched peer's already-stale channels on the message that folds them", () => {
+    const source = makeSource();
+    const store = new PeerStore(source);
+    const cb = vi.fn();
+    store.subscribe("presence", cb);
+    cb.mockClear();
+    source.emit({
+      type: "presence-changes",
+      updates: {
+        "conn-late": {
+          identity: identity("pk_late"),
+          "presence:status": { at: Date.now() - PRESENCE_STALE_MS - 1, value: { t: 1 } },
+        },
+      },
+      removes: {},
+    });
+    const peer = store.getPeers().get("conn-late")!;
+    expect("presence:status" in peer).toBe(false);
+    expect("identity" in peer).toBe(true);
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves untouched stale peers to the sweep instead of pruning them on every message", () => {
+    const source = makeSource();
+    const store = new PeerStore(source);
+    const start = Date.now();
+    source.emit({
+      type: "presence-sync",
+      peers: {
+        "conn-quiet": {
+          identity: identity("pk_quiet"),
+          "presence:status": { at: start, value: { t: 1 } },
+        },
+      },
+    });
+    const cb = vi.fn();
+    store.subscribe("presence", cb);
+    cb.mockClear();
+
+    // The quiet peer ages out between sweep ticks; another peer's cursor frame
+    // arrives before the next tick.
+    vi.setSystemTime(start + PRESENCE_STALE_MS + 1);
+    source.emit({
+      type: "presence-changes",
+      updates: { "conn-busy": { cursor: { at: Date.now(), value: { x: 1, y: 1 } } } },
+      removes: {},
+    });
+    expect("presence:status" in store.getPeers().get("conn-quiet")!).toBe(true);
+    expect(cb).not.toHaveBeenCalled();
+
+    // The next sweep tick expires it and notifies, as it would for a silent room.
+    vi.advanceTimersByTime(1_000);
+    const quiet = store.getPeers().get("conn-quiet")!;
+    expect("presence:status" in quiet).toBe(false);
+    expect("identity" in quiet).toBe(true);
+    expect("cursor" in store.getPeers().get("conn-busy")!).toBe(true);
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
   it("does not notify when a periodic sweep expires nothing", () => {
     const source = makeSource();
     const store = new PeerStore(source);
