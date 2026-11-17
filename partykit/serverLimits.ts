@@ -18,6 +18,11 @@ export type LimitViolation = {
   reason: "Message Rate Limit Exceeded";
 };
 
+// Most shared-element entries one room stores. Each connect and register can
+// declare new ids, so the stored map is capped to keep one bad client from
+// growing it without end. Override with MAX_SHARED_PERMISSION_ENTRIES.
+export const DEFAULT_MAX_SHARED_PERMISSION_ENTRIES = 500;
+
 // 1013 is "Try Again Later": the client may reconnect once the room has room.
 export const ROOM_FULL_CLOSE_CODE = 1013;
 export const ROOM_FULL_CLOSE_REASON = "Room Full";
