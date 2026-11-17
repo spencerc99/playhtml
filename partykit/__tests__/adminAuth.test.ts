@@ -2,6 +2,7 @@
 // ABOUTME: Covers header and query-param tokens, fail-closed config, and constant-time matching.
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { getAdminAuthError } from "../adminAuth";
+import { timingSafeEqual as nodeTimingSafeEqual } from "node:crypto";
 import { bytesEqualConstantTime, secretMatches } from "../secretMatch";
 
 const ADMIN_URL = "https://api.example.com/admin/hard-reset";
@@ -144,12 +145,57 @@ describe("getAdminAuthError", () => {
 });
 
 describe("secretMatches", () => {
-  it("matches equal secrets and rejects different ones of any length", async () => {
-    expect(await secretMatches("abc", "abc")).toBe(true);
-    expect(await secretMatches("abd", "abc")).toBe(false);
-    expect(await secretMatches("ab", "abc")).toBe(false);
-    expect(await secretMatches("abcd", "abc")).toBe(false);
-    expect(await secretMatches("", "abc")).toBe(false);
+  type Subtle = SubtleCrypto & {
+    timingSafeEqual?: (a: ArrayBufferView, b: ArrayBufferView) => boolean;
+  };
+  const subtle = crypto.subtle as Subtle;
+
+  // Runs `work` with crypto.subtle.timingSafeEqual set to `value`, then puts
+  // back whatever the runtime had.
+  async function withTimingSafeEqual(
+    value: Subtle["timingSafeEqual"],
+    work: () => Promise<void>,
+  ): Promise<void> {
+    const hadOwn = Object.prototype.hasOwnProperty.call(
+      subtle,
+      "timingSafeEqual",
+    );
+    const original = subtle.timingSafeEqual;
+    subtle.timingSafeEqual = value;
+    try {
+      await work();
+    } finally {
+      if (hadOwn) subtle.timingSafeEqual = original;
+      else delete subtle.timingSafeEqual;
+    }
+  }
+
+  it("uses the runtime's timingSafeEqual on two 32-byte digests when it has one", async () => {
+    const compared: Array<[number, number]> = [];
+    await withTimingSafeEqual(
+      (a, b) => {
+        compared.push([a.byteLength, b.byteLength]);
+        return nodeTimingSafeEqual(a, b);
+      },
+      async () => {
+        expect(await secretMatches("secret", "secret")).toBe(true);
+        expect(await secretMatches("secreT", "secret")).toBe(false);
+        expect(await secretMatches("secret".repeat(50), "secret")).toBe(false);
+      },
+    );
+    expect(compared).toEqual([
+      [32, 32],
+      [32, 32],
+      [32, 32],
+    ]);
+  });
+
+  it("compares digests itself when the runtime has no timingSafeEqual", async () => {
+    await withTimingSafeEqual(undefined, async () => {
+      expect(await secretMatches("secret", "secret")).toBe(true);
+      expect(await secretMatches("secreT", "secret")).toBe(false);
+      expect(await secretMatches("secret".repeat(50), "secret")).toBe(false);
+    });
   });
 });
 
