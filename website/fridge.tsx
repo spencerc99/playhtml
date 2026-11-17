@@ -338,14 +338,16 @@ const FridgeWord = withSharedState<MoveData, MoveLocalData, Props>(
       >
         <div
           className={`fridgeWord ${className}`}
-          style={{
-            "--word-color": props.color,
-            ...(deleteMode
-              ? {
-                  border: "2px dotted red",
-                }
-              : {}),
-          } as React.CSSProperties}
+          style={
+            {
+              "--word-color": props.color,
+              ...(deleteMode
+                ? {
+                    border: "2px dotted red",
+                  }
+                : {}),
+            } as React.CSSProperties
+          }
         >
           {word}
           {deleteMode ? (
