@@ -2252,7 +2252,7 @@ const AdminConsole: React.FC = () => {
               <span className="badge subscriber-badge">CONSUMER</span>
               <a
                 className="room-link"
-                href={`admin-react.html?room=${encodedRoomId}`}
+                href={`admin.html?room=${encodedRoomId}`}
               >
                 <strong>{roomId}</strong>
               </a>
@@ -2282,7 +2282,7 @@ const AdminConsole: React.FC = () => {
               <span className="badge reference-badge">SOURCE</span>
               <a
                 className="room-link"
-                href={`admin-react.html?room=${encodedSourceId}`}
+                href={`admin.html?room=${encodedSourceId}`}
               >
                 <strong>{roomId}</strong>
               </a>
